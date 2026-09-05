@@ -32,10 +32,22 @@ resource "azurerm_container_registry" "this" {
 # registry { identity = var.workload_identity_id }). Contributor on the
 # RG is not enough -- ACR requires the AcrPull data-plane role.
 # skip_service_principal_aad_check matches modules/keyvault (AAD lag on
-# a just-created managed identity).
+# a just-created managed identity). Azure role assignments are
+# immutable: after `import {}` the provider still tries to PATCH
+# skip_service_principal_aad_check / principal_type and ARM returns
+# "doesn't support update". Ignore those; scope + principal + role
+# stay the live grant.
 resource "azurerm_role_assignment" "acr_pull" {
   scope                            = azurerm_container_registry.this.id
   role_definition_name             = "AcrPull"
   principal_id                     = var.workload_principal_id
   skip_service_principal_aad_check = true
+
+  lifecycle {
+    ignore_changes = [
+      skip_service_principal_aad_check,
+      principal_type,
+      name,
+    ]
+  }
 }
