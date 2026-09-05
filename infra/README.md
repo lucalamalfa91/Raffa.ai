@@ -122,11 +122,11 @@ through `modules/network` is later work.
   attaches `registry { server, identity }` so API/worker pull without an
   admin password. Confirm the HCP VCS apply on `contigo-dev` /
   `contigo-demo` before the next `az containerapp update`, or pulls 401.
-- **First apply after the Key Vault / database wiring may need imports**
-  for resources created out of band on the live `dev`/`demo` apps: the
-  `AllowAzureServices` firewall rule, the `contigo_<env>` database, and
-  an existing `AcrPull` role assignment. HCP apply will otherwise fail
-  with "already exists".
+- **Out-of-band Postgres / AcrPull objects** (database `contigo_<env>`,
+  firewall `AllowAzureServices`, live AcrPull assignment) are adopted
+  via `import {}` blocks in each env root (`environments/<env>/imports.tf`).
+  Leave them after the first successful apply; they become no-ops once
+  the addresses are in state.
 - **Static Web Apps region.** `Microsoft.Web/staticSites` is not offered in
   North Europe; West Europe is ineligible on this tenant. The module
   defaults to West US 2. Static assets are a global CDN; that region only
