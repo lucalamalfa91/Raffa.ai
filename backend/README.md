@@ -89,6 +89,14 @@ E09/F01/US01/T01) fails `dotnet test` if a script is missing or no longer
 matches a fresh idempotent generate, and `<Module>MigrationScriptTests`
 proves the checked-in script itself — not `MigrateAsync`, no DbContext —
 applies (and re-applies) cleanly to a bare `pgvector/pgvector:pg16` server.
+`.github/workflows/backend.yml`'s CI apply step (`scripts/pg_connection_string_env.py`
+turns the Key Vault `postgres-connection` secret into `psql`'s `PG*`
+environment variables; `scripts/schema_apply_verify.py` then proves every
+migration_id all six scripts declare landed in `contigo_<env>`'s own
+`__EFMigrationsHistory`, failing the job by name otherwise) needs the CI
+deploy principal to hold `Key Vault Secrets User` on that environment's
+vault — a grant that does not exist yet, see `infra/README.md`'s
+"Known gaps".
 
 ## HTTP surface today
 

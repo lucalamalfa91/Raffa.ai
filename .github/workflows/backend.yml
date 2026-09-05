@@ -11,12 +11,16 @@ on:
       - "backend/**"
       - ".github/workflows/backend.yml"
       - ".github/actions/azure-login/**"
+      - "scripts/pg_connection_string_env.py"
+      - "scripts/schema_apply_verify.py"
   push:
     branches: [main]
     paths:
       - "backend/**"
       - ".github/workflows/backend.yml"
       - ".github/actions/azure-login/**"
+      - "scripts/pg_connection_string_env.py"
+      - "scripts/schema_apply_verify.py"
   # us-03's demo promotion workflow (ADR-016) reuses this deploy job by
   # calling it with target_environment: demo, under the demo CI identity
   # and demo resource group (ADR-015). dev and demo never share a resource
@@ -178,3 +182,116 @@ jobs:
             --name "ca-contigo-${TARGET_ENVIRONMENT}-worker" \
             --resource-group "$RESOURCE_GROUP" \
             --image "$ACR_LOGIN_SERVER/contigo-worker:${{ github.sha }}"
+
+      # ADR-021: schema apply on deploy, after both Container Apps above are
+      # already running the new image. Each module that owns a DbContext
+      # checks in a `dotnet ef migrations script --idempotent` output (task
+      # E09/F01/US01/T01, backend/src/<Module>/Migrations/Scripts/*.sql);
+      # this job applies all six here, in ADR-021's fixed order.
+      # Contigo.Api/Contigo.Worker deliberately never call
+      # Database.MigrateAsync() (ADR-021 "Decision outcome"), so a replica
+      # boot never mutates schema -- CI is the only apply path, for both
+      # dev (this trigger) and demo (the same job, reused via
+      # workflow_call by us-03's demo-promote.yml, target_environment: demo).
+      - name: Install postgresql-client
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends postgresql-client
+          fi
+
+      # Key Vault name carries a random suffix (modules/keyvault:
+      # kv-contigo-<env>-<6 chars>), same reason ACR's name is resolved
+      # above instead of composed as a literal. The secret itself is
+      # Npgsql-format (Host=...;Database=...;Username=...;Password=...;Ssl
+      # Mode=Require) -- scripts/pg_connection_string_env.py is the one,
+      # pure, unit-tested translation into the PG* environment variables
+      # `psql` reads automatically; this step is the only place that
+      # touches the raw secret value, and masks it (and the password it
+      # carries) immediately after each is known.
+      - name: Fetch Postgres connection string (ADR-021)
+        run: |
+          set -euo pipefail
+          HCP_RUNS="https://app.terraform.io/app/contigo-platform/workspaces/contigo-${TARGET_ENVIRONMENT}/runs"
+          KV_NAME=$(az keyvault list --resource-group "$RESOURCE_GROUP" --query "[0].name" -o tsv)
+          if [ -z "$KV_NAME" ]; then
+            echo "::error::no Key Vault found in resource group $RESOURCE_GROUP. Confirm the HCP VCS apply at $HCP_RUNS, then re-run this job."
+            exit 1
+          fi
+          set +e
+          RAW_CONN=$(az keyvault secret show --vault-name "$KV_NAME" --name postgres-connection --query value -o tsv 2>/tmp/kv_secret_show.err)
+          KV_STATUS=$?
+          set -e
+          if [ $KV_STATUS -ne 0 ] || [ -z "$RAW_CONN" ]; then
+            echo "::error::could not read secret 'postgres-connection' from $KV_NAME. Either the HCP VCS apply at $HCP_RUNS has not created it yet, or this environment's CI deploy principal (contigo-sp-${TARGET_ENVIRONMENT}) is missing the 'Key Vault Secrets User' role on $KV_NAME -- Contributor on the resource group does not include Key Vault data-plane access once rbac_authorization_enabled=true (infra/modules/keyvault/main.tf grants that role to the workload identity only, not the CI principal; see infra/README.md Known gaps). Azure CLI said: $(tail -c 500 /tmp/kv_secret_show.err | tr '\n' ' ')"
+            exit 1
+          fi
+          echo "::add-mask::$RAW_CONN"
+          PG_EXPORTS=$(printf '%s' "$RAW_CONN" | python3 scripts/pg_connection_string_env.py)
+          eval "$PG_EXPORTS"
+          echo "::add-mask::$PGPASSWORD"
+          if [ -z "${PGHOST:-}" ] || [ -z "${PGPASSWORD:-}" ]; then
+            echo "::error::scripts/pg_connection_string_env.py produced an incomplete environment from the postgres-connection secret"
+            exit 1
+          fi
+          {
+            echo "PGHOST=$PGHOST"
+            echo "PGPORT=$PGPORT"
+            echo "PGDATABASE=$PGDATABASE"
+            echo "PGUSER=$PGUSER"
+            echo "PGPASSWORD=$PGPASSWORD"
+            echo "PGSSLMODE=$PGSSLMODE"
+          } >> "$GITHUB_ENV"
+
+      - name: Apply schema (ADR-021)
+        run: |
+          set -euo pipefail
+          # Fixed order (ADR-021 "Decision outcome"). Keep this array in
+          # lockstep with the identical one in "Verify schema applied" below.
+          SCRIPTS=(
+            "backend/src/Contigo.Identity.Workspace/Migrations/Scripts/identity-workspace.sql"
+            "backend/src/Contigo.Documents.Contracts/Migrations/Scripts/documents-contracts.sql"
+            "backend/src/Contigo.Audit/Migrations/Scripts/audit.sql"
+            "backend/src/Contigo.Renewals/Migrations/Scripts/renewals.sql"
+            "backend/src/Contigo.Savings/Migrations/Scripts/savings.sql"
+            "backend/src/Contigo.Quotes/Migrations/Scripts/quotes.sql"
+          )
+          for script in "${SCRIPTS[@]}"; do
+            if [ ! -f "$script" ]; then
+              echo "::error::$script is missing -- ADR-021 requires all six module scripts to be checked in"
+              exit 1
+            fi
+            echo "::group::psql -f $script"
+            psql -v ON_ERROR_STOP=1 -f "$script"
+            echo "::endgroup::"
+          done
+
+      # "Prove contigo_<env> has the app tables (or fail the job)" (this
+      # task's own coding objective): the table listing is the named,
+      # human-readable check the Definition of Done asks for; the
+      # migration_id comparison below is the strict pass/fail gate
+      # ("...(or __EFMigrationsHistory rows)") -- it reads the *expected*
+      # ids straight out of the same six checked-in files the step above
+      # just applied, so it can never drift from what ADR-021 actually
+      # ships.
+      - name: Verify schema applied (ADR-021)
+        run: |
+          set -euo pipefail
+          SCRIPTS=(
+            "backend/src/Contigo.Identity.Workspace/Migrations/Scripts/identity-workspace.sql"
+            "backend/src/Contigo.Documents.Contracts/Migrations/Scripts/documents-contracts.sql"
+            "backend/src/Contigo.Audit/Migrations/Scripts/audit.sql"
+            "backend/src/Contigo.Renewals/Migrations/Scripts/renewals.sql"
+            "backend/src/Contigo.Savings/Migrations/Scripts/savings.sql"
+            "backend/src/Contigo.Quotes/Migrations/Scripts/quotes.sql"
+          )
+          echo "::group::tables in contigo_${TARGET_ENVIRONMENT}"
+          psql -Atqc "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name;"
+          echo "::endgroup::"
+          SCRIPT_ARGS=()
+          for script in "${SCRIPTS[@]}"; do
+            SCRIPT_ARGS+=(--script "$script")
+          done
+          psql -Atqc 'SELECT migration_id FROM "__EFMigrationsHistory" ORDER BY migration_id;' \
+            | python3 scripts/schema_apply_verify.py "${SCRIPT_ARGS[@]}" --applied-ids-file -
