@@ -7,4 +7,6 @@
 **/__pycache__/
 *.pyc
 /reports/plan/.web-protect-snapshot.json
+/reports/plan/.schema-protect-snapshot.json
+/reports/plan/.readiness-protect-snapshot.json
 /reports/plan/gates/

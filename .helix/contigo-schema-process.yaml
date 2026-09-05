@@ -1,0 +1,215 @@
+# =============================================================================
+# contigo-schema-process -- Helix Passata 1 for SCHEMA APPLY only.
+# Does NOT replace contigo-process.yaml. Launch with ./run-schema.ps1
+# (never --fresh, never -Slice / execution-fanout).
+#
+# PASSATA 1 -- contigo-schema-design (DEFAULT)
+#   docs-intake-schema → 4-seat council → append epic-09 → checker ⇄ remediator.
+#   Writes wave-spec.schema.yaml and slices/e09.yaml.
+#   Never touches wave-spec.execution.yaml, e01–e05, or slice.current.yaml.
+#
+# PASSATA 2 is NOT in this document. After e05 HITL is idle:
+#   ./run.ps1 -Max -Slice e09 -o execution-fanout
+# =============================================================================
+
+version: "0.1"
+runtime: maf
+output_dir: reports
+
+defaults:
+  harness:
+    memory: { scope: session }
+    governance:
+      hooks: { allow_external: false }
+      policy:
+        model_allowlist: [deepseek-reasoning, deepseek-fast]
+
+models:
+  - id: deepseek-reasoning
+    provider: openai
+    model: ${DEEPSEEK_REASONING_MODEL}
+    options:
+      base_url: ${DEEPSEEK_BASE_URL}
+      api_key: ${DEEPSEEK_API_KEY}
+      api: chat_completions
+      context_window_tokens: 786432
+      max_output_tokens: 65536
+      tool_call_content: ensure
+      normalize_turns: false
+      tool_turn_cue: false
+      timeout: 900
+      max_retries: 2
+      extra_body:
+        thinking:
+          type: disabled
+
+  - id: deepseek-fast
+    provider: openai
+    model: ${DEEPSEEK_FAST_MODEL}
+    options:
+      base_url: ${DEEPSEEK_BASE_URL}
+      api_key: ${DEEPSEEK_API_KEY}
+      api: chat_completions
+      context_window_tokens: 786432
+      max_output_tokens: 65536
+      tool_call_content: ensure
+      normalize_turns: false
+      tool_turn_cue: false
+      timeout: 900
+      max_retries: 2
+      extra_body:
+        thinking:
+          type: disabled
+
+tools:
+  - { id: read-file,    kind: function, ref: read_file }
+  - { id: read-files,   kind: function, ref: read_files }
+  - { id: list-dir,     kind: function, ref: list_dir }
+  - { id: glob-files,   kind: function, ref: glob }
+  - { id: grep-files,   kind: function, ref: grep }
+  - { id: write-file,   kind: function, ref: write_file }
+  - { id: shell,        kind: function, ref: bash }
+
+skills:
+  - { id: kb-contract,                instructions_file: skills/kb-contract.md }
+  - { id: kb-contract-schema,         instructions_file: skills/kb-contract-schema.md }
+  - { id: marker-discipline,          instructions_file: skills/marker-discipline.md }
+  - { id: council-protocol-schema,    instructions_file: skills/council-protocol-schema.md }
+  - { id: decompose-schema-workitems, instructions_file: skills/decompose-schema-workitems.md }
+  - { id: wavespec-schema,            instructions_file: skills/wavespec-schema.md }
+
+agents:
+  - id: docs-ingester-schema
+    model: deepseek-fast
+    skills: [kb-contract, kb-contract-schema, marker-discipline]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, write-file]
+    instructions_file: agents/docs-ingester-schema.md
+
+  - id: software-architect-schema
+    model: deepseek-reasoning
+    skills: [kb-contract, kb-contract-schema, marker-discipline, council-protocol-schema]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, write-file]
+    instructions_file: agents/software-architect-schema.md
+
+  - id: cloud-architect-schema
+    model: deepseek-reasoning
+    skills: [kb-contract, kb-contract-schema, marker-discipline, council-protocol-schema]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, write-file]
+    instructions_file: agents/cloud-architect-schema.md
+
+  - id: delivery-manager-schema
+    model: deepseek-reasoning
+    skills: [kb-contract, kb-contract-schema, marker-discipline, council-protocol-schema]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, write-file]
+    instructions_file: agents/delivery-manager-schema.md
+
+  - id: security-architect-schema
+    model: deepseek-reasoning
+    skills: [kb-contract, kb-contract-schema, marker-discipline, council-protocol-schema]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, write-file]
+    instructions_file: agents/security-architect-schema.md
+
+  - id: council-gate-schema
+    model: deepseek-fast
+    skills: [kb-contract, kb-contract-schema, marker-discipline, council-protocol-schema]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files]
+    instructions_file: agents/council-gate-schema.md
+
+  - id: backlog-decomposer-schema
+    model: deepseek-reasoning
+    skills: [kb-contract, kb-contract-schema, marker-discipline, decompose-schema-workitems, wavespec-schema]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, write-file, shell]
+    instructions_file: agents/backlog-decomposer-schema.md
+
+  - id: decomposition-checker-schema
+    model: deepseek-reasoning
+    skills: [kb-contract, kb-contract-schema, marker-discipline, decompose-schema-workitems, wavespec-schema]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files]
+    instructions_file: agents/decomposition-checker-schema.md
+
+  - id: decomposition-remediator-schema
+    model: deepseek-reasoning
+    skills: [kb-contract, kb-contract-schema, marker-discipline, decompose-schema-workitems, wavespec-schema]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, write-file, shell]
+    instructions_file: agents/decomposition-remediator-schema.md
+
+orchestrations:
+  - id: docs-intake-schema
+    topology: sequential
+    participants: [docs-ingester-schema]
+
+  - id: lane-software-architect-schema
+    topology: sequential
+    participants: [software-architect-schema]
+
+  - id: lane-cloud-architect-schema
+    topology: sequential
+    participants: [cloud-architect-schema]
+
+  - id: lane-delivery-manager-schema
+    topology: sequential
+    participants: [delivery-manager-schema]
+
+  - id: lane-security-architect-schema
+    topology: sequential
+    participants: [security-architect-schema]
+
+  - id: architecture-lanes-schema
+    topology: concurrent
+    aggregator: concat
+    participants:
+      - lane-software-architect-schema
+      - lane-cloud-architect-schema
+      - lane-delivery-manager-schema
+      - lane-security-architect-schema
+
+  - id: council-close-schema
+    topology: group_chat
+    participants:
+      - software-architect-schema
+      - cloud-architect-schema
+      - delivery-manager-schema
+      - security-architect-schema
+      - council-gate-schema
+    selection: round_robin
+    max_rounds: 24
+    termination: on_marker
+    marker: "COUNCIL_APPROVED:"
+    marker_line_anchored: true
+    close_requires_glob: "reports/architecture/ADR-021*.md"
+    close_requires_marker: "COUNCIL_FILES_WRITTEN:"
+    limits: { max_identical_turns: 3 }
+
+  - id: architecture-council-schema
+    topology: sequential
+    participants: [architecture-lanes-schema, council-close-schema]
+
+  - id: decomposition-schema
+    topology: sequential
+    participants: [backlog-decomposer-schema]
+
+  - id: decomposition-check-schema
+    topology: sequential
+    participants: [decomposition-checker-schema]
+
+  - id: decomposition-remediation-schema
+    topology: sequential
+    participants: [decomposition-remediator-schema]
+
+  - id: contigo-schema-design
+    default: true
+    topology: workflow
+    participants:
+      - docs-intake-schema
+      - architecture-council-schema
+      - decomposition-schema
+      - decomposition-check-schema
+      - decomposition-remediation-schema
+    start: docs-intake-schema
+    edges:
+      - [docs-intake-schema, architecture-council-schema]
+      - [architecture-council-schema, decomposition-schema]
+      - [decomposition-schema, decomposition-check-schema]
+      - [decomposition-check-schema, decomposition-remediation-schema, needs_remediation]
+      - [decomposition-remediation-schema, decomposition-check-schema]
+    limits: { max_steps: 200000, max_iterations: 15, run_timeout_s: 14400 }
