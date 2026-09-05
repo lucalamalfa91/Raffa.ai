@@ -126,7 +126,9 @@ through `modules/network` is later work.
   firewall `AllowAzureServices`, live AcrPull assignment) are adopted
   via `import {}` blocks in each env root (`environments/<env>/imports.tf`).
   Leave them after the first successful apply; they become no-ops once
-  the addresses are in state.
+  the addresses are in state. `modules/acr` ignores in-place changes on
+  the imported AcrPull assignment — ARM rejects `azurerm_role_assignment`
+  updates (`doesn't support update`).
 - **Static Web Apps region.** `Microsoft.Web/staticSites` is not offered in
   North Europe; West Europe is ineligible on this tenant. The module
   defaults to West US 2. Static assets are a global CDN; that region only
