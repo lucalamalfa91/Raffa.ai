@@ -1,0 +1,9 @@
+# Schema-apply slice (e09). Backend e01–e05 and web e06–e08 stay put.
+
+mode: schema-apply
+master: reports/plan/wave-spec.schema.yaml
+slices:
+  - id: e09
+    title: E09 E09
+    tokens: 4600000
+    tasks: 3

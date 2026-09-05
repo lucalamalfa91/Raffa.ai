@@ -1,8 +1,7 @@
-waveId: wave-v1-epic-e09
+waveId: wave-v1-schema-e09
 status: planned
-# E09 E09. Prior-wave depends_on dropped (producer-completeness).
+# Schema-apply (ADR-021). Does not replace wave-spec.execution.yaml.
 # estimated tokens: 4.6M (S/M/L mapped; not a packing cap).
-# Launch: ./run.ps1 -Max -Slice e09 -o execution-fanout
 phases:
   - id: 1
     name: phase-1

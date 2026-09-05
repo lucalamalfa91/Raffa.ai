@@ -51,3 +51,19 @@ ADR-001…017 are unchanged. New accepted ADRs from `contigo-web-design`:
 | ADR-018 | Web information architecture | ux-ui-designer | Left-rail Day-1 sitemap; Admin vs Procurement; cites `inputs/design/prototypes/ia.md`. |
 | ADR-019 | Web design system | ux-ui-designer | Adopt Claude Design Modernist export verbatim; no forked tokens. |
 | ADR-020 | Web screen inventory | ux-ui-designer | 1:1 §16/§20 → ten screens in `prototypes/screens.md` + `day1-demo.html`. |
+
+## Schema-apply (wave 9 / e09, appended 2026-09-05)
+
+ADR-001…020 are unchanged. New accepted ADR from `contigo-schema-design`:
+
+| ADR | Topic | Seat | One-line decision |
+| --- | --- | --- | --- |
+| ADR-021 | Schema apply on Azure Postgres | software-architect | CI applies checked-in idempotent EF SQL after container update; no `MigrateAsync` in the API; Terraform injects Savings/Quotes connection strings. |
+
+## Demo-readiness (wave 10 / e10, appended 2026-09-05)
+
+ADR-001…021 are unchanged. New accepted ADR from `contigo-readiness-design`:
+
+| ADR | Topic | Seat | One-line decision |
+| --- | --- | --- | --- |
+| ADR-022 | Day-1 demo auth + fixture seed | security-architect | First `demo-v*` may keep `X-Tenant-Id` on the API; savings numbers come from a seeded fixture on `contigo_demo`; ADR-010 remains the post-Day-1 host target. |

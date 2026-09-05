@@ -30,6 +30,8 @@ Each wave ends with a single-task `us-XX-final-integration` story. R4's integrat
 | epic-06 | web-foundation | 6 | active — decomposed (web) |
 | epic-07 | web-contract-intelligence | 7 | active — decomposed (web) |
 | epic-08 | web-renewals-savings-quotes | 8 | active — decomposed (web) |
+| epic-09 | schema-apply | 9 | active — decomposed (schema) |
+| epic-10 | demo-readiness | 10 | active — decomposed (readiness residuals) |
 
 ## ADR → wave coverage
 
@@ -55,6 +57,8 @@ Each wave ends with a single-task `us-XX-final-integration` story. R4's integrat
 | ADR-018 | Web IA | epic-06..08 (left-rail routes, roles) |
 | ADR-019 | Web design system | epic-06..08 (tokens, semantic mapping, states) |
 | ADR-020 | Web screen inventory | epic-06..08 (screens 1–10 ↔ §16/§20) |
+| ADR-021 | Schema apply on Azure Postgres | epic-09 (idempotent SQL + CI apply + CA env vars) |
+| ADR-022 | Day-1 demo auth + fixture seed | epic-10 (seed + Foundry/OCR CA + `demo-v*` smoke) |
 
 ## Non-goals (excluded, ADR-001, spec §1.2)
 
@@ -76,3 +80,12 @@ spec §20 Day-1 in the browser on `demo`, matching `inputs/design/prototypes/day
 
 Fully decomposed R0–R4. Master DAG: `reports/plan/wave-spec.execution.yaml`. Nightly slices: `reports/plan/slices/`.
 Web delta (wave 6+) decomposed. Web DAG: `reports/plan/wave-spec.web.yaml`. Web slices: `reports/plan/slices/e06.yaml` … .
+Schema-apply (wave 9) decomposed. Schema DAG: `reports/plan/wave-spec.schema.yaml`. Slice: `reports/plan/slices/e09.yaml`.
+Demo-readiness (wave 10) decomposed. Readiness DAG: `reports/plan/wave-spec.readiness.yaml`. Slice: `reports/plan/slices/e10.yaml`. See `reports/plan/slices/INDEX-readiness.md` and `MANIFEST-readiness.yaml`.
+
+## Demo-readiness (epic-10 / e10)
+
+Residuals only after e09 and e06–e08: fixture seed on `contigo_demo`,
+Foundry/OCR CA wiring if live env is empty, first `demo-v*` / SWA config
+smoke. Gap matrix: `reports/audit/demo-readiness-gaps.md`. HITL required
+before fan-out (`reports/audit/demo-readiness-hitl.md`).

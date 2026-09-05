@@ -1,0 +1,9 @@
+# Demo-readiness slice (e10). e01–e09 stay put.
+
+mode: demo-readiness
+master: reports/plan/wave-spec.readiness.yaml
+slices:
+  - id: e10
+    title: E10 E10
+    tokens: 4600000
+    tasks: 3

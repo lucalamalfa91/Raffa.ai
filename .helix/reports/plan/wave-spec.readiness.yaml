@@ -1,0 +1,18 @@
+waveId: wave-v1-readiness-e10
+status: planned
+# Demo-readiness residuals (ADR-022). Does not replace wave-spec.execution.yaml.
+# estimated tokens: 4.6M (S/M/L mapped; not a packing cap).
+phases:
+  - id: 1
+    name: phase-1
+    tasks:
+      - {id: E10/F01/US01/T01, prompt: reports/workitems/epic-10-demo-readiness/feature-01-fixture-seed/us-01-seed-demo-db/tasks/task-01-seed-fixture.md, produces: [demo-fixture-seed], depends_on: [], effort: L, layer: backend, status: live}
+  - id: 2
+    name: phase-2
+    tasks:
+      - {id: E10/F02/US01/T01, prompt: reports/workitems/epic-10-demo-readiness/feature-02-foundry-ocr-wiring/us-01-foundry-ocr-ca/tasks/task-01-foundry-ocr-ca.md, produces: [foundry-ocr-wired], depends_on: [demo-fixture-seed], effort: L, layer: backend, status: live}
+  - id: 3
+    name: phase-3
+    tasks:
+      - {id: E10/F03/US01/T01, prompt: reports/workitems/epic-10-demo-readiness/feature-03-demo-promote-runbook/us-01-demo-v-smoke/tasks/task-01-demo-v-runbook.md, produces: [demo-v-runbook], depends_on: [foundry-ocr-wired], effort: M, layer: backend, status: live}
+forks: []
