@@ -5,7 +5,9 @@ import { loadCurrentWorkspace } from "../signin/workspaceStore";
 import UploadDropzone from "./UploadDropzone";
 import ProcessingPipeline from "./ProcessingPipeline";
 import UploadResultCard from "./UploadResultCard";
+import DocumentStatusTable from "./DocumentStatusTable";
 import { createSampleDocumentFile } from "./sampleDocument";
+import { loadTrackedDocuments, rememberDocument, type TrackedDocument } from "./documentStore";
 import {
   PIPELINE_STAGE_LABELS,
   PIPELINE_STEP_INTERVAL_MS,
@@ -31,11 +33,13 @@ type ScreenState =
   | { phase: "done"; file: File; outcome: UploadOutcome; message: string; contractId: string | null };
 
 /**
- * Route `/documents` (ADR-018), screen 3's upload half (ADR-020: "screen 3
- * may be two: upload UI + document-status read-back" -- the document table
- * / read-back list is the other half, out of this task's AC). Wired into
- * ../../components/shell/WorkspaceShellApp.tsx's `documents` route in place
- * of that shell task's ScaffoldScreen placeholder.
+ * Route `/documents` (ADR-018), both of screen 3's halves (ADR-020: "screen
+ * 3 may be two: upload UI + document-status read-back"): the upload
+ * dropzone/pipeline/result-card (task E06/F05/US01/T01, AC-1/AC-2/AC-3 of
+ * us-01) plus the document table below it (this task, E06/F05/US02/T01,
+ * AC-1/AC-2/AC-3 of us-02: table, status tags, Contract 360 cross-link).
+ * Wired into ../../components/shell/WorkspaceShellApp.tsx's `documents`
+ * route in place of that shell task's ScaffoldScreen placeholder.
  *
  * `apiClient` is threaded in as a prop (App.tsx -> WorkspaceShellApp ->
  * here) the same way SignInRoute already receives it; tenantId is *not*
@@ -43,13 +47,22 @@ type ScreenState =
  * what that module's own doc comment names as the reason it keeps the
  * current workspace id available ("future screens ... read this to know
  * which tenant to send as the X-Tenant-Id header").
+ *
+ * The document table (`trackedDocuments` state, `documentStore.ts`) is a
+ * separate concern from the upload state machine above it: every terminal
+ * upload appends a row (see `startUpload`'s own comment), and the table
+ * survives this component unmounting/remounting (`sessionStorage`, same
+ * scope as `workspaceStore.ts`'s current-workspace key) since react-router
+ * unmounts route components on navigation.
  */
 export default function DocumentsRoute({ apiClient }: DocumentsRouteProps) {
   const navigate = useNavigate();
   const workspace = loadCurrentWorkspace();
   const [state, setState] = useState<ScreenState>({ phase: "idle" });
   const [queue, setQueue] = useState<File[]>([]);
+  const [trackedDocuments, setTrackedDocuments] = useState<TrackedDocument[]>(() => loadTrackedDocuments());
   const tickerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const mountedRef = useRef(true);
 
   const stopTicker = useCallback(() => {
     if (tickerRef.current !== null) {
@@ -61,6 +74,38 @@ export default function DocumentsRoute({ apiClient }: DocumentsRouteProps) {
   // Never leave an interval running past unmount (e.g. the user navigates
   // away from /documents mid-upload).
   useEffect(() => stopTicker, [stopTicker]);
+
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+    },
+    [],
+  );
+
+  // AC-1/AC-3 (us-02-document-status-readback): retry the documentType
+  // read-back, once, for whatever this session's persisted table still
+  // shows as "Classifying…" -- e.g. a hard page reload landing between a
+  // prior upload resolving and its own GET /api/documents/{id} call
+  // completing (see startUpload's own comment below). Deliberately
+  // mount-only (reads the initial-render snapshot of `trackedDocuments`/
+  // `workspace`, not a value that changes on every render) -- this app
+  // already treats "current workspace" as stable for a mounted component's
+  // lifetime (workspaceStore.ts's own doc comment: picking a different
+  // workspace mid-session is not a V1 flow), so there is no real staleness
+  // risk in only capturing it once here.
+  useEffect(() => {
+    if (!workspace) return;
+    trackedDocuments
+      .filter((document) => document.documentType === null)
+      .forEach((document) => {
+        void apiClient.getDocument(workspace.id, document.id).then((readBack) => {
+          if (!mountedRef.current || !readBack.ok || !readBack.document) return;
+          setTrackedDocuments(rememberDocument({ ...document, documentType: readBack.document.documentType }));
+        });
+      });
+    // Mount-only: see the comment above this effect for why it must not
+    // re-run every time `trackedDocuments` changes.
+  }, []);
 
   const startUpload = useCallback(
     (file: File) => {
@@ -106,6 +151,35 @@ export default function DocumentsRoute({ apiClient }: DocumentsRouteProps) {
           outcome,
           message: getResultCardContent(outcome, file.name).message,
           contractId,
+        });
+
+        // AC-1/AC-3 (us-02-document-status-readback): every terminal upload
+        // also becomes a row in the document table below, independent of
+        // the result card above -- see documentStore.ts's own header
+        // comment for why this is a client-side, session-scoped record
+        // rather than a server list query.
+        const tracked: TrackedDocument = {
+          id: result.document.id,
+          contractId,
+          fileName: result.document.fileName,
+          documentType: null,
+          processingStatus,
+          createdAt: result.document.createdAt,
+        };
+        setTrackedDocuments(rememberDocument(tracked));
+
+        // "Read back" the row's documentType -- POST's own 201 body never
+        // carries it (see src/api/client.ts's UploadedDocument vs
+        // ReadBackDocument) -- via the one backend operation named for
+        // exactly this (GET /api/documents/{id}, "Read back one document's
+        // metadata and processing status", this task's own name). Same
+        // never-throws ApiClient shape as uploadDocument; on failure the
+        // cell just stays "Classifying…" (documentTable.ts's own
+        // getDocumentTypeLabel) rather than retrying inline here -- the
+        // mount-time effect above retries once per page load instead.
+        void apiClient.getDocument(workspace.id, tracked.id).then((readBack) => {
+          if (!mountedRef.current || !readBack.ok || !readBack.document) return;
+          setTrackedDocuments(rememberDocument({ ...tracked, documentType: readBack.document.documentType }));
         });
       });
     },
@@ -221,6 +295,11 @@ export default function DocumentsRoute({ apiClient }: DocumentsRouteProps) {
       <p className="micro-meta documents-legend">
         uploaded → processing → needs_review / completed · failed = retry or replace file
       </p>
+
+      <div className="documents-table-section">
+        <p className="screen-kicker">Documents</p>
+        <DocumentStatusTable documents={trackedDocuments} />
+      </div>
     </div>
   );
 }

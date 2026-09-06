@@ -222,3 +222,91 @@ describe("createApiClient().uploadDocument (task E06/F05/US01/T01)", () => {
     expect(result.error).toContain("network down");
   });
 });
+
+describe("createApiClient().getDocument (task E06/F05/US02/T01)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const document = {
+    id: "doc-1",
+    contractId: "contract-1",
+    fileName: "contract.pdf",
+    mimeType: "application/pdf",
+    documentType: "Msa",
+    processingStatus: "Completed",
+    createdAt: "2026-09-06T08:00:00Z",
+  };
+
+  it("GETs <baseUrl>/api/documents/{id} with the X-Tenant-Id header, no body", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(document), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createApiClient("https://api.dev.contigo.example").getDocument("tenant-1", "doc-1");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("https://api.dev.contigo.example/api/documents/doc-1");
+    expect(init).toEqual({ headers: { "X-Tenant-Id": "tenant-1" }, cache: "no-store" });
+  });
+
+  it("reports ok:true with the document (including documentType) on 200", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(document), { status: 200 })));
+
+    const result = await createApiClient("https://api.dev.contigo.example").getDocument("tenant-1", "doc-1");
+
+    expect(result).toEqual({ ok: true, statusCode: 200, document, error: null });
+  });
+
+  it("reports ok:false with a named error (no response body to parse) on 404", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
+
+    const result = await createApiClient("https://api.dev.contigo.example").getDocument("tenant-1", "missing-doc");
+
+    expect(result.ok).toBe(false);
+    expect(result.statusCode).toBe(404);
+    expect(result.document).toBeNull();
+    expect(result.error).toContain("missing-doc");
+  });
+
+  it("reports ok:false with the parsed JSON string error on 400", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify("Missing/invalid X-Tenant-Id header."), { status: 400 }),
+      ),
+    );
+
+    const result = await createApiClient("https://api.dev.contigo.example").getDocument("bad-tenant", "doc-1");
+
+    expect(result).toEqual({
+      ok: false,
+      statusCode: 400,
+      document: null,
+      error: "Missing/invalid X-Tenant-Id header.",
+    });
+  });
+
+  it("falls back to a status-based message when a non-2xx body is not JSON", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("Bad Gateway", { status: 502, statusText: "Bad Gateway" })));
+
+    const result = await createApiClient("https://api.dev.contigo.example").getDocument("tenant-1", "doc-1");
+
+    expect(result.ok).toBe(false);
+    expect(result.statusCode).toBe(502);
+    expect(result.document).toBeNull();
+    expect(result.error).toContain("502");
+  });
+
+  it("resolves (does not throw) with statusCode null when the network request fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
+
+    const result = await createApiClient("https://api.dev.contigo.example").getDocument("tenant-1", "doc-1");
+
+    expect(result.ok).toBe(false);
+    expect(result.statusCode).toBeNull();
+    expect(result.document).toBeNull();
+    expect(result.error).toContain("https://api.dev.contigo.example/api/documents/doc-1");
+    expect(result.error).toContain("network down");
+  });
+});

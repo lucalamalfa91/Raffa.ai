@@ -83,6 +83,30 @@ export interface UploadDocumentResult {
   error: string | null;
 }
 
+// Task E06/F05/US02/T01 (document-status-readback, screen 3's *other* half
+// per ADR-020 "screen 3 may be two"): `getDocument`, wrapping the
+// `GET /api/documents/{id}` operation the README already flagged as
+// "generated in src/api/generated/schema.ts but has no client.ts wrapper
+// yet ... belongs to whichever future task builds ... the document table /
+// status read-back" -- that task is this one. `ReadBackDocument` carries
+// `documentType`, which `UploadedDocument` (the POST response) does not --
+// see src/routes/documents/documentStore.ts for why the document table
+// re-fetches this instead of only trusting the upload response.
+type GetDocumentResponses = paths["/api/documents/{id}"]["get"]["responses"];
+export type ReadBackDocument = GetDocumentResponses[200]["content"]["application/json"];
+export type DocumentType = ReadBackDocument["documentType"];
+
+export interface GetDocumentResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** The document, present only when `ok` is true. */
+  document: ReadBackDocument | null;
+  /** Plain-language failure reason (400/404 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
 export interface ApiClient {
   /**
    * Calls `GET /health` (operationId `getHealth` in
@@ -121,6 +145,17 @@ export interface ApiClient {
    * the caller renders inline, not an exception.
    */
   uploadDocument(tenantId: string, file: File): Promise<UploadDocumentResult>;
+  /**
+   * Calls `GET /api/documents/{id}` (operationId `getDocument`) -- the
+   * OpenAPI document's own description is "Read back one document's
+   * metadata and processing status", which is this task's own name
+   * (E06/F05/US02/T01, document-status-readback). Same never-throws shape
+   * as the other calls: a `404` (no such document for this tenant) is a
+   * normal, expected outcome the caller renders inline (see
+   * src/routes/documents/documentTable.ts's "Classifying…" placeholder),
+   * not an exception.
+   */
+  getDocument(tenantId: string, id: string): Promise<GetDocumentResult>;
 }
 
 /**
@@ -217,6 +252,48 @@ export function createApiClient(baseUrl: string): ApiClient {
       }
 
       // Same Results.BadRequest(string) shape as createWorkspace's 400 above.
+      let error: string;
+      try {
+        const errorBody: unknown = await response.json();
+        error = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, document: null, error };
+    },
+
+    async getDocument(tenantId, id) {
+      let response: Response;
+      try {
+        response = await fetch(new URL(`/api/documents/${encodeURIComponent(id)}`, baseUrl), {
+          headers: { "X-Tenant-Id": tenantId },
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          document: null,
+          error: `Unable to reach ${baseUrl}/api/documents/${id}. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const document = (await response.json()) as ReadBackDocument;
+        return { ok: true, statusCode: 200, document, error: null };
+      }
+
+      // The OpenAPI document's own 404 response carries no body at all
+      // (unlike the 400s' `Results.BadRequest(string)` JSON-string bodies),
+      // matching Results.NotFound()'s empty response -- so this status is
+      // special-cased rather than attempting response.json() against an
+      // empty body.
+      if (response.status === 404) {
+        return { ok: false, statusCode: 404, document: null, error: `No document found for id ${id}.` };
+      }
+
+      // Same Results.BadRequest(string) shape as uploadDocument's 400 above.
       let error: string;
       try {
         const errorBody: unknown = await response.json();

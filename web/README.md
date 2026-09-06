@@ -80,7 +80,7 @@ the web workflow after that apply.
 | Route | Screen(s) | Task |
 |-------|-----------|------|
 | `/signin` | Sign-in (Entra redirect, idle/redirecting states) -> workspace picker (list + create + confirm) | E06/F03/US01/T01 |
-| `/documents` | Upload dropzone (drag-and-drop + "Choose from computer" + "Use sample file") + formats/size/sources strip -> 6-stage processing pipeline (current stage pulsing) -> result card by outcome (needs_review / completed / failed). Calls the real `POST /api/documents`. See "Documents" below. | E06/F05/US01/T01 |
+| `/documents` | Upload dropzone (drag-and-drop + "Choose from computer" + "Use sample file") + formats/size/sources strip -> 6-stage processing pipeline (current stage pulsing) -> result card by outcome (needs_review / completed / failed); below it, a document table (Document / Type / Supplier / Status / Uploaded, rows linking to Contract 360). Calls the real `POST /api/documents` and `GET /api/documents/{id}`. See "Documents" below. | E06/F05/US01/T01, E06/F05/US02/T01 |
 | `/` (home), `/contracts`, `/contracts/:id`, `/contracts/:id/review`, `/renewals`, `/ask`, `/review`\*, `/quotes`\*, `/quotes/:id`, `/workspace/members` | App shell: 224px left rail + global Ask bar + routed content. Every route beyond `/workspace/members` renders a `ScaffoldScreen` placeholder today -- the real screens ship in later epic-07/epic-08/feature-04/05 tasks named at each route (see `src/components/shell/WorkspaceShellApp.tsx`). | E06/F03/US02/T01 |
 
 \* `/review` and `/quotes` are this task's own placeholder landing paths, not
@@ -162,13 +162,12 @@ yet), the latter because there is no server-issued role claim to read yet
 such column. All three are flagged in `workspaceStore.ts`'s own doc comments
 rather than silently invented.
 
-### Documents -- upload + processing pipeline (ADR-020 screen 3, task E06/F05/US01/T01)
+### Documents -- upload + status read-back (ADR-020 screen 3, tasks E06/F05/US01/T01 + E06/F05/US02/T01)
 
-`src/routes/documents/` implements screen 3's **upload half** only --
-ADR-020's own note that "screen 3 may be two: upload UI + document-status
-read-back" -- the document table (Document / Type / Supplier / Status /
-Uploaded, rows opening Contract 360) is the other half and is not built
-here.
+`src/routes/documents/` implements both of screen 3's halves -- ADR-020's own
+note that "screen 3 may be two: upload UI + document-status read-back":
+
+**us-01, upload half** (task E06/F05/US01/T01):
 
 - **AC-1, dropzone + strip** (`UploadDropzone.tsx`) -- drag-and-drop, native
   "Choose from computer" file picker (`accept=".pdf,.docx,.xlsx"`,
@@ -216,6 +215,40 @@ here.
   workspace id available. `apiClient` *is* threaded as a prop
   (`App.tsx` -> `WorkspaceShellApp` -> `DocumentsRoute`), the same
   generated-client instance every other screen shares.
+
+**us-02, status read-back half** (task E06/F05/US02/T01) -- `DocumentStatusTable.tsx` + `documentTable.ts` + `documentStore.ts`, rendered below the upload UI on the same `/documents` route:
+
+- **AC-1, document table** -- columns Document / Type / Supplier / Status /
+  Uploaded, quoted verbatim from screens.md #3. There is no
+  `GET /api/documents` collection endpoint on the backend
+  (`backend/src/Contigo.Api/Program.cs` maps only `POST /api/documents` and
+  `GET /api/documents/{id}`), so the table is a client-side,
+  `sessionStorage`-scoped record (`documentStore.ts`) of documents *this
+  browser* has uploaded this session -- the same kind of interim
+  `workspaceStore.ts` already establishes for the workspace list, never
+  fabricated data. Every terminal upload (`index.tsx`'s `startUpload`) adds a
+  row, then "reads back" its `documentType` (absent from the `POST` response)
+  via `GET /api/documents/{id}` -- the one backend operation whose own OpenAPI
+  description is "Read back one document's metadata and processing status",
+  this task's own name. A cell whose read-back has not resolved yet shows
+  "Classifying…" (first-class loading state, not a blank cell); a mount-time
+  effect retries any still-unresolved row once per page load.
+  **Supplier is always "Not yet available"**: `Document`
+  (`backend/.../Contigo.Documents.Contracts/Domain/Document.cs`) has no
+  supplier column at all -- `Contract.SupplierId` exists but is an id-only
+  cross-module reference (ADR-002 module map), and even the Portfolio list
+  (`GET /api/contracts`) returns that raw id, never a resolved name. Rendered
+  honestly rather than invented; revisit once a supplier-name-resolving
+  endpoint exists.
+- **AC-2, status tags** -- reuses `styles/semantics.ts#getStatusTag` via the
+  same `uploadPipeline.ts#getUploadOutcome` mapping the result card already
+  uses (`documentTable.ts#getDocumentStatusTag`), never re-derived.
+- **AC-3, row cross-link** -- a real `<Link>` (react-router-dom, the same
+  primitive `RailNav.tsx` already uses) to `/contracts/:contractId` when a row
+  has one. `contractId` stays `null` when processing failed before
+  classification could link a contract; that row renders plain text plus a
+  visible "Not yet linked to a contract" reason instead of a dead link
+  (ADR-019 accessibility baseline: "a visible reason, not a hidden control").
 
 ## API client (ADR-012 "one generated TypeScript client, no hand-written divergent DTOs")
 
@@ -299,12 +332,15 @@ Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
 - **Task E06/F05/US01/T01 (document-upload)** added `client.ts`'s second
   write call, `.uploadDocument(tenantId, file)` -- `multipart/form-data`
   against `POST /api/documents`, same never-throws shape as the other calls.
-  `GET /api/documents/{id}` (`getDocument`) is generated in
-  `src/api/generated/schema.ts` but has **no** `client.ts` wrapper yet --
-  same "schema.ts can be ahead of client.ts" pattern `inviteWorkspaceMember`
-  already left unwrapped -- it belongs to whichever future task builds
-  screen 3's *other* half (the document table / status read-back, ADR-020's
-  own "screen 3 may be two").
+- **Task E06/F05/US02/T01 (document-status-readback)** added `client.ts`'s
+  `.getDocument(tenantId, id)` wrapper around `GET /api/documents/{id}`,
+  already generated in `src/api/generated/schema.ts` since task
+  E06/F01/US01/T01 but left unwrapped until this task (the "schema.ts can be
+  ahead of client.ts" pattern `inviteWorkspaceMember` still leaves
+  unwrapped) -- see "Documents" above for the document table that calls it.
+  A `404` (its OpenAPI response carries no body at all, unlike the `400`s'
+  JSON-string bodies) is special-cased rather than attempting to parse an
+  empty body as JSON.
 
 ## Directory layout
 
@@ -320,7 +356,7 @@ web/
   src/
     api/
       generated/schema.ts     # AUTO-GENERATED; do not edit by hand
-      client.ts                # createApiClient(baseUrl) -> { getHealth(), createWorkspace({ name }), uploadDocument(tenantId, file) }
+      client.ts                # createApiClient(baseUrl) -> { getHealth(), createWorkspace({ name }), uploadDocument(tenantId, file), getDocument(tenantId, id) }
     config/appConfig.ts       # fetch + validate runtime config
     auth/msalConfig.ts        # AppConfig -> MSAL Configuration (no secret, ever)
     styles/                   # design system (tokens + component catalogue); see below
@@ -331,13 +367,16 @@ web/
         WorkspacePickerScreen.tsx # list (workspaceStore cache) + create via POST /api/workspaces + "Continue" into the shell
         workspaceStore.ts     # per-account localStorage cache + sessionStorage "current workspace"; documents the missing list/membership backend gap
         signin.css            # this route's styles
-      documents/            # task E06/F05/US01/T01 -- ADR-020 screen 3, upload half (see "Documents" above)
-        index.tsx             # DocumentsRoute -- idle/uploading/pending/done state machine, wires apiClient.uploadDocument
-        UploadDropzone.tsx    # AC-1: drag-and-drop + file picker + formats/size/sources strip
-        ProcessingPipeline.tsx # AC-2: 6-stage list, current stage pulsing
-        UploadResultCard.tsx  # AC-3: result card by outcome (needs_review / completed / failed)
+      documents/            # tasks E06/F05/US01/T01 + E06/F05/US02/T01 -- ADR-020 screen 3, both halves (see "Documents" above)
+        index.tsx             # DocumentsRoute -- upload state machine (wires apiClient.uploadDocument) + trackedDocuments table state (wires apiClient.getDocument)
+        UploadDropzone.tsx    # AC-1 (us-01): drag-and-drop + file picker + formats/size/sources strip
+        ProcessingPipeline.tsx # AC-2 (us-01): 6-stage list, current stage pulsing
+        UploadResultCard.tsx  # AC-3 (us-01): result card by outcome (needs_review / completed / failed)
         uploadPipeline.ts     # pure helpers: stage labels/view-model, outcome mapping, result-card copy
         sampleDocument.ts     # synthetic sample File for "Use sample file" -- no real fixture asset in this repo
+        DocumentStatusTable.tsx # AC-1/AC-2/AC-3 (us-02): the document table, rows linking to Contract 360
+        documentTable.ts      # pure helpers: type-label mapping, status->tag reuse, "Uploaded" date formatting
+        documentStore.ts      # sessionStorage-scoped TrackedDocument list -- no GET /api/documents collection endpoint exists yet
         documents.css         # this route's styles
     components/
       shell/                  # task E06/F03/US02/T01 -- app shell, router, role guard (see "App shell" above)

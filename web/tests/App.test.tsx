@@ -36,6 +36,9 @@ function mockApiClient(result: Promise<HealthCheckResult> | HealthCheckResult): 
     // rendering stays isolated (same convention getHealth/createWorkspace
     // already use above).
     uploadDocument: vi.fn(),
+    // Task E06/F05/US02/T01 (document-status-readback): exercised by
+    // tests/routes/documents/*.test.tsx; same plain-stub convention.
+    getDocument: vi.fn(),
   };
 }
 

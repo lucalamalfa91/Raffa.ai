@@ -193,3 +193,45 @@
 .documents-legend {
   margin-top: var(--space-6);
 }
+
+/* ---- Document table (AC-1/AC-2/AC-3; ADR-020 screen 3's other half) --- */
+
+.documents-table-section {
+  margin-top: var(--space-8);
+}
+
+/* table-layout: fixed (.table, components.css) needs explicit widths or its
+   5 columns default to equal shares -- "Document" (a filename) and
+   "Uploaded" (a date+time) need more room than "Type"/"Supplier"/"Status". */
+.document-status-table th:nth-child(1),
+.document-status-table td:nth-child(1) {
+  width: 32%;
+}
+
+.document-status-table th:nth-child(2),
+.document-status-table td:nth-child(2),
+.document-status-table th:nth-child(3),
+.document-status-table td:nth-child(3),
+.document-status-table th:nth-child(4),
+.document-status-table td:nth-child(4) {
+  width: 16%;
+}
+
+.document-status-table th:nth-child(5),
+.document-status-table td:nth-child(5) {
+  width: 20%;
+}
+
+/* AC-3 row cross-link (a real <Link>, base.css already colours `a` in
+   --color-accent-700) -- strong weight instead of underline-by-default
+   marks it as "this row's primary identifier", underlining only on
+   hover/focus. */
+.document-status-table-link {
+  font-weight: var(--weight-body-strong);
+  text-decoration: none;
+}
+
+.document-status-table-link:hover,
+.document-status-table-link:focus-visible {
+  text-decoration: underline;
+}

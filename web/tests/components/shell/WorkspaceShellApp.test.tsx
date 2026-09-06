@@ -5,12 +5,13 @@ import { ShellRoutes } from "../../../src/components/shell/WorkspaceShellApp";
 import type { WorkspaceRole } from "../../../src/components/shell/navItems";
 import type { ApiClient } from "../../../src/api/client";
 
-// Task E06/F05/US01/T01 (document-upload) added the `documents` route's real
-// content, which needs an ApiClient -- this suite only proves routing/guards
-// (see tests/routes/documents/*.test.tsx for that screen's own coverage), so
-// a plain stub is enough here, the same convention tests/App.test.tsx uses.
+// Task E06/F05/US01/T01 (document-upload) / E06/F05/US02/T01
+// (document-status-readback) added the `documents` route's real content,
+// which needs an ApiClient -- this suite only proves routing/guards (see
+// tests/routes/documents/*.test.tsx for that screen's own coverage), so a
+// plain stub is enough here, the same convention tests/App.test.tsx uses.
 function mockApiClient(): ApiClient {
-  return { getHealth: vi.fn(), createWorkspace: vi.fn(), uploadDocument: vi.fn() };
+  return { getHealth: vi.fn(), createWorkspace: vi.fn(), uploadDocument: vi.fn(), getDocument: vi.fn() };
 }
 
 function renderShell(role: WorkspaceRole, initialPath = "/") {

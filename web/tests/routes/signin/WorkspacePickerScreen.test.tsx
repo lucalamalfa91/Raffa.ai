@@ -5,7 +5,7 @@ import WorkspacePickerScreen from "../../../src/routes/signin/WorkspacePickerScr
 import type { ApiClient, CreateWorkspaceResult } from "../../../src/api/client";
 
 function mockApiClient(createWorkspace: ApiClient["createWorkspace"] = vi.fn()): ApiClient {
-  return { getHealth: vi.fn(), createWorkspace, uploadDocument: vi.fn() };
+  return { getHealth: vi.fn(), createWorkspace, uploadDocument: vi.fn(), getDocument: vi.fn() };
 }
 
 const ACCOUNT_KEY = "test-home-account-id";
