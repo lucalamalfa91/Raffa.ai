@@ -153,6 +153,55 @@
       ]
     },
     {
+      "id": "e06",
+      "title": "E06 web foundation (client, design system, shell, invite, upload)",
+      "previous": "e09",
+      "tokens": 6000000,
+      "tasks": 7,
+      "epic": "E06",
+      "integration": false,
+      "checks": [
+        "github_auth",
+        "github_org",
+        "github_repos",
+        "hitl_previous"
+      ],
+      "stories": [
+        "E06/F01/US01",
+        "E06/F02/US01",
+        "E06/F03/US01",
+        "E06/F03/US02",
+        "E06/F04/US01",
+        "E06/F05/US01",
+        "E06/F05/US02"
+      ]
+    },
+    {
+      "id": "e07",
+      "title": "E07 web contract intelligence + e06 layout/members + e03/e05 recovery",
+      "previous": "e06",
+      "tokens": 12000000,
+      "tasks": 8,
+      "epic": "E07",
+      "integration": false,
+      "checks": [
+        "github_auth",
+        "github_org",
+        "github_repos",
+        "hitl_previous"
+      ],
+      "stories": [
+        "E06/F06/US01",
+        "E07/F01/US01",
+        "E07/F02/US01",
+        "E07/F03/US01",
+        "E07/F04/US01",
+        "E06/F04/US01",
+        "E03/F02/US01",
+        "E05/F01/US02"
+      ]
+    },
+    {
       "id": "e10",
       "title": "E10 demo-readiness residuals",
       "previous": "e09",

@@ -22,6 +22,7 @@ Manual product mapping + recalculate trigger.
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-002.
+- **Recovery**: this task was skipped on e05 (`resume_completed` treated a leftover branch as done). It is re-queued on slice `e07` (phase-5). `sku-normalization` is already on `main`.
 - **Do not touch**: unrelated wave artifacts and provider SDKs in domain code.
 
 ## Definition of done

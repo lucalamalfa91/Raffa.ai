@@ -22,6 +22,7 @@ Create alerts and recompute on contract correction.
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-002.
+- **Recovery**: this task was skipped on e03 (`resume_completed` treated a leftover branch as done). It is re-queued on slice `e07` (phase-5). `threshold-scheduler` and `correction-history` are already on `main`.
 - **Do not touch**: unrelated wave artifacts and provider SDKs in domain code.
 
 ## Definition of done
