@@ -35,6 +35,13 @@ namespace Contigo.Api;
 /// own <c>ClaimsPrincipal</c>/<c>WorkspacePrincipalAuthorization</c> shape: that endpoint already
 /// has a validated-identity model this module does not, and mixing the two auth conventions inside
 /// one file would be a worse inconsistency than the interim gap itself.
+///
+/// Task E03/F02/US01/T02 (renewal-alerts, parent story us-01-threshold-scheduler AC-3): `PATCH
+/// /api/contracts/{id}` now also calls <see cref="RenewalAlertRecomputeService"/> immediately after
+/// a successful correction — see that type's own doc comment for why this is the one place that
+/// composition can happen (ADR-002) and exactly which corrected fields trigger it. The response
+/// shape above is unchanged; the recompute is a side effect, not a new field this endpoint promises
+/// to report (no AC/task text names a response shape for it).
 /// </summary>
 public static class ContractsEndpointExtensions
 {
@@ -231,6 +238,7 @@ public static class ContractsEndpointExtensions
         ContractCorrectionRequest request,
         HttpRequest httpRequest,
         ContractCorrectionService correctionService,
+        RenewalAlertRecomputeService renewalAlertRecomputeService,
         CancellationToken cancellationToken)
     {
         if (!httpRequest.Headers.TryGetValue("X-Tenant-Id", out var tenantHeaderValues)
@@ -249,9 +257,12 @@ public static class ContractsEndpointExtensions
             return Results.BadRequest("At least one field correction in 'corrections' is required.");
         }
 
+        var tenantId = new TenantId(tenantGuid);
+        var contractId = new EntityId(contractGuid);
+
         var result = await correctionService.CorrectAsync(
-            new TenantId(tenantGuid),
-            new EntityId(contractGuid),
+            tenantId,
+            contractId,
             request.Corrections,
             request.Reason,
             cancellationToken).ConfigureAwait(false);
@@ -264,6 +275,19 @@ public static class ContractsEndpointExtensions
         }
 
         var correction = result.Value;
+
+        // Task E03/F02/US01/T02 (renewal-alerts, parent story us-01-threshold-scheduler AC-3):
+        // recompute this contract's alerts only when a renewal-relevant field actually changed —
+        // see RenewalAlertRecomputeService's own doc comment for exactly which fields those are and
+        // why. Runs after the correction is already durable/audited, same placement as
+        // ContractCorrectionService.CorrectAsync's own "write then audit" sequencing.
+        if (correction.CorrectedFields.Any(RenewalAlertRecomputeService.RenewalRelevantFields.Contains))
+        {
+            await renewalAlertRecomputeService
+                .RecomputeAsync(tenantId, contractId, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         return Results.Ok(new
         {
             contractId = correction.ContractId.Value,

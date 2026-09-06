@@ -84,6 +84,17 @@ var renewalsConnectionString = builder.Configuration.GetConnectionString("Renewa
 
 builder.Services.AddRenewalsModule(renewalsConnectionString);
 
+// Task E03/F02/US01/T02 (renewal-alerts, parent story us-01-threshold-scheduler AC-3):
+// RenewalAlertRecomputeService is host-composition wiring, the same kind as
+// NegotiationOutcomePropagationService below ("the one place... that calls both
+// Contigo.Documents.Contracts and Contigo.Renewals" — see that type's own doc comment), registered
+// directly here rather than inside either module's own AddXxxModule. Scoped: shares this request's
+// own DocumentsContractsDbContext (already Scoped via AddDocumentsContractsModule above) and
+// resolves the already-Scoped RenewalAlertService (registered by AddRenewalsModule above) rather
+// than a second, independently-tracked instance of either. ContractsEndpointExtensions.CorrectContractAsync
+// (PATCH /api/contracts/{id}) is its only caller.
+builder.Services.AddScoped<RenewalAlertRecomputeService>();
+
 // Task E04/F02/US02/T01 (savings-opportunity, GET/PATCH /api/savings): the Savings module's own
 // AddSavingsModule(IServiceCollection, string) (ADR-002) — this module's first DbContext
 // (SavingsDbContext, backing SavingsOpportunityService), the same "wiring lands with the first
