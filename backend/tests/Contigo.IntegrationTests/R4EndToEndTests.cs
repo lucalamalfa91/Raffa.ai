@@ -1,7 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
-using Contigo.Quotes.Application.Normalization;
 using Contigo.Quotes.Application.Outcome;
 using Contigo.Quotes.Application.Strategy;
 using Contigo.Quotes.Domain;
@@ -65,24 +64,20 @@ namespace Contigo.IntegrationTests;
 /// </list>
 ///
 /// <para>
-/// <b>Honest scope note (AC-2, "User can correct SKU matching")</b>: this task's own wave-spec
-/// <c>depends_on</c> names <c>sku-recalculate</c> (task E05/F01/US02/T02, "Manual product mapping +
-/// recalculate trigger"), but — like task E04/F04/US01/T01 (r3-integration)'s own analogous, honestly
-/// documented gap for a missing <c>Contract</c> -&gt; <c>BenchmarkQuery</c> mapping — that task never
-/// landed any code: backend/README.md's own "Quote Check" section still reads "nothing writes a
-/// <c>SkuProductMapping</c> row yet... task E05/F01/US02/T02... is its intended first writer", true
-/// even after every later Quote Check task landed, and no manual-mapping HTTP endpoint exists anywhere
-/// in this repo. Inventing that endpoint here would be scope this task's own "Files to create or
-/// modify" table (<c>backend/src/</c> for the <c>r4-integration</c> artifact) does not license and
-/// <c>reports/open-questions.md</c> warns never to silently absorb. Instead, this test proves the
-/// mechanism a correction actually depends on and that already exists and is already proven
-/// re-runnable in isolation (<c>SkuNormalizationServiceTests
-/// .NormalizeAsync_is_re_runnable_and_upgrades_a_line_to_matched_once_a_mapping_is_added</c>): writing
-/// the exact <see cref="SkuProductMapping"/> row that type's own doc comment names as this table's
-/// "intended first writer" (standing in for the person resolving the unmatched line), then calling
-/// <see cref="SkuNormalizationService.NormalizeAsync"/> again — the "recalculate trigger" itself —
-/// resolved directly from the real host's own container (no dedicated route exists for it either),
-/// against a real, real-HTTP-uploaded quote, for the first time.
+/// <b>AC-2 ("User can correct SKU matching") update</b>: this task's own wave-spec <c>depends_on</c>
+/// names <c>sku-recalculate</c> (task E05/F01/US02/T02, "Manual product mapping + recalculate
+/// trigger"), which at the time this class was first written had not yet landed any code — like task
+/// E04/F04/US01/T01 (r3-integration)'s own analogous, honestly documented gap for a missing
+/// <c>Contract</c> -&gt; <c>BenchmarkQuery</c> mapping, this test used to stand in for the missing
+/// endpoint with a direct <see cref="SkuProductMapping"/> insert + a direct
+/// <c>Contigo.Quotes.Application.Normalization.SkuNormalizationService.NormalizeAsync</c> call
+/// resolved from the host's own container.
+/// Task E05/F01/US02/T02 has since landed <c>POST /api/quotes/{id}/assessment/recalculate</c>
+/// (<c>Contigo.Api.QuotesEndpointExtensions.RecalculateAssessmentAsync</c> /
+/// <c>Contigo.Quotes.Application.Normalization.SkuMappingService</c>) — this test now drives that
+/// real endpoint over real HTTP instead, the same "one real host" posture every other step in this
+/// chain already takes; <c>Contigo.Quotes.Tests.SkuMappingServiceTests</c> owns the endpoint's own,
+/// narrower persistence-level proof (mapping upsert, cross-quote reuse, validation).
 /// </para>
 ///
 /// <para>
@@ -148,39 +143,36 @@ public sealed class R4EndToEndTests : IClassFixture<R4IntegrationFixture>
         }
 
         // ----- AC-2 "User can correct SKU matching before accepting assessment" -----
-        // See this class's own doc comment for why a direct SkuProductMapping insert + a direct
-        // SkuNormalizationService.NormalizeAsync re-run — not a dedicated HTTP endpoint — is how this
-        // task proves the correction (task E05/F01/US02/T02's own manual-mapping endpoint never
-        // landed any code).
-        using (var scope = _fixture.Services.CreateScope())
-        {
-            var tenantContext = scope.ServiceProvider.GetRequiredService<ITenantContext>();
-            using var tenantScope = tenantContext.BeginScope(tenantId);
-            var db = scope.ServiceProvider.GetRequiredService<QuotesDbContext>();
-
-            db.SkuProductMappings.Add(new SkuProductMapping
+        // Task E05/F01/US02/T02 (sku-recalculate) — drives the real endpoint over real HTTP; see
+        // this class's own doc comment for what this replaced.
+        var recalculateResponse = await R1EndToEndTests.PostAsync(
+            client, $"/api/quotes/{quoteId.Value}/assessment/recalculate", tenantGuid,
+            new
             {
-                TenantId = tenantId,
-                NormalizedSku = R4ExtractionFixtures.RawSku,
-                CanonicalSku = R4ExtractionFixtures.RawSku,
-                CanonicalEdition = R4ExtractionFixtures.ExpectedEdition,
-                CanonicalProductName = R4ExtractionFixtures.ProductDescription,
-                CreatedAt = DateTimeOffset.UtcNow,
+                mappings = new[]
+                {
+                    new
+                    {
+                        sku = R4ExtractionFixtures.RawSku,
+                        canonicalSku = R4ExtractionFixtures.RawSku,
+                        canonicalEdition = R4ExtractionFixtures.ExpectedEdition,
+                        canonicalProductName = R4ExtractionFixtures.ProductDescription,
+                    },
+                },
             });
-            await db.SaveChangesAsync();
+        Assert.Equal(HttpStatusCode.OK, recalculateResponse.StatusCode);
+        var recalculateBody = await R1EndToEndTests.ParseAsync(recalculateResponse);
 
-            // SkuNormalizationService itself never opens a tenant scope (unlike
-            // MarketAssessmentService/NegotiationStrategyService below) — its only existing caller,
-            // QuoteExtractionPipeline, always calls it from inside its own already-open scope, so
-            // this test (standing in for the not-yet-built recalculate endpoint) opens one itself,
-            // the same way SkuNormalizationServiceTests already does.
-            var skuNormalizationService = scope.ServiceProvider.GetRequiredService<SkuNormalizationService>();
-            var normalizationOutcome = await skuNormalizationService.NormalizeAsync(tenantId, quoteId);
-            await db.SaveChangesAsync();
-
-            Assert.Equal(1, normalizationOutcome.MatchedCount);
-            Assert.Equal(0, normalizationOutcome.UnmatchedCount);
-        }
+        Assert.Equal(1, recalculateBody.GetProperty("mappingsAppliedCount").GetInt32());
+        var recalculateNormalization = recalculateBody.GetProperty("normalization");
+        Assert.Equal(1, recalculateNormalization.GetProperty("matchedCount").GetInt32());
+        Assert.Equal(0, recalculateNormalization.GetProperty("unmatchedCount").GetInt32());
+        // AC-2 "Show unmatched SKUs": none left, now that the one line's SKU is mapped.
+        Assert.Empty(recalculateBody.GetProperty("unmatchedLines").EnumerateArray());
+        // AC-3 "Re-run assessment after mapping correction": the same assessment shape
+        // GET .../assessment returns, already fresh in this same response.
+        var recalculatedLine = Assert.Single(recalculateBody.GetProperty("assessment").GetProperty("lines").EnumerateArray());
+        Assert.Equal("Assessed", recalculatedLine.GetProperty("status").GetString());
 
         using (var scope = _fixture.Services.CreateScope())
         {
