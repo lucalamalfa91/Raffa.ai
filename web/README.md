@@ -117,6 +117,26 @@ Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
   "wire /health" half of this task, and this static SPA's equivalent of the
   parent story's Definition of Done ("`curl` on `/health` via the API client
   succeeds": every load of the deployed bundle performs that check).
+- **Task E06/F01/US01/T01 (typescript-client-regen)** caught the contract up
+  to backend epics E02-E05: `openapi/contigo-api.v1.json` gained
+  `POST /api/workspaces` (create), `POST /api/workspaces/{tenantId}/invites`
+  (invite), `POST /api/documents` (upload), and `GET /api/documents/{id}`
+  (read back) -- exactly epic-06-web-foundation's own R0 surface (sign-in ->
+  workspace picker, members & roles, document upload/status). `Program.cs`
+  now also serves many more routes from those same backend epics (portfolio,
+  Contract 360 + correction history, audit, renewals, savings (+ KPIs), Ask
+  Contigo chat, quotes, negotiation outcomes) that this task deliberately did
+  **not** add to the contract: epic-06-web-foundation's own "Out of scope"
+  list names exactly that set as "later web epics," and
+  feature-01-typescript-client-regen is a documented **repeating chore** --
+  whichever web epic first builds a screen against one of those endpoints
+  extends `openapi/contigo-api.v1.json` next, the same way this task extended
+  the `/health`-only version task E01/F07/US01/T02 left behind. This also
+  taught `generate-api-client.mjs` two more `renderSchemaType` cases (still
+  zero dependencies): a flat `object`/`properties` schema, and an OpenAPI 3.1
+  nullable union (`"type": ["string", "null"]`, e.g. a freshly-uploaded
+  document's `contractId`, null until classification links it) -- see that
+  script's own comments.
 
 ## Directory layout
 
