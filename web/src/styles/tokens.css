@@ -1,0 +1,122 @@
+/**
+ * Contigo design system — tokens ("Modernist")
+ *
+ * ADR-019 (Web design system): adopt the Claude Design "Modernist" export
+ * verbatim; do not fork values. Source of truth, in order of precedence:
+ *   1. inputs/design/prototypes/design-system.md — curated token dump
+ *      ("Source of truth: Modernist design system ... implement with its
+ *      styles.css tokens; do not fork values into the SPA").
+ *   2. reports/architecture/ADR-019-web-design-system.md — locked token
+ *      table + accessibility baseline.
+ *   3. inputs/design/prototypes/day1-demo.html — the compiled Claude Design
+ *      bundle (the "executable reference"). (1) only states the accent /
+ *      neutral ramps' *endpoints* and *usage*, not every step, and does not
+ *      give literal spacing/radius/shadow figures; every value below that is
+ *      not already spelled out in (1)/(2) (full 100-900 ramps, the 1/2/3/4/6/8
+ *      spacing steps, radius = 0, shadow offsets, font-weight/line-height/
+ *      letter-spacing figures) was confirmed against this file's compiled
+ *      `:root` custom-property declarations, not invented.
+ *
+ * No `/design-sync` tool is mounted in this harness (no Claude Design skill
+ * available to this implementer) — per ADR-019's own fallback, "the markdown
+ * dump is authoritative"; this file plus the compiled bundle above are what
+ * "the markdown dump" means in practice for the values not spelled out in
+ * prose.
+ *
+ * Do not add tokens here that aren't traceable to one of the three sources
+ * above — that is exactly the "invent a parallel visual language" ADR-019
+ * forbids.
+ */
+
+:root {
+  /* Modernist is a single flat *light* "ink on ground" system (design-system.md
+     "Principles"); Vite's template default of `light dark` would otherwise
+     mismatch native control chrome (checkboxes, scrollbars, form controls)
+     against the hard-coded light palette below. */
+  color-scheme: light;
+
+  /* ---------------------------------------------------------------------
+   * Colour — ground / ink / accent (ADR-019 locked table)
+   * ------------------------------------------------------------------- */
+  --color-bg: #f3f2f2; /* page ground */
+  --color-surface: #eae9e9; /* panels, inputs, side panes */
+  --color-text: #201e1d; /* ink */
+  --color-accent: #ec3013; /* primary action, critical marker */
+
+  /* ---- Accent ramp (100-900); 100/200/700 are the ADR-019-named steps ---- */
+  --color-accent-100: #fff2ef; /* critical row tint */
+  --color-accent-200: #ffe0d9; /* sign-in ground + grid */
+  --color-accent-300: #ffc4b8;
+  --color-accent-400: #ff9783;
+  --color-accent-500: #ff563c;
+  --color-accent-600: #dd2b0f;
+  --color-accent-700: #ae1800; /* accent-coloured body text, >=4.5:1 on --color-bg */
+  --color-accent-800: #7c1405;
+  --color-accent-900: #4d170e;
+
+  /* ---- Neutral ramp (100-900); 200/600/700 are the ADR-019-named steps ---- */
+  --color-neutral-100: #f8f4f4;
+  --color-neutral-200: #eae7e7; /* hovers, selected rows */
+  --color-neutral-300: #d7d3d3; /* skeleton bars */
+  --color-neutral-400: #bab6b6;
+  --color-neutral-500: #9b9797;
+  --color-neutral-600: #7d7979; /* muted text, micro meta */
+  --color-neutral-700: #605d5d; /* stepper chrome */
+  --color-neutral-800: #444141;
+  --color-neutral-900: #2d2b2b;
+
+  /* ink @ 40% — 2px section rules, 1px row rules (design-system.md, confirmed
+     as a `color-mix(in srgb, ...)` expression in the compiled bundle) */
+  --color-divider: color-mix(in srgb, var(--color-text) 40%, transparent);
+
+  /* ---------------------------------------------------------------------
+   * Radius — zero everywhere ("Zero corner radius everywhere", design-system.md)
+   * ------------------------------------------------------------------- */
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+
+  /* ---------------------------------------------------------------------
+   * Spacing scale — literal steps confirmed in the compiled bundle.
+   * --space-5 and --space-7 do not exist (the scale skips them: 1,2,3,4,6,8).
+   * ------------------------------------------------------------------- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* ---------------------------------------------------------------------
+   * Typography
+   * ------------------------------------------------------------------- */
+  --font-heading: "Archivo", system-ui, sans-serif;
+  --font-body: "Archivo", system-ui, sans-serif;
+  --weight-body: 400;
+  --weight-body-strong: 600;
+  --weight-heading: 800;
+  --leading-display: 1.12; /* screen title / KPI / key-fact numbers */
+  --leading-label: 1.2; /* buttons, tags, kickers, table headers */
+  --leading-body: 1.55; /* reading copy */
+  --tracking-display: -0.015em; /* large bold headings */
+  --tracking-kicker: 0.08em; /* uppercase kicker / tag text */
+  --tracking-table-header: 0.1em; /* uppercase table header */
+
+  /* ---------------------------------------------------------------------
+   * Elevation — dialogs only. design-system.md: "avoid [shadows] inside the
+   * app; only dialogs". Offsets/blur are the literal figures confirmed in
+   * the compiled bundle; the colour argument mirrors --color-divider's own
+   * ink color-mix mechanism (the exact mix % for shadows was not
+   * extractable from the minified bundle, so this reuses the confirmed
+   * *mechanism* at conservative elevation-appropriate percentages rather
+   * than inventing an unrelated shadow colour).
+   * ------------------------------------------------------------------- */
+  --shadow-sm: 0 1px 2px color-mix(in srgb, var(--color-text) 12%, transparent);
+  --shadow-md: 0 3px 10px color-mix(in srgb, var(--color-text) 16%, transparent);
+  --shadow-lg: 0 12px 32px color-mix(in srgb, var(--color-text) 20%, transparent);
+
+  /* ---------------------------------------------------------------------
+   * States
+   * ------------------------------------------------------------------- */
+  --opacity-disabled: 0.45; /* "Disabled: 45% opacity (from styles.css)" */
+}

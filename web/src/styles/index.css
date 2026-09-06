@@ -1,0 +1,22 @@
+/**
+ * Contigo design system — single entry point.
+ *
+ * `web/src/index.css` imports this file (main.tsx already imports
+ * `./index.css` at boot); anything else in `web/` that wants the design
+ * system in isolation (e.g. a future Storybook-style harness) imports this
+ * file directly instead of the three below individually.
+ *
+ * The Archivo webfont is not bundled locally (no font-file asset pipeline
+ * exists in this task's scope); it is fetched at runtime from Google Fonts,
+ * same as the compiled Claude Design bundle uses. `@import url(...)` here is
+ * a plain CSS at-rule -- the browser resolves it at runtime, so it never
+ * touches `npm run build` (no network fetch happens at build time; the
+ * `url()` is passed through unresolved, unlike the local imports below,
+ * which Vite inlines into the build). CSS requires every `@import` to
+ * precede all other rules, hence the empty-of-declarations import chain
+ * below and why the actual token declarations must live in tokens.css.
+ */
+@import url("https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&display=swap");
+@import "./tokens.css";
+@import "./base.css";
+@import "./components.css";

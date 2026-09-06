@@ -1,0 +1,107 @@
+/**
+ * Contigo design system — base / global layer.
+ *
+ * Applies the tokens in tokens.css to the document itself: page ground, ink,
+ * type family, and the "architectural, ink-on-ground" defaults
+ * (design-system.md "Principles" — flat, 2px rules instead of cards/shadows,
+ * flush-left alignment). Element-level resets only; named component classes
+ * live in components.css.
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-weight: var(--weight-body);
+  line-height: var(--leading-body);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-heading);
+  line-height: var(--leading-display);
+}
+
+p {
+  margin: 0 0 var(--space-3) 0;
+}
+
+/* Everything flush left, including labels inside wide buttons/controls
+   (design-system.md "Principles"). Buttons additionally set this in
+   components.css; this is the document-wide default. */
+button,
+input,
+select,
+textarea {
+  text-align: left;
+  font-family: var(--font-body);
+  color: inherit;
+}
+
+a {
+  /* Accent-coloured text uses --color-accent-700, not the raw accent, so
+     body-sized link text keeps >=4.5:1 contrast on --color-bg / --color-surface
+     (ADR-019 accessibility baseline). */
+  color: var(--color-accent-700);
+}
+
+a:hover {
+  color: var(--color-accent);
+}
+
+hr {
+  border: 0;
+  border-top: 2px solid var(--color-divider);
+  margin: var(--space-4) 0;
+}
+
+/* Every interactive control is native (button, input, radio, a) per the
+   ADR-019 accessibility baseline; this is the one visible focus treatment
+   for all of them, so keyboard users never lose the outline to a component
+   override. A solid ink ring reads clearly against the light ground without
+   introducing a colour the design system doesn't already use. */
+:focus-visible {
+  outline: 2px solid var(--color-text);
+  outline-offset: 2px;
+}
+
+/* Photographs (if any) pass through .grayscale (design-system.md "Principles"). */
+.grayscale {
+  filter: grayscale(100%);
+}
+
+/* Lucide, inline SVG, currentColor, 1.5 stroke, square caps (design-system.md
+   "Icons"). Only where an icon carries meaning (upload, evidence, external
+   link) -- decorative icons still need aria-hidden in the markup that uses
+   this class; that is a screen-level concern, not this sheet's. */
+.icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+}
