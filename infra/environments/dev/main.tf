@@ -119,10 +119,11 @@ module "containerapps" {
   spa_host_name                 = module.staticwebapp.default_host_name
 }
 
-# ADR-015 SPs are out of band; look up this env's deploy principal so
-# Key Vault data-plane can be granted without a hard-coded object id.
+# ADR-015 SPs are out of band. display_name "contigo-sp-dev" matches more
+# than one principal in this tenant; pin the GitHub Environment
+# AZURE_CLIENT_ID (not a secret) so the grant hits the OIDC deploy SP.
 data "azuread_service_principal" "ci_deploy" {
-  display_name = "contigo-sp-${local.environment}"
+  client_id = "888079b1-faad-456f-9719-fcea97e2eb9f"
 }
 
 module "keyvault" {

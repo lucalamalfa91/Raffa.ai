@@ -145,10 +145,11 @@ module "containerapps" {
 
 # ADR-005: Key Vault Standard tier (no Premium/HSM), RBAC-authorized;
 # per-env, never shared with dev's vault.
-# ADR-015 SPs are out of band; look up this env's deploy principal so
-# Key Vault data-plane can be granted without a hard-coded object id.
+# ADR-015 SPs are out of band. display_name "contigo-sp-demo" is not
+# unique in this tenant; pin the GitHub Environment AZURE_CLIENT_ID
+# (not a secret) so the grant hits the OIDC deploy SP.
 data "azuread_service_principal" "ci_deploy" {
-  display_name = "contigo-sp-${local.environment}"
+  client_id = "1f7f7bd7-f741-4aff-b572-368a36a07879"
 }
 
 module "keyvault" {

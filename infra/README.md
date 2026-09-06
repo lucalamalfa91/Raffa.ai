@@ -137,7 +137,8 @@ through `modules/network` is later work.
   run. Ignore/discard the CLI plan; the VCS run is authoritative.
 - **CI deploy principal Key Vault grant is in Terraform.** `backend.yml`
   reads `postgres-connection` as `contigo-sp-<env>`. Each env root looks
-  that SP up (`data.azuread_service_principal.ci_deploy`) and
-  `modules/keyvault` grants it `Key Vault Secrets User` on that vault
-  only (`azurerm_role_assignment.ci_secrets_user`). Confirm the HCP VCS
-  apply before re-running the backend deploy job.
+  that SP up by the GitHub Environment `AZURE_CLIENT_ID` (display name
+  is not unique in this tenant) and `modules/keyvault` grants it
+  `Key Vault Secrets User` on that vault only
+  (`azurerm_role_assignment.ci_secrets_user`). Confirm the HCP VCS apply
+  before re-running the backend deploy job.
