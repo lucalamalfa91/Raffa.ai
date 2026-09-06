@@ -86,6 +86,23 @@ resource "azurerm_container_app" "api" {
         secret_name = "pg-cs"
       }
 
+      # Task E09/F02/US01/T01 (schema-connstrings, ADR-021): Contigo.Api.Program already
+      # reads ConnectionStrings:Savings (task E04/F02/US02/T01, savings-opportunity) and
+      # ConnectionStrings:Quotes (task E05/F01/US01/T01, quote-extraction) and throws at
+      # startup without them -- this module never carried the two env vars, so the live
+      # API app has been missing them since those tasks landed. Same "pg-cs" secret as
+      # the other ConnectionStrings__* above; Savings and Quotes are separate
+      # DbContexts/schemas on the same Postgres server (ADR-003).
+      env {
+        name        = "ConnectionStrings__Savings"
+        secret_name = "pg-cs"
+      }
+
+      env {
+        name        = "ConnectionStrings__Quotes"
+        secret_name = "pg-cs"
+      }
+
       env {
         name        = "ConnectionStrings__Storage"
         secret_name = "st-cs"
@@ -168,6 +185,23 @@ resource "azurerm_container_app" "worker" {
       # Contigo.Worker.Program throws at startup without this, same as the api app above.
       env {
         name        = "ConnectionStrings__Renewals"
+        secret_name = "pg-cs"
+      }
+
+      # Task E09/F02/US01/T01 (schema-connstrings, ADR-021): this task's scope is "API,
+      # and worker if it already mounts Renewals" -- this Container App does (above), so
+      # it gets the same two env vars as the api app for consistency, even though
+      # Contigo.Worker.Program does not read ConnectionStrings:Savings/Quotes yet
+      # (WorkerServiceCollectionExtensions.AddWorkerHost only takes
+      # DocumentsContracts/Audit/Renewals today). A later worker task wires these in when
+      # the worker registers Contigo.Savings/Contigo.Quotes.
+      env {
+        name        = "ConnectionStrings__Savings"
+        secret_name = "pg-cs"
+      }
+
+      env {
+        name        = "ConnectionStrings__Quotes"
         secret_name = "pg-cs"
       }
     }

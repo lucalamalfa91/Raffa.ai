@@ -74,6 +74,30 @@ EF migrations live in each module that owns a DbContext
 the same database the hosts use; RLS policies are added in those
 migrations, not in Terraform.
 
+**Deployable schema artifact (ADR-021):** every module above also checks in
+`Migrations/Scripts/<module>.sql` — `identity-workspace.sql`,
+`documents-contracts.sql`, `audit.sql`, `renewals.sql`, `savings.sql`,
+`quotes.sql` — generated with `dotnet ef migrations script --idempotent`
+from that module's `src/` folder. That checked-in script, applied with
+`psql` (or any plain Npgsql client), is the actual `dev`/`demo` deploy
+path: CI applies all six, in ADR-021's fixed order, after both
+`az containerapp update` steps (task E09/F02/US01/T02) — `Contigo.Api` and
+`Contigo.Worker` deliberately never call `Database.MigrateAsync()`, so a
+replica boot never mutates schema. Regenerate the script after adding or
+changing a migration; `<Module>MigrationScriptStaleCheckTests` (task
+E09/F01/US01/T01) fails `dotnet test` if a script is missing or no longer
+matches a fresh idempotent generate, and `<Module>MigrationScriptTests`
+proves the checked-in script itself — not `MigrateAsync`, no DbContext —
+applies (and re-applies) cleanly to a bare `pgvector/pgvector:pg16` server.
+`.github/workflows/backend.yml`'s CI apply step (`scripts/pg_connection_string_env.py`
+turns the Key Vault `postgres-connection` secret into `psql`'s `PG*`
+environment variables; `scripts/schema_apply_verify.py` then proves every
+migration_id all six scripts declare landed in `contigo_<env>`'s own
+`__EFMigrationsHistory`, failing the job by name otherwise) needs the CI
+deploy principal to hold `Key Vault Secrets User` on that environment's
+vault — a grant that does not exist yet, see `infra/README.md`'s
+"Known gaps".
+
 ## HTTP surface today
 
 | Method | Path | Notes |
