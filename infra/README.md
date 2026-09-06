@@ -135,22 +135,9 @@ through `modules/network` is later work.
   hosts managed Functions / staging, which we disable.
 - **GHA `terraform plan` on push to `main`** is redundant with the HCP VCS
   run. Ignore/discard the CLI plan; the VCS run is authoritative.
-- **CI deploy principal has no Key Vault grant.** `backend.yml`'s "Fetch
-  Postgres connection string (ADR-021)" step reads secret
-  `postgres-connection` via `az keyvault secret show`, authenticated as
-  `contigo-sp-<env>` (see "Identities" above). That principal's only
-  documented grant is Reader on the subscription + Contributor on the
-  resource group — Contributor does **not** carry Key Vault data-plane
-  rights once `rbac_authorization_enabled = true`
-  (`modules/keyvault/main.tf`'s own comment: "RBAC-enabled vaults grant
-  the creator no data-plane rights"). Today only the workload identity
-  (`id-contigo-<env>-workload`, `azurerm_role_assignment.workload_secrets_user`)
-  and the Terraform-apply identity
-  (`azurerm_role_assignment.deployer_secrets_officer`) hold a Key Vault
-  RBAC role on that vault — `contigo-sp-<env>` holds neither, so the
-  fetch 403s until it is granted one. Grant it once per environment —
-  `az role assignment create --role "Key Vault Secrets User" --assignee
-  <contigo-sp-<env> object id> --scope <this env's Key Vault resource
-  id>` — the same out-of-band mechanism already used to stand up
-  `contigo-sp-dev` / `contigo-sp-demo` themselves (ADR-015); the failing
-  step names this exact gap and command when it hits it.
+- **CI deploy principal Key Vault grant is in Terraform.** `backend.yml`
+  reads `postgres-connection` as `contigo-sp-<env>`. Each env root looks
+  that SP up (`data.azuread_service_principal.ci_deploy`) and
+  `modules/keyvault` grants it `Key Vault Secrets User` on that vault
+  only (`azurerm_role_assignment.ci_secrets_user`). Confirm the HCP VCS
+  apply before re-running the backend deploy job.

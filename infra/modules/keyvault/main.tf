@@ -61,6 +61,23 @@ resource "azurerm_role_assignment" "deployer_secrets_officer" {
   principal_id         = data.azurerm_client_config.current.object_id
 }
 
+# backend.yml schema apply (ADR-021) authenticates as contigo-sp-<env>,
+# not the workload identity. Same vault-only scope as workload_secrets_user.
+resource "azurerm_role_assignment" "ci_secrets_user" {
+  scope                            = azurerm_key_vault.this.id
+  role_definition_name             = "Key Vault Secrets User"
+  principal_id                     = var.ci_deploy_principal_id
+  skip_service_principal_aad_check = true
+
+  lifecycle {
+    ignore_changes = [
+      skip_service_principal_aad_check,
+      principal_type,
+      name,
+    ]
+  }
+}
+
 resource "azurerm_key_vault_secret" "postgres_connection" {
   name         = "postgres-connection"
   value        = var.postgres_connection_string

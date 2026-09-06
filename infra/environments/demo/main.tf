@@ -145,6 +145,12 @@ module "containerapps" {
 
 # ADR-005: Key Vault Standard tier (no Premium/HSM), RBAC-authorized;
 # per-env, never shared with dev's vault.
+# ADR-015 SPs are out of band; look up this env's deploy principal so
+# Key Vault data-plane can be granted without a hard-coded object id.
+data "azuread_service_principal" "ci_deploy" {
+  display_name = "contigo-sp-${local.environment}"
+}
+
 module "keyvault" {
   source = "../../modules/keyvault"
 
@@ -154,6 +160,7 @@ module "keyvault" {
   # Task E01/F02/US04/T01 (ADR-011): this root's OWN identity module
   # instance only -- never dev's -- so the grant never crosses envs.
   workload_principal_id      = module.identity.workload_principal_id
+  ci_deploy_principal_id     = data.azuread_service_principal.ci_deploy.object_id
   postgres_connection_string = module.postgres.connection_string
   storage_connection_string  = module.storage.primary_connection_string
 }

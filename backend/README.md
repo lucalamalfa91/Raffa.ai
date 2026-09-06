@@ -95,8 +95,7 @@ environment variables; `scripts/schema_apply_verify.py` then proves every
 migration_id all six scripts declare landed in `contigo_<env>`'s own
 `__EFMigrationsHistory`, failing the job by name otherwise) needs the CI
 deploy principal to hold `Key Vault Secrets User` on that environment's
-vault — a grant that does not exist yet, see `infra/README.md`'s
-"Known gaps".
+vault (`modules/keyvault` `ci_secrets_user`, applied by HCP).
 
 ## HTTP surface today
 
