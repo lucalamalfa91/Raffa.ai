@@ -73,10 +73,28 @@ function renderSchemaType(schema) {
       return "boolean";
     case "array":
       return `${renderSchemaType(schema.items)}[]`;
+    case "object": {
+      // Task E06/F03/US01/T01 (signin-workspace-picker): the first operation
+      // needing this case -- POST /api/workspaces returns a JSON object body
+      // (id/name/createdAt), unlike GET /health's plain string. Inline TS
+      // object type from `properties`/`required` (required as declared;
+      // everything else optional). Still no `$ref`/oneOf support -- no
+      // operation needs one yet; extend further here, not by hand, when one
+      // does.
+      if (!schema.properties || typeof schema.properties !== "object") {
+        return "Record<string, unknown>";
+      }
+      const required = new Set(Array.isArray(schema.required) ? schema.required : []);
+      const members = Object.entries(schema.properties).map(([propName, propSchema]) => {
+        const optionalMarker = required.has(propName) ? "" : "?";
+        return `${propName}${optionalMarker}: ${renderSchemaType(propSchema)}`;
+      });
+      return `{ ${members.join("; ")} }`;
+    }
     default:
       // Not needed by any operation web/openapi/contigo-api.v1.json documents
       // today. Extend this switch (not the generated output by hand) when a
-      // future endpoint needs `object`/`$ref`/oneOf support.
+      // future endpoint needs `$ref`/oneOf support.
       return "unknown";
   }
 }

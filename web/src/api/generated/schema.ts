@@ -19,10 +19,27 @@ export interface operations {
       };
     };
   };
+  createWorkspace: {
+    responses: {
+      201: {
+        content: {
+          "application/json": { id: string; name: string; createdAt: string };
+        };
+      };
+      400: {
+        content: {
+          "application/json": string;
+        };
+      };
+    };
+  };
 }
 
 export interface paths {
   "/health": {
     get: operations["getHealth"];
+  };
+  "/api/workspaces": {
+    post: operations["createWorkspace"];
   };
 }

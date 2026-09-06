@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react";
-import { AuthenticatedTemplate, UnauthenticatedTemplate, useMsal } from "@azure/msal-react";
-import { InteractionStatus } from "@azure/msal-browser";
 import type { AppConfig } from "./config/appConfig";
-import { buildLoginRequest } from "./auth/msalConfig";
 import type { ApiClient } from "./api/client";
+import SignInRoute from "./routes/signin";
 
 interface AppProps {
   appConfig: AppConfig;
@@ -19,15 +17,14 @@ type HealthState =
   | { phase: "ok"; body: string }
   | { phase: "unreachable"; statusCode: number | null; body: string };
 
-// Minimal shell proving the OIDC Authorization Code + PKCE flow end to end
-// (AC-1): sign in redirects to the Entra authority named in runtime config,
-// sign out clears the local session. Screens for the actual product surfaces
-// (workspace, portfolio, Contract 360, ...) land in later feature tasks.
+// Task E06/F03/US01/T01 (signin-workspace-picker): App used to own a minimal
+// inline sign-in/sign-out shell directly (task E01/F07/US01/T02's proof that
+// the OIDC Authorization Code + PKCE flow works end to end). That shell is
+// now ./routes/signin (SignInRoute) -- the real `/signin` screen (ADR-018)
+// with the workspace picker AC-1/AC-2 need -- so App's only remaining job is
+// the composition root: run the /health proof-of-connectivity effect (still
+// independent of sign-in state) and mount the sign-in route beneath it.
 export default function App({ appConfig, apiClient }: AppProps) {
-  const { instance, accounts, inProgress } = useMsal();
-  const account = accounts[0];
-  const interactionInFlight = inProgress !== InteractionStatus.None;
-
   // "wire /health" (task E01/F07/US01/T02) and the parent story's Definition
   // of Done ("curl on /health via the API client succeeds"): a static SPA has
   // no shell to literally run curl in, so this effect is the equivalent
@@ -52,37 +49,15 @@ export default function App({ appConfig, apiClient }: AppProps) {
     };
   }, [apiClient]);
 
-  const signIn = () => {
-    void instance.loginRedirect(buildLoginRequest(appConfig));
-  };
-
-  const signOut = () => {
-    void instance.logoutRedirect();
-  };
-
   return (
     <main>
-      <h1>Contigo</h1>
       <p data-testid="api-health-status">
         {health.phase === "checking" && "API: checking…"}
         {health.phase === "ok" && `API: reachable (${health.body})`}
         {health.phase === "unreachable" &&
           `API: unreachable (${health.statusCode ?? "network error"}: ${health.body})`}
       </p>
-      <AuthenticatedTemplate>
-        <p>
-          Signed in as <strong>{account?.username}</strong>.
-        </p>
-        <button type="button" onClick={signOut} disabled={interactionInFlight}>
-          Sign out
-        </button>
-      </AuthenticatedTemplate>
-      <UnauthenticatedTemplate>
-        <p>Sign in with your organization account to continue.</p>
-        <button type="button" onClick={signIn} disabled={interactionInFlight}>
-          Sign in
-        </button>
-      </UnauthenticatedTemplate>
+      <SignInRoute appConfig={appConfig} apiClient={apiClient} />
     </main>
   );
 }

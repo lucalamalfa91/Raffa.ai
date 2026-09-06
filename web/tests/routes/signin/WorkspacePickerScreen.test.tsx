@@ -1,0 +1,165 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import WorkspacePickerScreen from "../../../src/routes/signin/WorkspacePickerScreen";
+import type { ApiClient, CreateWorkspaceResult } from "../../../src/api/client";
+
+function mockApiClient(createWorkspace: ApiClient["createWorkspace"] = vi.fn()): ApiClient {
+  return { getHealth: vi.fn(), createWorkspace };
+}
+
+const ACCOUNT_KEY = "test-home-account-id";
+
+describe("WorkspacePickerScreen", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+  });
+
+  it("shows the empty state and no list when this account has no known workspaces", () => {
+    render(
+      <WorkspacePickerScreen
+        apiClient={mockApiClient()}
+        accountKey={ACCOUNT_KEY}
+        accountLabel="user@example.test"
+        onSignOut={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/no workspaces yet/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /\+ create a new workspace/i })).toBeInTheDocument();
+  });
+
+  it("creates a workspace, remembers it, and lands the user in it", async () => {
+    const created: CreateWorkspaceResult = {
+      ok: true,
+      statusCode: 201,
+      workspace: { id: "w-1", name: "Acme Procurement", createdAt: "2026-09-06T08:00:00Z" },
+      error: null,
+    };
+    const createWorkspace = vi.fn().mockResolvedValue(created);
+
+    render(
+      <WorkspacePickerScreen
+        apiClient={mockApiClient(createWorkspace)}
+        accountKey={ACCOUNT_KEY}
+        accountLabel="user@example.test"
+        onSignOut={vi.fn()}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /\+ create a new workspace/i }));
+    await userEvent.type(screen.getByLabelText(/workspace name/i), "Acme Procurement");
+    await userEvent.click(screen.getByRole("button", { name: /^create workspace$/i }));
+
+    expect(createWorkspace).toHaveBeenCalledWith({ name: "Acme Procurement" });
+    expect(await screen.findByRole("heading", { name: /you.re in acme procurement/i })).toBeInTheDocument();
+
+    // Persisted for next time (workspaceStore.ts), not just held in memory.
+    expect(window.localStorage.getItem(`contigo.signin.knownWorkspaces.${ACCOUNT_KEY}`)).toContain(
+      "Acme Procurement",
+    );
+  });
+
+  it("shows the API's validation error inline and keeps the form open on failure", async () => {
+    const failed: CreateWorkspaceResult = {
+      ok: false,
+      statusCode: 400,
+      workspace: null,
+      error: "A workspace 'name' is required.",
+    };
+    const createWorkspace = vi.fn().mockResolvedValue(failed);
+
+    render(
+      <WorkspacePickerScreen
+        apiClient={mockApiClient(createWorkspace)}
+        accountKey={ACCOUNT_KEY}
+        accountLabel="user@example.test"
+        onSignOut={vi.fn()}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /\+ create a new workspace/i }));
+    await userEvent.type(screen.getByLabelText(/workspace name/i), "x");
+    await userEvent.click(screen.getByRole("button", { name: /^create workspace$/i }));
+
+    expect(await screen.findByText("A workspace 'name' is required.")).toBeInTheDocument();
+    expect(screen.getByLabelText(/workspace name/i)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /you.re in/i })).not.toBeInTheDocument();
+  });
+
+  it("lists a previously remembered workspace and selects it on click", async () => {
+    window.localStorage.setItem(
+      `contigo.signin.knownWorkspaces.${ACCOUNT_KEY}`,
+      JSON.stringify([
+        {
+          id: "w-2",
+          name: "Globex Sandbox",
+          createdAt: "2026-09-06T08:00:00Z",
+          contractCount: 0,
+          roleLabel: "Workspace Admin",
+        },
+      ]),
+    );
+
+    render(
+      <WorkspacePickerScreen
+        apiClient={mockApiClient()}
+        accountKey={ACCOUNT_KEY}
+        accountLabel="user@example.test"
+        onSignOut={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Globex Sandbox")).toBeInTheDocument();
+    expect(screen.getByText(/0 contracts/i)).toBeInTheDocument();
+    expect(screen.getByText("Workspace Admin")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /globex sandbox/i }));
+
+    expect(await screen.findByRole("heading", { name: /you.re in globex sandbox/i })).toBeInTheDocument();
+    expect(JSON.parse(window.sessionStorage.getItem("contigo.signin.currentWorkspace") ?? "null")).toEqual({
+      id: "w-2",
+      name: "Globex Sandbox",
+    });
+  });
+
+  it("returns to the list from the confirmation panel via Switch workspace", async () => {
+    window.sessionStorage.setItem("contigo.signin.currentWorkspace", JSON.stringify({ id: "w-2", name: "Globex Sandbox" }));
+
+    render(
+      <WorkspacePickerScreen
+        apiClient={mockApiClient()}
+        accountKey={ACCOUNT_KEY}
+        accountLabel="user@example.test"
+        onSignOut={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: /you.re in globex sandbox/i })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /switch workspace/i }));
+
+    expect(screen.getByRole("heading", { name: /choose a workspace/i })).toBeInTheDocument();
+    expect(window.sessionStorage.getItem("contigo.signin.currentWorkspace")).toBeNull();
+  });
+
+  it("clears the current workspace and calls onSignOut", async () => {
+    window.sessionStorage.setItem("contigo.signin.currentWorkspace", JSON.stringify({ id: "w-2", name: "Globex Sandbox" }));
+    const onSignOut = vi.fn();
+
+    render(
+      <WorkspacePickerScreen
+        apiClient={mockApiClient()}
+        accountKey={ACCOUNT_KEY}
+        accountLabel="user@example.test"
+        onSignOut={onSignOut}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /sign out/i }));
+
+    expect(onSignOut).toHaveBeenCalledTimes(1);
+    expect(window.sessionStorage.getItem("contigo.signin.currentWorkspace")).toBeNull();
+  });
+});
