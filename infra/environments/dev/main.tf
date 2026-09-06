@@ -119,6 +119,13 @@ module "containerapps" {
   spa_host_name                 = module.staticwebapp.default_host_name
 }
 
+# ADR-015 SPs are out of band. display_name "contigo-sp-dev" matches more
+# than one principal in this tenant; pin the GitHub Environment
+# AZURE_CLIENT_ID (not a secret) so the grant hits the OIDC deploy SP.
+data "azuread_service_principal" "ci_deploy" {
+  client_id = "888079b1-faad-456f-9719-fcea97e2eb9f"
+}
+
 module "keyvault" {
   source = "../../modules/keyvault"
 
@@ -128,6 +135,7 @@ module "keyvault" {
   # Task E01/F02/US04/T01 (ADR-011): this root's OWN identity module
   # instance only -- never demo's -- so the grant never crosses envs.
   workload_principal_id      = module.identity.workload_principal_id
+  ci_deploy_principal_id     = data.azuread_service_principal.ci_deploy.object_id
   postgres_connection_string = module.postgres.connection_string
   storage_connection_string  = module.storage.primary_connection_string
 }

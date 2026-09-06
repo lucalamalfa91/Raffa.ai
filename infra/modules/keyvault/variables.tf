@@ -28,6 +28,14 @@ variable "workload_principal_id" {
   type        = string
 }
 
+# ADR-021: backend.yml reads postgres-connection as contigo-sp-<env>
+# (GitHub OIDC). Contributor on the RG is not a Key Vault data-plane
+# role once rbac_authorization_enabled=true.
+variable "ci_deploy_principal_id" {
+  description = "Principal (object) ID of this environment's GitHub Actions deploy SP (contigo-sp-<env>). Granted Key Vault Secrets User on this vault only so CI can fetch postgres-connection."
+  type        = string
+}
+
 # ADR-011: connection strings land here from sibling modules -- never as
 # literals in .tf source. Both are required so each env root must wire
 # its own postgres/storage outputs (never the other env's).

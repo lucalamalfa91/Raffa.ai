@@ -145,6 +145,13 @@ module "containerapps" {
 
 # ADR-005: Key Vault Standard tier (no Premium/HSM), RBAC-authorized;
 # per-env, never shared with dev's vault.
+# ADR-015 SPs are out of band. display_name "contigo-sp-demo" is not
+# unique in this tenant; pin the GitHub Environment AZURE_CLIENT_ID
+# (not a secret) so the grant hits the OIDC deploy SP.
+data "azuread_service_principal" "ci_deploy" {
+  client_id = "1f7f7bd7-f741-4aff-b572-368a36a07879"
+}
+
 module "keyvault" {
   source = "../../modules/keyvault"
 
@@ -154,6 +161,7 @@ module "keyvault" {
   # Task E01/F02/US04/T01 (ADR-011): this root's OWN identity module
   # instance only -- never dev's -- so the grant never crosses envs.
   workload_principal_id      = module.identity.workload_principal_id
+  ci_deploy_principal_id     = data.azuread_service_principal.ci_deploy.object_id
   postgres_connection_string = module.postgres.connection_string
   storage_connection_string  = module.storage.primary_connection_string
 }
