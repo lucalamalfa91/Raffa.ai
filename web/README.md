@@ -1,7 +1,8 @@
 # Contigo web client
 
 React + TypeScript + Vite SPA. OIDC Authorization Code + PKCE via MSAL, config
-injected at runtime. Honours ADR-012 (web stack) and ADR-010 (Entra ID / OIDC).
+injected at runtime. Honours ADR-012 (web stack), ADR-010 (Entra ID / OIDC),
+and ADR-018 (information architecture / route map).
 
 ## Stack
 
@@ -70,14 +71,58 @@ localhost / `REPLACE_WITH_*` placeholders. The Static Web App itself is
 apply that creates it (and the workload-identity tag) is CURRENT — re-run
 the web workflow after that apply.
 
+## Screens (ADR-018 route map)
+
+| Route | Screen(s) | Task |
+|-------|-----------|------|
+| `/signin` | Sign-in (Entra redirect, idle/redirecting states) -> workspace picker (list + create + confirm) | E06/F03/US01/T01 |
+
+No client-side router is wired in yet (no `react-router-dom` in
+`package.json`) -- `src/routes/signin/` (`SignInRoute`, the folder's default
+export) is gated on MSAL auth state (`useMsal().accounts`) instead of a URL
+route, mounted directly by `src/App.tsx`. Introducing a real router and the
+admin/procurement route guards it enables is E06/F03/US02/T01's
+("navigation-shell") job; swapping this gate for a `<Route path="/signin">`
+later does not change either screen underneath.
+
+**Workspace list is a client-side cache, not a server query** -- there is no
+backend endpoint that lists the workspaces a signed-in identity belongs to
+(`backend/src/Contigo.Api/WorkspaceEndpointExtensions.cs` maps only
+`POST /api/workspaces` create and `POST /api/workspaces/{tenantId}/invites`;
+creating a workspace does not create a membership for the caller, since
+ADR-010's claims wiring is not in force yet -- see that file's own doc
+comment). `src/routes/signin/workspaceStore.ts` documents this gap in full
+(including exactly which backend types a future `GET` endpoint would touch)
+and is the interim: it remembers, per signed-in account
+(`localStorage`, keyed by MSAL `homeAccountId`), every workspace *this
+browser* has actually created via the real `POST /api/workspaces` call --
+never fabricated data, just not discoverable from another browser/device
+until a backend list endpoint exists. The selected/current workspace is
+`sessionStorage`-scoped (`workspaceStore.ts`'s `selectCurrentWorkspace`/
+`loadCurrentWorkspace`) so a later screen (the nav shell, portfolio, ...) can
+read which tenant to send as the `X-Tenant-Id` header every other backend
+endpoint requires today -- no screen outside this task's scope consumes it
+yet.
+
+`contractCount` is always `0` and `roleLabel` is always `"Workspace Admin"`
+on every row this screen renders: the former because this screen never calls
+the portfolio API (a freshly-known workspace has genuinely ingested nothing
+yet), the latter because there is no server-issued role claim to read yet
+(ADR-010). `currencyRegion` is omitted entirely -- `WorkspaceTenant`
+(backend/src/Contigo.Identity.Workspace/Domain/WorkspaceTenant.cs) has no
+such column. All three are flagged in `workspaceStore.ts`'s own doc comments
+rather than silently invented.
+
 ## API client (ADR-012 "one generated TypeScript client, no hand-written divergent DTOs")
 
 Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
 
 - `openapi/contigo-api.v1.json` is the single OpenAPI document this client is
   generated from (AC-3). It documents exactly the routes
-  `backend/src/Contigo.Api/Program.cs` implements today -- currently just
-  `GET /health` -- cross-checked against `backend/tests/Contigo.Api.Tests`.
+  `backend/src/Contigo.Api/Program.cs` implements today -- `GET /health` and
+  (task E06/F03/US01/T01) `POST /api/workspaces` -- cross-checked against
+  `backend/tests/Contigo.Api.Tests` and `backend/src/Contigo.Api
+  /WorkspaceEndpointExtensions.cs` respectively.
   **Interim provenance**: the API host does not yet self-publish this document
   (no `Microsoft.AspNetCore.OpenApi`/Swashbuckle/NSwag wired into
   `Program.cs`, and adding that is backend work outside this task's
@@ -92,7 +137,13 @@ Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
   document and writes `src/api/generated/schema.ts` (`paths`/`operations`
   TypeScript types -- committed, but marked auto-generated/do-not-edit).
   `npm run build` runs it first, so the committed output can never silently
-  drift from the contract.
+  drift from the contract. Task E06/F03/US01/T01 extended the schema-type
+  renderer with `object` support (inline `{ prop: T; ... }` from a schema's
+  `properties`/`required`) -- `POST /api/workspaces`'s `201` body is the
+  first response that needed it, unlike `GET /health`'s plain string. Request
+  bodies are still hand-written (the generator does not parse `requestBody`
+  at all yet); see `src/api/client.ts`'s header comment for why that is
+  enough for now.
   **Codegen tool choice** (also part of OQ-client-007): the mainstream
   option, `openapi-typescript@7.13.0`, peer-depends on `typescript@^5.x`,
   which hard-conflicts under npm's default strict peer resolution with this
@@ -106,17 +157,21 @@ Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
   swapping to one later (once it supports TypeScript 7) only means deleting
   `scripts/generate-api-client.mjs` -- `src/api/client.ts` does not change.
 - `src/api/client.ts` is the hand-written (thin) transport layer on top of
-  those generated types -- `createApiClient(baseUrl).getHealth()` -- the same
-  division of labour `src/config/appConfig.ts` uses (generated/validated
-  shape, hand-written `fetch` plumbing). It deliberately never throws on a
-  non-2xx response (an "Unhealthy" 503 is a valid probe answer, not a client
-  error) or on a network failure (resolves with `statusCode: null` instead),
-  so `src/App.tsx` can render the result directly.
+  those generated types -- `createApiClient(baseUrl).getHealth()` and (task
+  E06/F03/US01/T01) `.createWorkspace({ name })` -- the same division of
+  labour `src/config/appConfig.ts` uses (generated/validated shape,
+  hand-written `fetch` plumbing). Both deliberately never throw on a non-2xx
+  response (an "Unhealthy" 503, or a `400` blank-name validation failure, are
+  valid expected answers, not client errors) or on a network failure
+  (resolves with `statusCode: null` instead), so callers can render the
+  result directly without a try/catch.
 - `src/App.tsx` calls `getHealth()` on mount and renders the result
   (`data-testid="api-health-status"`) independent of sign-in state -- the
-  "wire /health" half of this task, and this static SPA's equivalent of the
-  parent story's Definition of Done ("`curl` on `/health` via the API client
-  succeeds": every load of the deployed bundle performs that check).
+  "wire /health" half of task E01/F07/US01/T02, and this static SPA's
+  equivalent of that task's parent story's Definition of Done ("`curl` on
+  `/health` via the API client succeeds": every load of the deployed bundle
+  performs that check). `src/routes/signin/WorkspacePickerScreen.tsx` calls
+  `createWorkspace()` (see "Screens" above).
 - **Task E06/F01/US01/T01 (typescript-client-regen)** caught the contract up
   to backend epics E02-E05: `openapi/contigo-api.v1.json` gained
   `POST /api/workspaces` (create), `POST /api/workspaces/{tenantId}/invites`
@@ -152,11 +207,18 @@ web/
   src/
     api/
       generated/schema.ts     # AUTO-GENERATED; do not edit by hand
-      client.ts                # createApiClient(baseUrl) -> { getHealth() }
+      client.ts                # createApiClient(baseUrl) -> { getHealth(), createWorkspace({ name }) }
     config/appConfig.ts       # fetch + validate runtime config
     auth/msalConfig.ts        # AppConfig -> MSAL Configuration (no secret, ever)
     styles/                   # design system (tokens + component catalogue); see below
-    App.tsx                   # sign-in/sign-out shell + API health status (AuthenticatedTemplate/UnauthenticatedTemplate)
+    routes/
+      signin/               # ADR-018 `/signin`; gated on MSAL auth state, not a URL route yet (see "Screens" above)
+        index.tsx             # SignInRoute -- no account: SignInScreen; signed in: WorkspacePickerScreen
+        SignInScreen.tsx      # idle / redirecting states around instance.loginRedirect()
+        WorkspacePickerScreen.tsx # list (workspaceStore cache) + create via POST /api/workspaces
+        workspaceStore.ts     # per-account localStorage cache + sessionStorage "current workspace"; documents the missing list/membership backend gap
+        signin.css            # this route's styles
+    App.tsx                   # composition root: /health proof-of-connectivity effect, mounts routes/signin
     main.tsx                  # boot: load config -> construct MSAL + API client -> render
     index.css                 # global entry; imports styles/index.css
   tests/                      # mirrors src/; vitest + Testing Library

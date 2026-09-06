@@ -48,18 +48,21 @@
     "/api/workspaces": {
       "post": {
         "operationId": "createWorkspace",
-        "summary": "Create a workspace (tenant).",
-        "description": "Maps to WorkspaceEndpointExtensions.CreateWorkspaceAsync (backend/src/Contigo.Api/WorkspaceEndpointExtensions.cs, task E01/F09/US01/T01, r0-integration). The pre-authentication signup step -- nobody has a tenant claim yet, by definition -- so (unlike every other operation below) this one takes no X-Tenant-Id header.",
+        "summary": "Create a new workspace (tenant).",
+        "description": "Maps 1:1 to CreateWorkspaceAsync in backend/src/Contigo.Api/WorkspaceEndpointExtensions.cs (task E01/F09/US01/T01, r0-integration), backed by WorkspaceProvisioningService.CreateWorkspaceAsync (backend/src/Contigo.Identity.Workspace/Infrastructure/WorkspaceProvisioningService.cs). The pre-authentication signup step -- nobody has a tenant claim yet, by definition -- so (unlike every other operation below) this one takes no X-Tenant-Id header. Task E06/F03/US01/T01 (us-01-signin-workspace-picker, AC-1 'Create a new workspace') is the first web caller of this already-implemented backend endpoint.\n\nInterim, pre-authentication endpoint: ADR-010's JWT/claims wiring is not yet in force (see that endpoint file's own doc comment), so there is no caller identity to attach as the new workspace's first member -- creating a workspace does not create a membership for the caller (WorkspaceProvisioningService only inserts the WorkspaceTenant + its seeded WorkspaceRole catalog, never a WorkspaceMembership row). No `GET` (list-workspaces-for-caller) endpoint exists yet anywhere in backend/src/Contigo.Api -- web/src/routes/signin/workspaceStore.ts documents the client-side interim this drives and exactly which backend types would need a list query added.",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
+                "required": ["name"],
                 "properties": {
-                  "name": { "type": "string" }
-                },
-                "required": ["name"]
+                  "name": {
+                    "type": "string",
+                    "description": "Workspace display name. WorkspaceProvisioningService.CreateWorkspaceAsync trims it and fails (400) if blank."
+                  }
+                }
               }
             }
           }
@@ -71,21 +74,33 @@
               "application/json": {
                 "schema": {
                   "type": "object",
+                  "required": ["id", "name", "createdAt"],
                   "properties": {
-                    "id": { "type": "string", "format": "uuid" },
-                    "name": { "type": "string" },
-                    "createdAt": { "type": "string", "format": "date-time" }
-                  },
-                  "required": ["id", "name", "createdAt"]
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "description": "WorkspaceTenant.TenantId.Value (a Guid) -- also the workspace row's own Id (WorkspaceTenant's `Id == TenantId` invariant)."
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "WorkspaceTenant.CreatedAt (DateTimeOffset), System.Text.Json's default ISO-8601 rendering."
+                    }
+                  }
                 }
               }
             }
           },
           "400": {
-            "description": "Validation failure (WorkspaceProvisioningService.CreateWorkspaceAsync's Result.Error).",
+            "description": "Blank name, or another validation failure surfaced via WorkspaceProvisioningService.CreateWorkspaceAsync's Result<T>.Error (a plain string, serialized as a JSON string body by Results.BadRequest).",
             "content": {
               "application/json": {
-                "schema": { "type": "string" }
+                "schema": {
+                  "type": "string"
+                }
               }
             }
           }

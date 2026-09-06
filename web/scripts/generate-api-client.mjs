@@ -85,10 +85,13 @@ function renderSchemaType(schema) {
     case "array":
       return `${renderSchemaType(schema.items)}[]`;
     case "object": {
-      // Flat property maps only, task E06/F01/US01/T01 (the workspace/document response bodies
+      // Flat property maps only -- task E06/F01/US01/T01 (the workspace/document response bodies
       // this contract documents today are all a single flat level -- none of their own
       // properties are themselves an object). `required` marks a property non-optional; anything
-      // absent from it renders with a `?` instead, the normal OpenAPI/JSON-Schema meaning.
+      // absent from it renders with a `?` instead, the normal OpenAPI/JSON-Schema meaning. Task
+      // E06/F03/US01/T01 (signin-workspace-picker) independently needed this same case for
+      // `POST /api/workspaces`'s `201` body (id/name/createdAt) -- both tasks branched before the
+      // other landed on integration; this is the merged implementation both rely on.
       // Extend this case (not the generated output by hand) when a future endpoint needs a
       // property whose value is itself an object, or a `$ref`/`oneOf` schema.
       if (!schema.properties || typeof schema.properties !== "object") return "unknown";
