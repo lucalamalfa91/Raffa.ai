@@ -1,0 +1,109 @@
+/**
+ * App shell layout — the 224px rail + main column composite that
+ * design-system.md names under "App-level patterns" but ADR-019 deliberately
+ * leaves out of its locked component catalogue ("the global Ask bar, the app
+ * shell ... belong to the app-shell/screen tasks that consume this sheet",
+ * see src/styles/components.css's own header comment). Consumes the shared
+ * tokens (src/styles/tokens.css) — no new colours, radii, or spacing values
+ * are introduced here.
+ */
+
+.shell-layout {
+  display: grid;
+  grid-template-columns: 224px 1fr;
+  min-height: 100vh;
+}
+
+.shell-rail {
+  display: flex;
+  flex-direction: column;
+  border-right: 2px solid var(--color-divider);
+  background: var(--color-bg);
+}
+
+.shell-rail-header {
+  padding: var(--space-6) var(--space-4) var(--space-4);
+  border-bottom: 2px solid var(--color-divider);
+}
+
+.shell-rail-kicker {
+  display: block;
+  font-size: 11px;
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+  color: var(--color-neutral-600);
+}
+
+.shell-rail-workspace-name {
+  margin-top: var(--space-1);
+  font-family: var(--font-heading);
+  font-weight: var(--weight-heading);
+  font-size: 15px;
+  line-height: var(--leading-label);
+}
+
+.shell-rail-nav {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-2) 0;
+  flex: 1;
+}
+
+.shell-rail-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 9px var(--space-4);
+  font-size: 13px;
+  text-decoration: none;
+  color: var(--color-text);
+  border-left: 3px solid transparent;
+}
+
+.shell-rail-item:hover {
+  background: var(--color-neutral-200);
+}
+
+.shell-rail-item.is-active {
+  font-weight: var(--weight-body-strong);
+  border-left-color: var(--color-accent);
+  background: var(--color-accent-100);
+}
+
+.shell-rail-badge {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--color-accent);
+}
+
+.shell-rail-footer {
+  padding: var(--space-4);
+  border-top: 2px solid var(--color-divider);
+}
+
+.shell-rail-user {
+  font-size: 12px;
+}
+
+.shell-rail-signout {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.shell-main {
+  min-width: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.shell-content {
+  padding: var(--space-6) var(--space-8);
+  flex: 1;
+}

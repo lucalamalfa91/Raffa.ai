@@ -1,0 +1,237 @@
+/**
+ * Documents screen (route `/documents`, ADR-018; screens.md #3 "Upload ->
+ * document status", upload half only -- AC-1 dropzone+strip, AC-2 pipeline,
+ * AC-3 result card). The two-column layout is quoted from the compiled
+ * prototype's own grid (inputs/design/prototypes/day1-demo.html:
+ * `grid-template-columns:400px 1fr`). Component classes (.btn, .tag, .card,
+ * .empty-state, .screen-kicker/.screen-title, .micro-meta) come from
+ * ../../styles/components.css (ADR-019); this file adds only the
+ * screen-specific composites, the same division of labour signin.css's own
+ * header comment documents.
+ */
+
+.documents-columns {
+  display: grid;
+  grid-template-columns: minmax(280px, 400px) 1fr;
+  gap: var(--space-6);
+  margin-top: var(--space-6);
+}
+
+@media (max-width: 900px) {
+  .documents-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---- Dropzone + formats/size/sources strip (AC-1) --------------------- */
+
+.upload-dropzone-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.upload-dropzone {
+  border: 2px solid var(--color-divider);
+  background: var(--color-surface);
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+/* Drag-over highlight -- accent-100/accent, the same pairing ADR-019 names for "sign-in ground + grid" / "primary action". */
+.upload-dropzone.is-dragging {
+  background: var(--color-accent-100);
+  border-color: var(--color-accent);
+}
+
+.upload-dropzone-title {
+  font-family: var(--font-heading);
+  font-weight: var(--weight-heading);
+  font-size: 16px;
+  margin: 0;
+}
+
+.upload-dropzone-file-input {
+  display: none;
+}
+
+.upload-dropzone-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.upload-strip {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border-top: 2px solid var(--color-divider);
+  padding-top: var(--space-2);
+  font-size: 11px;
+  color: var(--color-neutral-600);
+}
+
+.upload-strip-cell {
+  padding-right: var(--space-2);
+  border-right: 1px solid var(--color-divider);
+}
+
+.upload-strip-cell:last-child {
+  border-right: 0;
+}
+
+.upload-strip-kicker {
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-kicker);
+}
+
+.upload-strip-value {
+  margin-top: 2px;
+  color: var(--color-text);
+  font-weight: var(--weight-body-strong);
+}
+
+/* ---- Processing pipeline (AC-2) ---------------------------------------- */
+
+.documents-status-column {
+  min-width: 0;
+}
+
+.pipeline-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.pipeline-stage {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 13px;
+  color: var(--color-neutral-500);
+}
+
+/* Square, not round -- the compiled prototype's own stage-dot span sets no
+   border-radius (ADR-019 "zero corner radius everywhere"; `.radio` is this
+   app's one deliberate circle, and this is not it). */
+.pipeline-stage-dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  background: var(--color-neutral-300);
+}
+
+.pipeline-stage--done {
+  color: var(--color-text);
+}
+
+.pipeline-stage--done .pipeline-stage-dot {
+  background: var(--color-text);
+}
+
+.pipeline-stage--current {
+  color: var(--color-accent-700);
+  font-weight: var(--weight-body-strong);
+}
+
+.pipeline-stage--current .pipeline-stage-dot {
+  background: var(--color-accent);
+  animation: contigo-pipeline-pulse 1s ease-in-out infinite;
+}
+
+@keyframes contigo-pipeline-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pipeline-stage--current .pipeline-stage-dot {
+    animation: none;
+  }
+}
+
+/* ---- Result card (AC-3) ------------------------------------------------ */
+
+.upload-result-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.upload-result-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.upload-result-filename {
+  font-weight: var(--weight-body-strong);
+  word-break: break-all;
+}
+
+.upload-result-message {
+  margin: 0;
+  font-size: 13px;
+}
+
+.upload-result-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.documents-legend {
+  margin-top: var(--space-6);
+}
+
+/* ---- Document table (AC-1/AC-2/AC-3; ADR-020 screen 3's other half) --- */
+
+.documents-table-section {
+  margin-top: var(--space-8);
+}
+
+/* table-layout: fixed (.table, components.css) needs explicit widths or its
+   5 columns default to equal shares -- "Document" (a filename) and
+   "Uploaded" (a date+time) need more room than "Type"/"Supplier"/"Status". */
+.document-status-table th:nth-child(1),
+.document-status-table td:nth-child(1) {
+  width: 32%;
+}
+
+.document-status-table th:nth-child(2),
+.document-status-table td:nth-child(2),
+.document-status-table th:nth-child(3),
+.document-status-table td:nth-child(3),
+.document-status-table th:nth-child(4),
+.document-status-table td:nth-child(4) {
+  width: 16%;
+}
+
+.document-status-table th:nth-child(5),
+.document-status-table td:nth-child(5) {
+  width: 20%;
+}
+
+/* AC-3 row cross-link (a real <Link>, base.css already colours `a` in
+   --color-accent-700) -- strong weight instead of underline-by-default
+   marks it as "this row's primary identifier", underlining only on
+   hover/focus. */
+.document-status-table-link {
+  font-weight: var(--weight-body-strong);
+  text-decoration: none;
+}
+
+.document-status-table-link:hover,
+.document-status-table-link:focus-visible {
+  text-decoration: underline;
+}

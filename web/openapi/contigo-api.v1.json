@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Contigo API",
-    "version": "1.0.0",
-    "description": "Contract for the Contigo backend API (backend/src/Contigo.Api), consumed by the web (this file) and mobile (ADR-013) TypeScript clients per ADR-012's \"single OpenAPI document -> one generated TypeScript client, no hand-written divergent DTOs\" rule (see reports/architecture/draft/client-architect/api-consumption.md #1).\n\nProvenance / interim status (task E01/F07/US01/T02): the API host does not yet self-publish this document -- no Microsoft.AspNetCore.OpenApi / Swashbuckle / NSwag is wired into backend/src/Contigo.Api/Program.cs as of this task, and adding that is outside this task's file scope (the web client only; this task's frontmatter is target_repo: contigo-web). Until a backend task adds self-published OpenAPI generation, this file is hand-authored to describe exactly the routes Program.cs actually implements today, cross-checked against backend/tests/Contigo.Api.Tests. It is the single file `npm run generate:api` (web/scripts/generate-api-client.mjs) reads to produce web/src/api/generated/schema.ts, and must grow endpoint-by-endpoint as backend/src/Contigo.Api/Program.cs grows -- then be replaced outright once the API self-publishes its own document.\n\nURL versioning (OQ-client-007 in reports/open-questions.md, still `open` at council-close: \"OpenAPI codegen tool and URL versioning scheme ... owned by software-architect\") is deliberately NOT applied to the paths below: Program.cs maps bare `/health`, not `/v1/health`, and a client generated against a path the API does not actually serve would 404 in every real environment. `info.version` above tracks this document's own revision; add a URL path prefix here only once software-architect fixes one and Program.cs actually serves it under that prefix.\n\nCodegen tool choice (also part of OQ-client-007, resolved here for this task rather than left blocking it, per reports/open-questions.md's \"add an entry, state the assumption, build against it\"): third-party OpenAPI-to-TypeScript generators evaluated at authoring time (openapi-typescript@7.13.0, which peer-depends on `typescript@^5.x`) hard-conflict with this repo's already-committed `typescript@^7.0.2` (web/package.json, task E01/F07/US01/T01) under npm's default strict peer resolution. Rather than force an incorrect peer resolution (`--legacy-peer-deps`/`--force`) or downgrade a previous task's already-committed TypeScript version, this contract is compiled by a small first-party generator (web/scripts/generate-api-client.mjs, zero new dependencies) that reads this JSON file and emits the `paths`/`operations` TypeScript types the same way the mainstream tools shape them. Swap in a third-party tool once one publishes TypeScript-7-compatible peer ranges; the generated *output shape* (`paths`/`operations`) is deliberately kept compatible with that ecosystem convention so the swap is mechanical."
+    "version": "1.1.0",
+    "description": "Contract for the Contigo backend API (backend/src/Contigo.Api), consumed by the web (this file) and mobile (ADR-013) TypeScript clients per ADR-012's \"single OpenAPI document -> one generated TypeScript client, no hand-written divergent DTOs\" rule (see reports/architecture/draft/client-architect/api-consumption.md #1).\n\nProvenance / interim status (task E01/F07/US01/T02): the API host does not yet self-publish this document -- no Microsoft.AspNetCore.OpenApi / Swashbuckle / NSwag is wired into backend/src/Contigo.Api/Program.cs as of this task, and adding that is outside this task's file scope (the web client only; this task's frontmatter is target_repo: contigo-web). Until a backend task adds self-published OpenAPI generation, this file is hand-authored to describe exactly the routes Program.cs actually implements today, cross-checked against backend/tests/Contigo.Api.Tests. It is the single file `npm run generate:api` (web/scripts/generate-api-client.mjs) reads to produce web/src/api/generated/schema.ts, and must grow endpoint-by-endpoint as backend/src/Contigo.Api/Program.cs grows -- then be replaced outright once the API self-publishes its own document.\n\nURL versioning (OQ-client-007 in reports/open-questions.md, still `open` at council-close: \"OpenAPI codegen tool and URL versioning scheme ... owned by software-architect\") is deliberately NOT applied to the paths below: Program.cs maps bare `/health`, not `/v1/health`, and a client generated against a path the API does not actually serve would 404 in every real environment. `info.version` above tracks this document's own revision; add a URL path prefix here only once software-architect fixes one and Program.cs actually serves it under that prefix.\n\nCodegen tool choice (also part of OQ-client-007, resolved here for this task rather than left blocking it, per reports/open-questions.md's \"add an entry, state the assumption, build against it\"): third-party OpenAPI-to-TypeScript generators evaluated at authoring time (openapi-typescript@7.13.0, which peer-depends on `typescript@^5.x`) hard-conflict with this repo's already-committed `typescript@^7.0.2` (web/package.json, task E01/F07/US01/T01) under npm's default strict peer resolution. Rather than force an incorrect peer resolution (`--legacy-peer-deps`/`--force`) or downgrade a previous task's already-committed TypeScript version, this contract is compiled by a small first-party generator (web/scripts/generate-api-client.mjs, zero new dependencies) that reads this JSON file and emits the `paths`/`operations` TypeScript types the same way the mainstream tools shape them. Swap in a third-party tool once one publishes TypeScript-7-compatible peer ranges; the generated *output shape* (`paths`/`operations`) is deliberately kept compatible with that ecosystem convention so the swap is mechanical.\n\nTask E06/F01/US01/T01 (typescript-client-regen) added the four operations below beyond `/health`: `POST /api/workspaces` (create), `POST /api/workspaces/{tenantId}/invites` (invite), `POST /api/documents` (upload), `GET /api/documents/{id}` (read back) -- exactly epic-06-web-foundation's own R0 scope (\"the sign-in -> workspace picker flow ... and the R0 surfaces (members & roles, document upload, document-status read-back)\"). backend/src/Contigo.Api/Program.cs now also maps many more routes added by backend epics E02-E05 (GET /api/contracts, GET/PATCH /api/contracts/{id}, GET /api/contracts/{id}/corrections, GET /api/audit, GET /api/renewals and /api/renewals/{contractId}/priority, POST /api/renewals/{id}/action, GET/PATCH /api/savings and GET /api/savings/kpis, POST /api/chat/query, POST /api/quotes and GET /api/quotes/{id}/assessment, POST /api/negotiations/outcomes) that this task deliberately did NOT add here: epic-06-web-foundation's own \"Out of scope\" list names exactly that set (\"portfolio, Contract 360, review, Ask, renewals, savings, quote check -- later web epics\"), and feature-01-typescript-client-regen's own \"Council decisions carried into this story\" calls this a \"Repeating chore\" -- whichever web epic first builds a screen against one of those endpoints should extend this file next, the same way this task extended the `/health`-only version task E01/F07/US01/T02 left behind. Nullable fields (e.g. a freshly-uploaded or not-yet-classified document's `contractId`) use OpenAPI 3.1's `type: [X, \"null\"]` union instead of a bolted-on `nullable: true` flag; web/scripts/generate-api-client.mjs gained one small, additive case for it (a `type` array renders as the equivalent TypeScript union, plus a case for `object`/`properties` -- every new response below is a flat, single-level object) -- see that script's own comments on the change."
   },
   "servers": [
     {
@@ -41,6 +41,253 @@
                 "example": "Unhealthy"
               }
             }
+          }
+        }
+      }
+    },
+    "/api/workspaces": {
+      "post": {
+        "operationId": "createWorkspace",
+        "summary": "Create a new workspace (tenant).",
+        "description": "Maps 1:1 to CreateWorkspaceAsync in backend/src/Contigo.Api/WorkspaceEndpointExtensions.cs (task E01/F09/US01/T01, r0-integration), backed by WorkspaceProvisioningService.CreateWorkspaceAsync (backend/src/Contigo.Identity.Workspace/Infrastructure/WorkspaceProvisioningService.cs). The pre-authentication signup step -- nobody has a tenant claim yet, by definition -- so (unlike every other operation below) this one takes no X-Tenant-Id header. Task E06/F03/US01/T01 (us-01-signin-workspace-picker, AC-1 'Create a new workspace') is the first web caller of this already-implemented backend endpoint.\n\nInterim, pre-authentication endpoint: ADR-010's JWT/claims wiring is not yet in force (see that endpoint file's own doc comment), so there is no caller identity to attach as the new workspace's first member -- creating a workspace does not create a membership for the caller (WorkspaceProvisioningService only inserts the WorkspaceTenant + its seeded WorkspaceRole catalog, never a WorkspaceMembership row). No `GET` (list-workspaces-for-caller) endpoint exists yet anywhere in backend/src/Contigo.Api -- web/src/routes/signin/workspaceStore.ts documents the client-side interim this drives and exactly which backend types would need a list query added.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name"],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Workspace display name. WorkspaceProvisioningService.CreateWorkspaceAsync trims it and fails (400) if blank."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Workspace created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["id", "name", "createdAt"],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "description": "WorkspaceTenant.TenantId.Value (a Guid) -- also the workspace row's own Id (WorkspaceTenant's `Id == TenantId` invariant)."
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "WorkspaceTenant.CreatedAt (DateTimeOffset), System.Text.Json's default ISO-8601 rendering."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Blank name, or another validation failure surfaced via WorkspaceProvisioningService.CreateWorkspaceAsync's Result<T>.Error (a plain string, serialized as a JSON string body by Results.BadRequest).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspaces/{tenantId}/invites": {
+      "post": {
+        "operationId": "inviteWorkspaceMember",
+        "summary": "Invite a member into a workspace with a role.",
+        "description": "Maps to WorkspaceEndpointExtensions.InviteAsync (task E01/F09/US01/T01). The target tenant comes from the route, not a caller claim (ADR-010/Entra ID is not wired into this host yet) -- no X-Tenant-Id header here either, for the same reason.",
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" },
+            "description": "Workspace tenant id (WorkspaceTenant.TenantId)."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": { "type": "string" },
+                  "role": {
+                    "type": "string",
+                    "enum": ["Admin", "Procurement", "Legal", "Finance", "ReadOnly"]
+                  }
+                },
+                "required": ["email", "role"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Membership created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": { "type": "string", "format": "uuid" },
+                    "email": { "type": "string" },
+                    "role": {
+                      "type": "string",
+                      "enum": ["Admin", "Procurement", "Legal", "Finance", "ReadOnly"]
+                    }
+                  },
+                  "required": ["id", "email", "role"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid route tenantId, blank email, unrecognized role, or WorkspaceMembershipService.InviteAsync's Result.Error.",
+            "content": {
+              "application/json": {
+                "schema": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents": {
+      "post": {
+        "operationId": "uploadDocument",
+        "summary": "Upload a document for processing.",
+        "description": "Maps to the inline handler in Program.cs (task E01/F06/US01/T01 upload; task E02/F06/US01/T01 adds the synchronous parse -> classify -> extract pipeline before responding). Interim X-Tenant-Id header placeholder pending ADR-010 claim-based tenant resolution -- see Program.cs's own comment on this endpoint for why this gap is not yet promoted to reports/open-questions.md.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": { "type": "string", "format": "binary" }
+                },
+                "required": ["file"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Stored (and processed synchronously); contractId is null until classification links it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": { "type": "string", "format": "uuid" },
+                    "contractId": { "type": ["string", "null"], "format": "uuid" },
+                    "fileName": { "type": "string" },
+                    "mimeType": { "type": "string" },
+                    "processingStatus": {
+                      "type": "string",
+                      "enum": ["Uploaded", "Processing", "NeedsReview", "Completed", "Failed"]
+                    },
+                    "createdAt": { "type": "string", "format": "date-time" }
+                  },
+                  "required": ["id", "contractId", "fileName", "mimeType", "processingStatus", "createdAt"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid X-Tenant-Id header, a non-multipart body, an empty/missing 'file' field, or DocumentUploadService.UploadAsync's Result.Error.",
+            "content": {
+              "application/json": {
+                "schema": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{id}": {
+      "get": {
+        "operationId": "getDocument",
+        "summary": "Read back one document's metadata and processing status.",
+        "description": "Maps to the inline handler in Program.cs (task E01/F06/US01/T02). Same interim X-Tenant-Id header placeholder as POST /api/documents.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" },
+            "description": "Document.Id."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Document found for this tenant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": { "type": "string", "format": "uuid" },
+                    "contractId": { "type": ["string", "null"], "format": "uuid" },
+                    "fileName": { "type": "string" },
+                    "mimeType": { "type": "string" },
+                    "documentType": {
+                      "type": "string",
+                      "enum": ["Msa", "OrderForm", "Amendment", "Sow", "RenewalLetter", "Other"]
+                    },
+                    "processingStatus": {
+                      "type": "string",
+                      "enum": ["Uploaded", "Processing", "NeedsReview", "Completed", "Failed"]
+                    },
+                    "createdAt": { "type": "string", "format": "date-time" }
+                  },
+                  "required": ["id", "contractId", "fileName", "mimeType", "documentType", "processingStatus", "createdAt"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid X-Tenant-Id header, or a non-GUID id in the route.",
+            "content": {
+              "application/json": {
+                "schema": { "type": "string" }
+              }
+            }
+          },
+          "404": {
+            "description": "No such document for this tenant."
           }
         }
       }

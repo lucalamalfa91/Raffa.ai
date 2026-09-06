@@ -63,6 +63,17 @@ function renderSchemaType(schema) {
   if (Array.isArray(schema.enum) && schema.enum.length > 0) {
     return schema.enum.map((value) => JSON.stringify(value)).join(" | ");
   }
+  // OpenAPI 3.1 nullable-by-union, e.g. `"type": ["string", "null"]` -- task E06/F01/US01/T01
+  // added this for Document.ContractId (null until classification links a freshly-uploaded
+  // document to a contract; see web/openapi/contigo-api.v1.json's info.description). Each member
+  // is rendered as its own concrete type (or the literal `null`) and unioned; every schema this
+  // file documents today unions exactly one concrete type with "null", but this loops over
+  // however many members are actually present rather than assuming exactly two.
+  if (Array.isArray(schema.type)) {
+    return schema.type
+      .map((oneType) => (oneType === "null" ? "null" : renderSchemaType({ ...schema, type: oneType })))
+      .join(" | ");
+  }
   switch (schema.type) {
     case "string":
       return "string";
@@ -73,10 +84,27 @@ function renderSchemaType(schema) {
       return "boolean";
     case "array":
       return `${renderSchemaType(schema.items)}[]`;
+    case "object": {
+      // Flat property maps only -- task E06/F01/US01/T01 (the workspace/document response bodies
+      // this contract documents today are all a single flat level -- none of their own
+      // properties are themselves an object). `required` marks a property non-optional; anything
+      // absent from it renders with a `?` instead, the normal OpenAPI/JSON-Schema meaning. Task
+      // E06/F03/US01/T01 (signin-workspace-picker) independently needed this same case for
+      // `POST /api/workspaces`'s `201` body (id/name/createdAt) -- both tasks branched before the
+      // other landed on integration; this is the merged implementation both rely on.
+      // Extend this case (not the generated output by hand) when a future endpoint needs a
+      // property whose value is itself an object, or a `$ref`/`oneOf` schema.
+      if (!schema.properties || typeof schema.properties !== "object") return "unknown";
+      const required = new Set(Array.isArray(schema.required) ? schema.required : []);
+      const members = Object.entries(schema.properties).map(
+        ([key, propSchema]) => `${key}${required.has(key) ? "" : "?"}: ${renderSchemaType(propSchema)}`,
+      );
+      return members.length > 0 ? `{ ${members.join("; ")} }` : "Record<string, never>";
+    }
     default:
       // Not needed by any operation web/openapi/contigo-api.v1.json documents
       // today. Extend this switch (not the generated output by hand) when a
-      // future endpoint needs `object`/`$ref`/oneOf support.
+      // future endpoint needs `$ref`/oneOf support.
       return "unknown";
   }
 }

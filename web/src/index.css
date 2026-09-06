@@ -1,7 +1,10 @@
-:root {
-  color-scheme: light dark;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-}
+/* Task E06/F02/US01/T01: the Modernist design system (ADR-019) -- tokens,
+   base element defaults, and the locked component catalogue. It sets its
+   own `color-scheme: light` (see styles/tokens.css) because Modernist is a
+   single flat light system; the `light dark` this file used to declare
+   would otherwise mismatch native control chrome against the hard-coded
+   light palette the design system imports below. */
+@import "./styles/index.css";
 
 body {
   margin: 0;
@@ -16,5 +19,9 @@ main,
 }
 
 .startup-error {
-  color: #7a1f1f;
+  /* Was a hard-coded #7a1f1f -- a third, uncoordinated red next to
+     --color-accent and --color-accent-700. This is exactly the "divergent
+     visual language per screen" ADR-019 exists to prevent, so it now uses
+     the design system's own AA-safe accent text colour instead. */
+  color: var(--color-accent-700);
 }

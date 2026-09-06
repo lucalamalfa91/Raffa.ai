@@ -19,10 +19,82 @@ export interface operations {
       };
     };
   };
+  createWorkspace: {
+    responses: {
+      201: {
+        content: {
+          "application/json": { id: string; name: string; createdAt: string };
+        };
+      };
+      400: {
+        content: {
+          "application/json": string;
+        };
+      };
+    };
+  };
+  inviteWorkspaceMember: {
+    responses: {
+      201: {
+        content: {
+          "application/json": { id: string; email: string; role: "Admin" | "Procurement" | "Legal" | "Finance" | "ReadOnly" };
+        };
+      };
+      400: {
+        content: {
+          "application/json": string;
+        };
+      };
+    };
+  };
+  uploadDocument: {
+    responses: {
+      201: {
+        content: {
+          "application/json": { id: string; contractId: string | null; fileName: string; mimeType: string; processingStatus: "Uploaded" | "Processing" | "NeedsReview" | "Completed" | "Failed"; createdAt: string };
+        };
+      };
+      400: {
+        content: {
+          "application/json": string;
+        };
+      };
+    };
+  };
+  getDocument: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { id: string; contractId: string | null; fileName: string; mimeType: string; documentType: "Msa" | "OrderForm" | "Amendment" | "Sow" | "RenewalLetter" | "Other"; processingStatus: "Uploaded" | "Processing" | "NeedsReview" | "Completed" | "Failed"; createdAt: string };
+        };
+      };
+      400: {
+        content: {
+          "application/json": string;
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
 }
 
 export interface paths {
   "/health": {
     get: operations["getHealth"];
+  };
+  "/api/workspaces": {
+    post: operations["createWorkspace"];
+  };
+  "/api/workspaces/{tenantId}/invites": {
+    post: operations["inviteWorkspaceMember"];
+  };
+  "/api/documents": {
+    post: operations["uploadDocument"];
+  };
+  "/api/documents/{id}": {
+    get: operations["getDocument"];
   };
 }
