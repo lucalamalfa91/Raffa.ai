@@ -135,7 +135,38 @@ web/
       client.ts                # createApiClient(baseUrl) -> { getHealth() }
     config/appConfig.ts       # fetch + validate runtime config
     auth/msalConfig.ts        # AppConfig -> MSAL Configuration (no secret, ever)
+    styles/                   # design system (tokens + component catalogue); see below
     App.tsx                   # sign-in/sign-out shell + API health status (AuthenticatedTemplate/UnauthenticatedTemplate)
     main.tsx                  # boot: load config -> construct MSAL + API client -> render
+    index.css                 # global entry; imports styles/index.css
   tests/                      # mirrors src/; vitest + Testing Library
 ```
+
+## Design system (ADR-019, task E06/F02/US01/T01)
+
+`src/styles/` is the shared Modernist token sheet + component catalogue every
+later screen builds on -- one visual language, not a divergent one per
+screen. `src/index.css` (imported once, in `main.tsx`) pulls it in via
+`@import "./styles/index.css"`.
+
+| File | Contents |
+|------|----------|
+| `styles/tokens.css` | `:root` custom properties: colour ramps, spacing, radius (always `0`), type, shadows (dialogs only), disabled opacity. Cites its sources (design-system.md, ADR-019, the compiled `day1-demo.html` bundle) in a header comment. |
+| `styles/base.css` | Global element defaults: page ground/ink/font on `body`, heading weights, focus ring, `.icon`, `.grayscale`. |
+| `styles/components.css` | The locked component catalogue: `.btn` (+ variants), `.tag` (+ variants), `.table`, `.input`/`.field`, `.radio + .dot`, `.seg`, `.card`, skeleton bars, attention/threshold strip, detail pane, "Facts vs AI" separation, plus the semantic-mapping treatments (`.deadline-critical`, `.abstain-block`, `.row-critical`). |
+| `styles/semantics.ts` | Typed confidence/status/risk/deadline -> tag-variant + label mapping (ADR-019 "Semantic mapping"). Screens call this instead of re-deriving thresholds or reading a tag's colour -- meaning is never colour-only (AC-2). Tested in `tests/styles/semantics.test.ts`. |
+
+**Values are consumed verbatim, not forked** (ADR-019): every token traces to
+`inputs/design/prototypes/design-system.md` or the compiled
+`inputs/design/prototypes/day1-demo.html` bundle. No `/design-sync` tool is
+available in this harness (no Claude Design skill mounted), so the markdown
+dump plus the compiled bundle is the authoritative source, per ADR-019's own
+fallback.
+
+`.btn-primary` keeps the locked `--color-accent` (#ec3013) background with a
+white label; measured contrast is ~4.2:1, under WCAG's 4.5:1 normal-text
+floor (it does clear the 3:1 UI-component floor). ADR-019 pins >=4.5:1 for
+accent-coloured *text on the page ground* (`--color-accent-700`) but does not
+separately pin a floor for light text on a filled accent surface -- flagged
+in a comment on `.btn-primary` in `styles/components.css` rather than
+silently shipped or "fixed" by forking the locked accent value.

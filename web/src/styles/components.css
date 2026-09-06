@@ -1,0 +1,529 @@
+/**
+ * Contigo design system — component catalogue ("Modernist").
+ *
+ * Exactly the locked catalogue from ADR-019 / design-system.md, nothing
+ * added: .btn, .tag, .table, .input, .field > label, .radio + .dot, .seg,
+ * .card, .hr (see base.css), skeleton bars, attention/threshold strip,
+ * detail pane, "Facts vs AI" separation -- plus the semantic-mapping
+ * treatments (critical row tint, deadline-critical, abstain block) that
+ * render the confidence/status/risk table in ADR-019 "Semantic mapping".
+ *
+ * Text, not colour, always carries the meaning: every class below is meant
+ * to be paired with a visible label in markup (e.g. `.tag-accent` renders
+ * "Flagged · 88%", never a bare coloured dot) -- see src/styles/semantics.ts
+ * for the typed source of the labels themselves (AC-2, "not colour-only").
+ *
+ * App-level composites named in design-system.md but *not* in ADR-019's
+ * locked "Component catalogue" list (the global Ask bar, the app shell) are
+ * out of this task's scope -- they belong to the app-shell/screen tasks that
+ * consume this sheet (epic-06/feature-03+).
+ */
+
+/* =========================================================================
+ * .btn — primary / secondary / ghost / block
+ * ========================================================================= */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start; /* "labels flush left", even inside .btn-block */
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  font-size: 14px;
+  font-weight: var(--weight-body-strong);
+  line-height: var(--leading-label);
+  text-align: left;
+  background: transparent;
+  border: 2px solid transparent;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.btn:disabled {
+  opacity: var(--opacity-disabled);
+  cursor: not-allowed;
+}
+
+/*
+ * .btn-primary uses the raw --color-accent background (the ADR-019 token
+ * literally named "primary action"), with a white label. Measured contrast
+ * of #fff on #ec3013 is ~4.2:1 -- it clears WCAG's 3:1 UI-component/large-text
+ * floor but sits under the 4.5:1 normal-text floor. ADR-019 only pins
+ * >=4.5:1 for accent-coloured *text on the page ground* via --color-accent-700
+ * (see tokens.css); it does not separately pin a contrast floor for light
+ * text on a filled accent surface. This is an inherited-palette gap, not one
+ * this file introduces: --color-accent is fixed at #ec3013 and ADR-019
+ * forbids forking it, so the fix (if the council wants one) is a UX-owned
+ * ADR change, not a locally invented "button-safe" accent. Flagged here in
+ * code rather than silently shipped.
+ */
+.btn-primary {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--color-accent-600);
+  border-color: var(--color-accent-600);
+}
+
+.btn-primary:active:not(:disabled) {
+  background: var(--color-accent-700);
+  border-color: var(--color-accent-700);
+}
+
+.btn-secondary {
+  background: var(--color-surface);
+  border-color: var(--color-text);
+  color: var(--color-text);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--color-neutral-200);
+}
+
+.btn-ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--color-text);
+}
+
+.btn-ghost:hover:not(:disabled) {
+  background: var(--color-neutral-200);
+}
+
+.btn-block {
+  display: flex;
+  width: 100%;
+}
+
+/* =========================================================================
+ * .tag — neutral / accent / outline (drives the confidence/status/risk
+ * semantic mapping; see src/styles/semantics.ts for the label/variant pairs)
+ * ========================================================================= */
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  font-size: 12px;
+  font-weight: var(--weight-body-strong);
+  line-height: var(--leading-label);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+
+.tag-neutral {
+  background: var(--color-neutral-200);
+  color: var(--color-text);
+}
+
+.tag-accent {
+  background: var(--color-accent-100);
+  color: var(--color-accent-700);
+}
+
+.tag-outline {
+  background: transparent;
+  border-color: var(--color-text);
+  color: var(--color-text);
+}
+
+/* =========================================================================
+ * .table — 2px header rule, 1px row rules, hover tint, fixed layout
+ * ========================================================================= */
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 13px;
+}
+
+.table th {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 2px solid var(--color-divider);
+  font-size: 11px;
+  font-weight: var(--weight-body-strong);
+  letter-spacing: var(--tracking-table-header);
+  text-align: left;
+  text-transform: uppercase;
+  color: var(--color-neutral-600);
+}
+
+.table td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-divider);
+  vertical-align: middle;
+}
+
+.table tbody tr:hover {
+  background: var(--color-neutral-200);
+}
+
+/* Urgency in tables: row tint + 3px left bar for critical rows
+   (design-system.md "App-level patterns"). Uses an inset box-shadow for the
+   bar so it doesn't shift column widths or fight the row's own borders. */
+.table tr.row-critical {
+  background: var(--color-accent-100);
+  box-shadow: inset 3px 0 0 var(--color-accent);
+}
+
+/* =========================================================================
+ * .input / .field > label
+ * ========================================================================= */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-bottom: var(--space-4);
+}
+
+.field > label {
+  font-size: 12px;
+  font-weight: var(--weight-body-strong);
+  color: var(--color-text);
+}
+
+.input {
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface);
+  border: 2px solid var(--color-text);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+}
+
+.input:disabled {
+  opacity: var(--opacity-disabled);
+}
+
+.input::placeholder {
+  color: var(--color-neutral-600);
+}
+
+/* =========================================================================
+ * .radio + .dot — native <input type="radio" class="radio"> followed by a
+ * sibling `.dot` indicator (the exact "`.radio + .dot`" selector ADR-019
+ * names). The native control stays in the accessibility tree and
+ * keyboard-operable; only the paint is custom.
+ * ========================================================================= */
+
+.radio {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  flex-shrink: 0;
+  border: 2px solid var(--color-text);
+  border-radius: 50%; /* the one deliberate circle in an otherwise zero-radius
+                          system -- it is what reads as a radio control */
+  cursor: pointer;
+}
+
+.radio:disabled {
+  opacity: var(--opacity-disabled);
+  cursor: not-allowed;
+}
+
+.radio + .dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-left: -12px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.1s ease;
+}
+
+.radio:checked + .dot {
+  opacity: 1;
+}
+
+/* =========================================================================
+ * .seg — segmented control (native <button aria-pressed> children)
+ * ========================================================================= */
+
+.seg {
+  display: inline-flex;
+  border: 2px solid var(--color-text);
+}
+
+.seg > button {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-right: 2px solid var(--color-text);
+  padding: var(--space-1) var(--space-3);
+  font-size: 13px;
+  font-weight: var(--weight-body-strong);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.seg > button:last-child {
+  border-right: 0;
+}
+
+.seg > button[aria-pressed="true"] {
+  background: var(--color-text);
+  color: var(--color-bg);
+}
+
+/* =========================================================================
+ * .card — recommendation / provenance blocks only (design-system.md:
+ * shadows are for dialogs, never in-app -- .card stays flat, bordered).
+ * ========================================================================= */
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  padding: var(--space-4);
+}
+
+/* =========================================================================
+ * Skeleton bars — loading state (design-system.md "States")
+ * ========================================================================= */
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--color-neutral-300);
+  border-radius: var(--radius-sm);
+}
+
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--color-bg) 60%, transparent),
+    transparent
+  );
+  animation: contigo-skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes contigo-skeleton-pulse {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton::after {
+    animation: none;
+  }
+}
+
+/* =========================================================================
+ * Attention / threshold strip — full-width row of equal cells, big number +
+ * label, clickable filter (design-system.md "App-level patterns")
+ * ========================================================================= */
+
+.attention-strip {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  border-top: 2px solid var(--color-divider);
+  border-bottom: 2px solid var(--color-divider);
+}
+
+.attention-cell {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-right: 1px solid var(--color-divider);
+  padding: var(--space-3) var(--space-2);
+  text-align: left;
+  cursor: pointer;
+}
+
+.attention-cell:last-child {
+  border-right: 0;
+}
+
+.attention-cell .attention-number {
+  display: block;
+  font-family: var(--font-heading);
+  font-size: 26px;
+  font-weight: var(--weight-heading);
+  line-height: var(--leading-display);
+  color: var(--color-text); /* zero state: grey per design-system.md */
+}
+
+/* Red number = urgent (design-system.md "App-level patterns"); paired with
+   the cell's own text label, never colour alone. */
+.attention-cell.is-urgent .attention-number {
+  color: var(--color-accent);
+}
+
+.attention-cell .attention-label {
+  display: block;
+  margin-top: var(--space-1);
+  font-size: 12px;
+  color: var(--color-neutral-600);
+}
+
+/* =========================================================================
+ * Detail pane — 340-400px, surface, 2px left rule; wraps below the list
+ * under ~900px main width (design-system.md "App-level patterns")
+ * ========================================================================= */
+
+.detail-pane {
+  width: 100%;
+  min-width: 340px;
+  max-width: 400px;
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border-left: 2px solid var(--color-divider);
+}
+
+@media (max-width: 900px) {
+  .detail-pane {
+    min-width: 0;
+    max-width: none;
+    border-left: 0;
+    border-top: 2px solid var(--color-divider);
+  }
+}
+
+/* =========================================================================
+ * "Facts vs AI" separation — deterministic facts stay in a .table (mark the
+ * source column/tag "Deterministic"); the AI recommendation gets its own
+ * labelled block. Never mixed in one cell (design-system.md "App-level
+ * patterns"). The label text itself belongs in markup
+ * (`<p class="ai-recommendation-label">Recommended action</p>`), not baked
+ * into CSS `content`, so it stays visible to assistive tech, tests, and any
+ * future localisation pass.
+ * ========================================================================= */
+
+.ai-recommendation {
+  background: var(--color-surface);
+  border-left: 2px solid var(--color-accent);
+  padding: var(--space-4);
+}
+
+.ai-recommendation-label {
+  display: block;
+  margin-bottom: var(--space-2);
+  font-size: 11px;
+  font-weight: var(--weight-body-strong);
+  letter-spacing: var(--tracking-table-header);
+  text-transform: uppercase;
+  color: var(--color-neutral-600);
+}
+
+/* =========================================================================
+ * Semantic mapping treatments that are not tag variants (ADR-019 "Semantic
+ * mapping (locked)" / design-system.md "Semantic mapping")
+ * ========================================================================= */
+
+/* Deadline <=45 days: date in --color-accent-700, weight 600. Pair with the
+   day count in the label -- this class only supplies the *treatment*, see
+   src/styles/semantics.ts#isDeadlineCritical for the threshold. */
+.deadline-critical {
+  font-weight: var(--weight-body-strong);
+  color: var(--color-accent-700);
+}
+
+/* Abstain ("cannot determine reliably"): 2px accent left rule +
+   --color-accent-100 block. */
+.abstain-block {
+  padding: var(--space-4);
+  background: var(--color-accent-100);
+  border-left: 2px solid var(--color-accent);
+  color: var(--color-text);
+}
+
+/* =========================================================================
+ * Type-scale utilities named in ADR-019 "Type scale (app)" that aren't
+ * already bare h1-h6 defaults (base.css)
+ * ========================================================================= */
+
+.screen-kicker {
+  display: block;
+  margin-bottom: var(--space-1);
+  font-family: var(--font-heading);
+  font-size: 13px;
+  font-weight: var(--weight-heading);
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+
+.screen-title {
+  font-size: 32px;
+  font-weight: var(--weight-heading);
+  line-height: var(--leading-display);
+  letter-spacing: var(--tracking-display);
+}
+
+.kpi-number {
+  font-family: var(--font-heading);
+  font-size: 26px;
+  font-weight: var(--weight-heading);
+  line-height: var(--leading-display);
+  font-variant-numeric: tabular-nums;
+}
+
+.key-fact-number {
+  font-family: var(--font-heading);
+  font-size: 22px; /* ADR-019 states a 20-22px range; using the top of it */
+  font-weight: var(--weight-heading);
+  line-height: var(--leading-display);
+  font-variant-numeric: tabular-nums;
+}
+
+.micro-meta {
+  font-size: 12px;
+  line-height: var(--leading-label);
+  color: var(--color-neutral-600);
+}
+
+/* =========================================================================
+ * States — empty / error / hint (design-system.md "States"; ADR-019
+ * accessibility baseline: "Empty/error copy is plain-language and names the
+ * failing job, never a raw stack trace")
+ * ========================================================================= */
+
+.empty-state {
+  max-width: 480px;
+  text-align: left;
+}
+
+.empty-state h3 {
+  margin-bottom: var(--space-2);
+}
+
+.error-state {
+  padding-left: var(--space-4);
+  border-left: 2px solid var(--color-accent);
+}
+
+.error-state h4 {
+  margin-bottom: var(--space-2);
+}
+
+/* A hint next to a disabled control -- e.g. why "Mark as validated" is
+   disabled (ADR-019 accessibility baseline: "a visible reason, not a hidden
+   control"). Plain text, not colour-coded, so it reads under any state. */
+.hint {
+  display: block;
+  margin-top: var(--space-1);
+  font-size: 12px;
+  color: var(--color-neutral-600);
+}
