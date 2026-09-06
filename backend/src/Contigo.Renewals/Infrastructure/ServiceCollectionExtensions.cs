@@ -32,6 +32,16 @@ namespace Contigo.Renewals.Infrastructure;
 /// singleton as a constructor dependency instead of using its own compile-time defaults. First real
 /// caller: <c>Contigo.Api.RenewalsEndpointExtensions</c>'s new <c>GET /api/renewals/{id}/priority</c>
 /// route.</item>
+/// <item>E03/F03/US01/T02 (renewal-action): <see cref="RenewalActionService"/>, this module's first
+/// <see cref="RenewalsDbContext"/> consumer — see this method's own <c>connectionString</c>
+/// remark below.</item>
+/// <item>E03/F02/US01/T02 (renewal-alerts): <see cref="RenewalAlertService"/> — depends on
+/// <see cref="RenewalEngine"/> and <see cref="RenewalThresholdScheduler"/> (both already registered
+/// above) plus <see cref="RenewalsDbContext"/>/<see cref="IAuditWriter"/> (same landmine as
+/// <see cref="RenewalActionService"/>). First real callers:
+/// <c>Contigo.Worker.Scheduling.RenewalThresholdSchedulerHostedService</c> (creates alerts from every
+/// tick's raised events) and <c>Contigo.Api.RenewalAlertRecomputeService</c> (recomputes on `PATCH
+/// /api/contracts/{id}`).</item>
 /// </list>
 ///
 /// Every "wiring lands with the first real caller" gap this list used to describe is now closed —
@@ -208,6 +218,14 @@ public static class ServiceCollectionExtensions
         // RenewalThresholdScheduler (both Contigo.Api.Program and
         // Contigo.Worker.WorkerServiceCollectionExtensions.AddWorkerHost already do).
         services.AddScoped<RenewalActionService>();
+
+        // Task E03/F02/US01/T02 (renewal-alerts): RenewalAlertService depends on the Scoped
+        // RenewalsDbContext/IAuditWriter above (same landmine as RenewalActionService/
+        // RenewalThresholdScheduler) plus RenewalEngine and RenewalThresholdScheduler, both already
+        // registered above in this same method — registration order does not matter to the
+        // container (Scoped services resolve dependencies lazily, per scope), only that every one
+        // of them is registered somewhere in this method.
+        services.AddScoped<RenewalAlertService>();
 
         return services;
     }

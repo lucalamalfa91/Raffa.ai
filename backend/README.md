@@ -609,6 +609,52 @@ undetected until r2-integration's own real-Postgres proof
 opens its own scope before writing, the same convention
 `RenewalActionService.SetActionAsync` already follows.
 
+### Renewal alerts
+
+`Contigo.Renewals.Application.RenewalAlertService` (task E03/F02/US01/T02,
+the wave-spec's `renewal-alerts` artifact; parent story
+us-01-threshold-scheduler AC-2/AC-3) closes the gap the section above
+named: a persisted, de-duplicated `Contigo.Renewals.Domain.RenewalAlert` row
+per raised `renewal.approaching` event, plus recompute-on-correction.
+
+- **Creation (AC-2)** — `CreateFromEventsAsync` de-duplicates every raised
+  `RenewalApproachingEvent` against this contract's own currently-`Active`
+  alerts (keyed by tenant/contract/milestone/thresholdDays — a filtered
+  unique index on that tuple, `WHERE status = 'Active'`, is the
+  database-level backstop) and persists exactly one new row per genuinely
+  new match, each writing one `renewal.alert_created` `IAuditWriter` entry.
+  `Contigo.Worker.Scheduling.RenewalThresholdSchedulerHostedService` calls
+  this immediately after every scheduler tick's own
+  `EvaluateThresholdsAsync`, in the same DI scope.
+- **Recompute (AC-3)** — `RecomputeForContractAsync` re-derives a contract's
+  renewal date/cancellation deadline via `RenewalEngine.Calculate` and
+  resolves (`renewal.alert_resolved`, status flips to `Resolved` — never
+  deleted, Appendix C rule 5) any `Active` alert whose own `MilestoneDate`
+  no longer matches, then re-runs `RenewalThresholdScheduler
+  .EvaluateThresholdsAsync` for that one contract against the corrected
+  terms so a correction landing exactly on a configured threshold today
+  raises the same `renewal.approaching` event (and alert) a scheduled tick
+  would raise tomorrow. `Contigo.Api.RenewalAlertRecomputeService` — the
+  composition-root orchestrator ADR-002 requires for any code that touches
+  both `Contigo.Documents.Contracts` and `Contigo.Renewals` (mirrors
+  `NegotiationOutcomePropagationService`) — calls this from `PATCH
+  /api/contracts/{id}` (see `ContractsEndpointExtensions`), but only when
+  the correction actually touched `endDate` or `autoRenewal` (the only two
+  `Contract` fields `ContractRenewalTerms` consumes today — a
+  `cancellationDeadline`-only correction is a no-op for this purpose, since
+  `RenewalEngine` derives its own deadline from `CancellationNoticeDays`,
+  always `null` today, never from that raw field).
+
+This module's second table, `renewal_alert`, and its RLS policy land in one
+migration (`AddRenewalAlert` — the same "table doesn't pre-exist, so RLS is
+not a retrofit" convention `Contigo.Quotes`'s own `AddSkuProductMapping`/
+`AddNegotiationOutcome` migrations already established). No HTTP read
+endpoint exists for alerts yet (no AC/task names one) — proven instead via
+`Contigo.Renewals.Tests.RenewalAlertServiceTests`/
+`RenewalAlertRlsCrossTenantIsolationTests` and
+`Contigo.IntegrationTests.R2EndToEndTests`' own
+`Renewal_alerts_are_created_from_thresholds_and_recomputed_on_contract_correction`.
+
 ## R1 demo smoke test
 
 The automated proof of task E02/F06/US01/T01 (r1-integration) is
@@ -665,17 +711,17 @@ the real, RLS-enforced `DocumentsContractsDbContext` (see
 path — R2's own leaf artifacts all take already-validated contract data as
 an input, never produce it.
 
-**Honest scope note:** this task's own wave-spec `depends_on` names
-`renewal-alerts` (task E03/F02/US01/T02, "Alert creation + re-compute on
-correction"), but that task has not landed any code as of this task's own
-run. The only "alert" artifact that actually exists is the
-`renewal.approaching` **threshold event** (task E03/F02/US01/T01,
-`threshold-scheduler`, see above) — a durable, queryable audit entry, not a
-persisted, de-duplicated `RenewalAlert` row with recompute-on-correction.
-`R2EndToEndTests` proves exactly the former (parent story AC-2's own literal
-wording, "Threshold events fire") and no more; a persisted alert entity
-with recompute-on-correction remains task E03/F02/US01/T02's own, still-open
-file scope.
+**Updated by task E03/F02/US01/T02 (renewal-alerts):** this task's own
+wave-spec `depends_on` named `renewal-alerts`, which had not landed any code
+as of this task's original run — only the `renewal.approaching` threshold
+event (task E03/F02/US01/T01) existed then. `R2EndToEndTests` proved that
+literal event and no more; a persisted, de-duplicated `RenewalAlert` row
+with recompute-on-correction was still open. That task has since landed:
+see "Renewal alerts" above, and `R2EndToEndTests`' own
+`Renewal_alerts_are_created_from_thresholds_and_recomputed_on_contract_correction`
+for the added proof (alert creation composed with the scheduler tick, then
+`PATCH /api/contracts/{id}` resolving/re-raising alerts through the real
+`Contigo.Api.RenewalAlertRecomputeService` wiring).
 
 ## Savings Intelligence — deterministic price normalization
 
