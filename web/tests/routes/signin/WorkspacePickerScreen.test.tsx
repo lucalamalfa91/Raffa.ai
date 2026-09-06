@@ -124,6 +124,22 @@ describe("WorkspacePickerScreen", () => {
     });
   });
 
+  it("offers a Continue link into the app shell once a workspace is current (task E06/F03/US02/T01)", () => {
+    window.sessionStorage.setItem("contigo.signin.currentWorkspace", JSON.stringify({ id: "w-2", name: "Globex Sandbox" }));
+
+    render(
+      <WorkspacePickerScreen
+        apiClient={mockApiClient()}
+        accountKey={ACCOUNT_KEY}
+        accountLabel="user@example.test"
+        onSignOut={vi.fn()}
+      />,
+    );
+
+    const continueLink = screen.getByRole("link", { name: /continue to globex sandbox/i });
+    expect(continueLink).toHaveAttribute("href", "/");
+  });
+
   it("returns to the list from the confirmation panel via Switch workspace", async () => {
     window.sessionStorage.setItem("contigo.signin.currentWorkspace", JSON.stringify({ id: "w-2", name: "Globex Sandbox" }));
 

@@ -13,6 +13,10 @@ and ADR-018 (information architecture / route map).
   is structural, not just convention (AC-1).
 - **Generated OpenAPI client** (`src/api/`) — the only way `src/` talks to the
   backend API; see "API client" below (AC-3).
+- **`react-router-dom`** (task E06/F03/US02/T01) — client-side routing for the
+  signed-in app shell (`src/components/shell/`). `/signin` itself stays gated
+  on MSAL auth state, not a router route (see "Screens" below) — the router
+  only covers the authenticated-and-workspace-selected app.
 - **Vitest + Testing Library** — unit tests under `tests/`, mirroring `src/`.
 
 ## Commands
@@ -76,14 +80,58 @@ the web workflow after that apply.
 | Route | Screen(s) | Task |
 |-------|-----------|------|
 | `/signin` | Sign-in (Entra redirect, idle/redirecting states) -> workspace picker (list + create + confirm) | E06/F03/US01/T01 |
+| `/` (home), `/contracts`, `/contracts/:id`, `/contracts/:id/review`, `/renewals`, `/ask`, `/documents`, `/review`\*, `/quotes`\*, `/quotes/:id`, `/workspace/members` | App shell: 224px left rail + global Ask bar + routed content. Every route beyond `/workspace/members` renders a `ScaffoldScreen` placeholder today -- the real screens ship in later epic-07/epic-08/feature-04/05 tasks named at each route (see `src/components/shell/WorkspaceShellApp.tsx`). | E06/F03/US02/T01 |
 
-No client-side router is wired in yet (no `react-router-dom` in
-`package.json`) -- `src/routes/signin/` (`SignInRoute`, the folder's default
-export) is gated on MSAL auth state (`useMsal().accounts`) instead of a URL
-route, mounted directly by `src/App.tsx`. Introducing a real router and the
-admin/procurement route guards it enables is E06/F03/US02/T01's
-("navigation-shell") job; swapping this gate for a `<Route path="/signin">`
-later does not change either screen underneath.
+\* `/review` and `/quotes` are this task's own placeholder landing paths, not
+a row in ADR-018's locked route map -- that table only ever names a *detail*
+route for these two nav destinations (`/contracts/:id/review`, `/quotes/:id`
+respectively). See `src/components/shell/navItems.ts`'s header comment.
+
+`src/routes/signin/` (`SignInRoute`, the folder's default export) is still
+gated on MSAL auth state (`useMsal().accounts`) rather than a URL route --
+that has not changed. What task E06/F03/US02/T01 added is `src/App.tsx`'s
+*second* decision, evaluated after that: signed in **and** a workspace
+already picked this session (`workspaceStore.ts`'s `loadCurrentWorkspace()`)
+mounts `src/components/shell/WorkspaceShellApp.tsx` (its own `<BrowserRouter>`
++ route table) instead of `SignInRoute`. `WorkspacePickerScreen.tsx`'s
+"Continue to `<workspace>` →" control (added by the same task) is a plain
+hard navigation (`<a href="/">`), not a client-side link, since no router is
+mounted yet at that point in the tree -- the resulting fresh page load is
+what re-evaluates `App.tsx`'s check with both facts already true.
+
+### App shell, navigation, and the role guard (ADR-018, ADR-019, task E06/F03/US02/T01)
+
+- **Rail** (`src/components/shell/RailNav.tsx`) -- the eight items and their
+  order are locked verbatim from parent story us-02's AC-1 list / ia.md's
+  "Navigation (left rail)" (`src/components/shell/navItems.ts`). No icon
+  library is a dependency yet, so rail items are text-only (design-system.md
+  calls for Lucide icons; adding that library is not this task's scope).
+- **Role guard (AC-2)** -- "Workspace & members" is the one admin-only item.
+  `navItems.ts#getVisibleNavItems` hides it from the rail for a Procurement
+  role (unit-tested); `src/components/shell/RequireRole.tsx` is the same
+  guard at the route level (defense in depth for a direct URL visit), which
+  renders ADR-018's "request access" state instead of the real screen.
+- **Role source is interim** (`src/components/shell/workspaceRole.ts`): no
+  JWT/claims wiring exists yet (ADR-010 is not wired into
+  `backend/src/Contigo.Api/Program.cs`), so there is no server-issued "what
+  is my role" answer today. The default is `admin` (whoever picked a
+  workspace in this browser created it, and is therefore its Admin --
+  the same fact `workspaceStore.ts`'s `roleLabel` already encodes). **An
+  operator/demo-runner can see the Procurement-gated state by visiting the
+  app with `?role=procurement` once** (e.g. `https://<swa-host>/?role=procurement`);
+  the override is session-scoped (`sessionStorage`) and two-valued only --
+  it is not, and must never be read as, a real authorization claim. Once
+  ADR-010's claim wiring lands, only this one function changes.
+- **Global Ask bar (AC-3)** -- `src/components/ask-bar/GlobalAskBar.tsx`
+  renders on every routed screen (mounted once, above `<Outlet/>`, in
+  `AppShell.tsx`). Enter submits the typed text and navigates to `/ask` with
+  it in router state (`useLocation().state?.query` -- consumed by whichever
+  future task builds the real Ask Contigo screen,
+  epic-07/feature-04-ask-contigo-ui); Cmd/Ctrl+K focuses the input from
+  anywhere. Suggestion-chip copy (`src/components/ask-bar/askSuggestions.ts`)
+  is placeholder text keyed by route prefix, not real query intelligence --
+  this bar is explicitly a scaffold that gets the user to `/ask`, it does not
+  answer them.
 
 **Workspace list is a client-side cache, not a server query** -- there is no
 backend endpoint that lists the workspaces a signed-in identity belongs to
@@ -212,13 +260,27 @@ web/
     auth/msalConfig.ts        # AppConfig -> MSAL Configuration (no secret, ever)
     styles/                   # design system (tokens + component catalogue); see below
     routes/
-      signin/               # ADR-018 `/signin`; gated on MSAL auth state, not a URL route yet (see "Screens" above)
+      signin/               # ADR-018 `/signin`; gated on MSAL auth state, not a URL route (see "Screens" above)
         index.tsx             # SignInRoute -- no account: SignInScreen; signed in: WorkspacePickerScreen
         SignInScreen.tsx      # idle / redirecting states around instance.loginRedirect()
-        WorkspacePickerScreen.tsx # list (workspaceStore cache) + create via POST /api/workspaces
+        WorkspacePickerScreen.tsx # list (workspaceStore cache) + create via POST /api/workspaces + "Continue" into the shell
         workspaceStore.ts     # per-account localStorage cache + sessionStorage "current workspace"; documents the missing list/membership backend gap
         signin.css            # this route's styles
-    App.tsx                   # composition root: /health proof-of-connectivity effect, mounts routes/signin
+    components/
+      shell/                  # task E06/F03/US02/T01 -- app shell, router, role guard (see "App shell" above)
+        navItems.ts             # locked 8-item rail model + getVisibleNavItems(role) role guard (AC-1/AC-2)
+        workspaceRole.ts        # interim client-side role resolution (?role= override; see "App shell" above)
+        RailNav.tsx              # 224px left rail
+        RequireRole.tsx          # route-level guard; ADR-018 "request access" state
+        ScaffoldScreen.tsx       # generic placeholder for routes later epics build for real
+        AppShell.tsx             # rail + global Ask bar + <Outlet/>
+        WorkspaceShellApp.tsx    # <BrowserRouter> + route table (ShellRoutes is the router-free export tests use)
+        shell.css                # rail/shell layout
+      ask-bar/                # task E06/F03/US02/T01 -- global Ask bar scaffold (AC-3)
+        GlobalAskBar.tsx         # the bar itself: input, chips, Enter -> /ask, Cmd/Ctrl+K focus
+        askSuggestions.ts        # per-route placeholder copy (not real query intelligence)
+        ask-bar.css
+    App.tsx                   # composition root: /health effect; SignInRoute, or (signed in + workspace picked) WorkspaceShellApp
     main.tsx                  # boot: load config -> construct MSAL + API client -> render
     index.css                 # global entry; imports styles/index.css
   tests/                      # mirrors src/; vitest + Testing Library

@@ -69,6 +69,42 @@ describe("App", () => {
     });
   });
 
+  describe("mounts the workspace shell once signed in and a workspace is selected (task E06/F03/US02/T01)", () => {
+    it("renders the rail nav instead of the workspace picker once a workspace is already current", () => {
+      useMsalMock.mockReturnValue({
+        instance: { loginRedirect: vi.fn(), logoutRedirect: vi.fn() },
+        accounts: [{ username: "user@example.test", homeAccountId: "home-1" }],
+        inProgress: InteractionStatus.None,
+      });
+      window.sessionStorage.setItem(
+        "contigo.signin.currentWorkspace",
+        JSON.stringify({ id: "w-1", name: "Acme Procurement" }),
+      );
+
+      render(<App appConfig={appConfig} apiClient={healthyClient()} />);
+
+      expect(screen.getByText("Acme Procurement")).toBeInTheDocument();
+      expect(screen.getByText("Portfolio")).toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: /choose a workspace/i })).not.toBeInTheDocument();
+    });
+
+    it("still renders the always-on health status above the shell", async () => {
+      useMsalMock.mockReturnValue({
+        instance: { loginRedirect: vi.fn(), logoutRedirect: vi.fn() },
+        accounts: [{ username: "user@example.test", homeAccountId: "home-1" }],
+        inProgress: InteractionStatus.None,
+      });
+      window.sessionStorage.setItem(
+        "contigo.signin.currentWorkspace",
+        JSON.stringify({ id: "w-1", name: "Acme Procurement" }),
+      );
+
+      render(<App appConfig={appConfig} apiClient={healthyClient()} />);
+
+      expect(await screen.findByText(/API: reachable \(Healthy\)/)).toBeInTheDocument();
+    });
+  });
+
   describe("API health status (task E01/F07/US01/T02, 'wire /health')", () => {
     beforeEach(() => {
       useMsalMock.mockReturnValue({

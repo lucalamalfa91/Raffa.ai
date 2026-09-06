@@ -104,6 +104,19 @@ export default function WorkspacePickerScreen({
           <h1 className="screen-title">You&apos;re in {current.name}</h1>
           <p className="micro-meta">Signed in as {accountLabel}.</p>
           <div className="workspace-actions">
+            {/* Task E06/F03/US02/T01 (navigation-shell): the only way into
+                the app shell that task introduces (src/components/shell/).
+                A plain hard navigation, not a client-side router <Link> --
+                no router is mounted anywhere above this component. The
+                fresh page load re-runs src/App.tsx's account+workspace
+                check from scratch and mounts the shell; both MSAL's own
+                sessionStorage-cached account (src/auth/msalConfig.ts) and
+                this screen's own sessionStorage "current workspace" (this
+                file's selectCurrentWorkspace, above) survive a same-tab
+                navigation, so nothing needs to be re-entered. */}
+            <a className="btn btn-primary" href="/">
+              Continue to {current.name} →
+            </a>
             <button type="button" className="btn btn-secondary" onClick={handleSwitchWorkspace}>
               Switch workspace
             </button>
