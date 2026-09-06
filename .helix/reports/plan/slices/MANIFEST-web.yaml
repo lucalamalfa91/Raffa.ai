@@ -10,8 +10,8 @@ slices:
     tasks: 7
   - id: e07
     title: E07 E07
-    tokens: 7200000
-    tasks: 4
+    tokens: 12000000
+    tasks: 8
   - id: e08
     title: E08 E08
     tokens: 6400000

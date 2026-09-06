@@ -24,6 +24,7 @@ Implement the portfolio table, filters, attention strip, and states.
 
 ## Context the implementer needs
 - **Claude Design handoff**: `inputs/design/prototypes/screens.md` (4), `day1-demo.html`; prefer `/design-sync`.
+- **Layout**: wait for `web-layout-mockup`. Match [artifact 9249d66d](https://claude.ai/code/artifact/9249d66d-5e60-4823-a1d0-8a1758273f58), not the leftover 40rem scaffold.
 - **Architecture decisions in force**: ADR-020 (screen 4), ADR-019 (urgency in column one, not colour-only; table hover tint).
 
 ## Definition of done
@@ -39,7 +40,7 @@ Implement the portfolio table, filters, attention strip, and states.
 - id: E07/F01/US01/T01
   prompt: reports/workitems/epic-07-web-contract-intelligence/feature-01-portfolio-ui/us-01-portfolio-list-filters/tasks/task-01-portfolio-list-filters.md
   produces: [web-portfolio]
-  depends_on: [web-api-client-current, web-app-shell]
+  depends_on: [web-layout-mockup]
   effort: L
   layer: web
   status: live

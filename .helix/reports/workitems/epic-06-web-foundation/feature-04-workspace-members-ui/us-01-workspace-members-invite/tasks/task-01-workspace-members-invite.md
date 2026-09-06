@@ -26,6 +26,11 @@ Implement the members table + invite form with admin/procurement gate.
 ## Context the implementer needs
 - **Claude Design handoff**: `inputs/design/prototypes/screens.md` (2), `day1-demo.html`; prefer `/design-sync`.
 - **Architecture decisions in force**: ADR-018 (admin vs procurement gate), ADR-020 (screen 2).
+- **Recovery**: skipped on e06 (`wave/E06-F04-US01-T01` was an alias of the
+  shell commit). Re-queued on slice `e07`. `/workspace/members` is still a
+  `ScaffoldScreen` placeholder. Implement the real table + invite form.
+- **Layout**: depend on `web-layout-mockup` (E06/F06). Do not ship this
+  screen inside the leftover `max-width: 40rem` scaffold.
 
 ## Definition of done
 - [ ] Invite + role gate works in browser; `npm run build` exits 0.
