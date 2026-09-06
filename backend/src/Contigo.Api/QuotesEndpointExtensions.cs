@@ -1,20 +1,24 @@
 using Contigo.Quotes.Application;
 using Contigo.Quotes.Application.Assessment;
+using Contigo.Quotes.Application.Normalization;
 using Contigo.SharedKernel;
 
 namespace Contigo.Api;
 
 /// <summary>
 /// Maps `POST /api/quotes` (product spec Appendix A API table: "Upload/create quote"; parent
-/// story us-01-quote-line-extraction AC-1, task E05/F01/US01/T01, quote-extraction) and
+/// story us-01-quote-line-extraction AC-1, task E05/F01/US01/T01, quote-extraction),
 /// `GET /api/quotes/{id}/assessment` (Appendix A "Quote assessment"; parent story
 /// us-01-market-assessment AC-3, task E05/F02/US01/T01, market-assessment; AC-2's "recommended
-/// target range + potential saving" half, task E05/F02/US01/T02, target-saving). Thin composition per
+/// target range + potential saving" half, task E05/F02/US01/T02, target-saving), and
+/// `POST /api/quotes/{id}/assessment/recalculate` (Appendix A "Re-run after product mapping
+/// correction"; parent story us-02-sku-normalization AC-2's "...and allow manual product mapping"
+/// half, AC-3, task E05/F01/US02/T02, sku-recalculate). Thin composition per
 /// ADR-002 — <see cref="QuoteUploadService"/> owns the upload/storage/audit decisions,
 /// <see cref="QuoteExtractionPipeline"/> owns the hybrid-parse/AI-extraction orchestration (see
-/// that type's own doc comment for why it, not a domain module, is the AI Gateway call site), and
+/// that type's own doc comment for why it, not a domain module, is the AI Gateway call site),
 /// <see cref="MarketAssessmentService"/> owns the benchmark-matching/classification/target-saving
-/// decisions; this
+/// decisions, and <see cref="SkuMappingService"/> owns the manual-mapping/recalculate decisions; this
 /// file only translates HTTP &lt;-&gt; those calls, the same shape
 /// <see cref="ContractsEndpointExtensions"/>/<see cref="WorkspaceEndpointExtensions"/> already use.
 ///
@@ -31,6 +35,8 @@ public static class QuotesEndpointExtensions
         endpoints.MapPost("/api/quotes", UploadQuoteAsync);
         // Task E05/F02/US01/T01 (market-assessment) AC-3.
         endpoints.MapGet("/api/quotes/{id}/assessment", GetAssessmentAsync);
+        // Task E05/F01/US02/T02 (sku-recalculate) AC-2/AC-3.
+        endpoints.MapPost("/api/quotes/{id}/assessment/recalculate", RecalculateAssessmentAsync);
         return endpoints;
     }
 
@@ -199,71 +205,155 @@ public static class QuotesEndpointExtensions
             return Results.NotFound(result.Error);
         }
 
-        var assessment = result.Value;
+        return Results.Ok(BuildAssessmentResponse(result.Value));
+    }
+
+    /// <summary>
+    /// Wire-shapes a <see cref="QuoteMarketAssessment"/> — extracted from <see cref="GetAssessmentAsync"/>
+    /// (task E05/F01/US02/T02, sku-recalculate) so <see cref="RecalculateAssessmentAsync"/> below
+    /// returns the exact same per-line assessment shape rather than a second, drifting copy of this
+    /// projection — both endpoints describe "the current assessment for this quote", just reached
+    /// differently (a plain read versus a read after a correction+recalculate).
+    /// </summary>
+    private static object BuildAssessmentResponse(QuoteMarketAssessment assessment) => new
+    {
+        quoteId = assessment.QuoteId.Value,
+        lines = assessment.Lines.Select(line => new
+        {
+            quoteLineId = line.QuoteLineId.Value,
+            status = line.Status.ToString(),
+            position = line.Position?.ToString(),
+            unitPrice = line.UnitPrice,
+            // Task E05/F04/US01/T01 (r4-integration) fix: LineMarketAssessment.Quantity has
+            // existed since task E05/F02/US01/T02 (target-saving) specifically so a caller never
+            // has to re-fetch the line (see that record's own doc comment) — and the HTTP surface
+            // table in backend/README.md has documented `quantity` as part of this response's own
+            // shape since that same task — but this handler never actually serialized it. Adding
+            // it now aligns the wire response with its own already-published contract.
+            quantity = line.Quantity,
+            benchmark = line.Benchmark is null
+                ? null
+                : new
+                {
+                    hasSufficientData = line.Benchmark.HasSufficientData,
+                    distribution = line.Benchmark.Distribution is null
+                        ? null
+                        : new
+                        {
+                            p25 = line.Benchmark.Distribution.P25,
+                            p50 = line.Benchmark.Distribution.P50,
+                            p75 = line.Benchmark.Distribution.P75,
+                        },
+                    metric = line.Benchmark.Metric,
+                    currency = line.Benchmark.Currency,
+                },
+            confidence = line.Provenance is null
+                ? null
+                : new
+                {
+                    level = line.Provenance.ConfidenceLevel.ToString(),
+                    score = line.Provenance.ConfidenceScore,
+                    source = line.Provenance.Source,
+                    sampleSize = line.Provenance.SampleSize,
+                    comparisonDimensions = line.Provenance.ComparisonDimensions.Select(d => d.ToString()),
+                    updatedAt = line.Provenance.UpdatedAt,
+                    summary = line.Provenance.Summary,
+                },
+            // Task E05/F02/US01/T02 (target-saving), AC-2's "recommended target range +
+            // potential saving" half: null exactly when TargetSaving itself is (no benchmark
+            // call was made); still populated — with every numeric field null plus a named
+            // reason — when a call was made but returned no usable distribution (spec §11.3's
+            // benchmark-trust rule, see LineTargetSaving's own doc comment).
+            targetSaving = line.TargetSaving is null
+                ? null
+                : new
+                {
+                    recommendedTargetLow = line.TargetSaving.RecommendedTargetLow,
+                    recommendedTargetHigh = line.TargetSaving.RecommendedTargetHigh,
+                    savingsRangeLow = line.TargetSaving.SavingsRangeLow,
+                    savingsRangeHigh = line.TargetSaving.SavingsRangeHigh,
+                    totalSavingsRangeLow = line.TargetSaving.TotalSavingsRangeLow,
+                    totalSavingsRangeHigh = line.TargetSaving.TotalSavingsRangeHigh,
+                    explanation = line.TargetSaving.Explanation,
+                },
+            explanation = line.Explanation,
+        }),
+    };
+
+    /// <summary>
+    /// `POST /api/quotes/{id}/assessment/recalculate` (task E05/F01/US02/T02, sku-recalculate;
+    /// product spec Appendix A "Re-run after product mapping correction"; parent story
+    /// us-02-sku-normalization AC-2's "...and allow manual product mapping" half, AC-3 "Re-run
+    /// assessment after mapping correction"): thin HTTP translation over
+    /// <see cref="SkuMappingService.RecalculateAsync"/> — that service owns every
+    /// validation/upsert/re-normalize/re-assess decision; this handler only shapes the wire
+    /// request/response, the same division <see cref="GetAssessmentAsync"/>/<see cref="UploadQuoteAsync"/>
+    /// already use. Same interim <c>X-Tenant-Id</c> header placeholder as every other endpoint in
+    /// this file (ADR-010 is not in this task's "Architecture decisions in force" list either).
+    ///
+    /// <paramref name="request"/>'s <c>mappings</c> may be omitted/empty — a caller can POST
+    /// <c>{}</c> to re-read the current unmatched-line list and a fresh assessment with no new
+    /// correction at all (see <see cref="QuoteRecalculateRequest"/>'s own doc comment). 404 when
+    /// <see cref="SkuMappingService.QuoteNotFoundError"/> comes back, 400 for every other validation
+    /// failure (a blank <c>sku</c>/<c>canonicalSku</c> on a supplied correction) — same
+    /// <c>Result&lt;T&gt;.Error</c>-sentinel-to-404 convention <see cref="NegotiationsEndpointExtensions
+    /// .CaptureOutcomeAsync"/>'s own handler already uses for the identical shape of failure.
+    /// </summary>
+    private static async Task<IResult> RecalculateAssessmentAsync(
+        string id,
+        QuoteRecalculateRequest request,
+        HttpRequest httpRequest,
+        SkuMappingService mappingService,
+        CancellationToken cancellationToken)
+    {
+        if (!httpRequest.Headers.TryGetValue("X-Tenant-Id", out var tenantHeaderValues)
+            || !Guid.TryParse(tenantHeaderValues.ToString(), out var tenantGuid))
+        {
+            return Results.BadRequest("A valid 'X-Tenant-Id' header (a GUID) is required.");
+        }
+
+        if (!Guid.TryParse(id, out var quoteGuid))
+        {
+            return Results.BadRequest("The quote id in the route must be a GUID.");
+        }
+
+        var result = await mappingService.RecalculateAsync(
+                new TenantId(tenantGuid), new EntityId(quoteGuid), request.Mappings, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (result.IsFailure)
+        {
+            return string.Equals(result.Error, SkuMappingService.QuoteNotFoundError, StringComparison.Ordinal)
+                ? Results.NotFound(result.Error)
+                : Results.BadRequest(result.Error);
+        }
+
+        var recalculation = result.Value;
 
         return Results.Ok(new
         {
-            quoteId = assessment.QuoteId.Value,
-            lines = assessment.Lines.Select(line => new
+            quoteId = recalculation.QuoteId.Value,
+            mappingsAppliedCount = recalculation.MappingsAppliedCount,
+            normalization = new
+            {
+                lineCount = recalculation.NormalizationOutcome.LineCount,
+                matchedCount = recalculation.NormalizationOutcome.MatchedCount,
+                unmatchedCount = recalculation.NormalizationOutcome.UnmatchedCount,
+                notApplicableCount = recalculation.NormalizationOutcome.NotApplicableCount,
+            },
+            // AC-2 "Show unmatched SKUs" half — every line still unresolved after this call's own
+            // (possibly zero) corrections were applied.
+            unmatchedLines = recalculation.UnmatchedLines.Select(line => new
             {
                 quoteLineId = line.QuoteLineId.Value,
-                status = line.Status.ToString(),
-                position = line.Position?.ToString(),
-                unitPrice = line.UnitPrice,
-                // Task E05/F04/US01/T01 (r4-integration) fix: LineMarketAssessment.Quantity has
-                // existed since task E05/F02/US01/T02 (target-saving) specifically so a caller never
-                // has to re-fetch the line (see that record's own doc comment) — and the HTTP surface
-                // table in backend/README.md has documented `quantity` as part of this response's own
-                // shape since that same task — but this handler never actually serialized it. Adding
-                // it now aligns the wire response with its own already-published contract.
-                quantity = line.Quantity,
-                benchmark = line.Benchmark is null
-                    ? null
-                    : new
-                    {
-                        hasSufficientData = line.Benchmark.HasSufficientData,
-                        distribution = line.Benchmark.Distribution is null
-                            ? null
-                            : new
-                            {
-                                p25 = line.Benchmark.Distribution.P25,
-                                p50 = line.Benchmark.Distribution.P50,
-                                p75 = line.Benchmark.Distribution.P75,
-                            },
-                        metric = line.Benchmark.Metric,
-                        currency = line.Benchmark.Currency,
-                    },
-                confidence = line.Provenance is null
-                    ? null
-                    : new
-                    {
-                        level = line.Provenance.ConfidenceLevel.ToString(),
-                        score = line.Provenance.ConfidenceScore,
-                        source = line.Provenance.Source,
-                        sampleSize = line.Provenance.SampleSize,
-                        comparisonDimensions = line.Provenance.ComparisonDimensions.Select(d => d.ToString()),
-                        updatedAt = line.Provenance.UpdatedAt,
-                        summary = line.Provenance.Summary,
-                    },
-                // Task E05/F02/US01/T02 (target-saving), AC-2's "recommended target range +
-                // potential saving" half: null exactly when TargetSaving itself is (no benchmark
-                // call was made); still populated — with every numeric field null plus a named
-                // reason — when a call was made but returned no usable distribution (spec §11.3's
-                // benchmark-trust rule, see LineTargetSaving's own doc comment).
-                targetSaving = line.TargetSaving is null
-                    ? null
-                    : new
-                    {
-                        recommendedTargetLow = line.TargetSaving.RecommendedTargetLow,
-                        recommendedTargetHigh = line.TargetSaving.RecommendedTargetHigh,
-                        savingsRangeLow = line.TargetSaving.SavingsRangeLow,
-                        savingsRangeHigh = line.TargetSaving.SavingsRangeHigh,
-                        totalSavingsRangeLow = line.TargetSaving.TotalSavingsRangeLow,
-                        totalSavingsRangeHigh = line.TargetSaving.TotalSavingsRangeHigh,
-                        explanation = line.TargetSaving.Explanation,
-                    },
-                explanation = line.Explanation,
+                sku = line.Sku,
+                normalizedSku = line.NormalizedSku,
+                edition = line.Edition,
+                description = line.Description,
             }),
+            // AC-3 "Re-run assessment after mapping correction" half — same shape
+            // GET /api/quotes/{id}/assessment returns, freshly recomputed.
+            assessment = BuildAssessmentResponse(recalculation.Assessment),
         });
     }
 }

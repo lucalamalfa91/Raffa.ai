@@ -91,6 +91,10 @@ public static class ServiceCollectionExtensions
         // must also call Contigo.Audit's AddAuditModule (already true of every host that reaches this
         // far — see this method's own doc comment).
         services.AddScoped<NegotiationOutcomeService>();
+        // Task E05/F01/US02/T02 (sku-recalculate): composes SkuNormalizationService and
+        // MarketAssessmentService (both registered above) plus IAuditWriter — same landmine as
+        // NegotiationOutcomeService immediately above.
+        services.AddScoped<SkuMappingService>();
 
         return services;
     }
