@@ -98,6 +98,15 @@
 
 .shell-main {
   min-width: 0;
+  /* Task E06/F06/US01/T01 (full-bleed-layout): explicit, defensive
+     `max-width: none`. index.css no longer puts a global `max-width: 40rem`
+     on the bare `<main>` element (that E01 OIDC-scaffold rule used to crush
+     this exact element -- AppShell.tsx renders `<main className=
+     "shell-main">`), but this stays spelled out so `.shell-main` can never
+     again be silently capped by some other ancestor/element-selector rule --
+     it must fill the shell grid's `1fr` track (design-system.md app shell:
+     224px rail + fluid main), not float as a narrow column inside it. */
+  max-width: none;
   overflow: auto;
   display: flex;
   flex-direction: column;

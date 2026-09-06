@@ -63,6 +63,24 @@ describe("App", () => {
       expect(screen.getByRole("button", { name: /continue with microsoft entra id/i })).toBeInTheDocument();
     });
 
+    it("does not wrap SignInRoute in a second, constraining <main> -- sign-in owns its own page (E06/F06/US01/T01)", () => {
+      useMsalMock.mockReturnValue({
+        instance: { loginRedirect: vi.fn(), logoutRedirect: vi.fn() },
+        accounts: [],
+        inProgress: InteractionStatus.None,
+      });
+
+      const { container } = render(<App appConfig={appConfig} apiClient={healthyClient()} />);
+
+      // Exactly one <main> in the whole tree: SignInScreen's own
+      // full-bleed `.signin-screen`, not a second wrapper around it (the
+      // regression this used to be: `<main><SignInRoute/></main>`, capped
+      // at `max-width: 40rem` by index.css's now-removed E01 rule).
+      const mains = container.querySelectorAll("main");
+      expect(mains).toHaveLength(1);
+      expect(mains[0]).toHaveClass("signin-screen");
+    });
+
     it("shows the workspace picker when authenticated", () => {
       useMsalMock.mockReturnValue({
         instance: { loginRedirect: vi.fn(), logoutRedirect: vi.fn() },
@@ -94,6 +112,24 @@ describe("App", () => {
       expect(screen.getByText("Acme Procurement")).toBeInTheDocument();
       expect(screen.getByText("Portfolio")).toBeInTheDocument();
       expect(screen.queryByRole("heading", { name: /choose a workspace/i })).not.toBeInTheDocument();
+    });
+
+    it("does not double-wrap the app shell's own <main> either (AppShell.tsx already owns `.shell-main`)", () => {
+      useMsalMock.mockReturnValue({
+        instance: { loginRedirect: vi.fn(), logoutRedirect: vi.fn() },
+        accounts: [{ username: "user@example.test", homeAccountId: "home-1" }],
+        inProgress: InteractionStatus.None,
+      });
+      window.sessionStorage.setItem(
+        "contigo.signin.currentWorkspace",
+        JSON.stringify({ id: "w-1", name: "Acme Procurement" }),
+      );
+
+      const { container } = render(<App appConfig={appConfig} apiClient={healthyClient()} />);
+
+      const mains = container.querySelectorAll("main");
+      expect(mains).toHaveLength(1);
+      expect(mains[0]).toHaveClass("shell-main");
     });
 
     it("still renders the always-on health status above the shell", async () => {

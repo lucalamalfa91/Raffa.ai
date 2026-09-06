@@ -88,6 +88,40 @@ a row in ADR-018's locked route map -- that table only ever names a *detail*
 route for these two nav destinations (`/contracts/:id/review`, `/quotes/:id`
 respectively). See `src/components/shell/navItems.ts`'s header comment.
 
+### Layout -- full-bleed, matching the prototype's own canvas (ADR-018/019/020, task E06/F06/US01/T01)
+
+Every screen now occupies the viewport the way
+`inputs/design/prototypes/day1-demo.html` does: no screen renders inside a
+centered, `max-width`-capped column. `src/index.css` used to put `max-width:
+40rem; margin: 3rem auto` on the bare `<main>` element (an E01 OIDC-scaffold
+rule) -- that hit *every* app-level main landmark, so sign-in rendered as a
+~640px card (statement panel crushed to a sliver) and the whole authenticated
+shell (`AppShell.tsx`'s `<main className="shell-main">`) rendered its rail +
+content inside the same narrow column. `<main>` now carries no width opinion
+in `index.css`; each screen owns its own full-bleed layout instead:
+
+- **Sign-in / workspace picker** (`src/routes/signin/`) -- `SignInScreen.tsx`
+  renders `.signin-screen`, a `100vh` two-column grid (`SignInStatementPanel`
+  + `.signin-action`), matching the compiled prototype's own sign-in
+  container (`display:grid;grid-template-columns:1fr 1fr`) once nothing above
+  it caps the width. `WorkspacePickerScreen.tsx` reuses that exact same
+  canvas (`SignInStatementPanel` + `.signin-action`) for all of its own
+  states (list, create, "you're in `<workspace>`") instead of the old
+  standalone, centered `.workspace-picker` card -- the prototype never treats
+  the workspace list as a separate screen, only a state of screen 1.
+- **App shell** (`src/components/shell/shell.css`) -- `.shell-main` now
+  explicitly declares `max-width: none` so it fills the shell grid's `1fr`
+  track (224px rail + fluid main) rather than floating as a narrow column
+  inside it.
+- **Documents** (`src/routes/documents/documents.css`) -- the two-column
+  `minmax(280px, 400px) 1fr` mockup layout was already correct; filenames in
+  the result card and the document table now wrap with `overflow-wrap:
+  anywhere` (word/character-run boundaries) instead of `word-break:
+  break-all`, so a long filename never renders one glyph per line.
+
+Only `.startup-error` (`src/main.tsx`'s boot-config-failure alert -- not a
+shipped mockup screen) keeps a narrow, centered column.
+
 `src/routes/signin/` (`SignInRoute`, the folder's default export) is still
 gated on MSAL auth state (`useMsal().accounts`) rather than a URL route --
 that has not changed. What task E06/F03/US02/T01 added is `src/App.tsx`'s
@@ -363,10 +397,10 @@ web/
     routes/
       signin/               # ADR-018 `/signin`; gated on MSAL auth state, not a URL route (see "Screens" above)
         index.tsx             # SignInRoute -- no account: SignInScreen; signed in: WorkspacePickerScreen
-        SignInScreen.tsx      # idle / redirecting states around instance.loginRedirect()
-        WorkspacePickerScreen.tsx # list (workspaceStore cache) + create via POST /api/workspaces + "Continue" into the shell
+        SignInScreen.tsx      # idle / redirecting states around instance.loginRedirect(); also exports SignInStatementPanel (shared left-column canvas, task E06/F06/US01/T01)
+        WorkspacePickerScreen.tsx # list (workspaceStore cache) + create via POST /api/workspaces + "Continue" into the shell -- renders SignInStatementPanel + .signin-action, the same full-bleed canvas as SignInScreen (task E06/F06/US01/T01), not a standalone card
         workspaceStore.ts     # per-account localStorage cache + sessionStorage "current workspace"; documents the missing list/membership backend gap
-        signin.css            # this route's styles
+        signin.css            # this route's styles -- see "Layout" above
       documents/            # tasks E06/F05/US01/T01 + E06/F05/US02/T01 -- ADR-020 screen 3, both halves (see "Documents" above)
         index.tsx             # DocumentsRoute -- upload state machine (wires apiClient.uploadDocument) + trackedDocuments table state (wires apiClient.getDocument)
         UploadDropzone.tsx    # AC-1 (us-01): drag-and-drop + file picker + formats/size/sources strip

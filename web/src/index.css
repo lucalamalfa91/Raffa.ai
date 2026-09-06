@@ -11,14 +11,21 @@ body {
   min-height: 100vh;
 }
 
-main,
+/* Task E06/F06/US01/T01 (full-bleed-layout): this used to be
+   `main, .startup-error { max-width: 40rem; margin: 3rem auto; ... }` -- an
+   E01 OIDC-scaffold rule that hit *every* app-level main landmark (sign-in,
+   the workspace picker, and the whole authenticated shell via
+   AppShell.tsx's `<main className="shell-main">`), squeezing the full-bleed
+   mockup (ADR-018/019/020: 224px rail + fluid main; sign-in a 100vh
+   two-column page) into a centered ~640px card. The bare `<main>` element
+   now carries no width opinion at all -- each screen owns its own full-bleed
+   layout (signin.css `.signin-screen`, shell.css `.shell-main`). Only the
+   one-off startup-config-error alert below keeps a narrow, readable column;
+   it is not a shipped mockup screen. */
 .startup-error {
   max-width: 40rem;
   margin: 3rem auto;
   padding: 0 1.5rem;
-}
-
-.startup-error {
   /* Was a hard-coded #7a1f1f -- a third, uncoordinated red next to
      --color-accent and --color-accent-700. This is exactly the "divergent
      visual language per screen" ADR-019 exists to prevent, so it now uses

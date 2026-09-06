@@ -30,6 +30,26 @@ describe("WorkspacePickerScreen", () => {
     expect(screen.getByRole("button", { name: /\+ create a new workspace/i })).toBeInTheDocument();
   });
 
+  it("renders the same full-bleed statement-panel canvas as SignInScreen, not a standalone narrow card (E06/F06/US01/T01)", () => {
+    const { container } = render(
+      <WorkspacePickerScreen
+        apiClient={mockApiClient()}
+        accountKey={ACCOUNT_KEY}
+        accountLabel="user@example.test"
+        onSignOut={vi.fn()}
+      />,
+    );
+
+    // Parent story AC: "Workspace picker: same canvas as the prototype, not
+    // a narrow article." The statement panel (north-star sentence + 4 V1
+    // jobs) is SignInScreen's own left column, shared via
+    // SignInStatementPanel -- its presence here proves the picker no longer
+    // falls back to the old standalone `.workspace-picker` card.
+    expect(screen.getByText(/what we bought/i)).toBeInTheDocument();
+    expect(container.querySelector("main.signin-screen")).toBeInTheDocument();
+    expect(container.querySelector(".workspace-picker")).not.toBeInTheDocument();
+  });
+
   it("creates a workspace, remembers it, and lands the user in it", async () => {
     const created: CreateWorkspaceResult = {
       ok: true,
