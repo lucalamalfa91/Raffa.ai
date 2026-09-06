@@ -61,6 +61,28 @@ export interface CreateWorkspaceResult {
   error: string | null;
 }
 
+// Task E06/F05/US01/T01 (document-upload, AC-1/AC-2/AC-3): `uploadDocument`,
+// the client's second write call. `UploadedDocument` is anchored to the
+// generated `paths["/api/documents"]["post"]` 201 body -- not hand-invented
+// -- the same discipline `CreateWorkspaceBody` above follows.
+// `DocumentProcessingStatus` is exported (not just used inline) so
+// src/routes/documents/uploadPipeline.ts derives its outcome mapping from
+// this one contract-sourced union instead of redeclaring it.
+type UploadDocumentResponses = paths["/api/documents"]["post"]["responses"];
+export type UploadedDocument = UploadDocumentResponses[201]["content"]["application/json"];
+export type DocumentProcessingStatus = UploadedDocument["processingStatus"];
+
+export interface UploadDocumentResult {
+  /** True only on `201 Created`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** The stored document (already processed -- see `ApiClient.uploadDocument`'s own doc comment), present only when `ok` is true. */
+  document: UploadedDocument | null;
+  /** Plain-language failure reason (400 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
 export interface ApiClient {
   /**
    * Calls `GET /health` (operationId `getHealth` in
@@ -80,6 +102,25 @@ export interface ApiClient {
    * the only caller today.
    */
   createWorkspace(request: CreateWorkspaceRequest): Promise<CreateWorkspaceResult>;
+  /**
+   * Calls `POST /api/documents` (operationId `uploadDocument`) as
+   * `multipart/form-data` with a single `file` field -- the exact shape
+   * `DocumentUploadEndpointTests.cs` (backend) enforces. `tenantId` is sent
+   * as the interim `X-Tenant-Id` header every write endpoint requires today
+   * (ADR-010 claim-based tenant resolution is not wired yet); see
+   * src/routes/signin/workspaceStore.ts's own doc comment, which names this
+   * exact call as the reason it keeps the current workspace id available.
+   *
+   * The backend runs the whole parse -> classify -> extract pipeline
+   * *synchronously* before responding (task E02/F06/US01/T01's own
+   * description in openapi/contigo-api.v1.json), so a resolved call already
+   * carries a terminal (or near-terminal) `processingStatus` -- see
+   * src/routes/documents/uploadPipeline.ts for how the UI turns that into
+   * the 6-stage pipeline animation + result card. Same never-throws shape as
+   * `createWorkspace`: a 400 (bad file/tenant) is a normal, expected outcome
+   * the caller renders inline, not an exception.
+   */
+  uploadDocument(tenantId: string, file: File): Promise<UploadDocumentResult>;
 }
 
 /**
@@ -144,6 +185,47 @@ export function createApiClient(baseUrl: string): ApiClient {
       }
 
       return { ok: false, statusCode: response.status, workspace: null, error };
+    },
+
+    async uploadDocument(tenantId, file) {
+      const formData = new FormData();
+      // `file` is already a `File` (extends `Blob` with its own `.name`), so
+      // FormData uses that name automatically -- no third `filename` arg
+      // needed (see MDN FormData.append()).
+      formData.append("file", file);
+
+      let response: Response;
+      try {
+        response = await fetch(new URL("/api/documents", baseUrl), {
+          method: "POST",
+          headers: { "X-Tenant-Id": tenantId },
+          body: formData,
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          document: null,
+          error: `Unable to reach ${baseUrl}/api/documents. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 201) {
+        const document = (await response.json()) as UploadedDocument;
+        return { ok: true, statusCode: 201, document, error: null };
+      }
+
+      // Same Results.BadRequest(string) shape as createWorkspace's 400 above.
+      let error: string;
+      try {
+        const errorBody: unknown = await response.json();
+        error = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, document: null, error };
     },
   };
 }

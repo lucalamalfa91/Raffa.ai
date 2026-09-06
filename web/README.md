@@ -80,7 +80,8 @@ the web workflow after that apply.
 | Route | Screen(s) | Task |
 |-------|-----------|------|
 | `/signin` | Sign-in (Entra redirect, idle/redirecting states) -> workspace picker (list + create + confirm) | E06/F03/US01/T01 |
-| `/` (home), `/contracts`, `/contracts/:id`, `/contracts/:id/review`, `/renewals`, `/ask`, `/documents`, `/review`\*, `/quotes`\*, `/quotes/:id`, `/workspace/members` | App shell: 224px left rail + global Ask bar + routed content. Every route beyond `/workspace/members` renders a `ScaffoldScreen` placeholder today -- the real screens ship in later epic-07/epic-08/feature-04/05 tasks named at each route (see `src/components/shell/WorkspaceShellApp.tsx`). | E06/F03/US02/T01 |
+| `/documents` | Upload dropzone (drag-and-drop + "Choose from computer" + "Use sample file") + formats/size/sources strip -> 6-stage processing pipeline (current stage pulsing) -> result card by outcome (needs_review / completed / failed). Calls the real `POST /api/documents`. See "Documents" below. | E06/F05/US01/T01 |
+| `/` (home), `/contracts`, `/contracts/:id`, `/contracts/:id/review`, `/renewals`, `/ask`, `/review`\*, `/quotes`\*, `/quotes/:id`, `/workspace/members` | App shell: 224px left rail + global Ask bar + routed content. Every route beyond `/workspace/members` renders a `ScaffoldScreen` placeholder today -- the real screens ship in later epic-07/epic-08/feature-04/05 tasks named at each route (see `src/components/shell/WorkspaceShellApp.tsx`). | E06/F03/US02/T01 |
 
 \* `/review` and `/quotes` are this task's own placeholder landing paths, not
 a row in ADR-018's locked route map -- that table only ever names a *detail*
@@ -161,6 +162,61 @@ yet), the latter because there is no server-issued role claim to read yet
 such column. All three are flagged in `workspaceStore.ts`'s own doc comments
 rather than silently invented.
 
+### Documents -- upload + processing pipeline (ADR-020 screen 3, task E06/F05/US01/T01)
+
+`src/routes/documents/` implements screen 3's **upload half** only --
+ADR-020's own note that "screen 3 may be two: upload UI + document-status
+read-back" -- the document table (Document / Type / Supplier / Status /
+Uploaded, rows opening Contract 360) is the other half and is not built
+here.
+
+- **AC-1, dropzone + strip** (`UploadDropzone.tsx`) -- drag-and-drop, native
+  "Choose from computer" file picker (`accept=".pdf,.docx,.xlsx"`,
+  product-spec.md §4.1), and "Use sample file". The formats/size/sources
+  strip ("PDF · DOCX · XLSX", "50 MB / file", "Local · SharePoint soon") is
+  quoted verbatim from the compiled prototype
+  (`inputs/design/prototypes/day1-demo.html`); "SharePoint soon" matches
+  product-spec.md's own P1/V1-vs-P2 integration roadmap, not decorative copy.
+  Drag-and-drop is a progressive enhancement over the button, which stays the
+  keyboard-/screen-reader-operable path (ADR-019 accessibility baseline).
+- **AC-2, 6-stage pipeline** (`ProcessingPipeline.tsx` + `uploadPipeline.ts`)
+  -- `POST /api/documents` runs the whole parse -> classify -> extract
+  pipeline **synchronously** before responding
+  (`backend/src/Contigo.Api/Program.cs`, task E02/F06/US01/T01), so there is
+  no server-sent per-stage event. The 6 stage labels are quoted verbatim from
+  the compiled prototype's own `pipeLabels` array and the list is a
+  client-side pacing animation shown *while the one upload request is in
+  flight* -- it holds on the last stage rather than looping if the request
+  outlives it, and the request's actual resolution always wins.
+- **AC-3, result card by outcome** (`UploadResultCard.tsx`) -- tag
+  variant/label reuse `styles/semantics.ts#getStatusTag` (never re-derived);
+  message copy is adapted from the compiled prototype's own `uplMap`, with
+  one deliberate departure: the API's `uploadDocument`/`processingStatus`
+  response carries no field-count/confidence or failure-reason detail (see
+  `openapi/contigo-api.v1.json`), so messages name the uploaded file instead
+  of the prototype's fabricated "41 fields extracted" figures, and the
+  `failed` message suggests checking for password-protection/corruption
+  rather than asserting it as a confirmed cause.
+- **"Use sample file"** (`sampleDocument.ts`) builds a small, syntactically
+  minimal PDF in the browser and uploads it through the exact same
+  `apiClient.uploadDocument()` path a real file would use -- **this repo ships
+  no real sample contract asset** (checked: no `*.pdf` anywhere in the repo).
+  Whatever `processingStatus` the pipeline actually returns for that synthetic
+  file is the honest answer, not a scripted one; a future task that adds a
+  real fixture document can swap this module out without touching any other
+  file in this folder.
+- **One upload at a time**: extra files picked/dropped while another is
+  uploading are queued (`index.tsx`'s own `queue` state) and start
+  automatically the next time "Upload another" is clicked -- screens.md #3
+  shows one pipeline / one result card at a time, never several at once.
+- `tenantId` for the required `X-Tenant-Id` header is **not** threaded down
+  as a prop -- `DocumentsRoute` reads `loadCurrentWorkspace()`
+  (`src/routes/signin/workspaceStore.ts`) directly, exactly what that
+  module's own doc comment names as the reason it keeps the current
+  workspace id available. `apiClient` *is* threaded as a prop
+  (`App.tsx` -> `WorkspaceShellApp` -> `DocumentsRoute`), the same
+  generated-client instance every other screen shares.
+
 ## API client (ADR-012 "one generated TypeScript client, no hand-written divergent DTOs")
 
 Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
@@ -240,6 +296,15 @@ Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
   nullable union (`"type": ["string", "null"]`, e.g. a freshly-uploaded
   document's `contractId`, null until classification links it) -- see that
   script's own comments.
+- **Task E06/F05/US01/T01 (document-upload)** added `client.ts`'s second
+  write call, `.uploadDocument(tenantId, file)` -- `multipart/form-data`
+  against `POST /api/documents`, same never-throws shape as the other calls.
+  `GET /api/documents/{id}` (`getDocument`) is generated in
+  `src/api/generated/schema.ts` but has **no** `client.ts` wrapper yet --
+  same "schema.ts can be ahead of client.ts" pattern `inviteWorkspaceMember`
+  already left unwrapped -- it belongs to whichever future task builds
+  screen 3's *other* half (the document table / status read-back, ADR-020's
+  own "screen 3 may be two").
 
 ## Directory layout
 
@@ -255,7 +320,7 @@ web/
   src/
     api/
       generated/schema.ts     # AUTO-GENERATED; do not edit by hand
-      client.ts                # createApiClient(baseUrl) -> { getHealth(), createWorkspace({ name }) }
+      client.ts                # createApiClient(baseUrl) -> { getHealth(), createWorkspace({ name }), uploadDocument(tenantId, file) }
     config/appConfig.ts       # fetch + validate runtime config
     auth/msalConfig.ts        # AppConfig -> MSAL Configuration (no secret, ever)
     styles/                   # design system (tokens + component catalogue); see below
@@ -266,6 +331,14 @@ web/
         WorkspacePickerScreen.tsx # list (workspaceStore cache) + create via POST /api/workspaces + "Continue" into the shell
         workspaceStore.ts     # per-account localStorage cache + sessionStorage "current workspace"; documents the missing list/membership backend gap
         signin.css            # this route's styles
+      documents/            # task E06/F05/US01/T01 -- ADR-020 screen 3, upload half (see "Documents" above)
+        index.tsx             # DocumentsRoute -- idle/uploading/pending/done state machine, wires apiClient.uploadDocument
+        UploadDropzone.tsx    # AC-1: drag-and-drop + file picker + formats/size/sources strip
+        ProcessingPipeline.tsx # AC-2: 6-stage list, current stage pulsing
+        UploadResultCard.tsx  # AC-3: result card by outcome (needs_review / completed / failed)
+        uploadPipeline.ts     # pure helpers: stage labels/view-model, outcome mapping, result-card copy
+        sampleDocument.ts     # synthetic sample File for "Use sample file" -- no real fixture asset in this repo
+        documents.css         # this route's styles
     components/
       shell/                  # task E06/F03/US02/T01 -- app shell, router, role guard (see "App shell" above)
         navItems.ts             # locked 8-item rail model + getVisibleNavItems(role) role guard (AC-1/AC-2)

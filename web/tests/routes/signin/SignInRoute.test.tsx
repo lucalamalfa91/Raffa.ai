@@ -35,7 +35,7 @@ const appConfig: AppConfig = {
 };
 
 function mockApiClient(createWorkspace: ApiClient["createWorkspace"] = vi.fn()): ApiClient {
-  return { getHealth: vi.fn(), createWorkspace };
+  return { getHealth: vi.fn(), createWorkspace, uploadDocument: vi.fn() };
 }
 
 describe("SignInRoute (sign-in -> workspace list)", () => {

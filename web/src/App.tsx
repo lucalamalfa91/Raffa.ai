@@ -97,6 +97,7 @@ export default function App({ appConfig, apiClient }: AppProps) {
         workspaceName={workspace.name}
         role={resolveWorkspaceRole()}
         userLabel={account.username}
+        apiClient={apiClient}
         onSignOut={() => {
           // Mirrors SignInRoute's own handleSignOut (index.tsx): a new
           // sign-in should re-pick a workspace explicitly, not silently

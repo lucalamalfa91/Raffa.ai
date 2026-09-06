@@ -3,12 +3,21 @@ import AppShell from "./AppShell";
 import RequireRole from "./RequireRole";
 import ScaffoldScreen from "./ScaffoldScreen";
 import type { WorkspaceRole } from "./navItems";
+import type { ApiClient } from "../../api/client";
+import DocumentsRoute from "../../routes/documents";
 
 export interface WorkspaceShellAppProps {
   workspaceName: string;
   role: WorkspaceRole;
   userLabel: string;
   onSignOut: () => void;
+  /**
+   * Task E06/F05/US01/T01 (document-upload): threaded through from
+   * App.tsx so the `documents` route below can call the real
+   * `POST /api/documents` -- the same generated-client instance every other
+   * screen shares, not a second one constructed here.
+   */
+  apiClient: ApiClient;
 }
 
 /**
@@ -28,7 +37,7 @@ export interface WorkspaceShellAppProps {
  * tests can wrap it in a `MemoryRouter` with a specific `initialEntries`
  * path instead of depending on the real browser URL a `BrowserRouter` reads.
  */
-export function ShellRoutes({ workspaceName, role, userLabel, onSignOut }: WorkspaceShellAppProps) {
+export function ShellRoutes({ workspaceName, role, userLabel, onSignOut, apiClient }: WorkspaceShellAppProps) {
   return (
     <Routes>
       <Route
@@ -124,16 +133,7 @@ export function ShellRoutes({ workspaceName, role, userLabel, onSignOut }: Works
             />
           }
         />
-        <Route
-          path="documents"
-          element={
-            <ScaffoldScreen
-              title="Documents"
-              release="R0"
-              note="Upload + document status ships in epic-06/feature-05-document-upload-ui."
-            />
-          }
-        />
+        <Route path="documents" element={<DocumentsRoute apiClient={apiClient} />} />
         <Route
           path="workspace/members"
           element={

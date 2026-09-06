@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApiClient } from "../../src/api/client";
 
+function pdfFile(name = "contract.pdf") {
+  return new File(["%PDF-1.4"], name, { type: "application/pdf" });
+}
+
 describe("createApiClient().getHealth", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -125,6 +129,96 @@ describe("createApiClient().createWorkspace (task E06/F03/US01/T01)", () => {
     expect(result.statusCode).toBeNull();
     expect(result.workspace).toBeNull();
     expect(result.error).toContain("https://api.dev.contigo.example/api/workspaces");
+    expect(result.error).toContain("network down");
+  });
+});
+
+describe("createApiClient().uploadDocument (task E06/F05/US01/T01)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("POSTs multipart/form-data to <baseUrl>/api/documents with the file and X-Tenant-Id header", async () => {
+    const document = {
+      id: "doc-1",
+      contractId: null,
+      fileName: "contract.pdf",
+      mimeType: "application/pdf",
+      processingStatus: "Completed",
+      createdAt: "2026-09-06T08:00:00Z",
+    };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(document), { status: 201 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const file = pdfFile();
+
+    await createApiClient("https://api.dev.contigo.example").uploadDocument("tenant-1", file);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("https://api.dev.contigo.example/api/documents");
+    expect(init.method).toBe("POST");
+    expect(init.headers).toEqual({ "X-Tenant-Id": "tenant-1" });
+    expect(init.cache).toBe("no-store");
+    expect(init.body).toBeInstanceOf(FormData);
+    const submittedFile = (init.body as FormData).get("file") as File;
+    expect(submittedFile.name).toBe("contract.pdf");
+    expect(submittedFile.type).toBe("application/pdf");
+  });
+
+  it("reports ok:true with the stored (already-processed) document on 201", async () => {
+    const document = {
+      id: "doc-1",
+      contractId: "contract-1",
+      fileName: "contract.pdf",
+      mimeType: "application/pdf",
+      processingStatus: "NeedsReview",
+      createdAt: "2026-09-06T08:00:00Z",
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(document), { status: 201 })));
+
+    const result = await createApiClient("https://api.dev.contigo.example").uploadDocument("tenant-1", pdfFile());
+
+    expect(result).toEqual({ ok: true, statusCode: 201, document, error: null });
+  });
+
+  it("reports ok:false with the parsed JSON string error on 400", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify("Missing/invalid X-Tenant-Id header."), { status: 400 }),
+      ),
+    );
+
+    const result = await createApiClient("https://api.dev.contigo.example").uploadDocument("bad-tenant", pdfFile());
+
+    expect(result).toEqual({
+      ok: false,
+      statusCode: 400,
+      document: null,
+      error: "Missing/invalid X-Tenant-Id header.",
+    });
+  });
+
+  it("falls back to a status-based message when a non-2xx body is not JSON", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("Bad Gateway", { status: 502, statusText: "Bad Gateway" })));
+
+    const result = await createApiClient("https://api.dev.contigo.example").uploadDocument("tenant-1", pdfFile());
+
+    expect(result.ok).toBe(false);
+    expect(result.statusCode).toBe(502);
+    expect(result.document).toBeNull();
+    expect(result.error).toContain("502");
+  });
+
+  it("resolves (does not throw) with statusCode null when the network request fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
+
+    const result = await createApiClient("https://api.dev.contigo.example").uploadDocument("tenant-1", pdfFile());
+
+    expect(result.ok).toBe(false);
+    expect(result.statusCode).toBeNull();
+    expect(result.document).toBeNull();
+    expect(result.error).toContain("https://api.dev.contigo.example/api/documents");
     expect(result.error).toContain("network down");
   });
 });
