@@ -36,7 +36,13 @@ describe("SignInScreen", () => {
     expect(screen.getByText(/what we bought/i)).toBeInTheDocument();
     expect(screen.getByText(/where we can save money/i)).toBeInTheDocument();
     expect(screen.getByText("Contract")).toBeInTheDocument();
-    expect(screen.getByText("Intelligence")).toBeInTheDocument();
+    expect(screen.getByText("Renewal")).toBeInTheDocument();
+    expect(screen.getByText("Savings")).toBeInTheDocument();
+    expect(screen.getByText("New purchase")).toBeInTheDocument();
+    // Task E11/F02/US01/T01 (gap G-S1-JOBS): Contract, Renewal, and Savings
+    // all pair with the *same* bold word "Intelligence" in the compiled
+    // export -- three cells, not one, now render it.
+    expect(screen.getAllByText("Intelligence")).toHaveLength(3);
     expect(screen.getByText("Quote Check")).toBeInTheDocument();
   });
 
@@ -44,5 +50,38 @@ describe("SignInScreen", () => {
     render(<SignInScreen onContinue={vi.fn()} interactionInFlight={false} />);
 
     expect(screen.getByText(/ask your workspace admin for an invitation/i)).toBeInTheDocument();
+  });
+
+  // Task E11/F02/US01/T01 (signin-1to1) -- gaps G-S1-LOCKUP/G-S1-RIGHT.
+  it("renders the Contigo lockup (accent mark + wordmark) above the north-star", () => {
+    const { container } = render(<SignInScreen onContinue={vi.fn()} interactionInFlight={false} />);
+
+    const lockup = container.querySelector(".signin-lockup");
+    expect(lockup).toBeInTheDocument();
+    expect(lockup).toHaveTextContent("Contigo");
+    expect(container.querySelector(".signin-lockup-mark")).toBeInTheDocument();
+  });
+
+  it("heads the right column 'Sign in' (h2), not a 'Contigo' heading", () => {
+    render(<SignInScreen onContinue={vi.fn()} interactionInFlight={false} />);
+
+    expect(screen.getByRole("heading", { name: "Sign in", level: 2 })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Contigo" })).not.toBeInTheDocument();
+  });
+
+  it("shows the muted Entra sign-in sentence under the heading", () => {
+    render(<SignInScreen onContinue={vi.fn()} interactionInFlight={false} />);
+
+    expect(
+      screen.getByText(
+        /use your organisation account\. contigo never stores your password.*microsoft entra id/i,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("renders the full-viewport two-column canvas", () => {
+    const { container } = render(<SignInScreen onContinue={vi.fn()} interactionInFlight={false} />);
+
+    expect(container.querySelector("main.signin-screen")).toBeInTheDocument();
   });
 });

@@ -141,8 +141,12 @@ export default function WorkspacePickerScreen({
     <main className="signin-screen">
       <SignInStatementPanel />
       <section className="signin-action">
-        <h1 className="screen-title">Choose a workspace</h1>
-        <p className="micro-meta">Signed in as {accountLabel}.</p>
+        {/* Task E11/F02/US01/T01 (signin-1to1): order/tags copied from the
+            export's signStage2 block -- an accent h6 "Signed in as ..."
+            kicker *above* the h2 heading, not a neutral .micro-meta line
+            below an h1 (gap G-S1-RIGHT's WorkspacePickerScreen half). */}
+        <h6 className="signin-account-kicker">Signed in as {accountLabel}</h6>
+        <h2 className="screen-title">Choose a workspace</h2>
 
         {workspaces.length === 0 && !showCreateForm && (
           <div className="empty-state">

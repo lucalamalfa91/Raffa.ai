@@ -23,19 +23,20 @@ export interface SignInScreenProps {
 //
 // North-star sentence and the OIDC/PKCE caption below are quoted verbatim
 // from inputs/design/prototypes/day1-demo.html (the compiled Claude Design
-// bundle -- ADR-020 "the pixel reference"). The "4 V1 jobs" grid's kicker
-// words (Contract / Renewal / Savings / New purchase) are also verbatim from
-// that export; two of the four bold companion words (cell 1 "Intelligence",
-// cell 4 "Quote Check") were recovered unambiguously, matching the R1/R4
-// release names in reports/architecture/ADR-020-web-screen-inventory.md.
-// The other two ("Tracking", "Opportunities") could not be disambiguated
-// from a reused inline-style pattern in the minified single-line export, so
-// they are reconstructed from the same ADR's release vocabulary (R2
-// Renewals, R3 Savings/SavingsOpportunity) rather than guessed as verbatim.
+// bundle -- ADR-020 "the pixel reference"). Task E11/F02/US01/T01
+// re-extracted the raw `<!-- SIGN-IN -->` block byte-for-byte (it is a
+// single ~6.5KB line in the compiled export, which is why the previous pass
+// -- reading it through a line-oriented tool -- could only disambiguate two
+// of the four bold companion words). All four kicker/bold pairs below are
+// now copied verbatim: Contract, Renewal, and Savings all pair with the
+// *same* bold word "Intelligence" in the export, not the three distinct
+// words ("Intelligence" / "Tracking" / "Opportunities") the earlier guess
+// reconstructed from ADR-020's release vocabulary. Gap G-S1-JOBS
+// (reports/audit/visual-fidelity-gaps.md).
 const V1_JOBS: ReadonlyArray<{ kicker: string; bold: string }> = [
   { kicker: "Contract", bold: "Intelligence" },
-  { kicker: "Renewal", bold: "Tracking" },
-  { kicker: "Savings", bold: "Opportunities" },
+  { kicker: "Renewal", bold: "Intelligence" },
+  { kicker: "Savings", bold: "Intelligence" },
   { kicker: "New purchase", bold: "Quote Check" },
 ];
 
@@ -52,6 +53,10 @@ const V1_JOBS: ReadonlyArray<{ kicker: string; bold: string }> = [
 export function SignInStatementPanel() {
   return (
     <section className="signin-statement">
+      <div className="signin-lockup">
+        <span className="signin-lockup-mark" aria-hidden="true" />
+        Contigo
+      </div>
       <p className="signin-north-star">
         Contigo knows <span className="signin-accent">what we bought</span>,{" "}
         <span className="signin-accent">what we pay</span>,{" "}
@@ -70,6 +75,23 @@ export function SignInStatementPanel() {
   );
 }
 
+// Microsoft's 4-square mark, quoted verbatim (viewBox + all four rects/
+// opacities) from the compiled prototype's primary sign-in button
+// (`<!-- SIGN-IN -->`, inputs/design/prototypes/day1-demo.html). `fill`
+// (not the shared `.icon` stroke treatment in styles/base.css) is load-
+// bearing here -- `.icon` sets `fill: none`, which would blank every rect.
+// aria-hidden: the button's own text already names the action.
+function MicrosoftMark() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <rect x="1" y="1" width="6.5" height="6.5" fill="currentColor" />
+      <rect x="8.5" y="1" width="6.5" height="6.5" fill="currentColor" opacity=".7" />
+      <rect x="1" y="8.5" width="6.5" height="6.5" fill="currentColor" opacity=".7" />
+      <rect x="8.5" y="8.5" width="6.5" height="6.5" fill="currentColor" opacity=".45" />
+    </svg>
+  );
+}
+
 export default function SignInScreen({ onContinue, interactionInFlight }: SignInScreenProps) {
   const [clicked, setClicked] = useState(false);
   const redirecting = clicked || interactionInFlight;
@@ -83,16 +105,23 @@ export default function SignInScreen({ onContinue, interactionInFlight }: SignIn
     <main className="signin-screen">
       <SignInStatementPanel />
       <section className="signin-action" aria-labelledby="signin-heading">
-        <h1 id="signin-heading" className="screen-title">
-          Contigo
-        </h1>
+        {/* Task E11/F02/US01/T01 (signin-1to1): the export's right column is
+            headed "Sign in" (h2), not the "Contigo" h1 the lockup already
+            says once per panel -- gap G-S1-RIGHT. */}
+        <h2 id="signin-heading" className="screen-title">
+          Sign in
+        </h2>
+        <p className="signin-subtitle">
+          Use your organisation account. Contigo never stores your password — identity is handled by
+          Microsoft Entra ID.
+        </p>
         <button
           type="button"
           className="btn btn-primary btn-block"
           onClick={handleContinue}
           disabled={redirecting}
         >
-          {redirecting && <span className="signin-spinner" aria-hidden="true" />}
+          {redirecting ? <span className="signin-spinner" aria-hidden="true" /> : <MicrosoftMark />}
           {redirecting ? "Redirecting to Microsoft Entra ID…" : "Continue with Microsoft Entra ID"}
         </button>
         <hr />
