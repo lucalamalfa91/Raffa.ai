@@ -68,3 +68,30 @@ variable "memory" {
   type        = string
   default     = "0.5Gi"
 }
+
+# Task E10/F02/US01/T01 (foundry-ocr-ca, ADR-004/ADR-008/ADR-017): non-secret
+# AI Gateway connection info from this environment's modules/foundry
+# instance (an endpoint URL and two names -- no key, ADR-011). No live
+# IAiGateway implementation binds these yet -- only Fixtures/FixtureAiGateway.cs
+# is registered today (see Contigo.AiGateway.ServiceCollectionExtensions'
+# own doc comment) -- adding the env vars ahead of that implementation is
+# the same "infra lands before the consuming code" sequencing this
+# module's own ConnectionStrings__Savings / __Quotes env vars already used
+# (task E09/F02/US01/T01). This closes AC-3's *env var* half only: the
+# API/worker are no longer blocked on FixtureAiGateway *solely* because
+# these were absent; a live gateway implementation is a separate,
+# not-yet-scheduled task.
+variable "ai_gateway_endpoint" {
+  description = "This environment's AI services account endpoint (modules/foundry ai_services_endpoint output)."
+  type        = string
+}
+
+variable "ai_gateway_project_name" {
+  description = "This environment's Foundry project name (modules/foundry foundry_project_name output)."
+  type        = string
+}
+
+variable "ai_gateway_document_intelligence_connection" {
+  description = "This environment's Document Intelligence connection name (modules/foundry document_intelligence_connection output)."
+  type        = string
+}
