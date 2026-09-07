@@ -1074,9 +1074,35 @@ is a `.github/workflows/` change outside this task's own file scope.
 
 This suite was authored against, and its every selector/state-branch
 statically verified against, the real committed source of every screen it
-drives (cited throughout the spec file) -- but it was not executed inside
-the Helix implementer session that wrote it: that session's shell has
-`python`/`gh` only, no `npm`/`node` (`agents/implementer.md` §0), so
-`npm install` / `npx playwright test` could not run there. Running it for
-real against `demo` is the actual gate; that is an operator/CI action, not
-a claim this README makes on the authoring session's behalf.
+drives (cited throughout the spec file). An earlier pass through this
+worktree's Helix implementer session found `git`/`npm`/`node` all missing
+via `command -v` and concluded nothing beyond static reading could run
+here -- that conclusion was too broad and has been corrected. `PATH` in
+this harness's shell is corrupted, not the tools: `git`, `node`, `npm`, and
+`npx` are all installed and run fine via their absolute paths, e.g.:
+
+```bash
+"/c/Program Files/Git/bin/git.exe" status --short
+"/c/Program Files/nodejs/npm.cmd" ci
+"/c/Program Files/nodejs/npx.cmd" vitest run
+```
+
+Using that, everything short of a real browser run against `demo` **is**
+verifiable in this harness, and was, as part of task E08/F04/US01/T01's own
+review loop: `npm ci` (the exact command `.github/workflows/web.yml`'s
+`build` job runs -- this caught a real bug, `package-lock.json` never
+having been regenerated after `@playwright/test` was added to
+`package.json`, which made `npm ci` hard-fail before `build`/`test` ever
+ran; fixed by committing the regenerated lockfile alongside this note),
+`npx tsc --noEmit`, `npx vitest run` (the pre-existing unit suite -- this
+also caught `e2e/day1.spec.ts` being picked up by Vitest's own default
+include glob and failing collection; fixed by `vite.config.ts`'s own
+`test.exclude`), `npx playwright test --list` (discovers `day1.spec.ts`), and
+`npx playwright test` itself, which correctly `test.skip()`s -- not a false
+pass, not a hang -- when the three `CONTIGO_E2E_BASE_URL` /
+`CONTIGO_E2E_ENTRA_EMAIL` / `CONTIGO_E2E_ENTRA_PASSWORD` env vars are
+unset, exactly as designed. What genuinely is operator/CI-only is a real
+pass with real Entra test-account credentials against a live,
+`demo-v*`-promoted `demo` deployment -- that, and only that, is the actual
+gate this suite exists to satisfy; no local or CI session without those
+live credentials can supply it.
