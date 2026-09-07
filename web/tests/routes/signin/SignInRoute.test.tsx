@@ -49,6 +49,12 @@ function mockApiClient(createWorkspace: ApiClient["createWorkspace"] = vi.fn()):
     // bare vi.fn() is enough, same convention as getContract360 above.
     getCorrectionHistory: vi.fn(),
     correctContract: vi.fn(),
+    // Task E08/F03/US01/T01 (quote-check-ui): this suite never reaches the Quote Check screen --
+    // bare vi.fn() is enough, same convention as getCorrectionHistory above.
+    uploadQuote: vi.fn(),
+    getQuoteAssessment: vi.fn(),
+    recalculateQuoteAssessment: vi.fn(),
+    captureNegotiationOutcome: vi.fn(),
   };
 }
 

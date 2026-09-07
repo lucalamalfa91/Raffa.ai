@@ -288,6 +288,157 @@ export interface CorrectContractResult {
   error: string | null;
 }
 
+// Task E08/F03/US01/T01 (quote-check-ui, ADR-018 route /quotes/:id, ADR-020 screen 10): uploadQuote,
+// wrapping `POST /api/quotes` -- the Quote Check stepper's own "Extract" step entry point.
+// Multipart, like uploadDocument above; supplier/currency/geography/purchaseDate are optional form
+// fields (see web/openapi/contigo-api.v1.json's own description on this operation for why a quote
+// uploaded without them still stores/extracts normally but cannot be benchmark-matched yet).
+type UploadQuoteResponses = paths["/api/quotes"]["post"]["responses"];
+export type UploadedQuote = UploadQuoteResponses[201]["content"]["application/json"];
+
+export interface UploadQuoteFields {
+  supplier?: string;
+  currency?: string;
+  geography?: string;
+  /** `yyyy-MM-dd`, matching the backend's `DateOnly?` parameter. */
+  purchaseDate?: string;
+}
+
+export interface UploadQuoteResult {
+  /** True only on `201 Created`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** The stored (and synchronously extracted/normalized) quote, present only when `ok` is true. */
+  quote: UploadedQuote | null;
+  /** Plain-language failure reason (400 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
+// getQuoteAssessment, wrapping `GET /api/quotes/{id}/assessment` -- the Extract/Assessment steps'
+// shared read shape (see recalculateQuoteAssessment below for why src/routes/quotes/ actually calls
+// the recalculate operation, not this one, for its own reads -- both return an identical
+// `assessment` shape).
+type GetQuoteAssessmentResponses = paths["/api/quotes/{id}/assessment"]["get"]["responses"];
+export type QuoteAssessmentBody = GetQuoteAssessmentResponses[200]["content"]["application/json"];
+export type QuoteLineAssessmentBody = QuoteAssessmentBody["lines"][number];
+
+/**
+ * `Contigo.Quotes.Domain.MarketPosition`'s real 3-value wire set, named here (not generated) for the
+ * same reason `PortfolioRiskSeverity` above is: web/scripts/generate-api-client.mjs#renderSchemaType
+ * drops a nullable union's `null` member whenever the schema also declares `enum`, so
+ * `QuoteLineAssessmentBody["position"]` is generated as a bare `string | null`. See
+ * web/openapi/contigo-api.v1.json's own `getQuoteAssessment` operation description for the full
+ * explanation.
+ */
+export type QuoteMarketPosition = "BelowMarket" | "InLine" | "AboveMarket";
+
+const QUOTE_MARKET_POSITIONS: readonly QuoteMarketPosition[] = ["BelowMarket", "InLine", "AboveMarket"];
+
+export function isQuoteMarketPosition(value: string): value is QuoteMarketPosition {
+  return (QUOTE_MARKET_POSITIONS as readonly string[]).includes(value);
+}
+
+export interface GetQuoteAssessmentResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** One entry per line on the quote, present only when `ok` is true. */
+  assessment: QuoteAssessmentBody | null;
+  /** Plain-language failure reason (400/404 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
+// recalculateQuoteAssessment, wrapping `POST /api/quotes/{id}/assessment/recalculate`. Called with
+// an empty `mappings` array as this app's own "read the current assessment + unmatched lines" call
+// (SkuMappingService.RecalculateAsync's own doc comment names this a valid, side-effect-free "pure
+// refresh") -- there is no separate `GET` that returns `unmatchedLines`, and this operation's
+// response is that shape's superset (adds `unmatchedLines`/`normalization` on top of the identical
+// `assessment` GET /api/quotes/{id}/assessment itself returns), so src/routes/quotes/ never calls
+// getQuoteAssessment directly; it is still wrapped above for API-contract completeness (the same
+// "wrap the endpoint's full surface even if this app's own screen only ever calls it one way"
+// convention getPortfolio's own doc comment already follows).
+type RecalculateQuoteResponses = paths["/api/quotes/{id}/assessment/recalculate"]["post"]["responses"];
+export type QuoteRecalculationBody = RecalculateQuoteResponses[200]["content"]["application/json"];
+export type UnmatchedQuoteLineBody = QuoteRecalculationBody["unmatchedLines"][number];
+
+/** One manual SKU-to-product mapping correction -- `Contigo.Quotes.Application.Normalization
+ * .SkuMappingCorrection`'s wire shape. Hand-written, like `CorrectContractRequest` above: the
+ * generator does not parse `requestBody` at all yet (see this file's own header comment). */
+export interface SkuMappingCorrectionInput {
+  sku: string;
+  edition?: string | null;
+  canonicalSku: string;
+  canonicalEdition?: string | null;
+  canonicalProductName?: string | null;
+}
+
+export interface RecalculateQuoteAssessmentResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** `mappingsAppliedCount`/`normalization`/`unmatchedLines`/`assessment`, present only when `ok` is true. */
+  recalculation: QuoteRecalculationBody | null;
+  /** Plain-language failure reason (400/404 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
+// captureNegotiationOutcome, wrapping `POST /api/negotiations/outcomes` -- the Negotiation step's
+// own outcome-capture form. `NegotiationLeverTypeName` mirrors `Contigo.Quotes.Application.Strategy
+// .NegotiationLeverType`'s 7-member closed vocabulary (see web/openapi/contigo-api.v1.json's own
+// operation description for why this screen has no way to fetch AI-recommended levers/evidence --
+// NegotiationStrategyService has no HTTP endpoint -- so this control lets a person pick from the
+// same fixed set the capture endpoint itself validates against, rather than free text it would
+// reject).
+export type NegotiationLeverTypeName =
+  | "Volume"
+  | "Term"
+  | "Utilization"
+  | "Alternatives"
+  | "QuarterEnd"
+  | "Bundle"
+  | "PaymentTerms";
+
+export const NEGOTIATION_LEVER_TYPES: readonly NegotiationLeverTypeName[] = [
+  "Volume",
+  "Term",
+  "Utilization",
+  "Alternatives",
+  "QuarterEnd",
+  "Bundle",
+  "PaymentTerms",
+];
+
+/** `POST /api/negotiations/outcomes` request body -- `NegotiationOutcomeCaptureRequest`'s wire
+ * shape. `realizedSaving`/`discountPercent` are deliberately absent: `NegotiationOutcomeService
+ * .CaptureAsync` always computes them itself (`NegotiationOutcomeCalculator.Compute`), never trusts
+ * a caller-supplied figure for arithmetic it can derive exactly (Appendix C rule 6). */
+export interface CaptureNegotiationOutcomeRequest {
+  quoteId: string;
+  originalQuoteTotal: number;
+  targetPrice?: number | null;
+  finalPrice: number;
+  negotiationDurationDays: number;
+  leversUsed: readonly NegotiationLeverTypeName[];
+  savingsOpportunityId?: string | null;
+}
+
+type CaptureNegotiationOutcomeResponses = paths["/api/negotiations/outcomes"]["post"]["responses"];
+export type NegotiationOutcomeBody = CaptureNegotiationOutcomeResponses[201]["content"]["application/json"];
+
+export interface CaptureNegotiationOutcomeResult {
+  /** True only on `201 Created`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** The recorded outcome (with server-computed `realizedSaving`/`discountPercent`), present only when `ok` is true. */
+  outcome: NegotiationOutcomeBody | null;
+  /** Plain-language failure reason (400/404 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
 export interface ApiClient {
   /**
    * Calls `GET /health` (operationId `getHealth` in
@@ -383,6 +534,41 @@ export interface ApiClient {
    * inline, not an exception.
    */
   correctContract(tenantId: string, id: string, request: CorrectContractRequest): Promise<CorrectContractResult>;
+  /**
+   * Calls `POST /api/quotes` (operationId `uploadQuote`) as `multipart/form-data` -- the Quote
+   * Check stepper's own upload entry point (there is no separate "new quote" screen; ADR-018 names
+   * only the detail route `/quotes/:id`, so `src/routes/quotes/index.tsx` renders this call's own
+   * upload form when no quote id is in the route yet). Same never-throws shape as `uploadDocument`.
+   */
+  uploadQuote(tenantId: string, file: File, fields?: UploadQuoteFields): Promise<UploadQuoteResult>;
+  /**
+   * Calls `GET /api/quotes/{id}/assessment` (operationId `getQuoteAssessment`). Same never-throws
+   * shape as every other call here; a `404` is a normal, expected outcome. See
+   * `recalculateQuoteAssessment` below for why `src/routes/quotes/` calls that operation, not this
+   * one, for its own reads.
+   */
+  getQuoteAssessment(tenantId: string, id: string): Promise<GetQuoteAssessmentResult>;
+  /**
+   * Calls `POST /api/quotes/{id}/assessment/recalculate` (operationId `recalculateQuoteAssessment`)
+   * -- `mappings` defaults to an empty array, the endpoint's own documented "pure refresh" read (see
+   * `RecalculateQuoteAssessmentResult`'s own doc comment). Same never-throws shape as every other
+   * call here; a `404` is a normal, expected outcome.
+   */
+  recalculateQuoteAssessment(
+    tenantId: string,
+    id: string,
+    mappings?: readonly SkuMappingCorrectionInput[],
+  ): Promise<RecalculateQuoteAssessmentResult>;
+  /**
+   * Calls `POST /api/negotiations/outcomes` (operationId `captureNegotiationOutcome`) -- the
+   * Negotiation step's outcome-capture form. Same never-throws shape as every other call here: a
+   * `400` (e.g. an invalid `leversUsed` entry) or `404` (unknown quote) is a normal, expected
+   * outcome the caller renders inline.
+   */
+  captureNegotiationOutcome(
+    tenantId: string,
+    request: CaptureNegotiationOutcomeRequest,
+  ): Promise<CaptureNegotiationOutcomeResult>;
 }
 
 /**
@@ -761,6 +947,158 @@ export function createApiClient(baseUrl: string): ApiClient {
       }
 
       return { ok: false, statusCode: response.status, correction: null, error };
+    },
+
+    async uploadQuote(tenantId, file, fields = {}) {
+      const formData = new FormData();
+      formData.append("file", file);
+      if (fields.supplier !== undefined) formData.append("supplier", fields.supplier);
+      if (fields.currency !== undefined) formData.append("currency", fields.currency);
+      if (fields.geography !== undefined) formData.append("geography", fields.geography);
+      if (fields.purchaseDate !== undefined) formData.append("purchaseDate", fields.purchaseDate);
+
+      let response: Response;
+      try {
+        response = await fetch(new URL("/api/quotes", baseUrl), {
+          method: "POST",
+          headers: { "X-Tenant-Id": tenantId },
+          body: formData,
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          quote: null,
+          error: `Unable to reach ${baseUrl}/api/quotes. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 201) {
+        const quote = (await response.json()) as UploadedQuote;
+        return { ok: true, statusCode: 201, quote, error: null };
+      }
+
+      // Same Results.BadRequest(string) shape as uploadDocument's 400 above.
+      let error: string;
+      try {
+        const errorBody: unknown = await response.json();
+        error = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, quote: null, error };
+    },
+
+    async getQuoteAssessment(tenantId, id) {
+      let response: Response;
+      try {
+        response = await fetch(new URL(`/api/quotes/${encodeURIComponent(id)}/assessment`, baseUrl), {
+          headers: { "X-Tenant-Id": tenantId },
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          assessment: null,
+          error: `Unable to reach ${baseUrl}/api/quotes/${id}/assessment. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const assessment = (await response.json()) as QuoteAssessmentBody;
+        return { ok: true, statusCode: 200, assessment, error: null };
+      }
+
+      // Unlike getContract360/getDocument above, this operation's own 404 DOES carry a body
+      // (QuotesEndpointExtensions.GetAssessmentAsync calls Results.NotFound(result.Error), not the
+      // bare, empty-body Results.NotFound() those other endpoints use) -- read it the same way a
+      // 400 is read below, rather than fabricating a generic message.
+      let error: string;
+      try {
+        const errorBody: unknown = await response.json();
+        error = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, assessment: null, error };
+    },
+
+    async recalculateQuoteAssessment(tenantId, id, mappings = []) {
+      let response: Response;
+      try {
+        response = await fetch(new URL(`/api/quotes/${encodeURIComponent(id)}/assessment/recalculate`, baseUrl), {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId },
+          body: JSON.stringify({ mappings }),
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          recalculation: null,
+          error: `Unable to reach ${baseUrl}/api/quotes/${id}/assessment/recalculate. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const recalculation = (await response.json()) as QuoteRecalculationBody;
+        return { ok: true, statusCode: 200, recalculation, error: null };
+      }
+
+      // Same real-body 404 as getQuoteAssessment above (SkuMappingService.QuoteNotFoundError via
+      // Results.NotFound(result.Error)), plus the same Results.BadRequest(string) 400 shape as
+      // every other call here.
+      let error: string;
+      try {
+        const errorBody: unknown = await response.json();
+        error = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, recalculation: null, error };
+    },
+
+    async captureNegotiationOutcome(tenantId, request) {
+      let response: Response;
+      try {
+        response = await fetch(new URL("/api/negotiations/outcomes", baseUrl), {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId },
+          body: JSON.stringify(request),
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          outcome: null,
+          error: `Unable to reach ${baseUrl}/api/negotiations/outcomes. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 201) {
+        const outcome = (await response.json()) as NegotiationOutcomeBody;
+        return { ok: true, statusCode: 201, outcome, error: null };
+      }
+
+      // Same real-body 404 as getQuoteAssessment above (NegotiationOutcomeService
+      // .QuoteNotFoundError via Results.NotFound(result.Error)), plus the same
+      // Results.BadRequest(string) 400 shape as every other call here.
+      let error: string;
+      try {
+        const errorBody: unknown = await response.json();
+        error = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, outcome: null, error };
     },
   };
 }

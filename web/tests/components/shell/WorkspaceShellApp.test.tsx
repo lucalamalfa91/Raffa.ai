@@ -42,6 +42,14 @@ function mockApiClient(): ApiClient {
     // getContract360 above (this comment records *why* it's safe to leave unresolved, unlike those).
     getCorrectionHistory: vi.fn(),
     correctContract: vi.fn(),
+    // Task E08/F03/US01/T01 (quote-check-ui): QuoteCheckRoute (like PortfolioRoute/Contract360Route
+    // above) will call these on mount once a quote id is present, but every test in this suite that
+    // reaches /quotes/:quoteId only asserts routing/guards without a real id -- bare vi.fn() is
+    // enough here; see tests/routes/quotes/*.test.tsx for that screen's own fetch-outcome coverage.
+    uploadQuote: vi.fn(),
+    getQuoteAssessment: vi.fn(),
+    recalculateQuoteAssessment: vi.fn(),
+    captureNegotiationOutcome: vi.fn(),
   };
 }
 

@@ -84,12 +84,17 @@ the web workflow after that apply.
 | `/contracts` | Portfolio: filter chips + attention strip + a table sorted by severity then deadline (critical rows tinted + a red bar), plus loading/empty/error/no-match-for-filter states. Calls the real `GET /api/contracts`. See "Portfolio" below. | E07/F01/US01/T01 |
 | `/contracts/:id` | Contract 360: header + 6-cell fact row + 10 tabs (Overview's recommendation card + drivers + "Needs your attention" + "Top risks", then Commercials/Products/Clauses/Obligations/Risks/Documents/Benchmark/Renewal/Activity through one shared Term/Value/Source/Confidence table), plus loading/not-found/error states. Calls the real `GET /api/contracts/{id}`, `GET /api/renewals`, `GET /api/renewals/{contractId}/priority`. See "Contract 360" below. | E07/F02/US01/T01 |
 | `/contracts/:id/review` | Review / correction: 4-column field list (critical marker, extracted value, confidence/decision tag, Accept/Correct) + right-hand evidence pane (correction form + real correction-history trail) + gated "Mark as validated". Calls the real `GET /api/contracts/{id}`, `GET /api/contracts/{id}/corrections`, `PATCH /api/contracts/{id}`. See "Review / correction" below. | E07/F03/US01/T01 |
-| `/` (home), `/renewals`, `/ask`, `/review`\*, `/quotes`\*, `/quotes/:id`, `/workspace/members` | App shell: 224px left rail + global Ask bar + routed content. Every route in this row still renders a `ScaffoldScreen` placeholder today -- the real screens ship in later epic-07/epic-08/feature-02/03/04 tasks named at each route (see `src/components/shell/WorkspaceShellApp.tsx`). | E06/F03/US02/T01 |
+| `/quotes`, `/quotes/:id` | Quote check: this task's own upload form (no id yet) -> 4-step stepper Extract (line table + unmatched-SKU manual mapping + recalculate) -> Assessment (4 numbers, line-level P25/P50/P75 + confidence, provenance card; blocked until every line resolves) -> Target (price ladder, editable target/walk-away) -> Negotiation (outcome capture -> recorded outcome). Calls the real `POST /api/quotes`, `POST /api/quotes/{id}/assessment/recalculate`, `POST /api/negotiations/outcomes`. See "Quote check" below. | E08/F03/US01/T01 |
+| `/` (home), `/renewals`, `/ask`, `/review`\*, `/workspace/members` | App shell: 224px left rail + global Ask bar + routed content. Every route in this row still renders a `ScaffoldScreen` placeholder today -- the real screens ship in later epic-07/epic-08/feature-02/04 tasks named at each route (see `src/components/shell/WorkspaceShellApp.tsx`). | E06/F03/US02/T01 |
 
-\* `/review` and `/quotes` are this task's own placeholder landing paths, not
-a row in ADR-018's locked route map -- that table only ever names a *detail*
-route for these two nav destinations (`/contracts/:id/review`, `/quotes/:id`
-respectively). See `src/components/shell/navItems.ts`'s header comment.
+\* `/review` is this task's own placeholder landing path, not a row in
+ADR-018's locked route map -- that table only ever names the *detail* route
+for this nav destination (`/contracts/:id/review`). See
+`src/components/shell/navItems.ts`'s header comment. (`/quotes` used to be
+the identical kind of placeholder -- see that same header comment's own
+history -- until task E08/F03/US01/T01 made it a real screen: ADR-018 names
+no separate list route for quotes, so `QuoteCheckRoute` itself renders its
+own upload form there instead of a `ScaffoldScreen`.)
 
 ### Layout -- full-bleed, matching the prototype's own canvas (ADR-018/019/020, task E06/F06/US01/T01)
 
@@ -441,6 +446,87 @@ task E07/F02/US01/T01 to this exact route).
   `<button disabled>` paired with a visible `.hint` reason (ADR-019 accessibility baseline), and
   navigates to `/contracts/:id` on click (screens.md #6's own `finishReview` behaviour).
 
+### Quote check (ADR-020 screen 10, task E08/F03/US01/T01, us-01-quote-check)
+
+`src/routes/quotes/` implements screen 10: AC-1 the 4-step stepper (Extract -> Assessment -> Target
+-> Negotiation), AC-2 Extract's line table + unmatched-SKU manual mapping + recalculate (assessment
+blocked until resolved), AC-3 Assessment's 4 numbers + line-level P25/P50/P75 table + provenance
+card, and Target's price ladder + editable target, AC-4 Negotiation's outcome form -> recorded
+outcome.
+
+- **Real backend, not the cited prototype's own fixture.** By the time this task started, backend
+  epic E05 (`Contigo.Quotes` module) had already implemented and wired `POST /api/quotes`,
+  `GET /api/quotes/{id}/assessment`, `POST /api/quotes/{id}/assessment/recalculate`, and
+  `POST /api/negotiations/outcomes` into `Program.cs` -- the parent story's own "E05 quote API
+  (assumed)" dependency turned out to already be real. `inputs/design/prototypes/day1-demo.html`'s
+  own Quote check screen is one hard-coded demo scenario (fixed `qlines`/`assess`/`qbench`/`levers`
+  array literals); this screen instead derives every number from the real endpoints above -- see
+  `src/routes/quotes/quoteCheckViewModel.ts`'s own header comment and "API client" below.
+- **No upload screen exists in the design** (screens.md #10 starts directly at "Extracted line
+  items"; ADR-018 names only the detail route `/quotes/:id`, no list/upload route) --
+  `src/routes/quotes/index.tsx` renders `UploadQuoteForm.tsx` itself whenever the route has no
+  `quoteId` yet (both the rail nav's own `/quotes` and a fresh `/quotes/:quoteId` visit before any
+  upload), then navigates to the real id `POST /api/quotes` returns. `UploadQuoteForm.tsx`'s own
+  "Use sample file" button mirrors `../documents/sampleDocument.ts`'s exact precedent (a small,
+  syntactically-minimal, content-free PDF -- this repo ships no real sample quote asset either).
+- **AC-2, Extract** (`ExtractStep.tsx`) -- the line table's Product/SKU/discount/annual-total columns
+  cannot all be sourced honestly: `QuotesEndpointExtensions.BuildAssessmentResponse` never serializes
+  `QuoteLine.Sku`/`Description`/`DiscountPercent` for a *matched* line (only `SkuMappingService
+  .GetUnmatchedLinesAsync`'s own small query returns those, for the still-unresolved lines only) --
+  a real, pre-existing backend gap this task's `contigo-web` file scope cannot close.
+  `quoteCheckViewModel.ts#mergeKnownLineDetails` keeps a running, session-local memory of every
+  sku/edition/description this screen has actually seen from a real response, so a line does not
+  lose its own real name the moment it resolves; an unmatched line still renders honestly as
+  `Line {n}` the first time it is seen (before any correction has ever been read back). The
+  manual-mapping control is a free-text "canonical SKU"/"product name" pair, not the cited
+  prototype's fixed 3-option `<select>`: `SkuMappingCorrection`'s real wire shape takes an arbitrary
+  caller-chosen canonical SKU and no endpoint exposes a catalog to pick from.
+- **AC-2's own gate** (`quoteCheckViewModel.ts#isAssessmentBlocked`) is exactly
+  `unmatchedLines.length > 0` -- `recalculateQuoteAssessment`'s own real, server-computed list, never
+  re-derived. Gated at the *content* level (`AssessmentStep.tsx`'s own "Assessment blocked" card +
+  "<- Back to extract"), never at the stepper-navigation level: every step is directly clickable
+  (day1-demo.html's own `qsteps[i].go` behaviour), matching AC-1's "stepper" literally.
+- **`recalculateQuoteAssessment`, not `getQuoteAssessment`, is this screen's own read call** -- see
+  `src/api/client.ts`'s own header comment on `recalculateQuoteAssessment` for why: called with an
+  empty `mappings` array as this screen's "read the current assessment + unmatched lines" call
+  (`SkuMappingService.RecalculateAsync`'s own doc comment names this a valid, side-effect-free "pure
+  refresh" -- there is no separate `GET` that also returns `unmatchedLines`).
+- **AC-3, Assessment** (`AssessmentStep.tsx`, `quoteCheckViewModel.ts#aggregateQuote`) -- every
+  quote-level number (the 4-number grid, the Target ladder, the outcome form's default "Original
+  quote total") is deterministically summed from each line's own real assessment (Appendix C rule
+  6), never a second, independent calculation. **No quote-level "overall position" rollup**:
+  `Contigo.Quotes.Application.Assessment.QuoteMarketAssessment`'s own doc comment explicitly declines
+  to invent one ("no ADR/spec names a deterministic way to collapse several lines' positions into
+  one"); `summarizePositions` renders a real *tally* ("2 above market · 1 in line") instead.
+- **AC-3, Target** (`TargetStep.tsx`) -- two honest departures from the cited prototype: no backend
+  endpoint computes a distinct "opening target" or "walk-away/escalation" figure
+  (`LineTargetSaving` gives exactly one recommended range), so "Your target"/"Walk-away" are real,
+  user-editable inputs pre-filled from the real aggregate as a starting point, not a third computed
+  tier; the ladder is drawn proportionally from whatever real figures `aggregateQuote` produced, not
+  the prototype's own fixed pixel positions (those were specific to its one hard-coded demo quote).
+- **AC-4, Negotiation levers** (`NegotiationStep.tsx`) -- a named, honest gap: `Contigo.Quotes
+  .Application.Strategy.NegotiationStrategyService` (negotiation-lever recommendations + evidence,
+  spec §12.1) is fully implemented and unit-tested, but `backend/src/Contigo.Api/Program.cs` never
+  maps an HTTP endpoint for it (checked: no `MapGet`/`MapPost` anywhere in `backend/src/Contigo.Api`
+  references `NegotiationStrategyService`/`NegotiationStrategyCalculator`/`QuoteNegotiationStrategy`)
+  -- a backend task would need to add one (e.g. `GET /api/quotes/{id}/strategy`) before this screen
+  can show AI-recommended levers/evidence for real. The outcome-capture control is still real: a
+  required multi-select of the same 7-member `NegotiationLeverType` vocabulary
+  `POST /api/negotiations/outcomes` itself validates `leversUsed` against.
+- **AC-4, outcome capture** -- `realizedSaving`/`discountPercent` are always the server's own
+  response (`NegotiationOutcomeCalculator.Compute`), never the client-side `previewOutcome` figure
+  shown before submit; the two happen to agree only because the arithmetic is mirrored verbatim
+  (spec §12.2's own worked example: 520,000 -> 435,000 = 85,000 saving, ~16.3%).
+- **"...-> Home Savings Realized updates"** -- there is no `GET` (list or single) anywhere on
+  `POST /api/negotiations/outcomes`, and this screen never supplies a `savingsOpportunityId` (no
+  Savings UI exists yet to pick one from), so `NegotiationOutcomePropagationService`'s own
+  cross-module write never runs for an outcome this screen records. `quoteOutcomeStore.ts` is the
+  same kind of interim `../documents/documentStore.ts`/`../signin/workspaceStore.ts` already
+  establish: a real, `sessionStorage`-scoped record of every outcome this browser actually captured,
+  for whichever future Home task (epic-08/feature-02-savings-ui) wires a real KPI read. The
+  recorded-outcome panel's own "See it on Home ->" link (`<Link to="/">`) is real; Home itself is
+  still a `ScaffoldScreen` until that task lands.
+
 ## API client (ADR-012 "one generated TypeScript client, no hand-written divergent DTOs")
 
 Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
@@ -570,6 +656,25 @@ Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
   generator cases `getContract360`/`getPortfolio` already exercise, so no generator change was
   needed this time.
 
+- **Task E08/F03/US01/T01 (quote-check-ui)** extended `openapi/contigo-api.v1.json` with the four
+  operations its own provenance paragraph had named as deliberately deferred: `POST /api/quotes`
+  (`uploadQuote`), `GET /api/quotes/{id}/assessment` (`getQuoteAssessment`),
+  `POST /api/quotes/{id}/assessment/recalculate` (`recalculateQuoteAssessment`), and
+  `POST /api/negotiations/outcomes` (`captureNegotiationOutcome`) -- the fourth (and, for this
+  document, last) web epic to extend it. All four were already implemented by backend epic E05
+  (`Contigo.Quotes` module) before this task started; it only documents and wraps them. `position`
+  (`Contigo.Quotes.Domain.MarketPosition`) reuses the same bare-nullable-string workaround
+  `getPortfolio`'s own `risk` field already established (`generate-api-client.mjs`'s enum-drops-null
+  limitation) -- `client.ts` names the real 3-value set as `QuoteMarketPosition` +
+  `isQuoteMarketPosition`, the same pattern `PortfolioRiskSeverity`/`isPortfolioRiskSeverity` already
+  establish. This task also fixed a real, previously-latent bug in `generate-api-client.mjs` itself:
+  `renderSchemaType`'s `"array"` case rendered an array-of-union `items` schema (e.g. `leversUsed`'s
+  7-member `NegotiationLeverType` enum) as `${union}[]` with no parentheses, which TypeScript parses
+  as `[]` binding tighter than `|` -- a union of six bare string-literal types and one *array* type,
+  not an array of the union. No earlier operation in this document had an array of an enum-typed
+  item, so the bug never surfaced before `leversUsed`; the fix (always parenthesize) is unconditional
+  and backward-compatible.
+
 ## Directory layout
 
 ```
@@ -584,7 +689,7 @@ web/
   src/
     api/
       generated/schema.ts     # AUTO-GENERATED; do not edit by hand
-      client.ts                # createApiClient(baseUrl) -> { getHealth(), createWorkspace({ name }), uploadDocument(tenantId, file), getDocument(tenantId, id), getPortfolio(tenantId, query?), getContract360(tenantId, id), getRenewals(tenantId), getRenewalPriority(tenantId, contractId), getCorrectionHistory(tenantId, id), correctContract(tenantId, id, request) }
+      client.ts                # createApiClient(baseUrl) -> { getHealth(), createWorkspace({ name }), uploadDocument(tenantId, file), getDocument(tenantId, id), getPortfolio(tenantId, query?), getContract360(tenantId, id), getRenewals(tenantId), getRenewalPriority(tenantId, contractId), getCorrectionHistory(tenantId, id), correctContract(tenantId, id, request), uploadQuote(tenantId, file, fields?), getQuoteAssessment(tenantId, id), recalculateQuoteAssessment(tenantId, id, mappings?), captureNegotiationOutcome(tenantId, request) }
     config/appConfig.ts       # fetch + validate runtime config
     auth/msalConfig.ts        # AppConfig -> MSAL Configuration (no secret, ever)
     styles/                   # design system (tokens + component catalogue); see below
@@ -630,6 +735,17 @@ web/
           EvidencePane.tsx        # AC-3: evidence + correction form + real correction-history trail
           reviewViewModel.ts      # pure helpers: correctable-field catalogue, decision/tag/gate computation (no live confidence yet -- see its own header comment)
           review.css              # this screen's styles
+      quotes/                 # task E08/F03/US01/T01 -- ADR-020 screen 10 (see "Quote check" above)
+        index.tsx               # QuoteCheckRoute -- renders UploadQuoteForm when no quoteId yet; otherwise loads via recalculateQuoteAssessment and routes between the 4 step components
+        UploadQuoteForm.tsx      # this task's own upload entry point (no dedicated screen in the design) + sample-file convenience
+        QuoteStepper.tsx         # AC-1: the 4-step header, every step directly clickable
+        ExtractStep.tsx          # AC-2: line table + unmatched-SKU manual mapping + recalculate
+        AssessmentStep.tsx       # AC-3: blocked card, or the 4-number grid + line-level P25/P50/P75 table + provenance card
+        TargetStep.tsx           # AC-3: price ladder + editable target/walk-away
+        NegotiationStep.tsx      # AC-4: levers gap notice + outcome capture form / recorded-outcome panel
+        quoteCheckViewModel.ts   # pure helpers: stepper model, AC-2 gate, line/aggregate/number builders (no React; see its own header comment for the real-vs-fixture provenance)
+        quoteOutcomeStore.ts     # sessionStorage-scoped TrackedNegotiationOutcome list -- no GET /api/negotiations/outcomes (or Savings KPI wiring) exists yet
+        quotes.css               # this screen's styles
     components/
       shell/                  # task E06/F03/US02/T01 -- app shell, router, role guard (see "App shell" above)
         navItems.ts             # locked 8-item rail model + getVisibleNavItems(role) role guard (AC-1/AC-2)

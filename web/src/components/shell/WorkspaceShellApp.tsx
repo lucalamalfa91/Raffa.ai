@@ -8,6 +8,7 @@ import DocumentsRoute from "../../routes/documents";
 import PortfolioRoute from "../../routes/contracts";
 import Contract360Route from "../../routes/contracts/contract360";
 import ReviewRoute from "../../routes/contracts/review";
+import QuoteCheckRoute from "../../routes/quotes";
 
 export interface WorkspaceShellAppProps {
   workspaceName: string;
@@ -93,26 +94,16 @@ export function ShellRoutes({ workspaceName, role, userLabel, onSignOut, apiClie
             />
           }
         />
-        <Route
-          path="quotes"
-          element={
-            <ScaffoldScreen
-              title="Quote check"
-              release="R4"
-              note="Quote check stepper ships in epic-08/feature-03-quote-check-ui. This landing path is this task's own placeholder — ADR-018 names only /quotes/:id."
-            />
-          }
-        />
-        <Route
-          path="quotes/:quoteId"
-          element={
-            <ScaffoldScreen
-              title="Quote check"
-              release="R4"
-              note="Quote check stepper ships in epic-08/feature-03-quote-check-ui."
-            />
-          }
-        />
+        {/*
+          Task E08/F03/US01/T01 (quote-check-ui, ADR-020 screen 10): both routes now render the real
+          QuoteCheckRoute, the same seam Contract360Route/ReviewRoute above already used to replace
+          this task's own ScaffoldScreen placeholder. `quotes` (no id) and `quotes/:quoteId` share one
+          component -- ADR-018 names only the detail route `/quotes/:id` (there is no "quote list"
+          screen anywhere in screens.md #10), so QuoteCheckRoute itself renders its own upload form
+          when `useParams().quoteId` is undefined; see that component's own header comment.
+        */}
+        <Route path="quotes" element={<QuoteCheckRoute apiClient={apiClient} />} />
+        <Route path="quotes/:quoteId" element={<QuoteCheckRoute apiClient={apiClient} />} />
         <Route path="documents" element={<DocumentsRoute apiClient={apiClient} />} />
         <Route
           path="workspace/members"
