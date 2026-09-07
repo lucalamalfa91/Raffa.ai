@@ -5,6 +5,9 @@ import ScaffoldScreen from "./ScaffoldScreen";
 import type { WorkspaceRole } from "./navItems";
 import type { ApiClient } from "../../api/client";
 import DocumentsRoute from "../../routes/documents";
+import PortfolioRoute from "../../routes/contracts";
+import Contract360Route from "../../routes/contracts/contract360";
+import ReviewRoute from "../../routes/contracts/review";
 
 export interface WorkspaceShellAppProps {
   workspaceName: string;
@@ -31,7 +34,11 @@ export interface WorkspaceShellAppProps {
  *
  * Screens that belong to a later epic render ScaffoldScreen rather than real
  * content — this task's job is the shell/guards/ask-bar, not those screens
- * (see each `note` below for the owning epic/feature).
+ * (see each `note` below for the owning epic/feature). `contracts/:contractId/review`
+ * is real as of task E07/F03/US01/T01 (ReviewRoute, ADR-020 screen 6) -- the
+ * `review` landing path just below it stays its own placeholder (see that
+ * route's own `note`; ia.md/ADR-018 name only the detail route this shell
+ * already pointed at).
  *
  * `ShellRoutes` (the route tree alone, no router) is exported separately so
  * tests can wrap it in a `MemoryRouter` with a specific `initialEntries`
@@ -53,36 +60,9 @@ export function ShellRoutes({ workspaceName, role, userLabel, onSignOut, apiClie
             />
           }
         />
-        <Route
-          path="contracts"
-          element={
-            <ScaffoldScreen
-              title="Portfolio"
-              release="R1"
-              note="Portfolio table + filters ship in epic-07/feature-01-portfolio-ui."
-            />
-          }
-        />
-        <Route
-          path="contracts/:contractId"
-          element={
-            <ScaffoldScreen
-              title="Contract 360"
-              release="R1"
-              note="Contract 360 ships in epic-07/feature-02-contract-360-ui."
-            />
-          }
-        />
-        <Route
-          path="contracts/:contractId/review"
-          element={
-            <ScaffoldScreen
-              title="Field review"
-              release="R1"
-              note="Field review + correction ships in epic-07/feature-03-review-correction-ui."
-            />
-          }
-        />
+        <Route path="contracts" element={<PortfolioRoute apiClient={apiClient} />} />
+        <Route path="contracts/:contractId" element={<Contract360Route apiClient={apiClient} />} />
+        <Route path="contracts/:contractId/review" element={<ReviewRoute apiClient={apiClient} />} />
         <Route
           path="review"
           element={

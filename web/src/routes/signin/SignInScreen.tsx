@@ -39,6 +39,37 @@ const V1_JOBS: ReadonlyArray<{ kicker: string; bold: string }> = [
   { kicker: "New purchase", bold: "Quote Check" },
 ];
 
+// Task E06/F06/US01/T01 (full-bleed-layout): the left "statement panel" half
+// of screen 1 is constant across all three of its named states (idle ·
+// redirecting · workspace picker) -- verified against the compiled
+// prototype's own markup (inputs/design/prototypes/day1-demo.html): the
+// statement-panel `<div>` sits *outside* the `sc-if` blocks that switch the
+// right panel's content. Extracted here so WorkspacePickerScreen.tsx can
+// render "the same canvas" for its own states too, instead of falling back
+// to a second, narrower, standalone layout -- ADR-018/019/020 never
+// describe the workspace list as a separate screen, only a state of this
+// one.
+export function SignInStatementPanel() {
+  return (
+    <section className="signin-statement">
+      <p className="signin-north-star">
+        Contigo knows <span className="signin-accent">what we bought</span>,{" "}
+        <span className="signin-accent">what we pay</span>,{" "}
+        <span className="signin-accent">when we need to act</span>, and{" "}
+        <span className="signin-accent">where we can save money</span>.
+      </p>
+      <dl className="signin-jobs">
+        {V1_JOBS.map((job) => (
+          <div className="signin-job" key={job.kicker}>
+            <dt>{job.kicker}</dt>
+            <dd>{job.bold}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
 export default function SignInScreen({ onContinue, interactionInFlight }: SignInScreenProps) {
   const [clicked, setClicked] = useState(false);
   const redirecting = clicked || interactionInFlight;
@@ -49,23 +80,8 @@ export default function SignInScreen({ onContinue, interactionInFlight }: SignIn
   };
 
   return (
-    <div className="signin-screen">
-      <section className="signin-statement">
-        <p className="signin-north-star">
-          Contigo knows <span className="signin-accent">what we bought</span>,{" "}
-          <span className="signin-accent">what we pay</span>,{" "}
-          <span className="signin-accent">when we need to act</span>, and{" "}
-          <span className="signin-accent">where we can save money</span>.
-        </p>
-        <dl className="signin-jobs">
-          {V1_JOBS.map((job) => (
-            <div className="signin-job" key={job.kicker}>
-              <dt>{job.kicker}</dt>
-              <dd>{job.bold}</dd>
-            </div>
-          ))}
-        </dl>
-      </section>
+    <main className="signin-screen">
+      <SignInStatementPanel />
       <section className="signin-action" aria-labelledby="signin-heading">
         <h1 id="signin-heading" className="screen-title">
           Contigo
@@ -85,6 +101,6 @@ export default function SignInScreen({ onContinue, interactionInFlight }: SignIn
           account? Ask your Workspace Admin for an invitation.
         </p>
       </section>
-    </div>
+    </main>
   );
 }

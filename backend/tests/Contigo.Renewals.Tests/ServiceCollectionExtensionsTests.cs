@@ -270,6 +270,37 @@ public sealed class ServiceCollectionExtensionsTests
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<RenewalActionService>());
     }
 
+    /// <summary>
+    /// Task E03/F02/US01/T02 (renewal-alerts): <see cref="RenewalAlertService"/> must resolve from
+    /// the same container — <c>Contigo.Worker.Scheduling.RenewalThresholdSchedulerHostedService</c>
+    /// and <c>Contigo.Api.RenewalAlertRecomputeService</c> both take it as a constructor/DI
+    /// dependency, same reason as
+    /// <see cref="AddRenewalsModule_resolves_RenewalActionService_with_no_captive_dependency"/>
+    /// above. Needs <see cref="IAuditWriter"/> registered first (same landmine as
+    /// <see cref="RenewalThresholdScheduler"/>/<see cref="RenewalActionService"/> above) — it also
+    /// depends on <see cref="RenewalEngine"/> and <see cref="RenewalThresholdScheduler"/>, both
+    /// already registered by this same <c>AddRenewalsModule</c> call.
+    /// </summary>
+    [Fact]
+    public void AddRenewalsModule_resolves_RenewalAlertService_with_no_captive_dependency()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IAuditWriter>(new RecordingAuditWriter());
+        // RenewalAlertService depends (transitively, via RenewalThresholdScheduler) on
+        // ThresholdWindowOptions' own bind factory, which needs IConfiguration — same landmine as
+        // AddRenewalsModule_resolves_RenewalEngine_and_RenewalThresholdScheduler_with_no_captive_dependency's
+        // own comment above.
+        services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
+
+        services.AddRenewalsModule(ConnectionString);
+
+        using var provider = services.BuildServiceProvider(
+            new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
+        using var scope = provider.CreateScope();
+
+        Assert.NotNull(scope.ServiceProvider.GetRequiredService<RenewalAlertService>());
+    }
+
     [Fact]
     public void AddRenewalsModule_does_not_override_an_already_registered_IClock()
     {

@@ -69,6 +69,62 @@ namespace Contigo.Renewals.Migrations
 
                     b.ToTable("renewal_action", (string)null);
                 });
+
+            modelBuilder.Entity("Contigo.Renewals.Domain.RenewalAlert", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ContractId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("contract_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Milestone")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("milestone");
+
+                    b.Property<DateOnly>("MilestoneDate")
+                        .HasColumnType("date")
+                        .HasColumnName("milestone_date");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<int>("ThresholdDays")
+                        .HasColumnType("integer")
+                        .HasColumnName("threshold_days");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_renewal_alert");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_renewal_alert_tenant_id");
+
+                    b.HasIndex("TenantId", "ContractId", "Milestone", "ThresholdDays")
+                        .IsUnique()
+                        .HasDatabaseName("ix_renewal_alert_active_tenant_contract_milestone_threshold")
+                        .HasFilter("status = 'Active'");
+
+                    b.ToTable("renewal_alert", (string)null);
+                });
 #pragma warning restore 612, 618
         }
     }

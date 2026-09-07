@@ -310,3 +310,487 @@ describe("createApiClient().getDocument (task E06/F05/US02/T01)", () => {
     expect(result.error).toContain("network down");
   });
 });
+
+describe("createApiClient().getPortfolio (task E07/F01/US01/T01)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const portfolioPage = {
+    items: [
+      {
+        contractId: "contract-1",
+        supplierId: "supplier-1",
+        type: "Msa",
+        annualSpend: 120000,
+        startDate: "2025-01-01",
+        endDate: "2026-01-01",
+        renewalDate: "2026-01-01",
+        cancellationDeadline: "2025-11-01",
+        autoRenewal: true,
+        status: "active",
+        risk: "High",
+      },
+    ],
+    page: 1,
+    pageSize: 25,
+    totalCount: 1,
+  };
+
+  it("GETs <baseUrl>/api/contracts with the X-Tenant-Id header, no query parameters, when called with no query", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(portfolioPage), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createApiClient("https://api.dev.contigo.example").getPortfolio("tenant-1");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("https://api.dev.contigo.example/api/contracts");
+    expect(init).toEqual({ headers: { "X-Tenant-Id": "tenant-1" }, cache: "no-store" });
+  });
+
+  it("serializes every supplied filter/page field as a query parameter, and omits anything not supplied", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(portfolioPage), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createApiClient("https://api.dev.contigo.example").getPortfolio("tenant-1", {
+      supplierId: "supplier-1",
+      status: "active",
+      risk: "High",
+      autoRenewal: true,
+      minAnnualSpend: 1000,
+      maxAnnualSpend: 500000,
+      renewalFrom: "2026-01-01",
+      renewalTo: "2026-04-30",
+      page: 2,
+      pageSize: 50,
+    });
+
+    const [url] = fetchMock.mock.calls[0];
+    const params = new URL(String(url)).searchParams;
+    expect(params.get("supplierId")).toBe("supplier-1");
+    expect(params.get("status")).toBe("active");
+    expect(params.get("risk")).toBe("High");
+    expect(params.get("autoRenewal")).toBe("true");
+    expect(params.get("minAnnualSpend")).toBe("1000");
+    expect(params.get("maxAnnualSpend")).toBe("500000");
+    expect(params.get("renewalFrom")).toBe("2026-01-01");
+    expect(params.get("renewalTo")).toBe("2026-04-30");
+    expect(params.get("page")).toBe("2");
+    expect(params.get("pageSize")).toBe("50");
+  });
+
+  it("reports ok:true with the portfolio page on 200", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(portfolioPage), { status: 200 })));
+
+    const result = await createApiClient("https://api.dev.contigo.example").getPortfolio("tenant-1");
+
+    expect(result).toEqual({ ok: true, statusCode: 200, portfolio: portfolioPage, error: null });
+  });
+
+  it("reports ok:false with the parsed JSON string error on 400 (malformed filter/page parameter)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(JSON.stringify("'risk' must be one of Low, Medium, High, Critical."), { status: 400 })),
+    );
+
+    const result = await createApiClient("https://api.dev.contigo.example").getPortfolio("tenant-1");
+
+    expect(result).toEqual({
+      ok: false,
+      statusCode: 400,
+      portfolio: null,
+      error: "'risk' must be one of Low, Medium, High, Critical.",
+    });
+  });
+
+  it("reports ok:false with a status-based message on a 503 (AC-4 error state), without throwing", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("Service Unavailable", { status: 503, statusText: "Service Unavailable" })));
+
+    const result = await createApiClient("https://api.dev.contigo.example").getPortfolio("tenant-1");
+
+    expect(result.ok).toBe(false);
+    expect(result.statusCode).toBe(503);
+    expect(result.portfolio).toBeNull();
+    expect(result.error).toContain("503");
+  });
+
+  it("resolves (does not throw) with statusCode null when the network request fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
+
+    const result = await createApiClient("https://api.dev.contigo.example").getPortfolio("tenant-1");
+
+    expect(result.ok).toBe(false);
+    expect(result.statusCode).toBeNull();
+    expect(result.portfolio).toBeNull();
+    expect(result.error).toContain("https://api.dev.contigo.example/api/contracts");
+    expect(result.error).toContain("network down");
+  });
+});
+
+describe("createApiClient().getContract360 (task E07/F02/US01/T01)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const contract360Body = {
+    contractId: "contract-1",
+    header: {
+      contractId: "contract-1",
+      supplierId: null,
+      type: "Msa",
+      status: "active",
+      annualSpend: 500000,
+      totalContractValue: 1500000,
+      startDate: "2025-01-01",
+      endDate: "2026-01-01",
+      renewalDate: "2026-01-01",
+      cancellationDeadline: "2025-11-17",
+      autoRenewal: true,
+      risk: "High",
+    },
+    tabs: {
+      overview: {
+        currency: "CHF",
+        effectiveDate: null,
+        renewalTermMonths: null,
+        paymentTerms: null,
+        governingLaw: null,
+        parentContractId: null,
+        version: 1,
+        createdAt: "2025-01-01T00:00:00Z",
+      },
+      commercials: {
+        annualSpend: 500000,
+        totalContractValue: 1500000,
+        currency: "CHF",
+        paymentTerms: null,
+        autoRenewal: true,
+        renewalTermMonths: null,
+        lineItemCount: 0,
+        lineItemAnnualCostTotal: null,
+        lineItemTotalCostTotal: null,
+      },
+      products: [],
+      clauses: [],
+      obligations: [],
+      risks: [],
+      documents: [],
+      benchmark: [],
+      renewal: { endDate: "2026-01-01", renewalDate: "2026-01-01", cancellationDeadline: "2025-11-17", autoRenewal: true, renewalTermMonths: null },
+      activity: [],
+    },
+  };
+
+  it("GETs <baseUrl>/api/contracts/{id} with the X-Tenant-Id header", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(contract360Body), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createApiClient("https://api.dev.contigo.example").getContract360("tenant-1", "contract-1");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("https://api.dev.contigo.example/api/contracts/contract-1");
+    expect(init).toEqual({ headers: { "X-Tenant-Id": "tenant-1" }, cache: "no-store" });
+  });
+
+  it("reports ok:true with the full aggregate on 200", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(contract360Body), { status: 200 })));
+
+    const result = await createApiClient("https://api.dev.contigo.example").getContract360("tenant-1", "contract-1");
+
+    expect(result).toEqual({ ok: true, statusCode: 200, contract: contract360Body, error: null });
+  });
+
+  it("reports a named 404 (no such contract for this tenant) without attempting to parse an empty body", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
+
+    const result = await createApiClient("https://api.dev.contigo.example").getContract360("tenant-1", "missing-contract");
+
+    expect(result).toEqual({ ok: false, statusCode: 404, contract: null, error: "No contract found for id missing-contract." });
+  });
+
+  it("resolves (does not throw) with statusCode null when the network request fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
+
+    const result = await createApiClient("https://api.dev.contigo.example").getContract360("tenant-1", "contract-1");
+
+    expect(result.ok).toBe(false);
+    expect(result.statusCode).toBeNull();
+    expect(result.contract).toBeNull();
+    expect(result.error).toContain("network down");
+  });
+});
+
+describe("createApiClient().getRenewals (task E07/F02/US01/T01)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const renewalsPage = {
+    items: [
+      {
+        contractId: "contract-1",
+        supplierId: null,
+        status: "Determined",
+        renewalDate: "2026-01-01",
+        daysUntilRenewal: 30,
+        annualSpend: 500000,
+        cancellationDeadline: "2025-11-17",
+        daysUntilCancellationDeadline: 14,
+        autoRenewal: true,
+        action: "Start renewal negotiation now",
+        insightCard: {
+          facts: {
+            supplierId: null,
+            renewalDate: "2026-01-01",
+            daysUntilRenewal: 30,
+            annualSpend: 500000,
+            cancellationDeadline: "2025-11-17",
+            daysUntilCancellationDeadline: 14,
+          },
+          recommendations: {
+            recommendedAction: "Start renewal negotiation now",
+            explanation: "Renews in 30 days.",
+            annualUpliftPercent: null,
+            marketPosition: null,
+            potentialSavingsRange: null,
+          },
+        },
+      },
+    ],
+    totalCount: 1,
+  };
+
+  it("GETs <baseUrl>/api/renewals with the X-Tenant-Id header", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(renewalsPage), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createApiClient("https://api.dev.contigo.example").getRenewals("tenant-1");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("https://api.dev.contigo.example/api/renewals");
+    expect(init).toEqual({ headers: { "X-Tenant-Id": "tenant-1" }, cache: "no-store" });
+  });
+
+  it("reports ok:true with the pipeline page on 200", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(renewalsPage), { status: 200 })));
+
+    const result = await createApiClient("https://api.dev.contigo.example").getRenewals("tenant-1");
+
+    expect(result).toEqual({ ok: true, statusCode: 200, renewals: renewalsPage, error: null });
+  });
+
+  it("resolves (does not throw) with statusCode null when the network request fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
+
+    const result = await createApiClient("https://api.dev.contigo.example").getRenewals("tenant-1");
+
+    expect(result.ok).toBe(false);
+    expect(result.statusCode).toBeNull();
+    expect(result.renewals).toBeNull();
+    expect(result.error).toContain("network down");
+  });
+});
+
+describe("createApiClient().getRenewalPriority (task E07/F02/US01/T01)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const priorityBody = {
+    contractId: "contract-1",
+    totalScore: 72,
+    components: {
+      spendWeight: { score: 20, explanation: "..." },
+      timeUrgency: { score: 20, explanation: "..." },
+      benchmarkOpportunity: { score: 10, explanation: "..." },
+      priceIncreaseRisk: { score: 7, explanation: "..." },
+      contractRisk: { score: 15, explanation: "..." },
+    },
+  };
+
+  it("GETs <baseUrl>/api/renewals/{contractId}/priority with the X-Tenant-Id header", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(priorityBody), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createApiClient("https://api.dev.contigo.example").getRenewalPriority("tenant-1", "contract-1");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("https://api.dev.contigo.example/api/renewals/contract-1/priority");
+    expect(init).toEqual({ headers: { "X-Tenant-Id": "tenant-1" }, cache: "no-store" });
+  });
+
+  it("reports ok:true with the score breakdown on 200", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(priorityBody), { status: 200 })));
+
+    const result = await createApiClient("https://api.dev.contigo.example").getRenewalPriority("tenant-1", "contract-1");
+
+    expect(result).toEqual({ ok: true, statusCode: 200, priority: priorityBody, error: null });
+  });
+
+  it("reports a named 404 without attempting to parse an empty body", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
+
+    const result = await createApiClient("https://api.dev.contigo.example").getRenewalPriority("tenant-1", "missing-contract");
+
+    expect(result).toEqual({ ok: false, statusCode: 404, priority: null, error: "No contract found for id missing-contract." });
+  });
+
+  it("resolves (does not throw) with statusCode null when the network request fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
+
+    const result = await createApiClient("https://api.dev.contigo.example").getRenewalPriority("tenant-1", "contract-1");
+
+    expect(result.ok).toBe(false);
+    expect(result.statusCode).toBeNull();
+    expect(result.priority).toBeNull();
+    expect(result.error).toContain("network down");
+  });
+});
+
+describe("createApiClient().getCorrectionHistory (task E07/F03/US01/T01)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const historyBody = [
+    {
+      fieldName: "annualSpend",
+      previousValue: "500000",
+      newValue: "520000",
+      correctedBy: "unattributed",
+      correctedAt: "2026-09-06T08:00:00Z",
+      reason: "Corrected from the signed order form.",
+    },
+  ];
+
+  it("GETs <baseUrl>/api/contracts/{id}/corrections with the X-Tenant-Id header", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(historyBody), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createApiClient("https://api.dev.contigo.example").getCorrectionHistory("tenant-1", "contract-1");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("https://api.dev.contigo.example/api/contracts/contract-1/corrections");
+    expect(init).toEqual({ headers: { "X-Tenant-Id": "tenant-1" }, cache: "no-store" });
+  });
+
+  it("reports ok:true with the newest-first history on 200 (possibly empty)", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(historyBody), { status: 200 })));
+
+    const result = await createApiClient("https://api.dev.contigo.example").getCorrectionHistory("tenant-1", "contract-1");
+
+    expect(result).toEqual({ ok: true, statusCode: 200, history: historyBody, error: null });
+  });
+
+  it("reports a named 404 without attempting to parse an empty body", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
+
+    const result = await createApiClient("https://api.dev.contigo.example").getCorrectionHistory("tenant-1", "missing-contract");
+
+    expect(result).toEqual({ ok: false, statusCode: 404, history: null, error: "No contract found for id missing-contract." });
+  });
+
+  it("resolves (does not throw) with statusCode null when the network request fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
+
+    const result = await createApiClient("https://api.dev.contigo.example").getCorrectionHistory("tenant-1", "contract-1");
+
+    expect(result.ok).toBe(false);
+    expect(result.statusCode).toBeNull();
+    expect(result.history).toBeNull();
+    expect(result.error).toContain("network down");
+  });
+});
+
+describe("createApiClient().correctContract (task E07/F03/US01/T01)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const correctionBody = {
+    contractId: "contract-1",
+    versionNumber: 2,
+    correctedFields: ["annualSpend"],
+    correctedAt: "2026-09-06T08:00:00Z",
+  };
+
+  it("PATCHes <baseUrl>/api/contracts/{id} with JSON corrections and the X-Tenant-Id header", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(correctionBody), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createApiClient("https://api.dev.contigo.example").correctContract("tenant-1", "contract-1", {
+      corrections: { annualSpend: "520000" },
+      reason: "Corrected from the signed order form.",
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("https://api.dev.contigo.example/api/contracts/contract-1");
+    expect(init).toEqual({
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "X-Tenant-Id": "tenant-1" },
+      body: JSON.stringify({ corrections: { annualSpend: "520000" }, reason: "Corrected from the signed order form." }),
+      cache: "no-store",
+    });
+  });
+
+  it("reports ok:true with the resulting version/correctedFields on 200", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(correctionBody), { status: 200 })));
+
+    const result = await createApiClient("https://api.dev.contigo.example").correctContract("tenant-1", "contract-1", {
+      corrections: { annualSpend: "520000" },
+    });
+
+    expect(result).toEqual({ ok: true, statusCode: 200, correction: correctionBody, error: null });
+  });
+
+  it("reports ok:false with the parsed JSON string error on 400 (a no-op correction, Results.BadRequest(string))", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(JSON.stringify("None of the supplied values differ from the contract's current values."), { status: 400 }),
+        ),
+    );
+
+    const result = await createApiClient("https://api.dev.contigo.example").correctContract("tenant-1", "contract-1", {
+      corrections: { annualSpend: "500000" },
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      statusCode: 400,
+      correction: null,
+      error: "None of the supplied values differ from the contract's current values.",
+    });
+  });
+
+  it("reports a named 404 without attempting to parse an empty body", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
+
+    const result = await createApiClient("https://api.dev.contigo.example").correctContract("tenant-1", "missing-contract", {
+      corrections: { annualSpend: "520000" },
+    });
+
+    expect(result).toEqual({ ok: false, statusCode: 404, correction: null, error: "No contract found for id missing-contract." });
+  });
+
+  it("resolves (does not throw) with statusCode null when the network request fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
+
+    const result = await createApiClient("https://api.dev.contigo.example").correctContract("tenant-1", "contract-1", {
+      corrections: { annualSpend: "520000" },
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.statusCode).toBeNull();
+    expect(result.correction).toBeNull();
+    expect(result.error).toContain("network down");
+  });
+});

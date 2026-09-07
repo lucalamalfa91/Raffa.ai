@@ -82,11 +82,19 @@ export default function App({ appConfig, apiClient }: AppProps) {
   );
 
   if (!account || !workspace) {
+    // Task E06/F06/US01/T01 (full-bleed-layout): this used to wrap
+    // SignInRoute in a bare `<main>` here, which index.css's now-removed
+    // E01 OIDC-scaffold rule capped at `max-width: 40rem` -- squeezing the
+    // sign-in mockup's full-viewport two-column canvas into a centered
+    // card. Sign-in now owns its own page: SignInScreen/WorkspacePickerScreen
+    // (via ./routes/signin) each render their own `<main className=
+    // "signin-screen">`, so this branch is a plain fragment, the same shape
+    // the signed-in branch below already uses for WorkspaceShellApp.
     return (
-      <main>
+      <>
         {healthStatus}
         <SignInRoute appConfig={appConfig} apiClient={apiClient} />
-      </main>
+      </>
     );
   }
 

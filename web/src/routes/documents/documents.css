@@ -177,7 +177,15 @@
 
 .upload-result-filename {
   font-weight: var(--weight-body-strong);
-  word-break: break-all;
+  /* Task E06/F06/US01/T01 (full-bleed-layout): `break-all` breaks at *any*
+     character once a line is full -- the "one glyph per line" symptom this
+     task fixes at its root (an ancestor `max-width: 40rem` crushing this
+     column to a few dozen pixels), but `break-all` would still be a
+     hair-trigger for it in any narrower-than-usual result column. `anywhere`
+     only breaks inside an unbreakable run (a filename has no spaces) once
+     that run truly does not fit, and still counts toward min-content sizing
+     so one long name cannot blow out the column either. */
+  overflow-wrap: anywhere;
 }
 
 .upload-result-message {
@@ -206,6 +214,9 @@
 .document-status-table th:nth-child(1),
 .document-status-table td:nth-child(1) {
   width: 32%;
+  /* Same "words, not glyphs" guarantee as .upload-result-filename above --
+     this column holds the same kind of long, space-less filename text. */
+  overflow-wrap: anywhere;
 }
 
 .document-status-table th:nth-child(2),

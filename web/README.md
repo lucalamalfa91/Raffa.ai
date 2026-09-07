@@ -81,12 +81,49 @@ the web workflow after that apply.
 |-------|-----------|------|
 | `/signin` | Sign-in (Entra redirect, idle/redirecting states) -> workspace picker (list + create + confirm) | E06/F03/US01/T01 |
 | `/documents` | Upload dropzone (drag-and-drop + "Choose from computer" + "Use sample file") + formats/size/sources strip -> 6-stage processing pipeline (current stage pulsing) -> result card by outcome (needs_review / completed / failed); below it, a document table (Document / Type / Supplier / Status / Uploaded, rows linking to Contract 360). Calls the real `POST /api/documents` and `GET /api/documents/{id}`. See "Documents" below. | E06/F05/US01/T01, E06/F05/US02/T01 |
-| `/` (home), `/contracts`, `/contracts/:id`, `/contracts/:id/review`, `/renewals`, `/ask`, `/review`\*, `/quotes`\*, `/quotes/:id`, `/workspace/members` | App shell: 224px left rail + global Ask bar + routed content. Every route beyond `/workspace/members` renders a `ScaffoldScreen` placeholder today -- the real screens ship in later epic-07/epic-08/feature-04/05 tasks named at each route (see `src/components/shell/WorkspaceShellApp.tsx`). | E06/F03/US02/T01 |
+| `/contracts` | Portfolio: filter chips + attention strip + a table sorted by severity then deadline (critical rows tinted + a red bar), plus loading/empty/error/no-match-for-filter states. Calls the real `GET /api/contracts`. See "Portfolio" below. | E07/F01/US01/T01 |
+| `/contracts/:id` | Contract 360: header + 6-cell fact row + 10 tabs (Overview's recommendation card + drivers + "Needs your attention" + "Top risks", then Commercials/Products/Clauses/Obligations/Risks/Documents/Benchmark/Renewal/Activity through one shared Term/Value/Source/Confidence table), plus loading/not-found/error states. Calls the real `GET /api/contracts/{id}`, `GET /api/renewals`, `GET /api/renewals/{contractId}/priority`. See "Contract 360" below. | E07/F02/US01/T01 |
+| `/contracts/:id/review` | Review / correction: 4-column field list (critical marker, extracted value, confidence/decision tag, Accept/Correct) + right-hand evidence pane (correction form + real correction-history trail) + gated "Mark as validated". Calls the real `GET /api/contracts/{id}`, `GET /api/contracts/{id}/corrections`, `PATCH /api/contracts/{id}`. See "Review / correction" below. | E07/F03/US01/T01 |
+| `/` (home), `/renewals`, `/ask`, `/review`\*, `/quotes`\*, `/quotes/:id`, `/workspace/members` | App shell: 224px left rail + global Ask bar + routed content. Every route in this row still renders a `ScaffoldScreen` placeholder today -- the real screens ship in later epic-07/epic-08/feature-02/03/04 tasks named at each route (see `src/components/shell/WorkspaceShellApp.tsx`). | E06/F03/US02/T01 |
 
 \* `/review` and `/quotes` are this task's own placeholder landing paths, not
 a row in ADR-018's locked route map -- that table only ever names a *detail*
 route for these two nav destinations (`/contracts/:id/review`, `/quotes/:id`
 respectively). See `src/components/shell/navItems.ts`'s header comment.
+
+### Layout -- full-bleed, matching the prototype's own canvas (ADR-018/019/020, task E06/F06/US01/T01)
+
+Every screen now occupies the viewport the way
+`inputs/design/prototypes/day1-demo.html` does: no screen renders inside a
+centered, `max-width`-capped column. `src/index.css` used to put `max-width:
+40rem; margin: 3rem auto` on the bare `<main>` element (an E01 OIDC-scaffold
+rule) -- that hit *every* app-level main landmark, so sign-in rendered as a
+~640px card (statement panel crushed to a sliver) and the whole authenticated
+shell (`AppShell.tsx`'s `<main className="shell-main">`) rendered its rail +
+content inside the same narrow column. `<main>` now carries no width opinion
+in `index.css`; each screen owns its own full-bleed layout instead:
+
+- **Sign-in / workspace picker** (`src/routes/signin/`) -- `SignInScreen.tsx`
+  renders `.signin-screen`, a `100vh` two-column grid (`SignInStatementPanel`
+  + `.signin-action`), matching the compiled prototype's own sign-in
+  container (`display:grid;grid-template-columns:1fr 1fr`) once nothing above
+  it caps the width. `WorkspacePickerScreen.tsx` reuses that exact same
+  canvas (`SignInStatementPanel` + `.signin-action`) for all of its own
+  states (list, create, "you're in `<workspace>`") instead of the old
+  standalone, centered `.workspace-picker` card -- the prototype never treats
+  the workspace list as a separate screen, only a state of screen 1.
+- **App shell** (`src/components/shell/shell.css`) -- `.shell-main` now
+  explicitly declares `max-width: none` so it fills the shell grid's `1fr`
+  track (224px rail + fluid main) rather than floating as a narrow column
+  inside it.
+- **Documents** (`src/routes/documents/documents.css`) -- the two-column
+  `minmax(280px, 400px) 1fr` mockup layout was already correct; filenames in
+  the result card and the document table now wrap with `overflow-wrap:
+  anywhere` (word/character-run boundaries) instead of `word-break:
+  break-all`, so a long filename never renders one glyph per line.
+
+Only `.startup-error` (`src/main.tsx`'s boot-config-failure alert -- not a
+shipped mockup screen) keeps a narrow, centered column.
 
 `src/routes/signin/` (`SignInRoute`, the folder's default export) is still
 gated on MSAL auth state (`useMsal().accounts`) rather than a URL route --
@@ -250,6 +287,160 @@ note that "screen 3 may be two: upload UI + document-status read-back":
   visible "Not yet linked to a contract" reason instead of a dead link
   (ADR-019 accessibility baseline: "a visible reason, not a hidden control").
 
+### Portfolio (ADR-020 screen 4, task E07/F01/US01/T01, us-01-portfolio-list-filters)
+
+`src/routes/contracts/` implements screen 4: AC-1 filter chips, AC-2 attention strip, AC-3
+severity/deadline sort with critical-row tinting, AC-4 loading/empty/error/no-match states. This is
+the first web epic to build a screen against a backend route from E02-E05 that `typescript-client-regen`
+deliberately left out of `openapi/contigo-api.v1.json` -- see "API client" below for what this task
+added to the contract.
+
+- **Fetch-once, filter client-side** (`index.tsx`'s own header comment has the full reasoning): the
+  screen calls `GET /api/contracts` exactly once per mount (plus once per manual Retry), for the whole
+  first page (`PortfolioPageRequest.MaxPageSize` = 100 rows), then computes every row's
+  attention/severity and applies both the seven AC-1 chips and the AC-2 attention-strip toggle entirely
+  in memory (`portfolioAttention.ts`, `portfolioFilterState.ts`) -- mirroring day1-demo.html's own
+  `allContracts.filter(...)` architecture. The attention-strip counts must reflect the whole portfolio
+  regardless of which filters are active, and the severity computation (deadline-within-45-days,
+  needs-review, ...) has no server-side query-parameter equivalent at all, so a fetch-once/filter-local
+  design avoids seven independent round trips for no accuracy gain. `apiClient.getPortfolio` still
+  accepts the endpoint's full filter/paging surface for a future task to push filtering server-side once
+  portfolios routinely exceed one page.
+- **AC-1, filter chips** (`PortfolioFilters.tsx`) -- Supplier, Category, Renewal period, Spend, Status,
+  Risk, Auto-renewal, in that order (day1-demo.html's own `filters` array). Two are honest placeholders:
+  **Category** is disabled (`PortfolioFilter.cs`'s own doc comment: no Category concept exists anywhere
+  in the schema yet -- Suppliers/Products is still an empty scaffold); **Supplier** filters by the raw
+  id `GET /api/contracts` itself returns, entered as free text, because no supplier-name-resolution
+  endpoint exists anywhere in this codebase (same gap `documents/documentStore.ts` already names for the
+  Documents table).
+- **AC-2, attention strip** (`AttentionStrip.tsx`) -- "Deadlines < 45 d", "Need review",
+  "Failed / processing", "High risk", quoted verbatim from day1-demo.html's own `attDef` array. Each
+  cell's count is always computed from the whole portfolio; clicking one narrows the table to that
+  bucket (click again to clear) via the exact same `AttentionRow` predicates the seven chips use.
+- **AC-3, sort + tint** (`portfolioAttention.ts`, `PortfolioTable.tsx`) -- severity (0-3) then soonest
+  cancellation deadline; severity 3 gets the shared `.row-critical` tint + red bar (ADR-019 component
+  catalogue), severity 2 gets a lighter, screen-scoped neutral bar (`.row-attention`, `contracts.css`) --
+  both quoted from day1-demo.html's own per-row `rowBg`/`bar` fields. Column one (`Attention`) always
+  carries a text label (ADR-019 "urgency in column one, not colour-only"), never a bare colour. Two
+  fields the compiled prototype's own mock data has but `GET /api/contracts` does not are adapted, not
+  fabricated: the prototype's `status` is a closed `'Failed' | 'Processing' | 'Needs review' | ...`
+  enum, while the real `Contract.Status` is free text (bootstrap default is the literal string
+  `processing`), so this module matches case-insensitively and treats "contains 'review'" as the
+  needs-review signal; and the domain's fourth risk tier, `RiskSeverity.Critical` (ADR-019 only defines
+  three), folds into the same "High risk" bucket/tag as `High`.
+- **AC-4, states** (`index.tsx`) -- loading (a `.skeleton`-bar placeholder), empty (zero contracts at
+  all -> a "No contracts yet" CTA linking to `/documents`), error (any non-2xx, with a 503-specific
+  plain-language message + Retry), no-match-for-filter (contracts exist but none pass the current
+  filters -> its own "Clear filters" CTA, separate from the filter panel's own always-present one).
+- **No currency anywhere**: `GET /api/contracts` (`PortfolioListItem`) carries no currency code --
+  `PortfolioEndpointExtensions.GetPortfolioAsync`'s own response projection never selects
+  `Contract.Currency` -- so "Annual spend" renders a grouped plain number, never a fabricated symbol.
+  "Contract" shows the contract's `Type` (Msa/OrderForm/...), the closest identifying field the schema
+  currently records; `Contract` itself has no title/name column yet.
+
+### Contract 360 (ADR-020 screen 5, task E07/F02/US01/T01, us-01-contract-360)
+
+`src/routes/contracts/contract360/` implements screen 5: AC-1 header (supplier kicker, type/status
+tags, doc count), AC-2 6-cell fact row (annual spend, TCV, start→end, renewal, cancellation
+deadline, risk + priority score), AC-3 Overview (recommendation card + drivers + "Needs your
+attention" + "Top risks"), AC-4 the remaining 9 tabs with facts/AI never mixed (ADR-019). This is
+the second web epic to build a screen against E02-E05 backend routes `typescript-client-regen`
+deliberately left out of `openapi/contigo-api.v1.json` -- see "API client" below for what this task
+added.
+
+- **Fetch order, not fetch-once**: unlike Portfolio's single call, this screen fetches
+  `GET /api/contracts/{id}` first (`index.tsx`'s own header comment has the full reasoning) -- a
+  `404` there is a named "not found" state, distinct from a transport/5xx error, and short-circuits
+  before anything else runs. Once the contract is confirmed to exist, `GET /api/renewals` (the
+  tenant's whole auto-renewing pipeline) and `GET /api/renewals/{contractId}/priority` (this
+  contract's score breakdown) fetch together -- **both independently optional**: a non-auto-renewing
+  contract legitimately has no pipeline entry, and either failing degrades the Overview
+  recommendation / header priority fact to its own honest "not yet available" state rather than
+  failing the whole screen.
+- **AC-1/AC-2, header + fact row** (`Contract360Header.tsx`) -- quoted verbatim from
+  day1-demo.html's own header block. Two gaps already established for the identical problem on the
+  Portfolio screen are reused, not re-solved: `Contract` has no title field, so the h2 title reuses
+  the type-label proxy (`getContractTypeLabel`); `Contract.SupplierId` is a bare id, so the kicker
+  reuses `formatSupplier`'s short-id-plus-tooltip treatment. The prototype's "N-day notice" subtext
+  is dropped (no `CancellationNoticeDays` column exists anywhere yet) in favour of a real days-until
+  countdown; "N documents in family" becomes "N documents" (this endpoint returns one contract's own
+  linked documents, not the full `ParentContractId` amendment chain).
+- **AC-3, Overview tab** (`OverviewTab.tsx`, `contract360ViewModel.ts#buildRecommendation`) -- the
+  recommendation's `statement`/`rationale` are the Renewals module's own real, deterministic (not
+  LLM) `recommendedAction`/`explanation` text for whichever `GET /api/renewals` pipeline item
+  matches this contract's id (`Contigo.Renewals` is not reachable from `GET /api/contracts/{id}`
+  at all) -- never invented UI copy. A contract with no matching pipeline entry gets a named gap
+  ("No renewal recommendation for this contract"), not a fabricated one. The 3 driver numbers are
+  quoted from day1-demo.html's own `cur.cancelDays`/`cur.market`/`cur.potential` block: Cancellation
+  deadline is a real header fact shown regardless of whether a recommendation exists; Market
+  position/Potential savings are honestly "Not yet available" (need the R3 Benchmark/Savings
+  modules, `RenewalInsightRecommendations`'s own backend doc comment). "Needs your attention" and
+  "Top risks" adapt the cited prototype's own `keyTerms`/`topRisks` filter-and-slice rules to every
+  real per-field confidence this aggregate carries (Products/Clauses/Obligations; Risks gets its own
+  section instead of competing for the same 3 slots).
+- **AC-4, the other 9 tabs** (`FactTable.tsx`, `RenewalTab.tsx`) -- one shared Term/Value/Source/
+  Confidence template (ADR-020: "one template ... .table pattern") reused by Commercials, Products,
+  Clauses, Obligations, Risks, Documents, and Overview's own supplementary "Contract details" block
+  (the `Contract360Overview` fields -- effective date, governing law, version -- have no other tab
+  home in the whole 10-tab set, so they render here rather than being silently dropped). Benchmark
+  and Activity render the template's own empty state with a named reason (R3/R4), never a blank box.
+  Renewal adds the priority-score component table on top of its own facts half (`RenewalTab.tsx`) --
+  `PriorityScoreCalculator`'s five named components, each with its own real, computed explanation
+  string. "Why this score" switches this same screen's own tab to Renewal (no navigation); "Open in
+  renewals" is a real link to `/renewals`.
+- **Facts vs AI (ADR-019)**: kept apart at the type level, not just in markup --
+  `contract360ViewModel.ts#buildRecommendation` returns a `Recommendation` (statement/rationale/
+  drivers) that is never merged into the `FactRow[]` shape every tab-row builder returns; only
+  `OverviewTab.tsx` ever mounts the `.ai-recommendation` card, and every other tab renders through
+  the shared `FactTable`. `tests/routes/contracts/contract360/*.test.tsx` assert the separation both
+  ways: structurally (a `Recommendation` has no `source`/`confidencePct` keys) and in the rendered
+  DOM (the recommendation card contains no `<table>`; no fact table repeats the recommendation's own
+  text).
+- **Confidence is a 0-1 fraction on the wire** (`Contract360ProductBody.confidence` etc., e.g.
+  `0.92`), not the 0-100 percentage `styles/semantics.ts#getConfidenceTag` expects --
+  `contract360ViewModel.ts#toConfidencePercent` is the one conversion point every row builder uses.
+
+### Review / correction (ADR-020 screen 6, task E07/F03/US01/T01, us-01-field-review-correction)
+
+`src/routes/contracts/review/` implements screen 6: AC-1 4-column field list (critical marker,
+extracted value + source, confidence tag, decision), AC-2 confidence mapping, AC-3 evidence pane
+(correction form + version history), AC-4 gated "Mark as validated" with a visible reason. Reached
+from `contract360/Contract360Header.tsx`'s "Review extraction" button and
+`contract360/OverviewTab.tsx`'s "Needs your attention → Review all" link (both already wired by
+task E07/F02/US01/T01 to this exact route).
+
+- **Field set is the backend's real correctable set, not the cited prototype's own mock fields**
+  (screens.md #6's "Cancellation notice"/"Price uplift at renewal" have no backend correlate).
+  `reviewViewModel.ts#CORRECTABLE_FIELDS` mirrors `ContractCorrectionService.CorrectableFieldNames`
+  verbatim (type, status, currency, three more dates, cancellation deadline, annual spend, TCV,
+  auto-renewal, renewal term, payment terms, governing law) -- the only fields `PATCH
+  /api/contracts/{id}` will ever accept, and the story's own "E02 correction API (assumed)"
+  dependency. A field renders only when the contract actually has a value for it (no "—" rows).
+- **No live per-field confidence exists yet for this field set -- a real, pre-existing backend
+  gap, not one this task's file scope can close.** `ExtractionEvidence`
+  (`backend/src/Contigo.Documents.Contracts/Domain/ExtractionEvidence.cs`, task E02/F01/US02/T01)
+  stores exactly the per-field confidence/source-span/extraction-job trail AC-2/AC-3 describe, keyed
+  by the same `FieldName` scheme `CorrectionHistory` already uses -- but no endpoint in
+  `backend/src/Contigo.Api` reads it, and `Contract360QueryService` never joins it either. Until a
+  backend task adds a read endpoint (e.g. `GET /api/contracts/{id}/evidence`), every undecided field
+  is conservatively treated as spec §7.3's <80% "must be reviewed" band -- never a fabricated
+  percentage (Appendix C rule 10) -- so AC-4's gate is still real and testable today. The evidence
+  pane's "Source" line is an honest "not yet available" note for the same reason (no highlighted
+  passage to show). See `reviewViewModel.ts`'s own header comment for the full provenance.
+- **Two real, working decisions, one durable and one not.** "Correct" calls the real `PATCH
+  /api/contracts/{id}` (a genuine value change, a new `ContractVersion`, and a new
+  `CorrectionHistory` row an immediate re-fetch of `GET /api/contracts/{id}/corrections` picks back
+  up as "Corrected"). "Accept" has no backend call to make -- `ContractCorrectionService
+  .CorrectAsync` rejects a no-op correction outright, so there is no way to durably record "a human
+  looked at this and it was already right" -- it is this screen's own session-only React state and
+  does not survive a reload. An honest consequence of the real API's shape, not a bug; see
+  `index.tsx`'s own header comment.
+- **AC-4 gate**: `reviewViewModel.ts#isFieldBlocking`/`computeReviewProgress` -- a resolved field
+  (accepted or corrected) never blocks; a pending field blocks under a real <80% score, or -- always,
+  today -- when no score exists (the conservative default above). "Mark as validated" is a real
+  `<button disabled>` paired with a visible `.hint` reason (ADR-019 accessibility baseline), and
+  navigates to `/contracts/:id` on click (screens.md #6's own `finishReview` behaviour).
+
 ## API client (ADR-012 "one generated TypeScript client, no hand-written divergent DTOs")
 
 Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
@@ -341,6 +532,43 @@ Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
   A `404` (its OpenAPI response carries no body at all, unlike the `400`s'
   JSON-string bodies) is special-cased rather than attempting to parse an
   empty body as JSON.
+- **Task E07/F01/US01/T01 (portfolio-list-filters)** extended
+  `openapi/contigo-api.v1.json` with `GET /api/contracts` (operationId
+  `getPortfolio`) -- the repeating chore `typescript-client-regen`'s own doc
+  comment named ("whichever web epic first builds a screen against one of
+  those endpoints extends the contract next"). Its 200 response's `risk`
+  field is deliberately typed as a bare nullable string, not a nullable enum:
+  `generate-api-client.mjs#renderSchemaType` checks a schema's `enum` before
+  it checks whether `type` is a nullable union, so the two combined lose the
+  `null` member -- every enum this document declared before this task was
+  non-nullable, so that combination never came up. Rather than patch the
+  generator (outside this task's own `src/routes/contracts/` scope), the
+  operation's own schema omits `enum` for that one field; `client.ts` names
+  the real four-value wire set (`Low`/`Medium`/`High`/`Critical`) as its own
+  hand-written `PortfolioRiskSeverity` alias instead, with a runtime
+  `isPortfolioRiskSeverity` guard at the one place a raw string crosses into
+  it. `client.ts`'s `getPortfolio(tenantId, query?)` mirrors the endpoint's
+  full filter/paging surface even though `src/routes/contracts/index.tsx`
+  itself only ever calls it unfiltered (see "Portfolio" above for why).
+- **Task E07/F02/US01/T01 (contract-360)** extended `openapi/contigo-api.v1.json` with three more
+  operations -- `GET /api/contracts/{id}` (`getContract360`), `GET /api/renewals` (`getRenewals`),
+  and `GET /api/renewals/{contractId}/priority` (`getRenewalPriority`) -- the same "repeating chore"
+  `typescript-client-regen`'s own doc comment named. `header.risk` and `tabs.clauses[].riskLevel`
+  reuse the same bare-nullable-string workaround `getPortfolio`'s own `risk` field already
+  established (the generator drops `null` when `enum` and a nullable `type` union combine);
+  `tabs.risks[].severity` is a real non-nullable enum since the wire field is required. `client.ts`'s
+  three new methods follow the same never-throws convention as every other call (a `404` on
+  `getContract360`/`getRenewalPriority` is a normal, expected outcome the caller renders as a named
+  "not found" state).
+- **Task E07/F03/US01/T01 (field-review-correction)** extended `openapi/contigo-api.v1.json` with `PATCH
+  /api/contracts/{id}` (`correctContract`) and `GET /api/contracts/{id}/corrections`
+  (`getCorrectionHistory`) -- the third web epic to extend this document (same "repeating chore"
+  provenance paragraph). Both operations were already implemented by backend task
+  E02/F05/US01/T01/T02; this task only wraps them for the web client. `correctContract`'s request
+  body (`CorrectContractRequest`) is hand-written, like `createWorkspace`'s -- the generator does not
+  parse `requestBody`. Both response shapes (a flat object, and an array of a flat object) use
+  generator cases `getContract360`/`getPortfolio` already exercise, so no generator change was
+  needed this time.
 
 ## Directory layout
 
@@ -356,17 +584,17 @@ web/
   src/
     api/
       generated/schema.ts     # AUTO-GENERATED; do not edit by hand
-      client.ts                # createApiClient(baseUrl) -> { getHealth(), createWorkspace({ name }), uploadDocument(tenantId, file), getDocument(tenantId, id) }
+      client.ts                # createApiClient(baseUrl) -> { getHealth(), createWorkspace({ name }), uploadDocument(tenantId, file), getDocument(tenantId, id), getPortfolio(tenantId, query?), getContract360(tenantId, id), getRenewals(tenantId), getRenewalPriority(tenantId, contractId), getCorrectionHistory(tenantId, id), correctContract(tenantId, id, request) }
     config/appConfig.ts       # fetch + validate runtime config
     auth/msalConfig.ts        # AppConfig -> MSAL Configuration (no secret, ever)
     styles/                   # design system (tokens + component catalogue); see below
     routes/
       signin/               # ADR-018 `/signin`; gated on MSAL auth state, not a URL route (see "Screens" above)
         index.tsx             # SignInRoute -- no account: SignInScreen; signed in: WorkspacePickerScreen
-        SignInScreen.tsx      # idle / redirecting states around instance.loginRedirect()
-        WorkspacePickerScreen.tsx # list (workspaceStore cache) + create via POST /api/workspaces + "Continue" into the shell
+        SignInScreen.tsx      # idle / redirecting states around instance.loginRedirect(); also exports SignInStatementPanel (shared left-column canvas, task E06/F06/US01/T01)
+        WorkspacePickerScreen.tsx # list (workspaceStore cache) + create via POST /api/workspaces + "Continue" into the shell -- renders SignInStatementPanel + .signin-action, the same full-bleed canvas as SignInScreen (task E06/F06/US01/T01), not a standalone card
         workspaceStore.ts     # per-account localStorage cache + sessionStorage "current workspace"; documents the missing list/membership backend gap
-        signin.css            # this route's styles
+        signin.css            # this route's styles -- see "Layout" above
       documents/            # tasks E06/F05/US01/T01 + E06/F05/US02/T01 -- ADR-020 screen 3, both halves (see "Documents" above)
         index.tsx             # DocumentsRoute -- upload state machine (wires apiClient.uploadDocument) + trackedDocuments table state (wires apiClient.getDocument)
         UploadDropzone.tsx    # AC-1 (us-01): drag-and-drop + file picker + formats/size/sources strip
@@ -378,6 +606,30 @@ web/
         documentTable.ts      # pure helpers: type-label mapping, status->tag reuse, "Uploaded" date formatting
         documentStore.ts      # sessionStorage-scoped TrackedDocument list -- no GET /api/documents collection endpoint exists yet
         documents.css         # this route's styles
+      contracts/            # task E07/F01/US01/T01 -- ADR-020 screen 4 (see "Portfolio" above)
+        index.tsx             # PortfolioRoute -- fetch-once-filter-client-side state machine (AC-4 states)
+        AttentionStrip.tsx    # AC-2: the four-cell strip, click = filter
+        PortfolioFilters.tsx  # AC-1: the seven filter chips
+        PortfolioTable.tsx    # AC-3: the sorted, tinted table
+        portfolioAttention.ts       # pure helpers: per-row severity/issue text, sort comparator, attention buckets
+        portfolioFilterState.ts     # pure helpers: filter state + the AND-composed row predicate
+        portfolioTableFormatters.ts # pure helpers: date/number formatting, status/risk -> tag mapping
+        contracts.css         # this route's styles
+        contract360/          # task E07/F02/US01/T01 -- ADR-020 screen 5 (see "Contract 360" above)
+          index.tsx              # Contract360Route -- fetch-order state machine (contract, then renewals + priority together)
+          Contract360Header.tsx  # AC-1/AC-2: header + 6-cell fact row
+          OverviewTab.tsx        # AC-3: recommendation card (.ai-recommendation) + drivers + attention + top risks
+          FactTable.tsx          # AC-4: the shared Term/Value/Source/Confidence table (Commercials..Activity)
+          RenewalTab.tsx         # AC-4: Renewal's own facts + the priority-score component table
+          contract360ViewModel.ts # pure helpers: row builders per tab, needs-attention/top-risks derivation, recommendation lookup
+          contract360.css        # this screen's styles
+        review/                # task E07/F03/US01/T01 -- ADR-020 screen 6 (see "Review / correction" above)
+          index.tsx              # ReviewRoute -- fetch order (contract, then correction history), decision state, correction submit
+          ReviewHeader.tsx        # AC-4: title + gated "Mark as validated" + progress line
+          ReviewFieldList.tsx     # AC-1: the 4-column field list (critical marker, value, confidence tag, decision)
+          EvidencePane.tsx        # AC-3: evidence + correction form + real correction-history trail
+          reviewViewModel.ts      # pure helpers: correctable-field catalogue, decision/tag/gate computation (no live confidence yet -- see its own header comment)
+          review.css              # this screen's styles
     components/
       shell/                  # task E06/F03/US02/T01 -- app shell, router, role guard (see "App shell" above)
         navItems.ts             # locked 8-item rail model + getVisibleNavItems(role) role guard (AC-1/AC-2)

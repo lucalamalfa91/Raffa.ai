@@ -125,4 +125,58 @@ public sealed class QuotesEndpointTests : IClassFixture<WebApplicationFactory<Pr
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
+
+    // ----- Task E05/F01/US02/T02 (sku-recalculate) AC-2/AC-3:
+    // POST /api/quotes/{id}/assessment/recalculate -----
+    //
+    // Same reasoning as the GetAssessment_* tests above: only exercises branches that return
+    // before any database/Benchmark-Service call is made. A real "correction resolves an unmatched
+    // line, then a fresh assessment comes back" proof lives in
+    // Contigo.Quotes.Tests.SkuMappingServiceTests, against a real Postgres.
+
+    private static StringContent JsonBody(string json) =>
+        new(json, System.Text.Encoding.UTF8, "application/json");
+
+    [Fact]
+    public async Task Recalculate_missing_tenant_header_returns_400()
+    {
+        var client = _factory.CreateClient();
+
+        var response = await client.PostAsync(
+            $"/api/quotes/{Guid.NewGuid()}/assessment/recalculate", JsonBody("{}"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Recalculate_invalid_tenant_header_returns_400()
+    {
+        var client = _factory.CreateClient();
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post, $"/api/quotes/{Guid.NewGuid()}/assessment/recalculate")
+        {
+            Content = JsonBody("{}"),
+        };
+        request.Headers.Add("X-Tenant-Id", "not-a-guid");
+
+        var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Recalculate_non_guid_quote_id_returns_400()
+    {
+        var client = _factory.CreateClient();
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post, "/api/quotes/not-a-guid/assessment/recalculate")
+        {
+            Content = JsonBody("{}"),
+        };
+        request.Headers.Add("X-Tenant-Id", Guid.NewGuid().ToString());
+
+        var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
 }

@@ -35,7 +35,21 @@ const appConfig: AppConfig = {
 };
 
 function mockApiClient(createWorkspace: ApiClient["createWorkspace"] = vi.fn()): ApiClient {
-  return { getHealth: vi.fn(), createWorkspace, uploadDocument: vi.fn(), getDocument: vi.fn() };
+  return {
+    getHealth: vi.fn(),
+    createWorkspace,
+    uploadDocument: vi.fn(),
+    getDocument: vi.fn(),
+    getPortfolio: vi.fn(),
+    // Task E07/F02/US01/T01 (contract-360): this suite never reaches Contract 360 -- bare vi.fn().
+    getContract360: vi.fn(),
+    getRenewals: vi.fn(),
+    getRenewalPriority: vi.fn(),
+    // Task E07/F03/US01/T01 (field-review-correction): this suite never reaches the Review screen --
+    // bare vi.fn() is enough, same convention as getContract360 above.
+    getCorrectionHistory: vi.fn(),
+    correctContract: vi.fn(),
+  };
 }
 
 describe("SignInRoute (sign-in -> workspace list)", () => {

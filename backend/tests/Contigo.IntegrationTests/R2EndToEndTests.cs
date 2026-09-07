@@ -4,6 +4,7 @@ using Contigo.Audit.Infrastructure;
 using Contigo.Documents.Contracts.Domain;
 using Contigo.Renewals.Application;
 using Contigo.Renewals.Domain;
+using Contigo.Renewals.Infrastructure;
 using Contigo.SharedKernel;
 using Contigo.SharedKernel.Tenancy;
 using Microsoft.EntityFrameworkCore;
@@ -35,20 +36,20 @@ namespace Contigo.IntegrationTests;
 /// already established for this test assembly (they are generic HTTP plumbing, not R1-specific).
 ///
 /// <para>
-/// <b>Honest scope note (renewal-alerts):</b> this task's own wave-spec <c>depends_on</c> names
-/// <c>renewal-alerts</c> (task E03/F02/US01/T02, "Alert creation + re-compute on correction"), but
-/// that task's own branch carries zero commits beyond `integration` as of this task's run (checked
-/// via this task's own git history read, not assumed) — it has not landed any code. Per this
-/// repo's own <c>backend/README.md</c> ("Renewal threshold scheduler" section) and
-/// <see cref="RenewalThresholdScheduler"/>'s own doc comment, the only "alert" artifact that
-/// actually exists today is the <c>renewal.approaching</c> <em>threshold event</em> (task
-/// E03/F02/US01/T01, <c>threshold-scheduler</c>) — a durable, queryable
+/// <b>Renewal alerts (updated by task E03/F02/US01/T02):</b> this task's own wave-spec
+/// <c>depends_on</c> named <c>renewal-alerts</c> (task E03/F02/US01/T02, "Alert creation +
+/// re-compute on correction"), which had not landed any code as of this task's own original run —
+/// only the <c>renewal.approaching</c> <em>threshold event</em> (task E03/F02/US01/T01,
+/// <c>threshold-scheduler</c>) existed then, a durable, queryable
 /// <see cref="Contigo.SharedKernel.IAuditWriter"/> entry, not a persisted, de-duplicated
-/// <c>RenewalAlert</c> row with recompute-on-correction. This test proves exactly that — parent
-/// story AC-2's own literal wording is "Threshold events fire", and this is the artifact that
-/// fires them — and no more: a persisted alert entity with recompute-on-correction remains task
-/// E03/F02/US01/T02's own, still-open file scope, not silently absorbed here (this task's own "do
-/// not touch unrelated wave artifacts" instruction).
+/// <see cref="RenewalAlert"/> row. Task E03/F02/US01/T02 has since landed both halves parent story
+/// AC-2/AC-3 name: <see cref="Contigo.Renewals.Application.RenewalAlertService"/> persists a
+/// de-duplicated <see cref="RenewalAlert"/> row per raised event, and recomputes/resolves a
+/// contract's alerts when its terms are corrected (via
+/// <c>Contigo.Api.RenewalAlertRecomputeService</c>, called from `PATCH /api/contracts/{id}`). See
+/// <see cref="Renewal_alerts_are_created_from_thresholds_and_recomputed_on_contract_correction"/>
+/// below for the proof — added by that task, not this one, so the assertions above (this task's own
+/// original scope) are unchanged.
 /// </para>
 ///
 /// <para>
@@ -242,6 +243,101 @@ public sealed class R2EndToEndTests : IClassFixture<R2IntegrationFixture>
             Assert.NotNull(action);
             Assert.Equal(RenewalActionStatus.Completed, action!.Status);
             Assert.Equal("Renewed at same terms", action.Action);
+        }
+    }
+
+    /// <summary>
+    /// Proves the Definition of Done for task E03/F02/US01/T02 (renewal-alerts) and closes the gap
+    /// this file's own class doc comment used to name: end to end, over real HTTP against a real,
+    /// migrated, RLS-enforced Postgres — AC-2 ("Emits <c>renewal.approaching</c> events creating
+    /// alerts") and AC-3 ("Scheduler recomputes when a contract/term is corrected").
+    ///
+    /// Alert creation itself is exercised directly against the API host's own DI container (the
+    /// same two-step composition <c>Contigo.Worker.Scheduling.RenewalThresholdSchedulerHostedService
+    /// .RunOnceAsync</c> performs on a real tick — no separate Worker host runs in this fixture, see
+    /// <see cref="R2IntegrationFixture"/>'s own doc comment), then the recompute half is driven
+    /// through the real `PATCH /api/contracts/{id}` endpoint so the actual
+    /// <c>Contigo.Api.RenewalAlertRecomputeService</c> wiring — not just
+    /// <see cref="Contigo.Renewals.Application.RenewalAlertService"/> in isolation (already proved
+    /// by <c>Contigo.Renewals.Tests.RenewalAlertServiceTests</c>) — is what this test proves.
+    /// </summary>
+    [Fact]
+    public async Task Renewal_alerts_are_created_from_thresholds_and_recomputed_on_contract_correction()
+    {
+        var client = _fixture.CreateClient();
+        var tenantId = TenantId.New();
+        var today = DateOnly.FromDateTime(DateTimeOffset.UtcNow.UtcDateTime);
+
+        // Seeded exactly 90 days out -- a configured threshold window (AC-2).
+        var contract = await _fixture.SeedContractAsync(
+            tenantId, annualSpend: 50_000m, endDate: today.AddDays(90), autoRenewal: true);
+
+        using (var scope = _fixture.Services.CreateScope())
+        {
+            var scheduler = scope.ServiceProvider.GetRequiredService<RenewalThresholdScheduler>();
+            var alertService = scope.ServiceProvider.GetRequiredService<RenewalAlertService>();
+            var terms = new ContractRenewalTerms(
+                contract.Id, today.AddDays(90), AutoRenewal: true, CancellationNoticeDays: null);
+
+            var events = await scheduler.EvaluateThresholdsAsync(tenantId, [terms]);
+            await alertService.CreateFromEventsAsync(tenantId, events);
+        }
+
+        using (var scope = _fixture.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<RenewalsDbContext>();
+            var tenantContext = scope.ServiceProvider.GetRequiredService<ITenantContext>();
+            using var tenantScope = tenantContext.BeginScope(tenantId);
+
+            var alert = Assert.Single(await db.RenewalAlerts.Where(a => a.ContractId == contract.Id).ToListAsync());
+            Assert.Equal(RenewalAlertStatus.Active, alert.Status);
+            Assert.Equal(90, alert.ThresholdDays);
+            Assert.Equal(today.AddDays(90), alert.MilestoneDate);
+        }
+
+        // ----- AC-3: correcting endDate off every configured threshold resolves the alert
+        //       automatically, as a side effect of PATCH /api/contracts/{id} -- no separate call. -----
+
+        var offThresholdResponse = await R1EndToEndTests.PatchAsync(
+            client, $"/api/contracts/{contract.Id.Value}", tenantId.Value,
+            new { corrections = new Dictionary<string, string?> { ["endDate"] = today.AddDays(200).ToString("yyyy-MM-dd") } });
+        Assert.Equal(HttpStatusCode.OK, offThresholdResponse.StatusCode);
+
+        using (var scope = _fixture.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<RenewalsDbContext>();
+            var tenantContext = scope.ServiceProvider.GetRequiredService<ITenantContext>();
+            using var tenantScope = tenantContext.BeginScope(tenantId);
+
+            // Superseded, not deleted (Appendix C rule 5) -- the stale row's own MilestoneDate is
+            // untouched even though it no longer matches reality.
+            var alert = Assert.Single(await db.RenewalAlerts.Where(a => a.ContractId == contract.Id).ToListAsync());
+            Assert.Equal(RenewalAlertStatus.Resolved, alert.Status);
+            Assert.Equal(today.AddDays(90), alert.MilestoneDate);
+        }
+
+        // ----- A further correction landing exactly on a new threshold creates a fresh alert
+        //       (same PATCH endpoint, same automatic recompute). -----
+
+        var newThresholdResponse = await R1EndToEndTests.PatchAsync(
+            client, $"/api/contracts/{contract.Id.Value}", tenantId.Value,
+            new { corrections = new Dictionary<string, string?> { ["endDate"] = today.AddDays(60).ToString("yyyy-MM-dd") } });
+        Assert.Equal(HttpStatusCode.OK, newThresholdResponse.StatusCode);
+
+        using (var scope = _fixture.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<RenewalsDbContext>();
+            var tenantContext = scope.ServiceProvider.GetRequiredService<ITenantContext>();
+            using var tenantScope = tenantContext.BeginScope(tenantId);
+
+            var alerts = await db.RenewalAlerts.Where(a => a.ContractId == contract.Id).ToListAsync();
+            // The original (now Resolved, kept as honest history) plus one fresh Active alert --
+            // never a second row for the same threshold, never a silently-discarded first one.
+            Assert.Equal(2, alerts.Count);
+            Assert.Single(alerts, a => a.Status == RenewalAlertStatus.Resolved);
+            var active = Assert.Single(alerts, a => a.Status == RenewalAlertStatus.Active);
+            Assert.Equal(60, active.ThresholdDays);
+            Assert.Equal(today.AddDays(60), active.MilestoneDate);
         }
     }
 }

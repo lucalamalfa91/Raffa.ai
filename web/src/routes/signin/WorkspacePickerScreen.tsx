@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import type { ApiClient } from "../../api/client";
+import { SignInStatementPanel } from "./SignInScreen";
 import {
   clearCurrentWorkspace,
   loadCurrentWorkspace,
@@ -98,108 +99,118 @@ export default function WorkspacePickerScreen({
 
   if (current) {
     return (
-      <div className="workspace-picker">
-        <div className="card">
-          <p className="screen-kicker">Contigo</p>
-          <h1 className="screen-title">You&apos;re in {current.name}</h1>
-          <p className="micro-meta">Signed in as {accountLabel}.</p>
-          <div className="workspace-actions">
-            {/* Task E06/F03/US02/T01 (navigation-shell): the only way into
-                the app shell that task introduces (src/components/shell/).
-                A plain hard navigation, not a client-side router <Link> --
-                no router is mounted anywhere above this component. The
-                fresh page load re-runs src/App.tsx's account+workspace
-                check from scratch and mounts the shell; both MSAL's own
-                sessionStorage-cached account (src/auth/msalConfig.ts) and
-                this screen's own sessionStorage "current workspace" (this
-                file's selectCurrentWorkspace, above) survive a same-tab
-                navigation, so nothing needs to be re-entered. */}
-            <a className="btn btn-primary" href="/">
-              Continue to {current.name} →
-            </a>
-            <button type="button" className="btn btn-secondary" onClick={handleSwitchWorkspace}>
-              Switch workspace
-            </button>
-            <button type="button" className="btn btn-ghost" onClick={handleSignOut}>
-              Sign out
-            </button>
+      // Task E06/F06/US01/T01 (full-bleed-layout): shares SignInScreen's
+      // canvas (SignInStatementPanel + .signin-action) instead of the old
+      // standalone `.workspace-picker` narrow card -- see signin.css's
+      // header comment.
+      <main className="signin-screen">
+        <SignInStatementPanel />
+        <section className="signin-action">
+          <div className="card">
+            <p className="screen-kicker">Contigo</p>
+            <h1 className="screen-title">You&apos;re in {current.name}</h1>
+            <p className="micro-meta">Signed in as {accountLabel}.</p>
+            <div className="workspace-actions">
+              {/* Task E06/F03/US02/T01 (navigation-shell): the only way into
+                  the app shell that task introduces (src/components/shell/).
+                  A plain hard navigation, not a client-side router <Link> --
+                  no router is mounted anywhere above this component. The
+                  fresh page load re-runs src/App.tsx's account+workspace
+                  check from scratch and mounts the shell; both MSAL's own
+                  sessionStorage-cached account (src/auth/msalConfig.ts) and
+                  this screen's own sessionStorage "current workspace" (this
+                  file's selectCurrentWorkspace, above) survive a same-tab
+                  navigation, so nothing needs to be re-entered. */}
+              <a className="btn btn-primary" href="/">
+                Continue to {current.name} →
+              </a>
+              <button type="button" className="btn btn-secondary" onClick={handleSwitchWorkspace}>
+                Switch workspace
+              </button>
+              <button type="button" className="btn btn-ghost" onClick={handleSignOut}>
+                Sign out
+              </button>
+            </div>
           </div>
-        </div>
-      </div>
+        </section>
+      </main>
     );
   }
 
   return (
-    <div className="workspace-picker">
-      <h1 className="screen-title">Choose a workspace</h1>
-      <p className="micro-meta">Signed in as {accountLabel}.</p>
+    <main className="signin-screen">
+      <SignInStatementPanel />
+      <section className="signin-action">
+        <h1 className="screen-title">Choose a workspace</h1>
+        <p className="micro-meta">Signed in as {accountLabel}.</p>
 
-      {workspaces.length === 0 && !showCreateForm && (
-        <div className="empty-state">
-          <h3>No workspaces yet</h3>
-          <p>Create a workspace to start uploading contracts.</p>
-          <button type="button" className="btn btn-primary" onClick={() => setShowCreateForm(true)}>
+        {workspaces.length === 0 && !showCreateForm && (
+          <div className="empty-state">
+            <h3>No workspaces yet</h3>
+            <p>Create a workspace to start uploading contracts.</p>
+            <button type="button" className="btn btn-primary" onClick={() => setShowCreateForm(true)}>
+              + Create a new workspace
+            </button>
+          </div>
+        )}
+
+        {workspaces.length > 0 && (
+          <div className="workspace-list">
+            {workspaces.map((workspace) => (
+              <button
+                key={workspace.id}
+                type="button"
+                className="workspace-row"
+                onClick={() => pickWorkspace({ id: workspace.id, name: workspace.name })}
+              >
+                <div>
+                  <div className="workspace-row-name">{workspace.name}</div>
+                  <div className="workspace-row-meta">
+                    {workspace.contractCount} contracts
+                    {workspace.currencyRegion ? ` · ${workspace.currencyRegion}` : ""}
+                  </div>
+                </div>
+                <span className="tag tag-accent">{workspace.roleLabel}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {workspaces.length > 0 && !showCreateForm && (
+          <button type="button" className="btn btn-ghost workspace-create-cta" onClick={() => setShowCreateForm(true)}>
             + Create a new workspace
           </button>
-        </div>
-      )}
+        )}
 
-      {workspaces.length > 0 && (
-        <div className="workspace-list">
-          {workspaces.map((workspace) => (
-            <button
-              key={workspace.id}
-              type="button"
-              className="workspace-row"
-              onClick={() => pickWorkspace({ id: workspace.id, name: workspace.name })}
-            >
-              <div>
-                <div className="workspace-row-name">{workspace.name}</div>
-                <div className="workspace-row-meta">
-                  {workspace.contractCount} contracts
-                  {workspace.currencyRegion ? ` · ${workspace.currencyRegion}` : ""}
-                </div>
-              </div>
-              <span className="tag tag-accent">{workspace.roleLabel}</span>
-            </button>
-          ))}
-        </div>
-      )}
+        {showCreateForm && (
+          <form onSubmit={(event) => void handleCreate(event)}>
+            <div className="field">
+              <label htmlFor="signin-new-workspace-name">Workspace name</label>
+              <input
+                id="signin-new-workspace-name"
+                className="input"
+                value={newName}
+                onChange={(event) => setNewName(event.target.value)}
+                disabled={creating}
+                autoFocus
+              />
+            </div>
+            {createError && <p className="signin-form-error">{createError}</p>}
+            <div className="workspace-form-actions">
+              <button type="submit" className="btn btn-primary" disabled={creating}>
+                {creating ? "Creating…" : "Create workspace"}
+              </button>
+              <button type="button" className="btn btn-ghost" disabled={creating} onClick={cancelCreate}>
+                Cancel
+              </button>
+            </div>
+          </form>
+        )}
 
-      {workspaces.length > 0 && !showCreateForm && (
-        <button type="button" className="btn btn-ghost workspace-create-cta" onClick={() => setShowCreateForm(true)}>
-          + Create a new workspace
+        <button type="button" className="btn btn-ghost workspace-signout" onClick={handleSignOut}>
+          Sign out
         </button>
-      )}
-
-      {showCreateForm && (
-        <form onSubmit={(event) => void handleCreate(event)}>
-          <div className="field">
-            <label htmlFor="signin-new-workspace-name">Workspace name</label>
-            <input
-              id="signin-new-workspace-name"
-              className="input"
-              value={newName}
-              onChange={(event) => setNewName(event.target.value)}
-              disabled={creating}
-              autoFocus
-            />
-          </div>
-          {createError && <p className="signin-form-error">{createError}</p>}
-          <div className="workspace-form-actions">
-            <button type="submit" className="btn btn-primary" disabled={creating}>
-              {creating ? "Creating…" : "Create workspace"}
-            </button>
-            <button type="button" className="btn btn-ghost" disabled={creating} onClick={cancelCreate}>
-              Cancel
-            </button>
-          </div>
-        </form>
-      )}
-
-      <button type="button" className="btn btn-ghost workspace-signout" onClick={handleSignOut}>
-        Sign out
-      </button>
-    </div>
+      </section>
+    </main>
   );
 }

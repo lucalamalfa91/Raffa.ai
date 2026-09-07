@@ -1,0 +1,91 @@
+import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+// vite.config.ts sets `test.css: false` -- CSS imports are a no-op under
+// jsdom here, so there is no real cascade/computed style to assert against
+// at render time (see tests/styles/semantics.test.ts's own header comment
+// for the equivalent reasoning on the *logic* side of the design system).
+// This suite proves task E06/F06/US01/T01's fix the only way it is
+// checkable in this harness: the CSS source itself. It is a regression
+// guard against the E01 OIDC-scaffold rule (`main, .startup-error {
+// max-width: 40rem; margin: 3rem auto; ... }`) reappearing, not a
+// re-implementation of a CSS engine -- see each file's own header comment
+// for the full diagnosis.
+//
+// Comments are stripped before any assertion runs: several of the files
+// under test now *quote* that old rule verbatim in a `/* ... */` explaining
+// why it is gone, which would otherwise trip these same regexes on prose,
+// not a live rule.
+function readSource(relativePath: string): string {
+  const raw = readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), "utf-8");
+  return raw.replace(/\/\*[\s\S]*?\*\//g, "");
+}
+
+/** First non-nested `selector { ... }` block for `selector` (i.e. not one nested inside an `@media` block further down the file) -- enough for every selector this suite checks, all of which are declared before any `@media` override of the same selector. `selector` is a plain CSS selector (e.g. `.shell-main`); this escapes it. */
+function ruleBodyFor(css: string, selector: string): string {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = css.match(new RegExp(`${escaped}\\s*\\{([^}]*)\\}`));
+  if (!match) {
+    throw new Error(`No "${selector} { ... }" rule found.`);
+  }
+  return match[1];
+}
+
+describe("index.css (E06/F06/US01/T01 -- no 40rem main wrapper)", () => {
+  const css = readSource("../../src/index.css");
+
+  it("does not select the bare `main` element anywhere (no ancestor width cap for any screen)", () => {
+    // A regression would look like the old `main, .startup-error { ... }`
+    // combined selector, or a stand-alone `main { max-width: ... }` rule.
+    // `[^.\w-]` before "main" rules out matching `.signin-statement`,
+    // `.shell-main`, or similar -- only the bare element selector counts.
+    expect(css).not.toMatch(/(^|[^.\w-])main\b\s*[,{]/m);
+  });
+
+  it("keeps `.startup-error` narrow -- a one-off boot-config-failure alert, not a shipped mockup screen", () => {
+    expect(ruleBodyFor(css, ".startup-error")).toMatch(/max-width:\s*40rem/);
+  });
+});
+
+describe("shell.css (E06/F06/US01/T01 -- shell-main fills the rail's 1fr track)", () => {
+  const css = readSource("../../src/components/shell/shell.css");
+
+  it("does not cap `.shell-main`'s width (it must fill the grid's 1fr track, not float as a card inside it)", () => {
+    const body = ruleBodyFor(css, ".shell-main");
+    expect(body).toMatch(/max-width:\s*none/);
+  });
+});
+
+describe("signin.css (E06/F06/US01/T01 -- full-viewport two-column sign-in canvas)", () => {
+  const css = readSource("../../src/routes/signin/signin.css");
+
+  it("makes .signin-screen a full-height two-column grid (not a fraction of a 40rem ancestor)", () => {
+    const body = ruleBodyFor(css, ".signin-screen");
+    expect(body).toMatch(/min-height:\s*100vh/);
+    expect(body).toMatch(/grid-template-columns:\s*1fr\s+1fr/);
+    expect(body).not.toMatch(/max-width/);
+  });
+
+  it("no longer defines a standalone narrow `.workspace-picker` card (the picker now shares .signin-screen/.signin-action)", () => {
+    expect(css).not.toMatch(/\.workspace-picker\s*\{/);
+  });
+});
+
+describe("documents.css (E06/F06/US01/T01 -- ~400px/1fr two-column mockup layout)", () => {
+  const css = readSource("../../src/routes/documents/documents.css");
+
+  it("keeps the dropzone column at ~400px and the result/status column fluid", () => {
+    const body = ruleBodyFor(css, ".documents-columns");
+    expect(body).toMatch(/grid-template-columns:\s*minmax\(280px,\s*400px\)\s+1fr/);
+  });
+
+  it("wraps long filenames at word/character-run boundaries, not one glyph per line", () => {
+    expect(ruleBodyFor(css, ".upload-result-filename")).toMatch(/overflow-wrap:\s*anywhere/);
+    const documentColumnRule = css.match(
+      /\.document-status-table th:nth-child\(1\),\s*\.document-status-table td:nth-child\(1\)\s*\{([^}]*)\}/,
+    );
+    expect(documentColumnRule).not.toBeNull();
+    expect(documentColumnRule![1]).toMatch(/overflow-wrap:\s*anywhere/);
+  });
+});

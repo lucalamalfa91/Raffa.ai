@@ -25,6 +25,14 @@ namespace Contigo.Worker.Scheduling;
 /// this task (<see cref="Queue.QueueConsumerHostedService"/> never dispatches to a scoped domain
 /// handler yet — see that type's own doc comment).
 ///
+/// Task E03/F02/US01/T02 (renewal-alerts): every tick's raised events are now also handed to
+/// <see cref="Contigo.Renewals.Application.RenewalAlertService.CreateFromEventsAsync"/> (same
+/// per-tick <see cref="IServiceScope"/>, same Scoped-dependency reasoning), so a real threshold
+/// crossing leaves a durable, de-duplicated <see cref="Contigo.Renewals.Domain.RenewalAlert"/> row —
+/// not just the audit-only event <see cref="RenewalThresholdScheduler.EvaluateThresholdsAsync"/>
+/// already wrote — closing the gap that method's own doc comment named ("de-duplicating which
+/// alerts already exist for a threshold is parent story task-02's job").
+///
 /// A failed tick is logged and does not stop the loop — the next tick tries again on schedule,
 /// mirroring <see cref="Queue.QueueConsumerHostedService"/>'s own catch-log-continue shape for a
 /// single failed message.
@@ -60,6 +68,7 @@ internal sealed class RenewalThresholdSchedulerHostedService(
 
             using var scope = scopeFactory.CreateScope();
             var scheduler = scope.ServiceProvider.GetRequiredService<RenewalThresholdScheduler>();
+            var alertService = scope.ServiceProvider.GetRequiredService<RenewalAlertService>();
 
             foreach (var batch in batches)
             {
@@ -70,6 +79,16 @@ internal sealed class RenewalThresholdSchedulerHostedService(
                 logger.LogInformation(
                     "Renewal threshold scheduler emitted {Count} renewal.approaching event(s) for tenant {TenantId}",
                     events.Count, batch.TenantId);
+
+                // Task E03/F02/US01/T02 (renewal-alerts): persist a de-duplicated alert per
+                // genuinely new (contract, milestone, thresholdDays) match (class doc comment).
+                var alerts = await alertService
+                    .CreateFromEventsAsync(batch.TenantId, events, cancellationToken)
+                    .ConfigureAwait(false);
+
+                logger.LogInformation(
+                    "Renewal alert service created {Count} renewal alert(s) for tenant {TenantId}",
+                    alerts.Count, batch.TenantId);
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

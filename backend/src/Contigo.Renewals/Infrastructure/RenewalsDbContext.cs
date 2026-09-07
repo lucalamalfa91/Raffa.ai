@@ -13,14 +13,22 @@ namespace Contigo.Renewals.Infrastructure;
 /// per-request tenant claim are wired the same way <c>Contigo.Audit.Infrastructure.AuditDbContext</c>
 /// and <c>Contigo.Documents.Contracts.Infrastructure.DocumentsContractsDbContext</c> already wire
 /// them — this context only shapes the model and exposes the DbSet.
+///
+/// Task E03/F02/US01/T02 (renewal-alerts) adds this module's second table,
+/// <see cref="RenewalAlert"/> — the persisted alert row <c>RenewalThresholdScheduler</c>'s own doc
+/// comment named as parent story task-02's job ("de-duplicating which alerts already exist for a
+/// threshold").
 /// </summary>
 public sealed class RenewalsDbContext(DbContextOptions<RenewalsDbContext> options) : DbContext(options)
 {
     public DbSet<RenewalAction> RenewalActions => Set<RenewalAction>();
 
+    public DbSet<RenewalAlert> RenewalAlerts => Set<RenewalAlert>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfiguration(new RenewalActionConfiguration());
+        modelBuilder.ApplyConfiguration(new RenewalAlertConfiguration());
 
         base.OnModelCreating(modelBuilder);
     }

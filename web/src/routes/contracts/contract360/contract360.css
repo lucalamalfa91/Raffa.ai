@@ -1,0 +1,220 @@
+/**
+ * Contract 360 screen (route `/contracts/:contractId`, ADR-018; ADR-020 screen 5; task
+ * E07/F02/US01/T01). Component classes (.tag, .table, .btn, .card, .ai-recommendation,
+ * .skeleton, .empty-state, .error-state, .screen-kicker/.screen-title, .micro-meta, .key-fact-number)
+ * come from ../../../styles/components.css (ADR-019 component catalogue) -- this file adds only
+ * this screen's own composites, the same division of labour ../contracts.css (Portfolio) already
+ * established for this folder.
+ *
+ * The tab strip (`.contract360-tabs`/`.contract360-tab`) is a new, screen-scoped composite, not a
+ * reuse of the locked `.seg` segmented control: `.seg` is a bordered 2-3-option toggle
+ * (ADR-019 component catalogue); the cited prototype's own screen-5 tab bar is a flush-left, flat
+ * text row with an accent underline on the active tab, matching ten items far better than a boxed
+ * `.seg` would.
+ */
+
+.contract360-screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+/* ---- Header (AC-1) --------------------------------------------------------- */
+
+.contract360-header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.contract360-header-tags {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+/* ---- 6-cell fact row (AC-2) ------------------------------------------------ */
+
+.contract360-fact-row {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  border-top: 2px solid var(--color-divider);
+  margin-top: var(--space-5);
+}
+
+.contract360-fact-cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-3) var(--space-3) 0;
+  border-right: 1px solid var(--color-divider);
+}
+
+.contract360-fact-cell:last-child {
+  border-right: 0;
+}
+
+.contract360-fact-value {
+  font-family: var(--font-heading);
+  font-weight: var(--weight-heading);
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+@media (max-width: 900px) {
+  .contract360-fact-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .contract360-fact-cell {
+    border-right: 0;
+    border-bottom: 1px solid var(--color-divider);
+    padding-left: var(--space-3);
+  }
+}
+
+/* ---- Tab strip (AC-4) ------------------------------------------------------- */
+
+.contract360-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  border-bottom: 2px solid var(--color-divider);
+}
+
+.contract360-tab {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  padding: var(--space-2) var(--space-3);
+  font-size: 13px;
+  font-weight: var(--weight-body-strong);
+  color: var(--color-neutral-600);
+  cursor: pointer;
+}
+
+.contract360-tab:hover {
+  color: var(--color-text);
+}
+
+.contract360-tab[aria-pressed="true"] {
+  color: var(--color-text);
+  border-bottom-color: var(--color-accent);
+}
+
+/* ---- Generic tab panel (FactTable.tsx, RenewalTab.tsx) --------------------- */
+
+.contract360-tab-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+/* ---- Overview tab (AC-3) ---------------------------------------------------- */
+
+.contract360-overview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.contract360-recommendation-statement {
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-heading);
+  font-size: 20px;
+  font-weight: var(--weight-heading);
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+
+.contract360-drivers {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(140px, 1fr));
+  gap: var(--space-4);
+  margin: var(--space-4) 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-divider);
+}
+
+.contract360-driver {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.contract360-recommendation-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.contract360-overview-columns {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-6);
+}
+
+@media (max-width: 900px) {
+  .contract360-overview-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+.contract360-overview-column-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: var(--space-2);
+}
+
+.contract360-column-link {
+  padding: 0 var(--space-1);
+  font-size: 12px;
+}
+
+.contract360-term-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.contract360-term-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.contract360-term-list li:last-child {
+  border-bottom: 0;
+}
+
+/* ---- Renewal tab ------------------------------------------------------------ */
+
+.contract360-renewal-tab {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+/* ---- Loading skeleton (mirrors ../contracts.css's own .portfolio-skeleton) -- */
+
+.contract360-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.contract360-skeleton-row {
+  height: 32px;
+}

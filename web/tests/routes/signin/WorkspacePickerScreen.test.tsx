@@ -5,7 +5,21 @@ import WorkspacePickerScreen from "../../../src/routes/signin/WorkspacePickerScr
 import type { ApiClient, CreateWorkspaceResult } from "../../../src/api/client";
 
 function mockApiClient(createWorkspace: ApiClient["createWorkspace"] = vi.fn()): ApiClient {
-  return { getHealth: vi.fn(), createWorkspace, uploadDocument: vi.fn(), getDocument: vi.fn() };
+  return {
+    getHealth: vi.fn(),
+    createWorkspace,
+    uploadDocument: vi.fn(),
+    getDocument: vi.fn(),
+    getPortfolio: vi.fn(),
+    // Task E07/F02/US01/T01 (contract-360): this suite never reaches Contract 360 -- bare vi.fn().
+    getContract360: vi.fn(),
+    getRenewals: vi.fn(),
+    getRenewalPriority: vi.fn(),
+    // Task E07/F03/US01/T01 (field-review-correction): this suite never reaches the Review screen --
+    // bare vi.fn() is enough, same convention as getContract360 above.
+    getCorrectionHistory: vi.fn(),
+    correctContract: vi.fn(),
+  };
 }
 
 const ACCOUNT_KEY = "test-home-account-id";
@@ -28,6 +42,26 @@ describe("WorkspacePickerScreen", () => {
 
     expect(screen.getByText(/no workspaces yet/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /\+ create a new workspace/i })).toBeInTheDocument();
+  });
+
+  it("renders the same full-bleed statement-panel canvas as SignInScreen, not a standalone narrow card (E06/F06/US01/T01)", () => {
+    const { container } = render(
+      <WorkspacePickerScreen
+        apiClient={mockApiClient()}
+        accountKey={ACCOUNT_KEY}
+        accountLabel="user@example.test"
+        onSignOut={vi.fn()}
+      />,
+    );
+
+    // Parent story AC: "Workspace picker: same canvas as the prototype, not
+    // a narrow article." The statement panel (north-star sentence + 4 V1
+    // jobs) is SignInScreen's own left column, shared via
+    // SignInStatementPanel -- its presence here proves the picker no longer
+    // falls back to the old standalone `.workspace-picker` card.
+    expect(screen.getByText(/what we bought/i)).toBeInTheDocument();
+    expect(container.querySelector("main.signin-screen")).toBeInTheDocument();
+    expect(container.querySelector(".workspace-picker")).not.toBeInTheDocument();
   });
 
   it("creates a workspace, remembers it, and lands the user in it", async () => {

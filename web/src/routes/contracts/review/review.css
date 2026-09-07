@@ -1,0 +1,113 @@
+/**
+ * Review / correction screen (route `/contracts/:contractId/review`, ADR-020 screen 6; task
+ * E07/F03/US01/T01). Component classes (.table, .tag, .btn, .field, .input, .detail-pane, .hint,
+ * .row-critical, .screen-kicker/.screen-title, .micro-meta, .empty-state, .error-state, .skeleton)
+ * come from ../../../styles/components.css (ADR-019 component catalogue) -- this file adds only
+ * this screen's own composites, the same division of labour ../contract360/contract360.css already
+ * established for this folder.
+ */
+
+.review-screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* ---- Header (AC-4) ---------------------------------------------------------- */
+
+.review-header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.review-header-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+}
+
+.review-progress-line {
+  margin-top: var(--space-2);
+}
+
+/* ---- List + evidence pane layout -------------------------------------------- */
+
+.review-body {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-5);
+}
+
+.review-field-table {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.review-field-table tr.review-row-selected {
+  background: var(--color-neutral-200);
+}
+
+.review-field-name {
+  padding-left: 0;
+}
+
+.review-critical-marker {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: var(--space-2);
+  border-radius: 50%;
+  background: var(--color-accent);
+}
+
+.review-decision-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.review-evidence-pane {
+  flex: none;
+}
+
+.review-correction-form {
+  margin: var(--space-4) 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-divider);
+}
+
+.review-history-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.review-history-list li {
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.review-history-list li:last-child {
+  border-bottom: 0;
+}
+
+@media (max-width: 900px) {
+  .review-body {
+    flex-direction: column;
+  }
+}
+
+/* ---- Loading skeleton (mirrors ../contract360/contract360.css's own pattern) */
+
+.review-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.review-skeleton-row {
+  height: 32px;
+}

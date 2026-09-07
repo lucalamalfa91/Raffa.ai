@@ -3,7 +3,7 @@
   "info": {
     "title": "Contigo API",
     "version": "1.1.0",
-    "description": "Contract for the Contigo backend API (backend/src/Contigo.Api), consumed by the web (this file) and mobile (ADR-013) TypeScript clients per ADR-012's \"single OpenAPI document -> one generated TypeScript client, no hand-written divergent DTOs\" rule (see reports/architecture/draft/client-architect/api-consumption.md #1).\n\nProvenance / interim status (task E01/F07/US01/T02): the API host does not yet self-publish this document -- no Microsoft.AspNetCore.OpenApi / Swashbuckle / NSwag is wired into backend/src/Contigo.Api/Program.cs as of this task, and adding that is outside this task's file scope (the web client only; this task's frontmatter is target_repo: contigo-web). Until a backend task adds self-published OpenAPI generation, this file is hand-authored to describe exactly the routes Program.cs actually implements today, cross-checked against backend/tests/Contigo.Api.Tests. It is the single file `npm run generate:api` (web/scripts/generate-api-client.mjs) reads to produce web/src/api/generated/schema.ts, and must grow endpoint-by-endpoint as backend/src/Contigo.Api/Program.cs grows -- then be replaced outright once the API self-publishes its own document.\n\nURL versioning (OQ-client-007 in reports/open-questions.md, still `open` at council-close: \"OpenAPI codegen tool and URL versioning scheme ... owned by software-architect\") is deliberately NOT applied to the paths below: Program.cs maps bare `/health`, not `/v1/health`, and a client generated against a path the API does not actually serve would 404 in every real environment. `info.version` above tracks this document's own revision; add a URL path prefix here only once software-architect fixes one and Program.cs actually serves it under that prefix.\n\nCodegen tool choice (also part of OQ-client-007, resolved here for this task rather than left blocking it, per reports/open-questions.md's \"add an entry, state the assumption, build against it\"): third-party OpenAPI-to-TypeScript generators evaluated at authoring time (openapi-typescript@7.13.0, which peer-depends on `typescript@^5.x`) hard-conflict with this repo's already-committed `typescript@^7.0.2` (web/package.json, task E01/F07/US01/T01) under npm's default strict peer resolution. Rather than force an incorrect peer resolution (`--legacy-peer-deps`/`--force`) or downgrade a previous task's already-committed TypeScript version, this contract is compiled by a small first-party generator (web/scripts/generate-api-client.mjs, zero new dependencies) that reads this JSON file and emits the `paths`/`operations` TypeScript types the same way the mainstream tools shape them. Swap in a third-party tool once one publishes TypeScript-7-compatible peer ranges; the generated *output shape* (`paths`/`operations`) is deliberately kept compatible with that ecosystem convention so the swap is mechanical.\n\nTask E06/F01/US01/T01 (typescript-client-regen) added the four operations below beyond `/health`: `POST /api/workspaces` (create), `POST /api/workspaces/{tenantId}/invites` (invite), `POST /api/documents` (upload), `GET /api/documents/{id}` (read back) -- exactly epic-06-web-foundation's own R0 scope (\"the sign-in -> workspace picker flow ... and the R0 surfaces (members & roles, document upload, document-status read-back)\"). backend/src/Contigo.Api/Program.cs now also maps many more routes added by backend epics E02-E05 (GET /api/contracts, GET/PATCH /api/contracts/{id}, GET /api/contracts/{id}/corrections, GET /api/audit, GET /api/renewals and /api/renewals/{contractId}/priority, POST /api/renewals/{id}/action, GET/PATCH /api/savings and GET /api/savings/kpis, POST /api/chat/query, POST /api/quotes and GET /api/quotes/{id}/assessment, POST /api/negotiations/outcomes) that this task deliberately did NOT add here: epic-06-web-foundation's own \"Out of scope\" list names exactly that set (\"portfolio, Contract 360, review, Ask, renewals, savings, quote check -- later web epics\"), and feature-01-typescript-client-regen's own \"Council decisions carried into this story\" calls this a \"Repeating chore\" -- whichever web epic first builds a screen against one of those endpoints should extend this file next, the same way this task extended the `/health`-only version task E01/F07/US01/T02 left behind. Nullable fields (e.g. a freshly-uploaded or not-yet-classified document's `contractId`) use OpenAPI 3.1's `type: [X, \"null\"]` union instead of a bolted-on `nullable: true` flag; web/scripts/generate-api-client.mjs gained one small, additive case for it (a `type` array renders as the equivalent TypeScript union, plus a case for `object`/`properties` -- every new response below is a flat, single-level object) -- see that script's own comments on the change."
+    "description": "Contract for the Contigo backend API (backend/src/Contigo.Api), consumed by the web (this file) and mobile (ADR-013) TypeScript clients per ADR-012's \"single OpenAPI document -> one generated TypeScript client, no hand-written divergent DTOs\" rule (see reports/architecture/draft/client-architect/api-consumption.md #1).\n\nProvenance / interim status (task E01/F07/US01/T02): the API host does not yet self-publish this document -- no Microsoft.AspNetCore.OpenApi / Swashbuckle / NSwag is wired into backend/src/Contigo.Api/Program.cs as of this task, and adding that is outside this task's file scope (the web client only; this task's frontmatter is target_repo: contigo-web). Until a backend task adds self-published OpenAPI generation, this file is hand-authored to describe exactly the routes Program.cs actually implements today, cross-checked against backend/tests/Contigo.Api.Tests. It is the single file `npm run generate:api` (web/scripts/generate-api-client.mjs) reads to produce web/src/api/generated/schema.ts, and must grow endpoint-by-endpoint as backend/src/Contigo.Api/Program.cs grows -- then be replaced outright once the API self-publishes its own document.\n\nURL versioning (OQ-client-007 in reports/open-questions.md, still `open` at council-close: \"OpenAPI codegen tool and URL versioning scheme ... owned by software-architect\") is deliberately NOT applied to the paths below: Program.cs maps bare `/health`, not `/v1/health`, and a client generated against a path the API does not actually serve would 404 in every real environment. `info.version` above tracks this document's own revision; add a URL path prefix here only once software-architect fixes one and Program.cs actually serves it under that prefix.\n\nCodegen tool choice (also part of OQ-client-007, resolved here for this task rather than left blocking it, per reports/open-questions.md's \"add an entry, state the assumption, build against it\"): third-party OpenAPI-to-TypeScript generators evaluated at authoring time (openapi-typescript@7.13.0, which peer-depends on `typescript@^5.x`) hard-conflict with this repo's already-committed `typescript@^7.0.2` (web/package.json, task E01/F07/US01/T01) under npm's default strict peer resolution. Rather than force an incorrect peer resolution (`--legacy-peer-deps`/`--force`) or downgrade a previous task's already-committed TypeScript version, this contract is compiled by a small first-party generator (web/scripts/generate-api-client.mjs, zero new dependencies) that reads this JSON file and emits the `paths`/`operations` TypeScript types the same way the mainstream tools shape them. Swap in a third-party tool once one publishes TypeScript-7-compatible peer ranges; the generated *output shape* (`paths`/`operations`) is deliberately kept compatible with that ecosystem convention so the swap is mechanical.\n\nTask E06/F01/US01/T01 (typescript-client-regen) added the four operations below beyond `/health`: `POST /api/workspaces` (create), `POST /api/workspaces/{tenantId}/invites` (invite), `POST /api/documents` (upload), `GET /api/documents/{id}` (read back) -- exactly epic-06-web-foundation's own R0 scope (\"the sign-in -> workspace picker flow ... and the R0 surfaces (members & roles, document upload, document-status read-back)\"). backend/src/Contigo.Api/Program.cs now also maps many more routes added by backend epics E02-E05 (GET /api/contracts, GET/PATCH /api/contracts/{id}, GET /api/contracts/{id}/corrections, GET /api/audit, GET /api/renewals and /api/renewals/{contractId}/priority, POST /api/renewals/{id}/action, GET/PATCH /api/savings and GET /api/savings/kpis, POST /api/chat/query, POST /api/quotes and GET /api/quotes/{id}/assessment, POST /api/negotiations/outcomes) that this task deliberately did NOT add here: epic-06-web-foundation's own \"Out of scope\" list names exactly that set (\"portfolio, Contract 360, review, Ask, renewals, savings, quote check -- later web epics\"), and feature-01-typescript-client-regen's own \"Council decisions carried into this story\" calls this a \"Repeating chore\" -- whichever web epic first builds a screen against one of those endpoints should extend this file next, the same way this task extended the `/health`-only version task E01/F07/US01/T02 left behind. Nullable fields (e.g. a freshly-uploaded or not-yet-classified document's `contractId`) use OpenAPI 3.1's `type: [X, \"null\"]` union instead of a bolted-on `nullable: true` flag; web/scripts/generate-api-client.mjs gained one small, additive case for it (a `type` array renders as the equivalent TypeScript union, plus a case for `object`/`properties` -- every new response below is a flat, single-level object) -- see that script's own comments on the change.\n\nTask E07/F03/US01/T01 (field-review-correction, ADR-020 screen 6) added `PATCH /api/contracts/{id}` (`correctContract`) and `GET /api/contracts/{id}/corrections` (`getCorrectionHistory`) -- the third web epic to extend this document (task E07/F01/US01/T01 was the first, task E07/F02/US01/T01 the second; see this paragraph's own 'repeating chore' provenance note above). Both operations were already implemented by backend task E02/F05/US01/T01/T02 (us-01-correction-history) and already named in this document's own provenance paragraph's backend-routes list ('GET/PATCH /api/contracts/{id}, GET /api/contracts/{id}/corrections') as not yet documented here -- this task closes that gap, it does not add new backend behaviour. Both response/request bodies use the same plain-object/array shapes generate-api-client.mjs already supports; no generator change was needed."
   },
   "servers": [
     {
@@ -288,6 +288,624 @@
           },
           "404": {
             "description": "No such document for this tenant."
+          }
+        }
+      }
+    },
+    "/api/contracts": {
+      "get": {
+        "operationId": "getPortfolio",
+        "summary": "List the tenant's contract portfolio (filters + paging).",
+        "description": "Maps to GetPortfolioAsync in backend/src/Contigo.Api/PortfolioEndpointExtensions.cs (task E02/F03/US01/T01 filters; T02 paging), backed by PortfolioQueryService.GetPortfolioAsync. Task E07/F01/US01/T01 (us-01-portfolio-list-filters) adds this operation -- the first web epic to build a screen against one of the E02-E05 backend routes this document's own provenance paragraph already named as outstanding. Same interim X-Tenant-Id header placeholder as every other operation above (ADR-010 is not wired into Program.cs yet).\n\nThe 200 response's risk field is deliberately typed below as a bare nullable string, not a nullable enum, even though the real wire values are exactly Low/Medium/High/Critical or null (RiskSeverity.ToString(), or null when a contract has no recorded risk row). web/scripts/generate-api-client.mjs#renderSchemaType checks a schema's enum before it checks whether type is an array -- every enum this document declared before this task was always non-nullable, so a schema combining both never came up, and the generator silently drops the null member when they are combined. Rather than patch the generator (outside this task's own file scope -- the portfolio screen, not the codegen tool), this operation's risk schema omits enum so the generator's existing, already-correct type-array branch produces the honest string-or-null TypeScript type; src/api/client.ts names the real four-value set as its own hand-written PortfolioRiskSeverity alias, with a runtime check at the one place a raw string crosses into it.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          },
+          {
+            "name": "supplierId",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "format": "uuid" },
+            "description": "Exact-match Contract.SupplierId (a bare cross-module id -- Suppliers/Products has no name to filter by yet)."
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" },
+            "description": "Exact, case-sensitive match against Contract.Status -- a free-text field (bootstrap default is the literal string processing; otherwise whatever the metadata extraction stage last wrote), not a closed enum yet."
+          },
+          {
+            "name": "risk",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "enum": ["Low", "Medium", "High", "Critical"] },
+            "description": "The contract's highest recorded Risk.Severity."
+          },
+          {
+            "name": "autoRenewal",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "boolean" }
+          },
+          {
+            "name": "minAnnualSpend",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "number" }
+          },
+          {
+            "name": "maxAnnualSpend",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "number" }
+          },
+          {
+            "name": "renewalFrom",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "format": "date" },
+            "description": "Only ever matches an auto-renewing contract's EndDate -- PortfolioListItem.RenewalDate is null otherwise."
+          },
+          {
+            "name": "renewalTo",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "format": "date" }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer" },
+            "description": "1-based; defaults to 1."
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer" },
+            "description": "Defaults to 25; PortfolioPageRequest.MaxPageSize caps it at 100."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tenant-scoped portfolio page, newest-created-first, already risk-joined.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["items", "page", "pageSize", "totalCount"],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "contractId",
+                          "supplierId",
+                          "type",
+                          "annualSpend",
+                          "startDate",
+                          "endDate",
+                          "renewalDate",
+                          "cancellationDeadline",
+                          "autoRenewal",
+                          "status",
+                          "risk"
+                        ],
+                        "properties": {
+                          "contractId": { "type": "string", "format": "uuid" },
+                          "supplierId": { "type": ["string", "null"], "format": "uuid" },
+                          "type": {
+                            "type": "string",
+                            "enum": ["Msa", "OrderForm", "Amendment", "Sow", "RenewalLetter", "Other"]
+                          },
+                          "annualSpend": { "type": ["number", "null"] },
+                          "startDate": { "type": ["string", "null"], "format": "date" },
+                          "endDate": { "type": ["string", "null"], "format": "date" },
+                          "renewalDate": {
+                            "type": ["string", "null"],
+                            "format": "date",
+                            "description": "Equals endDate only when autoRenewal is true; otherwise null (PortfolioListItem.cs)."
+                          },
+                          "cancellationDeadline": { "type": ["string", "null"], "format": "date" },
+                          "autoRenewal": { "type": "boolean" },
+                          "status": { "type": "string" },
+                          "risk": {
+                            "type": ["string", "null"],
+                            "description": "Low, Medium, High, or Critical, or null when the contract has no recorded Risk row. Deliberately not declared as an enum here -- see this operation's own description for why."
+                          }
+                        }
+                      }
+                    },
+                    "page": { "type": "integer" },
+                    "pageSize": { "type": "integer" },
+                    "totalCount": {
+                      "type": "integer",
+                      "description": "Rows matching every filter including risk, across all pages -- not just items.length."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid X-Tenant-Id header, or a malformed filter/page query parameter (PortfolioEndpointExtensions.TryParseFilter/TryParsePage).",
+            "content": {
+              "application/json": {
+                "schema": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/contracts/{id}": {
+      "get": {
+        "operationId": "getContract360",
+        "summary": "Contract 360 aggregate: header plus all ten screens.md #5 tabs.",
+        "description": "Maps to GetContract360Async in backend/src/Contigo.Api/ContractsEndpointExtensions.cs, backed by Contract360QueryService (task E02/F03/US02/T01, us-02-contract-360-aggregate). Task E07/F02/US01/T01 (contract-360, ADR-020 screen 5) adds this operation -- the second web epic to extend this document beyond the R0/portfolio set (see this document's own 'repeating chore' provenance paragraph above; task E07/F01/US01/T01 was the first). Same interim X-Tenant-Id header placeholder as every other operation above. 'benchmark' and 'activity' are always empty arrays this wave (Contigo.Benchmark has no provider adapter until R3; no activity/timeline source is wired yet) -- present as empty arrays, never an omitted key, so the client never has to special-case a missing tab. header.risk and tabs.clauses[].riskLevel are deliberately typed as a bare nullable string, not a nullable enum, for the exact reason this document's getPortfolio operation above already states (generate-api-client.mjs#renderSchemaType drops the null member when enum and a nullable type union are combined); tabs.risks[].severity IS declared as a real non-nullable enum since Contract360Risk.Severity is required, so the generator's bug does not apply there.",
+        "parameters": [
+          { "name": "X-Tenant-Id", "in": "header", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" }, "description": "Contract.Id." }
+        ],
+        "responses": {
+          "200": {
+            "description": "Contract found for this tenant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["contractId", "header", "tabs"],
+                  "properties": {
+                    "contractId": { "type": "string", "format": "uuid" },
+                    "header": {
+                      "type": "object",
+                      "required": ["contractId", "supplierId", "type", "status", "annualSpend", "totalContractValue", "startDate", "endDate", "renewalDate", "cancellationDeadline", "autoRenewal", "risk"],
+                      "properties": {
+                        "contractId": { "type": "string", "format": "uuid" },
+                        "supplierId": { "type": ["string", "null"], "format": "uuid" },
+                        "type": { "type": "string", "enum": ["Msa", "OrderForm", "Amendment", "Sow", "RenewalLetter", "Other"] },
+                        "status": { "type": "string" },
+                        "annualSpend": { "type": ["number", "null"] },
+                        "totalContractValue": { "type": ["number", "null"], "description": "TCV." },
+                        "startDate": { "type": ["string", "null"], "format": "date" },
+                        "endDate": { "type": ["string", "null"], "format": "date" },
+                        "renewalDate": { "type": ["string", "null"], "format": "date", "description": "Equals endDate only when autoRenewal is true (Contract360Header.cs)." },
+                        "cancellationDeadline": { "type": ["string", "null"], "format": "date" },
+                        "autoRenewal": { "type": "boolean" },
+                        "risk": { "type": ["string", "null"], "description": "Low, Medium, High, or Critical, or null when the contract has no recorded Risk row. Deliberately not declared as an enum here -- see this operation's own description for why." }
+                      }
+                    },
+                    "tabs": {
+                      "type": "object",
+                      "required": ["overview", "commercials", "products", "clauses", "obligations", "risks", "documents", "benchmark", "renewal", "activity"],
+                      "properties": {
+                        "overview": {
+                          "type": "object",
+                          "required": ["currency", "effectiveDate", "renewalTermMonths", "paymentTerms", "governingLaw", "parentContractId", "version", "createdAt"],
+                          "properties": {
+                            "currency": { "type": "string" },
+                            "effectiveDate": { "type": ["string", "null"], "format": "date" },
+                            "renewalTermMonths": { "type": ["integer", "null"] },
+                            "paymentTerms": { "type": ["string", "null"] },
+                            "governingLaw": { "type": ["string", "null"] },
+                            "parentContractId": { "type": ["string", "null"], "format": "uuid" },
+                            "version": { "type": "integer" },
+                            "createdAt": { "type": "string", "format": "date-time" }
+                          }
+                        },
+                        "commercials": {
+                          "type": "object",
+                          "required": ["annualSpend", "totalContractValue", "currency", "paymentTerms", "autoRenewal", "renewalTermMonths", "lineItemCount", "lineItemAnnualCostTotal", "lineItemTotalCostTotal"],
+                          "properties": {
+                            "annualSpend": { "type": ["number", "null"] },
+                            "totalContractValue": { "type": ["number", "null"] },
+                            "currency": { "type": "string" },
+                            "paymentTerms": { "type": ["string", "null"] },
+                            "autoRenewal": { "type": "boolean" },
+                            "renewalTermMonths": { "type": ["integer", "null"] },
+                            "lineItemCount": { "type": "integer" },
+                            "lineItemAnnualCostTotal": { "type": ["number", "null"], "description": "Null only when there are zero line items; a line item with a missing per-line cost contributes zero (Contract360QueryService.cs)." },
+                            "lineItemTotalCostTotal": { "type": ["number", "null"] }
+                          }
+                        },
+                        "products": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": ["lineItemId", "productId", "sku", "description", "quantity", "unit", "unitPrice", "listPrice", "discount", "billingPeriod", "annualCost", "totalCost", "sourceDocumentId", "sourceSpan", "sourcePage", "confidence"],
+                            "properties": {
+                              "lineItemId": { "type": "string", "format": "uuid" },
+                              "productId": { "type": ["string", "null"], "format": "uuid" },
+                              "sku": { "type": ["string", "null"] },
+                              "description": { "type": "string" },
+                              "quantity": { "type": ["number", "null"] },
+                              "unit": { "type": ["string", "null"] },
+                              "unitPrice": { "type": ["number", "null"] },
+                              "listPrice": { "type": ["number", "null"] },
+                              "discount": { "type": ["number", "null"] },
+                              "billingPeriod": { "type": ["string", "null"] },
+                              "annualCost": { "type": ["number", "null"] },
+                              "totalCost": { "type": ["number", "null"] },
+                              "sourceDocumentId": { "type": ["string", "null"], "format": "uuid" },
+                              "sourceSpan": { "type": ["string", "null"] },
+                              "sourcePage": { "type": ["integer", "null"] },
+                              "confidence": { "type": ["number", "null"], "description": "0-1 fraction (e.g. 0.92), not a percentage." }
+                            }
+                          }
+                        },
+                        "clauses": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": ["clauseId", "clauseType", "rawText", "normalizedValue", "riskLevel", "sourceDocumentId", "sourceSpan", "sourcePage", "confidence"],
+                            "properties": {
+                              "clauseId": { "type": "string", "format": "uuid" },
+                              "clauseType": { "type": "string" },
+                              "rawText": { "type": "string" },
+                              "normalizedValue": { "type": ["string", "null"] },
+                              "riskLevel": { "type": ["string", "null"], "description": "Low, Medium, High, or Critical, or null. Deliberately not an enum -- see this operation's own description." },
+                              "sourceDocumentId": { "type": ["string", "null"], "format": "uuid" },
+                              "sourceSpan": { "type": ["string", "null"] },
+                              "sourcePage": { "type": ["integer", "null"] },
+                              "confidence": { "type": ["number", "null"] }
+                            }
+                          }
+                        },
+                        "obligations": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": ["obligationId", "party", "obligationType", "description", "dueDate", "recurrenceRule", "criticality", "status", "sourceDocumentId", "sourceSpan", "sourcePage", "confidence"],
+                            "properties": {
+                              "obligationId": { "type": "string", "format": "uuid" },
+                              "party": { "type": "string" },
+                              "obligationType": { "type": "string" },
+                              "description": { "type": "string" },
+                              "dueDate": { "type": ["string", "null"], "format": "date" },
+                              "recurrenceRule": { "type": ["string", "null"] },
+                              "criticality": { "type": ["string", "null"] },
+                              "status": { "type": ["string", "null"] },
+                              "sourceDocumentId": { "type": ["string", "null"], "format": "uuid" },
+                              "sourceSpan": { "type": ["string", "null"] },
+                              "sourcePage": { "type": ["integer", "null"] },
+                              "confidence": { "type": ["number", "null"] }
+                            }
+                          }
+                        },
+                        "risks": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": ["riskId", "riskType", "severity", "description", "status", "clauseId", "sourceDocumentId", "sourceSpan", "sourcePage", "confidence"],
+                            "properties": {
+                              "riskId": { "type": "string", "format": "uuid" },
+                              "riskType": { "type": "string" },
+                              "severity": { "type": "string", "enum": ["Low", "Medium", "High", "Critical"] },
+                              "description": { "type": "string" },
+                              "status": { "type": ["string", "null"] },
+                              "clauseId": { "type": ["string", "null"], "format": "uuid" },
+                              "sourceDocumentId": { "type": ["string", "null"], "format": "uuid" },
+                              "sourceSpan": { "type": ["string", "null"] },
+                              "sourcePage": { "type": ["integer", "null"] },
+                              "confidence": { "type": ["number", "null"] }
+                            }
+                          }
+                        },
+                        "documents": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": ["documentId", "fileName", "mimeType", "documentType", "processingStatus", "createdAt"],
+                            "properties": {
+                              "documentId": { "type": "string", "format": "uuid" },
+                              "fileName": { "type": "string" },
+                              "mimeType": { "type": "string" },
+                              "documentType": { "type": "string", "enum": ["Msa", "OrderForm", "Amendment", "Sow", "RenewalLetter", "Other"] },
+                              "processingStatus": { "type": "string", "enum": ["Uploaded", "Processing", "NeedsReview", "Completed", "Failed"] },
+                              "createdAt": { "type": "string", "format": "date-time" }
+                            }
+                          }
+                        },
+                        "benchmark": {
+                          "type": "array",
+                          "items": { "type": "object", "properties": {} },
+                          "description": "Always empty this wave -- Contigo.Benchmark has no provider adapter until R3 (Contract360BenchmarkEntry has no members yet)."
+                        },
+                        "renewal": {
+                          "type": "object",
+                          "required": ["endDate", "renewalDate", "cancellationDeadline", "autoRenewal", "renewalTermMonths"],
+                          "properties": {
+                            "endDate": { "type": ["string", "null"], "format": "date" },
+                            "renewalDate": { "type": ["string", "null"], "format": "date" },
+                            "cancellationDeadline": { "type": ["string", "null"], "format": "date" },
+                            "autoRenewal": { "type": "boolean" },
+                            "renewalTermMonths": { "type": ["integer", "null"] }
+                          }
+                        },
+                        "activity": {
+                          "type": "array",
+                          "items": { "type": "object", "properties": {} },
+                          "description": "Always empty this wave -- no activity/timeline source is wired yet (R3/R4)."
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid X-Tenant-Id header, or a non-GUID id in the route.",
+            "content": {
+              "application/json": {
+                "schema": { "type": "string" }
+              }
+            }
+          },
+          "404": {
+            "description": "No such contract for this tenant (or it belongs to a different tenant -- Contract360QueryService cannot and does not distinguish the two, ADR-009)."
+          }
+        }
+      },
+      "patch": {
+        "operationId": "correctContract",
+        "summary": "Record a human correction to one or more extracted Contract fields as a new version.",
+        "description": "Maps to CorrectContractAsync in backend/src/Contigo.Api/ContractsEndpointExtensions.cs, backed by ContractCorrectionService (task E02/F05/US01/T01, us-01-correction-history AC-1). Task E07/F03/US01/T01 (field-review-correction, ADR-020 screen 6) adds this operation and the sibling GET /api/contracts/{id}/corrections below -- see this document's own provenance paragraph for why. `corrections` accepts only the field names ContractCorrectionService.CorrectableFieldNames lists (type, status, currency, startDate, endDate, effectiveDate, cancellationDeadline, annualSpend, totalContractValue, autoRenewal, renewalTermMonths, paymentTerms, governingLaw); every value is that field's own canonical wire string (dates yyyy-MM-dd, booleans 'true'/'false', decimals/integers via InvariantCulture ToString()) -- ContractCorrectionService's own field table is the single source of truth for parsing/validation, this document does not re-validate. A key present with a JSON null clears an optional field (rejected for a required one, returned as 400); a key absent from the map leaves that field untouched. At least one supplied value must actually differ from the contract's current value, or the whole request fails as 400 (no-op corrections are rejected, never silently accepted). Same interim X-Tenant-Id header placeholder as every other operation above.",
+        "parameters": [
+          { "name": "X-Tenant-Id", "in": "header", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" }, "description": "Contract.Id." }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["corrections"],
+                "properties": {
+                  "corrections": {
+                    "type": "object",
+                    "additionalProperties": { "type": ["string", "null"] },
+                    "description": "Field name (ContractCorrectionService.CorrectableFieldNames) -> new value (canonical wire string) or null (clear an optional field)."
+                  },
+                  "reason": { "type": ["string", "null"], "description": "Free-text reason, stored verbatim on every affected CorrectionHistory row and on the AuditEntry this write also produces." }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Correction recorded as a new ContractVersion; at least one field actually changed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["contractId", "versionNumber", "correctedFields", "correctedAt"],
+                  "properties": {
+                    "contractId": { "type": "string", "format": "uuid" },
+                    "versionNumber": { "type": "integer" },
+                    "correctedFields": { "type": "array", "items": { "type": "string" } },
+                    "correctedAt": { "type": "string", "format": "date-time" }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid X-Tenant-Id header, non-GUID id, empty/unknown 'corrections' key, an unparsable value for its field's type, or every supplied value already matches the contract's current value.",
+            "content": {
+              "application/json": {
+                "schema": { "type": "string" }
+              }
+            }
+          },
+          "404": {
+            "description": "No such contract for this tenant."
+          }
+        }
+      }
+    },
+    "/api/contracts/{id}/corrections": {
+      "get": {
+        "operationId": "getCorrectionHistory",
+        "summary": "Correction history for one contract, newest first.",
+        "description": "Maps to GetCorrectionHistoryAsync in backend/src/Contigo.Api/ContractsEndpointExtensions.cs, backed by ContractCorrectionHistoryQueryService (task E02/F05/US01/T02, us-01-correction-history AC-2). See the PATCH /api/contracts/{id} operation above for the sibling write path this reads back. Ordered newest-first per field (ContractCorrectionHistoryQueryService.cs's own OrderByDescending(CorrectedAt)) -- the first array entry for a given fieldName is always that field's latest correction. A contract that exists but has never been corrected returns 200 with an empty array, not 404. Same interim X-Tenant-Id header placeholder as every other operation above.",
+        "parameters": [
+          { "name": "X-Tenant-Id", "in": "header", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" }, "description": "Contract.Id." }
+        ],
+        "responses": {
+          "200": {
+            "description": "Contract found for this tenant (possibly with zero corrections).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["fieldName", "previousValue", "newValue", "correctedBy", "correctedAt", "reason"],
+                    "properties": {
+                      "fieldName": { "type": "string" },
+                      "previousValue": { "type": ["string", "null"] },
+                      "newValue": { "type": ["string", "null"] },
+                      "correctedBy": { "type": "string" },
+                      "correctedAt": { "type": "string", "format": "date-time" },
+                      "reason": { "type": ["string", "null"] }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid X-Tenant-Id header, or a non-GUID id in the route.",
+            "content": {
+              "application/json": {
+                "schema": { "type": "string" }
+              }
+            }
+          },
+          "404": {
+            "description": "No such contract for this tenant."
+          }
+        }
+      }
+    },
+    "/api/renewals": {
+      "get": {
+        "operationId": "getRenewals",
+        "summary": "Actionable renewal pipeline for auto-renewing contracts (facts/recommendations insight card).",
+        "description": "Maps to GetRenewalsAsync in backend/src/Contigo.Api/RenewalsEndpointExtensions.cs (task E03/F03/US01/T01, us-01-renewal-dashboard-api). Task E07/F02/US01/T01 (contract-360) adds this operation: Contract 360's Overview tab (ADR-020 screen 5) finds this contract's own item in here by contractId to source the real, deterministic (not LLM) recommendedAction/explanation text the Renewals module already computes -- Contigo.Renewals is not otherwise reachable from GET /api/contracts/{id}, and the council decision 'AI recommendation lives in its own labelled block, never mixed with deterministic facts' (us-01-contract-360) needs a real source, not invented UI copy. Only auto-renewing contracts appear here (PortfolioFilter(AutoRenewal:true), applied server-side) -- a non-auto-renewing contract, or one beyond this endpoint's own 100-row page-size ceiling (PortfolioPageRequest.MaxPageSize, honestly surfaced via totalCount), legitimately has no entry; Contract 360's Overview tab renders that as a named gap, not an error. annualUpliftPercent/marketPosition/potentialSavingsRange are always null this wave (need the R3 Benchmark/Savings modules) -- present as explicit null, never fabricated (Appendix C rule 10).",
+        "parameters": [
+          { "name": "X-Tenant-Id", "in": "header", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tenant-scoped renewal pipeline, up to the underlying portfolio query's own page-size ceiling.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["items", "totalCount"],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["contractId", "supplierId", "status", "renewalDate", "daysUntilRenewal", "annualSpend", "cancellationDeadline", "daysUntilCancellationDeadline", "autoRenewal", "action", "insightCard"],
+                        "properties": {
+                          "contractId": { "type": "string", "format": "uuid" },
+                          "supplierId": { "type": ["string", "null"], "format": "uuid" },
+                          "status": { "type": "string", "enum": ["Determined", "NoRenewal", "CannotDetermine"] },
+                          "renewalDate": { "type": ["string", "null"], "format": "date" },
+                          "daysUntilRenewal": { "type": ["integer", "null"] },
+                          "annualSpend": { "type": ["number", "null"] },
+                          "cancellationDeadline": { "type": ["string", "null"], "format": "date" },
+                          "daysUntilCancellationDeadline": { "type": ["integer", "null"] },
+                          "autoRenewal": { "type": "boolean" },
+                          "action": { "type": "string", "description": "= insightCard.recommendations.recommendedAction (top-level convenience copy, RenewalsEndpointExtensions.ToPipelineResponse)." },
+                          "insightCard": {
+                            "type": "object",
+                            "required": ["facts", "recommendations"],
+                            "properties": {
+                              "facts": {
+                                "type": "object",
+                                "required": ["supplierId", "renewalDate", "daysUntilRenewal", "annualSpend", "cancellationDeadline", "daysUntilCancellationDeadline"],
+                                "properties": {
+                                  "supplierId": { "type": ["string", "null"], "format": "uuid" },
+                                  "renewalDate": { "type": ["string", "null"], "format": "date" },
+                                  "daysUntilRenewal": { "type": ["integer", "null"] },
+                                  "annualSpend": { "type": ["number", "null"] },
+                                  "cancellationDeadline": { "type": ["string", "null"], "format": "date" },
+                                  "daysUntilCancellationDeadline": { "type": ["integer", "null"] }
+                                }
+                              },
+                              "recommendations": {
+                                "type": "object",
+                                "required": ["recommendedAction", "explanation", "annualUpliftPercent", "marketPosition", "potentialSavingsRange"],
+                                "properties": {
+                                  "recommendedAction": { "type": "string" },
+                                  "explanation": { "type": "string" },
+                                  "annualUpliftPercent": { "type": ["number", "null"] },
+                                  "marketPosition": { "type": ["string", "null"] },
+                                  "potentialSavingsRange": { "type": ["string", "null"] }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "totalCount": { "type": "integer" }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid X-Tenant-Id header.",
+            "content": {
+              "application/json": {
+                "schema": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/renewals/{contractId}/priority": {
+      "get": {
+        "operationId": "getRenewalPriority",
+        "summary": "Explainable renewal-priority score breakdown for one contract.",
+        "description": "Maps to GetRenewalPriorityAsync in backend/src/Contigo.Api/RenewalsEndpointExtensions.cs (task E03/F01/US02/T02, us-02-priority-score). Task E07/F02/US01/T01 (contract-360) adds this operation for the Contract 360 header's 'priority {score}/100' fact-row cell and the Renewal tab's priority-score component table (ADR-020 screen 5: 'Renewal adds priority-score component table'). Unlike GET /api/renewals above, this runs for ANY contract this tenant owns, auto-renewing or not (GetRenewalPriorityAsync composes Contract360QueryService directly, with no AutoRenewal filter) -- so a 200 here does not imply the same contract also has a GET /api/renewals entry. totalScore is always 0-100 under the spec-default component weights and never null (PriorityScoreCalculator.Calculate always returns a value for every component, defaulting an unknown input to its documented no-data value rather than omitting it -- Appendix C rule 10).",
+        "parameters": [
+          { "name": "X-Tenant-Id", "in": "header", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "contractId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" }, "description": "Contract.Id -- the same id GET /api/contracts/{id} and GET /api/renewals's own contractId use." }
+        ],
+        "responses": {
+          "200": {
+            "description": "Contract found for this tenant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["contractId", "totalScore", "components"],
+                  "properties": {
+                    "contractId": { "type": "string", "format": "uuid" },
+                    "totalScore": { "type": "number", "description": "0-100 under the spec-default weights (5 components, 20 max each)." },
+                    "components": {
+                      "type": "object",
+                      "required": ["spendWeight", "timeUrgency", "benchmarkOpportunity", "priceIncreaseRisk", "contractRisk"],
+                      "properties": {
+                        "spendWeight": {
+                          "type": "object",
+                          "required": ["score", "explanation"],
+                          "properties": { "score": { "type": "number" }, "explanation": { "type": "string" } }
+                        },
+                        "timeUrgency": {
+                          "type": "object",
+                          "required": ["score", "explanation"],
+                          "properties": { "score": { "type": "number" }, "explanation": { "type": "string" } }
+                        },
+                        "benchmarkOpportunity": {
+                          "type": "object",
+                          "required": ["score", "explanation"],
+                          "properties": { "score": { "type": "number" }, "explanation": { "type": "string" } }
+                        },
+                        "priceIncreaseRisk": {
+                          "type": "object",
+                          "required": ["score", "explanation"],
+                          "properties": { "score": { "type": "number" }, "explanation": { "type": "string" } }
+                        },
+                        "contractRisk": {
+                          "type": "object",
+                          "required": ["score", "explanation"],
+                          "properties": { "score": { "type": "number" }, "explanation": { "type": "string" } }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid X-Tenant-Id header, or a non-GUID contractId in the route.",
+            "content": {
+              "application/json": {
+                "schema": { "type": "string" }
+              }
+            }
+          },
+          "404": {
+            "description": "No such contract for this tenant."
           }
         }
       }
