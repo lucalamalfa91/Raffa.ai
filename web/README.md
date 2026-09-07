@@ -126,11 +126,16 @@ in `index.css`; each screen owns its own full-bleed layout instead:
   explicitly declares `max-width: none` so it fills the shell grid's `1fr`
   track (224px rail + fluid main) rather than floating as a narrow column
   inside it.
-- **Documents** (`src/routes/documents/documents.css`) -- the two-column
-  `minmax(280px, 400px) 1fr` mockup layout was already correct; filenames in
-  the result card and the document table now wrap with `overflow-wrap:
-  anywhere` (word/character-run boundaries) instead of `word-break:
-  break-all`, so a long filename never renders one glyph per line.
+- **Documents** (`src/routes/documents/documents.css`) -- the two-column grid
+  was already ~400px/1fr; filenames in the result card and the document
+  table now wrap with `overflow-wrap: anywhere` (word/character-run
+  boundaries) instead of `word-break: break-all`, so a long filename never
+  renders one glyph per line. (Task E11/F04/US01/T01, gap G-DOC: the grid's
+  literal value had drifted to a `minmax(280px, 400px) 1fr` guess -- corrected
+  to the compiled export's own `400px 1fr`, along with the dropzone's dashed
+  border/300px min-height/upload icon, the formats-strip and pipeline
+  spacing, and dropping a `.card` misuse on the upload result summary --
+  ADR-019 reserves `.card` for recommendation/provenance blocks.)
 
 Only `.startup-error` (`src/main.tsx`'s boot-config-failure alert -- not a
 shipped mockup screen) keeps a narrow, centered column.

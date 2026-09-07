@@ -18,6 +18,11 @@ export interface UploadResultCardProps {
  * result block (day1-demo.html: `{{ uplTag }} {{ uplLabel }}`,
  * `{{ uplFile }}`, `{{ uplMsg }}`, primary `{{ uplCta }}`, secondary "Upload
  * another").
+ *
+ * Task E11/F04/US01/T01 (gap G-DOC): no `.card` wrapper -- components.css /
+ * ADR-019 reserve that class for "recommendation/provenance blocks only",
+ * and the compiled export doesn't box this block either (see
+ * documents.css's own comment on `.upload-result-card`).
  */
 export default function UploadResultCard({
   fileName,
@@ -29,7 +34,7 @@ export default function UploadResultCard({
   const { tag, ctaLabel } = getResultCardContent(outcome, fileName);
 
   return (
-    <div className="card upload-result-card" role="status">
+    <div className="upload-result-card" role="status">
       <div className="upload-result-header">
         <span className={`tag tag-${tag.variant}`}>{tag.label}</span>
         <span className="upload-result-filename">{fileName}</span>
