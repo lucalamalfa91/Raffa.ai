@@ -84,17 +84,16 @@ the web workflow after that apply.
 | `/contracts` | Portfolio: filter chips + attention strip + a table sorted by severity then deadline (critical rows tinted + a red bar), plus loading/empty/error/no-match-for-filter states. Calls the real `GET /api/contracts`. See "Portfolio" below. | E07/F01/US01/T01 |
 | `/contracts/:id` | Contract 360: header + 6-cell fact row + 10 tabs (Overview's recommendation card + drivers + "Needs your attention" + "Top risks", then Commercials/Products/Clauses/Obligations/Risks/Documents/Benchmark/Renewal/Activity through one shared Term/Value/Source/Confidence table), plus loading/not-found/error states. Calls the real `GET /api/contracts/{id}`, `GET /api/renewals`, `GET /api/renewals/{contractId}/priority`. See "Contract 360" below. | E07/F02/US01/T01 |
 | `/contracts/:id/review` | Review / correction: 4-column field list (critical marker, extracted value, confidence/decision tag, Accept/Correct) + right-hand evidence pane (correction form + real correction-history trail) + gated "Mark as validated". Calls the real `GET /api/contracts/{id}`, `GET /api/contracts/{id}/corrections`, `PATCH /api/contracts/{id}`. See "Review / correction" below. | E07/F03/US01/T01 |
+| `/renewals` | Renewal pipeline: threshold strip (0-30 ... 270-365 d, click = filter) + priority table (Score/Supplier/Contract/Annual spend/Renews in/Cancel by/Status) + insight card (facts + recommended action + rationale) with three actions (Start negotiation / Assign to me / Snooze) -> confirmation + Contract 360 + Home links, plus loading/error/empty/no-window states. Calls the real `GET /api/renewals`, `GET /api/renewals/{contractId}/priority`, `POST /api/renewals/{id}/action`. See "Renewal pipeline" below. | E08/F01/US01/T01 |
 | `/quotes`, `/quotes/:id` | Quote check: this task's own upload form (no id yet) -> 4-step stepper Extract (line table + unmatched-SKU manual mapping + recalculate) -> Assessment (4 numbers, line-level P25/P50/P75 + confidence, provenance card; blocked until every line resolves) -> Target (price ladder, editable target/walk-away) -> Negotiation (outcome capture -> recorded outcome). Calls the real `POST /api/quotes`, `POST /api/quotes/{id}/assessment/recalculate`, `POST /api/negotiations/outcomes`. See "Quote check" below. | E08/F03/US01/T01 |
-| `/` (home), `/renewals`, `/ask`, `/review`\*, `/workspace/members` | App shell: 224px left rail + global Ask bar + routed content. Every route in this row still renders a `ScaffoldScreen` placeholder today -- the real screens ship in later epic-07/epic-08/feature-02/04 tasks named at each route (see `src/components/shell/WorkspaceShellApp.tsx`). | E06/F03/US02/T01 |
+| `/` (home), `/ask`, `/review`\*, `/workspace/members` | App shell: 224px left rail + global Ask bar + routed content. Every route in this row still renders a `ScaffoldScreen` placeholder today -- the real screens ship in later epic-07/epic-08/feature-02/04 tasks named at each route (see `src/components/shell/WorkspaceShellApp.tsx`). | E06/F03/US02/T01 |
 
 \* `/review` is this task's own placeholder landing path, not a row in
 ADR-018's locked route map -- that table only ever names the *detail* route
 for this nav destination (`/contracts/:id/review`). See
 `src/components/shell/navItems.ts`'s header comment. (`/quotes` used to be
-the identical kind of placeholder -- see that same header comment's own
-history -- until task E08/F03/US01/T01 made it a real screen: ADR-018 names
-no separate list route for quotes, so `QuoteCheckRoute` itself renders its
-own upload form there instead of a `ScaffoldScreen`.)
+the identical kind of placeholder until task E08/F03/US01/T01 made it a real
+screen.)
 
 ### Layout -- full-bleed, matching the prototype's own canvas (ADR-018/019/020, task E06/F06/US01/T01)
 
@@ -446,6 +445,72 @@ task E07/F02/US01/T01 to this exact route).
   `<button disabled>` paired with a visible `.hint` reason (ADR-019 accessibility baseline), and
   navigates to `/contracts/:id` on click (screens.md #6's own `finishReview` behaviour).
 
+### Renewal pipeline (ADR-020 screen 8, task E08/F01/US01/T01, us-01-renewal-pipeline)
+
+`src/routes/renewals/` implements screen 8: AC-1 threshold strip, AC-2 priority table, AC-3 insight
+card + three actions with a real write + confirmation, AC-4 loading/error/empty/no-window states.
+
+- **Fetch order, gated on the whole score set**: like Contract 360, this screen calls `GET /api/renewals`
+  first (a non-2xx is the named "error (engine unavailable)" state) and only declares `"ready"` once
+  every row's own `GET /api/renewals/{contractId}/priority` score has *also* resolved (`Promise.all`) --
+  AC-2's "Score" column is a named, required column, not an optional extra, and there is no bulk
+  priority endpoint on the backend (it only ever answers for one contract at a time), so this is
+  genuinely N calls. A single row's own priority call failing degrades only that row's Score cell to
+  "-", never the whole screen.
+- **AC-1, threshold strip** (`ThresholdStrip.tsx`, `renewalPipelineViewModel.ts`) -- seven buckets, 0-30
+  through 270-365 days, quoted from day1-demo.html's own `winDef=[365,270,180,120,90,60,30]` window
+  list and rendered ascending to match this task's own AC-1 wording (the prototype's own array order is
+  descending, an implementation detail of its JS, not a locked visual spec). Reuses the exact same
+  `.attention-strip`/`.attention-cell` classes Portfolio's own `AttentionStrip.tsx` already established
+  (ADR-019 names "attention/threshold strip" as one shared catalogue entry); `.is-urgent` is gated on
+  both a non-zero count *and* the bucket's own upper bound being <=120 days (quoted from that
+  prototype's own `fg` rule for its window strip) -- unlike Portfolio's four buckets, a renewal due in
+  270-365 days is not inherently bad news.
+- **AC-2, priority table** (`RenewalTable.tsx`) -- Score / Supplier / Contract / Annual spend / Renews
+  in / Cancel by / Status, quoted verbatim from screens.md #8. Two honest, cited adaptations: `GET
+  /api/renewals` carries no contract name or type at all (unlike `GET /api/contracts`), so "Contract"
+  reuses the same short-id-plus-tooltip treatment `formatSupplier` already established for the
+  identical `supplierId` gap, applied to `contractId` instead, rather than adding a second whole-portfolio
+  fetch just to resolve one column; "Status" has no server read-back at all (`POST
+  /api/renewals/{id}/action` has no matching `GET`), so it shows this browser's own session-tracked
+  action text once set, "Open" otherwise (`renewalActionStore.ts`). Selecting a row for the insight card
+  is a native `<button>` in the Score cell (ADR-019: "every interactive control is native"), not a bare
+  `<tr onClick>`.
+- **AC-3, insight card + actions** (`InsightCard.tsx`) -- spec §9.3's fields (spend, cancellation
+  deadline, uplift, market position, potential savings, owner) plus the recommended action + rationale,
+  in one `.detail-pane` card (ADR-019's own "340-400px ... wraps below the list" component). Unlike
+  Contract 360's Overview tab (a *separate* card from every fact table), spec §9.3 and screens.md #8
+  both put facts and the recommendation in one card -- the backend's own `RenewalInsightCard` wire
+  shape already keeps the two apart as named, non-overlapping objects, so this component preserves that
+  same separation visually (plain facts, then a nested `.ai-recommendation` block) without needing a
+  second card. Uplift/market position/potential savings are honestly "Not yet available" (need the R3
+  Benchmark/Savings modules) -- never a fabricated figure.
+  - **The three actions call the real, durable `POST /api/renewals/{id}/action`** (`RenewalActionService
+    .SetActionAsync`, task E03/F03/US01/T02) -- not a client-side simulation. "Start negotiation" /
+    "Assign to me" / "Snooze to 90-day threshold" map to `RenewalActionStatus`/free-text `action`
+    quoted verbatim from day1-demo.html's own `rAct` object (`renewalPipelineViewModel.ts#getRenewalActionPlan`);
+    `owner` is always this screen's own signed-in `userLabel` (threaded from `WorkspaceShellApp.tsx`,
+    the same identity `RailNav.tsx` renders) -- there is no separate assignee picker in V1.
+  - **The confirmation panel is adapted, not copied, from the prototype.** day1-demo.html's own
+    confirmation text claims "A SavingsOpportunity was created and appears on the Savings screen" --
+    this app cannot honestly say that: `SavingsOpportunityService.CreateAsync` ("identify" a new
+    opportunity) exists on the backend but is not yet wired to any HTTP route (`POST /api/savings` does
+    not exist; `GET`/`PATCH /api/savings/{id}` both need an id this screen has no way to obtain). The
+    real, durable write here is the renewal action above; `renewalActionStore.ts`
+    (`sessionStorage`, the same interim pattern `workspaceStore.ts`/`documentStore.ts` already
+    establish for their own missing-endpoint gaps) records it as this browser's own tracked opportunity
+    for the council decision carried into this story ("Action creates an opportunity visible on Home"),
+    and the confirmation links to both **Home** (`/`) and **Contract 360** (`/contracts/:id`, AC-3's own
+    named link) instead of overclaiming a backend entity that was not actually created. Whichever task
+    builds epic-08/feature-02-savings-ui's Home screen (`depends_on: [web-app-shell, web-renewal-ui]` in
+    the wave-spec -- i.e. after this task) can import `loadTrackedRenewalActions()` from that module to
+    merge these into its own opportunities table.
+- **AC-4, states** -- loading (`.renewal-skeleton`), error (503-aware, names the renewal engine
+  specifically per screens.md #8's own "error (engine unavailable)", with Retry), empty (zero renewals
+  at all -> "No renewals in your pipeline yet" + a link to `/contracts`), no-window (renewals exist but
+  none fall in the selected threshold bucket -> its own "Show all renewals" CTA, the same
+  named-empty-state-per-cause convention Portfolio's own no-match-for-filter state already uses).
+
 ### Quote check (ADR-020 screen 10, task E08/F03/US01/T01, us-01-quote-check)
 
 `src/routes/quotes/` implements screen 10: AC-1 the 4-step stepper (Extract -> Assessment -> Target
@@ -655,25 +720,17 @@ Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
   parse `requestBody`. Both response shapes (a flat object, and an array of a flat object) use
   generator cases `getContract360`/`getPortfolio` already exercise, so no generator change was
   needed this time.
-
-- **Task E08/F03/US01/T01 (quote-check-ui)** extended `openapi/contigo-api.v1.json` with the four
-  operations its own provenance paragraph had named as deliberately deferred: `POST /api/quotes`
-  (`uploadQuote`), `GET /api/quotes/{id}/assessment` (`getQuoteAssessment`),
-  `POST /api/quotes/{id}/assessment/recalculate` (`recalculateQuoteAssessment`), and
-  `POST /api/negotiations/outcomes` (`captureNegotiationOutcome`) -- the fourth (and, for this
-  document, last) web epic to extend it. All four were already implemented by backend epic E05
-  (`Contigo.Quotes` module) before this task started; it only documents and wraps them. `position`
-  (`Contigo.Quotes.Domain.MarketPosition`) reuses the same bare-nullable-string workaround
-  `getPortfolio`'s own `risk` field already established (`generate-api-client.mjs`'s enum-drops-null
-  limitation) -- `client.ts` names the real 3-value set as `QuoteMarketPosition` +
-  `isQuoteMarketPosition`, the same pattern `PortfolioRiskSeverity`/`isPortfolioRiskSeverity` already
-  establish. This task also fixed a real, previously-latent bug in `generate-api-client.mjs` itself:
-  `renderSchemaType`'s `"array"` case rendered an array-of-union `items` schema (e.g. `leversUsed`'s
-  7-member `NegotiationLeverType` enum) as `${union}[]` with no parentheses, which TypeScript parses
-  as `[]` binding tighter than `|` -- a union of six bare string-literal types and one *array* type,
-  not an array of the union. No earlier operation in this document had an array of an enum-typed
-  item, so the bug never surfaced before `leversUsed`; the fix (always parenthesize) is unconditional
-  and backward-compatible.
+- **Task E08/F01/US01/T01 (renewal-pipeline, ADR-020 screen 8)** extended `openapi/contigo-api.v1.json`
+  with `POST /api/renewals/{id}/action` (`postRenewalAction`) -- the fourth web epic to extend this
+  document (see "API client" provenance paragraphs above). Already implemented by backend task
+  E03/F03/US01/T02; this task is the first web caller (the insight card's three actions). The 200
+  response's `status` field is a real, closed three-value enum (`NotStarted`/`InProgress`/`Completed`)
+  declared with `enum`, the same way `GET /api/renewals`'s own `status` field already is, so
+  `RenewalActionStatusValue` is derived from the generated response type rather than hand-duplicated.
+  Unlike every other write operation in this client, a well-formed request against an unknown or
+  cross-tenant contract id still succeeds (`Contigo.Renewals` cannot reference
+  `Contigo.Documents.Contracts` at all, ADR-002) -- `postRenewalAction` never special-cases a 404 the
+  way `getContract360`/`getRenewalPriority`/`correctContract` do for theirs.
 
 ## Directory layout
 
@@ -689,7 +746,7 @@ web/
   src/
     api/
       generated/schema.ts     # AUTO-GENERATED; do not edit by hand
-      client.ts                # createApiClient(baseUrl) -> { getHealth(), createWorkspace({ name }), uploadDocument(tenantId, file), getDocument(tenantId, id), getPortfolio(tenantId, query?), getContract360(tenantId, id), getRenewals(tenantId), getRenewalPriority(tenantId, contractId), getCorrectionHistory(tenantId, id), correctContract(tenantId, id, request), uploadQuote(tenantId, file, fields?), getQuoteAssessment(tenantId, id), recalculateQuoteAssessment(tenantId, id, mappings?), captureNegotiationOutcome(tenantId, request) }
+      client.ts                # createApiClient(baseUrl) -> { getHealth(), createWorkspace({ name }), uploadDocument(tenantId, file), getDocument(tenantId, id), getPortfolio(tenantId, query?), getContract360(tenantId, id), getRenewals(tenantId), getRenewalPriority(tenantId, contractId), getCorrectionHistory(tenantId, id), correctContract(tenantId, id, request), postRenewalAction(tenantId, contractId, request), uploadQuote(tenantId, file, fields?), getQuoteAssessment(tenantId, id), recalculateQuoteAssessment(tenantId, id, mappings?), captureNegotiationOutcome(tenantId, request) }
     config/appConfig.ts       # fetch + validate runtime config
     auth/msalConfig.ts        # AppConfig -> MSAL Configuration (no secret, ever)
     styles/                   # design system (tokens + component catalogue); see below
@@ -735,16 +792,24 @@ web/
           EvidencePane.tsx        # AC-3: evidence + correction form + real correction-history trail
           reviewViewModel.ts      # pure helpers: correctable-field catalogue, decision/tag/gate computation (no live confidence yet -- see its own header comment)
           review.css              # this screen's styles
+      renewals/                 # task E08/F01/US01/T01 -- ADR-020 screen 8 (see "Renewal pipeline" above)
+        index.tsx                 # RenewalsRoute -- fetch-then-score-batch state machine (AC-4 states), selection, action handling
+        ThresholdStrip.tsx        # AC-1: the seven-bucket strip, click = filter
+        RenewalTable.tsx          # AC-2: the priority table, native button per row to select for the insight card
+        InsightCard.tsx           # AC-3: facts + recommendation + three actions + confirmation (Contract 360 + Home links)
+        renewalPipelineViewModel.ts # pure helpers: threshold buckets, score/status/contract-ref formatting, the three action plans
+        renewalActionStore.ts     # sessionStorage-scoped mirror of this session's own renewal actions -- no GET read-back endpoint exists yet, and the honest stand-in for "opportunity visible on Home"
+        renewals.css              # this screen's styles
       quotes/                 # task E08/F03/US01/T01 -- ADR-020 screen 10 (see "Quote check" above)
-        index.tsx               # QuoteCheckRoute -- renders UploadQuoteForm when no quoteId yet; otherwise loads via recalculateQuoteAssessment and routes between the 4 step components
-        UploadQuoteForm.tsx      # this task's own upload entry point (no dedicated screen in the design) + sample-file convenience
-        QuoteStepper.tsx         # AC-1: the 4-step header, every step directly clickable
-        ExtractStep.tsx          # AC-2: line table + unmatched-SKU manual mapping + recalculate
-        AssessmentStep.tsx       # AC-3: blocked card, or the 4-number grid + line-level P25/P50/P75 table + provenance card
-        TargetStep.tsx           # AC-3: price ladder + editable target/walk-away
-        NegotiationStep.tsx      # AC-4: levers gap notice + outcome capture form / recorded-outcome panel
-        quoteCheckViewModel.ts   # pure helpers: stepper model, AC-2 gate, line/aggregate/number builders (no React; see its own header comment for the real-vs-fixture provenance)
-        quoteOutcomeStore.ts     # sessionStorage-scoped TrackedNegotiationOutcome list -- no GET /api/negotiations/outcomes (or Savings KPI wiring) exists yet
+        index.tsx               # QuoteCheckRoute
+        UploadQuoteForm.tsx      # upload entry point + sample-file convenience
+        QuoteStepper.tsx         # AC-1: the 4-step header
+        ExtractStep.tsx          # AC-2: line table + unmatched-SKU mapping
+        AssessmentStep.tsx       # AC-3: numbers + P25/P50/P75 + provenance
+        TargetStep.tsx           # AC-3: price ladder + editable target
+        NegotiationStep.tsx      # AC-4: outcome capture
+        quoteCheckViewModel.ts   # pure helpers
+        quoteOutcomeStore.ts     # sessionStorage-scoped outcomes
         quotes.css               # this screen's styles
     components/
       shell/                  # task E06/F03/US02/T01 -- app shell, router, role guard (see "App shell" above)

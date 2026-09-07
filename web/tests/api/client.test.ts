@@ -795,6 +795,104 @@ describe("createApiClient().correctContract (task E07/F03/US01/T01)", () => {
   });
 });
 
+describe("createApiClient().postRenewalAction (task E08/F01/US01/T01)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const actionBody = {
+    contractId: "contract-1",
+    owner: "user@example.test",
+    status: "InProgress",
+    action: "In negotiation",
+    updatedAt: "2026-09-06T08:00:00Z",
+  };
+
+  it("POSTs JSON to <baseUrl>/api/renewals/{id}/action with the X-Tenant-Id header", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(actionBody), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createApiClient("https://api.dev.contigo.example").postRenewalAction("tenant-1", "contract-1", {
+      owner: "user@example.test",
+      status: "InProgress",
+      action: "In negotiation",
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("https://api.dev.contigo.example/api/renewals/contract-1/action");
+    expect(init).toEqual({
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Tenant-Id": "tenant-1" },
+      body: JSON.stringify({ owner: "user@example.test", status: "InProgress", action: "In negotiation" }),
+      cache: "no-store",
+    });
+  });
+
+  it("reports ok:true with the upserted row on 200", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(actionBody), { status: 200 })));
+
+    const result = await createApiClient("https://api.dev.contigo.example").postRenewalAction("tenant-1", "contract-1", {
+      owner: "user@example.test",
+      status: "InProgress",
+      action: "In negotiation",
+    });
+
+    expect(result).toEqual({ ok: true, statusCode: 200, action: actionBody, error: null });
+  });
+
+  it("reports ok:false with the parsed JSON string error on 400 (Results.BadRequest(string))", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(JSON.stringify("'owner' is required."), { status: 400 })),
+    );
+
+    const result = await createApiClient("https://api.dev.contigo.example").postRenewalAction("tenant-1", "contract-1", {
+      owner: "",
+      status: "InProgress",
+      action: "In negotiation",
+    } as never);
+
+    expect(result).toEqual({
+      ok: false,
+      statusCode: 400,
+      action: null,
+      error: "'owner' is required.",
+    });
+  });
+
+  it("falls back to a status-based message when a non-2xx body is not JSON", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("Bad Gateway", { status: 502, statusText: "Bad Gateway" })));
+
+    const result = await createApiClient("https://api.dev.contigo.example").postRenewalAction("tenant-1", "contract-1", {
+      owner: "user@example.test",
+      status: "InProgress",
+      action: "In negotiation",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.statusCode).toBe(502);
+    expect(result.action).toBeNull();
+    expect(result.error).toContain("502");
+  });
+
+  it("resolves (does not throw) with statusCode null when the network request fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
+
+    const result = await createApiClient("https://api.dev.contigo.example").postRenewalAction("tenant-1", "contract-1", {
+      owner: "user@example.test",
+      status: "InProgress",
+      action: "In negotiation",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.statusCode).toBeNull();
+    expect(result.action).toBeNull();
+    expect(result.error).toContain("https://api.dev.contigo.example/api/renewals/contract-1/action");
+    expect(result.error).toContain("network down");
+  });
+});
+
 describe("createApiClient().uploadQuote (task E08/F03/US01/T01)", () => {
   afterEach(() => {
     vi.unstubAllGlobals();

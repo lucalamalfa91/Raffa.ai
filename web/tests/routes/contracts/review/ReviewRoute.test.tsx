@@ -26,6 +26,9 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     getRenewalPriority: vi.fn(),
     getCorrectionHistory: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, history: [], error: null }),
     correctContract: vi.fn(),
+    // Task E08/F01/US01/T01 (renewal-pipeline): this suite never reaches the Renewals screen --
+    // bare vi.fn() is enough, same convention as the other calls above.
+    postRenewalAction: vi.fn(),
     // Task E08/F03/US01/T01 (quote-check-ui): this suite never reaches the Quote Check screen --
     // bare vi.fn() is enough, same convention as getRenewalPriority above.
     uploadQuote: vi.fn(),

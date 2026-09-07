@@ -83,7 +83,7 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": { items: ({ contractId: string; supplierId: string | null; type: "Msa" | "OrderForm" | "Amendment" | "Sow" | "RenewalLetter" | "Other"; annualSpend: number | null; startDate: string | null; endDate: string | null; renewalDate: string | null; cancellationDeadline: string | null; autoRenewal: boolean; status: string; risk: string | null })[]; page: number; pageSize: number; totalCount: number };
+          "application/json": { items: { contractId: string; supplierId: string | null; type: "Msa" | "OrderForm" | "Amendment" | "Sow" | "RenewalLetter" | "Other"; annualSpend: number | null; startDate: string | null; endDate: string | null; renewalDate: string | null; cancellationDeadline: string | null; autoRenewal: boolean; status: string; risk: string | null }[]; page: number; pageSize: number; totalCount: number };
         };
       };
       400: {
@@ -97,7 +97,7 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": { contractId: string; header: { contractId: string; supplierId: string | null; type: "Msa" | "OrderForm" | "Amendment" | "Sow" | "RenewalLetter" | "Other"; status: string; annualSpend: number | null; totalContractValue: number | null; startDate: string | null; endDate: string | null; renewalDate: string | null; cancellationDeadline: string | null; autoRenewal: boolean; risk: string | null }; tabs: { overview: { currency: string; effectiveDate: string | null; renewalTermMonths: number | null; paymentTerms: string | null; governingLaw: string | null; parentContractId: string | null; version: number; createdAt: string }; commercials: { annualSpend: number | null; totalContractValue: number | null; currency: string; paymentTerms: string | null; autoRenewal: boolean; renewalTermMonths: number | null; lineItemCount: number; lineItemAnnualCostTotal: number | null; lineItemTotalCostTotal: number | null }; products: ({ lineItemId: string; productId: string | null; sku: string | null; description: string; quantity: number | null; unit: string | null; unitPrice: number | null; listPrice: number | null; discount: number | null; billingPeriod: string | null; annualCost: number | null; totalCost: number | null; sourceDocumentId: string | null; sourceSpan: string | null; sourcePage: number | null; confidence: number | null })[]; clauses: ({ clauseId: string; clauseType: string; rawText: string; normalizedValue: string | null; riskLevel: string | null; sourceDocumentId: string | null; sourceSpan: string | null; sourcePage: number | null; confidence: number | null })[]; obligations: ({ obligationId: string; party: string; obligationType: string; description: string; dueDate: string | null; recurrenceRule: string | null; criticality: string | null; status: string | null; sourceDocumentId: string | null; sourceSpan: string | null; sourcePage: number | null; confidence: number | null })[]; risks: ({ riskId: string; riskType: string; severity: "Low" | "Medium" | "High" | "Critical"; description: string; status: string | null; clauseId: string | null; sourceDocumentId: string | null; sourceSpan: string | null; sourcePage: number | null; confidence: number | null })[]; documents: ({ documentId: string; fileName: string; mimeType: string; documentType: "Msa" | "OrderForm" | "Amendment" | "Sow" | "RenewalLetter" | "Other"; processingStatus: "Uploaded" | "Processing" | "NeedsReview" | "Completed" | "Failed"; createdAt: string })[]; benchmark: (Record<string, never>)[]; renewal: { endDate: string | null; renewalDate: string | null; cancellationDeadline: string | null; autoRenewal: boolean; renewalTermMonths: number | null }; activity: (Record<string, never>)[] } };
+          "application/json": { contractId: string; header: { contractId: string; supplierId: string | null; type: "Msa" | "OrderForm" | "Amendment" | "Sow" | "RenewalLetter" | "Other"; status: string; annualSpend: number | null; totalContractValue: number | null; startDate: string | null; endDate: string | null; renewalDate: string | null; cancellationDeadline: string | null; autoRenewal: boolean; risk: string | null }; tabs: { overview: { currency: string; effectiveDate: string | null; renewalTermMonths: number | null; paymentTerms: string | null; governingLaw: string | null; parentContractId: string | null; version: number; createdAt: string }; commercials: { annualSpend: number | null; totalContractValue: number | null; currency: string; paymentTerms: string | null; autoRenewal: boolean; renewalTermMonths: number | null; lineItemCount: number; lineItemAnnualCostTotal: number | null; lineItemTotalCostTotal: number | null }; products: { lineItemId: string; productId: string | null; sku: string | null; description: string; quantity: number | null; unit: string | null; unitPrice: number | null; listPrice: number | null; discount: number | null; billingPeriod: string | null; annualCost: number | null; totalCost: number | null; sourceDocumentId: string | null; sourceSpan: string | null; sourcePage: number | null; confidence: number | null }[]; clauses: { clauseId: string; clauseType: string; rawText: string; normalizedValue: string | null; riskLevel: string | null; sourceDocumentId: string | null; sourceSpan: string | null; sourcePage: number | null; confidence: number | null }[]; obligations: { obligationId: string; party: string; obligationType: string; description: string; dueDate: string | null; recurrenceRule: string | null; criticality: string | null; status: string | null; sourceDocumentId: string | null; sourceSpan: string | null; sourcePage: number | null; confidence: number | null }[]; risks: { riskId: string; riskType: string; severity: "Low" | "Medium" | "High" | "Critical"; description: string; status: string | null; clauseId: string | null; sourceDocumentId: string | null; sourceSpan: string | null; sourcePage: number | null; confidence: number | null }[]; documents: { documentId: string; fileName: string; mimeType: string; documentType: "Msa" | "OrderForm" | "Amendment" | "Sow" | "RenewalLetter" | "Other"; processingStatus: "Uploaded" | "Processing" | "NeedsReview" | "Completed" | "Failed"; createdAt: string }[]; benchmark: Record<string, never>[]; renewal: { endDate: string | null; renewalDate: string | null; cancellationDeadline: string | null; autoRenewal: boolean; renewalTermMonths: number | null }; activity: Record<string, never>[] } };
         };
       };
       400: {
@@ -115,7 +115,7 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": { contractId: string; versionNumber: number; correctedFields: (string)[]; correctedAt: string };
+          "application/json": { contractId: string; versionNumber: number; correctedFields: string[]; correctedAt: string };
         };
       };
       400: {
@@ -133,7 +133,7 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": ({ fieldName: string; previousValue: string | null; newValue: string | null; correctedBy: string; correctedAt: string; reason: string | null })[];
+          "application/json": { fieldName: string; previousValue: string | null; newValue: string | null; correctedBy: string; correctedAt: string; reason: string | null }[];
         };
       };
       400: {
@@ -151,7 +151,7 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": { items: ({ contractId: string; supplierId: string | null; status: "Determined" | "NoRenewal" | "CannotDetermine"; renewalDate: string | null; daysUntilRenewal: number | null; annualSpend: number | null; cancellationDeadline: string | null; daysUntilCancellationDeadline: number | null; autoRenewal: boolean; action: string; insightCard: { facts: { supplierId: string | null; renewalDate: string | null; daysUntilRenewal: number | null; annualSpend: number | null; cancellationDeadline: string | null; daysUntilCancellationDeadline: number | null }; recommendations: { recommendedAction: string; explanation: string; annualUpliftPercent: number | null; marketPosition: string | null; potentialSavingsRange: string | null } } })[]; totalCount: number };
+          "application/json": { items: { contractId: string; supplierId: string | null; status: "Determined" | "NoRenewal" | "CannotDetermine"; renewalDate: string | null; daysUntilRenewal: number | null; annualSpend: number | null; cancellationDeadline: string | null; daysUntilCancellationDeadline: number | null; autoRenewal: boolean; action: string; insightCard: { facts: { supplierId: string | null; renewalDate: string | null; daysUntilRenewal: number | null; annualSpend: number | null; cancellationDeadline: string | null; daysUntilCancellationDeadline: number | null }; recommendations: { recommendedAction: string; explanation: string; annualUpliftPercent: number | null; marketPosition: string | null; potentialSavingsRange: string | null } } }[]; totalCount: number };
         };
       };
       400: {
@@ -175,6 +175,20 @@ export interface operations {
       };
       404: {
         content: {
+        };
+      };
+    };
+  };
+  postRenewalAction: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { contractId: string; owner: string; status: "NotStarted" | "InProgress" | "Completed"; action: string; updatedAt: string };
+        };
+      };
+      400: {
+        content: {
+          "application/json": string;
         };
       };
     };
@@ -250,7 +264,6 @@ export interface operations {
       };
     };
   };
-}
 
 export interface paths {
   "/health": {
@@ -283,6 +296,9 @@ export interface paths {
   };
   "/api/renewals/{contractId}/priority": {
     get: operations["getRenewalPriority"];
+  };
+  "/api/renewals/{id}/action": {
+    post: operations["postRenewalAction"];
   };
   "/api/quotes": {
     post: operations["uploadQuote"];

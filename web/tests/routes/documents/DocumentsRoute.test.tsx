@@ -39,6 +39,9 @@ function mockApiClient(
     // bare vi.fn() is enough, same convention as getContract360 above.
     getCorrectionHistory: vi.fn(),
     correctContract: vi.fn(),
+    // Task E08/F01/US01/T01 (renewal-pipeline): this suite only exercises /documents -- bare
+    // vi.fn() is enough, same convention as getContract360 above.
+    postRenewalAction: vi.fn(),
     // Task E08/F03/US01/T01 (quote-check-ui): this suite never reaches the Quote Check screen --
     // bare vi.fn() is enough, same convention as getContract360 above.
     uploadQuote: vi.fn(),

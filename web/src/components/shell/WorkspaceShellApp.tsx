@@ -8,6 +8,7 @@ import DocumentsRoute from "../../routes/documents";
 import PortfolioRoute from "../../routes/contracts";
 import Contract360Route from "../../routes/contracts/contract360";
 import ReviewRoute from "../../routes/contracts/review";
+import RenewalsRoute from "../../routes/renewals";
 import QuoteCheckRoute from "../../routes/quotes";
 
 export interface WorkspaceShellAppProps {
@@ -39,7 +40,12 @@ export interface WorkspaceShellAppProps {
  * is real as of task E07/F03/US01/T01 (ReviewRoute, ADR-020 screen 6) -- the
  * `review` landing path just below it stays its own placeholder (see that
  * route's own `note`; ia.md/ADR-018 name only the detail route this shell
- * already pointed at).
+ * already pointed at). `renewals` is real as of task E08/F01/US01/T01
+ * (RenewalsRoute, ADR-020 screen 8) -- it needs both `apiClient` and
+ * `userLabel` (the signed-in identity every renewal action's required
+ * `owner` field uses; see `../../routes/renewals/index.tsx`'s own header
+ * comment), the same two props `RailNav.tsx` already receives from this
+ * component's own props.
  *
  * `ShellRoutes` (the route tree alone, no router) is exported separately so
  * tests can wrap it in a `MemoryRouter` with a specific `initialEntries`
@@ -74,16 +80,7 @@ export function ShellRoutes({ workspaceName, role, userLabel, onSignOut, apiClie
             />
           }
         />
-        <Route
-          path="renewals"
-          element={
-            <ScaffoldScreen
-              title="Renewals"
-              release="R2"
-              note="Renewal pipeline ships in epic-08/feature-01-renewal-pipeline-ui."
-            />
-          }
-        />
+        <Route path="renewals" element={<RenewalsRoute apiClient={apiClient} userLabel={userLabel} />} />
         <Route
           path="ask"
           element={
