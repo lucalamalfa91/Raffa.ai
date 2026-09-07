@@ -168,6 +168,70 @@ export interface GetPortfolioResult {
   error: string | null;
 }
 
+// Task E07/F02/US01/T01 (contract-360, ADR-020 screen 5): getContract360, wrapping
+// `GET /api/contracts/{id}` -- the header + 10-tab aggregate. Second web epic to extend
+// openapi/contigo-api.v1.json beyond the R0/health set (task E07/F01/US01/T01, portfolio, was the
+// first) -- see that operation's own `description` in the OpenAPI document for the full provenance
+// and for why `header.risk`/`tabs.clauses[].riskLevel` are bare nullable strings, not enums (the
+// same generator limitation `PortfolioRiskSeverity` below already works around).
+type GetContract360Responses = paths["/api/contracts/{id}"]["get"]["responses"];
+export type Contract360Body = GetContract360Responses[200]["content"]["application/json"];
+export type Contract360HeaderBody = Contract360Body["header"];
+export type Contract360TabsBody = Contract360Body["tabs"];
+export type Contract360ProductBody = Contract360TabsBody["products"][number];
+export type Contract360ClauseBody = Contract360TabsBody["clauses"][number];
+export type Contract360ObligationBody = Contract360TabsBody["obligations"][number];
+export type Contract360RiskBody = Contract360TabsBody["risks"][number];
+export type Contract360DocumentBody = Contract360TabsBody["documents"][number];
+export type Contract360RenewalBody = Contract360TabsBody["renewal"];
+
+export interface GetContract360Result {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** The full header + 10-tab aggregate, present only when `ok` is true. */
+  contract: Contract360Body | null;
+  /** Plain-language failure reason (400/404 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
+// Task E07/F02/US01/T01: getRenewals, wrapping `GET /api/renewals` -- the only source of the real,
+// deterministic recommendedAction/explanation text the Overview tab's recommendation block renders
+// (Contigo.Renewals is not reachable from GET /api/contracts/{id} at all; see the OpenAPI
+// operation's own description for why this call, not invented UI copy, is the honest source).
+type GetRenewalsResponses = paths["/api/renewals"]["get"]["responses"];
+export type RenewalsPageBody = GetRenewalsResponses[200]["content"]["application/json"];
+export type RenewalPipelineItemBody = RenewalsPageBody["items"][number];
+
+export interface GetRenewalsResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** The tenant's whole renewal pipeline (auto-renewing contracts only), present only when `ok` is true. */
+  renewals: RenewalsPageBody | null;
+  /** Plain-language failure reason (400 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
+// Task E07/F02/US01/T01: getRenewalPriority, wrapping `GET /api/renewals/{contractId}/priority` --
+// the Contract 360 header's "priority {score}/100" fact and the Renewal tab's priority-score
+// component table (ADR-020 screen 5).
+type GetRenewalPriorityResponses = paths["/api/renewals/{contractId}/priority"]["get"]["responses"];
+export type RenewalPriorityBody = GetRenewalPriorityResponses[200]["content"]["application/json"];
+
+export interface GetRenewalPriorityResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** The score breakdown, present only when `ok` is true. */
+  priority: RenewalPriorityBody | null;
+  /** Plain-language failure reason (400/404 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
 export interface ApiClient {
   /**
    * Calls `GET /health` (operationId `getHealth` in
@@ -228,6 +292,26 @@ export interface ApiClient {
    * honest, complete mirror of the real endpoint rather than a screen-shaped subset of it.
    */
   getPortfolio(tenantId: string, query?: PortfolioQueryParams): Promise<GetPortfolioResult>;
+  /**
+   * Calls `GET /api/contracts/{id}` (operationId `getContract360`) -- the Contract 360 header +
+   * 10-tab aggregate behind `src/routes/contracts/contract360/` (ADR-020 screen 5). Same
+   * never-throws shape as every other call here: a `404` (no such contract for this tenant) is a
+   * normal, expected outcome the caller renders as a named "not found" state, not an exception.
+   */
+  getContract360(tenantId: string, id: string): Promise<GetContract360Result>;
+  /**
+   * Calls `GET /api/renewals` (operationId `getRenewals`) -- the tenant's whole auto-renewing
+   * pipeline. Contract 360's Overview tab finds this contract's own entry by `contractId` to source
+   * the real recommendedAction/explanation text (see `GetRenewalsResult`'s own doc comment for why).
+   * Never throws; a `400` renders inline.
+   */
+  getRenewals(tenantId: string): Promise<GetRenewalsResult>;
+  /**
+   * Calls `GET /api/renewals/{contractId}/priority` (operationId `getRenewalPriority`) -- the
+   * explainable priority-score breakdown for one contract, regardless of auto-renewal status. Same
+   * never-throws shape as every other call here: a `404` is a normal, expected outcome.
+   */
+  getRenewalPriority(tenantId: string, contractId: string): Promise<GetRenewalPriorityResult>;
 }
 
 /**
@@ -422,6 +506,112 @@ export function createApiClient(baseUrl: string): ApiClient {
       }
 
       return { ok: false, statusCode: response.status, portfolio: null, error };
+    },
+
+    async getContract360(tenantId, id) {
+      let response: Response;
+      try {
+        response = await fetch(new URL(`/api/contracts/${encodeURIComponent(id)}`, baseUrl), {
+          headers: { "X-Tenant-Id": tenantId },
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          contract: null,
+          error: `Unable to reach ${baseUrl}/api/contracts/${id}. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const contract = (await response.json()) as Contract360Body;
+        return { ok: true, statusCode: 200, contract, error: null };
+      }
+
+      // Same empty-body 404 shape as getDocument's own 404 above (Results.NotFound()).
+      if (response.status === 404) {
+        return { ok: false, statusCode: 404, contract: null, error: `No contract found for id ${id}.` };
+      }
+
+      // Same Results.BadRequest(string) shape as the other calls' 400s above.
+      let error: string;
+      try {
+        const errorBody: unknown = await response.json();
+        error = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, contract: null, error };
+    },
+
+    async getRenewals(tenantId) {
+      let response: Response;
+      try {
+        response = await fetch(new URL("/api/renewals", baseUrl), {
+          headers: { "X-Tenant-Id": tenantId },
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          renewals: null,
+          error: `Unable to reach ${baseUrl}/api/renewals. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const renewals = (await response.json()) as RenewalsPageBody;
+        return { ok: true, statusCode: 200, renewals, error: null };
+      }
+
+      let error: string;
+      try {
+        const errorBody: unknown = await response.json();
+        error = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, renewals: null, error };
+    },
+
+    async getRenewalPriority(tenantId, contractId) {
+      let response: Response;
+      try {
+        response = await fetch(new URL(`/api/renewals/${encodeURIComponent(contractId)}/priority`, baseUrl), {
+          headers: { "X-Tenant-Id": tenantId },
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          priority: null,
+          error: `Unable to reach ${baseUrl}/api/renewals/${contractId}/priority. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const priority = (await response.json()) as RenewalPriorityBody;
+        return { ok: true, statusCode: 200, priority, error: null };
+      }
+
+      if (response.status === 404) {
+        return { ok: false, statusCode: 404, priority: null, error: `No contract found for id ${contractId}.` };
+      }
+
+      let error: string;
+      try {
+        const errorBody: unknown = await response.json();
+        error = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, priority: null, error };
     },
   };
 }

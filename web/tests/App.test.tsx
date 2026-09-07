@@ -42,6 +42,11 @@ function mockApiClient(result: Promise<HealthCheckResult> | HealthCheckResult): 
     // Task E07/F01/US01/T01 (portfolio-list-filters): exercised by
     // tests/routes/contracts/*.test.tsx; same plain-stub convention.
     getPortfolio: vi.fn(),
+    // Task E07/F02/US01/T01 (contract-360): exercised by
+    // tests/routes/contracts/contract360/*.test.tsx; same plain-stub convention.
+    getContract360: vi.fn(),
+    getRenewals: vi.fn(),
+    getRenewalPriority: vi.fn(),
   };
 }
 

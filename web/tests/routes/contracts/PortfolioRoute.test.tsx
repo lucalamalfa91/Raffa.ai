@@ -13,6 +13,12 @@ function mockApiClient(getPortfolio: ApiClient["getPortfolio"] = vi.fn()): ApiCl
     uploadDocument: vi.fn(),
     getDocument: vi.fn(),
     getPortfolio,
+    // Task E07/F02/US01/T01 (contract-360): this suite only exercises /contracts (PortfolioRoute
+    // itself), never /contracts/:contractId (Contract360Route) -- bare vi.fn() is enough, the same
+    // convention this file's own getPortfolio parameter replaced when it was still bare.
+    getContract360: vi.fn(),
+    getRenewals: vi.fn(),
+    getRenewalPriority: vi.fn(),
   };
 }
 

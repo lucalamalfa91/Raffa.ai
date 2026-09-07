@@ -11,6 +11,10 @@ function mockApiClient(createWorkspace: ApiClient["createWorkspace"] = vi.fn()):
     uploadDocument: vi.fn(),
     getDocument: vi.fn(),
     getPortfolio: vi.fn(),
+    // Task E07/F02/US01/T01 (contract-360): this suite never reaches Contract 360 -- bare vi.fn().
+    getContract360: vi.fn(),
+    getRenewals: vi.fn(),
+    getRenewalPriority: vi.fn(),
   };
 }
 

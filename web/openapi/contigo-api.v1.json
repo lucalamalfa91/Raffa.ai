@@ -443,6 +443,368 @@
           }
         }
       }
+    },
+    "/api/contracts/{id}": {
+      "get": {
+        "operationId": "getContract360",
+        "summary": "Contract 360 aggregate: header plus all ten screens.md #5 tabs.",
+        "description": "Maps to GetContract360Async in backend/src/Contigo.Api/ContractsEndpointExtensions.cs, backed by Contract360QueryService (task E02/F03/US02/T01, us-02-contract-360-aggregate). Task E07/F02/US01/T01 (contract-360, ADR-020 screen 5) adds this operation -- the second web epic to extend this document beyond the R0/portfolio set (see this document's own 'repeating chore' provenance paragraph above; task E07/F01/US01/T01 was the first). Same interim X-Tenant-Id header placeholder as every other operation above. 'benchmark' and 'activity' are always empty arrays this wave (Contigo.Benchmark has no provider adapter until R3; no activity/timeline source is wired yet) -- present as empty arrays, never an omitted key, so the client never has to special-case a missing tab. header.risk and tabs.clauses[].riskLevel are deliberately typed as a bare nullable string, not a nullable enum, for the exact reason this document's getPortfolio operation above already states (generate-api-client.mjs#renderSchemaType drops the null member when enum and a nullable type union are combined); tabs.risks[].severity IS declared as a real non-nullable enum since Contract360Risk.Severity is required, so the generator's bug does not apply there.",
+        "parameters": [
+          { "name": "X-Tenant-Id", "in": "header", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" }, "description": "Contract.Id." }
+        ],
+        "responses": {
+          "200": {
+            "description": "Contract found for this tenant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["contractId", "header", "tabs"],
+                  "properties": {
+                    "contractId": { "type": "string", "format": "uuid" },
+                    "header": {
+                      "type": "object",
+                      "required": ["contractId", "supplierId", "type", "status", "annualSpend", "totalContractValue", "startDate", "endDate", "renewalDate", "cancellationDeadline", "autoRenewal", "risk"],
+                      "properties": {
+                        "contractId": { "type": "string", "format": "uuid" },
+                        "supplierId": { "type": ["string", "null"], "format": "uuid" },
+                        "type": { "type": "string", "enum": ["Msa", "OrderForm", "Amendment", "Sow", "RenewalLetter", "Other"] },
+                        "status": { "type": "string" },
+                        "annualSpend": { "type": ["number", "null"] },
+                        "totalContractValue": { "type": ["number", "null"], "description": "TCV." },
+                        "startDate": { "type": ["string", "null"], "format": "date" },
+                        "endDate": { "type": ["string", "null"], "format": "date" },
+                        "renewalDate": { "type": ["string", "null"], "format": "date", "description": "Equals endDate only when autoRenewal is true (Contract360Header.cs)." },
+                        "cancellationDeadline": { "type": ["string", "null"], "format": "date" },
+                        "autoRenewal": { "type": "boolean" },
+                        "risk": { "type": ["string", "null"], "description": "Low, Medium, High, or Critical, or null when the contract has no recorded Risk row. Deliberately not declared as an enum here -- see this operation's own description for why." }
+                      }
+                    },
+                    "tabs": {
+                      "type": "object",
+                      "required": ["overview", "commercials", "products", "clauses", "obligations", "risks", "documents", "benchmark", "renewal", "activity"],
+                      "properties": {
+                        "overview": {
+                          "type": "object",
+                          "required": ["currency", "effectiveDate", "renewalTermMonths", "paymentTerms", "governingLaw", "parentContractId", "version", "createdAt"],
+                          "properties": {
+                            "currency": { "type": "string" },
+                            "effectiveDate": { "type": ["string", "null"], "format": "date" },
+                            "renewalTermMonths": { "type": ["integer", "null"] },
+                            "paymentTerms": { "type": ["string", "null"] },
+                            "governingLaw": { "type": ["string", "null"] },
+                            "parentContractId": { "type": ["string", "null"], "format": "uuid" },
+                            "version": { "type": "integer" },
+                            "createdAt": { "type": "string", "format": "date-time" }
+                          }
+                        },
+                        "commercials": {
+                          "type": "object",
+                          "required": ["annualSpend", "totalContractValue", "currency", "paymentTerms", "autoRenewal", "renewalTermMonths", "lineItemCount", "lineItemAnnualCostTotal", "lineItemTotalCostTotal"],
+                          "properties": {
+                            "annualSpend": { "type": ["number", "null"] },
+                            "totalContractValue": { "type": ["number", "null"] },
+                            "currency": { "type": "string" },
+                            "paymentTerms": { "type": ["string", "null"] },
+                            "autoRenewal": { "type": "boolean" },
+                            "renewalTermMonths": { "type": ["integer", "null"] },
+                            "lineItemCount": { "type": "integer" },
+                            "lineItemAnnualCostTotal": { "type": ["number", "null"], "description": "Null only when there are zero line items; a line item with a missing per-line cost contributes zero (Contract360QueryService.cs)." },
+                            "lineItemTotalCostTotal": { "type": ["number", "null"] }
+                          }
+                        },
+                        "products": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": ["lineItemId", "productId", "sku", "description", "quantity", "unit", "unitPrice", "listPrice", "discount", "billingPeriod", "annualCost", "totalCost", "sourceDocumentId", "sourceSpan", "sourcePage", "confidence"],
+                            "properties": {
+                              "lineItemId": { "type": "string", "format": "uuid" },
+                              "productId": { "type": ["string", "null"], "format": "uuid" },
+                              "sku": { "type": ["string", "null"] },
+                              "description": { "type": "string" },
+                              "quantity": { "type": ["number", "null"] },
+                              "unit": { "type": ["string", "null"] },
+                              "unitPrice": { "type": ["number", "null"] },
+                              "listPrice": { "type": ["number", "null"] },
+                              "discount": { "type": ["number", "null"] },
+                              "billingPeriod": { "type": ["string", "null"] },
+                              "annualCost": { "type": ["number", "null"] },
+                              "totalCost": { "type": ["number", "null"] },
+                              "sourceDocumentId": { "type": ["string", "null"], "format": "uuid" },
+                              "sourceSpan": { "type": ["string", "null"] },
+                              "sourcePage": { "type": ["integer", "null"] },
+                              "confidence": { "type": ["number", "null"], "description": "0-1 fraction (e.g. 0.92), not a percentage." }
+                            }
+                          }
+                        },
+                        "clauses": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": ["clauseId", "clauseType", "rawText", "normalizedValue", "riskLevel", "sourceDocumentId", "sourceSpan", "sourcePage", "confidence"],
+                            "properties": {
+                              "clauseId": { "type": "string", "format": "uuid" },
+                              "clauseType": { "type": "string" },
+                              "rawText": { "type": "string" },
+                              "normalizedValue": { "type": ["string", "null"] },
+                              "riskLevel": { "type": ["string", "null"], "description": "Low, Medium, High, or Critical, or null. Deliberately not an enum -- see this operation's own description." },
+                              "sourceDocumentId": { "type": ["string", "null"], "format": "uuid" },
+                              "sourceSpan": { "type": ["string", "null"] },
+                              "sourcePage": { "type": ["integer", "null"] },
+                              "confidence": { "type": ["number", "null"] }
+                            }
+                          }
+                        },
+                        "obligations": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": ["obligationId", "party", "obligationType", "description", "dueDate", "recurrenceRule", "criticality", "status", "sourceDocumentId", "sourceSpan", "sourcePage", "confidence"],
+                            "properties": {
+                              "obligationId": { "type": "string", "format": "uuid" },
+                              "party": { "type": "string" },
+                              "obligationType": { "type": "string" },
+                              "description": { "type": "string" },
+                              "dueDate": { "type": ["string", "null"], "format": "date" },
+                              "recurrenceRule": { "type": ["string", "null"] },
+                              "criticality": { "type": ["string", "null"] },
+                              "status": { "type": ["string", "null"] },
+                              "sourceDocumentId": { "type": ["string", "null"], "format": "uuid" },
+                              "sourceSpan": { "type": ["string", "null"] },
+                              "sourcePage": { "type": ["integer", "null"] },
+                              "confidence": { "type": ["number", "null"] }
+                            }
+                          }
+                        },
+                        "risks": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": ["riskId", "riskType", "severity", "description", "status", "clauseId", "sourceDocumentId", "sourceSpan", "sourcePage", "confidence"],
+                            "properties": {
+                              "riskId": { "type": "string", "format": "uuid" },
+                              "riskType": { "type": "string" },
+                              "severity": { "type": "string", "enum": ["Low", "Medium", "High", "Critical"] },
+                              "description": { "type": "string" },
+                              "status": { "type": ["string", "null"] },
+                              "clauseId": { "type": ["string", "null"], "format": "uuid" },
+                              "sourceDocumentId": { "type": ["string", "null"], "format": "uuid" },
+                              "sourceSpan": { "type": ["string", "null"] },
+                              "sourcePage": { "type": ["integer", "null"] },
+                              "confidence": { "type": ["number", "null"] }
+                            }
+                          }
+                        },
+                        "documents": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": ["documentId", "fileName", "mimeType", "documentType", "processingStatus", "createdAt"],
+                            "properties": {
+                              "documentId": { "type": "string", "format": "uuid" },
+                              "fileName": { "type": "string" },
+                              "mimeType": { "type": "string" },
+                              "documentType": { "type": "string", "enum": ["Msa", "OrderForm", "Amendment", "Sow", "RenewalLetter", "Other"] },
+                              "processingStatus": { "type": "string", "enum": ["Uploaded", "Processing", "NeedsReview", "Completed", "Failed"] },
+                              "createdAt": { "type": "string", "format": "date-time" }
+                            }
+                          }
+                        },
+                        "benchmark": {
+                          "type": "array",
+                          "items": { "type": "object", "properties": {} },
+                          "description": "Always empty this wave -- Contigo.Benchmark has no provider adapter until R3 (Contract360BenchmarkEntry has no members yet)."
+                        },
+                        "renewal": {
+                          "type": "object",
+                          "required": ["endDate", "renewalDate", "cancellationDeadline", "autoRenewal", "renewalTermMonths"],
+                          "properties": {
+                            "endDate": { "type": ["string", "null"], "format": "date" },
+                            "renewalDate": { "type": ["string", "null"], "format": "date" },
+                            "cancellationDeadline": { "type": ["string", "null"], "format": "date" },
+                            "autoRenewal": { "type": "boolean" },
+                            "renewalTermMonths": { "type": ["integer", "null"] }
+                          }
+                        },
+                        "activity": {
+                          "type": "array",
+                          "items": { "type": "object", "properties": {} },
+                          "description": "Always empty this wave -- no activity/timeline source is wired yet (R3/R4)."
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid X-Tenant-Id header, or a non-GUID id in the route.",
+            "content": {
+              "application/json": {
+                "schema": { "type": "string" }
+              }
+            }
+          },
+          "404": {
+            "description": "No such contract for this tenant (or it belongs to a different tenant -- Contract360QueryService cannot and does not distinguish the two, ADR-009)."
+          }
+        }
+      }
+    },
+    "/api/renewals": {
+      "get": {
+        "operationId": "getRenewals",
+        "summary": "Actionable renewal pipeline for auto-renewing contracts (facts/recommendations insight card).",
+        "description": "Maps to GetRenewalsAsync in backend/src/Contigo.Api/RenewalsEndpointExtensions.cs (task E03/F03/US01/T01, us-01-renewal-dashboard-api). Task E07/F02/US01/T01 (contract-360) adds this operation: Contract 360's Overview tab (ADR-020 screen 5) finds this contract's own item in here by contractId to source the real, deterministic (not LLM) recommendedAction/explanation text the Renewals module already computes -- Contigo.Renewals is not otherwise reachable from GET /api/contracts/{id}, and the council decision 'AI recommendation lives in its own labelled block, never mixed with deterministic facts' (us-01-contract-360) needs a real source, not invented UI copy. Only auto-renewing contracts appear here (PortfolioFilter(AutoRenewal:true), applied server-side) -- a non-auto-renewing contract, or one beyond this endpoint's own 100-row page-size ceiling (PortfolioPageRequest.MaxPageSize, honestly surfaced via totalCount), legitimately has no entry; Contract 360's Overview tab renders that as a named gap, not an error. annualUpliftPercent/marketPosition/potentialSavingsRange are always null this wave (need the R3 Benchmark/Savings modules) -- present as explicit null, never fabricated (Appendix C rule 10).",
+        "parameters": [
+          { "name": "X-Tenant-Id", "in": "header", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tenant-scoped renewal pipeline, up to the underlying portfolio query's own page-size ceiling.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["items", "totalCount"],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["contractId", "supplierId", "status", "renewalDate", "daysUntilRenewal", "annualSpend", "cancellationDeadline", "daysUntilCancellationDeadline", "autoRenewal", "action", "insightCard"],
+                        "properties": {
+                          "contractId": { "type": "string", "format": "uuid" },
+                          "supplierId": { "type": ["string", "null"], "format": "uuid" },
+                          "status": { "type": "string", "enum": ["Determined", "NoRenewal", "CannotDetermine"] },
+                          "renewalDate": { "type": ["string", "null"], "format": "date" },
+                          "daysUntilRenewal": { "type": ["integer", "null"] },
+                          "annualSpend": { "type": ["number", "null"] },
+                          "cancellationDeadline": { "type": ["string", "null"], "format": "date" },
+                          "daysUntilCancellationDeadline": { "type": ["integer", "null"] },
+                          "autoRenewal": { "type": "boolean" },
+                          "action": { "type": "string", "description": "= insightCard.recommendations.recommendedAction (top-level convenience copy, RenewalsEndpointExtensions.ToPipelineResponse)." },
+                          "insightCard": {
+                            "type": "object",
+                            "required": ["facts", "recommendations"],
+                            "properties": {
+                              "facts": {
+                                "type": "object",
+                                "required": ["supplierId", "renewalDate", "daysUntilRenewal", "annualSpend", "cancellationDeadline", "daysUntilCancellationDeadline"],
+                                "properties": {
+                                  "supplierId": { "type": ["string", "null"], "format": "uuid" },
+                                  "renewalDate": { "type": ["string", "null"], "format": "date" },
+                                  "daysUntilRenewal": { "type": ["integer", "null"] },
+                                  "annualSpend": { "type": ["number", "null"] },
+                                  "cancellationDeadline": { "type": ["string", "null"], "format": "date" },
+                                  "daysUntilCancellationDeadline": { "type": ["integer", "null"] }
+                                }
+                              },
+                              "recommendations": {
+                                "type": "object",
+                                "required": ["recommendedAction", "explanation", "annualUpliftPercent", "marketPosition", "potentialSavingsRange"],
+                                "properties": {
+                                  "recommendedAction": { "type": "string" },
+                                  "explanation": { "type": "string" },
+                                  "annualUpliftPercent": { "type": ["number", "null"] },
+                                  "marketPosition": { "type": ["string", "null"] },
+                                  "potentialSavingsRange": { "type": ["string", "null"] }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "totalCount": { "type": "integer" }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid X-Tenant-Id header.",
+            "content": {
+              "application/json": {
+                "schema": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/renewals/{contractId}/priority": {
+      "get": {
+        "operationId": "getRenewalPriority",
+        "summary": "Explainable renewal-priority score breakdown for one contract.",
+        "description": "Maps to GetRenewalPriorityAsync in backend/src/Contigo.Api/RenewalsEndpointExtensions.cs (task E03/F01/US02/T02, us-02-priority-score). Task E07/F02/US01/T01 (contract-360) adds this operation for the Contract 360 header's 'priority {score}/100' fact-row cell and the Renewal tab's priority-score component table (ADR-020 screen 5: 'Renewal adds priority-score component table'). Unlike GET /api/renewals above, this runs for ANY contract this tenant owns, auto-renewing or not (GetRenewalPriorityAsync composes Contract360QueryService directly, with no AutoRenewal filter) -- so a 200 here does not imply the same contract also has a GET /api/renewals entry. totalScore is always 0-100 under the spec-default component weights and never null (PriorityScoreCalculator.Calculate always returns a value for every component, defaulting an unknown input to its documented no-data value rather than omitting it -- Appendix C rule 10).",
+        "parameters": [
+          { "name": "X-Tenant-Id", "in": "header", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "contractId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" }, "description": "Contract.Id -- the same id GET /api/contracts/{id} and GET /api/renewals's own contractId use." }
+        ],
+        "responses": {
+          "200": {
+            "description": "Contract found for this tenant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["contractId", "totalScore", "components"],
+                  "properties": {
+                    "contractId": { "type": "string", "format": "uuid" },
+                    "totalScore": { "type": "number", "description": "0-100 under the spec-default weights (5 components, 20 max each)." },
+                    "components": {
+                      "type": "object",
+                      "required": ["spendWeight", "timeUrgency", "benchmarkOpportunity", "priceIncreaseRisk", "contractRisk"],
+                      "properties": {
+                        "spendWeight": {
+                          "type": "object",
+                          "required": ["score", "explanation"],
+                          "properties": { "score": { "type": "number" }, "explanation": { "type": "string" } }
+                        },
+                        "timeUrgency": {
+                          "type": "object",
+                          "required": ["score", "explanation"],
+                          "properties": { "score": { "type": "number" }, "explanation": { "type": "string" } }
+                        },
+                        "benchmarkOpportunity": {
+                          "type": "object",
+                          "required": ["score", "explanation"],
+                          "properties": { "score": { "type": "number" }, "explanation": { "type": "string" } }
+                        },
+                        "priceIncreaseRisk": {
+                          "type": "object",
+                          "required": ["score", "explanation"],
+                          "properties": { "score": { "type": "number" }, "explanation": { "type": "string" } }
+                        },
+                        "contractRisk": {
+                          "type": "object",
+                          "required": ["score", "explanation"],
+                          "properties": { "score": { "type": "number" }, "explanation": { "type": "string" } }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid X-Tenant-Id header, or a non-GUID contractId in the route.",
+            "content": {
+              "application/json": {
+                "schema": { "type": "string" }
+              }
+            }
+          },
+          "404": {
+            "description": "No such contract for this tenant."
+          }
+        }
+      }
     }
   }
 }

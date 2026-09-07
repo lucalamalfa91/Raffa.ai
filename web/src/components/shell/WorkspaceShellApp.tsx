@@ -6,6 +6,7 @@ import type { WorkspaceRole } from "./navItems";
 import type { ApiClient } from "../../api/client";
 import DocumentsRoute from "../../routes/documents";
 import PortfolioRoute from "../../routes/contracts";
+import Contract360Route from "../../routes/contracts/contract360";
 
 export interface WorkspaceShellAppProps {
   workspaceName: string;
@@ -55,16 +56,7 @@ export function ShellRoutes({ workspaceName, role, userLabel, onSignOut, apiClie
           }
         />
         <Route path="contracts" element={<PortfolioRoute apiClient={apiClient} />} />
-        <Route
-          path="contracts/:contractId"
-          element={
-            <ScaffoldScreen
-              title="Contract 360"
-              release="R1"
-              note="Contract 360 ships in epic-07/feature-02-contract-360-ui."
-            />
-          }
-        />
+        <Route path="contracts/:contractId" element={<Contract360Route apiClient={apiClient} />} />
         <Route
           path="contracts/:contractId/review"
           element={

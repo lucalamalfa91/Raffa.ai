@@ -24,7 +24,18 @@ function mockApiClient(
     .fn()
     .mockResolvedValue({ ok: false, statusCode: 404, document: null, error: "No document found." }),
 ): ApiClient {
-  return { getHealth: vi.fn(), createWorkspace: vi.fn(), uploadDocument, getDocument, getPortfolio: vi.fn() };
+  return {
+    getHealth: vi.fn(),
+    createWorkspace: vi.fn(),
+    uploadDocument,
+    getDocument,
+    getPortfolio: vi.fn(),
+    // Task E07/F02/US01/T01 (contract-360): this suite only exercises /documents (DocumentsRoute
+    // itself), never Contract 360 -- bare vi.fn() is enough, same convention as getPortfolio above.
+    getContract360: vi.fn(),
+    getRenewals: vi.fn(),
+    getRenewalPriority: vi.fn(),
+  };
 }
 
 function uploaded(overrides: Partial<UploadedDocument> = {}): UploadedDocument {
