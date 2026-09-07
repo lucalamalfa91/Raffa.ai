@@ -83,7 +83,8 @@ the web workflow after that apply.
 | `/documents` | Upload dropzone (drag-and-drop + "Choose from computer" + "Use sample file") + formats/size/sources strip -> 6-stage processing pipeline (current stage pulsing) -> result card by outcome (needs_review / completed / failed); below it, a document table (Document / Type / Supplier / Status / Uploaded, rows linking to Contract 360). Calls the real `POST /api/documents` and `GET /api/documents/{id}`. See "Documents" below. | E06/F05/US01/T01, E06/F05/US02/T01 |
 | `/contracts` | Portfolio: filter chips + attention strip + a table sorted by severity then deadline (critical rows tinted + a red bar), plus loading/empty/error/no-match-for-filter states. Calls the real `GET /api/contracts`. See "Portfolio" below. | E07/F01/US01/T01 |
 | `/contracts/:id` | Contract 360: header + 6-cell fact row + 10 tabs (Overview's recommendation card + drivers + "Needs your attention" + "Top risks", then Commercials/Products/Clauses/Obligations/Risks/Documents/Benchmark/Renewal/Activity through one shared Term/Value/Source/Confidence table), plus loading/not-found/error states. Calls the real `GET /api/contracts/{id}`, `GET /api/renewals`, `GET /api/renewals/{contractId}/priority`. See "Contract 360" below. | E07/F02/US01/T01 |
-| `/` (home), `/contracts/:id/review`, `/renewals`, `/ask`, `/review`\*, `/quotes`\*, `/quotes/:id`, `/workspace/members` | App shell: 224px left rail + global Ask bar + routed content. Every route in this row still renders a `ScaffoldScreen` placeholder today -- the real screens ship in later epic-07/epic-08/feature-02/03/04 tasks named at each route (see `src/components/shell/WorkspaceShellApp.tsx`). | E06/F03/US02/T01 |
+| `/contracts/:id/review` | Review / correction: 4-column field list (critical marker, extracted value, confidence/decision tag, Accept/Correct) + right-hand evidence pane (correction form + real correction-history trail) + gated "Mark as validated". Calls the real `GET /api/contracts/{id}`, `GET /api/contracts/{id}/corrections`, `PATCH /api/contracts/{id}`. See "Review / correction" below. | E07/F03/US01/T01 |
+| `/` (home), `/renewals`, `/ask`, `/review`\*, `/quotes`\*, `/quotes/:id`, `/workspace/members` | App shell: 224px left rail + global Ask bar + routed content. Every route in this row still renders a `ScaffoldScreen` placeholder today -- the real screens ship in later epic-07/epic-08/feature-02/03/04 tasks named at each route (see `src/components/shell/WorkspaceShellApp.tsx`). | E06/F03/US02/T01 |
 
 \* `/review` and `/quotes` are this task's own placeholder landing paths, not
 a row in ADR-018's locked route map -- that table only ever names a *detail*
@@ -399,6 +400,47 @@ added.
   `0.92`), not the 0-100 percentage `styles/semantics.ts#getConfidenceTag` expects --
   `contract360ViewModel.ts#toConfidencePercent` is the one conversion point every row builder uses.
 
+### Review / correction (ADR-020 screen 6, task E07/F03/US01/T01, us-01-field-review-correction)
+
+`src/routes/contracts/review/` implements screen 6: AC-1 4-column field list (critical marker,
+extracted value + source, confidence tag, decision), AC-2 confidence mapping, AC-3 evidence pane
+(correction form + version history), AC-4 gated "Mark as validated" with a visible reason. Reached
+from `contract360/Contract360Header.tsx`'s "Review extraction" button and
+`contract360/OverviewTab.tsx`'s "Needs your attention → Review all" link (both already wired by
+task E07/F02/US01/T01 to this exact route).
+
+- **Field set is the backend's real correctable set, not the cited prototype's own mock fields**
+  (screens.md #6's "Cancellation notice"/"Price uplift at renewal" have no backend correlate).
+  `reviewViewModel.ts#CORRECTABLE_FIELDS` mirrors `ContractCorrectionService.CorrectableFieldNames`
+  verbatim (type, status, currency, three more dates, cancellation deadline, annual spend, TCV,
+  auto-renewal, renewal term, payment terms, governing law) -- the only fields `PATCH
+  /api/contracts/{id}` will ever accept, and the story's own "E02 correction API (assumed)"
+  dependency. A field renders only when the contract actually has a value for it (no "—" rows).
+- **No live per-field confidence exists yet for this field set -- a real, pre-existing backend
+  gap, not one this task's file scope can close.** `ExtractionEvidence`
+  (`backend/src/Contigo.Documents.Contracts/Domain/ExtractionEvidence.cs`, task E02/F01/US02/T01)
+  stores exactly the per-field confidence/source-span/extraction-job trail AC-2/AC-3 describe, keyed
+  by the same `FieldName` scheme `CorrectionHistory` already uses -- but no endpoint in
+  `backend/src/Contigo.Api` reads it, and `Contract360QueryService` never joins it either. Until a
+  backend task adds a read endpoint (e.g. `GET /api/contracts/{id}/evidence`), every undecided field
+  is conservatively treated as spec §7.3's <80% "must be reviewed" band -- never a fabricated
+  percentage (Appendix C rule 10) -- so AC-4's gate is still real and testable today. The evidence
+  pane's "Source" line is an honest "not yet available" note for the same reason (no highlighted
+  passage to show). See `reviewViewModel.ts`'s own header comment for the full provenance.
+- **Two real, working decisions, one durable and one not.** "Correct" calls the real `PATCH
+  /api/contracts/{id}` (a genuine value change, a new `ContractVersion`, and a new
+  `CorrectionHistory` row an immediate re-fetch of `GET /api/contracts/{id}/corrections` picks back
+  up as "Corrected"). "Accept" has no backend call to make -- `ContractCorrectionService
+  .CorrectAsync` rejects a no-op correction outright, so there is no way to durably record "a human
+  looked at this and it was already right" -- it is this screen's own session-only React state and
+  does not survive a reload. An honest consequence of the real API's shape, not a bug; see
+  `index.tsx`'s own header comment.
+- **AC-4 gate**: `reviewViewModel.ts#isFieldBlocking`/`computeReviewProgress` -- a resolved field
+  (accepted or corrected) never blocks; a pending field blocks under a real <80% score, or -- always,
+  today -- when no score exists (the conservative default above). "Mark as validated" is a real
+  `<button disabled>` paired with a visible `.hint` reason (ADR-019 accessibility baseline), and
+  navigates to `/contracts/:id` on click (screens.md #6's own `finishReview` behaviour).
+
 ## API client (ADR-012 "one generated TypeScript client, no hand-written divergent DTOs")
 
 Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
@@ -518,6 +560,15 @@ Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
   three new methods follow the same never-throws convention as every other call (a `404` on
   `getContract360`/`getRenewalPriority` is a normal, expected outcome the caller renders as a named
   "not found" state).
+- **Task E07/F03/US01/T01 (field-review-correction)** extended `openapi/contigo-api.v1.json` with `PATCH
+  /api/contracts/{id}` (`correctContract`) and `GET /api/contracts/{id}/corrections`
+  (`getCorrectionHistory`) -- the third web epic to extend this document (same "repeating chore"
+  provenance paragraph). Both operations were already implemented by backend task
+  E02/F05/US01/T01/T02; this task only wraps them for the web client. `correctContract`'s request
+  body (`CorrectContractRequest`) is hand-written, like `createWorkspace`'s -- the generator does not
+  parse `requestBody`. Both response shapes (a flat object, and an array of a flat object) use
+  generator cases `getContract360`/`getPortfolio` already exercise, so no generator change was
+  needed this time.
 
 ## Directory layout
 
@@ -533,7 +584,7 @@ web/
   src/
     api/
       generated/schema.ts     # AUTO-GENERATED; do not edit by hand
-      client.ts                # createApiClient(baseUrl) -> { getHealth(), createWorkspace({ name }), uploadDocument(tenantId, file), getDocument(tenantId, id), getPortfolio(tenantId, query?), getContract360(tenantId, id), getRenewals(tenantId), getRenewalPriority(tenantId, contractId) }
+      client.ts                # createApiClient(baseUrl) -> { getHealth(), createWorkspace({ name }), uploadDocument(tenantId, file), getDocument(tenantId, id), getPortfolio(tenantId, query?), getContract360(tenantId, id), getRenewals(tenantId), getRenewalPriority(tenantId, contractId), getCorrectionHistory(tenantId, id), correctContract(tenantId, id, request) }
     config/appConfig.ts       # fetch + validate runtime config
     auth/msalConfig.ts        # AppConfig -> MSAL Configuration (no secret, ever)
     styles/                   # design system (tokens + component catalogue); see below
@@ -572,6 +623,13 @@ web/
           RenewalTab.tsx         # AC-4: Renewal's own facts + the priority-score component table
           contract360ViewModel.ts # pure helpers: row builders per tab, needs-attention/top-risks derivation, recommendation lookup
           contract360.css        # this screen's styles
+        review/                # task E07/F03/US01/T01 -- ADR-020 screen 6 (see "Review / correction" above)
+          index.tsx              # ReviewRoute -- fetch order (contract, then correction history), decision state, correction submit
+          ReviewHeader.tsx        # AC-4: title + gated "Mark as validated" + progress line
+          ReviewFieldList.tsx     # AC-1: the 4-column field list (critical marker, value, confidence tag, decision)
+          EvidencePane.tsx        # AC-3: evidence + correction form + real correction-history trail
+          reviewViewModel.ts      # pure helpers: correctable-field catalogue, decision/tag/gate computation (no live confidence yet -- see its own header comment)
+          review.css              # this screen's styles
     components/
       shell/                  # task E06/F03/US02/T01 -- app shell, router, role guard (see "App shell" above)
         navItems.ts             # locked 8-item rail model + getVisibleNavItems(role) role guard (AC-1/AC-2)

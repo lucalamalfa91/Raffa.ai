@@ -111,6 +111,42 @@ export interface operations {
       };
     };
   };
+  correctContract: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { contractId: string; versionNumber: number; correctedFields: string[]; correctedAt: string };
+        };
+      };
+      400: {
+        content: {
+          "application/json": string;
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  getCorrectionHistory: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { fieldName: string; previousValue: string | null; newValue: string | null; correctedBy: string; correctedAt: string; reason: string | null }[];
+        };
+      };
+      400: {
+        content: {
+          "application/json": string;
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
   getRenewals: {
     responses: {
       200: {
@@ -166,6 +202,10 @@ export interface paths {
   };
   "/api/contracts/{id}": {
     get: operations["getContract360"];
+    patch: operations["correctContract"];
+  };
+  "/api/contracts/{id}/corrections": {
+    get: operations["getCorrectionHistory"];
   };
   "/api/renewals": {
     get: operations["getRenewals"];

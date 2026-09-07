@@ -232,6 +232,62 @@ export interface GetRenewalPriorityResult {
   error: string | null;
 }
 
+// Task E07/F03/US01/T01 (field-review-correction, ADR-020 screen 6): getCorrectionHistory, wrapping
+// `GET /api/contracts/{id}/corrections` -- the real, newest-first per-field correction trail
+// (ContractCorrectionHistoryQueryService). A field with at least one entry here has already been
+// durably corrected by a human; src/routes/contracts/review/reviewViewModel.ts#buildReviewFields
+// combines this with getContract360's current values to decide each field's review state. Third web
+// epic to extend openapi/contigo-api.v1.json beyond the R0/portfolio/contract-360 set (see that
+// file's own "repeating chore" provenance paragraph).
+type GetCorrectionHistoryResponses = paths["/api/contracts/{id}/corrections"]["get"]["responses"];
+export type CorrectionHistoryPageBody = GetCorrectionHistoryResponses[200]["content"]["application/json"];
+export type CorrectionHistoryEntryBody = CorrectionHistoryPageBody[number];
+
+export interface GetCorrectionHistoryResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** Newest-first correction history (possibly empty -- a contract that has never been corrected is still `ok: true`), present only when `ok` is true. */
+  history: CorrectionHistoryPageBody | null;
+  /** Plain-language failure reason (400/404 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
+// Task E07/F03/US01/T01: correctContract, wrapping `PATCH /api/contracts/{id}` -- the one real
+// write path this screen's "Correct" decision calls (ContractCorrectionService). Same never-throws
+// shape as every other call here: a `400` (unknown field, unparsable value for its field's type, or
+// a no-op correction ContractCorrectionService rejects outright) is a normal, expected outcome the
+// caller renders inline, not an exception.
+type CorrectContractResponses = paths["/api/contracts/{id}"]["patch"]["responses"];
+export type ContractCorrectionBody = CorrectContractResponses[200]["content"]["application/json"];
+
+/**
+ * `PATCH /api/contracts/{id}` request body. Hand-written, not generated -- see this file's header
+ * comment for why (the generator does not parse `requestBody` at all yet). `corrections` keys must
+ * be one of `ContractCorrectionService.CorrectableFieldNames`
+ * (backend/src/Contigo.Documents.Contracts/Application/ContractCorrectionService.cs); values are
+ * that field's own canonical wire string (dates `yyyy-MM-dd`, booleans `"true"`/`"false"`,
+ * decimals/integers via plain `toString()`), or `null` to clear an optional field.
+ * `src/routes/contracts/review/reviewViewModel.ts#CORRECTABLE_FIELDS` mirrors that same field/kind
+ * table on the client side.
+ */
+export interface CorrectContractRequest {
+  corrections: Record<string, string | null>;
+  reason?: string | null;
+}
+
+export interface CorrectContractResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** The resulting version/correctedFields summary, present only when `ok` is true. */
+  correction: ContractCorrectionBody | null;
+  /** Plain-language failure reason (400/404 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
 export interface ApiClient {
   /**
    * Calls `GET /health` (operationId `getHealth` in
@@ -312,6 +368,21 @@ export interface ApiClient {
    * never-throws shape as every other call here: a `404` is a normal, expected outcome.
    */
   getRenewalPriority(tenantId: string, contractId: string): Promise<GetRenewalPriorityResult>;
+  /**
+   * Calls `GET /api/contracts/{id}/corrections` (operationId `getCorrectionHistory`) -- the real,
+   * newest-first correction trail behind `src/routes/contracts/review/` (ADR-020 screen 6). Same
+   * never-throws shape as every other call here: a `404` is a normal, expected outcome (no such
+   * contract for this tenant); a contract that exists but has never been corrected is `ok: true`
+   * with an empty `history` array, not a 404.
+   */
+  getCorrectionHistory(tenantId: string, id: string): Promise<GetCorrectionHistoryResult>;
+  /**
+   * Calls `PATCH /api/contracts/{id}` (operationId `correctContract`) -- the review screen's real
+   * "Correct" write path. Same never-throws shape as every other call here: a `400` (unknown field,
+   * unparsable value, or a no-op correction) is a normal, expected outcome the caller renders
+   * inline, not an exception.
+   */
+  correctContract(tenantId: string, id: string, request: CorrectContractRequest): Promise<CorrectContractResult>;
 }
 
 /**
@@ -612,6 +683,84 @@ export function createApiClient(baseUrl: string): ApiClient {
       }
 
       return { ok: false, statusCode: response.status, priority: null, error };
+    },
+
+    async getCorrectionHistory(tenantId, id) {
+      let response: Response;
+      try {
+        response = await fetch(new URL(`/api/contracts/${encodeURIComponent(id)}/corrections`, baseUrl), {
+          headers: { "X-Tenant-Id": tenantId },
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          history: null,
+          error: `Unable to reach ${baseUrl}/api/contracts/${id}/corrections. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const history = (await response.json()) as CorrectionHistoryPageBody;
+        return { ok: true, statusCode: 200, history, error: null };
+      }
+
+      // Same empty-body 404 shape as getContract360's own 404 above (Results.NotFound()).
+      if (response.status === 404) {
+        return { ok: false, statusCode: 404, history: null, error: `No contract found for id ${id}.` };
+      }
+
+      // Same Results.BadRequest(string) shape as the other calls' 400s above.
+      let error: string;
+      try {
+        const errorBody: unknown = await response.json();
+        error = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, history: null, error };
+    },
+
+    async correctContract(tenantId, id, request) {
+      let response: Response;
+      try {
+        response = await fetch(new URL(`/api/contracts/${encodeURIComponent(id)}`, baseUrl), {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId },
+          body: JSON.stringify(request),
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          correction: null,
+          error: `Unable to reach ${baseUrl}/api/contracts/${id}. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const correction = (await response.json()) as ContractCorrectionBody;
+        return { ok: true, statusCode: 200, correction, error: null };
+      }
+
+      // Same empty-body 404 shape as getContract360's own 404 above (Results.NotFound()).
+      if (response.status === 404) {
+        return { ok: false, statusCode: 404, correction: null, error: `No contract found for id ${id}.` };
+      }
+
+      // Same Results.BadRequest(string) shape as the other calls' 400s above.
+      let error: string;
+      try {
+        const errorBody: unknown = await response.json();
+        error = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, correction: null, error };
     },
   };
 }

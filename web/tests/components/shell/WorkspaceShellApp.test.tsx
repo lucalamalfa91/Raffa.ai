@@ -37,6 +37,11 @@ function mockApiClient(): ApiClient {
     getRenewalPriority: vi
       .fn()
       .mockResolvedValue({ ok: false, statusCode: 404, priority: null, error: "No contract found." }),
+    // Task E07/F03/US01/T01 (field-review-correction): no test in this suite navigates to
+    // /contracts/:contractId/review -- bare vi.fn() is enough, same convention as getPortfolio/
+    // getContract360 above (this comment records *why* it's safe to leave unresolved, unlike those).
+    getCorrectionHistory: vi.fn(),
+    correctContract: vi.fn(),
   };
 }
 

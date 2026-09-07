@@ -3,7 +3,7 @@
   "info": {
     "title": "Contigo API",
     "version": "1.1.0",
-    "description": "Contract for the Contigo backend API (backend/src/Contigo.Api), consumed by the web (this file) and mobile (ADR-013) TypeScript clients per ADR-012's \"single OpenAPI document -> one generated TypeScript client, no hand-written divergent DTOs\" rule (see reports/architecture/draft/client-architect/api-consumption.md #1).\n\nProvenance / interim status (task E01/F07/US01/T02): the API host does not yet self-publish this document -- no Microsoft.AspNetCore.OpenApi / Swashbuckle / NSwag is wired into backend/src/Contigo.Api/Program.cs as of this task, and adding that is outside this task's file scope (the web client only; this task's frontmatter is target_repo: contigo-web). Until a backend task adds self-published OpenAPI generation, this file is hand-authored to describe exactly the routes Program.cs actually implements today, cross-checked against backend/tests/Contigo.Api.Tests. It is the single file `npm run generate:api` (web/scripts/generate-api-client.mjs) reads to produce web/src/api/generated/schema.ts, and must grow endpoint-by-endpoint as backend/src/Contigo.Api/Program.cs grows -- then be replaced outright once the API self-publishes its own document.\n\nURL versioning (OQ-client-007 in reports/open-questions.md, still `open` at council-close: \"OpenAPI codegen tool and URL versioning scheme ... owned by software-architect\") is deliberately NOT applied to the paths below: Program.cs maps bare `/health`, not `/v1/health`, and a client generated against a path the API does not actually serve would 404 in every real environment. `info.version` above tracks this document's own revision; add a URL path prefix here only once software-architect fixes one and Program.cs actually serves it under that prefix.\n\nCodegen tool choice (also part of OQ-client-007, resolved here for this task rather than left blocking it, per reports/open-questions.md's \"add an entry, state the assumption, build against it\"): third-party OpenAPI-to-TypeScript generators evaluated at authoring time (openapi-typescript@7.13.0, which peer-depends on `typescript@^5.x`) hard-conflict with this repo's already-committed `typescript@^7.0.2` (web/package.json, task E01/F07/US01/T01) under npm's default strict peer resolution. Rather than force an incorrect peer resolution (`--legacy-peer-deps`/`--force`) or downgrade a previous task's already-committed TypeScript version, this contract is compiled by a small first-party generator (web/scripts/generate-api-client.mjs, zero new dependencies) that reads this JSON file and emits the `paths`/`operations` TypeScript types the same way the mainstream tools shape them. Swap in a third-party tool once one publishes TypeScript-7-compatible peer ranges; the generated *output shape* (`paths`/`operations`) is deliberately kept compatible with that ecosystem convention so the swap is mechanical.\n\nTask E06/F01/US01/T01 (typescript-client-regen) added the four operations below beyond `/health`: `POST /api/workspaces` (create), `POST /api/workspaces/{tenantId}/invites` (invite), `POST /api/documents` (upload), `GET /api/documents/{id}` (read back) -- exactly epic-06-web-foundation's own R0 scope (\"the sign-in -> workspace picker flow ... and the R0 surfaces (members & roles, document upload, document-status read-back)\"). backend/src/Contigo.Api/Program.cs now also maps many more routes added by backend epics E02-E05 (GET /api/contracts, GET/PATCH /api/contracts/{id}, GET /api/contracts/{id}/corrections, GET /api/audit, GET /api/renewals and /api/renewals/{contractId}/priority, POST /api/renewals/{id}/action, GET/PATCH /api/savings and GET /api/savings/kpis, POST /api/chat/query, POST /api/quotes and GET /api/quotes/{id}/assessment, POST /api/negotiations/outcomes) that this task deliberately did NOT add here: epic-06-web-foundation's own \"Out of scope\" list names exactly that set (\"portfolio, Contract 360, review, Ask, renewals, savings, quote check -- later web epics\"), and feature-01-typescript-client-regen's own \"Council decisions carried into this story\" calls this a \"Repeating chore\" -- whichever web epic first builds a screen against one of those endpoints should extend this file next, the same way this task extended the `/health`-only version task E01/F07/US01/T02 left behind. Nullable fields (e.g. a freshly-uploaded or not-yet-classified document's `contractId`) use OpenAPI 3.1's `type: [X, \"null\"]` union instead of a bolted-on `nullable: true` flag; web/scripts/generate-api-client.mjs gained one small, additive case for it (a `type` array renders as the equivalent TypeScript union, plus a case for `object`/`properties` -- every new response below is a flat, single-level object) -- see that script's own comments on the change."
+    "description": "Contract for the Contigo backend API (backend/src/Contigo.Api), consumed by the web (this file) and mobile (ADR-013) TypeScript clients per ADR-012's \"single OpenAPI document -> one generated TypeScript client, no hand-written divergent DTOs\" rule (see reports/architecture/draft/client-architect/api-consumption.md #1).\n\nProvenance / interim status (task E01/F07/US01/T02): the API host does not yet self-publish this document -- no Microsoft.AspNetCore.OpenApi / Swashbuckle / NSwag is wired into backend/src/Contigo.Api/Program.cs as of this task, and adding that is outside this task's file scope (the web client only; this task's frontmatter is target_repo: contigo-web). Until a backend task adds self-published OpenAPI generation, this file is hand-authored to describe exactly the routes Program.cs actually implements today, cross-checked against backend/tests/Contigo.Api.Tests. It is the single file `npm run generate:api` (web/scripts/generate-api-client.mjs) reads to produce web/src/api/generated/schema.ts, and must grow endpoint-by-endpoint as backend/src/Contigo.Api/Program.cs grows -- then be replaced outright once the API self-publishes its own document.\n\nURL versioning (OQ-client-007 in reports/open-questions.md, still `open` at council-close: \"OpenAPI codegen tool and URL versioning scheme ... owned by software-architect\") is deliberately NOT applied to the paths below: Program.cs maps bare `/health`, not `/v1/health`, and a client generated against a path the API does not actually serve would 404 in every real environment. `info.version` above tracks this document's own revision; add a URL path prefix here only once software-architect fixes one and Program.cs actually serves it under that prefix.\n\nCodegen tool choice (also part of OQ-client-007, resolved here for this task rather than left blocking it, per reports/open-questions.md's \"add an entry, state the assumption, build against it\"): third-party OpenAPI-to-TypeScript generators evaluated at authoring time (openapi-typescript@7.13.0, which peer-depends on `typescript@^5.x`) hard-conflict with this repo's already-committed `typescript@^7.0.2` (web/package.json, task E01/F07/US01/T01) under npm's default strict peer resolution. Rather than force an incorrect peer resolution (`--legacy-peer-deps`/`--force`) or downgrade a previous task's already-committed TypeScript version, this contract is compiled by a small first-party generator (web/scripts/generate-api-client.mjs, zero new dependencies) that reads this JSON file and emits the `paths`/`operations` TypeScript types the same way the mainstream tools shape them. Swap in a third-party tool once one publishes TypeScript-7-compatible peer ranges; the generated *output shape* (`paths`/`operations`) is deliberately kept compatible with that ecosystem convention so the swap is mechanical.\n\nTask E06/F01/US01/T01 (typescript-client-regen) added the four operations below beyond `/health`: `POST /api/workspaces` (create), `POST /api/workspaces/{tenantId}/invites` (invite), `POST /api/documents` (upload), `GET /api/documents/{id}` (read back) -- exactly epic-06-web-foundation's own R0 scope (\"the sign-in -> workspace picker flow ... and the R0 surfaces (members & roles, document upload, document-status read-back)\"). backend/src/Contigo.Api/Program.cs now also maps many more routes added by backend epics E02-E05 (GET /api/contracts, GET/PATCH /api/contracts/{id}, GET /api/contracts/{id}/corrections, GET /api/audit, GET /api/renewals and /api/renewals/{contractId}/priority, POST /api/renewals/{id}/action, GET/PATCH /api/savings and GET /api/savings/kpis, POST /api/chat/query, POST /api/quotes and GET /api/quotes/{id}/assessment, POST /api/negotiations/outcomes) that this task deliberately did NOT add here: epic-06-web-foundation's own \"Out of scope\" list names exactly that set (\"portfolio, Contract 360, review, Ask, renewals, savings, quote check -- later web epics\"), and feature-01-typescript-client-regen's own \"Council decisions carried into this story\" calls this a \"Repeating chore\" -- whichever web epic first builds a screen against one of those endpoints should extend this file next, the same way this task extended the `/health`-only version task E01/F07/US01/T02 left behind. Nullable fields (e.g. a freshly-uploaded or not-yet-classified document's `contractId`) use OpenAPI 3.1's `type: [X, \"null\"]` union instead of a bolted-on `nullable: true` flag; web/scripts/generate-api-client.mjs gained one small, additive case for it (a `type` array renders as the equivalent TypeScript union, plus a case for `object`/`properties` -- every new response below is a flat, single-level object) -- see that script's own comments on the change.\n\nTask E07/F03/US01/T01 (field-review-correction, ADR-020 screen 6) added `PATCH /api/contracts/{id}` (`correctContract`) and `GET /api/contracts/{id}/corrections` (`getCorrectionHistory`) -- the third web epic to extend this document (task E07/F01/US01/T01 was the first, task E07/F02/US01/T01 the second; see this paragraph's own 'repeating chore' provenance note above). Both operations were already implemented by backend task E02/F05/US01/T01/T02 (us-01-correction-history) and already named in this document's own provenance paragraph's backend-routes list ('GET/PATCH /api/contracts/{id}, GET /api/contracts/{id}/corrections') as not yet documented here -- this task closes that gap, it does not add new backend behaviour. Both response/request bodies use the same plain-object/array shapes generate-api-client.mjs already supports; no generator change was needed."
   },
   "servers": [
     {
@@ -650,6 +650,110 @@
           },
           "404": {
             "description": "No such contract for this tenant (or it belongs to a different tenant -- Contract360QueryService cannot and does not distinguish the two, ADR-009)."
+          }
+        }
+      },
+      "patch": {
+        "operationId": "correctContract",
+        "summary": "Record a human correction to one or more extracted Contract fields as a new version.",
+        "description": "Maps to CorrectContractAsync in backend/src/Contigo.Api/ContractsEndpointExtensions.cs, backed by ContractCorrectionService (task E02/F05/US01/T01, us-01-correction-history AC-1). Task E07/F03/US01/T01 (field-review-correction, ADR-020 screen 6) adds this operation and the sibling GET /api/contracts/{id}/corrections below -- see this document's own provenance paragraph for why. `corrections` accepts only the field names ContractCorrectionService.CorrectableFieldNames lists (type, status, currency, startDate, endDate, effectiveDate, cancellationDeadline, annualSpend, totalContractValue, autoRenewal, renewalTermMonths, paymentTerms, governingLaw); every value is that field's own canonical wire string (dates yyyy-MM-dd, booleans 'true'/'false', decimals/integers via InvariantCulture ToString()) -- ContractCorrectionService's own field table is the single source of truth for parsing/validation, this document does not re-validate. A key present with a JSON null clears an optional field (rejected for a required one, returned as 400); a key absent from the map leaves that field untouched. At least one supplied value must actually differ from the contract's current value, or the whole request fails as 400 (no-op corrections are rejected, never silently accepted). Same interim X-Tenant-Id header placeholder as every other operation above.",
+        "parameters": [
+          { "name": "X-Tenant-Id", "in": "header", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" }, "description": "Contract.Id." }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["corrections"],
+                "properties": {
+                  "corrections": {
+                    "type": "object",
+                    "additionalProperties": { "type": ["string", "null"] },
+                    "description": "Field name (ContractCorrectionService.CorrectableFieldNames) -> new value (canonical wire string) or null (clear an optional field)."
+                  },
+                  "reason": { "type": ["string", "null"], "description": "Free-text reason, stored verbatim on every affected CorrectionHistory row and on the AuditEntry this write also produces." }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Correction recorded as a new ContractVersion; at least one field actually changed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["contractId", "versionNumber", "correctedFields", "correctedAt"],
+                  "properties": {
+                    "contractId": { "type": "string", "format": "uuid" },
+                    "versionNumber": { "type": "integer" },
+                    "correctedFields": { "type": "array", "items": { "type": "string" } },
+                    "correctedAt": { "type": "string", "format": "date-time" }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid X-Tenant-Id header, non-GUID id, empty/unknown 'corrections' key, an unparsable value for its field's type, or every supplied value already matches the contract's current value.",
+            "content": {
+              "application/json": {
+                "schema": { "type": "string" }
+              }
+            }
+          },
+          "404": {
+            "description": "No such contract for this tenant."
+          }
+        }
+      }
+    },
+    "/api/contracts/{id}/corrections": {
+      "get": {
+        "operationId": "getCorrectionHistory",
+        "summary": "Correction history for one contract, newest first.",
+        "description": "Maps to GetCorrectionHistoryAsync in backend/src/Contigo.Api/ContractsEndpointExtensions.cs, backed by ContractCorrectionHistoryQueryService (task E02/F05/US01/T02, us-01-correction-history AC-2). See the PATCH /api/contracts/{id} operation above for the sibling write path this reads back. Ordered newest-first per field (ContractCorrectionHistoryQueryService.cs's own OrderByDescending(CorrectedAt)) -- the first array entry for a given fieldName is always that field's latest correction. A contract that exists but has never been corrected returns 200 with an empty array, not 404. Same interim X-Tenant-Id header placeholder as every other operation above.",
+        "parameters": [
+          { "name": "X-Tenant-Id", "in": "header", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" }, "description": "Contract.Id." }
+        ],
+        "responses": {
+          "200": {
+            "description": "Contract found for this tenant (possibly with zero corrections).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["fieldName", "previousValue", "newValue", "correctedBy", "correctedAt", "reason"],
+                    "properties": {
+                      "fieldName": { "type": "string" },
+                      "previousValue": { "type": ["string", "null"] },
+                      "newValue": { "type": ["string", "null"] },
+                      "correctedBy": { "type": "string" },
+                      "correctedAt": { "type": "string", "format": "date-time" },
+                      "reason": { "type": ["string", "null"] }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid X-Tenant-Id header, or a non-GUID id in the route.",
+            "content": {
+              "application/json": {
+                "schema": { "type": "string" }
+              }
+            }
+          },
+          "404": {
+            "description": "No such contract for this tenant."
           }
         }
       }

@@ -650,3 +650,147 @@ describe("createApiClient().getRenewalPriority (task E07/F02/US01/T01)", () => {
     expect(result.error).toContain("network down");
   });
 });
+
+describe("createApiClient().getCorrectionHistory (task E07/F03/US01/T01)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const historyBody = [
+    {
+      fieldName: "annualSpend",
+      previousValue: "500000",
+      newValue: "520000",
+      correctedBy: "unattributed",
+      correctedAt: "2026-09-06T08:00:00Z",
+      reason: "Corrected from the signed order form.",
+    },
+  ];
+
+  it("GETs <baseUrl>/api/contracts/{id}/corrections with the X-Tenant-Id header", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(historyBody), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createApiClient("https://api.dev.contigo.example").getCorrectionHistory("tenant-1", "contract-1");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("https://api.dev.contigo.example/api/contracts/contract-1/corrections");
+    expect(init).toEqual({ headers: { "X-Tenant-Id": "tenant-1" }, cache: "no-store" });
+  });
+
+  it("reports ok:true with the newest-first history on 200 (possibly empty)", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(historyBody), { status: 200 })));
+
+    const result = await createApiClient("https://api.dev.contigo.example").getCorrectionHistory("tenant-1", "contract-1");
+
+    expect(result).toEqual({ ok: true, statusCode: 200, history: historyBody, error: null });
+  });
+
+  it("reports a named 404 without attempting to parse an empty body", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
+
+    const result = await createApiClient("https://api.dev.contigo.example").getCorrectionHistory("tenant-1", "missing-contract");
+
+    expect(result).toEqual({ ok: false, statusCode: 404, history: null, error: "No contract found for id missing-contract." });
+  });
+
+  it("resolves (does not throw) with statusCode null when the network request fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
+
+    const result = await createApiClient("https://api.dev.contigo.example").getCorrectionHistory("tenant-1", "contract-1");
+
+    expect(result.ok).toBe(false);
+    expect(result.statusCode).toBeNull();
+    expect(result.history).toBeNull();
+    expect(result.error).toContain("network down");
+  });
+});
+
+describe("createApiClient().correctContract (task E07/F03/US01/T01)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const correctionBody = {
+    contractId: "contract-1",
+    versionNumber: 2,
+    correctedFields: ["annualSpend"],
+    correctedAt: "2026-09-06T08:00:00Z",
+  };
+
+  it("PATCHes <baseUrl>/api/contracts/{id} with JSON corrections and the X-Tenant-Id header", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(correctionBody), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createApiClient("https://api.dev.contigo.example").correctContract("tenant-1", "contract-1", {
+      corrections: { annualSpend: "520000" },
+      reason: "Corrected from the signed order form.",
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("https://api.dev.contigo.example/api/contracts/contract-1");
+    expect(init).toEqual({
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "X-Tenant-Id": "tenant-1" },
+      body: JSON.stringify({ corrections: { annualSpend: "520000" }, reason: "Corrected from the signed order form." }),
+      cache: "no-store",
+    });
+  });
+
+  it("reports ok:true with the resulting version/correctedFields on 200", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(correctionBody), { status: 200 })));
+
+    const result = await createApiClient("https://api.dev.contigo.example").correctContract("tenant-1", "contract-1", {
+      corrections: { annualSpend: "520000" },
+    });
+
+    expect(result).toEqual({ ok: true, statusCode: 200, correction: correctionBody, error: null });
+  });
+
+  it("reports ok:false with the parsed JSON string error on 400 (a no-op correction, Results.BadRequest(string))", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(JSON.stringify("None of the supplied values differ from the contract's current values."), { status: 400 }),
+        ),
+    );
+
+    const result = await createApiClient("https://api.dev.contigo.example").correctContract("tenant-1", "contract-1", {
+      corrections: { annualSpend: "500000" },
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      statusCode: 400,
+      correction: null,
+      error: "None of the supplied values differ from the contract's current values.",
+    });
+  });
+
+  it("reports a named 404 without attempting to parse an empty body", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
+
+    const result = await createApiClient("https://api.dev.contigo.example").correctContract("tenant-1", "missing-contract", {
+      corrections: { annualSpend: "520000" },
+    });
+
+    expect(result).toEqual({ ok: false, statusCode: 404, correction: null, error: "No contract found for id missing-contract." });
+  });
+
+  it("resolves (does not throw) with statusCode null when the network request fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
+
+    const result = await createApiClient("https://api.dev.contigo.example").correctContract("tenant-1", "contract-1", {
+      corrections: { annualSpend: "520000" },
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.statusCode).toBeNull();
+    expect(result.correction).toBeNull();
+    expect(result.error).toContain("network down");
+  });
+});

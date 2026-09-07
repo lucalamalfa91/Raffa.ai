@@ -45,6 +45,10 @@ function mockApiClient(createWorkspace: ApiClient["createWorkspace"] = vi.fn()):
     getContract360: vi.fn(),
     getRenewals: vi.fn(),
     getRenewalPriority: vi.fn(),
+    // Task E07/F03/US01/T01 (field-review-correction): this suite never reaches the Review screen --
+    // bare vi.fn() is enough, same convention as getContract360 above.
+    getCorrectionHistory: vi.fn(),
+    correctContract: vi.fn(),
   };
 }
 
