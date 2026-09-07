@@ -24,6 +24,12 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     // Task E08/F01/US01/T01 (renewal-pipeline): this suite never reaches the Renewals screen --
     // bare vi.fn() is enough, same convention as getCorrectionHistory above.
     postRenewalAction: vi.fn(),
+    // Task E08/F03/US01/T01 (quote-check-ui): this suite never reaches the Quote Check screen --
+    // bare vi.fn() is enough, same convention as getPortfolio above.
+    uploadQuote: vi.fn(),
+    getQuoteAssessment: vi.fn(),
+    recalculateQuoteAssessment: vi.fn(),
+    captureNegotiationOutcome: vi.fn(),
     ...overrides,
   };
 }

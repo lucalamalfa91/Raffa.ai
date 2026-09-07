@@ -193,7 +193,77 @@ export interface operations {
       };
     };
   };
-}
+  uploadQuote: {
+    responses: {
+      201: {
+        content: {
+          "application/json": { id: string; fileName: string; mimeType: string; processingStatus: "Uploaded" | "Processing" | "NeedsReview" | "Completed" | "Failed"; lineItemCount: number; normalizedLineItemCount: number; unresolvedNormalizationCount: number; unmatchedSkuCount: number; supplier: string | null; currency: string | null; geography: string | null; purchaseDate: string | null; createdAt: string };
+        };
+      };
+      400: {
+        content: {
+          "application/json": string;
+        };
+      };
+    };
+  };
+  getQuoteAssessment: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { quoteId: string; lines: ({ quoteLineId: string; status: "Assessed" | "QuoteDataUnresolved" | "InsufficientBenchmarkData"; position: string | null; unitPrice: number | null; quantity: number | null; benchmark: { hasSufficientData: boolean; distribution: { p25: number; p50: number; p75: number } | null; metric: string; currency: string } | null; confidence: { level: "Low" | "Medium" | "High"; score: number; source: string; sampleSize: number | null; comparisonDimensions: (string)[]; updatedAt: string; summary: string } | null; targetSaving: { recommendedTargetLow: number | null; recommendedTargetHigh: number | null; savingsRangeLow: number | null; savingsRangeHigh: number | null; totalSavingsRangeLow: number | null; totalSavingsRangeHigh: number | null; explanation: string } | null; explanation: string })[] };
+        };
+      };
+      400: {
+        content: {
+          "application/json": string;
+        };
+      };
+      404: {
+        content: {
+          "application/json": string;
+        };
+      };
+    };
+  };
+  recalculateQuoteAssessment: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { quoteId: string; mappingsAppliedCount: number; normalization: { lineCount: number; matchedCount: number; unmatchedCount: number; notApplicableCount: number }; unmatchedLines: ({ quoteLineId: string; sku: string; normalizedSku: string; edition: string | null; description: string })[]; assessment: { quoteId: string; lines: ({ quoteLineId: string; status: "Assessed" | "QuoteDataUnresolved" | "InsufficientBenchmarkData"; position: string | null; unitPrice: number | null; quantity: number | null; benchmark: { hasSufficientData: boolean; distribution: { p25: number; p50: number; p75: number } | null; metric: string; currency: string } | null; confidence: { level: "Low" | "Medium" | "High"; score: number; source: string; sampleSize: number | null; comparisonDimensions: (string)[]; updatedAt: string; summary: string } | null; targetSaving: { recommendedTargetLow: number | null; recommendedTargetHigh: number | null; savingsRangeLow: number | null; savingsRangeHigh: number | null; totalSavingsRangeLow: number | null; totalSavingsRangeHigh: number | null; explanation: string } | null; explanation: string })[] } };
+        };
+      };
+      400: {
+        content: {
+          "application/json": string;
+        };
+      };
+      404: {
+        content: {
+          "application/json": string;
+        };
+      };
+    };
+  };
+  captureNegotiationOutcome: {
+    responses: {
+      201: {
+        content: {
+          "application/json": { id: string; quoteId: string; originalQuoteTotal: number; targetPrice: number | null; finalPrice: number; realizedSaving: number; discountPercent: number; negotiationDurationDays: number; leversUsed: ("Volume" | "Term" | "Utilization" | "Alternatives" | "QuarterEnd" | "Bundle" | "PaymentTerms")[]; capturedAt: string; savingsOpportunityId: string | null; savingsPropagated: boolean | null; savingsPropagationError: string | null };
+        };
+      };
+      400: {
+        content: {
+          "application/json": string;
+        };
+      };
+      404: {
+        content: {
+          "application/json": string;
+        };
+      };
+    };
+  };
 
 export interface paths {
   "/health": {
@@ -229,5 +299,17 @@ export interface paths {
   };
   "/api/renewals/{id}/action": {
     post: operations["postRenewalAction"];
+  };
+  "/api/quotes": {
+    post: operations["uploadQuote"];
+  };
+  "/api/quotes/{id}/assessment": {
+    get: operations["getQuoteAssessment"];
+  };
+  "/api/quotes/{id}/assessment/recalculate": {
+    post: operations["recalculateQuoteAssessment"];
+  };
+  "/api/negotiations/outcomes": {
+    post: operations["captureNegotiationOutcome"];
   };
 }

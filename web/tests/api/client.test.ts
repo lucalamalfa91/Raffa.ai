@@ -892,3 +892,299 @@ describe("createApiClient().postRenewalAction (task E08/F01/US01/T01)", () => {
     expect(result.error).toContain("network down");
   });
 });
+
+describe("createApiClient().uploadQuote (task E08/F03/US01/T01)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function quoteFile(name = "quote.pdf") {
+    return new File(["%PDF-1.4"], name, { type: "application/pdf" });
+  }
+
+  const uploadedQuote = {
+    id: "quote-1",
+    fileName: "quote.pdf",
+    mimeType: "application/pdf",
+    processingStatus: "NeedsReview",
+    lineItemCount: 3,
+    normalizedLineItemCount: 2,
+    unresolvedNormalizationCount: 1,
+    unmatchedSkuCount: 1,
+    supplier: "Databricks",
+    currency: "CHF",
+    geography: "CH",
+    purchaseDate: "2026-09-05",
+    createdAt: "2026-09-06T08:00:00Z",
+  };
+
+  it("POSTs multipart/form-data to <baseUrl>/api/quotes with the file and optional fields, plus the X-Tenant-Id header", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(uploadedQuote), { status: 201 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createApiClient("https://api.dev.contigo.example").uploadQuote("tenant-1", quoteFile(), {
+      supplier: "Databricks",
+      currency: "CHF",
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("https://api.dev.contigo.example/api/quotes");
+    expect(init.method).toBe("POST");
+    expect(init.headers).toEqual({ "X-Tenant-Id": "tenant-1" });
+    expect(init.cache).toBe("no-store");
+    const body = init.body as FormData;
+    expect(body.get("file")).toBeInstanceOf(File);
+    expect(body.get("supplier")).toBe("Databricks");
+    expect(body.get("currency")).toBe("CHF");
+    expect(body.get("geography")).toBeNull();
+  });
+
+  it("reports ok:true with the stored (and synchronously extracted) quote on 201", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(uploadedQuote), { status: 201 })));
+
+    const result = await createApiClient("https://api.dev.contigo.example").uploadQuote("tenant-1", quoteFile());
+
+    expect(result).toEqual({ ok: true, statusCode: 201, quote: uploadedQuote, error: null });
+  });
+
+  it("reports ok:false with the parsed JSON string error on 400", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify("A non-empty 'file' form field is required."), { status: 400 })));
+
+    const result = await createApiClient("https://api.dev.contigo.example").uploadQuote("tenant-1", quoteFile());
+
+    expect(result).toEqual({ ok: false, statusCode: 400, quote: null, error: "A non-empty 'file' form field is required." });
+  });
+
+  it("resolves (does not throw) with statusCode null when the network request fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
+
+    const result = await createApiClient("https://api.dev.contigo.example").uploadQuote("tenant-1", quoteFile());
+
+    expect(result.ok).toBe(false);
+    expect(result.statusCode).toBeNull();
+    expect(result.error).toContain("network down");
+  });
+});
+
+describe("createApiClient().getQuoteAssessment (task E08/F03/US01/T01)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const assessmentBody = { quoteId: "quote-1", lines: [] };
+
+  it("calls GET <baseUrl>/api/quotes/{id}/assessment with the X-Tenant-Id header", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(assessmentBody), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createApiClient("https://api.dev.contigo.example").getQuoteAssessment("tenant-1", "quote-1");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("https://api.dev.contigo.example/api/quotes/quote-1/assessment");
+    expect(init).toEqual({ headers: { "X-Tenant-Id": "tenant-1" }, cache: "no-store" });
+  });
+
+  it("reports ok:true with the assessment on 200", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(assessmentBody), { status: 200 })));
+
+    const result = await createApiClient("https://api.dev.contigo.example").getQuoteAssessment("tenant-1", "quote-1");
+
+    expect(result).toEqual({ ok: true, statusCode: 200, assessment: assessmentBody, error: null });
+  });
+
+  it("reads the real 404 response body (Results.NotFound(result.Error)), unlike getContract360's own bare, empty-body 404", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify("Quote not found."), { status: 404 })));
+
+    const result = await createApiClient("https://api.dev.contigo.example").getQuoteAssessment("tenant-1", "missing-quote");
+
+    expect(result).toEqual({ ok: false, statusCode: 404, assessment: null, error: "Quote not found." });
+  });
+
+  it("resolves (does not throw) with statusCode null when the network request fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
+
+    const result = await createApiClient("https://api.dev.contigo.example").getQuoteAssessment("tenant-1", "quote-1");
+
+    expect(result.ok).toBe(false);
+    expect(result.statusCode).toBeNull();
+    expect(result.error).toContain("network down");
+  });
+});
+
+describe("createApiClient().recalculateQuoteAssessment (task E08/F03/US01/T01)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const recalculationBody = {
+    quoteId: "quote-1",
+    mappingsAppliedCount: 1,
+    normalization: { lineCount: 3, matchedCount: 3, unmatchedCount: 0, notApplicableCount: 0 },
+    unmatchedLines: [],
+    assessment: { quoteId: "quote-1", lines: [] },
+  };
+
+  it("POSTs JSON {mappings} to <baseUrl>/api/quotes/{id}/assessment/recalculate, defaulting to an empty array", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(recalculationBody), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createApiClient("https://api.dev.contigo.example").recalculateQuoteAssessment("tenant-1", "quote-1");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("https://api.dev.contigo.example/api/quotes/quote-1/assessment/recalculate");
+    expect(init).toEqual({
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Tenant-Id": "tenant-1" },
+      body: JSON.stringify({ mappings: [] }),
+      cache: "no-store",
+    });
+  });
+
+  it("sends the supplied mappings verbatim", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(recalculationBody), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createApiClient("https://api.dev.contigo.example").recalculateQuoteAssessment("tenant-1", "quote-1", [
+      { sku: "ENT-SUP-CUSTOM", canonicalSku: "ENT-SUP-STD" },
+    ]);
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.body).toBe(JSON.stringify({ mappings: [{ sku: "ENT-SUP-CUSTOM", canonicalSku: "ENT-SUP-STD" }] }));
+  });
+
+  it("reports ok:true with the recalculation on 200", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(recalculationBody), { status: 200 })));
+
+    const result = await createApiClient("https://api.dev.contigo.example").recalculateQuoteAssessment("tenant-1", "quote-1");
+
+    expect(result).toEqual({ ok: true, statusCode: 200, recalculation: recalculationBody, error: null });
+  });
+
+  it("reads the real 404 response body (SkuMappingService.QuoteNotFoundError)", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify("Quote not found."), { status: 404 })));
+
+    const result = await createApiClient("https://api.dev.contigo.example").recalculateQuoteAssessment("tenant-1", "missing-quote");
+
+    expect(result).toEqual({ ok: false, statusCode: 404, recalculation: null, error: "Quote not found." });
+  });
+
+  it("reports ok:false with the parsed JSON string error on 400 (a blank sku/canonicalSku)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(JSON.stringify("'sku' is required for every manual product-mapping correction."), { status: 400 })),
+    );
+
+    const result = await createApiClient("https://api.dev.contigo.example").recalculateQuoteAssessment("tenant-1", "quote-1", [
+      { sku: "", canonicalSku: "x" },
+    ]);
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("'sku' is required");
+  });
+
+  it("resolves (does not throw) with statusCode null when the network request fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
+
+    const result = await createApiClient("https://api.dev.contigo.example").recalculateQuoteAssessment("tenant-1", "quote-1");
+
+    expect(result.ok).toBe(false);
+    expect(result.statusCode).toBeNull();
+    expect(result.error).toContain("network down");
+  });
+});
+
+describe("createApiClient().captureNegotiationOutcome (task E08/F03/US01/T01)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const outcomeBody = {
+    id: "outcome-1",
+    quoteId: "quote-1",
+    originalQuoteTotal: 520_000,
+    targetPrice: 420_000,
+    finalPrice: 435_000,
+    realizedSaving: 85_000,
+    discountPercent: 16.35,
+    negotiationDurationDays: 24,
+    leversUsed: ["Term", "QuarterEnd"],
+    capturedAt: "2026-09-06T08:00:00Z",
+    savingsOpportunityId: null,
+    savingsPropagated: null,
+    savingsPropagationError: null,
+  };
+
+  const request = {
+    quoteId: "quote-1",
+    originalQuoteTotal: 520_000,
+    targetPrice: 420_000,
+    finalPrice: 435_000,
+    negotiationDurationDays: 24,
+    leversUsed: ["Term", "QuarterEnd"] as const,
+  };
+
+  it("POSTs JSON to <baseUrl>/api/negotiations/outcomes with the X-Tenant-Id header", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(outcomeBody), { status: 201 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createApiClient("https://api.dev.contigo.example").captureNegotiationOutcome("tenant-1", request);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("https://api.dev.contigo.example/api/negotiations/outcomes");
+    expect(init).toEqual({
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Tenant-Id": "tenant-1" },
+      body: JSON.stringify(request),
+      cache: "no-store",
+    });
+  });
+
+  it("reports ok:true with the server-computed outcome (realizedSaving/discountPercent) on 201", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(outcomeBody), { status: 201 })));
+
+    const result = await createApiClient("https://api.dev.contigo.example").captureNegotiationOutcome("tenant-1", request);
+
+    expect(result).toEqual({ ok: true, statusCode: 201, outcome: outcomeBody, error: null });
+  });
+
+  it("reads the real 404 response body (NegotiationOutcomeService.QuoteNotFoundError)", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify("Quote not found."), { status: 404 })));
+
+    const result = await createApiClient("https://api.dev.contigo.example").captureNegotiationOutcome("tenant-1", request);
+
+    expect(result).toEqual({ ok: false, statusCode: 404, outcome: null, error: "Quote not found." });
+  });
+
+  it("reports ok:false with the parsed JSON string error on 400 (e.g. an invalid leversUsed entry)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify("'leversUsed' entries must each be one of: Volume, Term, Utilization, Alternatives, QuarterEnd, Bundle, PaymentTerms."),
+            { status: 400 },
+          ),
+        ),
+    );
+
+    const result = await createApiClient("https://api.dev.contigo.example").captureNegotiationOutcome("tenant-1", request);
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("leversUsed");
+  });
+
+  it("resolves (does not throw) with statusCode null when the network request fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
+
+    const result = await createApiClient("https://api.dev.contigo.example").captureNegotiationOutcome("tenant-1", request);
+
+    expect(result.ok).toBe(false);
+    expect(result.statusCode).toBeNull();
+    expect(result.error).toContain("network down");
+  });
+});
