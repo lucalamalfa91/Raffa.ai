@@ -1,0 +1,103 @@
+/**
+ * Portfolio screen (route `/contracts`, ADR-018; screens.md #4 "Portfolio"; task E07/F01/US01/T01,
+ * us-01-portfolio-list-filters). Component classes (.field, .input, .seg, .btn, .tag, .table,
+ * .attention-strip/.attention-cell, .row-critical, .deadline-critical, .skeleton, .empty-state,
+ * .error-state, .hint, .screen-kicker/.screen-title, .micro-meta) come from
+ * ../../styles/components.css (ADR-019 component catalogue) -- this file adds only this screen's own
+ * composites, the same division of labour documents.css/signin.css already established for this repo.
+ */
+
+.portfolio-screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+/* ---- Filter chips (AC-1: Supplier, Category, Renewal period, Spend, Status, Risk, Auto-renewal) -- */
+
+.portfolio-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+/* Native <fieldset><legend> gives the group its accessible name for free; the legend itself is
+   rendered like every other screen-kicker, not left in a browser's default fieldset chrome. */
+.portfolio-filters legend {
+  width: 100%;
+  padding: 0;
+}
+
+/* Compound selector (.field.portfolio-filter-field), not a bare .portfolio-filter-field: .field
+   (components.css) sets its own margin-bottom at equal specificity (one class) to a bare class here,
+   which would leave the override's winner dependent on stylesheet load order. The compound form is
+   unambiguously more specific, so it wins regardless of order. */
+.field.portfolio-filter-field {
+  min-width: 160px;
+  margin-bottom: 0;
+}
+
+.portfolio-filter-spend-inputs {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.portfolio-filter-spend-inputs .input {
+  width: 90px;
+}
+
+.portfolio-filters-clear {
+  margin-left: auto;
+  align-self: flex-end;
+}
+
+/* ---- Loading skeleton (AC-4) --------------------------------------------- */
+
+.portfolio-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.portfolio-skeleton-row {
+  height: 32px;
+}
+
+/* ---- Table (AC-3) --------------------------------------------------------- */
+
+.portfolio-table-wrapper {
+  overflow-x: auto;
+}
+
+.portfolio-table {
+  min-width: 1000px;
+}
+
+/* `.table th`/`.table td` (components.css) already set text-align: left at a higher specificity
+   (class + element) than a bare `.portfolio-table-numeric` class alone could win against -- these two
+   selectors match that specificity exactly so the right-alignment actually takes effect. */
+.portfolio-table th.portfolio-table-numeric,
+.portfolio-table td.portfolio-table-numeric {
+  text-align: right;
+}
+
+.portfolio-attention-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+
+/* Severity 2 (AC-2/AC-3): acknowledged but not critical -- a neutral left bar, no row tint, quoted
+   verbatim from day1-demo.html's own `bar: sev===2 ? 'var(--color-neutral-500)' : ...` /
+   `rowBg: sev===3 ? 'var(--color-accent-100)' : 'transparent'` pairing (sev 2 never gets the tint,
+   only sev 3 does -- that full treatment is the shared `.row-critical`, ADR-019 component catalogue).
+   Same inset-box-shadow mechanism as `.row-critical` so it doesn't shift column widths or fight the
+   row's own borders. Scoped to this screen's own table, not added to components.css. */
+.portfolio-table tr.row-attention {
+  box-shadow: inset 3px 0 0 var(--color-neutral-500);
+}

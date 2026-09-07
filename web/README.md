@@ -81,7 +81,8 @@ the web workflow after that apply.
 |-------|-----------|------|
 | `/signin` | Sign-in (Entra redirect, idle/redirecting states) -> workspace picker (list + create + confirm) | E06/F03/US01/T01 |
 | `/documents` | Upload dropzone (drag-and-drop + "Choose from computer" + "Use sample file") + formats/size/sources strip -> 6-stage processing pipeline (current stage pulsing) -> result card by outcome (needs_review / completed / failed); below it, a document table (Document / Type / Supplier / Status / Uploaded, rows linking to Contract 360). Calls the real `POST /api/documents` and `GET /api/documents/{id}`. See "Documents" below. | E06/F05/US01/T01, E06/F05/US02/T01 |
-| `/` (home), `/contracts`, `/contracts/:id`, `/contracts/:id/review`, `/renewals`, `/ask`, `/review`\*, `/quotes`\*, `/quotes/:id`, `/workspace/members` | App shell: 224px left rail + global Ask bar + routed content. Every route beyond `/workspace/members` renders a `ScaffoldScreen` placeholder today -- the real screens ship in later epic-07/epic-08/feature-04/05 tasks named at each route (see `src/components/shell/WorkspaceShellApp.tsx`). | E06/F03/US02/T01 |
+| `/contracts` | Portfolio: filter chips + attention strip + a table sorted by severity then deadline (critical rows tinted + a red bar), plus loading/empty/error/no-match-for-filter states. Calls the real `GET /api/contracts`. See "Portfolio" below. | E07/F01/US01/T01 |
+| `/` (home), `/contracts/:id`, `/contracts/:id/review`, `/renewals`, `/ask`, `/review`\*, `/quotes`\*, `/quotes/:id`, `/workspace/members` | App shell: 224px left rail + global Ask bar + routed content. Every route in this row still renders a `ScaffoldScreen` placeholder today -- the real screens ship in later epic-07/epic-08/feature-02/03/04 tasks named at each route (see `src/components/shell/WorkspaceShellApp.tsx`). | E06/F03/US02/T01 |
 
 \* `/review` and `/quotes` are this task's own placeholder landing paths, not
 a row in ADR-018's locked route map -- that table only ever names a *detail*
@@ -284,6 +285,57 @@ note that "screen 3 may be two: upload UI + document-status read-back":
   visible "Not yet linked to a contract" reason instead of a dead link
   (ADR-019 accessibility baseline: "a visible reason, not a hidden control").
 
+### Portfolio (ADR-020 screen 4, task E07/F01/US01/T01, us-01-portfolio-list-filters)
+
+`src/routes/contracts/` implements screen 4: AC-1 filter chips, AC-2 attention strip, AC-3
+severity/deadline sort with critical-row tinting, AC-4 loading/empty/error/no-match states. This is
+the first web epic to build a screen against a backend route from E02-E05 that `typescript-client-regen`
+deliberately left out of `openapi/contigo-api.v1.json` -- see "API client" below for what this task
+added to the contract.
+
+- **Fetch-once, filter client-side** (`index.tsx`'s own header comment has the full reasoning): the
+  screen calls `GET /api/contracts` exactly once per mount (plus once per manual Retry), for the whole
+  first page (`PortfolioPageRequest.MaxPageSize` = 100 rows), then computes every row's
+  attention/severity and applies both the seven AC-1 chips and the AC-2 attention-strip toggle entirely
+  in memory (`portfolioAttention.ts`, `portfolioFilterState.ts`) -- mirroring day1-demo.html's own
+  `allContracts.filter(...)` architecture. The attention-strip counts must reflect the whole portfolio
+  regardless of which filters are active, and the severity computation (deadline-within-45-days,
+  needs-review, ...) has no server-side query-parameter equivalent at all, so a fetch-once/filter-local
+  design avoids seven independent round trips for no accuracy gain. `apiClient.getPortfolio` still
+  accepts the endpoint's full filter/paging surface for a future task to push filtering server-side once
+  portfolios routinely exceed one page.
+- **AC-1, filter chips** (`PortfolioFilters.tsx`) -- Supplier, Category, Renewal period, Spend, Status,
+  Risk, Auto-renewal, in that order (day1-demo.html's own `filters` array). Two are honest placeholders:
+  **Category** is disabled (`PortfolioFilter.cs`'s own doc comment: no Category concept exists anywhere
+  in the schema yet -- Suppliers/Products is still an empty scaffold); **Supplier** filters by the raw
+  id `GET /api/contracts` itself returns, entered as free text, because no supplier-name-resolution
+  endpoint exists anywhere in this codebase (same gap `documents/documentStore.ts` already names for the
+  Documents table).
+- **AC-2, attention strip** (`AttentionStrip.tsx`) -- "Deadlines < 45 d", "Need review",
+  "Failed / processing", "High risk", quoted verbatim from day1-demo.html's own `attDef` array. Each
+  cell's count is always computed from the whole portfolio; clicking one narrows the table to that
+  bucket (click again to clear) via the exact same `AttentionRow` predicates the seven chips use.
+- **AC-3, sort + tint** (`portfolioAttention.ts`, `PortfolioTable.tsx`) -- severity (0-3) then soonest
+  cancellation deadline; severity 3 gets the shared `.row-critical` tint + red bar (ADR-019 component
+  catalogue), severity 2 gets a lighter, screen-scoped neutral bar (`.row-attention`, `contracts.css`) --
+  both quoted from day1-demo.html's own per-row `rowBg`/`bar` fields. Column one (`Attention`) always
+  carries a text label (ADR-019 "urgency in column one, not colour-only"), never a bare colour. Two
+  fields the compiled prototype's own mock data has but `GET /api/contracts` does not are adapted, not
+  fabricated: the prototype's `status` is a closed `'Failed' | 'Processing' | 'Needs review' | ...`
+  enum, while the real `Contract.Status` is free text (bootstrap default is the literal string
+  `processing`), so this module matches case-insensitively and treats "contains 'review'" as the
+  needs-review signal; and the domain's fourth risk tier, `RiskSeverity.Critical` (ADR-019 only defines
+  three), folds into the same "High risk" bucket/tag as `High`.
+- **AC-4, states** (`index.tsx`) -- loading (a `.skeleton`-bar placeholder), empty (zero contracts at
+  all -> a "No contracts yet" CTA linking to `/documents`), error (any non-2xx, with a 503-specific
+  plain-language message + Retry), no-match-for-filter (contracts exist but none pass the current
+  filters -> its own "Clear filters" CTA, separate from the filter panel's own always-present one).
+- **No currency anywhere**: `GET /api/contracts` (`PortfolioListItem`) carries no currency code --
+  `PortfolioEndpointExtensions.GetPortfolioAsync`'s own response projection never selects
+  `Contract.Currency` -- so "Annual spend" renders a grouped plain number, never a fabricated symbol.
+  "Contract" shows the contract's `Type` (Msa/OrderForm/...), the closest identifying field the schema
+  currently records; `Contract` itself has no title/name column yet.
+
 ## API client (ADR-012 "one generated TypeScript client, no hand-written divergent DTOs")
 
 Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
@@ -375,6 +427,24 @@ Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
   A `404` (its OpenAPI response carries no body at all, unlike the `400`s'
   JSON-string bodies) is special-cased rather than attempting to parse an
   empty body as JSON.
+- **Task E07/F01/US01/T01 (portfolio-list-filters)** extended
+  `openapi/contigo-api.v1.json` with `GET /api/contracts` (operationId
+  `getPortfolio`) -- the repeating chore `typescript-client-regen`'s own doc
+  comment named ("whichever web epic first builds a screen against one of
+  those endpoints extends the contract next"). Its 200 response's `risk`
+  field is deliberately typed as a bare nullable string, not a nullable enum:
+  `generate-api-client.mjs#renderSchemaType` checks a schema's `enum` before
+  it checks whether `type` is a nullable union, so the two combined lose the
+  `null` member -- every enum this document declared before this task was
+  non-nullable, so that combination never came up. Rather than patch the
+  generator (outside this task's own `src/routes/contracts/` scope), the
+  operation's own schema omits `enum` for that one field; `client.ts` names
+  the real four-value wire set (`Low`/`Medium`/`High`/`Critical`) as its own
+  hand-written `PortfolioRiskSeverity` alias instead, with a runtime
+  `isPortfolioRiskSeverity` guard at the one place a raw string crosses into
+  it. `client.ts`'s `getPortfolio(tenantId, query?)` mirrors the endpoint's
+  full filter/paging surface even though `src/routes/contracts/index.tsx`
+  itself only ever calls it unfiltered (see "Portfolio" above for why).
 
 ## Directory layout
 
@@ -390,7 +460,7 @@ web/
   src/
     api/
       generated/schema.ts     # AUTO-GENERATED; do not edit by hand
-      client.ts                # createApiClient(baseUrl) -> { getHealth(), createWorkspace({ name }), uploadDocument(tenantId, file), getDocument(tenantId, id) }
+      client.ts                # createApiClient(baseUrl) -> { getHealth(), createWorkspace({ name }), uploadDocument(tenantId, file), getDocument(tenantId, id), getPortfolio(tenantId, query?) }
     config/appConfig.ts       # fetch + validate runtime config
     auth/msalConfig.ts        # AppConfig -> MSAL Configuration (no secret, ever)
     styles/                   # design system (tokens + component catalogue); see below
@@ -412,6 +482,15 @@ web/
         documentTable.ts      # pure helpers: type-label mapping, status->tag reuse, "Uploaded" date formatting
         documentStore.ts      # sessionStorage-scoped TrackedDocument list -- no GET /api/documents collection endpoint exists yet
         documents.css         # this route's styles
+      contracts/            # task E07/F01/US01/T01 -- ADR-020 screen 4 (see "Portfolio" above)
+        index.tsx             # PortfolioRoute -- fetch-once-filter-client-side state machine (AC-4 states)
+        AttentionStrip.tsx    # AC-2: the four-cell strip, click = filter
+        PortfolioFilters.tsx  # AC-1: the seven filter chips
+        PortfolioTable.tsx    # AC-3: the sorted, tinted table
+        portfolioAttention.ts       # pure helpers: per-row severity/issue text, sort comparator, attention buckets
+        portfolioFilterState.ts     # pure helpers: filter state + the AND-composed row predicate
+        portfolioTableFormatters.ts # pure helpers: date/number formatting, status/risk -> tag mapping
+        contracts.css         # this route's styles
     components/
       shell/                  # task E06/F03/US02/T01 -- app shell, router, role guard (see "App shell" above)
         navItems.ts             # locked 8-item rail model + getVisibleNavItems(role) role guard (AC-1/AC-2)

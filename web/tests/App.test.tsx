@@ -39,6 +39,9 @@ function mockApiClient(result: Promise<HealthCheckResult> | HealthCheckResult): 
     // Task E06/F05/US02/T01 (document-status-readback): exercised by
     // tests/routes/documents/*.test.tsx; same plain-stub convention.
     getDocument: vi.fn(),
+    // Task E07/F01/US01/T01 (portfolio-list-filters): exercised by
+    // tests/routes/contracts/*.test.tsx; same plain-stub convention.
+    getPortfolio: vi.fn(),
   };
 }
 

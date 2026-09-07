@@ -291,6 +291,158 @@
           }
         }
       }
+    },
+    "/api/contracts": {
+      "get": {
+        "operationId": "getPortfolio",
+        "summary": "List the tenant's contract portfolio (filters + paging).",
+        "description": "Maps to GetPortfolioAsync in backend/src/Contigo.Api/PortfolioEndpointExtensions.cs (task E02/F03/US01/T01 filters; T02 paging), backed by PortfolioQueryService.GetPortfolioAsync. Task E07/F01/US01/T01 (us-01-portfolio-list-filters) adds this operation -- the first web epic to build a screen against one of the E02-E05 backend routes this document's own provenance paragraph already named as outstanding. Same interim X-Tenant-Id header placeholder as every other operation above (ADR-010 is not wired into Program.cs yet).\n\nThe 200 response's risk field is deliberately typed below as a bare nullable string, not a nullable enum, even though the real wire values are exactly Low/Medium/High/Critical or null (RiskSeverity.ToString(), or null when a contract has no recorded risk row). web/scripts/generate-api-client.mjs#renderSchemaType checks a schema's enum before it checks whether type is an array -- every enum this document declared before this task was always non-nullable, so a schema combining both never came up, and the generator silently drops the null member when they are combined. Rather than patch the generator (outside this task's own file scope -- the portfolio screen, not the codegen tool), this operation's risk schema omits enum so the generator's existing, already-correct type-array branch produces the honest string-or-null TypeScript type; src/api/client.ts names the real four-value set as its own hand-written PortfolioRiskSeverity alias, with a runtime check at the one place a raw string crosses into it.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          },
+          {
+            "name": "supplierId",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "format": "uuid" },
+            "description": "Exact-match Contract.SupplierId (a bare cross-module id -- Suppliers/Products has no name to filter by yet)."
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" },
+            "description": "Exact, case-sensitive match against Contract.Status -- a free-text field (bootstrap default is the literal string processing; otherwise whatever the metadata extraction stage last wrote), not a closed enum yet."
+          },
+          {
+            "name": "risk",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "enum": ["Low", "Medium", "High", "Critical"] },
+            "description": "The contract's highest recorded Risk.Severity."
+          },
+          {
+            "name": "autoRenewal",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "boolean" }
+          },
+          {
+            "name": "minAnnualSpend",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "number" }
+          },
+          {
+            "name": "maxAnnualSpend",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "number" }
+          },
+          {
+            "name": "renewalFrom",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "format": "date" },
+            "description": "Only ever matches an auto-renewing contract's EndDate -- PortfolioListItem.RenewalDate is null otherwise."
+          },
+          {
+            "name": "renewalTo",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "format": "date" }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer" },
+            "description": "1-based; defaults to 1."
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer" },
+            "description": "Defaults to 25; PortfolioPageRequest.MaxPageSize caps it at 100."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tenant-scoped portfolio page, newest-created-first, already risk-joined.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["items", "page", "pageSize", "totalCount"],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "contractId",
+                          "supplierId",
+                          "type",
+                          "annualSpend",
+                          "startDate",
+                          "endDate",
+                          "renewalDate",
+                          "cancellationDeadline",
+                          "autoRenewal",
+                          "status",
+                          "risk"
+                        ],
+                        "properties": {
+                          "contractId": { "type": "string", "format": "uuid" },
+                          "supplierId": { "type": ["string", "null"], "format": "uuid" },
+                          "type": {
+                            "type": "string",
+                            "enum": ["Msa", "OrderForm", "Amendment", "Sow", "RenewalLetter", "Other"]
+                          },
+                          "annualSpend": { "type": ["number", "null"] },
+                          "startDate": { "type": ["string", "null"], "format": "date" },
+                          "endDate": { "type": ["string", "null"], "format": "date" },
+                          "renewalDate": {
+                            "type": ["string", "null"],
+                            "format": "date",
+                            "description": "Equals endDate only when autoRenewal is true; otherwise null (PortfolioListItem.cs)."
+                          },
+                          "cancellationDeadline": { "type": ["string", "null"], "format": "date" },
+                          "autoRenewal": { "type": "boolean" },
+                          "status": { "type": "string" },
+                          "risk": {
+                            "type": ["string", "null"],
+                            "description": "Low, Medium, High, or Critical, or null when the contract has no recorded Risk row. Deliberately not declared as an enum here -- see this operation's own description for why."
+                          }
+                        }
+                      }
+                    },
+                    "page": { "type": "integer" },
+                    "pageSize": { "type": "integer" },
+                    "totalCount": {
+                      "type": "integer",
+                      "description": "Rows matching every filter including risk, across all pages -- not just items.length."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid X-Tenant-Id header, or a malformed filter/page query parameter (PortfolioEndpointExtensions.TryParseFilter/TryParsePage).",
+            "content": {
+              "application/json": {
+                "schema": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
     }
   }
 }

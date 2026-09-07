@@ -107,6 +107,67 @@ export interface GetDocumentResult {
   error: string | null;
 }
 
+// Task E07/F01/US01/T01 (us-01-portfolio-list-filters, epic-07-web-contract-intelligence): `getPortfolio`,
+// wrapping `GET /api/contracts` (backend/src/Contigo.Api/PortfolioEndpointExtensions.cs). This is the first
+// web epic to reach into the set of E02-E05 backend routes this file's own header comment and
+// openapi/contigo-api.v1.json's info.description both named as deliberately not yet added.
+//
+// `risk` is typed by the generated schema as a bare `string | null` (see openapi/contigo-api.v1.json's
+// `getPortfolio` operation description for exactly why -- generate-api-client.mjs#renderSchemaType drops a
+// nullable union's `null` member whenever the schema also declares `enum`, and every enum this document
+// declared before this task was non-nullable, so that combination never came up). `PortfolioRiskSeverity`
+// below names the real four-value wire set for this app's own code (filters, semantic-tag mapping) without
+// pretending the generated type already knows it; `isPortfolioRiskSeverity` is the one runtime check where a
+// raw `string | null` value actually crosses into that narrower type, so an unexpected fifth value from a
+// future backend change fails safe (treated as "unknown", never mis-tagged) instead of silently miscompiling.
+type GetPortfolioResponses = paths["/api/contracts"]["get"]["responses"];
+export type PortfolioPageBody = GetPortfolioResponses[200]["content"]["application/json"];
+export type PortfolioListItem = PortfolioPageBody["items"][number];
+export type PortfolioContractType = PortfolioListItem["type"];
+export type PortfolioRiskSeverity = "Low" | "Medium" | "High" | "Critical";
+
+const PORTFOLIO_RISK_SEVERITIES: readonly PortfolioRiskSeverity[] = ["Low", "Medium", "High", "Critical"];
+
+export function isPortfolioRiskSeverity(value: string): value is PortfolioRiskSeverity {
+  return (PORTFOLIO_RISK_SEVERITIES as readonly string[]).includes(value);
+}
+
+/**
+ * `GET /api/contracts` query parameters, named and typed 1:1 against
+ * `PortfolioEndpointExtensions.TryParseFilter`/`TryParsePage` (backend). Every member is optional --
+ * an absent one is not sent at all, matching the endpoint's own "absent = not filtered" contract
+ * (`PortfolioFilter.None`/`PortfolioPageRequest.Default`). Hand-written, like `CreateWorkspaceRequest`
+ * above: the generator does not parse an operation's `parameters` (only `responses`), and this is a
+ * flat set of primitives, not worth extending it for (see this file's own header comment).
+ */
+export interface PortfolioQueryParams {
+  supplierId?: string;
+  status?: string;
+  risk?: PortfolioRiskSeverity;
+  autoRenewal?: boolean;
+  minAnnualSpend?: number;
+  maxAnnualSpend?: number;
+  /** `yyyy-MM-dd`, matching the backend's `DateOnly` parameter. */
+  renewalFrom?: string;
+  /** `yyyy-MM-dd`, matching the backend's `DateOnly` parameter. */
+  renewalTo?: string;
+  /** 1-based; omit for page 1. */
+  page?: number;
+  /** Omit for the backend's own default (25); `PortfolioPageRequest.MaxPageSize` caps it at 100. */
+  pageSize?: number;
+}
+
+export interface GetPortfolioResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** The requested page (`items` + paging metadata), present only when `ok` is true. */
+  portfolio: PortfolioPageBody | null;
+  /** Plain-language failure reason (400 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
 export interface ApiClient {
   /**
    * Calls `GET /health` (operationId `getHealth` in
@@ -156,6 +217,17 @@ export interface ApiClient {
    * not an exception.
    */
   getDocument(tenantId: string, id: string): Promise<GetDocumentResult>;
+  /**
+   * Calls `GET /api/contracts` (operationId `getPortfolio`) -- the portfolio list behind
+   * `src/routes/contracts/` (AC-1 filters, AC-2 attention strip, AC-3 sort/tint, AC-4 states). Same
+   * never-throws shape as every other call here: a `400` (malformed filter/page query parameter) is a
+   * normal, expected outcome the caller renders inline, not an exception. `query` is optional and, when
+   * omitted, fetches the tenant's whole first page unfiltered -- `src/routes/contracts/index.tsx` always
+   * calls it that way and does every filter/attention-bucket computation client-side (see that file's own
+   * header comment for why), but the full query surface is still wired here so this wrapper stays an
+   * honest, complete mirror of the real endpoint rather than a screen-shaped subset of it.
+   */
+  getPortfolio(tenantId: string, query?: PortfolioQueryParams): Promise<GetPortfolioResult>;
 }
 
 /**
@@ -303,6 +375,53 @@ export function createApiClient(baseUrl: string): ApiClient {
       }
 
       return { ok: false, statusCode: response.status, document: null, error };
+    },
+
+    async getPortfolio(tenantId, query = {}) {
+      const url = new URL("/api/contracts", baseUrl);
+      // Only ever sets a key when the caller actually supplied it -- an absent query parameter must
+      // reach the backend as "not present at all", not as an empty string, to match
+      // PortfolioEndpointExtensions' own "absent = not filtered" parsing.
+      if (query.supplierId !== undefined) url.searchParams.set("supplierId", query.supplierId);
+      if (query.status !== undefined) url.searchParams.set("status", query.status);
+      if (query.risk !== undefined) url.searchParams.set("risk", query.risk);
+      if (query.autoRenewal !== undefined) url.searchParams.set("autoRenewal", String(query.autoRenewal));
+      if (query.minAnnualSpend !== undefined) url.searchParams.set("minAnnualSpend", String(query.minAnnualSpend));
+      if (query.maxAnnualSpend !== undefined) url.searchParams.set("maxAnnualSpend", String(query.maxAnnualSpend));
+      if (query.renewalFrom !== undefined) url.searchParams.set("renewalFrom", query.renewalFrom);
+      if (query.renewalTo !== undefined) url.searchParams.set("renewalTo", query.renewalTo);
+      if (query.page !== undefined) url.searchParams.set("page", String(query.page));
+      if (query.pageSize !== undefined) url.searchParams.set("pageSize", String(query.pageSize));
+
+      let response: Response;
+      try {
+        response = await fetch(url, { headers: { "X-Tenant-Id": tenantId }, cache: "no-store" });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          portfolio: null,
+          error: `Unable to reach ${baseUrl}/api/contracts. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const portfolio = (await response.json()) as PortfolioPageBody;
+        return { ok: true, statusCode: 200, portfolio, error: null };
+      }
+
+      // Same Results.BadRequest(string) shape as the other calls' 400s above (also covers a 503 from a
+      // proxy/gateway in front of the API, which never ran this handler at all -- AC-4's "error 503 +
+      // retry" state renders whatever plain-language error lands here rather than assuming this shape).
+      let error: string;
+      try {
+        const errorBody: unknown = await response.json();
+        error = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, portfolio: null, error };
     },
   };
 }

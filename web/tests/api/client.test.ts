@@ -310,3 +310,120 @@ describe("createApiClient().getDocument (task E06/F05/US02/T01)", () => {
     expect(result.error).toContain("network down");
   });
 });
+
+describe("createApiClient().getPortfolio (task E07/F01/US01/T01)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const portfolioPage = {
+    items: [
+      {
+        contractId: "contract-1",
+        supplierId: "supplier-1",
+        type: "Msa",
+        annualSpend: 120000,
+        startDate: "2025-01-01",
+        endDate: "2026-01-01",
+        renewalDate: "2026-01-01",
+        cancellationDeadline: "2025-11-01",
+        autoRenewal: true,
+        status: "active",
+        risk: "High",
+      },
+    ],
+    page: 1,
+    pageSize: 25,
+    totalCount: 1,
+  };
+
+  it("GETs <baseUrl>/api/contracts with the X-Tenant-Id header, no query parameters, when called with no query", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(portfolioPage), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createApiClient("https://api.dev.contigo.example").getPortfolio("tenant-1");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("https://api.dev.contigo.example/api/contracts");
+    expect(init).toEqual({ headers: { "X-Tenant-Id": "tenant-1" }, cache: "no-store" });
+  });
+
+  it("serializes every supplied filter/page field as a query parameter, and omits anything not supplied", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(portfolioPage), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createApiClient("https://api.dev.contigo.example").getPortfolio("tenant-1", {
+      supplierId: "supplier-1",
+      status: "active",
+      risk: "High",
+      autoRenewal: true,
+      minAnnualSpend: 1000,
+      maxAnnualSpend: 500000,
+      renewalFrom: "2026-01-01",
+      renewalTo: "2026-04-30",
+      page: 2,
+      pageSize: 50,
+    });
+
+    const [url] = fetchMock.mock.calls[0];
+    const params = new URL(String(url)).searchParams;
+    expect(params.get("supplierId")).toBe("supplier-1");
+    expect(params.get("status")).toBe("active");
+    expect(params.get("risk")).toBe("High");
+    expect(params.get("autoRenewal")).toBe("true");
+    expect(params.get("minAnnualSpend")).toBe("1000");
+    expect(params.get("maxAnnualSpend")).toBe("500000");
+    expect(params.get("renewalFrom")).toBe("2026-01-01");
+    expect(params.get("renewalTo")).toBe("2026-04-30");
+    expect(params.get("page")).toBe("2");
+    expect(params.get("pageSize")).toBe("50");
+  });
+
+  it("reports ok:true with the portfolio page on 200", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(portfolioPage), { status: 200 })));
+
+    const result = await createApiClient("https://api.dev.contigo.example").getPortfolio("tenant-1");
+
+    expect(result).toEqual({ ok: true, statusCode: 200, portfolio: portfolioPage, error: null });
+  });
+
+  it("reports ok:false with the parsed JSON string error on 400 (malformed filter/page parameter)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(JSON.stringify("'risk' must be one of Low, Medium, High, Critical."), { status: 400 })),
+    );
+
+    const result = await createApiClient("https://api.dev.contigo.example").getPortfolio("tenant-1");
+
+    expect(result).toEqual({
+      ok: false,
+      statusCode: 400,
+      portfolio: null,
+      error: "'risk' must be one of Low, Medium, High, Critical.",
+    });
+  });
+
+  it("reports ok:false with a status-based message on a 503 (AC-4 error state), without throwing", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("Service Unavailable", { status: 503, statusText: "Service Unavailable" })));
+
+    const result = await createApiClient("https://api.dev.contigo.example").getPortfolio("tenant-1");
+
+    expect(result.ok).toBe(false);
+    expect(result.statusCode).toBe(503);
+    expect(result.portfolio).toBeNull();
+    expect(result.error).toContain("503");
+  });
+
+  it("resolves (does not throw) with statusCode null when the network request fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
+
+    const result = await createApiClient("https://api.dev.contigo.example").getPortfolio("tenant-1");
+
+    expect(result.ok).toBe(false);
+    expect(result.statusCode).toBeNull();
+    expect(result.portfolio).toBeNull();
+    expect(result.error).toContain("https://api.dev.contigo.example/api/contracts");
+    expect(result.error).toContain("network down");
+  });
+});

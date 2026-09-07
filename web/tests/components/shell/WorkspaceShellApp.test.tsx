@@ -10,8 +10,24 @@ import type { ApiClient } from "../../../src/api/client";
 // which needs an ApiClient -- this suite only proves routing/guards (see
 // tests/routes/documents/*.test.tsx for that screen's own coverage), so a
 // plain stub is enough here, the same convention tests/App.test.tsx uses.
+//
+// getPortfolio defaults to a *resolved* empty page, not a bare vi.fn(): unlike
+// uploadDocument/getDocument (only ever called from inside a user action this
+// suite never triggers), task E07/F01/US01/T01's PortfolioRoute calls
+// getPortfolio unconditionally on mount, so an unconfigured vi.fn() (which
+// returns undefined, not a Promise) would throw the moment that route's own
+// effect calls .then() on it -- see tests/routes/contracts/*.test.tsx for
+// that screen's own fetch-outcome coverage.
 function mockApiClient(): ApiClient {
-  return { getHealth: vi.fn(), createWorkspace: vi.fn(), uploadDocument: vi.fn(), getDocument: vi.fn() };
+  return {
+    getHealth: vi.fn(),
+    createWorkspace: vi.fn(),
+    uploadDocument: vi.fn(),
+    getDocument: vi.fn(),
+    getPortfolio: vi
+      .fn()
+      .mockResolvedValue({ ok: true, statusCode: 200, portfolio: { items: [], page: 1, pageSize: 100, totalCount: 0 }, error: null }),
+  };
 }
 
 function renderShell(role: WorkspaceRole, initialPath = "/") {
@@ -41,6 +57,15 @@ describe("ShellRoutes", () => {
   });
 
   it("renders the global Ask bar on a routed screen (AC-3, every app screen)", () => {
+    // Task E07/F01/US01/T01 (portfolio-list-filters) replaced /contracts' ScaffoldScreen with the real
+    // PortfolioRoute, which -- like DocumentsRoute below -- reads the current workspace directly and
+    // guards on it being set, so this generic cross-screen assertion needs one current, same as the
+    // dedicated /documents test further down.
+    window.sessionStorage.setItem(
+      "contigo.signin.currentWorkspace",
+      JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
+    );
+
     renderShell("admin", "/contracts");
 
     expect(screen.getByRole("heading", { name: "Portfolio" })).toBeInTheDocument();
@@ -77,5 +102,17 @@ describe("ShellRoutes", () => {
     expect(screen.getByRole("heading", { name: "Documents" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /choose from computer/i })).toBeInTheDocument();
     expect(screen.queryByText(/ships in epic-06\/feature-05-document-upload-ui/i)).not.toBeInTheDocument();
+  });
+
+  it("renders the real Portfolio screen instead of a scaffold placeholder (task E07/F01/US01/T01)", () => {
+    window.sessionStorage.setItem(
+      "contigo.signin.currentWorkspace",
+      JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
+    );
+
+    renderShell("admin", "/contracts");
+
+    expect(screen.getByRole("heading", { name: "Portfolio" })).toBeInTheDocument();
+    expect(screen.queryByText(/ships in epic-07\/feature-01-portfolio-ui/i)).not.toBeInTheDocument();
   });
 });

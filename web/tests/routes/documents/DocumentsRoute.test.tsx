@@ -24,7 +24,7 @@ function mockApiClient(
     .fn()
     .mockResolvedValue({ ok: false, statusCode: 404, document: null, error: "No document found." }),
 ): ApiClient {
-  return { getHealth: vi.fn(), createWorkspace: vi.fn(), uploadDocument, getDocument };
+  return { getHealth: vi.fn(), createWorkspace: vi.fn(), uploadDocument, getDocument, getPortfolio: vi.fn() };
 }
 
 function uploaded(overrides: Partial<UploadedDocument> = {}): UploadedDocument {

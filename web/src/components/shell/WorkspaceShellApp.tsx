@@ -5,6 +5,7 @@ import ScaffoldScreen from "./ScaffoldScreen";
 import type { WorkspaceRole } from "./navItems";
 import type { ApiClient } from "../../api/client";
 import DocumentsRoute from "../../routes/documents";
+import PortfolioRoute from "../../routes/contracts";
 
 export interface WorkspaceShellAppProps {
   workspaceName: string;
@@ -53,16 +54,7 @@ export function ShellRoutes({ workspaceName, role, userLabel, onSignOut, apiClie
             />
           }
         />
-        <Route
-          path="contracts"
-          element={
-            <ScaffoldScreen
-              title="Portfolio"
-              release="R1"
-              note="Portfolio table + filters ship in epic-07/feature-01-portfolio-ui."
-            />
-          }
-        />
+        <Route path="contracts" element={<PortfolioRoute apiClient={apiClient} />} />
         <Route
           path="contracts/:contractId"
           element={

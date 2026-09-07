@@ -79,6 +79,20 @@ export interface operations {
       };
     };
   };
+  getPortfolio: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { items: { contractId: string; supplierId: string | null; type: "Msa" | "OrderForm" | "Amendment" | "Sow" | "RenewalLetter" | "Other"; annualSpend: number | null; startDate: string | null; endDate: string | null; renewalDate: string | null; cancellationDeadline: string | null; autoRenewal: boolean; status: string; risk: string | null }[]; page: number; pageSize: number; totalCount: number };
+        };
+      };
+      400: {
+        content: {
+          "application/json": string;
+        };
+      };
+    };
+  };
 }
 
 export interface paths {
@@ -96,5 +110,8 @@ export interface paths {
   };
   "/api/documents/{id}": {
     get: operations["getDocument"];
+  };
+  "/api/contracts": {
+    get: operations["getPortfolio"];
   };
 }
