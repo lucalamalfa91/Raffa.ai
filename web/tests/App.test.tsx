@@ -211,6 +211,24 @@ describe("App", () => {
       expect(apiClient.getHealth).toHaveBeenCalledTimes(1);
     });
 
+    it("keeps the status out of the visible canvas via CSS clip, not display:none, so its data-testid stays in the a11y tree (AC-1/AC-3, task E11/F01/US01/T01)", async () => {
+      render(<App appConfig={appConfig} apiClient={healthyClient()} />);
+
+      // vite.config.ts sets `test.css: false` (tests/styles/layout.test.ts's
+      // own header comment) -- there is no real cascade under jsdom here, so
+      // `toBeVisible()` cannot observe a clip-based hide (it only checks
+      // display/visibility/opacity/the hidden attribute, none of which this
+      // technique touches). Asserting the utility class -- the same
+      // convention this file already uses for "signin-screen"/"shell-main"
+      // above -- is this suite's proof of the DoD's "CSS clip" branch;
+      // base.css's own `.visually-hidden` rule is what actually implements
+      // it, and the node still resolving by testid/text below is the proof
+      // it never went through `display:none`.
+      const status = await screen.findByTestId("api-health-status");
+      expect(status).toHaveClass("visually-hidden");
+      expect(status).toHaveTextContent("API: reachable (Healthy)");
+    });
+
     it("renders the reachable status once the health check resolves ok", async () => {
       render(<App appConfig={appConfig} apiClient={healthyClient()} />);
 

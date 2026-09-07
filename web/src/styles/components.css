@@ -102,6 +102,17 @@
   width: 100%;
 }
 
+/* The prototype's sign-in CTA (`.btn.btn-primary.btn-block` in the compiled
+   export, `inputs/design/prototypes/day1-demo.html`) sets `padding: 12px
+   14px` inline, overriding the shared `.btn` padding above (8px/16px, the
+   --space-2/--space-4 tokens) for this one combination. Scoped to
+   `.btn-primary.btn-block` specifically (AC-2 "primary block buttons") --
+   a plain `.btn-block` secondary/ghost action, or a non-block
+   `.btn-primary`, keeps the shared padding. Task E11/F01/US01/T01, ADR-019. */
+.btn-primary.btn-block {
+  padding: 12px 14px;
+}
+
 /* =========================================================================
  * .tag — neutral / accent / outline (drives the confidence/status/risk
  * semantic mapping; see src/styles/semantics.ts for the label/variant pairs)

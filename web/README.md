@@ -756,6 +756,12 @@ Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
   `/health` via the API client succeeds": every load of the deployed bundle
   performs that check). `src/routes/signin/WorkspacePickerScreen.tsx` calls
   `createWorkspace()` (see "Screens" above).
+  **Task E11/F01/US01/T01** took the rendered `API: ...` line off the visual
+  canvas (the compiled prototype has no such line) via `.visually-hidden`
+  (`src/styles/base.css`) -- a clip-based technique, not `display:none`, so
+  the probe keeps running every mount and `data-testid="api-health-status"`
+  stays resolvable in the accessibility tree for tests. See "Design system"
+  below for the sheet, and `tests/App.test.tsx` for the coverage.
 - **Task E06/F01/US01/T01 (typescript-client-regen)** caught the contract up
   to backend epics E02-E05: `openapi/contigo-api.v1.json` gained
   `POST /api/workspaces` (create), `POST /api/workspaces/{tenantId}/invites`
@@ -990,6 +996,18 @@ accent-coloured *text on the page ground* (`--color-accent-700`) but does not
 separately pin a floor for light text on a filled accent surface -- flagged
 in a comment on `.btn-primary` in `styles/components.css` rather than
 silently shipped or "fixed" by forking the locked accent value.
+
+**Task E11/F01/US01/T01** (chrome-foundation, AC-2) added
+`.btn-primary.btn-block { padding: 12px 14px; }`, matching the inline
+override the compiled prototype's own sign-in CTA carries in
+`day1-demo.html` (`.btn.btn-primary.btn-block`) -- narrower than the shared
+`.btn` padding (8px/16px, `--space-2`/`--space-4`) above. Scoped to that one
+class combination: a plain `.btn-block` secondary/ghost action, or a
+non-block `.btn-primary`, is unaffected. It also added `.visually-hidden`
+(`styles/base.css`) -- a clip-based utility, not `display:none`, first
+consumed by `App.tsx`'s always-on `/health` probe status (see "API client"
+above) so it keeps running and stays in the accessibility tree without
+painting the prototype's absent `API: ...` line onto the canvas.
 
 ## End-to-end (Day-1 browser walk) -- task E08/F04/US01/T01, us-01-final-integration
 

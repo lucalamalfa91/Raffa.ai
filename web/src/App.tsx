@@ -72,8 +72,15 @@ export default function App({ appConfig, apiClient }: AppProps) {
     };
   }, [apiClient]);
 
+  // Task E11/F01/US01/T01 (hide-health-lock-chrome; ADR-019, gap G-HEALTH):
+  // the compiled prototype's canvas has no "API:" line. The probe stays wired
+  // exactly as task E01/F07/US01/T02 left it (still runs on every mount,
+  // still exposes data-testid for tests) -- only the paint moves, via the
+  // `.visually-hidden` clip technique (base.css), not `display:none`, so the
+  // node stays in the accessibility tree and this testid still resolves
+  // (AC-1, AC-3).
   const healthStatus = (
-    <p data-testid="api-health-status">
+    <p className="visually-hidden" data-testid="api-health-status">
       {health.phase === "checking" && "API: checking…"}
       {health.phase === "ok" && `API: reachable (${health.body})`}
       {health.phase === "unreachable" &&
