@@ -71,12 +71,27 @@
   margin-bottom: 16px;
 }
 
+/* Task E11/F04/US01/T01 (gap G-DOC, reviewer loop): the export's title style
+   is `margin:auto 0 8px;...;padding-top:24px` (day1-demo.html) inside a flex
+   column that -- as of this same task -- also carries `min-height: 300px`
+   with no `justify-content` (so the initial `flex-start`). Without the
+   `auto`, flex-start packs icon+title+subtitle+buttons at the top and lets
+   any leftover box height collect as dead space below the buttons instead.
+   `margin-top: auto` is the one part of that export value this file hadn't
+   ported: with exactly one auto margin on the main axis, flexbox assigns it
+   100% of the box's leftover space, so the icon stays pinned at the top and
+   the title/subtitle/buttons group is pinned to the bottom, matching the
+   export. The other two components of that same export value are already
+   covered elsewhere, not duplicated here: the trailing `8px` is this
+   column's own `gap: var(--space-2)` (title -> subtitle, the next sibling),
+   and `padding-top: 24px` is the icon-to-title figure the
+   `.upload-dropzone-icon` comment above already accounts for. */
 .upload-dropzone-title {
   font-family: var(--font-heading);
   font-weight: var(--weight-heading);
   font-size: 22px;
   line-height: 1.1;
-  margin: 0;
+  margin: auto 0 0;
 }
 
 .upload-dropzone-file-input {

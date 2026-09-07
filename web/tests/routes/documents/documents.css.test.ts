@@ -55,6 +55,11 @@ describe("documents.css (E11/F04/US01/T01 -- 1:1 grid/dropzone/pipeline/result-c
     expect(body).toMatch(/line-height:\s*1\.1/);
   });
 
+  it("dropzone title keeps its auto top-margin, so the 300px min-height box pins icon top / title+subtitle+buttons bottom instead of leaving dead space below the buttons", () => {
+    const body = ruleBodyFor(css, ".upload-dropzone-title");
+    expect(body).toMatch(/margin:\s*auto 0 0/);
+  });
+
   it("formats/size/sources strip is offset 20px from the buttons row above it", () => {
     const body = ruleBodyFor(css, ".upload-strip");
     expect(body).toMatch(/margin-top:\s*20px/);
