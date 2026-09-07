@@ -26,6 +26,11 @@ const REASON_INPUT_ID = "review-correction-reason";
  * unexposed). What this pane *can* show for real is the field's own correction history -- the
  * genuine "version" trail `GET /api/contracts/{id}/corrections` already provides -- which doubles
  * as this AC's "version" element with real data instead of an invented one.
+ *
+ * Task E11/F07/US01/T01 (gap G-REV): the "Source" note now sits inside `.review-evidence-passage`
+ * (`./review.css`), the export's own white/serif/bordered "highlighted passage" card copied
+ * verbatim -- container only, never the fabricated document name/page/quote the export's own mock
+ * data shows for its one hardcoded example.
  */
 export default function EvidencePane({ row, onCorrect, submitting, error }: EvidencePaneProps) {
   const [draftValue, setDraftValue] = useState("");
@@ -61,7 +66,9 @@ export default function EvidencePane({ row, onCorrect, submitting, error }: Evid
     <aside className="detail-pane review-evidence-pane">
       <h6>{row.label}</h6>
       <p className="micro-meta">Extracted value: {row.displayValue}</p>
-      <p className="micro-meta">Source: not yet available for this field (open backend gap -- see reviewViewModel.ts).</p>
+      <div className="review-evidence-passage">
+        <p className="micro-meta">Source passage not yet available for this field (open backend gap -- see reviewViewModel.ts).</p>
+      </div>
 
       <form onSubmit={handleSubmit} className="review-correction-form">
         <div className="field">

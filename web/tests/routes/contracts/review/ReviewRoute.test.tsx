@@ -184,7 +184,7 @@ describe("ReviewRoute", () => {
 
     resolveFetch(ok(minimalContract()));
 
-    expect(await screen.findByText("Review & correction")).toBeInTheDocument();
+    expect(await screen.findByText("Review extraction")).toBeInTheDocument();
     expect(container.querySelector(".review-skeleton")).not.toBeInTheDocument();
   });
 
@@ -193,7 +193,7 @@ describe("ReviewRoute", () => {
     const getCorrectionHistory = vi.fn().mockResolvedValue(historyOk([]));
     renderReview(mockApiClient({ getContract360, getCorrectionHistory }));
 
-    await screen.findByText("Review & correction");
+    await screen.findByText("Review extraction");
 
     expect(getContract360).toHaveBeenCalledWith(WORKSPACE_ID, CONTRACT_ID);
     expect(getCorrectionHistory).toHaveBeenCalledWith(WORKSPACE_ID, CONTRACT_ID);
@@ -217,14 +217,14 @@ describe("ReviewRoute", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /retry/i }));
 
-    expect(await screen.findByText("Review & correction")).toBeInTheDocument();
+    expect(await screen.findByText("Review extraction")).toBeInTheDocument();
     expect(getContract360).toHaveBeenCalledTimes(2);
   });
 
   describe("once populated (AC-1/AC-2)", () => {
     it("renders the 4 column headers and one row per correctable field that has a value", async () => {
       renderReview(mockApiClient({ getContract360: vi.fn().mockResolvedValue(ok(fullContract())) }));
-      await screen.findByText("Review & correction");
+      await screen.findByText("Review extraction");
 
       const headerRow = screen.getAllByRole("columnheader").map((cell) => cell.textContent);
       expect(headerRow).toEqual(["Field", "Extracted value", "Confidence", "Decision"]);
@@ -238,7 +238,7 @@ describe("ReviewRoute", () => {
 
     it("does not render a row for a correctable field that was never extracted (null on the contract)", async () => {
       renderReview(mockApiClient({ getContract360: vi.fn().mockResolvedValue(ok(minimalContract())) }));
-      await screen.findByText("Review & correction");
+      await screen.findByText("Review extraction");
 
       // minimalContract() leaves governingLaw/paymentTerms/dates/spend null -- absent, never a "—" row.
       expect(screen.queryByRole("button", { name: "Governing law" })).toBeNull();
@@ -252,10 +252,14 @@ describe("ReviewRoute", () => {
 
     it("shows an honest 'Needs review' tag for a pending field, never a fabricated confidence percentage", async () => {
       renderReview(mockApiClient({ getContract360: vi.fn().mockResolvedValue(ok(minimalContract())) }));
-      await screen.findByText("Review & correction");
+      await screen.findByText("Review extraction");
 
       expect(screen.getAllByText("Needs review").length).toBeGreaterThan(0);
-      expect(screen.queryByText(/%/)).toBeNull();
+      // Scoped to the field table, not the whole screen: task E11/F07/US01/T01's header legend
+      // legitimately shows the static >95%/80-95%/<80% thresholds (design-system.md's own semantic
+      // mapping, not a per-field score) right next to the progress line -- this assertion's real
+      // intent is that no *row* ever shows a fabricated per-field percentage.
+      expect(within(screen.getByRole("table")).queryByText(/%/)).toBeNull();
     });
 
     it("shows 'Corrected → <value>' for a field with real correction history, and does not count it as blocking", async () => {
@@ -267,7 +271,7 @@ describe("ReviewRoute", () => {
           getCorrectionHistory: vi.fn().mockResolvedValue(historyOk([correctionEntry()])),
         }),
       );
-      await screen.findByText("Review & correction");
+      await screen.findByText("Review extraction");
 
       expect(screen.getByText("Corrected → 500000")).toBeInTheDocument();
       expect(screen.getAllByText("Corrected").length).toBeGreaterThan(0);
@@ -277,7 +281,7 @@ describe("ReviewRoute", () => {
   describe("AC-4: gated 'Mark as validated'", () => {
     it("is disabled with a visible reason while any field is pending", async () => {
       renderReview(mockApiClient({ getContract360: vi.fn().mockResolvedValue(ok(minimalContract())) }));
-      await screen.findByText("Review & correction");
+      await screen.findByText("Review extraction");
 
       const cta = screen.getByRole("button", { name: /mark as validated/i });
       expect(cta).toBeDisabled();
@@ -286,7 +290,7 @@ describe("ReviewRoute", () => {
 
     it("becomes enabled once every field is Accepted, and navigates to Contract 360 on click", async () => {
       renderReview(mockApiClient({ getContract360: vi.fn().mockResolvedValue(ok(minimalContract())) }));
-      await screen.findByText("Review & correction");
+      await screen.findByText("Review extraction");
 
       for (const button of screen.getAllByRole("button", { name: "Accept" })) {
         fireEvent.click(button);
@@ -308,7 +312,7 @@ describe("ReviewRoute", () => {
             .mockResolvedValue(historyOk([correctionEntry({ fieldName: "type", previousValue: "Sow", newValue: "Msa" })])),
         }),
       );
-      await screen.findByText("Review & correction");
+      await screen.findByText("Review extraction");
 
       // 3 of the 4 fields (status/currency/autoRenewal) are still pending -- the 4th (type) is
       // resolved by real history, so accepting only those three should unblock the gate.
@@ -323,7 +327,7 @@ describe("ReviewRoute", () => {
   describe("AC-3: evidence pane + correction form", () => {
     it("selecting a field opens the evidence pane pre-filled with its current value", async () => {
       renderReview(mockApiClient({ getContract360: vi.fn().mockResolvedValue(ok(fullContract())) }));
-      await screen.findByText("Review & correction");
+      await screen.findByText("Review extraction");
 
       fireEvent.click(screen.getByRole("button", { name: "Payment terms" }));
 
@@ -343,7 +347,7 @@ describe("ReviewRoute", () => {
       const getContract360 = vi.fn().mockResolvedValue(ok(fullContract()));
 
       renderReview(mockApiClient({ getContract360, correctContract }));
-      await screen.findByText("Review & correction");
+      await screen.findByText("Review extraction");
 
       fireEvent.click(screen.getByRole("button", { name: "Payment terms" }));
       fireEvent.change(await screen.findByLabelText("Correct value"), { target: { value: "Net 60" } });
@@ -371,7 +375,7 @@ describe("ReviewRoute", () => {
         error: "None of the supplied values differ from the contract's current values.",
       });
       renderReview(mockApiClient({ getContract360: vi.fn().mockResolvedValue(ok(fullContract())), correctContract }));
-      await screen.findByText("Review & correction");
+      await screen.findByText("Review extraction");
 
       fireEvent.click(screen.getByRole("button", { name: "Payment terms" }));
       fireEvent.click(screen.getByRole("button", { name: /save correction/i }));
@@ -382,12 +386,45 @@ describe("ReviewRoute", () => {
 
     it("Accept requires no form -- it is a direct, one-click decision from the list", async () => {
       renderReview(mockApiClient({ getContract360: vi.fn().mockResolvedValue(ok(minimalContract())) }));
-      await screen.findByText("Review & correction");
+      await screen.findByText("Review extraction");
 
       const acceptButtons = within(screen.getByRole("table")).getAllByRole("button", { name: "Accept" });
       fireEvent.click(acceptButtons[0]);
 
       expect(screen.getAllByText("Accepted by you").length).toBeGreaterThan(0);
+    });
+  });
+
+  describe("Visual fidelity (E11/F07/US01/T01, gap G-REV)", () => {
+    it("shows the confidence legend next to the progress line, copied verbatim from the export", async () => {
+      renderReview(mockApiClient({ getContract360: vi.fn().mockResolvedValue(ok(minimalContract())) }));
+      await screen.findByText("Review extraction");
+
+      expect(screen.getByText("auto-accepted")).toBeInTheDocument();
+      expect(screen.getByText("flagged")).toBeInTheDocument();
+      expect(screen.getByText("review required")).toBeInTheDocument();
+    });
+
+    it("shows a one-line header summary built from the real supplier id and contract type, never fabricated", async () => {
+      const withSupplier = fullContract({
+        header: { ...fullContract().header, supplierId: "33333333-3333-3333-3333-333333333333" },
+      });
+      renderReview(mockApiClient({ getContract360: vi.fn().mockResolvedValue(ok(withSupplier)) }));
+
+      // formatSupplier/getContractTypeLabel -- the same honest substitutes
+      // ../contract360/Contract360Header.tsx already uses for this identical gap (no supplier-name or
+      // filename field on `Contract`), not the export's own hardcoded demo string.
+      expect(await screen.findByText("Supplier 33333333 · MSA")).toBeInTheDocument();
+    });
+
+    it("wraps the evidence pane's honest 'not yet available' note in the highlighted-passage card", async () => {
+      const { container } = renderReview(mockApiClient({ getContract360: vi.fn().mockResolvedValue(ok(fullContract())) }));
+      await screen.findByText("Review extraction");
+
+      fireEvent.click(screen.getByRole("button", { name: "Payment terms" }));
+
+      expect(await screen.findByText(/source passage not yet available/i)).toBeInTheDocument();
+      expect(container.querySelector(".review-evidence-passage")).toBeInTheDocument();
     });
   });
 });
