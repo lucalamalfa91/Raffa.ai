@@ -27,6 +27,20 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     getCorrectionHistory: vi.fn(),
     correctContract: vi.fn(),
     postRenewalAction: vi.fn(),
+    // Task E08/F03/US01/T01 (quote-check-ui) / E07/F04/US01/T01 (ask-contigo-ui): this suite never
+    // reaches the Quote Check or Ask Contigo screens -- bare vi.fn() is enough, same convention as
+    // getCorrectionHistory above. (Pre-existing gap in this file's own mock literal, backfilled here
+    // while task E08/F02/US01/T01 was already touching this exact object for its own two additions
+    // below.)
+    uploadQuote: vi.fn(),
+    getQuoteAssessment: vi.fn(),
+    recalculateQuoteAssessment: vi.fn(),
+    captureNegotiationOutcome: vi.fn(),
+    askContigo: vi.fn(),
+    // Task E08/F02/US01/T01 (savings-home): this suite never reaches Home's own fetch-outcome
+    // matrix -- bare vi.fn() is enough, same convention as getCorrectionHistory above.
+    getSavingsKpis: vi.fn(),
+    getSavingsOpportunities: vi.fn(),
     ...overrides,
   };
 }

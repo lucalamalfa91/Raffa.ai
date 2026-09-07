@@ -3,7 +3,7 @@
   "info": {
     "title": "Contigo API",
     "version": "1.1.0",
-    "description": "Contract for the Contigo backend API (backend/src/Contigo.Api), consumed by the web (this file) and mobile (ADR-013) TypeScript clients per ADR-012's \"single OpenAPI document -> one generated TypeScript client, no hand-written divergent DTOs\" rule (see reports/architecture/draft/client-architect/api-consumption.md #1).\n\nProvenance / interim status (task E01/F07/US01/T02): the API host does not yet self-publish this document -- no Microsoft.AspNetCore.OpenApi / Swashbuckle / NSwag is wired into backend/src/Contigo.Api/Program.cs as of this task, and adding that is outside this task's file scope (the web client only; this task's frontmatter is target_repo: contigo-web). Until a backend task adds self-published OpenAPI generation, this file is hand-authored to describe exactly the routes Program.cs actually implements today, cross-checked against backend/tests/Contigo.Api.Tests. It is the single file `npm run generate:api` (web/scripts/generate-api-client.mjs) reads to produce web/src/api/generated/schema.ts, and must grow endpoint-by-endpoint as backend/src/Contigo.Api/Program.cs grows -- then be replaced outright once the API self-publishes its own document.\n\nURL versioning (OQ-client-007 in reports/open-questions.md, still `open` at council-close: \"OpenAPI codegen tool and URL versioning scheme ... owned by software-architect\") is deliberately NOT applied to the paths below: Program.cs maps bare `/health`, not `/v1/health`, and a client generated against a path the API does not actually serve would 404 in every real environment. `info.version` above tracks this document's own revision; add a URL path prefix here only once software-architect fixes one and Program.cs actually serves it under that prefix.\n\nCodegen tool choice (also part of OQ-client-007, resolved here for this task rather than left blocking it, per reports/open-questions.md's \"add an entry, state the assumption, build against it\"): third-party OpenAPI-to-TypeScript generators evaluated at authoring time (openapi-typescript@7.13.0, which peer-depends on `typescript@^5.x`) hard-conflict with this repo's already-committed `typescript@^7.0.2` (web/package.json, task E01/F07/US01/T01) under npm's default strict peer resolution. Rather than force an incorrect peer resolution (`--legacy-peer-deps`/`--force`) or downgrade a previous task's already-committed TypeScript version, this contract is compiled by a small first-party generator (web/scripts/generate-api-client.mjs, zero new dependencies) that reads this JSON file and emits the `paths`/`operations` TypeScript types the same way the mainstream tools shape them. Swap in a third-party tool once one publishes TypeScript-7-compatible peer ranges; the generated *output shape* (`paths`/`operations`) is deliberately kept compatible with that ecosystem convention so the swap is mechanical.\n\nTask E06/F01/US01/T01 (typescript-client-regen) added the four operations below beyond `/health`: `POST /api/workspaces` (create), `POST /api/workspaces/{tenantId}/invites` (invite), `POST /api/documents` (upload), `GET /api/documents/{id}` (read back) -- exactly epic-06-web-foundation's own R0 scope (\"the sign-in -> workspace picker flow ... and the R0 surfaces (members & roles, document upload, document-status read-back)\"). backend/src/Contigo.Api/Program.cs now also maps many more routes added by backend epics E02-E05 (GET /api/contracts, GET/PATCH /api/contracts/{id}, GET /api/contracts/{id}/corrections, GET /api/audit, GET /api/renewals and /api/renewals/{contractId}/priority, POST /api/renewals/{id}/action, GET/PATCH /api/savings and GET /api/savings/kpis, POST /api/chat/query, POST /api/quotes and GET /api/quotes/{id}/assessment, POST /api/negotiations/outcomes) that this task deliberately did NOT add here: epic-06-web-foundation's own \"Out of scope\" list names exactly that set (\"portfolio, Contract 360, review, Ask, renewals, savings, quote check -- later web epics\"), and feature-01-typescript-client-regen's own \"Council decisions carried into this story\" calls this a \"Repeating chore\" -- whichever web epic first builds a screen against one of those endpoints should extend this file next, the same way this task extended the `/health`-only version task E01/F07/US01/T02 left behind. Nullable fields (e.g. a freshly-uploaded or not-yet-classified document's `contractId`) use OpenAPI 3.1's `type: [X, \"null\"]` union instead of a bolted-on `nullable: true` flag; web/scripts/generate-api-client.mjs gained one small, additive case for it (a `type` array renders as the equivalent TypeScript union, plus a case for `object`/`properties` -- every new response below is a flat, single-level object) -- see that script's own comments on the change.\n\nTask E07/F03/US01/T01 (field-review-correction, ADR-020 screen 6) added `PATCH /api/contracts/{id}` (`correctContract`) and `GET /api/contracts/{id}/corrections` (`getCorrectionHistory`) -- the third web epic to extend this document (task E07/F01/US01/T01 was the first, task E07/F02/US01/T01 the second; see this paragraph's own 'repeating chore' provenance note above). Both operations were already implemented by backend task E02/F05/US01/T01/T02 (us-01-correction-history) and already named in this document's own provenance paragraph's backend-routes list ('GET/PATCH /api/contracts/{id}, GET /api/contracts/{id}/corrections') as not yet documented here -- this task closes that gap, it does not add new backend behaviour. Both response/request bodies use the same plain-object/array shapes generate-api-client.mjs already supports; no generator change was needed.\n\nTask E08/F01/US01/T01 (renewal-pipeline, ADR-020 screen 8) added `POST /api/renewals/{id}/action` (`postRenewalAction`) -- the fourth web epic to extend this document (task E07/F01/US01/T01 was the first, E07/F02/US01/T01 the second, E07/F03/US01/T01 the third; see this paragraph's own 'repeating chore' provenance note above). This operation was already named in this document's own provenance paragraph's backend-routes list ('POST /api/renewals/{id}/action') as not yet documented here -- this task closes that gap, it does not add new backend behaviour. Already implemented by backend task E03/F03/US01/T02 (renewal-action). The 200 response's `status` field is a real, closed three-value enum (NotStarted/InProgress/Completed, RenewalActionStatus.ToString()) so it is declared with `enum` the same way GET /api/renewals's own `status` field already is -- generate-api-client.mjs renders it as a TypeScript string-literal union with no generator change needed. The request body (owner/status/action, all free-form strings on the wire) is hand-written in src/api/client.ts, like every other write operation's request type in this document -- the generator does not parse `requestBody` at all (see this file's own 'Codegen tool choice' paragraph above).\n\nTask E08/F03/US01/T01 (quote-check-ui, ADR-018 route /quotes/:id, ADR-020 screen 10) adds the four operations this document's own provenance paragraph above named as deliberately deferred: `POST /api/quotes` (uploadQuote), `GET /api/quotes/{id}/assessment` (getQuoteAssessment), `POST /api/quotes/{id}/assessment/recalculate` (recalculateQuoteAssessment), and `POST /api/negotiations/outcomes` (captureNegotiationOutcome) -- the fourth and, for this document, last web epic to extend this file (task E07/F01/US01/T01 was the first, E07/F02/US01/T01 the second, E07/F03/US01/T01 the third; see this paragraph's own 'repeating chore' provenance note above). All four operations were already implemented by backend epic E05 (Contigo.Quotes module, wired into Program.cs via AddQuotesModule/MapQuotesEndpoints/MapNegotiationsEndpoints) before this task started; this task only documents and wraps them, it does not add new backend behaviour. `position` (Contigo.Quotes.Domain.MarketPosition) is deliberately typed as a bare nullable string, not a nullable enum -- the same generate-api-client.mjs#renderSchemaType 'enum drops the null union member' limitation getPortfolio's own `risk` field and Contract 360's `header.risk`/`clauses[].riskLevel` already worked around; web/src/api/client.ts names the real 3-value set as its own hand-written `QuoteMarketPosition` alias plus an `isQuoteMarketPosition` guard, the same pattern `PortfolioRiskSeverity`/`isPortfolioRiskSeverity` already establish. `GET /api/quotes/{id}/assessment` and `POST /api/quotes/{id}/assessment/recalculate` share an identical per-line assessment shape, duplicated rather than `$ref`'d (the generator has no `$ref`/`oneOf` support -- see its own header comment). Two operations' 404s carry a real string body (`Results.NotFound(result.Error)`, not the bare empty-body `Results.NotFound()` every earlier 404 in this document uses) -- documented with `content` accordingly, and web/src/api/client.ts reads that body instead of fabricating a generic not-found message, unlike its own earlier 404 handlers. `Contigo.Quotes.Application.Strategy.NegotiationStrategyService` (negotiation-lever recommendations + evidence, task E05/F03/US01/T01) has no HTTP endpoint anywhere in `Program.cs` -- a genuine, pre-existing backend gap this task's `contigo-web` file scope cannot close; `POST /api/negotiations/outcomes`'s own description above names it, and web/src/routes/quotes/ renders an honest gap notice in its place rather than inventing lever evidence to match the cited prototype's own fixture data."
+    "description": "Contract for the Contigo backend API (backend/src/Contigo.Api), consumed by the web (this file) and mobile (ADR-013) TypeScript clients per ADR-012's \"single OpenAPI document -> one generated TypeScript client, no hand-written divergent DTOs\" rule (see reports/architecture/draft/client-architect/api-consumption.md #1).\n\nProvenance / interim status (task E01/F07/US01/T02): the API host does not yet self-publish this document -- no Microsoft.AspNetCore.OpenApi / Swashbuckle / NSwag is wired into backend/src/Contigo.Api/Program.cs as of this task, and adding that is outside this task's file scope (the web client only; this task's frontmatter is target_repo: contigo-web). Until a backend task adds self-published OpenAPI generation, this file is hand-authored to describe exactly the routes Program.cs actually implements today, cross-checked against backend/tests/Contigo.Api.Tests. It is the single file `npm run generate:api` (web/scripts/generate-api-client.mjs) reads to produce web/src/api/generated/schema.ts, and must grow endpoint-by-endpoint as backend/src/Contigo.Api/Program.cs grows -- then be replaced outright once the API self-publishes its own document.\n\nURL versioning (OQ-client-007 in reports/open-questions.md, still `open` at council-close: \"OpenAPI codegen tool and URL versioning scheme ... owned by software-architect\") is deliberately NOT applied to the paths below: Program.cs maps bare `/health`, not `/v1/health`, and a client generated against a path the API does not actually serve would 404 in every real environment. `info.version` above tracks this document's own revision; add a URL path prefix here only once software-architect fixes one and Program.cs actually serves it under that prefix.\n\nCodegen tool choice (also part of OQ-client-007, resolved here for this task rather than left blocking it, per reports/open-questions.md's \"add an entry, state the assumption, build against it\"): third-party OpenAPI-to-TypeScript generators evaluated at authoring time (openapi-typescript@7.13.0, which peer-depends on `typescript@^5.x`) hard-conflict with this repo's already-committed `typescript@^7.0.2` (web/package.json, task E01/F07/US01/T01) under npm's default strict peer resolution. Rather than force an incorrect peer resolution (`--legacy-peer-deps`/`--force`) or downgrade a previous task's already-committed TypeScript version, this contract is compiled by a small first-party generator (web/scripts/generate-api-client.mjs, zero new dependencies) that reads this JSON file and emits the `paths`/`operations` TypeScript types the same way the mainstream tools shape them. Swap in a third-party tool once one publishes TypeScript-7-compatible peer ranges; the generated *output shape* (`paths`/`operations`) is deliberately kept compatible with that ecosystem convention so the swap is mechanical.\n\nTask E06/F01/US01/T01 (typescript-client-regen) added the four operations below beyond `/health`: `POST /api/workspaces` (create), `POST /api/workspaces/{tenantId}/invites` (invite), `POST /api/documents` (upload), `GET /api/documents/{id}` (read back) -- exactly epic-06-web-foundation's own R0 scope (\"the sign-in -> workspace picker flow ... and the R0 surfaces (members & roles, document upload, document-status read-back)\"). backend/src/Contigo.Api/Program.cs now also maps many more routes added by backend epics E02-E05 (GET /api/contracts, GET/PATCH /api/contracts/{id}, GET /api/contracts/{id}/corrections, GET /api/audit, GET /api/renewals and /api/renewals/{contractId}/priority, POST /api/renewals/{id}/action, GET/PATCH /api/savings and GET /api/savings/kpis, POST /api/chat/query, POST /api/quotes and GET /api/quotes/{id}/assessment, POST /api/negotiations/outcomes) that this task deliberately did NOT add here: epic-06-web-foundation's own \"Out of scope\" list names exactly that set (\"portfolio, Contract 360, review, Ask, renewals, savings, quote check -- later web epics\"), and feature-01-typescript-client-regen's own \"Council decisions carried into this story\" calls this a \"Repeating chore\" -- whichever web epic first builds a screen against one of those endpoints should extend this file next, the same way this task extended the `/health`-only version task E01/F07/US01/T02 left behind. Nullable fields (e.g. a freshly-uploaded or not-yet-classified document's `contractId`) use OpenAPI 3.1's `type: [X, \"null\"]` union instead of a bolted-on `nullable: true` flag; web/scripts/generate-api-client.mjs gained one small, additive case for it (a `type` array renders as the equivalent TypeScript union, plus a case for `object`/`properties` -- every new response below is a flat, single-level object) -- see that script's own comments on the change.\n\nTask E07/F03/US01/T01 (field-review-correction, ADR-020 screen 6) added `PATCH /api/contracts/{id}` (`correctContract`) and `GET /api/contracts/{id}/corrections` (`getCorrectionHistory`) -- the third web epic to extend this document (task E07/F01/US01/T01 was the first, task E07/F02/US01/T01 the second; see this paragraph's own 'repeating chore' provenance note above). Both operations were already implemented by backend task E02/F05/US01/T01/T02 (us-01-correction-history) and already named in this document's own provenance paragraph's backend-routes list ('GET/PATCH /api/contracts/{id}, GET /api/contracts/{id}/corrections') as not yet documented here -- this task closes that gap, it does not add new backend behaviour. Both response/request bodies use the same plain-object/array shapes generate-api-client.mjs already supports; no generator change was needed.\n\nTask E08/F01/US01/T01 (renewal-pipeline, ADR-020 screen 8) added `POST /api/renewals/{id}/action` (`postRenewalAction`) -- the fourth web epic to extend this document (task E07/F01/US01/T01 was the first, E07/F02/US01/T01 the second, E07/F03/US01/T01 the third; see this paragraph's own 'repeating chore' provenance note above). This operation was already named in this document's own provenance paragraph's backend-routes list ('POST /api/renewals/{id}/action') as not yet documented here -- this task closes that gap, it does not add new backend behaviour. Already implemented by backend task E03/F03/US01/T02 (renewal-action). The 200 response's `status` field is a real, closed three-value enum (NotStarted/InProgress/Completed, RenewalActionStatus.ToString()) so it is declared with `enum` the same way GET /api/renewals's own `status` field already is -- generate-api-client.mjs renders it as a TypeScript string-literal union with no generator change needed. The request body (owner/status/action, all free-form strings on the wire) is hand-written in src/api/client.ts, like every other write operation's request type in this document -- the generator does not parse `requestBody` at all (see this file's own 'Codegen tool choice' paragraph above).\n\nTask E08/F03/US01/T01 (quote-check-ui, ADR-018 route /quotes/:id, ADR-020 screen 10) adds the four operations this document's own provenance paragraph above named as deliberately deferred: `POST /api/quotes` (uploadQuote), `GET /api/quotes/{id}/assessment` (getQuoteAssessment), `POST /api/quotes/{id}/assessment/recalculate` (recalculateQuoteAssessment), and `POST /api/negotiations/outcomes` (captureNegotiationOutcome) -- the fourth and, for this document, last web epic to extend this file (task E07/F01/US01/T01 was the first, E07/F02/US01/T01 the second, E07/F03/US01/T01 the third; see this paragraph's own 'repeating chore' provenance note above). All four operations were already implemented by backend epic E05 (Contigo.Quotes module, wired into Program.cs via AddQuotesModule/MapQuotesEndpoints/MapNegotiationsEndpoints) before this task started; this task only documents and wraps them, it does not add new backend behaviour. `position` (Contigo.Quotes.Domain.MarketPosition) is deliberately typed as a bare nullable string, not a nullable enum -- the same generate-api-client.mjs#renderSchemaType 'enum drops the null union member' limitation getPortfolio's own `risk` field and Contract 360's `header.risk`/`clauses[].riskLevel` already worked around; web/src/api/client.ts names the real 3-value set as its own hand-written `QuoteMarketPosition` alias plus an `isQuoteMarketPosition` guard, the same pattern `PortfolioRiskSeverity`/`isPortfolioRiskSeverity` already establish. `GET /api/quotes/{id}/assessment` and `POST /api/quotes/{id}/assessment/recalculate` share an identical per-line assessment shape, duplicated rather than `$ref`'d (the generator has no `$ref`/`oneOf` support -- see its own header comment). Two operations' 404s carry a real string body (`Results.NotFound(result.Error)`, not the bare empty-body `Results.NotFound()` every earlier 404 in this document uses) -- documented with `content` accordingly, and web/src/api/client.ts reads that body instead of fabricating a generic not-found message, unlike its own earlier 404 handlers. `Contigo.Quotes.Application.Strategy.NegotiationStrategyService` (negotiation-lever recommendations + evidence, task E05/F03/US01/T01) has no HTTP endpoint anywhere in `Program.cs` -- a genuine, pre-existing backend gap this task's `contigo-web` file scope cannot close; `POST /api/negotiations/outcomes`'s own description above names it, and web/src/routes/quotes/ renders an honest gap notice in its place rather than inventing lever evidence to match the cited prototype's own fixture data.\n\nTask E08/F02/US01/T01 (savings-home, ADR-020 screen 9) adds `GET /api/savings/kpis` (getSavingsKpis) and the GET half of `/api/savings` (getSavingsOpportunities) -- the fifth web epic to extend this document (task E07/F01/US01/T01 was the first, E07/F02/US01/T01 the second, E07/F03/US01/T01 the third, E08/F01/US01/T01 the fourth; see this paragraph's own 'repeating chore' provenance note above). Both operations were already named in this document's own provenance paragraph's backend-routes list ('GET/PATCH /api/savings and GET /api/savings/kpis') as not yet documented here; this task closes the GET half of that gap (already implemented by backend tasks E04/F02/US02/T01, E04/F03/US01/T01, E04/F03/US01/T02), it does not add new backend behaviour. `PATCH /api/savings/{id}` stays undocumented -- no screen in this task's own AC needs it (Home is read-only), so it is left for whichever future task first builds a real caller, the same 'wiring lands with the first real caller' convention this codebase already follows elsewhere. `confidenceLevel`/`status` are real, closed enums (SavingsConfidenceLevel.ToString() / SavingsOpportunityStatus.ToString()) declared with `enum`, the same way GET /api/renewals's own `status` field already is; `getSavingsKpis` never calls Contigo.Benchmark directly (it only aggregates Documents/Contracts and Savings data already at rest), so the Home screen's own 'benchmark provider unreachable' state (screens.md #9) is this call failing for any reason, not a status this endpoint reserves for that specific cause.\n\nThis task also found src/api/generated/schema.ts (the committed, supposedly-generated file `npm run generate:api` regenerates from this document) missing the closing brace for its top-level `operations` interface -- a pre-existing defect unrelated to this task's own two new operations, left by an earlier task that could not run the generator in this same harness (no `node`/`npm` on PATH; see AGENTS/CLAUDE instructions) and hand-appended its own operation block without re-closing the interface. Fixed in the same pass as this task's own additions rather than left to break every later task's `tsc --noEmit`."
   },
   "servers": [
     {
@@ -3249,6 +3249,320 @@
           },
           "400": {
             "description": "Missing/invalid X-Tenant-Id header, a blank question, or a retrieval/answer failure (EmbeddingRetrievalService/RagAnswerService Result.Error).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/savings/kpis": {
+      "get": {
+        "operationId": "getSavingsKpis",
+        "summary": "Procurement-homepage KPI row: spend/contracts/renewals plus the three savings buckets.",
+        "description": "Maps to GetSavingsKpisAsync in backend/src/Contigo.Api/SavingsKpiEndpointExtensions.cs (task E04/F03/US01/T01, us-01-savings-kpis AC-1; product spec section 10.1's six-row KPI table). Task E08/F02/US01/T01 (savings-home, ADR-020 screen 9) adds this operation -- the fifth web epic to extend this document (see this document's own info.description 'repeating chore' provenance paragraph). 'Annual spend analyzed'/'Contracts analyzed' come from Contigo.Documents.Contracts (PortfolioQueryService.GetAnalysisSummaryAsync); 'Savings identified'/'Savings in progress'/'Savings realized' come from Contigo.Savings (SavingsKpiQueryService.GetSummaryAsync); 'Upcoming renewals' reuses GET /api/renewals's own auto-renewing candidate query rather than rebuilding the full pipeline just to count it (see that endpoint's own C# doc comment for the full reasoning) -- this operation never calls Contigo.Benchmark directly, so a benchmark-provider outage cannot surface as a distinct HTTP status here; the web client's own 'benchmark provider unreachable' Home-screen state (screens.md #9) is this call failing for any reason, not a status code this endpoint reserves for that cause specifically. Each spend/savings figure is grouped by currency, never summed across currencies (this codebase has no currency-conversion service) -- an empty array is the honest zero-contracts/zero-opportunities answer, never a fabricated zero-currency row.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tenant-scoped KPI summary.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "annualSpendAnalyzed",
+                    "contractsAnalyzedCount",
+                    "savingsIdentified",
+                    "savingsInProgress",
+                    "savingsRealized",
+                    "upcomingRenewalsCount"
+                  ],
+                  "properties": {
+                    "annualSpendAnalyzed": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "currency",
+                          "amount",
+                          "contractCount"
+                        ],
+                        "properties": {
+                          "currency": {
+                            "type": "string"
+                          },
+                          "amount": {
+                            "type": "number"
+                          },
+                          "contractCount": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "contractsAnalyzedCount": {
+                      "type": "integer"
+                    },
+                    "savingsIdentified": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "currency",
+                          "low",
+                          "high",
+                          "count",
+                          "averageConfidence"
+                        ],
+                        "properties": {
+                          "currency": {
+                            "type": "string"
+                          },
+                          "low": {
+                            "type": "number"
+                          },
+                          "high": {
+                            "type": "number"
+                          },
+                          "count": {
+                            "type": "integer"
+                          },
+                          "averageConfidence": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    },
+                    "savingsInProgress": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "currency",
+                          "low",
+                          "high",
+                          "count",
+                          "averageConfidence"
+                        ],
+                        "properties": {
+                          "currency": {
+                            "type": "string"
+                          },
+                          "low": {
+                            "type": "number"
+                          },
+                          "high": {
+                            "type": "number"
+                          },
+                          "count": {
+                            "type": "integer"
+                          },
+                          "averageConfidence": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    },
+                    "savingsRealized": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "currency",
+                          "low",
+                          "high",
+                          "count",
+                          "averageConfidence"
+                        ],
+                        "properties": {
+                          "currency": {
+                            "type": "string"
+                          },
+                          "low": {
+                            "type": "number"
+                          },
+                          "high": {
+                            "type": "number"
+                          },
+                          "count": {
+                            "type": "integer"
+                          },
+                          "averageConfidence": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    },
+                    "upcomingRenewalsCount": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid X-Tenant-Id header.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/savings": {
+      "get": {
+        "operationId": "getSavingsOpportunities",
+        "summary": "Home screen's opportunities table: every SavingsOpportunity for the caller's tenant, newest identified first.",
+        "description": "Maps to GetSavingsOpportunitiesAsync in backend/src/Contigo.Api/SavingsEndpointExtensions.cs (task E04/F02/US02/T01 savings-opportunity, task E04/F03/US01/T02 savings-list AC-3 confidenceLevel). Task E08/F02/US01/T01 (savings-home, ADR-020 screen 9) adds this operation's GET half -- the fifth web epic to extend this document (see this document's own info.description 'repeating chore' provenance paragraph); PATCH /api/savings/{id} (status/owner/realized-value edits) already exists on the backend but has no screen in this task's own AC that needs it, so it stays undocumented here until a future editing surface has a real caller (the same 'wiring lands with the first real caller' convention this codebase already follows elsewhere). Never 404s -- an empty items array is a tenant's own honest, valid 'no opportunities yet' answer. confidenceLevel/status are real, closed three-value enums (SavingsConfidenceLevel.ToString() / SavingsOpportunityStatus.ToString()), declared with enum the same way GET /api/renewals's own status field already is. type is free text (Domain.SavingsOpportunity.Type's own doc comment: no ADR/spec fixes a vocabulary for it).",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tenant-scoped opportunity list, newest identified first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "totalCount"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "supplierId",
+                          "contractId",
+                          "type",
+                          "currentSpend",
+                          "currency",
+                          "estimatedSavingsLow",
+                          "estimatedSavingsHigh",
+                          "confidence",
+                          "confidenceLevel",
+                          "status",
+                          "owner",
+                          "createdAt",
+                          "updatedAt",
+                          "realizedAmount"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "supplierId": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "format": "uuid"
+                          },
+                          "contractId": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "format": "uuid"
+                          },
+                          "type": {
+                            "type": "string"
+                          },
+                          "currentSpend": {
+                            "type": "number"
+                          },
+                          "currency": {
+                            "type": "string"
+                          },
+                          "estimatedSavingsLow": {
+                            "type": "number"
+                          },
+                          "estimatedSavingsHigh": {
+                            "type": "number"
+                          },
+                          "confidence": {
+                            "type": "number"
+                          },
+                          "confidenceLevel": {
+                            "type": "string",
+                            "enum": [
+                              "Low",
+                              "Medium",
+                              "High"
+                            ]
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "Identified",
+                              "InProgress",
+                              "Realized"
+                            ]
+                          },
+                          "owner": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "updatedAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "realizedAmount": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "totalCount": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid X-Tenant-Id header.",
             "content": {
               "application/json": {
                 "schema": {

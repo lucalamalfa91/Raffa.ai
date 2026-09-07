@@ -1274,3 +1274,141 @@ describe("createApiClient().captureNegotiationOutcome (task E08/F03/US01/T01)", 
     expect(result.error).toContain("network down");
   });
 });
+
+describe("createApiClient().getSavingsKpis (task E08/F02/US01/T01)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const kpiSummary = {
+    annualSpendAnalyzed: [{ currency: "CHF", amount: 6_270_000, contractCount: 9 }],
+    contractsAnalyzedCount: 9,
+    savingsIdentified: [{ currency: "CHF", low: 410_000, high: 590_000, count: 6, averageConfidence: 0.82 }],
+    savingsInProgress: [{ currency: "CHF", low: 240_000, high: 240_000, count: 2, averageConfidence: 0.75 }],
+    savingsRealized: [{ currency: "CHF", low: 85_000, high: 85_000, count: 1, averageConfidence: 0.91 }],
+    upcomingRenewalsCount: 4,
+  };
+
+  it("GETs <baseUrl>/api/savings/kpis with the X-Tenant-Id header", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(kpiSummary), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createApiClient("https://api.dev.contigo.example").getSavingsKpis("tenant-1");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("https://api.dev.contigo.example/api/savings/kpis");
+    expect(init).toEqual({ headers: { "X-Tenant-Id": "tenant-1" }, cache: "no-store" });
+  });
+
+  it("reports ok:true with the KPI summary on 200", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(kpiSummary), { status: 200 })));
+
+    const result = await createApiClient("https://api.dev.contigo.example").getSavingsKpis("tenant-1");
+
+    expect(result).toEqual({ ok: true, statusCode: 200, kpis: kpiSummary, error: null });
+  });
+
+  it("reports ok:false with the parsed JSON string error on 400 (Results.BadRequest(string))", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(JSON.stringify("A valid 'X-Tenant-Id' header (a GUID) is required."), { status: 400 })),
+    );
+
+    const result = await createApiClient("https://api.dev.contigo.example").getSavingsKpis("tenant-1");
+
+    expect(result).toEqual({
+      ok: false,
+      statusCode: 400,
+      kpis: null,
+      error: "A valid 'X-Tenant-Id' header (a GUID) is required.",
+    });
+  });
+
+  it("resolves (does not throw) with statusCode null when the network request fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
+
+    const result = await createApiClient("https://api.dev.contigo.example").getSavingsKpis("tenant-1");
+
+    expect(result.ok).toBe(false);
+    expect(result.statusCode).toBeNull();
+    expect(result.kpis).toBeNull();
+    expect(result.error).toContain("network down");
+  });
+});
+
+describe("createApiClient().getSavingsOpportunities (task E08/F02/US01/T01)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const opportunitiesPage = {
+    items: [
+      {
+        id: "opp-1",
+        supplierId: "supplier-1",
+        contractId: "contract-1",
+        type: "Renewal",
+        currentSpend: 640_000,
+        currency: "CHF",
+        estimatedSavingsLow: 80_000,
+        estimatedSavingsHigh: 120_000,
+        confidence: 0.92,
+        confidenceLevel: "High",
+        status: "Identified",
+        owner: null,
+        createdAt: "2026-08-01T00:00:00Z",
+        updatedAt: "2026-08-01T00:00:00Z",
+        realizedAmount: null,
+      },
+    ],
+    totalCount: 1,
+  };
+
+  it("GETs <baseUrl>/api/savings with the X-Tenant-Id header", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(opportunitiesPage), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createApiClient("https://api.dev.contigo.example").getSavingsOpportunities("tenant-1");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("https://api.dev.contigo.example/api/savings");
+    expect(init).toEqual({ headers: { "X-Tenant-Id": "tenant-1" }, cache: "no-store" });
+  });
+
+  it("reports ok:true with the opportunity list on 200", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(opportunitiesPage), { status: 200 })));
+
+    const result = await createApiClient("https://api.dev.contigo.example").getSavingsOpportunities("tenant-1");
+
+    expect(result).toEqual({ ok: true, statusCode: 200, opportunities: opportunitiesPage, error: null });
+  });
+
+  it("reports ok:false with the parsed JSON string error on 400 (Results.BadRequest(string))", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(JSON.stringify("A valid 'X-Tenant-Id' header (a GUID) is required."), { status: 400 })),
+    );
+
+    const result = await createApiClient("https://api.dev.contigo.example").getSavingsOpportunities("tenant-1");
+
+    expect(result).toEqual({
+      ok: false,
+      statusCode: 400,
+      opportunities: null,
+      error: "A valid 'X-Tenant-Id' header (a GUID) is required.",
+    });
+  });
+
+  it("resolves (does not throw) with statusCode null when the network request fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
+
+    const result = await createApiClient("https://api.dev.contigo.example").getSavingsOpportunities("tenant-1");
+
+    expect(result.ok).toBe(false);
+    expect(result.statusCode).toBeNull();
+    expect(result.opportunities).toBeNull();
+    expect(result.error).toContain("network down");
+  });
+});

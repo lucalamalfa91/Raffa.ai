@@ -24,7 +24,20 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     getRenewalPriority: vi.fn(),
     getCorrectionHistory: vi.fn(),
     correctContract: vi.fn(),
+    // Task E08/F01/US01/T01 (renewal-pipeline) / E08/F03/US01/T01 (quote-check-ui): this suite never
+    // exercises anything beyond the pure ask view-model helpers -- bare vi.fn() is enough, same
+    // convention as getRenewalPriority above. (Pre-existing gap in this file's own mock literal,
+    // backfilled here while task E08/F02/US01/T01 was already touching this exact object for its own
+    // two additions below.)
+    postRenewalAction: vi.fn(),
+    uploadQuote: vi.fn(),
+    getQuoteAssessment: vi.fn(),
+    recalculateQuoteAssessment: vi.fn(),
+    captureNegotiationOutcome: vi.fn(),
     askContigo: vi.fn(),
+    // Task E08/F02/US01/T01 (savings-home): same reasoning as above.
+    getSavingsKpis: vi.fn(),
+    getSavingsOpportunities: vi.fn(),
     ...overrides,
   };
 }

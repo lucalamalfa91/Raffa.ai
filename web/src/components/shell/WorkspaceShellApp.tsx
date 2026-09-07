@@ -11,6 +11,7 @@ import ReviewRoute from "../../routes/contracts/review";
 import RenewalsRoute from "../../routes/renewals";
 import QuoteCheckRoute from "../../routes/quotes";
 import AskRoute from "../../routes/ask";
+import HomeRoute from "../../routes/home";
 
 export interface WorkspaceShellAppProps {
   workspaceName: string;
@@ -44,6 +45,8 @@ export interface WorkspaceShellAppProps {
  * already pointed at). `renewals` is real as of task E08/F01/US01/T01
  * (RenewalsRoute, ADR-020 screen 8). `ask` is real as of task E07/F04/US01/T01
  * (AskRoute, ADR-020 screen 7). Quote check is real as of E08/F03/US01/T01.
+ * Home (`index`) is real as of task E08/F02/US01/T01 (HomeRoute, ADR-020
+ * screen 9).
  */
 export function ShellRoutes({ workspaceName, role, userLabel, onSignOut, apiClient }: WorkspaceShellAppProps) {
   return (
@@ -51,16 +54,7 @@ export function ShellRoutes({ workspaceName, role, userLabel, onSignOut, apiClie
       <Route
         element={<AppShell workspaceName={workspaceName} role={role} userLabel={userLabel} onSignOut={onSignOut} />}
       >
-        <Route
-          index
-          element={
-            <ScaffoldScreen
-              title="Home"
-              release="R3"
-              note="Savings KPIs + opportunities ship in epic-08/feature-02-savings-ui."
-            />
-          }
-        />
+        <Route index element={<HomeRoute apiClient={apiClient} />} />
         <Route path="contracts" element={<PortfolioRoute apiClient={apiClient} />} />
         <Route path="contracts/:contractId" element={<Contract360Route apiClient={apiClient} />} />
         <Route path="contracts/:contractId/review" element={<ReviewRoute apiClient={apiClient} />} />
