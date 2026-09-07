@@ -82,8 +82,18 @@ function renderSchemaType(schema) {
       return "number";
     case "boolean":
       return "boolean";
+    // Task E08/F03/US01/T01 (quote-check-ui): parenthesized unconditionally, not just
+    // `${renderSchemaType(schema.items)}[]` -- an array whose `items` schema is itself a union (the
+    // `enum` branch above, e.g. `leversUsed`'s 7-member NegotiationLeverType vocabulary) rendered as
+    // `"Volume" | "Term" | ... | "PaymentTerms"[]`, which TypeScript parses as `[]` binding tighter
+    // than `|` (a union of six bare string-literal types and one *array* type, not an array of the
+    // union) -- caught here before it reached a hand-written client.ts type and produced a real
+    // `tsc --noEmit` mismatch the first time this file's `array-of-enum` combination actually arose
+    // (every earlier array in this document, e.g. `comparisonDimensions: string[]`, has a
+    // non-union item type, so this precedence bug never surfaced before). Parenthesizing is always
+    // correct, including for the common non-union case (`(string)[]` is equivalent to `string[]`).
     case "array":
-      return `${renderSchemaType(schema.items)}[]`;
+      return `(${renderSchemaType(schema.items)})[]`;
     case "object": {
       // Flat property maps only -- task E06/F01/US01/T01 (the workspace/document response bodies
       // this contract documents today are all a single flat level -- none of their own

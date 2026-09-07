@@ -1,0 +1,107 @@
+/**
+ * Home / Savings screen (route `/`, ADR-018 "/ (home)"; screens.md #9 "Home -- Savings"; ADR-020
+ * screen 9; task E08/F02/US01/T01, us-01-savings-home). Component classes (.screen-kicker,
+ * .screen-title, .micro-meta, .kpi-number, .tag, .table, .skeleton, .empty-state, .error-state, .btn,
+ * .portfolio-table-wrapper) come from ../../styles/components.css (ADR-019 component catalogue) and
+ * ../contracts/contracts.css (`.portfolio-table-wrapper`, reused bare -- the same cross-screen reuse
+ * `../renewals/renewals.css` already established for that same class) -- this file adds only this
+ * screen's own composites.
+ */
+
+.home-screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+/* ---- KPI row (AC-1) + stale notice (AC-3) --------------------------------- */
+
+.home-kpi-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.home-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  border-top: 2px solid var(--color-divider);
+  border-bottom: 2px solid var(--color-divider);
+}
+
+.home-kpi-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  padding: var(--space-4) var(--space-3);
+  border-right: 1px solid var(--color-divider);
+}
+
+.home-kpi-cell:last-child {
+  border-right: 0;
+}
+
+.home-kpi-label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-neutral-600);
+}
+
+.home-kpi-value {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* "Savings realized" only, quoted from day1-demo.html's own kpis[2].fg:'var(--color-accent-700)'. */
+.home-kpi-emphasize {
+  color: var(--color-accent-700);
+}
+
+.home-kpi-stale-tag {
+  align-self: flex-start;
+}
+
+.home-kpi-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.home-kpi-skeleton-cell {
+  height: 64px;
+}
+
+/* ---- Opportunities table (AC-2) -------------------------------------------- */
+
+.home-opportunities-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.home-opportunities-table {
+  min-width: 900px;
+}
+
+/* `.table th`/`.table td` (components.css) already set text-align: left at a higher specificity
+   (class + element) than a bare `.home-table-numeric` class alone could win against -- these two
+   selectors match that specificity exactly so the right-alignment actually takes effect (the same
+   fix contracts.css's own `.portfolio-table-numeric` / renewals.css's own `.renewal-table-numeric`
+   already apply). */
+.home-opportunities-table th.home-table-numeric,
+.home-opportunities-table td.home-table-numeric {
+  text-align: right;
+}
+
+.home-opportunities-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.home-opportunities-skeleton-row {
+  height: 32px;
+}

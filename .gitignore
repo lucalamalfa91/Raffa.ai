@@ -55,3 +55,11 @@ __pycache__/
 # scaffolds the web client.
 node_modules/
 web/dist/
+
+# Playwright e2e run artifacts (web/e2e/day1.spec.ts) — task E08/F04/US01/T01
+# adds the §20 Day-1 browser-walk integration gate. The HTML report / traces
+# / videos are a local or CI run's own output, never source.
+web/test-results/
+web/playwright-report/
+web/blob-report/
+web/playwright/.cache/

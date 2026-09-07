@@ -42,6 +42,42 @@ function mockApiClient(): ApiClient {
     // getContract360 above (this comment records *why* it's safe to leave unresolved, unlike those).
     getCorrectionHistory: vi.fn(),
     correctContract: vi.fn(),
+    // Task E08/F01/US01/T01 (renewal-pipeline): RenewalsRoute (like Contract360Route above) calls
+    // getRenewals unconditionally on mount, already covered by the resolved default above; no test
+    // in this suite triggers an insight-card action, so a bare vi.fn() is enough here -- see
+    // tests/routes/renewals/*.test.tsx for that screen's own fetch/action coverage.
+    postRenewalAction: vi.fn(),
+    // Task E08/F03/US01/T01 (quote-check-ui): QuoteCheckRoute (like PortfolioRoute/Contract360Route
+    // above) will call these on mount once a quote id is present, but every test in this suite that
+    // reaches /quotes/:quoteId only asserts routing/guards without a real id -- bare vi.fn() is
+    // enough here; see tests/routes/quotes/*.test.tsx for that screen's own fetch-outcome coverage.
+    uploadQuote: vi.fn(),
+    getQuoteAssessment: vi.fn(),
+    recalculateQuoteAssessment: vi.fn(),
+    captureNegotiationOutcome: vi.fn(),
+    askContigo: vi.fn(),
+    // Task E08/F02/US01/T01 (savings-home): HomeRoute (like PortfolioRoute/Contract360Route/
+    // RenewalsRoute above) calls both of these unconditionally on mount, so an unconfigured vi.fn()
+    // would throw the moment its effect calls .then() on it -- same reasoning as getPortfolio's own
+    // resolved default above. Resolved, empty-but-successful defaults are enough for this suite's own
+    // routing/guard assertions; see tests/routes/home/*.test.tsx for that screen's own fetch-outcome
+    // coverage.
+    getSavingsKpis: vi.fn().mockResolvedValue({
+      ok: true,
+      statusCode: 200,
+      kpis: {
+        annualSpendAnalyzed: [],
+        contractsAnalyzedCount: 0,
+        savingsIdentified: [],
+        savingsInProgress: [],
+        savingsRealized: [],
+        upcomingRenewalsCount: 0,
+      },
+      error: null,
+    }),
+    getSavingsOpportunities: vi
+      .fn()
+      .mockResolvedValue({ ok: true, statusCode: 200, opportunities: { items: [], totalCount: 0 }, error: null }),
   };
 }
 
@@ -64,11 +100,16 @@ describe("ShellRoutes", () => {
     window.sessionStorage.clear();
   });
 
-  it("renders the rail alongside the Home placeholder at /", () => {
+  it("renders the rail alongside Home at /", async () => {
+    window.sessionStorage.setItem(
+      "contigo.signin.currentWorkspace",
+      JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
+    );
+
     renderShell("admin");
 
     expect(screen.getByRole("navigation", { name: /primary/i })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Home" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Home" })).toBeInTheDocument();
   });
 
   it("renders the global Ask bar on a routed screen (AC-3, every app screen)", () => {
@@ -100,10 +141,19 @@ describe("ShellRoutes", () => {
     expect(screen.getByRole("heading", { name: "Workspace & members" })).toBeInTheDocument();
   });
 
-  it("redirects an unknown path back to Home", () => {
+  it("redirects an unknown path back to Home", async () => {
+    // Task E08/F02/US01/T01 (savings-home): Home is now HomeRoute, which renders its own "No
+    // workspace selected" state (not a "Home" heading) when none is current -- same defensive
+    // convention every other real route follows -- so this redirect-proof needs one current, the
+    // same way the dedicated Home migration test below does.
+    window.sessionStorage.setItem(
+      "contigo.signin.currentWorkspace",
+      JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
+    );
+
     renderShell("admin", "/this-route-does-not-exist");
 
-    expect(screen.getByRole("heading", { name: "Home" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Home" })).toBeInTheDocument();
   });
 
   it("renders the real Documents screen instead of a scaffold placeholder (task E06/F05/US01/T01)", () => {
@@ -145,5 +195,37 @@ describe("ShellRoutes", () => {
     // tests/routes/contracts/contract360/*.test.tsx.
     expect(await screen.findByText(/contract not found/i)).toBeInTheDocument();
     expect(screen.queryByText(/ships in epic-07\/feature-02-contract-360-ui/i)).not.toBeInTheDocument();
+  });
+
+  it("renders the real Renewals screen instead of a scaffold placeholder (task E08/F01/US01/T01)", async () => {
+    window.sessionStorage.setItem(
+      "contigo.signin.currentWorkspace",
+      JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
+    );
+
+    renderShell("admin", "/renewals");
+
+    // The shared mockApiClient() above resolves getRenewals to an empty pipeline -- proves the real
+    // route (which renders its own named empty state) is mounted, not the scaffold; the fetch-outcome
+    // matrix itself (populated/loading/error/empty/no-window) is covered in depth by
+    // tests/routes/renewals/*.test.tsx.
+    expect(await screen.findByText(/no renewals in your pipeline yet/i)).toBeInTheDocument();
+    expect(screen.queryByText(/ships in epic-08\/feature-01-renewal-pipeline-ui/i)).not.toBeInTheDocument();
+  });
+
+  it("renders the real Home screen instead of a scaffold placeholder (task E08/F02/US01/T01)", async () => {
+    window.sessionStorage.setItem(
+      "contigo.signin.currentWorkspace",
+      JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
+    );
+
+    renderShell("admin", "/");
+
+    // The shared mockApiClient() above resolves getSavingsOpportunities to an empty list -- proves
+    // the real route (which renders its own named empty state) is mounted, not the scaffold; the
+    // fetch-outcome matrix itself (populated/loading/error/empty/stale) is covered in depth by
+    // tests/routes/home/*.test.tsx.
+    expect(await screen.findByText(/no savings opportunities yet/i)).toBeInTheDocument();
+    expect(screen.queryByText(/ships in epic-08\/feature-02-savings-ui/i)).not.toBeInTheDocument();
   });
 });

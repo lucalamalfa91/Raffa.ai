@@ -28,6 +28,9 @@ npm run generate:api      # regenerate src/api/generated/schema.ts from openapi/
 npm run build             # generate:api, then tsc --noEmit type-check, then vite build -> dist/
 npm test                  # vitest run (single pass, CI mode)
 npm run preview           # serve dist/ locally
+npx playwright install --with-deps chromium   # one-time browser download for the commands below
+npm run test:e2e          # e2e/day1.spec.ts -- the §20 Day-1 browser walk (see "End-to-end" below)
+npm run test:e2e:report   # open the last e2e run's HTML report (trace/video on failure)
 ```
 
 ## Runtime config injection (ADR-012 "config, not code")
@@ -84,12 +87,19 @@ the web workflow after that apply.
 | `/contracts` | Portfolio: filter chips + attention strip + a table sorted by severity then deadline (critical rows tinted + a red bar), plus loading/empty/error/no-match-for-filter states. Calls the real `GET /api/contracts`. See "Portfolio" below. | E07/F01/US01/T01 |
 | `/contracts/:id` | Contract 360: header + 6-cell fact row + 10 tabs (Overview's recommendation card + drivers + "Needs your attention" + "Top risks", then Commercials/Products/Clauses/Obligations/Risks/Documents/Benchmark/Renewal/Activity through one shared Term/Value/Source/Confidence table), plus loading/not-found/error states. Calls the real `GET /api/contracts/{id}`, `GET /api/renewals`, `GET /api/renewals/{contractId}/priority`. See "Contract 360" below. | E07/F02/US01/T01 |
 | `/contracts/:id/review` | Review / correction: 4-column field list (critical marker, extracted value, confidence/decision tag, Accept/Correct) + right-hand evidence pane (correction form + real correction-history trail) + gated "Mark as validated". Calls the real `GET /api/contracts/{id}`, `GET /api/contracts/{id}/corrections`, `PATCH /api/contracts/{id}`. See "Review / correction" below. | E07/F03/US01/T01 |
-| `/` (home), `/renewals`, `/ask`, `/review`\*, `/quotes`\*, `/quotes/:id`, `/workspace/members` | App shell: 224px left rail + global Ask bar + routed content. Every route in this row still renders a `ScaffoldScreen` placeholder today -- the real screens ship in later epic-07/epic-08/feature-02/03/04 tasks named at each route (see `src/components/shell/WorkspaceShellApp.tsx`). | E06/F03/US02/T01 |
+| `/renewals` | Renewal pipeline: threshold strip (0-30 ... 270-365 d, click = filter) + priority table (Score/Supplier/Contract/Annual spend/Renews in/Cancel by/Status) + insight card (facts + recommended action + rationale) with three actions (Start negotiation / Assign to me / Snooze) -> confirmation + Contract 360 + Home links, plus loading/error/empty/no-window states. Calls the real `GET /api/renewals`, `GET /api/renewals/{contractId}/priority`, `POST /api/renewals/{id}/action`. See "Renewal pipeline" below. | E08/F01/US01/T01 |
+| `/ask` | Ask Contigo: chat with a route line, numbered citation chips, abstain block. Calls the real `POST /api/chat/query`. See "Ask Contigo" below. | E07/F04/US01/T01 |
+| `/quotes`, `/quotes/:id` | Quote check: this task's own upload form (no id yet) -> 4-step stepper Extract (line table + unmatched-SKU manual mapping + recalculate) -> Assessment (4 numbers, line-level P25/P50/P75 + confidence, provenance card; blocked until every line resolves) -> Target (price ladder, editable target/walk-away) -> Negotiation (outcome capture -> recorded outcome). Calls the real `POST /api/quotes`, `POST /api/quotes/{id}/assessment/recalculate`, `POST /api/negotiations/outcomes`. See "Quote check" below. | E08/F03/US01/T01 |
+| `/` (home) | Home: 6 KPI cells (Annual spend analyzed · Savings identified · Savings realized · Savings in progress · Contracts analyzed · Upcoming renewals) + opportunities table (Opportunity · Type · Current spend · Estimated savings · Confidence · Owner · Status · Realized), rows opening Contract 360 › Benchmark or Quote check; a benchmark-provider-unreachable KPI refresh degrades to the last-known numbers, stale-labelled, rather than blocking the screen. Calls the real `GET /api/savings/kpis`, `GET /api/savings`. See "Home" below. | E08/F02/US01/T01 |
+| `/review`\*, `/workspace/members` | App shell: 224px left rail + global Ask bar + routed content. Both routes in this row still render a `ScaffoldScreen` placeholder today: `/review`'s real "Review queue" list ships in epic-07/feature-03-review-correction-ui (distinct from the already-real `/contracts/:id/review` detail route above); `/workspace/members`'s real members table + invite ships in epic-06/feature-04-workspace-members-ui (see each route's own `note` in `src/components/shell/WorkspaceShellApp.tsx`). | E06/F03/US02/T01 |
 
-\* `/review` and `/quotes` are this task's own placeholder landing paths, not
-a row in ADR-018's locked route map -- that table only ever names a *detail*
-route for these two nav destinations (`/contracts/:id/review`, `/quotes/:id`
-respectively). See `src/components/shell/navItems.ts`'s header comment.
+\* `/review` is this task's own placeholder landing path, not a row in
+ADR-018's locked route map -- that table only ever names the *detail* route
+for this nav destination (`/contracts/:id/review`). See
+`src/components/shell/navItems.ts`'s header comment. (`/quotes` used to be
+the identical kind of placeholder until task E08/F03/US01/T01 made it a real
+screen; `/` was the same until task E08/F02/US01/T01 made it a real screen
+too.)
 
 ### Layout -- full-bleed, matching the prototype's own canvas (ADR-018/019/020, task E06/F06/US01/T01)
 
@@ -441,6 +451,252 @@ task E07/F02/US01/T01 to this exact route).
   `<button disabled>` paired with a visible `.hint` reason (ADR-019 accessibility baseline), and
   navigates to `/contracts/:id` on click (screens.md #6's own `finishReview` behaviour).
 
+### Ask Contigo (ADR-020 screen 7, task E07/F04/US01/T01, us-01-ask-contigo)
+
+`src/routes/ask/` implements screen 7: AC-1 chat + route line, AC-2 numbered citation chips opening
+Contract 360 › Clauses, AC-3 abstain block, AC-4 empty/thinking/answered/abstain/unknown-fallback
+states. Reached from the global Ask bar (`components/ask-bar/GlobalAskBar.tsx`, Enter or Cmd/Ctrl+K)
+on any screen, or directly at `/ask`.
+
+- **One call, one turn** (`index.tsx`) -- every question (typed, a "Try" suggestion click, or the
+  seed query the global Ask bar carries in router state) calls the real `POST /api/chat/query`
+  (`apiClient.askContigo`) exactly once and appends one "You" bubble plus one "Contigo" bubble.
+  `askViewModel.ts#buildContigoMessage` decides whether that reply is an `answer` (AC-2), an
+  `abstain` (AC-3), or an `error` (a transport/400 failure) -- an error is never rendered as an
+  abstain: "the request failed" and "the AI honestly could not determine an answer" are different
+  claims (`ChatMessageKind`'s own doc comment).
+- **AC-1, route line** -- quoted verbatim from the task text: `"Structured query…"` for the
+  backend's `Structured` intent, `"Clause retrieval…"` for `Semantic` (`askViewModel.ts
+  #ROUTE_LINE_BY_INTENT`).
+- **AC-3/AC-4, abstain and the unknown-question fallback share one block** -- the compiled
+  prototype's own chat template (`inputs/design/prototypes/day1-demo.html`) renders both through the
+  same "Cannot determine reliably." + reason markup (`.abstain-block`,
+  `styles/components.css`), varying only the reason/route text; this screen follows the same rule
+  (`askViewModel.ts`'s own header comment has the full reasoning). A `Structured`-intent question is
+  not wired to live data by any task yet (`ChatEndpointExtensions`'s own doc comment), so it always
+  comes back `canDetermine: false` with a real backend `message` explaining the gap -- shown
+  verbatim as the reason. A `Semantic`-intent `canDetermine: false` always has `message: null` on the
+  wire (`AbstainGuard`'s own free-text reason is deliberately excluded from the response), so this
+  screen renders a fixed, honest "Contigo found no supporting evidence..." line instead of inventing
+  a per-query reason the API does not supply.
+- **AC-2, citations open Contract 360 › Clauses** -- only resolved on click
+  (`askViewModel.ts#resolveCitationContractId`), not eagerly for every citation on every answer. The
+  backend's `citations[].documentId` is a composite `SourceType:SourceId` string
+  (`ChatEndpointExtensions.ToEvidenceSnippet`); a `Document:<id>` citation resolves via the existing
+  `GET /api/documents/{id}` (its `contractId` field) and then navigates to `/contracts/:id` with
+  `{ state: { tab: "Clauses" } }` -- `contracts/contract360/index.tsx` reads that exact shape
+  (`contract360ViewModel.ts#isContract360TabName`) to open directly on the Clauses tab instead of
+  always resetting to Overview. A `Clause:<id>` citation has no equivalent lookup endpoint anywhere
+  in this backend yet (`Embedding.SourceType`'s own doc comment: "Document or Clause content today"
+  is a loose pointer, not a foreign key) -- that chip shows an honest inline reason instead of a
+  guessed link.
+- **Citation label is the raw composite id, not a resolved filename** -- resolving every citation's
+  real document name up front would need one extra round trip per citation before the message could
+  even render; `openapi/contigo-api.v1.json`'s `askContigo` operation does not return a filename at
+  all. A deliberate, documented scope cut, not an oversight.
+### Renewal pipeline (ADR-020 screen 8, task E08/F01/US01/T01, us-01-renewal-pipeline)
+
+`src/routes/renewals/` implements screen 8: AC-1 threshold strip, AC-2 priority table, AC-3 insight
+card + three actions with a real write + confirmation, AC-4 loading/error/empty/no-window states.
+
+- **Fetch order, gated on the whole score set**: like Contract 360, this screen calls `GET /api/renewals`
+  first (a non-2xx is the named "error (engine unavailable)" state) and only declares `"ready"` once
+  every row's own `GET /api/renewals/{contractId}/priority` score has *also* resolved (`Promise.all`) --
+  AC-2's "Score" column is a named, required column, not an optional extra, and there is no bulk
+  priority endpoint on the backend (it only ever answers for one contract at a time), so this is
+  genuinely N calls. A single row's own priority call failing degrades only that row's Score cell to
+  "-", never the whole screen.
+- **AC-1, threshold strip** (`ThresholdStrip.tsx`, `renewalPipelineViewModel.ts`) -- seven buckets, 0-30
+  through 270-365 days, quoted from day1-demo.html's own `winDef=[365,270,180,120,90,60,30]` window
+  list and rendered ascending to match this task's own AC-1 wording (the prototype's own array order is
+  descending, an implementation detail of its JS, not a locked visual spec). Reuses the exact same
+  `.attention-strip`/`.attention-cell` classes Portfolio's own `AttentionStrip.tsx` already established
+  (ADR-019 names "attention/threshold strip" as one shared catalogue entry); `.is-urgent` is gated on
+  both a non-zero count *and* the bucket's own upper bound being <=120 days (quoted from that
+  prototype's own `fg` rule for its window strip) -- unlike Portfolio's four buckets, a renewal due in
+  270-365 days is not inherently bad news.
+- **AC-2, priority table** (`RenewalTable.tsx`) -- Score / Supplier / Contract / Annual spend / Renews
+  in / Cancel by / Status, quoted verbatim from screens.md #8. Two honest, cited adaptations: `GET
+  /api/renewals` carries no contract name or type at all (unlike `GET /api/contracts`), so "Contract"
+  reuses the same short-id-plus-tooltip treatment `formatSupplier` already established for the
+  identical `supplierId` gap, applied to `contractId` instead, rather than adding a second whole-portfolio
+  fetch just to resolve one column; "Status" has no server read-back at all (`POST
+  /api/renewals/{id}/action` has no matching `GET`), so it shows this browser's own session-tracked
+  action text once set, "Open" otherwise (`renewalActionStore.ts`). Selecting a row for the insight card
+  is a native `<button>` in the Score cell (ADR-019: "every interactive control is native"), not a bare
+  `<tr onClick>`.
+- **AC-3, insight card + actions** (`InsightCard.tsx`) -- spec §9.3's fields (spend, cancellation
+  deadline, uplift, market position, potential savings, owner) plus the recommended action + rationale,
+  in one `.detail-pane` card (ADR-019's own "340-400px ... wraps below the list" component). Unlike
+  Contract 360's Overview tab (a *separate* card from every fact table), spec §9.3 and screens.md #8
+  both put facts and the recommendation in one card -- the backend's own `RenewalInsightCard` wire
+  shape already keeps the two apart as named, non-overlapping objects, so this component preserves that
+  same separation visually (plain facts, then a nested `.ai-recommendation` block) without needing a
+  second card. Uplift/market position/potential savings are honestly "Not yet available" (need the R3
+  Benchmark/Savings modules) -- never a fabricated figure.
+  - **The three actions call the real, durable `POST /api/renewals/{id}/action`** (`RenewalActionService
+    .SetActionAsync`, task E03/F03/US01/T02) -- not a client-side simulation. "Start negotiation" /
+    "Assign to me" / "Snooze to 90-day threshold" map to `RenewalActionStatus`/free-text `action`
+    quoted verbatim from day1-demo.html's own `rAct` object (`renewalPipelineViewModel.ts#getRenewalActionPlan`);
+    `owner` is always this screen's own signed-in `userLabel` (threaded from `WorkspaceShellApp.tsx`,
+    the same identity `RailNav.tsx` renders) -- there is no separate assignee picker in V1.
+  - **The confirmation panel is adapted, not copied, from the prototype.** day1-demo.html's own
+    confirmation text claims "A SavingsOpportunity was created and appears on the Savings screen" --
+    this app cannot honestly say that: `SavingsOpportunityService.CreateAsync` ("identify" a new
+    opportunity) exists on the backend but is not yet wired to any HTTP route (`POST /api/savings` does
+    not exist; `GET`/`PATCH /api/savings/{id}` both need an id this screen has no way to obtain). The
+    real, durable write here is the renewal action above; `renewalActionStore.ts`
+    (`sessionStorage`, the same interim pattern `workspaceStore.ts`/`documentStore.ts` already
+    establish for their own missing-endpoint gaps) records it as this browser's own tracked opportunity
+    for the council decision carried into this story ("Action creates an opportunity visible on Home"),
+    and the confirmation links to both **Home** (`/`) and **Contract 360** (`/contracts/:id`, AC-3's own
+    named link) instead of overclaiming a backend entity that was not actually created. Home (task
+    E08/F02/US01/T01, see "Home" below) has since landed and does exactly this:
+    `homeViewModel.ts#buildOpportunityRows` imports `loadTrackedRenewalActions()` from this module and
+    merges its rows -- most-recently-acted first -- ahead of the real, persisted opportunity list.
+- **AC-4, states** -- loading (`.renewal-skeleton`), error (503-aware, names the renewal engine
+  specifically per screens.md #8's own "error (engine unavailable)", with Retry), empty (zero renewals
+  at all -> "No renewals in your pipeline yet" + a link to `/contracts`), no-window (renewals exist but
+  none fall in the selected threshold bucket -> its own "Show all renewals" CTA, the same
+  named-empty-state-per-cause convention Portfolio's own no-match-for-filter state already uses).
+
+### Quote check (ADR-020 screen 10, task E08/F03/US01/T01, us-01-quote-check)
+
+`src/routes/quotes/` implements screen 10: AC-1 the 4-step stepper (Extract -> Assessment -> Target
+-> Negotiation), AC-2 Extract's line table + unmatched-SKU manual mapping + recalculate (assessment
+blocked until resolved), AC-3 Assessment's 4 numbers + line-level P25/P50/P75 table + provenance
+card, and Target's price ladder + editable target, AC-4 Negotiation's outcome form -> recorded
+outcome.
+
+- **Real backend, not the cited prototype's own fixture.** By the time this task started, backend
+  epic E05 (`Contigo.Quotes` module) had already implemented and wired `POST /api/quotes`,
+  `GET /api/quotes/{id}/assessment`, `POST /api/quotes/{id}/assessment/recalculate`, and
+  `POST /api/negotiations/outcomes` into `Program.cs` -- the parent story's own "E05 quote API
+  (assumed)" dependency turned out to already be real. `inputs/design/prototypes/day1-demo.html`'s
+  own Quote check screen is one hard-coded demo scenario (fixed `qlines`/`assess`/`qbench`/`levers`
+  array literals); this screen instead derives every number from the real endpoints above -- see
+  `src/routes/quotes/quoteCheckViewModel.ts`'s own header comment and "API client" below.
+- **No upload screen exists in the design** (screens.md #10 starts directly at "Extracted line
+  items"; ADR-018 names only the detail route `/quotes/:id`, no list/upload route) --
+  `src/routes/quotes/index.tsx` renders `UploadQuoteForm.tsx` itself whenever the route has no
+  `quoteId` yet (both the rail nav's own `/quotes` and a fresh `/quotes/:quoteId` visit before any
+  upload), then navigates to the real id `POST /api/quotes` returns. `UploadQuoteForm.tsx`'s own
+  "Use sample file" button mirrors `../documents/sampleDocument.ts`'s exact precedent (a small,
+  syntactically-minimal, content-free PDF -- this repo ships no real sample quote asset either).
+- **AC-2, Extract** (`ExtractStep.tsx`) -- the line table's Product/SKU/discount/annual-total columns
+  cannot all be sourced honestly: `QuotesEndpointExtensions.BuildAssessmentResponse` never serializes
+  `QuoteLine.Sku`/`Description`/`DiscountPercent` for a *matched* line (only `SkuMappingService
+  .GetUnmatchedLinesAsync`'s own small query returns those, for the still-unresolved lines only) --
+  a real, pre-existing backend gap this task's `contigo-web` file scope cannot close.
+  `quoteCheckViewModel.ts#mergeKnownLineDetails` keeps a running, session-local memory of every
+  sku/edition/description this screen has actually seen from a real response, so a line does not
+  lose its own real name the moment it resolves; an unmatched line still renders honestly as
+  `Line {n}` the first time it is seen (before any correction has ever been read back). The
+  manual-mapping control is a free-text "canonical SKU"/"product name" pair, not the cited
+  prototype's fixed 3-option `<select>`: `SkuMappingCorrection`'s real wire shape takes an arbitrary
+  caller-chosen canonical SKU and no endpoint exposes a catalog to pick from.
+- **AC-2's own gate** (`quoteCheckViewModel.ts#isAssessmentBlocked`) is exactly
+  `unmatchedLines.length > 0` -- `recalculateQuoteAssessment`'s own real, server-computed list, never
+  re-derived. Gated at the *content* level (`AssessmentStep.tsx`'s own "Assessment blocked" card +
+  "<- Back to extract"), never at the stepper-navigation level: every step is directly clickable
+  (day1-demo.html's own `qsteps[i].go` behaviour), matching AC-1's "stepper" literally.
+- **`recalculateQuoteAssessment`, not `getQuoteAssessment`, is this screen's own read call** -- see
+  `src/api/client.ts`'s own header comment on `recalculateQuoteAssessment` for why: called with an
+  empty `mappings` array as this screen's "read the current assessment + unmatched lines" call
+  (`SkuMappingService.RecalculateAsync`'s own doc comment names this a valid, side-effect-free "pure
+  refresh" -- there is no separate `GET` that also returns `unmatchedLines`).
+- **AC-3, Assessment** (`AssessmentStep.tsx`, `quoteCheckViewModel.ts#aggregateQuote`) -- every
+  quote-level number (the 4-number grid, the Target ladder, the outcome form's default "Original
+  quote total") is deterministically summed from each line's own real assessment (Appendix C rule
+  6), never a second, independent calculation. **No quote-level "overall position" rollup**:
+  `Contigo.Quotes.Application.Assessment.QuoteMarketAssessment`'s own doc comment explicitly declines
+  to invent one ("no ADR/spec names a deterministic way to collapse several lines' positions into
+  one"); `summarizePositions` renders a real *tally* ("2 above market · 1 in line") instead.
+- **AC-3, Target** (`TargetStep.tsx`) -- two honest departures from the cited prototype: no backend
+  endpoint computes a distinct "opening target" or "walk-away/escalation" figure
+  (`LineTargetSaving` gives exactly one recommended range), so "Your target"/"Walk-away" are real,
+  user-editable inputs pre-filled from the real aggregate as a starting point, not a third computed
+  tier; the ladder is drawn proportionally from whatever real figures `aggregateQuote` produced, not
+  the prototype's own fixed pixel positions (those were specific to its one hard-coded demo quote).
+- **AC-4, Negotiation levers** (`NegotiationStep.tsx`) -- a named, honest gap: `Contigo.Quotes
+  .Application.Strategy.NegotiationStrategyService` (negotiation-lever recommendations + evidence,
+  spec §12.1) is fully implemented and unit-tested, but `backend/src/Contigo.Api/Program.cs` never
+  maps an HTTP endpoint for it (checked: no `MapGet`/`MapPost` anywhere in `backend/src/Contigo.Api`
+  references `NegotiationStrategyService`/`NegotiationStrategyCalculator`/`QuoteNegotiationStrategy`)
+  -- a backend task would need to add one (e.g. `GET /api/quotes/{id}/strategy`) before this screen
+  can show AI-recommended levers/evidence for real. The outcome-capture control is still real: a
+  required multi-select of the same 7-member `NegotiationLeverType` vocabulary
+  `POST /api/negotiations/outcomes` itself validates `leversUsed` against.
+- **AC-4, outcome capture** -- `realizedSaving`/`discountPercent` are always the server's own
+  response (`NegotiationOutcomeCalculator.Compute`), never the client-side `previewOutcome` figure
+  shown before submit; the two happen to agree only because the arithmetic is mirrored verbatim
+  (spec §12.2's own worked example: 520,000 -> 435,000 = 85,000 saving, ~16.3%).
+- **"...-> Home Savings Realized updates"** -- there is no `GET` (list or single) anywhere on
+  `POST /api/negotiations/outcomes`, and this screen never supplies a `savingsOpportunityId` (no
+  Savings UI exists yet to pick one from), so `NegotiationOutcomePropagationService`'s own
+  cross-module write never runs for an outcome this screen records. `quoteOutcomeStore.ts` is the
+  same kind of interim `../documents/documentStore.ts`/`../signin/workspaceStore.ts` already
+  establish: a real, `sessionStorage`-scoped record of every outcome this browser actually captured.
+  Home (task E08/F02/US01/T01, see "Home" below) has since landed, but its own "Savings realized"
+  KPI cell reads the real `GET /api/savings/kpis` response directly, not this store --
+  `quoteOutcomeStore.ts` stays this screen's own unconsumed local record, the propagation gap named
+  above being the real, pre-existing reason no code path connects the two yet. The recorded-outcome
+  panel's own "See it on Home ->" link (`<Link to="/">`) is real, and now lands on a real screen.
+
+### Home (ADR-020 screen 9, task E08/F02/US01/T01, us-01-savings-home)
+
+`src/routes/home/` implements screen 9: AC-1 six KPI cells, AC-2 opportunities table, AC-3 row
+navigation to Contract 360 › Benchmark or Quote check plus the benchmark-provider-unreachable
+stale-labelled KPI state. Wired into `components/shell/WorkspaceShellApp.tsx`'s index route (`/`,
+ADR-018 "/ (home)") in place of that task's `ScaffoldScreen` placeholder, the same seam
+`../renewals/index.tsx` already used for `/renewals`.
+
+- **Two independent fetches, two independent degrade states** (`index.tsx`) -- `GET
+  /api/savings/kpis` backs AC-1's KPI row and `GET /api/savings` backs AC-2's opportunities table;
+  each fetch's own failure degrades only its own section, the same "independently optional" shape
+  `../contracts/contract360/index.tsx` already established for its own renewals+priority pair.
+- **AC-1, KPI row** (`KpiRow.tsx`, `homeViewModel.ts#buildKpiCells`) -- the six cells, in AC-1's own
+  order: Annual spend analyzed, Savings identified, Savings realized, Savings in progress, Contracts
+  analyzed, Upcoming renewals, one formatted line per currency bucket (never summed across
+  currencies -- the same "group by currency" discipline `SavingsRangeByCurrency`'s own backend doc
+  comment states). Only "Savings realized" carries the accent-700 highlight, quoted from
+  day1-demo.html's own `kpis[2].fg` rule. `kpis === null` (never fetched, or a first-load failure)
+  renders an honest "-" per cell rather than a fabricated number (Appendix C rule 10).
+- **AC-3, benchmark-provider-unreachable -> stale-labelled** (`homeViewModel.ts#reduceKpiFetch`,
+  this task's own required test, proven at both the reducer level and the rendered-component level)
+  -- a failed KPI refresh never blanks the row: the reducer keeps whichever summary it last
+  successfully fetched (or `null`, before any success) and marks every cell `Stale` (text, not
+  colour, ADR-019 accessibility baseline), with a named `.error-state` notice ("Benchmark provider
+  unreachable") + Retry, copy quoted from day1-demo.html's own text for this exact state. Retrying
+  never flashes the row back to a loading skeleton -- the stale numbers stay visible, tagged, for the
+  whole in-flight retry, only updating once it resolves.
+- **AC-2, opportunities table** (`OpportunitiesTable.tsx`) -- the eight named columns (Opportunity /
+  Type / Current spend / Estimated savings / Confidence / Owner / Status / Realized), the
+  "Opportunity" cell a real `<Link>` (cell-level link, not a whole-row click -- the same pattern
+  `../contracts/PortfolioTable.tsx` already established, ADR-019 accessibility baseline). Loading
+  (skeleton rows), error (a scoped `.error-state` + Retry, independent of the KPI row's own error
+  state), and empty ("No savings opportunities yet" -> `/renewals`) states.
+- **Council decision "Action creates an opportunity visible on Home"** (`homeViewModel.ts
+  #buildOpportunityRows`) -- this session's own tracked renewal actions
+  (`../renewals/renewalActionStore.ts#loadTrackedRenewalActions`, recorded by
+  `../renewals/InsightCard.tsx`'s three actions) render first, ahead of every real, persisted
+  `SavingsOpportunity` row from `GET /api/savings` -- immediate, visible confirmation of that
+  decision without inventing a backend write this task's own file scope cannot make (`POST
+  /api/savings` still does not exist; see "Renewal pipeline" above). No de-duplication is attempted
+  between the two lists: a tracked action never actually creates a `SavingsOpportunity` row, so there
+  is no shared id to merge on (Appendix C rule 10). A tracked row's own honest gaps -- no confidence,
+  "Not yet available" estimated savings, no realized value, no currency on current spend -- render as
+  such rather than a borrowed or invented figure.
+- **AC-3, row navigation** (`homeViewModel.ts#getOpportunityNavigation`) -- quoted from
+  day1-demo.html's own row handler for this screen: a contract-linked opportunity opens Contract
+  360's Benchmark tab (`/contracts/:id`, `state: { tab: "Benchmark" }` -- the same
+  `location.state.tab` deep-link seam `../ask/index.tsx` already uses to open Clauses); one with no
+  `contractId` (`SavingsOpportunityResult` carries no `quoteId` at all yet) falls back to the
+  `/quotes` landing route, the same "no id yet" seam `../quotes/index.tsx` already establishes.
+- **No workspace guard bypassed** -- like every other route, this screen reads
+  `loadCurrentWorkspace()` directly rather than trusting `App.tsx`'s own earlier check, rendering a
+  named "No workspace selected" state if that invariant is ever violated.
+
 ## API client (ADR-012 "one generated TypeScript client, no hand-written divergent DTOs")
 
 Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
@@ -569,11 +825,37 @@ Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
   parse `requestBody`. Both response shapes (a flat object, and an array of a flat object) use
   generator cases `getContract360`/`getPortfolio` already exercise, so no generator change was
   needed this time.
+- **Task E08/F01/US01/T01 (renewal-pipeline, ADR-020 screen 8)** extended `openapi/contigo-api.v1.json`
+  with `POST /api/renewals/{id}/action` (`postRenewalAction`) -- the fourth web epic to extend this
+  document (see "API client" provenance paragraphs above). Already implemented by backend task
+  E03/F03/US01/T02; this task is the first web caller (the insight card's three actions). The 200
+  response's `status` field is a real, closed three-value enum (`NotStarted`/`InProgress`/`Completed`)
+  declared with `enum`, the same way `GET /api/renewals`'s own `status` field already is, so
+  `RenewalActionStatusValue` is derived from the generated response type rather than hand-duplicated.
+  Unlike every other write operation in this client, a well-formed request against an unknown or
+  cross-tenant contract id still succeeds (`Contigo.Renewals` cannot reference
+  `Contigo.Documents.Contracts` at all, ADR-002) -- `postRenewalAction` never special-cases a 404 the
+  way `getContract360`/`getRenewalPriority`/`correctContract` do for theirs.
+- **Task E08/F02/US01/T01 (savings-home, ADR-020 screen 9)** extended `openapi/contigo-api.v1.json`
+  with `GET /api/savings/kpis` (`getSavingsKpis`) and `GET /api/savings` (`getSavingsOpportunities`)
+  -- the fifth web epic to extend this document (see "API client" provenance paragraphs above). Both
+  were already implemented on the backend -- `getSavingsKpis` by task E04/F03/US01/T01
+  (savings-kpis), `getSavingsOpportunities` by task E04/F02/US02/T01 (savings-opportunity), with its
+  `confidenceLevel` field added by task E04/F03/US01/T02 (savings-list) -- this task is the first web
+  caller of either. `getSavingsOpportunities` never 404s -- an empty `items` array is a tenant's own
+  honest "no opportunities yet" answer, the same convention `getRenewals` already follows for its own
+  tenant-scoped list. `getSavingsKpis`'s 200 shape reuses the flat-`object` generator case
+  `getPortfolio`/`getContract360` already exercise for each of its four per-currency array fields
+  (`annualSpendAnalyzed`/`savingsIdentified`/`savingsRealized`/`savingsInProgress`) -- no generator
+  change was needed this time.
 
 ## Directory layout
 
 ```
 web/
+  playwright.config.ts      # task E08/F04/US01/T01 -- e2e/day1.spec.ts's runner config (see "End-to-end" below)
+  e2e/
+    day1.spec.ts             # task E08/F04/US01/T01 -- the §20 Day-1 browser walk, the web-pass integration gate
   openapi/
     contigo-api.v1.json       # single OpenAPI document (interim, hand-authored -- see "API client" above)
   scripts/
@@ -584,7 +866,7 @@ web/
   src/
     api/
       generated/schema.ts     # AUTO-GENERATED; do not edit by hand
-      client.ts                # createApiClient(baseUrl) -> { getHealth(), createWorkspace({ name }), uploadDocument(tenantId, file), getDocument(tenantId, id), getPortfolio(tenantId, query?), getContract360(tenantId, id), getRenewals(tenantId), getRenewalPriority(tenantId, contractId), getCorrectionHistory(tenantId, id), correctContract(tenantId, id, request) }
+      client.ts                # createApiClient(baseUrl) -> { getHealth(), createWorkspace({ name }), uploadDocument(tenantId, file), getDocument(tenantId, id), getPortfolio(tenantId, query?), getContract360(tenantId, id), getRenewals(tenantId), getRenewalPriority(tenantId, contractId), getCorrectionHistory(tenantId, id), correctContract(tenantId, id, request), postRenewalAction(tenantId, contractId, request), askContigo(tenantId, request), uploadQuote(tenantId, file, fields?), getQuoteAssessment(tenantId, id), recalculateQuoteAssessment(tenantId, id, mappings?), captureNegotiationOutcome(tenantId, request), getSavingsKpis(tenantId), getSavingsOpportunities(tenantId) }
     config/appConfig.ts       # fetch + validate runtime config
     auth/msalConfig.ts        # AppConfig -> MSAL Configuration (no secret, ever)
     styles/                   # design system (tokens + component catalogue); see below
@@ -630,6 +912,36 @@ web/
           EvidencePane.tsx        # AC-3: evidence + correction form + real correction-history trail
           reviewViewModel.ts      # pure helpers: correctable-field catalogue, decision/tag/gate computation (no live confidence yet -- see its own header comment)
           review.css              # this screen's styles
+      ask/                  # task E07/F04/US01/T01 -- ADR-020 screen 7 (see "Ask Contigo" above)
+        index.tsx              # AskRoute -- one apiClient.askContigo() call per turn, seeds the global Ask bar's router-state query once
+        ChatMessage.tsx        # one chat turn: text, abstain block, numbered citation chips, route line
+        askViewModel.ts        # pure(ish) helpers: chat-turn construction, citation parsing, resolveCitationContractId (the one impure call)
+        ask.css                # this screen's styles
+      renewals/                 # task E08/F01/US01/T01 -- ADR-020 screen 8 (see "Renewal pipeline" above)
+        index.tsx                 # RenewalsRoute -- fetch-then-score-batch state machine (AC-4 states), selection, action handling
+        ThresholdStrip.tsx        # AC-1: the seven-bucket strip, click = filter
+        RenewalTable.tsx          # AC-2: the priority table, native button per row to select for the insight card
+        InsightCard.tsx           # AC-3: facts + recommendation + three actions + confirmation (Contract 360 + Home links)
+        renewalPipelineViewModel.ts # pure helpers: threshold buckets, score/status/contract-ref formatting, the three action plans
+        renewalActionStore.ts     # sessionStorage-scoped mirror of this session's own renewal actions -- no GET read-back endpoint exists yet, and the honest stand-in for "opportunity visible on Home"
+        renewals.css              # this screen's styles
+      quotes/                 # task E08/F03/US01/T01 -- ADR-020 screen 10 (see "Quote check" above)
+        index.tsx               # QuoteCheckRoute
+        UploadQuoteForm.tsx      # upload entry point + sample-file convenience
+        QuoteStepper.tsx         # AC-1: the 4-step header
+        ExtractStep.tsx          # AC-2: line table + unmatched-SKU mapping
+        AssessmentStep.tsx       # AC-3: numbers + P25/P50/P75 + provenance
+        TargetStep.tsx           # AC-3: price ladder + editable target
+        NegotiationStep.tsx      # AC-4: outcome capture
+        quoteCheckViewModel.ts   # pure helpers
+        quoteOutcomeStore.ts     # sessionStorage-scoped outcomes
+        quotes.css               # this screen's styles
+      home/                    # task E08/F02/US01/T01 -- ADR-020 screen 9 (see "Home" above)
+        index.tsx                # HomeRoute -- two independent fetches (KPIs, opportunities), two independent degrade states
+        KpiRow.tsx               # AC-1: the six KPI cells + AC-3's stale-labelled notice
+        OpportunitiesTable.tsx   # AC-2: the eight-column table, cell-level links (AC-3 navigation)
+        homeViewModel.ts         # pure helpers: reduceKpiFetch (AC-3), buildKpiCells (AC-1), buildOpportunityRows (AC-2, council "opportunity visible on Home")
+        home.css                 # this screen's styles
     components/
       shell/                  # task E06/F03/US02/T01 -- app shell, router, role guard (see "App shell" above)
         navItems.ts             # locked 8-item rail model + getVisibleNavItems(role) role guard (AC-1/AC-2)
@@ -678,3 +990,119 @@ accent-coloured *text on the page ground* (`--color-accent-700`) but does not
 separately pin a floor for light text on a filled accent surface -- flagged
 in a comment on `.btn-primary` in `styles/components.css` rather than
 silently shipped or "fixed" by forking the locked accent value.
+
+## End-to-end (Day-1 browser walk) -- task E08/F04/US01/T01, us-01-final-integration
+
+`e2e/day1.spec.ts` (Playwright, config at `playwright.config.ts`) is the
+**web-pass integration gate** the parent story's Definition of Done names:
+"Manual + automated smoke of the Day-1 path on `demo` passes." It drives the
+real, deployed SPA in a real browser end to end -- product-spec §20's own
+ladder (sign in -> invite -> upload -> review -> Contract 360 -> Ask with
+citations + one abstain -> renewal action -> savings opportunity -> quote
+check -> record outcome -> Home realized updates), never `dotnet test`,
+never Swagger (AC-1), against `demo`, never a `localhost` `config.json`
+shell (AC-2), which only makes sense once `demo-v*` promotion (ADR-016) has
+actually happened (AC-3).
+
+The task's own "Files to create or modify" table names this file as
+`workspace/contigo-web/e2e/day1.spec.ts`; it lives at `web/e2e/day1.spec.ts`
+instead, the same "product tree is the four domain folders at the worktree
+root, not a `workspace/<repo>/` stand-in" correction `reports/open-questions.md`
+already recorded for two earlier tasks (OQ-impl-001/002) -- there is no other
+location where a browser test could reach the real, already-scaffolded ten
+screens this file drives.
+
+### Running it
+
+```bash
+npx playwright install --with-deps chromium   # one-time browser download
+CONTIGO_E2E_BASE_URL=https://<swa-demo-host> \
+CONTIGO_E2E_ENTRA_EMAIL=<a demo-tenant test account UPN> \
+CONTIGO_E2E_ENTRA_PASSWORD=<that account's password> \
+  npm run test:e2e
+npm run test:e2e:report   # opens the HTML report -- trace/video/screenshot on failure, "smoking recorded"
+```
+
+All three environment variables are required; the suite `test.skip()`s
+itself (not a false pass, not a silent no-op exit code) with a message
+naming exactly what is missing when any are unset -- see the spec file's own
+header comment. There is deliberately no `localhost` fallback for
+`CONTIGO_E2E_BASE_URL`: that would let a local run masquerade as the `demo`
+gate AC-2 requires.
+
+**The test account must be exempt from interactive MFA / Conditional
+Access** (a standard "automation/service" account exclusion on the Entra
+side) -- `e2e/day1.spec.ts#signInWithEntra` drives the identifier + password
+steps and an optional "Stay signed in?" prompt only; it cannot answer an
+MFA challenge. This is an Entra tenant configuration decision for whoever
+provisions the `demo`-tenant test account, not something this file's own
+scope (`web/`) can set.
+
+### Three real, honestly-tested divergences from the prototype
+
+`day1-demo.html` is one hard-coded demo scenario; the real app is not. The
+spec's own header comment has the full citations -- in short:
+
+1. **Invite has no real screen yet** (`workspace/members` still renders
+   `ScaffoldScreen`; `epic-06/feature-04-workspace-members-ui` has not
+   shipped as of this task) -- asserted as the honest placeholder it is.
+2. **A fresh, self-created workspace cannot discover the ADR-022
+   fixture-seeded tenant** (the workspace picker is a per-browser
+   `localStorage` cache, `workspaceStore.ts`'s own documented gap) --
+   Ask-citation, renewal-pipeline and savings-opportunity steps assert
+   whichever real, already-tested state (populated or honestly empty)
+   actually renders for the workspace this run creates, and name the gap
+   inline via `test.info().annotations` rather than asserting a fabricated
+   populated state. A reused Playwright `storageState` pointed at a
+   pre-seeded fixture workspace exercises the fuller, populated path
+   instead -- the same `pickOrCreateWorkspace` code path handles both.
+3. **A recorded quote outcome does not update Home's "Savings realized"
+   KPI** (`NegotiationOutcomePropagationService` never runs for it -- see
+   `src/routes/quotes/NegotiationStep.tsx`'s own header comment). The final
+   step asserts the real outcome + the real "See it on Home ->" link, not a
+   KPI change this build does not perform.
+
+### CI wiring is a follow-up, not this task
+
+This task authors and wires the suite so an operator (or a human at the
+keyboard) can run it against `demo` after a `demo-v*` promotion. Adding a
+GitHub Actions job that runs it automatically post-promotion (with the Entra
+test-account credentials as environment secrets) is a natural next step but
+is a `.github/workflows/` change outside this task's own file scope.
+
+### Harness note
+
+This suite was authored against, and its every selector/state-branch
+statically verified against, the real committed source of every screen it
+drives (cited throughout the spec file). An earlier pass through this
+worktree's Helix implementer session found `git`/`npm`/`node` all missing
+via `command -v` and concluded nothing beyond static reading could run
+here -- that conclusion was too broad and has been corrected. `PATH` in
+this harness's shell is corrupted, not the tools: `git`, `node`, `npm`, and
+`npx` are all installed and run fine via their absolute paths, e.g.:
+
+```bash
+"/c/Program Files/Git/bin/git.exe" status --short
+"/c/Program Files/nodejs/npm.cmd" ci
+"/c/Program Files/nodejs/npx.cmd" vitest run
+```
+
+Using that, everything short of a real browser run against `demo` **is**
+verifiable in this harness, and was, as part of task E08/F04/US01/T01's own
+review loop: `npm ci` (the exact command `.github/workflows/web.yml`'s
+`build` job runs -- this caught a real bug, `package-lock.json` never
+having been regenerated after `@playwright/test` was added to
+`package.json`, which made `npm ci` hard-fail before `build`/`test` ever
+ran; fixed by committing the regenerated lockfile alongside this note),
+`npx tsc --noEmit`, `npx vitest run` (the pre-existing unit suite -- this
+also caught `e2e/day1.spec.ts` being picked up by Vitest's own default
+include glob and failing collection; fixed by `vite.config.ts`'s own
+`test.exclude`), `npx playwright test --list` (discovers `day1.spec.ts`), and
+`npx playwright test` itself, which correctly `test.skip()`s -- not a false
+pass, not a hang -- when the three `CONTIGO_E2E_BASE_URL` /
+`CONTIGO_E2E_ENTRA_EMAIL` / `CONTIGO_E2E_ENTRA_PASSWORD` env vars are
+unset, exactly as designed. What genuinely is operator/CI-only is a real
+pass with real Entra test-account credentials against a live,
+`demo-v*`-promoted `demo` deployment -- that, and only that, is the actual
+gate this suite exists to satisfy; no local or CI session without those
+live credentials can supply it.

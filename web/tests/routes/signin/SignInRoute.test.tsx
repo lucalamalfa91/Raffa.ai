@@ -49,6 +49,20 @@ function mockApiClient(createWorkspace: ApiClient["createWorkspace"] = vi.fn()):
     // bare vi.fn() is enough, same convention as getContract360 above.
     getCorrectionHistory: vi.fn(),
     correctContract: vi.fn(),
+    // Task E08/F01/US01/T01 (renewal-pipeline): this suite never reaches the Renewals screen --
+    // bare vi.fn() is enough, same convention as getContract360 above.
+    postRenewalAction: vi.fn(),
+    // Task E08/F03/US01/T01 (quote-check-ui): this suite never reaches the Quote Check screen --
+    // bare vi.fn() is enough, same convention as getCorrectionHistory above.
+    uploadQuote: vi.fn(),
+    getQuoteAssessment: vi.fn(),
+    recalculateQuoteAssessment: vi.fn(),
+    captureNegotiationOutcome: vi.fn(),
+    askContigo: vi.fn(),
+    // Task E08/F02/US01/T01 (savings-home): this suite never reaches Home's own fetch-outcome
+    // matrix -- bare vi.fn() is enough, same convention as getContract360 above.
+    getSavingsKpis: vi.fn(),
+    getSavingsOpportunities: vi.fn(),
   };
 }
 

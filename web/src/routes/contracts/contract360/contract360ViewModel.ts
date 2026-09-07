@@ -48,6 +48,18 @@ export const CONTRACT_360_TABS = [
 export type Contract360TabName = (typeof CONTRACT_360_TABS)[number];
 
 /**
+ * Task E07/F04/US01/T01 (ask-contigo-ui): a citation chip on the Ask Contigo screen
+ * (`../../ask/`) navigates here with `{ state: { tab: "Clauses" } }` so "opening Contract 360 >
+ * Clauses" (AC-2) actually lands on that tab instead of always resetting to Overview. `index.tsx`
+ * reads `useLocation().state?.tab` through this guard rather than trusting an arbitrary string --
+ * an unrecognised or absent value falls back to Overview, the same default this screen already had
+ * before that task existed.
+ */
+export function isContract360TabName(value: unknown): value is Contract360TabName {
+  return typeof value === "string" && (CONTRACT_360_TABS as readonly string[]).includes(value);
+}
+
+/**
  * One row of the shared Term / Value / Source / Confidence table template (screens.md #5: "one
  * template ... .table (Term · Value · Source · Confidence pattern)"), used by every tab except
  * Overview (the recommendation/attention/risks screen) and the non-generic half of Renewal (the

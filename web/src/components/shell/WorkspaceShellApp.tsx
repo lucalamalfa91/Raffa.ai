@@ -8,6 +8,10 @@ import DocumentsRoute from "../../routes/documents";
 import PortfolioRoute from "../../routes/contracts";
 import Contract360Route from "../../routes/contracts/contract360";
 import ReviewRoute from "../../routes/contracts/review";
+import RenewalsRoute from "../../routes/renewals";
+import QuoteCheckRoute from "../../routes/quotes";
+import AskRoute from "../../routes/ask";
+import HomeRoute from "../../routes/home";
 
 export interface WorkspaceShellAppProps {
   workspaceName: string;
@@ -38,11 +42,11 @@ export interface WorkspaceShellAppProps {
  * is real as of task E07/F03/US01/T01 (ReviewRoute, ADR-020 screen 6) -- the
  * `review` landing path just below it stays its own placeholder (see that
  * route's own `note`; ia.md/ADR-018 name only the detail route this shell
- * already pointed at).
- *
- * `ShellRoutes` (the route tree alone, no router) is exported separately so
- * tests can wrap it in a `MemoryRouter` with a specific `initialEntries`
- * path instead of depending on the real browser URL a `BrowserRouter` reads.
+ * already pointed at). `renewals` is real as of task E08/F01/US01/T01
+ * (RenewalsRoute, ADR-020 screen 8). `ask` is real as of task E07/F04/US01/T01
+ * (AskRoute, ADR-020 screen 7). Quote check is real as of E08/F03/US01/T01.
+ * Home (`index`) is real as of task E08/F02/US01/T01 (HomeRoute, ADR-020
+ * screen 9).
  */
 export function ShellRoutes({ workspaceName, role, userLabel, onSignOut, apiClient }: WorkspaceShellAppProps) {
   return (
@@ -50,16 +54,7 @@ export function ShellRoutes({ workspaceName, role, userLabel, onSignOut, apiClie
       <Route
         element={<AppShell workspaceName={workspaceName} role={role} userLabel={userLabel} onSignOut={onSignOut} />}
       >
-        <Route
-          index
-          element={
-            <ScaffoldScreen
-              title="Home"
-              release="R3"
-              note="Savings KPIs + opportunities ship in epic-08/feature-02-savings-ui."
-            />
-          }
-        />
+        <Route index element={<HomeRoute apiClient={apiClient} />} />
         <Route path="contracts" element={<PortfolioRoute apiClient={apiClient} />} />
         <Route path="contracts/:contractId" element={<Contract360Route apiClient={apiClient} />} />
         <Route path="contracts/:contractId/review" element={<ReviewRoute apiClient={apiClient} />} />
@@ -73,46 +68,10 @@ export function ShellRoutes({ workspaceName, role, userLabel, onSignOut, apiClie
             />
           }
         />
-        <Route
-          path="renewals"
-          element={
-            <ScaffoldScreen
-              title="Renewals"
-              release="R2"
-              note="Renewal pipeline ships in epic-08/feature-01-renewal-pipeline-ui."
-            />
-          }
-        />
-        <Route
-          path="ask"
-          element={
-            <ScaffoldScreen
-              title="Ask Contigo"
-              release="R1"
-              note="Ask Contigo chat + citations ships in epic-07/feature-04-ask-contigo-ui. The global Ask bar above already gets your typed query here via router state."
-            />
-          }
-        />
-        <Route
-          path="quotes"
-          element={
-            <ScaffoldScreen
-              title="Quote check"
-              release="R4"
-              note="Quote check stepper ships in epic-08/feature-03-quote-check-ui. This landing path is this task's own placeholder — ADR-018 names only /quotes/:id."
-            />
-          }
-        />
-        <Route
-          path="quotes/:quoteId"
-          element={
-            <ScaffoldScreen
-              title="Quote check"
-              release="R4"
-              note="Quote check stepper ships in epic-08/feature-03-quote-check-ui."
-            />
-          }
-        />
+        <Route path="renewals" element={<RenewalsRoute apiClient={apiClient} userLabel={userLabel} />} />
+        <Route path="ask" element={<AskRoute apiClient={apiClient} />} />
+        <Route path="quotes" element={<QuoteCheckRoute apiClient={apiClient} />} />
+        <Route path="quotes/:quoteId" element={<QuoteCheckRoute apiClient={apiClient} />} />
         <Route path="documents" element={<DocumentsRoute apiClient={apiClient} />} />
         <Route
           path="workspace/members"

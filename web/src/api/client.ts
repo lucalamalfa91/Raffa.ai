@@ -288,6 +288,281 @@ export interface CorrectContractResult {
   error: string | null;
 }
 
+// Task E08/F01/US01/T01 (renewal-pipeline, ADR-020 screen 8): postRenewalAction, wrapping
+// `POST /api/renewals/{id}/action` -- the insight card's own three actions (Start negotiation /
+// Assign to me / Snooze, AC-3). `{id}` is the same `contractId` GET /api/renewals returns per row
+// (see that operation's own doc comment above for why there is no separate "renewal id"). Fourth
+// web epic to extend openapi/contigo-api.v1.json (see that file's own "repeating chore" provenance
+// paragraph). Unlike every other write call in this file, a well-formed request against an
+// unknown/cross-tenant contract id still succeeds -- RenewalsEndpointExtensions' own doc comment:
+// Contigo.Renewals cannot reference Contigo.Documents.Contracts at all (ADR-002), so it structurally
+// cannot 404 -- never special-cased here the way getContract360/getRenewalPriority special-case 404.
+type PostRenewalActionResponses = paths["/api/renewals/{id}/action"]["post"]["responses"];
+export type RenewalActionBody = PostRenewalActionResponses[200]["content"]["application/json"];
+/** The closed three-state vocabulary (`RenewalActionStatus.ToString()`), read off the generated response type rather than hand-duplicated -- see `RenewalActionBody`'s own provenance above. */
+export type RenewalActionStatusValue = RenewalActionBody["status"];
+
+/**
+ * `POST /api/renewals/{id}/action` request body. Hand-written, not generated -- see this file's
+ * header comment for why (the generator does not parse `requestBody`). The backend's own
+ * `RenewalActionRequest` types all three fields as nullable wire strings (validated, not trusted,
+ * server-side) -- this client only ever sends real, already-known values (see
+ * `src/routes/renewals/index.tsx`), so the stronger, non-optional shape here is honest about what
+ * this app actually sends rather than mirroring the server's defensive nullability.
+ */
+export interface PostRenewalActionRequest {
+  owner: string;
+  status: RenewalActionStatusValue;
+  action: string;
+}
+
+export interface PostRenewalActionResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** The upserted row's current state, present only when `ok` is true. */
+  action: RenewalActionBody | null;
+  /** Plain-language failure reason (400 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
+// Task E07/F04/US01/T01 (ask-contigo-ui, ADR-020 screen 7): askContigo, wrapping `POST
+// /api/chat/query` (backend/src/Contigo.Api/ChatEndpointExtensions.cs) -- the routed answer/citations
+// /abstain envelope behind `src/routes/ask/` (AC-1 route line, AC-2 citations, AC-3 abstain, AC-4
+// states). Fourth web epic to extend openapi/contigo-api.v1.json beyond the R0/portfolio/contract-360
+// /review set (see that file's own "repeating chore" provenance paragraph and its `askContigo`
+// operation's own description for the full Structured-vs-Semantic / abstain-reason / citation-lookup
+// gap notes). The request body is hand-written, like CreateWorkspaceRequest/CorrectContractRequest
+// above -- the generator does not parse `requestBody` at all yet.
+type AskContigoResponses = paths["/api/chat/query"]["post"]["responses"];
+export type AskContigoResponseBody = AskContigoResponses[200]["content"]["application/json"];
+export type AskContigoCitationBody = AskContigoResponseBody["citations"][number];
+export type AskContigoIntent = AskContigoResponseBody["intent"];
+
+/** `POST /api/chat/query` request body (ChatEndpointExtensions.ChatQueryRequest). Hand-written --
+ * see this file's header comment for why. */
+export interface AskContigoRequest {
+  question: string;
+}
+
+export interface AskContigoResult {
+  /**
+   * True only on `200 OK` -- the backend operation's own OpenAPI description names this "always 200
+   * once routing succeeds", so `false` here means a transport failure or a genuine `400` (blank
+   * question, missing tenant header, or a retrieval/answer failure), never "the AI could not
+   * determine an answer". That outcome is `ok: true` with `response.canDetermine === false` --
+   * see `AskContigoResponseBody`'s own shape (screens.md #7 "abstain" / "unknown question fallback").
+   */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** The full routed answer/abstain envelope, present only when `ok` is true. */
+  response: AskContigoResponseBody | null;
+  /** Plain-language failure reason (400 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
+// Task E08/F03/US01/T01 (quote-check-ui, ADR-018 route /quotes/:id, ADR-020 screen 10): uploadQuote,
+// wrapping `POST /api/quotes` -- the Quote Check stepper's own "Extract" step entry point.
+// Multipart, like uploadDocument above; supplier/currency/geography/purchaseDate are optional form
+// fields (see web/openapi/contigo-api.v1.json's own description on this operation for why a quote
+// uploaded without them still stores/extracts normally but cannot be benchmark-matched yet).
+type UploadQuoteResponses = paths["/api/quotes"]["post"]["responses"];
+export type UploadedQuote = UploadQuoteResponses[201]["content"]["application/json"];
+
+export interface UploadQuoteFields {
+  supplier?: string;
+  currency?: string;
+  geography?: string;
+  /** `yyyy-MM-dd`, matching the backend's `DateOnly?` parameter. */
+  purchaseDate?: string;
+}
+
+export interface UploadQuoteResult {
+  /** True only on `201 Created`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** The stored (and synchronously extracted/normalized) quote, present only when `ok` is true. */
+  quote: UploadedQuote | null;
+  /** Plain-language failure reason (400 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
+// getQuoteAssessment, wrapping `GET /api/quotes/{id}/assessment` -- the Extract/Assessment steps'
+// shared read shape (see recalculateQuoteAssessment below for why src/routes/quotes/ actually calls
+// the recalculate operation, not this one, for its own reads -- both return an identical
+// `assessment` shape).
+type GetQuoteAssessmentResponses = paths["/api/quotes/{id}/assessment"]["get"]["responses"];
+export type QuoteAssessmentBody = GetQuoteAssessmentResponses[200]["content"]["application/json"];
+export type QuoteLineAssessmentBody = QuoteAssessmentBody["lines"][number];
+
+/**
+ * `Contigo.Quotes.Domain.MarketPosition`'s real 3-value wire set, named here (not generated) for the
+ * same reason `PortfolioRiskSeverity` above is: web/scripts/generate-api-client.mjs#renderSchemaType
+ * drops a nullable union's `null` member whenever the schema also declares `enum`, so
+ * `QuoteLineAssessmentBody["position"]` is generated as a bare `string | null`. See
+ * web/openapi/contigo-api.v1.json's own `getQuoteAssessment` operation description for the full
+ * explanation.
+ */
+export type QuoteMarketPosition = "BelowMarket" | "InLine" | "AboveMarket";
+
+const QUOTE_MARKET_POSITIONS: readonly QuoteMarketPosition[] = ["BelowMarket", "InLine", "AboveMarket"];
+
+export function isQuoteMarketPosition(value: string): value is QuoteMarketPosition {
+  return (QUOTE_MARKET_POSITIONS as readonly string[]).includes(value);
+}
+
+export interface GetQuoteAssessmentResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** One entry per line on the quote, present only when `ok` is true. */
+  assessment: QuoteAssessmentBody | null;
+  /** Plain-language failure reason (400/404 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
+// recalculateQuoteAssessment, wrapping `POST /api/quotes/{id}/assessment/recalculate`. Called with
+// an empty `mappings` array as this app's own "read the current assessment + unmatched lines" call
+// (SkuMappingService.RecalculateAsync's own doc comment names this a valid, side-effect-free "pure
+// refresh") -- there is no separate `GET` that returns `unmatchedLines`, and this operation's
+// response is that shape's superset (adds `unmatchedLines`/`normalization` on top of the identical
+// `assessment` GET /api/quotes/{id}/assessment itself returns), so src/routes/quotes/ never calls
+// getQuoteAssessment directly; it is still wrapped above for API-contract completeness (the same
+// "wrap the endpoint's full surface even if this app's own screen only ever calls it one way"
+// convention getPortfolio's own doc comment already follows).
+type RecalculateQuoteResponses = paths["/api/quotes/{id}/assessment/recalculate"]["post"]["responses"];
+export type QuoteRecalculationBody = RecalculateQuoteResponses[200]["content"]["application/json"];
+export type UnmatchedQuoteLineBody = QuoteRecalculationBody["unmatchedLines"][number];
+
+/** One manual SKU-to-product mapping correction -- `Contigo.Quotes.Application.Normalization
+ * .SkuMappingCorrection`'s wire shape. Hand-written, like `CorrectContractRequest` above: the
+ * generator does not parse `requestBody` at all yet (see this file's own header comment). */
+export interface SkuMappingCorrectionInput {
+  sku: string;
+  edition?: string | null;
+  canonicalSku: string;
+  canonicalEdition?: string | null;
+  canonicalProductName?: string | null;
+}
+
+export interface RecalculateQuoteAssessmentResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** `mappingsAppliedCount`/`normalization`/`unmatchedLines`/`assessment`, present only when `ok` is true. */
+  recalculation: QuoteRecalculationBody | null;
+  /** Plain-language failure reason (400/404 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
+// captureNegotiationOutcome, wrapping `POST /api/negotiations/outcomes` -- the Negotiation step's
+// own outcome-capture form. `NegotiationLeverTypeName` mirrors `Contigo.Quotes.Application.Strategy
+// .NegotiationLeverType`'s 7-member closed vocabulary (see web/openapi/contigo-api.v1.json's own
+// operation description for why this screen has no way to fetch AI-recommended levers/evidence --
+// NegotiationStrategyService has no HTTP endpoint -- so this control lets a person pick from the
+// same fixed set the capture endpoint itself validates against, rather than free text it would
+// reject).
+export type NegotiationLeverTypeName =
+  | "Volume"
+  | "Term"
+  | "Utilization"
+  | "Alternatives"
+  | "QuarterEnd"
+  | "Bundle"
+  | "PaymentTerms";
+
+export const NEGOTIATION_LEVER_TYPES: readonly NegotiationLeverTypeName[] = [
+  "Volume",
+  "Term",
+  "Utilization",
+  "Alternatives",
+  "QuarterEnd",
+  "Bundle",
+  "PaymentTerms",
+];
+
+/** `POST /api/negotiations/outcomes` request body -- `NegotiationOutcomeCaptureRequest`'s wire
+ * shape. `realizedSaving`/`discountPercent` are deliberately absent: `NegotiationOutcomeService
+ * .CaptureAsync` always computes them itself (`NegotiationOutcomeCalculator.Compute`), never trusts
+ * a caller-supplied figure for arithmetic it can derive exactly (Appendix C rule 6). */
+export interface CaptureNegotiationOutcomeRequest {
+  quoteId: string;
+  originalQuoteTotal: number;
+  targetPrice?: number | null;
+  finalPrice: number;
+  negotiationDurationDays: number;
+  leversUsed: readonly NegotiationLeverTypeName[];
+  savingsOpportunityId?: string | null;
+}
+
+type CaptureNegotiationOutcomeResponses = paths["/api/negotiations/outcomes"]["post"]["responses"];
+export type NegotiationOutcomeBody = CaptureNegotiationOutcomeResponses[201]["content"]["application/json"];
+
+export interface CaptureNegotiationOutcomeResult {
+  /** True only on `201 Created`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** The recorded outcome (with server-computed `realizedSaving`/`discountPercent`), present only when `ok` is true. */
+  outcome: NegotiationOutcomeBody | null;
+  /** Plain-language failure reason (400/404 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
+// Task E08/F02/US01/T01 (savings-home, ADR-020 screen 9): getSavingsKpis, wrapping
+// `GET /api/savings/kpis` -- the Home screen's 6 KPI cells (Annual spend analyzed, Savings
+// identified, Savings realized, Savings in progress, Contracts analyzed, Upcoming renewals; product
+// spec section 10.1). Fifth web epic to extend openapi/contigo-api.v1.json (see that file's own
+// "repeating chore" provenance paragraph). This operation never reaches Contigo.Benchmark directly
+// (it only aggregates Documents/Contracts and Savings data already at rest) -- see
+// GetSavingsKpisResult's own doc comment for what a failed call means for this screen's "benchmark
+// provider unreachable" state (screens.md #9).
+type GetSavingsKpisResponses = paths["/api/savings/kpis"]["get"]["responses"];
+export type SavingsKpiSummaryBody = GetSavingsKpisResponses[200]["content"]["application/json"];
+export type SavingsSpendByCurrencyBody = SavingsKpiSummaryBody["annualSpendAnalyzed"][number];
+export type SavingsRangeByCurrencyBody = SavingsKpiSummaryBody["savingsIdentified"][number];
+
+export interface GetSavingsKpisResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /**
+   * The six-row KPI summary, present only when `ok` is true. A `false` result here is this screen's
+   * own honest trigger for screens.md #9's "error (benchmark provider unreachable; KPIs
+   * stale-labelled)" state -- src/routes/home/ keeps whatever `kpis` value it last successfully
+   * fetched on screen, tagged stale, rather than blanking the whole KPI row on a transient failure
+   * (see src/routes/home/homeViewModel.ts#reduceKpiFetch).
+   */
+  kpis: SavingsKpiSummaryBody | null;
+  /** Plain-language failure reason (400 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
+// getSavingsOpportunities, wrapping `GET /api/savings` -- the Home screen's opportunities table
+// (Opportunity/Type/Current spend/Estimated savings/Confidence/Owner/Status/Realized, screens.md
+// #9). Never 404s -- an empty `items` array is a tenant's own honest "no opportunities yet" answer,
+// the same convention getRenewals already follows for its own tenant-scoped list.
+type GetSavingsOpportunitiesResponses = paths["/api/savings"]["get"]["responses"];
+export type SavingsOpportunitiesPageBody = GetSavingsOpportunitiesResponses[200]["content"]["application/json"];
+export type SavingsOpportunityBody = SavingsOpportunitiesPageBody["items"][number];
+
+export interface GetSavingsOpportunitiesResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** Every opportunity for the caller's tenant, newest identified first (possibly empty), present only when `ok` is true. */
+  opportunities: SavingsOpportunitiesPageBody | null;
+  /** Plain-language failure reason (400 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
 export interface ApiClient {
   /**
    * Calls `GET /health` (operationId `getHealth` in
@@ -383,7 +658,69 @@ export interface ApiClient {
    * inline, not an exception.
    */
   correctContract(tenantId: string, id: string, request: CorrectContractRequest): Promise<CorrectContractResult>;
+  /**
+   * Calls `POST /api/renewals/{id}/action` (operationId `postRenewalAction`) -- upserts the one
+   * `RenewalAction` row for (tenant, contractId). Same never-throws shape as every other call here:
+   * a `400` (blank owner/action, or an unrecognized status) is a normal, expected outcome the
+   * caller renders inline. Unlike `getContract360`/`getRenewalPriority`/`correctContract`, this
+   * never 404s even for an unknown contract id -- see `RenewalActionBody`'s own doc comment.
+   */
+  postRenewalAction(
+    tenantId: string,
+    contractId: string,
+    request: PostRenewalActionRequest,
+  ): Promise<PostRenewalActionResult>;
+  /**
+   * Calls `POST /api/quotes` (operationId `uploadQuote`) as `multipart/form-data` -- the Quote
+   * Check stepper's own upload entry point (there is no separate "new quote" screen; ADR-018 names
+   * only the detail route `/quotes/:id`, so `src/routes/quotes/index.tsx` renders this call's own
+   * upload form when no quote id is in the route yet). Same never-throws shape as `uploadDocument`.
+   */
+  uploadQuote(tenantId: string, file: File, fields?: UploadQuoteFields): Promise<UploadQuoteResult>;
+  /**
+   * Calls `GET /api/quotes/{id}/assessment` (operationId `getQuoteAssessment`). Same never-throws
+   * shape as every other call here; a `404` is a normal, expected outcome. See
+   * `recalculateQuoteAssessment` below for why `src/routes/quotes/` calls that operation, not this
+   * one, for its own reads.
+   */
+  getQuoteAssessment(tenantId: string, id: string): Promise<GetQuoteAssessmentResult>;
+  /**
+   * Calls `POST /api/quotes/{id}/assessment/recalculate` (operationId `recalculateQuoteAssessment`)
+   * -- `mappings` defaults to an empty array, the endpoint's own documented "pure refresh" read (see
+   * `RecalculateQuoteAssessmentResult`'s own doc comment). Same never-throws shape as every other
+   * call here; a `404` is a normal, expected outcome.
+   */
+  recalculateQuoteAssessment(
+    tenantId: string,
+    id: string,
+    mappings?: readonly SkuMappingCorrectionInput[],
+  ): Promise<RecalculateQuoteAssessmentResult>;
+  /**
+   * Calls `POST /api/negotiations/outcomes` (operationId `captureNegotiationOutcome`) -- the
+   * Negotiation step's outcome-capture form. Same never-throws shape as every other call here: a
+   * `400` (e.g. an invalid `leversUsed` entry) or `404` (unknown quote) is a normal, expected
+   * outcome the caller renders inline.
+   */
+  captureNegotiationOutcome(
+    tenantId: string,
+    request: CaptureNegotiationOutcomeRequest,
+  ): Promise<CaptureNegotiationOutcomeResult>;
+
+  askContigo(tenantId: string, request: AskContigoRequest): Promise<AskContigoResult>;
+  /**
+   * Calls `GET /api/savings/kpis` (operationId `getSavingsKpis`) -- the Home screen's 6 KPI cells.
+   * Same never-throws shape as every other call here: a `400` (missing/invalid tenant header) is a
+   * normal, expected outcome the caller renders inline, not an exception.
+   */
+  getSavingsKpis(tenantId: string): Promise<GetSavingsKpisResult>;
+  /**
+   * Calls `GET /api/savings` (operationId `getSavingsOpportunities`) -- the Home screen's
+   * opportunities table. Same never-throws shape as every other call here; never 404s (an empty
+   * `items` array is a normal, expected "nothing yet" answer).
+   */
+  getSavingsOpportunities(tenantId: string): Promise<GetSavingsOpportunitiesResult>;
 }
+
 
 /**
  * Builds the API client from runtime config (ADR-012 "config, not code";
@@ -761,6 +1098,295 @@ export function createApiClient(baseUrl: string): ApiClient {
       }
 
       return { ok: false, statusCode: response.status, correction: null, error };
+    },
+
+    async askContigo(tenantId, request) {
+      let response: Response;
+      try {
+        response = await fetch(new URL("/api/chat/query", baseUrl), {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId },
+          body: JSON.stringify(request),
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          response: null,
+          error: `Unable to reach ${baseUrl}/api/chat/query. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const body = (await response.json()) as AskContigoResponseBody;
+        return { ok: true, statusCode: 200, response: body, error: null };
+      }
+
+      // Same Results.BadRequest(string) shape as the other calls' 400s above.
+      let error: string;
+      try {
+        const errorBody: unknown = await response.json();
+        error = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, response: null, error };
+    },
+
+    async postRenewalAction(tenantId, contractId, request) {
+      let response: Response;
+      try {
+        response = await fetch(new URL(`/api/renewals/${encodeURIComponent(contractId)}/action`, baseUrl), {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId },
+          body: JSON.stringify(request),
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          action: null,
+          error: `Unable to reach ${baseUrl}/api/renewals/${contractId}/action. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const action = (await response.json()) as RenewalActionBody;
+        return { ok: true, statusCode: 200, action, error: null };
+      }
+
+      // Same Results.BadRequest(string) shape as every other call's 400 above. Never a 404 -- see
+      // this method's own doc comment / RenewalActionBody's header comment for why.
+      let error: string;
+      try {
+        const errorBody: unknown = await response.json();
+        error = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, action: null, error };
+    },
+
+    async uploadQuote(tenantId, file, fields = {}) {
+      const formData = new FormData();
+      formData.append("file", file);
+      if (fields.supplier !== undefined) formData.append("supplier", fields.supplier);
+      if (fields.currency !== undefined) formData.append("currency", fields.currency);
+      if (fields.geography !== undefined) formData.append("geography", fields.geography);
+      if (fields.purchaseDate !== undefined) formData.append("purchaseDate", fields.purchaseDate);
+
+      let response: Response;
+      try {
+        response = await fetch(new URL("/api/quotes", baseUrl), {
+          method: "POST",
+          headers: { "X-Tenant-Id": tenantId },
+          body: formData,
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          quote: null,
+          error: `Unable to reach ${baseUrl}/api/quotes. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 201) {
+        const quote = (await response.json()) as UploadedQuote;
+        return { ok: true, statusCode: 201, quote, error: null };
+      }
+
+      // Same Results.BadRequest(string) shape as uploadDocument's 400 above.
+      let error: string;
+      try {
+        const errorBody: unknown = await response.json();
+        error = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, quote: null, error };
+    },
+
+    async getQuoteAssessment(tenantId, id) {
+      let response: Response;
+      try {
+        response = await fetch(new URL(`/api/quotes/${encodeURIComponent(id)}/assessment`, baseUrl), {
+          headers: { "X-Tenant-Id": tenantId },
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          assessment: null,
+          error: `Unable to reach ${baseUrl}/api/quotes/${id}/assessment. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const assessment = (await response.json()) as QuoteAssessmentBody;
+        return { ok: true, statusCode: 200, assessment, error: null };
+      }
+
+      // Unlike getContract360/getDocument above, this operation's own 404 DOES carry a body
+      // (QuotesEndpointExtensions.GetAssessmentAsync calls Results.NotFound(result.Error), not the
+      // bare, empty-body Results.NotFound() those other endpoints use) -- read it the same way a
+      // 400 is read below, rather than fabricating a generic message.
+      let error: string;
+      try {
+        const errorBody: unknown = await response.json();
+        error = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, assessment: null, error };
+    },
+
+    async recalculateQuoteAssessment(tenantId, id, mappings = []) {
+      let response: Response;
+      try {
+        response = await fetch(new URL(`/api/quotes/${encodeURIComponent(id)}/assessment/recalculate`, baseUrl), {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId },
+          body: JSON.stringify({ mappings }),
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          recalculation: null,
+          error: `Unable to reach ${baseUrl}/api/quotes/${id}/assessment/recalculate. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const recalculation = (await response.json()) as QuoteRecalculationBody;
+        return { ok: true, statusCode: 200, recalculation, error: null };
+      }
+
+      // Same real-body 404 as getQuoteAssessment above (SkuMappingService.QuoteNotFoundError via
+      // Results.NotFound(result.Error)), plus the same Results.BadRequest(string) 400 shape as
+      // every other call here.
+      let error: string;
+      try {
+        const errorBody: unknown = await response.json();
+        error = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, recalculation: null, error };
+    },
+
+    async captureNegotiationOutcome(tenantId, request) {
+      let response: Response;
+      try {
+        response = await fetch(new URL("/api/negotiations/outcomes", baseUrl), {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId },
+          body: JSON.stringify(request),
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          outcome: null,
+          error: `Unable to reach ${baseUrl}/api/negotiations/outcomes. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 201) {
+        const outcome = (await response.json()) as NegotiationOutcomeBody;
+        return { ok: true, statusCode: 201, outcome, error: null };
+      }
+
+      // Same real-body 404 as getQuoteAssessment above (NegotiationOutcomeService
+      // .QuoteNotFoundError via Results.NotFound(result.Error)), plus the same
+      // Results.BadRequest(string) 400 shape as every other call here.
+      let error: string;
+      try {
+        const errorBody: unknown = await response.json();
+        error = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, outcome: null, error };
+    },
+
+    async getSavingsKpis(tenantId) {
+      let response: Response;
+      try {
+        response = await fetch(new URL("/api/savings/kpis", baseUrl), {
+          headers: { "X-Tenant-Id": tenantId },
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          kpis: null,
+          error: `Unable to reach ${baseUrl}/api/savings/kpis. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const kpis = (await response.json()) as SavingsKpiSummaryBody;
+        return { ok: true, statusCode: 200, kpis, error: null };
+      }
+
+      // Same Results.BadRequest(string) shape as the other calls' 400s above.
+      let error: string;
+      try {
+        const errorBody: unknown = await response.json();
+        error = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, kpis: null, error };
+    },
+
+    async getSavingsOpportunities(tenantId) {
+      let response: Response;
+      try {
+        response = await fetch(new URL("/api/savings", baseUrl), {
+          headers: { "X-Tenant-Id": tenantId },
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          opportunities: null,
+          error: `Unable to reach ${baseUrl}/api/savings. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const opportunities = (await response.json()) as SavingsOpportunitiesPageBody;
+        return { ok: true, statusCode: 200, opportunities, error: null };
+      }
+
+      // Same Results.BadRequest(string) shape as the other calls' 400s above.
+      let error: string;
+      try {
+        const errorBody: unknown = await response.json();
+        error = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, opportunities: null, error };
     },
   };
 }
