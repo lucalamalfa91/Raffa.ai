@@ -26,6 +26,7 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     getRenewalPriority: vi.fn(),
     getCorrectionHistory: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, history: [], error: null }),
     correctContract: vi.fn(),
+    askContigo: vi.fn(),
     ...overrides,
   };
 }

@@ -179,6 +179,20 @@ export interface operations {
       };
     };
   };
+  askContigo: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { question: string; intent: "Structured" | "Semantic"; canDetermine: boolean; answer: string | null; citations: { documentId: string; page: number | null; section: string | null }[]; message: string | null };
+        };
+      };
+      400: {
+        content: {
+          "application/json": string;
+        };
+      };
+    };
+  };
 }
 
 export interface paths {
@@ -212,5 +226,8 @@ export interface paths {
   };
   "/api/renewals/{contractId}/priority": {
     get: operations["getRenewalPriority"];
+  };
+  "/api/chat/query": {
+    post: operations["askContigo"];
   };
 }

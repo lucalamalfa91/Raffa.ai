@@ -1,0 +1,203 @@
+/**
+ * Ask Contigo screen (route `/ask`, ADR-018; screens.md #7; ADR-020 screen 7; task
+ * E07/F04/US01/T01, us-01-ask-contigo). Component classes (.input, .btn, .abstain-block,
+ * .error-state, .empty-state, .micro-meta, .screen-kicker, .screen-title, .hint) come from
+ * ../../styles/components.css (ADR-019 component catalogue) -- this file adds only this screen's
+ * own composites, the same division of labour ../contracts/review/review.css already established
+ * for this app. Layout figures (72px role column, 300px suggestions rail) are quoted from the
+ * compiled prototype's own `scr.ask` block (inputs/design/prototypes/day1-demo.html), translated
+ * from its inline styles into named classes.
+ */
+
+.ask-screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  height: 100%;
+  min-height: 0;
+}
+
+.ask-screen-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-bottom: var(--space-4);
+  border-bottom: 2px solid var(--color-divider);
+}
+
+.ask-screen-body {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  flex: 1;
+  min-height: 0;
+}
+
+.ask-chat-column {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 2px solid var(--color-divider);
+}
+
+.ask-chat-log {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-4) var(--space-4) var(--space-4) 0;
+}
+
+.ask-chat-empty {
+  max-width: 560px;
+}
+
+.ask-message {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: var(--space-4);
+  max-width: 760px;
+}
+
+.ask-message-who {
+  padding-top: 3px;
+  font-size: 11px;
+  font-weight: var(--weight-body-strong);
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+  color: var(--color-neutral-600);
+}
+
+.ask-message[data-role="contigo"] .ask-message-who {
+  color: var(--color-accent);
+}
+
+.ask-message-text {
+  font-size: 14px;
+  white-space: pre-line;
+}
+
+.ask-citations {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.ask-citation-chip {
+  border: 1px solid var(--color-divider);
+  background: transparent;
+  padding: 4px var(--space-2);
+  font-size: 11px;
+  cursor: pointer;
+  color: inherit;
+  text-align: left;
+}
+
+.ask-citation-chip:hover:not(:disabled) {
+  background: var(--color-neutral-200);
+}
+
+.ask-citation-index {
+  color: var(--color-accent);
+  font-weight: var(--weight-body-strong);
+}
+
+.ask-message-route {
+  margin-top: var(--space-2);
+}
+
+.ask-thinking {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: var(--space-4);
+  align-items: center;
+}
+
+.ask-thinking-who {
+  font-size: 11px;
+  font-weight: var(--weight-body-strong);
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+
+.ask-thinking-copy {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 13px;
+  color: var(--color-neutral-600);
+}
+
+.ask-thinking-spinner {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border: 2px solid var(--color-neutral-300);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: ask-thinking-spin 0.8s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ask-thinking-spinner {
+    animation: none;
+  }
+}
+
+@keyframes ask-thinking-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.ask-input-row {
+  display: flex;
+  gap: var(--space-2);
+  padding-top: var(--space-4);
+  border-top: 2px solid var(--color-divider);
+}
+
+.ask-input-row .input {
+  flex: 1;
+}
+
+.ask-suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: 0 0 0 var(--space-4);
+}
+
+.ask-suggestion {
+  text-align: left;
+  border: 0;
+  border-bottom: 1px solid var(--color-divider);
+  background: transparent;
+  padding: var(--space-2) 0;
+  font-size: 13px;
+  line-height: 1.4;
+  cursor: pointer;
+  color: inherit;
+}
+
+.ask-suggestion:hover {
+  color: var(--color-accent-700);
+}
+
+@media (max-width: 900px) {
+  .ask-screen-body {
+    grid-template-columns: 1fr;
+  }
+
+  .ask-chat-column {
+    border-right: 0;
+  }
+
+  .ask-suggestions {
+    padding: var(--space-4) 0 0;
+    border-top: 2px solid var(--color-divider);
+  }
+}

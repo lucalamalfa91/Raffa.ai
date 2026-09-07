@@ -39,6 +39,7 @@ function mockApiClient(
     // bare vi.fn() is enough, same convention as getContract360 above.
     getCorrectionHistory: vi.fn(),
     correctContract: vi.fn(),
+    askContigo: vi.fn(),
   };
 }
 

@@ -8,6 +8,7 @@ import DocumentsRoute from "../../routes/documents";
 import PortfolioRoute from "../../routes/contracts";
 import Contract360Route from "../../routes/contracts/contract360";
 import ReviewRoute from "../../routes/contracts/review";
+import AskRoute from "../../routes/ask";
 
 export interface WorkspaceShellAppProps {
   workspaceName: string;
@@ -38,7 +39,10 @@ export interface WorkspaceShellAppProps {
  * is real as of task E07/F03/US01/T01 (ReviewRoute, ADR-020 screen 6) -- the
  * `review` landing path just below it stays its own placeholder (see that
  * route's own `note`; ia.md/ADR-018 name only the detail route this shell
- * already pointed at).
+ * already pointed at). `ask` is real as of task E07/F04/US01/T01 (AskRoute,
+ * ADR-020 screen 7) -- the global Ask bar above (`AppShell.tsx` ->
+ * `GlobalAskBar`) already navigated here with a seed query in router state
+ * before this route had a real screen to receive it.
  *
  * `ShellRoutes` (the route tree alone, no router) is exported separately so
  * tests can wrap it in a `MemoryRouter` with a specific `initialEntries`
@@ -83,16 +87,7 @@ export function ShellRoutes({ workspaceName, role, userLabel, onSignOut, apiClie
             />
           }
         />
-        <Route
-          path="ask"
-          element={
-            <ScaffoldScreen
-              title="Ask Contigo"
-              release="R1"
-              note="Ask Contigo chat + citations ships in epic-07/feature-04-ask-contigo-ui. The global Ask bar above already gets your typed query here via router state."
-            />
-          }
-        />
+        <Route path="ask" element={<AskRoute apiClient={apiClient} />} />
         <Route
           path="quotes"
           element={

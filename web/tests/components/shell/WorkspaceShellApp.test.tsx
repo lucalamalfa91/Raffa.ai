@@ -42,6 +42,7 @@ function mockApiClient(): ApiClient {
     // getContract360 above (this comment records *why* it's safe to leave unresolved, unlike those).
     getCorrectionHistory: vi.fn(),
     correctContract: vi.fn(),
+    askContigo: vi.fn(),
   };
 }
 

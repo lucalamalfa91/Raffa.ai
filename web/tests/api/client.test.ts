@@ -794,3 +794,89 @@ describe("createApiClient().correctContract (task E07/F03/US01/T01)", () => {
     expect(result.error).toContain("network down");
   });
 });
+
+describe("createApiClient().askContigo (task E07/F04/US01/T01)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const answeredBody = {
+    question: "What liability do we have with AWS?",
+    intent: "Semantic",
+    canDetermine: true,
+    answer: "AWS liability is capped at USD 500,000.",
+    citations: [{ documentId: "Document:doc-1", page: null, section: "chunk 0" }],
+    message: null,
+  };
+
+  it("POSTs <baseUrl>/api/chat/query with JSON {question} and the X-Tenant-Id header", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(answeredBody), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createApiClient("https://api.dev.contigo.example").askContigo("tenant-1", {
+      question: "What liability do we have with AWS?",
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("https://api.dev.contigo.example/api/chat/query");
+    expect(init).toEqual({
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Tenant-Id": "tenant-1" },
+      body: JSON.stringify({ question: "What liability do we have with AWS?" }),
+      cache: "no-store",
+    });
+  });
+
+  it("reports ok:true with the full routed envelope on 200 (a determined, cited answer)", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(answeredBody), { status: 200 })));
+
+    const result = await createApiClient("https://api.dev.contigo.example").askContigo("tenant-1", {
+      question: "What liability do we have with AWS?",
+    });
+
+    expect(result).toEqual({ ok: true, statusCode: 200, response: answeredBody, error: null });
+  });
+
+  it("reports ok:true on 200 even when canDetermine is false -- an honest abstain is not a client error", async () => {
+    const abstainBody = {
+      question: "What is our total liability exposure across all contracts?",
+      intent: "Semantic",
+      canDetermine: false,
+      answer: null,
+      citations: [],
+      message: null,
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(abstainBody), { status: 200 })));
+
+    const result = await createApiClient("https://api.dev.contigo.example").askContigo("tenant-1", {
+      question: "What is our total liability exposure across all contracts?",
+    });
+
+    expect(result).toEqual({ ok: true, statusCode: 200, response: abstainBody, error: null });
+  });
+
+  it("reports ok:false with the parsed JSON string error on 400 (a blank question, Results.BadRequest(string))", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(JSON.stringify("A non-empty 'question' is required."), { status: 400 })),
+    );
+
+    const result = await createApiClient("https://api.dev.contigo.example").askContigo("tenant-1", { question: "   " });
+
+    expect(result).toEqual({ ok: false, statusCode: 400, response: null, error: "A non-empty 'question' is required." });
+  });
+
+  it("resolves (does not throw) with statusCode null when the network request fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
+
+    const result = await createApiClient("https://api.dev.contigo.example").askContigo("tenant-1", {
+      question: "What liability do we have with AWS?",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.statusCode).toBeNull();
+    expect(result.response).toBeNull();
+    expect(result.error).toContain("network down");
+  });
+});
