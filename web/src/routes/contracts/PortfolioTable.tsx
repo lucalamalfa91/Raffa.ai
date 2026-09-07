@@ -28,6 +28,15 @@ function issueColor(severity: AttentionRow["severity"]): string {
 }
 
 /**
+ * The issue cell's weight/size/line-height, quoted verbatim from day1-demo.html's own compiled
+ * template -- `<sc-raw-td style="border-left:3px solid {{ c.bar }};padding-left:12px;
+ * font-weight:600;color:{{ c.issueFg }};font-size:12px;line-height:1.3">{{ c.issue }}` -- these three
+ * are *static* in that template (only `color` is a `{{ }}` binding), i.e. every row gets weight 600 /
+ * 12px / 1.3 regardless of severity; only the colour varies (task E11/F05/US01/T01, gap G-PORT).
+ */
+const ISSUE_TEXT_STYLE = { fontWeight: 600, fontSize: "12px", lineHeight: 1.3 } as const;
+
+/**
  * AC-3 "Table sorted by severity -> deadline; critical rows tinted + red bar." `rows` is expected
  * already sorted (`portfolioAttention.ts#compareBySeverityThenDeadline`) and already filtered
  * (`index.tsx`) -- this component only renders. Columns are quoted verbatim from screens.md #4:
@@ -75,9 +84,7 @@ export default function PortfolioTable({ rows }: PortfolioTableProps) {
               <tr key={item.contractId} className={rowClassName}>
                 <td>
                   <div className="portfolio-attention-cell">
-                    <span style={{ color: issueColor(row.severity), fontWeight: row.severity >= 2 ? 600 : 400 }}>
-                      {row.issue}
-                    </span>
+                    <span style={{ ...ISSUE_TEXT_STYLE, color: issueColor(row.severity) }}>{row.issue}</span>
                     {row.isHighRisk && <span className={`tag tag-${riskTag.variant}`}>{riskTag.label}</span>}
                   </div>
                 </td>
