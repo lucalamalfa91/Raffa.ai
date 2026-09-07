@@ -55,6 +55,12 @@ those in sync when the public surface of that folder changes (see
   `contigo-hcp-dev` (`ARM_*` as HCP **Environment** variables). GitHub Actions
   deploy uses `contigo-sp-dev` / `contigo-sp-demo` via OIDC. Details:
   [`infra/README.md`](infra/README.md).
+- **Demo fixture data** (so the Day-1 Savings screen is not empty on a
+  fresh `contigo_demo`) is seeded by `.github/workflows/seed-demo-fixture.yml`
+  — an explicit, manually-dispatched/callable job against `dev` or `demo`,
+  reusing the same per-env deploy identity above, never a side effect of an
+  ordinary `dev` push. Details: [`backend/README.md`](backend/README.md)
+  "Demo fixture seed".
 
 ## Branching and protection
 
