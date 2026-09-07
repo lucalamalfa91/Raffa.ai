@@ -61,6 +61,31 @@ function mockApiClient(result: Promise<HealthCheckResult> | HealthCheckResult): 
     recalculateQuoteAssessment: vi.fn(),
     captureNegotiationOutcome: vi.fn(),
     askContigo: vi.fn(),
+    // Task E08/F02/US01/T01 (savings-home): unlike getPortfolio/getContract360/etc. above (never
+    // invoked here -- this file never navigates away from the shell's default route), HomeRoute IS
+    // that default route ("/", WorkspaceShellApp's own `index` route) -- every "signed in + workspace
+    // selected" test below actually mounts it and calls both of these unconditionally on mount, so an
+    // unconfigured vi.fn() (which returns undefined, not a Promise) would throw the moment its effect
+    // calls .then() on it, the same reasoning tests/components/shell/WorkspaceShellApp.test.tsx's own
+    // getPortfolio comment already gives. Resolved, empty-but-successful defaults are enough for this
+    // file's own routing assertions; see tests/routes/home/*.test.tsx for that screen's own
+    // fetch-outcome coverage.
+    getSavingsKpis: vi.fn().mockResolvedValue({
+      ok: true,
+      statusCode: 200,
+      kpis: {
+        annualSpendAnalyzed: [],
+        contractsAnalyzedCount: 0,
+        savingsIdentified: [],
+        savingsInProgress: [],
+        savingsRealized: [],
+        upcomingRenewalsCount: 0,
+      },
+      error: null,
+    }),
+    getSavingsOpportunities: vi
+      .fn()
+      .mockResolvedValue({ ok: true, statusCode: 200, opportunities: { items: [], totalCount: 0 }, error: null }),
   };
 }
 

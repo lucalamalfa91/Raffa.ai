@@ -514,6 +514,55 @@ export interface CaptureNegotiationOutcomeResult {
   error: string | null;
 }
 
+// Task E08/F02/US01/T01 (savings-home, ADR-020 screen 9): getSavingsKpis, wrapping
+// `GET /api/savings/kpis` -- the Home screen's 6 KPI cells (Annual spend analyzed, Savings
+// identified, Savings realized, Savings in progress, Contracts analyzed, Upcoming renewals; product
+// spec section 10.1). Fifth web epic to extend openapi/contigo-api.v1.json (see that file's own
+// "repeating chore" provenance paragraph). This operation never reaches Contigo.Benchmark directly
+// (it only aggregates Documents/Contracts and Savings data already at rest) -- see
+// GetSavingsKpisResult's own doc comment for what a failed call means for this screen's "benchmark
+// provider unreachable" state (screens.md #9).
+type GetSavingsKpisResponses = paths["/api/savings/kpis"]["get"]["responses"];
+export type SavingsKpiSummaryBody = GetSavingsKpisResponses[200]["content"]["application/json"];
+export type SavingsSpendByCurrencyBody = SavingsKpiSummaryBody["annualSpendAnalyzed"][number];
+export type SavingsRangeByCurrencyBody = SavingsKpiSummaryBody["savingsIdentified"][number];
+
+export interface GetSavingsKpisResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /**
+   * The six-row KPI summary, present only when `ok` is true. A `false` result here is this screen's
+   * own honest trigger for screens.md #9's "error (benchmark provider unreachable; KPIs
+   * stale-labelled)" state -- src/routes/home/ keeps whatever `kpis` value it last successfully
+   * fetched on screen, tagged stale, rather than blanking the whole KPI row on a transient failure
+   * (see src/routes/home/homeViewModel.ts#reduceKpiFetch).
+   */
+  kpis: SavingsKpiSummaryBody | null;
+  /** Plain-language failure reason (400 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
+// getSavingsOpportunities, wrapping `GET /api/savings` -- the Home screen's opportunities table
+// (Opportunity/Type/Current spend/Estimated savings/Confidence/Owner/Status/Realized, screens.md
+// #9). Never 404s -- an empty `items` array is a tenant's own honest "no opportunities yet" answer,
+// the same convention getRenewals already follows for its own tenant-scoped list.
+type GetSavingsOpportunitiesResponses = paths["/api/savings"]["get"]["responses"];
+export type SavingsOpportunitiesPageBody = GetSavingsOpportunitiesResponses[200]["content"]["application/json"];
+export type SavingsOpportunityBody = SavingsOpportunitiesPageBody["items"][number];
+
+export interface GetSavingsOpportunitiesResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** Every opportunity for the caller's tenant, newest identified first (possibly empty), present only when `ok` is true. */
+  opportunities: SavingsOpportunitiesPageBody | null;
+  /** Plain-language failure reason (400 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
 export interface ApiClient {
   /**
    * Calls `GET /health` (operationId `getHealth` in
@@ -658,6 +707,18 @@ export interface ApiClient {
   ): Promise<CaptureNegotiationOutcomeResult>;
 
   askContigo(tenantId: string, request: AskContigoRequest): Promise<AskContigoResult>;
+  /**
+   * Calls `GET /api/savings/kpis` (operationId `getSavingsKpis`) -- the Home screen's 6 KPI cells.
+   * Same never-throws shape as every other call here: a `400` (missing/invalid tenant header) is a
+   * normal, expected outcome the caller renders inline, not an exception.
+   */
+  getSavingsKpis(tenantId: string): Promise<GetSavingsKpisResult>;
+  /**
+   * Calls `GET /api/savings` (operationId `getSavingsOpportunities`) -- the Home screen's
+   * opportunities table. Same never-throws shape as every other call here; never 404s (an empty
+   * `items` array is a normal, expected "nothing yet" answer).
+   */
+  getSavingsOpportunities(tenantId: string): Promise<GetSavingsOpportunitiesResult>;
 }
 
 
@@ -1260,6 +1321,72 @@ export function createApiClient(baseUrl: string): ApiClient {
       }
 
       return { ok: false, statusCode: response.status, outcome: null, error };
+    },
+
+    async getSavingsKpis(tenantId) {
+      let response: Response;
+      try {
+        response = await fetch(new URL("/api/savings/kpis", baseUrl), {
+          headers: { "X-Tenant-Id": tenantId },
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          kpis: null,
+          error: `Unable to reach ${baseUrl}/api/savings/kpis. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const kpis = (await response.json()) as SavingsKpiSummaryBody;
+        return { ok: true, statusCode: 200, kpis, error: null };
+      }
+
+      // Same Results.BadRequest(string) shape as the other calls' 400s above.
+      let error: string;
+      try {
+        const errorBody: unknown = await response.json();
+        error = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, kpis: null, error };
+    },
+
+    async getSavingsOpportunities(tenantId) {
+      let response: Response;
+      try {
+        response = await fetch(new URL("/api/savings", baseUrl), {
+          headers: { "X-Tenant-Id": tenantId },
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          opportunities: null,
+          error: `Unable to reach ${baseUrl}/api/savings. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const opportunities = (await response.json()) as SavingsOpportunitiesPageBody;
+        return { ok: true, statusCode: 200, opportunities, error: null };
+      }
+
+      // Same Results.BadRequest(string) shape as the other calls' 400s above.
+      let error: string;
+      try {
+        const errorBody: unknown = await response.json();
+        error = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, opportunities: null, error };
     },
   };
 }

@@ -36,6 +36,10 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     recalculateQuoteAssessment: vi.fn(),
     captureNegotiationOutcome: vi.fn(),
     askContigo: vi.fn(),
+    // Task E08/F02/US01/T01 (savings-home): this suite never reaches Home's own fetch-outcome
+    // matrix -- bare vi.fn() is enough, same convention as the other calls above.
+    getSavingsKpis: vi.fn(),
+    getSavingsOpportunities: vi.fn(),
     ...overrides,
   };
 }
