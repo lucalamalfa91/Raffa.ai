@@ -28,6 +28,9 @@ npm run generate:api      # regenerate src/api/generated/schema.ts from openapi/
 npm run build             # generate:api, then tsc --noEmit type-check, then vite build -> dist/
 npm test                  # vitest run (single pass, CI mode)
 npm run preview           # serve dist/ locally
+npx playwright install --with-deps chromium   # one-time browser download for the commands below
+npm run test:e2e          # e2e/day1.spec.ts -- the §20 Day-1 browser walk (see "End-to-end" below)
+npm run test:e2e:report   # open the last e2e run's HTML report (trace/video on failure)
 ```
 
 ## Runtime config injection (ADR-012 "config, not code")
@@ -850,6 +853,9 @@ Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
 
 ```
 web/
+  playwright.config.ts      # task E08/F04/US01/T01 -- e2e/day1.spec.ts's runner config (see "End-to-end" below)
+  e2e/
+    day1.spec.ts             # task E08/F04/US01/T01 -- the §20 Day-1 browser walk, the web-pass integration gate
   openapi/
     contigo-api.v1.json       # single OpenAPI document (interim, hand-authored -- see "API client" above)
   scripts/
@@ -984,3 +990,93 @@ accent-coloured *text on the page ground* (`--color-accent-700`) but does not
 separately pin a floor for light text on a filled accent surface -- flagged
 in a comment on `.btn-primary` in `styles/components.css` rather than
 silently shipped or "fixed" by forking the locked accent value.
+
+## End-to-end (Day-1 browser walk) -- task E08/F04/US01/T01, us-01-final-integration
+
+`e2e/day1.spec.ts` (Playwright, config at `playwright.config.ts`) is the
+**web-pass integration gate** the parent story's Definition of Done names:
+"Manual + automated smoke of the Day-1 path on `demo` passes." It drives the
+real, deployed SPA in a real browser end to end -- product-spec §20's own
+ladder (sign in -> invite -> upload -> review -> Contract 360 -> Ask with
+citations + one abstain -> renewal action -> savings opportunity -> quote
+check -> record outcome -> Home realized updates), never `dotnet test`,
+never Swagger (AC-1), against `demo`, never a `localhost` `config.json`
+shell (AC-2), which only makes sense once `demo-v*` promotion (ADR-016) has
+actually happened (AC-3).
+
+The task's own "Files to create or modify" table names this file as
+`workspace/contigo-web/e2e/day1.spec.ts`; it lives at `web/e2e/day1.spec.ts`
+instead, the same "product tree is the four domain folders at the worktree
+root, not a `workspace/<repo>/` stand-in" correction `reports/open-questions.md`
+already recorded for two earlier tasks (OQ-impl-001/002) -- there is no other
+location where a browser test could reach the real, already-scaffolded ten
+screens this file drives.
+
+### Running it
+
+```bash
+npx playwright install --with-deps chromium   # one-time browser download
+CONTIGO_E2E_BASE_URL=https://<swa-demo-host> \
+CONTIGO_E2E_ENTRA_EMAIL=<a demo-tenant test account UPN> \
+CONTIGO_E2E_ENTRA_PASSWORD=<that account's password> \
+  npm run test:e2e
+npm run test:e2e:report   # opens the HTML report -- trace/video/screenshot on failure, "smoking recorded"
+```
+
+All three environment variables are required; the suite `test.skip()`s
+itself (not a false pass, not a silent no-op exit code) with a message
+naming exactly what is missing when any are unset -- see the spec file's own
+header comment. There is deliberately no `localhost` fallback for
+`CONTIGO_E2E_BASE_URL`: that would let a local run masquerade as the `demo`
+gate AC-2 requires.
+
+**The test account must be exempt from interactive MFA / Conditional
+Access** (a standard "automation/service" account exclusion on the Entra
+side) -- `e2e/day1.spec.ts#signInWithEntra` drives the identifier + password
+steps and an optional "Stay signed in?" prompt only; it cannot answer an
+MFA challenge. This is an Entra tenant configuration decision for whoever
+provisions the `demo`-tenant test account, not something this file's own
+scope (`web/`) can set.
+
+### Three real, honestly-tested divergences from the prototype
+
+`day1-demo.html` is one hard-coded demo scenario; the real app is not. The
+spec's own header comment has the full citations -- in short:
+
+1. **Invite has no real screen yet** (`workspace/members` still renders
+   `ScaffoldScreen`; `epic-06/feature-04-workspace-members-ui` has not
+   shipped as of this task) -- asserted as the honest placeholder it is.
+2. **A fresh, self-created workspace cannot discover the ADR-022
+   fixture-seeded tenant** (the workspace picker is a per-browser
+   `localStorage` cache, `workspaceStore.ts`'s own documented gap) --
+   Ask-citation, renewal-pipeline and savings-opportunity steps assert
+   whichever real, already-tested state (populated or honestly empty)
+   actually renders for the workspace this run creates, and name the gap
+   inline via `test.info().annotations` rather than asserting a fabricated
+   populated state. A reused Playwright `storageState` pointed at a
+   pre-seeded fixture workspace exercises the fuller, populated path
+   instead -- the same `pickOrCreateWorkspace` code path handles both.
+3. **A recorded quote outcome does not update Home's "Savings realized"
+   KPI** (`NegotiationOutcomePropagationService` never runs for it -- see
+   `src/routes/quotes/NegotiationStep.tsx`'s own header comment). The final
+   step asserts the real outcome + the real "See it on Home ->" link, not a
+   KPI change this build does not perform.
+
+### CI wiring is a follow-up, not this task
+
+This task authors and wires the suite so an operator (or a human at the
+keyboard) can run it against `demo` after a `demo-v*` promotion. Adding a
+GitHub Actions job that runs it automatically post-promotion (with the Entra
+test-account credentials as environment secrets) is a natural next step but
+is a `.github/workflows/` change outside this task's own file scope.
+
+### Harness note
+
+This suite was authored against, and its every selector/state-branch
+statically verified against, the real committed source of every screen it
+drives (cited throughout the spec file) -- but it was not executed inside
+the Helix implementer session that wrote it: that session's shell has
+`python`/`gh` only, no `npm`/`node` (`agents/implementer.md` §0), so
+`npm install` / `npx playwright test` could not run there. Running it for
+real against `demo` is the actual gate; that is an operator/CI action, not
+a claim this README makes on the authoring session's behalf.
