@@ -18,6 +18,12 @@ export interface ReviewFieldListProps {
  * reusable primitive `../contract360/OverviewTab.tsx`'s "All risks →" link already uses) -- row
  * `onClick` would not be, so this is the real interactive surface, not a mouse-only convenience on
  * top of it.
+ *
+ * Task E11/F07/US01/T01 (gap G-REV): "Correct" is `.btn.btn-ghost` (was `.btn-primary`) and the
+ * value cell carries `.review-field-value` (ellipsis truncation) -- both copied from the export's
+ * own inline styling on this exact row; column widths live in `./review.css` (`.table` is
+ * `table-layout:fixed`, so the export's narrow-field/wide-value/auto-auto proportions need explicit
+ * widths, not a markup change here).
  */
 export default function ReviewFieldList({ rows, selectedField, onSelect, onAccept }: ReviewFieldListProps) {
   return (
@@ -47,7 +53,7 @@ export default function ReviewFieldList({ rows, selectedField, onSelect, onAccep
                 </button>
               </td>
               <td>
-                <div>{row.displayValue}</div>
+                <div className="review-field-value">{row.displayValue}</div>
                 <div className="micro-meta">Source not yet available</div>
               </td>
               <td>
@@ -59,7 +65,7 @@ export default function ReviewFieldList({ rows, selectedField, onSelect, onAccep
                     <button type="button" className="btn btn-secondary" onClick={() => onAccept(row.name)}>
                       Accept
                     </button>
-                    <button type="button" className="btn btn-primary" onClick={() => onSelect(row.name)}>
+                    <button type="button" className="btn btn-ghost" onClick={() => onSelect(row.name)}>
                       Correct
                     </button>
                   </div>

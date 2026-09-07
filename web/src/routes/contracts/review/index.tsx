@@ -232,7 +232,7 @@ function ReviewScreen({
 
   return (
     <div className="review-screen">
-      <ReviewHeader progress={progress} onMarkValidated={onMarkValidated} />
+      <ReviewHeader header={contract.header} progress={progress} onMarkValidated={onMarkValidated} />
 
       {historyDegraded && (
         <p className="hint" role="alert">

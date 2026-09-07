@@ -168,7 +168,9 @@ test.describe("§20 Day-1 path — browser walk on demo", () => {
           return;
         }
 
-        await expect(page.getByRole("heading", { name: /review & correction/i })).toBeVisible({ timeout: 30_000 });
+        // Task E11/F07/US01/T01 (gap G-REV): heading text now matches the export ("Review extraction",
+        // also this same route's own CTA label on Contract 360), not the earlier "Review & correction".
+        await expect(page.getByRole("heading", { name: /review extraction/i })).toBeVisible({ timeout: 30_000 });
         const rowCount = await page.locator(".review-field-table tbody tr").count();
         expect(
           rowCount,

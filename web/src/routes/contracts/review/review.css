@@ -5,12 +5,24 @@
  * come from ../../../styles/components.css (ADR-019 component catalogue) -- this file adds only
  * this screen's own composites, the same division of labour ../contract360/contract360.css already
  * established for this folder.
+ *
+ * Task E11/F07/US01/T01 (gap G-REV, reports/audit/visual-fidelity-gaps.md) brought this file's own
+ * composites in line with `inputs/design/prototypes/day1-demo.html`'s Review block verbatim: the
+ * `--space-5` gaps below (two spots) referenced a token that does not exist -- the scale skips it
+ * (`../../../styles/tokens.css`'s own header comment: "1,2,3,4,6,8") -- so both resolved to no gap
+ * at all; replaced with `--space-6`, this screen's own major-section gap, matching the same-sized
+ * gap `../contract360/contract360.css` already uses for its own top-level sections. Everything else
+ * in this rule block is new: the progress-bar/legend row, the field-table's own fixed-layout column
+ * widths (`.table` is `table-layout:fixed` -- with no widths, all four columns rendered equal-width,
+ * not the export's narrow-field/wide-value/auto-auto proportions), a value-cell truncation guard, a
+ * compact size for the in-row Accept/Correct buttons, and the evidence pane's "highlighted passage"
+ * card treatment.
  */
 
 .review-screen {
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
+  gap: var(--space-6);
 }
 
 /* ---- Header (AC-4) ---------------------------------------------------------- */
@@ -30,8 +42,41 @@
   text-align: right;
 }
 
-.review-progress-line {
+.review-header-summary {
+  margin-top: var(--space-1);
+}
+
+/* Progress line (left) + confidence legend (right), one bordered bar -- copied from the export's own
+ * `justify-content:space-between` row under the title (day1-demo.html Review block). */
+.review-progress-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-4);
   margin-top: var(--space-2);
+}
+
+.review-progress-line {
+  margin: 0;
+}
+
+/* Confidence legend: three tag+caption pairs, copied verbatim from the export ("auto-accepted" /
+ * "flagged" / "review required" next to the >95% / 80-95% / <80% thresholds design-system.md's own
+ * semantic-mapping table already locks) -- a key to the same tags the list below renders, not a
+ * fourth tag variant. */
+.review-legend {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--color-neutral-600);
+}
+
+.review-legend-item .tag {
+  padding: 1px 6px;
+  font-size: 10px;
 }
 
 /* ---- List + evidence pane layout -------------------------------------------- */
@@ -39,12 +84,35 @@
 .review-body {
   display: flex;
   align-items: flex-start;
-  gap: var(--space-5);
+  gap: var(--space-6);
 }
 
 .review-field-table {
   flex: 1 1 auto;
   min-width: 0;
+}
+
+/* Fixed-layout column widths (`.table` sets `table-layout:fixed`, components.css) -- narrow Field,
+ * wider Extracted value, compact Confidence/Decision, matching the export's own
+ * `grid-template-columns:minmax(120px,1fr) minmax(140px,1.3fr) auto auto`. */
+.review-field-table th:nth-child(1),
+.review-field-table td:nth-child(1) {
+  width: 20%;
+}
+
+.review-field-table th:nth-child(2),
+.review-field-table td:nth-child(2) {
+  width: 32%;
+}
+
+.review-field-table th:nth-child(3),
+.review-field-table td:nth-child(3) {
+  width: 16%;
+}
+
+.review-field-table th:nth-child(4),
+.review-field-table td:nth-child(4) {
+  width: 32%;
 }
 
 .review-field-table tr.review-row-selected {
@@ -64,13 +132,44 @@
   background: var(--color-accent);
 }
 
+/* Long extracted values truncate with an ellipsis rather than wrapping/blowing out the row height --
+ * the export's own `overflow:hidden;text-overflow:ellipsis;white-space:nowrap` on this cell. */
+.review-field-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .review-decision-actions {
   display: flex;
   gap: var(--space-2);
 }
 
+/* Compact in-row Accept/Correct sizing, matching the export's own inline
+ * `font-size:12px;padding:4px 10px` on these two buttons. */
+.review-decision-actions .btn {
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
 .review-evidence-pane {
   flex: none;
+}
+
+/* "Highlighted passage" card (screens.md #6: "evidence page with highlighted passage"; export's own
+ * white/serif/bordered treatment, deliberately distinct from app chrome to read as quoted document
+ * text). Content stays the honest "not yet available" note (reviewViewModel.ts's own header comment
+ * -- no endpoint exposes a per-field source span/page yet); only the container is copied from the
+ * export, never a fabricated document name, page, or quote. */
+.review-evidence-passage {
+  margin-top: var(--space-3);
+  padding: var(--space-4);
+  background: #fff;
+  border: 1px solid var(--color-divider);
+  font-family: Georgia, serif;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: #222;
 }
 
 .review-correction-form {
