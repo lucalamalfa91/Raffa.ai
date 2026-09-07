@@ -1,27 +1,21 @@
-waveId: wave-v1-epic-e1011
+waveId: wave-v1-epic-e11
 status: planned
-# Combined e10 (demo-readiness) + e11 (visual fidelity).
-# No cross-DAG edges: backend residuals and visual tasks run in parallel.
-# Do not recut from wave-spec.schema.yaml / wave-spec.visual.yaml or this union is lost.
-# estimated tokens: 13.4M (4.6M + 8.8M; S/M/L mapped; not a packing cap).
-# Launch: ./run.ps1 -Max -Slice e1011 -o execution-fanout
-# Do NOT -Slice e10 or e11 — that overwrites this union.
+# E11 visual fidelity (mockup vs dev). Prior-wave depends_on dropped (producer-completeness).
+# estimated tokens: 8.8M (S/M/L mapped; not a packing cap).
+# Launch: ./run.ps1 -Max -Slice e11 -o execution-fanout
 phases:
   - id: 1
     name: phase-1
     tasks:
-      - {id: E10/F01/US01/T01, prompt: reports/workitems/epic-10-demo-readiness/feature-01-fixture-seed/us-01-seed-demo-db/tasks/task-01-seed-fixture.md, produces: [demo-fixture-seed], depends_on: [], effort: L, layer: backend, status: live}
       - {id: E11/F01/US01/T01, prompt: reports/workitems/epic-11-visual-fidelity/feature-01-chrome-foundation/us-01-health-and-type/tasks/task-01-hide-health-lock-chrome.md, produces: [visual-chrome], depends_on: [], effort: M, layer: frontend, status: live}
   - id: 2
     name: phase-2
     tasks:
-      - {id: E10/F02/US01/T01, prompt: reports/workitems/epic-10-demo-readiness/feature-02-foundry-ocr-wiring/us-01-foundry-ocr-ca/tasks/task-01-foundry-ocr-ca.md, produces: [foundry-ocr-wired], depends_on: [demo-fixture-seed], effort: L, layer: backend, status: live}
       - {id: E11/F02/US01/T01, prompt: reports/workitems/epic-11-visual-fidelity/feature-02-signin-fidelity/us-01-signin-canvas/tasks/task-01-signin-1to1.md, produces: [visual-signin], depends_on: [visual-chrome], effort: L, layer: frontend, status: live}
       - {id: E11/F03/US01/T01, prompt: reports/workitems/epic-11-visual-fidelity/feature-03-shell-askbar/us-01-shell-askbar/tasks/task-01-shell-askbar.md, produces: [visual-shell], depends_on: [visual-chrome], effort: M, layer: frontend, status: live}
   - id: 3
     name: phase-3
     tasks:
-      - {id: E10/F03/US01/T01, prompt: reports/workitems/epic-10-demo-readiness/feature-03-demo-promote-runbook/us-01-demo-v-smoke/tasks/task-01-demo-v-runbook.md, produces: [demo-v-runbook], depends_on: [foundry-ocr-wired], effort: M, layer: backend, status: live}
       - {id: E11/F04/US01/T01, prompt: reports/workitems/epic-11-visual-fidelity/feature-04-documents-fidelity/us-01-documents-screen/tasks/task-01-documents-mockup.md, produces: [visual-documents], depends_on: [visual-shell], effort: M, layer: frontend, status: live}
       - {id: E11/F05/US01/T01, prompt: reports/workitems/epic-11-visual-fidelity/feature-05-portfolio-fidelity/us-01-portfolio-screen/tasks/task-01-portfolio-mockup.md, produces: [visual-portfolio], depends_on: [visual-shell], effort: M, layer: frontend, status: live}
       - {id: E11/F06/US01/T01, prompt: reports/workitems/epic-11-visual-fidelity/feature-06-contract360-fidelity/us-01-contract360-screen/tasks/task-01-contract360-mockup.md, produces: [visual-360], depends_on: [visual-shell], effort: M, layer: frontend, status: live}

@@ -1,0 +1,9 @@
+# Visual-fidelity slice (e11). e01–e10 stay put.
+
+mode: visual-fidelity
+master: reports/plan/wave-spec.visual.yaml
+slices:
+  - id: e11
+    title: E11 visual fidelity
+    tokens: 8800000
+    tasks: 8

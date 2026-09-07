@@ -220,6 +220,34 @@
         "E10/F02/US01",
         "E10/F03/US01"
       ]
+    },
+    {
+      "id": "e1011",
+      "title": "E10 demo-readiness + E11 visual fidelity (combined)",
+      "previous": "e09",
+      "tokens": 13400000,
+      "tasks": 11,
+      "epic": "E10",
+      "integration": false,
+      "checks": [
+        "github_auth",
+        "github_org",
+        "github_repos",
+        "hitl_previous"
+      ],
+      "stories": [
+        "E10/F01/US01",
+        "E10/F02/US01",
+        "E10/F03/US01",
+        "E11/F01/US01",
+        "E11/F02/US01",
+        "E11/F03/US01",
+        "E11/F04/US01",
+        "E11/F05/US01",
+        "E11/F06/US01",
+        "E11/F07/US01",
+        "E11/F08/US01"
+      ]
     }
   ]
 }
