@@ -1,10 +1,20 @@
 /**
  * Portfolio screen (route `/contracts`, ADR-018; screens.md #4 "Portfolio"; task E07/F01/US01/T01,
- * us-01-portfolio-list-filters). Component classes (.field, .input, .seg, .btn, .tag, .table,
- * .attention-strip/.attention-cell, .row-critical, .deadline-critical, .skeleton, .empty-state,
- * .error-state, .hint, .screen-kicker/.screen-title, .micro-meta) come from
- * ../../styles/components.css (ADR-019 component catalogue) -- this file adds only this screen's own
- * composites, the same division of labour documents.css/signin.css already established for this repo.
+ * us-01-portfolio-list-filters; visual-fidelity pass task E11/F05/US01/T01, us-01-portfolio-screen
+ * AC-1/AC-2 vs `inputs/design/prototypes/day1-demo.html`, gap G-PORT). Component classes (.field,
+ * .input, .seg, .btn, .tag, .table, .attention-strip/.attention-cell, .row-critical,
+ * .deadline-critical, .skeleton, .empty-state, .error-state, .hint, .screen-kicker/.screen-title,
+ * .micro-meta) come from ../../styles/components.css (ADR-019 component catalogue) -- this file adds
+ * only this screen's own composites, the same division of labour documents.css/signin.css already
+ * established for this repo.
+ *
+ * Three of components.css's shared rules carry values that do not match day1-demo.html's own
+ * compiled `<style>` block for this exact table/strip (confirmed against the bundle's literal CSS
+ * text, not just design-system.md's prose); this file overrides them scoped to `.portfolio-table`/
+ * `.portfolio-screen` only, the same "small additive rule, scoped to this screen's own strip/table"
+ * pattern renewals.css already uses for its own `.is-active` gap (its own header comment) and
+ * contracts.css's own pre-existing `.portfolio-table-numeric` text-align override -- not a fork of
+ * the shared sheet, and not a change to any other screen that also consumes `.table`/`.attention-*`.
  */
 
 .portfolio-screen {
@@ -55,6 +65,89 @@
   align-self: flex-end;
 }
 
+/* ---- Attention strip (AC-1/AC-2) ------------------------------------------
+ * components.css's shared `.attention-strip`/`.attention-cell` gives the equal-cell grid, the
+ * border-right divider, and a same-named `.is-urgent` hook, but day1-demo.html's own attDef.map view
+ * model for this exact strip is richer than that shared rule covers -- confirmed against the
+ * compiled bundle's literal markup/JS, not invented:
+ *   <button style="...border-left:3px solid {{ a.bar }};background:{{ a.bg }};padding:14px 20px 12px 29px;...">
+ *     <div style="display:flex;align-items:baseline;gap:10px">
+ *       <span style="...font-size:26px;...color:{{ a.fg }}">{{ a.n }}</span>
+ *       <span style="font-weight:600;font-size:13px">{{ a.label }}</span>
+ *     </div>
+ *     <div style="font-size:12px;color:var(--color-neutral-600);margin-top:4px">{{ a.meta }}</div>
+ *   </button>
+ * where attDef.map computes, per bucket:
+ *   bar: n ? (a.k==='risk' ? 'var(--color-neutral-500)' : 'var(--color-accent)') : 'transparent'
+ *   fg:  n ? (a.k==='risk' ? 'var(--color-text)'         : 'var(--color-accent-700)') : 'var(--color-neutral-500)'
+ *   bg:  on ? 'var(--color-neutral-200)' : 'transparent'
+ * Three things components.css does not yet give any strip (AttentionStrip.tsx supplies the matching
+ * markup/state, this file supplies the paint, scoped to this screen only):
+ *  1. `meta` is a *visible* third line under the label, not a hover-only tooltip.
+ *  2. The left bar + number colour is per-bucket, not a single "any count > 0" rule -- "High risk"
+ *     alone stays ink-coloured on a match (it already has its own row-level tag/colour; the strip
+ *     does not double it), while the other three buckets turn accent/accent-700 on a match.
+ *  3. The selected bucket gets a neutral-200 background (`bg`/`on`) -- components.css sets
+ *     `aria-pressed` as the accessible state but (same gap renewals.css's own header comment
+ *     documents for its threshold strip) does not style `.is-active` for any strip yet.
+ */
+
+.portfolio-screen .attention-cell {
+  padding: 14px 20px 12px 29px;
+  border-left: 3px solid transparent; /* every cell reserves the bar's width so a state change never
+    shifts the strip's own column widths -- quoted from the export's own always-present (just
+    sometimes-transparent) border-left, not invented */
+}
+
+.portfolio-screen .attention-cell-headline {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.portfolio-screen .attention-cell .attention-number {
+  color: var(--color-neutral-500); /* zero state -- attDef.map's own fg when n===0 */
+}
+
+.portfolio-screen .attention-cell .attention-label {
+  display: inline;
+  margin-top: 0;
+  font-size: 13px;
+  font-weight: var(--weight-body-strong);
+  color: var(--color-text);
+}
+
+.portfolio-screen .attention-meta {
+  display: block;
+  margin-top: var(--space-1);
+  font-size: 12px;
+  color: var(--color-neutral-600);
+}
+
+/* Urgent: every bucket but "risk", once it has a match. */
+.portfolio-screen .attention-cell.is-urgent {
+  border-left-color: var(--color-accent);
+}
+
+.portfolio-screen .attention-cell.is-urgent .attention-number {
+  color: var(--color-accent-700);
+}
+
+/* "High risk" is the one bucket that does not turn accent-coloured on a match -- attDef.map's own
+   a.k==='risk' branch above. */
+.portfolio-screen .attention-cell.is-risk-flagged {
+  border-left-color: var(--color-neutral-500);
+}
+
+.portfolio-screen .attention-cell.is-risk-flagged .attention-number {
+  color: var(--color-text);
+}
+
+/* Selected bucket (AC-2 "click = filter"). */
+.portfolio-screen .attention-cell.is-active {
+  background: var(--color-neutral-200);
+}
+
 /* ---- Loading skeleton (AC-4) --------------------------------------------- */
 
 .portfolio-skeleton {
@@ -75,6 +168,38 @@
 
 .portfolio-table {
   min-width: 1000px;
+  /* day1-demo.html's own portfolio `<table>` carries all four of these inline, on the instance, not
+     on its own shared `.table` class -- `<sc-raw-table class="table" style="font-variant-numeric:
+     tabular-nums;font-size:13px;table-layout:fixed;min-width:1000px">`. table-layout:fixed is already
+     covered here by components.css's own (differently-scoped: global, not per-instance) `.table`
+     rule, so only the other two need adding. font-size intentionally pins to the export's own
+     instance value (13px) rather than leaving it an unexplained coincidence of components.css's
+     current default -- the export's *shared* `.table` class rule is actually 14px (other screens'
+     tables use that base); Portfolio's own dense, 10-column row is the one table the export itself
+     dials back to 13px inline, and this pin keeps Portfolio there even if the shared default ever
+     moves to match its own 14px base. */
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+}
+
+/* components.css's shared `.table th`/`.table td` both add a --space-3 (12px) horizontal component
+   neither actually has in the compiled bundle (`.table th{...padding:var(--space-2);...}`,
+   `.table td{padding:var(--space-2);...}` -- one value, i.e. 8px on every side) -- same specificity
+   (class + element) as those shared rules, so this screen's later-loaded stylesheet wins the tie
+   (the same mechanism the pre-existing `.portfolio-table-numeric` override below already relies on). */
+.portfolio-table th,
+.portfolio-table td {
+  padding: var(--space-2);
+}
+
+/* components.css's shared `.table th` also letter-spaces with --tracking-table-header (0.1em,
+   tokens.css) but the compiled bundle's own `.table th` rule is literally `letter-spacing:0.08em` --
+   the same figure --tracking-kicker already carries correctly (tokens.css; also confirmed against
+   every other 11px uppercase micro-label in the bundle, e.g. the KPI/fact-row labels), so this reuses
+   that existing, correctly-valued token for Portfolio's own header row rather than forking a new
+   literal or leaving the mismatched one in place. */
+.portfolio-table th {
+  letter-spacing: var(--tracking-kicker);
 }
 
 /* `.table th`/`.table td` (components.css) already set text-align: left at a higher specificity
