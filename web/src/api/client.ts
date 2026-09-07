@@ -288,6 +288,45 @@ export interface CorrectContractResult {
   error: string | null;
 }
 
+// Task E08/F01/US01/T01 (renewal-pipeline, ADR-020 screen 8): postRenewalAction, wrapping
+// `POST /api/renewals/{id}/action` -- the insight card's own three actions (Start negotiation /
+// Assign to me / Snooze, AC-3). `{id}` is the same `contractId` GET /api/renewals returns per row
+// (see that operation's own doc comment above for why there is no separate "renewal id"). Fourth
+// web epic to extend openapi/contigo-api.v1.json (see that file's own "repeating chore" provenance
+// paragraph). Unlike every other write call in this file, a well-formed request against an
+// unknown/cross-tenant contract id still succeeds -- RenewalsEndpointExtensions' own doc comment:
+// Contigo.Renewals cannot reference Contigo.Documents.Contracts at all (ADR-002), so it structurally
+// cannot 404 -- never special-cased here the way getContract360/getRenewalPriority special-case 404.
+type PostRenewalActionResponses = paths["/api/renewals/{id}/action"]["post"]["responses"];
+export type RenewalActionBody = PostRenewalActionResponses[200]["content"]["application/json"];
+/** The closed three-state vocabulary (`RenewalActionStatus.ToString()`), read off the generated response type rather than hand-duplicated -- see `RenewalActionBody`'s own provenance above. */
+export type RenewalActionStatusValue = RenewalActionBody["status"];
+
+/**
+ * `POST /api/renewals/{id}/action` request body. Hand-written, not generated -- see this file's
+ * header comment for why (the generator does not parse `requestBody`). The backend's own
+ * `RenewalActionRequest` types all three fields as nullable wire strings (validated, not trusted,
+ * server-side) -- this client only ever sends real, already-known values (see
+ * `src/routes/renewals/index.tsx`), so the stronger, non-optional shape here is honest about what
+ * this app actually sends rather than mirroring the server's defensive nullability.
+ */
+export interface PostRenewalActionRequest {
+  owner: string;
+  status: RenewalActionStatusValue;
+  action: string;
+}
+
+export interface PostRenewalActionResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** The upserted row's current state, present only when `ok` is true. */
+  action: RenewalActionBody | null;
+  /** Plain-language failure reason (400 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
 export interface ApiClient {
   /**
    * Calls `GET /health` (operationId `getHealth` in
@@ -383,6 +422,18 @@ export interface ApiClient {
    * inline, not an exception.
    */
   correctContract(tenantId: string, id: string, request: CorrectContractRequest): Promise<CorrectContractResult>;
+  /**
+   * Calls `POST /api/renewals/{id}/action` (operationId `postRenewalAction`) -- upserts the one
+   * `RenewalAction` row for (tenant, contractId). Same never-throws shape as every other call here:
+   * a `400` (blank owner/action, or an unrecognized status) is a normal, expected outcome the
+   * caller renders inline. Unlike `getContract360`/`getRenewalPriority`/`correctContract`, this
+   * never 404s even for an unknown contract id -- see `RenewalActionBody`'s own doc comment.
+   */
+  postRenewalAction(
+    tenantId: string,
+    contractId: string,
+    request: PostRenewalActionRequest,
+  ): Promise<PostRenewalActionResult>;
 }
 
 /**
@@ -761,6 +812,42 @@ export function createApiClient(baseUrl: string): ApiClient {
       }
 
       return { ok: false, statusCode: response.status, correction: null, error };
+    },
+
+    async postRenewalAction(tenantId, contractId, request) {
+      let response: Response;
+      try {
+        response = await fetch(new URL(`/api/renewals/${encodeURIComponent(contractId)}/action`, baseUrl), {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId },
+          body: JSON.stringify(request),
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          action: null,
+          error: `Unable to reach ${baseUrl}/api/renewals/${contractId}/action. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const action = (await response.json()) as RenewalActionBody;
+        return { ok: true, statusCode: 200, action, error: null };
+      }
+
+      // Same Results.BadRequest(string) shape as every other call's 400 above. Never a 404 -- see
+      // this method's own doc comment / RenewalActionBody's header comment for why.
+      let error: string;
+      try {
+        const errorBody: unknown = await response.json();
+        error = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, action: null, error };
     },
   };
 }

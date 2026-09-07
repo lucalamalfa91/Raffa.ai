@@ -42,6 +42,11 @@ function mockApiClient(): ApiClient {
     // getContract360 above (this comment records *why* it's safe to leave unresolved, unlike those).
     getCorrectionHistory: vi.fn(),
     correctContract: vi.fn(),
+    // Task E08/F01/US01/T01 (renewal-pipeline): RenewalsRoute (like Contract360Route above) calls
+    // getRenewals unconditionally on mount, already covered by the resolved default above; no test
+    // in this suite triggers an insight-card action, so a bare vi.fn() is enough here -- see
+    // tests/routes/renewals/*.test.tsx for that screen's own fetch/action coverage.
+    postRenewalAction: vi.fn(),
   };
 }
 
@@ -145,5 +150,21 @@ describe("ShellRoutes", () => {
     // tests/routes/contracts/contract360/*.test.tsx.
     expect(await screen.findByText(/contract not found/i)).toBeInTheDocument();
     expect(screen.queryByText(/ships in epic-07\/feature-02-contract-360-ui/i)).not.toBeInTheDocument();
+  });
+
+  it("renders the real Renewals screen instead of a scaffold placeholder (task E08/F01/US01/T01)", async () => {
+    window.sessionStorage.setItem(
+      "contigo.signin.currentWorkspace",
+      JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
+    );
+
+    renderShell("admin", "/renewals");
+
+    // The shared mockApiClient() above resolves getRenewals to an empty pipeline -- proves the real
+    // route (which renders its own named empty state) is mounted, not the scaffold; the fetch-outcome
+    // matrix itself (populated/loading/error/empty/no-window) is covered in depth by
+    // tests/routes/renewals/*.test.tsx.
+    expect(await screen.findByText(/no renewals in your pipeline yet/i)).toBeInTheDocument();
+    expect(screen.queryByText(/ships in epic-08\/feature-01-renewal-pipeline-ui/i)).not.toBeInTheDocument();
   });
 });

@@ -179,6 +179,20 @@ export interface operations {
       };
     };
   };
+  postRenewalAction: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { contractId: string; owner: string; status: "NotStarted" | "InProgress" | "Completed"; action: string; updatedAt: string };
+        };
+      };
+      400: {
+        content: {
+          "application/json": string;
+        };
+      };
+    };
+  };
 }
 
 export interface paths {
@@ -212,5 +226,8 @@ export interface paths {
   };
   "/api/renewals/{contractId}/priority": {
     get: operations["getRenewalPriority"];
+  };
+  "/api/renewals/{id}/action": {
+    post: operations["postRenewalAction"];
   };
 }
