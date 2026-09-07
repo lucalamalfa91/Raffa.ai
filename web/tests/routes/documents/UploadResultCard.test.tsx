@@ -31,6 +31,27 @@ describe("UploadResultCard (AC-3: outcome cards by status)", () => {
     expect(screen.getByRole("button", { name: ctaText })).toBeInTheDocument();
   });
 
+  // Task E11/F04/US01/T01 (gap G-DOC): components.css / ADR-019 reserve
+  // `.card` for recommendation/provenance blocks; the compiled export
+  // doesn't box this summary either (documents.css's own comment on
+  // `.upload-result-card`). Structural companion to documents.css.test.ts's
+  // "no border/background on .upload-result-card" source-level guard.
+  it("does not wrap the result in a .card box (ADR-019 reserves .card for recommendation/provenance)", () => {
+    const { container } = render(
+      <UploadResultCard
+        fileName="Acme_MSA.pdf"
+        outcome="completed"
+        message="done"
+        onPrimaryAction={vi.fn()}
+        onUploadAnother={vi.fn()}
+      />,
+    );
+
+    const root = container.querySelector(".upload-result-card");
+    expect(root).not.toBeNull();
+    expect(root).not.toHaveClass("card");
+  });
+
   it("calls onPrimaryAction when the outcome-specific CTA is clicked", async () => {
     const onPrimaryAction = vi.fn();
     render(

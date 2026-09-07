@@ -21,6 +21,18 @@ describe("UploadDropzone", () => {
     expect(screen.getByText("Local · SharePoint soon")).toBeInTheDocument();
   });
 
+  // Task E11/F04/US01/T01 (gap G-DOC): the upload glyph was a missing node
+  // against the compiled prototype (ADR-019 icon rule) -- decorative, so it
+  // must stay out of the accessibility tree rather than announce as an
+  // unlabelled graphic.
+  it("renders the decorative upload icon, hidden from assistive tech", () => {
+    const { container } = render(<UploadDropzone disabled={false} onFilesSelected={vi.fn()} onUseSampleFile={vi.fn()} />);
+
+    const icon = container.querySelector("svg.upload-dropzone-icon");
+    expect(icon).not.toBeNull();
+    expect(icon).toHaveAttribute("aria-hidden", "true");
+  });
+
   it("opens the native file picker when 'Choose from computer' is clicked", async () => {
     render(<UploadDropzone disabled={false} onFilesSelected={vi.fn()} onUseSampleFile={vi.fn()} />);
     const input = screen.getByLabelText(/choose contract files from your computer/i) as HTMLInputElement;

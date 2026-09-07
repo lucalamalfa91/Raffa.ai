@@ -27,6 +27,12 @@ const ACCEPTED_EXTENSIONS = ".pdf,.docx,.xlsx";
  * accessibility baseline: "all interactive controls are native") -- a
  * keyboard user never needs the drag gesture to reach any state this screen
  * has.
+ *
+ * Task E11/F04/US01/T01 (gap G-DOC): the leading upload glyph was a missing
+ * node against the compiled prototype -- added back verbatim (same viewBox
+ * and path data) per ADR-019's icon rule ("Lucide, inline SVG, currentColor,
+ * 1.5 stroke, square caps"). `aria-hidden` because "Drop contracts here"
+ * already carries the meaning; the icon is decorative.
  */
 export default function UploadDropzone({ disabled, onFilesSelected, onUseSampleFile }: UploadDropzoneProps) {
   const [dragging, setDragging] = useState(false);
@@ -52,6 +58,21 @@ export default function UploadDropzone({ disabled, onFilesSelected, onUseSampleF
           if (!disabled) handleFiles(event.dataTransfer.files);
         }}
       >
+        <svg
+          className="upload-dropzone-icon"
+          width="32"
+          height="32"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={1.5}
+          strokeLinecap="square"
+          aria-hidden="true"
+        >
+          <path d="M12 3v12" />
+          <path d="m7 8 5-5 5 5" />
+          <path d="M4 15v5h16v-5" />
+        </svg>
         <p className="upload-dropzone-title">Drop contracts here</p>
         <p className="micro-meta">Each file becomes a processing job; you can leave this page while it runs.</p>
         <input

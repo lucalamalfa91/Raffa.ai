@@ -75,9 +75,15 @@ describe("signin.css (E06/F06/US01/T01 -- full-viewport two-column sign-in canva
 describe("documents.css (E06/F06/US01/T01 -- ~400px/1fr two-column mockup layout)", () => {
   const css = readSource("../../src/routes/documents/documents.css");
 
-  it("keeps the dropzone column at ~400px and the result/status column fluid", () => {
+  // Value corrected by task E11/F04/US01/T01 (gap G-DOC) from a
+  // `minmax(280px, 400px) 1fr` guess to the compiled export's own literal
+  // `400px 1fr` -- this test's job is still "not crushed to a sliver by an
+  // ancestor width cap" (the E06/F06 regression this file guards), which
+  // holds either way; see tests/routes/documents/documents.css.test.ts for
+  // this task's fuller export-fidelity coverage.
+  it("keeps the dropzone column at 400px and the result/status column fluid", () => {
     const body = ruleBodyFor(css, ".documents-columns");
-    expect(body).toMatch(/grid-template-columns:\s*minmax\(280px,\s*400px\)\s+1fr/);
+    expect(body).toMatch(/grid-template-columns:\s*400px\s+1fr/);
   });
 
   it("wraps long filenames at word/character-run boundaries, not one glyph per line", () => {
