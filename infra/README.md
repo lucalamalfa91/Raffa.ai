@@ -86,6 +86,36 @@ does not auto-plan from GHA on push to `main` (`infra.yml` plans **dev**
 only on that path); the first demo apply is a HCP UI **New run** or a
 `workflow_call` from `.github/workflows/demo-promote.yml`.
 
+## Promotion to `demo` (ADR-016) — runbook
+
+`git tag demo-v<N> <sha-on-main> && git push origin demo-v<N>` triggers
+`.github/workflows/demo-promote.yml`, which reuses `infra.yml` /
+`backend.yml` / `web.yml` with `target_environment: demo` and pauses each
+of their deploy/apply jobs for approval on the `demo` GitHub Environment
+(required reviewers, `scripts/apply_demo_environment_reviewers.py`). There
+is no `workflow_dispatch` trigger by design (ADR-016 rejected manual
+dispatch — a tag is the immutable "what was promoted" record).
+
+After approval, confirm the deployed `demo` Static Web App is serving the
+right `config.json` (demo API + Entra public client, never `dev`'s or
+localhost):
+
+```bash
+python scripts/check_demo_swa_config.py --host <swa-host> --environment demo
+```
+
+`<swa-host>` is printed by the `promote-web` job's own "Project deployed
+to `https://<host>`" line, or `az staticwebapp show --name
+swa-contigo-demo --resource-group rg-contigo-demo --query
+defaultHostname`. The same check has an on-demand CI wrapper,
+`.github/workflows/demo-config-check.yml` (`workflow_dispatch`, no Azure
+credential needed — `config.json` is a public static asset).
+
+Full step-by-step runbook, plus the recorded evidence from the first three
+`demo-v*` promotions (`demo-v1`/`demo-v3` succeeded; the mechanism is
+already proven live, not just described here):
+`.helix/reports/execution/demo-v-promotion-runbook.md`.
+
 ## Resource names (stable, no random suffix except ACR)
 
 | Kind | Name |
