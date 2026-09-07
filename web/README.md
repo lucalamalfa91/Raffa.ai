@@ -85,8 +85,9 @@ the web workflow after that apply.
 | `/contracts/:id` | Contract 360: header + 6-cell fact row + 10 tabs (Overview's recommendation card + drivers + "Needs your attention" + "Top risks", then Commercials/Products/Clauses/Obligations/Risks/Documents/Benchmark/Renewal/Activity through one shared Term/Value/Source/Confidence table), plus loading/not-found/error states. Calls the real `GET /api/contracts/{id}`, `GET /api/renewals`, `GET /api/renewals/{contractId}/priority`. See "Contract 360" below. | E07/F02/US01/T01 |
 | `/contracts/:id/review` | Review / correction: 4-column field list (critical marker, extracted value, confidence/decision tag, Accept/Correct) + right-hand evidence pane (correction form + real correction-history trail) + gated "Mark as validated". Calls the real `GET /api/contracts/{id}`, `GET /api/contracts/{id}/corrections`, `PATCH /api/contracts/{id}`. See "Review / correction" below. | E07/F03/US01/T01 |
 | `/renewals` | Renewal pipeline: threshold strip (0-30 ... 270-365 d, click = filter) + priority table (Score/Supplier/Contract/Annual spend/Renews in/Cancel by/Status) + insight card (facts + recommended action + rationale) with three actions (Start negotiation / Assign to me / Snooze) -> confirmation + Contract 360 + Home links, plus loading/error/empty/no-window states. Calls the real `GET /api/renewals`, `GET /api/renewals/{contractId}/priority`, `POST /api/renewals/{id}/action`. See "Renewal pipeline" below. | E08/F01/US01/T01 |
+| `/ask` | Ask Contigo: chat with a route line, numbered citation chips, abstain block. Calls the real `POST /api/chat/query`. See "Ask Contigo" below. | E07/F04/US01/T01 |
 | `/quotes`, `/quotes/:id` | Quote check: this task's own upload form (no id yet) -> 4-step stepper Extract (line table + unmatched-SKU manual mapping + recalculate) -> Assessment (4 numbers, line-level P25/P50/P75 + confidence, provenance card; blocked until every line resolves) -> Target (price ladder, editable target/walk-away) -> Negotiation (outcome capture -> recorded outcome). Calls the real `POST /api/quotes`, `POST /api/quotes/{id}/assessment/recalculate`, `POST /api/negotiations/outcomes`. See "Quote check" below. | E08/F03/US01/T01 |
-| `/` (home), `/ask`, `/review`\*, `/workspace/members` | App shell: 224px left rail + global Ask bar + routed content. Every route in this row still renders a `ScaffoldScreen` placeholder today -- the real screens ship in later epic-07/epic-08/feature-02/04 tasks named at each route (see `src/components/shell/WorkspaceShellApp.tsx`). | E06/F03/US02/T01 |
+| `/` (home), `/review`\*, `/workspace/members` | App shell: 224px left rail + global Ask bar + routed content. Every route in this row still renders a `ScaffoldScreen` placeholder today -- the real screens ship in later epic-07/epic-08/feature-02/04 tasks named at each route (see `src/components/shell/WorkspaceShellApp.tsx`). | E06/F03/US02/T01 |
 
 \* `/review` is this task's own placeholder landing path, not a row in
 ADR-018's locked route map -- that table only ever names the *detail* route
@@ -445,6 +446,49 @@ task E07/F02/US01/T01 to this exact route).
   `<button disabled>` paired with a visible `.hint` reason (ADR-019 accessibility baseline), and
   navigates to `/contracts/:id` on click (screens.md #6's own `finishReview` behaviour).
 
+### Ask Contigo (ADR-020 screen 7, task E07/F04/US01/T01, us-01-ask-contigo)
+
+`src/routes/ask/` implements screen 7: AC-1 chat + route line, AC-2 numbered citation chips opening
+Contract 360 › Clauses, AC-3 abstain block, AC-4 empty/thinking/answered/abstain/unknown-fallback
+states. Reached from the global Ask bar (`components/ask-bar/GlobalAskBar.tsx`, Enter or Cmd/Ctrl+K)
+on any screen, or directly at `/ask`.
+
+- **One call, one turn** (`index.tsx`) -- every question (typed, a "Try" suggestion click, or the
+  seed query the global Ask bar carries in router state) calls the real `POST /api/chat/query`
+  (`apiClient.askContigo`) exactly once and appends one "You" bubble plus one "Contigo" bubble.
+  `askViewModel.ts#buildContigoMessage` decides whether that reply is an `answer` (AC-2), an
+  `abstain` (AC-3), or an `error` (a transport/400 failure) -- an error is never rendered as an
+  abstain: "the request failed" and "the AI honestly could not determine an answer" are different
+  claims (`ChatMessageKind`'s own doc comment).
+- **AC-1, route line** -- quoted verbatim from the task text: `"Structured query…"` for the
+  backend's `Structured` intent, `"Clause retrieval…"` for `Semantic` (`askViewModel.ts
+  #ROUTE_LINE_BY_INTENT`).
+- **AC-3/AC-4, abstain and the unknown-question fallback share one block** -- the compiled
+  prototype's own chat template (`inputs/design/prototypes/day1-demo.html`) renders both through the
+  same "Cannot determine reliably." + reason markup (`.abstain-block`,
+  `styles/components.css`), varying only the reason/route text; this screen follows the same rule
+  (`askViewModel.ts`'s own header comment has the full reasoning). A `Structured`-intent question is
+  not wired to live data by any task yet (`ChatEndpointExtensions`'s own doc comment), so it always
+  comes back `canDetermine: false` with a real backend `message` explaining the gap -- shown
+  verbatim as the reason. A `Semantic`-intent `canDetermine: false` always has `message: null` on the
+  wire (`AbstainGuard`'s own free-text reason is deliberately excluded from the response), so this
+  screen renders a fixed, honest "Contigo found no supporting evidence..." line instead of inventing
+  a per-query reason the API does not supply.
+- **AC-2, citations open Contract 360 › Clauses** -- only resolved on click
+  (`askViewModel.ts#resolveCitationContractId`), not eagerly for every citation on every answer. The
+  backend's `citations[].documentId` is a composite `SourceType:SourceId` string
+  (`ChatEndpointExtensions.ToEvidenceSnippet`); a `Document:<id>` citation resolves via the existing
+  `GET /api/documents/{id}` (its `contractId` field) and then navigates to `/contracts/:id` with
+  `{ state: { tab: "Clauses" } }` -- `contracts/contract360/index.tsx` reads that exact shape
+  (`contract360ViewModel.ts#isContract360TabName`) to open directly on the Clauses tab instead of
+  always resetting to Overview. A `Clause:<id>` citation has no equivalent lookup endpoint anywhere
+  in this backend yet (`Embedding.SourceType`'s own doc comment: "Document or Clause content today"
+  is a loose pointer, not a foreign key) -- that chip shows an honest inline reason instead of a
+  guessed link.
+- **Citation label is the raw composite id, not a resolved filename** -- resolving every citation's
+  real document name up front would need one extra round trip per citation before the message could
+  even render; `openapi/contigo-api.v1.json`'s `askContigo` operation does not return a filename at
+  all. A deliberate, documented scope cut, not an oversight.
 ### Renewal pipeline (ADR-020 screen 8, task E08/F01/US01/T01, us-01-renewal-pipeline)
 
 `src/routes/renewals/` implements screen 8: AC-1 threshold strip, AC-2 priority table, AC-3 insight
@@ -746,7 +790,7 @@ web/
   src/
     api/
       generated/schema.ts     # AUTO-GENERATED; do not edit by hand
-      client.ts                # createApiClient(baseUrl) -> { getHealth(), createWorkspace({ name }), uploadDocument(tenantId, file), getDocument(tenantId, id), getPortfolio(tenantId, query?), getContract360(tenantId, id), getRenewals(tenantId), getRenewalPriority(tenantId, contractId), getCorrectionHistory(tenantId, id), correctContract(tenantId, id, request), postRenewalAction(tenantId, contractId, request), uploadQuote(tenantId, file, fields?), getQuoteAssessment(tenantId, id), recalculateQuoteAssessment(tenantId, id, mappings?), captureNegotiationOutcome(tenantId, request) }
+      client.ts                # createApiClient(baseUrl) -> { getHealth(), createWorkspace({ name }), uploadDocument(tenantId, file), getDocument(tenantId, id), getPortfolio(tenantId, query?), getContract360(tenantId, id), getRenewals(tenantId), getRenewalPriority(tenantId, contractId), getCorrectionHistory(tenantId, id), correctContract(tenantId, id, request), postRenewalAction(tenantId, contractId, request), askContigo(tenantId, request), uploadQuote(tenantId, file, fields?), getQuoteAssessment(tenantId, id), recalculateQuoteAssessment(tenantId, id, mappings?), captureNegotiationOutcome(tenantId, request) }
     config/appConfig.ts       # fetch + validate runtime config
     auth/msalConfig.ts        # AppConfig -> MSAL Configuration (no secret, ever)
     styles/                   # design system (tokens + component catalogue); see below
@@ -792,6 +836,11 @@ web/
           EvidencePane.tsx        # AC-3: evidence + correction form + real correction-history trail
           reviewViewModel.ts      # pure helpers: correctable-field catalogue, decision/tag/gate computation (no live confidence yet -- see its own header comment)
           review.css              # this screen's styles
+      ask/                  # task E07/F04/US01/T01 -- ADR-020 screen 7 (see "Ask Contigo" above)
+        index.tsx              # AskRoute -- one apiClient.askContigo() call per turn, seeds the global Ask bar's router-state query once
+        ChatMessage.tsx        # one chat turn: text, abstain block, numbered citation chips, route line
+        askViewModel.ts        # pure(ish) helpers: chat-turn construction, citation parsing, resolveCitationContractId (the one impure call)
+        ask.css                # this screen's styles
       renewals/                 # task E08/F01/US01/T01 -- ADR-020 screen 8 (see "Renewal pipeline" above)
         index.tsx                 # RenewalsRoute -- fetch-then-score-batch state machine (AC-4 states), selection, action handling
         ThresholdStrip.tsx        # AC-1: the seven-bucket strip, click = filter

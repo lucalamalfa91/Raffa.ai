@@ -58,6 +58,7 @@ function mockApiClient(createWorkspace: ApiClient["createWorkspace"] = vi.fn()):
     getQuoteAssessment: vi.fn(),
     recalculateQuoteAssessment: vi.fn(),
     captureNegotiationOutcome: vi.fn(),
+    askContigo: vi.fn(),
   };
 }
 

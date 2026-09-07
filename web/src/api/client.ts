@@ -327,6 +327,42 @@ export interface PostRenewalActionResult {
   error: string | null;
 }
 
+// Task E07/F04/US01/T01 (ask-contigo-ui, ADR-020 screen 7): askContigo, wrapping `POST
+// /api/chat/query` (backend/src/Contigo.Api/ChatEndpointExtensions.cs) -- the routed answer/citations
+// /abstain envelope behind `src/routes/ask/` (AC-1 route line, AC-2 citations, AC-3 abstain, AC-4
+// states). Fourth web epic to extend openapi/contigo-api.v1.json beyond the R0/portfolio/contract-360
+// /review set (see that file's own "repeating chore" provenance paragraph and its `askContigo`
+// operation's own description for the full Structured-vs-Semantic / abstain-reason / citation-lookup
+// gap notes). The request body is hand-written, like CreateWorkspaceRequest/CorrectContractRequest
+// above -- the generator does not parse `requestBody` at all yet.
+type AskContigoResponses = paths["/api/chat/query"]["post"]["responses"];
+export type AskContigoResponseBody = AskContigoResponses[200]["content"]["application/json"];
+export type AskContigoCitationBody = AskContigoResponseBody["citations"][number];
+export type AskContigoIntent = AskContigoResponseBody["intent"];
+
+/** `POST /api/chat/query` request body (ChatEndpointExtensions.ChatQueryRequest). Hand-written --
+ * see this file's header comment for why. */
+export interface AskContigoRequest {
+  question: string;
+}
+
+export interface AskContigoResult {
+  /**
+   * True only on `200 OK` -- the backend operation's own OpenAPI description names this "always 200
+   * once routing succeeds", so `false` here means a transport failure or a genuine `400` (blank
+   * question, missing tenant header, or a retrieval/answer failure), never "the AI could not
+   * determine an answer". That outcome is `ok: true` with `response.canDetermine === false` --
+   * see `AskContigoResponseBody`'s own shape (screens.md #7 "abstain" / "unknown question fallback").
+   */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** The full routed answer/abstain envelope, present only when `ok` is true. */
+  response: AskContigoResponseBody | null;
+  /** Plain-language failure reason (400 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
 // Task E08/F03/US01/T01 (quote-check-ui, ADR-018 route /quotes/:id, ADR-020 screen 10): uploadQuote,
 // wrapping `POST /api/quotes` -- the Quote Check stepper's own "Extract" step entry point.
 // Multipart, like uploadDocument above; supplier/currency/geography/purchaseDate are optional form
@@ -620,6 +656,10 @@ export interface ApiClient {
     tenantId: string,
     request: CaptureNegotiationOutcomeRequest,
   ): Promise<CaptureNegotiationOutcomeResult>;
+
+  askContigo(tenantId: string, request: AskContigoRequest): Promise<AskContigoResult>;
+}
+
 
 /**
  * Builds the API client from runtime config (ADR-012 "config, not code";
@@ -997,6 +1037,41 @@ export function createApiClient(baseUrl: string): ApiClient {
       }
 
       return { ok: false, statusCode: response.status, correction: null, error };
+    },
+
+    async askContigo(tenantId, request) {
+      let response: Response;
+      try {
+        response = await fetch(new URL("/api/chat/query", baseUrl), {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId },
+          body: JSON.stringify(request),
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          response: null,
+          error: `Unable to reach ${baseUrl}/api/chat/query. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const body = (await response.json()) as AskContigoResponseBody;
+        return { ok: true, statusCode: 200, response: body, error: null };
+      }
+
+      // Same Results.BadRequest(string) shape as the other calls' 400s above.
+      let error: string;
+      try {
+        const errorBody: unknown = await response.json();
+        error = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, response: null, error };
     },
 
     async postRenewalAction(tenantId, contractId, request) {

@@ -193,6 +193,20 @@ export interface operations {
       };
     };
   };
+  askContigo: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { question: string; intent: "Structured" | "Semantic"; canDetermine: boolean; answer: string | null; citations: { documentId: string; page: number | null; section: string | null }[]; message: string | null };
+        };
+      };
+      400: {
+        content: {
+          "application/json": string;
+        };
+      };
+    };
+  };
   uploadQuote: {
     responses: {
       201: {
@@ -299,6 +313,9 @@ export interface paths {
   };
   "/api/renewals/{id}/action": {
     post: operations["postRenewalAction"];
+  };
+  "/api/chat/query": {
+    post: operations["askContigo"];
   };
   "/api/quotes": {
     post: operations["uploadQuote"];

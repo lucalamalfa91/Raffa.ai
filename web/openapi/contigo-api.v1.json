@@ -3133,6 +3133,132 @@
           }
         }
       }
+    },
+    "/api/chat/query": {
+      "post": {
+        "operationId": "askContigo",
+        "summary": "Ask Contigo: route a natural-language question and answer it with citations, or abstain.",
+        "description": "Maps to PostChatQueryAsync in backend/src/Contigo.Api/ChatEndpointExtensions.cs (task E02/F04/US01/T01 query-router, E02/F04/US02/T01 rag-citations, E02/F04/US02/T02 abstain-guard; product spec §8.3/§8.4). Task E07/F04/US01/T01 (ask-contigo-ui, ADR-020 screen 7) adds this operation -- see this document's own info.description for the full provenance/gap notes (Structured-not-wired message, Semantic-abstain reason, and the Document-vs-Clause citation-lookup gap). Same interim X-Tenant-Id header placeholder as every other operation above.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "question"
+                ],
+                "properties": {
+                  "question": {
+                    "type": "string",
+                    "description": "The user's natural-language question. A blank/whitespace-only value is rejected as 400."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Always 200 once routing succeeds -- the Structured-not-wired and the Semantic answer/abstain outcomes are both valid, expected shapes of the same envelope, never an error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "question",
+                    "intent",
+                    "canDetermine",
+                    "answer",
+                    "citations",
+                    "message"
+                  ],
+                  "properties": {
+                    "question": {
+                      "type": "string"
+                    },
+                    "intent": {
+                      "type": "string",
+                      "enum": [
+                        "Structured",
+                        "Semantic"
+                      ]
+                    },
+                    "canDetermine": {
+                      "type": "boolean"
+                    },
+                    "answer": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "citations": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "documentId",
+                          "page",
+                          "section"
+                        ],
+                        "properties": {
+                          "documentId": {
+                            "type": "string",
+                            "description": "Composite SourceType:SourceId (e.g. Document:<guid> or Clause:<guid>) -- see this document's own info.description."
+                          },
+                          "page": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ],
+                            "description": "Always null today -- Embedding carries no page column yet (ChatEndpointExtensions.ToEvidenceSnippet)."
+                          },
+                          "section": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "Real chunk position (e.g. 'chunk 2'), not a document section number."
+                          }
+                        }
+                      }
+                    },
+                    "message": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Non-null only for the Structured-not-wired case -- see this document's own info.description."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid X-Tenant-Id header, a blank question, or a retrieval/answer failure (EmbeddingRetrievalService/RagAnswerService Result.Error).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   }
 }

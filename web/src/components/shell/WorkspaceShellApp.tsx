@@ -10,6 +10,7 @@ import Contract360Route from "../../routes/contracts/contract360";
 import ReviewRoute from "../../routes/contracts/review";
 import RenewalsRoute from "../../routes/renewals";
 import QuoteCheckRoute from "../../routes/quotes";
+import AskRoute from "../../routes/ask";
 
 export interface WorkspaceShellAppProps {
   workspaceName: string;
@@ -41,15 +42,8 @@ export interface WorkspaceShellAppProps {
  * `review` landing path just below it stays its own placeholder (see that
  * route's own `note`; ia.md/ADR-018 name only the detail route this shell
  * already pointed at). `renewals` is real as of task E08/F01/US01/T01
- * (RenewalsRoute, ADR-020 screen 8) -- it needs both `apiClient` and
- * `userLabel` (the signed-in identity every renewal action's required
- * `owner` field uses; see `../../routes/renewals/index.tsx`'s own header
- * comment), the same two props `RailNav.tsx` already receives from this
- * component's own props.
- *
- * `ShellRoutes` (the route tree alone, no router) is exported separately so
- * tests can wrap it in a `MemoryRouter` with a specific `initialEntries`
- * path instead of depending on the real browser URL a `BrowserRouter` reads.
+ * (RenewalsRoute, ADR-020 screen 8). `ask` is real as of task E07/F04/US01/T01
+ * (AskRoute, ADR-020 screen 7). Quote check is real as of E08/F03/US01/T01.
  */
 export function ShellRoutes({ workspaceName, role, userLabel, onSignOut, apiClient }: WorkspaceShellAppProps) {
   return (
@@ -81,24 +75,7 @@ export function ShellRoutes({ workspaceName, role, userLabel, onSignOut, apiClie
           }
         />
         <Route path="renewals" element={<RenewalsRoute apiClient={apiClient} userLabel={userLabel} />} />
-        <Route
-          path="ask"
-          element={
-            <ScaffoldScreen
-              title="Ask Contigo"
-              release="R1"
-              note="Ask Contigo chat + citations ships in epic-07/feature-04-ask-contigo-ui. The global Ask bar above already gets your typed query here via router state."
-            />
-          }
-        />
-        {/*
-          Task E08/F03/US01/T01 (quote-check-ui, ADR-020 screen 10): both routes now render the real
-          QuoteCheckRoute, the same seam Contract360Route/ReviewRoute above already used to replace
-          this task's own ScaffoldScreen placeholder. `quotes` (no id) and `quotes/:quoteId` share one
-          component -- ADR-018 names only the detail route `/quotes/:id` (there is no "quote list"
-          screen anywhere in screens.md #10), so QuoteCheckRoute itself renders its own upload form
-          when `useParams().quoteId` is undefined; see that component's own header comment.
-        */}
+        <Route path="ask" element={<AskRoute apiClient={apiClient} />} />
         <Route path="quotes" element={<QuoteCheckRoute apiClient={apiClient} />} />
         <Route path="quotes/:quoteId" element={<QuoteCheckRoute apiClient={apiClient} />} />
         <Route path="documents" element={<DocumentsRoute apiClient={apiClient} />} />

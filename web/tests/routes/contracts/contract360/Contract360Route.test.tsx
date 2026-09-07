@@ -30,6 +30,7 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     getQuoteAssessment: vi.fn(),
     recalculateQuoteAssessment: vi.fn(),
     captureNegotiationOutcome: vi.fn(),
+    askContigo: vi.fn(),
     ...overrides,
   };
 }
@@ -206,9 +207,9 @@ function priorityFixture(overrides: Partial<RenewalPriorityBody> = {}): RenewalP
   };
 }
 
-function renderContract360(apiClient: ApiClient, contractId = CONTRACT_ID) {
+function renderContract360(apiClient: ApiClient, contractId = CONTRACT_ID, state?: unknown) {
   return render(
-    <MemoryRouter initialEntries={[`/contracts/${contractId}`]}>
+    <MemoryRouter initialEntries={[{ pathname: `/contracts/${contractId}`, state }]}>
       <Routes>
         <Route path="/contracts/:contractId" element={<Contract360Route apiClient={apiClient} />} />
         <Route path="/renewals" element={<div>RENEWALS_SCREEN</div>} />
@@ -350,6 +351,33 @@ describe("Contract360Route", () => {
 
       fireEvent.click(within(tabs).getByRole("button", { name: "Benchmark" }));
       expect(await screen.findByText(/benchmark service ships in r3/i)).toBeInTheDocument();
+    });
+
+    it("task E07/F04/US01/T01 (ask-contigo-ui, AC-2): opens directly on the tab named in router state, e.g. from an Ask Contigo citation", async () => {
+      renderContract360(
+        mockApiClient({
+          getContract360: vi.fn().mockResolvedValue(ok(contract())),
+          getRenewals: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, renewals: { items: [], totalCount: 0 }, error: null }),
+          getRenewalPriority: vi.fn().mockResolvedValue({ ok: false, statusCode: 404, priority: null, error: "No contract found." }),
+        }),
+        CONTRACT_ID,
+        { tab: "Clauses" },
+      );
+      await screen.findByRole("heading", { name: "MSA" });
+
+      const tabs = screen.getByRole("navigation", { name: /contract 360 sections/i });
+      expect(within(tabs).getByRole("button", { name: "Clauses" })).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByText("Liability cap")).toBeInTheDocument();
+    });
+
+    it("falls back to Overview for an unrecognised router-state tab instead of trusting an arbitrary string", async () => {
+      renderContract360(mockApiClient({ getContract360: vi.fn().mockResolvedValue(ok(contract())) }), CONTRACT_ID, {
+        tab: "NotARealTab",
+      });
+      await screen.findByRole("heading", { name: "MSA" });
+
+      const tabs = screen.getByRole("navigation", { name: /contract 360 sections/i });
+      expect(within(tabs).getByRole("button", { name: "Overview" })).toHaveAttribute("aria-pressed", "true");
     });
 
     it("'Why this score' switches to the Renewal tab in place (no navigation) and shows the real priority-score components", async () => {

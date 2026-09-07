@@ -35,6 +35,7 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     getQuoteAssessment: vi.fn(),
     recalculateQuoteAssessment: vi.fn(),
     captureNegotiationOutcome: vi.fn(),
+    askContigo: vi.fn(),
     ...overrides,
   };
 }

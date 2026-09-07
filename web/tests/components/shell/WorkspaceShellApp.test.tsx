@@ -55,6 +55,7 @@ function mockApiClient(): ApiClient {
     getQuoteAssessment: vi.fn(),
     recalculateQuoteAssessment: vi.fn(),
     captureNegotiationOutcome: vi.fn(),
+    askContigo: vi.fn(),
   };
 }
 
