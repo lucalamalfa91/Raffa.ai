@@ -117,6 +117,26 @@ module "containerapps" {
   postgres_connection_secret_id = module.keyvault.postgres_connection_secret_versionless_id
   storage_connection_secret_id  = module.keyvault.storage_connection_secret_versionless_id
   spa_host_name                 = module.staticwebapp.default_host_name
+  # Task E10/F02/US01/T01 (foundry-ocr-ca): this root's OWN module.foundry
+  # instance only -- never demo's.
+  ai_gateway_endpoint                         = module.foundry.ai_services_endpoint
+  ai_gateway_project_name                     = module.foundry.foundry_project_name
+  ai_gateway_document_intelligence_connection = module.foundry.document_intelligence_connection
+}
+
+# Task E10/F02/US01/T01 (foundry-ocr-ca, ADR-008/ADR-011/ADR-017): this
+# root's OWN identity module instance only -- never demo's -- so the grant
+# never crosses envs (same rule module.keyvault and module.acr already
+# follow). var.foundry_ai_services_resource_id is empty until an operator
+# completes the ADR-008 Azure Portal step and sets this root's HCP
+# Terraform workspace variable of the same name; see modules/foundry's own
+# variables.tf for why an empty value is a safe, non-blocking default.
+module "foundry" {
+  source = "../../modules/foundry"
+
+  environment             = local.environment
+  workload_principal_id   = module.identity.workload_principal_id
+  ai_services_resource_id = var.foundry_ai_services_resource_id
 }
 
 # ADR-015 SPs are out of band. display_name "contigo-sp-dev" matches more

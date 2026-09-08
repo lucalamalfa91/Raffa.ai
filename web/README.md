@@ -126,11 +126,16 @@ in `index.css`; each screen owns its own full-bleed layout instead:
   explicitly declares `max-width: none` so it fills the shell grid's `1fr`
   track (224px rail + fluid main) rather than floating as a narrow column
   inside it.
-- **Documents** (`src/routes/documents/documents.css`) -- the two-column
-  `minmax(280px, 400px) 1fr` mockup layout was already correct; filenames in
-  the result card and the document table now wrap with `overflow-wrap:
-  anywhere` (word/character-run boundaries) instead of `word-break:
-  break-all`, so a long filename never renders one glyph per line.
+- **Documents** (`src/routes/documents/documents.css`) -- the two-column grid
+  was already ~400px/1fr; filenames in the result card and the document
+  table now wrap with `overflow-wrap: anywhere` (word/character-run
+  boundaries) instead of `word-break: break-all`, so a long filename never
+  renders one glyph per line. (Task E11/F04/US01/T01, gap G-DOC: the grid's
+  literal value had drifted to a `minmax(280px, 400px) 1fr` guess -- corrected
+  to the compiled export's own `400px 1fr`, along with the dropzone's dashed
+  border/300px min-height/upload icon, the formats-strip and pipeline
+  spacing, and dropping a `.card` misuse on the upload result summary --
+  ADR-019 reserves `.card` for recommendation/provenance blocks.)
 
 Only `.startup-error` (`src/main.tsx`'s boot-config-failure alert -- not a
 shipped mockup screen) keeps a narrow, centered column.
@@ -451,6 +456,21 @@ task E07/F02/US01/T01 to this exact route).
   `<button disabled>` paired with a visible `.hint` reason (ADR-019 accessibility baseline), and
   navigates to `/contracts/:id` on click (screens.md #6's own `finishReview` behaviour).
 
+**Task E11/F07/US01/T01** (gap G-REV, `reports/audit/visual-fidelity-gaps.md`) brought this screen's
+markup/CSS in line with the export: the `<h2>` now reads "Review extraction" (was "Review &
+correction" -- matching this exact route's own CTA label on `contract360/Contract360Header.tsx`), the
+kicker gained "· Human validation", and a one-line summary (supplier id + contract type, the same
+honest substitutes `Contract360Header.tsx` already uses -- `Contract` has no supplier-name/filename
+field) sits under the title. The progress line gained the export's own confidence legend
+(`>95% auto-accepted` / `80-95% flagged` / `<80% review required`). The field table's fixed-layout
+columns now carry the export's own narrow-field/wide-value/auto/auto proportions (were four equal
+columns), the extracted-value cell truncates instead of wrapping, "Correct" is `.btn-ghost` (was
+`.btn-primary`), and the evidence pane's honest "not yet available" source note sits inside the
+export's own white/serif "highlighted passage" card (`.review-evidence-passage`) -- container only,
+never a fabricated document name/page/quote. See `review.css.test.ts` for the CSS-source proof
+(`test.css: false` means no computed style exists to assert against under jsdom, same reasoning
+`signin.css.test.ts` already documents).
+
 ### Ask Contigo (ADR-020 screen 7, task E07/F04/US01/T01, us-01-ask-contigo)
 
 `src/routes/ask/` implements screen 7: AC-1 chat + route line, AC-2 numbered citation chips opening
@@ -756,6 +776,12 @@ Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
   `/health` via the API client succeeds": every load of the deployed bundle
   performs that check). `src/routes/signin/WorkspacePickerScreen.tsx` calls
   `createWorkspace()` (see "Screens" above).
+  **Task E11/F01/US01/T01** took the rendered `API: ...` line off the visual
+  canvas (the compiled prototype has no such line) via `.visually-hidden`
+  (`src/styles/base.css`) -- a clip-based technique, not `display:none`, so
+  the probe keeps running every mount and `data-testid="api-health-status"`
+  stays resolvable in the accessibility tree for tests. See "Design system"
+  below for the sheet, and `tests/App.test.tsx` for the coverage.
 - **Task E06/F01/US01/T01 (typescript-client-regen)** caught the contract up
   to backend epics E02-E05: `openapi/contigo-api.v1.json` gained
   `POST /api/workspaces` (create), `POST /api/workspaces/{tenantId}/invites`
@@ -907,7 +933,7 @@ web/
           contract360.css        # this screen's styles
         review/                # task E07/F03/US01/T01 -- ADR-020 screen 6 (see "Review / correction" above)
           index.tsx              # ReviewRoute -- fetch order (contract, then correction history), decision state, correction submit
-          ReviewHeader.tsx        # AC-4: title + gated "Mark as validated" + progress line
+          ReviewHeader.tsx        # AC-4: title/summary + gated "Mark as validated" + progress line + confidence legend
           ReviewFieldList.tsx     # AC-1: the 4-column field list (critical marker, value, confidence tag, decision)
           EvidencePane.tsx        # AC-3: evidence + correction form + real correction-history trail
           reviewViewModel.ts      # pure helpers: correctable-field catalogue, decision/tag/gate computation (no live confidence yet -- see its own header comment)
@@ -990,6 +1016,18 @@ accent-coloured *text on the page ground* (`--color-accent-700`) but does not
 separately pin a floor for light text on a filled accent surface -- flagged
 in a comment on `.btn-primary` in `styles/components.css` rather than
 silently shipped or "fixed" by forking the locked accent value.
+
+**Task E11/F01/US01/T01** (chrome-foundation, AC-2) added
+`.btn-primary.btn-block { padding: 12px 14px; }`, matching the inline
+override the compiled prototype's own sign-in CTA carries in
+`day1-demo.html` (`.btn.btn-primary.btn-block`) -- narrower than the shared
+`.btn` padding (8px/16px, `--space-2`/`--space-4`) above. Scoped to that one
+class combination: a plain `.btn-block` secondary/ghost action, or a
+non-block `.btn-primary`, is unaffected. It also added `.visually-hidden`
+(`styles/base.css`) -- a clip-based utility, not `display:none`, first
+consumed by `App.tsx`'s always-on `/health` probe status (see "API client"
+above) so it keeps running and stays in the accessibility tree without
+painting the prototype's absent `API: ...` line onto the canvas.
 
 ## End-to-end (Day-1 browser walk) -- task E08/F04/US01/T01, us-01-final-integration
 

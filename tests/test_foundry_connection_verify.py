@@ -73,6 +73,126 @@ GOOD_PROJECTS = (
     {"project": "contigo-demo", "env": "demo", "document_intelligence_connection": "conn-docint-contigo-demo"},
 )
 
+# ---------------------------------------------------------------------------
+# Task E10/F02/US01/T01 fixtures -- trimmed-down synthetic versions of the
+# real infra/modules/containerapps/main.tf and infra/modules/foundry/main.tf
+# shapes, same "hand-written fixture, one deliberately-broken tree per
+# failure mode" approach as the fixtures above.
+# ---------------------------------------------------------------------------
+
+
+def _container_app_block(resource_name: str, env_lines: str) -> str:
+    return (
+        f'resource "azurerm_container_app" "{resource_name}" {{\n'
+        "  template {\n"
+        "    container {\n"
+        f"{env_lines}"
+        "    }\n"
+        "  }\n"
+        "}\n"
+    )
+
+
+ENDPOINT_ENV = (
+    "      env {\n"
+    '        name  = "AiGateway__Endpoint"\n'
+    "        value = var.ai_gateway_endpoint\n"
+    "      }\n"
+)
+PROJECT_NAME_ENV = (
+    "      env {\n"
+    '        name  = "AiGateway__ProjectName"\n'
+    "        value = var.ai_gateway_project_name\n"
+    "      }\n"
+)
+DOCUMENT_INTELLIGENCE_CONNECTION_ENV = (
+    "      env {\n"
+    '        name  = "AiGateway__DocumentIntelligenceConnection"\n'
+    "        value = var.ai_gateway_document_intelligence_connection\n"
+    "      }\n"
+)
+GOOD_AI_GATEWAY_ENV = ENDPOINT_ENV + PROJECT_NAME_ENV + DOCUMENT_INTELLIGENCE_CONNECTION_ENV
+
+GOOD_CONTAINERAPPS_MAIN_TF = _container_app_block("api", GOOD_AI_GATEWAY_ENV) + "\n" + _container_app_block(
+    "worker", GOOD_AI_GATEWAY_ENV
+)
+
+# worker never got the three env blocks (e.g. a copy-paste that only
+# touched "api") -- the exact kind of half-applied edit this check exists
+# to catch.
+WORKER_MISSING_ENV_CONTAINERAPPS_MAIN_TF = _container_app_block("api", GOOD_AI_GATEWAY_ENV) + "\n" + _container_app_block(
+    "worker", ""
+)
+
+# Endpoint wired as a Key Vault secret instead of a plain value -- wrong
+# per ADR-011 (it is not a secret) even though the env var name is right.
+SECRET_BACKED_ENDPOINT_ENV = (
+    "      env {\n"
+    '        name        = "AiGateway__Endpoint"\n'
+    '        secret_name = "ai-endpoint"\n'
+    "      }\n"
+)
+SECRET_BACKED_CONTAINERAPPS_MAIN_TF = _container_app_block(
+    "api", SECRET_BACKED_ENDPOINT_ENV + PROJECT_NAME_ENV + DOCUMENT_INTELLIGENCE_CONNECTION_ENV
+)
+
+
+def _foundry_main_tf(
+    account_name: str = "aisvc-contigo",
+    count_expr: str | None = 'var.ai_services_resource_id != "" ? 1 : 0',
+    role: str = "Cognitive Services User",
+    scope: str = "var.ai_services_resource_id",
+    principal: str = "var.workload_principal_id",
+) -> str:
+    count_line = f"  count = {count_expr}\n\n" if count_expr else ""
+    return (
+        "locals {\n"
+        f'  ai_services_account_name = "{account_name}"\n'
+        "}\n"
+        "\n"
+        'resource "azurerm_role_assignment" "workload_ai_services_user" {\n'
+        f"{count_line}"
+        f"  scope                            = {scope}\n"
+        f'  role_definition_name             = "{role}"\n'
+        f"  principal_id                     = {principal}\n"
+        "  skip_service_principal_aad_check = true\n"
+        "}\n"
+    )
+
+
+GOOD_FOUNDRY_MAIN_TF = _foundry_main_tf()
+
+
+def _write_containerapps_fixture(root: Path, text: str) -> Path:
+    modules_dir = root / "infra" / "modules" / "containerapps"
+    modules_dir.mkdir(parents=True, exist_ok=True)
+    (modules_dir / "main.tf").write_text(text, encoding="utf-8")
+    return modules_dir / "main.tf"
+
+
+def _write_foundry_module_fixture(root: Path, text: str) -> Path:
+    modules_dir = root / "infra" / "modules" / "foundry"
+    modules_dir.mkdir(parents=True, exist_ok=True)
+    (modules_dir / "main.tf").write_text(text, encoding="utf-8")
+    return modules_dir / "main.tf"
+
+
+def _write_env_root_foundry_wiring(
+    root: Path, env: str, with_module: bool = True, with_variable: bool = True
+) -> None:
+    env_dir = root / "infra" / "environments" / env
+    env_dir.mkdir(parents=True, exist_ok=True)
+    module_block = (
+        'module "foundry" {\n  source = "../../modules/foundry"\n}\n\n' if with_module else ""
+    )
+    (env_dir / "main.tf").write_text(module_block + "# no other modules needed for this fixture\n", encoding="utf-8")
+    variable_block = (
+        'variable "foundry_ai_services_resource_id" {\n  type    = string\n  default = ""\n}\n'
+        if with_variable
+        else ""
+    )
+    (env_dir / "variables.tf").write_text(variable_block, encoding="utf-8")
+
 
 def _write_identity_fixture(root: Path, outputs_text: str) -> Path:
     identity_dir = root / "infra" / "modules" / "identity"
@@ -269,6 +389,138 @@ class CheckWorkloadIdentityOutputWellFormedTests(unittest.TestCase):
             passed, detail = fcv.check_workload_identity_output_well_formed(identity_dir)
             self.assertFalse(passed, detail)
             self.assertIn("2 times", detail)
+
+
+class CheckContainerappsAiGatewayEnvWiredTests(unittest.TestCase):
+    def test_good_fixture_passes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = _write_containerapps_fixture(Path(tmp), GOOD_CONTAINERAPPS_MAIN_TF)
+            passed, detail = fcv.check_containerapps_ai_gateway_env_wired(path)
+            self.assertTrue(passed, detail)
+
+    def test_missing_file_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "infra" / "modules" / "containerapps" / "main.tf"
+            passed, detail = fcv.check_containerapps_ai_gateway_env_wired(path)
+            self.assertFalse(passed, detail)
+
+    def test_worker_missing_env_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = _write_containerapps_fixture(Path(tmp), WORKER_MISSING_ENV_CONTAINERAPPS_MAIN_TF)
+            passed, detail = fcv.check_containerapps_ai_gateway_env_wired(path)
+            self.assertFalse(passed, detail)
+            self.assertIn("worker", detail)
+
+    def test_secret_backed_env_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = _write_containerapps_fixture(Path(tmp), SECRET_BACKED_CONTAINERAPPS_MAIN_TF)
+            passed, detail = fcv.check_containerapps_ai_gateway_env_wired(path)
+            self.assertFalse(passed, detail)
+            self.assertIn("secret_name", detail)
+
+    def test_currently_passes_against_the_real_repo(self) -> None:
+        passed, detail = fcv.check_containerapps_ai_gateway_env_wired()
+        self.assertTrue(passed, detail)
+
+
+class CheckFoundryRoleAssignmentConditionalTests(unittest.TestCase):
+    def test_good_fixture_passes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = _write_foundry_module_fixture(Path(tmp), GOOD_FOUNDRY_MAIN_TF)
+            passed, detail = fcv.check_foundry_role_assignment_conditional(path)
+            self.assertTrue(passed, detail)
+
+    def test_missing_file_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "infra" / "modules" / "foundry" / "main.tf"
+            passed, detail = fcv.check_foundry_role_assignment_conditional(path)
+            self.assertFalse(passed, detail)
+
+    def test_unconditional_resource_fails(self) -> None:
+        """No `count = ...` at all -- would fail every apply against an
+        account the ADR-008 Portal step has not created yet."""
+        with tempfile.TemporaryDirectory() as tmp:
+            text = _foundry_main_tf(count_expr=None)
+            path = _write_foundry_module_fixture(Path(tmp), text)
+            passed, detail = fcv.check_foundry_role_assignment_conditional(path)
+            self.assertFalse(passed, detail)
+            self.assertIn("count", detail)
+
+    def test_wrong_role_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            text = _foundry_main_tf(role="Contributor")
+            path = _write_foundry_module_fixture(Path(tmp), text)
+            passed, detail = fcv.check_foundry_role_assignment_conditional(path)
+            self.assertFalse(passed, detail)
+            self.assertIn("Cognitive Services User", detail)
+
+    def test_wrong_principal_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            text = _foundry_main_tf(principal="var.some_other_principal_id")
+            path = _write_foundry_module_fixture(Path(tmp), text)
+            passed, detail = fcv.check_foundry_role_assignment_conditional(path)
+            self.assertFalse(passed, detail)
+
+    def test_currently_passes_against_the_real_repo(self) -> None:
+        passed, detail = fcv.check_foundry_role_assignment_conditional()
+        self.assertTrue(passed, detail)
+
+
+class CheckAiServicesAccountNameMatchesTerraformTests(unittest.TestCase):
+    def test_good_fixture_passes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = _write_foundry_module_fixture(Path(tmp), GOOD_FOUNDRY_MAIN_TF)
+            passed, detail = fcv.check_ai_services_account_name_matches_terraform(path)
+            self.assertTrue(passed, detail)
+
+    def test_drifted_name_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            text = _foundry_main_tf(account_name="aisvc-contigo-2")
+            path = _write_foundry_module_fixture(Path(tmp), text)
+            passed, detail = fcv.check_ai_services_account_name_matches_terraform(path)
+            self.assertFalse(passed, detail)
+
+    def test_missing_file_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "infra" / "modules" / "foundry" / "main.tf"
+            passed, detail = fcv.check_ai_services_account_name_matches_terraform(path)
+            self.assertFalse(passed, detail)
+
+    def test_currently_passes_against_the_real_repo(self) -> None:
+        passed, detail = fcv.check_ai_services_account_name_matches_terraform()
+        self.assertTrue(passed, detail)
+
+
+class CheckEnvRootsWireFoundryModuleTests(unittest.TestCase):
+    def test_good_fixture_passes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for env in fcv.ENVS:
+                _write_env_root_foundry_wiring(root, env)
+            passed, detail = fcv.check_env_roots_wire_foundry_module(root / "infra" / "environments")
+            self.assertTrue(passed, detail)
+
+    def test_missing_module_block_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_env_root_foundry_wiring(root, "dev", with_module=False)
+            _write_env_root_foundry_wiring(root, "demo")
+            passed, detail = fcv.check_env_roots_wire_foundry_module(root / "infra" / "environments")
+            self.assertFalse(passed, detail)
+            self.assertIn("dev", detail)
+
+    def test_missing_variable_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_env_root_foundry_wiring(root, "dev")
+            _write_env_root_foundry_wiring(root, "demo", with_variable=False)
+            passed, detail = fcv.check_env_roots_wire_foundry_module(root / "infra" / "environments")
+            self.assertFalse(passed, detail)
+            self.assertIn(fcv.FOUNDRY_ENV_ROOT_VARIABLE, detail)
+
+    def test_currently_passes_against_the_real_repo(self) -> None:
+        passed, detail = fcv.check_env_roots_wire_foundry_module()
+        self.assertTrue(passed, detail)
 
 
 class CheckNoSecretLiteralsTests(unittest.TestCase):

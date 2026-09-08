@@ -6,8 +6,19 @@
  * header comment defers to "the app-shell/screen tasks that consume this
  * sheet (epic-06/feature-03+)" -- this task.
  *
- * `--color-accent-200` ("sign-in ground + grid", tokens.css) is used here and
- * nowhere else in the app; it is the token literally named for this screen.
+ * `--color-accent-200` ("sign-in ground + grid", tokens.css) drew this
+ * panel's *ground* fill until task E11/F02/US01/T01 corrected it against the
+ * compiled prototype (`<!-- SIGN-IN -->`, day1-demo.html): the ground is
+ * `--color-accent-100`, and accent-200 is the grid *line* colour instead
+ * (gap G-S1-FILL, reports/audit/visual-fidelity-gaps.md). Accent-200 is
+ * still used here and nowhere else in the app, just for a different role.
+ *
+ * Task E11/F02/US01/T01 (signin-1to1) also added the lockup
+ * (.signin-lockup/-mark), switched the panel's flow from a centred blob to
+ * space-between (gap G-S1-FLOW), clamp()-typed the north-star sentence (gap
+ * G-S1-TYPE), and fixed the right column's heading/subtitle/max-width/list
+ * border (gap G-S1-RIGHT) -- every value below copied from that same
+ * compiled block, not restyled from taste (ADR-019).
  *
  * Task E06/F06/US01/T01 (full-bleed-layout): `.signin-screen` +
  * `.signin-statement` are now shared by all three of screen 1's named
@@ -34,24 +45,46 @@
 }
 
 .signin-statement {
-  background-color: var(--color-accent-200);
+  background-color: var(--color-accent-100);
   background-image:
-    linear-gradient(var(--color-divider) 1px, transparent 1px),
-    linear-gradient(90deg, var(--color-divider) 1px, transparent 1px);
-  background-size: 32px 32px;
-  padding: var(--space-8);
+    linear-gradient(var(--color-accent-200) 1px, transparent 1px),
+    linear-gradient(90deg, var(--color-accent-200) 1px, transparent 1px);
+  background-size: 48px 48px;
+  padding: clamp(24px, 4vw, 48px);
+  border-right: 2px solid var(--color-divider);
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: space-between;
+  gap: var(--space-6);
+}
+
+/* Lockup -- 14x14 accent square + wordmark, top of the panel. 22px/800
+   heading type, 10px gap: verbatim from the compiled prototype (10px has no
+   matching --space-* step; kept literal rather than rounded to one). */
+.signin-lockup {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-heading);
+  font-size: 22px;
+}
+
+.signin-lockup-mark {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  background: var(--color-accent);
 }
 
 .signin-north-star {
   max-width: 560px;
   font-family: var(--font-heading);
-  font-size: 32px;
+  font-size: clamp(30px, 3.8vw, 52px);
   font-weight: var(--weight-heading);
-  line-height: var(--leading-display);
-  letter-spacing: var(--tracking-display);
+  line-height: 1.02;
+  letter-spacing: -0.02em;
+  text-wrap: pretty;
   margin: 0;
 }
 
@@ -94,11 +127,25 @@
 
 .signin-action {
   background: var(--color-bg);
-  padding: var(--space-8);
+  /* 48px has no matching --space-* step (the scale tops out at --space-8 =
+     32px) -- kept literal, verbatim from the export, same convention as
+     .signin-statement's clamp() ceiling above. max-width: 520px is gap
+     G-S1-RIGHT's other named figure. */
+  padding: 48px;
+  max-width: 520px;
   display: flex;
   flex-direction: column;
   justify-content: center;
   gap: var(--space-4);
+}
+
+/* The muted "Use your organisation account..." sentence above the CTA (gap
+   G-S1-RIGHT) -- margin: 0 so it does not double up with this section's own
+   flex `gap` above (base.css's default `p { margin: 0 0 var(--space-3) 0 }`
+   would otherwise stack on top of it). */
+.signin-subtitle {
+  margin: 0;
+  color: var(--color-neutral-600);
 }
 
 /* Screen 1's own named state (screens.md: "idle · redirecting (spinner) ·
@@ -140,9 +187,20 @@
  * Workspace picker
  * ========================================================================= */
 
+/* "Signed in as <email>" kicker above "Choose a workspace" (gap G-S1-RIGHT
+   / signStage2 in the export) -- accent h6, 6px bottom margin (no matching
+   --space-* step; literal, same convention as the 48px/10px figures above). */
+.signin-account-kicker {
+  margin: 0 0 6px;
+  color: var(--color-accent);
+}
+
 .workspace-list {
   display: flex;
   flex-direction: column;
+  /* Matches signStage2's list container in the compiled prototype; each
+     row's own border-bottom (below) already did. */
+  border-top: 2px solid var(--color-divider);
 }
 
 /* Quoted from the compiled prototype's workspace-row button

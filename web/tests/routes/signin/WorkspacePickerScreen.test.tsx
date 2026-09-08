@@ -58,6 +58,23 @@ describe("WorkspacePickerScreen", () => {
     expect(screen.getByRole("button", { name: /\+ create a new workspace/i })).toBeInTheDocument();
   });
 
+  // Task E11/F02/US01/T01 (signin-1to1) -- gap G-S1-RIGHT / signStage2 in the
+  // compiled export: an accent "Signed in as ..." kicker above the h2
+  // heading, not a `.micro-meta` line below an h1.
+  it("shows a 'Signed in as' kicker above the 'Choose a workspace' heading", () => {
+    render(
+      <WorkspacePickerScreen
+        apiClient={mockApiClient()}
+        accountKey={ACCOUNT_KEY}
+        accountLabel="user@example.test"
+        onSignOut={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Signed in as user@example.test")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Choose a workspace", level: 2 })).toBeInTheDocument();
+  });
+
   it("renders the same full-bleed statement-panel canvas as SignInScreen, not a standalone narrow card (E06/F06/US01/T01)", () => {
     const { container } = render(
       <WorkspacePickerScreen

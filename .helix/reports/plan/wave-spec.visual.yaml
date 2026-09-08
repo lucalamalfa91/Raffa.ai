@@ -1,0 +1,26 @@
+waveId: wave-v1-visual-e11
+status: planned
+# Mockup fidelity (ADR-019). Does not replace wave-spec.execution.yaml.
+# estimated tokens: 8.0M (S/M/L mapped; not a packing cap).
+phases:
+  - id: 1
+    name: phase-1
+    tasks:
+      - {id: E11/F01/US01/T01, prompt: reports/workitems/epic-11-visual-fidelity/feature-01-chrome-foundation/us-01-health-and-type/tasks/task-01-hide-health-lock-chrome.md, produces: [visual-chrome], depends_on: [], effort: M, layer: web, status: live}
+  - id: 2
+    name: phase-2
+    tasks:
+      - {id: E11/F02/US01/T01, prompt: reports/workitems/epic-11-visual-fidelity/feature-02-signin-fidelity/us-01-signin-canvas/tasks/task-01-signin-1to1.md, produces: [visual-signin], depends_on: [visual-chrome], effort: L, layer: web, status: live}
+      - {id: E11/F03/US01/T01, prompt: reports/workitems/epic-11-visual-fidelity/feature-03-shell-askbar/us-01-shell-askbar/tasks/task-01-shell-askbar.md, produces: [visual-shell], depends_on: [visual-chrome], effort: M, layer: web, status: live}
+  - id: 3
+    name: phase-3
+    tasks:
+      - {id: E11/F04/US01/T01, prompt: reports/workitems/epic-11-visual-fidelity/feature-04-documents-fidelity/us-01-documents-screen/tasks/task-01-documents-mockup.md, produces: [visual-documents], depends_on: [visual-shell], effort: M, layer: web, status: live}
+      - {id: E11/F05/US01/T01, prompt: reports/workitems/epic-11-visual-fidelity/feature-05-portfolio-fidelity/us-01-portfolio-screen/tasks/task-01-portfolio-mockup.md, produces: [visual-portfolio], depends_on: [visual-shell], effort: M, layer: web, status: live}
+      - {id: E11/F06/US01/T01, prompt: reports/workitems/epic-11-visual-fidelity/feature-06-contract360-fidelity/us-01-contract360-screen/tasks/task-01-contract360-mockup.md, produces: [visual-360], depends_on: [visual-shell], effort: M, layer: web, status: live}
+      - {id: E11/F07/US01/T01, prompt: reports/workitems/epic-11-visual-fidelity/feature-07-review-fidelity/us-01-review-screen/tasks/task-01-review-mockup.md, produces: [visual-review], depends_on: [visual-shell], effort: M, layer: web, status: live}
+  - id: 4
+    name: phase-4
+    tasks:
+      - {id: E11/F08/US01/T01, prompt: reports/workitems/epic-11-visual-fidelity/feature-08-visual-lock/us-01-mockup-regression/tasks/task-01-mockup-lock-tests.md, produces: [visual-lock], depends_on: [visual-chrome, visual-signin, visual-shell, visual-documents, visual-portfolio, visual-360, visual-review], effort: M, layer: web, status: live}
+forks: []

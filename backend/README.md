@@ -97,6 +97,37 @@ migration_id all six scripts declare landed in `contigo_<env>`'s own
 deploy principal to hold `Key Vault Secrets User` on that environment's
 vault (`modules/keyvault` `ci_secrets_user`, applied by HCP).
 
+**Demo fixture seed (task E10/F01/US01/T01, ADR-001, ADR-022):** ADR-021's
+schema apply above creates empty tables — nothing populates the Day-1
+Savings screen on a fresh `contigo_demo`. `backend/scripts/demo-fixture-seed.sql`
+is the checked-in, idempotent fix: one demo `workspace` (tenant id
+`00000000-0000-0000-0000-000000000001` — hard-code this as `X-Tenant-Id`
+to exercise the seeded tenant directly), one supporting `contract` row, and
+three `savings_opportunity` rows traceable to real
+`Contigo.Benchmark.Fixtures.FixtureBenchmarkAdapter.Catalog` entries (AWS
+EC2, Zoom, Snowflake) spanning `Contigo.Savings.Application
+.SavingsProvenanceClassifier`'s own documented High/Medium/Low confidence
+examples for those exact fixtures — never a fabricated number (ADR-001).
+Every `INSERT` is `ON CONFLICT (id) DO NOTHING` against a fixed id, so
+re-running is safe, and every RLS-guarded table is written the same way
+the application itself writes one — `SET app.tenant_id = '<demo tenant
+id>'` before the insert (see `Contigo.SharedKernel.Tenancy
+.TenantRlsConnectionInterceptor`) — never a bypass role, never a disabled
+policy (AC-4). Applied with `psql` (never `Database.MigrateAsync()`) by
+`.github/workflows/seed-demo-fixture.yml` — `workflow_dispatch` for a
+manual operator run, `workflow_call` for a future caller (for example a
+`demo-v*` promotion runbook) — against either `dev` or `demo`
+(`target_environment` input), *after* `backend.yml`'s own schema apply has
+run against that environment; it reuses that same job's Key Vault fetch
+(`scripts/pg_connection_string_env.py`, secret `postgres-connection`) and
+the same per-env deploy service principal, so no new Azure role assignment
+is needed. `Contigo.IntegrationTests.DemoFixtureSeedEndToEndTests` (via
+`DemoFixtureSeedIntegrationFixture`) proves the checked-in script itself —
+read from disk, applied to a real Postgres+RLS Testcontainer, never
+re-typed into the test — makes `GET /api/savings` return the three seeded
+opportunities for the demo tenant and nothing for any other tenant, and
+that a second apply does not duplicate rows.
+
 ## HTTP surface today
 
 | Method | Path | Notes |

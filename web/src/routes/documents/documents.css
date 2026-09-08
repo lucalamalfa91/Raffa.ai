@@ -8,11 +8,20 @@
  * ../../styles/components.css (ADR-019); this file adds only the
  * screen-specific composites, the same division of labour signin.css's own
  * header comment documents.
+ *
+ * Task E11/F04/US01/T01 (gap G-DOC, reports/audit/visual-fidelity-gaps.md):
+ * this screen's own header comment already claimed the `400px 1fr` grid, the
+ * rule below had drifted to a `minmax(280px, 400px) 1fr` guess -- corrected
+ * back to the literal export value below, plus the dropzone/strip/pipeline/
+ * result-card density figures this file's other comments now cite inline.
+ * Literal (non-`--space-*`) px values below are verbatim from the compiled
+ * bundle, the same "no matching step, kept literal" convention
+ * ../signin/signin.css already uses (its own header comment explains why).
  */
 
 .documents-columns {
   display: grid;
-  grid-template-columns: minmax(280px, 400px) 1fr;
+  grid-template-columns: 400px 1fr;
   gap: var(--space-6);
   margin-top: var(--space-6);
 }
@@ -32,7 +41,8 @@
 }
 
 .upload-dropzone {
-  border: 2px solid var(--color-divider);
+  min-height: 300px;
+  border: 2px dashed var(--color-divider);
   background: var(--color-surface);
   padding: var(--space-6);
   display: flex;
@@ -44,17 +54,44 @@
     border-color 0.15s ease;
 }
 
-/* Drag-over highlight -- accent-100/accent, the same pairing ADR-019 names for "sign-in ground + grid" / "primary action". */
+/* Drag-over highlight -- accent-100/accent, the same pairing ADR-019 names for "sign-in ground + grid" / "primary action". Dash style stays; only the fill/line colour swaps. */
 .upload-dropzone.is-dragging {
   background: var(--color-accent-100);
   border-color: var(--color-accent);
 }
 
+/* ADR-019 "Icons: Lucide, inline SVG, currentColor, 1.5 stroke, square caps"
+   -- quoted verbatim from the compiled prototype's own upload glyph
+   (viewBox 0 0 24 24, the same three paths). `margin-bottom` is 16px
+   supplemental to this column's own 8px (--space-2) flex `gap` above, so the
+   icon-to-title space totals the export's 24px without re-deriving every
+   other child's spacing onto explicit margins. */
+.upload-dropzone-icon {
+  color: var(--color-accent);
+  margin-bottom: 16px;
+}
+
+/* Task E11/F04/US01/T01 (gap G-DOC, reviewer loop): the export's title style
+   is `margin:auto 0 8px;...;padding-top:24px` (day1-demo.html) inside a flex
+   column that -- as of this same task -- also carries `min-height: 300px`
+   with no `justify-content` (so the initial `flex-start`). Without the
+   `auto`, flex-start packs icon+title+subtitle+buttons at the top and lets
+   any leftover box height collect as dead space below the buttons instead.
+   `margin-top: auto` is the one part of that export value this file hadn't
+   ported: with exactly one auto margin on the main axis, flexbox assigns it
+   100% of the box's leftover space, so the icon stays pinned at the top and
+   the title/subtitle/buttons group is pinned to the bottom, matching the
+   export. The other two components of that same export value are already
+   covered elsewhere, not duplicated here: the trailing `8px` is this
+   column's own `gap: var(--space-2)` (title -> subtitle, the next sibling),
+   and `padding-top: 24px` is the icon-to-title figure the
+   `.upload-dropzone-icon` comment above already accounts for. */
 .upload-dropzone-title {
   font-family: var(--font-heading);
   font-weight: var(--weight-heading);
-  font-size: 16px;
-  margin: 0;
+  font-size: 22px;
+  line-height: 1.1;
+  margin: auto 0 0;
 }
 
 .upload-dropzone-file-input {
@@ -71,18 +108,30 @@
 .upload-strip {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
+  /* 20px/10px: literal export figures, no matching --space-* step (the
+     scale skips straight from 16px to 24px) -- kept literal rather than
+     rounded to one, same convention as ../signin/signin.css's own comments. */
+  margin-top: 20px;
   border-top: 2px solid var(--color-divider);
-  padding-top: var(--space-2);
+  padding-top: 10px;
   font-size: 11px;
   color: var(--color-neutral-600);
 }
 
+/* Cell padding is asymmetric in the export (padding-right on cell 1, padding
+   left+right on cell 2, padding-left only on cell 3) -- each cell's inner
+   text sits 8px off whichever divider(s) it has, never flush. */
 .upload-strip-cell {
   padding-right: var(--space-2);
   border-right: 1px solid var(--color-divider);
 }
 
+.upload-strip-cell:not(:first-child) {
+  padding-left: var(--space-2);
+}
+
 .upload-strip-cell:last-child {
+  padding-right: 0;
   border-right: 0;
 }
 
@@ -106,13 +155,17 @@
 .pipeline-list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  /* 6px: literal export figure (no matching --space-* step between 4px and
+     8px), same "kept literal" convention as .upload-strip above. */
+  gap: 6px;
 }
 
 .pipeline-stage {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  /* 10px: literal export figure (dot-to-label gap; no matching --space-*
+     step between 8px and 12px). */
+  gap: 10px;
   font-size: 13px;
   color: var(--color-neutral-500);
 }
@@ -161,7 +214,13 @@
   }
 }
 
-/* ---- Result card (AC-3) ------------------------------------------------ */
+/* ---- Result card (AC-3) ------------------------------------------------
+ * Not `.card` (components.css / ADR-019 restrict that class to
+ * "recommendation/provenance blocks only" -- an upload-outcome summary is
+ * neither). The compiled export doesn't box this block either: it is a
+ * plain child of the same column as the dropzone above it. This component
+ * keeps the box-free treatment its sibling .pipeline-list already has
+ * (UploadResultCard.tsx applies only this class, not "card upload-result-card"). */
 
 .upload-result-card {
   display: flex;
@@ -172,7 +231,11 @@
 .upload-result-header {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  /* 10px gap (literal export figure, same as .pipeline-stage above) + 8px
+     (--space-2) bottom margin, both quoted from the export's result-header
+     row. */
+  gap: 10px;
+  margin-bottom: var(--space-2);
 }
 
 .upload-result-filename {
@@ -189,7 +252,9 @@
 }
 
 .upload-result-message {
-  margin: 0;
+  /* 12px (--space-3) bottom margin, quoted from the export's own
+     `margin-bottom:12px` on this paragraph. */
+  margin: 0 0 var(--space-3);
   font-size: 13px;
 }
 

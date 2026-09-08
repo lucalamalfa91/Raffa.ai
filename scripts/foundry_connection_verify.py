@@ -60,6 +60,23 @@ the recorded shape is complete, internally consistent, and pinned to the
 same region as the rest of the infrastructure -- not a live capacity
 check against Azure.
 
+Task E10/F02/US01/T01 (foundry-ocr-ca) extends this same script rather
+than adding a sibling one -- its own task text names this file directly
+("Identity module already documents Foundry connection verify... Prefer
+completing that path"). Before that task, everything above proved the
+*recorded shape* (T01/T02's structural constants); nothing proved the
+Terraform layer actually consumed it. Four more checks close that gap:
+`infra/modules/foundry` exists and both derives its
+`local.ai_services_account_name` from the same literal as this file's own
+AI_SERVICES_ACCOUNT_NAME, and gates its `azurerm_role_assignment` on
+`var.ai_services_resource_id` rather than an unconditional resource that
+would fail every apply against an account the ADR-008 Portal step has not
+created yet; `infra/modules/containerapps` wires the three non-secret
+AiGateway__* env vars (AC-3) onto both the api and worker Container Apps;
+and both `infra/environments/{dev,demo}` instantiate `module.foundry` and
+declare the `foundry_ai_services_resource_id` variable an operator sets
+once that Portal step is done.
+
 Checks, all read-only, no network, no `terraform` binary, no Azure/HCP
 credentials required.
 
@@ -108,6 +125,26 @@ FOUNDRY_REGION = "northeurope"
 DOCUMENT_INTELLIGENCE_MODELS = ("prebuilt-read", "prebuilt-layout")
 
 FILES_TO_SECRET_SCAN_RELATIVE = ("modules/identity/outputs.tf",)
+
+# Task E10/F02/US01/T01 additions below -- see the module docstring's own
+# paragraph naming this task.
+MODULES_ROOT = INFRA_ROOT / "modules"
+CONTAINERAPPS_MAIN_TF = MODULES_ROOT / "containerapps" / "main.tf"
+FOUNDRY_MAIN_TF = MODULES_ROOT / "foundry" / "main.tf"
+
+# The three non-secret env vars this task adds to both the api and worker
+# Container Apps, and the module variable each must read (never a
+# secret_name -- ADR-011: an endpoint URL and two names are not secrets).
+REQUIRED_AI_GATEWAY_ENV_VARS = {
+    "AiGateway__Endpoint": "var.ai_gateway_endpoint",
+    "AiGateway__ProjectName": "var.ai_gateway_project_name",
+    "AiGateway__DocumentIntelligenceConnection": "var.ai_gateway_document_intelligence_connection",
+}
+
+# infra/environments/{dev,demo}/variables.tf's own operator-facing hook for
+# the ADR-008 Portal step's resulting resource id (set as an HCP Terraform
+# workspace variable of the same name).
+FOUNDRY_ENV_ROOT_VARIABLE = "foundry_ai_services_resource_id"
 
 
 def _normalize_region(value: str) -> str:
@@ -268,6 +305,179 @@ def check_workload_identity_output_well_formed(identity_dir: Path = IDENTITY_DIR
     )
 
 
+# ---------------------------------------------------------------------------
+# Task E10/F02/US01/T01: prove the Terraform *layer* consumes the recorded
+# shape above -- the four checks the module docstring names. Small
+# brace-balanced HCL helpers, same technique as
+# scripts/terraform_env_roots_scan.py / scripts/demo_isolation_scan.py;
+# `_find_all_blocks` is the one addition neither sibling script needed --
+# `azurerm_container_app.api`/`.worker` each nest *several* same-named
+# `env { ... }` blocks (one per env var), and `_find_block` (imported
+# above) only ever returns the first match.
+# ---------------------------------------------------------------------------
+
+def _find_all_blocks(text: str, header_pattern: str) -> list:
+    """Return the balanced inner text of every `<header_pattern> {...}` block,
+    in source order (as opposed to `_find_block`, which returns only the
+    first)."""
+    return [_extract_block(text, m.end() - 1) for m in re.finditer(header_pattern + r"\s*{", text)]
+
+
+def _env_vars_in_resource(main_tf_text: str, resource_type: str, resource_name: str) -> dict:
+    """{env_var_name: {"value": rhs_or_None, "secret_name": rhs_or_None}} for
+    every `env { name = "X" ... }` block anywhere inside one named resource
+    (i.e. across every `container { }` block that resource's own `template`
+    declares)."""
+    text = _strip_line_comments(main_tf_text)
+    resource_body = tfr._find_block(
+        text, rf'resource\s+"{re.escape(resource_type)}"\s+"{re.escape(resource_name)}"'
+    )
+    if resource_body is None:
+        return {}
+    result: dict = {}
+    for env_body in _find_all_blocks(resource_body, r"env"):
+        name_m = re.search(r'name\s*=\s*"([^"]+)"', env_body)
+        if not name_m:
+            continue
+        value_m = re.search(r"value\s*=\s*(\S+)", env_body)
+        secret_m = re.search(r"secret_name\s*=\s*(\S+)", env_body)
+        result[name_m.group(1)] = {
+            "value": value_m.group(1) if value_m else None,
+            "secret_name": secret_m.group(1) if secret_m else None,
+        }
+    return result
+
+
+def check_containerapps_ai_gateway_env_wired(path: Path = CONTAINERAPPS_MAIN_TF) -> tuple:
+    """AC-2/AC-3: modules/containerapps' api and worker Container Apps both
+    carry the three AiGateway__* env vars this task adds, each wired to its
+    matching module variable as a plain `value` -- never `secret_name`
+    (ADR-011: an endpoint URL and two names are not secrets, unlike the
+    ConnectionStrings__* env vars alongside them)."""
+    if not path.is_file():
+        return False, f"{path} does not exist"
+    text = path.read_text(encoding="utf-8")
+    problems = []
+    for resource_name in ("api", "worker"):
+        env_vars = _env_vars_in_resource(text, "azurerm_container_app", resource_name)
+        for var_name, expected_value in REQUIRED_AI_GATEWAY_ENV_VARS.items():
+            entry = env_vars.get(var_name)
+            if entry is None:
+                problems.append(f'{resource_name}: missing env "{var_name}"')
+                continue
+            if entry["secret_name"] is not None:
+                problems.append(
+                    f'{resource_name}: env "{var_name}" uses secret_name={entry["secret_name"]!r} '
+                    "(expected a plain value -- it is not a secret)"
+                )
+            if entry["value"] != expected_value:
+                problems.append(
+                    f'{resource_name}: env "{var_name}" value={entry["value"]!r}, expected {expected_value!r}'
+                )
+    if problems:
+        return False, "; ".join(problems)
+    return True, (
+        f"api and worker both carry all {len(REQUIRED_AI_GATEWAY_ENV_VARS)} AiGateway__* env var(s) as a "
+        "plain (non-secret) value, wired to their matching module variable"
+    )
+
+
+def check_foundry_role_assignment_conditional(path: Path = FOUNDRY_MAIN_TF) -> tuple:
+    """ADR-008/ADR-011: modules/foundry grants the workload identity
+    "Cognitive Services User" on the shared AI services account, gated on
+    `var.ai_services_resource_id` -- never an unconditional resource, which
+    would fail every apply against an account the ADR-008 Portal step has
+    not created yet on either environment."""
+    if not path.is_file():
+        return False, f"{path} does not exist"
+    text = _strip_line_comments(path.read_text(encoding="utf-8"))
+    body = tfr._find_block(text, r'resource\s+"azurerm_role_assignment"\s+"workload_ai_services_user"')
+    if body is None:
+        return False, 'modules/foundry/main.tf has no resource "azurerm_role_assignment" "workload_ai_services_user"'
+
+    problems = []
+    count_m = re.search(r"count\s*=\s*(.+)", body)
+    count_expr = count_m.group(1).strip() if count_m else None
+    if not count_expr or "ai_services_resource_id" not in count_expr:
+        problems.append(f"count={count_expr!r} does not gate on var.ai_services_resource_id")
+
+    role_m = re.search(r'role_definition_name\s*=\s*"([^"]+)"', body)
+    role = role_m.group(1) if role_m else None
+    if role != "Cognitive Services User":
+        problems.append(f'role_definition_name={role!r}, expected "Cognitive Services User"')
+
+    scope_m = re.search(r"scope\s*=\s*(\S+)", body)
+    scope = scope_m.group(1) if scope_m else None
+    if scope != "var.ai_services_resource_id":
+        problems.append(f"scope={scope!r}, expected 'var.ai_services_resource_id'")
+
+    principal_m = re.search(r"principal_id\s*=\s*(\S+)", body)
+    principal = principal_m.group(1) if principal_m else None
+    if principal != "var.workload_principal_id":
+        problems.append(f"principal_id={principal!r}, expected 'var.workload_principal_id'")
+
+    if problems:
+        return False, "; ".join(problems)
+    return True, (
+        'modules/foundry/main.tf grants "Cognitive Services User" on var.ai_services_resource_id to '
+        "var.workload_principal_id, gated on var.ai_services_resource_id != \"\""
+    )
+
+
+def check_ai_services_account_name_matches_terraform(path: Path = FOUNDRY_MAIN_TF) -> tuple:
+    """modules/foundry/main.tf's `local.ai_services_account_name` string
+    literal MUST stay in lockstep with this file's own (T01-derived)
+    AI_SERVICES_ACCOUNT_NAME -- two hand-typed copies of the same name is
+    exactly the drift check_workload_identity_output_well_formed already
+    guards against elsewhere in this file, for the identical reason
+    (Terraform has no way to import a Python constant)."""
+    if not path.is_file():
+        return False, f"{path} does not exist"
+    text = _strip_line_comments(path.read_text(encoding="utf-8"))
+    m = re.search(r"ai_services_account_name\s*=\s*\"([^\"]+)\"", text)
+    if not m:
+        return False, "modules/foundry/main.tf has no local.ai_services_account_name string literal"
+    if m.group(1) != hcp.AI_SERVICES_ACCOUNT_NAME:
+        return False, (
+            f"modules/foundry local.ai_services_account_name={m.group(1)!r} != "
+            f"scripts/bootstrap_hcp_org.py AI_SERVICES_ACCOUNT_NAME={hcp.AI_SERVICES_ACCOUNT_NAME!r}"
+        )
+    return True, f"modules/foundry local.ai_services_account_name matches AI_SERVICES_ACCOUNT_NAME={hcp.AI_SERVICES_ACCOUNT_NAME!r}"
+
+
+def check_env_roots_wire_foundry_module(environments_root: Path = ENVIRONMENTS_ROOT) -> tuple:
+    """AC-2: both dev and demo env roots instantiate `module.foundry` (from
+    `../../modules/foundry`, the same convention every sibling module in
+    this env root already uses -- scripts/terraform_env_roots_scan.py's own
+    REQUIRED_MODULES membership check does not yet know this module's name,
+    since AC-1 of that task's own story predates this one) and declare the
+    FOUNDRY_ENV_ROOT_VARIABLE an operator sets once the ADR-008 Portal step
+    is done."""
+    problems = []
+    for env in ENVS:
+        main_path = environments_root / env / "main.tf"
+        variables_path = environments_root / env / "variables.tf"
+        if not main_path.is_file():
+            problems.append(f"{env}/main.tf does not exist")
+            continue
+        blocks = tfr.find_module_blocks(main_path.read_text(encoding="utf-8"))
+        source = blocks.get("foundry")
+        if source != "../../modules/foundry":
+            problems.append(f'{env}/main.tf module "foundry" source={source!r}, expected "../../modules/foundry"')
+        if not variables_path.is_file():
+            problems.append(f"{env}/variables.tf does not exist")
+            continue
+        var_text = _strip_line_comments(variables_path.read_text(encoding="utf-8"))
+        if not re.search(rf'variable\s+"{FOUNDRY_ENV_ROOT_VARIABLE}"\s*{{', var_text):
+            problems.append(f'{env}/variables.tf has no variable "{FOUNDRY_ENV_ROOT_VARIABLE}"')
+    if problems:
+        return False, "; ".join(problems)
+    return True, (
+        f"dev and demo both wire module.foundry from ../../modules/foundry and declare "
+        f"variable {FOUNDRY_ENV_ROOT_VARIABLE!r}"
+    )
+
+
 def check_no_secret_literals(repo_root: Path = REPO_ROOT, infra_root: Path = INFRA_ROOT) -> tuple:
     hits = []
     scanned = 0
@@ -293,6 +503,8 @@ def run_all_checks(
     repo_root: Path = REPO_ROOT,
     infra_root: Path = INFRA_ROOT,
     projects=None,
+    containerapps_main_tf: Path = CONTAINERAPPS_MAIN_TF,
+    foundry_main_tf: Path = FOUNDRY_MAIN_TF,
 ) -> list:
     return [
         ("foundry account shape still recorded", check_foundry_account_shape_still_recorded()),
@@ -302,6 +514,12 @@ def run_all_checks(
         ("connections share the single ADR-008 account", check_connections_share_single_account(projects)),
         ("Document Intelligence models recorded", check_document_intelligence_models_recorded()),
         ("workload_identity_id output well-formed", check_workload_identity_output_well_formed(identity_dir)),
+        # Task E10/F02/US01/T01: the Terraform layer actually consumes the
+        # recorded shape above (see the module docstring's own paragraph).
+        ("containerapps AI Gateway env vars wired", check_containerapps_ai_gateway_env_wired(containerapps_main_tf)),
+        ("foundry role assignment conditional on account id", check_foundry_role_assignment_conditional(foundry_main_tf)),
+        ("AI services account name matches Terraform", check_ai_services_account_name_matches_terraform(foundry_main_tf)),
+        ("dev/demo env roots wire module.foundry", check_env_roots_wire_foundry_module(environments_root)),
         ("no secret literals", check_no_secret_literals(repo_root, infra_root)),
     ]
 

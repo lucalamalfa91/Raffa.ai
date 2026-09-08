@@ -75,4 +75,38 @@ describe("AttentionStrip", () => {
     expect(cell).not.toHaveClass("is-urgent");
     expect(cell).toHaveTextContent("Failed / processing");
   });
+
+  // Task E11/F05/US01/T01 (gap G-PORT): day1-demo.html's own attDef.map renders `meta` as a visible
+  // third line under the label ("...margin-top:4px">{{ a.meta }}"), not a hover-only tooltip -- this
+  // component used to drop it into a `title` attribute instead.
+  it("renders each bucket's meta description as visible text, not only a hover tooltip", () => {
+    render(<AttentionStrip buckets={computeAttentionBucketCounts([])} activeKey={null} onToggle={vi.fn()} />);
+
+    const cell = findCell("Need review");
+    expect(within(cell).getByText("Contract status needs review")).toBeInTheDocument();
+    expect(cell).not.toHaveAttribute("title");
+  });
+
+  // day1-demo.html's own attDef.map: `bar`/`fg` turn accent/accent-700 for deadline/review/failed
+  // once they have a match, but "High risk" alone stays ink-coloured (it already has its own
+  // row-level tag/colour) -- so it gets a distinct `is-risk-flagged` class, never `is-urgent`.
+  it("flags a matching 'High risk' bucket without the accent is-urgent treatment the other three buckets get", () => {
+    const rows = [rowWith({ isHighRisk: true }), rowWith({ isDeadlineSoon: true })];
+    render(<AttentionStrip buckets={computeAttentionBucketCounts(rows)} activeKey={null} onToggle={vi.fn()} />);
+
+    const riskCell = findCell("High risk");
+    expect(riskCell).toHaveClass("is-risk-flagged");
+    expect(riskCell).not.toHaveClass("is-urgent");
+
+    const deadlineCell = findCell("Deadlines < 45 d");
+    expect(deadlineCell).toHaveClass("is-urgent");
+    expect(deadlineCell).not.toHaveClass("is-risk-flagged");
+  });
+
+  it("marks the active bucket with the is-active class that carries its selected-state background", () => {
+    render(<AttentionStrip buckets={computeAttentionBucketCounts([])} activeKey="failed" onToggle={vi.fn()} />);
+
+    expect(findCell("Failed / processing")).toHaveClass("is-active");
+    expect(findCell("High risk")).not.toHaveClass("is-active");
+  });
 });

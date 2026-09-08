@@ -26,6 +26,7 @@ infra/
     acr/              # Azure Container Registry Basic, admin_enabled = false
     monitor/          # Log Analytics (Pay-As-You-Go, daily cap)
     staticwebapp/     # Azure Static Web Apps Free (web SPA; region West US 2)
+    foundry/          # Foundry / Document Intelligence connection info + RBAC (ADR-008/ADR-017)
   environments/
     dev/              # thin root; HCP workspace contigo-dev
     demo/             # thin root; HCP workspace contigo-demo
@@ -85,6 +86,36 @@ does not auto-plan from GHA on push to `main` (`infra.yml` plans **dev**
 only on that path); the first demo apply is a HCP UI **New run** or a
 `workflow_call` from `.github/workflows/demo-promote.yml`.
 
+## Promotion to `demo` (ADR-016) — runbook
+
+`git tag demo-v<N> <sha-on-main> && git push origin demo-v<N>` triggers
+`.github/workflows/demo-promote.yml`, which reuses `infra.yml` /
+`backend.yml` / `web.yml` with `target_environment: demo` and pauses each
+of their deploy/apply jobs for approval on the `demo` GitHub Environment
+(required reviewers, `scripts/apply_demo_environment_reviewers.py`). There
+is no `workflow_dispatch` trigger by design (ADR-016 rejected manual
+dispatch — a tag is the immutable "what was promoted" record).
+
+After approval, confirm the deployed `demo` Static Web App is serving the
+right `config.json` (demo API + Entra public client, never `dev`'s or
+localhost):
+
+```bash
+python scripts/check_demo_swa_config.py --host <swa-host> --environment demo
+```
+
+`<swa-host>` is printed by the `promote-web` job's own "Project deployed
+to `https://<host>`" line, or `az staticwebapp show --name
+swa-contigo-demo --resource-group rg-contigo-demo --query
+defaultHostname`. The same check has an on-demand CI wrapper,
+`.github/workflows/demo-config-check.yml` (`workflow_dispatch`, no Azure
+credential needed — `config.json` is a public static asset).
+
+Full step-by-step runbook, plus the recorded evidence from the first three
+`demo-v*` promotions (`demo-v1`/`demo-v3` succeeded; the mechanism is
+already proven live, not just described here):
+`.helix/reports/execution/demo-v-promotion-runbook.md`.
+
 ## Resource names (stable, no random suffix except ACR)
 
 | Kind | Name |
@@ -115,6 +146,49 @@ Postgres allows Azure services (`0.0.0.0-0.0.0.0`) so Container Apps in
 this subscription can reach the public endpoint. Private-endpoint wiring
 through `modules/network` is later work.
 
+## AI Gateway / Foundry + Document Intelligence (ADR-004, ADR-008, ADR-017)
+
+**Inventory (task E10/F02/US01/T01):** before this task, `ca-contigo-*-api`
+/ `-worker`'s env list was connection-strings-only (Postgres, Storage) on
+both `dev` and `demo` -- no Foundry project or Document Intelligence
+setting existed anywhere under `infra/modules` (confirmed by grepping
+`infra/` for `foundry|cognitive|DocumentIntelligence|OpenAI`, which
+matched only a forward-looking comment). This task added `modules/foundry`
+and three non-secret env vars on both Container Apps:
+
+| Env var | Config key | Value |
+|---|---|---|
+| `AiGateway__Endpoint` | `AiGateway:Endpoint` | `https://aisvc-contigo.cognitiveservices.azure.com/` (deterministic; ADR-008's single shared account) |
+| `AiGateway__ProjectName` | `AiGateway:ProjectName` | `contigo-dev` / `contigo-demo` (ADR-008 per-env Foundry project) |
+| `AiGateway__DocumentIntelligenceConnection` | `AiGateway:DocumentIntelligenceConnection` | `conn-docint-contigo-dev` / `-demo` (ADR-017 per-project connection) |
+
+None are Key Vault secrets: an endpoint URL and two names carry no key
+(ADR-011). `scripts/foundry_connection_verify.py` proves both this
+Terraform and `scripts/bootstrap_hcp_org.py`'s recorded shape still agree.
+
+**Identity (RBAC), not yet live.** `modules/foundry` also grants the
+workload identity `Cognitive Services User` on the shared `aisvc-contigo`
+AI services account -- but only when `var.foundry_ai_services_resource_id`
+(this env root's own variable, default `""`) is set. Azure AI Foundry
+hub/project/account creation is an interactive Azure Portal step V1 keeps
+outside the Terraform module surface (ADR-008); nobody has performed it
+yet on either `dev` or `demo`. **Operator follow-up**, once that Portal
+step is done: record the AI services account's ARM resource id as the
+`foundry_ai_services_resource_id` HCP Terraform workspace variable on
+**both** `contigo-dev` and `contigo-demo` (same account, set in each
+workspace), then let HCP apply. Until then the role assignment simply does
+not exist yet -- it is not a failed apply, `terraform plan`/`apply` still
+succeed with it absent.
+
+**What this does NOT close:** no live `IAiGateway` implementation exists
+in `backend/src/Contigo.AiGateway` yet -- only `Fixtures/FixtureAiGateway.cs`
+is registered (see that module's `ServiceCollectionExtensions.cs`). Adding
+these env vars removes the "env vars were absent" blocker only; a future
+backend task still has to read them and bind a real Foundry-backed
+gateway. Per ADR-022, an operator may accept fixture AI for a `demo` dry
+run in the meantime -- this Terraform still exists so `demo` is not
+*permanently* fixture-only.
+
 ## Known gaps
 
 - **AcrPull is in Terraform.** `modules/acr` grants this env's workload
@@ -142,3 +216,10 @@ through `modules/network` is later work.
   `Key Vault Secrets User` on that vault only
   (`azurerm_role_assignment.ci_secrets_user`). Confirm the HCP VCS apply
   before re-running the backend deploy job.
+- **Foundry account is still portal-only (ADR-008), so its RBAC grant is
+  conditional.** `modules/foundry` derives the AI Gateway endpoint/project/
+  connection names unconditionally (pure string derivation) but skips the
+  `Cognitive Services User` role assignment until an operator sets
+  `foundry_ai_services_resource_id` on both HCP workspaces. See "AI
+  Gateway / Foundry + Document Intelligence" above for the operator
+  follow-up step.

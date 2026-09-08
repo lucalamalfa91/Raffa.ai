@@ -1,0 +1,58 @@
+name: demo-config-check
+
+# Task E10/F03/US01/T01 (parent story us-01-demo-v-smoke, AC-2): "After
+# promote, `demo` SWA `/config.json` has the demo API URL and Entra public
+# client (not localhost, not `dev`)." This is the *optional* check the
+# task's own Files table names -- read-only, run on demand after a
+# promotion (or any time), never part of the promotion trigger itself.
+#
+# Deliberately NOT wired into demo-promote.yml / web.yml and not a second
+# promotion path (ADR-016's own "do not invent a second promotion path"):
+# it has no `push`/`tags` trigger, deploys nothing, and needs no Azure
+# credential -- `config.json` is a public, unauthenticated static asset
+# (web/public/staticwebapp.config.json excludes it from the SPA's
+# navigation-fallback rewrite). The operator supplies the already-known
+# Static Web App hostname -- e.g. the web.yml / demo-promote.yml deploy
+# job's own "Project deployed to https://<host>" log line, or
+# `az staticwebapp show --name swa-contigo-<env> --resource-group
+# rg-contigo-<env> --query defaultHostname -o tsv`. See
+# .helix/reports/execution/demo-v-promotion-runbook.md for the full
+# runbook this check is step 4 of.
+on:
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: >-
+          Which environment's API host config.json must reference: "demo"
+          or "dev".
+        required: true
+        type: choice
+        options: [demo, dev]
+        default: demo
+      swa_hostname:
+        description: >-
+          Bare Static Web App hostname, no scheme (e.g.
+          mango-desert-084c2231e.6.azurestaticapps.net).
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: check config.json (${{ inputs.target_environment }})
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check config.json
+        run: |
+          set -euo pipefail
+          python scripts/check_demo_swa_config.py \
+            --host "${{ inputs.swa_hostname }}" \
+            --environment "${{ inputs.target_environment }}"

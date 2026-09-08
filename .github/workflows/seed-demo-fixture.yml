@@ -1,0 +1,149 @@
+name: seed-demo-fixture
+
+# ADR-021 (schema apply -- this workflow assumes it already ran), ADR-022
+# (Day-1 `demo` fixture seed), task E10/F01/US01/T01 (seed-demo-fixture).
+#
+# Deliberately never wired to `push`/`pull_request`: seeding fixture
+# benchmark + savings rows is an explicit operator (or a future caller
+# workflow, via `workflow_call`) action against a specific environment,
+# never a side effect of an ordinary `backend.yml` deploy -- story
+# us-01-seed-demo-db AC-2 ("the same job can target `contigo_dev`
+# optionally"), not "seeds every dev push automatically".
+on:
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: >-
+          GitHub Environment (and Postgres database, contigo_<env>) to
+          seed.
+        required: true
+        type: choice
+        options: [dev, demo]
+        default: demo
+  # A future caller (e.g. a demo-promote.yml step, not owned by this task --
+  # see task E10/F03/US01/T01's own "reuse demo-promote.yml/web.yml; do not
+  # invent a second promotion path") can run this after schema apply without
+  # duplicating the Key Vault fetch / psql-apply steps below.
+  workflow_call:
+    inputs:
+      target_environment:
+        description: 'GitHub Environment (and Postgres database) to seed: "dev" or "demo".'
+        required: false
+        type: string
+        default: demo
+
+permissions:
+  contents: read
+
+concurrency:
+  group: seed-demo-fixture-${{ inputs.target_environment }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
+
+jobs:
+  seed:
+    name: seed fixture (${{ inputs.target_environment }})
+    runs-on: ubuntu-latest
+    # Same GitHub Environment backend.yml's own deploy job uses -- the
+    # `demo` environment's required reviewers (ADR-014/ADR-016) gate this
+    # job exactly like a deploy, so seeding `demo` is never a silent,
+    # unapproved action.
+    environment: ${{ inputs.target_environment }}
+    permissions:
+      id-token: write # required so GitHub issues the OIDC token azure/login exchanges
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      # OIDC auth (ADR-015): the same per-env least-privilege deploy
+      # service principal backend.yml's own deploy job already uses --
+      # already holds "Key Vault Secrets User" on this env's vault
+      # (backend/README.md "Deployable schema artifact"), so no new Azure
+      # role assignment is needed for this workflow.
+      - name: Azure login (OIDC)
+        uses: ./.github/actions/azure-login
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resolve resource group
+        run: echo "RESOURCE_GROUP=rg-contigo-${TARGET_ENVIRONMENT}" >> "$GITHUB_ENV"
+
+      - name: Install postgresql-client
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends postgresql-client
+          fi
+
+      # Identical fetch to backend.yml's own "Fetch Postgres connection
+      # string (ADR-021)" step -- same secret, same script, same masking --
+      # see that workflow for the full error-message rationale.
+      - name: Fetch Postgres connection string (ADR-021)
+        run: |
+          set -euo pipefail
+          HCP_RUNS="https://app.terraform.io/app/contigo-platform/workspaces/contigo-${TARGET_ENVIRONMENT}/runs"
+          KV_NAME=$(az keyvault list --resource-group "$RESOURCE_GROUP" --query "[0].name" -o tsv)
+          if [ -z "$KV_NAME" ]; then
+            echo "::error::no Key Vault found in resource group $RESOURCE_GROUP. Confirm the HCP VCS apply at $HCP_RUNS, then re-run this job."
+            exit 1
+          fi
+          set +e
+          RAW_CONN=$(az keyvault secret show --vault-name "$KV_NAME" --name postgres-connection --query value -o tsv 2>/tmp/kv_secret_show.err)
+          KV_STATUS=$?
+          set -e
+          if [ $KV_STATUS -ne 0 ] || [ -z "$RAW_CONN" ]; then
+            echo "::error::could not read secret 'postgres-connection' from $KV_NAME. Either the HCP VCS apply at $HCP_RUNS has not created it yet, or this environment's CI deploy principal (contigo-sp-${TARGET_ENVIRONMENT}) is missing the 'Key Vault Secrets User' role on $KV_NAME. Azure CLI said: $(tail -c 500 /tmp/kv_secret_show.err | tr '\n' ' ')"
+            exit 1
+          fi
+          echo "::add-mask::$RAW_CONN"
+          PG_EXPORTS=$(printf '%s' "$RAW_CONN" | python3 scripts/pg_connection_string_env.py)
+          eval "$PG_EXPORTS"
+          echo "::add-mask::$PGPASSWORD"
+          if [ -z "${PGHOST:-}" ] || [ -z "${PGPASSWORD:-}" ]; then
+            echo "::error::scripts/pg_connection_string_env.py produced an incomplete environment from the postgres-connection secret"
+            exit 1
+          fi
+          {
+            echo "PGHOST=$PGHOST"
+            echo "PGPORT=$PGPORT"
+            echo "PGDATABASE=$PGDATABASE"
+            echo "PGUSER=$PGUSER"
+            echo "PGPASSWORD=$PGPASSWORD"
+            echo "PGSSLMODE=$PGSSLMODE"
+          } >> "$GITHUB_ENV"
+
+      # Honest failure instead of a confusing "relation does not exist" mid-
+      # script if e09's schema apply has not run against this environment
+      # yet (ADR-021's own apply order: schema, then this seed).
+      - name: Confirm e09 schema is present (ADR-021)
+        run: |
+          set -euo pipefail
+          PRESENT=$(psql -Atqc "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('workspace','contract','savings_opportunity');")
+          if [ "$PRESENT" -lt 3 ]; then
+            echo "::error::contigo_${TARGET_ENVIRONMENT} is missing workspace/contract/savings_opportunity -- run backend.yml's schema-apply (ADR-021) against this environment before seeding."
+            exit 1
+          fi
+
+      - name: Seed fixture benchmark + savings data (ADR-001, ADR-022)
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -f backend/scripts/demo-fixture-seed.sql
+
+      # "Prove the seed landed" (parent story us-01-seed-demo-db's own
+      # Definition of done: "GET /api/savings ... returns at least one
+      # fixture-backed opportunity") -- the same demo tenant id the script
+      # itself documents and inserts under.
+      - name: Verify seed landed
+        run: |
+          set -euo pipefail
+          COUNT=$(psql -Atqc "SELECT count(*) FROM savings_opportunity WHERE tenant_id = '00000000-0000-0000-0000-000000000001';")
+          if [ "$COUNT" -lt 1 ]; then
+            echo "::error::demo-fixture-seed.sql applied but savings_opportunity has no rows for the demo tenant (00000000-0000-0000-0000-000000000001)"
+            exit 1
+          fi
+          echo "Seed OK: $COUNT savings_opportunity row(s) for demo tenant 00000000-0000-0000-0000-000000000001 in contigo_${TARGET_ENVIRONMENT}."

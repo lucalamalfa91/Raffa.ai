@@ -107,6 +107,24 @@ resource "azurerm_container_app" "api" {
         name        = "ConnectionStrings__Storage"
         secret_name = "st-cs"
       }
+
+      # Task E10/F02/US01/T01 (foundry-ocr-ca): non-secret (see variables.tf),
+      # so plain `value`, never a Key Vault `secret_name` like the
+      # ConnectionStrings__* blocks above.
+      env {
+        name  = "AiGateway__Endpoint"
+        value = var.ai_gateway_endpoint
+      }
+
+      env {
+        name  = "AiGateway__ProjectName"
+        value = var.ai_gateway_project_name
+      }
+
+      env {
+        name  = "AiGateway__DocumentIntelligenceConnection"
+        value = var.ai_gateway_document_intelligence_connection
+      }
     }
   }
 
@@ -203,6 +221,24 @@ resource "azurerm_container_app" "worker" {
       env {
         name        = "ConnectionStrings__Quotes"
         secret_name = "pg-cs"
+      }
+
+      # Task E10/F02/US01/T01 (foundry-ocr-ca): the worker runs the hybrid
+      # OCR pre-pass (ADR-017) and needs the same non-secret AI Gateway
+      # connection info as the api app above.
+      env {
+        name  = "AiGateway__Endpoint"
+        value = var.ai_gateway_endpoint
+      }
+
+      env {
+        name  = "AiGateway__ProjectName"
+        value = var.ai_gateway_project_name
+      }
+
+      env {
+        name  = "AiGateway__DocumentIntelligenceConnection"
+        value = var.ai_gateway_document_intelligence_connection
       }
     }
   }
