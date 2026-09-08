@@ -32,7 +32,7 @@ backend/
     Contigo.Audit/               # append-only audit events (live)
     Contigo.AiGateway/           # IAiGateway + FixtureAiGateway/FoundryAiGateway (wired via DI) + LoggingAiGateway decorator (task E13/F01/US01/T02)
     Contigo.Benchmark/           # IBenchmarkService.GetBenchmarkAsync + normalized Contracts DTOs (E04/F01/US01/T01); BenchmarkAdapterRegistry + AddBenchmarkModule (E04/F01/US01/T02); FixtureBenchmarkAdapter registered as the default IBenchmarkProviderAdapter, incl. statistical weak-comparable abstain (E04/F01/US02/T01+T02) — no host calls AddBenchmarkModule yet (R3)
-    Contigo.Suppliers.Products/  # scaffold (R1+)
+    Contigo.Suppliers.Products/  # Supplier entity, SupplierNameNormalizer, ISupplierResolver/ISupplierNameLookup impls, SuppliersDbContext + RLS (task E13/F03/US01/T01, ADR-024; live) — see "Supplier identity" below
     Contigo.Market/               # scaffold (E13/F01/US01/T01, ADR-024) — feed/ingestion/index/benchmark-projection; AddMarketModule() registers nothing yet
     Contigo.Insights/             # scaffold (E13/F01/US01/T01, ADR-024) — pure calculators fed by DTOs; AddInsightsModule() registers nothing yet
     Contigo.Renewals/            # renewal engine + opportunity + explainable priority score + threshold scheduler + dashboard pipeline + action (R2; live) — see "Renewal Intelligence" below
@@ -53,11 +53,13 @@ project with one placeholder test — for the epic-13 tasks that add the
 mock market feed / ingestion / shared `market_embedding` index / benchmark
 projection (`Contigo.Market`) and the deterministic strategy/criticality
 calculators (`Contigo.Insights`) to fill in without also touching
-`Contigo.slnx` or the architecture allow-list. `Contigo.Suppliers.Products.Tests`
-and `Contigo.AiEval` (references `Contigo.Chat`, `Contigo.AiGateway`,
-`Contigo.SharedKernel` — a future golden-set eval harness, story
-us-01-v2-foundation) are this same task's other two new, still-empty test
-projects. `Contigo.ArchitectureTests.DependencyDirectionTests` now allow-
+`Contigo.slnx` or the architecture allow-list. `Contigo.AiEval` (references
+`Contigo.Chat`, `Contigo.AiGateway`, `Contigo.SharedKernel` — a future
+golden-set eval harness, story us-01-v2-foundation) is this same task's
+other new, still-empty test project. `Contigo.Suppliers.Products.Tests` was
+that task's third new, then-empty test project — task E13/F03/US01/T01
+(story us-01-supplier-identity) gave it real coverage; see "Supplier
+identity" below. `Contigo.ArchitectureTests.DependencyDirectionTests` now allow-
 lists `Contigo.Market` → `[SharedKernel, AiGateway, Benchmark]` and
 `Contigo.Insights` → `[SharedKernel, Benchmark]` and covers both in its
 domain-module direction/provider-SDK theories.
@@ -90,33 +92,37 @@ on Testcontainers inside `dotnet test`.
 EF migrations live in each module that owns a DbContext
 (`Contigo.Identity.Workspace`, `Contigo.Documents.Contracts`,
 `Contigo.Audit`, `Contigo.Renewals`, `Contigo.Savings`, `Contigo.Quotes`,
-`Contigo.Chat`). Apply them against
+`Contigo.Chat`, `Contigo.Suppliers.Products`). Apply them against
 the same database the hosts use; RLS policies are added in those
 migrations, not in Terraform.
 
 **Deployable schema artifact (ADR-021):** every module above also checks in
 `Migrations/Scripts/<module>.sql` — `identity-workspace.sql`,
 `documents-contracts.sql`, `audit.sql`, `renewals.sql`, `savings.sql`,
-`quotes.sql`, `chat.sql` — generated with `dotnet ef migrations script --idempotent`
-from that module's `src/` folder. That checked-in script, applied with
-`psql` (or any plain Npgsql client), is the actual `dev`/`demo` deploy
-path: CI applies all seven, in ADR-021's fixed order (`chat.sql` appended
-last — task E13/F05/US01/T01 postdates ADR-021's own fixed list and has no
-FK/ordering dependency on the other six), after both
-`az containerapp update` steps (task E09/F02/US01/T02) — `Contigo.Api` and
-`Contigo.Worker` deliberately never call `Database.MigrateAsync()`, so a
-replica boot never mutates schema. Regenerate the script after adding or
-changing a migration; `<Module>MigrationScriptStaleCheckTests` (task
-E09/F01/US01/T01, not yet retrofitted onto `Contigo.Chat` — same
-pre-existing gap `Contigo.Documents.Contracts` also has) fails `dotnet
-test` if a script is missing or no longer matches a fresh idempotent
-generate, and `<Module>MigrationScriptTests`
+`quotes.sql`, `chat.sql`, `suppliers.sql` — generated with `dotnet ef
+migrations script --idempotent` from that module's `src/` folder. That
+checked-in script, applied with `psql` (or any plain Npgsql client), is the
+actual `dev`/`demo` deploy path: CI applies all eight, in ADR-021's fixed
+order (`chat.sql` appended seventh — task E13/F05/US01/T01 postdates
+ADR-021's own fixed list; `suppliers.sql` appended eighth — task
+E13/F03/US01/T01, same reasoning: the `supplier` table carries no FK to or
+from any other module's tables, so it has no ordering dependency on the
+other seven and is simply appended last), after both `az containerapp
+update` steps (task E09/F02/US01/T02) — `Contigo.Api` and `Contigo.Worker`
+deliberately never call `Database.MigrateAsync()`, so a replica boot never
+mutates schema. Regenerate the script after adding or changing a
+migration; `<Module>MigrationScriptStaleCheckTests` (task E09/F01/US01/T01,
+not yet retrofitted onto `Contigo.Chat` — same pre-existing gap
+`Contigo.Documents.Contracts` also has; `Contigo.Suppliers.Products` has
+its own from the start, task E13/F03/US01/T01) fails `dotnet test` if a
+script is missing or no longer matches a fresh idempotent generate, and
+`<Module>MigrationScriptTests`
 proves the checked-in script itself — not `MigrateAsync`, no DbContext —
 applies (and re-applies) cleanly to a bare `pgvector/pgvector:pg16` server.
 `.github/workflows/backend.yml`'s CI apply step (`scripts/pg_connection_string_env.py`
 turns the Key Vault `postgres-connection` secret into `psql`'s `PG*`
 environment variables; `scripts/schema_apply_verify.py` then proves every
-migration_id all seven scripts declare landed in `contigo_<env>`'s own
+migration_id all eight scripts declare landed in `contigo_<env>`'s own
 `__EFMigrationsHistory`, failing the job by name otherwise) needs the CI
 deploy principal to hold `Key Vault Secrets User` on that environment's
 vault (`modules/keyvault` `ci_secrets_user`, applied by HCP).
@@ -402,6 +408,59 @@ fix. `Contigo.Renewals`'s own
 `RenewalPriorityInputs.BenchmarkMarketPositionPercent` (see "explainable
 priority score" below) still has no real producer wired to it — a different
 module, out of this task's own "do not touch unrelated wave artifacts" scope.
+
+## Supplier identity
+
+Task E13/F03/US01/T01 (story us-01-supplier-identity, ADR-024 "Supplier
+identity") turns `Contigo.Suppliers.Products` from the bare scaffold task
+E13/F01/US01/T01 left behind into this module's first real content:
+`Domain.Supplier` (tenant-scoped: `Name`, `NormalizedName`, `Aliases`
+(a Postgres `text[]`), `Category?`, `Country?`, `CreatedAt`, `UpdatedAt`)
+under its own `Infrastructure.SuppliersDbContext` + Postgres RLS (same
+`ENABLE`/`FORCE ROW LEVEL SECURITY` + `tenant_isolation` policy shape every
+other module's own `AddTenantRowLevelSecurity` migration already uses).
+`Application.SupplierNameNormalizer` lower-cases, strips the R-SUP-02 legal
+suffixes (`Inc`/`Ltd`/`Limited`/`GmbH`/`AG`/`SA`/`SpA`/`S.r.l.`/`Srl`/`LLC`/
+`Corp`/`Corporation`/`Co.` — a dotted and undotted spelling of the same
+suffix fold onto the same token, e.g. `SpA`/`S.p.A.` both become `spa`),
+strips punctuation and collapses whitespace — deterministic and pure, no
+database. `Application.SupplierResolver` (the `ISupplierResolver`
+implementation) matches an existing row by `NormalizedName` or by an entry
+in `Aliases` before ever creating one, so "Salesforce, Inc." and
+"salesforce" resolve to the same id (parent story AC-2); the unique index
+on `(tenant_id, normalized_name)` is the database-level backstop against a
+race between two concurrent first-seen resolutions.
+
+The cross-module contract other modules get instead of referencing this
+one directly (ADR-002: Documents/Renewals/the API may not reference
+`Contigo.Suppliers.Products`) lives in
+`Contigo.SharedKernel.Suppliers`: `ISupplierResolver.ResolveAsync(TenantId,
+rawName, ct) → Result<SupplierRef>` and `ISupplierNameLookup.GetNamesAsync
+(TenantId, ids, ct) → IReadOnlyDictionary<EntityId, string>` (batched, so a
+list page resolves every row's supplier name in one call). Both are wired
+by `Infrastructure.ServiceCollectionExtensions.AddSuppliersProductsModule
+(string connectionString)` — connection string key `SuppliersProducts`
+(env var form `ConnectionStrings__SuppliersProducts`), the same
+dots-stripped-PascalCase naming convention every other module's own
+connection string already uses (`DocumentsContracts`, `IdentityWorkspace`).
+No host calls `AddSuppliersProductsModule` yet — task E13/F06/US01/T01
+wires it into `Contigo.Api`/`Contigo.Worker`'s `Program.cs` and adds the
+matching `appsettings.Development.json` entry, the same "wiring lands with
+the first real caller" sequencing this README already documents for
+`AddChatModule`/`AddRenewalsModule` above — so nothing in this codebase
+resolves a supplier name for a real contract yet; that is task
+E13/F03/US01/T02's own job (the `supplier` critical extraction fact, the
+pipeline's resolver call, and reprocess back-fill).
+
+Tenant isolation is proved in
+`Contigo.IntegrationTests.SupplierCrossTenantIsolationTests` — deliberately
+not in `Contigo.Suppliers.Products.Tests` alongside the normalizer/resolver
+unit tests, per this task's own file assignment — because `Contigo.Api`
+does not reference this module yet, so unlike the `R0`–`R4` suites in that
+same project it cannot go through `WebApplicationFactory<Program>`; it
+drives `SuppliersDbContext` directly instead, the same shape
+`Contigo.Renewals.Tests`' own per-module `*RlsCrossTenantIsolationTests`
+already use.
 
 ## Ask Contigo — query router + deterministic queries + RAG citations
 

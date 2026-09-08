@@ -1,0 +1,71 @@
+using Microsoft.EntityFrameworkCore.Migrations;
+
+#nullable disable
+
+namespace Contigo.Suppliers.Products.Migrations
+{
+    /// <summary>
+    /// ADR-009 (task E13/F03/US01/T01, parent story us-01-supplier-identity AC-1): enables Postgres
+    /// Row-Level Security on every tenant-scoped table in this bounded context and adds a policy
+    /// keyed to the per-connection `current_setting('app.tenant_id', true)` claim that
+    /// <see cref="Contigo.SharedKernel.Tenancy.TenantRlsConnectionInterceptor"/> sets — the same
+    /// mechanism every other module's own `AddTenantRowLevelSecurity` migration already wires up
+    /// (Documents/Contracts, Identity/Workspace, Audit, Renewals, Savings, Quotes, Chat), applied
+    /// here to this module's own table. `FORCE` makes the policy apply even to the table owner
+    /// (the role migrations/the app run as), not just to ordinary non-owner roles. `WITH CHECK`
+    /// mirrors `USING` so a session cannot write a row into a tenant it is not scoped to, not just
+    /// read across tenants. `nullif(..., '')` guards the `::uuid` cast: `current_setting(...,
+    /// true)` returns NULL when the GUC was never set on this session, but Postgres can also leave
+    /// a *pooled* connection's custom GUC as an empty string after `RESET app.tenant_id` rather
+    /// than fully undefined — casting `''::uuid` throws, which would turn "no active tenant scope"
+    /// into a 500 instead of the intended zero-rows-visible. `nullif` folds both "never set" and
+    /// "reset to empty" to SQL NULL first, so the row comparison always safely evaluates to NULL
+    /// (never TRUE) instead of erroring.
+    ///
+    /// The table list is intentionally the fixed set that exists as of this migration (mirrors how
+    /// `Initial` hardcodes its own table) — a future tenant-scoped table in this module gets its
+    /// own follow-up migration adding RLS for it.
+    /// </summary>
+    public partial class AddTenantRowLevelSecurity : Migration
+    {
+        /// <summary>
+        /// Every table backed by a <see cref="Contigo.Suppliers.Products.Domain.TenantScopedEntity"/>
+        /// subclass as of this migration (see <see cref="Infrastructure.SuppliersDbContext"/>'s
+        /// DbSet and `Migrations/20260909100000_Initial.cs`).
+        /// </summary>
+        private static readonly string[] TenantScopedTables =
+        [
+            "supplier",
+        ];
+
+        /// <inheritdoc />
+        protected override void Up(MigrationBuilder migrationBuilder)
+        {
+            foreach (var table in TenantScopedTables)
+            {
+                migrationBuilder.Sql(
+                    $"""
+                    ALTER TABLE "{table}" ENABLE ROW LEVEL SECURITY;
+                    ALTER TABLE "{table}" FORCE ROW LEVEL SECURITY;
+                    CREATE POLICY tenant_isolation ON "{table}"
+                        USING (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid)
+                        WITH CHECK (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid);
+                    """);
+            }
+        }
+
+        /// <inheritdoc />
+        protected override void Down(MigrationBuilder migrationBuilder)
+        {
+            foreach (var table in TenantScopedTables)
+            {
+                migrationBuilder.Sql(
+                    $"""
+                    DROP POLICY IF EXISTS tenant_isolation ON "{table}";
+                    ALTER TABLE "{table}" NO FORCE ROW LEVEL SECURITY;
+                    ALTER TABLE "{table}" DISABLE ROW LEVEL SECURITY;
+                    """);
+            }
+        }
+    }
+}
