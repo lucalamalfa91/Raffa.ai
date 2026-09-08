@@ -15,6 +15,12 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+    <!-- Task E13/F01/US01/T02 (foundry-gateway): Azure.Core only, for TestSupport.FakeTokenCredential
+         (a fake Azure.Core.TokenCredential — never Azure.Identity.DefaultAzureCredential, which
+         would probe real environment/managed-identity sources). Azure.Core is not one of the two
+         prefixes SdkAllowListTests enforces ("Azure.AI." / "Azure.Identity"), so this reference
+         does not trip that test — it exists to fake the auth abstraction, not to call live Azure. -->
+    <PackageReference Include="Azure.Core" Version="1.50.0" />
   </ItemGroup>
 
   <ItemGroup>
