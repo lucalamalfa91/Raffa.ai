@@ -4,6 +4,7 @@
 - **Date**: 2026-09-08
 - **Deciders**: product-owner (HITL decisions D1–D8, personas, non-goals) + software-architect (module map, engine pipeline, guards) + security-architect (three-source isolation, RLS on conversations, no-tools model calls) + ux-ui-designer (V2 prototype as pixel reference)
 - **Locked citations**: `inputs/requirements.md` §0 (D1–D8), §2, §5–§8; `inputs/design/prototypes/Contigo V2 Prototype.html` (unpacked: `inputs/design/prototypes/contigo-v2/ia-v2.md`, `screens-v2.md`, `app.jsx`, `markup.html`); ADR-001 (fixture market adapter, no paid API on first `demo`); ADR-002 (modular monolith); ADR-004 (five Foundry roles behind `IAiGateway`); ADR-009 / ADR-011 (RLS, authz-before-retrieval, no-training, hash logging); ADR-017 (OCR in V1, images); ADR-018 / ADR-020 (IA and screens); ADR-019 (design system); ADR-021 (schema apply by CI); ADR-022 (Day-1 identity posture); spec §4.1, §7.1, §7.3, §8.3–§8.4, §10.2–§10.4, §12.1, §14.2, §15.3.
+- **Diagram**: `docs/architecture/ask-contigo-v2-data-flow.md` (component / data flow + one Ask turn in sequence; Mermaid)
 
 ## Context and problem statement
 
