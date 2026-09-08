@@ -38,7 +38,7 @@ backend/
     Contigo.Renewals/            # renewal engine + opportunity + explainable priority score + threshold scheduler + dashboard pipeline + action (R2; live) — see "Renewal Intelligence" below
     Contigo.Savings/             # price normalization + percentile/target/savings-range calculator (R3; task E04/F02/US01/T01) + persisted, trackable SavingsOpportunity + GET/PATCH /api/savings (task E04/F02/US02/T01) — see "Savings Intelligence" below
     Contigo.Quotes/              # quote upload + hybrid-OCR-reused, schema-constrained line-item extraction (evidence + confidence; deterministic pricing) + POST /api/quotes (R4; task E05/F01/US01/T01) + SKU/edition normalization against a per-tenant canonical mapping, unmatched-SKU flagging (task E05/F01/US02/T01) + benchmark matching/above-in-line-below market assessment + GET /api/quotes/{id}/assessment, AddBenchmarkModule now wired (task E05/F02/US01/T01) + deterministic recommended target range/potential saving on that same endpoint (task E05/F02/US01/T02) + deterministic negotiation strategy (opening target/acceptable range/walk-away threshold + seven canonical levers with rationale, NegotiationStrategyService, no HTTP endpoint yet) (task E05/F03/US01/T01) + NegotiationOutcome capture (original/target/final/deterministic saving+discount/duration/levers used) + POST /api/negotiations/outcomes, append-only/audit-tracked (task E05/F03/US02/T01) — see "Quote Check" / "Market Assessment" / "Negotiation Strategy" / "Negotiation Outcome" below
-    Contigo.Chat/                # Ask Contigo structured-vs-semantic query router (R1, task E02/F04/US01/T01) + deterministic dates/spend query handlers (task E02/F04/US01/T02) + RagAnswerService (task E02/F04/US02/T01) + AbstainGuard no-fabrication guard (task E02/F04/US02/T02); AddChatModule wired into Contigo.Api by this last task
+    Contigo.Chat/                # Ask Contigo structured-vs-semantic query router (R1, task E02/F04/US01/T01) + deterministic dates/spend query handlers (task E02/F04/US01/T02) + RagAnswerService (task E02/F04/US02/T01) + AbstainGuard no-fabrication guard (task E02/F04/US02/T02); AddChatModule wired into Contigo.Api by this last task; own ChatDbContext + Conversation/ConversationMessage under RLS + ConversationService (create/list/get/append) (task E13/F05/US01/T01) — see "Ask Contigo — conversations store" below
   tests/                         # per-module + architecture + R0 integration
 ```
 
@@ -89,29 +89,34 @@ on Testcontainers inside `dotnet test`.
 
 EF migrations live in each module that owns a DbContext
 (`Contigo.Identity.Workspace`, `Contigo.Documents.Contracts`,
-`Contigo.Audit`, `Contigo.Renewals`, `Contigo.Savings`, `Contigo.Quotes`). Apply them against
+`Contigo.Audit`, `Contigo.Renewals`, `Contigo.Savings`, `Contigo.Quotes`,
+`Contigo.Chat`). Apply them against
 the same database the hosts use; RLS policies are added in those
 migrations, not in Terraform.
 
 **Deployable schema artifact (ADR-021):** every module above also checks in
 `Migrations/Scripts/<module>.sql` — `identity-workspace.sql`,
 `documents-contracts.sql`, `audit.sql`, `renewals.sql`, `savings.sql`,
-`quotes.sql` — generated with `dotnet ef migrations script --idempotent`
+`quotes.sql`, `chat.sql` — generated with `dotnet ef migrations script --idempotent`
 from that module's `src/` folder. That checked-in script, applied with
 `psql` (or any plain Npgsql client), is the actual `dev`/`demo` deploy
-path: CI applies all six, in ADR-021's fixed order, after both
+path: CI applies all seven, in ADR-021's fixed order (`chat.sql` appended
+last — task E13/F05/US01/T01 postdates ADR-021's own fixed list and has no
+FK/ordering dependency on the other six), after both
 `az containerapp update` steps (task E09/F02/US01/T02) — `Contigo.Api` and
 `Contigo.Worker` deliberately never call `Database.MigrateAsync()`, so a
 replica boot never mutates schema. Regenerate the script after adding or
 changing a migration; `<Module>MigrationScriptStaleCheckTests` (task
-E09/F01/US01/T01) fails `dotnet test` if a script is missing or no longer
-matches a fresh idempotent generate, and `<Module>MigrationScriptTests`
+E09/F01/US01/T01, not yet retrofitted onto `Contigo.Chat` — same
+pre-existing gap `Contigo.Documents.Contracts` also has) fails `dotnet
+test` if a script is missing or no longer matches a fresh idempotent
+generate, and `<Module>MigrationScriptTests`
 proves the checked-in script itself — not `MigrateAsync`, no DbContext —
 applies (and re-applies) cleanly to a bare `pgvector/pgvector:pg16` server.
 `.github/workflows/backend.yml`'s CI apply step (`scripts/pg_connection_string_env.py`
 turns the Key Vault `postgres-connection` secret into `psql`'s `PG*`
 environment variables; `scripts/schema_apply_verify.py` then proves every
-migration_id all six scripts declare landed in `contigo_<env>`'s own
+migration_id all seven scripts declare landed in `contigo_<env>`'s own
 `__EFMigrationsHistory`, failing the job by name otherwise) needs the CI
 deploy principal to hold `Key Vault Secrets User` on that environment's
 vault (`modules/keyvault` `ci_secrets_user`, applied by HCP).
@@ -467,6 +472,53 @@ page/section resolution (joining back to `Clause.SourcePage`/`SourceSpan`) is
 a follow-up gap, not attempted by this task. No task has yet mapped a real,
 tenant-scoped `Contract` row into `ContractFact`, so the endpoint's
 `Structured` branch reports an honest "not wired yet" instead of guessing.
+
+## Ask Contigo — conversations store
+
+Task E13/F05/US01/T01 (story us-01-conversations, ADR-024 "Conversations
+(D5)") gives `Contigo.Chat` its own persistence, independent of the router/
+RAG pieces above: `Infrastructure.ChatDbContext` (two tables,
+`Domain.Conversations.Conversation` / `ConversationMessage`, both
+`TenantScopedEntity` — this module's own copy, not a shared reference, of
+`Contigo.Documents.Contracts.Domain.TenantScopedEntity`'s identical shape,
+since `Contigo.Chat`'s ADR-002 allow-list is exactly `[SharedKernel,
+AiGateway]`) under Postgres RLS (`FORCE ROW LEVEL SECURITY` + policy on
+`app.tenant_id`, same shape as every other module — see
+`ChatMigrationScriptTests`), and
+`Application.Conversations.ConversationService` (create / list-recent /
+get-with-messages / append-message). RLS has no per-user predicate, so
+"another user of the same workspace cannot read this conversation"
+(R-CONV-01 AC-1) is an *application-level* filter on
+`Conversation.UserId` — every `ConversationService` method filters by both
+tenant and user, not tenant alone (see that type's own doc comment).
+Writes two audit rows: `conversation.created`, `conversation.message.appended`
+— never the message markdown/citations content itself (ADR-011).
+
+`Title` starts as `ConversationService.DefaultTitle` ("New chat") and is
+derived from the first `you`-role message, truncated to
+`ConversationService.TitleMaxLength` (48, R-CONV-01 "first question, <= 48
+chars") the moment it lands — never re-derived from a later message.
+`ConversationMessage.Role`/`Kind` are C# enums stored as strings (PascalCase
+column values, e.g. `"You"`/`"Answer"`); mapping them onto ADR-024 §6's
+lowercase wire literals (`you`/`contigo`, `answer`/`abstain`/`redirect`/
+`refusal`) is the HTTP layer's job, not this module's.
+
+`Infrastructure.ServiceCollectionExtensions.AddChatModule` gained an
+optional `chatConnectionString` parameter (AC-4): called with none (every
+existing caller, including `Contigo.Api.Program` today), it registers
+exactly what it always has — the query router/RAG services above, no
+database — so nothing that already resolves them without a connection
+string breaks. Called with one, it additionally registers `ChatDbContext` +
+`ConversationService`, keyed by this story's own council-decided
+`ConnectionStrings:Chat` (`ConnectionStrings__Chat` env var form, same
+`Contigo.Chat.Infrastructure.ChatDbContextFactory` design-time fallback
+shape as every other module's `<Module>DbContextFactory`). Honest gap,
+deliberately out of this task's file scope: `Contigo.Api.Program` still
+calls `AddChatModule()` with no argument — task E13/F05/US01/T02 is the
+first caller that passes the connection string and adds the
+`GET/POST /api/conversations` HTTP surface itself, the same "wiring lands
+with the first real caller" sequencing this README already documents for
+`AddRenewalsModule`/`AddBenchmarkModule` above.
 
 ## Renewal Intelligence — deterministic renewal engine
 

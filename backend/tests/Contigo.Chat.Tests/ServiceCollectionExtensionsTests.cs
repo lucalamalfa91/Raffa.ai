@@ -66,6 +66,39 @@ public sealed class ServiceCollectionExtensionsTests
         Assert.Same(preRegisteredClock, provider.GetRequiredService<IClock>());
     }
 
+    /// <summary>
+    /// Task E13/F05/US01/T01 (story us-01-conversations, AC-4 "...and registers the DbContext
+    /// when one is given"): the other half of <see cref="AddChatModule"/>'s own doc comment on
+    /// the new <c>chatConnectionString</c> overload. A syntactically-valid-but-never-dialled
+    /// connection string is enough — <c>AddDbContext</c> registration is lazy (the provider is
+    /// never actually opened just by building/validating the container), the same "by design"
+    /// convention this codebase's own
+    /// <c>Contigo.Renewals.Tests.RenewalThresholdSchedulerHostedServiceTests</c> already uses.
+    /// </summary>
+    [Fact]
+    public void AddChatModule_with_a_connection_string_also_resolves_ChatDbContext_and_ConversationService()
+    {
+        const string neverDialledConnectionString =
+            "Host=localhost;Database=never_dialled;Username=x;Password=x";
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IAiGateway, NotExercisedGateway>();
+        services.AddScoped<IAuditWriter, NoOpAuditWriter>();
+
+        services.AddChatModule(neverDialledConnectionString);
+
+        using var provider = services.BuildServiceProvider(
+            new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
+        using var scope = provider.CreateScope();
+
+        Assert.NotNull(scope.ServiceProvider.GetRequiredService<Contigo.Chat.Infrastructure.ChatDbContext>());
+        Assert.NotNull(scope.ServiceProvider.GetRequiredService<Contigo.Chat.Application.Conversations.ConversationService>());
+        // The zero-argument surface from the other test above still resolves too -- the overload
+        // is additive, never a replacement.
+        Assert.NotNull(scope.ServiceProvider.GetRequiredService<AskContigoQueryRouter>());
+        Assert.NotNull(scope.ServiceProvider.GetRequiredService<RagAnswerService>());
+    }
+
     private sealed class FixedTimeClock : IClock
     {
         public DateTimeOffset UtcNow => new(2026, 9, 4, 0, 0, 0, TimeSpan.Zero);

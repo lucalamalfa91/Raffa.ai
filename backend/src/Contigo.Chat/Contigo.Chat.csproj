@@ -14,6 +14,15 @@
          Contigo.AiGateway.csproj already references for the identical reason — does not trip
          Contigo.ArchitectureTests.DependencyDirectionTests.Domain_module_must_not_reference_provider_sdks. -->
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
+    <!-- Task E13/F05/US01/T01 (conversations-store): ChatDbContext's own EF Core / Npgsql
+         packages — same set as Contigo.Documents.Contracts.csproj / Contigo.Audit.csproj, minus
+         Pgvector (neither Conversation nor ConversationMessage has a vector column). -->
+    <PackageReference Include="EFCore.NamingConventions" Version="10.0.1" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.4">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
   </ItemGroup>
 
   <PropertyGroup>
