@@ -33,7 +33,7 @@ backend/
     Contigo.AiGateway/           # IAiGateway + FixtureAiGateway/FoundryAiGateway (wired via DI) + LoggingAiGateway decorator (task E13/F01/US01/T02)
     Contigo.Benchmark/           # IBenchmarkService.GetBenchmarkAsync + normalized Contracts DTOs (E04/F01/US01/T01); BenchmarkAdapterRegistry + AddBenchmarkModule (E04/F01/US01/T02); FixtureBenchmarkAdapter registered as the default IBenchmarkProviderAdapter, incl. statistical weak-comparable abstain (E04/F01/US02/T01+T02) — no host calls AddBenchmarkModule yet (R3)
     Contigo.Suppliers.Products/  # scaffold (R1+)
-    Contigo.Market/               # scaffold (E13/F01/US01/T01, ADR-024) — feed/ingestion/index/benchmark-projection; AddMarketModule() registers nothing yet
+    Contigo.Market/               # R-MKT-01/02/03/04 mock feed + benchmark projection + in-memory notes retrieval (task E13/F02/US01/T01) — see "Market Intelligence" below
     Contigo.Insights/             # scaffold (E13/F01/US01/T01, ADR-024) — pure calculators fed by DTOs; AddInsightsModule() registers nothing yet
     Contigo.Renewals/            # renewal engine + opportunity + explainable priority score + threshold scheduler + dashboard pipeline + action (R2; live) — see "Renewal Intelligence" below
     Contigo.Savings/             # price normalization + percentile/target/savings-range calculator (R3; task E04/F02/US01/T01) + persisted, trackable SavingsOpportunity + GET/PATCH /api/savings (task E04/F02/US02/T01) — see "Savings Intelligence" below
@@ -46,19 +46,19 @@ Hosts are composition roots only: they register modules via `AddXxxModule`
 and map HTTP / hosted services. Business logic lives in the libraries.
 
 **V2 scaffold (task E13/F01/US01/T01, ADR-024):** `Contigo.Market` and
-`Contigo.Insights` are solution-only scaffolds — a class library, an
-`AddMarketModule()` / `AddInsightsModule()` stub that registers nothing
-yet, and a matching `Contigo.Market.Tests` / `Contigo.Insights.Tests`
-project with one placeholder test — for the epic-13 tasks that add the
-mock market feed / ingestion / shared `market_embedding` index / benchmark
-projection (`Contigo.Market`) and the deterministic strategy/criticality
-calculators (`Contigo.Insights`) to fill in without also touching
-`Contigo.slnx` or the architecture allow-list. `Contigo.Suppliers.Products.Tests`
-and `Contigo.AiEval` (references `Contigo.Chat`, `Contigo.AiGateway`,
-`Contigo.SharedKernel` — a future golden-set eval harness, story
-us-01-v2-foundation) are this same task's other two new, still-empty test
-projects. `Contigo.ArchitectureTests.DependencyDirectionTests` now allow-
-lists `Contigo.Market` → `[SharedKernel, AiGateway, Benchmark]` and
+`Contigo.Insights` started as solution-only scaffolds — a class library, an
+`AddMarketModule()` / `AddInsightsModule()` stub that registered nothing,
+and a matching `Contigo.Market.Tests` / `Contigo.Insights.Tests` project
+with one placeholder test — added without also touching `Contigo.slnx` or
+the architecture allow-list. Task E13/F02/US01/T01 filled in `Contigo.Market`
+(see "Market Intelligence" below); `Contigo.Insights` (the deterministic
+strategy/criticality calculators) remains that same empty scaffold, still
+pending its own task. `Contigo.Suppliers.Products.Tests` and `Contigo.AiEval`
+(references `Contigo.Chat`, `Contigo.AiGateway`, `Contigo.SharedKernel` — a
+future golden-set eval harness, story us-01-v2-foundation) are this same
+scaffold task's other two new, still-empty test projects.
+`Contigo.ArchitectureTests.DependencyDirectionTests` allow-lists
+`Contigo.Market` → `[SharedKernel, AiGateway, Benchmark]` and
 `Contigo.Insights` → `[SharedKernel, Benchmark]` and covers both in its
 domain-module direction/provider-SDK theories.
 
@@ -402,6 +402,97 @@ fix. `Contigo.Renewals`'s own
 `RenewalPriorityInputs.BenchmarkMarketPositionPercent` (see "explainable
 priority score" below) still has no real producer wired to it — a different
 module, out of this task's own "do not touch unrelated wave artifacts" scope.
+
+## Market Intelligence — mock feed, benchmark projection, in-memory notes
+
+Task E13/F02/US01/T01 (market-feed-mock, ADR-024, R-MKT-01…04) fills in the
+`Contigo.Market` scaffold with the "how companies actually close contracts"
+side of Ask Contigo V2: a checked-in mock feed behind
+`IMarketIntelligenceProvider`, projected into the existing `Contigo.Benchmark`
+seam and into a searchable set of narrative notes — no paid third-party API
+anywhere in this task or its project (ADR-001: "never a hard dependency of
+the first V2 `demo`").
+
+`Contracts/MarketDeal` is R-MKT-01's normalized record shape (supplier,
+category, product, SKU, geography, currency, company-size band, term,
+annual-value band, unit price P25/P50/P75, discount/uplift-cap/notice/payment
+terms, negotiated clauses, closing period, sample size, source, updatedAt,
+licence restrictions) — Contigo's own shape; a later live third-party client
+(R-MKT-05) maps onto it, never the reverse (OQ-askv2-001).
+`Mock.MockMarketIntelligenceProvider` reads the checked-in
+`backend/fixtures/market-intelligence.mock.json` — **65 records** (≥ 60,
+R-MKT-02) spanning enterprise software (Salesforce, Microsoft, AWS,
+Snowflake, ServiceNow, Slack, Zoom, Notion, HubSpot, Workday, SAP, Adobe,
+Atlassian, Google Workspace, DocuSign, Okta), insurance (Allianz, AXA,
+Zurich, Swiss Re), facilities, telco, logistics and professional services,
+across EU/CH/US and CHF/EUR/USD, with 9 rows deliberately carrying
+`sampleSize < 5` so the abstain path below is exercised — every record
+`source = "mock"` / `representative = true`. The JSON is **embedded** into
+`Contigo.Market.dll` (not opened from a runtime file path) so every host
+that loads the assembly — API, Worker, this project's own tests, a future
+`seed-market-intelligence` job — reads the exact same bytes with no path
+configuration and no dependency on a backend Dockerfile `COPY` step that
+does not exist yet (see `MockMarketIntelligenceProvider`'s own doc comment).
+
+**Benchmark projection:** `Benchmark.MarketFeedBenchmarkAdapter` implements
+`Contigo.Benchmark.Adapters.IBenchmarkProviderAdapter` under the name
+`"market-feed"`, matching on supplier + product always, plus geography /
+currency / contract term (always present on both sides) and SKU (only when
+both the query and a candidate deal name one — two deals disagreeing on SKU
+never match each other). A match below `MinimumViableSampleSize` (5 — the
+exact boundary the fixture's thin rows were built to cross) never publishes
+a P25/P50/P75 distribution (spec §10.4 benchmark-trust rule, ADR-001);
+`BenchmarkResult.Source` is always `"market-feed (representative, mock)"`.
+`ServiceCollectionExtensions.AddMarketModule` registers this adapter into
+the same `IBenchmarkProviderAdapter` enumerable
+`Contigo.Benchmark.BenchmarkAdapterRegistry` resolves (`TryAddEnumerable` —
+`FixtureBenchmarkAdapter` stays registered, still directly testable) **and**
+makes it `BenchmarkAdapterOptions`'s active adapter by default — without
+editing `Contigo.Benchmark` and regardless of whether a host calls
+`AddBenchmarkModule()` or `AddMarketModule()` first. This does *not* use
+`IServiceCollection.PostConfigure<BenchmarkAdapterOptions>`: that only takes
+effect through the `Microsoft.Extensions.Options` `IOptions<T>` indirection,
+and `Contigo.Benchmark`'s own registration never uses it (a plain singleton
+factory instead) — `PostConfigure` here would be a silent no-op. Instead
+`AddMarketModule` calls `IServiceCollection.Replace` with an otherwise
+byte-for-byte copy of `Contigo.Benchmark`'s own factory (same configuration
+section, same `Bind` call), which unconditionally wins the registration
+slot regardless of call order — see
+`ServiceCollectionExtensions.MakeMarketFeedTheDefaultActiveAdapter`'s own
+doc comment for the full reasoning. An explicit
+`Benchmark:Adapter:ActiveAdapter` configuration value still overrides the
+default either way, unchanged.
+
+**Interim data source:** R-MKT-03 describes benchmark rows as "served from
+the persisted `market_record` rows, never from the provider at question
+time" once an ingestion job exists — this task adds no ingestion job and no
+`market_record` table (that is T02's own scope: "Market index, ingestion,
+DB-backed retrieval, record endpoint"). Until then,
+`MarketFeedBenchmarkAdapter` calls `IMarketIntelligenceProvider.GetDealsAsync`
+directly on every query — the only data source T01 has — an explicitly
+interim shortcut T02 is expected to replace with the persisted-store read,
+with no change to `Contigo.Benchmark.IBenchmarkService` or any domain-module
+call site.
+
+**In-memory notes retrieval (Projection 2, interface only in a later phase's
+DB-backed form):** `Retrieval.MarketNoteComposer.Compose` turns one
+`MarketDeal` into one narrative `Contracts.MarketNote` (e.g. "Companies of
+500-2000 employees closing Salesforce Sales Cloud Enterprise in CH in
+2026-Q1 paid P50 CHF 132 …, obtained a 4% uplift cap and 90-day notice…"),
+labelled via `Contracts.MarketProvenance.Label` (`"representative market
+data · mock feed · updated <yyyy-MM-dd>"`, R-MKT-04). `Retrieval
+.InMemoryMarketKnowledgeRetrieval` — this task's default
+`Retrieval.IMarketKnowledgeRetrieval` — scores every composed note by plain
+token overlap against the query (no index, no embedding call) and returns
+the top-K; task E13/F02/US01/T02 is expected to swap in a pgvector-backed
+implementation over the shared, tenant-free `market_embedding` index behind
+this same interface (R-MKT-03: "own table — never rows in the tenant
+`embedding` table").
+
+No host calls `AddMarketModule()` yet — task F06/T01 is expected to be the
+first caller, the same "wiring lands with the first real caller" sequencing
+this README already documents for `AddBenchmarkModule` / `AddChatModule`
+above.
 
 ## Ask Contigo — query router + deterministic queries + RAG citations
 

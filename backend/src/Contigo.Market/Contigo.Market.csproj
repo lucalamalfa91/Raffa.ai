@@ -17,6 +17,25 @@
          (Contigo.AiGateway / Contigo.Benchmark / Contigo.Chat already reference the same-family
          package for the same reason). -->
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
+    <!-- Task E13/F02/US01/T01 (market-feed-mock): AddMarketModule's own BenchmarkAdapterOptions
+         override factory needs IConfiguration.GetSection(...).Bind(...) — the same generic
+         Microsoft.Extensions.Configuration.Binder package Contigo.Benchmark.csproj already
+         references for its own, otherwise byte-for-byte identical, factory (see
+         ServiceCollectionExtensions.MakeMarketFeedTheDefaultActiveAdapter's own doc comment). Not
+         a provider SDK — same allow-listed family as the DI package above. -->
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.11" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Task E13/F02/US01/T01 (market-feed-mock): the checked-in R-MKT-02 mock dataset, embedded
+         so every host/tool that loads this assembly (API, Worker, tests, a future
+         seed-market-intelligence job) reads the exact same bytes with no runtime file-path
+         configuration — see Mock/MockMarketIntelligenceProvider.cs's own doc comment for why. The
+         file on disk (backend/fixtures/market-intelligence.mock.json) remains the single source of
+         truth an operator edits. -->
+    <EmbeddedResource Include="..\..\fixtures\market-intelligence.mock.json"
+                       LogicalName="Contigo.Market.Fixtures.market-intelligence.mock.json"
+                       Link="Fixtures\market-intelligence.mock.json" />
   </ItemGroup>
 
   <PropertyGroup>
