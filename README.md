@@ -28,6 +28,7 @@ those in sync when the public surface of that folder changes (see
 | `web/` | React + TypeScript SPA (Vite, MSAL PKCE) | [`web/README.md`](web/README.md) |
 | `mobile/` | React Native (Expo) — **non-gating** lane, no store release for R0–R4 | [`mobile/README.md`](mobile/README.md) |
 | `.helix/` | Helix process artefact — ADRs, work items, slices, delivery process | [`.helix/README.md`](.helix/README.md) |
+| `docs/` | Architecture diagrams and acceptance checklists (Ask Contigo V2 data flow: [`docs/architecture/ask-contigo-v2-data-flow.md`](docs/architecture/ask-contigo-v2-data-flow.md)) | — |
 
 ## Stack (locked by ADR)
 
