@@ -1,5 +1,6 @@
 waveId: wave-v1-epic-e12
 status: planned
+# SUPERSEDED by e13 (2026-09-08, ADR-024). Never launched. Do not -Slice e12.
 # E12 Ask Contigo savings copilot. Prior-wave depends_on dropped (producer-completeness).
 # estimated tokens: 8.2M (S/M/L mapped; not a packing cap).
 # Launch: ./run.ps1 -Max -Slice e12 -o execution-fanout

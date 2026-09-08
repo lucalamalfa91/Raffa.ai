@@ -124,3 +124,21 @@ Ask Contigo keeps **two corpora**, never one blended index:
    pgvector and not sourced from another tenant’s PDFs.
 
 Off-domain questions must not run RAG. See ADR-023.
+
+## Amendment (2026-09-08, epic-13 / ADR-024)
+
+Two corpora remain, never one blended index:
+
+1. **Tenant RAG** — this workspace's validated contracts (authz →
+   `tenant_id` filter → retrieval); embedding rows gain `page` / `section`.
+   Unchanged from the original decision.
+2. **Market** — the market-intelligence feed (mock now) with its **own
+   vector index** `market_embedding`: no `tenant_id`, readable by every
+   tenant, written only by the ingestion job, never containing tenant
+   content, never joined with tenant tables.
+
+**Conversations** (`conversation`, `conversation_message`) are tenant tables
+under the same RLS policy, keyed by tenant + user. Off-domain turns retrieve
+from neither corpus. Documents are classified **before** persistence;
+rejected files are never stored (audit hash only). This footer supersedes
+the epic-12 amendment above. See ADR-024.

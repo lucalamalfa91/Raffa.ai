@@ -1,5 +1,7 @@
 # Ask Contigo — requirements (savings copilot)
 
+> **Superseded (2026-09-08)** by `inputs/requirements.md` (Ask Contigo V2, epic-13 / e13, ADR-024). Kept for the record; do not use as an oracle.
+
 Status: **binding input** for epic-12 / e12. Oracle for Passata 1 (`contigo-ask-process.yaml`)
 and for fan-out prompts. Does not replace `inputs/product-spec.md`; it **amends** how
 Ask Contigo (§8.3–§8.4) and the benchmark fixture (ADR-001) show up to the buyer.

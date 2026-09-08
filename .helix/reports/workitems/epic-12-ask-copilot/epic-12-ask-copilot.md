@@ -2,8 +2,11 @@
 id: epic-12
 type: epic
 wave: 12
-status: active
+status: superseded
+superseded_by: epic-13
 ---
+
+> **Superseded (2026-09-08).** Replaced by `epic-13-ask-v2` (ADR-024, `inputs/requirements.md` D4). Never launched; slice `e12` is kept for the record only.
 
 # epic-12-ask-copilot — Ask Contigo savings copilot
 

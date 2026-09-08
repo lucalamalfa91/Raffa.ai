@@ -1,10 +1,13 @@
-# Ask-copilot slice (e12). e01–e11 and e1011 stay put.
+# Ask V2 slice (e13). e01–e11, e1011 and e12 (superseded) stay put.
 
-mode: ask-copilot
+mode: ask-v2
 master: reports/plan/wave-spec.ask.yaml
+design_oracle: inputs/design/prototypes/Contigo V2 Prototype.html
+requirements: inputs/requirements.md
 slices:
-  - id: e12
-    title: E12 Ask Contigo savings copilot
-    tokens: 8200000
-    tasks: 5
+  - id: e13
+    title: E13 Ask Contigo V2 (documents, conversations, market feed, strategies, system-aware)
+    tokens: 30400000
+    tasks: 20
     previous: e1011
+    supersedes: e12

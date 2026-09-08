@@ -1,13 +1,20 @@
-# Ask-copilot slice (e12)
+# Ask V2 slice (e13)
 
-Produced by `python scripts/cut_ask_slices.py`.
-Launch only after ADR HITL **and** e1011 is closed
-(live process, not this YAML). Do **not** run in parallel with e1011.
+Produced by `python scripts/cut_ask_slices.py` from `reports/plan/wave-spec.ask.yaml`.
+Supersedes e12 (never launched). Design oracle:
+`inputs/design/prototypes/Contigo V2 Prototype.html` (unpacked under
+`inputs/design/prototypes/contigo-v2/`). Requirements: `inputs/requirements.md`.
+
+Launch only after `reports/plan/gates/ask-v2.hitl-ok` exists and no other
+wave is running. From Helix Studio: open `contigo-process.yaml`, make sure
+`reports/plan/slice.current.yaml` is this slice, run `execution-fanout`.
+Or from PowerShell:
 
 ```
-./run.ps1 -Max -Slice e12 -o execution-fanout
+python scripts/check_slice_prereqs.py --slice e13
+./run.ps1 -Max -Slice e13 -o execution-fanout
 ```
 
 ## Files
 
-- `e12.yaml`
+- `e13.yaml`

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Snapshot / verify that the live plan was not rewritten by ask-copilot.
+"""Snapshot / verify that the live plan was not rewritten by the Ask V2 process.
 
-Hash-locks e01–e11, e1011, prior wave-specs, locked ADRs (not 001/004/011/018/020/023),
-epic-01…11. Does NOT lock slice.current.yaml.
+Hash-locks e01–e11, e1011, e12 (superseded), prior wave-specs, locked ADRs
+(everything except 001/004/011/018/020 footers and the new 024), epic-01…12
+(epic-12 keeps its superseded banner). Does NOT lock slice.current.yaml.
 
 Usage (cwd = .helix):
   python scripts/assert_ask_plan_untouched.py snapshot
@@ -19,7 +20,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parents[1]
 SNAP = HERE / "reports" / "plan" / ".ask-protect-snapshot.json"
 
-SLICE_IDS = tuple([*(f"e{n:02d}" for n in range(1, 12)), "e1011"])
+SLICE_IDS = tuple([*(f"e{n:02d}" for n in range(1, 12)), "e1011", "e12"])
 WAVE_SPECS = (
     "wave-spec.execution.yaml",
     "wave-spec.web.yaml",
@@ -27,7 +28,8 @@ WAVE_SPECS = (
     "wave-spec.readiness.yaml",
     "wave-spec.visual.yaml",
 )
-# Writable by this process: 001, 004, 011, 018, 020, 023.
+# Writable by this process: 001, 004, 011, 018, 020 (footers) and 024 (new).
+# ADR-023 is superseded (footer already applied) and locked.
 LOCKED_ADR_NUMBERS = (
     *range(2, 4),
     *range(5, 11),
@@ -35,10 +37,12 @@ LOCKED_ADR_NUMBERS = (
     19,
     21,
     22,
+    23,
 )
 EPIC_GLOBS = tuple(
-    [*(f"epic-0{n}-*" for n in range(1, 10)), "epic-10-*", "epic-11-*"]
+    [*(f"epic-0{n}-*" for n in range(1, 10)), "epic-10-*", "epic-11-*", "epic-12-*"]
 )
+LOCKED_INPUTS = ("inputs/ask-copilot-brief.md",)
 
 
 def _sha256(path: Path) -> str:
@@ -66,6 +70,8 @@ def _locked_files() -> list[Path]:
         for epic_dir in sorted(work.glob(pat)):
             if epic_dir.is_dir():
                 out.extend(sorted(p for p in epic_dir.rglob("*") if p.is_file()))
+    for rel in LOCKED_INPUTS:
+        out.append(HERE / rel)
     return out
 
 
@@ -79,11 +85,12 @@ def snapshot() -> int:
         return 1
     payload = {
         "files": {_rel(p): _sha256(p) for p in files},
-        "index_must_contain": [f"ADR-{n:03d}" for n in range(1, 23)],
+        "index_must_contain": [f"ADR-{n:03d}" for n in range(1, 24)],
         "backlog_must_contain": [
             *(f"epic-0{n}" for n in range(1, 10)),
             "epic-10",
             "epic-11",
+            "epic-12",
         ],
     }
     SNAP.parent.mkdir(parents=True, exist_ok=True)
@@ -126,7 +133,7 @@ def verify() -> int:
         return 1
     print(
         "verify: protected plan unchanged "
-        "(e01-e11 e1011, locked ADRs, epic-01..11)"
+        "(e01-e11 e1011 e12, locked ADRs incl. 023, epic-01..12, ask-copilot-brief)"
     )
     return 0
 

@@ -1,21 +1,46 @@
-waveId: wave-v1-ask-e12
+waveId: wave-v1-ask-e13
 status: planned
-# Ask Contigo savings copilot (ADR-023). Does not replace wave-spec.execution.yaml.
-# estimated tokens: 8.2M (S/M/L mapped; not a packing cap).
-# Launch: ./run.ps1 -Max -Slice e12 -o execution-fanout  (after e1011 HITL)
+# Ask Contigo V2 (ADR-024; replaces the E12 master). Does not replace wave-spec.execution.yaml.
+# Oracle: inputs/requirements.md. Design oracle: inputs/design/prototypes/Contigo V2 Prototype.html
+# (unpacked: inputs/design/prototypes/contigo-v2/). Every web task cites both.
+# Phases follow skills/decompose-ask-workitems.md (single writer per file per phase).
+# estimated tokens: 30.4M (S/M/L mapped; not a packing cap).
+# Launch: Studio -> contigo-process.yaml -> execution-fanout (slice.current.yaml = e13)
+#         or ./run.ps1 -Max -Slice e13 -o execution-fanout  (after reports/plan/gates/ask-v2.hitl-ok)
 phases:
   - id: 1
     name: phase-1
     tasks:
-      - {id: E12/F01/US01/T01, prompt: reports/workitems/epic-12-ask-copilot/feature-01-foundry-gateway/us-01-foundry-gateway/tasks/task-01-foundry-gateway.md, produces: [foundry-gateway], depends_on: [], effort: L, layer: backend, status: live}
-      - {id: E12/F02/US01/T01, prompt: reports/workitems/epic-12-ask-copilot/feature-02-fixture-catalog/us-01-fixture-catalog/tasks/task-01-fixture-catalog.md, produces: [fixture-catalog], depends_on: [], effort: M, layer: backend, status: live}
+      - {id: E13/F01/US01/T01, prompt: reports/workitems/epic-13-ask-v2/feature-01-v2-foundation/us-01-v2-foundation/tasks/task-01-solution-scaffold.md, produces: [v2-scaffold], depends_on: [], effort: M, layer: backend, status: live}
+      - {id: E13/F01/US01/T02, prompt: reports/workitems/epic-13-ask-v2/feature-01-v2-foundation/us-01-v2-foundation/tasks/task-02-foundry-gateway.md, produces: [foundry-gateway], depends_on: [], effort: L, layer: backend, status: live}
+      - {id: E13/F05/US01/T01, prompt: reports/workitems/epic-13-ask-v2/feature-05-conversations/us-01-conversations/tasks/task-01-conversations-store.md, produces: [conversations-store], depends_on: [], effort: M, layer: backend, status: live}
+      - {id: E13/F04/US01/T01, prompt: reports/workitems/epic-13-ask-v2/feature-04-documents-v2/us-01-documents-v2/tasks/task-01-documents-admission.md, produces: [documents-admission], depends_on: [], effort: L, layer: backend, status: live}
+      - {id: E13/F09/US01/T01, prompt: reports/workitems/epic-13-ask-v2/feature-09-web-v2/us-01-web-v2/tasks/task-01-web-shell-v2.md, produces: [web-shell-v2], depends_on: [], effort: L, layer: web, status: live}
   - id: 2
     name: phase-2
     tasks:
-      - {id: E12/F03/US01/T01, prompt: reports/workitems/epic-12-ask-copilot/feature-03-copilot-endpoint/us-01-copilot-endpoint/tasks/task-01-copilot-endpoint.md, produces: [copilot-endpoint], depends_on: [foundry-gateway, fixture-catalog], effort: L, layer: backend, status: live}
-      - {id: E12/F04/US01/T01, prompt: reports/workitems/epic-12-ask-copilot/feature-04-reindex/us-01-reindex/tasks/task-01-reindex.md, produces: [docs-reindexed], depends_on: [foundry-gateway], effort: L, layer: backend, status: live}
+      - {id: E13/F02/US01/T01, prompt: reports/workitems/epic-13-ask-v2/feature-02-market-intelligence/us-01-market-intelligence/tasks/task-01-market-feed-mock.md, produces: [market-feed-mock], depends_on: [v2-scaffold], effort: L, layer: backend, status: live}
+      - {id: E13/F03/US01/T01, prompt: reports/workitems/epic-13-ask-v2/feature-03-supplier-identity/us-01-supplier-identity/tasks/task-01-supplier-entity.md, produces: [supplier-entity], depends_on: [v2-scaffold], effort: M, layer: backend, status: live}
+      - {id: E13/F04/US01/T02, prompt: reports/workitems/epic-13-ask-v2/feature-04-documents-v2/us-01-documents-v2/tasks/task-02-documents-v2-api.md, produces: [documents-v2-api], depends_on: [documents-admission, foundry-gateway], effort: L, layer: backend, status: live}
+      - {id: E13/F05/US01/T02, prompt: reports/workitems/epic-13-ask-v2/feature-05-conversations/us-01-conversations/tasks/task-02-conversations-api.md, produces: [conversations-api], depends_on: [conversations-store], effort: M, layer: backend, status: live}
+      - {id: E13/F07/US01/T01, prompt: reports/workitems/epic-13-ask-v2/feature-07-insights/us-01-insights/tasks/task-01-insights-calculators.md, produces: [insights-calculators], depends_on: [v2-scaffold], effort: L, layer: backend, status: live}
+      - {id: E13/F08/US01/T01, prompt: reports/workitems/epic-13-ask-v2/feature-08-capability-catalog/us-01-capability-catalog/tasks/task-01-capability-catalog.md, produces: [capability-catalog], depends_on: [conversations-store], effort: M, layer: backend, status: live}
+      - {id: E13/F09/US01/T02, prompt: reports/workitems/epic-13-ask-v2/feature-09-web-v2/us-01-web-v2/tasks/task-02-web-rich-reply.md, produces: [web-rich-reply], depends_on: [web-shell-v2], effort: L, layer: web, status: live}
   - id: 3
     name: phase-3
     tasks:
-      - {id: E12/F05/US01/T01, prompt: reports/workitems/epic-12-ask-copilot/feature-05-rich-ask-ui/us-01-rich-ask-ui/tasks/task-01-rich-ask-ui.md, produces: [rich-ask-ui], depends_on: [copilot-endpoint], effort: L, layer: web, status: live}
+      - {id: E13/F06/US01/T01, prompt: reports/workitems/epic-13-ask-v2/feature-06-ask-engine/us-01-ask-engine/tasks/task-01-ask-engine.md, produces: [ask-engine], depends_on: [foundry-gateway, market-feed-mock, supplier-entity, documents-v2-api, conversations-api, insights-calculators, capability-catalog], effort: L, layer: backend, status: live}
+      - {id: E13/F02/US01/T02, prompt: reports/workitems/epic-13-ask-v2/feature-02-market-intelligence/us-01-market-intelligence/tasks/task-02-market-index.md, produces: [market-index], depends_on: [market-feed-mock, foundry-gateway], effort: L, layer: backend, status: live}
+      - {id: E13/F03/US01/T02, prompt: reports/workitems/epic-13-ask-v2/feature-03-supplier-identity/us-01-supplier-identity/tasks/task-02-supplier-extraction.md, produces: [supplier-extraction], depends_on: [supplier-entity, documents-v2-api], effort: L, layer: backend, status: live}
+      - {id: E13/F09/US01/T03, prompt: reports/workitems/epic-13-ask-v2/feature-09-web-v2/us-01-web-v2/tasks/task-03-web-documents-v2.md, produces: [web-documents-v2], depends_on: [documents-v2-api, web-shell-v2], effort: L, layer: web, status: live}
+      - {id: E13/F10/US01/T01, prompt: reports/workitems/epic-13-ask-v2/feature-10-contract360-landing/us-01-contract360-landing/tasks/task-01-contract360-landing.md, produces: [web-contract360-landing], depends_on: [web-rich-reply], effort: M, layer: web, status: live}
+  - id: 4
+    name: phase-4
+    tasks:
+      - {id: E13/F06/US01/T02, prompt: reports/workitems/epic-13-ask-v2/feature-06-ask-engine/us-01-ask-engine/tasks/task-02-ask-golden-set.md, produces: [ask-golden-set], depends_on: [ask-engine], effort: M, layer: backend, status: live}
+      - {id: E13/F09/US01/T04, prompt: reports/workitems/epic-13-ask-v2/feature-09-web-v2/us-01-web-v2/tasks/task-04-web-ask-v2.md, produces: [web-ask-v2], depends_on: [ask-engine, market-index, web-rich-reply, web-documents-v2], effort: L, layer: web, status: live}
+  - id: 5
+    name: phase-5
+    tasks:
+      - {id: E13/F11/US01/T01, prompt: reports/workitems/epic-13-ask-v2/feature-11-integration/us-01-integration/tasks/task-01-v2-integration.md, produces: [v2-integration], depends_on: [ask-golden-set, web-ask-v2, web-contract360-landing, supplier-extraction, market-index], effort: L, layer: backend, status: live}
 forks: []
