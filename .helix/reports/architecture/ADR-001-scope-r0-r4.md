@@ -105,3 +105,13 @@ fixture adapter**, never a paid external API for the first `demo`.
   data is a later, council-justified adapter. (See reports/open-questions.md.)
 - "Definition of success" sentences in spec §16 are the canonical wave gates and are
   not re-negotiated here.
+
+## Amendment (2026-09-08, epic-12 / ADR-023)
+
+Ask Contigo uses this ADR’s **Internal Dataset** as the **market corpus** for
+commercial comparison (in line / below / above P25–P75). The fixture catalog
+must be expanded into a labelled *representative* worldwide mock (including
+insurance names such as Allianz) so the copilot has something to narrate.
+A paid Tropic/Vendr (or similar) adapter remains a later implementation of
+`IBenchmarkService` — never a hard dependency of the first `demo`, and never
+a second RAG index of other tenants’ contracts. See ADR-023.

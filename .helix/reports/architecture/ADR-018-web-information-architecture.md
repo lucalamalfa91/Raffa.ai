@@ -137,3 +137,12 @@ Day-1 path (spec §7.1 needs_review/failed, §20).
   `/contracts/:id`, `/contracts/:id/review`, `/quotes/:id` (client-side routing
   needs a `navigationFallback`/rewrite). Handed to cloud-architect, not a UI open
   question.
+
+## Amendment (2026-09-08, epic-12 / ADR-023)
+
+Route `/ask` remains the IA home for Ask Contigo. The screen is a **copilot
+conversation**, not a retrieval debugger: articulated markdown, human citation
+cards (supplier / contract title, never raw `Document:<guid>`), contract
+preview, and deep links the API supplies as `{ label, href }`. Hide engineer
+chrome (“Structured query…”, “Clause retrieval…”). Off-domain / greeting turns
+stay on `/ask` with a warm redirect into this portfolio. See ADR-023.

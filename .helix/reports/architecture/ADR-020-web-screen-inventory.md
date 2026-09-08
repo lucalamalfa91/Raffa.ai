@@ -122,3 +122,12 @@ benchmark-provider-unreachable with KPIs stale-labelled.
   of §20; any screen the implementer finds missing is a defect to raise, not a
   silent gap to fill with a divergent UI. (The export is 361KB and screen-complete
   per screens.md.)
+
+## Amendment (2026-09-08, epic-12 / ADR-023)
+
+Screen 7 (Ask Contigo) keeps the prototype chrome (ADR-019) but the **reply
+body** is the savings-copilot contract in ADR-023: prose + inline `[n]` +
+citation card with first-page preview + at least one in-app action. The red
+“Cannot determine reliably” block is not the only UX for greetings or
+off-domain questions — those are warm redirects. True insufficient-evidence
+turns still abstain (spec §10.4). See ADR-023.

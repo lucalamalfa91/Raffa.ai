@@ -248,6 +248,28 @@
         "E11/F07/US01",
         "E11/F08/US01"
       ]
+    },
+    {
+      "id": "e12",
+      "title": "E12 Ask Contigo savings copilot",
+      "previous": "e1011",
+      "epic": "E12",
+      "integration": false,
+      "checks": [
+        "github_auth",
+        "github_org",
+        "github_repos",
+        "hitl_previous"
+      ],
+      "stories": [
+        "E12/F01/US01",
+        "E12/F02/US01",
+        "E12/F03/US01",
+        "E12/F04/US01",
+        "E12/F05/US01"
+      ],
+      "tokens": 8200000,
+      "tasks": 5
     }
   ]
 }

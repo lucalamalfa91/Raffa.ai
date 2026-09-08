@@ -32,33 +32,36 @@ Each wave ends with a single-task `us-XX-final-integration` story. R4's integrat
 | epic-08 | web-renewals-savings-quotes | 8 | active — decomposed (web) |
 | epic-09 | schema-apply | 9 | active — decomposed (schema) |
 | epic-10 | demo-readiness | 10 | active — decomposed (readiness residuals) |
+| epic-11 | visual-fidelity | 11 | active — decomposed (visual) |
+| epic-12 | ask-copilot | 12 | active — decomposed (Ask savings copilot) |
 
 ## ADR → wave coverage
 
 | ADR | Topic | Carried into |
 |-----|-------|--------------|
-| ADR-001 | V1 scope R0–R4 | epic-01..05 (wave framing, §1.2 non-goals, fixture adapter) |
+| ADR-001 | V1 scope R0–R4 | epic-01..05 (wave framing, §1.2 non-goals, fixture adapter); epic-12 amendment (market corpus) |
 | ADR-002 | .NET solution shape | epic-01 F04, epic-02..05 backend |
 | ADR-003 | PostgreSQL + pgvector | epic-01 F02/F04 |
-| ADR-004 | Foundry model roles | epic-02 (AI Gateway) |
+| ADR-004 | Foundry model roles | epic-02 (AI Gateway); epic-12 amendment (answer = savings copilot) |
 | ADR-005 | Azure SKUs | epic-01 F02 |
 | ADR-006 | Region west europe | epic-01 F02 |
 | ADR-007 | Terraform layout | epic-01 F02 |
 | ADR-008 | Foundry account shape | epic-01 F02 |
 | ADR-009 | Tenancy / RLS | epic-01 F04/F05 |
 | ADR-010 | Entra ID / OIDC | epic-01 F02/F05 |
-| ADR-011 | Key Vault + RAG isolation | epic-01 F02/F05, epic-02 F04 |
+| ADR-011 | Key Vault + RAG isolation | epic-01 F02/F05, epic-02 F04; epic-12 amendment (two corpora) |
 | ADR-012 | Web stack | epic-01 F07, epic-02..05 web |
 | ADR-013 | Mobile stack | epic-01 F08 (non-gating) |
 | ADR-014 | Git flow | epic-01 F01/F03 |
 | ADR-015 | CI → Azure auth | epic-01 F02/F03 |
 | ADR-016 | Promotion dev→demo | epic-01 F03 |
 | ADR-017 | OCR in V1 | epic-01 F02 (DI endpoint), epic-02 (AI Gateway `ocr` + hybrid parse) |
-| ADR-018 | Web IA | epic-06..08 (left-rail routes, roles) |
+| ADR-018 | Web IA | epic-06..08 (left-rail routes, roles); epic-12 amendment (`/ask` copilot) |
 | ADR-019 | Web design system | epic-06..08 (tokens, semantic mapping, states) |
-| ADR-020 | Web screen inventory | epic-06..08 (screens 1–10 ↔ §16/§20) |
+| ADR-020 | Web screen inventory | epic-06..08 (screens 1–10 ↔ §16/§20); epic-12 amendment (screen 7 rich reply) |
 | ADR-021 | Schema apply on Azure Postgres | epic-09 (idempotent SQL + CI apply + CA env vars) |
 | ADR-022 | Day-1 demo auth + fixture seed | epic-10 (seed + Foundry/OCR CA + `demo-v*` smoke) |
+| ADR-023 | Ask Contigo savings copilot | epic-12 (Foundry copilot, two corpora, rich `/ask`) |
 
 ## Non-goals (excluded, ADR-001, spec §1.2)
 
@@ -82,6 +85,8 @@ Fully decomposed R0–R4. Master DAG: `reports/plan/wave-spec.execution.yaml`. N
 Web delta (wave 6+) decomposed. Web DAG: `reports/plan/wave-spec.web.yaml`. Web slices: `reports/plan/slices/e06.yaml` … .
 Schema-apply (wave 9) decomposed. Schema DAG: `reports/plan/wave-spec.schema.yaml`. Slice: `reports/plan/slices/e09.yaml`.
 Demo-readiness (wave 10) decomposed. Readiness DAG: `reports/plan/wave-spec.readiness.yaml`. Slice: `reports/plan/slices/e10.yaml`. See `reports/plan/slices/INDEX-readiness.md` and `MANIFEST-readiness.yaml`.
+Visual fidelity (wave 11) decomposed. Visual DAG: `reports/plan/wave-spec.visual.yaml`. Slice: `reports/plan/slices/e11.yaml`.
+Ask savings copilot (wave 12) decomposed. Ask DAG: `reports/plan/wave-spec.ask.yaml`. Slice: `reports/plan/slices/e12.yaml`. See `reports/plan/slices/INDEX-ask.md` and `MANIFEST-ask.yaml`. Launch only after e1011 HITL (`previous: e1011`).
 
 ## Demo-readiness (epic-10 / e10)
 
@@ -89,3 +94,10 @@ Residuals only after e09 and e06–e08: fixture seed on `contigo_demo`,
 Foundry/OCR CA wiring if live env is empty, first `demo-v*` / SWA config
 smoke. Gap matrix: `reports/audit/demo-readiness-gaps.md`. HITL required
 before fan-out (`reports/audit/demo-readiness-hitl.md`).
+
+## Ask savings copilot (epic-12 / e12)
+
+Ask Contigo becomes the domain savings copilot (ADR-023). Foundry behind
+`IAiGateway`, fixture market catalog, domain gate, re-embed, rich `/ask` UI.
+Gap matrix: `reports/audit/ask-copilot-gaps.md`. HITL required before fan-out
+(`reports/audit/ask-copilot-hitl.md`). Do not launch in parallel with e1011.

@@ -113,3 +113,14 @@ no-training model endpoint.
   model-ID ADR). Recorded in `reports/open-questions.md`.
 - "Input hash" for reproducibility = a content hash (e.g. SHA-256) of the retrieved evidence/prompt, so
   we can verify a given model/version ran on a given input without storing the confidential input itself.
+
+## Amendment (2026-09-08, epic-12 / ADR-023)
+
+Ask Contigo keeps **two corpora**, never one blended index:
+
+1. **Tenant RAG** — this workspace’s contracts only (authz → `tenant_id` filter
+   → retrieval). Unchanged from the original decision.
+2. **Market** — `IBenchmarkService` (fixture now). Not written into tenant
+   pgvector and not sourced from another tenant’s PDFs.
+
+Off-domain questions must not run RAG. See ADR-023.

@@ -1,0 +1,10 @@
+# Ask-copilot slice (e12). e01–e11 and e1011 stay put.
+
+mode: ask-copilot
+master: reports/plan/wave-spec.ask.yaml
+slices:
+  - id: e12
+    title: E12 Ask Contigo savings copilot
+    tokens: 8200000
+    tasks: 5
+    previous: e1011
