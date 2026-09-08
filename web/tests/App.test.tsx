@@ -40,9 +40,15 @@ function mockApiClient(result: Promise<HealthCheckResult> | HealthCheckResult): 
     // Task E06/F05/US02/T01 (document-status-readback): exercised by
     // tests/routes/documents/*.test.tsx; same plain-stub convention.
     getDocument: vi.fn(),
-    // Task E07/F01/US01/T01 (portfolio-list-filters): exercised by
-    // tests/routes/contracts/*.test.tsx; same plain-stub convention.
-    getPortfolio: vi.fn(),
+    // Task E07/F01/US01/T01 (portfolio-list-filters): exercised in depth by
+    // tests/routes/contracts/*.test.tsx. Task E13/F09/US01/T01 (web-shell-v2) made this call
+    // unconditional here too -- AppShell's own `useValidatedContractCount` calls it on every mount
+    // once a workspace is current (every "signed in + workspace selected" test below reaches
+    // AppShell), so a resolved, empty default is required, the same reasoning this file's own
+    // getSavingsKpis/getSavingsOpportunities comment already gives for HomeRoute (now SavingsRoute).
+    getPortfolio: vi
+      .fn()
+      .mockResolvedValue({ ok: true, statusCode: 200, portfolio: { items: [], page: 1, pageSize: 100, totalCount: 0 }, error: null }),
     // Task E07/F02/US01/T01 (contract-360): exercised by
     // tests/routes/contracts/contract360/*.test.tsx; same plain-stub convention.
     getContract360: vi.fn(),

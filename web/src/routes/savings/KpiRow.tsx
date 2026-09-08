@@ -1,4 +1,4 @@
-import { buildKpiCells, type KpiFetchState } from "./homeViewModel";
+import { buildKpiCells, type KpiFetchState } from "./savingsViewModel";
 
 export interface KpiRowProps {
   kpiState: KpiFetchState;
@@ -22,10 +22,10 @@ export interface KpiRowProps {
 export default function KpiRow({ kpiState, onRetry }: KpiRowProps) {
   if (kpiState.phase === "loading") {
     return (
-      <div className="home-kpi-skeleton" role="status" aria-live="polite">
+      <div className="savings-kpi-skeleton" role="status" aria-live="polite">
         <p className="micro-meta">Loading savings KPIs…</p>
         {Array.from({ length: 6 }, (_, index) => (
-          <div key={index} className="skeleton home-kpi-skeleton-cell" />
+          <div key={index} className="skeleton savings-kpi-skeleton-cell" />
         ))}
       </div>
     );
@@ -34,7 +34,7 @@ export default function KpiRow({ kpiState, onRetry }: KpiRowProps) {
   const cells = buildKpiCells(kpiState.kpis);
 
   return (
-    <div className="home-kpi-section">
+    <div className="savings-kpi-section">
       {kpiState.stale && (
         <div className="error-state" role="alert">
           <h4>Benchmark provider unreachable</h4>
@@ -48,16 +48,16 @@ export default function KpiRow({ kpiState, onRetry }: KpiRowProps) {
         </div>
       )}
 
-      <div className="home-kpi-row" role="group" aria-label="Savings KPIs">
+      <div className="savings-kpi-row" role="group" aria-label="Savings KPIs">
         {cells.map((cell) => (
-          <div key={cell.key} className="home-kpi-cell">
-            <span className="home-kpi-label">{cell.label}</span>
-            <div className="home-kpi-value">
+          <div key={cell.key} className="savings-kpi-cell">
+            <span className="savings-kpi-label">{cell.label}</span>
+            <div className="savings-kpi-value">
               {cell.lines.length === 0 ? (
                 <span className="kpi-number">—</span>
               ) : (
                 cell.lines.map((line, index) => (
-                  <span key={index} className={`kpi-number${cell.emphasize ? " home-kpi-emphasize" : ""}`}>
+                  <span key={index} className={`kpi-number${cell.emphasize ? " savings-kpi-emphasize" : ""}`}>
                     {line}
                   </span>
                 ))
@@ -70,7 +70,7 @@ export default function KpiRow({ kpiState, onRetry }: KpiRowProps) {
               // savings-derived ones) because GET /api/savings/kpis returns all six in one response:
               // a single failed refresh means every figure on screen is from the last successful
               // call, not a subset of them.
-              <span className="tag tag-outline home-kpi-stale-tag">Stale</span>
+              <span className="tag tag-outline savings-kpi-stale-tag">Stale</span>
             )}
           </div>
         ))}

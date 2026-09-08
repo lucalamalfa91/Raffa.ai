@@ -45,40 +45,182 @@
 .shell-rail-nav {
   display: flex;
   flex-direction: column;
-  padding: var(--space-2) 0;
-  flex: 1;
+  padding: var(--space-2) 0 6px;
 }
 
-.shell-rail-item {
+/* ---- Primary tier: Ask Contigo, Documents (`app.jsx` primaryNav) ---------- */
+
+.shell-rail-primary-item {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: 9px var(--space-4);
-  font-size: 13px;
+  padding: 11px var(--space-4) 11px 13px;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-heading);
+  font-size: 15px;
   text-decoration: none;
   color: var(--color-text);
   border-left: 3px solid transparent;
 }
 
-.shell-rail-item:hover {
+.shell-rail-primary-item:hover {
   background: var(--color-neutral-200);
 }
 
-.shell-rail-item.is-active {
-  font-weight: var(--weight-body-strong);
+.shell-rail-primary-item.is-active {
+  color: var(--color-accent);
   border-left-color: var(--color-accent);
-  background: var(--color-accent-100);
 }
 
+/* Badge shared by both tiers (`app.jsx` `badgeFg`/kbNav badge colour) -- muted neutral-600 unless
+   `.is-attention` (Documents' own "N to review" accent-700 case, `navItems.ts#NavBadge`). */
 .shell-rail-badge {
   margin-left: auto;
   font-size: 11px;
-  color: var(--color-accent);
+  font-weight: var(--weight-body-strong);
+  color: var(--color-neutral-600);
+  white-space: nowrap;
 }
 
+.shell-rail-badge.is-attention {
+  color: var(--color-accent-700);
+}
+
+/* ---- Ask Contigo's nested slot: recent conversations + "+ New chat" ------- */
+
+.shell-rail-conversations {
+  display: flex;
+  flex-direction: column;
+}
+
+.shell-rail-conv-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px var(--space-4) 6px 28px;
+  font-size: 12px;
+  text-decoration: none;
+  color: var(--color-text);
+  min-width: 0;
+}
+
+.shell-rail-conv-item:hover {
+  background: var(--color-neutral-200);
+}
+
+.shell-rail-conv-item.is-active {
+  color: var(--color-accent);
+  font-weight: var(--weight-body-strong);
+}
+
+.shell-rail-conv-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shell-rail-conv-meta {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--color-neutral-600);
+  flex: none;
+}
+
+.shell-rail-new-chat {
+  display: block;
+  padding: 6px var(--space-4) var(--space-2) 28px;
+  font-size: 12px;
+  text-decoration: none;
+  color: var(--color-accent-700);
+  font-weight: var(--weight-body-strong);
+}
+
+.shell-rail-new-chat:hover {
+  background: var(--color-neutral-200);
+}
+
+/* ---- Secondary tier: "From your contracts" (`app.jsx` kbNav) -------------- */
+
+.shell-rail-section-kicker {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 14px var(--space-4) 6px;
+  font-size: 11px;
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+  color: var(--color-neutral-600);
+  border-top: 1px solid var(--color-divider);
+}
+
+/* `kbDot` -- accent once `kbReady`, neutral-400 (never accent) until the first validated contract. */
+.shell-rail-kb-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--color-neutral-400);
+  display: inline-block;
+}
+
+.shell-rail-kb-dot.is-ready {
+  background: var(--color-accent);
+}
+
+.shell-rail-secondary-nav {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: var(--space-2);
+}
+
+.shell-rail-secondary-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4) var(--space-2) 13px;
+  font-size: 13px;
+  font-weight: var(--weight-body);
+  text-decoration: none;
+  color: var(--color-text);
+  border-left: 3px solid transparent;
+}
+
+.shell-rail-secondary-item:hover {
+  background: var(--color-neutral-200);
+}
+
+/* Greyed until `kbReady` (`app.jsx` kbNav `fg`) -- declared before `.is-active` so an active-but-not-
+   -yet-ready row (reached by direct URL) still resolves to the accent colour, matching that same
+   ternary's own "active wins over greyed" precedence. */
+.shell-rail-secondary-item.is-greyed {
+  color: var(--color-neutral-500);
+}
+
+.shell-rail-secondary-item.is-active {
+  color: var(--color-accent);
+  font-weight: var(--weight-body-strong);
+  border-left-color: var(--color-accent);
+}
+
+/* ---- Footer: Workspace & members (admin), user, role, sign out ------------ */
+
 .shell-rail-footer {
-  padding: var(--space-4);
+  margin-top: auto;
+  padding: var(--space-3) var(--space-4);
   border-top: 2px solid var(--color-divider);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.shell-rail-footer-link {
+  display: block;
+  padding: 6px 0;
+  font-size: 13px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.shell-rail-footer-link:hover {
+  background: var(--color-neutral-200);
 }
 
 .shell-rail-user {
