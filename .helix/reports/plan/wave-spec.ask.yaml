@@ -1,8 +1,8 @@
-waveId: wave-v1-epic-e12
+waveId: wave-v1-ask-e12
 status: planned
-# E12 Ask Contigo savings copilot. Prior-wave depends_on dropped (producer-completeness).
+# Ask Contigo savings copilot (ADR-023). Does not replace wave-spec.execution.yaml.
 # estimated tokens: 8.2M (S/M/L mapped; not a packing cap).
-# Launch: ./run.ps1 -Max -Slice e12 -o execution-fanout
+# Launch: ./run.ps1 -Max -Slice e12 -o execution-fanout  (after e1011 HITL)
 phases:
   - id: 1
     name: phase-1
@@ -17,5 +17,5 @@ phases:
   - id: 3
     name: phase-3
     tasks:
-      - {id: E12/F05/US01/T01, prompt: reports/workitems/epic-12-ask-copilot/feature-05-rich-ask-ui/us-01-rich-ask-ui/tasks/task-01-rich-ask-ui.md, produces: [rich-ask-ui], depends_on: [copilot-endpoint], effort: L, layer: frontend, status: live}
+      - {id: E12/F05/US01/T01, prompt: reports/workitems/epic-12-ask-copilot/feature-05-rich-ask-ui/us-01-rich-ask-ui/tasks/task-01-rich-ask-ui.md, produces: [rich-ask-ui], depends_on: [copilot-endpoint], effort: L, layer: web, status: live}
 forks: []

@@ -69,3 +69,14 @@ The AI Gateway MUST expose role-based interfaces (ocr, classify, extract, embed,
 - The cheapest structured-output model is sufficient for contract commercial terms; if not, a one-tier upgrade is a config change only.
 - OCR is in V1: hybrid native-text + Document Intelligence behind the gateway (ADR-017). Native parse is not assumed sufficient for scanned MSAs.
 - Exact model IDs and prices (including Document Intelligence per-page) are filled by cloud-architect in the target region; candidate names above are placeholders, not final selections.
+
+## Amendment (2026-09-08, epic-12 / ADR-023)
+
+The **answer** role is a **savings / negotiation copilot**, not a concatenator
+of retrieved chunks. It must: (1) stay behind `IAiGateway` with Azure SDKs only
+in `Contigo.AiGateway`; (2) register Foundry when `AiGateway:Endpoint` is set,
+else the fixture; (3) always wrap `LoggingAiGateway`; (4) narrate deterministic
+benchmark and negotiation numbers rather than invent them; (5) abstain or
+redirect on off-domain, greeting, legal, and insufficient-evidence turns.
+Existing documents must be re-OCR’d / re-embedded so the embed/answer path
+does not retrieve `%PDF-1.4`. See ADR-023.

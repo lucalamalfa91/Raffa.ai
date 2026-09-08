@@ -67,3 +67,12 @@ ADR-001…021 are unchanged. New accepted ADR from `contigo-readiness-design`:
 | ADR | Topic | Seat | One-line decision |
 | --- | --- | --- | --- |
 | ADR-022 | Day-1 demo auth + fixture seed | security-architect | First `demo-v*` may keep `X-Tenant-Id` on the API; savings numbers come from a seeded fixture on `contigo_demo`; ADR-010 remains the post-Day-1 host target. |
+
+## Ask savings copilot (wave 12 / e12, appended 2026-09-08)
+
+ADR-001, 004, 011, 018, 020 keep their original Decision and gain an
+**amendment footer**. New accepted ADR from `contigo-ask-design`:
+
+| ADR | Topic | Seat | One-line decision |
+| --- | --- | --- | --- |
+| ADR-023 | Ask Contigo savings copilot | product-owner + software-architect | Foundry-hosted copilot over tenant RAG + `IBenchmarkService` (fixture now); narrates P25–P75 / negotiation numbers; no legal advice; rich `/ask` reply. |
