@@ -103,6 +103,17 @@ resource "azurerm_container_app" "api" {
         secret_name = "pg-cs"
       }
 
+      # Task E13/F05/US01/T02 (conversations-api): Contigo.Chat's first DbContext
+      # (ConversationService/ChatDbContext, ADR-024 "Conversations (D5)") -- Contigo.Api.Program
+      # now reads ConnectionStrings:Chat and throws at startup without it, the same fail-fast
+      # shape as every other ConnectionStrings__* above. Same "pg-cs" secret -- Chat is a separate
+      # schema on the same shared Postgres server (ADR-003), not a separate database. The worker
+      # does not call AddChatModule, so it gets no matching env block below.
+      env {
+        name        = "ConnectionStrings__Chat"
+        secret_name = "pg-cs"
+      }
+
       env {
         name        = "ConnectionStrings__Storage"
         secret_name = "st-cs"

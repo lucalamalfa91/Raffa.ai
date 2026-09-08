@@ -167,6 +167,9 @@ that a second apply does not duplicate rows.
 | GET | `/api/contracts` | portfolio list; spec §8.1 columns; `X-Tenant-Id` header; optional filters `supplierId`, `status`, `risk` (Low/Medium/High/Critical), `autoRenewal`, `minAnnualSpend`, `maxAnnualSpend`, `renewalFrom`/`renewalTo` (yyyy-MM-dd) — no `category` filter yet, see `PortfolioFilter`'s doc comment; optional paging `page` (default 1), `pageSize` (default 25, max 100); response is `{ items, page, pageSize, totalCount }`, not a bare array |
 | GET | `/api/contracts/{id}` | Contract 360 aggregate; spec §8.2 header + tabs (overview, commercials, products, clauses, obligations, risks, documents, benchmark, renewal, activity); `X-Tenant-Id` header; 404 when the contract does not exist or belongs to another tenant; `benchmark`/`activity` are always empty arrays — no task has yet mapped a real contract's line items into a `Contigo.Benchmark.Contracts.BenchmarkQuery` (no supplier-name/geography field exists on `Contract` today), so this tab stays empty even though R3's own benchmark comparison is real and provable elsewhere (see "R3 demo smoke test" below); `activity` remains an R4 placeholder — see `Contract360Result`'s doc comment |
 | POST | `/api/chat/query` | Ask Contigo (spec §8.3); `{ question: string }` + `X-Tenant-Id` header; routes via `AskContigoQueryRouter`. `Semantic` questions run the real RAG pipeline (`EmbeddingRetrievalService.SearchAsync` tenant-scoped retrieval → `RagAnswerService` → `IAiGateway.AnswerAsync`) and respond `{ question, intent, canDetermine, answer, citations: [{documentId, page, section}], message }` — `citations` empty and `canDetermine: false` when authorized retrieval finds nothing (spec §8.4 "no evidence, no claim"), never a fabricated answer. `Structured` questions get an honest `canDetermine: false` + explanatory `message` — no task has yet mapped a real, tenant-scoped `Contract` row into `Contigo.Chat.Application.ContractFact` for `DeterministicQueryHandler` to run against, see that type's own doc comment |
+| GET | `/api/conversations` | Caller's last N conversations, most recently updated first (spec §7; R-CONV-02; story us-01-conversations AC-2, task E13/F05/US01/T02); `X-Tenant-Id` header + caller identity (see "Interim auth" below); optional `take` (default 5, must be a positive integer); response is a bare array of `{ id, title, scopeContractId, updatedAt }`, never an `{ items, totalCount }` envelope — there is no paging concept for "my last N conversations" |
+| POST | `/api/conversations` | Creates a conversation (AC-2); `X-Tenant-Id` header + caller identity; body `{ scopeContractId? }` — a GUID naming the contract "Ask about it" (Contract 360) was opened from, or omitted for the global Ask bar (ADR-024: "The global Ask bar always opens a new chat"); 201 with the same `{ id, title, scopeContractId, updatedAt }` shape as the list row above; `title` starts as `ConversationService.DefaultTitle` ("New chat") until the first message lands |
+| GET | `/api/conversations/{id}` | The conversation plus its messages, oldest first (AC-2); `X-Tenant-Id` header + caller identity; 404 when `{id}` does not exist, belongs to another tenant, or belongs to another user of the same tenant — RLS backstops the tenant half (ADR-009), `Contigo.Chat.Application.Conversations.ConversationService` itself is the only thing enforcing the per-user half (RLS has no per-user predicate), and both read back as the identical 404, never a distinguishing 403; response `{ id, title, scopeContractId, createdAt, updatedAt, messages: [{ id, role, kind, markdown, citations, actions, modelId, promptVersion, inputHash, createdAt }] }` — `role` is `you`/`contigo`, `kind` is `answer`/`abstain`/`redirect`/`refusal` (ADR-024 §6 wire literals); `citations`/`actions` are real JSON arrays, never a JSON string nested inside JSON; never the raw retrieval pack (ADR-011). `POST /api/conversations/{id}/messages` is not yet mapped — task F06/T01 (phase 3) adds it once the Ask engine can produce a turn to persist |
 | GET | `/api/renewals` | Renewal pipeline + insight card (spec §9.3/§10.1); `X-Tenant-Id` header; auto-renewing contracts only, most urgent first; response is `{ items, totalCount }`, each item `{ contractId, supplierId, status, renewalDate, daysUntilRenewal, annualSpend, cancellationDeadline, daysUntilCancellationDeadline, autoRenewal, action, insightCard: { facts, recommendations } }` — `insightCard.recommendations`' benchmark/savings fields (`annualUpliftPercent`, `marketPosition`, `potentialSavingsRange`) are honestly `null` until the Benchmark/Savings modules land (R3); `action`/`recommendedAction` is a deterministic urgency rule, not the full spec §9.2 Priority Score — see `Contigo.Renewals.Application.RenewalPipelineBuilder`'s own doc comment |
 | GET | `/api/renewals/{contractId}/priority` | Explainable priority-score breakdown for one contract (spec §9.2; story us-02-priority-score AC-1/AC-2, task E03/F01/US02/T02); `X-Tenant-Id` header; 404 when the contract does not exist or belongs to another tenant (same rule as `GET /api/contracts/{id}`); response is `{ contractId, totalScore, components: { spendWeight, timeUrgency, benchmarkOpportunity, priceIncreaseRisk, contractRisk } }`, each component `{ score, explanation }` — component weights are configurable, see `Contigo.Renewals.Configuration.PriorityScoreWeightsOptions` below; `priceIncreaseRisk`/`benchmarkOpportunity` use their honest no-data default (minimum / neutral respectively) since no uplift or benchmark-position data is wired to real contracts yet |
 | POST | `/api/renewals/{id}/action` | Updates owner/status/action for one renewal (spec Appendix A; story us-01-renewal-dashboard-api AC-3); `X-Tenant-Id` header; `{id}` is the same `contractId` the GET above returns per row, not a separate stored "renewal" id; body `{ owner, status, action }` — `status` is one of `NotStarted`/`InProgress`/`Completed`; upserts one row (never a second for the same contract) and writes one `IAuditWriter` entry (`renewal.action_updated`); 400 (not 404) for a missing/invalid tenant header or route id, or for an empty `owner`/`action`/unrecognized `status` — see `Contigo.Renewals.Application.RenewalActionService`'s own doc comment for the honest gap this leaves (no check that `{id}` names an existing, tenant-owned contract; `Contigo.Renewals` cannot reference `Contigo.Documents.Contracts` at all) |
@@ -183,6 +186,18 @@ that a second apply does not duplicate rows.
 takes the tenant from that header, not from a validated JWT. ADR-010
 (Entra ID / OIDC on the API) is not wired in the host yet. Do not treat
 the header as the long-term contract.
+
+`GET/POST /api/conversations` and `GET /api/conversations/{id}` (task
+E13/F05/US01/T02) additionally resolve a **caller identity**, not just a
+tenant: the token subject of an already-authenticated principal when one
+is present (the ADR-010 end state), otherwise the required `X-User-Id`
+header (ADR-022 posture, OQ-askv2-005's assumption in force — the MSAL
+account username) — missing both is a 400. Since this host wires no
+`AddAuthentication`/`AddJwtBearer` yet, every real caller takes the
+header branch today. Same caveat as the tenant header: `X-User-Id` is
+**never validated** against a real identity provider — it only scopes
+which rows a request can read/write, and is replaced by the token
+subject the same task that lands the API JWT on this host.
 
 The web client generates TypeScript types from
 `web/openapi/contigo-api.v1.json`. The API does **not** yet self-publish
@@ -504,21 +519,32 @@ lowercase wire literals (`you`/`contigo`, `answer`/`abstain`/`redirect`/
 `refusal`) is the HTTP layer's job, not this module's.
 
 `Infrastructure.ServiceCollectionExtensions.AddChatModule` gained an
-optional `chatConnectionString` parameter (AC-4): called with none (every
-existing caller, including `Contigo.Api.Program` today), it registers
-exactly what it always has — the query router/RAG services above, no
-database — so nothing that already resolves them without a connection
-string breaks. Called with one, it additionally registers `ChatDbContext` +
+optional `chatConnectionString` parameter (AC-4): called with none, it
+registers exactly what it always has — the query router/RAG services
+above, no database — so nothing that already resolves them without a
+connection string breaks (`Contigo.Chat.Tests.ServiceCollectionExtensionsTests`
+proves this). Called with one, it additionally registers `ChatDbContext` +
 `ConversationService`, keyed by this story's own council-decided
 `ConnectionStrings:Chat` (`ConnectionStrings__Chat` env var form, same
 `Contigo.Chat.Infrastructure.ChatDbContextFactory` design-time fallback
-shape as every other module's `<Module>DbContextFactory`). Honest gap,
-deliberately out of this task's file scope: `Contigo.Api.Program` still
-calls `AddChatModule()` with no argument — task E13/F05/US01/T02 is the
-first caller that passes the connection string and adds the
-`GET/POST /api/conversations` HTTP surface itself, the same "wiring lands
-with the first real caller" sequencing this README already documents for
-`AddRenewalsModule`/`AddBenchmarkModule` above.
+shape as every other module's `<Module>DbContextFactory`).
+
+**Task E13/F05/US01/T02 (conversations-api)** is that first real caller:
+`Contigo.Api.Program` now reads `ConnectionStrings:Chat` and calls
+`AddChatModule(chatConnectionString)` — the same fail-fast shape (throws a
+named `InvalidOperationException` when the key is missing) as every other
+required connection string in that file — and
+`Contigo.Api.ConversationsEndpointExtensions.MapConversationsEndpoints()`
+maps `GET/POST /api/conversations` and `GET /api/conversations/{id}` (see
+the HTTP surface table above for the exact request/response shapes). The
+composition root resolves caller identity (token subject, else the
+required `X-User-Id` header — see "Interim auth" above) and tenant
+(`X-Tenant-Id`) itself, then calls straight into `ConversationService` —
+that service's own `tenantId`/`userId` parameters already do all the
+RLS/application-level scoping, so this file has no scoping logic of its
+own to get wrong. `POST /api/conversations/{id}/messages` is deliberately
+still not mapped — task F06/T01 (phase 3) adds it to this same file once
+the Ask engine exists to produce a turn worth persisting.
 
 ## Renewal Intelligence — deterministic renewal engine
 
