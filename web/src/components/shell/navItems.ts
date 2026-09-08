@@ -18,11 +18,10 @@
  * route the rail item itself must point at (the same list -> detail shape
  * already established by /contracts -> /contracts/:id):
  *   - "Review queue": ia.md/ADR-018 name only /contracts/:id/review (a single
- *     contract's field review). /review is this task's placeholder landing
- *     path pending epic-07/feature-03-review-correction-ui (ADR-020 screen 6).
- *   - "Quote check": ia.md/ADR-018 name only /quotes/:id. /quotes is this
- *     task's placeholder landing path pending
- *     epic-08/feature-03-quote-check-ui (ADR-018 "/quotes/:id").
+ *     contract's field review). /review is the list landing for that detail
+ *     (`src/routes/review/`, ReviewQueueRoute).
+ *   - "Quote check": ia.md/ADR-018 name only /quotes/:id. /quotes is the
+ *     upload landing for that detail (`src/routes/quotes/`).
  *
  * "Workspace & members" is the one adminOnly item (ADR-018 "Roles (Day-1)":
  * "Procurement — all routes except member management"); every other item is

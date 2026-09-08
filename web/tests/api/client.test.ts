@@ -1412,3 +1412,77 @@ describe("createApiClient().getSavingsOpportunities (task E08/F02/US01/T01)", ()
     expect(result.error).toContain("network down");
   });
 });
+
+describe("createApiClient().inviteWorkspaceMember (task E06/F04/US01/T01)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("POSTs JSON to <baseUrl>/api/workspaces/{tenantId}/invites with email and role, without an X-Tenant-Id header", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: "m-1", email: "buyer@acme.example", role: "Procurement" }), { status: 201 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createApiClient("https://api.dev.contigo.example").inviteWorkspaceMember("tenant-1", {
+      email: "buyer@acme.example",
+      role: "Procurement",
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("https://api.dev.contigo.example/api/workspaces/tenant-1/invites");
+    expect(init).toEqual({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "buyer@acme.example", role: "Procurement" }),
+      cache: "no-store",
+    });
+  });
+
+  it("reports ok:true with the created membership on 201", async () => {
+    const member = { id: "m-1", email: "buyer@acme.example", role: "Procurement" as const };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(member), { status: 201 })));
+
+    const result = await createApiClient("https://api.dev.contigo.example").inviteWorkspaceMember("tenant-1", {
+      email: "buyer@acme.example",
+      role: "Procurement",
+    });
+
+    expect(result).toEqual({ ok: true, statusCode: 201, member, error: null });
+  });
+
+  it("reports ok:false with the parsed JSON string error on 400 (Results.BadRequest(string))", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(JSON.stringify("An 'email' is required."), { status: 400 })),
+    );
+
+    const result = await createApiClient("https://api.dev.contigo.example").inviteWorkspaceMember("tenant-1", {
+      email: "",
+      role: "Procurement",
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      statusCode: 400,
+      member: null,
+      error: "An 'email' is required.",
+    });
+  });
+
+  it("resolves (does not throw) with statusCode null when the network request fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
+
+    const result = await createApiClient("https://api.dev.contigo.example").inviteWorkspaceMember("tenant-1", {
+      email: "buyer@acme.example",
+      role: "Procurement",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.statusCode).toBeNull();
+    expect(result.member).toBeNull();
+    expect(result.error).toContain("https://api.dev.contigo.example/api/workspaces/tenant-1/invites");
+    expect(result.error).toContain("network down");
+  });
+});
