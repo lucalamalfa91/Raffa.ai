@@ -5,12 +5,13 @@ import { formatAnnualSpend, formatSupplier } from "../contracts/portfolioTableFo
 import { formatContractRef } from "../renewals/renewalPipelineViewModel";
 
 /**
- * Pure view-model helpers for the Home screen (route `/`, ADR-018 "/ (home)"; screens.md #9 "Home --
- * Savings"; ADR-020 screen 9; task E08/F02/US01/T01, us-01-savings-home AC-1 six KPI cells / AC-2
- * opportunities table / AC-3 rows + stale-labelled error state). Same one-concern-per-file split
- * `../renewals/renewalPipelineViewModel.ts`/`../contracts/portfolioTableFormatters.ts` already
- * established for this repo: no React here, so every rule below is unit-testable without rendering
- * anything.
+ * Pure view-model helpers for the Savings screen (route `/savings` -- moved from `/`, ADR-024 V2 IA
+ * amendment "No Home item"; originally screens.md #9 "Home -- Savings", ADR-020 screen 9, task
+ * E08/F02/US01/T01, us-01-savings-home AC-1 six KPI cells / AC-2 opportunities table / AC-3 rows +
+ * stale-labelled error state; task E13/F09/US01/T01 moved the file, logic unchanged). Same
+ * one-concern-per-file split `../renewals/renewalPipelineViewModel.ts`/
+ * `../contracts/portfolioTableFormatters.ts` already established for this repo: no React here, so
+ * every rule below is unit-testable without rendering anything.
  */
 
 const INTEGER_FORMAT = new Intl.NumberFormat("en-GB");

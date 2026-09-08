@@ -9,11 +9,11 @@ import {
   getSavingsStatusTag,
   reduceKpiFetch,
   type KpiFetchState,
-} from "../../../src/routes/home/homeViewModel";
+} from "../../../src/routes/savings/savingsViewModel";
 
 // Task-01's own named "Tests required" row: "unit | benchmark-unreachable -> KPIs stale-labelled" --
 // the `reduceKpiFetch`/`buildKpiCells` suites below cover the pure logic half; the corresponding
-// case in tests/routes/home/HomeRoute.test.tsx covers the rendered notice + Retry.
+// case in tests/routes/savings/SavingsRoute.test.tsx covers the rendered notice + Retry.
 
 function kpis(overrides: Partial<SavingsKpiSummaryBody> = {}): SavingsKpiSummaryBody {
   return {
@@ -171,7 +171,7 @@ describe("getSavingsStatusTag / getSavingsConfidenceTag (AC-2 tag columns)", () 
   });
 });
 
-describe("buildOpportunityRows (AC-2 table + council 'action creates an opportunity visible on Home')", () => {
+describe("buildOpportunityRows (AC-2 table + council 'action creates an opportunity visible on Savings')", () => {
   it("an empty tenant (no real opportunities, nothing tracked this session) is an honestly empty list", () => {
     expect(buildOpportunityRows([], [])).toEqual([]);
   });

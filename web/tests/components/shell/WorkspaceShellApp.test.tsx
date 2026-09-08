@@ -11,13 +11,13 @@ import type { ApiClient } from "../../../src/api/client";
 // tests/routes/documents/*.test.tsx for that screen's own coverage), so a
 // plain stub is enough here, the same convention tests/App.test.tsx uses.
 //
-// getPortfolio defaults to a *resolved* empty page, not a bare vi.fn(): unlike
-// uploadDocument/getDocument (only ever called from inside a user action this
-// suite never triggers), task E07/F01/US01/T01's PortfolioRoute calls
-// getPortfolio unconditionally on mount, so an unconfigured vi.fn() (which
-// returns undefined, not a Promise) would throw the moment that route's own
-// effect calls .then() on it -- see tests/routes/contracts/*.test.tsx for
-// that screen's own fetch-outcome coverage.
+// getPortfolio defaults to a *resolved* empty page, not a bare vi.fn(): every
+// screen this shell mounts now reaches AppShell (task E13/F09/US01/T01's own
+// `useValidatedContractCount` calls it unconditionally on every mount, not
+// just PortfolioRoute), so an unconfigured vi.fn() (which returns undefined,
+// not a Promise) would throw the moment that effect calls .then() on it --
+// see tests/routes/contracts/*.test.tsx for that screen's own fetch-outcome
+// coverage.
 function mockApiClient(): ApiClient {
   return {
     getHealth: vi.fn(),
@@ -56,13 +56,15 @@ function mockApiClient(): ApiClient {
     getQuoteAssessment: vi.fn(),
     recalculateQuoteAssessment: vi.fn(),
     captureNegotiationOutcome: vi.fn(),
+    // No test in this suite navigates to /ask with a typed question -- bare vi.fn() is enough; see
+    // tests/routes/ask/*.test.tsx for that screen's own fetch-outcome coverage.
     askContigo: vi.fn(),
-    // Task E08/F02/US01/T01 (savings-home): HomeRoute (like PortfolioRoute/Contract360Route/
-    // RenewalsRoute above) calls both of these unconditionally on mount, so an unconfigured vi.fn()
-    // would throw the moment its effect calls .then() on it -- same reasoning as getPortfolio's own
-    // resolved default above. Resolved, empty-but-successful defaults are enough for this suite's own
-    // routing/guard assertions; see tests/routes/home/*.test.tsx for that screen's own fetch-outcome
-    // coverage.
+    // Task E08/F02/US01/T01 (savings-home; moved to /savings by E13/F09/US01/T01): SavingsRoute
+    // (like PortfolioRoute/Contract360Route/RenewalsRoute above) calls both of these unconditionally
+    // on mount, so an unconfigured vi.fn() would throw the moment its effect calls .then() on it --
+    // same reasoning as getPortfolio's own resolved default above. Resolved, empty-but-successful
+    // defaults are enough for this suite's own routing/guard assertions; see
+    // tests/routes/savings/*.test.tsx for that screen's own fetch-outcome coverage.
     getSavingsKpis: vi.fn().mockResolvedValue({
       ok: true,
       statusCode: 200,
@@ -96,12 +98,12 @@ function renderShell(role: WorkspaceRole, initialPath = "/") {
   );
 }
 
-describe("ShellRoutes", () => {
+describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01, gap G-IA-V2)", () => {
   beforeEach(() => {
     window.sessionStorage.clear();
   });
 
-  it("renders the rail alongside Home at /", async () => {
+  it("redirects / to /ask and renders the rail alongside the real Ask Contigo screen (R-WEB-01)", async () => {
     window.sessionStorage.setItem(
       "contigo.signin.currentWorkspace",
       JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
@@ -110,7 +112,7 @@ describe("ShellRoutes", () => {
     renderShell("admin");
 
     expect(screen.getByRole("navigation", { name: /primary/i })).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "Home" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Ask Contigo" })).toBeInTheDocument();
   });
 
   it("renders the global Ask bar on a routed screen (AC-3, every app screen)", () => {
@@ -150,11 +152,7 @@ describe("ShellRoutes", () => {
     expect(screen.queryByText(/members table \+ invite ships in epic-06\/feature-04-workspace-members-ui/i)).not.toBeInTheDocument();
   });
 
-  it("redirects an unknown path back to Home", async () => {
-    // Task E08/F02/US01/T01 (savings-home): Home is now HomeRoute, which renders its own "No
-    // workspace selected" state (not a "Home" heading) when none is current -- same defensive
-    // convention every other real route follows -- so this redirect-proof needs one current, the
-    // same way the dedicated Home migration test below does.
+  it("redirects an unknown path to Ask (via / -- there is no Home to fall back to in V2)", async () => {
     window.sessionStorage.setItem(
       "contigo.signin.currentWorkspace",
       JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
@@ -162,7 +160,18 @@ describe("ShellRoutes", () => {
 
     renderShell("admin", "/this-route-does-not-exist");
 
-    expect(await screen.findByRole("heading", { name: "Home" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Ask Contigo" })).toBeInTheDocument();
+  });
+
+  it("/review redirects to /documents?filter=attention (Review is a state of Documents in V2, not a rail destination)", async () => {
+    window.sessionStorage.setItem(
+      "contigo.signin.currentWorkspace",
+      JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
+    );
+
+    renderShell("admin", "/review");
+
+    expect(await screen.findByRole("heading", { name: "Documents" })).toBeInTheDocument();
   });
 
   it("renders the real Documents screen instead of a scaffold placeholder (task E06/F05/US01/T01)", () => {
@@ -222,31 +231,19 @@ describe("ShellRoutes", () => {
     expect(screen.queryByText(/ships in epic-08\/feature-01-renewal-pipeline-ui/i)).not.toBeInTheDocument();
   });
 
-  it("renders the real Home screen instead of a scaffold placeholder (task E08/F02/US01/T01)", async () => {
+  it("renders the real Savings screen at /savings, moved from / (task E13/F09/US01/T01, gap G-IA-V2)", async () => {
     window.sessionStorage.setItem(
       "contigo.signin.currentWorkspace",
       JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
     );
 
-    renderShell("admin", "/");
+    renderShell("admin", "/savings");
 
-    // The shared mockApiClient() above resolves getSavingsOpportunities to an empty list -- proves
-    // the real route (which renders its own named empty state) is mounted, not the scaffold; the
+    // The shared mockApiClient() above resolves getSavingsKpis/getSavingsOpportunities to empty --
+    // proves the real route (KPI row AND opportunities table) is mounted at its new V2 path; the
     // fetch-outcome matrix itself (populated/loading/error/empty/stale) is covered in depth by
-    // tests/routes/home/*.test.tsx.
+    // tests/routes/savings/*.test.tsx.
+    expect(await screen.findByText("Annual spend analyzed")).toBeInTheDocument();
     expect(await screen.findByText(/no savings opportunities yet/i)).toBeInTheDocument();
-    expect(screen.queryByText(/ships in epic-08\/feature-02-savings-ui/i)).not.toBeInTheDocument();
-  });
-
-  it("renders the real Review queue screen instead of a scaffold placeholder", async () => {
-    window.sessionStorage.setItem(
-      "contigo.signin.currentWorkspace",
-      JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
-    );
-
-    renderShell("admin", "/review");
-
-    expect(await screen.findByText(/nothing needs review/i)).toBeInTheDocument();
-    expect(screen.queryByText(/ships in epic-07\/feature-03-review-correction-ui/i)).not.toBeInTheDocument();
   });
 });

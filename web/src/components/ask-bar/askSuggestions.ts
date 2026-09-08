@@ -13,11 +13,21 @@
  * screens that will know it ship in epic-07/epic-08. Suggestion copy is
  * placeholder text, not backed by real query intelligence; the actual Ask
  * Contigo chat ships in epic-07/feature-04-ask-contigo-ui.
+ *
+ * Task E13/F09/US01/T01 (ADR-024 V2 amendment, gap G-IA-V2) added the
+ * `kbReady` off-copy below: `contigo-v2/app.jsx`'s global bar swaps its
+ * whole placeholder to `askPlaceholder:kbReady?'...':'Ask Contigo switches
+ * on after your first validated contract'` regardless of route -- the
+ * route-contextual copy this module already had stays in force once ready,
+ * `getAskBarCopy` only overrides the placeholder text while `!kbReady`.
  */
 export interface AskBarCopy {
   placeholder: string;
   suggestions: readonly [string, string];
 }
+
+/** `contigo-v2/app.jsx` global-bar `askPlaceholder`'s own off-state literal, quoted verbatim. */
+const KB_OFF_PLACEHOLDER = "Ask Contigo switches on after your first validated contract";
 
 const DEFAULT_COPY: AskBarCopy = {
   placeholder: "Ask Contigo — spend, renewals, clauses, liability…",
@@ -62,8 +72,14 @@ const COPY_BY_PATH_PREFIX: ReadonlyArray<readonly [string, AskBarCopy]> = [
   ],
 ];
 
-/** Looks up contextual copy by the longest matching route prefix, falling back to the prototype's own default line. */
-export function getAskBarCopy(pathname: string): AskBarCopy {
+/**
+ * Looks up contextual copy by the longest matching route prefix, falling back to the prototype's own
+ * default line -- then, while `!kbReady`, overrides just the placeholder with the V2 off-copy
+ * (`KB_OFF_PLACEHOLDER`). Suggestion chips are left as-is even when off: this task's own text names
+ * only the placeholder swap (see this module's header comment).
+ */
+export function getAskBarCopy(pathname: string, kbReady: boolean): AskBarCopy {
   const match = COPY_BY_PATH_PREFIX.find(([prefix]) => pathname.startsWith(prefix));
-  return match ? match[1] : DEFAULT_COPY;
+  const base = match ? match[1] : DEFAULT_COPY;
+  return kbReady ? base : { ...base, placeholder: KB_OFF_PLACEHOLDER };
 }

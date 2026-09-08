@@ -78,28 +78,30 @@ localhost / `REPLACE_WITH_*` placeholders. The Static Web App itself is
 apply that creates it (and the workload-identity tag) is CURRENT — re-run
 the web workflow after that apply.
 
-## Screens (ADR-018 route map)
+## Screens (ADR-024 V2 route map, amending ADR-018)
+
+Task E13/F09/US01/T01 (web-shell-v2, gap G-IA-V2) moved this app from the flat Day-1 rail to the
+V2 IA: `/` now redirects to `/ask` (Ask Contigo is the home), the rail is two-tier (Ask Contigo +
+Documents; "From your contracts" -- Portfolio, Renewals, Quote check, greyed until the first
+validated contract), there is no Home item, and Review is a redirect into Documents rather than its
+own rail destination. Pixel/behaviour reference: `inputs/design/prototypes/Contigo V2 Prototype.html`
+(unpacked `contigo-v2/`). See "App shell, navigation, and the role guard" below for the rail itself.
 
 | Route | Screen(s) | Task |
 |-------|-----------|------|
 | `/signin` | Sign-in (Entra redirect, idle/redirecting states) -> workspace picker (list + create + confirm) | E06/F03/US01/T01 |
+| `/` | Redirects to `/ask` (R-WEB-01) -- there is no standalone Home screen in V2. | E13/F09/US01/T01 |
+| `/ask` | Ask Contigo: chat with a route line, numbered citation chips, abstain block (V1 shape; the V2 reply contract -- markdown, citation cards, redirect/refusal/abstain layouts -- lands in F09/T02/T04). Calls the real `POST /api/chat/query`. See "Ask Contigo" below. | E07/F04/US01/T01 |
+| `/ask/:conversationId` | Same `AskRoute` as `/ask` -- the route exists so a conversation id is a valid URL, but nothing reads it yet (`routes/ask/**` untouched; F09/T04 wires resume from `GET /api/conversations/{id}`). | E13/F09/US01/T01 (route only) |
 | `/documents` | Upload dropzone (drag-and-drop + "Choose from computer" + "Use sample file") + formats/size/sources strip -> 6-stage processing pipeline (current stage pulsing) -> result card by outcome (needs_review / completed / failed); below it, a document table (Document / Type / Supplier / Status / Uploaded, rows linking to Contract 360). Calls the real `POST /api/documents` and `GET /api/documents/{id}`. See "Documents" below. | E06/F05/US01/T01, E06/F05/US02/T01 |
 | `/contracts` | Portfolio: filter chips + attention strip + a table sorted by severity then deadline (critical rows tinted + a red bar), plus loading/empty/error/no-match-for-filter states. Calls the real `GET /api/contracts`. See "Portfolio" below. | E07/F01/US01/T01 |
 | `/contracts/:id` | Contract 360: header + 6-cell fact row + 10 tabs (Overview's recommendation card + drivers + "Needs your attention" + "Top risks", then Commercials/Products/Clauses/Obligations/Risks/Documents/Benchmark/Renewal/Activity through one shared Term/Value/Source/Confidence table), plus loading/not-found/error states. Calls the real `GET /api/contracts/{id}`, `GET /api/renewals`, `GET /api/renewals/{contractId}/priority`. See "Contract 360" below. | E07/F02/US01/T01 |
 | `/contracts/:id/review` | Review / correction: 4-column field list (critical marker, extracted value, confidence/decision tag, Accept/Correct) + right-hand evidence pane (correction form + real correction-history trail) + gated "Mark as validated". Calls the real `GET /api/contracts/{id}`, `GET /api/contracts/{id}/corrections`, `PATCH /api/contracts/{id}`. See "Review / correction" below. | E07/F03/US01/T01 |
-| `/renewals` | Renewal pipeline: threshold strip (0-30 ... 270-365 d, click = filter) + priority table (Score/Supplier/Contract/Annual spend/Renews in/Cancel by/Status) + insight card (facts + recommended action + rationale) with three actions (Start negotiation / Assign to me / Snooze) -> confirmation + Contract 360 + Home links, plus loading/error/empty/no-window states. Calls the real `GET /api/renewals`, `GET /api/renewals/{contractId}/priority`, `POST /api/renewals/{id}/action`. See "Renewal pipeline" below. | E08/F01/US01/T01 |
-| `/ask` | Ask Contigo: chat with a route line, numbered citation chips, abstain block. Calls the real `POST /api/chat/query`. See "Ask Contigo" below. | E07/F04/US01/T01 |
+| `/renewals` | Renewal pipeline: threshold strip (0-30 ... 270-365 d, click = filter) + priority table (Score/Supplier/Contract/Annual spend/Renews in/Cancel by/Status) + insight card (facts + recommended action + rationale) with three actions (Start negotiation / Assign to me / Snooze) -> confirmation + Contract 360 + Savings links, plus loading/error/empty/no-window states. Calls the real `GET /api/renewals`, `GET /api/renewals/{contractId}/priority`, `POST /api/renewals/{id}/action`. See "Renewal pipeline" below. | E08/F01/US01/T01 |
 | `/quotes`, `/quotes/:id` | Quote check: this task's own upload form (no id yet) -> 4-step stepper Extract (line table + unmatched-SKU manual mapping + recalculate) -> Assessment (4 numbers, line-level P25/P50/P75 + confidence, provenance card; blocked until every line resolves) -> Target (price ladder, editable target/walk-away) -> Negotiation (outcome capture -> recorded outcome). Calls the real `POST /api/quotes`, `POST /api/quotes/{id}/assessment/recalculate`, `POST /api/negotiations/outcomes`. See "Quote check" below. | E08/F03/US01/T01 |
-| `/` (home) | Home: 6 KPI cells (Annual spend analyzed · Savings identified · Savings realized · Savings in progress · Contracts analyzed · Upcoming renewals) + opportunities table (Opportunity · Type · Current spend · Estimated savings · Confidence · Owner · Status · Realized), rows opening Contract 360 › Benchmark or Quote check; a benchmark-provider-unreachable KPI refresh degrades to the last-known numbers, stale-labelled, rather than blocking the screen. Calls the real `GET /api/savings/kpis`, `GET /api/savings`. See "Home" below. | E08/F02/US01/T01 |
-| `/review`\* | Review queue: table of contracts (and this-session uploads) still in needs-review, rows opening `/contracts/:id/review`. Calls the real `GET /api/contracts`. See "Review queue" below. | E06/F04 recovery (landing), E07/F03/US01/T01 (detail) |
+| `/savings` | Savings (moved from `/`, not a rail item in V2 -- reached from actions, Renewals and Contract 360): 6 KPI cells (Annual spend analyzed · Savings identified · Savings realized · Savings in progress · Contracts analyzed · Upcoming renewals) + opportunities table (Opportunity · Type · Current spend · Estimated savings · Confidence · Owner · Status · Realized), rows opening Contract 360 › Benchmark or Quote check; a benchmark-provider-unreachable KPI refresh degrades to the last-known numbers, stale-labelled, rather than blocking the screen. Calls the real `GET /api/savings/kpis`, `GET /api/savings`. See "Savings" below. | E08/F02/US01/T01; moved by E13/F09/US01/T01 |
+| `/review` | Redirects to `/documents?filter=attention` -- Review is a *state* of Documents in V2, not its own rail destination or screen. `src/routes/review/` (the old rail-landing component) is no longer routed; it is unrouted/orphaned pending a cleanup task, not deleted (outside this task's own file scope). See "Review queue" below. | E13/F09/US01/T01 |
 | `/workspace/members` | Members & roles: Member/Role/Status/Last active table + invite pane (email, Admin vs Procurement radios, Send). Calls the real `POST /api/workspaces/{tenantId}/invites`. Non-admin visits stay on the shell's request-access gate. See "Members & roles" below. | E06/F04/US01/T01 |
-
-\* `/review` is the rail landing path, not a row in ADR-018's locked route
-map -- that table only ever names the *detail* route for this nav destination
-(`/contracts/:id/review`). See `src/components/shell/navItems.ts`'s header
-comment. (`/quotes` used to be the identical kind of placeholder until task
-E08/F03/US01/T01 made it a real screen; `/` was the same until task
-E08/F02/US01/T01 made it a real screen too.)
 
 ### Layout -- full-bleed, matching the prototype's own canvas (ADR-018/019/020, task E06/F06/US01/T01)
 
@@ -152,18 +154,40 @@ hard navigation (`<a href="/">`), not a client-side link, since no router is
 mounted yet at that point in the tree -- the resulting fresh page load is
 what re-evaluates `App.tsx`'s check with both facts already true.
 
-### App shell, navigation, and the role guard (ADR-018, ADR-019, task E06/F03/US02/T01)
+### App shell, navigation, and the role guard (ADR-024 V2 amendment to ADR-018/ADR-019; task E13/F09/US01/T01, gap G-IA-V2; originally task E06/F03/US02/T01)
 
-- **Rail** (`src/components/shell/RailNav.tsx`) -- the eight items and their
-  order are locked verbatim from parent story us-02's AC-1 list / ia.md's
-  "Navigation (left rail)" (`src/components/shell/navItems.ts`). No icon
-  library is a dependency yet, so rail items are text-only (design-system.md
-  calls for Lucide icons; adding that library is not this task's scope).
-- **Role guard (AC-2)** -- "Workspace & members" is the one admin-only item.
-  `navItems.ts#getVisibleNavItems` hides it from the rail for a Procurement
-  role (unit-tested); `src/components/shell/RequireRole.tsx` is the same
-  guard at the route level (defense in depth for a direct URL visit), which
-  renders ADR-018's "request access" state instead of the real screen.
+- **Two-tier rail** (`src/components/shell/RailNav.tsx`, model in
+  `src/components/shell/navItems.ts`) replaces the flat, eight-item Day-1 list.
+  **Primary**: Ask Contigo (badge `⌘K`, a nested "+ New chat" slot -- empty of
+  real conversations until F09/T04 wires `GET /api/conversations`) and
+  Documents (badge `N to review`, accent, when this browser has a tracked
+  document in `NeedsReview`, else `N docs`, else no badge --
+  `src/routes/documents/documentStore.ts`'s session-scoped tracked list; there
+  is still no `GET /api/documents` collection endpoint). **Secondary, "From
+  your contracts"**: Portfolio, Renewals (badge = the validated-contract
+  count), Quote check (badge is always the constant `optional`) -- the whole
+  tier's foreground dims to a muted grey until the first validated contract
+  (`kbReady`, a small accent/neutral dot next to the "From your contracts"
+  kicker mirrors the same signal). There is no Home item and no Review queue
+  item in V2. No icon library is a dependency yet, so rail items are
+  text-only (design-system.md calls for Lucide icons; adding that library is
+  not this task's scope).
+- **`kbReady` / the validated-contract count** (`src/components/shell/useValidatedContractCount.ts`)
+  is fetched once per shell mount via the existing `GET /api/contracts`
+  (`apiClient.getPortfolio`, first 100 rows) and passed down to both the rail
+  and the global Ask bar -- there is no dedicated "validated contracts"
+  endpoint yet, so a contract counts as validated once it is past every
+  transient/blocking status that endpoint can report today (`processing`,
+  `failed`, anything containing "review"; see that module's own doc comment
+  for the full provenance and the `requirements.md` R-CMP-03 citation). A
+  contract that becomes validated mid-session only updates the rail on the
+  next full shell mount (fetched once, not polled).
+- **Role guard (AC-2)** -- "Workspace & members" is the one admin-only
+  surface, now a footer link (`navItems.ts#canManageMembers`, unit-tested)
+  rather than a row in the flat list; `src/components/shell/RequireRole.tsx`
+  is the same guard at the route level (defense in depth for a direct URL
+  visit), which renders ADR-018's "request access" state instead of the real
+  screen.
 - **Role source is interim** (`src/components/shell/workspaceRole.ts`): no
   JWT/claims wiring exists yet (ADR-010 is not wired into
   `backend/src/Contigo.Api/Program.cs`), so there is no server-issued "what
@@ -177,14 +201,18 @@ what re-evaluates `App.tsx`'s check with both facts already true.
   ADR-010's claim wiring lands, only this one function changes.
 - **Global Ask bar (AC-3)** -- `src/components/ask-bar/GlobalAskBar.tsx`
   renders on every routed screen (mounted once, above `<Outlet/>`, in
-  `AppShell.tsx`). Enter submits the typed text and navigates to `/ask` with
-  it in router state (`useLocation().state?.query` -- consumed by whichever
-  future task builds the real Ask Contigo screen,
-  epic-07/feature-04-ask-contigo-ui); Cmd/Ctrl+K focuses the input from
-  anywhere. Suggestion-chip copy (`src/components/ask-bar/askSuggestions.ts`)
-  is placeholder text keyed by route prefix, not real query intelligence --
-  this bar is explicitly a scaffold that gets the user to `/ask`, it does not
-  answer them.
+  `AppShell.tsx`). Enter (or a suggestion chip) always opens a **new chat**:
+  it navigates to `/ask` with `{ state: { query, newChat: true } }`
+  (`useLocation().state` -- consumed by whichever future task builds
+  conversations, epic-13/feature-09/T04; today `AskRoute` only reads
+  `state.query`, so `newChat` is an inert, additive contract). Cmd/Ctrl+K
+  focuses the input from anywhere. Suggestion-chip copy
+  (`src/components/ask-bar/askSuggestions.ts`) is placeholder text keyed by
+  route prefix, not real query intelligence; the placeholder itself switches
+  to "Ask Contigo switches on after your first validated contract" while
+  `!kbReady`, regardless of route (ADR-024 V2 amendment) -- this bar is
+  explicitly a scaffold that gets the user to `/ask`, it does not answer
+  them.
 
 **Workspace list is a client-side cache, not a server query** -- there is no
 backend endpoint that lists the workspaces a signed-in identity belongs to
@@ -568,12 +596,18 @@ card + three actions with a real write + confirmation, AC-4 loading/error/empty/
     real, durable write here is the renewal action above; `renewalActionStore.ts`
     (`sessionStorage`, the same interim pattern `workspaceStore.ts`/`documentStore.ts` already
     establish for their own missing-endpoint gaps) records it as this browser's own tracked opportunity
-    for the council decision carried into this story ("Action creates an opportunity visible on Home"),
-    and the confirmation links to both **Home** (`/`) and **Contract 360** (`/contracts/:id`, AC-3's own
-    named link) instead of overclaiming a backend entity that was not actually created. Home (task
-    E08/F02/US01/T01, see "Home" below) has since landed and does exactly this:
-    `homeViewModel.ts#buildOpportunityRows` imports `loadTrackedRenewalActions()` from this module and
-    merges its rows -- most-recently-acted first -- ahead of the real, persisted opportunity list.
+    for the council decision carried into this story ("Action creates an opportunity visible on Home",
+    its own literal wording at the time), and the confirmation links to both **Home** (`/`) and
+    **Contract 360** (`/contracts/:id`, AC-3's own named link) instead of overclaiming a backend entity
+    that was not actually created. Home (task E08/F02/US01/T01, see "Savings" below) landed and does
+    exactly this: `savingsViewModel.ts#buildOpportunityRows` imports `loadTrackedRenewalActions()` from
+    this module and merges its rows -- most-recently-acted first -- ahead of the real, persisted
+    opportunity list. **Known gap, task E13/F09/US01/T01 (out of that task's own file scope):** V2
+    moved this screen to `/savings` and made `/` redirect to `/ask` -- this confirmation panel's own
+    `<Link to="/">` (`InsightCard.tsx`) still targets the old path verbatim and now lands on Ask, not
+    Savings; likewise `../quotes/NegotiationStep.tsx`'s "See it on Home ->" link. Neither
+    `routes/renewals/**` nor `routes/quotes/**` is in that task's "Files to create or modify" -- a
+    follow-up task should repoint both links to `/savings`.
 - **AC-4, states** -- loading (`.renewal-skeleton`), error (503-aware, names the renewal engine
   specifically per screens.md #8's own "error (engine unavailable)", with Retry), empty (zero renewals
   at all -> "No renewals in your pipeline yet" + a link to `/contracts`), no-window (renewals exist but
@@ -657,32 +691,36 @@ outcome.
   cross-module write never runs for an outcome this screen records. `quoteOutcomeStore.ts` is the
   same kind of interim `../documents/documentStore.ts`/`../signin/workspaceStore.ts` already
   establish: a real, `sessionStorage`-scoped record of every outcome this browser actually captured.
-  Home (task E08/F02/US01/T01, see "Home" below) has since landed, but its own "Savings realized"
-  KPI cell reads the real `GET /api/savings/kpis` response directly, not this store --
+  Savings (task E08/F02/US01/T01, see "Savings" below) has since landed, but its own "Savings
+  realized" KPI cell reads the real `GET /api/savings/kpis` response directly, not this store --
   `quoteOutcomeStore.ts` stays this screen's own unconsumed local record, the propagation gap named
   above being the real, pre-existing reason no code path connects the two yet. The recorded-outcome
-  panel's own "See it on Home ->" link (`<Link to="/">`) is real, and now lands on a real screen.
+  panel's own "See it on Home ->" link (`<Link to="/">`, `NegotiationStep.tsx`) is real, but --
+  **known gap, task E13/F09/US01/T01, out of that task's own file scope** -- `/` now redirects to
+  `/ask` (V2 "No Home item"), not Savings; `routes/quotes/**` is not in that task's file scope to
+  repoint it to `/savings`.
 
-### Home (ADR-020 screen 9, task E08/F02/US01/T01, us-01-savings-home)
+### Savings (ADR-020 screen 9, task E08/F02/US01/T01, us-01-savings-home; moved from `/` to `/savings` by task E13/F09/US01/T01, ADR-024 V2 amendment, gap G-IA-V2)
 
-`src/routes/home/` implements screen 9: AC-1 six KPI cells, AC-2 opportunities table, AC-3 row
+`src/routes/savings/` implements screen 9: AC-1 six KPI cells, AC-2 opportunities table, AC-3 row
 navigation to Contract 360 › Benchmark or Quote check plus the benchmark-provider-unreachable
-stale-labelled KPI state. Wired into `components/shell/WorkspaceShellApp.tsx`'s index route (`/`,
-ADR-018 "/ (home)") in place of that task's `ScaffoldScreen` placeholder, the same seam
-`../renewals/index.tsx` already used for `/renewals`.
+stale-labelled KPI state. Originally wired into `components/shell/WorkspaceShellApp.tsx`'s index
+route (`/`, ADR-018 "/ (home)"); task E13/F09/US01/T01 moved the folder and the route to `/savings`
+(V2 "No Home item" -- Savings is reached from actions, Renewals and Contract 360, not the rail) --
+every fetch/render rule below is unchanged, "keep behaviour" per that task's own text.
 
 - **Two independent fetches, two independent degrade states** (`index.tsx`) -- `GET
   /api/savings/kpis` backs AC-1's KPI row and `GET /api/savings` backs AC-2's opportunities table;
   each fetch's own failure degrades only its own section, the same "independently optional" shape
   `../contracts/contract360/index.tsx` already established for its own renewals+priority pair.
-- **AC-1, KPI row** (`KpiRow.tsx`, `homeViewModel.ts#buildKpiCells`) -- the six cells, in AC-1's own
+- **AC-1, KPI row** (`KpiRow.tsx`, `savingsViewModel.ts#buildKpiCells`) -- the six cells, in AC-1's own
   order: Annual spend analyzed, Savings identified, Savings realized, Savings in progress, Contracts
   analyzed, Upcoming renewals, one formatted line per currency bucket (never summed across
   currencies -- the same "group by currency" discipline `SavingsRangeByCurrency`'s own backend doc
   comment states). Only "Savings realized" carries the accent-700 highlight, quoted from
   day1-demo.html's own `kpis[2].fg` rule. `kpis === null` (never fetched, or a first-load failure)
   renders an honest "-" per cell rather than a fabricated number (Appendix C rule 10).
-- **AC-3, benchmark-provider-unreachable -> stale-labelled** (`homeViewModel.ts#reduceKpiFetch`,
+- **AC-3, benchmark-provider-unreachable -> stale-labelled** (`savingsViewModel.ts#reduceKpiFetch`,
   this task's own required test, proven at both the reducer level and the rendered-component level)
   -- a failed KPI refresh never blanks the row: the reducer keeps whichever summary it last
   successfully fetched (or `null`, before any success) and marks every cell `Stale` (text, not
@@ -696,7 +734,7 @@ ADR-018 "/ (home)") in place of that task's `ScaffoldScreen` placeholder, the sa
   `../contracts/PortfolioTable.tsx` already established, ADR-019 accessibility baseline). Loading
   (skeleton rows), error (a scoped `.error-state` + Retry, independent of the KPI row's own error
   state), and empty ("No savings opportunities yet" -> `/renewals`) states.
-- **Council decision "Action creates an opportunity visible on Home"** (`homeViewModel.ts
+- **Council decision "Action creates an opportunity visible on Savings"** (`savingsViewModel.ts
   #buildOpportunityRows`) -- this session's own tracked renewal actions
   (`../renewals/renewalActionStore.ts#loadTrackedRenewalActions`, recorded by
   `../renewals/InsightCard.tsx`'s three actions) render first, ahead of every real, persisted
@@ -707,7 +745,7 @@ ADR-018 "/ (home)") in place of that task's `ScaffoldScreen` placeholder, the sa
   is no shared id to merge on (Appendix C rule 10). A tracked row's own honest gaps -- no confidence,
   "Not yet available" estimated savings, no realized value, no currency on current spend -- render as
   such rather than a borrowed or invented figure.
-- **AC-3, row navigation** (`homeViewModel.ts#getOpportunityNavigation`) -- quoted from
+- **AC-3, row navigation** (`savingsViewModel.ts#getOpportunityNavigation`) -- quoted from
   day1-demo.html's own row handler for this screen: a contract-linked opportunity opens Contract
   360's Benchmark tab (`/contracts/:id`, `state: { tab: "Benchmark" }` -- the same
   `location.state.tab` deep-link seam `../ask/index.tsx` already uses to open Clauses); one with no
@@ -717,13 +755,21 @@ ADR-018 "/ (home)") in place of that task's `ScaffoldScreen` placeholder, the sa
   `loadCurrentWorkspace()` directly rather than trusting `App.tsx`'s own earlier check, rendering a
   named "No workspace selected" state if that invariant is ever violated.
 
-### Review queue (rail landing for ADR-020 screen 6)
+### Review queue (unrouted since ADR-024 V2, task E13/F09/US01/T01, gap G-IA-V2)
 
-`src/routes/review/` is the `/review` rail landing. ia.md/ADR-018 only name `/contracts/:id/review`
-(the field-review detail, already real). This list calls `GET /api/contracts` and keeps rows whose
-status contains "review" (the same signal Portfolio's attention strip uses), plus this-session
-uploads still in `NeedsReview` that are not already on that page. Rows with a `contractId` open the
-detail screen; unlinked uploads stay visible with "Not yet linked to a contract".
+`src/routes/review/` used to be the `/review` rail landing (ia.md/ADR-018 only ever named
+`/contracts/:id/review`, the field-review detail, as a locked route; `/review` itself was this app's
+own list-landing convention for it). V2 makes Review a *state* of Documents instead
+(`/documents?review=:id`, F09/T03) -- `/review` now redirects to `/documents?filter=attention`
+(`WorkspaceShellApp.tsx`), and this folder's own `ReviewQueueRoute` component is no longer mounted by
+any route. It is **not deleted** -- `routes/review/**` is outside task E13/F09/US01/T01's own "Files
+to create or modify" table -- so the code (and its own passing unit tests,
+`tests/routes/review/*.test.tsx`) still exists and still compiles, just unreachable from the app. A
+future cleanup task should remove it. For the record, its old behaviour: it called
+`GET /api/contracts` and kept rows whose status contains "review" (the same signal Portfolio's
+attention strip uses), plus this-session uploads still in `NeedsReview` that were not already on that
+page; rows with a `contractId` opened the detail screen, unlinked uploads stayed visible with "Not
+yet linked to a contract".
 
 ### Members & roles (ADR-020 screen 2, task E06/F04/US01/T01)
 
@@ -980,25 +1026,26 @@ web/
         quoteCheckViewModel.ts   # pure helpers
         quoteOutcomeStore.ts     # sessionStorage-scoped outcomes
         quotes.css               # this screen's styles
-      home/                    # task E08/F02/US01/T01 -- ADR-020 screen 9 (see "Home" above)
-        index.tsx                # HomeRoute -- two independent fetches (KPIs, opportunities), two independent degrade states
+      savings/                 # task E08/F02/US01/T01 -- ADR-020 screen 9; moved from routes/home/ to /savings by E13/F09/US01/T01 (see "Savings" above)
+        index.tsx                # SavingsRoute -- two independent fetches (KPIs, opportunities), two independent degrade states
         KpiRow.tsx               # AC-1: the six KPI cells + AC-3's stale-labelled notice
         OpportunitiesTable.tsx   # AC-2: the eight-column table, cell-level links (AC-3 navigation)
-        homeViewModel.ts         # pure helpers: reduceKpiFetch (AC-3), buildKpiCells (AC-1), buildOpportunityRows (AC-2, council "opportunity visible on Home")
-        home.css                 # this screen's styles
+        savingsViewModel.ts      # pure helpers: reduceKpiFetch (AC-3), buildKpiCells (AC-1), buildOpportunityRows (AC-2, council "opportunity visible on Savings")
+        savings.css              # this screen's styles
     components/
-      shell/                  # task E06/F03/US02/T01 -- app shell, router, role guard (see "App shell" above)
-        navItems.ts             # locked 8-item rail model + getVisibleNavItems(role) role guard (AC-1/AC-2)
+      shell/                  # task E06/F03/US02/T01 -- app shell, router, role guard; V2 two-tier rail by E13/F09/US01/T01 (see "App shell" above)
+        navItems.ts             # V2 two-tier model: buildPrimaryNavItems/buildSecondaryNavItems, badge builders, canManageMembers(role) role guard (AC-1/AC-2)
+        useValidatedContractCount.ts # kbReady / validated-contract count, fetched once via apiClient.getPortfolio
         workspaceRole.ts        # interim client-side role resolution (?role= override; see "App shell" above)
-        RailNav.tsx              # 224px left rail
+        RailNav.tsx              # 224px left rail, two tiers + footer
         RequireRole.tsx          # route-level guard; ADR-018 "request access" state
         ScaffoldScreen.tsx       # generic placeholder for routes later epics build for real
-        AppShell.tsx             # rail + global Ask bar + <Outlet/>
-        WorkspaceShellApp.tsx    # <BrowserRouter> + route table (ShellRoutes is the router-free export tests use)
+        AppShell.tsx             # rail + global Ask bar + <Outlet/>; fetches kbReady once via useValidatedContractCount
+        WorkspaceShellApp.tsx    # <BrowserRouter> + V2 route table (ShellRoutes is the router-free export tests use)
         shell.css                # rail/shell layout
-      ask-bar/                # task E06/F03/US02/T01 -- global Ask bar scaffold (AC-3)
-        GlobalAskBar.tsx         # the bar itself: input, chips, Enter -> /ask, Cmd/Ctrl+K focus
-        askSuggestions.ts        # per-route placeholder copy (not real query intelligence)
+      ask-bar/                # task E06/F03/US02/T01 -- global Ask bar scaffold (AC-3); V2 new-chat state + off placeholder by E13/F09/US01/T01
+        GlobalAskBar.tsx         # the bar itself: input, chips, Enter -> /ask with { query, newChat: true }, Cmd/Ctrl+K focus
+        askSuggestions.ts        # per-route placeholder copy (not real query intelligence); kbReady off-copy
         ask-bar.css
     App.tsx                   # composition root: /health effect; SignInRoute, or (signed in + workspace picked) WorkspaceShellApp
     main.tsx                  # boot: load config -> construct MSAL + API client -> render
@@ -1067,6 +1114,21 @@ root, not a `workspace/<repo>/` stand-in" correction `reports/open-questions.md`
 already recorded for two earlier tasks (OQ-impl-001/002) -- there is no other
 location where a browser test could reach the real, already-scaffolded ten
 screens this file drives.
+
+**Known regression, task E13/F09/US01/T01 (ADR-024 V2 shell, gap G-IA-V2;
+out of that task's own file scope, `web/e2e/**` is not in its "Files to
+create or modify" table):** this spec is the Day-1 (V1) IA's own walk and now
+fails at the V2 shell -- `page.goto("/")` (`assertHomeOpportunity`) no longer
+renders a "Home" screen (`/` redirects to `/ask`), so the
+`getByRole("heading", { name: "Home", exact: true })` assertion in "Home
+Savings Realized -- link back" (step 10) does not resolve, and every other
+step's own implicit "the rail has a Home item" assumption no longer holds
+either. `npm run test:e2e` is not part of this task's own proof (`npm test` /
+`npm run build` only) and is not run by CI yet (see "CI wiring" below), so
+this did not block the V2 shell landing -- but it does mean this suite itself
+is red until the V2 replacement lands: ADR-024's own "Implications for the
+decomposition" already names `web/e2e/v2.spec.ts` (gap G-INTEGRATION,
+task F11/T01) as that replacement, not a fix to this V1 file.
 
 ### Running it
 

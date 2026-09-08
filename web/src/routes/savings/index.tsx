@@ -5,10 +5,10 @@ import { loadCurrentWorkspace } from "../signin/workspaceStore";
 import { loadTrackedRenewalActions } from "../renewals/renewalActionStore";
 import KpiRow from "./KpiRow";
 import OpportunitiesTable from "./OpportunitiesTable";
-import { buildOpportunityRows, reduceKpiFetch, type KpiFetchState } from "./homeViewModel";
-import "./home.css";
+import { buildOpportunityRows, reduceKpiFetch, type KpiFetchState } from "./savingsViewModel";
+import "./savings.css";
 
-export interface HomeRouteProps {
+export interface SavingsRouteProps {
   apiClient: ApiClient;
 }
 
@@ -18,27 +18,31 @@ type OpportunitiesFetchState =
   | { phase: "ready"; items: readonly SavingsOpportunityBody[] };
 
 /**
- * Route `/` (ADR-018 "/ (home)"; screens.md #9 "Home -- Savings"; ADR-020 screen 9; task
- * E08/F02/US01/T01, us-01-savings-home AC-1 six KPI cells / AC-2 opportunities table / AC-3 rows +
- * stale-labelled error state). Wired into `../../components/shell/WorkspaceShellApp.tsx`'s index
- * route in place of that shell task's `ScaffoldScreen` placeholder, the same seam
- * `../renewals/index.tsx` (RenewalsRoute) already used for `/renewals`.
+ * Route `/savings` (ADR-024 V2 IA amendment to ADR-018 -- "No Home item"; Savings moved out of the
+ * rail to its own route, reached from actions, Renewals and Contract 360, per `ia-v2.md`/
+ * `contigo-v2/screens-v2.md` #8 "Savings"; requirements OQ-askv2-003, assumed-confirmed). Originally
+ * landed at `/` (screens.md #9 "Home -- Savings", ADR-020 screen 9, task E08/F02/US01/T01,
+ * us-01-savings-home AC-1 six KPI cells / AC-2 opportunities table / AC-3 rows + stale-labelled error
+ * state) -- task E13/F09/US01/T01 (gap G-IA-V2) moved the folder/route only; every fetch/render rule
+ * below is unchanged ("keep behaviour", that task's own text). Wired into
+ * `../../components/shell/WorkspaceShellApp.tsx`'s `savings` route (no longer the index route -- `/`
+ * now redirects to `/ask`).
  *
  * **Two independent fetches, two independent degrade states** -- the same "independently optional"
  * shape `../contracts/contract360/index.tsx` already established for its own renewals+priority pair.
  * `getSavingsKpis` backs AC-1's KPI row; its own failure never blocks AC-2's table -- it degrades to
  * a stale-labelled KPI row instead (screens.md #9's own named state), via
- * `homeViewModel.ts#reduceKpiFetch`, which keeps whatever summary this screen last successfully
+ * `savingsViewModel.ts#reduceKpiFetch`, which keeps whatever summary this screen last successfully
  * fetched (or `null`, before the first successful fetch) rather than blanking the row. Retrying does
  * **not** flash the KPI row back to a loading skeleton -- the stale numbers stay visible, tagged, for
  * the whole in-flight retry, only updating once it resolves (matching the prototype's own "last
  * successful refresh" framing, not a fresh loading state). `getSavingsOpportunities` backs AC-2's
  * opportunities table independently; its own failure renders that section's own scoped `.error-state`
- * + Retry, never the whole screen -- and, per `homeViewModel.ts#buildOpportunityRows`'s own comment,
+ * + Retry, never the whole screen -- and, per `savingsViewModel.ts#buildOpportunityRows`'s own comment,
  * this session's tracked renewal actions still render even when the real fetch has failed (they are
  * `sessionStorage`-local, not sourced from this call at all).
  */
-export default function HomeRoute({ apiClient }: HomeRouteProps) {
+export default function SavingsRoute({ apiClient }: SavingsRouteProps) {
   const workspace = loadCurrentWorkspace();
   const [kpiState, setKpiState] = useState<KpiFetchState>({ phase: "loading" });
   const [opportunitiesState, setOpportunitiesState] = useState<OpportunitiesFetchState>({ phase: "loading" });
@@ -104,20 +108,20 @@ export default function HomeRoute({ apiClient }: HomeRouteProps) {
   const rows = buildOpportunityRows(opportunityItems, trackedRenewalActions);
 
   return (
-    <div className="home-screen">
+    <div className="savings-screen">
       <p className="screen-kicker">R3</p>
-      <h2 className="screen-title">Home</h2>
+      <h2 className="screen-title">Savings</h2>
       <p className="micro-meta">Savings KPIs and prioritized opportunities across your portfolio.</p>
 
       <KpiRow kpiState={kpiState} onRetry={loadKpis} />
 
-      <div className="home-opportunities-section">
+      <div className="savings-opportunities-section">
         <h6>Opportunities</h6>
 
         {opportunitiesState.phase === "loading" && (
-          <div className="home-opportunities-skeleton" role="status" aria-live="polite">
+          <div className="savings-opportunities-skeleton" role="status" aria-live="polite">
             {Array.from({ length: 4 }, (_, index) => (
-              <div key={index} className="skeleton home-opportunities-skeleton-row" />
+              <div key={index} className="skeleton savings-opportunities-skeleton-row" />
             ))}
           </div>
         )}

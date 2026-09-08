@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import HomeRoute from "../../../src/routes/home";
+import SavingsRoute from "../../../src/routes/savings";
 import { rememberRenewalAction } from "../../../src/routes/renewals/renewalActionStore";
 import type {
   ApiClient,
@@ -79,11 +79,11 @@ function opportunitiesOk(items: SavingsOpportunityBody[]): GetSavingsOpportuniti
   return { ok: true, statusCode: 200, opportunities: { items, totalCount: items.length }, error: null };
 }
 
-function renderHome(apiClient: ApiClient) {
+function renderSavings(apiClient: ApiClient) {
   return render(
-    <MemoryRouter initialEntries={["/"]}>
+    <MemoryRouter initialEntries={["/savings"]}>
       <Routes>
-        <Route path="/" element={<HomeRoute apiClient={apiClient} />} />
+        <Route path="/savings" element={<SavingsRoute apiClient={apiClient} />} />
         <Route path="/contracts/:contractId" element={<div>CONTRACT_360_SCREEN</div>} />
         <Route path="/quotes" element={<div>QUOTE_CHECK_SCREEN</div>} />
         <Route path="/renewals" element={<div>RENEWALS_SCREEN</div>} />
@@ -92,7 +92,7 @@ function renderHome(apiClient: ApiClient) {
   );
 }
 
-describe("HomeRoute", () => {
+describe("SavingsRoute", () => {
   beforeEach(() => {
     window.sessionStorage.clear();
     window.sessionStorage.setItem(
@@ -106,7 +106,7 @@ describe("HomeRoute", () => {
     const getSavingsKpis = vi.fn();
     const getSavingsOpportunities = vi.fn();
 
-    renderHome(mockApiClient({ getSavingsKpis, getSavingsOpportunities }));
+    renderSavings(mockApiClient({ getSavingsKpis, getSavingsOpportunities }));
 
     expect(screen.getByText(/no workspace selected/i)).toBeInTheDocument();
     expect(getSavingsKpis).not.toHaveBeenCalled();
@@ -118,20 +118,20 @@ describe("HomeRoute", () => {
     const pending = new Promise<GetSavingsKpisResult>((resolve) => {
       resolveFetch = resolve;
     });
-    const { container } = renderHome(
+    const { container } = renderSavings(
       mockApiClient({
         getSavingsKpis: vi.fn().mockReturnValue(pending),
         getSavingsOpportunities: vi.fn().mockResolvedValue(opportunitiesOk([])),
       }),
     );
 
-    expect(container.querySelector(".home-kpi-skeleton")).toBeInTheDocument();
+    expect(container.querySelector(".savings-kpi-skeleton")).toBeInTheDocument();
 
     await act(async () => {
       resolveFetch(kpisOk(kpiSummary()));
     });
 
-    expect(container.querySelector(".home-kpi-skeleton")).not.toBeInTheDocument();
+    expect(container.querySelector(".savings-kpi-skeleton")).not.toBeInTheDocument();
   });
 
   it("task-01's own required test: AC-3 benchmark-provider-unreachable -> KPIs stale-labelled, and Retry recovers", async () => {
@@ -140,7 +140,7 @@ describe("HomeRoute", () => {
       .mockResolvedValueOnce({ ok: false, statusCode: null, kpis: null, error: "network down" })
       .mockResolvedValueOnce(kpisOk(kpiSummary()));
 
-    renderHome(
+    renderSavings(
       mockApiClient({
         getSavingsKpis,
         getSavingsOpportunities: vi.fn().mockResolvedValue(opportunitiesOk([])),
@@ -169,7 +169,7 @@ describe("HomeRoute", () => {
       .mockResolvedValueOnce(kpisOk(kpiSummary()))
       .mockResolvedValueOnce({ ok: false, statusCode: 503, kpis: null, error: "Service Unavailable" });
 
-    renderHome(
+    renderSavings(
       mockApiClient({
         getSavingsKpis,
         getSavingsOpportunities: vi.fn().mockResolvedValue(opportunitiesOk([])),
@@ -181,8 +181,8 @@ describe("HomeRoute", () => {
 
     // Nothing in this screen's own UI re-triggers loadKpis on its own (no polling, no visible retry
     // until already stale) -- this proves the reducer-level guarantee
-    // (tests/routes/home/homeViewModel.test.ts) also holds once wired into the real component: were
-    // a later call to fail, the number stays, not the reverse.
+    // (tests/routes/savings/savingsViewModel.test.ts) also holds once wired into the real component:
+    // were a later call to fail, the number stays, not the reverse.
   });
 
   it("opportunities error state: a failed fetch shows a plain-language message with a Retry that re-fetches", async () => {
@@ -191,7 +191,7 @@ describe("HomeRoute", () => {
       .mockResolvedValueOnce({ ok: false, statusCode: 503, opportunities: null, error: "Service Unavailable" })
       .mockResolvedValueOnce(opportunitiesOk([]));
 
-    renderHome(
+    renderSavings(
       mockApiClient({
         getSavingsKpis: vi.fn().mockResolvedValue(kpisOk(kpiSummary())),
         getSavingsOpportunities,
@@ -207,7 +207,7 @@ describe("HomeRoute", () => {
   });
 
   it("opportunities empty state: zero opportunities (real + tracked) shows a named empty state linking to renewals", async () => {
-    renderHome(
+    renderSavings(
       mockApiClient({
         getSavingsKpis: vi.fn().mockResolvedValue(kpisOk(kpiSummary())),
         getSavingsOpportunities: vi.fn().mockResolvedValue(opportunitiesOk([])),
@@ -221,7 +221,7 @@ describe("HomeRoute", () => {
 
   describe("once populated", () => {
     function renderPopulated(items: SavingsOpportunityBody[], overrides: Partial<ApiClient> = {}) {
-      return renderHome(
+      return renderSavings(
         mockApiClient({
           getSavingsKpis: vi.fn().mockResolvedValue(kpisOk(kpiSummary())),
           getSavingsOpportunities: vi.fn().mockResolvedValue(opportunitiesOk(items)),
@@ -266,7 +266,7 @@ describe("HomeRoute", () => {
       expect(link).toHaveAttribute("href", "/quotes");
     });
 
-    it("this session's own tracked renewal actions render alongside the real opportunity list (council 'action creates an opportunity visible on Home')", async () => {
+    it("this session's own tracked renewal actions render alongside the real opportunity list (council 'action creates an opportunity visible on Savings')", async () => {
       rememberRenewalAction({
         contractId: "contract-tracked",
         supplierId: "supplier-tracked",
