@@ -256,10 +256,11 @@ jobs:
             "backend/src/Contigo.Renewals/Migrations/Scripts/renewals.sql"
             "backend/src/Contigo.Savings/Migrations/Scripts/savings.sql"
             "backend/src/Contigo.Quotes/Migrations/Scripts/quotes.sql"
+            "backend/src/Contigo.Chat/Migrations/Scripts/chat.sql"
           )
           for script in "${SCRIPTS[@]}"; do
             if [ ! -f "$script" ]; then
-              echo "::error::$script is missing -- ADR-021 requires all six module scripts to be checked in"
+              echo "::error::$script is missing -- ADR-021 requires all seven module scripts to be checked in"
               exit 1
             fi
             echo "::group::psql -f $script"
@@ -285,6 +286,7 @@ jobs:
             "backend/src/Contigo.Renewals/Migrations/Scripts/renewals.sql"
             "backend/src/Contigo.Savings/Migrations/Scripts/savings.sql"
             "backend/src/Contigo.Quotes/Migrations/Scripts/quotes.sql"
+            "backend/src/Contigo.Chat/Migrations/Scripts/chat.sql"
           )
           echo "::group::tables in contigo_${TARGET_ENVIRONMENT}"
           psql -Atqc "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name;"

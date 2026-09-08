@@ -1,5 +1,8 @@
 using Contigo.Chat.Application;
+using Contigo.Chat.Application.Conversations;
 using Contigo.SharedKernel;
+using Contigo.SharedKernel.Tenancy;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -31,10 +34,28 @@ namespace Contigo.Chat.Infrastructure;
 /// are registered the same way for one uniform per-request/job lifetime across the module — the
 /// same choice <c>Contigo.Documents.Contracts.Infrastructure.ServiceCollectionExtensions
 /// .AddDocumentsContractsModule</c> already makes for every one of its own services.
+///
+/// Task E13/F05/US01/T01 (story us-01-conversations, AC-4) adds the optional
+/// <paramref name="chatConnectionString"/> the overload below takes: called with no argument
+/// (every existing caller — unit tests, and this module's own DI-shape test
+/// <c>ServiceCollectionExtensionsTests</c>), <see cref="AddChatModule"/> registers exactly what
+/// it always has, unchanged, so nothing that already resolves
+/// <see cref="AskContigoQueryRouter"/>/<see cref="RagAnswerService"/> without a database breaks.
+/// Called with a connection string, it additionally registers <c>Infrastructure.ChatDbContext</c>
+/// and <c>Application.Conversations.ConversationService</c> — the same "a module's own
+/// composition method also wires its own DbContext" shape
+/// <see cref="Contigo.Documents.Contracts.Infrastructure.ServiceCollectionExtensions.AddDocumentsContractsModule"/>/
+/// <see cref="Contigo.Audit.Infrastructure.ServiceCollectionExtensions.AddAuditModule"/> already
+/// use, except optional here because — unlike those two modules — this module already has real,
+/// non-database callers (the query router/RAG services above) that must keep resolving with zero
+/// configuration. Task T02 is the first caller that passes one, from `Contigo.Api.Program`
+/// (`ConnectionStrings:Chat`, this story's own council-decided key) — this task deliberately does
+/// not touch `Program.cs` itself (see the task's own "Do not touch" list).
 /// </summary>
 public static class ServiceCollectionExtensions
 {
-    public static IServiceCollection AddChatModule(this IServiceCollection services)
+    public static IServiceCollection AddChatModule(
+        this IServiceCollection services, string? chatConnectionString = null)
     {
         // TryAdd: any module (or the host) may call this defensively; only the first registration
         // wins, and every module shares the same "now" (IClock) — mirrors
@@ -48,6 +69,22 @@ public static class ServiceCollectionExtensions
         services.AddScoped<DeterministicQueryHandler>();
         services.AddScoped<AbstainGuard>();
         services.AddScoped<RagAnswerService>();
+
+        if (chatConnectionString is not null)
+        {
+            // TryAdd: same defensive convention as IClock above; every module shares the same
+            // ambient tenant claim (ADR-009).
+            services.TryAddSingleton<ITenantContext, TenantContext>();
+
+            services.AddDbContext<ChatDbContext>(
+                (sp, options) => ChatDbContextOptions.Configure(
+                    options, chatConnectionString, sp.GetRequiredService<ITenantContext>()));
+
+            // Scoped: shares the request/job's own DbContext instance (also Scoped, via
+            // AddDbContext above) rather than a second, independently-tracked context — same
+            // reason every DbContext-backed service in this codebase is Scoped, not Singleton.
+            services.AddScoped<ConversationService>();
+        }
 
         return services;
     }
