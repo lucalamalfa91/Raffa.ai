@@ -148,6 +148,10 @@ jobs:
       # Bind the registry on the app before rolling the image so a promote
       # to demo does not 401 if HCP applied the role but the registry
       # attachment is not yet on the revision.
+      # `az containerapp registry set` is a preview ARM write; Azure
+      # InternalServerError-s on an already-attached registry (run
+      # 34193057540, correlation 8fd7ffc4-bce2-4442-b9fb-3cb98fc5faf6).
+      # Skip when the binding is already present; retry 5xx otherwise.
       - name: Attach ACR pull identity to Container Apps
         run: |
           set -euo pipefail
@@ -159,11 +163,31 @@ jobs:
             exit 1
           fi
           for APP in api worker; do
-            az containerapp registry set \
-              --name "ca-contigo-${TARGET_ENVIRONMENT}-${APP}" \
+            APP_NAME="ca-contigo-${TARGET_ENVIRONMENT}-${APP}"
+            EXISTING_IDENTITY=$(az containerapp show \
+              --name "$APP_NAME" \
+              --resource-group "$RESOURCE_GROUP" \
+              --query "properties.configuration.registries[?server=='${ACR_LOGIN_SERVER}'].identity | [0]" \
+              -o tsv || true)
+            if [[ -n "$EXISTING_IDENTITY" && "${EXISTING_IDENTITY,,}" == "${UAI_ID,,}" ]]; then
+              echo "$APP_NAME already pulls $ACR_LOGIN_SERVER with the workload identity — skip registry set."
+              continue
+            fi
+            ATTEMPT=1
+            MAX=5
+            until az containerapp registry set \
+              --name "$APP_NAME" \
               --resource-group "$RESOURCE_GROUP" \
               --server "$ACR_LOGIN_SERVER" \
-              --identity "$UAI_ID"
+              --identity "$UAI_ID"; do
+              if [[ "$ATTEMPT" -ge "$MAX" ]]; then
+                echo "::error::az containerapp registry set failed for $APP_NAME after $MAX attempts. Re-run this job."
+                exit 1
+              fi
+              echo "registry set failed for $APP_NAME (attempt ${ATTEMPT}/${MAX}); retrying..."
+              sleep $((ATTEMPT * 8))
+              ATTEMPT=$((ATTEMPT + 1))
+            done
           done
 
       # Container App names are fixed by infra/modules/containerapps
