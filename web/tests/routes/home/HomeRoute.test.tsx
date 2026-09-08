@@ -17,6 +17,7 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
   return {
     getHealth: vi.fn(),
     createWorkspace: vi.fn(),
+    inviteWorkspaceMember: vi.fn(),
     uploadDocument: vi.fn(),
     getDocument: vi.fn(),
     getPortfolio: vi.fn(),
