@@ -22,15 +22,15 @@ backend/
     Contigo.Identity.Workspace/  # workspace, membership, roles (live)
     Contigo.Documents.Contracts/ # upload, metadata, hybrid OCR pre-pass, staged extraction, contract correction (live)
     Contigo.Audit/               # append-only audit events (live)
-    Contigo.AiGateway/           # IAiGateway (classify/extract/embed/answer/ocr) + FixtureAiGateway + LoggingAiGateway decorator, wired via DI — no Foundry/Document Intelligence SDK yet
+    Contigo.AiGateway/           # IAiGateway (classify/extract/embed/answer/ocr): FixtureAiGateway + live FoundryAiGateway (Azure OpenAI-compatible + Document Intelligence, task E13/F01/US01/T02), always behind the LoggingAiGateway decorator
     Contigo.Documents.Contracts/ # upload, metadata, extraction jobs, staged extraction pipeline,
                                   # portfolio list, Contract 360, contract correction (live)
     Contigo.Audit/               # append-only audit events (live)
-    Contigo.AiGateway/           # IAiGateway + FixtureAiGateway (deterministic) behind the
-                                  # LoggingAiGateway decorator, wired via DI — no Foundry SDK yet
+    Contigo.AiGateway/           # IAiGateway + FixtureAiGateway/FoundryAiGateway behind the
+                                  # LoggingAiGateway decorator, always wired via DI (task E13/F01/US01/T02)
     Contigo.Documents.Contracts/ # upload, metadata, staged extraction, portfolio, contract correction + history (live)
     Contigo.Audit/               # append-only audit events (live)
-    Contigo.AiGateway/           # IAiGateway + FixtureAiGateway (wired via DI) + LoggingAiGateway decorator — no Foundry SDK yet
+    Contigo.AiGateway/           # IAiGateway + FixtureAiGateway/FoundryAiGateway (wired via DI) + LoggingAiGateway decorator (task E13/F01/US01/T02)
     Contigo.Benchmark/           # IBenchmarkService.GetBenchmarkAsync + normalized Contracts DTOs (E04/F01/US01/T01); BenchmarkAdapterRegistry + AddBenchmarkModule (E04/F01/US01/T02); FixtureBenchmarkAdapter registered as the default IBenchmarkProviderAdapter, incl. statistical weak-comparable abstain (E04/F01/US02/T01+T02) — no host calls AddBenchmarkModule yet (R3)
     Contigo.Suppliers.Products/  # scaffold (R1+)
     Contigo.Renewals/            # renewal engine + opportunity + explainable priority score + threshold scheduler + dashboard pipeline + action (R2; live) — see "Renewal Intelligence" below
@@ -247,6 +247,58 @@ is retrievable for Ask Contigo immediately after it finishes processing. A
 tenant that has never uploaded anything (or whose upload is still
 processing/failed) still honestly returns "cannot determine" — there is
 simply nothing indexed for it yet, not a bug.
+
+**Task E13/F01/US01/T02 (foundry-gateway)** adds the live half of this
+module: `Contigo.AiGateway.Foundry.FoundryAiGateway` implements all five
+ADR-004/ADR-017 roles — `classify`/`extract`/`embed`/`answer` over an Azure
+OpenAI-compatible chat-completions/embeddings surface, `ocr` over Azure AI
+Document Intelligence's `documentModels/{model}:analyze` long-running
+operation — against the one shared `AiGateway:Endpoint` (ADR-008's single
+Cognitive Services account). `AddAiGatewayModule` now picks the
+implementation at first resolution: `FoundryAiGateway` when
+`AiGateway:Endpoint` is configured (Container Apps inject it on `dev`/
+`demo`, see `infra/README.md` "AI Gateway / Foundry + Document
+Intelligence"), `FixtureAiGateway` otherwise (local/CI, unchanged) — and
+**always** wraps whichever one behind `Logging.LoggingAiGateway` (ADR-004/
+ADR-011 "always log-wrapped"), which this module shipped as a class since
+task E02/F01/US01/T02 but never actually wired into DI until now.
+`IAiGateway` is therefore resolved Scoped, not Singleton, from this task
+on — `LoggingAiGateway` depends on the Scoped `IAuditWriter`
+(`Contigo.Audit`'s own registration), and every current `IAiGateway`
+consumer (`DocumentProcessingPipeline`, `StagedExtractionService`,
+`EmbeddingRetrievalService`, `HybridDocumentParsingService`,
+`QuoteExtractionPipeline`, `RagAnswerService`) was already Scoped, so this
+is a captive-dependency fix, not a behaviour change for any of them; see
+`ServiceCollectionExtensions`'s own doc comment for the full reasoning.
+Auth is `Azure.Identity.DefaultAzureCredential` (managed identity on
+Container Apps, developer sign-in locally) against the
+`https://cognitiveservices.azure.com/.default` scope — never a key in
+config — acquired through one `FoundryTokenProvider` singleton and cached
+until near expiry, not re-fetched per call. The `answer` role's request
+body (`Foundry.Wire.ChatCompletionRequest`) has no `tools`/`tool_choice`/
+`data_sources` property at all, so ADR-024's "no tools, no grounding"
+compliance is a type-system guarantee rather than a remembered omission —
+proved on a fake `HttpMessageHandler` in
+`Contigo.AiGateway.Tests.Foundry.FoundryAnswerClientTests`, the same
+fake-handler convention every `Foundry.*ClientTests` class uses so no unit
+test ever calls live Azure. `AiAnswerRequest`/`AiAnswerResult` gained
+ADR-024's structured-answer fields (`SystemPrompt`/`PackJson` on the
+request; `AnswerMarkdown`/`CitationKeys`/`ActionKeys`/`AbstainReason`/
+`FollowUps` on the result), all optional/nullable additions — the existing
+`Answer`/`Citations` fields and every pre-existing call site
+(`RagAnswerService`, `AbstainGuard`, and their own tests) keep compiling
+and behaving unchanged; a later task ("F06") replaces
+`RagAnswerService`'s own evidence-chunk-concat with the versioned persona
+prompt + context pack ADR-024 describes. New root-level `AiGateway`
+configuration keys (siblings of `AiGateway:Models`/`AiGateway:Ocr`, bound
+by `Configuration.AiGatewayFoundryOptions`): `AiGateway:Endpoint`,
+`AiGateway:ProjectName`, `AiGateway:DocumentIntelligenceConnection`
+(non-secret — see `infra/README.md`), and `AiGateway:AnswerTemperature`
+(default 0.2, ADR-024's own ceiling; a higher configured value is clamped,
+never raised). `Contigo.AiGateway.Tests.SdkAllowListTests` proves the new
+`Azure.Core`/`Azure.Identity` package references stay inside
+`Contigo.AiGateway.csproj` — no other project in the solution may
+reference `Azure.AI.*`/`Azure.Identity` (AC-3).
 
 ## Benchmark Service
 
