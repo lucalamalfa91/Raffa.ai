@@ -33,6 +33,8 @@ backend/
     Contigo.AiGateway/           # IAiGateway + FixtureAiGateway (wired via DI) + LoggingAiGateway decorator — no Foundry SDK yet
     Contigo.Benchmark/           # IBenchmarkService.GetBenchmarkAsync + normalized Contracts DTOs (E04/F01/US01/T01); BenchmarkAdapterRegistry + AddBenchmarkModule (E04/F01/US01/T02); FixtureBenchmarkAdapter registered as the default IBenchmarkProviderAdapter, incl. statistical weak-comparable abstain (E04/F01/US02/T01+T02) — no host calls AddBenchmarkModule yet (R3)
     Contigo.Suppliers.Products/  # scaffold (R1+)
+    Contigo.Market/               # scaffold (E13/F01/US01/T01, ADR-024) — feed/ingestion/index/benchmark-projection; AddMarketModule() registers nothing yet
+    Contigo.Insights/             # scaffold (E13/F01/US01/T01, ADR-024) — pure calculators fed by DTOs; AddInsightsModule() registers nothing yet
     Contigo.Renewals/            # renewal engine + opportunity + explainable priority score + threshold scheduler + dashboard pipeline + action (R2; live) — see "Renewal Intelligence" below
     Contigo.Savings/             # price normalization + percentile/target/savings-range calculator (R3; task E04/F02/US01/T01) + persisted, trackable SavingsOpportunity + GET/PATCH /api/savings (task E04/F02/US02/T01) — see "Savings Intelligence" below
     Contigo.Quotes/              # quote upload + hybrid-OCR-reused, schema-constrained line-item extraction (evidence + confidence; deterministic pricing) + POST /api/quotes (R4; task E05/F01/US01/T01) + SKU/edition normalization against a per-tenant canonical mapping, unmatched-SKU flagging (task E05/F01/US02/T01) + benchmark matching/above-in-line-below market assessment + GET /api/quotes/{id}/assessment, AddBenchmarkModule now wired (task E05/F02/US01/T01) + deterministic recommended target range/potential saving on that same endpoint (task E05/F02/US01/T02) + deterministic negotiation strategy (opening target/acceptable range/walk-away threshold + seven canonical levers with rationale, NegotiationStrategyService, no HTTP endpoint yet) (task E05/F03/US01/T01) + NegotiationOutcome capture (original/target/final/deterministic saving+discount/duration/levers used) + POST /api/negotiations/outcomes, append-only/audit-tracked (task E05/F03/US02/T01) — see "Quote Check" / "Market Assessment" / "Negotiation Strategy" / "Negotiation Outcome" below
@@ -42,6 +44,23 @@ backend/
 
 Hosts are composition roots only: they register modules via `AddXxxModule`
 and map HTTP / hosted services. Business logic lives in the libraries.
+
+**V2 scaffold (task E13/F01/US01/T01, ADR-024):** `Contigo.Market` and
+`Contigo.Insights` are solution-only scaffolds — a class library, an
+`AddMarketModule()` / `AddInsightsModule()` stub that registers nothing
+yet, and a matching `Contigo.Market.Tests` / `Contigo.Insights.Tests`
+project with one placeholder test — for the epic-13 tasks that add the
+mock market feed / ingestion / shared `market_embedding` index / benchmark
+projection (`Contigo.Market`) and the deterministic strategy/criticality
+calculators (`Contigo.Insights`) to fill in without also touching
+`Contigo.slnx` or the architecture allow-list. `Contigo.Suppliers.Products.Tests`
+and `Contigo.AiEval` (references `Contigo.Chat`, `Contigo.AiGateway`,
+`Contigo.SharedKernel` — a future golden-set eval harness, story
+us-01-v2-foundation) are this same task's other two new, still-empty test
+projects. `Contigo.ArchitectureTests.DependencyDirectionTests` now allow-
+lists `Contigo.Market` → `[SharedKernel, AiGateway, Benchmark]` and
+`Contigo.Insights` → `[SharedKernel, Benchmark]` and covers both in its
+domain-module direction/provider-SDK theories.
 
 ## Commands
 
@@ -1706,7 +1725,7 @@ Allowed Contigo project references (enforced by
 
 | Module | May reference |
 |--------|----------------|
-| Domain modules | `SharedKernel` only, plus `AiGateway` (Documents, Chat) or `Benchmark` (Renewals, Savings, Quotes) |
+| Domain modules | `SharedKernel` only, plus `AiGateway` (Documents, Chat, Market) or `Benchmark` (Renewals, Savings, Quotes, Insights); `Market` is the one module allowed both `AiGateway` and `Benchmark` |
 | `AiGateway` / `Benchmark` implementations | provider SDKs — when they exist; domain modules see the interface only |
 | `Contigo.Api` / `Contigo.Worker` | all modules (composition roots). Azure Blob SDK is host-only |
 

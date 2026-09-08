@@ -25,6 +25,11 @@ public class DependencyDirectionTests
         "Contigo.Quotes",
         "Contigo.Chat",
         "Contigo.Audit",
+        // ADR-024 module-map delta (task E13/F01/US01/T01, v2-scaffold): Market and Insights
+        // join the domain-module set so this theory's dependency-direction / provider-SDK
+        // checks cover them too.
+        "Contigo.Market",
+        "Contigo.Insights",
     ];
 
     /// <summary>All Contigo project names (used to filter Contigo-internal references).</summary>
@@ -43,6 +48,8 @@ public class DependencyDirectionTests
         "Contigo.Audit",
         "Contigo.Api",
         "Contigo.Worker",
+        "Contigo.Market",
+        "Contigo.Insights",
     ];
 
     /// <summary>
@@ -60,6 +67,9 @@ public class DependencyDirectionTests
         ["Contigo.Quotes"]               = ["Contigo.SharedKernel", "Contigo.Benchmark"],
         ["Contigo.Chat"]                 = ["Contigo.SharedKernel", "Contigo.AiGateway"],
         ["Contigo.Audit"]                = ["Contigo.SharedKernel"],
+        // ADR-024 module-map delta (task E13/F01/US01/T01, v2-scaffold).
+        ["Contigo.Market"]               = ["Contigo.SharedKernel", "Contigo.AiGateway", "Contigo.Benchmark"],
+        ["Contigo.Insights"]             = ["Contigo.SharedKernel", "Contigo.Benchmark"],
     };
 
     /// <summary>Provider SDK prefixes that domain modules must never reference directly.</summary>

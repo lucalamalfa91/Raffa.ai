@@ -7,6 +7,8 @@
     <Project Path="src/Contigo.Chat/Contigo.Chat.csproj" />
     <Project Path="src/Contigo.Documents.Contracts/Contigo.Documents.Contracts.csproj" />
     <Project Path="src/Contigo.Identity.Workspace/Contigo.Identity.Workspace.csproj" />
+    <Project Path="src/Contigo.Insights/Contigo.Insights.csproj" />
+    <Project Path="src/Contigo.Market/Contigo.Market.csproj" />
     <Project Path="src/Contigo.Quotes/Contigo.Quotes.csproj" />
     <Project Path="src/Contigo.Renewals/Contigo.Renewals.csproj" />
     <Project Path="src/Contigo.Savings/Contigo.Savings.csproj" />
@@ -15,6 +17,7 @@
     <Project Path="src/Contigo.Worker/Contigo.Worker.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Contigo.AiEval/Contigo.AiEval.csproj" />
     <Project Path="tests/Contigo.AiGateway.Tests/Contigo.AiGateway.Tests.csproj" />
     <Project Path="tests/Contigo.Api.Tests/Contigo.Api.Tests.csproj" />
     <Project Path="tests/Contigo.ArchitectureTests/Contigo.ArchitectureTests.csproj" />
@@ -23,10 +26,13 @@
     <Project Path="tests/Contigo.Chat.Tests/Contigo.Chat.Tests.csproj" />
     <Project Path="tests/Contigo.Documents.Contracts.Tests/Contigo.Documents.Contracts.Tests.csproj" />
     <Project Path="tests/Contigo.Identity.Workspace.Tests/Contigo.Identity.Workspace.Tests.csproj" />
+    <Project Path="tests/Contigo.Insights.Tests/Contigo.Insights.Tests.csproj" />
     <Project Path="tests/Contigo.IntegrationTests/Contigo.IntegrationTests.csproj" />
+    <Project Path="tests/Contigo.Market.Tests/Contigo.Market.Tests.csproj" />
     <Project Path="tests/Contigo.Quotes.Tests/Contigo.Quotes.Tests.csproj" />
     <Project Path="tests/Contigo.Renewals.Tests/Contigo.Renewals.Tests.csproj" />
     <Project Path="tests/Contigo.Savings.Tests/Contigo.Savings.Tests.csproj" />
+    <Project Path="tests/Contigo.Suppliers.Products.Tests/Contigo.Suppliers.Products.Tests.csproj" />
     <Project Path="tests/Contigo.Tenancy/Contigo.Tenancy.csproj" />
     <Project Path="tests/Contigo.Worker.Tests/Contigo.Worker.Tests.csproj" />
   </Folder>

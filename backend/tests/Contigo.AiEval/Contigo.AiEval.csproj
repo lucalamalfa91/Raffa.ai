@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Task E13/F01/US01/T01 (v2-scaffold) scopes this project to references only; the golden-
+         set evaluation harness itself (>= 40 questions, 0 numeric-guard interventions, gap
+         G-GOLDEN-SET, reports/audit/ask-v2-gaps.md) is task F06/T02's own scope. -->
+    <ProjectReference Include="..\..\src\Contigo.Chat\Contigo.Chat.csproj" />
+    <ProjectReference Include="..\..\src\Contigo.AiGateway\Contigo.AiGateway.csproj" />
+    <ProjectReference Include="..\..\src\Contigo.SharedKernel\Contigo.SharedKernel.csproj" />
+  </ItemGroup>
+
+</Project>
