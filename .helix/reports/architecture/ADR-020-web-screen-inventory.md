@@ -131,3 +131,19 @@ citation card with first-page preview + at least one in-app action. The red
 “Cannot determine reliably” block is not the only UX for greetings or
 off-domain questions — those are warm redirects. True insufficient-evidence
 turns still abstain (spec §10.4). See ADR-023.
+
+## Amendment (2026-09-08, epic-13 / ADR-024)
+
+Screen inventory V2 is `inputs/design/prototypes/contigo-v2/screens-v2.md`
+(authored from `Contigo V2 Prototype.html`): 1 Sign-in → Ask, 2 Ask Contigo
+(home; off / new chat / conversation / abstain / redirect / refusal /
+resumed), 3 Documents (onboarding, multi-file, **Not added**, attention
+filter, real stages, validated hook), 4 Review as a state of Documents,
+5 Contract 360 (citation landing with highlighted clause; answers band and
+tracker as the P2 follow-up), 6 Portfolio, 7 Renewals, 8 Savings
+(`/savings`), 9 Quote check, 10 Workspace & members. Every §16 row and §20
+step still resolves to a screen (traceability table in `screens-v2.md`).
+The reply body on screen 2 is the ADR-024 contract: markdown, human
+citation cards with corpus badge and preview, in-app actions; the red
+abstain block only for true insufficiency. This footer supersedes the
+epic-12 amendment above. See ADR-024.

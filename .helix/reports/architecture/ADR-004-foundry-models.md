@@ -80,3 +80,17 @@ benchmark and negotiation numbers rather than invent them; (5) abstain or
 redirect on off-domain, greeting, legal, and insufficient-evidence turns.
 Existing documents must be re-OCR’d / re-embedded so the embed/answer path
 does not retrieve `%PDF-1.4`. See ADR-023.
+
+## Amendment (2026-09-08, epic-13 / ADR-024)
+
+`FoundryAiGateway` implements the five roles (`ocr` on Document Intelligence,
+`classify`, `extract`, `embed`, `answer`), registered when
+`AiGateway:Endpoint` is set, fixture otherwise, always wrapped by
+`LoggingAiGateway`. `classify` is reused for the **document admission gate**
+and for the Ask **domain gate** with fixed label sets. `answer` returns
+**structured JSON** (`canDetermine`, `answerMarkdown`, `citationKeys`,
+`actionKeys`, `abstainReason`, `followUps`) from a versioned persona prompt,
+temperature <= 0.2, with **no tools, no web grounding, no browsing** on the
+deployment or the request (compliance test on the fake HTTP handler).
+Per-tenant daily token and OCR-page budgets fail visibly. This footer
+supersedes the epic-12 amendment above. See ADR-024.

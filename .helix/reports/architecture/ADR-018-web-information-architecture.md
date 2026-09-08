@@ -146,3 +146,19 @@ cards (supplier / contract title, never raw `Document:<guid>`), contract
 preview, and deep links the API supplies as `{ label, href }`. Hide engineer
 chrome (“Structured query…”, “Clause retrieval…”). Off-domain / greeting turns
 stay on `/ask` with a warm redirect into this portfolio. See ADR-023.
+
+## Amendment (2026-09-08, epic-13 / ADR-024)
+
+The V2 IA replaces the Day-1 sitemap. Pixel and behaviour reference:
+`inputs/design/prototypes/Contigo V2 Prototype.html`, unpacked at
+`inputs/design/prototypes/contigo-v2/` (`ia-v2.md` is the canonical route
+map). Sign-in lands on **`/ask`** (`/` redirects); `/ask/:conversationId`
+resumes a chat. **Two-tier rail**: Ask Contigo (⌘K, last 5 conversations,
+"+ New chat") and Documents; "From your contracts": Portfolio, Renewals,
+Quote check, greyed until the first validated contract. **No Home item**;
+Savings lives at `/savings`, reached from actions, Renewals and Contract 360.
+Review is a **state of Documents** (`/documents?review=:id`). The global Ask
+bar always opens a new chat. Roles: Admin and Procurement upload; only Admin
+deletes and manages members. Divergences from the prototype follow
+`inputs/requirements.md` and are listed in `ia-v2.md`. This footer
+supersedes the epic-12 amendment above. See ADR-024.

@@ -251,7 +251,7 @@
     },
     {
       "id": "e12",
-      "title": "E12 Ask Contigo savings copilot",
+      "title": "E12 Ask Contigo savings copilot (superseded by e13; never launched)",
       "previous": "e1011",
       "epic": "E12",
       "integration": false,
@@ -269,7 +269,38 @@
         "E12/F05/US01"
       ],
       "tokens": 8200000,
-      "tasks": 5
+      "tasks": 5,
+      "superseded_by": "e13"
+    },
+    {
+      "id": "e13",
+      "title": "E13 Ask Contigo V2 (documents, conversations, market feed, strategies, system-aware)",
+      "previous": "e1011",
+      "epic": "E13",
+      "integration": false,
+      "checks": [
+        "github_auth",
+        "github_org",
+        "github_repos",
+        "hitl_previous"
+      ],
+      "stories": [
+        "E13/F01/US01",
+        "E13/F02/US01",
+        "E13/F03/US01",
+        "E13/F04/US01",
+        "E13/F05/US01",
+        "E13/F06/US01",
+        "E13/F07/US01",
+        "E13/F08/US01",
+        "E13/F09/US01",
+        "E13/F10/US01",
+        "E13/F11/US01"
+      ],
+      "tokens": 30400000,
+      "tasks": 20,
+      "design_oracle": "inputs/design/prototypes/Contigo V2 Prototype.html",
+      "requirements": "inputs/requirements.md"
     }
   ]
 }

@@ -76,3 +76,15 @@ ADR-001, 004, 011, 018, 020 keep their original Decision and gain an
 | ADR | Topic | Seat | One-line decision |
 | --- | --- | --- | --- |
 | ADR-023 | Ask Contigo savings copilot | product-owner + software-architect | Foundry-hosted copilot over tenant RAG + `IBenchmarkService` (fixture now); narrates P25–P75 / negotiation numbers; no legal advice; rich `/ask` reply. |
+
+## Ask Contigo V2 (wave 13 / e13, appended 2026-09-08)
+
+ADR-001…022 keep their original Decision; ADR-001, 004, 011, 018, 020 gain
+an **epic-13 amendment footer** (superseding their epic-12 footers).
+**ADR-023 is superseded by ADR-024** (HITL 2026-09-08, `inputs/requirements.md`
+§0 D4; epic-12 / e12 never launched). New accepted ADR from
+`contigo-ask-process.yaml` (Ask V2):
+
+| ADR | Topic | Seat | One-line decision |
+| --- | --- | --- | --- |
+| ADR-024 | Ask Contigo V2 | product-owner + software-architect + security-architect + ux-ui-designer | Documents-only intake with an admission gate before persistence (non-contracts refused, never stored); server-side conversations under RLS; three sources of truth (validated contracts, market-intelligence feed with its own index — mock now, API later —, capability catalog); structured no-tools `answer` role with grounding + numeric guards; deterministic strategies (contract vs market, renewal strategy, portfolio criticality); V2 IA with `inputs/design/prototypes/Contigo V2 Prototype.html` (unpacked `contigo-v2/`) as the pixel reference. |

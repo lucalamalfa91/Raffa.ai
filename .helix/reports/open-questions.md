@@ -74,3 +74,17 @@ Mark a wave-spec task `status: gated` only when **no** assumption is defensible.
   every future migration in this module; us-03's RLS policies (`CREATE POLICY ... USING
   (tenant_id = ...)`) can rely on the lowercase column names existing as written. Ref: ADR-003,
   ADR-009, `backend/src/Contigo.Documents.Contracts/Infrastructure/DocumentsContractsDbContextOptions.cs`.
+
+## Ask V2 lane (epic-13 / ADR-024, 2026-09-08)
+
+Source: `inputs/requirements.md` §13. Every entry has an assumption in force; none gates a task.
+
+- **OQ-askv2-001** — The mock market-intelligence record shape (`MarketDeal`, R-MKT-01) is Contigo's own normalized contract; the third-party API will be mapped onto it. **Status**: `assumed-confirmed`. **Assumption in force**: build `IMarketIntelligenceProvider` around `MarketDeal`; the live client maps into it. Ref: ADR-024.
+- **OQ-askv2-002** — Admission threshold (0.6) and minimum readable text (200 chars) are right for the golden set. **Status**: `assumed-confirmed`. **Assumption in force**: both are configuration (`Documents:AdmissionThreshold`, `Documents:MinReadableChars`), tuned on `Contigo.AiEval`. Ref: R-DOC-03.
+- **OQ-askv2-003** — Savings KPIs / opportunities are not a rail item in V2. **Status**: `assumed-confirmed`. **Assumption in force**: route `/savings` (renamed from Home), reached from Ask actions, Renewals and Contract 360. Ref: R-WEB-02, `contigo-v2/ia-v2.md`.
+- **OQ-askv2-004** — Conversation retention. **Status**: `assumed-confirmed`. **Assumption in force**: unlimited in V2; deletion by the owner only. Ref: R-CONV-01.
+- **OQ-askv2-005** — Per-user identity for conversations under the ADR-022 header posture. **Status**: `assumed-confirmed`. **Assumption in force**: `X-User-Id` = MSAL account username, non-authoritative; the task that lands the API JWT (ADR-010) replaces it with the token subject. Ref: R-CONV-03.
+- **OQ-askv2-006** — Answer language. **Status**: `assumed-confirmed`. **Assumption in force**: follows the question's language; fixtures and golden set cover Italian and English. Ref: ADR-024.
+- **OQ-askv2-007** — Upload processing stays synchronous in the request. **Status**: `assumed-confirmed`. **Assumption in force**: bounded by 50 MB / file and the OCR page budget; worker-queued upload is a later task. Ref: R-DOC-01, A7.
+- **OQ-askv2-008** — A Quote admitted in Documents. **Status**: `assumed-confirmed`. **Assumption in force**: no automatic `Quote` record; the result card and Ask route to Quote check (`/quotes`) where the user uploads the quote. Ref: R-DOC-03 AC-4.
+- **OQ-askv2-009** — Live Foundry on `dev` / `demo`. **Status**: `assumed-confirmed`. **Assumption in force**: acceptance A2–A8 runs against the Foundry-backed gateway (Container Apps inject `AiGateway__*`); CI proves the same paths on the fixture gateway. Ref: R-AI-01.

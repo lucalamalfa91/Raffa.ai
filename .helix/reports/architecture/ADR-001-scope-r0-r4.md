@@ -115,3 +115,15 @@ insurance names such as Allianz) so the copilot has something to narrate.
 A paid Tropic/Vendr (or similar) adapter remains a later implementation of
 `IBenchmarkService` — never a hard dependency of the first `demo`, and never
 a second RAG index of other tenants’ contracts. See ADR-023.
+
+## Amendment (2026-09-08, epic-13 / ADR-024)
+
+The **Internal Dataset** is now the **mock market-intelligence feed**
+(`inputs/requirements.md` R-MKT-01…05): a checked-in, labelled
+*representative* dataset of how companies close contracts (price bands,
+discounts, uplift caps, notice periods, negotiated clauses) behind
+`IMarketIntelligenceProvider`, projected into `IBenchmarkService` rows and a
+shared read-only market index. The paid third-party API stays a later
+provider behind the same seam — never a hard dependency of the first V2
+`demo`, never another tenant's contracts. This footer supersedes the
+epic-12 amendment above. See ADR-024.

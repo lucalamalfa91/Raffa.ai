@@ -33,7 +33,8 @@ Each wave ends with a single-task `us-XX-final-integration` story. R4's integrat
 | epic-09 | schema-apply | 9 | active — decomposed (schema) |
 | epic-10 | demo-readiness | 10 | active — decomposed (readiness residuals) |
 | epic-11 | visual-fidelity | 11 | active — decomposed (visual) |
-| epic-12 | ask-copilot | 12 | active — decomposed (Ask savings copilot) |
+| epic-12 | ask-copilot | 12 | superseded by epic-13 (never launched; ADR-023 → ADR-024) |
+| epic-13 | ask-v2 | 13 | active — decomposed (Ask Contigo V2: Documents intake + admission gate, conversations, market feed, strategies, capability catalog, V2 IA) |
 
 ## ADR → wave coverage
 
