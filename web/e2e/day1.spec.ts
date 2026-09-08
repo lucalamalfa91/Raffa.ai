@@ -25,13 +25,11 @@ import { test, expect, type Locator, type Page } from "@playwright/test";
  * would be a bigger AC-2 failure than a well-named gap. Three of those
  * documented gaps materially shape this spec rather than being incidental:
  *
- * 1. **Invite has no real screen yet.** `src/components/shell/WorkspaceShellApp.tsx`'s
- *    `workspace/members` route still renders `ScaffoldScreen` ("Members table
- *    + invite ships in epic-06/feature-04-workspace-members-ui"); `src/api/client.ts`'s
- *    `ApiClient` interface has no `inviteWorkspaceMember()` method at all —
- *    only a generated schema type, never wrapped. This spec asserts that
- *    honest placeholder instead of scripting an invite flow the build cannot
- *    perform.
+ * 1. **Members list has no GET.** The invite screen is real
+ *    (`ApiClient.inviteWorkspaceMember` → `POST /api/workspaces/{tenantId}/invites`)
+ *    but there is still no list-members endpoint, so the table is this-browser's
+ *    Admin row plus invites sent from this session. This spec drives the real
+ *    invite form.
  * 2. **A freshly created workspace cannot reach fixture-seeded content.**
  *    `src/routes/signin/workspaceStore.ts`'s own header comment: there is no
  *    backend endpoint that lists the workspaces a signed-in identity belongs
@@ -133,23 +131,21 @@ test.describe("§20 Day-1 path — browser walk on demo", () => {
       );
       await expect(page.locator(".shell-rail-workspace-name")).toHaveText(workspaceName, { timeout: 30_000 });
 
-      await test.step(
-        "Invite a Procurement user (AC-1 step 2) — real UI does not exist yet; honest gap, not a fabricated flow",
-        async () => {
-          await page.goto("/workspace/members");
-          await expect(page.getByRole("heading", { name: /workspace & members/i })).toBeVisible();
-          await expect(
-            page.getByText(/members table \+ invite ships in epic-06\/feature-04-workspace-members-ui/i),
-          ).toBeVisible();
-          test.info().annotations.push({
-            type: "known-gap",
-            description:
-              "No real invite screen or ApiClient.inviteWorkspaceMember() exists yet " +
-              "(src/components/shell/WorkspaceShellApp.tsx's own route note; epic-06/feature-04-workspace-" +
-              "members-ui). Outside this task's file scope (web/e2e/day1.spec.ts) to close.",
-          });
-        },
-      );
+      await test.step("Invite a Procurement user (AC-1 step 2)", async () => {
+        await page.goto("/workspace/members");
+        await expect(page.getByRole("heading", { name: /workspace & members/i })).toBeVisible();
+        await expect(page.getByRole("button", { name: /send invitation/i })).toBeVisible();
+
+        const at = ENTRA_EMAIL.lastIndexOf("@");
+        const domain = at > 0 ? ENTRA_EMAIL.slice(at + 1) : "";
+        expect(domain, "signed-in account must have an email domain for the invite form").not.toBe("");
+        const inviteEmail = `e2e.procurement.${Date.now()}@${domain}`;
+
+        await page.getByLabel("Email").fill(inviteEmail);
+        await page.getByRole("button", { name: /send invitation/i }).click();
+        await expect(page.getByText(inviteEmail)).toBeVisible();
+        await expect(page.getByText("Invited")).toBeVisible();
+      });
 
       const uploadOutcome: UploadOutcome = await test.step("Upload a contract (AC-1 step 3)", () =>
         uploadSampleDocument(page));

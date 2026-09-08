@@ -61,6 +61,32 @@ export interface CreateWorkspaceResult {
   error: string | null;
 }
 
+// Task E06/F04/US01/T01 (workspace-members-invite): `inviteWorkspaceMember`, wrapping
+// `POST /api/workspaces/{tenantId}/invites`. The 201 body is anchored to the generated
+// `paths["/api/workspaces/{tenantId}/invites"]["post"]` type -- not invented. There is still no
+// `GET /api/workspaces/{id}/members` (see src/routes/signin/workspaceStore.ts); the members table
+// therefore seeds the current Admin locally and appends each successful invite from this call.
+type InviteWorkspaceMemberResponses = paths["/api/workspaces/{tenantId}/invites"]["post"]["responses"];
+export type InvitedMemberBody = InviteWorkspaceMemberResponses[201]["content"]["application/json"];
+export type InviteWorkspaceRole = InvitedMemberBody["role"];
+
+/** `POST /api/workspaces/{tenantId}/invites` request body. Hand-written -- see this file's header comment for why (the generator does not parse `requestBody`). */
+export interface InviteWorkspaceMemberRequest {
+  email: string;
+  role: InviteWorkspaceRole;
+}
+
+export interface InviteWorkspaceMemberResult {
+  /** True only on `201 Created`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** The created membership, present only when `ok` is true. */
+  member: InvitedMemberBody | null;
+  /** Plain-language failure reason (400 validation message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
 // Task E06/F05/US01/T01 (document-upload, AC-1/AC-2/AC-3): `uploadDocument`,
 // the client's second write call. `UploadedDocument` is anchored to the
 // generated `paths["/api/documents"]["post"]` 201 body -- not hand-invented
@@ -583,6 +609,17 @@ export interface ApiClient {
    */
   createWorkspace(request: CreateWorkspaceRequest): Promise<CreateWorkspaceResult>;
   /**
+   * Calls `POST /api/workspaces/{tenantId}/invites` (operationId `inviteWorkspaceMember`). The
+   * target tenant comes from the route, not an `X-Tenant-Id` header -- see that operation's own
+   * description in openapi/contigo-api.v1.json. Same never-throws shape as `createWorkspace`: a
+   * 400 (blank email, unrecognised role, duplicate membership) is a normal, expected outcome the
+   * caller renders inline. See src/routes/workspace/members/ for the only caller today.
+   */
+  inviteWorkspaceMember(
+    tenantId: string,
+    request: InviteWorkspaceMemberRequest,
+  ): Promise<InviteWorkspaceMemberResult>;
+  /**
    * Calls `POST /api/documents` (operationId `uploadDocument`) as
    * `multipart/form-data` with a single `file` field -- the exact shape
    * `DocumentUploadEndpointTests.cs` (backend) enforces. `tenantId` is sent
@@ -784,6 +821,43 @@ export function createApiClient(baseUrl: string): ApiClient {
       }
 
       return { ok: false, statusCode: response.status, workspace: null, error };
+    },
+
+    async inviteWorkspaceMember(tenantId, request) {
+      let response: Response;
+      try {
+        response = await fetch(
+          new URL(`/api/workspaces/${encodeURIComponent(tenantId)}/invites`, baseUrl),
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(request),
+            cache: "no-store",
+          },
+        );
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          member: null,
+          error: `Unable to reach ${baseUrl}/api/workspaces/${tenantId}/invites. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 201) {
+        const member = (await response.json()) as InvitedMemberBody;
+        return { ok: true, statusCode: 201, member, error: null };
+      }
+
+      let error: string;
+      try {
+        const errorBody: unknown = await response.json();
+        error = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, member: null, error };
     },
 
     async uploadDocument(tenantId, file) {

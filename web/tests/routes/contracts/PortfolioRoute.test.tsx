@@ -10,6 +10,7 @@ function mockApiClient(getPortfolio: ApiClient["getPortfolio"] = vi.fn()): ApiCl
   return {
     getHealth: vi.fn(),
     createWorkspace: vi.fn(),
+    inviteWorkspaceMember: vi.fn(),
     uploadDocument: vi.fn(),
     getDocument: vi.fn(),
     getPortfolio,

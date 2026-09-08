@@ -27,6 +27,7 @@ function mockApiClient(
   return {
     getHealth: vi.fn(),
     createWorkspace: vi.fn(),
+    inviteWorkspaceMember: vi.fn(),
     uploadDocument,
     getDocument,
     getPortfolio: vi.fn(),

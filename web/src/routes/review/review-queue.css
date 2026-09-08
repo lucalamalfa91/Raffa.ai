@@ -1,0 +1,29 @@
+/**
+ * Review queue landing (route `/review`). Component classes (.table, .tag, .btn, .skeleton,
+ * .empty-state, .error-state, .hint, .screen-kicker/.screen-title, .micro-meta) come from
+ * ../../styles/components.css.
+ */
+
+.review-queue-screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.review-queue-table-wrapper {
+  overflow-x: auto;
+}
+
+.review-queue-table-link {
+  font-weight: var(--weight-body-strong);
+}
+
+.review-queue-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.review-queue-skeleton-row {
+  height: 32px;
+}

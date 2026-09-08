@@ -22,6 +22,7 @@ function mockApiClient(): ApiClient {
   return {
     getHealth: vi.fn(),
     createWorkspace: vi.fn(),
+    inviteWorkspaceMember: vi.fn(),
     uploadDocument: vi.fn(),
     getDocument: vi.fn(),
     getPortfolio: vi
@@ -133,12 +134,20 @@ describe("ShellRoutes", () => {
 
     expect(screen.getByRole("heading", { name: /you don.t manage this workspace/i })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Workspace & members" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /send invitation/i })).not.toBeInTheDocument();
   });
 
-  it("renders the real placeholder screen for an Admin at /workspace/members", () => {
+  it("renders the real members + invite screen for an Admin at /workspace/members", () => {
+    window.sessionStorage.setItem(
+      "contigo.signin.currentWorkspace",
+      JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
+    );
+
     renderShell("admin", "/workspace/members");
 
     expect(screen.getByRole("heading", { name: "Workspace & members" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /send invitation/i })).toBeInTheDocument();
+    expect(screen.queryByText(/members table \+ invite ships in epic-06\/feature-04-workspace-members-ui/i)).not.toBeInTheDocument();
   });
 
   it("redirects an unknown path back to Home", async () => {
@@ -227,5 +236,17 @@ describe("ShellRoutes", () => {
     // tests/routes/home/*.test.tsx.
     expect(await screen.findByText(/no savings opportunities yet/i)).toBeInTheDocument();
     expect(screen.queryByText(/ships in epic-08\/feature-02-savings-ui/i)).not.toBeInTheDocument();
+  });
+
+  it("renders the real Review queue screen instead of a scaffold placeholder", async () => {
+    window.sessionStorage.setItem(
+      "contigo.signin.currentWorkspace",
+      JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
+    );
+
+    renderShell("admin", "/review");
+
+    expect(await screen.findByText(/nothing needs review/i)).toBeInTheDocument();
+    expect(screen.queryByText(/ships in epic-07\/feature-03-review-correction-ui/i)).not.toBeInTheDocument();
   });
 });

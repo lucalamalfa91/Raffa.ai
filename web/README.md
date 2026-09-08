@@ -91,15 +91,15 @@ the web workflow after that apply.
 | `/ask` | Ask Contigo: chat with a route line, numbered citation chips, abstain block. Calls the real `POST /api/chat/query`. See "Ask Contigo" below. | E07/F04/US01/T01 |
 | `/quotes`, `/quotes/:id` | Quote check: this task's own upload form (no id yet) -> 4-step stepper Extract (line table + unmatched-SKU manual mapping + recalculate) -> Assessment (4 numbers, line-level P25/P50/P75 + confidence, provenance card; blocked until every line resolves) -> Target (price ladder, editable target/walk-away) -> Negotiation (outcome capture -> recorded outcome). Calls the real `POST /api/quotes`, `POST /api/quotes/{id}/assessment/recalculate`, `POST /api/negotiations/outcomes`. See "Quote check" below. | E08/F03/US01/T01 |
 | `/` (home) | Home: 6 KPI cells (Annual spend analyzed · Savings identified · Savings realized · Savings in progress · Contracts analyzed · Upcoming renewals) + opportunities table (Opportunity · Type · Current spend · Estimated savings · Confidence · Owner · Status · Realized), rows opening Contract 360 › Benchmark or Quote check; a benchmark-provider-unreachable KPI refresh degrades to the last-known numbers, stale-labelled, rather than blocking the screen. Calls the real `GET /api/savings/kpis`, `GET /api/savings`. See "Home" below. | E08/F02/US01/T01 |
-| `/review`\*, `/workspace/members` | App shell: 224px left rail + global Ask bar + routed content. Both routes in this row still render a `ScaffoldScreen` placeholder today: `/review`'s real "Review queue" list ships in epic-07/feature-03-review-correction-ui (distinct from the already-real `/contracts/:id/review` detail route above); `/workspace/members`'s real members table + invite ships in epic-06/feature-04-workspace-members-ui (see each route's own `note` in `src/components/shell/WorkspaceShellApp.tsx`). | E06/F03/US02/T01 |
+| `/review`\* | Review queue: table of contracts (and this-session uploads) still in needs-review, rows opening `/contracts/:id/review`. Calls the real `GET /api/contracts`. See "Review queue" below. | E06/F04 recovery (landing), E07/F03/US01/T01 (detail) |
+| `/workspace/members` | Members & roles: Member/Role/Status/Last active table + invite pane (email, Admin vs Procurement radios, Send). Calls the real `POST /api/workspaces/{tenantId}/invites`. Non-admin visits stay on the shell's request-access gate. See "Members & roles" below. | E06/F04/US01/T01 |
 
-\* `/review` is this task's own placeholder landing path, not a row in
-ADR-018's locked route map -- that table only ever names the *detail* route
-for this nav destination (`/contracts/:id/review`). See
-`src/components/shell/navItems.ts`'s header comment. (`/quotes` used to be
-the identical kind of placeholder until task E08/F03/US01/T01 made it a real
-screen; `/` was the same until task E08/F02/US01/T01 made it a real screen
-too.)
+\* `/review` is the rail landing path, not a row in ADR-018's locked route
+map -- that table only ever names the *detail* route for this nav destination
+(`/contracts/:id/review`). See `src/components/shell/navItems.ts`'s header
+comment. (`/quotes` used to be the identical kind of placeholder until task
+E08/F03/US01/T01 made it a real screen; `/` was the same until task
+E08/F02/US01/T01 made it a real screen too.)
 
 ### Layout -- full-bleed, matching the prototype's own canvas (ADR-018/019/020, task E06/F06/US01/T01)
 
@@ -717,6 +717,24 @@ ADR-018 "/ (home)") in place of that task's `ScaffoldScreen` placeholder, the sa
   `loadCurrentWorkspace()` directly rather than trusting `App.tsx`'s own earlier check, rendering a
   named "No workspace selected" state if that invariant is ever violated.
 
+### Review queue (rail landing for ADR-020 screen 6)
+
+`src/routes/review/` is the `/review` rail landing. ia.md/ADR-018 only name `/contracts/:id/review`
+(the field-review detail, already real). This list calls `GET /api/contracts` and keeps rows whose
+status contains "review" (the same signal Portfolio's attention strip uses), plus this-session
+uploads still in `NeedsReview` that are not already on that page. Rows with a `contractId` open the
+detail screen; unlinked uploads stay visible with "Not yet linked to a contract".
+
+### Members & roles (ADR-020 screen 2, task E06/F04/US01/T01)
+
+`src/routes/workspace/members/` is the `/workspace/members` screen: AC-1 Member/Role/Status/Last
+active table, AC-2 invite pane (email, Admin vs Procurement radios with permission summaries, Send).
+AC-3 (non-admin) stays on `RequireRole` around this route. Invite is a real
+`POST /api/workspaces/{tenantId}/invites`. There is still no list-members GET, so the table seeds the
+current Admin locally and appends each successful invite in `sessionStorage` -- discovery gap, not
+fabricated members. Client-side validation rejects a different email domain than the signed-in Admin
+(screens.md #2 "non-tenant domain").
+
 ## API client (ADR-012 "one generated TypeScript client, no hand-written divergent DTOs")
 
 Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
@@ -1081,9 +1099,10 @@ scope (`web/`) can set.
 `day1-demo.html` is one hard-coded demo scenario; the real app is not. The
 spec's own header comment has the full citations -- in short:
 
-1. **Invite has no real screen yet** (`workspace/members` still renders
-   `ScaffoldScreen`; `epic-06/feature-04-workspace-members-ui` has not
-   shipped as of this task) -- asserted as the honest placeholder it is.
+1. **Members list has no GET.** The invite screen is real (`POST /api/workspaces/{tenantId}/invites`)
+   but there is still no list-members endpoint, so the table is this-browser's Admin row plus
+   invites sent from this session (`memberStore.ts`) -- not a fabricated roster, and not a
+   workspace-wide directory.
 2. **A fresh, self-created workspace cannot discover the ADR-022
    fixture-seeded tenant** (the workspace picker is a per-browser
    `localStorage` cache, `workspaceStore.ts`'s own documented gap) --
