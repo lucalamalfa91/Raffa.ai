@@ -5,93 +5,106 @@ using Contigo.Market.Retrieval;
 namespace Contigo.Api;
 
 /// <summary>
-/// Maps `GET /api/market/records/{id}` (task E13/F02/US01/T02, parent story
-/// us-01-market-intelligence AC-5: "returns one record with its provenance label and updatedAt for
-/// the citation panel"). Deliberately **not** called from `Program.cs` by this task — the task's
-/// own coding objective names this file "mapped by F06/T01 in this same phase", the identical
-/// "endpoint exists, host wiring is a later task's job" shape
-/// <c>Contigo.Api.CapabilitiesEndpointExtensions</c>'s own doc comment already documents for `GET
-/// /api/capabilities`. If `Program.cs` already calls <c>MapMarketEndpoints()</c> by the end of
-/// this phase (F06/T01 landing after this task), this file is what makes that call resolve; if
-/// this task's own worktree merges after F06/T01's, the method already exists for that merge to
-/// find.
+/// Maps <c>GET /api/market/records/{id}</c> — one market-intelligence record for the Ask citation
+/// panel (<c>inputs/requirements.md</c> §6 API contract table; R-EVD-02 "a market citation opens a
+/// side panel with the record"; story us-01-market-intelligence AC-5 "returns one record with its
+/// provenance label and updatedAt").
 ///
-/// <b>No tenant header</b>: unlike every tenant-scoped endpoint in this host
-/// (`ContractsEndpointExtensions`, `RenewalsEndpointExtensions`, ...), the market index is shared
-/// and read-only for every tenant (ADR-024 "three sources, one rule"; parent story AC-3) — there is
-/// no authorization boundary to enforce here, so this endpoint needs no `X-Tenant-Id` the same way
-/// `CapabilitiesEndpointExtensions`' own static, tenant-agnostic catalog does not.
+/// <para>
+/// <b>Single writer, reconciled.</b> Tasks E13/F02/US01/T02 (market-index) and E13/F06/US01/T01
+/// (ask-engine) both created this file in the same wave phase; the phase-barrier union merge
+/// concatenated the two handlers and broke the build. This is the reconciled version: the
+/// persisted <c>market_record</c> store is the source of truth when the Market module is wired with
+/// a connection string (<see cref="MarketRecordQueryService"/>, ADR-024 "the provider is called
+/// only by the ingestion job"); when the host runs without the Market database (local, CI on the
+/// fixture) the handler falls back to the same in-memory feed
+/// <see cref="Contigo.Market.Benchmark.MarketFeedBenchmarkAdapter"/> and
+/// <see cref="InMemoryMarketKnowledgeRetrieval"/> already read, so the endpoint behaves the same in
+/// both hosts. The response is the OpenAPI shape the web client expects
+/// (<c>web/openapi/contigo-api.v1.json</c>, operation <c>getMarketRecord</c>: <c>recordId</c>,
+/// <c>title</c>, <c>category</c>, <c>geography</c>, <c>band</c>, <c>provenance</c>,
+/// <c>updatedAt</c>) plus the raw deal fields both original handlers exposed.
+/// </para>
 ///
-/// Business logic (the lookup, the 404 rule, deserializing the stored payload) lives in
-/// <see cref="MarketRecordQueryService"/>, not here — ADR-002's "host is a thin composition root",
-/// applied identically to every other endpoint file in this project.
-/// Maps `GET /api/market/records/{id}` (`inputs/requirements.md` §6 API contract table: "one
-/// market record (for the citation panel)"; R-EVD-02: "a market citation opens a side panel with
-/// the record"). Task E13/F06/US01/T01 (ask-engine) is this endpoint's first writer — the market
-/// -ingestion task that owns `Contigo.Market`'s own persisted `market_record` store
-/// (R-MKT-03's own "T02" scope) has not landed in this wave; until it does, this handler reads the
-/// same in-memory <see cref="IMarketIntelligenceProvider"/> feed
-/// <see cref="Contigo.Market.Benchmark.MarketFeedBenchmarkAdapter"/>/
-/// <see cref="InMemoryMarketKnowledgeRetrieval"/> already read directly (see either type's own doc
-/// comment on why: "this task has no persisted store yet"), composed through
-/// <see cref="MarketNoteComposer.Compose"/> the same way <c>InMemoryMarketKnowledgeRetrieval</c>
-/// itself does — no new data path, just a by-id lookup over the same feed.
-///
-/// No tenant header: a market record is shared, tenant-agnostic data (ADR-024 "readable by every
-/// tenant"), the same "no `X-Tenant-Id`" rule <see cref="CapabilitiesEndpointExtensions"/>'s own doc
-/// comment already documents for the identical reason.
+/// <para>
+/// <b>No tenant header</b>: unlike every tenant-scoped endpoint in this host, the market index is
+/// shared and read-only for every tenant (ADR-024 "three sources, one rule"), so there is no
+/// authorization boundary to enforce here — the same rule
+/// <see cref="CapabilitiesEndpointExtensions"/> documents for its static catalog.
+/// </para>
 /// </summary>
 public static class MarketEndpointExtensions
 {
     public static IEndpointRouteBuilder MapMarketEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/market/records/{id}", GetRecordAsync);
-        return endpoints;
-    }
-
-    private static async Task<IResult> GetRecordAsync(
-        string id,
-        MarketRecordQueryService queryService,
-        CancellationToken cancellationToken)
-    {
-        var detail = await queryService.GetByIdAsync(id, cancellationToken).ConfigureAwait(false);
-        if (detail is null)
         endpoints.MapGet("/api/market/records/{id}", GetMarketRecordAsync);
         return endpoints;
     }
 
     private static async Task<IResult> GetMarketRecordAsync(
-        string id, IMarketIntelligenceProvider provider, CancellationToken cancellationToken)
+        string id,
+        HttpContext httpContext,
+        IMarketIntelligenceProvider provider,
+        CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(id))
         {
             return Results.BadRequest("A market record id is required.");
         }
 
-        var feedResult = await provider.GetDealsAsync(feedVersion: null, cancellationToken).ConfigureAwait(false);
-        if (feedResult.IsFailure)
+        MarketDeal? deal;
+        string? provenance = null;
+
+        // Persisted store first (registered only when AddMarketModule received a connection
+        // string — see Contigo.Market.ServiceCollectionExtensions); otherwise the in-memory feed.
+        var queryService = httpContext.RequestServices.GetService<MarketRecordQueryService>();
+        if (queryService is not null)
         {
-            return Results.BadRequest(feedResult.Error);
+            var detail = await queryService.GetByIdAsync(id, cancellationToken).ConfigureAwait(false);
+            deal = detail?.Deal;
+            provenance = detail?.ProvenanceLabel;
+        }
+        else
+        {
+            var feedResult = await provider.GetDealsAsync(feedVersion: null, cancellationToken).ConfigureAwait(false);
+            if (feedResult.IsFailure)
+            {
+                return Results.BadRequest(feedResult.Error);
+            }
+
+            deal = feedResult.Value.Deals.FirstOrDefault(d => string.Equals(d.RecordId, id, StringComparison.Ordinal));
         }
 
-        var deal = feedResult.Value.Deals.FirstOrDefault(d => string.Equals(d.RecordId, id, StringComparison.Ordinal));
         if (deal is null)
         {
             return Results.NotFound();
         }
 
-        var deal = detail.Deal;
         var note = MarketNoteComposer.Compose(deal);
 
         return Results.Ok(new
         {
+            // OpenAPI `getMarketRecord` contract (web MarketRecordPanel).
             recordId = deal.RecordId,
+            title = note.Title,
+            snippet = note.Snippet,
+            category = deal.Category,
+            geography = deal.Geography,
+            band = new
+            {
+                p25 = deal.UnitPriceP25,
+                p50 = deal.UnitPriceP50,
+                p75 = deal.UnitPriceP75,
+                currency = deal.Currency,
+            },
+            provenance = provenance ?? note.Provenance,
+            updatedAt = deal.UpdatedAt,
+
+            // Raw deal fields (superset kept from both original handlers).
             provider = deal.Provider,
             supplier = deal.Supplier,
-            category = deal.Category,
             product = deal.Product,
             sku = deal.Sku,
-            geography = deal.Geography,
             currency = deal.Currency,
             companySizeBand = deal.CompanySizeBand,
             termMonths = deal.TermMonths,
@@ -105,24 +118,6 @@ public static class MarketEndpointExtensions
             paymentTerms = deal.PaymentTerms,
             negotiatedClauses = deal.NegotiatedClauses,
             closingPeriod = deal.ClosingPeriod,
-            sampleSize = deal.SampleSize,
-            source = deal.Source,
-            representative = deal.Representative,
-            // AC-5, verbatim: "its provenance label and updatedAt for the citation panel".
-            updatedAt = deal.UpdatedAt,
-            provenance = detail.ProvenanceLabel,
-            supplier = deal.Supplier,
-            category = deal.Category,
-            product = deal.Product,
-            geography = deal.Geography,
-            currency = deal.Currency,
-            title = note.Title,
-            snippet = note.Snippet,
-            provenance = note.Provenance,
-            updatedAt = deal.UpdatedAt,
-            unitPriceP25 = deal.UnitPriceP25,
-            unitPriceP50 = deal.UnitPriceP50,
-            unitPriceP75 = deal.UnitPriceP75,
             sampleSize = deal.SampleSize,
             source = deal.Source,
             representative = deal.Representative,
