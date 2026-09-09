@@ -46,7 +46,7 @@ public sealed class R1EndToEndTests : IClassFixture<R1IntegrationFixture>
         var tenantId = Guid.NewGuid();
 
         // 1. Upload + process the born-digital fixture (AC-1 "upload -> parse/OCR -> classify ->
-        //    extract"; NativeDocumentTextExtractor handles this one natively — see
+        //    extract"; a PDF is read by the `ocr` role, here the fixture gateway's scanner — see
         //    R1ExtractionFixtures.BuildBornDigitalPdfBytes's own doc comment).
         var (documentId, contractId) = await UploadAndProcessAsync(
             client, tenantId, R1ExtractionFixtures.BuildBornDigitalPdfBytes(),

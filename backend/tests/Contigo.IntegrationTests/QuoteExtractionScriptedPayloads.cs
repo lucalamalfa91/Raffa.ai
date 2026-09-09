@@ -4,8 +4,8 @@ namespace Contigo.IntegrationTests;
 
 /// <summary>
 /// Shared fixture data for task E05/F01/US01/T01 (quote-extraction): a hand-built, minimal-but-real
-/// born-digital PDF (proves the native text extraction path — never routes through the `ocr`
-/// gateway role) and a scanned/image-style quote (proves AC-4's "scanned/image quote PDFs reuse the
+/// born-digital PDF (read by the `ocr` gateway role like every PDF since the ADR-017 amendment of
+/// 2026-09-09) and a scanned/image-style quote (proves AC-4's "scanned/image quote PDFs reuse the
 /// epic-02 hybrid OCR path... no 2-page cap" — an <c>image/tiff</c> mime type
 /// <c>NativeDocumentTextExtractor.CanHandle</c> always returns <see langword="false"/> for, so
 /// <c>HybridDocumentParsingService</c> structurally cannot take the native path), plus the scripted
@@ -46,8 +46,7 @@ internal static class QuoteExtractionScriptedPayloads
 
     /// <summary>Minimal, hand-built, syntactically real single-page PDF — see
     /// <see cref="R1ExtractionFixtures.BuildBornDigitalPdfBytes"/>'s own doc comment for the
-    /// technique. Well over <c>NativeDocumentTextExtractor</c>'s 40-non-whitespace-char-per-page
-    /// sufficiency floor, so this never calls the `ocr` gateway role.</summary>
+    /// technique; the fixture `ocr` role reads it through <c>FixturePdfTextScanner</c>.</summary>
     public static byte[] BuildBornDigitalQuoteBytes()
     {
         const string text =

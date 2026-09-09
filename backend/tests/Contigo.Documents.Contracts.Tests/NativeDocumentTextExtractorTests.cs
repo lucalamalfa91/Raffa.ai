@@ -1,5 +1,3 @@
-using System.IO.Compression;
-using System.Text;
 using Contigo.Documents.Contracts.Application.Extraction;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
@@ -12,10 +10,9 @@ namespace Contigo.Documents.Contracts.Tests;
 /// Proves <see cref="NativeDocumentTextExtractor"/> — the concrete, real native-text half of task
 /// E02/F01/US02/T02's hybrid pre-pass. DOCX/XLSX round-trip through the real
 /// <c>DocumentFormat.OpenXml</c> SDK (no hand-rolled binary — the SDK's own writer builds the test
-/// fixtures). PDF has no such library backing it (see the type's own doc comment for why); its own
-/// remarks on <c>ExtractPdfNatively</c> spell out exactly what this suite proves and why hand-built
-/// byte fixtures are safe here — this scanner never reads a cross-reference table or object
-/// numbering, only the literal markers these fixtures place.
+/// fixtures). PDF is deliberately <em>not</em> handled here since the ADR-017 amendment of
+/// 2026-09-09: every PDF goes to the `ocr` role (Document Intelligence Read on a live deployment,
+/// <c>FixturePdfTextScanner</c> under the fixture gateway — see <c>FixturePdfTextScannerTests</c>).
 /// </summary>
 public sealed class NativeDocumentTextExtractorTests
 {
@@ -24,13 +21,13 @@ public sealed class NativeDocumentTextExtractorTests
     private const string XlsxMimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
     [Fact]
-    public void CanHandle_recognizes_pdf_docx_and_xlsx_but_not_an_image_mime_type()
+    public void CanHandle_recognizes_docx_and_xlsx_but_neither_pdf_nor_an_image_mime_type()
     {
         var extractor = new NativeDocumentTextExtractor();
 
-        Assert.True(extractor.CanHandle(PdfMimeType));
         Assert.True(extractor.CanHandle(DocxMimeType));
         Assert.True(extractor.CanHandle(XlsxMimeType));
+        Assert.False(extractor.CanHandle(PdfMimeType));
         Assert.False(extractor.CanHandle("image/png"));
     }
 
@@ -39,7 +36,18 @@ public sealed class NativeDocumentTextExtractorTests
     {
         var extractor = new NativeDocumentTextExtractor();
 
-        Assert.True(extractor.CanHandle("Application/PDF; charset=binary"));
+        Assert.True(extractor.CanHandle("Application/VND.openxmlformats-officedocument.wordprocessingml.document; charset=binary"));
+    }
+
+    [Fact]
+    public void A_pdf_handed_to_extract_anyway_is_refused_rather_than_scanned()
+    {
+        // CanHandle is the contract; a caller that skips it gets a loud NotSupportedException, never
+        // a silent "insufficient" that would quietly re-route a PDF through a native path again.
+        var extractor = new NativeDocumentTextExtractor();
+
+        Assert.Throws<NotSupportedException>(
+            () => extractor.Extract(PdfMimeType, "%PDF-1.4\n1 0 obj << /Type /Page >> endobj\n"u8.ToArray()));
     }
 
     // ---- DOCX ------------------------------------------------------------------------------
@@ -138,175 +146,5 @@ public sealed class NativeDocumentTextExtractorTests
         }
 
         return stream.ToArray();
-    }
-
-    // ---- PDF -------------------------------------------------------------------------------
-
-    [Fact]
-    public void Pdf_with_matching_page_and_content_stream_counts_and_real_text_is_sufficient()
-    {
-        var pdf =
-            "%PDF-1.4\n" +
-            "1 0 obj << /Type /Page >> endobj\n" +
-            "2 0 obj << /Length 100 >>\n" +
-            "stream\n" +
-            "BT (This is the first page of a real contract with plenty of readable text.) Tj ET\n" +
-            "endstream\n" +
-            "endobj\n" +
-            "3 0 obj << /Type /Page >> endobj\n" +
-            "4 0 obj << /Length 100 >>\n" +
-            "stream\n" +
-            "BT (This is the second page, also containing plenty of readable contract text.) Tj ET\n" +
-            "endstream\n" +
-            "endobj\n" +
-            "%%EOF\n";
-
-        var extractor = new NativeDocumentTextExtractor();
-        var result = extractor.Extract(PdfMimeType, Encoding.Latin1.GetBytes(pdf));
-
-        Assert.True(result.IsSufficient);
-        Assert.Equal(2, result.Pages.Count);
-        Assert.Equal(1, result.Pages[0].PageNumber);
-        Assert.Contains("first page", result.Pages[0].Text, StringComparison.Ordinal);
-        Assert.Equal(2, result.Pages[1].PageNumber);
-        Assert.Contains("second page", result.Pages[1].Text, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void Pdf_page_with_no_text_operators_at_all_is_insufficient()
-    {
-        // No BT/ET anywhere in the content stream — an image-only ("scanned") page paints its
-        // content via an XObject `Do` operator, never a text-showing operator.
-        var pdf =
-            "%PDF-1.4\n" +
-            "1 0 obj << /Type /Page >> endobj\n" +
-            "2 0 obj << /Length 20 >>\n" +
-            "stream\n" +
-            "/Im0 Do\n" +
-            "endstream\n" +
-            "endobj\n" +
-            "%%EOF\n";
-
-        var extractor = new NativeDocumentTextExtractor();
-        var result = extractor.Extract(PdfMimeType, Encoding.Latin1.GetBytes(pdf));
-
-        Assert.False(result.IsSufficient);
-        Assert.Empty(result.Pages);
-    }
-
-    [Fact]
-    public void Pdf_with_more_pages_than_text_content_streams_is_insufficient_rather_than_guessed()
-    {
-        // Two /Type/Page objects but only one text-bearing content stream: pairing them 1:1 would
-        // risk a wrong page-number citation, so this must defer to OCR instead of guessing.
-        var pdf =
-            "%PDF-1.4\n" +
-            "1 0 obj << /Type /Page >> endobj\n" +
-            "2 0 obj << /Type /Page >> endobj\n" +
-            "3 0 obj << /Length 60 >>\n" +
-            "stream\n" +
-            "BT (Only one content stream for two declared pages.) Tj ET\n" +
-            "endstream\n" +
-            "endobj\n" +
-            "%%EOF\n";
-
-        var extractor = new NativeDocumentTextExtractor();
-        var result = extractor.Extract(PdfMimeType, Encoding.Latin1.GetBytes(pdf));
-
-        Assert.False(result.IsSufficient);
-        Assert.Empty(result.Pages);
-    }
-
-    [Fact]
-    public void Pdf_below_the_minimum_characters_per_page_is_insufficient()
-    {
-        // Real /Type/Page + a real text-bearing stream, but far too little text per page to be a
-        // genuine born-digital contract page (e.g. a lone page number "3" on an otherwise scanned page).
-        var pdf =
-            "%PDF-1.4\n" +
-            "1 0 obj << /Type /Page >> endobj\n" +
-            "2 0 obj << /Length 20 >>\n" +
-            "stream\n" +
-            "BT (3) Tj ET\n" +
-            "endstream\n" +
-            "endobj\n" +
-            "%%EOF\n";
-
-        var extractor = new NativeDocumentTextExtractor();
-        var result = extractor.Extract(PdfMimeType, Encoding.Latin1.GetBytes(pdf));
-
-        Assert.False(result.IsSufficient);
-    }
-
-    [Fact]
-    public void Garbage_bytes_claiming_to_be_pdf_are_insufficient_not_a_crash()
-    {
-        var extractor = new NativeDocumentTextExtractor();
-        byte[] garbage = [0x00, 0x01, 0x02, 0xFF, 0xFE, 0x10, 0x20, 0x30, 0x40, 0x50];
-
-        var result = extractor.Extract(PdfMimeType, garbage);
-
-        Assert.False(result.IsSufficient);
-        Assert.Empty(result.Pages);
-    }
-
-    [Fact]
-    public void Pdf_with_a_flate_compressed_content_stream_is_inflated_and_read()
-    {
-        const string pageText = "Compressed page text should still be extracted correctly by this scanner.";
-        var compressed = ZlibCompress(Encoding.Latin1.GetBytes($"BT ({pageText}) Tj ET"));
-        var compressedAsLatin1 = Encoding.Latin1.GetString(compressed);
-
-        var pdf =
-            "%PDF-1.4\n" +
-            "1 0 obj << /Type /Page >> endobj\n" +
-            $"2 0 obj << /Filter /FlateDecode /Length {compressed.Length} >>\n" +
-            "stream\n" +
-            compressedAsLatin1 +
-            "\nendstream\n" +
-            "endobj\n" +
-            "%%EOF\n";
-
-        var extractor = new NativeDocumentTextExtractor();
-        var result = extractor.Extract(PdfMimeType, Encoding.Latin1.GetBytes(pdf));
-
-        Assert.True(result.IsSufficient);
-        var page = Assert.Single(result.Pages);
-        Assert.Contains("Compressed page text", page.Text, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void Pdf_content_stream_using_an_unsupported_image_filter_is_skipped_not_scanned_as_garbage()
-    {
-        // /DCTDecode (JPEG) is an image codec, never a text content stream — this must not be
-        // scanned for BT/ET (it would find none anyway, but the point is it is skipped cleanly,
-        // not fed byte-for-byte into the text scanner as if it might be raw content).
-        var pdf =
-            "%PDF-1.4\n" +
-            "1 0 obj << /Type /Page >> endobj\n" +
-            "2 0 obj << /Filter /DCTDecode /Length 10 >>\n" +
-            "stream\n" +
-            "ÿØÿàbinary\n" +
-            "endstream\n" +
-            "endobj\n" +
-            "%%EOF\n";
-
-        var extractor = new NativeDocumentTextExtractor();
-        var result = extractor.Extract(PdfMimeType, Encoding.Latin1.GetBytes(pdf));
-
-        Assert.False(result.IsSufficient);
-        Assert.Empty(result.Pages);
-    }
-
-    private static byte[] ZlibCompress(byte[] data)
-    {
-        using var output = new MemoryStream();
-
-        using (var zlib = new ZLibStream(output, CompressionLevel.Fastest, leaveOpen: true))
-        {
-            zlib.Write(data, 0, data.Length);
-        }
-
-        return output.ToArray();
     }
 }

@@ -184,7 +184,7 @@ public sealed class DocumentUploadEndpointTests : IClassFixture<WebApplicationFa
         Assert.DoesNotContain("carbonara", audit.Detail, StringComparison.OrdinalIgnoreCase);
 
         // Classified exactly once; nothing embedded or extracted.
-        Assert.Equal(["ClassifyAsync"], host.Gateway.Calls);
+        Assert.Equal(["OcrAsync", "ClassifyAsync"], host.Gateway.Calls);
     }
 
     [Fact]
@@ -239,7 +239,8 @@ public sealed class DocumentUploadEndpointTests : IClassFixture<WebApplicationFa
         Assert.Equal(bytes, saved.Content);
         Assert.Contains(host.Storage.Saved, s => s.Path.EndsWith("/preview/page-1.png", StringComparison.Ordinal));
         Assert.Equal(1, host.Gateway.Calls.Count(call => call == "ClassifyAsync"));
-        Assert.DoesNotContain("OcrAsync", host.Gateway.Calls);
+        // Every PDF is read by the `ocr` role exactly once (ADR-017 amendment 2026-09-09).
+        Assert.Equal(1, host.Gateway.Calls.Count(call => call == "OcrAsync"));
         Assert.Contains(host.Audit.Entries, e => e.Action == "document.uploaded");
         Assert.DoesNotContain(host.Audit.Entries, e => e.Action == "document.rejected");
 

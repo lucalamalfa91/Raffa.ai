@@ -52,9 +52,11 @@ public sealed class QuoteEndToEndTests : IClassFixture<QuoteIntegrationFixture>
         Assert.Equal(1, body.GetProperty("lineItemCount").GetInt32());
         var quoteId = body.GetProperty("id").GetGuid();
 
-        // Born-digital, sufficient native text: NativeDocumentTextExtractor handles it, so the
-        // `ocr` gateway role is never called (ADR-017 "keeps born-digital cost low").
-        Assert.Equal(ocrCallsBefore, _fixture.AiGateway.OcrCallCount);
+        // Every PDF is read by the `ocr` role since the ADR-017 amendment of 2026-09-09 (the fixture
+        // gateway's scanner here, Document Intelligence Read on a live deployment).
+        Assert.True(
+            _fixture.AiGateway.OcrCallCount > ocrCallsBefore,
+            "a PDF upload must run the `ocr` gateway role");
 
         using var scope = _fixture.Services.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<QuotesDbContext>();

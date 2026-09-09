@@ -13,7 +13,8 @@ namespace Contigo.Documents.Contracts.Tests;
 /// directly (and the `ocr` gateway role is never billed) when the native extractor trusts its own
 /// result; anything else — insufficient native text, an unrecognized mime type, empty content —
 /// routes through the full-document `ocr` role, honouring ADR-017's "no 2-page cap" and page
-/// budget.
+/// budget. Since the ADR-017 amendment of 2026-09-09 the native half handles DOCX/XLSX only, so
+/// every PDF takes the `ocr` route.
 ///
 /// Uses the real <see cref="FixtureAiGateway"/> (already proven by
 /// <c>FixtureAiGatewayOcrTests</c>) as <see cref="IAiGateway"/> whenever a test actually wants OCR
@@ -87,6 +88,32 @@ public sealed class HybridDocumentParsingServiceTests
         var page = Assert.Single(result.Value);
         Assert.Equal(1, page.PageNumber);
         Assert.Equal("Native contract text.", page.Text);
+    }
+
+    [Fact]
+    public async Task A_pdf_goes_to_the_ocr_role_even_when_it_is_born_digital()
+    {
+        // ADR-017 amendment (2026-09-09): the real native extractor handles DOCX/XLSX only, so a
+        // PDF — born-digital or scanned — is read by the `ocr` role; the fixture gateway's own
+        // scanner stands in for Document Intelligence here.
+        var gateway = new FixtureAiGateway(new AiGatewayModelOptions(), new FixedClock(Now));
+        var service = new HybridDocumentParsingService(gateway, new NativeDocumentTextExtractor());
+        var pdf =
+            "%PDF-1.4\n" +
+            "1 0 obj << /Type /Page >> endobj\n" +
+            "2 0 obj << /Length 0 >>\n" +
+            "stream\n" +
+            "BT (MASTER SERVICES AGREEMENT between Acme Corp and Contoso Ltd.) Tj ET\n" +
+            "endstream\n" +
+            "endobj\n" +
+            "%%EOF\n";
+
+        var result = await service.ParseAsync("contract.pdf", "application/pdf", Encoding.Latin1.GetBytes(pdf));
+
+        Assert.True(result.IsSuccess);
+        var page = Assert.Single(result.Value);
+        Assert.Equal(1, page.PageNumber);
+        Assert.Equal("MASTER SERVICES AGREEMENT between Acme Corp and Contoso Ltd.", page.Text);
     }
 
     [Fact]
