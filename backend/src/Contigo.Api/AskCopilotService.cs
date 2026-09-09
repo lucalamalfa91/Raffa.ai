@@ -609,10 +609,13 @@ internal sealed class AskCopilotService(
         var asOfDate = DateOnly.FromDateTime(clock.UtcNow.UtcDateTime);
         var supplierName = await ResolveDisplayNameAsync(namedContractItem, cancellationToken).ConfigureAwait(false);
 
-        var strategyInputs = new StrategyInputs(
-            contract360.ContractId, supplierName, renewal.RenewalDate, renewal.CancellationDeadline,
-            renewal.DaysUntilRenewal, renewal.DaysUntilCancellationDeadline, contract360.Header.AutoRenewal,
-            pricedLines, criticalFacts, asOfDate);
+        // Composed by the same mapping GET /api/contracts/{id}/strategy uses, so Ask and the
+        // endpoint cannot drift (they narrate the same numbers -- ADR-024). Only the supplier name
+        // differs: the endpoint has no name resolver wired, this path does.
+        var strategyInputs = InsightsEndpointExtensions
+            .ToStrategyInputs(contract360, renewal, pricedLines, criticalFacts, asOfDate)
+            with
+            { SupplierName = supplierName };
 
         var pack = StrategyPackBuilder.Build(strategyInputs);
         var currency = contract360.Overview.Currency;

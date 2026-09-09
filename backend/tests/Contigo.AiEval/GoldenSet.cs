@@ -117,6 +117,11 @@ internal static class GoldenSetKnownGaps
     /// resolves the candidate "I", finds no such supplier, and returns
     /// <c>needs_document</c> ("No I contract has been uploaded and validated…") instead of the
     /// renewal-strategy answer the requirement specifies.
+    ///
+    /// <para><b>Fixed.</b> The gate now considers every capitalized run, skips the ones that are
+    /// never names (the English pronoun among them) and prefers a run this tenant already has
+    /// contracts for. No case declares this gap any more; the id stays so the report of an older
+    /// run still reads, and so a regression has a name.</para>
     /// </summary>
     public const string PronounReadAsSupplier = "GAP-ASK-PRONOUN-AS-SUPPLIER";
 
@@ -182,6 +187,11 @@ internal static class GoldenSetKnownGaps
     /// is stated as passed, not hidden"). The deadline is known to the tenant — it is on the
     /// contract row and every structured-fact answer quotes it — it is simply dropped on the way
     /// into the strategy calculator.
+    ///
+    /// <para><b>Fixed.</b> <c>InsightsEndpointExtensions.ToStrategyInputs</c> falls back to the
+    /// contract's own extracted <c>CancellationDeadline</c> when the engine derives none, and
+    /// <c>AskCopilotService</c> now composes its strategy inputs through that same mapping instead
+    /// of a private copy, so Ask and <c>GET /api/contracts/{id}/strategy</c> cannot drift.</para>
     /// </summary>
     public const string StrategyPackHasNoNoticeDeadline = "GAP-ASK-STRATEGY-NO-NOTICE-DEADLINE";
 

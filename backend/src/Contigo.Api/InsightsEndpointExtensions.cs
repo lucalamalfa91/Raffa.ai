@@ -315,6 +315,18 @@ public static class InsightsEndpointExtensions
     /// into <see cref="StrategyInputs"/>. <see cref="StrategyInputs.SupplierName"/> stays null — see
     /// this type's own doc comment ("Contract.SupplierId is a bare id; no name resolver is wired to
     /// this composition yet").
+    ///
+    /// <para>
+    /// <b>The cancellation deadline comes from two places, in order.</b> The renewal engine derives
+    /// one from <c>EndDate</c> minus the contract's notice period; nothing persists a notice period
+    /// today (<see cref="ContractRenewalTerms.CancellationNoticeDays"/> is always null here), so
+    /// that derivation is always empty and the strategy pack used to open with "when you must move"
+    /// and no deadline at all — on the one question the requirements themselves use as the worked
+    /// example. The extracted <c>CancellationDeadline</c> on the contract header is a real, cited
+    /// fact a human can correct; it is used whenever the engine has nothing, with the days-left
+    /// count derived from <paramref name="asOfDate"/> the same way the engine would. Found by the
+    /// golden set (task E13/F06/US01/T02, GAP-ASK-STRATEGY-NO-NOTICE-DEADLINE).
+    /// </para>
     /// </summary>
     public static StrategyInputs ToStrategyInputs(
         Contract360Result contract,
@@ -328,13 +340,17 @@ public static class InsightsEndpointExtensions
         ArgumentNullException.ThrowIfNull(pricedLines);
         ArgumentNullException.ThrowIfNull(criticalFacts);
 
+        var cancellationDeadline = renewal.CancellationDeadline ?? contract.Header.CancellationDeadline;
+        var daysUntilCancellationDeadline = renewal.DaysUntilCancellationDeadline
+            ?? (cancellationDeadline is { } deadline ? deadline.DayNumber - asOfDate.DayNumber : null);
+
         return new StrategyInputs(
             contract.ContractId,
             SupplierName: null,
             renewal.RenewalDate,
-            renewal.CancellationDeadline,
+            cancellationDeadline,
             renewal.DaysUntilRenewal,
-            renewal.DaysUntilCancellationDeadline,
+            daysUntilCancellationDeadline,
             contract.Header.AutoRenewal,
             pricedLines,
             criticalFacts,

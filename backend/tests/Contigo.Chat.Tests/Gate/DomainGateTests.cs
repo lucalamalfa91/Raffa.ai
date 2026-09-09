@@ -141,6 +141,41 @@ public sealed class DomainGateTests
     }
 
     [Fact]
+    public void The_english_pronoun_is_never_read_as_a_supplier_name()
+    {
+        // R-STR-01's own worked question. "I" is capitalized mid-sentence by the rules of English,
+        // so the first-capitalized-run heuristic used to report it as a named, unknown supplier and
+        // the turn was answered "No I contract has been uploaded and validated" -- never
+        // considering Salesforce (golden set, GAP-ASK-PRONOUN-AS-SUPPLIER).
+        var result = _gate.Classify("How should I approach the Salesforce renewal?", ["Salesforce"]);
+
+        Assert.Equal(GateLabel.InDomain, result.Label);
+        Assert.Equal("Salesforce", result.NamedSupplier);
+    }
+
+    [Fact]
+    public void A_known_supplier_anywhere_in_the_question_wins_over_an_earlier_capitalized_word()
+    {
+        // The known supplier is the last capitalized run here; an earlier one must not shadow it.
+        var result = _gate.Classify("In Q4 we renew Databricks, right?", ["Databricks"]);
+
+        Assert.Equal(GateLabel.InDomain, result.Label);
+        Assert.Equal("Databricks", result.NamedSupplier);
+    }
+
+    [Fact]
+    public void An_unknown_named_supplier_still_asks_for_the_document()
+    {
+        // Nothing about the fix loosens R-ASK-03: a supplier this tenant has no contract for is
+        // still answered with "upload it first", and the reported candidate is the real name, not
+        // a pronoun.
+        var result = _gate.Classify("How should I approach the Snowflake renewal?", ["Salesforce"]);
+
+        Assert.Equal(GateLabel.NeedsDocument, result.Label);
+        Assert.Equal("Snowflake", result.NamedSupplier);
+    }
+
+    [Fact]
     public void An_empty_known_supplier_collection_still_resolves_greeting_and_off_domain_labels()
     {
         // A brand-new tenant with zero contracts must still get the ordinary greeting/off-domain

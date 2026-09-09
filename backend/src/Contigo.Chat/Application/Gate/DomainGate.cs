@@ -99,6 +99,19 @@ public sealed class DomainGate
         RegexOptions.Compiled);
 
     /// <summary>
+    /// Capitalized runs that are never a supplier name. The English first-person pronoun is the
+    /// one that matters: it is capitalized mid-sentence by the rules of the language, so the
+    /// pattern above matched it before anything else and R-STR-01's own worked question — "How
+    /// should I approach the Salesforce renewal?" — was answered with "No I contract has been
+    /// uploaded and validated", never even considering Salesforce. Found by the golden set
+    /// (task E13/F06/US01/T02, GAP-ASK-PRONOUN-AS-SUPPLIER).
+    /// </summary>
+    private static readonly HashSet<string> NeverSupplierNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "I", "I'm", "I've", "I'd", "I'll", "A", "An", "The", "OK", "Ok",
+    };
+
+    /// <summary>
     /// Classifies <paramref name="question"/>. Pure and synchronous: no I/O, no LLM call, always
     /// the same label for the same inputs (Appendix C rule 6) — the same determinism convention
     /// <c>AskContigoQueryRouter</c>/<c>DeterministicQueryPlanner</c> already establish.
@@ -140,21 +153,17 @@ public sealed class DomainGate
             return new DomainGateResult(GateLabel.Capability, "matched the capability/how-to lexicon.");
         }
 
-        var candidate = ExtractSupplierCandidate(trimmed);
-        if (candidate is not null)
+        var (candidate, resolvedCandidate) = ExtractSupplierCandidate(trimmed, knownSupplierNames);
+        if (candidate is not null && resolvedCandidate is null)
         {
-            var resolved = knownSupplierNames.Any(
-                name => string.Equals(name, candidate, StringComparison.OrdinalIgnoreCase));
-
-            if (!resolved)
-            {
-                return new DomainGateResult(
-                    GateLabel.NeedsDocument,
-                    $"named supplier '{candidate}' does not match any of this tenant's " +
-                    $"{knownSupplierNames.Count} known supplier(s) (R-ASK-03).",
-                    candidate);
-            }
+            return new DomainGateResult(
+                GateLabel.NeedsDocument,
+                $"named supplier '{candidate}' does not match any of this tenant's " +
+                $"{knownSupplierNames.Count} known supplier(s) (R-ASK-03).",
+                candidate);
         }
+
+        candidate = resolvedCandidate ?? candidate;
 
         // No deterministic rule matched off-domain content, and any named supplier (if one was
         // named at all) is already known to this tenant. See this type's own doc comment
@@ -167,9 +176,47 @@ public sealed class DomainGate
             candidate);
     }
 
-    private static string? ExtractSupplierCandidate(string question)
+    /// <summary>
+    /// Picks the capitalized run in <paramref name="question"/> most likely to be a supplier name,
+    /// and says whether this tenant already knows it.
+    ///
+    /// <para>
+    /// Two rules, both learned from real questions (golden set, task E13/F06/US01/T02):
+    /// <list type="number">
+    /// <item><b>Every</b> capitalized run is considered, not just the first. "How should I approach
+    /// the Salesforce renewal?" names one supplier, and it is not the first capitalized token.</item>
+    /// <item>A run this tenant already has contracts for wins over one it does not, so a question
+    /// that mentions a known supplier is never sent to "upload a document first" because some other
+    /// capitalized word appeared earlier in the sentence.</item>
+    /// </list>
+    /// Runs in <see cref="NeverSupplierNames"/> are skipped outright. When nothing matches a known
+    /// supplier, the first remaining run is returned as the unknown candidate — the honest
+    /// R-ASK-03 answer is still "no contract for that supplier".
+    /// </para>
+    /// </summary>
+    /// <returns>The candidate (or <see langword="null"/> when the question names none), and the
+    /// candidate that matched a known supplier (or <see langword="null"/> when none did).</returns>
+    private static (string? Candidate, string? Resolved) ExtractSupplierCandidate(
+        string question, IReadOnlyCollection<string> knownSupplierNames)
     {
-        var match = CapitalizedNamePattern.Match(question);
-        return match.Success ? match.Value : null;
+        string? first = null;
+
+        foreach (Match match in CapitalizedNamePattern.Matches(question))
+        {
+            var value = match.Value.Trim();
+            if (value.Length == 0 || NeverSupplierNames.Contains(value))
+            {
+                continue;
+            }
+
+            if (knownSupplierNames.Any(name => string.Equals(name, value, StringComparison.OrdinalIgnoreCase)))
+            {
+                return (value, value);
+            }
+
+            first ??= value;
+        }
+
+        return (first, null);
     }
 }
