@@ -14,42 +14,36 @@ export interface SignInScreenProps {
   interactionInFlight: boolean;
 }
 
-// Screen 1 (inputs/design/prototypes/screens.md #1 "Sign-in -> workspace"):
-// "Left: statement panel (accent-100 ground with grid, north-star sentence,
-// 4 V1 jobs). Right: 'Continue with Microsoft Entra ID' -> redirect state ->
-// workspace list ... States: idle · redirecting (spinner) · workspace
-// picker." This component renders the left panel plus the right panel's
-// idle/redirecting states; ./WorkspacePickerScreen.tsx is the third state.
+// Screen 1, V2 (inputs/design/prototypes/contigo-v2/markup.html, the
+// `<!-- SIGN-IN / WORKSPACE -->` block; screens-v2.md #1): "Left: statement
+// panel (accent-100 ground with grid, three-line north star, the four
+// answers). Right: 'Continue with Microsoft Entra ID' -> redirect state ->
+// workspace list."
 //
-// North-star sentence and the OIDC/PKCE caption below are quoted verbatim
-// from inputs/design/prototypes/day1-demo.html (the compiled Claude Design
-// bundle -- ADR-020 "the pixel reference"). Task E11/F02/US01/T01
-// re-extracted the raw `<!-- SIGN-IN -->` block byte-for-byte (it is a
-// single ~6.5KB line in the compiled export, which is why the previous pass
-// -- reading it through a line-oriented tool -- could only disambiguate two
-// of the four bold companion words). All four kicker/bold pairs below are
-// now copied verbatim: Contract, Renewal, and Savings all pair with the
-// *same* bold word "Intelligence" in the export, not the three distinct
-// words ("Intelligence" / "Tracking" / "Opportunities") the earlier guess
-// reconstructed from ADR-020's release vocabulary. Gap G-S1-JOBS
-// (reports/audit/visual-fidelity-gaps.md).
-const V1_JOBS: ReadonlyArray<{ kicker: string; bold: string }> = [
-  { kicker: "Contract", bold: "Intelligence" },
-  { kicker: "Renewal", bold: "Intelligence" },
-  { kicker: "Savings", bold: "Intelligence" },
-  { kicker: "New purchase", bold: "Quote Check" },
+// The V1 panel this replaces was built from the day1 export (a single
+// north-star sentence and four kicker/bold pairs). The V2 design keeps the
+// same canvas -- accent ground, grid, lockup, space-between flow -- and
+// changes what it says: a three-line statement whose middle line is the
+// accent one, and a bordered list that pairs each capability with the
+// question it answers. Copy below is quoted verbatim from that markup.
+const NORTH_STAR_LINES: ReadonlyArray<{ text: string; accent: boolean }> = [
+  { text: "Your contracts.", accent: false },
+  { text: "Your savings.", accent: true },
+  { text: "Nothing missed.", accent: false },
+];
+
+const ANSWERS: ReadonlyArray<{ capability: string; answer: string }> = [
+  { capability: "Contract Intelligence", answer: "What you bought" },
+  { capability: "Renewal Intelligence", answer: "When to act" },
+  { capability: "Savings Intelligence", answer: "Where to save" },
+  { capability: "Quote Check", answer: "Before you buy" },
 ];
 
 // Task E06/F06/US01/T01 (full-bleed-layout): the left "statement panel" half
 // of screen 1 is constant across all three of its named states (idle ·
-// redirecting · workspace picker) -- verified against the compiled
-// prototype's own markup (inputs/design/prototypes/day1-demo.html): the
-// statement-panel `<div>` sits *outside* the `sc-if` blocks that switch the
-// right panel's content. Extracted here so WorkspacePickerScreen.tsx can
-// render "the same canvas" for its own states too, instead of falling back
-// to a second, narrower, standalone layout -- ADR-018/019/020 never
-// describe the workspace list as a separate screen, only a state of this
-// one.
+// redirecting · workspace picker) -- in the V2 markup too, the statement
+// `<div>` sits outside the `sc-if` blocks that switch the right panel.
+// Exported so WorkspacePickerScreen.tsx renders the same canvas.
 export function SignInStatementPanel() {
   return (
     <section className="signin-statement">
@@ -57,30 +51,29 @@ export function SignInStatementPanel() {
         <span className="signin-lockup-mark" aria-hidden="true" />
         Contigo
       </div>
-      <p className="signin-north-star">
-        Contigo knows <span className="signin-accent">what we bought</span>,{" "}
-        <span className="signin-accent">what we pay</span>,{" "}
-        <span className="signin-accent">when we need to act</span>, and{" "}
-        <span className="signin-accent">where we can save money</span>.
-      </p>
-      <dl className="signin-jobs">
-        {V1_JOBS.map((job) => (
-          <div className="signin-job" key={job.kicker}>
-            <dt>{job.kicker}</dt>
-            <dd>{job.bold}</dd>
-          </div>
-        ))}
-      </dl>
+      <div className="signin-statement-body">
+        <p className="signin-north-star">
+          {NORTH_STAR_LINES.map((line) => (
+            <span key={line.text} className={line.accent ? "signin-accent" : undefined}>
+              {line.text}
+            </span>
+          ))}
+        </p>
+        <dl className="signin-answers">
+          <div className="signin-answers-kicker">One platform, four answers</div>
+          {ANSWERS.map((entry) => (
+            <div className="signin-answer" key={entry.capability}>
+              <dt>{entry.capability}</dt>
+              <dd>{entry.answer}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+      <p className="signin-statement-footer">Contract intelligence for procurement teams.</p>
     </section>
   );
 }
 
-// Microsoft's 4-square mark, quoted verbatim (viewBox + all four rects/
-// opacities) from the compiled prototype's primary sign-in button
-// (`<!-- SIGN-IN -->`, inputs/design/prototypes/day1-demo.html). `fill`
-// (not the shared `.icon` stroke treatment in styles/base.css) is load-
-// bearing here -- `.icon` sets `fill: none`, which would blank every rect.
-// aria-hidden: the button's own text already names the action.
 function MicrosoftMark() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
@@ -112,8 +105,7 @@ export default function SignInScreen({ onContinue, interactionInFlight }: SignIn
           Sign in
         </h2>
         <p className="signin-subtitle">
-          Use your organisation account. Contigo never stores your password — identity is handled by
-          Microsoft Entra ID.
+          Your organisation account. Contigo never stores a password.
         </p>
         <button
           type="button"
@@ -122,7 +114,7 @@ export default function SignInScreen({ onContinue, interactionInFlight }: SignIn
           disabled={redirecting}
         >
           {redirecting ? <span className="signin-spinner" aria-hidden="true" /> : <MicrosoftMark />}
-          {redirecting ? "Redirecting to Microsoft Entra ID…" : "Continue with Microsoft Entra ID"}
+          {redirecting ? "Redirecting to login.microsoftonline.com …" : "Continue with Microsoft Entra ID"}
         </button>
         <hr />
         <p className="micro-meta">

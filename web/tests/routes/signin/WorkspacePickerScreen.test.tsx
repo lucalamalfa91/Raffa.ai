@@ -101,11 +101,11 @@ describe("WorkspacePickerScreen", () => {
     );
 
     // Parent story AC: "Workspace picker: same canvas as the prototype, not
-    // a narrow article." The statement panel (north-star sentence + 4 V1
+    // a narrow article." The statement panel (V2 north star + the four answers
     // jobs) is SignInScreen's own left column, shared via
     // SignInStatementPanel -- its presence here proves the picker no longer
     // falls back to the old standalone `.workspace-picker` card.
-    expect(screen.getByText(/what we bought/i)).toBeInTheDocument();
+    expect(screen.getByText("Your contracts.")).toBeInTheDocument();
     expect(container.querySelector("main.signin-screen")).toBeInTheDocument();
     expect(container.querySelector(".workspace-picker")).not.toBeInTheDocument();
   });

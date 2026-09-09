@@ -169,7 +169,13 @@ public static class DocumentsEndpointExtensions
         switch (decision.Outcome)
         {
             case AdmissionOutcome.Failed:
-                return Results.BadRequest(decision.Error);
+                // Two different failures wear the same outcome: a document this pipeline genuinely
+                // cannot read (the caller's problem -> 400) and an AI provider that could not be
+                // reached at all (ours -> 503, and worth retrying). Neither persists anything.
+                return decision.Error?.StartsWith(
+                    DocumentAdmissionGate.GatewayUnavailablePrefix, StringComparison.Ordinal) == true
+                    ? Results.Json(decision.Error, statusCode: StatusCodes.Status503ServiceUnavailable)
+                    : Results.BadRequest(decision.Error);
             case AdmissionOutcome.Rejected:
                 return Results.Json(
                     new

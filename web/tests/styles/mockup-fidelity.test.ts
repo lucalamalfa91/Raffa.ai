@@ -56,9 +56,13 @@ describe("index.css -- <main> stays uncapped (AC-1, gap G-40REM)", () => {
 describe("signin.css -- north-star type and statement ground (AC-2, gaps G-S1-TYPE/G-S1-FILL)", () => {
   const css = readSource("../../src/routes/signin/signin.css");
 
-  it("keeps the north-star sentence fluid via clamp(30px, 3.8vw, 52px), not a fixed 32px", () => {
+  it("keeps the north star fluid via clamp(), not a fixed size", () => {
+    // The V2 sign-in (contigo-v2/markup.html) types its three-line statement at
+    // clamp(40px, 5vw, 76px); the V1 export's clamp(30px, 3.8vw, 52px) was for the single
+    // sentence it replaced. What this guards is the property that survives both: the size
+    // is fluid, never a fixed pixel value.
     const body = ruleBodyFor(css, ".signin-north-star");
-    expect(body).toMatch(/font-size:\s*clamp\(30px,\s*3\.8vw,\s*52px\)/);
+    expect(body).toMatch(/font-size:\s*clamp\(40px,\s*5vw,\s*76px\)/);
   });
 
   it("fills the statement panel with --color-accent-100 (not a plain/neutral ground)", () => {

@@ -137,6 +137,7 @@ module "containerapps" {
   # instance only -- never dev's -- so the API/worker Container Apps can
   # only ever present demo's workload identity.
   workload_identity_id          = module.identity.workload_identity_id
+  workload_identity_client_id   = module.identity.workload_identity_client_id
   acr_login_server              = module.acr.login_server
   postgres_connection_secret_id = module.keyvault.postgres_connection_secret_versionless_id
   storage_connection_secret_id  = module.keyvault.storage_connection_secret_versionless_id

@@ -25,11 +25,23 @@
 
 /* ---- Filter chips (AC-1: Supplier, Category, Renewal period, Spend, Status, Risk, Auto-renewal) -- */
 
+/* One aligned row of filters, not a ragged one. The previous flex row bottom-aligned
+   the fields (`align-items: flex-end`), so a field carrying a hint sentence ("Name lookup
+   isn't available yet", "Ships once Suppliers/Products exists") pushed its own control a
+   line higher than its neighbours and the row read as broken.
+
+   A grid of equal columns fixes it structurally: each field spans the same three row
+   tracks -- label, control, hint -- so every label sits on one line, every control on the
+   next, and the hints below them, whatever any single field carries. `subgrid` is what
+   makes the three tracks shared rather than per-field; where it is unsupported the
+   declarations below still give a clean grid with top-aligned fields, which is already
+   better than the bottom-aligned flex row. */
 .portfolio-filters {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: var(--space-4);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  align-items: start;
+  column-gap: var(--space-4);
+  row-gap: var(--space-4);
   margin: 0;
   padding: 0;
   border: 0;
@@ -40,6 +52,7 @@
 .portfolio-filters legend {
   width: 100%;
   padding: 0;
+  grid-column: 1 / -1;
 }
 
 /* Compound selector (.field.portfolio-filter-field), not a bare .portfolio-filter-field: .field
@@ -47,8 +60,30 @@
    which would leave the override's winner dependent on stylesheet load order. The compound form is
    unambiguously more specific, so it wins regardless of order. */
 .field.portfolio-filter-field {
-  min-width: 160px;
+  display: grid;
+  grid-template-rows: auto auto auto;
+  align-content: start;
+  row-gap: 5px;
+  min-width: 0;
   margin-bottom: 0;
+}
+
+@supports (grid-template-rows: subgrid) {
+  .field.portfolio-filter-field {
+    grid-row: span 3;
+    grid-template-rows: subgrid;
+  }
+}
+
+/* The label's own margin would double the row gap above. */
+.field.portfolio-filter-field > label {
+  margin-bottom: 0;
+}
+
+/* A field with no hint still occupies the hint track, so the controls of its neighbours
+   stay on the same line rather than sliding up into the gap. */
+.field.portfolio-filter-field > .hint {
+  margin: 0;
 }
 
 .portfolio-filter-spend-inputs {
@@ -61,8 +96,8 @@
 }
 
 .portfolio-filters-clear {
-  margin-left: auto;
-  align-self: flex-end;
+  grid-column: 1 / -1;
+  justify-self: end;
 }
 
 /* ---- Attention strip (AC-1/AC-2) ------------------------------------------
