@@ -94,6 +94,16 @@ any wave's integration story is a gap.
 
 Two tasks in the same phase must not modify the same file. Chain `depends_on`.
 
+**Creation counts as writing.** A file one task *creates* may not be listed,
+required, mapped or referenced by any other task of the same phase — not even
+"map `MapXEndpoints()` in `Program.cs`" while the file is being created by a
+sibling. Wire a new endpoint file into `Program.cs` in the phase **after** the
+one that creates it. e13 phase 3 had F02/T02 create
+`MarketEndpointExtensions.cs` while F06/T01 mapped it: the second task stubbed
+the file to compile, the barrier union-merged two whole files, CI broke.
+`python scripts/check_single_writer.py --slice <id>` must exit 0 before a slice
+is cut; `check_slice_prereqs.py` runs the same check at launch.
+
 Do **not** put domain `README.md` paths (or root `README.md`) in a task's
 `## Files to create or modify`. README updates are standing implementer
 scope (`skills/readme-hygiene.md`); listing them would make every

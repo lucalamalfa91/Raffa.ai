@@ -30,6 +30,12 @@ git diff
 
 Review the diff, not the description of the diff.
 
+Then confirm the work is **committed**: `git log --oneline -8` must show
+this task's commits and `git status --short` must list no product file.
+Uncommitted work is not a delivery — Helix records the task as failed
+(`fan_out.require_delivery`) whatever your verdict says. Missing commit →
+`IMPLEMENTATION_GAPS: commit the work (<paths>)`, never approval.
+
 **Shell timeout rule:** every Bash command you run MUST complete within 300
 seconds. For `grep`, `find`, or any recursive search, always add a scope
 limiter (e.g. `--include`, a specific directory, or `head -200`). A command
@@ -80,9 +86,14 @@ Suggestions are allowed if labelled `SUGGESTION`. Blocking findings use `BLOCKIN
 ## 5. Close — exactly one last-line marker
 
 Open with `REVIEWER:` on its own line. Emit **exactly one** of these as the
-last line of the turn, nothing after it:
+last line of the turn, nothing after it. A turn **without** a marker is not
+allowed: the workflow ends on it as a normal stop with nothing delivered
+(e13 F06/T02 closed on "No verdict on this turn"). If you need the
+implementer to do something first — commit, run a test, paste an exit code —
+that is `IMPLEMENTATION_GAPS:`.
 
-- All seven checks pass and you have **run** the commands in this turn:
+- All seven checks pass, the task's commits exist on the branch, and you have
+  **run** the commands in this turn:
 
 ```
 IMPLEMENTATION_APPROVED: <task-id> — <n> ACs met, build 0, tests 0

@@ -66,6 +66,14 @@ Backend tasks in phases 2–4 do **not** edit the OpenAPI contract; the web
 task of the next phase documents the landed endpoints (shapes fixed by
 `inputs/requirements.md` §6) and regenerates the client.
 
+**Creation counts as writing (lesson of e13 phase 3).** F02/T02 created
+`backend/src/Contigo.Api/MarketEndpointExtensions.cs` and F06/T01 mapped
+`MapMarketEndpoints()` in `Program.cs` in the same phase; F06/T01 had to stub
+the file to compile, the barrier union-merged the two files, and CI failed on
+18 errors. A file created by a task may not be named by any other task of the
+same phase; map a new endpoint file one phase later. Before cutting a slice:
+`python scripts/check_single_writer.py --slice e13` must exit 0.
+
 After `wave-spec.ask.yaml`:
 
 ```

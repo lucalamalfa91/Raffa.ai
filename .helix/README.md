@@ -15,9 +15,15 @@ cd contigo-flow/.helix
 cp .env.example .env
 ./run.ps1 --check
 
+# Pre-flight (fail-closed): operator prerequisites + the same-phase
+# single-writer check of the slice's task files.
+python scripts/check_slice_prereqs.py --slice r0-a
+
 # Passata 2 — one slice wave (not the 103-task YAML).
 # Worktrees of the local clone. Green wave → on_orchestration_stop
-# opens a GitHub PR integration → origin/main.
+# opens a GitHub PR integration → origin/main. A task counts as delivered
+# only with committed work on wave/<task> (require_delivery); the
+# wave-close report audits every task and lists salvage/* tags.
 ./run.ps1 -Max -Slice r0-a -o execution-fanout
 # list: reports/plan/slices/INDEX.md
 

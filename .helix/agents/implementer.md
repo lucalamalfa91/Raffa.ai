@@ -35,12 +35,31 @@ Run 1d0d3c3d (E01/F01/US01/T01) wasted the first session on AFI bootstrap,
   `.helix/reports/architecture/ADR-NNN-<slug>.md` directly.
 - Use `python`, not `python3`. `gh` is already authenticated as
   `lucalamalfa91` when the task needs GitHub.
+- **Commit as you go.** Helix measures delivery by the diff of
+  `wave/<task-id>` beyond its fork point (`fan_out.require_delivery`), not
+  by the reviewer's verdict. After every coherent unit (a module, a
+  migration, a test project) and always **before** a long build or test run:
+  `git commit -m "<task-id>: wip — <unit>"` on the staged product paths of
+  §6. WIP commits are fine and are never squashed. A turn that ends with
+  uncommitted product files is a **failed task** and blocks its dependents.
+- **The harness kills a turn that streams nothing for 15 minutes**
+  (`HELIX_CODING_AGENT_TURN_DEADLINE_SECONDS`, an inactivity deadline). Keep
+  every Bash command under 10 minutes: `dotnet test` per project or with
+  `--filter`, never the whole solution in one silent call. A hung command
+  costs the turn; the work before it survives only if it was committed.
+- **Release locks before you stop:** run `dotnet build-server shutdown`
+  after your last `dotnet` command. A lingering build server keeps
+  `bin/obj` locked and a retried task cannot reset the worktree.
 
 This node is `implementer`. After you finish, control goes to `reviewer`
 unless your last line is `HALTED:` — that ends the workflow **immediately**,
-no reviewer turn, no further laps. If the reviewer emits `IMPLEMENTATION_GAPS:`,
-you run again with that turn as input. After `IMPLEMENTATION_APPROVED:` this
-node does **not** run again — commit **before** the hand-off.
+no reviewer turn, no further laps, and Helix records this task as **failed**
+(`fan_out.task_failure_markers`) and blocks its dependents. Halt only when a
+declared dependency is absent from the worktree or an input is missing, and
+name it; never re-implement a sibling task's scope to avoid halting. If the
+reviewer emits `IMPLEMENTATION_GAPS:`, you run again with that turn as input.
+After `IMPLEMENTATION_APPROVED:` this node does **not** run again — commit
+**before** the hand-off.
 
 ## 1. Read your task
 
@@ -93,8 +112,11 @@ you did not run is a build that fails.
 ## 6. Commit before handing off to the reviewer
 
 `IMPLEMENTATION_APPROVED:` has no outgoing edge — you will not get another
-turn after approval. The subject must contain the task id (Helix resume greps
-the branch diff; salvage also records the id). Do not push.
+turn after approval. The subject must contain the task id (the wave-close
+delivery audit and the `salvage/<id>/*` tags record it). Do not push. This is
+the **final** commit; the WIP checkpoints of §0 are already on the branch.
+Before you stop, `git status --short` must list no product file — anything
+left unstaged is not a delivery.
 
 Stage **product paths only**. Do not `git add -A`: that scoops `.helix/`
 (process artifact). Two tasks committing `reports/open-questions.md` is

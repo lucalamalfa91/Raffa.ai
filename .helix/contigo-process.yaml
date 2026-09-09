@@ -388,8 +388,11 @@ orchestrations:
   # ===========================================================================
   # PASSATA 2 -- not reachable from contigo-design.
   # Workflow, not group_chat. HALTED: from implementer skips the reviewer.
-  # HALTED: from reviewer has no back-edge. Either ends THIS task immediately
-  # (engine halt-guard then raises `halted` so fan-out records a failure).
+  # HALTED: from reviewer has no back-edge. Either ends THIS task immediately.
+  # The engine has NO halt-guard for a workflow instance: the run ends as a
+  # normal stop (stop_reason no_edge_matched). fan_out.task_failure_markers
+  # below is what turns that HALTED: last line into a failed task -- e13 (run
+  # 5dec6283) counted three HALTED tasks as delivered before it existed.
   # IMPLEMENTATION_GAPS: is the only loop-back. IMPLEMENTATION_APPROVED: has
   # no outgoing edge (success). Do NOT use on_approved_or_halted (unanchored
   # substring APPROVED:). Do NOT use halt-wave (would kill independent tasks).
@@ -434,6 +437,12 @@ orchestrations:
         # Path only — Helix validates command as an artifact-relative file
         # (Windows runner wraps .py with python).
         timeout_s: 15
+      - event: on_orchestration_start
+        command: scripts/check_single_writer.py
+        # Observation-only here (hooks are fail-open): prints same-phase file
+        # collisions of slice.current.yaml to stderr. The fail-closed gate is
+        # `python scripts/check_slice_prereqs.py --slice <id>` before launch.
+        timeout_s: 30
       - event: on_orchestration_stop
         command: scripts/open_fanout_pr.py
         # Hard cap in helix.hooks.external is 60s (git push + gh).
@@ -464,5 +473,19 @@ orchestrations:
       # skips tasks whose depends_on intersects this produces; independent
       # tasks in the same wave still run. halt-wave would kill the slice.
       # Passata 2 bills Claude Code Max (claude login), not Console API.
-      # resume_completed skips tasks whose wave/* branch already diffs vs main.
+      # resume_completed skips tasks whose wave/* branch carries committed work
+      # beyond its FORK POINT (refs/helix/fork/<branch>; the reflog creation
+      # entry for older branches) -- never "diffs vs main", which is true of
+      # every phase >= 2 branch the moment it is created. To force a re-run of
+      # a delivered task, delete its wave/* branch.
       resume_completed: true
+      # Delivery contract (Helix 2026-09-09). A task is delivered ONLY when its
+      # wave/<task> branch carries committed work beyond its fork point. An
+      # implementer that HALTED, a reviewer that closed without a verdict, a
+      # turn that died before `git commit`: FAILED, dependents blocked, listed
+      # in reports/execution/wave-close.md with its salvage/* tags. e13 (run
+      # 5dec6283) reported 20/20 finished with five such tasks.
+      require_delivery: true
+      # Last non-blank line of the instance output, line-anchored. HALTED: ends
+      # the workflow as a normal stop; this records the task as failed.
+      task_failure_markers: ["HALTED:"]
