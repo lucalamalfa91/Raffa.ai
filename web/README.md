@@ -567,15 +567,14 @@ own P2 follow-up, R-WEB-06):
 - **Ask about it** (`.btn-secondary`, header) links to `/ask?scope=<contractId>` -- a *new* chat
   scoped to this contract. Live since task E13/F09/US01/T04: `AskRoute` reads `?scope=` (while no
   conversation is open yet), passes `scopeContractId` to `POST /api/conversations`, and templates its
-  two suggestion chips with this contract's own supplier name (`GET /api/contracts/{id}`, defensively
-  read off the wire object -- see that task's own `askViewModel.ts#suggestionsFor` doc comment for
-  why this is not yet a typed generated field).
-- **Supplier name, defensively** (`contract360ViewModel.ts#resolveSupplierLabel`) -- the header kicker
-  now prefers a wire-provided `supplierName` over the `formatSupplier` id-fragment fallback above,
-  reading it off the response object rather than the generated `Contract360HeaderBody` type (which
-  does not carry that field yet -- `web/openapi/contigo-api.v1.json` / `web/src/api/generated/` are
-  out of this task's own file scope). Once the phase-4 backend task regenerates both, this starts
-  rendering the real name with no further client change.
+  two suggestion chips with this contract's own supplier name (`GET /api/contracts/{id}` -- see that
+  task's own `askViewModel.ts#suggestionsFor` doc comment).
+- **Supplier name** (`contract360ViewModel.ts#resolveSupplierLabel`) -- the header kicker prefers the
+  contract's `supplierName` over the `formatSupplier` id-fragment fallback above. Since task
+  E13/F03/US01/T02 that is a real, typed field on `Contract360HeaderBody` (`ISupplierNameLookup`,
+  ADR-024), read directly off the generated type; it is still nullable, so a contract with no
+  supplier -- or a `supplierId` that no longer resolves for the tenant -- keeps falling back to the
+  id fragment rather than showing a fabricated name.
 
 ### Review / correction (ADR-020 screen 6, task E07/F03/US01/T01, us-01-field-review-correction)
 
@@ -664,8 +663,8 @@ per-user conversations.
   `POST /api/conversations` (with `scopeContractId` when `?scope=` is present) then
   `POST /api/conversations/{id}/messages`, then the URL becomes `/ask/<conversationId>`
   (`navigate(..., { replace: true })`). `?scope=<contractId>` templates the two chips with the real
-  supplier name instead (`buildScopedSuggestions`, defensively read off `GET /api/contracts/{id}`
-  until that field is a typed generated one).
+  supplier name instead (`buildScopedSuggestions`, read off `GET /api/contracts/{id}`'s typed
+  `supplierName`; "this supplier" when it is null or blank).
 - **Conversation** -- header shows the derived title (`deriveConversationTitle`, collapsed
   whitespace, hard-truncated at 48 chars, no ellipsis) + "+ New chat"; every turn renders through the
   phase-2 `ReplyBody` (task E13/F09/US01/T02, `routes/ask/reply/*`, this task maps the wire reply

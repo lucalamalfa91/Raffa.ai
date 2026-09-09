@@ -295,13 +295,13 @@ export function deriveConversationTitle(questionText: string): string {
 /** `app.jsx` `askScope`, quoted verbatim: `'Answers only from '+askable+' validated contract'+
  * (askable===1?'':'s')+' ('+kbNames.join(', ')+') · cites or abstains'` -- except the parenthetical
  * name list is omitted entirely (never rendered as an empty `()`) when `supplierNames` is empty, an
- * honest degradation rather than the prototype's own always-present parens: `GET /api/contracts`
- * does not resolve `supplierName` yet for any real tenant today (this task's own `supplierName`
- * addition to `web/openapi/contigo-api.v1.json`'s `getPortfolio` operation is itself "documented
- * ahead of the backend response projection actually selecting it" -- see that property's own
- * description), so a real deployment renders the plain, still-truthful sentence until a future
- * backend task fills the name in, at which point this same function starts rendering names with no
- * further client change. */
+ * honest degradation rather than the prototype's own always-present parens. `GET /api/contracts`
+ * does resolve a real `supplierName` per item since task E13/F03/US01/T02, so the names now exist on
+ * the wire; what is still missing is a caller that carries them this far. The shell's
+ * `../../components/shell/useValidatedContractCount.ts` reduces that same portfolio page to a bare
+ * count before `index.tsx` ever sees it, so the only call site passes `[]` and a real deployment
+ * still renders the plain, still-truthful sentence -- until some task threads those names through,
+ * at which point this same function starts rendering them with no further change here. */
 export function buildScopeLine(validatedContractCount: number, supplierNames: readonly string[]): string {
   const plural = validatedContractCount === 1 ? "contract" : "contracts";
   const names = supplierNames.length > 0 ? ` (${supplierNames.join(", ")})` : "";

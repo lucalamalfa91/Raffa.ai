@@ -63,7 +63,7 @@ export function isContract360TabName(value: unknown): value is Contract360TabNam
  * Task E13/F10/US01/T01 (contract360-landing): `?clause=`/`?page=` citation landing (ADR-024
  * "citation landing, scoped conversations"; ADR-020 screen 5 amendment "citation landing with
  * highlighted clause"; parent story us-01-contract360-landing AC-1/AC-2/AC-3) plus the header's
- * defensive `supplierName` read (AC-3). The three exports below are grouped in one place because
+ * `supplierName` read (AC-3). The three exports below are grouped in one place because
  * they are this one task's own addition, even though `resolveSupplierLabel` is a header concern and
  * the other two are a Clauses-tab concern -- see each function's own doc comment for its specific AC.
  */
@@ -132,22 +132,21 @@ export interface SupplierLabel {
 }
 
 /**
- * AC-3: "The supplier name (never a guid) appears in the header." `Contract360HeaderBody` (the
- * generated `web/src/api/generated/schema.ts` type) carries no `supplierName` field yet -- only the
- * bare `supplierId` this same gap already forced `../portfolioTableFormatters.ts#formatSupplier` to
- * work around for the Portfolio table. The phase-4 backend task that adds
- * `Contract360Header.SupplierName` (ADR-024 "Supplier identity" -- `Supplier` entity,
- * `ISupplierResolver`) regenerates both the OpenAPI contract and this client
- * (`web/openapi/contigo-api.v1.json` / `web/src/api/generated/schema.ts` are out of this task's own
- * "Files to create or modify"), at which point `header.supplierName` becomes a real, typed field.
- * Reading it defensively off the wire object now -- rather than widening the generated type by hand
- * -- means this function keeps working unchanged the moment that field lands for real, instead of
- * silently going stale against whatever shape the generator actually produces.
+ * AC-3: "The supplier name (never a guid) appears in the header." `supplierName` is a real, typed
+ * field on `Contract360HeaderBody` since task E13/F03/US01/T02 made the backend project
+ * `Contract360Header.SupplierName` (ADR-024 "Supplier identity" -- the `Supplier` entity resolved
+ * through `ISupplierNameLookup`, never a raw supplier id), so it is read straight off the generated
+ * `web/src/api/generated/schema.ts` type here.
+ *
+ * It is still `string | null`: the backend resolves it to `null` when the contract has no supplier
+ * at all, or when its `supplierId` no longer resolves for this tenant (that property's own
+ * description in `web/openapi/contigo-api.v1.json`). That `null` -- and a blank name -- fall back to
+ * `../portfolioTableFormatters.ts#formatSupplier`'s id-fragment label, the same honest "no name to
+ * show" degradation the Portfolio table already renders, never a fabricated supplier.
  */
 export function resolveSupplierLabel(header: Contract360HeaderBody): SupplierLabel {
-  const wire = header as unknown as { supplierName?: unknown };
-  if (typeof wire.supplierName === "string" && wire.supplierName.trim() !== "") {
-    return { label: wire.supplierName, title: header.supplierId ?? undefined };
+  if (header.supplierName !== null && header.supplierName.trim() !== "") {
+    return { label: header.supplierName, title: header.supplierId ?? undefined };
   }
   return formatSupplier(header.supplierId);
 }
