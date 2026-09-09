@@ -70,3 +70,48 @@ All model I/O flows through the Contigo AI Gateway (brief §8), and Foundry is t
 - Azure AI Foundry (hub + projects) and Azure AI Services pay-as-you-go are available in `northeurope`.
 - Foundry has no meaningful free inference tier, so a single pay-as-you-go account is the cheapest compliant option.
 - Per-project deployment isolation satisfies the brief's isolation requirement without a second account.
+
+## Amendment (2026-09-09, Terraform-managed account and account-native projects)
+
+The Decision stands: one shared pay-as-you-go Azure AI Services account, one
+Foundry project per environment, never a second account. Three facts change:
+
+1. **No hub.** Azure AI Foundry's account-native model replaces the hub-based
+   one. The account `aisvc-contigo` (kind `AIServices`, SKU `S0`, North
+   Europe, `custom_subdomain_name = aisvc-contigo`,
+   `project_management_enabled = true`, system-assigned identity,
+   `local_auth_enabled = false` -- no key exists anywhere, ADR-011) carries
+   the projects `contigo-dev` / `contigo-demo` as sub-resources
+   (`azurerm_cognitive_account_project`). The recorded hub name
+   `hub-contigo` is retired; `azurerm_ai_foundry` is never used.
+2. **Terraform owns it.** The note above ("HCP Terraform does not fully
+   manage Foundry projects/deployments in V1 ... portal step") no longer
+   applies -- nobody ever performed that step, and every environment ran the
+   fixture gateway until this amendment. The `dev` root (HCP workspace
+   `contigo-dev`) creates the shared resource group `rg-contigo-ai` (tags
+   `project=contigo`, `env=shared`), the account, the `contigo-dev` project,
+   dev's model deployments and dev's role assignments. The `demo` root
+   attaches to the same account by a `data "azurerm_cognitive_account"`
+   lookup (account name + `rg-contigo-ai`; never the other environment's
+   resource group, never `terraform_remote_state`) once `ai_account_attached`
+   is true, and creates only its own project, deployments and role
+   assignments. Deployment names are per environment (`<model>-<env>`) so the
+   two workspaces never contend for one name. The
+   `foundry_ai_services_resource_id` escape hatch is removed.
+3. **Document Intelligence is native to the account** (route
+   `documentintelligence/...` on the account endpoint, ADR-017 amendment of
+   the same date). No connection resource exists; `conn-docint-contigo-<env>`
+   remains a recorded, informational string
+   (`AiGateway__DocumentIntelligenceConnection`).
+
+RBAC: each environment's workload identity holds `Cognitive Services User`
+(Document Intelligence) and `Cognitive Services OpenAI User` (inference) on
+the account; human operators listed in `ai_operator_principal_ids` hold the
+same two roles for live probes and the Foundry playground (Owner carries no
+data-plane rights by itself). Rollout is two-phase (`ai_gateway_wired`,
+default false): the account, projects and deployments exist and are probed
+before any Container App is told the endpoint -- the invariant of commit
+a750746, now structural (`infra/modules/foundry/outputs.tf`). Model ids:
+ADR-004 amendment of the same date; SKUs: ADR-005 amendment;
+`scripts/foundry_connection_verify.py` holds the Terraform module to this
+shape.

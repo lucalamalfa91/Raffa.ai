@@ -10,6 +10,11 @@ target_repo: contigo-infra
 
 # task-01-foundry-account-provision — Provision Foundry hub + 2 projects + one AI services account
 
+> Superseded 2026-09-09 by task-03: the account, the account-native projects,
+> the model deployments and the RBAC are created by Terraform
+> (`infra/modules/foundry`, ADR-008 amendment); there is no hub and no portal
+> step. Kept for history.
+
 ## Coding objective
 
 Provision the Azure AI Foundry account shape from ADR-008: a single Azure AI Foundry

@@ -94,3 +94,39 @@ temperature <= 0.2, with **no tools, no web grounding, no browsing** on the
 deployment or the request (compliance test on the fake HTTP handler).
 Per-tenant daily token and OCR-page budgets fail visibly. This footer
 supersedes the epic-12 amendment above. See ADR-024.
+
+## Amendment (2026-09-09, confirmed model ids per environment)
+
+The candidate table above is replaced by deployments confirmed in
+`northeurope` for this subscription (`az cognitiveservices model list -l
+northeurope`, 2026-09-09) and created by Terraform (`infra/modules/foundry`,
+ADR-008 amendment of the same date). The backend binds
+`AiGateway:Models:<Role>:ModelId` / `:ModelVersion` from the deployment
+resources (env vars `AiGateway__Models__<Role>__ModelId` / `__ModelVersion`)
+and never hard-codes a deployment name. `dev` is deliberately cheap; `demo`
+deliberately frontier.
+
+| Role | dev deployment (model, version, SKU) | demo deployment (model, version, SKU) |
+| --- | --- | --- |
+| classify | `gpt-5.4-nano-dev` (gpt-5.4-nano 2026-03-17, DataZoneStandard) | `gpt-5.4-nano-demo` (gpt-5.4-nano 2026-03-17, DataZoneStandard) |
+| extract | `gpt-5.4-nano-dev` | `gpt-5.4-demo` (gpt-5.4 2026-03-05, DataZoneStandard) |
+| answer | `gpt-5.4-nano-dev` | `gpt-5.4-demo` |
+| embed | `text-embedding-3-small-dev` (version 1, GlobalStandard) | `text-embedding-3-large-demo` (version 1, GlobalStandard), request `dimensions = 1536` |
+| ocr | Document Intelligence `prebuilt-read`, api-version 2024-11-30 (built in, no deployment) | same |
+
+Rules: `version_upgrade_option = NoAutoUpgrade`, so the logged model version
+(brief §8) is the version that answered; capacity (thousands of tokens per
+minute: dev 300 for the chat deployment and 100 for embeddings, demo 200 /
+200 / 100) is changed by pull request in the environment root;
+`DataZoneStandard` (EU data zone) wherever the model offers it, else
+`GlobalStandard`; `gpt-4o-mini` / `gpt-4.1-*` exist in this region only as
+`GlobalProvisionedManaged` (fixed cost) and are rejected. The pgvector
+column stays 1536-dimensional (ADR-003): `text-embedding-3-small` is 1536
+natively and the gateway forces `dimensions = 1536` on
+`text-embedding-3-large`, so promotion never changes the vector width. The
+GPT-5.x family constrains the chat request (`max_completion_tokens`,
+optional `reasoning_effort`, `temperature` only where the deployment accepts
+it): the gateway keeps every knob configuration-driven and omits it when
+unset, and the "temperature <= 0.2" rule above applies whenever temperature
+is sent. Model swap remains config-only: a different deployment is a
+Terraform change in the environment root, not code.

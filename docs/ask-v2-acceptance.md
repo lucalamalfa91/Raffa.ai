@@ -161,9 +161,11 @@ contract PDF is checked into this repo).
 > Drop a PNG scan of an order form → OCR → admitted → shows supplier name in
 > Documents. (R-DOC-02 AC-2, ADR-017, R-SUP-04)
 
-**Requires live Foundry** (`AiGateway__Endpoint` set on
-`ca-contigo-<env>-api`). On a fixture-gateway environment the scan is refused
-with `no_readable_text`, which is the honest fixture behaviour, not a defect —
+**Requires live Foundry** (`AiGateway__Endpoint` is published by Terraform on
+`ca-contigo-<env>-api` where `infra/environments/<env>/variables.tf` sets
+`ai_gateway_wired = true`, see `infra/README.md`). On a fixture-gateway
+environment the scan is refused with `no_readable_text`, which is the honest
+fixture behaviour, not a defect —
 see [Known gaps](#known-gaps-that-shape-acceptance-today).
 
 **Click path.** `$WEB/documents` → upload the PNG scan → wait for the row's
@@ -593,7 +595,7 @@ document; each one changes what a given row can honestly prove.
 |---|---|---|
 | 1 | **`ConnectionStrings__Suppliers` is not injected into the API Container App.** `backend/src/Contigo.Api/Program.cs` fail-fasts on it; `infra/modules/containerapps/main.tf` sets `IdentityWorkspace`, `DocumentsContracts`, `Audit`, `Renewals`, `Savings`, `Quotes`, `Chat`, `Storage` — not `Suppliers`. | The deployed API does not boot. **Blocks every row.** Fix in `infra/modules/containerapps/main.tf` (same `pg-cs` secret as its neighbours) before the first V2 promotion. |
 | 2 | **The API composes `AddMarketModule()` without a connection string.** The market module then keeps its in-memory mock projection, so the API never reads the `market_record` / `market_embedding` rows `seed-market-intelligence.yml` writes. | A5's numbers come from the in-process mock, not from the seeded corpus. The seed job is still the right pre-step (it is what R-MKT-03 specifies and what the live provider will feed), but "the API reads the seeded corpus" is not yet true. |
-| 3 | **No live Foundry unless `AiGateway__Endpoint` is set** (ADR-008 leaves the Foundry account portal-only; `infra/README.md` "Known gaps"). | A2 and A5–A7 cannot be walked. `reprocess-tenant-documents.yml` detects this and downgrades its OCR-placeholder check to a warning; `v2.spec.ts` skips those rows with a named reason. |
+| 3 | **Foundry is wired per environment by `ai_gateway_wired`** (ADR-008 amendment 2026-09-09: the shared `aisvc-contigo` account, the per-environment projects and the model deployments are Terraform-managed; `infra/README.md` "AI Gateway / Foundry + Document Intelligence"). | Where the flag is still `false` A2 and A5–A7 cannot be walked. `reprocess-tenant-documents.yml` detects the absent endpoint and downgrades its OCR-placeholder check to a warning; `v2.spec.ts` skips those rows with a named reason. |
 | 4 | **`POST /api/conversations` and `POST /api/conversations/{id}/messages` have no `requestBody` in `web/openapi/contigo-api.v1.json`.** The real bodies are `{"scopeContractId": "<uuid>"}` (optional) and `{"question": "…"}` — verified against `Contigo.Api.ConversationsEndpointExtensions` and `web/src/api/client.ts`. | The `curl` commands above are correct; the OpenAPI is incomplete. Owned by the task that owns that file, not by this runbook. |
 | 5 | **The role signal for the Admin-gated document endpoints is not a declared parameter.** `X-Role` is what `GET /api/capabilities` parses; `X-Workspace-Role` is what the OpenAPI's `deleteDocument` / `reprocessDocument` descriptions name. | `reprocess-tenant-documents.yml` sends **both**. When testing `DELETE`/`reprocess` by hand, send both too — and expect both to disappear when ADR-010's API JWT lands. |
 | 6 | **`GET /api/audit` needs an authenticated `ClaimsPrincipal`** (`Contigo.Api.AuditEndpointExtensions` authorizes a real Workspace Admin identity), which the ADR-022 header posture does not provide — and it is the one mapped route with no entry in `web/openapi/contigo-api.v1.json`. | Audit checks in A1, A9 and A12 are SQL against `audit_event`, not API calls. It is the only `/api/...` path in this document that does not resolve to a documented operation; every other one does. |

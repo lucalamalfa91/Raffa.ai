@@ -33,8 +33,8 @@ Columns:
 | API JWT (ADR-010 on host) | ADR-010 | **no** — host uses `X-Tenant-Id` | header only | header only | **not BLOCKER** — ADR-022 |
 | Fixture benchmark adapter (in-process) | ADR-001 | `FixtureBenchmarkAdapter` + tests | n/a (in-process) | n/a | WAVE_COVERED (e04) |
 | Fixture / savings **rows on Flexible Server** | ADR-001 Day-1 savings | tests only | **not seeded** | **not seeded** | **E10** |
-| Foundry project + AI Gateway on CA | ADR-004/008 | Terraform identity hooks; `FixtureAiGateway` in API | **no confirmed AI/OCR env vars** | `contigo-demo` unverified | **E10** |
-| Document Intelligence (OCR) on CA | ADR-017 | identity hook | **not confirmed** | unverified | **E10** |
+| Foundry project + AI Gateway on CA | ADR-004/008 (amended 2026-09-09) | Terraform creates the shared account, per-env project, deployments and RBAC (`infra/modules/foundry`); env vars published when `ai_gateway_wired` | created by the dev root; wired after the live probe | project + deployments on `ai_account_attached = true`; wired with the next `demo-v*` | **E10** → infra 2026-09-09 |
+| Document Intelligence (OCR) on CA | ADR-017 (amended 2026-09-09) | native to `aisvc-contigo`; `prebuilt-read` / 2024-11-30 bound via `AiGateway__Models__Ocr__*` | same gate as above | same gate as above | **E10** → infra 2026-09-09 |
 | `demo-v*` promotion ever run | ADR-016 | `demo-promote.yml` | n/a | **no evidence** | **E10** |
 | Secrets in git | ADR-011 | none found in this audit | KV `postgres-connection` | designed | WAVE_COVERED |
 | Swagger UI | — | must stay absent | `/swagger` 404 | n/a | WAVE_COVERED (out of scope) |
