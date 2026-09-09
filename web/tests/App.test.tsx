@@ -69,6 +69,8 @@ function mockApiClient(result: Promise<HealthCheckResult> | HealthCheckResult): 
     // bare vi.fn() is enough, same convention as getContract360 above.
     getCorrectionHistory: vi.fn(),
     correctContract: vi.fn(),
+    getContractEvidence: vi.fn(),
+    validateDocument: vi.fn(),
     // Task E08/F01/US01/T01 (renewal-pipeline): App itself never reaches the Renewals screen --
     // bare vi.fn() is enough, same convention as getContract360 above.
     postRenewalAction: vi.fn(),

@@ -168,7 +168,9 @@ that a second apply does not duplicate rows.
 | GET | `/api/documents/{id}/preview` | First-page preview as `image/png` (R-DOC-08); `X-Tenant-Id` header; 404 when the document does not exist for this tenant **or** has no stored preview — the client never receives a blob URL, the bytes are streamed under the caller's own tenant scope (ADR-009). See “Documents V2” below for what the preview actually contains today |
 | POST | `/api/documents/{id}/reprocess` | **Admin only** (403 otherwise): re-loads the stored bytes, re-runs hybrid parse → page-aware embedding → staged extraction (R-DOC-07), writes one `document.reprocessed` audit row; response `{ documentId, contractId, documentType, processingStatus, pagesParsed, chunksIndexed }`. Role resolution: claims → `X-Role`/`X-Workspace-Role` header → `workspace_membership` looked up by `X-User-Id` — see `Contigo.Api.Infrastructure.WorkspaceRoleResolver` |
 | DELETE | `/api/documents/{id}` | **Admin only** (403 otherwise): deletes every stored object (each version plus the preview), the retrieval chunks, the version and extraction-job rows and the document row, detaches the contract link and clears every `source_document_id` on the facts that survive; writes one `document.deleted` audit row; 204 (R-DOC-10). The contract and its extracted facts are deliberately kept |
+| POST | `/api/documents/{id}/validate` | Review sign-off (product spec §7.1 "needs review → completed", ADR-020 screen 6 "Mark as validated"): optional body `{ acceptedFields: string[] }` + `X-Tenant-Id` header (`X-User-Id` names the actor); moves a `NeedsReview` document to `Completed` and writes one `document.validated` audit row naming the accepted fields (`Contigo.Documents.Contracts.Application.DocumentValidationService`); never rewrites the extraction evidence. Not Admin-only — reviewing is the Procurement role's own job, same posture as `PATCH /api/contracts/{id}`. 404 unknown/cross-tenant document; **409** with a named reason for a document still `Uploaded`/`Processing` or `Failed`; idempotent — an already `Completed` document answers 200 with `alreadyValidated: true`. Response `{ documentId, contractId, processingStatus, validatedAt, acceptedFields, alreadyValidated }` |
 | PATCH | `/api/contracts/{id}` | `{ corrections: { <field>: <string\|null> }, reason? }` + `X-Tenant-Id` header; versioned correction (ADR-003 `ContractVersion`/`CorrectionHistory`, ADR-009 RLS) — see `Contigo.Documents.Contracts.Application.ContractCorrectionService.CorrectableFieldNames` for the accepted field list; also writes one `IAuditWriter` entry (`contract.corrected`) |
+| GET | `/api/contracts/{id}/evidence` | `X-Tenant-Id` header; the latest `ExtractionEvidence` row per field for one contract (`Contigo.Documents.Contracts.Application.ContractEvidenceQueryService`), alphabetical by `fieldName`: `{ fieldName, value, confidence, sourcePage, sourceSpan, sourceDocumentId, sourceFileName, passage, highlightStart, highlightLength, modelId, extractedAt }` — `fieldName` is the same key `PATCH /api/contracts/{id}` accepts, plus `type` for the classification verdict (no page/span); `passage` is the sentence of the indexed page text (the document's own `embedding` chunk) around the span with the span's offsets, present only when the page text still contains it. The review screen's evidence pane and per-field confidence tags read this. 404 when the contract does not exist for the tenant, `[]` when it exists but has no evidence |
 | GET | `/api/contracts/{id}/corrections` | `X-Tenant-Id` header; field-level correction history for one contract, newest first (`Contigo.Documents.Contracts.Application.ContractCorrectionHistoryQueryService`) — 404 if the contract does not exist for the tenant, `[]` if it exists but was never corrected |
 | GET | `/api/audit` | tenant-scoped; expects a claims principal (integration tests inject one) |
 | GET | `/api/contracts` | portfolio list; spec §8.1 columns; `X-Tenant-Id` header; optional filters `supplierId`, `status`, `risk` (Low/Medium/High/Critical), `autoRenewal`, `minAnnualSpend`, `maxAnnualSpend`, `renewalFrom`/`renewalTo` (yyyy-MM-dd) — no `category` filter yet, see `PortfolioFilter`'s doc comment; optional paging `page` (default 1), `pageSize` (default 25, max 100); response is `{ items, page, pageSize, totalCount }`, not a bare array |
@@ -357,7 +359,26 @@ cross-tenant contract source wired yet).
 working `IAiGateway` with no host-side change). `IAiGateway` is bound to
 `FixtureAiGateway` — deterministic, provider-free — until a live Foundry /
 Document Intelligence endpoint exists (ADR-004/ADR-017); domain code
-depends only on the interface. Per-role model ids/versions
+depends only on the interface. The fixture's `extract` role is no longer an
+empty `{}` placeholder: `Contigo.AiGateway.Fixtures.FixtureContractFactExtractor`
+reads the three scalar-fact stages (metadata, commercial terms, dates and
+renewal terms) from the page-marked text with regular expressions — every
+value quoted from the document, every `sourceSpan` the literal match, every
+`sourcePage` resolved from the `[[PAGE n]]` markers, and a confidence that
+states which rule fired (0.96 explicit cue, 0.9 a plain reading, 0.86
+derived from other facts, 0.52 an ambiguity the text does not resolve: two
+different annual amounts, a renewal clause that both affirms and denies
+auto-renewal, two parties named without a supplier role). The four list
+stages return an empty list. So on a fixture-backed host (local, CI, the
+deployed `dev` while ADR-008's AI services account does not exist) a plainly
+written contract completes and an ambiguous one lands in `needs_review` with
+real per-field evidence — for real reasons, never by default. Two pipeline
+rules changed with it: an empty **list** stage (line items, clauses,
+obligations, risks) now completes — an MSA legitimately has no priced line
+items and "nothing to review" is not a state a reviewer can resolve — while an
+empty **scalar** stage still goes to review; and the classification verdict
+is recorded as the contract's `type` evidence row with its real confidence
+(a verdict below 0.6 routes the document to review like any other weak fact). Per-role model ids/versions
 (`classify`/`extract`/`embed`/`answer`/`ocr`) bind from the
 `AiGateway:Models` configuration section (`AiGateway:Models:Extract:ModelId`,
 etc. — env var form `AiGateway__Models__Extract__ModelId`) and default to

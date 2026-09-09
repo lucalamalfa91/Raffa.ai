@@ -1,8 +1,9 @@
 import UploadDropzone from "./UploadDropzone";
+import type { SampleDocumentKey } from "./sampleDocument";
 
 export interface OnboardingEmptyStateProps {
   onFilesSelected: (files: File[]) => void;
-  onUseSampleFile: () => void;
+  onUseSampleFile: (key: SampleDocumentKey) => void;
 }
 
 /**

@@ -135,6 +135,17 @@ public sealed class DocumentLifecycleTests : IAsyncLifetime
         EntityId contractId;
         var supplierId = EntityId.New();
 
+        // The fixture gateway reads real facts out of ContractText (FixtureContractFactExtractor),
+        // so the pipeline has already written evidence rows for this contract -- including a weak,
+        // unlabelled `supplier` proposal. Measure that baseline first; the assertion below is about
+        // what the seeded rows add on top of it, not about the fixture's own reading of the text.
+        int baselineWeakFactCount;
+        await using (var db = CreateAppContext(tenantContext))
+        {
+            var queryService = new DocumentQueryService(db, tenantContext);
+            baselineWeakFactCount = Assert.Single((await queryService.ListAsync(tenantId)).Items).WeakFactCount;
+        }
+
         await using (var db = CreateAppContext(tenantContext))
         {
             using var scope = tenantContext.BeginScope(tenantId);
@@ -144,12 +155,16 @@ public sealed class DocumentLifecycleTests : IAsyncLifetime
             var contract = await db.Contracts.SingleAsync(c => c.TenantId == tenantId && c.Id == contractId);
             contract.SupplierId = supplierId;
 
-            // Two rows for the same field: only the latest one counts, and it is strong.
-            db.ExtractionEvidences.Add(Evidence(tenantId, contractId, documentId, "annualSpend", 0.2, Now));
-            db.ExtractionEvidences.Add(Evidence(tenantId, contractId, documentId, "annualSpend", 0.95, Now.AddMinutes(1)));
-            // One weak field and one field with no confidence at all: both count.
-            db.ExtractionEvidences.Add(Evidence(tenantId, contractId, documentId, "cancellationDeadline", 0.35, Now));
-            db.ExtractionEvidences.Add(Evidence(tenantId, contractId, documentId, "endDate", null, Now));
+            // Seeded strictly *after* every row the pipeline wrote (the harness clock is Now), so the
+            // "latest row per field wins" rule is exercised deterministically, never on a timestamp tie.
+            // Two rows for the same field: only the latest one counts, and it is strong -- annualSpend
+            // was already strong in the baseline, so it adds nothing.
+            db.ExtractionEvidences.Add(Evidence(tenantId, contractId, documentId, "annualSpend", 0.2, Now.AddMinutes(2)));
+            db.ExtractionEvidences.Add(Evidence(tenantId, contractId, documentId, "annualSpend", 0.95, Now.AddMinutes(3)));
+            // One weak field and one field with no confidence at all: both turn a strong baseline
+            // field weak, so both count.
+            db.ExtractionEvidences.Add(Evidence(tenantId, contractId, documentId, "cancellationDeadline", 0.35, Now.AddMinutes(2)));
+            db.ExtractionEvidences.Add(Evidence(tenantId, contractId, documentId, "endDate", null, Now.AddMinutes(2)));
             await db.SaveChangesAsync();
         }
 
@@ -161,7 +176,7 @@ public sealed class DocumentLifecycleTests : IAsyncLifetime
             var page = await queryService.ListAsync(tenantId);
             var row = Assert.Single(page.Items);
 
-            Assert.Equal(2, row.WeakFactCount);
+            Assert.Equal(baselineWeakFactCount + 2, row.WeakFactCount);
             Assert.Equal("Contoso Ltd", row.SupplierName);
         }
     }

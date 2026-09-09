@@ -36,6 +36,8 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     // bare vi.fn() is enough, same convention as getPortfolio above.
     getCorrectionHistory: vi.fn(),
     correctContract: vi.fn(),
+    getContractEvidence: vi.fn(),
+    validateDocument: vi.fn(),
     // Task E08/F01/US01/T01 (renewal-pipeline): this suite never reaches the Renewals screen --
     // bare vi.fn() is enough, same convention as getCorrectionHistory above.
     postRenewalAction: vi.fn(),

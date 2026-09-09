@@ -9,7 +9,7 @@ import AttentionFilter from "./AttentionFilter";
 import UploadDropzone from "./UploadDropzone";
 import DocumentStatusTable from "./DocumentStatusTable";
 import ReviewState from "./ReviewState";
-import { createSampleDocumentFile } from "./sampleDocument";
+import { createSampleDocumentFile, type SampleDocumentKey } from "./sampleDocument";
 import { buildKbSummary, getDocumentTypeLabel } from "./documentTable";
 import "./documents.css";
 
@@ -101,6 +101,7 @@ export default function DocumentsRoute({ apiClient }: DocumentsRouteProps) {
       <ReviewState
         apiClient={apiClient}
         contractId={target.contractId}
+        documentId={target.id}
         onBack={() => navigate("/documents")}
         onValidated={(contractId) => {
           setJustValidated({ contractId, displayName });
@@ -117,8 +118,11 @@ export default function DocumentsRoute({ apiClient }: DocumentsRouteProps) {
     list.uploadFiles(files);
   };
 
-  const handleUseSampleFile = () => {
-    handleFilesSelected([createSampleDocumentFile()]);
+  // Two sample MSAs, two different suppliers (`sampleDocument.ts`): one written plainly enough to
+  // complete without review, one whose text is genuinely ambiguous and lands in needs_review -- the
+  // two ends of the real product path, never a scripted verdict.
+  const handleUseSampleFile = (key: SampleDocumentKey) => {
+    handleFilesSelected([createSampleDocumentFile(key)]);
   };
 
   const handleDelete = (documentId: string) => {

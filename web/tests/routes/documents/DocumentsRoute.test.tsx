@@ -42,6 +42,20 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     getRenewalPriority: vi.fn(),
     getCorrectionHistory: vi.fn(),
     correctContract: vi.fn(),
+    getContractEvidence: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, evidence: [], error: null }),
+    validateDocument: vi.fn().mockResolvedValue({
+      ok: true,
+      statusCode: 200,
+      validation: {
+        documentId: "doc-1",
+        contractId: "contract-1",
+        processingStatus: "Completed",
+        validatedAt: "2026-09-09T10:00:00Z",
+        acceptedFields: [],
+        alreadyValidated: false,
+      },
+      error: null,
+    }),
     postRenewalAction: vi.fn(),
     uploadQuote: vi.fn(),
     getQuoteAssessment: vi.fn(),
@@ -364,15 +378,12 @@ describe("DocumentsRoute (task E13/F09/US01/T03, web-documents-v2)", () => {
       history: [],
       error: null,
     } satisfies GetCorrectionHistoryResult);
-    renderDocuments(
-      mockApiClient({ listDocuments: vi.fn().mockResolvedValue(listOk(items)), getContract360, getCorrectionHistory }),
-      "/documents?review=doc-1",
-    );
+    const client = mockApiClient({ listDocuments: vi.fn().mockResolvedValue(listOk(items)), getContract360, getCorrectionHistory });
+    renderDocuments(client, "/documents?review=doc-1");
 
     await screen.findByText("Review extraction");
-    // Every required field (type/status/currency/autoRenewal) starts pending -- accept each so
-    // "Mark as validated" is no longer blocked (reviewViewModel.ts's own gate: no live per-field
-    // confidence exists yet, so every pending field blocks until a human decision).
+    // Every required field (type/status/currency/autoRenewal) starts pending -- no evidence is
+    // mocked here, so every pending field blocks until a human decision; accept each.
     const acceptButtons = screen.getAllByRole("button", { name: "Accept" });
     for (const button of acceptButtons) {
       // eslint-disable-next-line no-await-in-loop
@@ -386,6 +397,38 @@ describe("DocumentsRoute (task E13/F09/US01/T03, web-documents-v2)", () => {
     expect(await screen.findByText(/is now askable\./)).toBeInTheDocument();
     const askLink = screen.getByRole("link", { name: "Ask: when does it expire?" });
     expect(askLink).toHaveAttribute("href", "/ask?scope=contract-1");
+    // The sign-off is a real write against the reviewed document (`?review=doc-1`), naming every
+    // Accepted field -- the backend moves the document to Completed and audits it.
+    expect(client.validateDocument).toHaveBeenCalledWith(WORKSPACE_ID, "doc-1", {
+      acceptedFields: ["type", "status", "currency", "autoRenewal"],
+    });
+  });
+
+  it("stays on the review when the sign-off is refused, showing the server's own reason", async () => {
+    const items = [docItem({ id: "doc-1", contractId: "contract-1", processingStatus: "NeedsReview" })];
+    const getContract360 = vi.fn().mockResolvedValue({ ok: true, statusCode: 200, contract: contract360(), error: null } satisfies GetContract360Result);
+    const getCorrectionHistory = vi.fn().mockResolvedValue({ ok: true, statusCode: 200, history: [], error: null } satisfies GetCorrectionHistoryResult);
+    const validateDocument = vi.fn().mockResolvedValue({
+      ok: false,
+      statusCode: 409,
+      validation: null,
+      error: "This document failed processing; reprocess it before validating.",
+    });
+    renderDocuments(
+      mockApiClient({ listDocuments: vi.fn().mockResolvedValue(listOk(items)), getContract360, getCorrectionHistory, validateDocument }),
+      "/documents?review=doc-1",
+    );
+
+    await screen.findByText("Review extraction");
+    for (const button of screen.getAllByRole("button", { name: "Accept" })) {
+      // eslint-disable-next-line no-await-in-loop
+      await userEvent.click(button);
+    }
+    await userEvent.click(screen.getByRole("button", { name: "Mark as validated" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/failed processing/i);
+    expect(screen.getByText("Review extraction")).toBeInTheDocument();
+    expect(screen.queryByText(/is now askable\./)).toBeNull();
   });
 
   it("shows Delete for Admin only", async () => {

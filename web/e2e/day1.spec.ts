@@ -314,7 +314,7 @@ async function pickOrCreateWorkspace(page: Page): Promise<string> {
  */
 async function uploadSampleDocument(page: Page): Promise<UploadOutcome> {
   await page.goto("/documents");
-  await page.getByRole("button", { name: /use sample file/i }).click();
+  await page.getByRole("button", { name: /sample msa · clean/i }).click();
 
   const resultCard = page.locator(".upload-result-card");
   await expect(resultCard).toBeVisible({ timeout: 45_000 });
@@ -540,7 +540,7 @@ async function assertHomeOpportunity(page: Page, actedOnRenewal: boolean): Promi
  */
 async function runQuoteCheck(page: Page): Promise<void> {
   await page.goto("/quotes");
-  await page.getByRole("button", { name: /use sample file/i }).click();
+  await page.getByRole("button", { name: /sample msa · clean/i }).click();
   await expect(page).toHaveURL(/\/quotes\/[^/]+$/, { timeout: 30_000 });
   await expect(page.getByRole("tablist", { name: /quote check steps/i })).toBeVisible({ timeout: 15_000 });
 

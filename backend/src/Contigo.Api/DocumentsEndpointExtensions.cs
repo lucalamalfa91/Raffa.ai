@@ -83,8 +83,71 @@ public static class DocumentsEndpointExtensions
         endpoints.MapGet("/api/documents/{id}", GetDocumentAsync);
         endpoints.MapGet("/api/documents/{id}/preview", GetDocumentPreviewAsync);
         endpoints.MapPost("/api/documents/{id}/reprocess", ReprocessDocumentAsync);
+        endpoints.MapPost("/api/documents/{id}/validate", ValidateDocumentAsync);
         endpoints.MapDelete("/api/documents/{id}", DeleteDocumentAsync);
         return endpoints;
+    }
+
+    /// <summary>`POST /api/documents/{id}/validate` request body: the field names the reviewer
+    /// accepted as extracted (corrections are already durable via `PATCH /api/contracts/{id}`).
+    /// Optional — `{}` is a valid body when every flagged field was corrected instead.</summary>
+    public sealed record DocumentValidationRequest(IReadOnlyList<string>? AcceptedFields);
+
+    /// <summary>
+    /// `POST /api/documents/{id}/validate`: the review sign-off (product spec §7.1 "needs review →
+    /// completed"; ADR-020 screen 6 "Mark as validated"). Not Admin-only — reviewing is the
+    /// Procurement role's own job, and the field corrections this closes out (`PATCH
+    /// /api/contracts/{id}`) carry no role gate either. 404 for an unknown or cross-tenant document,
+    /// 409 with a named reason when the document is not in a reviewable state (still processing, or
+    /// failed), 200 with the resulting status otherwise — idempotent for an already-validated one.
+    /// The `document.validated` audit row is written by <see cref="DocumentValidationService"/>
+    /// inside the tenant scope the RLS-protected audit table requires.
+    /// </summary>
+    private static async Task<IResult> ValidateDocumentAsync(
+        string id,
+        DocumentValidationRequest? body,
+        HttpContext httpContext,
+        DocumentValidationService validationService,
+        CancellationToken cancellationToken)
+    {
+        var request = httpContext.Request;
+        if (!TryResolveTenant(request, out var tenantId))
+        {
+            return Results.BadRequest("A valid 'X-Tenant-Id' header (a GUID) is required.");
+        }
+
+        if (!Guid.TryParse(id, out var documentGuid))
+        {
+            return Results.BadRequest("The document id in the route must be a GUID.");
+        }
+
+        var result = await validationService.ValidateAsync(
+            tenantId,
+            new EntityId(documentGuid),
+            body?.AcceptedFields ?? [],
+            ResolveActor(request),
+            cancellationToken);
+
+        if (result is null)
+        {
+            return Results.NotFound();
+        }
+
+        if (result.IsFailure)
+        {
+            return Results.Conflict(result.Error);
+        }
+
+        var validation = result.Value;
+        return Results.Ok(new
+        {
+            documentId = validation.DocumentId.Value,
+            contractId = validation.ContractId?.Value,
+            processingStatus = validation.ProcessingStatus.ToString(),
+            validatedAt = validation.ValidatedAt,
+            acceptedFields = validation.AcceptedFields,
+            alreadyValidated = validation.AlreadyValidated,
+        });
     }
 
     private static async Task<IResult> UploadDocumentAsync(

@@ -41,6 +41,8 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     getMarketRecord: vi.fn(),
     getCorrectionHistory: vi.fn(),
     correctContract: vi.fn(),
+    getContractEvidence: vi.fn(),
+    validateDocument: vi.fn(),
     postRenewalAction: vi.fn(),
     // Task E08/F03/US01/T01 (quote-check-ui) / E07/F04/US01/T01 (ask-contigo-ui): this suite never
     // reaches the Quote Check or Ask Contigo screens -- bare vi.fn() is enough, same convention as

@@ -261,8 +261,11 @@ public sealed class DocumentProcessingPipeline(
         // updated tracked instance regardless.
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
+        // The classification verdict travels into the run so it is recorded as the contract's
+        // `type` evidence row with its real confidence (StagedExtractionService.TypeFieldName) —
+        // the review screen shows "Contract type" next to every other extracted field.
         var extractionResult = await extractionService
-            .RunAsync(tenantId, document.Id, pages, cancellationToken)
+            .RunAsync(tenantId, document.Id, pages, classificationConfidence, cancellationToken)
             .ConfigureAwait(false);
         if (extractionResult.IsFailure)
         {

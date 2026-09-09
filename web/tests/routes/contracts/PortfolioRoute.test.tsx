@@ -30,6 +30,8 @@ function mockApiClient(getPortfolio: ApiClient["getPortfolio"] = vi.fn()): ApiCl
     // bare vi.fn() is enough, same convention as getContract360 above.
     getCorrectionHistory: vi.fn(),
     correctContract: vi.fn(),
+    getContractEvidence: vi.fn(),
+    validateDocument: vi.fn(),
     // Task E08/F01/US01/T01 (renewal-pipeline): this suite only exercises /contracts -- bare
     // vi.fn() is enough, same convention as getContract360/getRenewals above.
     postRenewalAction: vi.fn(),

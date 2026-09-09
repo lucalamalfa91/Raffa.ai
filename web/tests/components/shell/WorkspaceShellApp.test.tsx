@@ -77,6 +77,8 @@ function mockApiClient(): ApiClient {
     // getContract360 above (this comment records *why* it's safe to leave unresolved, unlike those).
     getCorrectionHistory: vi.fn(),
     correctContract: vi.fn(),
+    getContractEvidence: vi.fn(),
+    validateDocument: vi.fn(),
     // Task E08/F01/US01/T01 (renewal-pipeline): RenewalsRoute (like Contract360Route above) calls
     // getRenewals unconditionally on mount, already covered by the resolved default above; no test
     // in this suite triggers an insight-card action, so a bare vi.fn() is enough here -- see

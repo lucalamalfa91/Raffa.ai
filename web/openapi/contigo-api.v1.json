@@ -856,6 +856,135 @@
         }
       }
     },
+    "/api/documents/{id}/validate": {
+      "post": {
+        "operationId": "validateDocument",
+        "summary": "Review sign-off: mark a reviewed document validated (needs_review -> completed).",
+        "description": "Maps to ValidateDocumentAsync in backend/src/Contigo.Api/DocumentsEndpointExtensions.cs, backed by Contigo.Documents.Contracts.Application.DocumentValidationService. The one write behind the review screen's \"Mark as validated\" (ADR-020 screen 6; product spec §7.1 \"needs review -> completed\", §7.3 human-in-the-loop): field corrections are already durable through PATCH /api/contracts/{id}, so this call records the reviewer's sign-off as the document's status plus one `document.validated` audit row naming the accepted fields. It never rewrites the extraction evidence (Appendix C rule 5). Not Admin-only: reviewing is the Procurement role's own job, same posture as PATCH /api/contracts/{id}. Idempotent -- validating an already completed document answers 200 with `alreadyValidated: true`. Same interim X-Tenant-Id / X-User-Id header posture as every other operation here.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Document.Id."
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "acceptedFields": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Field names the reviewer accepted as extracted (ExtractionEvidence.FieldName / ContractCorrectionService.CorrectableFieldNames keys, e.g. currency, autoRenewal, supplier). Omit or send [] when every flagged field was corrected instead. Recorded on the audit row."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The document is now completed (or already was).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "documentId",
+                    "contractId",
+                    "processingStatus",
+                    "validatedAt",
+                    "acceptedFields",
+                    "alreadyValidated"
+                  ],
+                  "properties": {
+                    "documentId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "contractId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid"
+                    },
+                    "processingStatus": {
+                      "type": "string",
+                      "enum": [
+                        "Uploaded",
+                        "Processing",
+                        "NeedsReview",
+                        "Completed",
+                        "Failed"
+                      ],
+                      "description": "Always `Completed` on a 200; the enum is the shared DocumentProcessingStatus vocabulary."
+                    },
+                    "validatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "acceptedFields": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "The request's acceptedFields, trimmed and de-duplicated -- what the audit row recorded."
+                    },
+                    "alreadyValidated": {
+                      "type": "boolean",
+                      "description": "True when the document was already Completed before this call (idempotent no-op, still audited)."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid X-Tenant-Id header, or a non-GUID id in the route.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such document for this tenant."
+          },
+          "409": {
+            "description": "The document is not in a reviewable state: still Uploaded/Processing (nothing to sign off yet) or Failed (reprocess it first). The body is the named reason (DocumentValidationService.StillProcessingError / FailedProcessingError).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/contracts": {
       "get": {
         "operationId": "getPortfolio",
@@ -2049,6 +2178,155 @@
                           "string",
                           "null"
                         ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid X-Tenant-Id header, or a non-GUID id in the route.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such contract for this tenant."
+          }
+        }
+      }
+    },
+    "/api/contracts/{id}/evidence": {
+      "get": {
+        "operationId": "getContractEvidence",
+        "summary": "Latest extraction evidence per contract field: page, span, confidence, quoted passage, model.",
+        "description": "Maps to GetContractEvidenceAsync in backend/src/Contigo.Api/ContractsEndpointExtensions.cs, backed by Contigo.Documents.Contracts.Application.ContractEvidenceQueryService. Exposes the ExtractionEvidence trail the staged extraction pipeline has written since task E02/F01/US02/T01 (product spec §7.3 \"every extracted fact carries source span + confidence\") -- one entry per field, the newest evidence row winning, alphabetical by fieldName. `fieldName` is the same key PATCH /api/contracts/{id} accepts (currency, annualSpend, supplier, ...), plus `type` for the classification verdict (no page/span: it reads the whole document). `passage` is the sentence of the indexed page text around `sourceSpan` with the span's offsets, present only when the page text still contains the span -- never an approximated context. The review screen's evidence pane and per-field confidence tags read this. A contract that exists but has no evidence returns 200 with an empty array.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Contract.Id."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Contract found for this tenant (possibly with zero evidence rows).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "fieldName",
+                      "value",
+                      "confidence",
+                      "sourcePage",
+                      "sourceSpan",
+                      "sourceDocumentId",
+                      "sourceFileName",
+                      "passage",
+                      "highlightStart",
+                      "highlightLength",
+                      "modelId",
+                      "extractedAt"
+                    ],
+                    "properties": {
+                      "fieldName": {
+                        "type": "string"
+                      },
+                      "value": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "What the model proposed, verbatim -- not the contract's current (possibly corrected) value."
+                      },
+                      "confidence": {
+                        "type": [
+                          "number",
+                          "null"
+                        ],
+                        "description": "0..1 as the model reported it; null when it reported none."
+                      },
+                      "sourcePage": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "description": "1-based page the span was read from; null when unknown."
+                      },
+                      "sourceSpan": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "The literal text the fact was read from, as quoted by the model."
+                      },
+                      "sourceDocumentId": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "sourceFileName": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "File name of the source document, for the evidence card header."
+                      },
+                      "passage": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "Sentence(s) of the indexed page text around the span; null when the span cannot be located."
+                      },
+                      "highlightStart": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "description": "Zero-based offset of sourceSpan inside passage."
+                      },
+                      "highlightLength": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "description": "Length of sourceSpan inside passage."
+                      },
+                      "modelId": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "Model id of the extraction job that proposed this fact (brief §8 traceability)."
+                      },
+                      "extractedAt": {
+                        "type": "string",
+                        "format": "date-time"
                       }
                     }
                   }

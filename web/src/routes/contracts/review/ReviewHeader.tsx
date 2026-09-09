@@ -6,6 +6,14 @@ export interface ReviewHeaderProps {
   header: Contract360HeaderBody;
   progress: ReviewProgress;
   onMarkValidated: () => void;
+  /** True while `POST /api/documents/{id}/validate` is in flight -- the CTA is disabled and says so. */
+  validating?: boolean;
+  /** The last sign-off failure (a 409 "still processing", a network error), shown under the CTA. */
+  validationError?: string | null;
+  /** True when the reviewed document is already `Completed`: the CTA reads "Validated" and stays off. */
+  alreadyValidated?: boolean;
+  /** False when the contract has no document to validate at all (nothing for the CTA to write). */
+  canValidate?: boolean;
 }
 
 /**
@@ -19,16 +27,33 @@ export interface ReviewHeaderProps {
  * blocked (ADR-019 accessibility baseline: "a visible reason, not a hidden control") -- never only a
  * `title` tooltip, which is not reliably visible or accessible.
  *
- * The export's own one-line summary ("SAP · S/4HANA Cloud · Private Edition ·
- * SAP_S4HANA_Cloud_OrderForm_2024.pdf") is that specific demo contract's own mock data -- `Contract`
- * has no supplier-name or filename field, the same gap `../contract360/Contract360Header.tsx`'s own
- * header comment already names. This reuses that component's exact honest substitutes
- * (`formatSupplier`/`getContractTypeLabel`) rather than inventing a new one.
+ * "Mark as validated" is a real write now (`POST /api/documents/{id}/validate`, see
+ * `./useReviewSession.ts`): the header therefore also shows the in-flight state, the server's own
+ * refusal when there is one, and an already-validated document as closed rather than re-askable.
  */
-export default function ReviewHeader({ header, progress, onMarkValidated }: ReviewHeaderProps) {
+export default function ReviewHeader({
+  header,
+  progress,
+  onMarkValidated,
+  validating = false,
+  validationError = null,
+  alreadyValidated = false,
+  canValidate = true,
+}: ReviewHeaderProps) {
   const blocked = isValidationBlocked(progress);
   const supplier = formatSupplier(header.supplierId);
+  const supplierLabel = header.supplierName ?? supplier.label;
   const typeLabel = getContractTypeLabel(header.type);
+
+  const disabled = blocked || validating || alreadyValidated || !canValidate;
+  const ctaLabel = validating ? "Validating…" : alreadyValidated ? "Validated" : "Mark as validated";
+  const hint = alreadyValidated
+    ? "This document is already validated."
+    : !canValidate
+      ? "This contract has no document to validate."
+      : blocked
+        ? blockedReason(progress)
+        : null;
 
   return (
     <header className="review-header">
@@ -36,15 +61,20 @@ export default function ReviewHeader({ header, progress, onMarkValidated }: Revi
         <div>
           <p className="screen-kicker">R1 · Human validation</p>
           <h2 className="screen-title">Review extraction</h2>
-          <p className="micro-meta review-header-summary" title={supplier.title}>
-            {supplier.label} · {typeLabel}
+          <p className="micro-meta review-header-summary" title={header.supplierName ?? supplier.title}>
+            {supplierLabel} · {typeLabel}
           </p>
         </div>
         <div className="review-header-cta">
-          <button type="button" className="btn btn-primary" disabled={blocked} onClick={onMarkValidated}>
-            Mark as validated
+          <button type="button" className="btn btn-primary" disabled={disabled} onClick={onMarkValidated}>
+            {ctaLabel}
           </button>
-          {blocked && <span className="hint">{blockedReason(progress)}</span>}
+          {hint !== null && <span className="hint">{hint}</span>}
+          {validationError !== null && (
+            <span className="hint" role="alert">
+              {validationError}
+            </span>
+          )}
         </div>
       </div>
       <div className="review-progress-bar">

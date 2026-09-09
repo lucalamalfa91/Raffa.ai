@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { CONTRACT_TYPE_OPTIONS, type CorrectableFieldName, type ReviewFieldRow } from "./reviewViewModel";
+import type { ContractFieldEvidenceBody } from "../../../api/client";
+import { CONTRACT_TYPE_OPTIONS, splitPassage, type CorrectableFieldName, type ReviewFieldRow } from "./reviewViewModel";
 import { getContractTypeLabel } from "../portfolioTableFormatters";
 
 export interface EvidencePaneProps {
@@ -18,19 +19,15 @@ const REASON_INPUT_ID = "review-correction-reason";
  * highlighted passage, correction form, model/prompt version"; task E07/F03/US01/T01). Reuses the
  * locked `.detail-pane` component (ADR-019 catalogue: "340-400px, surface, 2px left rule").
  *
- * Two honest departures from the cited prototype's own mock evidence pane, both already named in
- * `./reviewViewModel.ts`'s own header comment (never re-explained here, only applied): there is no
- * highlighted source passage (no endpoint exposes a per-field source span/page for this field set
- * yet -- shown as a plain "not yet available" line, not a fabricated citation), and no
- * model/prompt version (`ExtractionEvidence.ExtractionJobId` is the real trail for that, also
- * unexposed). What this pane *can* show for real is the field's own correction history -- the
- * genuine "version" trail `GET /api/contracts/{id}/corrections` already provides -- which doubles
- * as this AC's "version" element with real data instead of an invented one.
- *
- * Task E11/F07/US01/T01 (gap G-REV): the "Source" note now sits inside `.review-evidence-passage`
- * (`./review.css`), the export's own white/serif/bordered "highlighted passage" card copied
- * verbatim -- container only, never the fabricated document name/page/quote the export's own mock
- * data shows for its one hardcoded example.
+ * The evidence card is real now: `GET /api/contracts/{id}/evidence` carries, per field, the source
+ * file and page, the span the model quoted, the passage of page text around it and the model id
+ * (`ReviewFieldRow.evidence`). The card renders exactly that -- file · page as the header, the
+ * passage with the span highlighted, the model and confidence underneath -- and degrades honestly
+ * when a piece is missing: a span whose page text could not be located shows the quote alone, a
+ * classification verdict (no span, it reads the whole document) says so, and a field with no
+ * evidence row at all says no source was recorded. Nothing here is ever fabricated to fill the
+ * card (Appendix C rule 10). The correction history below it is the same real trail
+ * `GET /api/contracts/{id}/corrections` already provided.
  */
 export default function EvidencePane({ row, onCorrect, submitting, error }: EvidencePaneProps) {
   const [draftValue, setDraftValue] = useState("");
@@ -65,10 +62,12 @@ export default function EvidencePane({ row, onCorrect, submitting, error }: Evid
   return (
     <aside className="detail-pane review-evidence-pane">
       <h6>{row.label}</h6>
-      <p className="micro-meta">Extracted value: {row.displayValue}</p>
-      <div className="review-evidence-passage">
-        <p className="micro-meta">Source passage not yet available for this field (open backend gap -- see reviewViewModel.ts).</p>
-      </div>
+      <p className="micro-meta">
+        {row.proposalPending ? "Proposed value: " : "Extracted value: "}
+        {row.displayValue}
+        {row.proposalPending && " — not applied until you accept or correct it"}
+      </p>
+      <EvidenceCard evidence={row.evidence} />
 
       <form onSubmit={handleSubmit} className="review-correction-form">
         <div className="field">
@@ -111,6 +110,54 @@ export default function EvidencePane({ row, onCorrect, submitting, error }: Evid
         </ul>
       )}
     </aside>
+  );
+}
+
+/** The "highlighted passage" card (screens.md #6): file · page header, the page text around the
+ * span with the span marked, model + confidence underneath. Every line comes from the evidence row;
+ * a missing piece is stated, never filled in. */
+function EvidenceCard({ evidence }: { evidence: ContractFieldEvidenceBody | null }) {
+  if (evidence === null) {
+    return (
+      <div className="review-evidence-passage">
+        <p className="micro-meta">No source passage was recorded for this field — the extraction did not report it.</p>
+      </div>
+    );
+  }
+
+  const header = [
+    evidence.sourceFileName?.toUpperCase() ?? "SOURCE DOCUMENT",
+    evidence.sourcePage !== null ? `PAGE ${evidence.sourcePage}` : evidence.sourceSpan === null ? "WHOLE DOCUMENT" : null,
+  ]
+    .filter((part): part is string => part !== null)
+    .join(" · ");
+
+  const split = splitPassage(evidence);
+  const confidence = evidence.confidence === null ? null : `${Math.round(evidence.confidence * 100)}%`;
+  const meta = [evidence.modelId !== null ? `Extracted by ${evidence.modelId}` : "Extracted", confidence !== null ? `confidence ${confidence}` : null]
+    .filter((part): part is string => part !== null)
+    .join(" · ");
+
+  return (
+    <div className="review-evidence-passage">
+      <p className="review-evidence-source">{header}</p>
+      {split !== null ? (
+        <p className="review-evidence-text">
+          {split.before}
+          {split.highlight !== "" && <mark className="review-evidence-highlight">{split.highlight}</mark>}
+          {split.after}
+        </p>
+      ) : evidence.sourceSpan !== null ? (
+        <p className="review-evidence-text">
+          <mark className="review-evidence-highlight">{evidence.sourceSpan}</mark>
+        </p>
+      ) : (
+        <p className="review-evidence-text">
+          Read from the full document text{evidence.value !== null ? ` — proposed “${evidence.value}”` : ""}.
+        </p>
+      )}
+      <p className="micro-meta review-evidence-meta">{meta}</p>
+    </div>
   );
 }
 
