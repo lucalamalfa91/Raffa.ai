@@ -61,6 +61,14 @@ public sealed class LoggingAiGateway : IAiGateway
     private readonly ITenantContext _tenantContext;
     private readonly AiGatewayComplianceOptions _complianceOptions;
 
+    /// <summary>
+    /// Serialises the audit writes of one decorator instance. The decorator is Scoped and its
+    /// <see cref="IAuditWriter"/> wraps a Scoped DbContext, which is not thread-safe; callers that
+    /// run several role calls concurrently within one request (extraction stages) still get one
+    /// audit row per call, written one at a time, while the inner provider calls stay concurrent.
+    /// </summary>
+    private readonly SemaphoreSlim _auditWriteLock = new(1, 1);
+
     public LoggingAiGateway(
         IAiGateway inner,
         IAuditWriter auditWriter,
@@ -198,20 +206,34 @@ public sealed class LoggingAiGateway : IAiGateway
             $"promptVersion={metadata.PromptVersion} inputHash={metadata.InputHash} " +
             $"noTraining={_complianceOptions.NoTraining}";
 
+        if (metadata.Usage is { } usage)
+        {
+            // Appendix C rule 8: spend must be observable per call — token counts, never text.
+            detail += $" promptTokens={usage.PromptTokens} completionTokens={usage.CompletionTokens}";
+        }
+
         if (extraDetail is not null)
         {
             detail += $" {extraDetail}";
         }
 
-        await _auditWriter.WriteAsync(
-            new AuditEntry(
-                tenantId,
-                SystemActor,
-                $"ai.{role}",
-                ResourceType,
-                metadata.InputHash,
-                metadata.RespondedAtUtc,
-                detail),
-            cancellationToken).ConfigureAwait(false);
+        await _auditWriteLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await _auditWriter.WriteAsync(
+                new AuditEntry(
+                    tenantId,
+                    SystemActor,
+                    $"ai.{role}",
+                    ResourceType,
+                    metadata.InputHash,
+                    metadata.RespondedAtUtc,
+                    detail),
+                cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _auditWriteLock.Release();
+        }
     }
 }

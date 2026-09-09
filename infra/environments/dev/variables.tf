@@ -23,7 +23,7 @@ variable "environment" {
 variable "ai_gateway_wired" {
   description = "Publish AiGateway__Endpoint and the AiGateway__Models__* env vars to this environment's Container Apps (Foundry path). false keeps the fixture gateway even though the account exists."
   type        = bool
-  default     = false
+  default     = true
 }
 
 # Entra object ids (not secrets) granted Cognitive Services User +

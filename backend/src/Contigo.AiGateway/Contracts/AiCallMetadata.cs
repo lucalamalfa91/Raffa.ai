@@ -14,9 +14,13 @@ namespace Contigo.AiGateway.Contracts;
 /// <param name="PromptVersion">Version tag of the prompt template used for this call.</param>
 /// <param name="RespondedAtUtc">When the call completed, from <see cref="Contigo.SharedKernel.IClock"/> (deterministic in tests).</param>
 /// <param name="InputHash">SHA-256 hex digest of the input text — never the input itself.</param>
+/// <param name="Usage">Token usage the provider reported for this call, when it reports one (chat
+/// and embedding roles on Foundry); <see langword="null"/> for the fixture and for OCR. Logged so
+/// spend is observable per call (Appendix C rule 8).</param>
 public sealed record AiCallMetadata(
     string ModelId,
     string ModelVersion,
     string PromptVersion,
     DateTimeOffset RespondedAtUtc,
-    string InputHash);
+    string InputHash,
+    AiTokenUsage? Usage = null);

@@ -12,7 +12,7 @@ variable "location" {
 variable "ai_account_attached" {
   description = "true once the dev root has applied the shared aisvc-contigo account in rg-contigo-ai: attach to it and create demo's own project, deployments and role assignments."
   type        = bool
-  default     = false
+  default     = true
 }
 
 # Two-phase Foundry wiring, same as the dev root: flipped with the demo

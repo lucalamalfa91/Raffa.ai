@@ -8,9 +8,9 @@ using Contigo.AiGateway.Tests.TestSupport;
 namespace Contigo.AiGateway.Tests.Foundry;
 
 /// <summary>
-/// Proves task E13/F01/US01/T02's compliance objective for the `answer` role — AC-2 / ADR-024:
-/// "the answer request sent to Foundry carries no tools, tool_choice, grounding or browsing
-/// payload (asserted on a fake HTTP handler)" and "temperature &lt;= 0.2" — plus the structured
+/// Proves the compliance objective for the `answer` role — ADR-024: "the answer request sent to
+/// Foundry carries no tools, tool_choice, grounding or browsing payload (asserted on a fake HTTP
+/// handler)" and "temperature &lt;= 0.2" whenever a temperature is sent — plus the structured
 /// response shape (canDetermine/answerMarkdown/citationKeys/actionKeys/abstainReason/followUps)
 /// and the evidence-only vs. pack-based grounding paths <see cref="AiAnswerRequest"/>'s own doc
 /// comment describes.
@@ -20,20 +20,19 @@ public class FoundryAnswerClientTests
     private static readonly DateTimeOffset Now = new(2026, 9, 8, 12, 0, 0, TimeSpan.Zero);
     private static readonly Uri FoundryBaseAddress = new("https://fake-foundry.example.com/");
 
+    private static readonly string[] AllowedRootProperties =
+        ["model", "messages", "response_format", "max_completion_tokens", "temperature", "reasoning_effort"];
+
     private static (FoundryAnswerClient Client, FakeHttpMessageHandler Handler) CreateClient(
-        Func<HttpRequestMessage, HttpResponseMessage> response, double answerTemperature = 0.2)
+        Func<HttpRequestMessage, HttpResponseMessage> response, AiGatewayModelOptions? modelOptions = null)
     {
         var handler = new FakeHttpMessageHandler(response);
         var httpClient = new HttpClient(handler) { BaseAddress = FoundryBaseAddress };
-        var foundryOptions = new AiGatewayFoundryOptions
-        {
-            Endpoint = FoundryBaseAddress.ToString(),
-            AnswerTemperature = answerTemperature,
-        };
+        var foundryOptions = new AiGatewayFoundryOptions { Endpoint = FoundryBaseAddress.ToString() };
         var tokenProvider = new FoundryTokenProvider(new FakeTokenCredential());
-        var httpJsonClient = new FoundryHttpJsonClient(httpClient, tokenProvider, foundryOptions);
-        var chatClient = new FoundryChatCompletionsClient(httpJsonClient);
-        var client = new FoundryAnswerClient(chatClient, new AiGatewayModelOptions(), foundryOptions, new FixedClock(Now));
+        var httpJsonClient = new FoundryHttpJsonClient(httpClient, tokenProvider, foundryOptions, TestRetryPolicies.NoDelay());
+        var chatClient = new FoundryChatCompletionsClient(httpJsonClient, foundryOptions);
+        var client = new FoundryAnswerClient(chatClient, modelOptions ?? new AiGatewayModelOptions(), new FixedClock(Now));
 
         return (client, handler);
     }
@@ -41,7 +40,11 @@ public class FoundryAnswerClientTests
     private static string ChatEnvelope(object payload)
     {
         var contentJson = JsonSerializer.Serialize(payload);
-        var envelope = new { choices = new[] { new { message = new { role = "assistant", content = contentJson } } } };
+        var envelope = new
+        {
+            choices = new[] { new { message = new { role = "assistant", content = contentJson }, finish_reason = "stop" } },
+            usage = new { prompt_tokens = 900, completion_tokens = 120, total_tokens = 1020 },
+        };
         return JsonSerializer.Serialize(envelope);
     }
 
@@ -87,24 +90,34 @@ public class FoundryAnswerClientTests
         using var bodyJson = JsonDocument.Parse(body);
         var rootProperties = bodyJson.RootElement.EnumerateObject().Select(p => p.Name).ToArray();
 
-        // AC-2 / ADR-024: no tools, no tool_choice, no grounding/browsing payload of any kind —
-        // asserted on the actual top-level JSON *keys* sent, not a raw substring search (the
-        // system prompt's own English text legitimately instructs the model not to browse/ground,
-        // which would give a substring search a false positive). Wire.ChatCompletionRequest's own
-        // doc comment: these keys cannot appear because the .NET type has no such property at all.
-        Assert.Equal(["messages", "temperature", "response_format"], rootProperties);
+        // ADR-024: no tools, no tool_choice, no grounding/browsing payload of any kind — asserted on
+        // the actual top-level JSON *keys* sent, not a raw substring search (the system prompt's own
+        // English text legitimately instructs the model not to browse/ground, which would give a
+        // substring search a false positive). Wire.ChatCompletionRequest's own doc comment: these
+        // keys cannot appear because the .NET type has no such property at all. The optional knobs
+        // (temperature, reasoning_effort) are absent unless configured.
+        Assert.All(rootProperties, name => Assert.Contains(name, AllowedRootProperties));
+        Assert.Contains("model", rootProperties);
+        Assert.Contains("messages", rootProperties);
+        Assert.Contains("response_format", rootProperties);
+        Assert.DoesNotContain("temperature", rootProperties);
+        Assert.DoesNotContain("reasoning_effort", rootProperties);
         Assert.DoesNotContain("tools", rootProperties);
         Assert.DoesNotContain("tool_choice", rootProperties);
         Assert.DoesNotContain("functions", rootProperties);
         Assert.DoesNotContain("data_sources", rootProperties);
-
-        Assert.True(bodyJson.RootElement.GetProperty("temperature").GetDouble() <= 0.2);
+        Assert.Equal(4096, bodyJson.RootElement.GetProperty("max_completion_tokens").GetInt32());
+        Assert.Equal(new AiTokenUsage(900, 120), result.Value.Metadata.Usage);
     }
 
     [Fact]
-    public async Task Answer_temperature_is_clamped_to_the_ADR_024_ceiling_even_if_misconfigured_higher()
+    public async Task Answer_temperature_is_sent_only_when_configured_and_clamped_to_the_ADR_024_ceiling()
     {
         var evidence = new AiEvidenceSnippet("doc-1", null, null, "Some evidence text.");
+        var options = new AiGatewayModelOptions
+        {
+            Answer = new AiModelSelection("gpt-5.4-nano-dev", "2026-03-17") { Temperature = 0.9, ReasoningEffort = "none" },
+        };
         var (client, handler) = CreateClient(
             FakeHttpMessageHandler.Json(
                 HttpStatusCode.OK,
@@ -117,13 +130,15 @@ public class FoundryAnswerClientTests
                     abstainReason = (string?)null,
                     followUps = Array.Empty<string>(),
                 })),
-            answerTemperature: 0.9);
+            options);
 
         await client.AnswerAsync(new AiAnswerRequest("Question?", Evidence: [evidence]), CancellationToken.None);
 
         var body = Assert.Single(handler.RequestBodies)!;
         using var bodyJson = JsonDocument.Parse(body);
         Assert.Equal(0.2, bodyJson.RootElement.GetProperty("temperature").GetDouble());
+        Assert.Equal("none", bodyJson.RootElement.GetProperty("reasoning_effort").GetString());
+        Assert.Equal("gpt-5.4-nano-dev", bodyJson.RootElement.GetProperty("model").GetString());
     }
 
     [Fact]
@@ -254,5 +269,6 @@ public class FoundryAnswerClientTests
 
         var body = Assert.Single(handler.RequestBodies)!;
         Assert.Contains("Ask Contigo", body, StringComparison.Ordinal);
+        Assert.Contains("language of the question", body, StringComparison.Ordinal);
     }
 }

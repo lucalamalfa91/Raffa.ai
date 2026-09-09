@@ -4,8 +4,8 @@ namespace Contigo.IntegrationTests;
 
 /// <summary>
 /// Shared fixture data for task E02/F06/US01/T01 (r1-integration): a hand-built, minimal-but-real
-/// born-digital PDF (proves the native text extraction path — <c>NativeDocumentTextExtractor</c>
-/// never routes it through the `ocr` gateway role), a scanned/image-style document (proves AC-4's
+/// born-digital PDF (read by the `ocr` gateway role like every PDF since the ADR-017 amendment of
+/// 2026-09-09 — under the fixture gateway, <c>FixturePdfTextScanner</c>), a scanned/image-style document (proves AC-4's
 /// "at least one scanned or image-based contract extracts via Document Intelligence" — an
 /// <c>image/png</c> mime type <c>NativeDocumentTextExtractor.CanHandle</c> always returns
 /// <see langword="false"/> for, so <c>HybridDocumentParsingService</c> structurally cannot take the
@@ -24,7 +24,7 @@ internal static class R1ExtractionFixtures
     // magic bytes, so a .tiff upload is refused (415) before it can reach the pipeline this
     // fixture exercises. PNG keeps the property that made TIFF the right choice here.
     public const string ScannedFileName = "scanned-msa-northwind.png";
-    // Not one of NativeDocumentTextExtractor's three recognized mime types (PDF/DOCX/XLSX) — see
+    // Not one of NativeDocumentTextExtractor's two recognized mime types (DOCX/XLSX) — see
     // that type's own CanHandle — so HybridDocumentParsingService.ParseAsync always falls back to
     // the `ocr` gateway role for this fixture, by construction, not by chance (AC-4).
     public const string ScannedMimeType = "image/png";
@@ -133,15 +133,14 @@ internal static class R1ExtractionFixtures
     /// <summary>
     /// A minimal, hand-built, syntactically real single-page PDF: one <c>/Type /Page</c> object
     /// and one uncompressed content stream with a <c>BT ... Tj ... ET</c> text object — enough for
-    /// <c>NativeDocumentTextExtractor.ExtractPdfNatively</c>'s own lightweight scan (it counts
-    /// <c>/Type /Page</c> occurrences and pairs them 1:1 with content streams; it does not parse
-    /// the cross-reference table, so no <c>xref</c>/<c>trailer</c> section is needed for this scan
-    /// to succeed — see that method's own doc comment) to report
-    /// <c>IsSufficient: true</c>, so <c>HybridDocumentParsingService</c> never calls the `ocr` role
-    /// for this fixture. The embedded text contains "MASTER SERVICES AGREEMENT" so
+    /// <c>FixturePdfTextScanner</c>'s lightweight scan (the fixture `ocr` role's PDF reader: it
+    /// counts <c>/Type /Page</c> occurrences and pairs them 1:1 with content streams; it does not
+    /// parse the cross-reference table, so no <c>xref</c>/<c>trailer</c> section is needed for this
+    /// scan to succeed — see that type's own doc comment) to return one page of text. On a live
+    /// deployment the same bytes go to Document Intelligence Read (ADR-017 amendment 2026-09-09).
+    /// The embedded text contains "MASTER SERVICES AGREEMENT" so
     /// <c>FixtureAiGateway.ClassifyAsync</c>'s keyword match resolves it to
-    /// <c>AiDocumentType.Msa</c>, and is well over the extractor's 40-non-whitespace-char-per-page
-    /// sufficiency floor.
+    /// <c>AiDocumentType.Msa</c>.
     /// </summary>
     /// <summary>The 8-byte PNG signature <see cref="BuildScannedImageOcrBytes"/> prefixes its page
     /// text with — what <c>DocumentFormatSniffer</c> checks and <c>FixtureAiGateway</c> strips.</summary>
@@ -189,7 +188,7 @@ internal static class R1ExtractionFixtures
             """;
 
         // Latin1: a lossless byte<->char round trip for the ASCII-only text above, matching
-        // NativeDocumentTextExtractor.ExtractPdfNatively's own Encoding.Latin1.GetString decode.
+        // FixturePdfTextScanner's own Encoding.Latin1.GetString decode.
         return Encoding.Latin1.GetBytes(pdf);
     }
 

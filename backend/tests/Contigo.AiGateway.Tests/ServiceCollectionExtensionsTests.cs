@@ -55,7 +55,54 @@ public class ServiceCollectionExtensionsTests
         // fixture path.
         var foundryOptions = provider.GetRequiredService<AiGatewayFoundryOptions>();
         Assert.Null(foundryOptions.Endpoint);
-        Assert.Equal(0.2, foundryOptions.AnswerTemperature);
+        Assert.Null(foundryOptions.OpenAiApiVersion);
+        Assert.Equal(40_000, foundryOptions.ClassifyMaxInputChars);
+
+        // The GPT-5.x knobs are absent by default (omitted from the request) and the caps/dimensions
+        // carry the ADR-004 amendment defaults.
+        Assert.Null(options.Answer.Temperature);
+        Assert.Null(options.Extract.ReasoningEffort);
+        Assert.Equal(16384, options.Extract.MaxCompletionTokens);
+        Assert.Equal(AiGatewayConstants.EmbeddingDimensions, options.Embed.Dimensions);
+
+        var resilience = provider.GetRequiredService<AiGatewayResilienceOptions>();
+        Assert.Equal(3, resilience.MaxRetries);
+        Assert.NotNull(provider.GetRequiredService<FoundryRetryPolicy>());
+    }
+
+    [Fact]
+    public void AddAiGatewayModule_binds_the_per_role_knobs_and_the_resilience_section()
+    {
+        var services = new ServiceCollection();
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["AiGateway:Models:Answer:Temperature"] = "0.1",
+                ["AiGateway:Models:Extract:ReasoningEffort"] = "low",
+                ["AiGateway:Models:Extract:MaxCompletionTokens"] = "20000",
+                ["AiGateway:Models:Embed:Dimensions"] = "1536",
+                ["AiGateway:OpenAiApiVersion"] = "2024-10-21",
+                ["AiGateway:Resilience:MaxRetries"] = "1",
+                ["AiGateway:Resilience:RequestTimeoutSeconds"] = "30",
+                ["AiGateway:Ocr:PollTimeoutSeconds"] = "45",
+            })
+            .Build();
+        services.AddSingleton<IConfiguration>(configuration);
+
+        services.AddAiGatewayModule();
+
+        using var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<AiGatewayModelOptions>();
+        Assert.Equal(0.1, options.Answer.Temperature);
+        Assert.Equal("low", options.Extract.ReasoningEffort);
+        Assert.Equal(20000, options.Extract.MaxCompletionTokens);
+        Assert.Equal(1536, options.Embed.Dimensions);
+        Assert.Equal("2024-10-21", provider.GetRequiredService<AiGatewayFoundryOptions>().OpenAiApiVersion);
+
+        var resilience = provider.GetRequiredService<AiGatewayResilienceOptions>();
+        Assert.Equal(1, resilience.MaxRetries);
+        Assert.Equal(30, resilience.RequestTimeoutSeconds);
+        Assert.Equal(45, provider.GetRequiredService<AiGatewayOcrOptions>().PollTimeoutSeconds);
     }
 
     [Fact]
@@ -113,7 +160,6 @@ public class ServiceCollectionExtensionsTests
                 ["AiGateway:Endpoint"] = "https://aisvc-contigo.cognitiveservices.azure.com/",
                 ["AiGateway:ProjectName"] = "contigo-dev",
                 ["AiGateway:DocumentIntelligenceConnection"] = "conn-docint-contigo-dev",
-                ["AiGateway:AnswerTemperature"] = "0.1",
             })
             .Build();
         services.AddSingleton<IConfiguration>(configuration);
@@ -126,7 +172,6 @@ public class ServiceCollectionExtensionsTests
         Assert.Equal("https://aisvc-contigo.cognitiveservices.azure.com/", options.Endpoint);
         Assert.Equal("contigo-dev", options.ProjectName);
         Assert.Equal("conn-docint-contigo-dev", options.DocumentIntelligenceConnection);
-        Assert.Equal(0.1, options.AnswerTemperature);
 
         // Binding the root "AiGateway" section here must not clobber the nested sibling sections
         // AiGatewayModelOptions/AiGatewayOcrOptions bind from their own "AiGateway:Models" /

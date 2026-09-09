@@ -78,9 +78,8 @@ internal static class R4ExtractionFixtures
 
     /// <summary>Minimal, hand-built, syntactically real single-page PDF — see
     /// <see cref="R1ExtractionFixtures.BuildBornDigitalPdfBytes"/>'s own doc comment for the
-    /// technique. Well over <c>NativeDocumentTextExtractor</c>'s 40-non-whitespace-char-per-page
-    /// sufficiency floor, so this never calls the `ocr` gateway role — this task's own Day-1 proof
-    /// does not need to re-prove OCR routing (already proved by
+    /// technique; the fixture `ocr` role reads it through <c>FixturePdfTextScanner</c> — this
+    /// task's own Day-1 proof does not need to re-prove OCR routing (already proved by
     /// <c>Contigo.IntegrationTests.QuoteEndToEndTests</c>/<c>R1EndToEndTests</c>).</summary>
     public static byte[] BuildBornDigitalQuoteBytes()
     {

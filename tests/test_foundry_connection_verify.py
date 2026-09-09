@@ -198,6 +198,7 @@ def _foundry_main_tf(
     operator_for_each: str = "local.operator_grants",
     operator_source: str = "var.ai_operator_principal_ids",
     ocr_model: tuple = ("prebuilt-read", "2024-11-30"),
+    deployment_depends_on: str | None = "[azurerm_cognitive_account_project.this]",
     extra: str = "",
 ) -> str:
     count_line = f"  count = {count_expr}\n\n" if count_expr else ""
@@ -323,7 +324,8 @@ def _foundry_main_tf(
         "\n"
         'resource "azurerm_cognitive_deployment" "model" {\n'
         "  for_each = local.enabled_model_deployments\n\n"
-        f'  name                 = "{deployment_name}"\n'
+        + (f"  depends_on = [{deployment_depends_on[1:-1]}]\n\n" if deployment_depends_on else "")
+        + f'  name                 = "{deployment_name}"\n'
         "  cognitive_account_id = local.ai_services_account_id\n\n"
         "  model {\n"
         '    format  = "OpenAI"\n'
@@ -948,6 +950,16 @@ class CheckFoundryProjectAndDeploymentsShapeTests(unittest.TestCase):
             passed, detail = fcv.check_foundry_project_and_deployments_shape(path)
             self.assertFalse(passed, detail)
             self.assertIn("ocr_model_id", detail)
+
+    def test_deployment_not_ordered_after_the_project_fails(self) -> None:
+        """The first dev apply (2026-09-09) lost the contigo-dev project to a
+        RequestConflict because Terraform ran its write concurrently with a
+        model deployment write on the same account; depends_on orders them."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = _write_foundry_module_fixture(Path(tmp), _foundry_main_tf(deployment_depends_on=None))
+            passed, detail = fcv.check_foundry_project_and_deployments_shape(path)
+            self.assertFalse(passed, detail)
+            self.assertIn("depends_on", detail)
 
     def test_currently_passes_against_the_real_repo(self) -> None:
         passed, detail = fcv.check_foundry_project_and_deployments_shape()

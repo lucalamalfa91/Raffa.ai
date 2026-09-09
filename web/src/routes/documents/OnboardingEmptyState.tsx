@@ -26,7 +26,7 @@ export default function OnboardingEmptyState({ onFilesSelected, onUseSampleFile 
         <div className="documents-onboarding-step">
           <div className="documents-onboarding-step-kicker">01 · Upload</div>
           <div className="documents-onboarding-step-title">Drop your contracts</div>
-          <p className="micro-meta">MSA, order forms, SOWs, amendments. PDF, DOCX, XLSX.</p>
+          <p className="micro-meta">MSA, order forms, SOWs, amendments. PDF, DOCX, XLSX, PNG, JPG.</p>
         </div>
         <div className="documents-onboarding-step">
           <div className="documents-onboarding-step-kicker documents-onboarding-step-kicker--muted">02 · Process</div>

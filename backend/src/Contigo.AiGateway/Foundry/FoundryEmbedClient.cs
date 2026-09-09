@@ -6,16 +6,20 @@ using Contigo.SharedKernel;
 namespace Contigo.AiGateway.Foundry;
 
 /// <summary>
-/// `embed` role (ADR-004: fixed-dimension vectors for pgvector). Validates the returned vector is
-/// exactly <see cref="AiGatewayConstants.EmbeddingDimensions"/> wide before returning success — a
+/// `embed` role (ADR-004: fixed-dimension vectors for pgvector). Requests the configured
+/// <see cref="AiModelSelection.Dimensions"/> (so demo's text-embedding-3-large is reduced to the
+/// column width on the wire) and still validates the returned vector is exactly
+/// <see cref="AiGatewayConstants.EmbeddingDimensions"/> wide before returning success — a
 /// provider/model mismatch must fail visibly here, not surface later as a pgvector column-width
 /// error several layers away.
 /// </summary>
 public sealed class FoundryEmbedClient(
-    FoundryHttpJsonClient httpJsonClient, AiGatewayModelOptions modelOptions, IClock clock)
+    FoundryHttpJsonClient httpJsonClient,
+    AiGatewayModelOptions modelOptions,
+    AiGatewayFoundryOptions foundryOptions,
+    IClock clock)
 {
-    private const string ApiVersion = "2024-06-01";
-    private const string PromptVersion = "foundry-embed-v1";
+    private const string PromptVersion = "foundry-embed-v2";
 
     public async Task<Result<AiEmbeddingResult>> EmbedAsync(
         AiEmbeddingRequest request, CancellationToken cancellationToken)
@@ -26,12 +30,13 @@ public sealed class FoundryEmbedClient(
         }
 
         var model = modelOptions.Embed;
-        var relativeUrl =
-            $"openai/deployments/{Uri.EscapeDataString(model.ModelId)}/embeddings?api-version={ApiVersion}";
+        var route = FoundryOpenAiRoutes.Embeddings(foundryOptions, model.ModelId);
 
         var result = await httpJsonClient
             .PostAsync<EmbeddingRequest, EmbeddingResponse>(
-                relativeUrl, new EmbeddingRequest(request.Text), cancellationToken)
+                route.RelativeUrl,
+                new EmbeddingRequest(request.Text, route.ModelInBody ? model.ModelId : null, model.Dimensions),
+                cancellationToken)
             .ConfigureAwait(false);
 
         if (result.IsFailure)
@@ -50,10 +55,12 @@ public sealed class FoundryEmbedClient(
             return Result<AiEmbeddingResult>.Failure(
                 $"Foundry embeddings response returned a {vector.Count}-dimension vector; " +
                 $"expected {AiGatewayConstants.EmbeddingDimensions} " +
-                "(AiGatewayConstants.EmbeddingDimensions / ADR-004 schema-fixed dimension).");
+                "(AiGatewayConstants.EmbeddingDimensions / ADR-004 schema-fixed dimension) — " +
+                "set AiGateway:Models:Embed:Dimensions for a wider model.");
         }
 
-        var metadata = FoundryCallMetadataFactory.Build(model, PromptVersion, clock, request.Text);
+        var usage = result.Value.Usage is { } u ? new AiTokenUsage(u.PromptTokens, 0) : null;
+        var metadata = FoundryCallMetadataFactory.Build(model, PromptVersion, clock, request.Text, usage);
 
         return Result<AiEmbeddingResult>.Success(new AiEmbeddingResult(vector, metadata));
     }

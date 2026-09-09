@@ -1,6 +1,6 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
-using System.Net.Http.Json;
 using System.Text.Json;
 using Contigo.AiGateway.Configuration;
 using Contigo.AiGateway.Contracts;
@@ -10,17 +10,18 @@ using Contigo.SharedKernel;
 namespace Contigo.AiGateway.Foundry;
 
 /// <summary>
-/// `ocr` role (ADR-017) against Azure AI Document Intelligence's
-/// <c>documentModels/{model}:analyze</c> long-running operation: the initial POST returns 202 +
-/// an <c>Operation-Location</c> polling URL (no useful response body of its own), so this client
-/// polls that URL until the analysis reaches a terminal state, then reconstructs a page map from
-/// <c>analyzeResult.content</c> — the whole document's text with a form-feed (<c>\f</c>) page
-/// break between pages, the same convention <see cref="Fixtures.FixtureAiGateway"/>'s own fixture
-/// OCR already uses for its deterministic multi-page splitting.
+/// `ocr` role (ADR-017, amended 2026-09-09: every PDF and image goes through Azure AI Document
+/// Intelligence <c>prebuilt-read</c>) against the documented 2024-11-30 long-running-operation
+/// contract: <c>POST documentModels/{model}:analyze</c> with the document as <c>base64Source</c>
+/// (202 + <c>Operation-Location</c>), then <c>GET</c> that URL until <c>status</c> is
+/// <c>succeeded</c>/<c>failed</c>, waiting the service's own <c>Retry-After</c> when present and an
+/// exponential interval otherwise, inside <see cref="AiGatewayOcrOptions.PollTimeoutSeconds"/>.
 ///
-/// Does not use <see cref="FoundryHttpJsonClient"/> — that type's "parse the JSON body or fail"
-/// contract has no room for the 202 + header + poll-loop shape this role needs, so this client
-/// owns <see cref="HttpClient"/>/<see cref="FoundryTokenProvider"/> directly.
+/// The page map comes from <c>analyzeResult.pages[].spans</c> sliced out of the top-level
+/// <c>content</c> (requested in <c>utf16CodeUnit</c> so offsets are .NET string indices): the API
+/// carries no page delimiter of its own, so splitting <c>content</c> on any character would collapse
+/// every multi-page document into one page and every citation onto page 1. The ADR-017 page budget
+/// is enforced on the page count the service actually reports.
 /// </summary>
 public sealed class FoundryOcrClient(
     HttpClient httpClient,
@@ -29,20 +30,16 @@ public sealed class FoundryOcrClient(
     AiGatewayModelOptions modelOptions,
     AiGatewayOcrOptions ocrOptions,
     IClock clock,
-    TimeSpan? pollInterval = null)
+    FoundryRetryPolicy? retryPolicy = null,
+    Func<TimeSpan, CancellationToken, Task>? delay = null)
 {
     private const string ApiVersion = "2024-11-30";
-    private const string PromptVersion = "foundry-ocr-v1";
+    private const string PromptVersion = "foundry-ocr-v2";
 
-    /// <summary>Bounded so a stuck/failed operation on the provider side fails this call visibly
-    /// instead of polling forever (ADR-017: "fail visibly... never silently truncate" extends to
-    /// never silently hanging either).</summary>
-    private const int MaxPollAttempts = 30;
+    private static readonly MediaTypeHeaderValue JsonContentType = new("application/json") { CharSet = "utf-8" };
 
-    /// <summary>Defaults to a real, small delay in production; tests inject
-    /// <see cref="TimeSpan.Zero"/> so a multi-poll fake-handler test runs instantly (task
-    /// E13/F01/US01/T02: "no live Azure in unit tests" extends to "no slow unit tests either").</summary>
-    private readonly TimeSpan _pollInterval = pollInterval ?? TimeSpan.FromMilliseconds(500);
+    private readonly FoundryRetryPolicy _retryPolicy = retryPolicy ?? new FoundryRetryPolicy(new AiGatewayResilienceOptions());
+    private readonly Func<TimeSpan, CancellationToken, Task> _delay = delay ?? Task.Delay;
 
     public async Task<Result<AiOcrResult>> OcrAsync(AiOcrRequest request, CancellationToken cancellationToken)
     {
@@ -54,98 +51,189 @@ public sealed class FoundryOcrClient(
         var model = modelOptions.Ocr;
         var analyzeUrl =
             $"documentintelligence/documentModels/{Uri.EscapeDataString(model.ModelId)}:analyze" +
-            $"?api-version={ApiVersion}";
+            $"?_overload=analyzeDocument&api-version={ApiVersion}&stringIndexType=utf16CodeUnit";
 
-        using var submitRequest = new HttpRequestMessage(HttpMethod.Post, analyzeUrl)
+        // Base64 once; the retry policy's factory re-wraps the same bytes per attempt.
+        var payload = JsonSerializer.SerializeToUtf8Bytes(
+            new DocumentIntelligenceAnalyzeRequest(Convert.ToBase64String(request.Content.Span)),
+            FoundryJsonOptions.Web);
+
+        var submitted = await _retryPolicy.SendAsync(
+                httpClient,
+                async token =>
+                {
+                    var submitRequest = new HttpRequestMessage(HttpMethod.Post, analyzeUrl)
+                    {
+                        Content = new ByteArrayContent(payload) { Headers = { ContentType = JsonContentType } },
+                    };
+                    await AttachAuthAsync(submitRequest, token).ConfigureAwait(false);
+                    return submitRequest;
+                },
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        if (submitted.IsFailure)
         {
-            Content = JsonContent.Create(
-                new DocumentIntelligenceAnalyzeRequest(Convert.ToBase64String(request.Content.Span)),
-                options: FoundryJsonOptions.Web),
-        };
-
-        await AttachAuthAsync(submitRequest, cancellationToken).ConfigureAwait(false);
-
-        using var submitResponse = await httpClient.SendAsync(submitRequest, cancellationToken).ConfigureAwait(false);
-
-        if (submitResponse.StatusCode != HttpStatusCode.Accepted)
-        {
-            var body = await submitResponse.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            return Result<AiOcrResult>.Failure(
-                $"Foundry Document Intelligence analyze submission for model '{model.ModelId}' failed " +
-                $"with {(int)submitResponse.StatusCode} {submitResponse.StatusCode}: {body}");
+            return Result<AiOcrResult>.Failure(submitted.Error);
         }
 
-        var operationLocation = submitResponse.Headers.TryGetValues("Operation-Location", out var values)
-            ? values.FirstOrDefault()
-            : null;
-
-        if (string.IsNullOrWhiteSpace(operationLocation))
+        string operationLocation;
+        TimeSpan? firstWait;
+        using (var submitResponse = submitted.Value)
         {
-            return Result<AiOcrResult>.Failure(
-                "Foundry Document Intelligence analyze submission did not return an " +
-                "Operation-Location header.");
+            if (submitResponse.StatusCode != HttpStatusCode.Accepted)
+            {
+                var body = await submitResponse.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                return Result<AiOcrResult>.Failure(
+                    $"Foundry Document Intelligence analyze submission for model '{model.ModelId}' failed " +
+                    $"with {(int)submitResponse.StatusCode} {submitResponse.StatusCode}: {AzureErrorEnvelope.Describe(body)}");
+            }
+
+            var location = submitResponse.Headers.TryGetValues("Operation-Location", out var values)
+                ? values.FirstOrDefault()
+                : null;
+
+            if (string.IsNullOrWhiteSpace(location))
+            {
+                return Result<AiOcrResult>.Failure(
+                    "Foundry Document Intelligence analyze submission did not return an " +
+                    "Operation-Location header.");
+            }
+
+            operationLocation = location;
+            firstWait = FoundryRetryPolicy.ReadRetryAfter(submitResponse);
         }
 
-        var pollResult = await PollUntilTerminalAsync(operationLocation, cancellationToken).ConfigureAwait(false);
+        var pollResult = await PollUntilTerminalAsync(operationLocation, firstWait, cancellationToken).ConfigureAwait(false);
         if (pollResult.IsFailure)
         {
             return Result<AiOcrResult>.Failure(pollResult.Error);
         }
 
         var status = pollResult.Value;
-
         if (string.Equals(status.Status, "failed", StringComparison.OrdinalIgnoreCase))
         {
             return Result<AiOcrResult>.Failure(
-                $"Foundry Document Intelligence analysis failed: {status.Error?.Code} {status.Error?.Message}");
+                $"Foundry Document Intelligence analysis failed: {status.Error?.Code} {status.Error?.Message}".TrimEnd());
         }
 
-        var analyzeResult = status.AnalyzeResult;
-        var reportedPageCount = analyzeResult?.Pages?.Count ?? 0;
-        var content = analyzeResult?.Content ?? string.Empty;
-        var pages = SplitIntoPages(content, reportedPageCount);
+        var pages = MapPages(status.AnalyzeResult);
+        if (pages.IsFailure)
+        {
+            return Result<AiOcrResult>.Failure(pages.Error);
+        }
 
-        if (pages.Count > ocrOptions.MaxPagesPerDocument)
+        if (pages.Value.Count > ocrOptions.MaxPagesPerDocument)
         {
             return Result<AiOcrResult>.Failure(
-                $"OCR page budget exceeded: document '{request.FileName}' has {pages.Count} pages, " +
+                $"OCR page budget exceeded: document '{request.FileName}' has {pages.Value.Count} pages, " +
                 $"configured maximum is {ocrOptions.MaxPagesPerDocument} (ADR-017: fail visibly, " +
                 "never silently truncate).");
         }
 
         var metadata = FoundryCallMetadataFactory.Build(model, PromptVersion, clock, request.Content.Span);
+        return Result<AiOcrResult>.Success(new AiOcrResult(pages.Value, metadata));
+    }
 
-        return Result<AiOcrResult>.Success(new AiOcrResult(pages, metadata));
+    /// <summary>
+    /// One <see cref="AiOcrPage"/> per reported page, in page order, each page's text being the
+    /// concatenation of its spans sliced from <c>content</c>. A page with no spans (a blank scan)
+    /// yields an empty page rather than being dropped, so page numbers stay aligned with the
+    /// document; offsets are clamped into <c>content</c> so a malformed span can never throw.
+    /// </summary>
+    public static Result<IReadOnlyList<AiOcrPage>> MapPages(DocumentIntelligenceAnalyzeResult? analyzeResult)
+    {
+        var content = analyzeResult?.Content ?? string.Empty;
+        var reported = analyzeResult?.Pages ?? [];
+
+        if (reported.Count == 0)
+        {
+            return Result<IReadOnlyList<AiOcrPage>>.Success([]);
+        }
+
+        var ordered = reported.OrderBy(p => p.PageNumber).ToList();
+        if (ordered.Select(p => p.PageNumber).Distinct().Count() != ordered.Count)
+        {
+            return Result<IReadOnlyList<AiOcrPage>>.Failure(
+                "Foundry Document Intelligence returned duplicate page numbers; refusing to guess a page map.");
+        }
+
+        var pages = new List<AiOcrPage>(ordered.Count);
+        foreach (var page in ordered)
+        {
+            var builder = new System.Text.StringBuilder();
+            foreach (var span in (page.Spans ?? []).OrderBy(s => s.Offset))
+            {
+                var start = Math.Clamp(span.Offset, 0, content.Length);
+                var end = Math.Clamp(span.Offset + Math.Max(0, span.Length), start, content.Length);
+                if (end > start)
+                {
+                    if (builder.Length > 0)
+                    {
+                        builder.Append('\n');
+                    }
+
+                    builder.Append(content, start, end - start);
+                }
+            }
+
+            pages.Add(new AiOcrPage(page.PageNumber, builder.ToString()));
+        }
+
+        return Result<IReadOnlyList<AiOcrPage>>.Success(pages);
     }
 
     private async Task<Result<DocumentIntelligenceOperationStatus>> PollUntilTerminalAsync(
-        string operationLocation, CancellationToken cancellationToken)
+        string operationLocation, TimeSpan? firstWait, CancellationToken cancellationToken)
     {
-        for (var attempt = 0; attempt < MaxPollAttempts; attempt++)
+        var budget = TimeSpan.FromSeconds(Math.Max(1, ocrOptions.PollTimeoutSeconds));
+        var initial = TimeSpan.FromMilliseconds(Math.Max(1, ocrOptions.InitialPollIntervalMilliseconds));
+        var max = TimeSpan.FromMilliseconds(Math.Max(ocrOptions.InitialPollIntervalMilliseconds, ocrOptions.MaxPollIntervalMilliseconds));
+        var interval = initial;
+        var stopwatch = Stopwatch.StartNew();
+        var nextWait = firstWait ?? interval;
+        var attempts = 0;
+
+        while (true)
         {
-            if (attempt > 0)
+            await _delay(nextWait, cancellationToken).ConfigureAwait(false);
+            attempts++;
+
+            var polled = await _retryPolicy.SendAsync(
+                    httpClient,
+                    async token =>
+                    {
+                        var pollRequest = new HttpRequestMessage(HttpMethod.Get, operationLocation);
+                        await AttachAuthAsync(pollRequest, token).ConfigureAwait(false);
+                        return pollRequest;
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+            if (polled.IsFailure)
             {
-                await Task.Delay(_pollInterval, cancellationToken).ConfigureAwait(false);
+                return Result<DocumentIntelligenceOperationStatus>.Failure(polled.Error);
             }
 
-            using var pollRequest = new HttpRequestMessage(HttpMethod.Get, operationLocation);
-            await AttachAuthAsync(pollRequest, cancellationToken).ConfigureAwait(false);
-
-            using var pollResponse = await httpClient.SendAsync(pollRequest, cancellationToken).ConfigureAwait(false);
-            var pollBody = await pollResponse.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-
-            if (!pollResponse.IsSuccessStatusCode)
+            TimeSpan? retryAfter;
+            string pollBody;
+            using (var pollResponse = polled.Value)
             {
-                return Result<DocumentIntelligenceOperationStatus>.Failure(
-                    $"Foundry Document Intelligence polling failed with {(int)pollResponse.StatusCode} " +
-                    $"{pollResponse.StatusCode}: {pollBody}");
+                pollBody = await pollResponse.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                if (!pollResponse.IsSuccessStatusCode)
+                {
+                    return Result<DocumentIntelligenceOperationStatus>.Failure(
+                        $"Foundry Document Intelligence polling failed with {(int)pollResponse.StatusCode} " +
+                        $"{pollResponse.StatusCode}: {AzureErrorEnvelope.Describe(pollBody)}");
+                }
+
+                retryAfter = FoundryRetryPolicy.ReadRetryAfter(pollResponse);
             }
 
             DocumentIntelligenceOperationStatus? status;
             try
             {
-                status = JsonSerializer.Deserialize<DocumentIntelligenceOperationStatus>(
-                    pollBody, FoundryJsonOptions.Web);
+                status = JsonSerializer.Deserialize<DocumentIntelligenceOperationStatus>(pollBody, FoundryJsonOptions.Web);
             }
             catch (JsonException ex)
             {
@@ -164,31 +252,18 @@ public sealed class FoundryOcrClient(
             {
                 return Result<DocumentIntelligenceOperationStatus>.Success(status);
             }
+
+            if (stopwatch.Elapsed >= budget)
+            {
+                return Result<DocumentIntelligenceOperationStatus>.Failure(
+                    $"Foundry Document Intelligence analysis did not complete within {budget.TotalSeconds:0}s " +
+                    $"({attempts} polls; last status '{status.Status}'). Raise AiGateway:Ocr:PollTimeoutSeconds " +
+                    "or lower AiGateway:Ocr:MaxPagesPerDocument.");
+            }
+
+            interval = interval * 2 > max ? max : interval * 2;
+            nextWait = retryAfter ?? interval;
         }
-
-        return Result<DocumentIntelligenceOperationStatus>.Failure(
-            $"Foundry Document Intelligence analysis did not complete after {MaxPollAttempts} polling attempts.");
-    }
-
-    /// <summary>Falls back to treating the whole string as a single page when the form-feed split
-    /// does not agree with the reported page count — a provider response-shape drift should
-    /// degrade to "one big page", never silently drop text.</summary>
-    private static IReadOnlyList<AiOcrPage> SplitIntoPages(string content, int reportedPageCount)
-    {
-        var pageTexts = content.Split('\f');
-
-        if (reportedPageCount > 0 && pageTexts.Length != reportedPageCount)
-        {
-            return [new AiOcrPage(1, content)];
-        }
-
-        var pages = new List<AiOcrPage>(pageTexts.Length);
-        for (var i = 0; i < pageTexts.Length; i++)
-        {
-            pages.Add(new AiOcrPage(i + 1, pageTexts[i]));
-        }
-
-        return pages;
     }
 
     private async Task AttachAuthAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -196,6 +271,8 @@ public sealed class FoundryOcrClient(
         var token = await tokenProvider.GetTokenAsync(cancellationToken).ConfigureAwait(false);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
+        // Informational per-project attribution (AiGatewayFoundryOptions' own doc comment) — not a
+        // documented REST contract, ignored by the service, harmless.
         if (!string.IsNullOrWhiteSpace(foundryOptions.ProjectName))
         {
             request.Headers.TryAddWithoutValidation("x-ms-foundry-project", foundryOptions.ProjectName);

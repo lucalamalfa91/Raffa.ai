@@ -2,6 +2,7 @@ using Contigo.AiGateway;
 using Contigo.AiGateway.Configuration;
 using Contigo.AiGateway.Contracts;
 using Contigo.AiGateway.Fixtures;
+using Contigo.AiGateway.Foundry;
 using Contigo.Documents.Contracts.Application.Extraction;
 using Contigo.Documents.Contracts.Domain;
 using Contigo.Documents.Contracts.Infrastructure;
@@ -85,9 +86,15 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
             AiClassificationRequest request, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException("StagedExtractionService does not call ClassifyAsync.");
 
+        /// <summary>Every JSON schema the pipeline sent, in call order — so a test can prove they
+        /// are what a strict-mode structured-output call would accept.</summary>
+        public List<string> SentSchemas { get; } = [];
+
         public Task<Result<AiExtractionResult>> ExtractAsync(
             AiExtractionRequest request, CancellationToken cancellationToken = default)
         {
+            SentSchemas.Add(request.JsonSchema);
+
             if (failStages?.Contains(request.StageName) == true)
             {
                 return Task.FromResult(Result<AiExtractionResult>.Failure(
@@ -417,6 +424,79 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
             ExtractionJobStatus.Completed,
             result.Value.Stages.Single(s => s.Stage == ExtractionStage.Metadata).Status);
         Assert.Null(result.Value.AcceptedSupplierName);
+    }
+
+    /// <summary>ADR-004/ADR-017 amendments (2026-09-09): the live `extract` role sends each stage's
+    /// schema as an Azure structured-output schema in strict mode, which rejects open objects,
+    /// partial <c>required</c> lists and numeric bounds. The pipeline's own schemas are proven here
+    /// through the same validator the Foundry client applies before sending.</summary>
+    [Fact]
+    public async Task Every_stage_schema_the_pipeline_sends_is_strict_mode_compliant()
+    {
+        var tenantId = TenantId.New();
+        var tenantContext = new TenantContext();
+
+        await using var seedDb = CreateContext(tenantContext);
+        var (_, document) = await SeedDocumentAsync(seedDb, tenantId);
+
+        var gateway = new ScriptedAiGateway(HighConfidencePayloads());
+
+        await using var runDb = CreateContext(tenantContext);
+        var service = new StagedExtractionService(
+            runDb, gateway, tenantContext, new FixedClock(Now), new RecordingAuditWriter());
+
+        var result = await service.RunAsync(tenantId, document.Id, [new DocumentPageText(1, "some contract text")]);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(result.Value.Stages.Count, gateway.SentSchemas.Count);
+        Assert.All(gateway.SentSchemas, schema =>
+        {
+            var verdict = StrictJsonSchemaValidator.Validate(schema);
+            Assert.True(verdict.IsSuccess, verdict.IsFailure ? verdict.Error : null);
+        });
+    }
+
+    /// <summary>The live extract prompt asks for <c>null</c> when the document does not state a
+    /// field (every property is required under strict mode, so "absent" has to be spelled out). A
+    /// null-valued fact is neither an extraction nor evidence: nothing is written for it and no
+    /// contract column is overwritten with an empty value.</summary>
+    [Fact]
+    public async Task A_null_valued_fact_is_absent_not_an_empty_extraction()
+    {
+        var tenantId = TenantId.New();
+        var tenantContext = new TenantContext();
+
+        await using var seedDb = CreateContext(tenantContext);
+        var (_, document) = await SeedDocumentAsync(seedDb, tenantId);
+
+        var payloads = HighConfidencePayloads();
+        payloads["Metadata"] = $$"""
+            {"facts":[
+                {"field":"supplier","value":"{{SupplierLegalName}}","sourcePage":1,"sourceSpan":"between Salesforce, Inc. and Contoso Ltd","confidence":0.95},
+                {"field":"currency","value":null,"sourcePage":1,"sourceSpan":null,"confidence":0}
+            ]}
+            """;
+
+        await using var runDb = CreateContext(tenantContext);
+        var service = new StagedExtractionService(
+            runDb, new ScriptedAiGateway(payloads), tenantContext, new FixedClock(Now), new RecordingAuditWriter());
+
+        var result = await service.RunAsync(tenantId, document.Id, [new DocumentPageText(1, "some contract text")]);
+
+        Assert.True(result.IsSuccess);
+        var metadataStage = result.Value.Stages.Single(s => s.Stage == ExtractionStage.Metadata);
+        Assert.Equal(ExtractionJobStatus.Completed, metadataStage.Status);
+        Assert.Equal(1, metadataStage.ExtractedCount);
+        Assert.Equal(SupplierLegalName, result.Value.AcceptedSupplierName);
+
+        await using var readDb = CreateContext(tenantContext);
+        using var tenantScope = tenantContext.BeginScope(tenantId);
+        var evidenceFields = await readDb.ExtractionEvidences
+            .Where(e => e.ContractId == result.Value.ContractId)
+            .Select(e => e.FieldName)
+            .ToListAsync();
+        Assert.Contains("supplier", evidenceFields);
+        Assert.DoesNotContain("currency", evidenceFields);
     }
 
     [Fact]

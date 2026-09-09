@@ -9,11 +9,11 @@ namespace Contigo.AiGateway.Foundry;
 
 /// <summary>
 /// `answer` role (ADR-004 amendment / ADR-024: structured JSON, no tools, no grounding,
-/// temperature &lt;= 0.2). Grounds in whichever of <see cref="AiAnswerRequest.PackJson"/> (ADR-024's
-/// new context-pack shape) and/or <see cref="AiAnswerRequest.Evidence"/> (the pre-existing
-/// evidence-list shape <c>Contigo.Chat.Application.RagAnswerService</c> still sends today) the
-/// caller supplied — see <see cref="AiAnswerRequest"/>'s own doc comment for why both are
-/// supported side by side until a later task retires the evidence-only path.
+/// temperature &lt;= 0.2 whenever one is sent — see <see cref="AiModelSelection.Temperature"/>).
+/// Grounds in whichever of <see cref="AiAnswerRequest.PackJson"/> (ADR-024's context-pack shape)
+/// and/or <see cref="AiAnswerRequest.Evidence"/> (the pre-existing evidence-list shape
+/// <c>Contigo.Chat.Application.RagAnswerService</c> still sends) the caller supplied — see
+/// <see cref="AiAnswerRequest"/>'s own doc comment for why both are supported side by side.
 ///
 /// Mirrors <c>Fixtures.FixtureAiGateway.AnswerAsync</c>'s own "abstain rather than call the model
 /// on truly empty input" short-circuit: nothing to ground in (<see cref="AiAnswerRequest.PackJson"/>
@@ -22,7 +22,6 @@ namespace Contigo.AiGateway.Foundry;
 public sealed class FoundryAnswerClient(
     FoundryChatCompletionsClient chatClient,
     AiGatewayModelOptions modelOptions,
-    AiGatewayFoundryOptions foundryOptions,
     IClock clock)
 {
     private sealed record AnswerPayload(
@@ -71,16 +70,11 @@ public sealed class FoundryAnswerClient(
 
         var userPrompt = BuildUserPrompt(request);
 
-        // ADR-024 "temperature <= 0.2" is a ceiling, not a target: a misconfigured
-        // AiGateway:AnswerTemperature above it can only ever be clamped down, never raised past
-        // it. Floored at 0 too — a negative value is never meaningful to the provider.
-        var temperature = Math.Clamp(foundryOptions.AnswerTemperature, 0, 0.2);
-
         var completion = await chatClient.CompleteAsync(
-                model.ModelId,
+                "Answer",
+                model,
                 systemPrompt,
                 userPrompt,
-                temperature,
                 schemaName: "contigo_ask_answer",
                 AnswerPersonaPrompt.Schema,
                 cancellationToken)
@@ -94,7 +88,7 @@ public sealed class FoundryAnswerClient(
         AnswerPayload? payload;
         try
         {
-            payload = JsonSerializer.Deserialize<AnswerPayload>(completion.Value, FoundryJsonOptions.Web);
+            payload = JsonSerializer.Deserialize<AnswerPayload>(completion.Value.Content, FoundryJsonOptions.Web);
         }
         catch (JsonException ex)
         {
@@ -106,7 +100,8 @@ public sealed class FoundryAnswerClient(
             return Result<AiAnswerResult>.Failure("Foundry answer response parsed to null.");
         }
 
-        var metadata = FoundryCallMetadataFactory.Build(model, AnswerPersonaPrompt.Version, clock, userPrompt);
+        var metadata = FoundryCallMetadataFactory.Build(
+            model, AnswerPersonaPrompt.Version, clock, userPrompt, completion.Value.Usage);
 
         // Legacy Citations stays meaningful only for the evidence-only path: it is a resolved
         // {documentId, page, section} pointer, which only Evidence carries — CitationKeys is the
