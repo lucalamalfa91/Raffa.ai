@@ -233,8 +233,11 @@ public sealed class DocumentUploadEndpointTests : IClassFixture<WebApplicationFa
         Assert.NotEqual("Failed", body.RootElement.GetProperty("processingStatus").GetString());
         Assert.Equal($"/api/documents/{documentId}", response.Headers.Location?.ToString());
 
-        var saved = Assert.Single(host.Storage.Saved);
+        // Two objects: the document blob and the first-page preview task E13/F04/US01/T02 renders.
+        Assert.Equal(2, host.Storage.Saved.Count);
+        var saved = host.Storage.Saved.Single(s => s.Path.EndsWith("msa-acme.pdf", StringComparison.Ordinal));
         Assert.Equal(bytes, saved.Content);
+        Assert.Contains(host.Storage.Saved, s => s.Path.EndsWith("/preview/page-1.png", StringComparison.Ordinal));
         Assert.Equal(1, host.Gateway.Calls.Count(call => call == "ClassifyAsync"));
         Assert.DoesNotContain("OcrAsync", host.Gateway.Calls);
         Assert.Contains(host.Audit.Entries, e => e.Action == "document.uploaded");

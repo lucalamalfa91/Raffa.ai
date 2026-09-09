@@ -26,5 +26,21 @@ public sealed class Document : TenantScopedEntity
 
     public DocumentProcessingStatus ProcessingStatus { get; set; } = DocumentProcessingStatus.Uploaded;
 
+    /// <summary>
+    /// Pages the hybrid parse actually produced (task E13/F04/US01/T02; R-DOC-06's <c>pageCount</c>
+    /// column). <see langword="null"/> until a parse has run for this document — the list surface
+    /// shows a blank cell rather than a guessed "1".
+    /// </summary>
+    public int? PageCount { get; set; }
+
+    /// <summary>
+    /// Tenant-prefixed storage path of the rendered first-page preview
+    /// (<see cref="Contigo.SharedKernel.Storage.DocumentStoragePath.BuildPreview"/>, R-DOC-08), or
+    /// <see langword="null"/> when no preview could be produced. Never surfaced to a client as a
+    /// URL: <c>GET /api/documents/{id}/preview</c> streams the bytes under the caller's own tenant
+    /// scope (ADR-009 "never a client-supplied raw blob URL").
+    /// </summary>
+    public string? PreviewPath { get; set; }
+
     public required DateTimeOffset CreatedAt { get; set; }
 }

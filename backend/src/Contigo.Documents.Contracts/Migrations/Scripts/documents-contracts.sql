@@ -812,3 +812,42 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260909115908_AddDocumentPreviewAndEmbeddingPage') THEN
+    ALTER TABLE embedding ADD page integer;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260909115908_AddDocumentPreviewAndEmbeddingPage') THEN
+    ALTER TABLE embedding ADD section character varying(200);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260909115908_AddDocumentPreviewAndEmbeddingPage') THEN
+    ALTER TABLE document ADD page_count integer;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260909115908_AddDocumentPreviewAndEmbeddingPage') THEN
+    ALTER TABLE document ADD preview_path character varying(1000);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260909115908_AddDocumentPreviewAndEmbeddingPage') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20260909115908_AddDocumentPreviewAndEmbeddingPage', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+

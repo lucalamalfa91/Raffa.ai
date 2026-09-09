@@ -42,6 +42,13 @@ var documentsContractsConnectionString = builder.Configuration.GetConnectionStri
 
 builder.Services.AddDocumentsContractsModule(documentsContractsConnectionString);
 
+// Task E13/F04/US01/T02 (documents-v2-api): resolves the caller's workspace role for the
+// Admin-only document endpoints (reprocess, delete). Lives in the host because it reads the
+// Identity/Workspace membership table AND the request's own claims/headers -- see
+// Contigo.Api.Infrastructure.WorkspaceRoleResolver for the three-source order and why the
+// interim header/membership branches exist while ADR-010 is not wired.
+builder.Services.AddScoped<WorkspaceRoleResolver>();
+
 // Object storage (ADR-005 "Object storage" row, ADR-011): the Azure Blob Storage adapter is
 // wired here, in the host, and only here — domain modules see IDocumentStorage, never the Azure
 // SDK (ADR-002). Container name is fixed by Terraform (infra/modules/storage/main.tf).

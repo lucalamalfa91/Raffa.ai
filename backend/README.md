@@ -164,6 +164,10 @@ that a second apply does not duplicate rows.
 | POST | `/api/workspaces/{tenantId}/invites` | invite; roles Admin / Procurement / Legal / Finance / ReadOnly |
 | POST | `/api/documents` | multipart `file` + `X-Tenant-Id` header (optional `X-User-Id` names the actor of a rejection audit row). Task E13/F04/US01/T01 (documents-admission, ADR-024 “gate before persistence”) reordered this endpoint: size → **413**, format by extension *and* magic bytes → **415**, admission gate (parse/OCR → readable-text floor → `classify`) → **422** `{ rejected, detectedType, confidence, reason, hint }` with **nothing persisted** and one `document.rejected` audit row; only an admitted document is stored and then processed. Still runs `DocumentProcessingPipeline` (staged extraction → RAG indexing) synchronously before responding (task E02/F06/US01/T01, r1-integration) — reusing the gate's own parse and classification, so the `classify` role is called once per upload — and the response `processingStatus`/`contractId` reflect that run's outcome, not just the initial “Uploaded” write. See “Documents — admission gate” below |
 | GET | `/api/documents/{id}` | metadata/status; same header; `documentType` is the widened `ContractDocumentType` (`Msa`, `OrderForm`, `Amendment`, `Sow`, `RenewalLetter`, `Quote`, `Invoice`, `PriceList`, `Nda`, `Dpa`, `Other`) — task E13/F04/US01/T01 added the last five so “the documents around a contract” keep their own kind |
+| GET | `/api/documents` | Server-side Documents list (R-DOC-06/09; task E13/F04/US01/T02); `X-Tenant-Id` header; optional `status` (exact `DocumentProcessingStatus`), `page` (default 1), `pageSize` (default 25, max 100); response `{ items, page, pageSize, totalCount }`, each item `{ id, contractId, supplierName, fileName, documentType, processingStatus, stage, pageCount, createdAt, weakFactCount }` — `stage` is one of R-DOC-09's six real names and is present **only** while `processingStatus` is `Processing`; `supplierName` is resolved through `ISupplierNameLookup` when the Suppliers module is registered, `null` otherwise (never a raw id); `weakFactCount` counts this contract's distinct extracted fields whose latest evidence is missing or below 0.6 |
+| GET | `/api/documents/{id}/preview` | First-page preview as `image/png` (R-DOC-08); `X-Tenant-Id` header; 404 when the document does not exist for this tenant **or** has no stored preview — the client never receives a blob URL, the bytes are streamed under the caller's own tenant scope (ADR-009). See “Documents V2” below for what the preview actually contains today |
+| POST | `/api/documents/{id}/reprocess` | **Admin only** (403 otherwise): re-loads the stored bytes, re-runs hybrid parse → page-aware embedding → staged extraction (R-DOC-07), writes one `document.reprocessed` audit row; response `{ documentId, contractId, documentType, processingStatus, pagesParsed, chunksIndexed }`. Role resolution: claims → `X-Role`/`X-Workspace-Role` header → `workspace_membership` looked up by `X-User-Id` — see `Contigo.Api.Infrastructure.WorkspaceRoleResolver` |
+| DELETE | `/api/documents/{id}` | **Admin only** (403 otherwise): deletes every stored object (each version plus the preview), the retrieval chunks, the version and extraction-job rows and the document row, detaches the contract link and clears every `source_document_id` on the facts that survive; writes one `document.deleted` audit row; 204 (R-DOC-10). The contract and its extracted facts are deliberately kept |
 | PATCH | `/api/contracts/{id}` | `{ corrections: { <field>: <string\|null> }, reason? }` + `X-Tenant-Id` header; versioned correction (ADR-003 `ContractVersion`/`CorrectionHistory`, ADR-009 RLS) — see `Contigo.Documents.Contracts.Application.ContractCorrectionService.CorrectableFieldNames` for the accepted field list; also writes one `IAuditWriter` entry (`contract.corrected`) |
 | GET | `/api/contracts/{id}/corrections` | `X-Tenant-Id` header; field-level correction history for one contract, newest first (`Contigo.Documents.Contracts.Application.ContractCorrectionHistoryQueryService`) — 404 if the contract does not exist for the tenant, `[]` if it exists but was never corrected |
 | GET | `/api/audit` | tenant-scoped; expects a claims principal (integration tests inject one) |
@@ -270,6 +274,65 @@ rejected, a document containing “MASTER SERVICES AGREEMENT” is admitted as
 `Msa`, and a PNG/JPEG whose bytes are the signature followed by UTF-8 page
 text takes the `ocr` path — see `Contigo.Api.Tests.DocumentUploadEndpointTests`
 and `Contigo.Documents.Contracts.Tests.Admission`.
+
+## Documents V2 — list, preview, reprocess, delete (task E13/F04/US01/T02)
+
+Everything the Documents V2 screen and Ask's citation cards read
+(`inputs/requirements.md` R-DOC-06…R-DOC-10, R-EVD-01). The endpoints live in
+`Contigo.Api.DocumentsEndpointExtensions`; the work itself is in
+`Contigo.Documents.Contracts.Application` (`DocumentQueryService.ListAsync`,
+`DocumentReprocessService`, `DocumentDeleteService`, `Preview/*`).
+
+**Page-aware chunks.** `embedding` gained `page` and `section`
+(migration `AddDocumentPreviewAndEmbeddingPage`). Every chunk the pipeline
+indexes now carries its 1-based page, and the section label when staged
+extraction has already attributed a clause to that page. Both stay `null`
+when genuinely unknown — an Ask citation prints “p.N” only when the page is
+real. `document` gained `page_count` (what the parse produced) and
+`preview_path`.
+
+**Reprocess** (`POST /api/documents/{id}/reprocess`, Admin) loads the stored
+bytes through `IDocumentStorage.LoadAsync`, deletes this document's existing
+chunks, re-parses (native text or the `ocr` role, ADR-017) and re-indexes them
+page-aware, then re-runs staged extraction so facts added by later tasks
+back-fill onto documents uploaded before those tasks existed. It is a
+delete-then-index, not an upsert: R-DOC-07 AC-1 requires that afterwards no
+embedding row for the tenant starts with `%PDF`.
+
+**Deletion** (`DELETE /api/documents/{id}`, Admin) removes the objects first,
+then the rows. Clauses, obligations, risks, line items and evidence are
+*detached* (their `source_document_id` set to null), never deleted: each of
+those columns is an `ON DELETE RESTRICT` foreign key, and a fact whose source
+file is gone is still a fact. The contract itself always survives.
+
+**Preview — what it is today, honestly.** `DocumentPreviewService` renders a
+PNG at upload and stores it under the tenant prefix
+(`{tenant}/documents/{id}/preview/page-1.png`). The built-in
+`PlaceholderDocumentPreviewRenderer` is pure managed code (a small PNG encoder
+plus a 5x7 bitmap font, no native dependency):
+
+- a **PNG** upload is its own preview — a real page-1 image;
+- a **PDF, JPEG, DOCX or XLSX** gets a generated placeholder that names the
+  format and says “preview not rendered”.
+
+A true first-page raster of a PDF needs a rasteriser (pdfium/Skia), which is a
+native provider dependency and belongs in `Contigo.Api`'s infrastructure behind
+the existing `IDocumentPreviewRenderer` port — registering one is the only
+change needed; the storage path, the endpoint and the stored `preview_path`
+stay as they are. Until then the card shows the placeholder, not a fake page.
+
+**Admin resolution while ADR-010 is not wired**
+(`Contigo.Api.Infrastructure.WorkspaceRoleResolver`), in order: role claims on
+an authenticated principal → an `X-Role` / `X-Workspace-Role` header (the same
+interim signal `GET /api/capabilities` reads) → the caller's
+`workspace_membership` row looked up by the `X-User-Id` header. No match means
+no role, and every Admin-only endpoint answers 403. The web client sends
+`X-User-Id` on every call and no role header, so the membership branch is the
+one that decides whether its Admin buttons work.
+
+**Audit rows are written inside the tenant scope**, by the services rather than
+by the endpoints: `audit_event` is itself RLS-protected, so a write with no
+ambient tenant is rejected by Postgres (ADR-009/ADR-011).
 
 ## Worker
 

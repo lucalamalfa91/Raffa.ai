@@ -2,6 +2,7 @@ using Contigo.AiGateway;
 using Contigo.Chat.Infrastructure;
 using Contigo.Documents.Contracts.Domain;
 using Contigo.Documents.Contracts.Infrastructure;
+using Contigo.Identity.Workspace.Infrastructure;
 using Contigo.SharedKernel;
 using Contigo.SharedKernel.Storage;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -82,6 +83,7 @@ internal static class InMemoryAskEngineFactory
 
         var documentsContractsDbName = $"documents-contracts-{Guid.NewGuid()}";
         var chatDbName = $"chat-{Guid.NewGuid()}";
+        var identityDbName = $"identity-workspace-{Guid.NewGuid()}";
 
         return factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
         {
@@ -109,6 +111,16 @@ internal static class InMemoryAskEngineFactory
             // IAiGateway/IAuditWriter — a plain interface registration (unlike AddDbContext's own
             // TryAdd-based core services above) really does let the last one added win for a
             // single GetRequiredService<T>() call.
+            // Task E13/F04/US01/T02: WorkspaceRoleResolver reads workspace_membership when the
+            // caller sent no role claim and no role header, so this host needs an identity store
+            // it can actually query - otherwise an Admin-only endpoint answers 500 (a dead Npgsql
+            // connection) instead of the 403 the contract promises.
+            services.RemoveAll<DbContextOptions<IdentityWorkspaceDbContext>>();
+            services.RemoveAll<IdentityWorkspaceDbContext>();
+            services.AddDbContext<IdentityWorkspaceDbContext>(o => o
+                .UseInMemoryDatabase(identityDbName)
+                .UseInternalServiceProvider(InMemoryProviderServices));
+
             services.AddSingleton<IAiGateway>(aiGateway);
             services.AddSingleton(auditWriter ?? new NoOpAuditWriter());
 

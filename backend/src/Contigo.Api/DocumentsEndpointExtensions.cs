@@ -1,6 +1,10 @@
+using System.Globalization;
+using Contigo.Api.Infrastructure;
 using Contigo.Documents.Contracts.Application;
 using Contigo.Documents.Contracts.Application.Admission;
 using Contigo.Documents.Contracts.Application.Extraction;
+using Contigo.Documents.Contracts.Application.Preview;
+using Contigo.Documents.Contracts.Domain;
 using Contigo.SharedKernel;
 using Microsoft.AspNetCore.Http.Features;
 
@@ -41,6 +45,17 @@ namespace Contigo.Api;
 /// </para>
 ///
 /// <para>
+/// <b>The V2 surface</b> (task E13/F04/US01/T02, documents-v2-api): the same file also maps the
+/// four endpoints the Documents V2 screen and Ask's citation cards need —
+/// <c>GET /api/documents</c> (the server-side list that replaced the V1 screen's
+/// <c>sessionStorage</c>, R-DOC-06/09), <c>GET /api/documents/{id}/preview</c> (the stored
+/// first-page PNG, streamed under the caller's tenant scope, never a blob URL, R-DOC-08),
+/// <c>POST /api/documents/{id}/reprocess</c> and <c>DELETE /api/documents/{id}</c> (both Admin,
+/// R-DOC-07/R-DOC-10; every other role gets 403 — see <see cref="WorkspaceRoleResolver"/> for how
+/// the role is established while ADR-010 is not yet wired).
+/// </para>
+///
+/// <para>
 /// <b>Interim identity posture</b> (ADR-022, OQ-askv2-005): the tenant comes from
 /// <c>X-Tenant-Id</c> and the audit actor of a rejection from <c>X-User-Id</c> when the web sent
 /// one (it does, for every call — see <c>web/src/api/client.ts</c>), else the same
@@ -64,7 +79,11 @@ public static class DocumentsEndpointExtensions
     public static IEndpointRouteBuilder MapDocumentsEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapPost("/api/documents", UploadDocumentAsync);
+        endpoints.MapGet("/api/documents", ListDocumentsAsync);
         endpoints.MapGet("/api/documents/{id}", GetDocumentAsync);
+        endpoints.MapGet("/api/documents/{id}/preview", GetDocumentPreviewAsync);
+        endpoints.MapPost("/api/documents/{id}/reprocess", ReprocessDocumentAsync);
+        endpoints.MapDelete("/api/documents/{id}", DeleteDocumentAsync);
         return endpoints;
     }
 
@@ -175,7 +194,14 @@ public static class DocumentsEndpointExtensions
         var uploaded = result.Value;
 
         var processingResult = await processingPipeline.ProcessAsync(
-            tenantId, uploaded.DocumentId, decision.Pages, decision.Classification!, cancellationToken);
+            tenantId,
+            uploaded.DocumentId,
+            decision.Pages,
+            decision.Classification!,
+            fileBytes,
+            uploaded.FileName,
+            format.MimeType,
+            cancellationToken);
 
         var processingStatus = processingResult.IsSuccess
             ? processingResult.Value.ProcessingStatus
@@ -234,6 +260,223 @@ public static class DocumentsEndpointExtensions
             processingStatus = metadata.ProcessingStatus.ToString(),
             createdAt = metadata.CreatedAt,
         });
+    }
+
+    /// <summary>
+    /// Task E13/F04/US01/T02 (R-DOC-06): one page of the tenant's documents, newest first, with
+    /// the real processing stage (R-DOC-09), the parsed page count, the resolved supplier name and
+    /// the weak-fact count the row's "Review N fields" action shows. Optional <c>status</c>,
+    /// <c>page</c> and <c>pageSize</c> query parameters, same conventions as
+    /// <c>GET /api/contracts</c>.
+    /// </summary>
+    private static async Task<IResult> ListDocumentsAsync(
+        HttpRequest request,
+        DocumentQueryService queryService,
+        CancellationToken cancellationToken)
+    {
+        if (!TryResolveTenant(request, out var tenantId))
+        {
+            return Results.BadRequest("A valid 'X-Tenant-Id' header (a GUID) is required.");
+        }
+
+        DocumentProcessingStatus? status = null;
+        if (request.Query.TryGetValue("status", out var statusValues) && !string.IsNullOrWhiteSpace(statusValues))
+        {
+            if (!Enum.TryParse<DocumentProcessingStatus>(statusValues.ToString(), ignoreCase: true, out var parsed))
+            {
+                return Results.BadRequest(
+                    $"'status' must be one of {string.Join(", ", Enum.GetNames<DocumentProcessingStatus>())}.");
+            }
+
+            status = parsed;
+        }
+
+        if (!TryReadPositiveInt(request, "page", defaultValue: 1, out var page, out var pageError))
+        {
+            return Results.BadRequest(pageError);
+        }
+
+        if (!TryReadPositiveInt(request, "pageSize", PortfolioPageRequest.DefaultPageSize, out var pageSize, out var sizeError))
+        {
+            return Results.BadRequest(sizeError);
+        }
+
+        if (pageSize > PortfolioPageRequest.MaxPageSize)
+        {
+            return Results.BadRequest(
+                $"'pageSize' must be an integer between 1 and {PortfolioPageRequest.MaxPageSize}.");
+        }
+
+        var result = await queryService.ListAsync(tenantId, status, page, pageSize, cancellationToken);
+
+        return Results.Ok(new
+        {
+            items = result.Items.Select(item => new
+            {
+                id = item.DocumentId.Value,
+                contractId = item.ContractId?.Value,
+                supplierName = item.SupplierName,
+                fileName = item.FileName,
+                documentType = item.DocumentType.ToString(),
+                processingStatus = item.ProcessingStatus.ToString(),
+                stage = item.Stage,
+                pageCount = item.PageCount,
+                createdAt = item.CreatedAt,
+                weakFactCount = item.WeakFactCount,
+            }),
+            page = result.Page,
+            pageSize = result.PageSize,
+            totalCount = result.TotalCount,
+        });
+    }
+
+    /// <summary>
+    /// Task E13/F04/US01/T02 (R-DOC-08): streams the stored first-page PNG. Tenant-scoped through
+    /// the document row itself and re-checked against the tenant's object-storage prefix on load
+    /// (ADR-009) — the client never sees, and never supplies, a blob path. 404 covers all three of
+    /// "no such document", "not your tenant" and "no preview stored": none of them is a distinction
+    /// a caller is entitled to.
+    /// </summary>
+    private static async Task<IResult> GetDocumentPreviewAsync(
+        string id,
+        HttpRequest request,
+        DocumentPreviewService previewService,
+        CancellationToken cancellationToken)
+    {
+        if (!TryResolveTenant(request, out var tenantId))
+        {
+            return Results.BadRequest("A valid 'X-Tenant-Id' header (a GUID) is required.");
+        }
+
+        if (!Guid.TryParse(id, out var documentGuid))
+        {
+            return Results.BadRequest("The document id in the route must be a GUID.");
+        }
+
+        var png = await previewService.LoadAsync(tenantId, new EntityId(documentGuid), cancellationToken);
+        return png is null
+            ? Results.NotFound()
+            : Results.File(png, DocumentPreviewService.PreviewContentType);
+    }
+
+    /// <summary>
+    /// Task E13/F04/US01/T02 (R-DOC-07): Admin-only re-run of parse + embedding + staged extraction
+    /// over the stored bytes, so documents indexed before the V2 pipeline get readable, page-aware
+    /// chunks and back-filled facts. Writes one <c>document.reprocessed</c> audit row.
+    /// </summary>
+    private static async Task<IResult> ReprocessDocumentAsync(
+        string id,
+        HttpContext httpContext,
+        DocumentReprocessService reprocessService,
+        WorkspaceRoleResolver roleResolver,
+        CancellationToken cancellationToken)
+    {
+        var request = httpContext.Request;
+        if (!TryResolveTenant(request, out var tenantId))
+        {
+            return Results.BadRequest("A valid 'X-Tenant-Id' header (a GUID) is required.");
+        }
+
+        if (!Guid.TryParse(id, out var documentGuid))
+        {
+            return Results.BadRequest("The document id in the route must be a GUID.");
+        }
+
+        if (!await roleResolver.IsAdminAsync(httpContext, tenantId, cancellationToken))
+        {
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
+        }
+
+        var result = await reprocessService.ReprocessAsync(
+            tenantId, new EntityId(documentGuid), ResolveActor(request), cancellationToken);
+        if (result is null)
+        {
+            return Results.NotFound();
+        }
+
+        if (result.IsFailure)
+        {
+            return Results.BadRequest(result.Error);
+        }
+
+        // The audit row (document.reprocessed) is written by the service itself, inside the tenant
+        // scope the RLS-protected audit table requires — see DocumentReprocessService.
+        var summary = result.Value;
+        return Results.Ok(new
+        {
+            documentId = summary.DocumentId.Value,
+            contractId = summary.ContractId.Value,
+            documentType = summary.DocumentType.ToString(),
+            processingStatus = summary.ProcessingStatus.ToString(),
+            pagesParsed = summary.PagesParsed,
+            chunksIndexed = summary.ChunksIndexed,
+        });
+    }
+
+    /// <summary>
+    /// Task E13/F04/US01/T02 (R-DOC-10): Admin-only deletion of the blobs, the preview, the
+    /// retrieval chunks and the rows; the contract survives with its document link gone. Writes one
+    /// <c>document.deleted</c> audit row before returning 204.
+    /// </summary>
+    private static async Task<IResult> DeleteDocumentAsync(
+        string id,
+        HttpContext httpContext,
+        DocumentDeleteService deleteService,
+        WorkspaceRoleResolver roleResolver,
+        CancellationToken cancellationToken)
+    {
+        var request = httpContext.Request;
+        if (!TryResolveTenant(request, out var tenantId))
+        {
+            return Results.BadRequest("A valid 'X-Tenant-Id' header (a GUID) is required.");
+        }
+
+        if (!Guid.TryParse(id, out var documentGuid))
+        {
+            return Results.BadRequest("The document id in the route must be a GUID.");
+        }
+
+        if (!await roleResolver.IsAdminAsync(httpContext, tenantId, cancellationToken))
+        {
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
+        }
+
+        var result = await deleteService.DeleteAsync(
+            tenantId, new EntityId(documentGuid), ResolveActor(request), cancellationToken);
+        if (result is null)
+        {
+            return Results.NotFound();
+        }
+
+        if (result.IsFailure)
+        {
+            return Results.BadRequest(result.Error);
+        }
+
+        // The audit row (document.deleted) is written by the service itself, inside the tenant
+        // scope the RLS-protected audit table requires — see DocumentDeleteService.
+        return Results.NoContent();
+    }
+
+    /// <summary>Reads an optional positive-integer query parameter, defaulting when absent.</summary>
+    private static bool TryReadPositiveInt(
+        HttpRequest request, string name, int defaultValue, out int value, out string? error)
+    {
+        value = defaultValue;
+        error = null;
+
+        if (!request.Query.TryGetValue(name, out var values) || string.IsNullOrWhiteSpace(values))
+        {
+            return true;
+        }
+
+        if (!int.TryParse(values.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out value) || value < 1)
+        {
+            error = $"'{name}' must be a positive integer.";
+            return false;
+        }
+
+        return true;
     }
 
     private static IResult TooLarge(DocumentAdmissionOptions options) =>

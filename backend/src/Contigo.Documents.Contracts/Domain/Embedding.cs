@@ -22,6 +22,22 @@ public sealed class Embedding : TenantScopedEntity
     public required string SourceType { get; set; }
     public required EntityId SourceId { get; set; }
     public int ChunkIndex { get; set; }
+
+    /// <summary>
+    /// 1-based page this chunk was read from, when the chunk maps to a page of a parsed document
+    /// (task E13/F04/US01/T02; <c>inputs/requirements.md</c> R-EVD-01 "embedding rows store page
+    /// number and section label", R-DOC-07 AC-2). <see langword="null"/> for a chunk with no page
+    /// concept (a clause excerpt indexed from a row that has no <c>SourcePage</c>, a market note),
+    /// never a fabricated <c>1</c> — an Ask citation prints "p.N" only when this is really known.
+    /// </summary>
+    public int? Page { get; set; }
+
+    /// <summary>
+    /// Section label for this chunk when one is known (a clause type / source span, R-EVD-01);
+    /// <see langword="null"/> otherwise. Free text, not an enum: it is quoted into a citation
+    /// subtitle, never matched on.
+    /// </summary>
+    public string? Section { get; set; }
     public required string ChunkText { get; set; }
     public required Vector Vector { get; set; }
 

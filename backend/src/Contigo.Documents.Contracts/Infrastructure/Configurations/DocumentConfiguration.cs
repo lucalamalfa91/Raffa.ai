@@ -26,6 +26,10 @@ public sealed class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(e => e.Checksum).HasMaxLength(128);
         builder.Property(e => e.ProcessingStatus).HasConversion<string>().HasMaxLength(30);
 
+        // Task E13/F04/US01/T02: parsed page count (R-DOC-06) and the first-page preview's own
+        // tenant-prefixed storage path (R-DOC-08) — same length budget as StoragePath below.
+        builder.Property(e => e.PreviewPath).HasMaxLength(1000);
+
         builder.HasIndex(e => e.TenantId);
         builder.HasIndex(e => e.ContractId);
 

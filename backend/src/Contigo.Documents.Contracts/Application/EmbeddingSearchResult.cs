@@ -14,10 +14,15 @@ namespace Contigo.Documents.Contracts.Application;
 /// <c>IAiGateway.AnswerAsync</c>) can cite it without a second lookup.</param>
 /// <param name="Distance">Cosine distance to the query vector — smaller is more similar (0 = identical
 /// direction). Not a similarity score; callers wanting a 0-1 similarity can compute <c>1 - Distance</c>.</param>
+/// <param name="Page">1-based page this chunk came from, or <see langword="null"/> when unknown
+/// (task E13/F04/US01/T02, R-EVD-01: a citation prints "p.N" only when the page is really known).</param>
+/// <param name="Section">Section label for this chunk when one is known, else <see langword="null"/>.</param>
 public sealed record EmbeddingSearchResult(
     EntityId EmbeddingId,
     string SourceType,
     EntityId SourceId,
     int ChunkIndex,
     string ChunkText,
-    double Distance);
+    double Distance,
+    int? Page = null,
+    string? Section = null);

@@ -23,6 +23,10 @@ public sealed class EmbeddingConfiguration : IEntityTypeConfiguration<Embedding>
         builder.Property(e => e.SourceType).HasMaxLength(100);
         builder.Property(e => e.Model).HasMaxLength(200);
 
+        // Task E13/F04/US01/T02 (R-EVD-01): page-aware chunks. Both nullable — see the entity's
+        // own doc comments for why an unknown page is null rather than 1.
+        builder.Property(e => e.Section).HasMaxLength(200);
+
         // ADR-003: the `vector` column type is the whole point of this task. Dimension fixed
         // at schema time per ADR-004 ("small dimension preferred") — see Embedding.VectorDimensions.
         // Requires Pgvector.EntityFrameworkCore's UseVector() to be enabled on the provider

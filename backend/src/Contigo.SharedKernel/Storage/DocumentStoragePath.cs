@@ -8,6 +8,35 @@ namespace Contigo.SharedKernel.Storage;
 /// </summary>
 public static class DocumentStoragePath
 {
+    /// <summary>The prefix every object belonging to <paramref name="tenantId"/> starts with —
+    /// the one string <see cref="EnsureWithinTenant"/> checks against (ADR-009).</summary>
+    public static string TenantPrefix(TenantId tenantId) => $"{tenantId.Value:D}/";
+
+    /// <summary>
+    /// The first-page preview path for one document (task E13/F04/US01/T02, R-DOC-08). Deliberately
+    /// not a <c>v{n}</c> document-version path: a preview is a derived rendering, replaced in place
+    /// whenever the document is reprocessed, and must never be served as if it were the document.
+    /// </summary>
+    public static string BuildPreview(TenantId tenantId, EntityId documentId) =>
+        $"{TenantPrefix(tenantId)}documents/{documentId.Value:D}/preview/page-1.png";
+
+    /// <summary>
+    /// Fail-closed guard for the read/delete side of <see cref="IDocumentStorage"/>: a path that
+    /// does not start with this tenant's own prefix throws rather than being read, deleted, or
+    /// quietly reported as "not found" (ADR-009 — a cross-tenant path is a defect, not a miss).
+    /// </summary>
+    public static void EnsureWithinTenant(TenantId tenantId, string storagePath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(storagePath);
+
+        if (!storagePath.StartsWith(TenantPrefix(tenantId), StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "Refusing to access an object storage path outside the caller's tenant prefix " +
+                "(ADR-009: object-storage paths are tenant-prefixed and server-derived).");
+        }
+    }
+
     public static string Build(TenantId tenantId, EntityId documentId, int versionNumber, string fileName)
     {
         if (versionNumber < 1)
@@ -16,7 +45,7 @@ public static class DocumentStoragePath
                 nameof(versionNumber), versionNumber, "Version number must be 1 or greater.");
         }
 
-        return $"{tenantId.Value:D}/documents/{documentId.Value:D}/v{versionNumber}/{Sanitize(fileName)}";
+        return $"{TenantPrefix(tenantId)}documents/{documentId.Value:D}/v{versionNumber}/{Sanitize(fileName)}";
     }
 
     /// <summary>

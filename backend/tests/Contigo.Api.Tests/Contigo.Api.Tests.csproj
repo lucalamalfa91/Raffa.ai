@@ -31,6 +31,9 @@
     <ProjectReference Include="..\..\src\Contigo.AiGateway\Contigo.AiGateway.csproj" />
     <ProjectReference Include="..\..\src\Contigo.Chat\Contigo.Chat.csproj" />
     <ProjectReference Include="..\..\src\Contigo.Documents.Contracts\Contigo.Documents.Contracts.csproj" />
+    <!-- Task E13/F04/US01/T02: the in-memory host swaps IdentityWorkspaceDbContext so
+         WorkspaceRoleResolver's membership branch is exercised without a real Postgres. -->
+    <ProjectReference Include="..\..\src\Contigo.Identity.Workspace\Contigo.Identity.Workspace.csproj" />
     <ProjectReference Include="..\..\src\Contigo.SharedKernel\Contigo.SharedKernel.csproj" />
   </ItemGroup>
 

@@ -1,6 +1,7 @@
 using Contigo.AiGateway;
 using Contigo.AiGateway.Contracts;
 using Contigo.Documents.Contracts.Application.Admission;
+using Contigo.Documents.Contracts.Application.Preview;
 using Contigo.Documents.Contracts.Domain;
 using Contigo.Documents.Contracts.Infrastructure;
 using Contigo.SharedKernel;
@@ -88,7 +89,8 @@ public sealed class DocumentProcessingPipeline(
     StagedExtractionService extractionService,
     EmbeddingRetrievalService embeddingRetrievalService,
     ITenantContext tenantContext,
-    IClock clock)
+    IClock clock,
+    DocumentPreviewService? previewService = null)
 {
     /// <summary>Discriminator this pipeline indexes every chunk under (<see cref="Domain.Embedding.SourceType"/>),
     /// matching <c>Contigo.Api.ChatEndpointExtensions.ToEvidenceSnippet</c>'s own
@@ -144,7 +146,8 @@ public sealed class DocumentProcessingPipeline(
             .ConfigureAwait(false);
 
         return await ExtractAndIndexAsync(
-            tenantId, document, pages, documentType, classificationConfidence, cancellationToken).ConfigureAwait(false);
+            tenantId, document, pages, documentType, classificationConfidence, content, mimeType, fileName, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     /// <summary>
@@ -159,6 +162,9 @@ public sealed class DocumentProcessingPipeline(
         EntityId documentId,
         IReadOnlyList<DocumentPageText> pages,
         DocumentClassification classification,
+        ReadOnlyMemory<byte> content = default,
+        string? fileName = null,
+        string? mimeType = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(pages);
@@ -187,7 +193,8 @@ public sealed class DocumentProcessingPipeline(
         }
 
         return await ExtractAndIndexAsync(
-            tenantId, document, pages, classification.DocumentType, classification.Confidence, cancellationToken)
+            tenantId, document, pages, classification.DocumentType, classification.Confidence,
+            content, mimeType ?? document.MimeType, fileName ?? document.FileName, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -209,8 +216,29 @@ public sealed class DocumentProcessingPipeline(
         IReadOnlyList<DocumentPageText> pages,
         ContractDocumentType documentType,
         double? classificationConfidence,
+        ReadOnlyMemory<byte> content,
+        string mimeType,
+        string fileName,
         CancellationToken cancellationToken)
     {
+        // R-DOC-06's list column: what the parse really produced, recorded before extraction so a
+        // later stage failing still leaves an honest page count behind.
+        document.PageCount = pages.Count;
+
+        // R-DOC-08: render and store the first-page preview from the bytes we already hold. Never
+        // fatal - DocumentPreviewService returns null instead of throwing, and a document with no
+        // preview simply answers 404 on that endpoint (see that type's own doc comment).
+        if (previewService is not null && !content.IsEmpty)
+        {
+            var previewPath = await previewService
+                .RenderAndStoreAsync(tenantId, document.Id, fileName, mimeType, content, cancellationToken)
+                .ConfigureAwait(false);
+            if (previewPath is not null)
+            {
+                document.PreviewPath = previewPath;
+            }
+        }
+
         // Flush classification before StagedExtractionService.RunAsync runs — see the type doc
         // comment's "Ordering" remarks: EnsureContractAsync reads document.DocumentType to seed a
         // freshly-created Contract.Type, and both services share this same scoped DbContext
@@ -325,6 +353,8 @@ public sealed class DocumentProcessingPipeline(
     private async Task<int> IndexForRetrievalAsync(
         TenantId tenantId, EntityId documentId, IReadOnlyList<DocumentPageText> pages, CancellationToken cancellationToken)
     {
+        var sectionsByPage = await SectionLabelsByPageAsync(tenantId, documentId, cancellationToken)
+            .ConfigureAwait(false);
         var indexed = 0;
         foreach (var page in pages)
         {
@@ -333,8 +363,20 @@ public sealed class DocumentProcessingPipeline(
                 continue;
             }
 
+            // R-EVD-01 / R-DOC-07 AC-2: the chunk carries its own 1-based page (and, when the
+            // document has been sectioned, the section label). chunkIndex stays zero-based - it is
+            // a position within the source, not a page number, and Ask's own citation ids already
+            // depend on it.
             var indexResult = await embeddingRetrievalService
-                .IndexChunkAsync(tenantId, DocumentSourceType, documentId, page.PageNumber - 1, page.Text, cancellationToken)
+                .IndexChunkAsync(
+                    tenantId,
+                    DocumentSourceType,
+                    documentId,
+                    page.PageNumber - 1,
+                    page.Text,
+                    page.PageNumber,
+                    sectionsByPage.GetValueOrDefault(page.PageNumber),
+                    cancellationToken)
                 .ConfigureAwait(false);
             if (indexResult.IsSuccess)
             {
@@ -343,6 +385,37 @@ public sealed class DocumentProcessingPipeline(
         }
 
         return indexed;
+    }
+
+    /// <summary>
+    /// Section label per page for the chunks of this document (R-EVD-01 "section label"): the
+    /// clause types staged extraction has already attributed to a page of this same document. A
+    /// page with several clauses is labelled with the first, in insertion order - one short label
+    /// is what a citation subtitle can show; a page with none stays unlabelled rather than being
+    /// given a made-up section name.
+    /// </summary>
+    private async Task<Dictionary<int, string>> SectionLabelsByPageAsync(
+        TenantId tenantId, EntityId documentId, CancellationToken cancellationToken)
+    {
+        var clauses = await dbContext.Clauses
+            .AsNoTracking()
+            .Where(c => c.TenantId == tenantId && c.SourceDocumentId == documentId && c.SourcePage != null)
+            .OrderBy(c => c.CreatedAt)
+            .Select(c => new { Page = c.SourcePage!.Value, c.ClauseType, c.SourceSpan })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var labels = new Dictionary<int, string>();
+        foreach (var clause in clauses)
+        {
+            var label = string.IsNullOrWhiteSpace(clause.SourceSpan) ? clause.ClauseType : clause.SourceSpan;
+            if (!string.IsNullOrWhiteSpace(label))
+            {
+                labels.TryAdd(clause.Page, label);
+            }
+        }
+
+        return labels;
     }
 
     private static string Truncate(string value, int maxLength = 1000) =>

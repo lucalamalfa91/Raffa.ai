@@ -2,6 +2,7 @@ using Contigo.AiGateway;
 using Contigo.Documents.Contracts.Application;
 using Contigo.Documents.Contracts.Application.Admission;
 using Contigo.Documents.Contracts.Application.Extraction;
+using Contigo.Documents.Contracts.Application.Preview;
 using Contigo.SharedKernel;
 using Contigo.SharedKernel.Tenancy;
 using Microsoft.EntityFrameworkCore;
@@ -118,6 +119,15 @@ public static class ServiceCollectionExtensions
             return options;
         });
         services.AddScoped<DocumentAdmissionGate>();
+
+        // Task E13/F04/US01/T02 (documents-v2-api): preview rendering + the reprocess/delete units
+        // of work. The renderer is a TryAdd, so a host that registers a rasteriser-backed
+        // IDocumentPreviewRenderer of its own (Contigo.Api infrastructure - ADR-002 keeps the
+        // native SDK out of this module) wins over the built-in placeholder renderer.
+        services.TryAddSingleton<IDocumentPreviewRenderer, PlaceholderDocumentPreviewRenderer>();
+        services.AddScoped<DocumentPreviewService>();
+        services.AddScoped<DocumentReprocessService>();
+        services.AddScoped<DocumentDeleteService>();
 
         return services;
     }
