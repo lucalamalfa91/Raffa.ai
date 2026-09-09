@@ -111,14 +111,21 @@ builder.Services.AddSuppliersProductsModule(suppliersConnectionString);
 
 // Task E13/F06/US01/T01 (ask-engine): the Market module's own AddMarketModule() (ADR-002) — task
 // E13/F02/US01/T01 registered the mock feed, its benchmark projection and its in-memory notes
-// retrieval here but no host called it yet (that task's own doc comment: "task F06/T01 is
-// expected to be the first caller"). No connection string: this module has no persisted store yet
-// (R-MKT-03's own "T02" scope, not landed in this wave) — every registration is in-memory/config
-// -only. Also makes "market-feed" the default active Benchmark Service adapter (replacing the
-// fixture default AddBenchmarkModule alone would leave in place — R-MKT-02), regardless of the
+// retrieval here. Also makes "market-feed" the default active Benchmark Service adapter (replacing
+// the fixture default AddBenchmarkModule alone would leave in place — R-MKT-02), regardless of the
 // order AddBenchmarkModule (transitively, via AddSavingsModule/AddQuotesModule above) already ran
 // in.
-builder.Services.AddMarketModule();
+//
+// The connection string is OPTIONAL here, unlike every other module above, and that asymmetry is
+// deliberate. Task E13/F02/US01/T02 landed the persisted `market_record`/`market_embedding` index
+// the Worker's `ingest-market` job fills (ADR-024: "the provider is called only by the ingestion
+// job"; R-MKT-03). When `ConnectionStrings:Market` is configured, this host reads that index —
+// pgvector retrieval, the DB-backed benchmark projection, and the persisted record behind
+// GET /api/market/records/{id}. When it is absent (a local run with no market database), the
+// module keeps the in-memory mock projection and the API still answers, which is why a missing
+// value must not fail startup the way a missing tenant database does: the market index is shared,
+// read-only reference data, not a tenant's own records.
+builder.Services.AddMarketModule(builder.Configuration.GetConnectionString("Market"));
 
 // Task E13/F06/US01/T01 (ask-engine): the Insights module's own AddInsightsModule() (ADR-002) —
 // task E13/F07/US01/T01 registered InsightsOptions/CriticalityScoreCalculator here but no host
