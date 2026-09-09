@@ -1,4 +1,5 @@
 using System.Globalization;
+using Contigo.Benchmark.Contracts;
 using Contigo.Quotes.Application.Assessment;
 using Contigo.Quotes.Domain;
 
@@ -54,6 +55,27 @@ namespace Contigo.Quotes.Application.Strategy;
 /// themselves. <c>Contigo.AiGateway.Fixtures.FixtureAiGateway.AnswerAsync</c> would today only echo
 /// those facts back verbatim (no live grounded-generation model exists yet — see that method's own
 /// doc comment), so deferring that wiring loses no real capability today.
+/// </para>
+///
+/// <para>
+/// <b>Generalized to a shared priced-line input (task E13/F07/US01/T01, insights-calculators; parent
+/// story us-01-insights AC-3)</b>: the opening-target/walk-away-threshold arithmetic below now calls
+/// <see cref="PricedLineNegotiationMath.StepRange"/> — the one piece of this formula
+/// <c>Contigo.Insights.Negotiation.PricedLineNegotiationCalculator</c> (contract priced lines) must
+/// reproduce bit-for-bit for a <c>Contigo.Benchmark.Contracts.PricedLine</c> to "yield opening
+/// target, acceptable range, walk-away and levers exactly as a quote line does". That shared step
+/// lives in <c>Contigo.Benchmark</c>, not <c>Contigo.Insights</c>: <c>Contigo.Quotes</c>' own
+/// allow-list (<c>Contigo.ArchitectureTests.DependencyDirectionTests</c>) is exactly
+/// <c>[SharedKernel, Benchmark]</c> — it cannot reference <c>Contigo.Insights</c> — so the shared
+/// arithmetic sits in the one project both modules already see (see
+/// <c>PricedLineNegotiationMath</c>'s own doc comment; <c>backend/README.md</c> "Insights" records
+/// this decision). This method's own public signature, every other line of logic (levers, abstain
+/// conditions, explanation text) and its return values are unchanged — the same
+/// <see cref="LineTargetSaving"/>/<see cref="Contigo.Quotes.Domain.QuoteLine"/> in still produces the
+/// same <see cref="LineNegotiationStrategy"/> out, so every existing
+/// <c>Contigo.Quotes.Tests.NegotiationStrategyCalculatorTests</c> assertion holds unchanged (decimal
+/// arithmetic is exact, so moving these two lines into a shared function changes nothing about the
+/// values they produce).
 /// </para>
 /// </summary>
 public static class NegotiationStrategyCalculator
@@ -111,9 +133,8 @@ public static class NegotiationStrategyCalculator
                 "current price that does not exist (Appendix C rule 10).");
         }
 
-        var rangeWidth = rangeHigh - rangeLow;
-        var openingTarget = Math.Max(0m, rangeLow - rangeWidth);
-        var walkAwayThreshold = Math.Min(unitPrice, rangeHigh + rangeWidth);
+        var (openingTarget, walkAwayThreshold) =
+            PricedLineNegotiationMath.StepRange(rangeLow, rangeHigh, unitPrice);
 
         var levers = BuildLevers(line, totalLineCountOnQuote, asOfDate);
 

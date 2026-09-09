@@ -36,7 +36,7 @@ backend/
     Contigo.Market/               # R-MKT-01/02/03/04 mock feed + benchmark projection + in-memory notes retrieval (task E13/F02/US01/T01) — see "Market Intelligence" below
     Contigo.Suppliers.Products/  # Supplier entity, SupplierNameNormalizer, ISupplierResolver/ISupplierNameLookup impls, SuppliersDbContext + RLS (task E13/F03/US01/T01, ADR-024; live) — see "Supplier identity" below
     Contigo.Market/               # scaffold (E13/F01/US01/T01, ADR-024) — feed/ingestion/index/benchmark-projection; AddMarketModule() registers nothing yet
-    Contigo.Insights/             # scaffold (E13/F01/US01/T01, ADR-024) — pure calculators fed by DTOs; AddInsightsModule() registers nothing yet
+    Contigo.Insights/             # criticality score, priced-line negotiation, strategy pack builder (E13/F07/US01/T01, ADR-024) — pure calculators fed by DTOs; AddInsightsModule() registers InsightsOptions + CriticalityScoreCalculator; no host maps InsightsEndpointExtensions.cs yet (F06/T01, phase 3) — see "Insights" below
     Contigo.Renewals/            # renewal engine + opportunity + explainable priority score + threshold scheduler + dashboard pipeline + action (R2; live) — see "Renewal Intelligence" below
     Contigo.Savings/             # price normalization + percentile/target/savings-range calculator (R3; task E04/F02/US01/T01) + persisted, trackable SavingsOpportunity + GET/PATCH /api/savings (task E04/F02/US02/T01) — see "Savings Intelligence" below
     Contigo.Quotes/              # quote upload + hybrid-OCR-reused, schema-constrained line-item extraction (evidence + confidence; deterministic pricing) + POST /api/quotes (R4; task E05/F01/US01/T01) + SKU/edition normalization against a per-tenant canonical mapping, unmatched-SKU flagging (task E05/F01/US02/T01) + benchmark matching/above-in-line-below market assessment + GET /api/quotes/{id}/assessment, AddBenchmarkModule now wired (task E05/F02/US01/T01) + deterministic recommended target range/potential saving on that same endpoint (task E05/F02/US01/T02) + deterministic negotiation strategy (opening target/acceptable range/walk-away threshold + seven canonical levers with rationale, NegotiationStrategyService, no HTTP endpoint yet) (task E05/F03/US01/T01) + NegotiationOutcome capture (original/target/final/deterministic saving+discount/duration/levers used) + POST /api/negotiations/outcomes, append-only/audit-tracked (task E05/F03/US02/T01) — see "Quote Check" / "Market Assessment" / "Negotiation Strategy" / "Negotiation Outcome" below
@@ -75,6 +75,17 @@ other new, still-empty test project. `Contigo.Suppliers.Products.Tests` was
 that task's third new, then-empty test project — task E13/F03/US01/T01
 (story us-01-supplier-identity) gave it real coverage; see "Supplier
 identity" below. `Contigo.ArchitectureTests.DependencyDirectionTests` now allow-
+**V2 scaffold (task E13/F01/US01/T01, ADR-024):** `Contigo.Market` is
+still a solution-only scaffold — a class library, an `AddMarketModule()`
+stub that registers nothing yet, and a matching `Contigo.Market.Tests`
+project with one placeholder test — for a later epic-13 task that adds the
+mock market feed / ingestion / shared `market_embedding` index / benchmark
+projection. `Contigo.Insights` (below, "Insights") is filled in by task
+E13/F07/US01/T01. `Contigo.Suppliers.Products.Tests`
+and `Contigo.AiEval` (references `Contigo.Chat`, `Contigo.AiGateway`,
+`Contigo.SharedKernel` — a future golden-set eval harness, story
+us-01-v2-foundation) are this same task's other two new, still-empty test
+projects. `Contigo.ArchitectureTests.DependencyDirectionTests` now allow-
 lists `Contigo.Market` → `[SharedKernel, AiGateway, Benchmark]` and
 `Contigo.Insights` → `[SharedKernel, Benchmark]` and covers both in its
 domain-module direction/provider-SDK theories.
@@ -1933,6 +1944,90 @@ flywheel).
   returns 201; `savingsPropagated: false` + `savingsPropagationError`
   reported honestly instead of an HTTP failure).
 
+## Insights — criticality score, priced-line negotiation, strategy pack
+
+Task E13/F07/US01/T01 (insights-calculators; ADR-024; parent story
+us-01-insights) fills in `Contigo.Insights` (scaffolded by
+E13/F01/US01/T01) with three pure calculators, fed by DTOs only — the
+same determinism convention (Appendix C rule 6) every calculator in this
+backend already follows:
+
+- `Criticality.CriticalityScoreCalculator.Calculate` — product spec §12.1/
+  R-PORT-01's deterministic, explainable 0-100 portfolio-criticality
+  score: five weighted components (renewal urgency, risk severity, spend
+  weight, savings potential, open critical facts), each its own `Score`/
+  `Weight`/`Explanation`, summing to the total (AC-1). Weights are
+  `Contigo.Insights.InsightsOptions` (config section
+  `Insights:Criticality`, council default 0.30/0.20/0.20/0.20/0.10,
+  validated to sum to 1.0 at construction). A contract whose tracked
+  critical facts (recorded risks + priced lines with a unit price) are
+  all below the 0.8 confidence threshold is flagged "validate first" in
+  its own component explanation and its score is raised, not hidden
+  (AC-2).
+- `Negotiation.PricedLineNegotiationCalculator.Compute` — generalizes
+  `Contigo.Quotes.Application.Strategy.NegotiationStrategyCalculator` from
+  a quote line to any `Contigo.Benchmark.Contracts.PricedLine` (a contract
+  line item included), producing the same opening target/acceptable
+  range/walk-away threshold plus the same seven canonical levers (AC-3).
+  Unlike the Quotes calculator, levers are never empty: a priced line with
+  no benchmark match still gets the levers that do not need one (volume,
+  term, quarter-end, bundle), with "insufficient market data" stated for
+  the numeric targets (AC-4) — mirrors R-CMP-01 AC-2's identical rule for
+  the benchmark-comparison case.
+- `Strategy.StrategyPackBuilder.Build` — the renewal-strategy pack for one
+  contract, in the council-decided section order: **When you must move**
+  (dates, a passed deadline stated as passed, never hidden) → **Where you
+  can push** (levers across every priced line) → **Targets** (opening/
+  range/walk-away per priced line, "insufficient market data" when no
+  band exists) → **Next steps** (the four tracker steps verbatim from
+  `contigo-v2/app.jsx`'s own `stepDefs`, mirroring the Contract 360
+  tracker) — plus `openWeakFacts` and a citation key for every number
+  (`fact:<contractId>:<field>` / `market:<recordId>` / `calc:<name>`,
+  `Contigo.Insights.Contracts.InsightsCitationKeys`).
+
+**Where the shared `PricedLine` input lives, and why**: R-STR-02
+generalizes `NegotiationStrategyCalculator` to a shared priced-line input.
+`Contigo.Insights`' own allow-list is `[SharedKernel, Benchmark]` — the
+same one `Contigo.Quotes` already has — so neither module can reference
+the other (`Contigo.ArchitectureTests.DependencyDirectionTests`); the one
+project both already see is `Contigo.Benchmark`. `PricedLine` therefore
+lives at `Contigo.Benchmark.Contracts.PricedLine`, next to
+`BenchmarkDistribution` — the only new file this task adds to
+`Contigo.Benchmark`. The opening-target/walk-away-threshold "step an
+already-known range" arithmetic both calculators must reproduce
+bit-for-bit also lives there, as
+`Contigo.Benchmark.Contracts.PricedLineNegotiationMath.StepRange` — the
+smallest possible shared surface: `NegotiationStrategyCalculator.Compute`
+now calls it too (its own public signature, levers and abstain conditions
+are otherwise unchanged — every existing
+`Contigo.Quotes.Tests.NegotiationStrategyCalculatorTests` assertion still
+holds, decimal arithmetic being exact). The earlier "raw distribution ->
+recommended range" step stays each calculator's own independent
+arithmetic (`PricedLineNegotiationCalculator` mirrors, rather than calls,
+`Contigo.Quotes.Application.Assessment.TargetSavingCalculator`'s formula)
+because `NegotiationStrategyCalculator.Compute`'s own signature still
+takes a pre-computed `LineTargetSaving`, not a raw
+`BenchmarkDistribution`, and no task has changed that.
+
+`Contigo.Api.InsightsEndpointExtensions` composes `GET
+/api/insights/criticality` and `GET /api/contracts/{id}/strategy` from
+`PortfolioQueryService`/`Contract360QueryService` (Documents/Contracts),
+`RenewalEngine`/`PriorityScoreCalculator` (Renewals) and
+`SavingsOpportunityService` (Savings) — the one project allowed to
+reference every module. **Not mapped in `Program.cs` by this task** (F06/
+T01 maps it in phase 3), so both routes are unreachable today; every
+composition/mapping method on that class is `public static` so it can be
+(and is) unit-tested directly with hand-built fakes from
+`Contigo.Insights.Tests` — no database, no `WebApplicationFactory` — which
+is why that test project also references `Contigo.Api` (a test-project
+reference is not constrained by `DependencyDirectionTests`, which only
+inspects `src/` projects). Per-contract benchmark matching is honestly not
+wired yet: a `BenchmarkQuery` needs a supplier name and geography, and
+`Contract` carries neither (only a bare `SupplierId` guid) — the same gap
+`Contract360Result.Benchmark` already has — so `PricedLine.Benchmark` is
+always `null` through this composition until a follow-up task resolves a
+real supplier name (Suppliers/Products) and geography onto the contract.
+
 ## R4 demo smoke test
 
 The automated proof of task E05/F04/US01/T01 (r4-integration) is `dotnet test` —
@@ -2025,4 +2120,9 @@ Allowed Contigo project references (enforced by
 
 Do not add a domain → domain or domain → Azure SDK project/package
 reference to make a task compile. Put the adapter in the host or behind
-the gateway/service project.
+the gateway/service project. When two domain modules with no shared
+reference need the identical shared input/arithmetic (`Contigo.Quotes` and
+`Contigo.Insights` both need a priced-line negotiation calculation, task
+E13/F07/US01/T01), put the shared DTO/arithmetic in a module both already
+allow-list — see "Insights" above for the worked example
+(`Contigo.Benchmark.Contracts.PricedLine` / `PricedLineNegotiationMath`).
