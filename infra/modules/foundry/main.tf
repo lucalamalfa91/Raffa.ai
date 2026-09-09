@@ -205,6 +205,14 @@ resource "azurerm_cognitive_account_project" "this" {
 resource "azurerm_cognitive_deployment" "model" {
   for_each = local.enabled_model_deployments
 
+  # Azure serializes writes on a Cognitive Services account: a deployment
+  # PUT that overlaps the project PUT fails with RequestConflict
+  # ("Another operation is in progress on the resource ..."), which is
+  # exactly how the first dev apply (2026-09-09 22:30) lost contigo-dev
+  # while both deployments succeeded. Nothing here reads the project --
+  # the dependency exists only to order the two writes.
+  depends_on = [azurerm_cognitive_account_project.this]
+
   name                 = "${each.key}-${var.environment}"
   cognitive_account_id = local.ai_services_account_id
 

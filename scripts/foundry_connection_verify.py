@@ -694,6 +694,13 @@ def check_foundry_project_and_deployments_shape(path: Path = FOUNDRY_MAIN_TF) ->
             )
         if _attr(deployment, "cognitive_account_id") != "local.ai_services_account_id":
             problems.append("azurerm_cognitive_deployment.model cognitive_account_id must be local.ai_services_account_id")
+        if "azurerm_cognitive_account_project.this" not in (_attr_line(deployment, "depends_on") or ""):
+            problems.append(
+                "azurerm_cognitive_deployment.model must depends_on "
+                "[azurerm_cognitive_account_project.this]: Azure serializes writes on a Cognitive "
+                "Services account, and the concurrent project/deployment writes of the first dev "
+                "apply cost the project a RequestConflict"
+            )
         if _quoted(deployment, "version_upgrade_option") != "NoAutoUpgrade":
             problems.append("azurerm_cognitive_deployment.model version_upgrade_option must be \"NoAutoUpgrade\"")
         model = _block_after(deployment, r"model")
@@ -716,8 +723,8 @@ def check_foundry_project_and_deployments_shape(path: Path = FOUNDRY_MAIN_TF) ->
         return False, "; ".join(problems)
     return True, (
         "modules/foundry creates one account-native project per environment and per-environment "
-        "deployments named ${each.key}-${var.environment}, pinned (NoAutoUpgrade); ocr role = "
-        f"{OCR_MODEL[0]} {OCR_MODEL[1]}"
+        "deployments named ${each.key}-${var.environment}, pinned (NoAutoUpgrade) and ordered "
+        f"after the project; ocr role = {OCR_MODEL[0]} {OCR_MODEL[1]}"
     )
 
 
