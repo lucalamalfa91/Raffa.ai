@@ -113,12 +113,19 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
             throw new NotSupportedException("StagedExtractionService does not call OcrAsync.");
     }
 
+    /// <summary>The supplier legal name every payload below reports for the `supplier` critical
+    /// fact (task E13/F03/US01/T02, requirements R-SUP-01) — "as written in the document", legal
+    /// suffix and all; normalizing it for matching is <c>Contigo.Suppliers.Products</c>'s job, not
+    /// this pipeline's.</summary>
+    private const string SupplierLegalName = "Salesforce, Inc.";
+
     /// <summary>High-confidence payload for every AC-1 stage, used by the happy-path test.
     /// Field/item shapes mirror <see cref="StagedExtractionJsonSchemas"/> exactly.</summary>
     private static Dictionary<string, string> HighConfidencePayloads() => new()
     {
-        ["Metadata"] = """
+        ["Metadata"] = $$"""
             {"facts":[
+                {"field":"supplier","value":"{{SupplierLegalName}}","sourcePage":1,"sourceSpan":"between Salesforce, Inc. and Contoso Ltd","confidence":0.95},
                 {"field":"currency","value":"USD","sourcePage":1,"sourceSpan":"Currency: USD","confidence":0.95},
                 {"field":"governingLaw","value":"State of Delaware","sourcePage":1,"sourceSpan":"Governing law: Delaware","confidence":0.9},
                 {"field":"status","value":"Active","sourcePage":1,"sourceSpan":"Status: Active","confidence":0.9}
@@ -243,7 +250,19 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
         var evidence = await readDb.ExtractionEvidences
             .Where(e => e.ContractId == summary.ContractId)
             .ToListAsync();
-        Assert.Equal(10, evidence.Count); // 3 metadata + 3 commercial + 4 dates facts
+        Assert.Equal(11, evidence.Count); // 4 metadata (incl. supplier) + 3 commercial + 4 dates facts
+
+        // Task E13/F03/US01/T02 (R-SUP-01): the `supplier` critical fact rides the same evidence
+        // path as every other metadata fact — and, cleared for use at 0.95, is reported on the
+        // summary for DocumentProcessingPipeline to resolve into Contract.SupplierId (this service
+        // deliberately writes no SupplierId itself — ADR-002).
+        var supplierEvidence = Assert.Single(evidence, e => e.FieldName == "supplier");
+        Assert.Equal(SupplierLegalName, supplierEvidence.Value);
+        Assert.Equal(1, supplierEvidence.SourcePage);
+        Assert.Equal(0.95, supplierEvidence.Confidence);
+        Assert.Equal(SupplierLegalName, summary.AcceptedSupplierName);
+        Assert.Null(contract.SupplierId);
+
         var currencyEvidence = Assert.Single(evidence, e => e.FieldName == "currency");
         Assert.Equal("USD", currencyEvidence.Value);
         Assert.Equal(1, currencyEvidence.SourcePage);
@@ -310,6 +329,94 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
         Assert.Equal(ExtractionJobStatus.NeedsReview, metadataStage.Status);
         Assert.Equal(1, metadataStage.ExtractedCount);
         Assert.Equal(DocumentProcessingStatus.NeedsReview, result.Value.DocumentProcessingStatus);
+    }
+
+    /// <summary>
+    /// Task E13/F03/US01/T02 (requirements R-SUP-01, product spec §7.3): <c>supplier</c> is a
+    /// <b>critical</b> field, judged at 0.8 rather than the ordinary 0.6. 0.64 is deliberately
+    /// chosen to sit between the two bars — under the old, single-threshold behaviour this fact
+    /// would have been trusted outright and the stage reported Completed. The evidence row is
+    /// written either way, so the field reaches the review list with its page/span/confidence; only
+    /// <see cref="StagedExtractionSummary.AcceptedSupplierName"/> tells the pipeline not to link it.
+    /// </summary>
+    [Fact]
+    public async Task A_supplier_fact_below_the_critical_threshold_needs_review_but_keeps_its_evidence()
+    {
+        var tenantId = TenantId.New();
+        var tenantContext = new TenantContext();
+
+        await using var seedDb = CreateContext(tenantContext);
+        var (_, document) = await SeedDocumentAsync(seedDb, tenantId);
+
+        var payloads = HighConfidencePayloads();
+        payloads["Metadata"] = $$"""
+            {"facts":[
+                {"field":"supplier","value":"{{SupplierLegalName}}","sourcePage":1,"sourceSpan":"between Salesforce, Inc. and Contoso Ltd","confidence":0.64},
+                {"field":"currency","value":"USD","sourcePage":1,"confidence":0.95}
+            ]}
+            """;
+
+        await using var runDb = CreateContext(tenantContext);
+        var service = new StagedExtractionService(
+            runDb, new ScriptedAiGateway(payloads), tenantContext, new FixedClock(Now), new RecordingAuditWriter());
+
+        var result = await service.RunAsync(tenantId, document.Id, [new DocumentPageText(1, "some contract text")]);
+
+        Assert.True(result.IsSuccess);
+        var summary = result.Value;
+
+        var metadataStage = summary.Stages.Single(s => s.Stage == ExtractionStage.Metadata);
+        Assert.Equal(ExtractionJobStatus.NeedsReview, metadataStage.Status);
+        Assert.Equal(2, metadataStage.ExtractedCount);
+        Assert.Equal(DocumentProcessingStatus.NeedsReview, summary.DocumentProcessingStatus);
+
+        // Not accepted: nothing downstream may link a supplier off this fact.
+        Assert.Null(summary.AcceptedSupplierName);
+
+        await using var readDb = CreateContext(tenantContext);
+        using var tenantScope = tenantContext.BeginScope(tenantId);
+
+        var supplierEvidence = await readDb.ExtractionEvidences
+            .SingleAsync(e => e.ContractId == summary.ContractId && e.FieldName == "supplier");
+        Assert.Equal(SupplierLegalName, supplierEvidence.Value);
+        Assert.Equal("between Salesforce, Inc. and Contoso Ltd", supplierEvidence.SourceSpan);
+        Assert.Equal(0.64, supplierEvidence.Confidence);
+
+        // The sibling `currency` fact sits at the same 0.64-vs-0.8 relationship the other way
+        // round: an ordinary field at 0.64 would have been fine, which is exactly why the two
+        // thresholds cannot be one number.
+        Assert.Equal("USD", (await readDb.Contracts.SingleAsync(c => c.Id == summary.ContractId)).Currency);
+    }
+
+    /// <summary>Same shape as the test above, one notch higher: an ordinary field is unaffected by
+    /// the critical bar. 0.64 on <c>currency</c> alone keeps the stage Completed — proof that
+    /// <c>CriticalFields</c> narrows the stricter threshold to the fields §7.3 names, rather than
+    /// raising it for everything.</summary>
+    [Fact]
+    public async Task A_non_critical_fact_between_the_two_thresholds_is_still_trusted()
+    {
+        var tenantId = TenantId.New();
+        var tenantContext = new TenantContext();
+
+        await using var seedDb = CreateContext(tenantContext);
+        var (_, document) = await SeedDocumentAsync(seedDb, tenantId);
+
+        var payloads = HighConfidencePayloads();
+        payloads["Metadata"] = """
+            {"facts":[{"field":"currency","value":"USD","sourcePage":1,"confidence":0.64}]}
+            """;
+
+        await using var runDb = CreateContext(tenantContext);
+        var service = new StagedExtractionService(
+            runDb, new ScriptedAiGateway(payloads), tenantContext, new FixedClock(Now), new RecordingAuditWriter());
+
+        var result = await service.RunAsync(tenantId, document.Id, [new DocumentPageText(1, "some contract text")]);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(
+            ExtractionJobStatus.Completed,
+            result.Value.Stages.Single(s => s.Stage == ExtractionStage.Metadata).Status);
+        Assert.Null(result.Value.AcceptedSupplierName);
     }
 
     [Fact]

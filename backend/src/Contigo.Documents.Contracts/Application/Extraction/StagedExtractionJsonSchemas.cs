@@ -33,6 +33,17 @@ internal static class StagedExtractionJsonSchemas
     /// union type cannot express per-enum-value, so the caller (not the schema) is responsible
     /// for parsing <c>value</c> against the field's real type (see
     /// <c>StagedExtractionService.ApplyMetadataFact</c> and friends).
+    ///
+    /// <para>
+    /// The `metadata` stage's allow-list includes <c>supplier</c> (requirements R-SUP-01): the
+    /// supplier's legal name <em>as written in the document</em>, carrying the same evidence tail
+    /// as every other fact. Nothing about this schema marks it as a critical field — that is a
+    /// confidence bar the caller applies to the returned fact
+    /// (<c>StagedExtractionService.CriticalConfidenceThreshold</c>), not a constraint a model can
+    /// be asked to honour. The same reasoning as <c>value</c>'s always-string type above: a JSON
+    /// Schema constrains the <em>shape</em> of what a model may propose; what is trustworthy enough
+    /// to persist and link is a domain decision.
+    /// </para>
     /// </summary>
     public static string Facts(IReadOnlyList<string> allowedFieldNames)
     {

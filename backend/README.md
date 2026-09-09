@@ -748,6 +748,83 @@ drives `SuppliersDbContext` directly instead, the same shape
 `Contigo.Renewals.Tests`' own per-module `*RlsCrossTenantIsolationTests`
 already use.
 
+### Supplier extraction, linking and names in read models (task E13/F03/US01/T02)
+
+Supersedes the "nothing resolves a supplier name during extraction yet"
+note above — that gap is what this task closes.
+
+**The `supplier` critical fact (R-SUP-01).** `StagedExtractionService`'s
+`metadata` stage now allow-lists a `supplier` field (the legal name exactly
+as the document writes it, plus the same `sourcePage`/`sourceSpan`/
+`confidence` evidence tail every other fact carries). It is the first entry
+in `CriticalFields`, the set product spec §7.3 judges against
+`CriticalConfidenceThreshold` (**0.8**) instead of the ordinary
+`LowConfidenceThreshold` (0.6): a weak `currency` is a nuisance, a weak
+`supplier` mis-attributes a whole contract to the wrong company. Below 0.8
+the stage — and therefore the document — lands in `needs_review`. The
+`ExtractionEvidence` row is written **either way**, so a rejected supplier
+fact still reaches the review list with its page, span and confidence; only
+`StagedExtractionSummary.AcceptedSupplierName` distinguishes accepted from
+rejected. `ApplyMetadataFact` deliberately writes nothing onto `Contract`
+for this field: `SupplierId` is a cross-module reference this module may not
+resolve itself (ADR-002).
+
+**Linking, and back-fill for free (R-SUP-02/R-SUP-03).**
+`DocumentProcessingPipeline` takes an **optional** `ISupplierResolver?`
+(defaulted to `null`, so the built-in container supplies it only where
+`AddSuppliersProductsModule` was called, and a host or unit test without the
+Suppliers module keeps extracting exactly as before). After a successful
+extraction it resolves `AcceptedSupplierName` and sets `Contract.SupplierId`.
+Four deliberate no-ops: no resolver, no accepted fact, a resolver failure
+(this pipeline never fails an already-durable upload), and an unchanged
+link. Because the call runs on **every** processing pass and reprocess
+re-runs extraction, re-processing a contract stored before this feature
+existed back-fills its supplier — no bespoke migration job, no schema change
+(`Contract.SupplierId` has existed since the initial migration).
+
+**Human correction re-resolves (R-SUP-03).** `ContractCorrectionService`
+accepts `supplier` as a correctable field name — the same literal the review
+list showed the reviewer. It is the one correctable field that is not a
+plain `Contract` scalar: the caller sends a **name**, the service re-runs
+`ISupplierResolver` over it and writes the resulting id. `CorrectionHistory`
+records names on both sides (`ISupplierNameLookup` renders the previous
+link), never guids. Resolution runs after every other field has passed
+validation, so a rejected multi-field `PATCH` never leaves a stray supplier
+row behind. Both ports are optional; where they are absent a `supplier`
+correction is refused with `SupplierCorrectionUnavailableError` rather than
+silently ignored. The no-op test is the *link*, not the rendered name, so
+re-typing the supplier a contract already points at changes nothing.
+
+**Names in read models (R-SUP-04, ADR-024).** `GET /api/contracts`,
+`GET /api/contracts/{id}` (header) and `GET /api/renewals` (row **and**
+insight card) all report `supplierName` alongside `supplierId`. The join can
+only happen in `Contigo.Api` — neither Documents/Contracts nor Renewals may
+reference the Suppliers module — so
+`PortfolioEndpointExtensions.ResolveSupplierNamesAsync` is the single
+scope-owning helper all three go through: one batched `ISupplierNameLookup`
+call per page, wrapped in `ITenantContext.BeginScope(tenantId)`.
+**That scope is not optional**: `SupplierNameLookup` reads an RLS-scoped
+`SuppliersDbContext` and does not open a scope of its own, so calling it
+without one returns an *empty* map — the failure would read as "this
+contract has no supplier name" rather than as an error. `supplierId` stays
+in every response, so a link whose supplier row has since disappeared shows
+an id with a `null` name instead of losing both.
+
+| Surface | Field | Resolved by |
+|---------|-------|-------------|
+| `GET /api/contracts` (each item) | `supplierName` | `PortfolioEndpointExtensions` |
+| `GET /api/contracts/{id}` (`header`) | `supplierName` | `ContractsEndpointExtensions` |
+| `GET /api/renewals` (item + `insightCard.facts`) | `supplierName` | `RenewalsEndpointExtensions` |
+
+Proved by `Contigo.Documents.Contracts.Tests.StagedExtractionServiceTests`
+(threshold + evidence), `DocumentProcessingPipelineSupplierTests` (link,
+skip-when-weak, reprocess back-fill), `ContractCorrectionServiceTests`
+(re-resolve, previous-name history, honest refusal),
+`Contigo.Api.Tests.PortfolioEndpointTests`/`Contract360EndpointTests`/
+`RenewalsEndpointTests` (`supplierName` on the wire) and
+`Contigo.IntegrationTests.R1EndToEndTests` (the whole chain end-to-end
+against real Postgres + RLS, including the back-fill).
+
 ## Ask Contigo — query router + deterministic queries + RAG citations
 
 `Contigo.Chat.Application.AskContigoQueryRouter` classifies a natural-language

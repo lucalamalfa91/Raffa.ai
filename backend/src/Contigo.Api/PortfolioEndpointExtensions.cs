@@ -2,6 +2,8 @@ using System.Globalization;
 using Contigo.Documents.Contracts.Application;
 using Contigo.Documents.Contracts.Domain;
 using Contigo.SharedKernel;
+using Contigo.SharedKernel.Suppliers;
+using Contigo.SharedKernel.Tenancy;
 
 namespace Contigo.Api;
 
@@ -19,6 +21,19 @@ namespace Contigo.Api;
 /// header instead of a token claim — see <c>Program.cs</c>'s own comment on why this gap is not
 /// promoted to reports/open-questions.md by this task (a mid-wave append there has previously
 /// broken a phase-barrier merge).
+///
+/// <para>
+/// Task E13/F03/US01/T02 (requirements R-SUP-04, ADR-024 "the name is used, never a bare
+/// SupplierId guid") adds <c>supplierName</c> to every row, resolved through
+/// <see cref="ISupplierNameLookup"/>. The composition can only happen here: ADR-002 forbids
+/// <c>Contigo.Documents.Contracts</c> from referencing <c>Contigo.Suppliers.Products</c>, so
+/// <see cref="PortfolioListItem"/> carries the id and <c>Contigo.Api</c> — "the one project allowed
+/// to reference every module" — joins the name on. One batched call per page, never one query per
+/// row (the port is batched by design); <c>supplierId</c> stays in the response so a caller can
+/// still filter by it (<c>?supplierId=</c>) and so a contract whose supplier row has since
+/// disappeared reads as a present id with a <see langword="null"/> name rather than silently losing
+/// both.
+/// </para>
 /// </summary>
 public static class PortfolioEndpointExtensions
 {
@@ -31,6 +46,8 @@ public static class PortfolioEndpointExtensions
     private static async Task<IResult> GetPortfolioAsync(
         HttpRequest request,
         PortfolioQueryService portfolioQueryService,
+        ISupplierNameLookup supplierNameLookup,
+        ITenantContext tenantContext,
         CancellationToken cancellationToken)
     {
         if (!request.Headers.TryGetValue("X-Tenant-Id", out var tenantHeaderValues)
@@ -49,9 +66,14 @@ public static class PortfolioEndpointExtensions
             return Results.BadRequest(pageError);
         }
 
+        var tenantId = new TenantId(tenantGuid);
+
         var result = await portfolioQueryService
-            .GetPortfolioAsync(new TenantId(tenantGuid), filter, page, cancellationToken)
+            .GetPortfolioAsync(tenantId, filter, page, cancellationToken)
             .ConfigureAwait(false);
+
+        var supplierNames = await ResolveSupplierNamesAsync(
+            tenantId, result.Items, supplierNameLookup, tenantContext, cancellationToken).ConfigureAwait(false);
 
         // Enum members are projected to their string names for the wire contract — the same
         // convention Program.cs already uses for DocumentType/ProcessingStatus on
@@ -64,6 +86,7 @@ public static class PortfolioEndpointExtensions
             {
                 contractId = item.ContractId,
                 supplierId = item.SupplierId,
+                supplierName = LookupSupplierName(supplierNames, item.SupplierId),
                 type = item.Type.ToString(),
                 annualSpend = item.AnnualSpend,
                 startDate = item.StartDate,
@@ -79,6 +102,67 @@ public static class PortfolioEndpointExtensions
             totalCount = result.TotalCount,
         });
     }
+
+    /// <summary>
+    /// Batch-resolves every distinct supplier id on a portfolio page to its display name (task
+    /// E13/F03/US01/T02, R-SUP-04). <see langword="internal"/> rather than private because
+    /// <see cref="RenewalsEndpointExtensions"/> composes the very same
+    /// <see cref="PortfolioQueryService"/> page into its own response and needs the identical join
+    /// — one shared helper beats two copies drifting apart, and both live in
+    /// <c>Contigo.Api</c>, the only project allowed to see both modules at once.
+    /// </summary>
+    internal static Task<IReadOnlyDictionary<EntityId, string>> ResolveSupplierNamesAsync(
+        TenantId tenantId,
+        IReadOnlyList<PortfolioListItem> items,
+        ISupplierNameLookup supplierNameLookup,
+        ITenantContext tenantContext,
+        CancellationToken cancellationToken) =>
+        ResolveSupplierNamesAsync(
+            tenantId,
+            [.. items.Where(item => item.SupplierId is not null)
+                .Select(item => new EntityId(item.SupplierId!.Value))
+                .Distinct()],
+            supplierNameLookup,
+            tenantContext,
+            cancellationToken);
+
+    /// <summary>
+    /// The one place any endpoint in this host calls <see cref="ISupplierNameLookup"/>, because it
+    /// is the one place the ambient tenant claim is opened around that call.
+    /// <c>Contigo.Suppliers.Products</c>'s <c>SuppliersDbContext</c> is RLS-scoped through
+    /// <see cref="ITenantContext"/> (ADR-009), and — unlike <see cref="PortfolioQueryService"/> and
+    /// its siblings, which each own their scope internally — the lookup itself does not open one:
+    /// called outside a scope it returns an <em>empty</em> map, so a missing scope would surface as
+    /// "this contract has no supplier name" rather than an error. Same
+    /// <see cref="ITenantContext.BeginScope"/>-around-the-call shape
+    /// <see cref="AskCopilotService"/> already uses for this exact port; nesting inside a scope a
+    /// query service opens for itself is harmless.
+    /// </summary>
+    internal static async Task<IReadOnlyDictionary<EntityId, string>> ResolveSupplierNamesAsync(
+        TenantId tenantId,
+        IReadOnlyCollection<EntityId> supplierIds,
+        ISupplierNameLookup supplierNameLookup,
+        ITenantContext tenantContext,
+        CancellationToken cancellationToken)
+    {
+        // Skips the round trip entirely for a page with no linked suppliers, matching
+        // AskCopilotService's own use of this port.
+        if (supplierIds.Count == 0)
+        {
+            return new Dictionary<EntityId, string>();
+        }
+
+        using var tenantScope = tenantContext.BeginScope(tenantId);
+
+        return await supplierNameLookup.GetNamesAsync(tenantId, supplierIds, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>The display name for one row's supplier, or <see langword="null"/> when the row has
+    /// no supplier at all or its id no longer resolves for this tenant (see
+    /// <see cref="ISupplierNameLookup.GetNamesAsync"/>'s own "never a fabricated placeholder name"
+    /// contract).</summary>
+    internal static string? LookupSupplierName(IReadOnlyDictionary<EntityId, string> supplierNames, Guid? supplierId) =>
+        supplierId is { } id && supplierNames.TryGetValue(new EntityId(id), out var name) ? name : null;
 
     /// <summary>
     /// Parses the AC-2 filter query parameters (supplierId, status, risk, autoRenewal,

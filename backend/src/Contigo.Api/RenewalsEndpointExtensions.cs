@@ -3,6 +3,8 @@ using Contigo.Documents.Contracts.Domain;
 using Contigo.Renewals.Application;
 using Contigo.Renewals.Domain;
 using Contigo.SharedKernel;
+using Contigo.SharedKernel.Suppliers;
+using Contigo.SharedKernel.Tenancy;
 
 namespace Contigo.Api;
 
@@ -71,6 +73,19 @@ namespace Contigo.Api;
 /// is the whole implementation) because it never needs to read <c>Contigo.Documents.Contracts</c> —
 /// see <see cref="RenewalActionService"/>'s own doc comment for the honest gap that leaves (no
 /// check that the route's <c>{id}</c> names an existing, tenant-owned contract).
+///
+/// <para>
+/// Task E13/F03/US01/T02 (requirements R-SUP-04, ADR-024 "never a bare SupplierId guid"): every
+/// `GET /api/renewals` row — and its nested §9.3 insight card, which a user reads as prose — gains
+/// <c>supplierName</c>. Resolved from the very same <see cref="PortfolioQueryService"/> page this
+/// endpoint already builds its candidates from, via
+/// <see cref="PortfolioEndpointExtensions.ResolveSupplierNamesAsync"/> (one batched
+/// <see cref="ISupplierNameLookup"/> call for the whole page, shared with the portfolio endpoint
+/// rather than reimplemented). <see cref="RenewalPipelineItem"/> itself is untouched: Renewals may
+/// not reference the Suppliers module either (its allow-list is <c>[SharedKernel, Benchmark]</c>),
+/// so the join belongs in this composition root, exactly like <see cref="ToCandidate"/>'s own
+/// mapping.
+/// </para>
 /// </summary>
 public static class RenewalsEndpointExtensions
 {
@@ -86,6 +101,8 @@ public static class RenewalsEndpointExtensions
         HttpRequest request,
         PortfolioQueryService portfolioQueryService,
         RenewalPipelineBuilder pipelineBuilder,
+        ISupplierNameLookup supplierNameLookup,
+        ITenantContext tenantContext,
         CancellationToken cancellationToken)
     {
         if (!request.Headers.TryGetValue("X-Tenant-Id", out var tenantHeaderValues)
@@ -102,12 +119,16 @@ public static class RenewalsEndpointExtensions
             new PortfolioPageRequest(Page: 1, PageSize: PortfolioPageRequest.MaxPageSize),
             cancellationToken).ConfigureAwait(false);
 
+        var supplierNames = await PortfolioEndpointExtensions
+            .ResolveSupplierNamesAsync(tenantId, portfolioPage.Items, supplierNameLookup, tenantContext, cancellationToken)
+            .ConfigureAwait(false);
+
         var candidates = portfolioPage.Items.Select(ToCandidate);
         var pipeline = pipelineBuilder.Build(candidates);
 
         return Results.Ok(new
         {
-            items = pipeline.Select(ToPipelineResponse),
+            items = pipeline.Select(item => ToPipelineResponse(item, supplierNames)),
             totalCount = portfolioPage.TotalCount,
         });
     }
@@ -179,15 +200,18 @@ public static class RenewalsEndpointExtensions
     /// <see cref="PortfolioEndpointExtensions"/> and <see cref="ContractsEndpointExtensions"/>
     /// already use.
     /// </summary>
-    private static object ToPipelineResponse(RenewalPipelineItem item)
+    private static object ToPipelineResponse(
+        RenewalPipelineItem item, IReadOnlyDictionary<EntityId, string> supplierNames)
     {
         var facts = item.InsightCard.Facts;
         var recommendations = item.InsightCard.Recommendations;
+        var supplierName = PortfolioEndpointExtensions.LookupSupplierName(supplierNames, item.SupplierId?.Value);
 
         return new
         {
             contractId = item.ContractId.Value,
             supplierId = item.SupplierId?.Value,
+            supplierName,
             status = item.Status.ToString(),
             renewalDate = item.RenewalDate,
             daysUntilRenewal = item.DaysUntilRenewal,
@@ -201,6 +225,7 @@ public static class RenewalsEndpointExtensions
                 facts = new
                 {
                     supplierId = facts.SupplierId?.Value,
+                    supplierName = PortfolioEndpointExtensions.LookupSupplierName(supplierNames, facts.SupplierId?.Value),
                     renewalDate = facts.RenewalDate,
                     daysUntilRenewal = facts.DaysUntilRenewal,
                     annualSpend = facts.AnnualSpend,

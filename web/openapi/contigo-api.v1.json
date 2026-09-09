@@ -988,6 +988,7 @@
                         "required": [
                           "contractId",
                           "supplierId",
+                          "supplierName",
                           "type",
                           "annualSpend",
                           "startDate",
@@ -1015,7 +1016,7 @@
                               "string",
                               "null"
                             ],
-                            "description": "Resolved via `ISupplierNameLookup` when registered; null otherwise -- never a raw supplier id (R-SUP-04). Documented ahead of the backend response projection actually selecting it (task E13/F09/US01/T04, same 'documented ahead of backend' provenance this document already uses for the Documents V2 operations above) -- PortfolioEndpointExtensions.GetPortfolioAsync's own projection does not select it yet. `ISupplierNameLookup` itself is real (backend/src/Contigo.SharedKernel/Suppliers/ISupplierNameLookup.cs) and already used internally by AskCopilotService's own citation/narration resolution -- only this HTTP projection is the gap."
+                            "description": "The supplier's display name, resolved from `supplierId` through `ISupplierNameLookup` in one batched call per page -- never a raw supplier id (R-SUP-04, ADR-024). Null when the contract has no supplier, and also when the id no longer resolves for this tenant: the lookup port never fabricates a placeholder name, so a dangling link reads as an id with no name rather than silently losing both. Projected by PortfolioEndpointExtensions.GetPortfolioAsync (task E13/F03/US01/T02); the property was documented here one task earlier (E13/F09/US01/T04) while the backend still only carried the id."
                           },
                           "type": {
                             "type": "string",
@@ -1155,6 +1156,7 @@
                       "required": [
                         "contractId",
                         "supplierId",
+                        "supplierName",
                         "type",
                         "status",
                         "annualSpend",
@@ -1183,8 +1185,7 @@
                             "string",
                             "null"
                           ],
-                          "description": "Resolved via `ISupplierNameLookup` when registered; null otherwise -- never a raw supplier id (R-SUP-04). Documented ahead of the backend response projection actually selecting it (task E13/F09/US01/T04) -- ContractsEndpointExtensions' own Contract360Header projection does not select it yet; web/src/routes/contracts/contract360/contract360ViewModel.ts#resolveSupplierLabel already reads this exact field defensively off the wire object, ahead of the generated type, anticipating it landing here. See getPortfolio's identical supplierName property above for the full ISupplierNameLookup provenance.",
-                          "format": "uuid"
+                          "description": "The supplier's display name, resolved from `supplierId` through `ISupplierNameLookup` -- never a raw supplier id (R-SUP-04, ADR-024). Null when the contract has no supplier or the id no longer resolves for this tenant. Projected by ContractsEndpointExtensions.GetContract360Async (task E13/F03/US01/T02); web/src/routes/contracts/contract360/contract360ViewModel.ts#resolveSupplierLabel already read this exact field defensively off the wire object while the property was documented but not yet emitted. See getPortfolio's identical supplierName property above for the full ISupplierNameLookup provenance."
                         },
                         "type": {
                           "type": "string",
@@ -2106,6 +2107,7 @@
                         "required": [
                           "contractId",
                           "supplierId",
+                          "supplierName",
                           "status",
                           "renewalDate",
                           "daysUntilRenewal",
@@ -2133,7 +2135,7 @@
                               "string",
                               "null"
                             ],
-                            "description": "Resolved via `ISupplierNameLookup` when registered; null otherwise -- never a raw supplier id (R-SUP-04). Documented ahead of the backend response projection actually selecting it (task E13/F09/US01/T04) -- RenewalsEndpointExtensions' own pipeline-item projection does not select it yet. See getPortfolio's identical supplierName property above for the full ISupplierNameLookup provenance."
+                            "description": "The supplier's display name, resolved from `supplierId` through `ISupplierNameLookup` over the same portfolio page this pipeline is built from -- never a raw supplier id (R-SUP-04, ADR-024). Null when the contract has no supplier or the id no longer resolves for this tenant. Projected by RenewalsEndpointExtensions.ToPipelineResponse (task E13/F03/US01/T02). See getPortfolio's identical supplierName property above for the full ISupplierNameLookup provenance."
                           },
                           "status": {
                             "type": "string",
@@ -2193,6 +2195,7 @@
                                 "type": "object",
                                 "required": [
                                   "supplierId",
+                                  "supplierName",
                                   "renewalDate",
                                   "daysUntilRenewal",
                                   "annualSpend",
@@ -2206,6 +2209,13 @@
                                       "null"
                                     ],
                                     "format": "uuid"
+                                  },
+                                  "supplierName": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ],
+                                    "description": "Same resolved display name as the row's own `supplierName` above, repeated inside the insight card because the card is rendered as standalone prose (spec section 9.3) and must not fall back to an id (R-SUP-04, ADR-024)."
                                   },
                                   "renewalDate": {
                                     "type": [

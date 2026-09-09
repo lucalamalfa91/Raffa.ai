@@ -6,6 +6,7 @@ using Contigo.Renewals.Infrastructure;
 using Contigo.SharedKernel;
 using Contigo.SharedKernel.Storage;
 using Contigo.SharedKernel.Tenancy;
+using Contigo.Suppliers.Products.Infrastructure;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -88,14 +89,30 @@ public sealed class R2IntegrationFixture : WebApplicationFactory<Program>, IAsyn
             await db.Database.MigrateAsync();
         }
 
+        // Task E13/F03/US01/T02 (supplier-extraction): `GET /api/contracts` and `GET /api/renewals`
+        // now resolve every row's supplier *name* through ISupplierNameLookup (R-SUP-04), which
+        // reads Contigo.Suppliers.Products' own table — and this fixture's SeedContractAsync is the
+        // only one in this project that seeds a Contract with a non-null SupplierId, so it is the
+        // only pre-existing fixture whose requests actually reach that query. Migrating the table
+        // here (and routing ConnectionStrings:Suppliers at this same container below) mirrors the
+        // identical block R0IntegrationFixture/R1IntegrationFixture already carry; without it the
+        // lookup would dial appsettings.Development.json's static local-dev string instead.
+        var suppliersOptions = new DbContextOptionsBuilder<SuppliersDbContext>();
+        SuppliersDbContextOptions.Configure(suppliersOptions, superuserConnectionString);
+        await using (var db = new SuppliersDbContext(suppliersOptions.Options))
+        {
+            // Applies Initial + AddTenantRowLevelSecurity for Contigo.Suppliers.Products' own table.
+            await db.Database.MigrateAsync();
+        }
+
         var auditOptions = new DbContextOptionsBuilder<AuditDbContext>();
         AuditDbContextOptions.Configure(auditOptions, superuserConnectionString);
         await using (var db = new AuditDbContext(auditOptions.Options))
         {
             await db.Database.MigrateAsync();
 
-            // One unprivileged app role, granted after every module's tables exist (now four,
-            // including Renewals) — same shape as R0IntegrationFixture/R1IntegrationFixture.
+            // One unprivileged app role, granted after every module's tables exist (now five,
+            // including Renewals and Suppliers) — same shape as R0IntegrationFixture/R1IntegrationFixture.
             await db.Database.ExecuteSqlRawAsync(
                 $"""
                 CREATE ROLE {AppRoleName} LOGIN PASSWORD '{AppRolePassword}' NOSUPERUSER NOBYPASSRLS;
@@ -129,6 +146,10 @@ public sealed class R2IntegrationFixture : WebApplicationFactory<Program>, IAsyn
         // every module's connection string uniformly "this run's own database" should a future R3+
         // fixture extend this one instead of adding a new type.
         builder.UseSetting("ConnectionStrings:Savings", _appConnectionString);
+        // Task E13/F03/US01/T02: really dialled, by every `GET /api/contracts` / `GET /api/renewals`
+        // request whose page has at least one contract with a SupplierId — see the migration block
+        // in InitializeAsync above.
+        builder.UseSetting("ConnectionStrings:Suppliers", _appConnectionString);
         // Never actually dialled — IDocumentStorage is replaced with an in-memory fake below —
         // but Program.cs's own startup check requires a non-null configuration value to be
         // present (same syntactically-valid-value approach R0IntegrationFixture/R1IntegrationFixture
