@@ -1,139 +1,138 @@
-import type { DocumentProcessingStatus } from "../../api/client";
-import { getStatusTag, type SemanticTag } from "../../styles/semantics";
+import type { ApiClient, RejectedUploadBody, UploadDocumentResult } from "../../api/client";
 
 /**
- * The 6-stage processing pipeline (screens.md #3: "Processing pipeline list
- * (6 stages, current pulsing)"). Labels are quoted verbatim from the
- * compiled Claude Design bundle's own `pipeLabels` array
- * (inputs/design/prototypes/day1-demo.html) -- the "pixel reference" ADR-020
- * names -- not invented. product-spec.md's own architecture line (§7:
- * "Upload -> Object Storage -> Processing Job -> Document Classification ->
- * Native Text Extraction / OCR if required -> Section + Table Detection ->
- * Structured AI Extraction -> Schema Validation -> Entity Resolution /
- * Normalization -> Canonical Data -> Embeddings / Search Index -> Ready /
- * Needs Review") describes the same pipeline at a finer grain; these six
- * labels are the prototype's own UI-facing compression of it, and this file
- * consumes that compression rather than re-deriving a different one.
+ * Upload-outcome concerns for Documents V2 (task E13/F09/US01/T03, screens-v2.md #3; requirements
+ * R-DOC-01/02/04). V1's client-side pacing ticker (`PIPELINE_STAGE_LABELS`/`PIPELINE_STEP_INTERVAL_MS`
+ * /`getPipelineStageViews`) is gone -- the real stage now comes from `GET /api/documents` (R-DOC-09;
+ * see `../../api/client.ts#DocumentProcessingStage`, `documentTable.ts#DOCUMENT_PROCESSING_STAGES`),
+ * polled by `useDocumentsList.ts`, not simulated here. This file now owns: multi-file upload limits
+ * (R-DOC-01), the concurrency-capped batch runner (up to 20 files, <=3 in flight), and mapping a
+ * rejected/failed `uploadDocument` result onto the requirements' own "Not added" copy.
  */
-export const PIPELINE_STAGE_LABELS: readonly string[] = [
-  "Uploaded to object storage",
-  "Classifying document type",
-  "Text extraction / OCR",
-  "Section + table detection",
-  "Structured AI extraction",
-  "Schema validation & entity resolution",
-];
 
-/**
- * `POST /api/documents` runs the whole parse -> classify -> extract pipeline
- * *synchronously* before responding (task E02/F06/US01/T01 -- see
- * ../../api/client.ts's `uploadDocument` doc comment) -- there is no
- * server-sent per-stage event to drive this list from. `PIPELINE_STAGE_LABELS`
- * is therefore a client-side pacing animation shown *while the one upload
- * request is in flight*, the same role the compiled prototype's own
- * `s.uplStep` timer plays -- it is not a claim that the server has literally
- * reached stage N. index.tsx advances one stage at a time on this interval
- * and holds on the last stage if the real request outlives it; the request's
- * actual resolution always wins.
- */
-export const PIPELINE_STEP_INTERVAL_MS = 900;
+/** R-DOC-01: "batch <= 20 files". */
+export const MAX_FILES_PER_BATCH = 20;
 
-export type PipelineStageState = "done" | "current" | "pending";
+/** R-DOC-01: "<= 50 MB per file" (`Documents:MaxFileBytes`, task-01-documents-admission.md). Checked
+ * client-side too, purely to avoid a doomed round trip for an obviously oversized file -- the server
+ * (413) stays authoritative; see `useDocumentsList.ts#startUploadBatch`. */
+export const MAX_FILE_BYTES = 50 * 1024 * 1024;
 
-export interface PipelineStageView {
-  label: string;
-  state: PipelineStageState;
+/** Task's own coding objective: "uploads run with <= 3 in flight." */
+export const MAX_CONCURRENT_UPLOADS = 3;
+
+/** Widened accept list (PDF/DOCX/XLSX plus PNG/JPG via OCR, D7/ADR-017) -- a soft, OS-level filter
+ * only; the server's 415 (extension + magic-byte sniffing) stays authoritative (R-DOC-02 AC-1). */
+export const ACCEPTED_EXTENSIONS = ".pdf,.docx,.xlsx,.png,.jpg,.jpeg";
+
+export function isOversized(file: File): boolean {
+  return file.size > MAX_FILE_BYTES;
 }
 
 /**
- * Pure view model for ProcessingPipeline.tsx: stage `i` is `done` while the
- * ticker is past it, `current` (pulsing) exactly at it, else `pending` --
- * mirrors the compiled prototype's own
- * `i<s.uplStep ? ... : i===s.uplStep ? ... : ...` ternary (fg/dot/anim) one
- * for one.
+ * R-DOC-04's own verbatim rejection copy, keyed by the admission gate's `reason` (ADR-024 §6). The
+ * backend's own `hint` field (a shorter fragment, e.g. "Contigo only keeps contracts, order forms,
+ * quotes and the documents around them.") is the tail of the `not_a_contract` sentence below, not a
+ * substitute for it -- this app owns the full, exact requirements sentence so it is testable without
+ * trusting a body a backend task authored independently.
  */
-export function getPipelineStageViews(currentStepIndex: number): PipelineStageView[] {
-  return PIPELINE_STAGE_LABELS.map((label, index) => ({
-    label,
-    state: index < currentStepIndex ? "done" : index === currentStepIndex ? "current" : "pending",
-  }));
-}
-
-/** AC-3's three outcomes (screens.md #3 "States: ... needs_review · completed · failed"). */
-export type UploadOutcome = "needs_review" | "completed" | "failed";
-
-/**
- * `DocumentProcessingStatus` (../../api/client.ts, contract-sourced) also
- * carries `"Uploaded"`/`"Processing"` for a job that has not reached a
- * terminal state. The V1 pipeline is synchronous (see
- * PIPELINE_STEP_INTERVAL_MS's own comment), so a `POST /api/documents`
- * response is not expected to carry either value today -- but the contract
- * keeps them, so index.tsx checks this guard instead of assuming.
- */
-export function isTerminalProcessingStatus(
-  status: DocumentProcessingStatus,
-): status is "NeedsReview" | "Completed" | "Failed" {
-  return status === "NeedsReview" || status === "Completed" || status === "Failed";
-}
-
-export function getUploadOutcome(status: "NeedsReview" | "Completed" | "Failed"): UploadOutcome {
-  switch (status) {
-    case "NeedsReview":
-      return "needs_review";
-    case "Completed":
-      return "completed";
-    case "Failed":
-      return "failed";
+export function getRejectionReasonCopy(reason: RejectedUploadBody["reason"]): string {
+  switch (reason) {
+    case "not_a_contract":
+      return "Not added: this looks like a recipe, not a contract. Contigo only keeps contracts, order forms, quotes and the documents around them. Drop the signed agreement or the supplier's proposal.";
+    case "no_readable_text":
+      return "Not added: Contigo could not read any contract text in this file. Try a clearer scan or the original PDF.";
   }
 }
 
-export interface ResultCardContent {
-  tag: SemanticTag;
-  ctaLabel: string;
+/** A file this browser refused before ever calling the API (oversized). Same "Not added" family as a
+ * server 422/415, kept out of `RejectedUploadBody`'s own shape since no HTTP call happened. */
+export function getOversizedCopy(fileName: string): string {
+  return `Not added: ${fileName} is larger than 50 MB. Contigo accepts files up to 50 MB.`;
+}
+
+/** One rejected/refused file this session (R-DOC-04: "shown for the current session only ... never
+ * counted in 'documents' or 'askable'"). Never persisted, never sent to the server as its own entity. */
+export interface RejectedFileOutcome {
+  /** Local-only key (`crypto.randomUUID()`), not a server id -- rejected files have none (R-DOC-05 AC-1). */
+  key: string;
+  fileName: string;
   message: string;
 }
 
-/**
- * Tag variant/label reuse styles/semantics.ts#getStatusTag (ADR-019's locked
- * status mapping) -- never re-derived here, per that module's own "screens
- * call this instead of re-deriving thresholds" rule. Message/CTA copy is
- * adapted from the compiled prototype's own `uplMap` (day1-demo.html), with
- * two deliberate departures from its literal text, both flagged here rather
- * than silently copied verbatim:
- *   - the prototype's `completed`/`needs_review` messages ("41 fields
- *     extracted, all above 95% confidence.") describe one specific fixture
- *     document. The real `uploadDocument` response carries no field-level
- *     detail at all (openapi/contigo-api.v1.json's 201 body is
- *     id/contractId/fileName/mimeType/processingStatus/createdAt only), so
- *     this version names the uploaded file instead of fabricating a field
- *     count or confidence figure the API never returned.
- *   - the prototype's `failed` message asserts "the PDF is
- *     password-protected" as fact. The real `Failed` status carries no
- *     failure-reason field, so this version names password-protection /
- *     corruption as something to check, not a confirmed cause -- still
- *     plain-language and still names the failing job (ADR-019 accessibility
- *     baseline), never a raw stack trace or an invented specific.
+/** A file selected/dropped this session, tracked locally until `uploadDocument` resolves into a real
+ * server document (at which point `useDocumentsList.ts` drops it from local state in favour of the
+ * server list). `phase: "failed"` keeps the original `File` so "Retry upload" can resubmit it without
+ * asking the user to re-pick it (V1's own precedent) -- a `Failed` row read back from the server list
+ * (not this session's own upload) has no `File` to retry with; see `documentTable.ts#getRowAction`.
  */
-export function getResultCardContent(outcome: UploadOutcome, fileName: string): ResultCardContent {
-  const tag = getStatusTag(outcome);
-  switch (outcome) {
-    case "completed":
-      return {
-        tag,
-        ctaLabel: "Open Contract 360",
-        message: `${fileName} was classified, extracted and structured. Every field cleared the confidence threshold.`,
-      };
-    case "needs_review":
-      return {
-        tag,
-        ctaLabel: "Review extraction",
-        message: `${fileName} was classified and extracted, but at least one field is below the 80% confidence threshold and needs your review.`,
-      };
-    case "failed":
-      return {
-        tag,
-        ctaLabel: "Retry upload",
-        message: `Contigo could not process ${fileName}. Check that it isn't password-protected or corrupted, then try again.`,
-      };
+export interface LocalUploadEntry {
+  key: string;
+  file: File;
+  phase: "queued" | "uploading" | "failed";
+  /** Set only when `phase === "failed"` -- the client's own error text (never a raw stack trace). */
+  errorMessage?: string;
+}
+
+export type UploadBatchOutcome =
+  | { kind: "admitted"; key: string; document: NonNullable<UploadDocumentResult["document"]> }
+  | { kind: "rejected"; key: string; fileName: string; message: string }
+  | { kind: "failed"; key: string; fileName: string; message: string };
+
+/**
+ * Runs `files` through `apiClient.uploadDocument`, at most `MAX_CONCURRENT_UPLOADS` in flight at
+ * once (the task's own "uploads run with <= 3 in flight"), and reports each file's outcome via
+ * `onSettled` as soon as it resolves -- callers do not wait for the whole batch to render the first
+ * result (R-DOC-01 AC-1: "each file ... reaches a terminal outcome without blocking the others").
+ * Oversized files never reach the network at all (`isOversized`, checked up front) -- reported as a
+ * `"rejected"` outcome identically to a server 413, so the caller does not need two code paths.
+ */
+export async function runUploadBatch(
+  entries: readonly { key: string; file: File }[],
+  apiClient: ApiClient,
+  tenantId: string,
+  onSettled: (outcome: UploadBatchOutcome) => void,
+): Promise<void> {
+  let cursor = 0;
+
+  async function worker(): Promise<void> {
+    for (;;) {
+      const index = cursor;
+      cursor += 1;
+      if (index >= entries.length) return;
+      const { key, file } = entries[index];
+
+      if (isOversized(file)) {
+        onSettled({ kind: "rejected", key, fileName: file.name, message: getOversizedCopy(file.name) });
+        continue;
+      }
+
+      const result = await apiClient.uploadDocument(tenantId, file);
+
+      if (result.ok && result.document) {
+        onSettled({ kind: "admitted", key, document: result.document });
+        continue;
+      }
+
+      if (result.statusCode === 422 && result.rejection) {
+        onSettled({ kind: "rejected", key, fileName: file.name, message: getRejectionReasonCopy(result.rejection.reason) });
+        continue;
+      }
+
+      if (result.statusCode === 413 || result.statusCode === 415) {
+        onSettled({ kind: "rejected", key, fileName: file.name, message: result.error ?? "Not added: this file could not be added." });
+        continue;
+      }
+
+      onSettled({
+        kind: "failed",
+        key,
+        fileName: file.name,
+        message: result.error ?? `Contigo could not process ${file.name}. Try again.`,
+      });
+    }
   }
+
+  const workerCount = Math.min(MAX_CONCURRENT_UPLOADS, entries.length);
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
 }

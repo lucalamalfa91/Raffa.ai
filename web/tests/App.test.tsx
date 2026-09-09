@@ -40,6 +40,12 @@ function mockApiClient(result: Promise<HealthCheckResult> | HealthCheckResult): 
     // Task E06/F05/US02/T01 (document-status-readback): exercised by
     // tests/routes/documents/*.test.tsx; same plain-stub convention.
     getDocument: vi.fn(),
+    // Task E13/F09/US01/T03 (web-documents-v2): this suite does not exercise Documents -- bare
+    // vi.fn() is enough, same convention as getContract360 below.
+    listDocuments: vi.fn(),
+    getDocumentPreviewUrl: vi.fn(),
+    reprocessDocument: vi.fn(),
+    deleteDocument: vi.fn(),
     // Task E07/F01/US01/T01 (portfolio-list-filters): exercised in depth by
     // tests/routes/contracts/*.test.tsx. Task E13/F09/US01/T01 (web-shell-v2) made this call
     // unconditional here too -- AppShell's own `useValidatedContractCount` calls it on every mount

@@ -1,40 +1,31 @@
 import type { DocumentType } from "../../api/client";
 
 /**
- * Client-side record of "documents this browser has uploaded/read back this
- * session" (ADR-020 screen 3's *other* half: "screen 3 may be two: upload UI
- * + document-status read-back"; story us-02-document-status-readback, AC-1
- * "document table").
+ * **Deprecated for `src/routes/documents/` itself** (task E13/F09/US01/T03, web-documents-v2):
+ * `GET /api/documents` (`listDocuments`, `../../api/client.ts`) now exists and V2's own list
+ * (`useDocumentsList.ts`) reads it, server-side, instead of this module -- R-DOC-06 AC-1
+ * "reloading the browser shows the same list as before" depends on that call, not
+ * `sessionStorage`. `DocumentsRoute` (`./index.tsx`), `DocumentStatusTable.tsx` and
+ * `documentTable.ts` no longer import anything from this file.
  *
- * Why this is client-side, not server-queried: there is no backend endpoint
- * that lists the documents for a tenant.
- *   - `backend/src/Contigo.Api/Program.cs` maps only `POST /api/documents`
- *     (upload) and `GET /api/documents/{id}` (read back one document by id)
- *     -- no `GET /api/documents` collection route.
- *   - `GET /api/contracts` (`PortfolioEndpointExtensions.cs`) lists
- *     *contracts*, not documents, and belongs to a different, not-yet-built
- *     screen (epic-07/feature-01-portfolio-ui) outside this task's
- *     `src/routes/documents/` scope.
- * A future backend task would need a tenant-scoped, paginated
- * `GET /api/documents` collection endpoint (the same shape
- * `PortfolioPageRequest` already gives Portfolio) before this module can be
- * replaced with a real server call -- the same kind of gap
- * `src/routes/signin/workspaceStore.ts` already documents for the workspace
- * list, and the same interim this module follows.
+ * **Kept, unmodified, only because `components/shell/RailNav.tsx` still reads
+ * `loadTrackedDocuments()` for its own "N to review"/"N docs" badge** (`navItems.ts
+ * #DocumentCounts`'s own doc comment already named this gap as "F09/T03" before this task started).
+ * `components/shell/**` is out of this task's own file scope (do-not-touch, landed by an earlier
+ * phase, task E13/F09/US01/T01) -- deleting this file, as this task's own "Files to create or
+ * modify" table literally says ("remove store"), would break that already-shipped component's
+ * build for a fix that belongs to a `components/shell/` task, not this one. `rememberDocument`
+ * (the write half) now has no caller anywhere in `src/routes/documents/` -- nothing repopulates
+ * this session's own `sessionStorage` key after this task, so `RailNav`'s badge will read as
+ * empty (no badge) for any session that started after this change, a known, flagged regression of
+ * an already-documented interim, not a new gap. **Follow-up needed**: a `components/shell/` task
+ * should replace `RailNav.tsx`'s own `loadTrackedDocuments()` call with a real count sourced from
+ * `listDocuments` (e.g. a small `useDocumentCounts` hook `AppShell.tsx` fetches once, the same
+ * shape `useValidatedContractCount.ts` already establishes for the secondary rail tier), then this
+ * file can be deleted outright.
  *
- * Until then, every row here is a *real* document this browser uploaded via
- * the real `POST /api/documents` (`src/api/client.ts`'s `uploadDocument`)
- * and read back via the real `GET /api/documents/{id}` (`getDocument`) --
- * never fabricated. The known limitation is discovery, not truth: this
- * browser cannot learn about a document uploaded from another
- * device/browser, or one that existed before this session started.
- *
- * Session-scoped (`sessionStorage`, not `localStorage`) and *not* keyed per
- * workspace -- the same scope `workspaceStore.ts`'s `CURRENT_WORKSPACE_KEY`
- * already uses, since this app supports exactly one "current workspace" per
- * browser session today (see that module's own doc comment); switching
- * workspaces mid-session is not a V1 flow this table needs to defend against
- * yet.
+ * Everything below this comment is unchanged from V1 (session-scoped `sessionStorage`, not keyed
+ * per workspace -- see the git history for the original, fuller header comment on why).
  */
 
 const TRACKED_DOCUMENTS_KEY = "contigo.documents.readback";

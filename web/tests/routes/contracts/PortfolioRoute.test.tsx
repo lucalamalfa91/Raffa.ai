@@ -13,6 +13,12 @@ function mockApiClient(getPortfolio: ApiClient["getPortfolio"] = vi.fn()): ApiCl
     inviteWorkspaceMember: vi.fn(),
     uploadDocument: vi.fn(),
     getDocument: vi.fn(),
+    // Task E13/F09/US01/T03 (web-documents-v2): this suite does not exercise Documents -- bare
+    // vi.fn() is enough, same convention as getContract360 elsewhere in this file.
+    listDocuments: vi.fn(),
+    getDocumentPreviewUrl: vi.fn(),
+    reprocessDocument: vi.fn(),
+    deleteDocument: vi.fn(),
     getPortfolio,
     // Task E07/F02/US01/T01 (contract-360): this suite only exercises /contracts (PortfolioRoute
     // itself), never /contracts/:contractId (Contract360Route) -- bare vi.fn() is enough, the same

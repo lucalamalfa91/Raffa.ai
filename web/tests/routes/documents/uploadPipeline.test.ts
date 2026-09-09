@@ -1,95 +1,210 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type { ApiClient, UploadDocumentResult } from "../../../src/api/client";
 import {
-  PIPELINE_STAGE_LABELS,
-  getPipelineStageViews,
-  getResultCardContent,
-  getUploadOutcome,
-  isTerminalProcessingStatus,
+  ACCEPTED_EXTENSIONS,
+  MAX_CONCURRENT_UPLOADS,
+  MAX_FILES_PER_BATCH,
+  MAX_FILE_BYTES,
+  getOversizedCopy,
+  getRejectionReasonCopy,
+  isOversized,
+  runUploadBatch,
+  type UploadBatchOutcome,
 } from "../../../src/routes/documents/uploadPipeline";
 
-describe("PIPELINE_STAGE_LABELS", () => {
-  it("has exactly 6 stages (AC-2, quoted from day1-demo.html's pipeLabels)", () => {
-    expect(PIPELINE_STAGE_LABELS).toHaveLength(6);
-    expect(PIPELINE_STAGE_LABELS).toEqual([
-      "Uploaded to object storage",
-      "Classifying document type",
-      "Text extraction / OCR",
-      "Section + table detection",
-      "Structured AI extraction",
-      "Schema validation & entity resolution",
+function pdfFile(name: string, size = 1024): File {
+  return new File([new Uint8Array(size)], name, { type: "application/pdf" });
+}
+
+function mockApiClient(uploadDocument: ApiClient["uploadDocument"]): ApiClient {
+  return { uploadDocument } as unknown as ApiClient;
+}
+
+function ok(document: NonNullable<UploadDocumentResult["document"]>): UploadDocumentResult {
+  return { ok: true, statusCode: 201, document, rejection: null, error: null };
+}
+
+describe("limits (R-DOC-01, task's own coding objective)", () => {
+  it("names the requirements' own multi-file limits", () => {
+    expect(MAX_FILES_PER_BATCH).toBe(20);
+    expect(MAX_FILE_BYTES).toBe(50 * 1024 * 1024);
+    expect(MAX_CONCURRENT_UPLOADS).toBe(3);
+    expect(ACCEPTED_EXTENSIONS).toBe(".pdf,.docx,.xlsx,.png,.jpg,.jpeg");
+  });
+});
+
+describe("isOversized", () => {
+  it("flags a file over 50 MB, not a file at or under it", () => {
+    expect(isOversized(pdfFile("big.pdf", MAX_FILE_BYTES + 1))).toBe(true);
+    expect(isOversized(pdfFile("ok.pdf", MAX_FILE_BYTES))).toBe(false);
+  });
+});
+
+// R-DOC-04's own verbatim rejection copy.
+describe("getRejectionReasonCopy", () => {
+  it("maps not_a_contract to the recipe example sentence", () => {
+    expect(getRejectionReasonCopy("not_a_contract")).toBe(
+      "Not added: this looks like a recipe, not a contract. Contigo only keeps contracts, order forms, quotes and the documents around them. Drop the signed agreement or the supplier's proposal.",
+    );
+  });
+
+  it("maps no_readable_text to its own distinct sentence", () => {
+    expect(getRejectionReasonCopy("no_readable_text")).toBe(
+      "Not added: Contigo could not read any contract text in this file. Try a clearer scan or the original PDF.",
+    );
+  });
+});
+
+describe("getOversizedCopy", () => {
+  it("names the file and the 50 MB ceiling", () => {
+    expect(getOversizedCopy("huge.pdf")).toBe("Not added: huge.pdf is larger than 50 MB. Contigo accepts files up to 50 MB.");
+  });
+});
+
+describe("runUploadBatch", () => {
+  it("reports an admitted outcome per file, independently (R-DOC-01 AC-1: three rows, no blocking)", async () => {
+    const uploadDocument = vi.fn(async (_tenantId: string, file: File) =>
+      ok({
+        id: `id-${file.name}`,
+        contractId: "contract-1",
+        fileName: file.name,
+        mimeType: "application/pdf",
+        processingStatus: "Completed",
+        createdAt: "2026-09-06T08:00:00Z",
+      }),
+    );
+    const entries = [
+      { key: "a", file: pdfFile("A.pdf") },
+      { key: "b", file: pdfFile("B.pdf") },
+      { key: "c", file: pdfFile("C.pdf") },
+    ];
+    const outcomes: UploadBatchOutcome[] = [];
+
+    await runUploadBatch(entries, mockApiClient(uploadDocument), "tenant-1", (outcome) => outcomes.push(outcome));
+
+    expect(uploadDocument).toHaveBeenCalledTimes(3);
+    expect(outcomes).toHaveLength(3);
+    expect(outcomes.every((outcome) => outcome.kind === "admitted")).toBe(true);
+  });
+
+  it("never runs more than MAX_CONCURRENT_UPLOADS requests at once", async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const resolvers: Array<() => void> = [];
+    const uploadDocument = vi.fn(
+      (_tenantId: string, file: File) =>
+        new Promise<UploadDocumentResult>((resolve) => {
+          inFlight += 1;
+          maxInFlight = Math.max(maxInFlight, inFlight);
+          resolvers.push(() => {
+            inFlight -= 1;
+            resolve(
+              ok({
+                id: file.name,
+                contractId: "contract-1",
+                fileName: file.name,
+                mimeType: "application/pdf",
+                processingStatus: "Completed",
+                createdAt: "2026-09-06T08:00:00Z",
+              }),
+            );
+          });
+        }),
+    );
+    const entries = Array.from({ length: 6 }, (_, i) => ({ key: String(i), file: pdfFile(`F${i}.pdf`) }));
+
+    const batchPromise = runUploadBatch(entries, mockApiClient(uploadDocument), "tenant-1", () => {});
+
+    // Let the microtask queue settle so every worker has had a chance to start its first request.
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(maxInFlight).toBeLessThanOrEqual(MAX_CONCURRENT_UPLOADS);
+    expect(inFlight).toBeLessThanOrEqual(MAX_CONCURRENT_UPLOADS);
+
+    while (resolvers.length > 0) {
+      resolvers.shift()!();
+      // eslint-disable-next-line no-await-in-loop
+      await Promise.resolve();
+    }
+    await batchPromise;
+    expect(maxInFlight).toBeLessThanOrEqual(MAX_CONCURRENT_UPLOADS);
+  });
+
+  it("reports a rejected outcome (with the mapped copy) on a 422, never calling it 'failed'", async () => {
+    const uploadDocument = vi.fn(async () => ({
+      ok: false,
+      statusCode: 422,
+      document: null,
+      rejection: { rejected: true as const, detectedType: "Other" as const, confidence: 0.93, reason: "not_a_contract" as const, hint: "..." },
+      error: null,
+    }));
+    const outcomes: UploadBatchOutcome[] = [];
+
+    await runUploadBatch([{ key: "a", file: pdfFile("recipe.pdf") }], mockApiClient(uploadDocument), "tenant-1", (outcome) =>
+      outcomes.push(outcome),
+    );
+
+    expect(outcomes).toEqual([
+      {
+        kind: "rejected",
+        key: "a",
+        fileName: "recipe.pdf",
+        message:
+          "Not added: this looks like a recipe, not a contract. Contigo only keeps contracts, order forms, quotes and the documents around them. Drop the signed agreement or the supplier's proposal.",
+      },
     ]);
   });
-});
 
-describe("getPipelineStageViews", () => {
-  it("marks every stage pending before the first one starts", () => {
-    const views = getPipelineStageViews(0);
+  it("reports a rejected outcome on a 415, using the server's own format message", async () => {
+    const uploadDocument = vi.fn(async () => ({
+      ok: false,
+      statusCode: 415,
+      document: null,
+      rejection: null,
+      error: "Contigo reads PDF, Word, Excel and scanned images",
+    }));
+    const outcomes: UploadBatchOutcome[] = [];
 
-    expect(views[0].state).toBe("current");
-    expect(views.slice(1).every((view) => view.state === "pending")).toBe(true);
+    await runUploadBatch([{ key: "a", file: pdfFile("archive.zip") }], mockApiClient(uploadDocument), "tenant-1", (outcome) =>
+      outcomes.push(outcome),
+    );
+
+    expect(outcomes).toEqual([
+      { kind: "rejected", key: "a", fileName: "archive.zip", message: "Contigo reads PDF, Word, Excel and scanned images" },
+    ]);
   });
 
-  it("marks stages before the current index done, the current index current, and the rest pending", () => {
-    const views = getPipelineStageViews(2);
+  it("reports an oversized file as rejected without ever calling the API (R-DOC-01)", async () => {
+    const uploadDocument = vi.fn();
+    const outcomes: UploadBatchOutcome[] = [];
 
-    expect(views.map((view) => view.state)).toEqual(["done", "done", "current", "pending", "pending", "pending"]);
-    expect(views.map((view) => view.label)).toEqual([...PIPELINE_STAGE_LABELS]);
+    await runUploadBatch(
+      [{ key: "a", file: pdfFile("huge.pdf", MAX_FILE_BYTES + 1) }],
+      mockApiClient(uploadDocument),
+      "tenant-1",
+      (outcome) => outcomes.push(outcome),
+    );
+
+    expect(uploadDocument).not.toHaveBeenCalled();
+    expect(outcomes).toEqual([
+      { kind: "rejected", key: "a", fileName: "huge.pdf", message: "Not added: huge.pdf is larger than 50 MB. Contigo accepts files up to 50 MB." },
+    ]);
   });
 
-  it("marks every stage done once the ticker has passed the last one", () => {
-    const views = getPipelineStageViews(6);
+  it("reports a generic transport/400 failure as 'failed', distinct from a rejection", async () => {
+    const uploadDocument = vi.fn(async () => ({
+      ok: false,
+      statusCode: null,
+      document: null,
+      rejection: null,
+      error: "Unable to reach the API. Cause: network down",
+    }));
+    const outcomes: UploadBatchOutcome[] = [];
 
-    expect(views.every((view) => view.state === "done")).toBe(true);
-  });
-});
+    await runUploadBatch([{ key: "a", file: pdfFile("A.pdf") }], mockApiClient(uploadDocument), "tenant-1", (outcome) =>
+      outcomes.push(outcome),
+    );
 
-describe("isTerminalProcessingStatus", () => {
-  it("is true for NeedsReview/Completed/Failed", () => {
-    expect(isTerminalProcessingStatus("NeedsReview")).toBe(true);
-    expect(isTerminalProcessingStatus("Completed")).toBe(true);
-    expect(isTerminalProcessingStatus("Failed")).toBe(true);
-  });
-
-  it("is false for Uploaded/Processing (pre-terminal contract values)", () => {
-    expect(isTerminalProcessingStatus("Uploaded")).toBe(false);
-    expect(isTerminalProcessingStatus("Processing")).toBe(false);
-  });
-});
-
-describe("getUploadOutcome", () => {
-  it("maps each terminal processingStatus to its AC-3 outcome", () => {
-    expect(getUploadOutcome("Completed")).toBe("completed");
-    expect(getUploadOutcome("NeedsReview")).toBe("needs_review");
-    expect(getUploadOutcome("Failed")).toBe("failed");
-  });
-});
-
-describe("getResultCardContent", () => {
-  it("completed: neutral tag, names the file, no fabricated field/confidence figures", () => {
-    const content = getResultCardContent("completed", "MSA_Acme.pdf");
-
-    expect(content.tag).toEqual({ variant: "neutral", label: "Completed" });
-    expect(content.ctaLabel).toBe("Open Contract 360");
-    expect(content.message).toContain("MSA_Acme.pdf");
-  });
-
-  it("needs_review: outline tag, names the file", () => {
-    const content = getResultCardContent("needs_review", "OrderForm.docx");
-
-    expect(content.tag).toEqual({ variant: "outline", label: "Needs review" });
-    expect(content.ctaLabel).toBe("Review extraction");
-    expect(content.message).toContain("OrderForm.docx");
-  });
-
-  it("failed: accent tag, names the file, suggests (not asserts) a cause", () => {
-    const content = getResultCardContent("failed", "Contract.pdf");
-
-    expect(content.tag).toEqual({ variant: "accent", label: "Failed" });
-    expect(content.ctaLabel).toBe("Retry upload");
-    expect(content.message).toContain("Contract.pdf");
-    // Suggests checking for a known failure pattern, but must not assert it
-    // as a confirmed cause -- the API returns no failure-reason field.
-    expect(content.message).toMatch(/password-protected/i);
-    expect(content.message).not.toMatch(/is password-protected/i);
+    expect(outcomes).toEqual([{ kind: "failed", key: "a", fileName: "A.pdf", message: "Unable to reach the API. Cause: network down" }]);
   });
 });

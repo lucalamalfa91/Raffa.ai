@@ -1,106 +1,175 @@
-import { describe, expect, it } from "vitest";
+import type { ComponentProps } from "react";
+import { describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import DocumentStatusTable from "../../../src/routes/documents/DocumentStatusTable";
-import type { TrackedDocument } from "../../../src/routes/documents/documentStore";
+import type { DocumentListItemBody } from "../../../src/api/client";
+import type { LocalUploadEntry, RejectedFileOutcome } from "../../../src/routes/documents/uploadPipeline";
 
-function trackedDocument(overrides: Partial<TrackedDocument> = {}): TrackedDocument {
+function item(overrides: Partial<DocumentListItemBody> = {}): DocumentListItemBody {
   return {
     id: "doc-1",
     contractId: "contract-1",
-    fileName: "Acme_MSA.pdf",
+    supplierName: "Salesforce",
+    fileName: "Salesforce_MSA.pdf",
     documentType: "Msa",
     processingStatus: "Completed",
+    stage: null,
+    pageCount: 12,
     createdAt: "2026-09-06T08:05:00Z",
+    weakFactCount: 0,
     ...overrides,
   };
 }
 
-function renderTable(documents: TrackedDocument[]) {
+function renderTable(props: Partial<ComponentProps<typeof DocumentStatusTable>> = {}) {
   return render(
     <MemoryRouter>
-      <DocumentStatusTable documents={documents} />
+      <DocumentStatusTable
+        documents={[]}
+        filter="attention"
+        localUploads={[]}
+        rejected={[]}
+        onDismissRejected={vi.fn()}
+        onRetryLocal={vi.fn()}
+        onRetryServer={vi.fn()}
+        onDelete={vi.fn()}
+        isAdmin={false}
+        {...props}
+      />
     </MemoryRouter>,
   );
 }
 
-// AC-1 "Document table: Document / Type / Supplier / Status / Uploaded" /
-// AC-2 (status tags, ADR-019) / AC-3 (row cross-link, ia.md "Document row ->
-// Contract 360").
 describe("DocumentStatusTable", () => {
-  it("renders the empty state when no document has been tracked yet", () => {
-    renderTable([]);
+  it("renders the four locked columns for a non-admin viewer", () => {
+    renderTable({ documents: [item()] });
 
-    expect(screen.getByText("No documents yet")).toBeInTheDocument();
+    const headers = screen.getAllByRole("columnheader").map((header) => header.textContent);
+    expect(headers).toEqual(["Document", "Supplier · type", "Status", "Next step"]);
+  });
+
+  it("adds a fifth Delete column only for Admin (R-WEB-07)", () => {
+    renderTable({ documents: [item()], isAdmin: true });
+
+    expect(screen.getAllByRole("columnheader").map((header) => header.textContent)).toEqual([
+      "Document",
+      "Supplier · type",
+      "Status",
+      "Next step",
+      "Delete",
+    ]);
+    expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
+  });
+
+  it("does not offer Delete to Procurement", () => {
+    renderTable({ documents: [item()], isAdmin: false });
+
+    expect(screen.queryByText("Delete")).not.toBeInTheDocument();
+  });
+
+  it("links a completed row's filename to Contract 360 and offers 'Ask about it'", () => {
+    renderTable({ documents: [item({ processingStatus: "Completed" })] });
+
+    expect(screen.getByRole("link", { name: "Salesforce_MSA.pdf" })).toHaveAttribute("href", "/contracts/contract-1");
+    const askLink = screen.getByRole("link", { name: "Ask about it" });
+    expect(askLink).toHaveAttribute("href", "/ask?scope=contract-1");
+  });
+
+  it("links a needs_review row to the review state, with the real weak-fact count", () => {
+    renderTable({ documents: [item({ processingStatus: "NeedsReview", weakFactCount: 2 })] });
+
+    expect(screen.getByRole("link", { name: "Salesforce_MSA.pdf" })).toHaveAttribute("href", "/documents?review=doc-1");
+    expect(screen.getByRole("link", { name: "Review 2 fields" })).toHaveAttribute("href", "/documents?review=doc-1");
+  });
+
+  it("routes a Quote-typed row to Quote check instead of review/ask (OQ-askv2-008)", () => {
+    renderTable({ documents: [item({ documentType: "Quote", processingStatus: "Completed" })] });
+
+    expect(screen.getByRole("link", { name: "Salesforce_MSA.pdf" })).toHaveAttribute("href", "/quotes");
+    expect(screen.getByRole("link", { name: "Open Quote check" })).toHaveAttribute("href", "/quotes");
+  });
+
+  it("shows the real stage and a progress bar for a processing row, no action button", () => {
+    renderTable({ documents: [item({ processingStatus: "Processing", stage: "OCR / text" })] });
+
+    expect(screen.getByText("OCR / text…")).toBeInTheDocument();
+    expect(screen.getByRole("progressbar")).toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("offers Retry upload for a server-known failed row, calling onRetryServer with its id", async () => {
+    const onRetryServer = vi.fn();
+    renderTable({ documents: [item({ id: "doc-9", processingStatus: "Failed" })], onRetryServer });
+
+    await userEvent.click(screen.getByRole("button", { name: "Retry upload" }));
+
+    expect(onRetryServer).toHaveBeenCalledWith("doc-9");
+  });
+
+  it("renders a local in-flight upload as its own row from the moment it is picked (R-DOC-01 AC-1)", () => {
+    const localUploads: LocalUploadEntry[] = [
+      { key: "local-1", file: new File(["x"], "New.pdf", { type: "application/pdf" }), phase: "uploading" },
+    ];
+    renderTable({ localUploads });
+
+    expect(screen.getByText("New.pdf")).toBeInTheDocument();
+    expect(screen.getByText("Uploading…")).toBeInTheDocument();
+  });
+
+  it("offers Retry upload for a local failed upload, calling onRetryLocal with its key", async () => {
+    const onRetryLocal = vi.fn();
+    const localUploads: LocalUploadEntry[] = [
+      {
+        key: "local-1",
+        file: new File(["x"], "Broken.pdf", { type: "application/pdf" }),
+        phase: "failed",
+        errorMessage: "Contigo could not process Broken.pdf. Try again.",
+      },
+    ];
+    renderTable({ localUploads, onRetryLocal });
+
+    expect(screen.getByText("Contigo could not process Broken.pdf. Try again.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Retry upload" }));
+
+    expect(onRetryLocal).toHaveBeenCalledWith("local-1");
+  });
+
+  it("renders every rejected file as a dismissible 'Not added' card, separate from the row grid", async () => {
+    const onDismissRejected = vi.fn();
+    const rejected: RejectedFileOutcome[] = [{ key: "r-1", fileName: "recipe.pdf", message: "Not added: this looks like a recipe..." }];
+    renderTable({ rejected, onDismissRejected });
+
+    expect(screen.getByText("Not added: this looks like a recipe...")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /dismiss/i }));
+    expect(onDismissRejected).toHaveBeenCalledWith("r-1");
+  });
+
+  it("shows 'Nothing needs you right now.' only when the attention filter is truly empty", () => {
+    renderTable({ documents: [], localUploads: [], filter: "attention" });
+
+    expect(screen.getByText("Nothing needs you right now.")).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 
-  it("renders the five locked columns in order (AC-1)", () => {
-    renderTable([trackedDocument()]);
+  it("does not show the attention-empty message when the all filter is active", () => {
+    renderTable({ documents: [], localUploads: [], filter: "all" });
 
-    const headers = screen.getAllByRole("columnheader").map((header) => header.textContent);
-    expect(headers).toEqual(["Document", "Type", "Supplier", "Status", "Uploaded"]);
+    expect(screen.queryByText("Nothing needs you right now.")).not.toBeInTheDocument();
   });
 
-  it("renders one row per document with Document/Type/Status/Uploaded populated (AC-1, AC-2)", () => {
-    renderTable([trackedDocument({ documentType: "OrderForm", processingStatus: "NeedsReview" })]);
+  it("shows the supplier name and type label together", () => {
+    renderTable({ documents: [item({ supplierName: "Microsoft", documentType: "OrderForm" })] });
 
-    const row = screen.getAllByRole("row")[1]; // row[0] is the header row
-    const cells = within(row)
-      .getAllByRole("cell")
-      .map((cell) => cell.textContent);
-
-    expect(cells[0]).toBe("Acme_MSA.pdf");
-    expect(cells[1]).toBe("Order Form");
-    expect(cells[3]).toBe("Needs review");
-    expect(cells[4]).toBe("06/09/2026, 08:05");
+    const row = screen.getAllByRole("row")[1];
+    expect(within(row).getByText("Microsoft")).toBeInTheDocument();
+    expect(within(row).getByText("· Order Form")).toBeInTheDocument();
   });
 
-  it("marks the Supplier column as not yet available -- Document carries no supplier field today (AC-1)", () => {
-    renderTable([trackedDocument()]);
+  it("shows an honest '—' when the supplier is not yet resolved", () => {
+    renderTable({ documents: [item({ supplierName: null })] });
 
-    expect(screen.getByText("Not yet available")).toBeInTheDocument();
-  });
-
-  it.each<{ processingStatus: "NeedsReview" | "Completed" | "Failed"; tagClass: string; tagText: string }>([
-    { processingStatus: "Completed", tagClass: "tag-neutral", tagText: "Completed" },
-    { processingStatus: "NeedsReview", tagClass: "tag-outline", tagText: "Needs review" },
-    { processingStatus: "Failed", tagClass: "tag-accent", tagText: "Failed" },
-  ])("renders the $processingStatus status as its ADR-019 tag (AC-2)", ({ processingStatus, tagClass, tagText }) => {
-    renderTable([trackedDocument({ processingStatus })]);
-
-    const tag = screen.getByText(tagText);
-    expect(tag).toHaveClass("tag", tagClass);
-  });
-
-  it("links a row with a contractId to Contract 360 (AC-3)", () => {
-    renderTable([trackedDocument({ contractId: "contract-42" })]);
-
-    const link = screen.getByRole("link", { name: "Acme_MSA.pdf" });
-    expect(link).toHaveAttribute("href", "/contracts/contract-42");
-  });
-
-  it("renders plain text with a visible reason instead of a dead link when contractId is null (AC-3)", () => {
-    renderTable([trackedDocument({ contractId: null, processingStatus: "Failed" })]);
-
-    expect(screen.queryByRole("link", { name: "Acme_MSA.pdf" })).not.toBeInTheDocument();
-    expect(screen.getByText("Acme_MSA.pdf")).toBeInTheDocument();
-    expect(screen.getByText("Not yet linked to a contract")).toBeInTheDocument();
-  });
-
-  it("shows 'Classifying…' for the Type column while documentType has not been read back yet", () => {
-    renderTable([trackedDocument({ documentType: null })]);
-
-    expect(screen.getByText("Classifying…")).toBeInTheDocument();
-  });
-
-  it("renders multiple documents as separate rows, most-recently-tracked first", () => {
-    renderTable([
-      trackedDocument({ id: "doc-2", fileName: "Second.pdf" }),
-      trackedDocument({ id: "doc-1", fileName: "First.pdf" }),
-    ]);
-
-    const rows = screen.getAllByRole("row").slice(1);
-    expect(rows.map((row) => within(row).getAllByRole("cell")[0].textContent)).toEqual(["Second.pdf", "First.pdf"]);
+    expect(screen.getByText("—")).toBeInTheDocument();
   });
 });

@@ -51,6 +51,13 @@ describe("getStatusTag", () => {
   it("maps failed to an accent tag", () => {
     expect(getStatusTag("failed")).toEqual({ variant: "accent", label: "Failed" });
   });
+
+  // Task E13/F09/US01/T03 (web-documents-v2): a document row is visible (and its status tag
+  // rendered) from the moment it is picked, R-DOC-01 AC-1 -- unlike V1, which only ever wrote a
+  // table row once a document reached a terminal status.
+  it("maps processing to a neutral tag", () => {
+    expect(getStatusTag("processing")).toEqual({ variant: "neutral", label: "Processing" });
+  });
 });
 
 describe("getRiskTag", () => {

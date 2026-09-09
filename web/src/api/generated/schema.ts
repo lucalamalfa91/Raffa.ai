@@ -47,6 +47,20 @@ export interface operations {
       };
     };
   };
+  listDocuments: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { items: ({ id: string; contractId: string | null; supplierName: string | null; fileName: string; documentType: "Msa" | "OrderForm" | "Sow" | "Amendment" | "RenewalLetter" | "Quote" | "Invoice" | "PriceList" | "Nda" | "Dpa" | "Other"; processingStatus: "Uploaded" | "Processing" | "NeedsReview" | "Completed" | "Failed"; stage: string | null; pageCount: number | null; createdAt: string; weakFactCount: number })[]; page: number; pageSize: number; totalCount: number };
+        };
+      };
+      400: {
+        content: {
+          "application/json": string;
+        };
+      };
+    };
+  };
   uploadDocument: {
     responses: {
       201: {
@@ -59,18 +73,79 @@ export interface operations {
           "application/json": string;
         };
       };
+      413: {
+        content: {
+          "application/json": string;
+        };
+      };
+      415: {
+        content: {
+          "application/json": string;
+        };
+      };
+      422: {
+        content: {
+          "application/json": { rejected: true; detectedType: "Msa" | "OrderForm" | "Sow" | "Amendment" | "RenewalLetter" | "Quote" | "Invoice" | "PriceList" | "Nda" | "Dpa" | "Other"; confidence: number; reason: "not_a_contract" | "no_readable_text"; hint: string };
+        };
+      };
     };
   };
   getDocument: {
     responses: {
       200: {
         content: {
-          "application/json": { id: string; contractId: string | null; fileName: string; mimeType: string; documentType: "Msa" | "OrderForm" | "Amendment" | "Sow" | "RenewalLetter" | "Other"; processingStatus: "Uploaded" | "Processing" | "NeedsReview" | "Completed" | "Failed"; createdAt: string };
+          "application/json": { id: string; contractId: string | null; fileName: string; mimeType: string; documentType: "Msa" | "OrderForm" | "Sow" | "Amendment" | "RenewalLetter" | "Quote" | "Invoice" | "PriceList" | "Nda" | "Dpa" | "Other"; processingStatus: "Uploaded" | "Processing" | "NeedsReview" | "Completed" | "Failed"; createdAt: string };
         };
       };
       400: {
         content: {
           "application/json": string;
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  deleteDocument: {
+    responses: {
+      204: {
+        content: {
+        };
+      };
+      403: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  getDocumentPreview: {
+    responses: {
+      200: {
+        content: {
+          "image/png": string;
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  reprocessDocument: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { documentId: string; contractId: string; documentType: "Msa" | "OrderForm" | "Sow" | "Amendment" | "RenewalLetter" | "Quote" | "Invoice" | "PriceList" | "Nda" | "Dpa" | "Other"; processingStatus: "Uploaded" | "Processing" | "NeedsReview" | "Completed" | "Failed"; pagesParsed: number; chunksIndexed: number };
+        };
+      };
+      403: {
+        content: {
         };
       };
       404: {
@@ -319,10 +394,18 @@ export interface paths {
     post: operations["inviteWorkspaceMember"];
   };
   "/api/documents": {
+    get: operations["listDocuments"];
     post: operations["uploadDocument"];
   };
   "/api/documents/{id}": {
     get: operations["getDocument"];
+    delete: operations["deleteDocument"];
+  };
+  "/api/documents/{id}/preview": {
+    get: operations["getDocumentPreview"];
+  };
+  "/api/documents/{id}/reprocess": {
+    post: operations["reprocessDocument"];
   };
   "/api/contracts": {
     get: operations["getPortfolio"];

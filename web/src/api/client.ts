@@ -98,6 +98,15 @@ type UploadDocumentResponses = paths["/api/documents"]["post"]["responses"];
 export type UploadedDocument = UploadDocumentResponses[201]["content"]["application/json"];
 export type DocumentProcessingStatus = UploadedDocument["processingStatus"];
 
+// Task E13/F04/US01/T01 (documents-admission), documented ahead of that backend task landing in
+// this worktree (see web/openapi/contigo-api.v1.json's own info.description): the admission gate's
+// structured 422 body (ADR-024 "gate before persistence"). Anchored to the generated 422 response,
+// not hand-invented -- `detectedType` already carries the widened admitted-type vocabulary (Quote,
+// Invoice, PriceList, Nda, Dpa alongside the original 6), read straight off the schema rather than
+// re-declared here.
+export type RejectedUploadBody = UploadDocumentResponses[422]["content"]["application/json"];
+export type AdmittedDocumentType = RejectedUploadBody["detectedType"];
+
 export interface UploadDocumentResult {
   /** True only on `201 Created`. */
   ok: boolean;
@@ -105,7 +114,16 @@ export interface UploadDocumentResult {
   statusCode: number | null;
   /** The stored document (already processed -- see `ApiClient.uploadDocument`'s own doc comment), present only when `ok` is true. */
   document: UploadedDocument | null;
-  /** Plain-language failure reason (400 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  /**
+   * The admission gate's own structured rejection, present only on a real `422` (task
+   * E13/F04/US01/T01) -- `error` below stays `null` in that case; a 413/415/generic 400/5xx keeps
+   * using `error` (a plain string) with `rejection: null`, the same split `getQuoteAssessment`'s own
+   * "real body vs bare empty 404" distinction already establishes for a different status pair.
+   * `src/routes/documents/uploadPipeline.ts#getRejectionCopy` maps `reason` onto the requirements'
+   * own longer "Not added" sentence -- this field is never rendered from `hint` directly.
+   */
+  rejection: RejectedUploadBody | null;
+  /** Plain-language failure reason (400/413/415 message, HTTP status text, or network-failure cause), present only when `ok` is false and this was not a structured 422. */
   error: string | null;
 }
 
@@ -130,6 +148,99 @@ export interface GetDocumentResult {
   /** The document, present only when `ok` is true. */
   document: ReadBackDocument | null;
   /** Plain-language failure reason (400/404 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
+// Task E13/F09/US01/T03 (web-documents-v2): `listDocuments`, wrapping `GET /api/documents` -- the
+// server-side list that replaces `src/routes/documents/documentStore.ts`'s own `sessionStorage`
+// tracking (R-DOC-06 AC-1 "reloading the browser shows the same list as before"). Documented ahead
+// of the backend counterpart (epic-13/feature-04) landing in this worktree -- see
+// web/openapi/contigo-api.v1.json's own `listDocuments` operation description for the full
+// provenance. `DocumentListItemBody["documentType"]` already carries the widened admitted-type
+// vocabulary read straight off the generated schema (`AdmittedDocumentType` above is the same
+// union, read off the 422 rejection body instead -- both anchor to the one OpenAPI enum).
+type ListDocumentsResponses = paths["/api/documents"]["get"]["responses"];
+export type DocumentListPageBody = ListDocumentsResponses[200]["content"]["application/json"];
+export type DocumentListItemBody = DocumentListPageBody["items"][number];
+/** R-DOC-09's six real stage names, non-null (`DocumentListItemBody.stage` is null once terminal). */
+export type DocumentProcessingStage = NonNullable<DocumentListItemBody["stage"]>;
+
+/**
+ * `GET /api/documents` query parameters. `status` is deliberately **not** how the web's own
+ * "Needs your attention" / "All documents" toggle works -- that is a union of three statuses
+ * (processing/needs_review/failed), not one -- so `src/routes/documents/useDocumentsList.ts` always
+ * calls this with an empty query (the tenant's whole list, same fetch-once/filter-client-side
+ * architecture `getPortfolio`'s own doc comment already establishes for Portfolio) and buckets
+ * client-side. The parameter is still wired here so this wrapper stays an honest, complete mirror of
+ * the real endpoint, the same "full surface even if this app's own screen only ever calls it one way"
+ * convention `uploadQuote`'s sibling read calls already follow.
+ */
+export interface ListDocumentsQuery {
+  status?: DocumentProcessingStatus;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface ListDocumentsResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** The requested page (`items` + paging metadata), present only when `ok` is true. */
+  page: DocumentListPageBody | null;
+  /** Plain-language failure reason (400 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
+// Task E13/F09/US01/T03: `getDocumentPreviewUrl`, wrapping `GET /api/documents/{id}/preview`.
+// Documented ahead of the backend counterpart (epic-13/feature-04) landing in this worktree -- see
+// that operation's own OpenAPI description. Unlike every other read call in this file, the response
+// is a binary `image/png`, not JSON -- a plain `<img src="...">` cannot carry the `X-Tenant-Id`
+// header every other call here requires, so this method performs the authenticated `fetch()` itself
+// and hands back a browser object URL (`URL.createObjectURL`, never the Storage URL -- ADR-009
+// "never a raw blob URL") the caller renders as `<img src={objectUrl}>`. The caller owns
+// `URL.revokeObjectURL(objectUrl)` once done (e.g. a `useEffect` cleanup), the same lifecycle any
+// `URL.createObjectURL` caller owns -- this client does not track outstanding object URLs itself.
+export interface GetDocumentPreviewResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** A browser object URL for the fetched PNG, present only when `ok` is true. */
+  objectUrl: string | null;
+  /** Plain-language failure reason (404/network-failure), present only when `ok` is false. */
+  error: string | null;
+}
+
+// Task E13/F09/US01/T03: `reprocessDocument`, wrapping `POST /api/documents/{id}/reprocess`
+// (Admin only, R-DOC-07). Documented ahead of the backend counterpart landing in this worktree --
+// see that operation's own OpenAPI description for why the response mirrors
+// `Contigo.Documents.Contracts.Application.Extraction.DocumentProcessingSummary`'s real fields
+// rather than an invented shape.
+type ReprocessDocumentResponses = paths["/api/documents/{id}/reprocess"]["post"]["responses"];
+export type DocumentReprocessSummaryBody = ReprocessDocumentResponses[200]["content"]["application/json"];
+
+export interface ReprocessDocumentResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** The reprocess summary, present only when `ok` is true. */
+  summary: DocumentReprocessSummaryBody | null;
+  /** Plain-language failure reason (403 not-admin, 404, or network-failure), present only when `ok` is false. */
+  error: string | null;
+}
+
+// Task E13/F09/US01/T03: `deleteDocument`, wrapping `DELETE /api/documents/{id}` (Admin only,
+// R-DOC-10). Documented ahead of the backend counterpart landing in this worktree -- see that
+// operation's own OpenAPI description. Same never-throws shape as every other call here; a `403`
+// (Procurement) is a normal, expected outcome the caller renders inline, not an exception.
+export interface DeleteDocumentResult {
+  /** True only on `204 No Content`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** Plain-language failure reason (403/404/network-failure), present only when `ok` is false. */
   error: string | null;
 }
 
@@ -650,6 +761,31 @@ export interface ApiClient {
    */
   getDocument(tenantId: string, id: string): Promise<GetDocumentResult>;
   /**
+   * Calls `GET /api/documents` (operationId `listDocuments`) -- the server-side list behind
+   * `src/routes/documents/` (R-DOC-06), replacing `documentStore.ts`'s own `sessionStorage`
+   * tracking. Same never-throws shape as every other call here. `query` is optional and, when
+   * omitted, fetches the tenant's whole list unfiltered -- see `ListDocumentsQuery`'s own doc
+   * comment for why the attention/all toggle is not this parameter.
+   */
+  listDocuments(tenantId: string, query?: ListDocumentsQuery): Promise<ListDocumentsResult>;
+  /**
+   * Calls `GET /api/documents/{id}/preview` (operationId `getDocumentPreview`) and turns the PNG
+   * response into a browser object URL -- see `GetDocumentPreviewResult`'s own doc comment for why
+   * this is not a bare `<img src>`. Same never-throws shape; a `404` is a normal, expected outcome.
+   */
+  getDocumentPreviewUrl(tenantId: string, id: string): Promise<GetDocumentPreviewResult>;
+  /**
+   * Calls `POST /api/documents/{id}/reprocess` (operationId `reprocessDocument`, Admin only,
+   * R-DOC-07). Same never-throws shape as every other call here; a `403` (Procurement) is a normal,
+   * expected outcome the caller renders inline, not an exception.
+   */
+  reprocessDocument(tenantId: string, id: string): Promise<ReprocessDocumentResult>;
+  /**
+   * Calls `DELETE /api/documents/{id}` (operationId `deleteDocument`, Admin only, R-DOC-10). Same
+   * never-throws shape as every other call here; a `403` (Procurement) is a normal, expected outcome.
+   */
+  deleteDocument(tenantId: string, id: string): Promise<DeleteDocumentResult>;
+  /**
    * Calls `GET /api/contracts` (operationId `getPortfolio`) -- the portfolio list behind
    * `src/routes/contracts/` (AC-1 filters, AC-2 attention strip, AC-3 sort/tint, AC-4 states). Same
    * never-throws shape as every other call here: a `400` (malformed filter/page query parameter) is a
@@ -880,16 +1016,27 @@ export function createApiClient(baseUrl: string): ApiClient {
           ok: false,
           statusCode: null,
           document: null,
+          rejection: null,
           error: `Unable to reach ${baseUrl}/api/documents. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
         };
       }
 
       if (response.status === 201) {
         const document = (await response.json()) as UploadedDocument;
-        return { ok: true, statusCode: 201, document, error: null };
+        return { ok: true, statusCode: 201, document, rejection: null, error: null };
       }
 
-      // Same Results.BadRequest(string) shape as createWorkspace's 400 above.
+      // Task E13/F04/US01/T01: the admission gate's own structured body (ADR-024 "gate before
+      // persistence") -- read into `rejection`, not `error`, so a caller never has to re-parse a
+      // JSON.stringify'd object out of a string field. See UploadDocumentResult's own doc comment.
+      if (response.status === 422) {
+        const rejection = (await response.json()) as RejectedUploadBody;
+        return { ok: false, statusCode: 422, document: null, rejection, error: null };
+      }
+
+      // 413 (Documents:MaxFileBytes exceeded) and 415 (format rejected by extension + magic bytes)
+      // both carry a plain-string body, the same Results.BadRequest(string) shape as createWorkspace's
+      // 400 above -- no special-casing needed beyond falling through to the generic branch below.
       let error: string;
       try {
         const errorBody: unknown = await response.json();
@@ -898,7 +1045,7 @@ export function createApiClient(baseUrl: string): ApiClient {
         error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
       }
 
-      return { ok: false, statusCode: response.status, document: null, error };
+      return { ok: false, statusCode: response.status, document: null, rejection: null, error };
     },
 
     async getDocument(tenantId, id) {
@@ -941,6 +1088,142 @@ export function createApiClient(baseUrl: string): ApiClient {
       }
 
       return { ok: false, statusCode: response.status, document: null, error };
+    },
+
+    async listDocuments(tenantId, query = {}) {
+      const url = new URL("/api/documents", baseUrl);
+      if (query.status !== undefined) url.searchParams.set("status", query.status);
+      if (query.page !== undefined) url.searchParams.set("page", String(query.page));
+      if (query.pageSize !== undefined) url.searchParams.set("pageSize", String(query.pageSize));
+
+      let response: Response;
+      try {
+        response = await fetch(url, { headers: { "X-Tenant-Id": tenantId }, cache: "no-store" });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          page: null,
+          error: `Unable to reach ${baseUrl}/api/documents. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const page = (await response.json()) as DocumentListPageBody;
+        return { ok: true, statusCode: 200, page, error: null };
+      }
+
+      let error: string;
+      try {
+        const errorBody: unknown = await response.json();
+        error = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, page: null, error };
+    },
+
+    async getDocumentPreviewUrl(tenantId, id) {
+      let response: Response;
+      try {
+        response = await fetch(new URL(`/api/documents/${encodeURIComponent(id)}/preview`, baseUrl), {
+          headers: { "X-Tenant-Id": tenantId },
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          objectUrl: null,
+          error: `Unable to reach ${baseUrl}/api/documents/${id}/preview. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const blob = await response.blob();
+        return { ok: true, statusCode: 200, objectUrl: URL.createObjectURL(blob), error: null };
+      }
+
+      if (response.status === 404) {
+        return { ok: false, statusCode: 404, objectUrl: null, error: `No document found for id ${id}.` };
+      }
+
+      return {
+        ok: false,
+        statusCode: response.status,
+        objectUrl: null,
+        error: `Request failed with HTTP ${response.status} ${response.statusText}.`,
+      };
+    },
+
+    async reprocessDocument(tenantId, id) {
+      let response: Response;
+      try {
+        response = await fetch(new URL(`/api/documents/${encodeURIComponent(id)}/reprocess`, baseUrl), {
+          method: "POST",
+          headers: { "X-Tenant-Id": tenantId },
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          summary: null,
+          error: `Unable to reach ${baseUrl}/api/documents/${id}/reprocess. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const summary = (await response.json()) as DocumentReprocessSummaryBody;
+        return { ok: true, statusCode: 200, summary, error: null };
+      }
+
+      if (response.status === 403) {
+        return { ok: false, statusCode: 403, summary: null, error: "Only a Workspace Admin can reprocess a document." };
+      }
+
+      if (response.status === 404) {
+        return { ok: false, statusCode: 404, summary: null, error: `No document found for id ${id}.` };
+      }
+
+      return {
+        ok: false,
+        statusCode: response.status,
+        summary: null,
+        error: `Request failed with HTTP ${response.status} ${response.statusText}.`,
+      };
+    },
+
+    async deleteDocument(tenantId, id) {
+      let response: Response;
+      try {
+        response = await fetch(new URL(`/api/documents/${encodeURIComponent(id)}`, baseUrl), {
+          method: "DELETE",
+          headers: { "X-Tenant-Id": tenantId },
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          error: `Unable to reach ${baseUrl}/api/documents/${id}. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 204) {
+        return { ok: true, statusCode: 204, error: null };
+      }
+
+      if (response.status === 403) {
+        return { ok: false, statusCode: 403, error: "Only a Workspace Admin can delete a document." };
+      }
+
+      if (response.status === 404) {
+        return { ok: false, statusCode: 404, error: `No document found for id ${id}.` };
+      }
+
+      return { ok: false, statusCode: response.status, error: `Request failed with HTTP ${response.status} ${response.statusText}.` };
     },
 
     async getPortfolio(tenantId, query = {}) {
