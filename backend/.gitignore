@@ -1,0 +1,5 @@
+# Task E13/F06/US01/T02 (ask-golden-set): the AI evaluation set writes a fresh
+# reports/last-run.md on every `dotnet test backend/tests/Contigo.AiEval` run. It is a
+# run artefact regenerated from the checked-in golden/*.json cases, never reviewed as
+# source, so it is deliberately not tracked.
+tests/Contigo.AiEval/reports/

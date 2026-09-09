@@ -2558,3 +2558,120 @@ E13/F06/US01/T01 wired `AddSuppliersProductsModule`), but
 block is added (same `pg-cs` secret as its neighbours). Recorded in
 `infra/README.md` and in `docs/ask-v2-acceptance.md`'s "Known gaps" table; it is
 an `infra/` change, outside this task's file scope.
+
+## Ask Contigo — AI evaluation set (golden set, task E13/F06/US01/T02)
+
+`tests/Contigo.AiEval` is the golden set `inputs/requirements.md` R-EVD-03
+and spec §15.3 call for: **70 questions** (Italian and English) across
+**three tenant fixtures**, each running the whole V2 Ask engine end to end
+over HTTP — `POST /api/chat/query` → `Contigo.Api.AskCopilotService` →
+domain gate → intent planner → context pack → persona prompt → both guards
+→ the §6 reply — and each asserting the reply's `kind`, its citation
+corpora, the calculator/pack numbers **verbatim**, the absence of engineer
+chrome, and that every action href resolves to a real capability-catalog
+route.
+
+```bash
+# The whole set (this is also what `dotnet test Contigo.slnx` runs).
+dotnet test backend/tests/Contigo.AiEval
+
+# Just the eval, from a full-solution run.
+dotnet test backend/Contigo.slnx --filter "Category=AiEval"
+
+# One question, by its golden-case id.
+dotnet test backend/tests/Contigo.AiEval \
+  --filter "DisplayName~seeded-structured_fact-120-days-en"
+```
+
+**Deterministic by construction.** No Foundry endpoint, no network, no
+Docker: the run substitutes `FixtureAiGateway` (whose pack-aware
+`AnswerAsync` echoes the first five pack keys and copies their values
+verbatim), pins `IClock` to `2026-09-09T12:00:00Z`, and swaps the four
+DbContexts the engine touches — `DocumentsContractsDbContext`,
+`SuppliersDbContext`, `SavingsDbContext`, `ChatDbContext` — onto EF Core
+InMemory (`TenantFixtures/AskEvalHost.cs`). Everything else in the request
+path is the shipped host, unchanged. Market data comes from the real
+checked-in mock feed (`backend/fixtures/market-intelligence.mock.json`),
+so the market numbers in the expectations are the ones a demo would show.
+
+**The cases are data.** They live in `tests/Contigo.AiEval/golden/*.json`,
+one file per tenant fixture, and are extended by editing JSON — no C#:
+
+| Fixture | What it holds | What it is for |
+|---|---|---|
+| `empty` | nothing at all | the upload-invite half of every gate label, R-SYS-04's availability replacement, R-PORT-02 AC-2 |
+| `seeded` | Salesforce / Microsoft / AWS / DocuSign, validated, mirroring the V2 prototype's own `CONTRACTS` | every "answer" case: dates, spend, renewal windows, market comparison, strategy, criticality |
+| `needs-review` | one Salesforce MSA still `needs_review`, its end date / notice date / spend not yet accepted | R-CMP-03, document status, and the proof that an un-validated fact is never quoted |
+
+Each case names its intent (the fixed R-ASK-02 / R-ASK-03 vocabulary), its
+question, its expected kind, and the citations or capability route it must
+produce. Five further tests assert set-wide invariants: at least 40
+questions across all three fixtures in both languages, all four reply kinds
+and all fourteen intents covered, **zero guard interventions anywhere**
+(R-EVD-03's headline — read from the engine's own
+`abstainGuardIntervened` audit field, not inferred from the reply kind),
+and that the report was written.
+
+### Reading the report
+
+Every run writes `tests/Contigo.AiEval/reports/last-run.md` (git-ignored
+via `backend/.gitignore`, regenerated each time, written **before** the
+first assertion so it exists even when the suite is red). Read it top to
+bottom:
+
+1. **Header** — which mode the run used and the pinned clock, then the
+   counters that matter: cases, passed, *passed against a recorded engine
+   gap*, failed, and **guard interventions (must be 0)**.
+2. **Coverage by intent / by tenant fixture and language** — where the set
+   is thin. A new intent with one case is visible here.
+3. **Tenant fixtures** — the seeded portfolios, so an expected number can
+   be traced to the row it came from without opening any code.
+4. **Per-case verdicts** — one row per question: expected vs observed kind,
+   citation count and corpora, AI Gateway calls made (a greeting must show
+   `0`), guard status, verdict.
+5. **Failures** — every failed check plus the reply that produced it.
+6. **Engine gaps this run exposed** — see below.
+7. **Every reply, verbatim** — each reply in full in a collapsed block with
+   its citations, actions and audit action. This is the section to read
+   before signing off a demo: the tables prove the replies are *grounded*,
+   this one shows whether they are *worth reading*.
+
+### `pass (known gap)` — what it means
+
+A case whose reply matched neither its requirement nor a defect would fail.
+A case may instead **declare** one named, already-reported divergence
+(`knownGap` in its JSON, with an id from `GoldenSetKnownGaps`), and then it
+passes if the reply matches *either* the requirement (the gap has been
+fixed — it simply stops appearing in the report, no JSON edit needed) *or*
+exactly that recorded deviation. Any third behaviour still fails, so a
+declared gap tolerates one named deviation and never hides a regression.
+The always-applied checks — zero guard interventions, no engineer chrome,
+audit shape, catalog-only hrefs — are **never** forgiven by a gap.
+
+This exists because the golden set is owned by a task that must not change
+the engine: a defect it finds is reported, not absorbed into the
+expectation as though it were the requirement. `GoldenSetKnownGaps` (in
+`GoldenSet.cs`) documents each one against the requirement it misses, and
+`GoldenSetTests.Every_known_gap_is_a_documented_gap` refuses any id that is
+not listed there — so nobody can quietly widen what the set forgives.
+
+### Running it against Foundry (manual, OQ-askv2-009)
+
+```bash
+AiEval__UseFoundry=true \
+AiGateway__Endpoint=https://<your-foundry-endpoint> \
+dotnet test backend/tests/Contigo.AiEval
+```
+
+With `AiEval__UseFoundry=true` the harness leaves the host's own
+`IAiGateway` registration alone, so `AddAiGatewayModule` resolves
+`FoundryAiGateway` when `AiGateway:Endpoint` is set and the fixture
+otherwise (R-AI-01) — the tenant stores stay in-memory either way. A live
+model does not restate a number identically twice, so the verbatim-number
+checks become **advisory** in this mode; everything that must hold
+regardless of the model does not move: zero guard interventions, the reply
+kind, no engineer chrome, catalog-only action hrefs, one audit row per
+turn. The report header names the mode, so a reader never has to guess
+which run produced the numbers in front of them. Anything other than a
+literal `true` (unset, blank, `0`, a typo) keeps the deterministic fixture
+run — CI can never be turned into a billed model run by accident.
