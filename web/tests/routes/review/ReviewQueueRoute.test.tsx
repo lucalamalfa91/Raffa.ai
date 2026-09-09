@@ -14,6 +14,15 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     inviteWorkspaceMember: vi.fn(),
     uploadDocument: vi.fn(),
     getDocument: vi.fn(),
+    // Task E13/F09/US01/T03 (web-documents-v2): this suite does not exercise the new Documents
+    // list/preview/reprocess/delete calls -- bare vi.fn() is enough, same convention as
+    // getPortfolio below. (`src/routes/review/` itself stays unrouted/orphaned -- see
+    // components/shell/WorkspaceShellApp.tsx's own doc comment -- but still compiles against
+    // ApiClient, so its own test's mock needs the same four stubs as every other full mock here.)
+    listDocuments: vi.fn(),
+    getDocumentPreviewUrl: vi.fn(),
+    reprocessDocument: vi.fn(),
+    deleteDocument: vi.fn(),
     getPortfolio: vi.fn(),
     getContract360: vi.fn(),
     getRenewals: vi.fn(),

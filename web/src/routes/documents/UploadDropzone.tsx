@@ -1,40 +1,23 @@
 import { useRef, useState } from "react";
+import { ACCEPTED_EXTENSIONS } from "./uploadPipeline";
 
 export interface UploadDropzoneProps {
-  /** True while a document is already uploading -- disables both pick paths so only one upload runs at a time. */
-  disabled: boolean;
+  /** `"onboarding"` (bigger box, `contigo-v2/markup.html` `docsEmpty`) vs `"list"` (compact inline
+   * bar shown above the row grid once at least one document exists, `docsList`) -- same drag/pick
+   * logic, different chrome/copy density (both quoted from the V2 prototype). */
+  variant: "onboarding" | "list";
   onFilesSelected: (files: File[]) => void;
   onUseSampleFile: () => void;
 }
 
-const ACCEPTED_EXTENSIONS = ".pdf,.docx,.xlsx";
-
 /**
- * AC-1 (dropzone + formats/size/sources strip). Structure and copy are
- * quoted from the compiled prototype (inputs/design/prototypes/day1-demo.html):
- * heading "Drop contracts here", subtitle "Each file becomes a processing
- * job; you can leave this page while it runs.", buttons "Choose from
- * computer" / "Use sample file", and the 3-cell strip -- Formats
- * "PDF · DOCX · XLSX", Max size "50 MB / file", Sources "Local · SharePoint
- * soon" (the last cell matches product-spec.md's own integration roadmap:
- * manual upload is P1/V1, SharePoint is explicitly P2, so "soon" is
- * accurate, not decorative copy). `accept=".pdf,.docx,.xlsx"` mirrors
- * product-spec.md §4.1 ("Upload PDF, DOCX and XLSX commercial/contract
- * documents").
- *
- * Drag-and-drop is a progressive enhancement over the native, keyboard- and
- * screen-reader-operable "Choose from computer" button (ADR-019
- * accessibility baseline: "all interactive controls are native") -- a
- * keyboard user never needs the drag gesture to reach any state this screen
- * has.
- *
- * Task E11/F04/US01/T01 (gap G-DOC): the leading upload glyph was a missing
- * node against the compiled prototype -- added back verbatim (same viewBox
- * and path data) per ADR-019's icon rule ("Lucide, inline SVG, currentColor,
- * 1.5 stroke, square caps"). `aria-hidden` because "Drop contracts here"
- * already carries the meaning; the icon is decorative.
+ * Multi-file dropzone (task E13/F09/US01/T03: "multi-file drop / pick (`accept` widened, up to 20
+ * files, uploads run with <= 3 in flight)"; requirements R-DOC-01/02). Unlike V1, there is no
+ * `disabled` state -- more than one upload can be in flight at once (`useDocumentsList.ts`'s own
+ * concurrency-capped batch runner), so the picker/drop target stays live regardless of how many
+ * rows are already processing.
  */
-export default function UploadDropzone({ disabled, onFilesSelected, onUseSampleFile }: UploadDropzoneProps) {
+export default function UploadDropzone({ variant, onFilesSelected, onUseSampleFile }: UploadDropzoneProps) {
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -43,77 +26,64 @@ export default function UploadDropzone({ disabled, onFilesSelected, onUseSampleF
     onFilesSelected(Array.from(fileList));
   };
 
+  const dropTarget = (
+    <div
+      className={`upload-dropzone upload-dropzone--${variant}${dragging ? " is-dragging" : ""}`}
+      onDragOver={(event) => {
+        event.preventDefault();
+        setDragging(true);
+      }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={(event) => {
+        event.preventDefault();
+        setDragging(false);
+        handleFiles(event.dataTransfer.files);
+      }}
+    >
+      <input
+        ref={inputRef}
+        type="file"
+        multiple
+        accept={ACCEPTED_EXTENSIONS}
+        onChange={(event) => {
+          handleFiles(event.target.files);
+          // Same file(s) re-selected twice in a row must still fire onChange.
+          event.target.value = "";
+        }}
+        className="upload-dropzone-file-input"
+        aria-label="Choose contract files from your computer"
+      />
+      <button type="button" className="btn btn-primary" onClick={() => inputRef.current?.click()}>
+        Upload contracts
+      </button>
+      <span className="upload-dropzone-hint">
+        {variant === "onboarding" ? "or drop files anywhere in this box" : "or drop PDF · DOCX · XLSX · PNG · JPG here — you can leave while they process"}
+      </span>
+      <button type="button" className="btn btn-ghost upload-dropzone-sample" onClick={onUseSampleFile}>
+        {variant === "onboarding" ? "Use the sample MSA" : "Sample MSA"}
+      </button>
+    </div>
+  );
+
+  if (variant === "list") {
+    return dropTarget;
+  }
+
   return (
     <div className="upload-dropzone-column">
-      <div
-        className={`upload-dropzone${dragging ? " is-dragging" : ""}`}
-        onDragOver={(event) => {
-          event.preventDefault();
-          if (!disabled) setDragging(true);
-        }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={(event) => {
-          event.preventDefault();
-          setDragging(false);
-          if (!disabled) handleFiles(event.dataTransfer.files);
-        }}
-      >
-        <svg
-          className="upload-dropzone-icon"
-          width="32"
-          height="32"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={1.5}
-          strokeLinecap="square"
-          aria-hidden="true"
-        >
-          <path d="M12 3v12" />
-          <path d="m7 8 5-5 5 5" />
-          <path d="M4 15v5h16v-5" />
-        </svg>
-        <p className="upload-dropzone-title">Drop contracts here</p>
-        <p className="micro-meta">Each file becomes a processing job; you can leave this page while it runs.</p>
-        <input
-          ref={inputRef}
-          type="file"
-          multiple
-          accept={ACCEPTED_EXTENSIONS}
-          onChange={(event) => {
-            handleFiles(event.target.files);
-            // Same file re-selected twice in a row must still fire onChange.
-            event.target.value = "";
-          }}
-          className="upload-dropzone-file-input"
-          aria-label="Choose contract files from your computer"
-        />
-        <div className="upload-dropzone-actions">
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={disabled}
-            onClick={() => inputRef.current?.click()}
-          >
-            Choose from computer
-          </button>
-          <button type="button" className="btn btn-secondary" disabled={disabled} onClick={onUseSampleFile}>
-            Use sample file
-          </button>
-        </div>
-      </div>
+      {dropTarget}
       <div className="upload-strip">
         <div className="upload-strip-cell">
           <div className="upload-strip-kicker">Formats</div>
-          <div className="upload-strip-value">PDF · DOCX · XLSX</div>
+          <div className="upload-strip-value">PDF · DOCX · XLSX · PNG · JPG</div>
         </div>
         <div className="upload-strip-cell">
           <div className="upload-strip-kicker">Max size</div>
           <div className="upload-strip-value">50 MB / file</div>
         </div>
         <div className="upload-strip-cell">
-          <div className="upload-strip-kicker">Sources</div>
-          <div className="upload-strip-value">Local · SharePoint soon</div>
+          <div className="upload-strip-kicker">Up to</div>
+          <div className="upload-strip-value">20 files at once</div>
         </div>
       </div>
     </div>

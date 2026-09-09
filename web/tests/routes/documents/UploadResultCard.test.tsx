@@ -2,87 +2,40 @@ import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import UploadResultCard from "../../../src/routes/documents/UploadResultCard";
-import { getResultCardContent, type UploadOutcome } from "../../../src/routes/documents/uploadPipeline";
+import { getRejectionReasonCopy } from "../../../src/routes/documents/uploadPipeline";
 
-// Task-01's own named "Tests required" row: "unit | outcome cards by status".
-// AC-3: "Result card per outcome (needs_review / completed / failed)".
-describe("UploadResultCard (AC-3: outcome cards by status)", () => {
-  it.each<{ outcome: UploadOutcome; tagClass: string; tagText: string; ctaText: string }>([
-    { outcome: "completed", tagClass: "tag-neutral", tagText: "Completed", ctaText: "Open Contract 360" },
-    { outcome: "needs_review", tagClass: "tag-outline", tagText: "Needs review", ctaText: "Review extraction" },
-    { outcome: "failed", tagClass: "tag-accent", tagText: "Failed", ctaText: "Retry upload" },
-  ])("renders the $outcome card with its own tag, message and CTA", ({ outcome, tagClass, tagText, ctaText }) => {
-    const { message } = getResultCardContent(outcome, "Acme_MSA.pdf");
+// R-DOC-04: the "Not added" card for a rejected file (session-only, never a document row).
+describe("UploadResultCard (Not added card, R-DOC-04)", () => {
+  it("renders the filename, the 'Not added' tag and the full mapped rejection sentence", () => {
+    const message = getRejectionReasonCopy("not_a_contract");
+    render(<UploadResultCard fileName="recipe.pdf" message={message} onDismiss={vi.fn()} />);
 
-    render(
-      <UploadResultCard
-        fileName="Acme_MSA.pdf"
-        outcome={outcome}
-        message={message}
-        onPrimaryAction={vi.fn()}
-        onUploadAnother={vi.fn()}
-      />,
-    );
-
-    const tag = screen.getByText(tagText);
-    expect(tag).toHaveClass("tag", tagClass);
-    expect(screen.getByText("Acme_MSA.pdf")).toBeInTheDocument();
+    expect(screen.getByText("Not added")).toHaveClass("tag", "tag-outline");
+    expect(screen.getByText("recipe.pdf")).toBeInTheDocument();
     expect(screen.getByText(message)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: ctaText })).toBeInTheDocument();
   });
 
-  // Task E11/F04/US01/T01 (gap G-DOC): components.css / ADR-019 reserve
-  // `.card` for recommendation/provenance blocks; the compiled export
-  // doesn't box this summary either (documents.css's own comment on
-  // `.upload-result-card`). Structural companion to documents.css.test.ts's
-  // "no border/background on .upload-result-card" source-level guard.
-  it("does not wrap the result in a .card box (ADR-019 reserves .card for recommendation/provenance)", () => {
-    const { container } = render(
-      <UploadResultCard
-        fileName="Acme_MSA.pdf"
-        outcome="completed"
-        message="done"
-        onPrimaryAction={vi.fn()}
-        onUploadAnother={vi.fn()}
-      />,
-    );
+  it("renders the no_readable_text sentence distinctly", () => {
+    const message = getRejectionReasonCopy("no_readable_text");
+    render(<UploadResultCard fileName="blurry-scan.png" message={message} onDismiss={vi.fn()} />);
+
+    expect(screen.getByText(message)).toBeInTheDocument();
+  });
+
+  it("calls onDismiss when dismissed", async () => {
+    const onDismiss = vi.fn();
+    render(<UploadResultCard fileName="recipe.pdf" message="Not added: ..." onDismiss={onDismiss} />);
+
+    await userEvent.click(screen.getByRole("button", { name: /dismiss/i }));
+
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders as a plain row, not a boxed .card (ADR-019 reserves .card for recommendation/provenance)", () => {
+    const { container } = render(<UploadResultCard fileName="recipe.pdf" message="Not added: ..." onDismiss={vi.fn()} />);
 
     const root = container.querySelector(".upload-result-card");
     expect(root).not.toBeNull();
     expect(root).not.toHaveClass("card");
-  });
-
-  it("calls onPrimaryAction when the outcome-specific CTA is clicked", async () => {
-    const onPrimaryAction = vi.fn();
-    render(
-      <UploadResultCard
-        fileName="Acme_MSA.pdf"
-        outcome="completed"
-        message="done"
-        onPrimaryAction={onPrimaryAction}
-        onUploadAnother={vi.fn()}
-      />,
-    );
-
-    await userEvent.click(screen.getByRole("button", { name: "Open Contract 360" }));
-
-    expect(onPrimaryAction).toHaveBeenCalledTimes(1);
-  });
-
-  it("always offers 'Upload another', independent of outcome", async () => {
-    const onUploadAnother = vi.fn();
-    render(
-      <UploadResultCard
-        fileName="Acme_MSA.pdf"
-        outcome="failed"
-        message="failed"
-        onPrimaryAction={vi.fn()}
-        onUploadAnother={onUploadAnother}
-      />,
-    );
-
-    await userEvent.click(screen.getByRole("button", { name: "Upload another" }));
-
-    expect(onUploadAnother).toHaveBeenCalledTimes(1);
   });
 });

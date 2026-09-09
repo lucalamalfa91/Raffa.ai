@@ -1,38 +1,74 @@
 /**
- * Documents screen (route `/documents`, ADR-018; screens.md #3 "Upload ->
- * document status", upload half only -- AC-1 dropzone+strip, AC-2 pipeline,
- * AC-3 result card). The two-column layout is quoted from the compiled
- * prototype's own grid (inputs/design/prototypes/day1-demo.html:
- * `grid-template-columns:400px 1fr`). Component classes (.btn, .tag, .card,
- * .empty-state, .screen-kicker/.screen-title, .micro-meta) come from
- * ../../styles/components.css (ADR-019); this file adds only the
- * screen-specific composites, the same division of labour signin.css's own
- * header comment documents.
- *
- * Task E11/F04/US01/T01 (gap G-DOC, reports/audit/visual-fidelity-gaps.md):
- * this screen's own header comment already claimed the `400px 1fr` grid, the
- * rule below had drifted to a `minmax(280px, 400px) 1fr` guess -- corrected
- * back to the literal export value below, plus the dropzone/strip/pipeline/
- * result-card density figures this file's other comments now cite inline.
- * Literal (non-`--space-*`) px values below are verbatim from the compiled
- * bundle, the same "no matching step, kept literal" convention
- * ../signin/signin.css already uses (its own header comment explains why).
+ * Documents V2 (route `/documents`, ADR-024 amendment to ADR-018/020; `contigo-v2/markup.html`
+ * `docsEmpty`/`docsList` blocks; task E13/F09/US01/T03). Component classes (.btn, .tag, .table,
+ * .seg, .empty-state, .error-state, .skeleton, .screen-kicker/.screen-title, .micro-meta, .hint)
+ * come from ../../styles/components.css (ADR-019); this file adds only the screen-specific
+ * composites, the same division of labour V1's own documents.css already established. Literal
+ * (non `--space-*`) px values below are quoted from `contigo-v2/markup.html`'s own inline styles,
+ * the same "no matching step, kept literal" convention this file's V1 predecessor already used.
  */
 
-.documents-columns {
+.documents-screen {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- Onboarding empty state (docsEmpty) -------------------------------- */
+
+.documents-onboarding {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: var(--space-8) clamp(24px, 5vw, 72px);
+  max-width: 1040px;
+}
+
+.documents-onboarding-headline {
+  font-family: var(--font-heading);
+  font-weight: var(--weight-heading);
+  font-size: clamp(30px, 3.4vw, 46px);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  max-width: 620px;
+  margin: 0 0 28px;
+}
+
+.documents-onboarding-steps {
   display: grid;
-  grid-template-columns: 400px 1fr;
-  gap: var(--space-6);
-  margin-top: var(--space-6);
+  grid-template-columns: repeat(3, 1fr);
+  border-top: 2px solid var(--color-divider);
+  border-bottom: 2px solid var(--color-divider);
+  margin-bottom: 28px;
 }
 
-@media (max-width: 900px) {
-  .documents-columns {
-    grid-template-columns: 1fr;
-  }
+.documents-onboarding-step {
+  padding: var(--space-4);
+  border-right: 1px solid var(--color-divider);
 }
 
-/* ---- Dropzone + formats/size/sources strip (AC-1) --------------------- */
+.documents-onboarding-step:last-child {
+  border-right: 0;
+}
+
+.documents-onboarding-step-kicker {
+  font-size: 11px;
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+  color: var(--color-accent-700);
+}
+
+.documents-onboarding-step-kicker--muted {
+  color: var(--color-neutral-600);
+}
+
+.documents-onboarding-step-title {
+  font-family: var(--font-heading);
+  font-weight: var(--weight-heading);
+  font-size: 17px;
+  margin: var(--space-1) 0;
+}
+
+/* ---- Dropzone (shared onboarding/list, UploadDropzone.tsx) ------------- */
 
 .upload-dropzone-column {
   display: flex;
@@ -41,76 +77,48 @@
 }
 
 .upload-dropzone {
-  min-height: 300px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
   border: 2px dashed var(--color-divider);
   background: var(--color-surface);
-  padding: var(--space-6);
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-2);
   transition:
     background-color 0.15s ease,
     border-color 0.15s ease;
 }
 
-/* Drag-over highlight -- accent-100/accent, the same pairing ADR-019 names for "sign-in ground + grid" / "primary action". Dash style stays; only the fill/line colour swaps. */
+.upload-dropzone--onboarding {
+  padding: 22px 24px;
+}
+
+.upload-dropzone--list {
+  padding: 14px 18px;
+  margin-bottom: var(--space-4);
+}
+
 .upload-dropzone.is-dragging {
   background: var(--color-accent-100);
   border-color: var(--color-accent);
-}
-
-/* ADR-019 "Icons: Lucide, inline SVG, currentColor, 1.5 stroke, square caps"
-   -- quoted verbatim from the compiled prototype's own upload glyph
-   (viewBox 0 0 24 24, the same three paths). `margin-bottom` is 16px
-   supplemental to this column's own 8px (--space-2) flex `gap` above, so the
-   icon-to-title space totals the export's 24px without re-deriving every
-   other child's spacing onto explicit margins. */
-.upload-dropzone-icon {
-  color: var(--color-accent);
-  margin-bottom: 16px;
-}
-
-/* Task E11/F04/US01/T01 (gap G-DOC, reviewer loop): the export's title style
-   is `margin:auto 0 8px;...;padding-top:24px` (day1-demo.html) inside a flex
-   column that -- as of this same task -- also carries `min-height: 300px`
-   with no `justify-content` (so the initial `flex-start`). Without the
-   `auto`, flex-start packs icon+title+subtitle+buttons at the top and lets
-   any leftover box height collect as dead space below the buttons instead.
-   `margin-top: auto` is the one part of that export value this file hadn't
-   ported: with exactly one auto margin on the main axis, flexbox assigns it
-   100% of the box's leftover space, so the icon stays pinned at the top and
-   the title/subtitle/buttons group is pinned to the bottom, matching the
-   export. The other two components of that same export value are already
-   covered elsewhere, not duplicated here: the trailing `8px` is this
-   column's own `gap: var(--space-2)` (title -> subtitle, the next sibling),
-   and `padding-top: 24px` is the icon-to-title figure the
-   `.upload-dropzone-icon` comment above already accounts for. */
-.upload-dropzone-title {
-  font-family: var(--font-heading);
-  font-weight: var(--weight-heading);
-  font-size: 22px;
-  line-height: 1.1;
-  margin: auto 0 0;
 }
 
 .upload-dropzone-file-input {
   display: none;
 }
 
-.upload-dropzone-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-top: var(--space-2);
+.upload-dropzone-hint {
+  font-size: 14px;
+  color: var(--color-neutral-700);
+}
+
+.upload-dropzone-sample {
+  margin-left: auto;
+  font-size: 12px;
 }
 
 .upload-strip {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  /* 20px/10px: literal export figures, no matching --space-* step (the
-     scale skips straight from 16px to 24px) -- kept literal rather than
-     rounded to one, same convention as ../signin/signin.css's own comments. */
   margin-top: 20px;
   border-top: 2px solid var(--color-divider);
   padding-top: 10px;
@@ -118,9 +126,6 @@
   color: var(--color-neutral-600);
 }
 
-/* Cell padding is asymmetric in the export (padding-right on cell 1, padding
-   left+right on cell 2, padding-left only on cell 3) -- each cell's inner
-   text sits 8px off whichever divider(s) it has, never flush. */
 .upload-strip-cell {
   padding-right: var(--space-2);
   border-right: 1px solid var(--color-divider);
@@ -146,168 +151,191 @@
   font-weight: var(--weight-body-strong);
 }
 
-/* ---- Processing pipeline (AC-2) ---------------------------------------- */
+/* ---- List header + validated hook (docsList) --------------------------- */
 
-.documents-status-column {
-  min-width: 0;
-}
-
-.pipeline-list {
+.documents-list-header {
   display: flex;
-  flex-direction: column;
-  /* 6px: literal export figure (no matching --space-* step between 4px and
-     8px), same "kept literal" convention as .upload-strip above. */
-  gap: 6px;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-6);
+  padding-bottom: var(--space-4);
+  border-bottom: 2px solid var(--color-divider);
+  margin-bottom: var(--space-4);
 }
 
-.pipeline-stage {
+.documents-validated-hook {
   display: flex;
   align-items: center;
-  /* 10px: literal export figure (dot-to-label gap; no matching --space-*
-     step between 8px and 12px). */
-  gap: 10px;
-  font-size: 13px;
-  color: var(--color-neutral-500);
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  border-left: 2px solid var(--color-accent);
+  background: var(--color-accent-100);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
 }
 
-/* Square, not round -- the compiled prototype's own stage-dot span sets no
-   border-radius (ADR-019 "zero corner radius everywhere"; `.radio` is this
-   app's one deliberate circle, and this is not it). */
-.pipeline-stage-dot {
-  width: 8px;
-  height: 8px;
-  flex: none;
-  background: var(--color-neutral-300);
+.documents-validated-hook-ask {
+  border: 1px solid var(--color-divider);
+  background: var(--color-bg);
+  padding: 5px 10px;
+  font-size: 12px;
+  color: inherit;
+  text-decoration: none;
 }
 
-.pipeline-stage--done {
-  color: var(--color-text);
+.documents-validated-hook-ask:hover,
+.documents-validated-hook-ask:focus-visible {
+  text-decoration: underline;
 }
 
-.pipeline-stage--done .pipeline-stage-dot {
-  background: var(--color-text);
+/* ---- Attention / all filter row (AttentionFilter.tsx) ------------------ */
+
+.documents-filter-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-3);
 }
 
-.pipeline-stage--current {
-  color: var(--color-accent-700);
-  font-weight: var(--weight-body-strong);
+/* ---- Attention-empty state ---------------------------------------------- */
+
+.documents-attention-empty {
+  border-top: 2px solid var(--color-divider);
+  padding: 28px 0 var(--space-2);
+  max-width: 520px;
 }
 
-.pipeline-stage--current .pipeline-stage-dot {
-  background: var(--color-accent);
-  animation: contigo-pipeline-pulse 1s ease-in-out infinite;
+.documents-attention-empty h3 {
+  margin: 0 0 var(--space-2);
 }
 
-@keyframes contigo-pipeline-pulse {
-  0%,
-  100% {
-    opacity: 0.35;
-  }
-  50% {
-    opacity: 0.9;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .pipeline-stage--current .pipeline-stage-dot {
-    animation: none;
-  }
-}
-
-/* ---- Result card (AC-3) ------------------------------------------------
- * Not `.card` (components.css / ADR-019 restrict that class to
- * "recommendation/provenance blocks only" -- an upload-outcome summary is
- * neither). The compiled export doesn't box this block either: it is a
- * plain child of the same column as the dropzone above it. This component
- * keeps the box-free treatment its sibling .pipeline-list already has
- * (UploadResultCard.tsx applies only this class, not "card upload-result-card"). */
+/* ---- "Not added" card (UploadResultCard.tsx, R-DOC-04) ------------------ */
 
 .upload-result-card {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-divider);
 }
 
 .upload-result-header {
   display: flex;
   align-items: center;
-  /* 10px gap (literal export figure, same as .pipeline-stage above) + 8px
-     (--space-2) bottom margin, both quoted from the export's result-header
-     row. */
-  gap: 10px;
-  margin-bottom: var(--space-2);
+  gap: var(--space-3);
 }
 
 .upload-result-filename {
   font-weight: var(--weight-body-strong);
-  /* Task E06/F06/US01/T01 (full-bleed-layout): `break-all` breaks at *any*
-     character once a line is full -- the "one glyph per line" symptom this
-     task fixes at its root (an ancestor `max-width: 40rem` crushing this
-     column to a few dozen pixels), but `break-all` would still be a
-     hair-trigger for it in any narrower-than-usual result column. `anywhere`
-     only breaks inside an unbreakable run (a filename has no spaces) once
-     that run truly does not fit, and still counts toward min-content sizing
-     so one long name cannot blow out the column either. */
   overflow-wrap: anywhere;
 }
 
-.upload-result-message {
-  /* 12px (--space-3) bottom margin, quoted from the export's own
-     `margin-bottom:12px` on this paragraph. */
-  margin: 0 0 var(--space-3);
-  font-size: 13px;
+.upload-result-dismiss {
+  margin-left: auto;
+  font-size: 12px;
+  padding: 2px 6px;
 }
 
-.upload-result-actions {
+.upload-result-message {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-neutral-700);
+}
+
+/* ---- Row grid (DocumentStatusTable.tsx) --------------------------------- */
+
+.documents-list-body {
   display: flex;
-  gap: var(--space-2);
+  flex-direction: column;
+}
+
+.document-status-table th:nth-child(1),
+.document-status-table td:nth-child(1) {
+  width: 34%;
+}
+
+.document-status-table th:nth-child(2),
+.document-status-table td:nth-child(2) {
+  width: 24%;
+}
+
+.document-status-table th:nth-child(3),
+.document-status-table td:nth-child(3) {
+  width: 16%;
+}
+
+.document-status-table th:nth-child(4),
+.document-status-table td:nth-child(4) {
+  width: 18%;
+  text-align: right;
+}
+
+.document-status-table th:nth-child(5),
+.document-status-table td:nth-child(5) {
+  width: 8%;
+}
+
+.document-status-table-filename {
+  font-weight: var(--weight-body-strong);
+  overflow-wrap: anywhere;
+}
+
+.document-status-table-link {
+  font-weight: var(--weight-body-strong);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.document-status-table-link:hover,
+.document-status-table-link:focus-visible {
+  text-decoration: underline;
+}
+
+.document-status-table-supplier {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.document-status-table-next-step {
+  text-align: right;
+}
+
+.document-status-table-delete-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* Bare progress bar under the status tag (contigo-v2/markup.html row template: 4px, neutral-200
+   track, accent fill) -- the stage *label* renders as plain text in the "next step" cell instead
+   (DocumentStatusTable.tsx), not inside this component. */
+.document-row-progress {
+  height: 4px;
+  background: var(--color-neutral-200);
+  margin-top: 6px;
+}
+
+.document-row-progress-fill {
+  height: 4px;
+  background: var(--color-accent);
 }
 
 .documents-legend {
   margin-top: var(--space-6);
 }
 
-/* ---- Document table (AC-1/AC-2/AC-3; ADR-020 screen 3's other half) --- */
-
-.documents-table-section {
-  margin-top: var(--space-8);
+.documents-list-skeleton-row {
+  height: 32px;
+  margin-top: var(--space-2);
 }
 
-/* table-layout: fixed (.table, components.css) needs explicit widths or its
-   5 columns default to equal shares -- "Document" (a filename) and
-   "Uploaded" (a date+time) need more room than "Type"/"Supplier"/"Status". */
-.document-status-table th:nth-child(1),
-.document-status-table td:nth-child(1) {
-  width: 32%;
-  /* Same "words, not glyphs" guarantee as .upload-result-filename above --
-     this column holds the same kind of long, space-less filename text. */
-  overflow-wrap: anywhere;
-}
+/* ---- Review, a state of Documents (ReviewState.tsx) --------------------- */
 
-.document-status-table th:nth-child(2),
-.document-status-table td:nth-child(2),
-.document-status-table th:nth-child(3),
-.document-status-table td:nth-child(3),
-.document-status-table th:nth-child(4),
-.document-status-table td:nth-child(4) {
-  width: 16%;
-}
-
-.document-status-table th:nth-child(5),
-.document-status-table td:nth-child(5) {
-  width: 20%;
-}
-
-/* AC-3 row cross-link (a real <Link>, base.css already colours `a` in
-   --color-accent-700) -- strong weight instead of underline-by-default
-   marks it as "this row's primary identifier", underlining only on
-   hover/focus. */
-.document-status-table-link {
-  font-weight: var(--weight-body-strong);
-  text-decoration: none;
-}
-
-.document-status-table-link:hover,
-.document-status-table-link:focus-visible {
-  text-decoration: underline;
+.documents-review-back {
+  padding: 0;
+  font-size: 12px;
+  margin-bottom: var(--space-2);
 }

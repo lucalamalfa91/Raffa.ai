@@ -93,7 +93,7 @@ own rail destination. Pixel/behaviour reference: `inputs/design/prototypes/Conti
 | `/` | Redirects to `/ask` (R-WEB-01) -- there is no standalone Home screen in V2. | E13/F09/US01/T01 |
 | `/ask` | Ask Contigo: chat with a route line, numbered citation chips, abstain block (V1 shape; the V2 reply contract -- markdown, citation cards, redirect/refusal/abstain layouts -- lands in F09/T02/T04). Calls the real `POST /api/chat/query`. See "Ask Contigo" below. | E07/F04/US01/T01 |
 | `/ask/:conversationId` | Same `AskRoute` as `/ask` -- the route exists so a conversation id is a valid URL, but nothing reads it yet (`routes/ask/**` untouched; F09/T04 wires resume from `GET /api/conversations/{id}`). | E13/F09/US01/T01 (route only) |
-| `/documents` | Upload dropzone (drag-and-drop + "Choose from computer" + "Use sample file") + formats/size/sources strip -> 6-stage processing pipeline (current stage pulsing) -> result card by outcome (needs_review / completed / failed); below it, a document table (Document / Type / Supplier / Status / Uploaded, rows linking to Contract 360). Calls the real `POST /api/documents` and `GET /api/documents/{id}`. See "Documents" below. | E06/F05/US01/T01, E06/F05/US02/T01 |
+| `/documents` | V2 rebuild (ADR-024 amendment to ADR-020 screen 3): onboarding empty state ("First your contracts. Then your questions.") -> a server-backed list (`GET /api/documents`, survives a reload) with a **Needs your attention** (default) / **All documents · N** filter, multi-file drop (up to 20 files, <=3 uploads in flight, one row per file from the moment it is picked), real per-file stage text polled every 2s, a **Not added** card for a rejected file (422/415/oversized, session-only, never counted), Admin-only Delete, and Review as a *state* of this same route (`?review=<id>`, reusing `routes/contracts/review/*` as-is). Calls the real `GET /api/documents`, `GET /api/documents/{id}/preview`, `POST /api/documents`, `POST /api/documents/{id}/reprocess`, `DELETE /api/documents/{id}`. See "Documents" below. | E06/F05/US01/T01, E06/F05/US02/T01; V2 rebuild E13/F09/US01/T03 |
 | `/contracts` | Portfolio: filter chips + attention strip + a table sorted by severity then deadline (critical rows tinted + a red bar), plus loading/empty/error/no-match-for-filter states. Calls the real `GET /api/contracts`. See "Portfolio" below. | E07/F01/US01/T01 |
 | `/contracts/:id` | Contract 360: header + 6-cell fact row + 10 tabs (Overview's recommendation card + drivers + "Needs your attention" + "Top risks", then Commercials/Products/Clauses/Obligations/Risks/Documents/Benchmark/Renewal/Activity through one shared Term/Value/Source/Confidence table), plus loading/not-found/error states. Calls the real `GET /api/contracts/{id}`, `GET /api/renewals`, `GET /api/renewals/{contractId}/priority`. See "Contract 360" below. | E07/F02/US01/T01 |
 | `/contracts/:id/review` | Review / correction: 4-column field list (critical marker, extracted value, confidence/decision tag, Accept/Correct) + right-hand evidence pane (correction form + real correction-history trail) + gated "Mark as validated". Calls the real `GET /api/contracts/{id}`, `GET /api/contracts/{id}/corrections`, `PATCH /api/contracts/{id}`. See "Review / correction" below. | E07/F03/US01/T01 |
@@ -128,16 +128,22 @@ in `index.css`; each screen owns its own full-bleed layout instead:
   explicitly declares `max-width: none` so it fills the shell grid's `1fr`
   track (224px rail + fluid main) rather than floating as a narrow column
   inside it.
-- **Documents** (`src/routes/documents/documents.css`) -- the two-column grid
-  was already ~400px/1fr; filenames in the result card and the document
-  table now wrap with `overflow-wrap: anywhere` (word/character-run
-  boundaries) instead of `word-break: break-all`, so a long filename never
-  renders one glyph per line. (Task E11/F04/US01/T01, gap G-DOC: the grid's
-  literal value had drifted to a `minmax(280px, 400px) 1fr` guess -- corrected
-  to the compiled export's own `400px 1fr`, along with the dropzone's dashed
-  border/300px min-height/upload icon, the formats-strip and pipeline
-  spacing, and dropping a `.card` misuse on the upload result summary --
-  ADR-019 reserves `.card` for recommendation/provenance blocks.)
+- **Documents** (`src/routes/documents/documents.css`) -- task E13/F09/US01/T03
+  (V2 rebuild) replaced V1's own ~400px/1fr two-column grid (a dropzone
+  column that stayed beside the table at all times) with the prototype's own
+  stacked single-column layout: a centered onboarding block first, then a
+  full-width list with a slim `.upload-dropzone--list` bar above the table --
+  `screens-v2.md` #3 never shows the two side by side. `.documents-screen`
+  itself carries no `max-width`, the same "fills the track, never a narrow
+  column" rule this section states above. Filenames in the result card and
+  the document table still wrap with `overflow-wrap: anywhere`
+  (word/character-run boundaries) instead of `word-break: break-all`, so a
+  long filename never renders one glyph per line -- originally fixed by task
+  E11/F04/US01/T01 (gap G-DOC) on the V1 grid's own `th:nth-child(1)`/
+  `td:nth-child(1)` column selector, carried into the V2 rebuild on the
+  actual content classes rendered inside that column
+  (`.upload-result-filename`, `.document-status-table-filename`,
+  `.document-status-table-link`).
 
 Only `.startup-error` (`src/main.tsx`'s boot-config-failure alert -- not a
 shipped mockup screen) keeps a narrow, centered column.
@@ -162,8 +168,21 @@ what re-evaluates `App.tsx`'s check with both facts already true.
   real conversations until F09/T04 wires `GET /api/conversations`) and
   Documents (badge `N to review`, accent, when this browser has a tracked
   document in `NeedsReview`, else `N docs`, else no badge --
-  `src/routes/documents/documentStore.ts`'s session-scoped tracked list; there
-  is still no `GET /api/documents` collection endpoint). **Secondary, "From
+  `src/routes/documents/documentStore.ts`'s session-scoped tracked list).
+  **Known gap (task E13/F09/US01/T03, out of that task's own
+  `components/shell/**` do-not-touch scope):** `GET /api/documents` exists
+  now and `routes/documents/` reads it exclusively
+  (`useDocumentsList.ts`), but nothing under `routes/documents/` calls
+  `documentStore.ts#rememberDocument` any more, so this rail badge silently
+  reads as empty (no badge, never `N to review` / `N docs`) for any session
+  that starts after this change -- see `documentStore.ts`'s own header
+  comment for the full provenance. A follow-up `components/shell/` task
+  should replace this rail's `loadTrackedDocuments()` call with a real count
+  sourced from `listDocuments` (e.g. a small `useDocumentCounts` hook
+  `AppShell.tsx` fetches once, the same shape
+  `useValidatedContractCount.ts` already establishes for the secondary rail
+  tier below), then `documentStore.ts` can be deleted outright.
+  **Secondary, "From
   your contracts"**: Portfolio, Renewals (badge = the validated-contract
   count), Quote check (badge is always the constant `optional`) -- the whole
   tier's foreground dims to a muted grey until the first validated contract
@@ -242,93 +261,166 @@ yet), the latter because there is no server-issued role claim to read yet
 such column. All three are flagged in `workspaceStore.ts`'s own doc comments
 rather than silently invented.
 
-### Documents -- upload + status read-back (ADR-020 screen 3, tasks E06/F05/US01/T01 + E06/F05/US02/T01)
+### Documents (ADR-020 screen 3; V1 tasks E06/F05/US01/T01 + E06/F05/US02/T01; V2 rebuild task E13/F09/US01/T03, `contigo-v2/screens-v2.md` #3/#4)
 
-`src/routes/documents/` implements both of screen 3's halves -- ADR-020's own
-note that "screen 3 may be two: upload UI + document-status read-back":
+`src/routes/documents/` implements `/documents` as three states
+(`index.tsx`'s own header comment; mirrors `contigo-v2/app.jsx`'s own
+`docView: 'list' | 'review'` state machine), not V1's single
+upload-then-table screen:
 
-**us-01, upload half** (task E06/F05/US01/T01):
+1. **Onboarding empty** (`OnboardingEmptyState.tsx`) -- this tenant has no
+   tracked document at all, not even an in-flight/rejected one this session
+   (`index.tsx`'s `isEmpty`: fetch state is `"ready"` and `documents` /
+   `localUploads` / `rejected` are all empty). "First your contracts. Then
+   your questions." and the three-step copy (`01 · Upload` / "Drop your
+   contracts", `02 · Process` / "Contigo extracts the facts", `03 · Ask` /
+   "Ask Contigo") are quoted **verbatim from the literal prototype markup**
+   (`contigo-v2/markup.html`), not from `screens-v2.md`'s own shorthand
+   summary of the same block ("02 · Review") -- ADR-024 names the prototype
+   itself, not a summary of it, as the pixel/copy reference.
+2. **List** (`AttentionFilter.tsx` + `DocumentStatusTable.tsx`) -- the
+   default once anything exists; server-backed
+   (`useDocumentsList.ts`, `GET /api/documents`, R-DOC-06 "reloading the
+   browser shows the same list as before"), not the V1 `sessionStorage`
+   table (see "`documentStore.ts` is deprecated..." below).
+3. **Review, a state of Documents** (`ReviewState.tsx`,
+   `?review=<documentId>`) -- rendered in place of the list, never a
+   separate route.
 
-- **AC-1, dropzone + strip** (`UploadDropzone.tsx`) -- drag-and-drop, native
-  "Choose from computer" file picker (`accept=".pdf,.docx,.xlsx"`,
-  product-spec.md §4.1), and "Use sample file". The formats/size/sources
-  strip ("PDF · DOCX · XLSX", "50 MB / file", "Local · SharePoint soon") is
-  quoted verbatim from the compiled prototype
-  (`inputs/design/prototypes/day1-demo.html`); "SharePoint soon" matches
-  product-spec.md's own P1/V1-vs-P2 integration roadmap, not decorative copy.
-  Drag-and-drop is a progressive enhancement over the button, which stays the
-  keyboard-/screen-reader-operable path (ADR-019 accessibility baseline).
-- **AC-2, 6-stage pipeline** (`ProcessingPipeline.tsx` + `uploadPipeline.ts`)
-  -- `POST /api/documents` runs the whole parse -> classify -> extract
-  pipeline **synchronously** before responding
-  (`backend/src/Contigo.Api/Program.cs`, task E02/F06/US01/T01), so there is
-  no server-sent per-stage event. The 6 stage labels are quoted verbatim from
-  the compiled prototype's own `pipeLabels` array and the list is a
-  client-side pacing animation shown *while the one upload request is in
-  flight* -- it holds on the last stage rather than looping if the request
-  outlives it, and the request's actual resolution always wins.
-- **AC-3, result card by outcome** (`UploadResultCard.tsx`) -- tag
-  variant/label reuse `styles/semantics.ts#getStatusTag` (never re-derived);
-  message copy is adapted from the compiled prototype's own `uplMap`, with
-  one deliberate departure: the API's `uploadDocument`/`processingStatus`
-  response carries no field-count/confidence or failure-reason detail (see
-  `openapi/contigo-api.v1.json`), so messages name the uploaded file instead
-  of the prototype's fabricated "41 fields extracted" figures, and the
-  `failed` message suggests checking for password-protection/corruption
-  rather than asserting it as a confirmed cause.
-- **"Use sample file"** (`sampleDocument.ts`) builds a small, syntactically
-  minimal PDF in the browser and uploads it through the exact same
-  `apiClient.uploadDocument()` path a real file would use -- **this repo ships
-  no real sample contract asset** (checked: no `*.pdf` anywhere in the repo).
-  Whatever `processingStatus` the pipeline actually returns for that synthetic
-  file is the honest answer, not a scripted one; a future task that adds a
-  real fixture document can swap this module out without touching any other
-  file in this folder.
-- **One upload at a time**: extra files picked/dropped while another is
-  uploading are queued (`index.tsx`'s own `queue` state) and start
-  automatically the next time "Upload another" is clicked -- screens.md #3
-  shows one pipeline / one result card at a time, never several at once.
-- `tenantId` for the required `X-Tenant-Id` header is **not** threaded down
-  as a prop -- `DocumentsRoute` reads `loadCurrentWorkspace()`
-  (`src/routes/signin/workspaceStore.ts`) directly, exactly what that
-  module's own doc comment names as the reason it keeps the current
-  workspace id available. `apiClient` *is* threaded as a prop
-  (`App.tsx` -> `WorkspaceShellApp` -> `DocumentsRoute`), the same
-  generated-client instance every other screen shares.
+**Upload (dropzone, shared by onboarding and list; `UploadDropzone.tsx`,
+`uploadPipeline.ts`)**:
 
-**us-02, status read-back half** (task E06/F05/US02/T01) -- `DocumentStatusTable.tsx` + `documentTable.ts` + `documentStore.ts`, rendered below the upload UI on the same `/documents` route:
+- Widened accept list -- PDF · DOCX · XLSX · PNG · JPG
+  (`accept=".pdf,.docx,.xlsx,.png,.jpg,.jpeg"`, PNG/JPG via OCR, D7/ADR-017),
+  50 MB / file (`uploadPipeline.ts#MAX_FILE_BYTES`, checked client-side
+  purely to skip a doomed round trip -- the server's own `413` stays
+  authoritative). A visible "Upload contracts" button plus a
+  visually-hidden `aria-label="Choose contract files from your computer"`
+  file input (the keyboard-/screen-reader-operable path, ADR-019) +
+  drag-and-drop as a progressive enhancement, + "Use sample file"
+  (`sampleDocument.ts`, unchanged from V1 -- a small, syntactically minimal,
+  content-free PDF; **this repo still ships no real sample contract
+  asset**).
+- **Multi-file, R-DOC-01 AC-1**: up to 20 files per batch
+  (`uploadPipeline.ts#MAX_FILES_PER_BATCH`; files beyond the 20th are
+  silently dropped from the batch today -- there is no "N files ignored"
+  outcome card for the overflow, a known, untested edge case, not a
+  deliberate UX decision), at most 3 uploads in flight at once
+  (`MAX_CONCURRENT_UPLOADS`, `runUploadBatch`'s own worker-pool loop) -- V1's
+  one-at-a-time queue is gone. A row exists **the moment a file is picked**
+  (`useDocumentsList.ts#uploadFiles` seeds `localUploads` synchronously,
+  before any request even starts), and each file reaches its own terminal
+  outcome independently, without blocking the others.
+- **The 6-stage client-side pacing ticker is gone.** V1's
+  `PIPELINE_STAGE_LABELS`/`getPipelineStageViews` simulated progress while
+  one upload request was in flight; V2 shows the real stage
+  (`documentTable.ts#DOCUMENT_PROCESSING_STAGES`: Uploading · Classifying ·
+  OCR / text · Sections & tables · Extracting facts · Validating schema)
+  read straight off `GET /api/documents`'s own `stage` field, polled every
+  2 s while any row is non-terminal (`useDocumentsList.ts`, R-DOC-09) and
+  stopped once every row is terminal.
+- **"Not added" card, R-DOC-04** (`UploadResultCard.tsx`,
+  `uploadPipeline.ts#getRejectionReasonCopy`) -- a rejected file never
+  becomes a row and is never counted in the list summary; copy is keyed by
+  the admission gate's own `reason`: `not_a_contract` ("this looks like a
+  recipe, not a contract...") or `no_readable_text` ("Contigo could not read
+  any contract text in this file...") for a `422`, the server's own message
+  for a `415` (wrong format) or an oversized file rejected client-side
+  before any request is sent -- all quoted verbatim from
+  `inputs/requirements.md` §6, not the backend's own shorter `hint`
+  fragment. A `Quote`-typed outcome offers "Open Quote check" -> `/quotes`
+  (`documentTable.ts#getRowAction`, OQ-askv2-008's own assumption: no
+  automatic Quote record, just a hand-off).
+- `tenantId` is still read directly from `loadCurrentWorkspace()`
+  (`src/routes/signin/workspaceStore.ts`), not threaded as a prop -- the
+  same posture V1 already took; `apiClient` is still threaded as a prop
+  (`App.tsx` -> `WorkspaceShellApp` -> `DocumentsRoute`).
 
-- **AC-1, document table** -- columns Document / Type / Supplier / Status /
-  Uploaded, quoted verbatim from screens.md #3. There is no
-  `GET /api/documents` collection endpoint on the backend
-  (`backend/src/Contigo.Api/Program.cs` maps only `POST /api/documents` and
-  `GET /api/documents/{id}`), so the table is a client-side,
-  `sessionStorage`-scoped record (`documentStore.ts`) of documents *this
-  browser* has uploaded this session -- the same kind of interim
-  `workspaceStore.ts` already establishes for the workspace list, never
-  fabricated data. Every terminal upload (`index.tsx`'s `startUpload`) adds a
-  row, then "reads back" its `documentType` (absent from the `POST` response)
-  via `GET /api/documents/{id}` -- the one backend operation whose own OpenAPI
-  description is "Read back one document's metadata and processing status",
-  this task's own name. A cell whose read-back has not resolved yet shows
-  "Classifying…" (first-class loading state, not a blank cell); a mount-time
-  effect retries any still-unresolved row once per page load.
-  **Supplier is always "Not yet available"**: `Document`
-  (`backend/.../Contigo.Documents.Contracts/Domain/Document.cs`) has no
-  supplier column at all -- `Contract.SupplierId` exists but is an id-only
-  cross-module reference (ADR-002 module map), and even the Portfolio list
-  (`GET /api/contracts`) returns that raw id, never a resolved name. Rendered
-  honestly rather than invented; revisit once a supplier-name-resolving
-  endpoint exists.
-- **AC-2, status tags** -- reuses `styles/semantics.ts#getStatusTag` via the
-  same `uploadPipeline.ts#getUploadOutcome` mapping the result card already
-  uses (`documentTable.ts#getDocumentStatusTag`), never re-derived.
-- **AC-3, row cross-link** -- a real `<Link>` (react-router-dom, the same
-  primitive `RailNav.tsx` already uses) to `/contracts/:contractId` when a row
-  has one. `contractId` stays `null` when processing failed before
-  classification could link a contract; that row renders plain text plus a
-  visible "Not yet linked to a contract" reason instead of a dead link
-  (ADR-019 accessibility baseline: "a visible reason, not a hidden control").
+**List (`useDocumentsList.ts`, `AttentionFilter.tsx`,
+`DocumentStatusTable.tsx`, `documentTable.ts`)**:
+
+- **Fetch-once, filter client-side -- the same architecture `getPortfolio`
+  established for Portfolio**: `GET /api/documents` fetches the tenant's
+  whole list unfiltered (first 100 rows, `LIST_PAGE_SIZE`), and the
+  **Needs your attention** (default, R-DOC-06 -- processing / needs_review /
+  failed, i.e. everything except `Completed`) / **All documents · N** toggle
+  buckets it client-side (`documentTable.ts#filterDocumentsByAttention`) --
+  `status` is a real `GET /api/documents` query parameter but is **not**
+  how this toggle works (attention is a union of three statuses, not one),
+  so the web client never sends it. An empty attention bucket renders
+  "Nothing needs you right now." (`.documents-attention-empty`), not a blank
+  table.
+- **Rows**: Document (filename, page count, uploaded-at; a real `<Link>` to
+  Contract 360 once `completed`) · Supplier (`supplierName`, resolved
+  server-side when a resolver is registered, else "—" -- no longer the V1
+  "always Not yet available") · Type · Status (tag + live stage while
+  processing) · action -- **Review N fields** (`?review=<id>`,
+  `weakFactCount`) for `needs_review`, **Ask about it**
+  (`/ask?scope=<contractId>`, a new chat pre-seeded with "When does
+  `{supplier}` expire?") for `completed`, **Retry upload**
+  (`POST /api/documents/{id}/reprocess`) for `failed`. **Retry is visible to
+  every role** -- only the server enforces Admin-only (a `403` for
+  Procurement surfaces inline via `useDocumentsList.ts`'s own
+  `retryError`); **Delete is the one action hidden client-side for
+  Procurement** (`DocumentStatusTable.tsx`'s `isAdmin` prop, R-WEB-07), with
+  an inline "Confirm delete" / "Cancel" step before the real
+  `DELETE /api/documents/{id}` call fires.
+- **A local (in-flight) upload and a server row are mutually exclusive
+  states of the same file, never both**: the moment `uploadDocument`
+  resolves into a real document, `useDocumentsList.ts` drops the
+  `localUploads` entry and re-fetches the server list, which is what
+  actually brings the new row in -- R-DOC-01 AC-1's "row from the moment it
+  is picked" therefore spans two different data sources across the upload's
+  lifetime, seamlessly from the user's point of view.
+
+**Review, a state of Documents (`ReviewState.tsx`, `?review=<documentId>`,
+R-WEB-05)**:
+
+- Reuses `../contracts/review/{ReviewHeader,ReviewFieldList,EvidencePane}.tsx`
+  and every pure function in `../contracts/review/reviewViewModel.ts`
+  **unmodified** (this task's own "reuse as-is" file-scope boundary) -- this
+  file is a new orchestration wrapper around those building blocks, not a
+  copy of them, because the routed `../contracts/review/index.tsx`'s own
+  `ReviewRoute` is bound to the URL param `:contractId` and hard-codes
+  `navigate('/contracts/:id')` on validation, neither of which fits a
+  document-id query param or "return to Documents with the validated hook."
+  Fetch order mirrors that same file's own logic (`getContract360` then
+  `getCorrectionHistory`) rather than importing it.
+- **No backend "finalize" endpoint exists, by design.** "Mark as validated"
+  is a purely client-side gate
+  (`computeReviewProgress`/`isValidationBlocked` -- every blocking field
+  resolved), with no write call of its own; a reload before that click
+  re-asks any field that was only session-`Accept`ed, never `Correct`ed --
+  the same, already-shipped consequence the routed Review screen's own
+  header comment names.
+- On validation, `index.tsx` returns to the list and shows the "*X* is now
+  askable." hook (`justValidated`, a single slot, superseded by the next
+  upload batch or another validation) with an "Ask: when does it expire?"
+  link into a new, scoped Ask chat (`/ask?scope=<contractId>`).
+
+**Provenance -- documented ahead of its own backend counterpart.** This
+task (`target_repo: contigo-web`) added `GET /api/documents`,
+`GET /api/documents/{id}/preview`, `POST /api/documents/{id}/reprocess` and
+`DELETE /api/documents/{id}` to `openapi/contigo-api.v1.json`, plus the
+widened `documentType` / `detectedType` enum (the original six members plus
+`Quote` / `Invoice` / `PriceList` / `Nda` / `Dpa`) and the `413` / `415` /
+`422` admission-gate responses on `POST /api/documents` -- all authored from
+`inputs/requirements.md` §6 and the sibling backend tasks' own spec text
+(epic-13/feature-04, `task-01-documents-admission.md` /
+`task-02-documents-v2-api.md`), **not read off a running handler**: none of
+those four operations, the enum widening, or the admission gate exist in
+`backend/` in this worktree yet. See each operation's own OpenAPI
+`description` for the exact provenance note. `npm run generate:api`
+reproduces `src/api/generated/schema.ts` from this contract today regardless
+of backend state (AC-6) -- once the real backend lands, only its own
+response shapes need reconciling against what is already documented here,
+never the other way around.
+
+**`documentStore.ts` is deprecated for this route, kept only for
+`RailNav.tsx`'s own "N to review"/"N docs" badge**, which this task's own
+`components/shell/**` do-not-touch boundary could not rewire -- see "App
+shell, navigation, and the role guard" above for the full gap and its own
+named follow-up.
 
 ### Portfolio (ADR-020 screen 4, task E07/F01/US01/T01, us-01-portfolio-list-filters)
 
@@ -939,6 +1031,20 @@ Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
   (`annualSpendAnalyzed`/`savingsIdentified`/`savingsRealized`/`savingsInProgress`) -- no generator
   change was needed this time.
 
+- **Task E13/F09/US01/T03 (web-documents-v2, ADR-024 V2 rebuild)** extended `openapi/contigo-api.v1.json`
+  with `GET /api/documents` (`listDocuments`), `GET /api/documents/{id}/preview`
+  (`getDocumentPreview`), `POST /api/documents/{id}/reprocess` (`reprocessDocument`) and
+  `DELETE /api/documents/{id}` (`deleteDocument`) -- the sixth web epic to extend this document (see
+  "API client" provenance paragraphs above), and the first to document endpoints **ahead of** their
+  own backend counterpart (epic-13/feature-04) landing in this worktree; see "Documents" above for
+  the full provenance note and the widened `documentType` enum / `413`/`415`/`422` admission-gate
+  responses this task also added to `POST /api/documents`. `getDocumentPreviewUrl` is this client's
+  first non-JSON response: `image/png` on `200`, turned into a browser object URL
+  (`URL.createObjectURL`) the caller renders and must `URL.revokeObjectURL` itself -- see that
+  method's own doc comment for why a plain `<img src>` cannot carry the required `X-Tenant-Id`
+  header. `deleteDocument`'s only success shape is `204 No Content` (no body to parse at all,
+  unlike `getDocument`'s already-established `404`-no-body special case).
+
 ## Directory layout
 
 ```
@@ -956,7 +1062,7 @@ web/
   src/
     api/
       generated/schema.ts     # AUTO-GENERATED; do not edit by hand
-      client.ts                # createApiClient(baseUrl) -> { getHealth(), createWorkspace({ name }), uploadDocument(tenantId, file), getDocument(tenantId, id), getPortfolio(tenantId, query?), getContract360(tenantId, id), getRenewals(tenantId), getRenewalPriority(tenantId, contractId), getCorrectionHistory(tenantId, id), correctContract(tenantId, id, request), postRenewalAction(tenantId, contractId, request), askContigo(tenantId, request), uploadQuote(tenantId, file, fields?), getQuoteAssessment(tenantId, id), recalculateQuoteAssessment(tenantId, id, mappings?), captureNegotiationOutcome(tenantId, request), getSavingsKpis(tenantId), getSavingsOpportunities(tenantId) }
+      client.ts                # createApiClient(baseUrl) -> { getHealth(), createWorkspace({ name }), uploadDocument(tenantId, file), getDocument(tenantId, id), listDocuments(tenantId, query?), getDocumentPreviewUrl(tenantId, id), reprocessDocument(tenantId, id), deleteDocument(tenantId, id), getPortfolio(tenantId, query?), getContract360(tenantId, id), getRenewals(tenantId), getRenewalPriority(tenantId, contractId), getCorrectionHistory(tenantId, id), correctContract(tenantId, id, request), postRenewalAction(tenantId, contractId, request), askContigo(tenantId, request), uploadQuote(tenantId, file, fields?), getQuoteAssessment(tenantId, id), recalculateQuoteAssessment(tenantId, id, mappings?), captureNegotiationOutcome(tenantId, request), getSavingsKpis(tenantId), getSavingsOpportunities(tenantId) }
     config/appConfig.ts       # fetch + validate runtime config
     auth/msalConfig.ts        # AppConfig -> MSAL Configuration (no secret, ever)
     styles/                   # design system (tokens + component catalogue); see below
@@ -967,17 +1073,21 @@ web/
         WorkspacePickerScreen.tsx # list (workspaceStore cache) + create via POST /api/workspaces + "Continue" into the shell -- renders SignInStatementPanel + .signin-action, the same full-bleed canvas as SignInScreen (task E06/F06/US01/T01), not a standalone card
         workspaceStore.ts     # per-account localStorage cache + sessionStorage "current workspace"; documents the missing list/membership backend gap
         signin.css            # this route's styles -- see "Layout" above
-      documents/            # tasks E06/F05/US01/T01 + E06/F05/US02/T01 -- ADR-020 screen 3, both halves (see "Documents" above)
-        index.tsx             # DocumentsRoute -- upload state machine (wires apiClient.uploadDocument) + trackedDocuments table state (wires apiClient.getDocument)
-        UploadDropzone.tsx    # AC-1 (us-01): drag-and-drop + file picker + formats/size/sources strip
-        ProcessingPipeline.tsx # AC-2 (us-01): 6-stage list, current stage pulsing
-        UploadResultCard.tsx  # AC-3 (us-01): result card by outcome (needs_review / completed / failed)
-        uploadPipeline.ts     # pure helpers: stage labels/view-model, outcome mapping, result-card copy
+      documents/            # V1 tasks E06/F05/US01/T01 + E06/F05/US02/T01; V2 rebuild task E13/F09/US01/T03 -- ADR-020 screen 3 (see "Documents" above)
+        index.tsx             # DocumentsRoute -- onboarding-empty / list / review-as-state switch; wires useDocumentsList + apiClient.deleteDocument
+        useDocumentsList.ts   # GET /api/documents fetch + 2s poll while non-terminal, attention/all filter state, upload/retry/delete orchestration
+        OnboardingEmptyState.tsx # docsEmpty: "First your contracts. Then your questions." + the 3-step strip
+        AttentionFilter.tsx   # "Needs your attention · N" / "All documents · N" segmented toggle
+        UploadDropzone.tsx    # shared onboarding/list dropzone: drag-and-drop + file picker (multi-file, widened accept) + "Use sample file"
+        ProcessingPipeline.tsx # inline per-row progress bar (real stage/percent from the API, mounted once per processing row -- no more a standalone 6-stage ticker)
+        UploadResultCard.tsx  # per-file outcome card: completed / needs_review / failed / "Not added" (422/415/oversized)
+        uploadPipeline.ts     # pure helpers: multi-file batch runner (<=3 concurrent), rejection-reason copy, size/count limits
         sampleDocument.ts     # synthetic sample File for "Use sample file" -- no real fixture asset in this repo
-        DocumentStatusTable.tsx # AC-1/AC-2/AC-3 (us-02): the document table, rows linking to Contract 360
-        documentTable.ts      # pure helpers: type-label mapping, status->tag reuse, "Uploaded" date formatting
-        documentStore.ts      # sessionStorage-scoped TrackedDocument list -- no GET /api/documents collection endpoint exists yet
-        documents.css         # this route's styles
+        ReviewState.tsx       # review as a state of Documents (?review=<id>); wraps ../contracts/review/* unmodified
+        DocumentStatusTable.tsx # the row grid: Document/Supplier·Type/Status/Next step/Admin-only Delete (with confirm/cancel)
+        documentTable.ts      # pure helpers: type-label mapping, status/action derivation, attention-filter bucketing, kb summary
+        documentStore.ts      # DEPRECATED for this route (V2 reads GET /api/documents instead) -- kept only because RailNav.tsx's badge still reads it; see "Documents" above
+        documents.css         # this route's styles (V2: stacked single-column layout, no more the V1 two-column grid)
       contracts/            # task E07/F01/US01/T01 -- ADR-020 screen 4 (see "Portfolio" above)
         index.tsx             # PortfolioRoute -- fetch-once-filter-client-side state machine (AC-4 states)
         AttentionStrip.tsx    # AC-2: the four-cell strip, click = filter

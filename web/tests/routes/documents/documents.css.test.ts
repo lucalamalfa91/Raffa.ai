@@ -2,16 +2,10 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-// Task E11/F04/US01/T01 (documents-mockup): vite.config.ts sets `test.css:
-// false`, so component tests under jsdom never apply the real cascade --
-// there is no computed style to assert against at render time (see
-// web/tests/styles/layout.test.ts's own header comment for the same
-// reasoning). This suite proves the grid/dropzone/strip/pipeline/result-card
-// fixes for gap G-DOC (reports/audit/visual-fidelity-gaps.md) the only way
-// they are checkable in this harness: the CSS source itself. It lives next
-// to this task's own screen files (not web/tests/styles/layout.test.ts,
-// which epic-11's own F08 "mockup-lock regression tests" feature owns) --
-// same convention tests/routes/signin/signin.css.test.ts already set.
+// vite.config.ts sets `test.css: false`, so component tests under jsdom never apply the real
+// cascade -- there is no computed style to assert against at render time (see
+// web/tests/styles/layout.test.ts's own header comment). This suite proves the V2 CSS source
+// itself, the same convention V1's own documents.css.test.ts / signin.css.test.ts already set.
 function readSource(relativePath: string): string {
   const raw = readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), "utf-8");
   return raw.replace(/\/\*[\s\S]*?\*\//g, "");
@@ -26,56 +20,40 @@ function ruleBodyFor(css: string, selector: string): string {
   return match[1];
 }
 
-describe("documents.css (E11/F04/US01/T01 -- 1:1 grid/dropzone/pipeline/result-card vs day1-demo.html)", () => {
+describe("documents.css (task E13/F09/US01/T03, web-documents-v2)", () => {
   const css = readSource("../../../src/routes/documents/documents.css");
 
-  it("AC-1: two columns, exactly 400px dropzone + 1fr status (gap G-DOC)", () => {
-    const body = ruleBodyFor(css, ".documents-columns");
-    expect(body).toMatch(/grid-template-columns:\s*400px\s+1fr/);
+  it("onboarding headline uses the heading font/weight at the export's clamp size", () => {
+    const body = ruleBodyFor(css, ".documents-onboarding-headline");
+    expect(body).toMatch(/font-family:\s*var\(--font-heading\)/);
+    expect(body).toMatch(/font-size:\s*clamp\(30px,\s*3\.4vw,\s*46px\)/);
   });
 
-  it("AC-1: filenames wrap at word/character-run boundaries, not one glyph per line", () => {
+  it("filenames wrap at word/character-run boundaries, not one glyph per line", () => {
     expect(ruleBodyFor(css, ".upload-result-filename")).toMatch(/overflow-wrap:\s*anywhere/);
-    const documentColumnRule = css.match(
-      /\.document-status-table th:nth-child\(1\),\s*\.document-status-table td:nth-child\(1\)\s*\{([^}]*)\}/,
-    );
-    expect(documentColumnRule).not.toBeNull();
-    expect(documentColumnRule![1]).toMatch(/overflow-wrap:\s*anywhere/);
+    expect(ruleBodyFor(css, ".document-status-table-filename")).toMatch(/overflow-wrap:\s*anywhere/);
+    expect(ruleBodyFor(css, ".document-status-table-link")).toMatch(/overflow-wrap:\s*anywhere/);
   });
 
-  it("dropzone is dashed, not solid, and holds the export's 300px min-height", () => {
-    const body = ruleBodyFor(css, ".upload-dropzone");
-    expect(body).toMatch(/border:\s*2px dashed var\(--color-divider\)/);
-    expect(body).toMatch(/min-height:\s*300px/);
+  it("dropzone is dashed, and the onboarding/list variants each carry their own density", () => {
+    expect(ruleBodyFor(css, ".upload-dropzone")).toMatch(/border:\s*2px dashed var\(--color-divider\)/);
+    expect(ruleBodyFor(css, ".upload-dropzone--onboarding")).toMatch(/padding:\s*22px 24px/);
+    expect(ruleBodyFor(css, ".upload-dropzone--list")).toMatch(/padding:\s*14px 18px/);
   });
 
-  it("dropzone title matches the export's 22px/1.1 heading, not a smaller default", () => {
-    const body = ruleBodyFor(css, ".upload-dropzone-title");
-    expect(body).toMatch(/font-size:\s*22px/);
-    expect(body).toMatch(/line-height:\s*1\.1/);
-  });
-
-  it("dropzone title keeps its auto top-margin, so the 300px min-height box pins icon top / title+subtitle+buttons bottom instead of leaving dead space below the buttons", () => {
-    const body = ruleBodyFor(css, ".upload-dropzone-title");
-    expect(body).toMatch(/margin:\s*auto 0 0/);
-  });
-
-  it("formats/size/sources strip is offset 20px from the buttons row above it", () => {
-    const body = ruleBodyFor(css, ".upload-strip");
-    expect(body).toMatch(/margin-top:\s*20px/);
-    expect(body).toMatch(/padding-top:\s*10px/);
-  });
-
-  it("pipeline rows sit 6px apart, each dot 10px from its label", () => {
-    expect(ruleBodyFor(css, ".pipeline-list")).toMatch(/gap:\s*6px/);
-    expect(ruleBodyFor(css, ".pipeline-stage")).toMatch(/gap:\s*10px/);
-  });
-
-  it("does not reintroduce a boxed .card on the upload result summary (ADR-019: recommendation/provenance only)", () => {
-    // Structural guard, not just the TSX check (UploadResultCard.test.tsx):
-    // proves the composite class itself carries no card-like border/background
-    // of its own either, so a future edit can't half-restore the box.
+  it("does not reintroduce a boxed .card on the 'Not added' card (ADR-019: recommendation/provenance only)", () => {
     const body = ruleBodyFor(css, ".upload-result-card");
-    expect(body).not.toMatch(/border|background/);
+    expect(body).not.toMatch(/\bbackground\b|\bbox-shadow\b/);
+  });
+
+  it("the row progress bar is a bare 4px fill, no label baked into the bar itself", () => {
+    expect(ruleBodyFor(css, ".document-row-progress")).toMatch(/height:\s*4px/);
+    expect(ruleBodyFor(css, ".document-row-progress-fill")).toMatch(/background:\s*var\(--color-accent\)/);
+  });
+
+  it("the row grid's Next-step column is right-aligned, matching the export's own flex-end action cell", () => {
+    const rule = css.match(/\.document-status-table th:nth-child\(4\),\s*\.document-status-table td:nth-child\(4\)\s*\{([^}]*)\}/);
+    expect(rule).not.toBeNull();
+    expect(rule![1]).toMatch(/text-align:\s*right/);
   });
 });

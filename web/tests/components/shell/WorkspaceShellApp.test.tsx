@@ -25,6 +25,40 @@ function mockApiClient(): ApiClient {
     inviteWorkspaceMember: vi.fn(),
     uploadDocument: vi.fn(),
     getDocument: vi.fn(),
+    // Task E13/F09/US01/T03 (web-documents-v2): DocumentsRoute (like PortfolioRoute below) calls
+    // listDocuments unconditionally on mount (`useDocumentsList.ts`), so an unconfigured vi.fn()
+    // would throw the moment its effect calls .then() on it -- same reasoning as getPortfolio's own
+    // resolved default below. One resolved row (not an empty page) is enough for this suite's own
+    // routing/guard assertions to see the real *list* screen (heading + dropzone), not the onboarding
+    // empty state -- see tests/routes/documents/*.test.tsx for that screen's own fetch-outcome
+    // coverage, including the onboarding-empty case this suite deliberately does not exercise.
+    listDocuments: vi.fn().mockResolvedValue({
+      ok: true,
+      statusCode: 200,
+      page: {
+        items: [
+          {
+            id: "doc-1",
+            contractId: "contract-1",
+            supplierName: "Salesforce",
+            fileName: "Salesforce_MSA.pdf",
+            documentType: "Msa",
+            processingStatus: "Completed",
+            stage: null,
+            pageCount: 12,
+            createdAt: "2026-09-06T08:00:00Z",
+            weakFactCount: 0,
+          },
+        ],
+        page: 1,
+        pageSize: 100,
+        totalCount: 1,
+      },
+      error: null,
+    }),
+    getDocumentPreviewUrl: vi.fn(),
+    reprocessDocument: vi.fn(),
+    deleteDocument: vi.fn(),
     getPortfolio: vi
       .fn()
       .mockResolvedValue({ ok: true, statusCode: 200, portfolio: { items: [], page: 1, pageSize: 100, totalCount: 0 }, error: null }),
@@ -174,7 +208,7 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
     expect(await screen.findByRole("heading", { name: "Documents" })).toBeInTheDocument();
   });
 
-  it("renders the real Documents screen instead of a scaffold placeholder (task E06/F05/US01/T01)", () => {
+  it("renders the real Documents screen instead of a scaffold placeholder (task E06/F05/US01/T01)", async () => {
     window.sessionStorage.setItem(
       "contigo.signin.currentWorkspace",
       JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
@@ -182,8 +216,19 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
 
     renderShell("admin", "/documents");
 
-    expect(screen.getByRole("heading", { name: "Documents" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /choose from computer/i })).toBeInTheDocument();
+    // Task E13/F09/US01/T03: DocumentsRoute's loading state (useDocumentsList.ts fetching
+    // GET /api/documents) renders only "Loading documents…" + skeleton rows, no "Documents" heading
+    // at all -- unlike Portfolio/Renewals/Savings below, whose own loading states keep their heading
+    // on screen throughout. findByRole (not getByRole) waits for that fetch to resolve and the real
+    // list screen to render, the same convention the "/review redirects…" and "redirects an unknown
+    // path…" tests above already use for this identical reason.
+    expect(await screen.findByRole("heading", { name: "Documents" })).toBeInTheDocument();
+    // V2's UploadDropzone.tsx (task E13/F09/US01/T03) renders a visible "Upload contracts" button
+    // (V1's own "Choose from computer" button no longer exists) plus a visually-hidden file input
+    // aria-labelled "Choose contract files from your computer" -- see
+    // tests/routes/documents/DocumentsRoute.test.tsx's own selectFiles() helper for where this suite
+    // drives that hidden input directly.
+    expect(screen.getByRole("button", { name: /upload contracts/i })).toBeInTheDocument();
     expect(screen.queryByText(/ships in epic-06\/feature-05-document-upload-ui/i)).not.toBeInTheDocument();
   });
 

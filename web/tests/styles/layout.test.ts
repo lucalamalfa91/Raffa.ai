@@ -72,26 +72,30 @@ describe("signin.css (E06/F06/US01/T01 -- full-viewport two-column sign-in canva
   });
 });
 
-describe("documents.css (E06/F06/US01/T01 -- ~400px/1fr two-column mockup layout)", () => {
+describe("documents.css (E06/F06/US01/T01 regression guard; V2 layout reconciled by E13/F09/US01/T03)", () => {
   const css = readSource("../../src/routes/documents/documents.css");
 
-  // Value corrected by task E11/F04/US01/T01 (gap G-DOC) from a
-  // `minmax(280px, 400px) 1fr` guess to the compiled export's own literal
-  // `400px 1fr` -- this test's job is still "not crushed to a sliver by an
-  // ancestor width cap" (the E06/F06 regression this file guards), which
-  // holds either way; see tests/routes/documents/documents.css.test.ts for
-  // this task's fuller export-fidelity coverage.
-  it("keeps the dropzone column at 400px and the result/status column fluid", () => {
-    const body = ruleBodyFor(css, ".documents-columns");
-    expect(body).toMatch(/grid-template-columns:\s*400px\s+1fr/);
+  // Task E13/F09/US01/T03 rebuilt /documents from V1's ~400px/1fr two-column grid (a persistent
+  // dropzone column beside the table) to the V2 prototype's own stacked single-column layout
+  // (`.documents-screen`: a centered onboarding block, then a full-width list with a slim
+  // `.upload-dropzone--list` bar above the table -- screens-v2.md #3 describes one column
+  // throughout, never a side-by-side pair) -- `.documents-columns` no longer exists anywhere in this
+  // file. This suite's job is unchanged from the original E06/F06/US01/T01 fix this describe block
+  // guards ("not crushed to a sliver by an ancestor width cap"), just re-pointed at the real V2
+  // top-level container -- the same `max-width: none` shape the shell.css block above already checks
+  // on `.shell-main`.
+  it("does not cap the top-level `.documents-screen` container (fills the shell's content track, not a narrow column)", () => {
+    const body = ruleBodyFor(css, ".documents-screen");
+    expect(body).not.toMatch(/max-width/);
   });
 
   it("wraps long filenames at word/character-run boundaries, not one glyph per line", () => {
+    // V2 moved this property off the raw `.document-status-table th/td:nth-child(1)` column-width
+    // selector and onto the semantic content classes actually rendered inside that cell --
+    // `DocumentStatusTable.tsx` renders every column-1 filename through one of these two, never bare
+    // text directly on the `td` -- see tests/routes/documents/documents.css.test.ts for this task's
+    // fuller export-fidelity coverage of the same selectors (including `.document-status-table-link`).
     expect(ruleBodyFor(css, ".upload-result-filename")).toMatch(/overflow-wrap:\s*anywhere/);
-    const documentColumnRule = css.match(
-      /\.document-status-table th:nth-child\(1\),\s*\.document-status-table td:nth-child\(1\)\s*\{([^}]*)\}/,
-    );
-    expect(documentColumnRule).not.toBeNull();
-    expect(documentColumnRule![1]).toMatch(/overflow-wrap:\s*anywhere/);
+    expect(ruleBodyFor(css, ".document-status-table-filename")).toMatch(/overflow-wrap:\s*anywhere/);
   });
 });
