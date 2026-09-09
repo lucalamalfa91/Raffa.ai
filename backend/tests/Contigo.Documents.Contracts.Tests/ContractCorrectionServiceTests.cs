@@ -3,6 +3,7 @@ using Contigo.Documents.Contracts.Application;
 using Contigo.Documents.Contracts.Domain;
 using Contigo.Documents.Contracts.Infrastructure;
 using Contigo.SharedKernel;
+using Contigo.SharedKernel.Suppliers;
 using Contigo.SharedKernel.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
@@ -424,5 +425,229 @@ public sealed class ContractCorrectionServiceTests : IAsyncLifetime
         Assert.True(result.IsFailure);
         Assert.Equal(ContractCorrectionService.ContractNotFoundError, result.Error);
         Assert.Empty(auditWriter.Written);
+    }
+
+    // ----- supplier corrections (task E13/F03/US01/T02, requirements R-SUP-03) -----
+
+    /// <summary>In-memory stand-in for <c>Contigo.Suppliers.Products.Application.SupplierResolver</c>
+    /// with the same observable contract: match-or-create, one id per supplier however the name is
+    /// spelled (parent story us-01-supplier-identity AC-2 — see <see cref="SupplierTestNames"/>).
+    /// This module may not reference the real
+    /// implementation (ADR-002); the SharedKernel port is the whole contract. Doubles as the
+    /// <see cref="ISupplierNameLookup"/> for the same set, so a previous link renders as the same
+    /// name the resolver minted it under.</summary>
+    private sealed class FakeSupplierDirectory : ISupplierResolver, ISupplierNameLookup
+    {
+        private readonly Dictionary<string, SupplierRef> _bySimplifiedName = new(StringComparer.Ordinal);
+        private readonly Dictionary<EntityId, string> _namesById = [];
+
+        public List<string> RawNamesSeen { get; } = [];
+
+        public Task<Result<SupplierRef>> ResolveAsync(
+            TenantId tenantId, string rawName, CancellationToken cancellationToken)
+        {
+            RawNamesSeen.Add(rawName);
+
+            var key = SupplierTestNames.Simplify(rawName);
+            if (!_bySimplifiedName.TryGetValue(key, out var existing))
+            {
+                existing = new SupplierRef(EntityId.New(), rawName.Trim());
+                _bySimplifiedName[key] = existing;
+                _namesById[existing.Id] = existing.Name;
+            }
+
+            return Task.FromResult(Result<SupplierRef>.Success(existing));
+        }
+
+        public Task<IReadOnlyDictionary<EntityId, string>> GetNamesAsync(
+            TenantId tenantId, IReadOnlyCollection<EntityId> supplierIds, CancellationToken cancellationToken)
+        {
+            IReadOnlyDictionary<EntityId, string> names = supplierIds
+                .Where(_namesById.ContainsKey)
+                .ToDictionary(id => id, id => _namesById[id]);
+
+            return Task.FromResult(names);
+        }
+    }
+
+    [Fact]
+    public async Task Correcting_the_supplier_resolves_the_typed_name_and_relinks_the_contract()
+    {
+        var tenantId = TenantId.New();
+        var now = new DateTimeOffset(2026, 9, 9, 12, 0, 0, TimeSpan.Zero);
+        var tenantContext = new TenantContext();
+
+        EntityId contractId;
+        using (tenantContext.BeginScope(tenantId))
+        {
+            await using var seedDb = CreateAppContext(tenantContext);
+            contractId = await SeedContractAsync(seedDb, tenantId, now.AddDays(-1));
+        }
+
+        var suppliers = new FakeSupplierDirectory();
+
+        await using var db = CreateAppContext(tenantContext);
+        var auditWriter = new RecordingAuditWriter();
+        var service = new ContractCorrectionService(
+            db, tenantContext, new FixedClock(now), auditWriter, suppliers, suppliers);
+
+        var result = await service.CorrectAsync(
+            tenantId,
+            contractId,
+            new Dictionary<string, string?> { ["supplier"] = "Salesforce, Inc." },
+            "Named by the reviewer from the signature block.");
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(["supplier"], result.Value.CorrectedFields);
+
+        // The reviewer's raw spelling reaches the resolver untouched — matching/normalizing it is
+        // the Suppliers module's job (AC-2).
+        Assert.Equal("Salesforce, Inc.", Assert.Single(suppliers.RawNamesSeen));
+
+        using (tenantContext.BeginScope(tenantId))
+        {
+            await using var readDb = CreateAppContext(tenantContext);
+
+            var contract = await readDb.Contracts.SingleAsync(c => c.Id == contractId);
+            Assert.NotNull(contract.SupplierId);
+
+            // ADR-024/R-SUP-04: the history row records names, not guids — "no supplier before"
+            // reads as null, never as an empty-looking id.
+            var history = await readDb.CorrectionHistories.SingleAsync(h => h.TargetEntityId == contractId);
+            Assert.Equal("supplier", history.FieldName);
+            Assert.Null(history.PreviousValue);
+            Assert.Equal("Salesforce, Inc.", history.NewValue);
+
+            // The version snapshot already carried SupplierId before this task; the correction is
+            // what finally makes it move (Appendix C rule 5 — the pre-correction state is kept).
+            var versions = await readDb.ContractVersions
+                .Where(v => v.ContractId == contractId)
+                .OrderBy(v => v.VersionNumber)
+                .ToListAsync();
+            Assert.Null(SnapshotField(versions[0].SnapshotJson, "SupplierId"));
+            Assert.NotNull(SnapshotField(versions[1].SnapshotJson, "SupplierId"));
+        }
+    }
+
+    /// <summary>Re-typing a supplier the contract is already linked to resolves to the same row, so
+    /// nothing changed — the same "a request that changes nothing has zero side effects" rule every
+    /// scalar field already follows, applied to a link rather than a string. Also proves the
+    /// previous supplier's <em>name</em> is what a real change would have recorded.</summary>
+    [Fact]
+    public async Task Re_typing_the_same_supplier_differently_is_a_no_op_but_a_different_one_records_the_previous_name()
+    {
+        var tenantId = TenantId.New();
+        var now = new DateTimeOffset(2026, 9, 9, 12, 0, 0, TimeSpan.Zero);
+        var tenantContext = new TenantContext();
+
+        EntityId contractId;
+        using (tenantContext.BeginScope(tenantId))
+        {
+            await using var seedDb = CreateAppContext(tenantContext);
+            contractId = await SeedContractAsync(seedDb, tenantId, now.AddDays(-1));
+        }
+
+        var suppliers = new FakeSupplierDirectory();
+
+        await using var db = CreateAppContext(tenantContext);
+        var service = new ContractCorrectionService(
+            db, tenantContext, new FixedClock(now), new RecordingAuditWriter(), suppliers, suppliers);
+
+        var first = await service.CorrectAsync(
+            tenantId, contractId, new Dictionary<string, string?> { ["supplier"] = "Salesforce, Inc." }, reason: null);
+        Assert.True(first.IsSuccess);
+
+        // "salesforce" simplifies to the same key the fake resolver already knows, exactly as
+        // SupplierNameNormalizer makes it resolve to the same row in production.
+        var second = await service.CorrectAsync(
+            tenantId, contractId, new Dictionary<string, string?> { ["supplier"] = "salesforce" }, reason: null);
+
+        Assert.True(second.IsFailure);
+        Assert.Equal("None of the supplied values differ from the contract's current values.", second.Error);
+
+        var third = await service.CorrectAsync(
+            tenantId, contractId, new Dictionary<string, string?> { ["supplier"] = "Workday, Inc." }, reason: null);
+
+        Assert.True(third.IsSuccess);
+
+        using (tenantContext.BeginScope(tenantId))
+        {
+            await using var readDb = CreateAppContext(tenantContext);
+
+            var history = await readDb.CorrectionHistories
+                .Where(h => h.TargetEntityId == contractId)
+                .OrderBy(h => h.CorrectedAt)
+                .ToListAsync();
+
+            // Two rows, not three: the no-op in the middle fabricated nothing.
+            Assert.Equal(2, history.Count);
+            Assert.Equal("Salesforce, Inc.", history[1].PreviousValue);
+            Assert.Equal("Workday, Inc.", history[1].NewValue);
+        }
+    }
+
+    [Fact]
+    public async Task A_blank_supplier_correction_is_refused_without_touching_the_contract()
+    {
+        var tenantId = TenantId.New();
+        var now = new DateTimeOffset(2026, 9, 9, 12, 0, 0, TimeSpan.Zero);
+        var tenantContext = new TenantContext();
+
+        EntityId contractId;
+        using (tenantContext.BeginScope(tenantId))
+        {
+            await using var seedDb = CreateAppContext(tenantContext);
+            contractId = await SeedContractAsync(seedDb, tenantId, now.AddDays(-1));
+        }
+
+        var suppliers = new FakeSupplierDirectory();
+
+        await using var db = CreateAppContext(tenantContext);
+        var service = new ContractCorrectionService(
+            db, tenantContext, new FixedClock(now), new RecordingAuditWriter(), suppliers, suppliers);
+
+        var result = await service.CorrectAsync(
+            tenantId, contractId, new Dictionary<string, string?> { ["supplier"] = "  " }, reason: null);
+
+        Assert.True(result.IsFailure);
+        Assert.Contains("cannot be cleared", result.Error, StringComparison.Ordinal);
+        Assert.Empty(suppliers.RawNamesSeen);
+    }
+
+    /// <summary>A host that never composed the Suppliers module in (ADR-002 — both ports are
+    /// optional) refuses the correction outright instead of quietly dropping it.</summary>
+    [Fact]
+    public async Task A_supplier_correction_without_the_suppliers_module_is_refused_honestly()
+    {
+        var tenantId = TenantId.New();
+        var now = new DateTimeOffset(2026, 9, 9, 12, 0, 0, TimeSpan.Zero);
+        var tenantContext = new TenantContext();
+
+        EntityId contractId;
+        using (tenantContext.BeginScope(tenantId))
+        {
+            await using var seedDb = CreateAppContext(tenantContext);
+            contractId = await SeedContractAsync(seedDb, tenantId, now.AddDays(-1));
+        }
+
+        await using var db = CreateAppContext(tenantContext);
+        var service = new ContractCorrectionService(
+            db, tenantContext, new FixedClock(now), new RecordingAuditWriter());
+
+        var result = await service.CorrectAsync(
+            tenantId, contractId, new Dictionary<string, string?> { ["supplier"] = "Salesforce, Inc." }, reason: null);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(ContractCorrectionService.SupplierCorrectionUnavailableError, result.Error);
+    }
+
+    [Fact]
+    public void Supplier_is_advertised_as_a_correctable_field()
+    {
+        // The review UI reads this list to decide which fields it may PATCH — `supplier` has to be
+        // in it for R-SUP-03's "a user names the supplier as a correction" to be reachable at all.
+        Assert.Contains(
+            ContractCorrectionService.SupplierFieldName,
+            ContractCorrectionService.CorrectableFieldNames);
     }
 }

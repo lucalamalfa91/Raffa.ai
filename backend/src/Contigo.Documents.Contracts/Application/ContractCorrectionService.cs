@@ -3,6 +3,7 @@ using System.Text.Json;
 using Contigo.Documents.Contracts.Domain;
 using Contigo.Documents.Contracts.Infrastructure;
 using Contigo.SharedKernel;
+using Contigo.SharedKernel.Suppliers;
 using Contigo.SharedKernel.Tenancy;
 using Microsoft.EntityFrameworkCore;
 
@@ -47,14 +48,51 @@ namespace Contigo.Documents.Contracts.Application;
 /// <c>ContractCorrectionHistoryQueryService</c> answers "what exactly changed on this contract,
 /// field by field" — see <c>Contigo.Audit.Domain.AuditEvent</c>'s own doc comment on why the two
 /// are allowed to diverge rather than one subsuming the other.
+///
+/// <para>
+/// Task E13/F03/US01/T02 (requirements R-SUP-03: "from the review UI where a user names the
+/// supplier as a correction") adds <see cref="SupplierFieldName"/> to the correctable set. It is
+/// the one field that is not a plain <see cref="Contract"/> scalar: the caller supplies a supplier
+/// <em>name</em> and this service re-runs <see cref="ISupplierResolver"/> over it — matching an
+/// existing tenant supplier by normalized name/alias before creating one — then writes the
+/// resulting id to <see cref="Contract.SupplierId"/>. Both optional ports come from SharedKernel
+/// and are supplied only where the Suppliers module is composed in (ADR-002); where they are not,
+/// a <c>supplier</c> correction is refused with <see cref="SupplierCorrectionUnavailableError"/>
+/// rather than silently ignored. <see cref="ISupplierNameLookup"/> is needed for the audit half of
+/// the same write: <see cref="CorrectionHistory.PreviousValue"/>/<see cref="CorrectionHistory.NewValue"/>
+/// record supplier <em>names</em>, never bare ids (ADR-024/R-SUP-04, "the name is used everywhere a
+/// supplier is shown"), and the previous name can only come from a lookup over the id the contract
+/// carried before this call.
+/// </para>
 /// </summary>
 public sealed class ContractCorrectionService(
-    DocumentsContractsDbContext dbContext, ITenantContext tenantContext, IClock clock, IAuditWriter auditWriter)
+    DocumentsContractsDbContext dbContext,
+    ITenantContext tenantContext,
+    IClock clock,
+    IAuditWriter auditWriter,
+    ISupplierResolver? supplierResolver = null,
+    ISupplierNameLookup? supplierNameLookup = null)
 {
     /// <summary>Returned by <see cref="CorrectAsync"/> when no contract with the given id exists
     /// for the caller's tenant. <c>Contigo.Api.ContractsEndpointExtensions</c> maps exactly this
     /// string to 404; every other failure maps to 400.</summary>
     public const string ContractNotFoundError = "Contract not found.";
+
+    /// <summary>The correctable field name for the supplier link (requirements R-SUP-03) —
+    /// deliberately the same literal the extraction pipeline writes its own
+    /// <see cref="ExtractionEvidence.FieldName"/> under
+    /// (<c>StagedExtractionService.SupplierFieldName</c>), so a reviewer correcting a weak
+    /// <c>supplier</c> fact PATCHes exactly the field name the review list showed them. Not
+    /// referenced as that constant: <c>Application.Extraction</c> depends on this namespace's
+    /// <see cref="Contract"/> shape, and a compile-time dependency back the other way would make
+    /// the two mutually recursive for no behavioural gain.</summary>
+    public const string SupplierFieldName = "supplier";
+
+    /// <summary>Returned when a <see cref="SupplierFieldName"/> correction reaches a host that
+    /// did not compose the Suppliers module in (see the type doc comment). An honest refusal, not
+    /// a silent no-op: the caller asked for a link this deployment cannot make.</summary>
+    public const string SupplierCorrectionUnavailableError =
+        "Supplier corrections require the Suppliers module; it is not available in this host.";
 
     private const int InitialVersionNumber = 1;
     private const string ContractEntityType = nameof(Contract);
@@ -81,11 +119,13 @@ public sealed class ContractCorrectionService(
 
     /// <summary>The only field names <see cref="CorrectAsync"/> accepts in its <c>corrections</c>
     /// map — every other <see cref="Contract"/> property is either an identity column
-    /// (<c>Id</c>/<c>TenantId</c>), a cross-aggregate reference
-    /// (<c>SupplierId</c>/<c>ParentContractId</c> — corrected by re-linking, not a text edit) or
-    /// audit metadata (<c>CreatedAt</c>), not a "deterministic field" a human corrects from the
-    /// review UI (product spec Appendix C rule 5/9).</summary>
-    public static IReadOnlyCollection<string> CorrectableFieldNames => CorrectableFields.Keys;
+    /// (<c>Id</c>/<c>TenantId</c>), a cross-aggregate reference (<c>ParentContractId</c> —
+    /// corrected by re-linking, not a text edit) or audit metadata (<c>CreatedAt</c>), not a
+    /// "deterministic field" a human corrects from the review UI (product spec Appendix C rule
+    /// 5/9). <see cref="SupplierFieldName"/> is the one cross-aggregate reference that <em>is</em>
+    /// correctable, precisely because re-linking it is what R-SUP-03 asks for — by name, through
+    /// <see cref="ISupplierResolver"/>, never by pasting a guid.</summary>
+    public static IReadOnlyCollection<string> CorrectableFieldNames => AllCorrectableFieldNames;
 
     private static readonly Dictionary<string, FieldDefinition> CorrectableFields =
         new(StringComparer.OrdinalIgnoreCase)
@@ -108,6 +148,14 @@ public sealed class ContractCorrectionService(
             ["governingLaw"] = OptionalText(c => c.GoverningLaw, (c, v) => c.GoverningLaw = v),
         };
 
+    /// <summary>Declared after <see cref="CorrectableFields"/> on purpose — static field
+    /// initializers run in textual order, so reading <c>.Keys</c> any earlier would capture an
+    /// empty dictionary.</summary>
+    private static readonly string[] AllCorrectableFieldNames = [.. CorrectableFields.Keys, SupplierFieldName];
+
+    private static bool IsSupplierField(string fieldName) =>
+        string.Equals(fieldName, SupplierFieldName, StringComparison.OrdinalIgnoreCase);
+
     public async Task<Result<ContractCorrectionResult>> CorrectAsync(
         TenantId tenantId,
         EntityId contractId,
@@ -120,12 +168,31 @@ public sealed class ContractCorrectionService(
             return Result<ContractCorrectionResult>.Failure("At least one field correction is required.");
         }
 
-        var unknownFields = corrections.Keys.Where(name => !CorrectableFields.ContainsKey(name)).ToList();
+        var unknownFields = corrections.Keys
+            .Where(name => !CorrectableFields.ContainsKey(name) && !IsSupplierField(name))
+            .ToList();
         if (unknownFields.Count > 0)
         {
             return Result<ContractCorrectionResult>.Failure(
                 $"Unknown or non-correctable field(s): {string.Join(", ", unknownFields)}. " +
-                $"Correctable fields: {string.Join(", ", CorrectableFields.Keys)}.");
+                $"Correctable fields: {string.Join(", ", AllCorrectableFieldNames)}.");
+        }
+
+        // The caller's own spelling of the supplier key (the map is not guaranteed to be
+        // case-insensitive, but IsSupplierField is — so every later lookup uses this exact key).
+        var supplierKey = corrections.Keys.FirstOrDefault(IsSupplierField);
+        if (supplierKey is not null)
+        {
+            if (supplierResolver is null || supplierNameLookup is null)
+            {
+                return Result<ContractCorrectionResult>.Failure(SupplierCorrectionUnavailableError);
+            }
+
+            if (string.IsNullOrWhiteSpace(corrections[supplierKey]))
+            {
+                return Result<ContractCorrectionResult>.Failure(
+                    $"'{SupplierFieldName}' cannot be cleared; supply a non-empty supplier name.");
+            }
         }
 
         using var tenantScope = tenantContext.BeginScope(tenantId);
@@ -149,6 +216,11 @@ public sealed class ContractCorrectionService(
         var canonicalNewValues = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         foreach (var (fieldName, rawValue) in corrections)
         {
+            if (IsSupplierField(fieldName))
+            {
+                continue; // Validated above; resolved below, once every other field has passed.
+            }
+
             var validated = CorrectableFields[fieldName].Validate(rawValue);
             if (validated.IsFailure)
             {
@@ -157,6 +229,27 @@ public sealed class ContractCorrectionService(
 
             previousValues[fieldName] = CorrectableFields[fieldName].Read(contract);
             canonicalNewValues[fieldName] = validated.Value;
+        }
+
+        // Resolution is the one "validation" step with a side effect on another module (a
+        // first-seen supplier name creates a row), so it runs last — after every other field has
+        // already passed Phase 1 — rather than interleaved in the loop above. ISupplierResolver is
+        // match-or-create, so re-naming a supplier this tenant already knows creates nothing.
+        SupplierRef? resolvedSupplier = null;
+        if (supplierKey is not null)
+        {
+            var resolution = await supplierResolver!
+                .ResolveAsync(tenantId, corrections[supplierKey]!, cancellationToken)
+                .ConfigureAwait(false);
+            if (resolution.IsFailure)
+            {
+                return Result<ContractCorrectionResult>.Failure(resolution.Error);
+            }
+
+            resolvedSupplier = resolution.Value;
+            previousValues[supplierKey] = await ReadSupplierNameAsync(tenantId, contract.SupplierId, cancellationToken)
+                .ConfigureAwait(false);
+            canonicalNewValues[supplierKey] = resolvedSupplier.Name;
         }
 
         var latestVersionNumber = await dbContext.ContractVersions
@@ -180,12 +273,28 @@ public sealed class ContractCorrectionService(
         {
             var previousValue = previousValues[fieldName];
             var newValue = canonicalNewValues[fieldName];
-            if (string.Equals(previousValue, newValue, StringComparison.Ordinal))
+            var isSupplier = IsSupplierField(fieldName);
+
+            // The supplier's no-op test is the *link*, not the rendered name: two distinct rows
+            // could in principle share a display name, and a re-typed spelling of the supplier the
+            // contract already points at must still count as no change.
+            var unchanged = isSupplier
+                ? contract.SupplierId == resolvedSupplier!.Id
+                : string.Equals(previousValue, newValue, StringComparison.Ordinal);
+            if (unchanged)
             {
                 continue; // No actual change — do not fabricate a history row for a no-op.
             }
 
-            CorrectableFields[fieldName].Write(contract, newValue);
+            if (isSupplier)
+            {
+                contract.SupplierId = resolvedSupplier!.Id;
+            }
+            else
+            {
+                CorrectableFields[fieldName].Write(contract, newValue);
+            }
+
             dbContext.CorrectionHistories.Add(new CorrectionHistory
             {
                 TenantId = tenantId,
@@ -258,6 +367,27 @@ public sealed class ContractCorrectionService(
 
         return Result<ContractCorrectionResult>.Success(
             new ContractCorrectionResult(contract.Id, newVersionNumber, correctedFields, now));
+    }
+
+    /// <summary>Renders a <see cref="Contract.SupplierId"/> as the supplier's display name for
+    /// <see cref="CorrectionHistory.PreviousValue"/> (ADR-024/R-SUP-04: names, never bare guids).
+    /// <see langword="null"/> when the contract carried no supplier, and also when the id no longer
+    /// resolves — <see cref="ISupplierNameLookup.GetNamesAsync"/>'s own contract is that an
+    /// unresolvable id is simply absent from the result, and inventing a placeholder name for the
+    /// permanent history record would be worse than recording "no previous supplier known".</summary>
+    private async Task<string?> ReadSupplierNameAsync(
+        TenantId tenantId, EntityId? supplierId, CancellationToken cancellationToken)
+    {
+        if (supplierId is not { } id)
+        {
+            return null;
+        }
+
+        var names = await supplierNameLookup!
+            .GetNamesAsync(tenantId, [id], cancellationToken)
+            .ConfigureAwait(false);
+
+        return names.TryGetValue(id, out var name) ? name : null;
     }
 
     /// <summary><see cref="AuditEntry.Detail"/> for a correction: the resulting version number

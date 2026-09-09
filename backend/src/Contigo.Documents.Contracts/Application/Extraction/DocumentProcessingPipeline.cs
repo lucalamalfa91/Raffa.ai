@@ -4,6 +4,7 @@ using Contigo.Documents.Contracts.Application.Admission;
 using Contigo.Documents.Contracts.Domain;
 using Contigo.Documents.Contracts.Infrastructure;
 using Contigo.SharedKernel;
+using Contigo.SharedKernel.Suppliers;
 using Contigo.SharedKernel.Tenancy;
 using Microsoft.EntityFrameworkCore;
 
@@ -80,6 +81,18 @@ namespace Contigo.Documents.Contracts.Application.Extraction;
 /// none of it unwinds the upload itself — the bytes are already safely stored and the document row
 /// already exists by the time this runs (mirrors <see cref="StagedExtractionService"/>'s own
 /// per-stage "one failure does not abort the others" posture, generalized one layer up).
+///
+/// <b>Supplier linking</b> (task E13/F03/US01/T02, requirements R-SUP-01/R-SUP-02): once staged
+/// extraction reports an accepted <c>supplier</c> fact
+/// (<see cref="StagedExtractionSummary.AcceptedSupplierName"/>), this pipeline turns that legal name
+/// into <see cref="Contract.SupplierId"/> through <see cref="ISupplierResolver"/>. It happens here,
+/// not in <see cref="StagedExtractionService"/>, because ADR-002 forbids Documents/Contracts from
+/// referencing <c>Contigo.Suppliers.Products</c> — the port lives in SharedKernel and this is the
+/// module's own orchestration layer. <paramref name="supplierResolver"/> is optional (defaulted to
+/// <see langword="null"/>, so the built-in container supplies it only where the Suppliers module is
+/// composed in, and unit tests that construct this type directly need not know about it at all): a
+/// host without that module keeps extracting exactly as before, contracts simply carry no supplier
+/// link.
 /// </summary>
 public sealed class DocumentProcessingPipeline(
     DocumentsContractsDbContext dbContext,
@@ -88,7 +101,8 @@ public sealed class DocumentProcessingPipeline(
     StagedExtractionService extractionService,
     EmbeddingRetrievalService embeddingRetrievalService,
     ITenantContext tenantContext,
-    IClock clock)
+    IClock clock,
+    ISupplierResolver? supplierResolver = null)
 {
     /// <summary>Discriminator this pipeline indexes every chunk under (<see cref="Domain.Embedding.SourceType"/>),
     /// matching <c>Contigo.Api.ChatEndpointExtensions.ToEvidenceSnippet</c>'s own
@@ -227,6 +241,8 @@ public sealed class DocumentProcessingPipeline(
             return Result<DocumentProcessingSummary>.Failure(extractionResult.Error);
         }
 
+        await LinkSupplierAsync(tenantId, extractionResult.Value, cancellationToken).ConfigureAwait(false);
+
         var chunksIndexed = await IndexForRetrievalAsync(tenantId, document.Id, pages, cancellationToken)
             .ConfigureAwait(false);
 
@@ -238,6 +254,51 @@ public sealed class DocumentProcessingPipeline(
             extractionResult.Value.DocumentProcessingStatus,
             pages.Count,
             chunksIndexed));
+    }
+
+    /// <summary>
+    /// Task E13/F03/US01/T02: turns an accepted <c>supplier</c> fact into
+    /// <see cref="Contract.SupplierId"/> (requirements R-SUP-01/R-SUP-02, parent story AC-3). Runs
+    /// on every processing pass, including a re-run over an already-extracted document, so
+    /// re-processing a contract stored before this feature existed back-fills its supplier link
+    /// (R-SUP-03) without a bespoke migration job.
+    ///
+    /// <para>
+    /// Four no-ops, each deliberate: no resolver composed in (a host without the Suppliers module —
+    /// see the type doc comment), no accepted supplier fact (absent, or below the critical-field
+    /// bar — that document is already in <c>needs_review</c> with the fact's evidence, and a human
+    /// correction re-resolves it), a resolver failure (this pipeline never fails an already-durable
+    /// upload — see the type doc comment's own "Never fails an already-durable upload" remark), and
+    /// an unchanged link (no pointless <c>UPDATE</c> against
+    /// <see cref="Contract.Version"/>'s concurrency token on every re-processing pass).
+    /// </para>
+    /// </summary>
+    private async Task LinkSupplierAsync(
+        TenantId tenantId, StagedExtractionSummary summary, CancellationToken cancellationToken)
+    {
+        if (supplierResolver is null || summary.AcceptedSupplierName is not { } supplierName)
+        {
+            return;
+        }
+
+        var resolved = await supplierResolver
+            .ResolveAsync(tenantId, supplierName, cancellationToken)
+            .ConfigureAwait(false);
+        if (resolved.IsFailure)
+        {
+            return;
+        }
+
+        var contract = await dbContext.Contracts
+            .SingleOrDefaultAsync(c => c.TenantId == tenantId && c.Id == summary.ContractId, cancellationToken)
+            .ConfigureAwait(false);
+        if (contract is null || contract.SupplierId == resolved.Value.Id)
+        {
+            return;
+        }
+
+        contract.SupplierId = resolved.Value.Id;
+        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>

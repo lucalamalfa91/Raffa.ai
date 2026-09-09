@@ -53,6 +53,24 @@ internal static class R1ExtractionFixtures
     /// </summary>
     public const string OriginalAnnualSpendAsStoredInDb = "48000.00";
 
+    /// <summary>
+    /// The supplier's legal name the scripted `metadata` stage reports for both fixtures (task
+    /// E13/F03/US01/T02, requirements R-SUP-01: "legal name, page, span, confidence"). Emitted at
+    /// 0.95 — above the critical-field bar of 0.8 — so <c>DocumentProcessingPipeline</c> resolves it
+    /// through <c>ISupplierResolver</c> and the end-to-end test can assert a real name on the
+    /// portfolio row rather than a bare guid (R-SUP-04).
+    ///
+    /// <para>
+    /// Carries the legal suffix, exactly as a signature block writes it, and that is what
+    /// <c>GET /api/contracts</c> reports back: <c>SupplierResolver</c> stores
+    /// <c>Name = rawName.Trim()</c> and normalizes only for <em>matching</em>, so "Salesforce, Inc."
+    /// and "salesforce" collapse to one row whose display name stays the name the document used.
+    /// The task's own DoD shorthand ("supplierName == 'Salesforce'") is that human-readable name;
+    /// <see cref="ExpectedSupplierDisplayName"/> is the literal the assertions use.
+    /// </para>
+    /// </summary>
+    public const string ExpectedSupplierDisplayName = "Salesforce, Inc.";
+
     public const string ExpectedLineItemSku = "SKU-CLOUD-100";
     public const string ExpectedClauseType = "termination";
     public const string ExpectedObligationParty = "Customer";
@@ -67,8 +85,9 @@ internal static class R1ExtractionFixtures
     /// </summary>
     public static IReadOnlyDictionary<string, string> PayloadsByStage { get; } = new Dictionary<string, string>
     {
-        ["Metadata"] = """
+        ["Metadata"] = $$"""
             {"facts":[
+                {"field":"supplier","value":"{{ExpectedSupplierDisplayName}}","sourcePage":1,"sourceSpan":"between Salesforce, Inc. and Contoso Ltd","confidence":0.95},
                 {"field":"currency","value":"USD","sourcePage":1,"sourceSpan":"Currency: USD","confidence":0.95},
                 {"field":"governingLaw","value":"State of Delaware","sourcePage":1,"sourceSpan":"Governing law: Delaware","confidence":0.9},
                 {"field":"status","value":"Active","sourcePage":1,"sourceSpan":"Status: Active","confidence":0.9}
@@ -133,8 +152,12 @@ internal static class R1ExtractionFixtures
         // Task E13/F04/US01/T01: comfortably over Documents:MinReadableChars (200 non-whitespace
         // characters) as well, so the admission gate admits it on the same defaults production
         // runs with — the text grew, nothing else about this fixture changed.
+        // Task E13/F03/US01/T02: the counterparty is named "Salesforce, Inc." so the scripted
+        // `supplier` fact's own sourceSpan (see PayloadsByStage) quotes text that is genuinely in
+        // this document — a fixture whose evidence pointed at a span the page never contained would
+        // undercut the very "source evidence is mandatory" property these tests exist to prove.
         const string text =
-            "MASTER SERVICES AGREEMENT between Acme Corp and Contoso Ltd, effective 2026-01-01, " +
+            "MASTER SERVICES AGREEMENT between Salesforce, Inc. and Contoso Ltd, effective 2026-01-01, " +
             "governed by the laws of the State of Delaware. This Agreement sets out the terms under " +
             "which the Supplier provides subscription services to the Customer, and applies to every " +
             "Order Form the parties execute under it. Fees are invoiced annually in advance and are " +
