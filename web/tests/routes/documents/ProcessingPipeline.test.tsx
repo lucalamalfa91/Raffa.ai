@@ -1,34 +1,25 @@
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
 import ProcessingPipeline from "../../../src/routes/documents/ProcessingPipeline";
-import { PIPELINE_STAGE_LABELS } from "../../../src/routes/documents/uploadPipeline";
 
-// AC-2: "6-stage processing pipeline (current pulsing)".
+// R-DOC-09: the real stage (and its percent-complete bar) comes from the API, not a client timer.
 describe("ProcessingPipeline", () => {
-  it("renders all 6 stage labels, in order", () => {
-    const { container } = render(<ProcessingPipeline currentStepIndex={0} />);
+  it("renders a progressbar sized to the stage's own position among the six real stages", () => {
+    render(<ProcessingPipeline stage="Extracting facts" />);
 
-    PIPELINE_STAGE_LABELS.forEach((label) => {
-      expect(screen.getByText(label)).toBeInTheDocument();
-    });
-    expect(container.querySelectorAll(".pipeline-stage")).toHaveLength(6);
+    const bar = screen.getByRole("progressbar");
+    expect(bar).toHaveAttribute("aria-valuenow", "83"); // 5/6
   });
 
-  it("marks exactly the current stage as pulsing-current, earlier ones done, later ones pending", () => {
-    render(<ProcessingPipeline currentStepIndex={3} />);
+  it("renders 0% before any stage is known (null)", () => {
+    render(<ProcessingPipeline stage={null} />);
 
-    PIPELINE_STAGE_LABELS.forEach((label, index) => {
-      const row = screen.getByText(label).closest(".pipeline-stage");
-      expect(row).not.toBeNull();
-      const expectedState = index < 3 ? "done" : index === 3 ? "current" : "pending";
-      expect(row).toHaveClass(`pipeline-stage--${expectedState}`);
-    });
+    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "0");
   });
 
-  it("announces stage changes to assistive tech (role=status, aria-live=polite)", () => {
-    render(<ProcessingPipeline currentStepIndex={0} />);
+  it("renders 100% once at the last stage", () => {
+    render(<ProcessingPipeline stage="Validating schema" />);
 
-    const region = screen.getByRole("status");
-    expect(region).toHaveAttribute("aria-live", "polite");
+    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "100");
   });
 });

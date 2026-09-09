@@ -1,4 +1,7 @@
 using System.Net;
+using System.Text.Json;
+using Contigo.Api.Tests.TestSupport;
+using Contigo.SharedKernel;
 using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace Contigo.Api.Tests;
@@ -17,6 +20,14 @@ namespace Contigo.Api.Tests;
 /// <c>Contigo.Renewals.Tests.RenewalPipelineBuilderTests</c> for the dashboard,
 /// <c>Contigo.Renewals.Tests.PriorityScoreCalculatorTests</c> for the priority score itself — per
 /// this task's own "Tests required" level (unit, no database).
+///
+/// <para>
+/// <b>Task E13/F03/US01/T02</b> (requirements R-SUP-04): <c>supplierName</c> — on the row and on
+/// the §9.3 insight card a user actually reads — is joined on by this endpoint, since neither
+/// <c>Contigo.Renewals</c> nor <c>Contigo.Documents.Contracts</c> may reference the Suppliers
+/// module (ADR-002). Only a host-level test sees that composition, so it is proven here through
+/// <see cref="PortfolioEndpointTests.WithSupplierNames"/>.
+/// </para>
 /// </summary>
 public sealed class RenewalsEndpointTests : IClassFixture<WebApplicationFactory<Program>>
 {
@@ -89,5 +100,44 @@ public sealed class RenewalsEndpointTests : IClassFixture<WebApplicationFactory<
         var response = await client.SendAsync(request);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    // ----- supplierName (task E13/F03/US01/T02, requirements R-SUP-04) -----
+
+    [Fact]
+    public async Task Every_pipeline_row_and_its_insight_card_carry_the_supplier_name()
+    {
+        var now = new DateTimeOffset(2026, 9, 9, 12, 0, 0, TimeSpan.Zero);
+        var tenantId = TenantId.New();
+        var salesforceId = EntityId.New();
+
+        var factory = PortfolioEndpointTests.WithSupplierNames(
+            _factory,
+            new Dictionary<EntityId, string> { [salesforceId] = "Salesforce, Inc." });
+
+        // Only auto-renewing contracts reach this endpoint at all (the filter GetRenewalsAsync
+        // pushes into PortfolioQueryService), so the row needs both AutoRenewal and an EndDate.
+        await factory.SeedContractAsync(PortfolioEndpointTests.NewContract(
+            tenantId,
+            now,
+            salesforceId,
+            autoRenewal: true,
+            endDate: DateOnly.FromDateTime(now.UtcDateTime).AddDays(60)));
+
+        var client = factory.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/renewals");
+        request.Headers.Add("X-Tenant-Id", tenantId.Value.ToString());
+
+        var response = await client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var item = Assert.Single(body.RootElement.GetProperty("items").EnumerateArray());
+
+        Assert.Equal(salesforceId.Value.ToString(), item.GetProperty("supplierId").GetString());
+        Assert.Equal("Salesforce, Inc.", item.GetProperty("supplierName").GetString());
+        Assert.Equal(
+            "Salesforce, Inc.",
+            item.GetProperty("insightCard").GetProperty("facts").GetProperty("supplierName").GetString());
     }
 }

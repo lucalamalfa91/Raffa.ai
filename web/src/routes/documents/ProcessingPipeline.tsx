@@ -1,35 +1,27 @@
-import { getPipelineStageViews } from "./uploadPipeline";
+import { getStagePercent } from "./documentTable";
 
 export interface ProcessingPipelineProps {
-  currentStepIndex: number;
+  /** The real stage name from `GET /api/documents` (R-DOC-09), or `null` before the first poll has
+   * resolved one. Never a client-side timer -- see `uploadPipeline.ts`'s own header comment for why
+   * V1's 6-item ticker list is gone. */
+  stage: string | null;
 }
 
 /**
- * AC-2: 6-stage list, current stage pulsing. Stage labels/order/treatment
- * are quoted from the compiled prototype's own `pipeLabels`/`pipeline`
- * mapping (inputs/design/prototypes/day1-demo.html) -- ADR-020's pixel
- * reference -- see uploadPipeline.ts for the full citation. Done stages
- * render in ink with a filled dot, pending stages in muted neutral, matching
- * the prototype's `fg`/`dot` ternary; only the current stage's dot pulses
- * (`prefers-reduced-motion` disables it, the same convention
- * styles/components.css's skeleton bars and signin.css's redirect spinner
- * already use). Dots are square, not circular -- the compiled prototype's
- * own dot span sets no `border-radius`, matching ADR-019's "zero corner
- * radius everywhere" (the one deliberate exception in this app, `.radio`,
- * is not this).
+ * Inline per-row progress bar, status-cell half of the processing treatment (`contigo-v2/markup.html`
+ * row template: a bare 4px bar directly under the status tag, `width:{{ d.pct }}`; the stage *label*
+ * sits separately, right-aligned in the row's own "next step" cell -- see
+ * `DocumentStatusTable.tsx`, which renders that half directly rather than through this component).
+ * V1's `ProcessingPipeline` was a separate, standalone 6-stage list shown next to the dropzone while
+ * exactly one upload was in flight; V2 shows every row (however many files are mid-flight) at once,
+ * so this component is now mounted once per processing row.
  */
-export default function ProcessingPipeline({ currentStepIndex }: ProcessingPipelineProps) {
-  const stages = getPipelineStageViews(currentStepIndex);
+export default function ProcessingPipeline({ stage }: ProcessingPipelineProps) {
+  const percent = getStagePercent(stage);
 
   return (
-    <div className="pipeline-list" role="status" aria-live="polite">
-      <p className="screen-kicker">Processing</p>
-      {stages.map((stage) => (
-        <div className={`pipeline-stage pipeline-stage--${stage.state}`} key={stage.label}>
-          <span className="pipeline-stage-dot" aria-hidden="true" />
-          <span>{stage.label}</span>
-        </div>
-      ))}
+    <div className="document-row-progress" role="progressbar" aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100}>
+      <div className="document-row-progress-fill" style={{ width: `${percent}%` }} />
     </div>
   );
 }

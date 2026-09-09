@@ -22,7 +22,37 @@
 // web/src/routes/signin/workspaceStore.ts for why there is no matching
 // listWorkspaces()/getWorkspaces() call here: no such backend endpoint
 // exists yet.
+//
+// Task E13/F09/US01/T04 (web-ask-v2, OQ-askv2-005/R-CONV-03/ADR-022): every call this client makes
+// now carries an `X-User-Id` header, resolved lazily via the `getUserId` callback below -- never
+// baked into the client instance at construction time, since `createApiClient` runs in src/main.tsx
+// before MSAL has resolved any account at all (see that file's own call site). Mirrors the identical
+// "resolved per-request, not per-client" shape `X-Tenant-Id` already has everywhere in this file,
+// except the tenant id is a real per-call parameter while the user id is an ambient identity the
+// caller (main.tsx) supplies once, via a closure over `PublicClientApplication.getAllAccounts()`.
+// Uniform across every method (not special-cased per endpoint) for the same reason `X-Tenant-Id`
+// is uniform: today only the `/api/conversations*` endpoints actually read it
+// (ConversationsEndpointExtensions.TryResolveUserId), but a second special-cased header-building
+// path per endpoint is exactly the kind of divergence this file's own header comment already warns
+// against elsewhere. `getUserId` defaults to a function returning `null` (no header sent at all) so
+// every pre-existing call site/test that does not pass one keeps behaving exactly as before this
+// task -- see `userIdHeaders` below for why an absent/blank id omits the header key entirely rather
+// than sending an empty string.
 import type { paths } from "./generated/schema";
+
+/** See this file's own header comment ("Task E13/F09/US01/T04"). Returns the current caller's
+ * identity (the MSAL account username, ADR-022) or `null` before any account is signed in. */
+export type GetUserId = () => string | null;
+
+/** `{}` (no key at all) when `getUserId()` is `null`/blank -- spreading `{}` into an existing
+ * headers literal is a no-op, so every pre-existing call site's exact-`toEqual` test keeps passing
+ * unchanged when no `getUserId` is supplied (the default). Never sends a blank `X-User-Id: ""`:
+ * "no evidence (no signed-in account), no claim" is this codebase's own rule (e.g.
+ * `WorkspaceSummary.contractCount`'s doc comment), applied here to a header instead of a UI field. */
+function userIdHeaders(getUserId: GetUserId): Record<string, string> {
+  const userId = getUserId();
+  return userId !== null && userId.trim() !== "" ? { "X-User-Id": userId } : {};
+}
 
 type HealthResponses = paths["/health"]["get"]["responses"];
 type HealthBody =
@@ -98,6 +128,15 @@ type UploadDocumentResponses = paths["/api/documents"]["post"]["responses"];
 export type UploadedDocument = UploadDocumentResponses[201]["content"]["application/json"];
 export type DocumentProcessingStatus = UploadedDocument["processingStatus"];
 
+// Task E13/F04/US01/T01 (documents-admission), documented ahead of that backend task landing in
+// this worktree (see web/openapi/contigo-api.v1.json's own info.description): the admission gate's
+// structured 422 body (ADR-024 "gate before persistence"). Anchored to the generated 422 response,
+// not hand-invented -- `detectedType` already carries the widened admitted-type vocabulary (Quote,
+// Invoice, PriceList, Nda, Dpa alongside the original 6), read straight off the schema rather than
+// re-declared here.
+export type RejectedUploadBody = UploadDocumentResponses[422]["content"]["application/json"];
+export type AdmittedDocumentType = RejectedUploadBody["detectedType"];
+
 export interface UploadDocumentResult {
   /** True only on `201 Created`. */
   ok: boolean;
@@ -105,7 +144,16 @@ export interface UploadDocumentResult {
   statusCode: number | null;
   /** The stored document (already processed -- see `ApiClient.uploadDocument`'s own doc comment), present only when `ok` is true. */
   document: UploadedDocument | null;
-  /** Plain-language failure reason (400 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  /**
+   * The admission gate's own structured rejection, present only on a real `422` (task
+   * E13/F04/US01/T01) -- `error` below stays `null` in that case; a 413/415/generic 400/5xx keeps
+   * using `error` (a plain string) with `rejection: null`, the same split `getQuoteAssessment`'s own
+   * "real body vs bare empty 404" distinction already establishes for a different status pair.
+   * `src/routes/documents/uploadPipeline.ts#getRejectionCopy` maps `reason` onto the requirements'
+   * own longer "Not added" sentence -- this field is never rendered from `hint` directly.
+   */
+  rejection: RejectedUploadBody | null;
+  /** Plain-language failure reason (400/413/415 message, HTTP status text, or network-failure cause), present only when `ok` is false and this was not a structured 422. */
   error: string | null;
 }
 
@@ -130,6 +178,99 @@ export interface GetDocumentResult {
   /** The document, present only when `ok` is true. */
   document: ReadBackDocument | null;
   /** Plain-language failure reason (400/404 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
+// Task E13/F09/US01/T03 (web-documents-v2): `listDocuments`, wrapping `GET /api/documents` -- the
+// server-side list that replaces `src/routes/documents/documentStore.ts`'s own `sessionStorage`
+// tracking (R-DOC-06 AC-1 "reloading the browser shows the same list as before"). Documented ahead
+// of the backend counterpart (epic-13/feature-04) landing in this worktree -- see
+// web/openapi/contigo-api.v1.json's own `listDocuments` operation description for the full
+// provenance. `DocumentListItemBody["documentType"]` already carries the widened admitted-type
+// vocabulary read straight off the generated schema (`AdmittedDocumentType` above is the same
+// union, read off the 422 rejection body instead -- both anchor to the one OpenAPI enum).
+type ListDocumentsResponses = paths["/api/documents"]["get"]["responses"];
+export type DocumentListPageBody = ListDocumentsResponses[200]["content"]["application/json"];
+export type DocumentListItemBody = DocumentListPageBody["items"][number];
+/** R-DOC-09's six real stage names, non-null (`DocumentListItemBody.stage` is null once terminal). */
+export type DocumentProcessingStage = NonNullable<DocumentListItemBody["stage"]>;
+
+/**
+ * `GET /api/documents` query parameters. `status` is deliberately **not** how the web's own
+ * "Needs your attention" / "All documents" toggle works -- that is a union of three statuses
+ * (processing/needs_review/failed), not one -- so `src/routes/documents/useDocumentsList.ts` always
+ * calls this with an empty query (the tenant's whole list, same fetch-once/filter-client-side
+ * architecture `getPortfolio`'s own doc comment already establishes for Portfolio) and buckets
+ * client-side. The parameter is still wired here so this wrapper stays an honest, complete mirror of
+ * the real endpoint, the same "full surface even if this app's own screen only ever calls it one way"
+ * convention `uploadQuote`'s sibling read calls already follow.
+ */
+export interface ListDocumentsQuery {
+  status?: DocumentProcessingStatus;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface ListDocumentsResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** The requested page (`items` + paging metadata), present only when `ok` is true. */
+  page: DocumentListPageBody | null;
+  /** Plain-language failure reason (400 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
+// Task E13/F09/US01/T03: `getDocumentPreviewUrl`, wrapping `GET /api/documents/{id}/preview`.
+// Documented ahead of the backend counterpart (epic-13/feature-04) landing in this worktree -- see
+// that operation's own OpenAPI description. Unlike every other read call in this file, the response
+// is a binary `image/png`, not JSON -- a plain `<img src="...">` cannot carry the `X-Tenant-Id`
+// header every other call here requires, so this method performs the authenticated `fetch()` itself
+// and hands back a browser object URL (`URL.createObjectURL`, never the Storage URL -- ADR-009
+// "never a raw blob URL") the caller renders as `<img src={objectUrl}>`. The caller owns
+// `URL.revokeObjectURL(objectUrl)` once done (e.g. a `useEffect` cleanup), the same lifecycle any
+// `URL.createObjectURL` caller owns -- this client does not track outstanding object URLs itself.
+export interface GetDocumentPreviewResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** A browser object URL for the fetched PNG, present only when `ok` is true. */
+  objectUrl: string | null;
+  /** Plain-language failure reason (404/network-failure), present only when `ok` is false. */
+  error: string | null;
+}
+
+// Task E13/F09/US01/T03: `reprocessDocument`, wrapping `POST /api/documents/{id}/reprocess`
+// (Admin only, R-DOC-07). Documented ahead of the backend counterpart landing in this worktree --
+// see that operation's own OpenAPI description for why the response mirrors
+// `Contigo.Documents.Contracts.Application.Extraction.DocumentProcessingSummary`'s real fields
+// rather than an invented shape.
+type ReprocessDocumentResponses = paths["/api/documents/{id}/reprocess"]["post"]["responses"];
+export type DocumentReprocessSummaryBody = ReprocessDocumentResponses[200]["content"]["application/json"];
+
+export interface ReprocessDocumentResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** The reprocess summary, present only when `ok` is true. */
+  summary: DocumentReprocessSummaryBody | null;
+  /** Plain-language failure reason (403 not-admin, 404, or network-failure), present only when `ok` is false. */
+  error: string | null;
+}
+
+// Task E13/F09/US01/T03: `deleteDocument`, wrapping `DELETE /api/documents/{id}` (Admin only,
+// R-DOC-10). Documented ahead of the backend counterpart landing in this worktree -- see that
+// operation's own OpenAPI description. Same never-throws shape as every other call here; a `403`
+// (Procurement) is a normal, expected outcome the caller renders inline, not an exception.
+export interface DeleteDocumentResult {
+  /** True only on `204 No Content`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** Plain-language failure reason (403/404/network-failure), present only when `ok` is false. */
   error: string | null;
 }
 
@@ -589,6 +730,124 @@ export interface GetSavingsOpportunitiesResult {
   error: string | null;
 }
 
+// Task E13/F09/US01/T04 (web-ask-v2, ADR-024 §6; requirements.md §5.2/§6): conversations, the
+// reply contract, the capability catalog and one market record -- this task is the phase-4 writer
+// of the OpenAPI contract and this client for these six operations (this file's own header comment
+// has the full X-User-Id provenance every one of them, like every other method here, now sends).
+type ListConversationsResponses = paths["/api/conversations"]["get"]["responses"];
+export type ConversationSummaryBody = ListConversationsResponses[200]["content"]["application/json"][number];
+
+export interface ListConversationsResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** The caller's own conversations, most-recently-updated first (possibly empty), present only when `ok` is true. */
+  conversations: readonly ConversationSummaryBody[] | null;
+  /** Plain-language failure reason (400 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
+type CreateConversationResponses = paths["/api/conversations"]["post"]["responses"];
+export type CreatedConversationBody = CreateConversationResponses[201]["content"]["application/json"];
+
+/** `POST /api/conversations` request body. Hand-written -- see this file's header comment for why
+ * (the generator does not parse `requestBody`). An absent/blank `scopeContractId` opens a plain new
+ * chat; a real contract id scopes it (Contract 360 "Ask about it", `/ask?scope=<contractId>`). */
+export interface CreateConversationRequest {
+  scopeContractId?: string;
+}
+
+export interface CreateConversationResult {
+  /** True only on `201 Created`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** The created conversation's summary, present only when `ok` is true. */
+  conversation: CreatedConversationBody | null;
+  /** Plain-language failure reason (400 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
+type GetConversationResponses = paths["/api/conversations/{id}"]["get"]["responses"];
+export type ConversationDetailBody = GetConversationResponses[200]["content"]["application/json"];
+export type ConversationMessageBody = ConversationDetailBody["messages"][number];
+export type ConversationMessageRole = ConversationMessageBody["role"];
+export type ConversationTurnKind = ConversationMessageBody["kind"];
+export type ConversationCitationBody = ConversationMessageBody["citations"][number];
+export type ConversationActionBody = ConversationMessageBody["actions"][number];
+export type ConversationActionKindValue = ConversationActionBody["kind"];
+
+export interface GetConversationResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** The conversation and its messages, oldest first, present only when `ok` is true. */
+  conversation: ConversationDetailBody | null;
+  /** Plain-language failure reason (400/404 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
+type PostConversationMessageResponses = paths["/api/conversations/{id}/messages"]["post"]["responses"];
+/** The ADR-024 §6 reply contract, wire-exact. Distinct from `routes/ask/reply/replyTypes.ts`'s
+ * `Reply` (that module's own presentational union) on purpose -- `routes/ask/askViewModel.ts` maps
+ * one onto the other; the two names must never collide in one import. */
+export type ConversationReplyBody = PostConversationMessageResponses[200]["content"]["application/json"];
+export type ConversationReplyKind = ConversationReplyBody["kind"];
+export type ConversationProvenanceBody = ConversationReplyBody["provenance"];
+
+/** `POST /api/conversations/{id}/messages` request body. Hand-written -- see this file's header
+ * comment for why (the generator does not parse `requestBody`). */
+export interface PostMessageRequest {
+  question: string;
+}
+
+export interface PostMessageResult {
+  /**
+   * True only on `200 OK` -- an `abstain`/`redirect`/`refusal` reply is still a successful, honest
+   * answer (see this operation's own OpenAPI `description`), never a client error; `false` here
+   * means a transport failure or a genuine 400/404.
+   */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** The routed reply, present only when `ok` is true. */
+  reply: ConversationReplyBody | null;
+  /** Plain-language failure reason (400/404 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
+type GetCapabilitiesResponses = paths["/api/capabilities"]["get"]["responses"];
+export type CapabilityCatalogBody = GetCapabilitiesResponses[200]["content"]["application/json"];
+export type CapabilityBody = CapabilityCatalogBody["capabilities"][number];
+
+export interface GetCapabilitiesResult {
+  /** True only on `200 OK` -- CapabilitiesEndpointExtensions has no failure branch at all (no tenant
+   * header to validate, no route parameter to parse); `false` here is a transport failure only. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** The full, role-filtered catalog, present only when `ok` is true. */
+  catalog: CapabilityCatalogBody | null;
+  /** Plain-language failure reason (a network-failure cause only, see above), present only when `ok` is false. */
+  error: string | null;
+}
+
+type GetMarketRecordResponses = paths["/api/market/records/{id}"]["get"]["responses"];
+export type MarketRecordBody = GetMarketRecordResponses[200]["content"]["application/json"];
+
+export interface GetMarketRecordResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** The record, present only when `ok` is true. */
+  record: MarketRecordBody | null;
+  /** Plain-language failure reason (404/network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
 export interface ApiClient {
   /**
    * Calls `GET /health` (operationId `getHealth` in
@@ -649,6 +908,31 @@ export interface ApiClient {
    * not an exception.
    */
   getDocument(tenantId: string, id: string): Promise<GetDocumentResult>;
+  /**
+   * Calls `GET /api/documents` (operationId `listDocuments`) -- the server-side list behind
+   * `src/routes/documents/` (R-DOC-06), replacing `documentStore.ts`'s own `sessionStorage`
+   * tracking. Same never-throws shape as every other call here. `query` is optional and, when
+   * omitted, fetches the tenant's whole list unfiltered -- see `ListDocumentsQuery`'s own doc
+   * comment for why the attention/all toggle is not this parameter.
+   */
+  listDocuments(tenantId: string, query?: ListDocumentsQuery): Promise<ListDocumentsResult>;
+  /**
+   * Calls `GET /api/documents/{id}/preview` (operationId `getDocumentPreview`) and turns the PNG
+   * response into a browser object URL -- see `GetDocumentPreviewResult`'s own doc comment for why
+   * this is not a bare `<img src>`. Same never-throws shape; a `404` is a normal, expected outcome.
+   */
+  getDocumentPreviewUrl(tenantId: string, id: string): Promise<GetDocumentPreviewResult>;
+  /**
+   * Calls `POST /api/documents/{id}/reprocess` (operationId `reprocessDocument`, Admin only,
+   * R-DOC-07). Same never-throws shape as every other call here; a `403` (Procurement) is a normal,
+   * expected outcome the caller renders inline, not an exception.
+   */
+  reprocessDocument(tenantId: string, id: string): Promise<ReprocessDocumentResult>;
+  /**
+   * Calls `DELETE /api/documents/{id}` (operationId `deleteDocument`, Admin only, R-DOC-10). Same
+   * never-throws shape as every other call here; a `403` (Procurement) is a normal, expected outcome.
+   */
+  deleteDocument(tenantId: string, id: string): Promise<DeleteDocumentResult>;
   /**
    * Calls `GET /api/contracts` (operationId `getPortfolio`) -- the portfolio list behind
    * `src/routes/contracts/` (AC-1 filters, AC-2 attention strip, AC-3 sort/tint, AC-4 states). Same
@@ -756,6 +1040,55 @@ export interface ApiClient {
    * `items` array is a normal, expected "nothing yet" answer).
    */
   getSavingsOpportunities(tenantId: string): Promise<GetSavingsOpportunitiesResult>;
+
+  /**
+   * Calls `GET /api/conversations` (operationId `listConversations`) -- the rail's last-5 resume
+   * list (R-CONV-02). `X-Tenant-Id` and `X-User-Id` both go out (this file's own header comment has
+   * the full provenance); `take` is never sent, always taking the backend's own default (5). Same
+   * never-throws shape as every other call here: a `400` (missing header) is a normal, expected
+   * outcome the caller renders inline.
+   */
+  listConversations(tenantId: string): Promise<ListConversationsResult>;
+  /**
+   * Calls `POST /api/conversations` (operationId `createConversation`) -- opens a new chat, plain
+   * or scoped to a contract (Contract 360 "Ask about it", `/ask?scope=<contractId>`). Same
+   * never-throws shape as every other call here.
+   */
+  createConversation(tenantId: string, request?: CreateConversationRequest): Promise<CreateConversationResult>;
+  /**
+   * Calls `GET /api/conversations/{id}` (operationId `getConversation`) -- resumes one conversation
+   * with every past turn, oldest first (R-CONV-02 AC-1 "resuming ... renders past turns with
+   * citation cards and actions still clickable"). Same never-throws shape as every other call here;
+   * a `404` (unknown id, another tenant's, or another user's -- one honest outcome, see that
+   * operation's own OpenAPI description) is a normal, expected outcome the caller renders as a named
+   * "not found" state, not an exception.
+   */
+  getConversation(tenantId: string, id: string): Promise<GetConversationResult>;
+  /**
+   * Calls `POST /api/conversations/{id}/messages` (operationId `postConversationMessage`) -- asks a
+   * question in an existing conversation and returns the routed reply (ADR-024 §6). Same
+   * never-throws shape as every other call here: an honest `abstain`/`redirect`/`refusal` is still
+   * `ok: true` (see `PostMessageResult`'s own doc comment); a transport failure, a `400`, or a `404`
+   * (unknown conversation) is `ok: false`.
+   */
+  postMessage(tenantId: string, conversationId: string, request: PostMessageRequest): Promise<PostMessageResult>;
+  /**
+   * Calls `GET /api/capabilities` (operationId `getCapabilities`) -- the versioned capability
+   * catalog (R-SYS-01), the source of the Ask screen's own two suggestion chips
+   * (`routes/ask/askViewModel.ts`) and the global Ask bar's per-screen chips
+   * (`components/ask-bar/askSuggestions.ts`). No `X-Tenant-Id` -- the catalog is static and
+   * tenant-agnostic (that operation's own OpenAPI description) -- the first genuinely tenant-agnostic
+   * read in this file.
+   */
+  getCapabilities(): Promise<GetCapabilitiesResult>;
+  /**
+   * Calls `GET /api/market/records/{id}` (operationId `getMarketRecord`) -- one market-intelligence
+   * record for the Ask citation side panel (R-EVD-02: "a market citation opens a side panel with
+   * the record"). No `X-Tenant-Id` -- the market index is shared and read-only for every tenant
+   * (ADR-024). Same never-throws shape as every other call here; a `404` is a normal, expected
+   * outcome.
+   */
+  getMarketRecord(id: string): Promise<GetMarketRecordResult>;
 }
 
 
@@ -767,12 +1100,21 @@ export interface ApiClient {
  * against it with the platform `URL` parser rather than hand-rolled string
  * concatenation.
  */
-export function createApiClient(baseUrl: string): ApiClient {
+export function createApiClient(baseUrl: string, getUserId: GetUserId = () => null): ApiClient {
   return {
     async getHealth() {
       let response: Response;
       try {
-        response = await fetch(new URL("/health", baseUrl), { cache: "no-store" });
+        // getHealth is the one call in this file with no headers at all absent a signed-in user
+        // (every other method already sends at least X-Tenant-Id) -- the `headers` key itself is
+        // omitted, not sent empty, when userIdHeaders(getUserId) has nothing to contribute, so this
+        // stays byte-for-byte what it was before task E13/F09/US01/T04 whenever no getUserId is
+        // supplied (the default).
+        const headers = userIdHeaders(getUserId);
+        response = await fetch(new URL("/health", baseUrl), {
+          ...(Object.keys(headers).length > 0 ? { headers } : {}),
+          cache: "no-store",
+        });
       } catch (cause) {
         return {
           ok: false,
@@ -790,7 +1132,7 @@ export function createApiClient(baseUrl: string): ApiClient {
       try {
         response = await fetch(new URL("/api/workspaces", baseUrl), {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...userIdHeaders(getUserId) },
           body: JSON.stringify(request),
           cache: "no-store",
         });
@@ -830,7 +1172,7 @@ export function createApiClient(baseUrl: string): ApiClient {
           new URL(`/api/workspaces/${encodeURIComponent(tenantId)}/invites`, baseUrl),
           {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", ...userIdHeaders(getUserId) },
             body: JSON.stringify(request),
             cache: "no-store",
           },
@@ -871,7 +1213,7 @@ export function createApiClient(baseUrl: string): ApiClient {
       try {
         response = await fetch(new URL("/api/documents", baseUrl), {
           method: "POST",
-          headers: { "X-Tenant-Id": tenantId },
+          headers: { "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
           body: formData,
           cache: "no-store",
         });
@@ -880,16 +1222,27 @@ export function createApiClient(baseUrl: string): ApiClient {
           ok: false,
           statusCode: null,
           document: null,
+          rejection: null,
           error: `Unable to reach ${baseUrl}/api/documents. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
         };
       }
 
       if (response.status === 201) {
         const document = (await response.json()) as UploadedDocument;
-        return { ok: true, statusCode: 201, document, error: null };
+        return { ok: true, statusCode: 201, document, rejection: null, error: null };
       }
 
-      // Same Results.BadRequest(string) shape as createWorkspace's 400 above.
+      // Task E13/F04/US01/T01: the admission gate's own structured body (ADR-024 "gate before
+      // persistence") -- read into `rejection`, not `error`, so a caller never has to re-parse a
+      // JSON.stringify'd object out of a string field. See UploadDocumentResult's own doc comment.
+      if (response.status === 422) {
+        const rejection = (await response.json()) as RejectedUploadBody;
+        return { ok: false, statusCode: 422, document: null, rejection, error: null };
+      }
+
+      // 413 (Documents:MaxFileBytes exceeded) and 415 (format rejected by extension + magic bytes)
+      // both carry a plain-string body, the same Results.BadRequest(string) shape as createWorkspace's
+      // 400 above -- no special-casing needed beyond falling through to the generic branch below.
       let error: string;
       try {
         const errorBody: unknown = await response.json();
@@ -898,14 +1251,14 @@ export function createApiClient(baseUrl: string): ApiClient {
         error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
       }
 
-      return { ok: false, statusCode: response.status, document: null, error };
+      return { ok: false, statusCode: response.status, document: null, rejection: null, error };
     },
 
     async getDocument(tenantId, id) {
       let response: Response;
       try {
         response = await fetch(new URL(`/api/documents/${encodeURIComponent(id)}`, baseUrl), {
-          headers: { "X-Tenant-Id": tenantId },
+          headers: { "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
           cache: "no-store",
         });
       } catch (cause) {
@@ -943,6 +1296,142 @@ export function createApiClient(baseUrl: string): ApiClient {
       return { ok: false, statusCode: response.status, document: null, error };
     },
 
+    async listDocuments(tenantId, query = {}) {
+      const url = new URL("/api/documents", baseUrl);
+      if (query.status !== undefined) url.searchParams.set("status", query.status);
+      if (query.page !== undefined) url.searchParams.set("page", String(query.page));
+      if (query.pageSize !== undefined) url.searchParams.set("pageSize", String(query.pageSize));
+
+      let response: Response;
+      try {
+        response = await fetch(url, { headers: { "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) }, cache: "no-store" });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          page: null,
+          error: `Unable to reach ${baseUrl}/api/documents. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const page = (await response.json()) as DocumentListPageBody;
+        return { ok: true, statusCode: 200, page, error: null };
+      }
+
+      let error: string;
+      try {
+        const errorBody: unknown = await response.json();
+        error = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, page: null, error };
+    },
+
+    async getDocumentPreviewUrl(tenantId, id) {
+      let response: Response;
+      try {
+        response = await fetch(new URL(`/api/documents/${encodeURIComponent(id)}/preview`, baseUrl), {
+          headers: { "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          objectUrl: null,
+          error: `Unable to reach ${baseUrl}/api/documents/${id}/preview. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const blob = await response.blob();
+        return { ok: true, statusCode: 200, objectUrl: URL.createObjectURL(blob), error: null };
+      }
+
+      if (response.status === 404) {
+        return { ok: false, statusCode: 404, objectUrl: null, error: `No document found for id ${id}.` };
+      }
+
+      return {
+        ok: false,
+        statusCode: response.status,
+        objectUrl: null,
+        error: `Request failed with HTTP ${response.status} ${response.statusText}.`,
+      };
+    },
+
+    async reprocessDocument(tenantId, id) {
+      let response: Response;
+      try {
+        response = await fetch(new URL(`/api/documents/${encodeURIComponent(id)}/reprocess`, baseUrl), {
+          method: "POST",
+          headers: { "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          summary: null,
+          error: `Unable to reach ${baseUrl}/api/documents/${id}/reprocess. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const summary = (await response.json()) as DocumentReprocessSummaryBody;
+        return { ok: true, statusCode: 200, summary, error: null };
+      }
+
+      if (response.status === 403) {
+        return { ok: false, statusCode: 403, summary: null, error: "Only a Workspace Admin can reprocess a document." };
+      }
+
+      if (response.status === 404) {
+        return { ok: false, statusCode: 404, summary: null, error: `No document found for id ${id}.` };
+      }
+
+      return {
+        ok: false,
+        statusCode: response.status,
+        summary: null,
+        error: `Request failed with HTTP ${response.status} ${response.statusText}.`,
+      };
+    },
+
+    async deleteDocument(tenantId, id) {
+      let response: Response;
+      try {
+        response = await fetch(new URL(`/api/documents/${encodeURIComponent(id)}`, baseUrl), {
+          method: "DELETE",
+          headers: { "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          error: `Unable to reach ${baseUrl}/api/documents/${id}. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 204) {
+        return { ok: true, statusCode: 204, error: null };
+      }
+
+      if (response.status === 403) {
+        return { ok: false, statusCode: 403, error: "Only a Workspace Admin can delete a document." };
+      }
+
+      if (response.status === 404) {
+        return { ok: false, statusCode: 404, error: `No document found for id ${id}.` };
+      }
+
+      return { ok: false, statusCode: response.status, error: `Request failed with HTTP ${response.status} ${response.statusText}.` };
+    },
+
     async getPortfolio(tenantId, query = {}) {
       const url = new URL("/api/contracts", baseUrl);
       // Only ever sets a key when the caller actually supplied it -- an absent query parameter must
@@ -961,7 +1450,7 @@ export function createApiClient(baseUrl: string): ApiClient {
 
       let response: Response;
       try {
-        response = await fetch(url, { headers: { "X-Tenant-Id": tenantId }, cache: "no-store" });
+        response = await fetch(url, { headers: { "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) }, cache: "no-store" });
       } catch (cause) {
         return {
           ok: false,
@@ -994,7 +1483,7 @@ export function createApiClient(baseUrl: string): ApiClient {
       let response: Response;
       try {
         response = await fetch(new URL(`/api/contracts/${encodeURIComponent(id)}`, baseUrl), {
-          headers: { "X-Tenant-Id": tenantId },
+          headers: { "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
           cache: "no-store",
         });
       } catch (cause) {
@@ -1032,7 +1521,7 @@ export function createApiClient(baseUrl: string): ApiClient {
       let response: Response;
       try {
         response = await fetch(new URL("/api/renewals", baseUrl), {
-          headers: { "X-Tenant-Id": tenantId },
+          headers: { "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
           cache: "no-store",
         });
       } catch (cause) {
@@ -1064,7 +1553,7 @@ export function createApiClient(baseUrl: string): ApiClient {
       let response: Response;
       try {
         response = await fetch(new URL(`/api/renewals/${encodeURIComponent(contractId)}/priority`, baseUrl), {
-          headers: { "X-Tenant-Id": tenantId },
+          headers: { "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
           cache: "no-store",
         });
       } catch (cause) {
@@ -1100,7 +1589,7 @@ export function createApiClient(baseUrl: string): ApiClient {
       let response: Response;
       try {
         response = await fetch(new URL(`/api/contracts/${encodeURIComponent(id)}/corrections`, baseUrl), {
-          headers: { "X-Tenant-Id": tenantId },
+          headers: { "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
           cache: "no-store",
         });
       } catch (cause) {
@@ -1139,7 +1628,7 @@ export function createApiClient(baseUrl: string): ApiClient {
       try {
         response = await fetch(new URL(`/api/contracts/${encodeURIComponent(id)}`, baseUrl), {
           method: "PATCH",
-          headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId },
+          headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
           body: JSON.stringify(request),
           cache: "no-store",
         });
@@ -1179,7 +1668,7 @@ export function createApiClient(baseUrl: string): ApiClient {
       try {
         response = await fetch(new URL("/api/chat/query", baseUrl), {
           method: "POST",
-          headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId },
+          headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
           body: JSON.stringify(request),
           cache: "no-store",
         });
@@ -1214,7 +1703,7 @@ export function createApiClient(baseUrl: string): ApiClient {
       try {
         response = await fetch(new URL(`/api/renewals/${encodeURIComponent(contractId)}/action`, baseUrl), {
           method: "POST",
-          headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId },
+          headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
           body: JSON.stringify(request),
           cache: "no-store",
         });
@@ -1257,7 +1746,7 @@ export function createApiClient(baseUrl: string): ApiClient {
       try {
         response = await fetch(new URL("/api/quotes", baseUrl), {
           method: "POST",
-          headers: { "X-Tenant-Id": tenantId },
+          headers: { "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
           body: formData,
           cache: "no-store",
         });
@@ -1291,7 +1780,7 @@ export function createApiClient(baseUrl: string): ApiClient {
       let response: Response;
       try {
         response = await fetch(new URL(`/api/quotes/${encodeURIComponent(id)}/assessment`, baseUrl), {
-          headers: { "X-Tenant-Id": tenantId },
+          headers: { "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
           cache: "no-store",
         });
       } catch (cause) {
@@ -1328,7 +1817,7 @@ export function createApiClient(baseUrl: string): ApiClient {
       try {
         response = await fetch(new URL(`/api/quotes/${encodeURIComponent(id)}/assessment/recalculate`, baseUrl), {
           method: "POST",
-          headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId },
+          headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
           body: JSON.stringify({ mappings }),
           cache: "no-store",
         });
@@ -1365,7 +1854,7 @@ export function createApiClient(baseUrl: string): ApiClient {
       try {
         response = await fetch(new URL("/api/negotiations/outcomes", baseUrl), {
           method: "POST",
-          headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId },
+          headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
           body: JSON.stringify(request),
           cache: "no-store",
         });
@@ -1401,7 +1890,7 @@ export function createApiClient(baseUrl: string): ApiClient {
       let response: Response;
       try {
         response = await fetch(new URL("/api/savings/kpis", baseUrl), {
-          headers: { "X-Tenant-Id": tenantId },
+          headers: { "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
           cache: "no-store",
         });
       } catch (cause) {
@@ -1434,7 +1923,7 @@ export function createApiClient(baseUrl: string): ApiClient {
       let response: Response;
       try {
         response = await fetch(new URL("/api/savings", baseUrl), {
-          headers: { "X-Tenant-Id": tenantId },
+          headers: { "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
           cache: "no-store",
         });
       } catch (cause) {
@@ -1461,6 +1950,222 @@ export function createApiClient(baseUrl: string): ApiClient {
       }
 
       return { ok: false, statusCode: response.status, opportunities: null, error };
+    },
+
+    async listConversations(tenantId) {
+      let response: Response;
+      try {
+        response = await fetch(new URL("/api/conversations", baseUrl), {
+          headers: { "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          conversations: null,
+          error: `Unable to reach ${baseUrl}/api/conversations. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const conversations = (await response.json()) as readonly ConversationSummaryBody[];
+        return { ok: true, statusCode: 200, conversations, error: null };
+      }
+
+      let listError: string;
+      try {
+        const errorBody: unknown = await response.json();
+        listError = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        listError = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, conversations: null, error: listError };
+    },
+
+    async createConversation(tenantId, request = {}) {
+      let response: Response;
+      try {
+        response = await fetch(new URL("/api/conversations", baseUrl), {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
+          body: JSON.stringify(request),
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          conversation: null,
+          error: `Unable to reach ${baseUrl}/api/conversations. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 201) {
+        const conversation = (await response.json()) as CreatedConversationBody;
+        return { ok: true, statusCode: 201, conversation, error: null };
+      }
+
+      let createError: string;
+      try {
+        const errorBody: unknown = await response.json();
+        createError = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        createError = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, conversation: null, error: createError };
+    },
+
+    async getConversation(tenantId, id) {
+      let response: Response;
+      try {
+        response = await fetch(new URL(`/api/conversations/${encodeURIComponent(id)}`, baseUrl), {
+          headers: { "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          conversation: null,
+          error: `Unable to reach ${baseUrl}/api/conversations/${id}. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const conversation = (await response.json()) as ConversationDetailBody;
+        return { ok: true, statusCode: 200, conversation, error: null };
+      }
+
+      // Same empty-body 404 shape as getContract360's own 404 above (Results.NotFound()).
+      if (response.status === 404) {
+        return { ok: false, statusCode: 404, conversation: null, error: `No conversation found for id ${id}.` };
+      }
+
+      let getError: string;
+      try {
+        const errorBody: unknown = await response.json();
+        getError = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        getError = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, conversation: null, error: getError };
+    },
+
+    async postMessage(tenantId, conversationId, request) {
+      let response: Response;
+      try {
+        response = await fetch(
+          new URL(`/api/conversations/${encodeURIComponent(conversationId)}/messages`, baseUrl),
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
+            body: JSON.stringify(request),
+            cache: "no-store",
+          },
+        );
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          reply: null,
+          error: `Unable to reach ${baseUrl}/api/conversations/${conversationId}/messages. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const reply = (await response.json()) as ConversationReplyBody;
+        return { ok: true, statusCode: 200, reply, error: null };
+      }
+
+      if (response.status === 404) {
+        return { ok: false, statusCode: 404, reply: null, error: `No conversation found for id ${conversationId}.` };
+      }
+
+      let postError: string;
+      try {
+        const errorBody: unknown = await response.json();
+        postError = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        postError = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, reply: null, error: postError };
+    },
+
+    async getCapabilities() {
+      let response: Response;
+      try {
+        // Tenant-agnostic (no X-Tenant-Id) -- see this method's own doc comment on the ApiClient
+        // interface. Same conditional-headers shape as getHealth above: no `headers` key at all
+        // when userIdHeaders(getUserId) has nothing to contribute.
+        const headers = userIdHeaders(getUserId);
+        response = await fetch(new URL("/api/capabilities", baseUrl), {
+          ...(Object.keys(headers).length > 0 ? { headers } : {}),
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          catalog: null,
+          error: `Unable to reach ${baseUrl}/api/capabilities. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const catalog = (await response.json()) as CapabilityCatalogBody;
+        return { ok: true, statusCode: 200, catalog, error: null };
+      }
+
+      // No documented non-2xx body for this operation (CapabilitiesEndpointExtensions has no
+      // failure branch at all) -- a status-based message, never an attempted JSON parse.
+      return {
+        ok: false,
+        statusCode: response.status,
+        catalog: null,
+        error: `Request failed with HTTP ${response.status} ${response.statusText}.`,
+      };
+    },
+
+    async getMarketRecord(id) {
+      let response: Response;
+      try {
+        // Tenant-agnostic (no X-Tenant-Id) -- see this method's own doc comment on the ApiClient
+        // interface.
+        const headers = userIdHeaders(getUserId);
+        response = await fetch(new URL(`/api/market/records/${encodeURIComponent(id)}`, baseUrl), {
+          ...(Object.keys(headers).length > 0 ? { headers } : {}),
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          record: null,
+          error: `Unable to reach ${baseUrl}/api/market/records/${id}. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const record = (await response.json()) as MarketRecordBody;
+        return { ok: true, statusCode: 200, record, error: null };
+      }
+
+      // Same empty-body 404 shape as getContract360's own 404 above (Results.NotFound()).
+      if (response.status === 404) {
+        return { ok: false, statusCode: 404, record: null, error: `No market record found for id ${id}.` };
+      }
+
+      return {
+        ok: false,
+        statusCode: response.status,
+        record: null,
+        error: `Request failed with HTTP ${response.status} ${response.statusText}.`,
+      };
     },
   };
 }

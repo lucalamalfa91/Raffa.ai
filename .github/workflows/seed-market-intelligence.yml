@@ -1,0 +1,262 @@
+name: seed-market-intelligence
+
+# Task E13/F11/US01/T01 (v2-integration), `inputs/requirements.md` R-MKT-03
+# ("Two projections, one ingestion job ... the ingestion job
+# (`seed-market-intelligence` CI job, same identity model as
+# `seed-demo-fixture.yml`) is idempotent and versioned by feed version";
+# AC-1 "Re-running the job with the same file changes nothing").
+# ADR-021 (schema is applied by CI, never by a host at boot -- this workflow
+# assumes `backend.yml`'s schema-apply step already ran `market.sql` against
+# this environment), ADR-022 (seeds are explicit operator jobs, never a side
+# effect of a push), ADR-015 / ADR-011 (OIDC only, no stored secrets),
+# ADR-001 (the feed is the checked-in *mock*, labelled representative).
+#
+# Deliberately never wired to `push` / `pull_request`, exactly like
+# `seed-demo-fixture.yml`: populating the shared, cross-tenant market corpus
+# (`market_record` + `market_embedding`) is an explicit operator action
+# against one named environment.
+#
+# What it actually runs is the Worker's own one-shot operator command
+# (`backend/src/Contigo.Worker/Commands/IngestMarketCommand.cs`, task
+# E13/F02/US01/T02):
+#
+#   dotnet run --project backend/src/Contigo.Worker -- \
+#     ingest-market --feed backend/fixtures/market-intelligence.mock.json
+#
+# ...from the runner, against this environment's Postgres, using the same
+# `postgres-connection` Key Vault secret `backend.yml` and
+# `seed-demo-fixture.yml` already read. There is no `az containerapp job` for
+# this and no HTTP endpoint that ingests the feed -- the CLI command *is* the
+# ingestion seam, and the runner already reaches this database (that is how
+# `seed-demo-fixture.yml` runs `psql` against it today).
+on:
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: >-
+          GitHub Environment (and Postgres database, contigo_<env>) whose
+          shared market corpus is ingested.
+        required: true
+        type: choice
+        options: [dev, demo]
+        default: dev
+  # Callable for the same reason seed-demo-fixture.yml is: a later
+  # promotion/bootstrap workflow can run this after the schema apply without
+  # duplicating the OIDC login and Key Vault fetch below. This file owns no
+  # promotion logic of its own (ADR-016 keeps that in demo-promote.yml).
+  workflow_call:
+    inputs:
+      target_environment:
+        description: 'GitHub Environment (and Postgres database) to ingest into: "dev" or "demo".'
+        required: false
+        type: string
+        default: dev
+
+permissions:
+  contents: read
+
+concurrency:
+  # Never two ingestions into the same shared corpus at once: the second run's
+  # "0 inserted, 0 updated" idempotency assertion below is only meaningful if
+  # nothing else is writing `market_record` concurrently.
+  group: seed-market-intelligence-${{ inputs.target_environment }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  DOTNET_VERSION: "10.0.x"
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
+  FEED_PATH: backend/fixtures/market-intelligence.mock.json
+
+jobs:
+  ingest:
+    name: ingest market feed (${{ inputs.target_environment }})
+    runs-on: ubuntu-latest
+    # Same GitHub Environment backend.yml's deploy job uses, so `demo`'s
+    # required reviewers (ADR-014 / ADR-016) gate this exactly like a deploy.
+    environment: ${{ inputs.target_environment }}
+    permissions:
+      id-token: write # required so GitHub issues the OIDC token azure/login exchanges
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      # OIDC auth (ADR-015): the same per-env least-privilege deploy service
+      # principal backend.yml and seed-demo-fixture.yml already use; it
+      # already holds "Key Vault Secrets User" on this env's vault
+      # (infra/modules/keyvault `azurerm_role_assignment.ci_secrets_user`), so
+      # this workflow needs no new Azure role assignment.
+      - name: Azure login (OIDC)
+        uses: ./.github/actions/azure-login
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resolve resource group
+        run: echo "RESOURCE_GROUP=rg-contigo-${TARGET_ENVIRONMENT}" >> "$GITHUB_ENV"
+
+      - name: Install postgresql-client
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends postgresql-client
+          fi
+
+      # Identical fetch to backend.yml / seed-demo-fixture.yml -- same secret,
+      # same translation script, same masking. In addition to the PG* vars
+      # `psql` reads, this step keeps the raw Npgsql string (masked) so the
+      # Worker below is handed the *exact* connection string
+      # infra/modules/postgres composed
+      # ("Host=...;Database=...;Username=...;Password=...;Ssl Mode=Require"),
+      # never a re-assembled approximation of it.
+      - name: Fetch Postgres connection string (ADR-021)
+        run: |
+          set -euo pipefail
+          HCP_RUNS="https://app.terraform.io/app/contigo-platform/workspaces/contigo-${TARGET_ENVIRONMENT}/runs"
+          KV_NAME=$(az keyvault list --resource-group "$RESOURCE_GROUP" --query "[0].name" -o tsv)
+          if [ -z "$KV_NAME" ]; then
+            echo "::error::no Key Vault found in resource group $RESOURCE_GROUP. Confirm the HCP VCS apply at $HCP_RUNS, then re-run this job."
+            exit 1
+          fi
+          set +e
+          RAW_CONN=$(az keyvault secret show --vault-name "$KV_NAME" --name postgres-connection --query value -o tsv 2>/tmp/kv_secret_show.err)
+          KV_STATUS=$?
+          set -e
+          if [ $KV_STATUS -ne 0 ] || [ -z "$RAW_CONN" ]; then
+            echo "::error::could not read secret 'postgres-connection' from $KV_NAME. Either the HCP VCS apply at $HCP_RUNS has not created it yet, or this environment's CI deploy principal (contigo-sp-${TARGET_ENVIRONMENT}) is missing the 'Key Vault Secrets User' role on $KV_NAME. Azure CLI said: $(tail -c 500 /tmp/kv_secret_show.err | tr '\n' ' ')"
+            exit 1
+          fi
+          echo "::add-mask::$RAW_CONN"
+          PG_EXPORTS=$(printf '%s' "$RAW_CONN" | python3 scripts/pg_connection_string_env.py)
+          eval "$PG_EXPORTS"
+          echo "::add-mask::$PGPASSWORD"
+          if [ -z "${PGHOST:-}" ] || [ -z "${PGPASSWORD:-}" ]; then
+            echo "::error::scripts/pg_connection_string_env.py produced an incomplete environment from the postgres-connection secret"
+            exit 1
+          fi
+          {
+            echo "PGHOST=$PGHOST"
+            echo "PGPORT=$PGPORT"
+            echo "PGDATABASE=$PGDATABASE"
+            echo "PGUSER=$PGUSER"
+            echo "PGPASSWORD=$PGPASSWORD"
+            echo "PGSSLMODE=$PGSSLMODE"
+            echo "MARKET_DB_CONNECTION=$RAW_CONN"
+          } >> "$GITHUB_ENV"
+
+      # Honest failure instead of an opaque "relation market_record does not
+      # exist" from inside the Worker: ADR-021's apply order is schema first
+      # (backend.yml), seed second (this file).
+      - name: Confirm market schema is present (ADR-021)
+        run: |
+          set -euo pipefail
+          PRESENT=$(psql -Atqc "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('market_record','market_embedding');")
+          if [ "$PRESENT" -lt 2 ]; then
+            echo "::error::contigo_${TARGET_ENVIRONMENT} is missing market_record/market_embedding -- run backend.yml's schema apply (ADR-021, backend/src/Contigo.Market/Migrations/Scripts/market.sql) against this environment before ingesting."
+            exit 1
+          fi
+
+      - name: Confirm the checked-in feed exists (R-MKT-02)
+        run: |
+          set -euo pipefail
+          if [ ! -f "$FEED_PATH" ]; then
+            echo "::error::$FEED_PATH is missing -- R-MKT-02 requires the mock market-intelligence feed to be checked in."
+            exit 1
+          fi
+          echo "Feed: $FEED_PATH ($(wc -c < "$FEED_PATH") bytes)"
+
+      - name: Build the Worker host
+        run: |
+          set -euo pipefail
+          dotnet restore backend/src/Contigo.Worker/Contigo.Worker.csproj
+          dotnet build backend/src/Contigo.Worker/Contigo.Worker.csproj \
+            --configuration Release --no-restore
+
+      # `ingest-market` fails fast without ConnectionStrings:DocumentsContracts,
+      # :Audit and :Renewals (Contigo.Worker/Program.cs builds the whole host
+      # before dispatching the command) and requires ConnectionStrings:Market
+      # for the ingestion service itself (IngestMarketCommand.RunAsync). All
+      # four are the same environment database.
+      #
+      # AiGateway__Endpoint is deliberately not set: with it unset the gateway
+      # DI swap keeps the fixture `embed` role (ADR-004 / R-AI-01), which is
+      # deterministic and costs nothing -- the market *notes* index is
+      # populated either way, and the numbers this job actually seeds
+      # (`market_record`) never come from a model. An operator who wants
+      # Foundry embeddings sets AiGateway__Endpoint / AiGateway__ProjectName on
+      # the job the same way Container Apps inject them.
+      - name: Ingest market feed (R-MKT-03)
+        run: |
+          set -euo pipefail
+          export ConnectionStrings__DocumentsContracts="$MARKET_DB_CONNECTION"
+          export ConnectionStrings__Audit="$MARKET_DB_CONNECTION"
+          export ConnectionStrings__Renewals="$MARKET_DB_CONNECTION"
+          export ConnectionStrings__Market="$MARKET_DB_CONNECTION"
+          dotnet run --project backend/src/Contigo.Worker/Contigo.Worker.csproj \
+            --configuration Release --no-build --no-restore \
+            -- ingest-market --feed "$FEED_PATH" | tee /tmp/ingest-first.log
+          if ! grep -qE "^Ingested feed '.*': [0-9]+ inserted, [0-9]+ updated, [0-9]+ unchanged\.$" /tmp/ingest-first.log; then
+            echo "::error::ingest-market did not print its IngestionSummary line -- see the step log above."
+            exit 1
+          fi
+          SUMMARY=$(grep -E "^Ingested feed '" /tmp/ingest-first.log | tail -1)
+          echo "First run: $SUMMARY"
+          echo "FIRST_RUN_SUMMARY=$SUMMARY" >> "$GITHUB_ENV"
+
+      # R-MKT-03 AC-1 / parent story AC-1, asserted rather than described:
+      # "Re-running the job with the same file changes nothing" -- the second
+      # pass must report 0 inserted and 0 updated.
+      - name: Re-run and assert idempotency (R-MKT-03 AC-1)
+        run: |
+          set -euo pipefail
+          export ConnectionStrings__DocumentsContracts="$MARKET_DB_CONNECTION"
+          export ConnectionStrings__Audit="$MARKET_DB_CONNECTION"
+          export ConnectionStrings__Renewals="$MARKET_DB_CONNECTION"
+          export ConnectionStrings__Market="$MARKET_DB_CONNECTION"
+          dotnet run --project backend/src/Contigo.Worker/Contigo.Worker.csproj \
+            --configuration Release --no-build --no-restore \
+            -- ingest-market --feed "$FEED_PATH" | tee /tmp/ingest-second.log
+          SUMMARY=$(grep -E "^Ingested feed '" /tmp/ingest-second.log | tail -1)
+          echo "Second run: $SUMMARY"
+          INSERTED=$(printf '%s' "$SUMMARY" | sed -E "s/.*: ([0-9]+) inserted, ([0-9]+) updated, ([0-9]+) unchanged\./\1/")
+          UPDATED=$(printf '%s' "$SUMMARY" | sed -E "s/.*: ([0-9]+) inserted, ([0-9]+) updated, ([0-9]+) unchanged\./\2/")
+          if [ "$INSERTED" != "0" ] || [ "$UPDATED" != "0" ]; then
+            echo "::error::market ingestion is not idempotent (R-MKT-03 AC-1): the second run reported $INSERTED inserted / $UPDATED updated, expected 0 / 0. First run was: ${FIRST_RUN_SUMMARY}"
+            exit 1
+          fi
+          echo "Idempotent: the second pass inserted 0 and updated 0 record(s)."
+
+      # Prove the corpus actually landed and stayed shared/tenant-free
+      # (R-MKT-03 AC-2 / ADR-011 epic-13 amendment: `market_record` and
+      # `market_embedding` carry no tenant_id and are never joined with tenant
+      # tables). No `app.tenant_id` is set here on purpose -- these two tables
+      # have no RLS policy, and needing one would itself be the defect.
+      - name: Verify the market corpus (R-MKT-02, R-MKT-03 AC-2)
+        run: |
+          set -euo pipefail
+          RECORDS=$(psql -Atqc "SELECT count(*) FROM market_record;")
+          NOTES=$(psql -Atqc "SELECT count(*) FROM market_embedding;")
+          TENANT_COLUMNS=$(psql -Atqc "SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name IN ('market_record','market_embedding') AND column_name = 'tenant_id';")
+          if [ "$RECORDS" -lt 60 ]; then
+            echo "::error::market_record holds $RECORDS row(s); R-MKT-02 requires >= 60 records in the mock feed. Check $FEED_PATH and the ingestion log above."
+            exit 1
+          fi
+          if [ "$NOTES" -lt 1 ]; then
+            echo "::error::market_embedding is empty -- the market notes projection (R-MKT-03 point 2) did not run."
+            exit 1
+          fi
+          if [ "$TENANT_COLUMNS" != "0" ]; then
+            echo "::error::market_record/market_embedding gained a tenant_id column -- the market corpus is shared and read-only for every tenant (ADR-011 epic-13 amendment, R-MKT-03 AC-2)."
+            exit 1
+          fi
+          echo "::group::feed versions in contigo_${TARGET_ENVIRONMENT}"
+          psql -Atqc "SELECT feed_version, count(*), max(updated_at) FROM market_record GROUP BY feed_version ORDER BY feed_version;"
+          echo "::endgroup::"
+          echo "Market corpus OK in contigo_${TARGET_ENVIRONMENT}: $RECORDS market_record row(s), $NOTES market_embedding row(s), no tenant_id column."

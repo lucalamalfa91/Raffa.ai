@@ -59,12 +59,30 @@ public sealed class EmbeddingRetrievalService(
     /// does not validate that the source row exists, mirroring that entity's own "not a single FK"
     /// design.
     /// </summary>
+    public Task<Result<EmbeddingIndexResult>> IndexChunkAsync(
+        TenantId tenantId,
+        string sourceType,
+        EntityId sourceId,
+        int chunkIndex,
+        string chunkText,
+        CancellationToken cancellationToken = default) =>
+        IndexChunkAsync(tenantId, sourceType, sourceId, chunkIndex, chunkText, page: null, section: null, cancellationToken);
+
+    /// <summary>
+    /// Page-aware overload (task E13/F04/US01/T02; <c>inputs/requirements.md</c> R-EVD-01,
+    /// R-DOC-07 AC-2): records the 1-based <paramref name="page"/> this chunk was read from and,
+    /// when known, its <paramref name="section"/> label, so an Ask citation can land on the page
+    /// instead of on the document. Both are honestly <see langword="null"/> when unknown — never a
+    /// defaulted page 1.
+    /// </summary>
     public async Task<Result<EmbeddingIndexResult>> IndexChunkAsync(
         TenantId tenantId,
         string sourceType,
         EntityId sourceId,
         int chunkIndex,
         string chunkText,
+        int? page,
+        string? section,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(sourceType))
@@ -113,6 +131,8 @@ public sealed class EmbeddingRetrievalService(
             SourceId = sourceId,
             ChunkIndex = chunkIndex,
             ChunkText = chunkText,
+            Page = page,
+            Section = string.IsNullOrWhiteSpace(section) ? null : section,
             Vector = new Vector(vectorValues.ToArray()),
             Model = embedResult.Value.Metadata.ModelId,
             CreatedAt = now,
@@ -134,6 +154,35 @@ public sealed class EmbeddingRetrievalService(
     /// applied the tenant authorization boundary spec Appendix C rule 4 requires before any content
     /// reaches an LLM context.
     /// </summary>
+    /// <summary>
+    /// Deletes every chunk indexed for one source (task E13/F04/US01/T02): the first half of a
+    /// reprocess ("replace this document's embeddings with page-aware chunks", R-DOC-07) and part
+    /// of a deletion (R-DOC-10). Returns how many rows were removed. Tenant-scoped like every
+    /// other entry point here — RLS backstops it, the explicit predicate states it.
+    /// </summary>
+    public async Task<int> RemoveChunksAsync(
+        TenantId tenantId,
+        string sourceType,
+        EntityId sourceId,
+        CancellationToken cancellationToken = default)
+    {
+        using var tenantScope = tenantContext.BeginScope(tenantId);
+
+        var stale = await dbContext.Embeddings
+            .Where(e => e.TenantId == tenantId && e.SourceType == sourceType && e.SourceId == sourceId)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        if (stale.Count == 0)
+        {
+            return 0;
+        }
+
+        dbContext.Embeddings.RemoveRange(stale);
+        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        return stale.Count;
+    }
+
     public async Task<Result<IReadOnlyList<EmbeddingSearchResult>>> SearchAsync(
         TenantId tenantId,
         string queryText,
@@ -188,7 +237,9 @@ public sealed class EmbeddingRetrievalService(
                 x.Embedding.SourceId,
                 x.Embedding.ChunkIndex,
                 x.Embedding.ChunkText,
-                x.Distance))
+                x.Distance,
+                x.Embedding.Page,
+                x.Embedding.Section))
             .ToList();
 
         return Result<IReadOnlyList<EmbeddingSearchResult>>.Success(results);

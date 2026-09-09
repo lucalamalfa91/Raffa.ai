@@ -8,10 +8,13 @@ using Contigo.Documents.Contracts.Application;
 using Contigo.Documents.Contracts.Application.Extraction;
 using Contigo.Documents.Contracts.Infrastructure;
 using Contigo.Identity.Workspace.Infrastructure;
+using Contigo.Insights;
+using Contigo.Market;
 using Contigo.Quotes.Infrastructure;
 using Contigo.Renewals.Infrastructure;
 using Contigo.Savings.Infrastructure;
 using Contigo.SharedKernel;
+using Contigo.Suppliers.Products.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -38,6 +41,13 @@ var documentsContractsConnectionString = builder.Configuration.GetConnectionStri
         "(set env var ConnectionStrings__DocumentsContracts in deployed environments).");
 
 builder.Services.AddDocumentsContractsModule(documentsContractsConnectionString);
+
+// Task E13/F04/US01/T02 (documents-v2-api): resolves the caller's workspace role for the
+// Admin-only document endpoints (reprocess, delete). Lives in the host because it reads the
+// Identity/Workspace membership table AND the request's own claims/headers -- see
+// Contigo.Api.Infrastructure.WorkspaceRoleResolver for the three-source order and why the
+// interim header/membership branches exist while ADR-010 is not wired.
+builder.Services.AddScoped<WorkspaceRoleResolver>();
 
 // Object storage (ADR-005 "Object storage" row, ADR-011): the Azure Blob Storage adapter is
 // wired here, in the host, and only here — domain modules see IDocumentStorage, never the Azure
@@ -67,7 +77,71 @@ builder.Services.AddAuditModule(auditConnectionString);
 // already resolvable in this container by the time RagAnswerService is first requested; DI
 // registration order does not matter, only that every AddXxxModule call below happens before
 // builder.Build().
-builder.Services.AddChatModule();
+//
+// Task E13/F05/US01/T02 (story us-01-conversations, AC-4): AddChatModule now also accepts the
+// optional chatConnectionString parameter task E13/F05/US01/T01 added — this is the first caller
+// that passes one, the same fail-fast shape as every other required connection string above.
+// Passing it additionally registers ChatDbContext + ConversationService (see that overload's own
+// doc comment) — MapConversationsEndpoints below needs both.
+var chatConnectionString = builder.Configuration.GetConnectionString("Chat")
+    ?? throw new InvalidOperationException(
+        "Missing required configuration 'ConnectionStrings:Chat' " +
+        "(set env var ConnectionStrings__Chat in deployed environments).");
+
+builder.Services.AddChatModule(chatConnectionString);
+
+// Task E13/F06/US01/T01 (ask-engine): Chat:PackTokenBudget, registered *before* AddChatModule's
+// own always-usable-default TryAddSingleton<PackBudget> so a configured value wins (TryAdd's
+// "first registration wins" — see Contigo.Chat.Infrastructure.ServiceCollectionExtensions's own
+// doc comment on this exact ordering contract). Absent configuration, GetValue<int?> returns
+// null and PackBudget falls back to its own DefaultMaxTokens, unchanged from before this line.
+builder.Services.AddSingleton(new Contigo.Chat.Application.Pack.PackBudget(
+    builder.Configuration.GetValue<int?>(Contigo.Chat.Application.Pack.PackBudget.SectionName)));
+
+// Task E13/F06/US01/T01 (ask-engine): Suppliers/Products' own AddSuppliersProductsModule(string)
+// (ADR-002) — task E13/F03/US01/T01 registered ISupplierResolver/ISupplierNameLookup here but no
+// host called it yet (that task's own doc comment: "task E13/F06/US01/T01 is the first real
+// caller"). Same fail-fast connection-string shape as every other required module above.
+var suppliersConnectionString = builder.Configuration.GetConnectionString("Suppliers")
+    ?? throw new InvalidOperationException(
+        "Missing required configuration 'ConnectionStrings:Suppliers' " +
+        "(set env var ConnectionStrings__Suppliers in deployed environments).");
+
+builder.Services.AddSuppliersProductsModule(suppliersConnectionString);
+
+// Task E13/F06/US01/T01 (ask-engine): the Market module's own AddMarketModule() (ADR-002) — task
+// E13/F02/US01/T01 registered the mock feed, its benchmark projection and its in-memory notes
+// retrieval here. Also makes "market-feed" the default active Benchmark Service adapter (replacing
+// the fixture default AddBenchmarkModule alone would leave in place — R-MKT-02), regardless of the
+// order AddBenchmarkModule (transitively, via AddSavingsModule/AddQuotesModule above) already ran
+// in.
+//
+// The connection string is OPTIONAL here, unlike every other module above, and that asymmetry is
+// deliberate. Task E13/F02/US01/T02 landed the persisted `market_record`/`market_embedding` index
+// the Worker's `ingest-market` job fills (ADR-024: "the provider is called only by the ingestion
+// job"; R-MKT-03). When `ConnectionStrings:Market` is configured, this host reads that index —
+// pgvector retrieval, the DB-backed benchmark projection, and the persisted record behind
+// GET /api/market/records/{id}. When it is absent (a local run with no market database), the
+// module keeps the in-memory mock projection and the API still answers, which is why a missing
+// value must not fail startup the way a missing tenant database does: the market index is shared,
+// read-only reference data, not a tenant's own records.
+builder.Services.AddMarketModule(builder.Configuration.GetConnectionString("Market"));
+
+// Task E13/F06/US01/T01 (ask-engine): the Insights module's own AddInsightsModule() (ADR-002) —
+// task E13/F07/US01/T01 registered InsightsOptions/CriticalityScoreCalculator here but no host
+// called it yet (that task's own doc comment: "Program.cs wiring is a later phase's task
+// (F06/T01)"). No connection string: every Insights type is a pure calculator over caller-supplied
+// DTOs (Contigo.Insights' own allow-list is [SharedKernel, Benchmark] — no DbContext of its own).
+builder.Services.AddInsightsModule();
+
+// AskCopilotService is host-composition wiring (this task's own new pack-composition root — see
+// that type's own doc comment: "everything Contigo.Chat's allow-list forbids that module from
+// doing itself happens here"), the same kind of direct registration
+// QuoteExtractionPipeline/NegotiationOutcomePropagationService already use below for the identical
+// "the one place that calls into several modules at once" reason — not a domain module's own
+// AddXxxModule. Scoped: shares this request's own DbContext-backed services (all already Scoped)
+// rather than a second, independently-tracked instance of any of them.
+builder.Services.AddScoped<AskCopilotService>();
 
 // Task E03/F03/US01/T01 (renewal-dashboard, GET /api/renewals): the Renewals module's own
 // AddRenewalsModule(IServiceCollection) (ADR-002) — task E03/F01/US01/T01 registered RenewalEngine
@@ -150,139 +224,16 @@ app.MapHealthChecks("/health");
 // WorkspaceEndpointExtensions for the endpoints themselves.
 app.MapWorkspaceEndpoints();
 
-// Task E01/F06/US01/T01 (us-01-document-upload, AC-1): stores the uploaded bytes in
-// tenant-scoped blob storage and creates the queued classification job
-// (DocumentUploadService owns the actual business logic; this delegate only translates
-// HTTP <-> the service call, per ADR-002's "host is a thin composition root").
-//
-// Task E02/F06/US01/T01 (r1-integration, AC-1 "upload -> parse/OCR -> classify -> extract"):
-// once the upload itself is durable, this handler also runs DocumentProcessingPipeline —
-// hybrid parse -> classify -> staged extraction -> Ask Contigo indexing — synchronously, in
-// this same request, before responding. See DocumentProcessingPipeline's own doc comment for
-// why synchronous/in-request is this task's deliberate interim choice (nothing in this
-// codebase dispatches the queued Classification job to a handler off a durable queue yet). The
-// file bytes are read into memory once, up front: DocumentUploadService needs a stream for
-// storage and DocumentProcessingPipeline needs the same bytes again afterward, and an
-// IFormFile's own stream is not guaranteed re-readable after the first copy. A pipeline
-// failure is reported honestly in the response (processingStatus/contractId fall back to the
-// just-uploaded, pre-processing values) but never turns an already-successful upload into an
-// HTTP error — the bytes are safely stored and the document row already exists either way.
-//
-// ADR-010 (Entra ID/OIDC) is not in the "architecture decisions in force" list for this task,
-// so there is no validated caller identity/JWT yet. The tenant is taken from an explicit
-// X-Tenant-Id header instead of a token claim — a deliberate interim placeholder (paired with
-// DocumentUploadService.UnattributedActor). Deliberately NOT promoted to
-// reports/open-questions.md by this task: that file is appended to by every wave/* implementer
-// branch in this fan-out, and concurrent appends to it have previously broken a phase-barrier
-// merge, so a mid-wave append here would risk repeating that. Fold one consolidated entry for
-// both placeholders into the ledger at a safe point (e.g. when the auth-middleware task is
-// authored), then replace both with claim-based tenant/actor resolution.
-app.MapPost("/api/documents", async Task<IResult> (
-    HttpRequest request,
-    DocumentUploadService uploadService,
-    DocumentProcessingPipeline processingPipeline,
-    CancellationToken cancellationToken) =>
-{
-    if (!request.Headers.TryGetValue("X-Tenant-Id", out var tenantHeaderValues)
-        || !Guid.TryParse(tenantHeaderValues.ToString(), out var tenantGuid))
-    {
-        return Results.BadRequest("A valid 'X-Tenant-Id' header (a GUID) is required.");
-    }
-
-    if (!request.HasFormContentType)
-    {
-        return Results.BadRequest("Expected multipart/form-data with a 'file' field.");
-    }
-
-    var form = await request.ReadFormAsync(cancellationToken);
-    var file = form.Files["file"];
-    if (file is null || file.Length == 0)
-    {
-        return Results.BadRequest("A non-empty 'file' form field is required.");
-    }
-
-    byte[] fileBytes;
-    await using (var uploadStream = file.OpenReadStream())
-    await using (var buffer = new MemoryStream())
-    {
-        await uploadStream.CopyToAsync(buffer, cancellationToken);
-        fileBytes = buffer.ToArray();
-    }
-
-    var tenantId = new TenantId(tenantGuid);
-
-    using var storageContent = new MemoryStream(fileBytes);
-    var result = await uploadService.UploadAsync(
-        tenantId, file.FileName, file.ContentType, storageContent, cancellationToken);
-
-    if (result.IsFailure)
-    {
-        return Results.BadRequest(result.Error);
-    }
-
-    var uploaded = result.Value;
-
-    var processingResult = await processingPipeline.ProcessAsync(
-        tenantId, uploaded.DocumentId, uploaded.FileName, uploaded.MimeType, fileBytes, cancellationToken);
-
-    var processingStatus = processingResult.IsSuccess
-        ? processingResult.Value.ProcessingStatus
-        : uploaded.ProcessingStatus;
-    var contractId = processingResult.IsSuccess ? processingResult.Value.ContractId.Value : (Guid?)null;
-
-    return Results.Created($"/api/documents/{uploaded.DocumentId}", new
-    {
-        id = uploaded.DocumentId.Value,
-        contractId,
-        fileName = uploaded.FileName,
-        mimeType = uploaded.MimeType,
-        processingStatus = processingStatus.ToString(),
-        createdAt = uploaded.CreatedAt,
-    });
-});
-
-// Task E01/F06/US01/T02 (us-01-document-upload, AC-3): reads back the metadata/status AC-2
-// already persists (task T01), scoped to the caller's tenant. Same interim X-Tenant-Id
-// placeholder as POST /api/documents above (ADR-010 is not in force for this task either, so
-// there is still no validated caller principal to take the tenant from) — see that endpoint's
-// comment for why this is not promoted to reports/open-questions.md by this task.
-app.MapGet("/api/documents/{id}", async Task<IResult> (
-    string id,
-    HttpRequest request,
-    DocumentQueryService queryService,
-    CancellationToken cancellationToken) =>
-{
-    if (!request.Headers.TryGetValue("X-Tenant-Id", out var tenantHeaderValues)
-        || !Guid.TryParse(tenantHeaderValues.ToString(), out var tenantGuid))
-    {
-        return Results.BadRequest("A valid 'X-Tenant-Id' header (a GUID) is required.");
-    }
-
-    if (!Guid.TryParse(id, out var documentGuid))
-    {
-        return Results.BadRequest("The document id in the route must be a GUID.");
-    }
-
-    var metadata = await queryService
-        .GetByIdAsync(new TenantId(tenantGuid), new EntityId(documentGuid), cancellationToken)
-        .ConfigureAwait(false);
-
-    if (metadata is null)
-    {
-        return Results.NotFound();
-    }
-
-    return Results.Ok(new
-    {
-        id = metadata.DocumentId.Value,
-        contractId = metadata.ContractId?.Value,
-        fileName = metadata.FileName,
-        mimeType = metadata.MimeType,
-        documentType = metadata.DocumentType.ToString(),
-        processingStatus = metadata.ProcessingStatus.ToString(),
-        createdAt = metadata.CreatedAt,
-    });
-});
+// Task E01/F06/US01/T01 (us-01-document-upload, AC-1) and E01/F06/US01/T02 (AC-3) first mapped
+// POST /api/documents and GET /api/documents/{id} inline here; task E02/F06/US01/T01
+// (r1-integration) made the upload also run DocumentProcessingPipeline synchronously. Task
+// E13/F04/US01/T01 (documents-admission, ADR-024 "gate before persistence") moved both into
+// DocumentsEndpointExtensions and reordered the upload: size (413) -> format by extension and
+// magic bytes (415) -> DocumentAdmissionGate (422, nothing persisted, one audit row) -> only then
+// DocumentUploadService + the pipeline, reusing the gate's own parse and classification. See that
+// file's own doc comment, including the interim X-Tenant-Id / X-User-Id posture (ADR-022,
+// OQ-askv2-005) every tenant-scoped endpoint in this host still shares.
+app.MapDocumentsEndpoints();
 
 // Task E02/F05/US01/T01 (us-01-correction-history, AC-1): versioned PATCH /api/contracts/{id}.
 // Task E02/F03/US02/T01 (us-02-contract-360-aggregate, AC-1/AC-2/AC-3): GET /api/contracts/{id},
@@ -327,13 +278,38 @@ app.MapSavingsEndpoints();
 // for why this gap is not promoted to reports/open-questions.md by this task.
 app.MapSavingsKpiEndpoints();
 
-// Task E02/F04/US02/T01 (us-02-rag-citations, AC-1/AC-2/AC-3): POST /api/chat/query — the RAG
-// retrieval + grounded-answer-with-citations path for Ask Contigo semantic questions (spec §8.3).
-// See ChatEndpointExtensions for the endpoint itself; AskContigoQueryRouter (task
-// E02/F04/US01/T01) decides Structured vs Semantic, EmbeddingRetrievalService (task
-// E02/F02/US02/T02) performs the tenant-scoped retrieval, and RagAnswerService (this task) turns
-// the two into a grounded answer with citations or an explicit "cannot determine".
+// Task E13/F06/US01/T01 (ask-engine, ADR-024 §6): POST /api/chat/query — kept one release as a
+// thin alias that creates a conversation and delegates into AskCopilotService (see
+// ChatEndpointExtensions' own doc comment). Supersedes task E02/F04/US02/T01's own
+// Structured-vs-Semantic RAG path at this same route — that router/planner/handler trio is now
+// reused *inside* AskCopilotService instead (see that type's own doc comment), never called
+// directly from this handler any more.
 app.MapChatEndpoints();
+
+// Task E13/F05/US01/T02 (story us-01-conversations, AC-2/AC-3) mapped GET/POST /api/conversations
+// and GET /api/conversations/{id}; task E13/F06/US01/T01 (ask-engine, AC-8) adds
+// POST /api/conversations/{id}/messages to the same call — list/create/get-with-messages/ask over
+// the conversations store task E13/F05/US01/T01 added (ADR-024 "Conversations (D5)"). See
+// ConversationsEndpointExtensions for the endpoints themselves and their own doc comment for the
+// caller-identity rule (token subject when an authenticated principal is present, else the
+// required X-User-Id header — ADR-022 posture, non-authoritative, OQ-askv2-005).
+app.MapConversationsEndpoints();
+
+// Task E13/F08/US01/T01 (story us-01-capability-catalog, AC-1): GET /api/capabilities — the
+// versioned, role-aware capability catalog (R-SYS-01). See CapabilitiesEndpointExtensions; this
+// task (F06/T01) is its first-mapped caller.
+app.MapCapabilitiesEndpoints();
+
+// Task E13/F07/US01/T01 (insights-calculators, AC-5): GET /api/insights/criticality and
+// GET /api/contracts/{id}/strategy — the portfolio criticality ranking and the per-contract
+// renewal-strategy pack Ask itself narrates (same numbers, one source — see
+// InsightsEndpointExtensions/AskCopilotService's own doc comments). This task (F06/T01) is this
+// file's first-mapped caller.
+app.MapInsightsEndpoints();
+
+// Task E13/F06/US01/T01 (ask-engine): GET /api/market/records/{id} — the market citation panel
+// (R-EVD-02). See MarketEndpointExtensions.
+app.MapMarketEndpoints();
 
 // Task E05/F01/US01/T01 (quote-extraction, parent story us-01-quote-line-extraction AC-1/AC-2/
 // AC-4): POST /api/quotes — upload a supplier quote, then synchronously reuse the epic-02 hybrid

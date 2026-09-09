@@ -1,0 +1,167 @@
+[
+  {
+    "id": "review-document_status-askable-en",
+    "tenantFixture": "needs-review",
+    "intent": "document_status",
+    "language": "en",
+    "question": "which documents are not askable yet?",
+    "expectedKind": "answer",
+    "expectedCitationCorpora": ["calc"],
+    "expectedMarkdownContains": ["not yet askable", "Salesforce"],
+    "knownGap": {
+      "id": "GAP-ASK-STRUCTURED-PACK-DROPS-SUPPLIER-NAME",
+      "observedKind": "answer",
+      "observedMarkdownContains": ["Msa — not yet askable"],
+      "note": "R-SUP-04 again, on the document-status path: BuildDocumentStatusPack titles the item with the document type, so the reply says 'Msa — not yet askable' and never names the supplier whose document it is. With one contract the user can guess; with a real portfolio the answer is unusable."
+    },
+    "notes": "The prototype's 'askable / not yet' row against the one workspace where the answer is not 'all of them': the single Salesforce MSA is still in needs_review, so it must be named as not yet askable."
+  },
+  {
+    "id": "review-document_status-campi-it",
+    "tenantFixture": "needs-review",
+    "intent": "document_status",
+    "language": "it",
+    "question": "Quali campi sono ancora da rivedere?",
+    "expectedKind": "answer",
+    "expectedCitationCorpora": ["calc"],
+    "expectedMarkdownContains": ["not yet askable", "needs_review"],
+    "notes": "The Italian half of the same row (R-DOC/R-SYS-03 review vocabulary)."
+  },
+  {
+    "id": "review-structured_fact-expire-en",
+    "tenantFixture": "needs-review",
+    "intent": "structured_fact",
+    "language": "en",
+    "question": "When does the Salesforce contract expire?",
+    "expectedKind": "answer",
+    "expectedCitationCorpora": ["tenant"],
+    "expectedMarkdownContains": ["Salesforce", "has no validated end date yet"],
+    "forbiddenSubstrings": ["2027-01-15"],
+    "notes": "R-CMP-03 / Appendix C rule 10: the end date has not been accepted in review, so Contigo must say it has none rather than quote the number the seeded (validated) workspace holds for the same supplier. The forbidden substring is that other tenant's date — it must never leak here."
+  },
+  {
+    "id": "review-market_compare-above-market-en",
+    "tenantFixture": "needs-review",
+    "intent": "market_compare",
+    "language": "en",
+    "question": "Is my Salesforce contract above market?",
+    "expectedKind": "answer",
+    "expectedCitationCorpora": ["tenant", "market"],
+    "expectedMarkdownContains": ["needs review"],
+    "knownGap": {
+      "id": "GAP-ASK-NEEDS-REVIEW-NOT-FLAGGED",
+      "observedKind": "answer",
+      "observedMarkdownContains": ["has no validated end date yet"],
+      "note": "R-CMP-03 requires Ask to name the weak facts that block the comparison and link to the review when the contract is needs_review. AskCopilotService reads Contract.Status nowhere in the pack-composition path, so a needs_review contract is packed exactly like a validated one and the reply never mentions the review that is blocking it."
+    },
+    "notes": "R-CMP-03's own situation: a benchmark question about a contract that is not validated yet."
+  },
+  {
+    "id": "review-portfolio_strategy-critical-en",
+    "tenantFixture": "needs-review",
+    "intent": "portfolio_strategy",
+    "language": "en",
+    "question": "which contracts are most critical?",
+    "expectedKind": "answer",
+    "expectedCitationCorpora": ["calc"],
+    "expectedMarkdownContains": ["[1] Salesforce", "criticality 3/100"],
+    "notes": "R-PORT-01 AC-2: a contract whose critical facts are all still weak still gets a criticality score and an explanation — being un-validated raises criticality, it does not hide the contract."
+  },
+  {
+    "id": "review-greeting-ciao-it",
+    "tenantFixture": "needs-review",
+    "intent": "greeting",
+    "language": "it",
+    "question": "Ciao",
+    "expectedKind": "redirect",
+    "expectedMarkdownContains": [
+      "savings copilot",
+      "your Salesforce contract is on file and ready to ask about"
+    ],
+    "expectNoCitations": true,
+    "expectAtLeastOneAction": true,
+    "expectNoGatewayCall": true,
+    "notes": "The portfolio hook on a workspace whose only contract has no validated end date — the hook copy must degrade honestly instead of naming a date it does not have."
+  },
+  {
+    "id": "review-needs_document-sap-en",
+    "tenantFixture": "needs-review",
+    "intent": "needs_document",
+    "language": "en",
+    "question": "When does the SAP contract expire?",
+    "expectedKind": "redirect",
+    "expectedMarkdownContains": ["No SAP contract has been uploaded and validated"],
+    "expectedActionHrefs": ["/documents"],
+    "expectNoCitations": true,
+    "expectNoGatewayCall": true,
+    "notes": "The unknown-supplier row on the third fixture, proving the gate's supplier resolution is per tenant: SAP is unknown here just as Databricks is in the seeded workspace."
+  },
+  {
+    "id": "review-clause-liability-en",
+    "tenantFixture": "needs-review",
+    "intent": "clause",
+    "language": "en",
+    "question": "What liability do we have with Salesforce?",
+    "expectedKind": "abstain",
+    "expectedMarkdownContains": ["Nothing in the 1 validated contract(s) supports a reliable answer"],
+    "expectNoCitations": true,
+    "notes": "Clause retrieval with nothing indexed: the honest abstain, and its wording counts this tenant's own contracts (1), never another fixture's."
+  },
+  {
+    "id": "review-capability-cosa-puoi-it",
+    "tenantFixture": "needs-review",
+    "intent": "capability",
+    "language": "it",
+    "question": "Cosa puoi fare per me?",
+    "expectedKind": "answer",
+    "expectedCitationCorpora": ["contigo"],
+    "expectAtLeastOneAction": true,
+    "expectNoGatewayCall": true,
+    "notes": "R-SYS-01: the capability answer is identical for every tenant, but its actions are availability-aware — this workspace has one contract row, so the modules are not greyed."
+  },
+  {
+    "id": "review-off_domain-joke-en",
+    "tenantFixture": "needs-review",
+    "intent": "off_domain",
+    "language": "en",
+    "question": "tell me a joke",
+    "expectedKind": "redirect",
+    "expectNoCitations": true,
+    "expectNoGatewayCall": true,
+    "notes": "Off-domain, third fixture — the decline never depends on how much data the tenant has."
+  },
+  {
+    "id": "review-legal-tribunale-it",
+    "tenantFixture": "needs-review",
+    "intent": "legal",
+    "language": "it",
+    "question": "Questa clausola regge in tribunale?",
+    "expectedKind": "refusal",
+    "expectedMarkdownContains": ["can't give legal advice"],
+    "expectNoGatewayCall": true,
+    "notes": "The Italian legal lexicon ('tribunale'), third fixture."
+  },
+  {
+    "id": "review-quote_route-benchmark-it",
+    "tenantFixture": "needs-review",
+    "intent": "quote_route",
+    "language": "it",
+    "question": "Questo preventivo e in linea con il mercato?",
+    "expectedKind": "answer",
+    "expectedMarkdownContains": ["Quote check"],
+    "expectAtLeastOneAction": true,
+    "expectNoCitations": true,
+    "notes": "R-SYS-02 benchmark routing in Italian with no supplier in scope."
+  },
+  {
+    "id": "review-savings-risparmio-it",
+    "tenantFixture": "needs-review",
+    "intent": "portfolio_strategy",
+    "language": "it",
+    "question": "Dove possiamo risparmiare di piu?",
+    "expectedKind": "answer",
+    "expectedCitationCorpora": ["calc"],
+    "expectedMarkdownContains": ["[1] Salesforce", "criticality 3/100"],
+    "notes": "R-PORT-02's portfolio-wide savings question on a workspace with a single, un-validated contract — the ranking still has to be built from that one row rather than abstaining."
+  }
+]

@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Contigo.Documents.Contracts.Application.Extraction;
 using Contigo.Documents.Contracts.Infrastructure;
 using Contigo.SharedKernel;
 using Contigo.SharedKernel.Tenancy;
@@ -67,15 +68,27 @@ public sealed class R1EndToEndTests : IClassFixture<R1IntegrationFixture>
         var portfolioResponse = await GetAsync(client, "/api/contracts", tenantId);
         Assert.Equal(HttpStatusCode.OK, portfolioResponse.StatusCode);
         var portfolioBody = await ParseAsync(portfolioResponse);
-        Assert.Contains(
+        var portfolioRow = Assert.Single(
             portfolioBody.GetProperty("items").EnumerateArray(),
             item => item.GetProperty("contractId").GetString() == contractId.ToString());
+
+        // Task E13/F03/US01/T02 (parent story us-01-supplier-identity AC-3/AC-4, requirements
+        // R-SUP-01/R-SUP-02/R-SUP-04): the whole chain — `supplier` critical fact -> resolver ->
+        // Contract.SupplierId -> ISupplierNameLookup -> the portfolio row — ran end-to-end through
+        // the real composition root, so the user sees a supplier *name*, never a bare guid.
+        Assert.Equal(JsonValueKind.String, portfolioRow.GetProperty("supplierId").ValueKind);
+        Assert.Equal(
+            R1ExtractionFixtures.ExpectedSupplierDisplayName,
+            portfolioRow.GetProperty("supplierName").GetString());
 
         // 4. Contract 360: header + every extraction-derived tab (AC-1 "360").
         var contract360Response = await GetAsync(client, $"/api/contracts/{contractId}", tenantId);
         Assert.Equal(HttpStatusCode.OK, contract360Response.StatusCode);
         var contract360Body = await ParseAsync(contract360Response);
         Assert.Equal("Msa", contract360Body.GetProperty("header").GetProperty("type").GetString());
+        Assert.Equal(
+            R1ExtractionFixtures.ExpectedSupplierDisplayName,
+            contract360Body.GetProperty("header").GetProperty("supplierName").GetString());
         Assert.Equal(
             decimal.Parse(R1ExtractionFixtures.OriginalAnnualSpend),
             contract360Body.GetProperty("tabs").GetProperty("commercials").GetProperty("annualSpend").GetDecimal());
@@ -96,16 +109,25 @@ public sealed class R1EndToEndTests : IClassFixture<R1IntegrationFixture>
             d => d.GetProperty("documentId").GetString() == documentId.ToString());
 
         // 5. Ask Contigo: a semantic question gets a grounded answer with a citation pointing back
-        //    at this document (AC-1 "Ask Contigo (with citations)"; spec §8.3/§8.4).
+        //    at this document (AC-1 "Ask Contigo (with citations)"; spec §8.3/§8.4). Task
+        //    E13/F06/US01/T01 (ask-engine) replaced the old `{ intent, canDetermine, citations:
+        //    [{documentId}] }` shape with the ADR-024 §6 reply contract (`kind`/`answerMarkdown`/
+        //    `citations[]` — see ChatEndpointTests' own doc comment on the supersession) and made
+        //    `POST /api/chat/query` resolve caller identity, so this call now needs an X-User-Id
+        //    header too. `citations[].documentId` now echoes the pack's own citationKey
+        //    (`Application.Pack.PackItem.CitationKey`, `AskCopilotService.BuildClausePackAsync`'s
+        //    own `fact:{sourceId}:chunk[{index}]` shape for a clause hit), not a bare
+        //    `Document:{id}` — still traceable back to this document by substring, same convention
+        //    `AskContigoRagCrossTenantIsolationTests` already uses for the identical new shape.
         var chatResponse = await PostAsync(
-            client, "/api/chat/query", tenantId, new { question = "What does the master services agreement cover?" });
+            client, "/api/chat/query", tenantId, "alice@example.com",
+            new { question = "What does the master services agreement cover?" });
         Assert.Equal(HttpStatusCode.OK, chatResponse.StatusCode);
         var chatBody = await ParseAsync(chatResponse);
-        Assert.Equal("Semantic", chatBody.GetProperty("intent").GetString());
-        Assert.True(chatBody.GetProperty("canDetermine").GetBoolean());
+        Assert.Equal("answer", chatBody.GetProperty("kind").GetString());
         var citations = chatBody.GetProperty("citations").EnumerateArray().ToList();
         Assert.NotEmpty(citations);
-        Assert.Contains(citations, c => c.GetProperty("documentId").GetString() == $"Document:{documentId}");
+        Assert.Contains(citations, c => c.GetProperty("documentId").GetString()!.Contains(documentId.ToString()));
 
         // 6. Correction: PATCH the low-confidence annualSpend field (AC-2).
         var correctResponse = await PatchAsync(
@@ -185,6 +207,79 @@ public sealed class R1EndToEndTests : IClassFixture<R1IntegrationFixture>
     }
 
     /// <summary>
+    /// Task E13/F03/US01/T02 (requirements R-SUP-03, "a one-off job resolves suppliers for existing
+    /// contracts"): re-processing a contract that carries no <c>SupplierId</c> back-fills it, so the
+    /// existing corpus picks supplier identity up without a bespoke migration job. The "existing
+    /// contract" is built by uploading normally and then clearing the link straight in the database
+    /// — the resulting row is byte-for-byte what a contract extracted before this feature existed
+    /// looks like, and there is no HTTP surface that could produce one (nothing un-links a
+    /// supplier).
+    ///
+    /// <para>
+    /// Re-processing itself goes through the real <c>DocumentProcessingPipeline</c> resolved from
+    /// this host's own container — the same "resolve the real service from the host's service
+    /// provider, skip HTTP" shape <see cref="Full_r1_path_upload_to_extract_to_portfolio_to_360_to_ask_contigo_to_correction"/>
+    /// already uses to read <c>ExtractionEvidence</c> back. The reprocess *endpoint* is a sibling
+    /// task's surface (E13/F04/US01/T02); this test deliberately asserts the pipeline behaviour that
+    /// endpoint drives, not the endpoint itself, so the two do not have to land together.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Reprocessing_a_contract_stored_without_a_supplier_back_fills_the_link()
+    {
+        var client = _fixture.CreateClient();
+        var tenantId = Guid.NewGuid();
+
+        var (documentId, contractId) = await UploadAndProcessAsync(
+            client, tenantId, R1ExtractionFixtures.BuildBornDigitalPdfBytes(),
+            R1ExtractionFixtures.BornDigitalFileName, R1ExtractionFixtures.BornDigitalMimeType);
+
+        // Rewind to "before supplier identity existed".
+        using (var scope = _fixture.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<DocumentsContractsDbContext>();
+            var tenantContext = scope.ServiceProvider.GetRequiredService<ITenantContext>();
+            using var tenantScope = tenantContext.BeginScope(new TenantId(tenantId));
+
+            var contract = await dbContext.Contracts.SingleAsync(c => c.Id == new EntityId(contractId));
+            Assert.NotNull(contract.SupplierId);
+
+            contract.SupplierId = null;
+            await dbContext.SaveChangesAsync();
+        }
+
+        var beforeResponse = await GetAsync(client, $"/api/contracts/{contractId}", tenantId);
+        var beforeHeader = (await ParseAsync(beforeResponse)).GetProperty("header");
+        Assert.Equal(JsonValueKind.Null, beforeHeader.GetProperty("supplierId").ValueKind);
+        Assert.Equal(JsonValueKind.Null, beforeHeader.GetProperty("supplierName").ValueKind);
+
+        using (var scope = _fixture.Services.CreateScope())
+        {
+            var pipeline = scope.ServiceProvider.GetRequiredService<DocumentProcessingPipeline>();
+
+            var reprocessed = await pipeline.ProcessAsync(
+                new TenantId(tenantId),
+                new EntityId(documentId),
+                R1ExtractionFixtures.BornDigitalFileName,
+                R1ExtractionFixtures.BornDigitalMimeType,
+                R1ExtractionFixtures.BuildBornDigitalPdfBytes());
+
+            Assert.True(reprocessed.IsSuccess);
+
+            // Re-processing stages into the same contract the first pass created, so the back-fill
+            // lands on the existing row rather than orphaning it behind a second one.
+            Assert.Equal(new EntityId(contractId), reprocessed.Value.ContractId);
+        }
+
+        var afterResponse = await GetAsync(client, $"/api/contracts/{contractId}", tenantId);
+        var afterHeader = (await ParseAsync(afterResponse)).GetProperty("header");
+        Assert.Equal(JsonValueKind.String, afterHeader.GetProperty("supplierId").ValueKind);
+        Assert.Equal(
+            R1ExtractionFixtures.ExpectedSupplierDisplayName,
+            afterHeader.GetProperty("supplierName").GetString());
+    }
+
+    /// <summary>
     /// Uploads <paramref name="bytes"/> through the real `POST /api/documents` endpoint (which now
     /// also runs <see cref="Contigo.Documents.Contracts.Application.Extraction.DocumentProcessingPipeline"/>
     /// synchronously — task E02/F06/US01/T01) and returns the resulting document/contract ids.
@@ -228,6 +323,22 @@ public sealed class R1EndToEndTests : IClassFixture<R1IntegrationFixture>
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = JsonContent.Create(body) };
         request.Headers.Add("X-Tenant-Id", tenantId.ToString());
+        return await client.SendAsync(request);
+    }
+
+    /// <summary>
+    /// Task E13/F06/US01/T01 (ask-engine): `POST /api/chat/query` now creates a conversation and
+    /// delegates into `AskCopilotService` (see `ChatEndpointExtensions`' own doc comment), so it now
+    /// resolves a caller identity the same way `POST/GET /api/conversations` already do — the
+    /// required `X-User-Id` header (ADR-022 posture, OQ-askv2-005) — where the plain
+    /// <see cref="PostAsync(HttpClient, string, Guid, object)"/> overload above never needed one.
+    /// </summary>
+    internal static async Task<HttpResponseMessage> PostAsync(
+        HttpClient client, string url, Guid tenantId, string userId, object body)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = JsonContent.Create(body) };
+        request.Headers.Add("X-Tenant-Id", tenantId.ToString());
+        request.Headers.Add("X-User-Id", userId);
         return await client.SendAsync(request);
     }
 

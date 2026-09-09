@@ -22,12 +22,26 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     inviteWorkspaceMember: vi.fn(),
     uploadDocument: vi.fn(),
     getDocument: vi.fn(),
+    // Task E13/F09/US01/T03 (web-documents-v2): this suite does not exercise Documents -- bare
+    // vi.fn() is enough, same convention as getPortfolio below.
+    listDocuments: vi.fn(),
+    getDocumentPreviewUrl: vi.fn(),
+    reprocessDocument: vi.fn(),
+    deleteDocument: vi.fn(),
     getPortfolio: vi.fn(),
     getContract360: vi.fn(),
     getRenewals: vi.fn(),
     getRenewalPriority: vi.fn(),
     getCorrectionHistory: vi.fn(),
     correctContract: vi.fn(),
+    // Task E13/F09/US01/T04 (web-ask-v2): this suite never reaches conversations/capabilities/
+    // market -- bare vi.fn() is enough, same convention as getRenewalPriority above.
+    listConversations: vi.fn(),
+    createConversation: vi.fn(),
+    getConversation: vi.fn(),
+    postMessage: vi.fn(),
+    getCapabilities: vi.fn(),
+    getMarketRecord: vi.fn(),
     // Task E08/F01/US01/T01 (renewal-pipeline): this suite never reaches the Renewals screen -- bare
     // vi.fn() is enough, same convention as getRenewalPriority above. (Pre-existing gap in this
     // file's own mock literal, backfilled here while task E08/F02/US01/T01 was already touching this

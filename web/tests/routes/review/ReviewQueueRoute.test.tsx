@@ -14,6 +14,15 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     inviteWorkspaceMember: vi.fn(),
     uploadDocument: vi.fn(),
     getDocument: vi.fn(),
+    // Task E13/F09/US01/T03 (web-documents-v2): this suite does not exercise the new Documents
+    // list/preview/reprocess/delete calls -- bare vi.fn() is enough, same convention as
+    // getPortfolio below. (`src/routes/review/` itself stays unrouted/orphaned -- see
+    // components/shell/WorkspaceShellApp.tsx's own doc comment -- but still compiles against
+    // ApiClient, so its own test's mock needs the same four stubs as every other full mock here.)
+    listDocuments: vi.fn(),
+    getDocumentPreviewUrl: vi.fn(),
+    reprocessDocument: vi.fn(),
+    deleteDocument: vi.fn(),
     getPortfolio: vi.fn(),
     getContract360: vi.fn(),
     getRenewals: vi.fn(),
@@ -28,6 +37,14 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     askContigo: vi.fn(),
     getSavingsKpis: vi.fn(),
     getSavingsOpportunities: vi.fn(),
+    // Task E13/F09/US01/T04 (web-ask-v2): this suite never reaches conversations/capabilities/
+    // market -- bare vi.fn() is enough, same convention as getPortfolio above.
+    listConversations: vi.fn(),
+    createConversation: vi.fn(),
+    getConversation: vi.fn(),
+    postMessage: vi.fn(),
+    getCapabilities: vi.fn(),
+    getMarketRecord: vi.fn(),
     ...overrides,
   };
 }
@@ -36,6 +53,8 @@ function item(overrides: Partial<PortfolioListItem> = {}): PortfolioListItem {
   return {
     contractId: "22222222-2222-2222-2222-222222222222",
     supplierId: null,
+    // Task E13/F03/US01/T02: supplierName is required now (null when unresolved).
+    supplierName: null,
     type: "Msa",
     annualSpend: 100_000,
     startDate: "2025-01-01",

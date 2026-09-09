@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useLocation, useParams } from "react-router-dom";
 import type { ApiClient, Contract360Body, RenewalPipelineItemBody, RenewalPriorityBody } from "../../../api/client";
 import { loadCurrentWorkspace } from "../../signin/workspaceStore";
+import ClauseHighlight from "./ClauseHighlight";
 import Contract360Header from "./Contract360Header";
 import FactTable from "./FactTable";
 import OverviewTab from "./OverviewTab";
@@ -19,6 +20,8 @@ import {
   computeNeedsAttention,
   computeTopRisks,
   isContract360TabName,
+  resolveBackLink,
+  resolveHighlightedClauseId,
   type Contract360TabName,
 } from "./contract360ViewModel";
 import "./contract360.css";
@@ -65,6 +68,20 @@ type FetchState =
  * back to `"Overview"` when absent/unrecognised -- the seam the Ask Contigo screen's citation chips
  * use to land directly on `Clauses` (AC-2 "opening Contract 360 > Clauses"), rather than always
  * resetting to Overview and making the user click through tabs themselves.
+ *
+ * **Citation landing (task E13/F10/US01/T01, ADR-024; parent story us-01-contract360-landing
+ * AC-1/AC-2)**: a `?clause=<clauseId>` or `?page=<n>` query string (read off `location.search`, the
+ * same plain-`URLSearchParams` convention `../../../components/shell/workspaceRole.ts` already uses
+ * for `?role=`) also opens straight on `Clauses` -- `requestedTab` (the existing `state.tab` seam
+ * above) is checked first, so a caller that somehow sets both is not silently overridden by this
+ * task's own newer seam. Once the contract loads, `resolveHighlightedClauseId` resolves which real
+ * clause (if any) the params name; a `ClauseHighlight` card rendered right below the unmodified
+ * Clauses `FactTable` shows that clause's `rawText` (the "highlight it" + "render its original
+ * wording" the task text asks for, both satisfied by this one new card -- `FactTable.tsx` itself is
+ * out of this task's own "Files to create or modify"), with no click required (see that component's
+ * own doc comment). `location.state.from` similarly drives the header's back link (`resolveBackLink`)
+ * -- `"ask"` reads "← Ask Contigo" (AC-1), other origins are ready but unsent today, and an
+ * absent/unrecognised one renders no back link, unchanged from before this task.
  */
 export default function Contract360Route({ apiClient }: Contract360RouteProps) {
   const { contractId } = useParams<{ contractId: string }>();
@@ -77,14 +94,30 @@ export default function Contract360Route({ apiClient }: Contract360RouteProps) {
   // an absent/unrecognised one falls back to "Overview", this screen's pre-existing default.
   const requestedTabState = (location.state as { tab?: unknown } | null)?.tab;
   const requestedTab = isContract360TabName(requestedTabState) ? requestedTabState : null;
+
+  // Task E13/F10/US01/T01 (contract360-landing, AC-1): `?clause=`/`?page=` also lands on Clauses,
+  // stable for the lifetime of one navigation entry exactly like `location.state` above (react-router
+  // does not recreate `location` -- and therefore not `location.search` -- on a re-render that isn't
+  // a navigation), so it is safe to fold into `defaultTab` below and into `load`'s own deps array.
+  const searchParams = new URLSearchParams(location.search);
+  const clauseParam = searchParams.get("clause");
+  const pageParam = searchParams.get("page");
+  const hasClauseLanding = clauseParam !== null || pageParam !== null;
+  const defaultTab: Contract360TabName = requestedTab ?? (hasClauseLanding ? "Clauses" : "Overview");
+
+  // AC-1 "the back label reads 'Ask Contigo' when arriving from a chat" -- `resolveBackLink`'s own
+  // doc comment has the full four-origin story (ADR-020 screen 5).
+  const fromState = (location.state as { from?: unknown } | null)?.from;
+  const backLink = resolveBackLink(fromState);
+
   const [fetchState, setFetchState] = useState<FetchState>({ phase: "loading" });
-  const [activeTab, setActiveTab] = useState<Contract360TabName>(requestedTab ?? "Overview");
+  const [activeTab, setActiveTab] = useState<Contract360TabName>(defaultTab);
 
   const load = useCallback(() => {
     if (!workspace || !contractId) return;
 
     setFetchState({ phase: "loading" });
-    setActiveTab(requestedTab ?? "Overview");
+    setActiveTab(defaultTab);
 
     void apiClient.getContract360(workspace.id, contractId).then(async (result) => {
       if (!result.ok || !result.contract) {
@@ -121,9 +154,9 @@ export default function Contract360Route({ apiClient }: Contract360RouteProps) {
     });
     // Depends on workspace?.id/contractId (primitives), not workspace itself: loadCurrentWorkspace()
     // returns a fresh object every call, the same convention ../index.tsx's own loadPortfolio uses.
-    // requestedTab is derived from location.state, which react-router keeps referentially stable
-    // for the lifetime of one navigation entry.
-  }, [apiClient, workspace?.id, contractId, requestedTab]);
+    // defaultTab is derived from location.state/location.search, which react-router keeps
+    // referentially stable for the lifetime of one navigation entry.
+  }, [apiClient, workspace?.id, contractId, defaultTab]);
 
   useEffect(() => {
     load();
@@ -186,9 +219,15 @@ export default function Contract360Route({ apiClient }: Contract360RouteProps) {
   const { contract, renewals, priority } = fetchState;
   const { header, tabs } = contract;
 
+  // Task E13/F10/US01/T01, AC-1: resolved once per render -- `ClauseHighlight` below is `FactTable`'s
+  // own unmodified list (out of this task's "Files to create or modify") plus this one extra card,
+  // not a change to how the list itself renders.
+  const highlightedClauseId = resolveHighlightedClauseId(tabs.clauses, clauseParam, pageParam);
+  const highlightedClause = tabs.clauses.find((c) => c.clauseId === highlightedClauseId) ?? null;
+
   return (
     <div className="contract360-screen">
-      <Contract360Header header={header} docCount={tabs.documents.length} priority={priority} />
+      <Contract360Header header={header} docCount={tabs.documents.length} priority={priority} backLink={backLink} />
 
       <nav className="contract360-tabs" aria-label="Contract 360 sections">
         {CONTRACT_360_TABS.map((tab) => (
@@ -222,7 +261,10 @@ export default function Contract360Route({ apiClient }: Contract360RouteProps) {
         <FactTable title="Products" rows={buildProductsRows(tabs.products)} emptyMessage="No line items recorded for this contract." />
       )}
       {activeTab === "Clauses" && (
-        <FactTable title="Clauses" rows={buildClausesRows(tabs.clauses)} emptyMessage="No clauses extracted for this contract." />
+        <>
+          <FactTable title="Clauses" rows={buildClausesRows(tabs.clauses)} emptyMessage="No clauses extracted for this contract." />
+          {highlightedClause !== null && <ClauseHighlight clause={highlightedClause} />}
+        </>
       )}
       {activeTab === "Obligations" && (
         <FactTable

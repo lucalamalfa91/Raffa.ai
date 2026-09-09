@@ -7,7 +7,7 @@ namespace Contigo.IntegrationTests;
 /// born-digital PDF (proves the native text extraction path — <c>NativeDocumentTextExtractor</c>
 /// never routes it through the `ocr` gateway role), a scanned/image-style document (proves AC-4's
 /// "at least one scanned or image-based contract extracts via Document Intelligence" — an
-/// <c>image/tiff</c> mime type <c>NativeDocumentTextExtractor.CanHandle</c> always returns
+/// <c>image/png</c> mime type <c>NativeDocumentTextExtractor.CanHandle</c> always returns
 /// <see langword="false"/> for, so <c>HybridDocumentParsingService</c> structurally cannot take the
 /// native path), and the scripted `extract` payloads <see cref="ScriptedR1AiGateway"/> returns for
 /// both. Centralized here so <see cref="R1IntegrationFixture"/>, <c>R1EndToEndTests</c> and
@@ -19,11 +19,15 @@ internal static class R1ExtractionFixtures
     public const string BornDigitalFileName = "msa-acme-contoso.pdf";
     public const string BornDigitalMimeType = "application/pdf";
 
-    public const string ScannedFileName = "scanned-msa-northwind.tiff";
+    // Task E13/F04/US01/T01 (documents-admission): PNG rather than the original TIFF — R-DOC-02
+    // accepts exactly PDF/DOCX/XLSX/PNG/JPEG, and POST /api/documents now sniffs extension *and*
+    // magic bytes, so a .tiff upload is refused (415) before it can reach the pipeline this
+    // fixture exercises. PNG keeps the property that made TIFF the right choice here.
+    public const string ScannedFileName = "scanned-msa-northwind.png";
     // Not one of NativeDocumentTextExtractor's three recognized mime types (PDF/DOCX/XLSX) — see
     // that type's own CanHandle — so HybridDocumentParsingService.ParseAsync always falls back to
     // the `ocr` gateway role for this fixture, by construction, not by chance (AC-4).
-    public const string ScannedMimeType = "image/tiff";
+    public const string ScannedMimeType = "image/png";
 
     /// <summary>The commercial-terms stage's own low-confidence fact (below
     /// <c>DocumentProcessingPipeline</c>/<c>StagedExtractionService</c>'s shared 0.6 threshold) —
@@ -49,6 +53,24 @@ internal static class R1ExtractionFixtures
     /// </summary>
     public const string OriginalAnnualSpendAsStoredInDb = "48000.00";
 
+    /// <summary>
+    /// The supplier's legal name the scripted `metadata` stage reports for both fixtures (task
+    /// E13/F03/US01/T02, requirements R-SUP-01: "legal name, page, span, confidence"). Emitted at
+    /// 0.95 — above the critical-field bar of 0.8 — so <c>DocumentProcessingPipeline</c> resolves it
+    /// through <c>ISupplierResolver</c> and the end-to-end test can assert a real name on the
+    /// portfolio row rather than a bare guid (R-SUP-04).
+    ///
+    /// <para>
+    /// Carries the legal suffix, exactly as a signature block writes it, and that is what
+    /// <c>GET /api/contracts</c> reports back: <c>SupplierResolver</c> stores
+    /// <c>Name = rawName.Trim()</c> and normalizes only for <em>matching</em>, so "Salesforce, Inc."
+    /// and "salesforce" collapse to one row whose display name stays the name the document used.
+    /// The task's own DoD shorthand ("supplierName == 'Salesforce'") is that human-readable name;
+    /// <see cref="ExpectedSupplierDisplayName"/> is the literal the assertions use.
+    /// </para>
+    /// </summary>
+    public const string ExpectedSupplierDisplayName = "Salesforce, Inc.";
+
     public const string ExpectedLineItemSku = "SKU-CLOUD-100";
     public const string ExpectedClauseType = "termination";
     public const string ExpectedObligationParty = "Customer";
@@ -63,8 +85,9 @@ internal static class R1ExtractionFixtures
     /// </summary>
     public static IReadOnlyDictionary<string, string> PayloadsByStage { get; } = new Dictionary<string, string>
     {
-        ["Metadata"] = """
+        ["Metadata"] = $$"""
             {"facts":[
+                {"field":"supplier","value":"{{ExpectedSupplierDisplayName}}","sourcePage":1,"sourceSpan":"between Salesforce, Inc. and Contoso Ltd","confidence":0.95},
                 {"field":"currency","value":"USD","sourcePage":1,"sourceSpan":"Currency: USD","confidence":0.95},
                 {"field":"governingLaw","value":"State of Delaware","sourcePage":1,"sourceSpan":"Governing law: Delaware","confidence":0.9},
                 {"field":"status","value":"Active","sourcePage":1,"sourceSpan":"Status: Active","confidence":0.9}
@@ -120,11 +143,27 @@ internal static class R1ExtractionFixtures
     /// <c>AiDocumentType.Msa</c>, and is well over the extractor's 40-non-whitespace-char-per-page
     /// sufficiency floor.
     /// </summary>
+    /// <summary>The 8-byte PNG signature <see cref="BuildScannedImageOcrBytes"/> prefixes its page
+    /// text with — what <c>DocumentFormatSniffer</c> checks and <c>FixtureAiGateway</c> strips.</summary>
+    private static readonly byte[] PngSignature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+
     public static byte[] BuildBornDigitalPdfBytes()
     {
+        // Task E13/F04/US01/T01: comfortably over Documents:MinReadableChars (200 non-whitespace
+        // characters) as well, so the admission gate admits it on the same defaults production
+        // runs with — the text grew, nothing else about this fixture changed.
+        // Task E13/F03/US01/T02: the counterparty is named "Salesforce, Inc." so the scripted
+        // `supplier` fact's own sourceSpan (see PayloadsByStage) quotes text that is genuinely in
+        // this document — a fixture whose evidence pointed at a span the page never contained would
+        // undercut the very "source evidence is mandatory" property these tests exist to prove.
         const string text =
-            "MASTER SERVICES AGREEMENT between Acme Corp and Contoso Ltd, effective 2026-01-01, " +
-            "governed by the laws of the State of Delaware.";
+            "MASTER SERVICES AGREEMENT between Salesforce, Inc. and Contoso Ltd, effective 2026-01-01, " +
+            "governed by the laws of the State of Delaware. This Agreement sets out the terms under " +
+            "which the Supplier provides subscription services to the Customer, and applies to every " +
+            "Order Form the parties execute under it. Fees are invoiced annually in advance and are " +
+            "payable within thirty days. The initial term is thirty-six months and renews " +
+            "automatically for successive twelve-month terms unless either party gives ninety days " +
+            "written notice before the end of the then-current term.";
 
         var pdf = $"""
             %PDF-1.4
@@ -162,6 +201,14 @@ internal static class R1ExtractionFixtures
     /// scanned-page text, not real scanned bytes. Two pages (ADR-017 "full document, no 2-page
     /// cap" — proving more than a single page survives the OCR path) and, like the born-digital
     /// fixture, contains "MASTER SERVICES AGREEMENT" so classification resolves the same way.
+    ///
+    /// <para>
+    /// Task E13/F04/US01/T01 (documents-admission): the bytes now start with the real 8-byte PNG
+    /// signature, because <c>POST /api/documents</c> sniffs magic bytes before anything else and
+    /// would otherwise refuse this fixture with a 415. <c>FixtureAiGateway.OcrAsync</c> strips that
+    /// signature before decoding, so the page text is unchanged; the OCR'd text is also over the
+    /// gate's 200-non-whitespace-character floor.
+    /// </para>
     /// </summary>
     public static byte[] BuildScannedImageOcrBytes()
     {
@@ -172,6 +219,6 @@ internal static class R1ExtractionFixtures
             "Continued: governing law is the State of Delaware. Signatures appear on the final page " +
             "of the scanned image.";
 
-        return Encoding.UTF8.GetBytes(page1 + "\f" + page2);
+        return [.. PngSignature, .. Encoding.UTF8.GetBytes(page1 + "\f" + page2)];
     }
 }

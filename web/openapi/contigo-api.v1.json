@@ -3,7 +3,7 @@
   "info": {
     "title": "Contigo API",
     "version": "1.1.0",
-    "description": "Contract for the Contigo backend API (backend/src/Contigo.Api), consumed by the web (this file) and mobile (ADR-013) TypeScript clients per ADR-012's \"single OpenAPI document -> one generated TypeScript client, no hand-written divergent DTOs\" rule (see reports/architecture/draft/client-architect/api-consumption.md #1).\n\nProvenance / interim status (task E01/F07/US01/T02): the API host does not yet self-publish this document -- no Microsoft.AspNetCore.OpenApi / Swashbuckle / NSwag is wired into backend/src/Contigo.Api/Program.cs as of this task, and adding that is outside this task's file scope (the web client only; this task's frontmatter is target_repo: contigo-web). Until a backend task adds self-published OpenAPI generation, this file is hand-authored to describe exactly the routes Program.cs actually implements today, cross-checked against backend/tests/Contigo.Api.Tests. It is the single file `npm run generate:api` (web/scripts/generate-api-client.mjs) reads to produce web/src/api/generated/schema.ts, and must grow endpoint-by-endpoint as backend/src/Contigo.Api/Program.cs grows -- then be replaced outright once the API self-publishes its own document.\n\nURL versioning (OQ-client-007 in reports/open-questions.md, still `open` at council-close: \"OpenAPI codegen tool and URL versioning scheme ... owned by software-architect\") is deliberately NOT applied to the paths below: Program.cs maps bare `/health`, not `/v1/health`, and a client generated against a path the API does not actually serve would 404 in every real environment. `info.version` above tracks this document's own revision; add a URL path prefix here only once software-architect fixes one and Program.cs actually serves it under that prefix.\n\nCodegen tool choice (also part of OQ-client-007, resolved here for this task rather than left blocking it, per reports/open-questions.md's \"add an entry, state the assumption, build against it\"): third-party OpenAPI-to-TypeScript generators evaluated at authoring time (openapi-typescript@7.13.0, which peer-depends on `typescript@^5.x`) hard-conflict with this repo's already-committed `typescript@^7.0.2` (web/package.json, task E01/F07/US01/T01) under npm's default strict peer resolution. Rather than force an incorrect peer resolution (`--legacy-peer-deps`/`--force`) or downgrade a previous task's already-committed TypeScript version, this contract is compiled by a small first-party generator (web/scripts/generate-api-client.mjs, zero new dependencies) that reads this JSON file and emits the `paths`/`operations` TypeScript types the same way the mainstream tools shape them. Swap in a third-party tool once one publishes TypeScript-7-compatible peer ranges; the generated *output shape* (`paths`/`operations`) is deliberately kept compatible with that ecosystem convention so the swap is mechanical.\n\nTask E06/F01/US01/T01 (typescript-client-regen) added the four operations below beyond `/health`: `POST /api/workspaces` (create), `POST /api/workspaces/{tenantId}/invites` (invite), `POST /api/documents` (upload), `GET /api/documents/{id}` (read back) -- exactly epic-06-web-foundation's own R0 scope (\"the sign-in -> workspace picker flow ... and the R0 surfaces (members & roles, document upload, document-status read-back)\"). backend/src/Contigo.Api/Program.cs now also maps many more routes added by backend epics E02-E05 (GET /api/contracts, GET/PATCH /api/contracts/{id}, GET /api/contracts/{id}/corrections, GET /api/audit, GET /api/renewals and /api/renewals/{contractId}/priority, POST /api/renewals/{id}/action, GET/PATCH /api/savings and GET /api/savings/kpis, POST /api/chat/query, POST /api/quotes and GET /api/quotes/{id}/assessment, POST /api/negotiations/outcomes) that this task deliberately did NOT add here: epic-06-web-foundation's own \"Out of scope\" list names exactly that set (\"portfolio, Contract 360, review, Ask, renewals, savings, quote check -- later web epics\"), and feature-01-typescript-client-regen's own \"Council decisions carried into this story\" calls this a \"Repeating chore\" -- whichever web epic first builds a screen against one of those endpoints should extend this file next, the same way this task extended the `/health`-only version task E01/F07/US01/T02 left behind. Nullable fields (e.g. a freshly-uploaded or not-yet-classified document's `contractId`) use OpenAPI 3.1's `type: [X, \"null\"]` union instead of a bolted-on `nullable: true` flag; web/scripts/generate-api-client.mjs gained one small, additive case for it (a `type` array renders as the equivalent TypeScript union, plus a case for `object`/`properties` -- every new response below is a flat, single-level object) -- see that script's own comments on the change.\n\nTask E07/F03/US01/T01 (field-review-correction, ADR-020 screen 6) added `PATCH /api/contracts/{id}` (`correctContract`) and `GET /api/contracts/{id}/corrections` (`getCorrectionHistory`) -- the third web epic to extend this document (task E07/F01/US01/T01 was the first, task E07/F02/US01/T01 the second; see this paragraph's own 'repeating chore' provenance note above). Both operations were already implemented by backend task E02/F05/US01/T01/T02 (us-01-correction-history) and already named in this document's own provenance paragraph's backend-routes list ('GET/PATCH /api/contracts/{id}, GET /api/contracts/{id}/corrections') as not yet documented here -- this task closes that gap, it does not add new backend behaviour. Both response/request bodies use the same plain-object/array shapes generate-api-client.mjs already supports; no generator change was needed.\n\nTask E08/F01/US01/T01 (renewal-pipeline, ADR-020 screen 8) added `POST /api/renewals/{id}/action` (`postRenewalAction`) -- the fourth web epic to extend this document (task E07/F01/US01/T01 was the first, E07/F02/US01/T01 the second, E07/F03/US01/T01 the third; see this paragraph's own 'repeating chore' provenance note above). This operation was already named in this document's own provenance paragraph's backend-routes list ('POST /api/renewals/{id}/action') as not yet documented here -- this task closes that gap, it does not add new backend behaviour. Already implemented by backend task E03/F03/US01/T02 (renewal-action). The 200 response's `status` field is a real, closed three-value enum (NotStarted/InProgress/Completed, RenewalActionStatus.ToString()) so it is declared with `enum` the same way GET /api/renewals's own `status` field already is -- generate-api-client.mjs renders it as a TypeScript string-literal union with no generator change needed. The request body (owner/status/action, all free-form strings on the wire) is hand-written in src/api/client.ts, like every other write operation's request type in this document -- the generator does not parse `requestBody` at all (see this file's own 'Codegen tool choice' paragraph above).\n\nTask E08/F03/US01/T01 (quote-check-ui, ADR-018 route /quotes/:id, ADR-020 screen 10) adds the four operations this document's own provenance paragraph above named as deliberately deferred: `POST /api/quotes` (uploadQuote), `GET /api/quotes/{id}/assessment` (getQuoteAssessment), `POST /api/quotes/{id}/assessment/recalculate` (recalculateQuoteAssessment), and `POST /api/negotiations/outcomes` (captureNegotiationOutcome) -- the fourth and, for this document, last web epic to extend this file (task E07/F01/US01/T01 was the first, E07/F02/US01/T01 the second, E07/F03/US01/T01 the third; see this paragraph's own 'repeating chore' provenance note above). All four operations were already implemented by backend epic E05 (Contigo.Quotes module, wired into Program.cs via AddQuotesModule/MapQuotesEndpoints/MapNegotiationsEndpoints) before this task started; this task only documents and wraps them, it does not add new backend behaviour. `position` (Contigo.Quotes.Domain.MarketPosition) is deliberately typed as a bare nullable string, not a nullable enum -- the same generate-api-client.mjs#renderSchemaType 'enum drops the null union member' limitation getPortfolio's own `risk` field and Contract 360's `header.risk`/`clauses[].riskLevel` already worked around; web/src/api/client.ts names the real 3-value set as its own hand-written `QuoteMarketPosition` alias plus an `isQuoteMarketPosition` guard, the same pattern `PortfolioRiskSeverity`/`isPortfolioRiskSeverity` already establish. `GET /api/quotes/{id}/assessment` and `POST /api/quotes/{id}/assessment/recalculate` share an identical per-line assessment shape, duplicated rather than `$ref`'d (the generator has no `$ref`/`oneOf` support -- see its own header comment). Two operations' 404s carry a real string body (`Results.NotFound(result.Error)`, not the bare empty-body `Results.NotFound()` every earlier 404 in this document uses) -- documented with `content` accordingly, and web/src/api/client.ts reads that body instead of fabricating a generic not-found message, unlike its own earlier 404 handlers. `Contigo.Quotes.Application.Strategy.NegotiationStrategyService` (negotiation-lever recommendations + evidence, task E05/F03/US01/T01) has no HTTP endpoint anywhere in `Program.cs` -- a genuine, pre-existing backend gap this task's `contigo-web` file scope cannot close; `POST /api/negotiations/outcomes`'s own description above names it, and web/src/routes/quotes/ renders an honest gap notice in its place rather than inventing lever evidence to match the cited prototype's own fixture data.\n\nTask E08/F02/US01/T01 (savings-home, ADR-020 screen 9) adds `GET /api/savings/kpis` (getSavingsKpis) and the GET half of `/api/savings` (getSavingsOpportunities) -- the fifth web epic to extend this document (task E07/F01/US01/T01 was the first, E07/F02/US01/T01 the second, E07/F03/US01/T01 the third, E08/F01/US01/T01 the fourth; see this paragraph's own 'repeating chore' provenance note above). Both operations were already named in this document's own provenance paragraph's backend-routes list ('GET/PATCH /api/savings and GET /api/savings/kpis') as not yet documented here; this task closes the GET half of that gap (already implemented by backend tasks E04/F02/US02/T01, E04/F03/US01/T01, E04/F03/US01/T02), it does not add new backend behaviour. `PATCH /api/savings/{id}` stays undocumented -- no screen in this task's own AC needs it (Home is read-only), so it is left for whichever future task first builds a real caller, the same 'wiring lands with the first real caller' convention this codebase already follows elsewhere. `confidenceLevel`/`status` are real, closed enums (SavingsConfidenceLevel.ToString() / SavingsOpportunityStatus.ToString()) declared with `enum`, the same way GET /api/renewals's own `status` field already is; `getSavingsKpis` never calls Contigo.Benchmark directly (it only aggregates Documents/Contracts and Savings data already at rest), so the Home screen's own 'benchmark provider unreachable' state (screens.md #9) is this call failing for any reason, not a status this endpoint reserves for that specific cause.\n\nThis task also found src/api/generated/schema.ts (the committed, supposedly-generated file `npm run generate:api` regenerates from this document) missing the closing brace for its top-level `operations` interface -- a pre-existing defect unrelated to this task's own two new operations, left by an earlier task that could not run the generator in this same harness (no `node`/`npm` on PATH; see AGENTS/CLAUDE instructions) and hand-appended its own operation block without re-closing the interface. Fixed in the same pass as this task's own additions rather than left to break every later task's `tsc --noEmit`."
+    "description": "Contract for the Contigo backend API (backend/src/Contigo.Api), consumed by the web (this file) and mobile (ADR-013) TypeScript clients per ADR-012's \"single OpenAPI document -> one generated TypeScript client, no hand-written divergent DTOs\" rule (see reports/architecture/draft/client-architect/api-consumption.md #1).\n\nProvenance / interim status (task E01/F07/US01/T02): the API host does not yet self-publish this document -- no Microsoft.AspNetCore.OpenApi / Swashbuckle / NSwag is wired into backend/src/Contigo.Api/Program.cs as of this task, and adding that is outside this task's file scope (the web client only; this task's frontmatter is target_repo: contigo-web). Until a backend task adds self-published OpenAPI generation, this file is hand-authored to describe exactly the routes Program.cs actually implements today, cross-checked against backend/tests/Contigo.Api.Tests. It is the single file `npm run generate:api` (web/scripts/generate-api-client.mjs) reads to produce web/src/api/generated/schema.ts, and must grow endpoint-by-endpoint as backend/src/Contigo.Api/Program.cs grows -- then be replaced outright once the API self-publishes its own document.\n\nURL versioning (OQ-client-007 in reports/open-questions.md, still `open` at council-close: \"OpenAPI codegen tool and URL versioning scheme ... owned by software-architect\") is deliberately NOT applied to the paths below: Program.cs maps bare `/health`, not `/v1/health`, and a client generated against a path the API does not actually serve would 404 in every real environment. `info.version` above tracks this document's own revision; add a URL path prefix here only once software-architect fixes one and Program.cs actually serves it under that prefix.\n\nCodegen tool choice (also part of OQ-client-007, resolved here for this task rather than left blocking it, per reports/open-questions.md's \"add an entry, state the assumption, build against it\"): third-party OpenAPI-to-TypeScript generators evaluated at authoring time (openapi-typescript@7.13.0, which peer-depends on `typescript@^5.x`) hard-conflict with this repo's already-committed `typescript@^7.0.2` (web/package.json, task E01/F07/US01/T01) under npm's default strict peer resolution. Rather than force an incorrect peer resolution (`--legacy-peer-deps`/`--force`) or downgrade a previous task's already-committed TypeScript version, this contract is compiled by a small first-party generator (web/scripts/generate-api-client.mjs, zero new dependencies) that reads this JSON file and emits the `paths`/`operations` TypeScript types the same way the mainstream tools shape them. Swap in a third-party tool once one publishes TypeScript-7-compatible peer ranges; the generated *output shape* (`paths`/`operations`) is deliberately kept compatible with that ecosystem convention so the swap is mechanical.\n\nTask E06/F01/US01/T01 (typescript-client-regen) added the four operations below beyond `/health`: `POST /api/workspaces` (create), `POST /api/workspaces/{tenantId}/invites` (invite), `POST /api/documents` (upload), `GET /api/documents/{id}` (read back) -- exactly epic-06-web-foundation's own R0 scope (\"the sign-in -> workspace picker flow ... and the R0 surfaces (members & roles, document upload, document-status read-back)\"). backend/src/Contigo.Api/Program.cs now also maps many more routes added by backend epics E02-E05 (GET /api/contracts, GET/PATCH /api/contracts/{id}, GET /api/contracts/{id}/corrections, GET /api/audit, GET /api/renewals and /api/renewals/{contractId}/priority, POST /api/renewals/{id}/action, GET/PATCH /api/savings and GET /api/savings/kpis, POST /api/chat/query, POST /api/quotes and GET /api/quotes/{id}/assessment, POST /api/negotiations/outcomes) that this task deliberately did NOT add here: epic-06-web-foundation's own \"Out of scope\" list names exactly that set (\"portfolio, Contract 360, review, Ask, renewals, savings, quote check -- later web epics\"), and feature-01-typescript-client-regen's own \"Council decisions carried into this story\" calls this a \"Repeating chore\" -- whichever web epic first builds a screen against one of those endpoints should extend this file next, the same way this task extended the `/health`-only version task E01/F07/US01/T02 left behind. Nullable fields (e.g. a freshly-uploaded or not-yet-classified document's `contractId`) use OpenAPI 3.1's `type: [X, \"null\"]` union instead of a bolted-on `nullable: true` flag; web/scripts/generate-api-client.mjs gained one small, additive case for it (a `type` array renders as the equivalent TypeScript union, plus a case for `object`/`properties` -- every new response below is a flat, single-level object) -- see that script's own comments on the change.\n\nTask E07/F03/US01/T01 (field-review-correction, ADR-020 screen 6) added `PATCH /api/contracts/{id}` (`correctContract`) and `GET /api/contracts/{id}/corrections` (`getCorrectionHistory`) -- the third web epic to extend this document (task E07/F01/US01/T01 was the first, task E07/F02/US01/T01 the second; see this paragraph's own 'repeating chore' provenance note above). Both operations were already implemented by backend task E02/F05/US01/T01/T02 (us-01-correction-history) and already named in this document's own provenance paragraph's backend-routes list ('GET/PATCH /api/contracts/{id}, GET /api/contracts/{id}/corrections') as not yet documented here -- this task closes that gap, it does not add new backend behaviour. Both response/request bodies use the same plain-object/array shapes generate-api-client.mjs already supports; no generator change was needed.\n\nTask E08/F01/US01/T01 (renewal-pipeline, ADR-020 screen 8) added `POST /api/renewals/{id}/action` (`postRenewalAction`) -- the fourth web epic to extend this document (task E07/F01/US01/T01 was the first, E07/F02/US01/T01 the second, E07/F03/US01/T01 the third; see this paragraph's own 'repeating chore' provenance note above). This operation was already named in this document's own provenance paragraph's backend-routes list ('POST /api/renewals/{id}/action') as not yet documented here -- this task closes that gap, it does not add new backend behaviour. Already implemented by backend task E03/F03/US01/T02 (renewal-action). The 200 response's `status` field is a real, closed three-value enum (NotStarted/InProgress/Completed, RenewalActionStatus.ToString()) so it is declared with `enum` the same way GET /api/renewals's own `status` field already is -- generate-api-client.mjs renders it as a TypeScript string-literal union with no generator change needed. The request body (owner/status/action, all free-form strings on the wire) is hand-written in src/api/client.ts, like every other write operation's request type in this document -- the generator does not parse `requestBody` at all (see this file's own 'Codegen tool choice' paragraph above).\n\nTask E08/F03/US01/T01 (quote-check-ui, ADR-018 route /quotes/:id, ADR-020 screen 10) adds the four operations this document's own provenance paragraph above named as deliberately deferred: `POST /api/quotes` (uploadQuote), `GET /api/quotes/{id}/assessment` (getQuoteAssessment), `POST /api/quotes/{id}/assessment/recalculate` (recalculateQuoteAssessment), and `POST /api/negotiations/outcomes` (captureNegotiationOutcome) -- the fourth and, for this document, last web epic to extend this file (task E07/F01/US01/T01 was the first, E07/F02/US01/T01 the second, E07/F03/US01/T01 the third; see this paragraph's own 'repeating chore' provenance note above). All four operations were already implemented by backend epic E05 (Contigo.Quotes module, wired into Program.cs via AddQuotesModule/MapQuotesEndpoints/MapNegotiationsEndpoints) before this task started; this task only documents and wraps them, it does not add new backend behaviour. `position` (Contigo.Quotes.Domain.MarketPosition) is deliberately typed as a bare nullable string, not a nullable enum -- the same generate-api-client.mjs#renderSchemaType 'enum drops the null union member' limitation getPortfolio's own `risk` field and Contract 360's `header.risk`/`clauses[].riskLevel` already worked around; web/src/api/client.ts names the real 3-value set as its own hand-written `QuoteMarketPosition` alias plus an `isQuoteMarketPosition` guard, the same pattern `PortfolioRiskSeverity`/`isPortfolioRiskSeverity` already establish. `GET /api/quotes/{id}/assessment` and `POST /api/quotes/{id}/assessment/recalculate` share an identical per-line assessment shape, duplicated rather than `$ref`'d (the generator has no `$ref`/`oneOf` support -- see its own header comment). Two operations' 404s carry a real string body (`Results.NotFound(result.Error)`, not the bare empty-body `Results.NotFound()` every earlier 404 in this document uses) -- documented with `content` accordingly, and web/src/api/client.ts reads that body instead of fabricating a generic not-found message, unlike its own earlier 404 handlers. `Contigo.Quotes.Application.Strategy.NegotiationStrategyService` (negotiation-lever recommendations + evidence, task E05/F03/US01/T01) has no HTTP endpoint anywhere in `Program.cs` -- a genuine, pre-existing backend gap this task's `contigo-web` file scope cannot close; `POST /api/negotiations/outcomes`'s own description above names it, and web/src/routes/quotes/ renders an honest gap notice in its place rather than inventing lever evidence to match the cited prototype's own fixture data.\n\nTask E08/F02/US01/T01 (savings-home, ADR-020 screen 9) adds `GET /api/savings/kpis` (getSavingsKpis) and the GET half of `/api/savings` (getSavingsOpportunities) -- the fifth web epic to extend this document (task E07/F01/US01/T01 was the first, E07/F02/US01/T01 the second, E07/F03/US01/T01 the third, E08/F01/US01/T01 the fourth; see this paragraph's own 'repeating chore' provenance note above). Both operations were already named in this document's own provenance paragraph's backend-routes list ('GET/PATCH /api/savings and GET /api/savings/kpis') as not yet documented here; this task closes the GET half of that gap (already implemented by backend tasks E04/F02/US02/T01, E04/F03/US01/T01, E04/F03/US01/T02), it does not add new backend behaviour. `PATCH /api/savings/{id}` stays undocumented -- no screen in this task's own AC needs it (Home is read-only), so it is left for whichever future task first builds a real caller, the same 'wiring lands with the first real caller' convention this codebase already follows elsewhere. `confidenceLevel`/`status` are real, closed enums (SavingsConfidenceLevel.ToString() / SavingsOpportunityStatus.ToString()) declared with `enum`, the same way GET /api/renewals's own `status` field already is; `getSavingsKpis` never calls Contigo.Benchmark directly (it only aggregates Documents/Contracts and Savings data already at rest), so the Home screen's own 'benchmark provider unreachable' state (screens.md #9) is this call failing for any reason, not a status this endpoint reserves for that specific cause.\n\nThis task also found src/api/generated/schema.ts (the committed, supposedly-generated file `npm run generate:api` regenerates from this document) missing the closing brace for its top-level `operations` interface -- a pre-existing defect unrelated to this task's own two new operations, left by an earlier task that could not run the generator in this same harness (no `node`/`npm` on PATH; see AGENTS/CLAUDE instructions) and hand-appended its own operation block without re-closing the interface. Fixed in the same pass as this task's own additions rather than left to break every later task's `tsc --noEmit`.\n\nTask E13/F09/US01/T03 (web-documents-v2, epic-13/feature-09 phase-3) adds `GET /api/documents` (listDocuments), `GET /api/documents/{id}/preview` (getDocumentPreview), `POST /api/documents/{id}/reprocess` (reprocessDocument), `DELETE /api/documents/{id}` (deleteDocument), the 413/415/422 responses on `POST /api/documents`, and widens `documentType` (Quote, Invoice, PriceList, Nda, Dpa alongside the original Msa/OrderForm/Sow/Amendment/RenewalLetter/Other) on every operation that already declared it. This task's own wave-spec `depends_on: [documents-v2-api, web-shell-v2]` -- the backend counterpart (epic-13/feature-04, tasks E13/F04/US01/T01 documents-admission and E13/F04/US01/T02 documents-v2-api) had not actually landed in this worktree when this task ran (checked: no `Documents:AdmissionThreshold`/`DocumentsEndpointExtensions.cs`/`DocumentAdmissionGate`/reprocess-or-preview-or-delete endpoint exists anywhere under `backend/` as of this commit, despite both backend tasks' own workitem files claiming exactly this surface). Rather than halt the whole web phase on an unmet upstream dependency this task cannot itself close, this document is authored directly from `inputs/requirements.md` §5.1/§6 (the named authoritative source both this task's own text and task-02-documents-v2-api.md's own text point to: \"the phase-3 web task documents these endpoints from inputs/requirements.md §6\") plus the two backend tasks' own workitem files for field names/algorithms neither requirements.md nor an ADR pins exactly (e.g. `DocumentProcessingSummary`'s real field set for the reprocess response, `ISupplierNameLookup`'s nullability for `supplierName`). Every new operation's own `description` above names this provenance individually. Widening the `documentType` enum is scoped to the Documents-only operations above (`listDocuments`, `getDocument`, `reprocessDocument`'s response) -- `getPortfolio`'s `items[].type` and `getContract360`'s `header.type`/`tabs.documents[].documentType` keep the original 6-member set, since Portfolio and Contract 360 are outside this task's own screens and widening their enums without also updating those already-shipped screens' own exhaustive-looking switches would be an uncalled-for, untested ripple; a future task that gives Portfolio/Contract 360 the same widened vocabulary can do so deliberately. When the backend tasks above do land, whichever lands last should diff its own real response shapes against this document rather than assume a silent match.\n\nTask E13/F09/US01/T04 (web-ask-v2, epic-13/feature-09 phase-4) adds `GET/POST /api/conversations`, `GET /api/conversations/{id}`, `POST /api/conversations/{id}/messages` (the ADR-024 §6 reply contract), `GET /api/capabilities`, `GET /api/market/records/{id}` -- the sixth web epic to extend this document (see this paragraph's own 'repeating chore' provenance note above) -- plus `GET /api/insights/criticality` and `GET /api/contracts/{id}/strategy` (documented for completeness, no client.ts wrapper; see each operation's own description), and a `supplierName` property on getPortfolio's / getContract360's / getRenewals' response items (R-SUP-04; already real on listDocuments since task E13/F09/US01/T03). Every new operation's own description names its exact provenance; two are worth flagging here: `GET /api/market/records/{id}`'s real backend handler (backend/src/Contigo.Api/MarketEndpointExtensions.cs) does not compile as of this commit (two concatenated method bodies, confirmed by reading the file directly), so this operation is authored from the clean domain types underneath it, not the broken handler; and the existing `askContigo` operation below (`POST /api/chat/query`) still documents the pre-ADR-024 `{question,intent,canDetermine,answer,citations,message}` shape that ChatEndpointExtensions.cs's own doc comment says was 'replaced entirely' -- left untouched here since this task's own web screens (web/src/routes/ask/**) no longer call it at all, replaced by the conversations endpoints above; a future task that removes the V1 alias and its stale documentation together can close that gap."
   },
   "servers": [
     {
@@ -249,7 +249,7 @@
         },
         "responses": {
           "201": {
-            "description": "Stored (and processed synchronously); contractId is null until classification links it.",
+            "description": "Admitted by the gate, stored, and processed synchronously; `contractId` is null only when the pipeline itself failed after the upload was already durable. `mimeType` is the sniffed canonical type (`application/pdf`, the two OOXML types, `image/png`, `image/jpeg`), never the browser's declared `Content-Type`. `processingStatus` reflects the pipeline's own run (task E02/F06/US01/T01), which reuses the parse and classification the admission gate already computed -- the classify role is called once per upload.",
             "content": {
               "application/json": {
                 "schema": {
@@ -308,6 +308,262 @@
                 }
               }
             }
+          },
+          "413": {
+            "description": "Task E13/F04/US01/T01 (documents-admission): file exceeds `Documents:MaxFileBytes` (50 MB), rejected before any parse or AI-gateway call -- both the declared `Content-Length` and the received part are checked (`Contigo.Api.DocumentsEndpointExtensions`). Plain-string body, same `Results.Json(string)` shape as the 415 below and the 400 above.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "Contigo accepts files up to 50 MB. This file is larger."
+              }
+            }
+          },
+          "415": {
+            "description": "Task E13/F04/US01/T01: format rejected by extension **and** magic-byte sniffing (`Contigo.Documents.Contracts.Application.Admission.DocumentFormatSniffer`) before any parse or AI-gateway call -- a `.zip` renamed `.pdf` lands here, never a 422 (R-DOC-02 AC-1), and so does a PNG renamed `.pdf`. Accepted: `.pdf` (`%PDF-` header), `.docx`/`.xlsx` (OOXML package holding `word/document.xml` / `xl/workbook.xml`), `.png`, `.jpg`/`.jpeg`. Plain-string body, quoted verbatim from `inputs/requirements.md` R-DOC-02.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "Contigo reads PDF, Word, Excel and scanned images"
+              }
+            }
+          },
+          "422": {
+            "description": "Task E13/F04/US01/T01: the admission gate (`DocumentAdmissionGate`) rejected this document *after* parse/OCR and classification but *before* any blob or `document`/`embedding` row was written (ADR-024 \"gate before persistence\") -- ADR-024's own structured body, `inputs/requirements.md` §6. `reason` is `not_a_contract` (classified type is `Other`, or confidence < `Documents:AdmissionThreshold`) or `no_readable_text` (parsed/OCR'd text below `Documents:MinReadableChars`) -- never both. `detectedType` uses the same widened enum GET /api/documents/{id} and GET /api/documents below use. The web client (task E13/F09/US01/T03) maps `reason` onto the requirements' own longer rejection copy for the \"Not added\" card; `hint` is the shorter, backend-owned fragment that copy quotes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "rejected",
+                    "detectedType",
+                    "confidence",
+                    "reason",
+                    "hint"
+                  ],
+                  "properties": {
+                    "rejected": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "detectedType": {
+                      "type": "string",
+                      "enum": [
+                        "Msa",
+                        "OrderForm",
+                        "Sow",
+                        "Amendment",
+                        "RenewalLetter",
+                        "Quote",
+                        "Invoice",
+                        "PriceList",
+                        "Nda",
+                        "Dpa",
+                        "Other"
+                      ]
+                    },
+                    "confidence": {
+                      "type": "number",
+                      "description": "The classify role's own confidence, 0-1. Always present, even for `no_readable_text` (0 -- classify never ran; see DocumentAdmissionGate)."
+                    },
+                    "reason": {
+                      "type": "string",
+                      "enum": [
+                        "not_a_contract",
+                        "no_readable_text"
+                      ]
+                    },
+                    "hint": {
+                      "type": "string",
+                      "example": "Contigo only keeps contracts, order forms, quotes and the documents around them."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "listDocuments",
+        "summary": "List the tenant's documents (server-side, survives a reload).",
+        "description": "Task E13/F09/US01/T03 (web-documents-v2), documenting `inputs/requirements.md` R-DOC-06/R-DOC-09/§6 and `Contigo.Documents.Contracts.Application.DocumentQueryService.ListAsync`'s own planned shape (task-02-documents-v2-api.md point 3) ahead of that backend task actually landing in this worktree -- see this document's own top-level provenance note. Replaces the web's own `sessionStorage`-tracked list (`documentStore.ts`); AC-1 \"reloading the browser shows the same list as before\" depends on this call, not client storage. `status` filters to one exact `processingStatus` value when supplied (the same single-status convention `GET /api/contracts?status=` already uses) -- Documents V2's own \"Needs your attention\" vs \"All documents\" toggle is **not** this parameter (attention is a union of three statuses); the web client fetches the tenant's whole list unfiltered and buckets client-side (`documentsListViewModel.ts`), the same fetch-once/filter-local architecture `GET /api/contracts` already established for Portfolio.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "Uploaded",
+                "Processing",
+                "NeedsReview",
+                "Completed",
+                "Failed"
+              ]
+            },
+            "description": "Exact match on Document.ProcessingStatus. Omit to return every status (the web client's own default read)."
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "1-based; defaults to 1."
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Defaults to 25; same 100-row ceiling convention `GET /api/contracts` already documents."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tenant-scoped document list, newest-created-first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "page",
+                    "pageSize",
+                    "totalCount"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "contractId",
+                          "supplierName",
+                          "fileName",
+                          "documentType",
+                          "processingStatus",
+                          "stage",
+                          "pageCount",
+                          "createdAt",
+                          "weakFactCount"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "contractId": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "format": "uuid"
+                          },
+                          "supplierName": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "Resolved via `ISupplierNameLookup` (F03/T01, same phase) when registered; null otherwise -- never a raw supplier id."
+                          },
+                          "fileName": {
+                            "type": "string"
+                          },
+                          "documentType": {
+                            "type": "string",
+                            "enum": [
+                              "Msa",
+                              "OrderForm",
+                              "Sow",
+                              "Amendment",
+                              "RenewalLetter",
+                              "Quote",
+                              "Invoice",
+                              "PriceList",
+                              "Nda",
+                              "Dpa",
+                              "Other"
+                            ]
+                          },
+                          "processingStatus": {
+                            "type": "string",
+                            "enum": [
+                              "Uploaded",
+                              "Processing",
+                              "NeedsReview",
+                              "Completed",
+                              "Failed"
+                            ]
+                          },
+                          "stage": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "R-DOC-09's real stage name (`Uploading` | `Classifying` | `OCR / text` | `Sections & tables` | `Extracting facts` | `Validating schema`), present only while `processingStatus` is `Processing`; null once terminal (or before processing has started). Not declared with `enum` alongside the nullable union -- see this document's own `getPortfolio` operation for why (generate-api-client.mjs#renderSchemaType drops the null member when both are combined)."
+                          },
+                          "pageCount": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ],
+                            "description": "Null until the hybrid parse stage has run at least once."
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "weakFactCount": {
+                            "type": "integer",
+                            "description": "Fields below the review threshold (spec §7.3), 0 once validated or for a document with none. Drives the row action's real \"Review N fields\" count (screens-v2.md #3)."
+                          }
+                        }
+                      }
+                    },
+                    "page": {
+                      "type": "integer"
+                    },
+                    "pageSize": {
+                      "type": "integer"
+                    },
+                    "totalCount": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid X-Tenant-Id header, or a malformed status/page query parameter.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         }
       }
@@ -316,7 +572,7 @@
       "get": {
         "operationId": "getDocument",
         "summary": "Read back one document's metadata and processing status.",
-        "description": "Maps to the inline handler in Program.cs (task E01/F06/US01/T02). Same interim X-Tenant-Id header placeholder as POST /api/documents.",
+        "description": "Maps to the inline handler in Program.cs (task E01/F06/US01/T02). Same interim X-Tenant-Id header placeholder as POST /api/documents. Task E13/F04/US01/T01 widens `documentType` below (5 new admitted types beyond the original 6-member set; existing names unchanged) -- see the `/api/documents` GET (`listDocuments`) operation above for the same widened set and its own provenance note.",
         "parameters": [
           {
             "name": "X-Tenant-Id",
@@ -368,9 +624,14 @@
                       "enum": [
                         "Msa",
                         "OrderForm",
-                        "Amendment",
                         "Sow",
+                        "Amendment",
                         "RenewalLetter",
+                        "Quote",
+                        "Invoice",
+                        "PriceList",
+                        "Nda",
+                        "Dpa",
                         "Other"
                       ]
                     },
@@ -411,6 +672,183 @@
                 }
               }
             }
+          },
+          "404": {
+            "description": "No such document for this tenant."
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteDocument",
+        "summary": "Delete a document (Admin only): blob, preview, row, embeddings; detaches the contract link.",
+        "description": "Task E13/F04/US01/T02 (documents-v2-api), documented ahead of that backend task landing in this worktree -- see this document's own top-level provenance note; shape from `inputs/requirements.md` R-DOC-10/§6. Audits `document.deleted`. Same interim `X-Tenant-Id`/role posture as every other operation above (ADR-022) -- role is carried as `X-Workspace-Role` the same way the existing admin-only member-management checks already read it (`RequireRole.tsx` on the web side; no header is added here beyond what those checks already assume).",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Document.Id."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "403": {
+            "description": "Caller is not Admin (Procurement gets 403, R-DOC-10)."
+          },
+          "404": {
+            "description": "No such document for this tenant."
+          }
+        }
+      }
+    },
+    "/api/documents/{id}/preview": {
+      "get": {
+        "operationId": "getDocumentPreview",
+        "summary": "First-page preview PNG (or an honest placeholder for DOCX/XLSX), tenant-scoped.",
+        "description": "Task E13/F04/US01/T02, documented ahead of that backend task landing in this worktree -- see this document's own top-level provenance note; shape from `inputs/requirements.md` R-DOC-08/§6. Always `image/png` on 200 regardless of source document type (ADR-009 \"never a raw blob URL\" -- always proxied through this endpoint, never a Storage URL). The web client (`getDocumentPreviewUrl`) fetches this with the `X-Tenant-Id` header (a plain `<img src>` cannot carry a custom header) and turns the response into a browser object URL -- see `src/api/client.ts`'s own doc comment on that method.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Document.Id."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "PNG of page 1 (PDF/images) or a generated placeholder (DOCX/XLSX).",
+            "content": {
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such document for this tenant."
+          }
+        }
+      }
+    },
+    "/api/documents/{id}/reprocess": {
+      "post": {
+        "operationId": "reprocessDocument",
+        "summary": "Re-run hybrid parse + embedding (Admin only) so retrieval never cites raw bytes.",
+        "description": "Task E13/F04/US01/T02, documented ahead of that backend task landing in this worktree -- see this document's own top-level provenance note; shape from `inputs/requirements.md` R-DOC-07/§6, mirroring `Contigo.Documents.Contracts.Application.Extraction.DocumentProcessingSummary`'s own real fields (`DocumentReprocessService.ReprocessAsync`'s planned return value, task-02-documents-v2-api.md point 4) rather than an invented response shape. Same interim role posture as `deleteDocument` above.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Document.Id."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Re-parsed and re-embedded; every new embedding row carries a page number (R-DOC-07 AC-2).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "documentId",
+                    "contractId",
+                    "documentType",
+                    "processingStatus",
+                    "pagesParsed",
+                    "chunksIndexed"
+                  ],
+                  "properties": {
+                    "documentId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "contractId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "documentType": {
+                      "type": "string",
+                      "enum": [
+                        "Msa",
+                        "OrderForm",
+                        "Sow",
+                        "Amendment",
+                        "RenewalLetter",
+                        "Quote",
+                        "Invoice",
+                        "PriceList",
+                        "Nda",
+                        "Dpa",
+                        "Other"
+                      ]
+                    },
+                    "processingStatus": {
+                      "type": "string",
+                      "enum": [
+                        "Uploaded",
+                        "Processing",
+                        "NeedsReview",
+                        "Completed",
+                        "Failed"
+                      ]
+                    },
+                    "pagesParsed": {
+                      "type": "integer"
+                    },
+                    "chunksIndexed": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller is not Admin (Procurement gets 403)."
           },
           "404": {
             "description": "No such document for this tenant."
@@ -550,6 +988,7 @@
                         "required": [
                           "contractId",
                           "supplierId",
+                          "supplierName",
                           "type",
                           "annualSpend",
                           "startDate",
@@ -571,6 +1010,13 @@
                               "null"
                             ],
                             "format": "uuid"
+                          },
+                          "supplierName": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "The supplier's display name, resolved from `supplierId` through `ISupplierNameLookup` in one batched call per page -- never a raw supplier id (R-SUP-04, ADR-024). Null when the contract has no supplier, and also when the id no longer resolves for this tenant: the lookup port never fabricates a placeholder name, so a dangling link reads as an id with no name rather than silently losing both. Projected by PortfolioEndpointExtensions.GetPortfolioAsync (task E13/F03/US01/T02); the property was documented here one task earlier (E13/F09/US01/T04) while the backend still only carried the id."
                           },
                           "type": {
                             "type": "string",
@@ -710,6 +1156,7 @@
                       "required": [
                         "contractId",
                         "supplierId",
+                        "supplierName",
                         "type",
                         "status",
                         "annualSpend",
@@ -732,6 +1179,13 @@
                             "null"
                           ],
                           "format": "uuid"
+                        },
+                        "supplierName": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "description": "The supplier's display name, resolved from `supplierId` through `ISupplierNameLookup` -- never a raw supplier id (R-SUP-04, ADR-024). Null when the contract has no supplier or the id no longer resolves for this tenant. Projected by ContractsEndpointExtensions.GetContract360Async (task E13/F03/US01/T02); web/src/routes/contracts/contract360/contract360ViewModel.ts#resolveSupplierLabel already read this exact field defensively off the wire object while the property was documented but not yet emitted. See getPortfolio's identical supplierName property above for the full ISupplierNameLookup provenance."
                         },
                         "type": {
                           "type": "string",
@@ -1653,6 +2107,7 @@
                         "required": [
                           "contractId",
                           "supplierId",
+                          "supplierName",
                           "status",
                           "renewalDate",
                           "daysUntilRenewal",
@@ -1674,6 +2129,13 @@
                               "null"
                             ],
                             "format": "uuid"
+                          },
+                          "supplierName": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "The supplier's display name, resolved from `supplierId` through `ISupplierNameLookup` over the same portfolio page this pipeline is built from -- never a raw supplier id (R-SUP-04, ADR-024). Null when the contract has no supplier or the id no longer resolves for this tenant. Projected by RenewalsEndpointExtensions.ToPipelineResponse (task E13/F03/US01/T02). See getPortfolio's identical supplierName property above for the full ISupplierNameLookup provenance."
                           },
                           "status": {
                             "type": "string",
@@ -1733,6 +2195,7 @@
                                 "type": "object",
                                 "required": [
                                   "supplierId",
+                                  "supplierName",
                                   "renewalDate",
                                   "daysUntilRenewal",
                                   "annualSpend",
@@ -1746,6 +2209,13 @@
                                       "null"
                                     ],
                                     "format": "uuid"
+                                  },
+                                  "supplierName": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ],
+                                    "description": "Same resolved display name as the row's own `supplierName` above, repeated inside the insight card because the card is rendered as standalone prose (spec section 9.3) and must not fall back to an id (R-SUP-04, ADR-024)."
                                   },
                                   "renewalDate": {
                                     "type": [
@@ -3570,6 +4040,643 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/conversations": {
+      "get": {
+        "operationId": "listConversations",
+        "summary": "The caller's last N conversations (rail resume list).",
+        "description": "Maps to GetConversationsAsync in backend/src/Contigo.Api/ConversationsEndpointExtensions.cs, backed by ConversationService.ListRecentAsync (task E13/F05/US01/T02, us-01-conversations; R-CONV-02 'the rail shows the user's last 5 conversations, resume by click'). Bare array response, not a {items,totalCount} envelope -- there is no paging concept for 'my last N conversations'. Optional ?take= overrides ConversationService.DefaultRecentLimit (5); web/src/api/client.ts#listConversations never sends it, always taking the backend default. Caller identity (task E13/F09/US01/T04, ADR-022/OQ-askv2-005/R-CONV-03): X-User-Id is required in addition to X-Tenant-Id on every operation under /api/conversations -- ConversationsEndpointExtensions.TryResolveUserId prefers an authenticated ClaimsPrincipal's subject claim (the ADR-010 end state; never true today, nothing wires AddAuthentication yet) and otherwise requires this header, the MSAL account username, non-authoritative until the API JWT lands. A 400 covers a missing/invalid X-Tenant-Id, a missing X-User-Id, or a malformed ?take=.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          },
+          {
+            "name": "X-User-Id",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "MSAL account username (ADR-022 Day-1 posture; OQ-askv2-005; R-CONV-03). Non-authoritative -- replaced by the token subject once ADR-010's API JWT lands. Required on every /api/conversations* operation."
+          },
+          {
+            "name": "take",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer" },
+            "description": "Overrides ConversationService.DefaultRecentLimit (5) when supplied; must be a positive integer."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The caller's own conversations in this tenant, most-recently-updated first, capped at `take`/the default limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["id", "title", "scopeContractId", "updatedAt"],
+                    "properties": {
+                      "id": { "type": "string", "format": "uuid" },
+                      "title": {
+                        "type": "string",
+                        "description": "The first question, <=48 chars (ConversationService.TitleMaxLength), or the literal 'New chat' (ConversationService.DefaultTitle) until the first message lands."
+                      },
+                      "scopeContractId": {
+                        "type": ["string", "null"],
+                        "format": "uuid",
+                        "description": "Set when this conversation was opened from Contract 360 'Ask about it' (/ask?scope=); null for a plain new chat."
+                      },
+                      "updatedAt": { "type": "string", "format": "date-time" }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid X-Tenant-Id or X-User-Id header, or a non-positive-integer 'take'.",
+            "content": { "application/json": { "schema": { "type": "string" } } }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createConversation",
+        "summary": "Starts a new conversation, optionally scoped to a contract.",
+        "description": "Maps to PostConversationAsync in backend/src/Contigo.Api/ConversationsEndpointExtensions.cs, backed by ConversationService.CreateAsync (task E13/F05/US01/T02; R-CONV-01/R-CONV-02; ADR-024 'the global Ask bar always opens a new chat'). Request body is ConversationsEndpointExtensions.CreateConversationRequest, hand-written in web/src/api/client.ts (the generator does not parse requestBody -- see this document's own 'Codegen tool choice' paragraph): `{ scopeContractId? }`, a GUID string. An absent/blank scopeContractId opens a plain new chat (title defaults to 'New chat' until the first question lands); a well-formed one scopes it to that contract (Contract 360's 'Ask about it', /ask?scope=<contractId>). A malformed (non-GUID) scopeContractId is a 400, not silently dropped. Same X-Tenant-Id/X-User-Id pair as GET /api/conversations above.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          },
+          {
+            "name": "X-User-Id",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "See GET /api/conversations above."
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created. Location: /api/conversations/{id}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["id", "title", "scopeContractId", "updatedAt"],
+                  "properties": {
+                    "id": { "type": "string", "format": "uuid" },
+                    "title": { "type": "string" },
+                    "scopeContractId": { "type": ["string", "null"], "format": "uuid" },
+                    "updatedAt": { "type": "string", "format": "date-time" }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid X-Tenant-Id or X-User-Id header, or a non-GUID scopeContractId.",
+            "content": { "application/json": { "schema": { "type": "string" } } }
+          }
+        }
+      }
+    },
+    "/api/conversations/{id}": {
+      "get": {
+        "operationId": "getConversation",
+        "summary": "One conversation, with every turn, oldest first.",
+        "description": "Maps to GetConversationAsync in backend/src/Contigo.Api/ConversationsEndpointExtensions.cs, backed by ConversationService.GetAsync (task E13/F05/US01/T02; R-CONV-02 AC-1 'resuming a conversation renders past turns with citation cards and actions still clickable'). 404, never 403, whether {id} does not exist, belongs to another tenant (RLS backstop, ADR-009), or belongs to another user of the same tenant (an application-level filter -- ConversationService's own doc comment: 'RLS has no per-user predicate') -- one honest outcome, never a distinguishing signal (AC-1/AC-2 'another user/tenant cannot list or read the conversation'). Each message's citations/actions are the identical shapes POST /api/conversations/{id}/messages returns (duplicated, not $ref'd -- this document has no $ref/oneOf support, see its own 'Codegen tool choice' paragraph) EXCEPT a stored message never carries `followUps` -- ConversationMessage has no such column (ConversationsEndpointExtensions.ToMessageResponse's own field list), so a resumed conversation's past Contigo turns render without follow-up chips, an honest, real limitation, not an oversight.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          },
+          {
+            "name": "X-User-Id",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "See GET /api/conversations above."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" },
+            "description": "Conversation.Id."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The conversation and its messages, oldest first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["id", "title", "scopeContractId", "createdAt", "updatedAt", "messages"],
+                  "properties": {
+                    "id": { "type": "string", "format": "uuid" },
+                    "title": { "type": "string" },
+                    "scopeContractId": { "type": ["string", "null"], "format": "uuid" },
+                    "createdAt": { "type": "string", "format": "date-time" },
+                    "updatedAt": { "type": "string", "format": "date-time" },
+                    "messages": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id", "role", "kind", "markdown", "citations", "actions",
+                          "modelId", "promptVersion", "inputHash", "createdAt"
+                        ],
+                        "properties": {
+                          "id": { "type": "string", "format": "uuid" },
+                          "role": { "type": "string", "enum": ["you", "contigo"] },
+                          "kind": { "type": "string", "enum": ["answer", "abstain", "redirect", "refusal"] },
+                          "markdown": {
+                            "type": "string",
+                            "description": "The caller's own question verbatim for a 'you' turn; Contigo's answerMarkdown for a 'contigo' turn."
+                          },
+                          "citations": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "n", "corpus", "title", "subtitle", "snippet", "documentId",
+                                "contractId", "page", "section", "previewUrl", "href", "recordId"
+                              ],
+                              "properties": {
+                                "n": { "type": "integer" },
+                                "corpus": {
+                                  "type": "string",
+                                  "description": "Usually 'tenant' | 'market' | 'contigo' (requirements.md §6 / R-WEB-04's three-corpus citation-badge vocabulary). Backend truth (Contigo.Chat.Application.Reply.ReplyCitation.Corpus's own doc comment: 'Echoes PackItem.Corpus') admits a fourth internal value, 'calc' (a deterministic-calculator-derived fact -- a renewal date, a negotiation lever, a criticality score -- Contigo.Chat.Application.Pack.PackCorpus.Calc), with no remapping step anywhere before the wire; confirmed by reading backend/src/Contigo.Api/AskCopilotService.cs's own PackItem constructions for 'when-you-must-move'/lever/target/criticality items, which set a real /contracts/{id} Href despite PackItem.Href's own doc comment claiming Href is null for PackCorpus.Calc. Left a plain string (not `enum`) to stay honest about this observed gap rather than declare a fourth badge variant replyTypes.ts does not have; web/src/routes/ask/askViewModel.ts#toCitationCorpus folds an unrecognised value into 'tenant' (the closer honest bucket -- a calculator fact is always about this tenant's own contract, never a market/feature fact)."
+                                },
+                                "title": { "type": "string" },
+                                "subtitle": { "type": ["string", "null"] },
+                                "snippet": { "type": "string" },
+                                "documentId": { "type": ["string", "null"] },
+                                "contractId": { "type": ["string", "null"], "format": "uuid" },
+                                "page": { "type": ["integer", "null"] },
+                                "section": { "type": ["string", "null"] },
+                                "previewUrl": { "type": ["string", "null"] },
+                                "href": { "type": ["string", "null"] },
+                                "recordId": { "type": ["string", "null"] }
+                              }
+                            }
+                          },
+                          "actions": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": ["label", "href", "kind"],
+                              "properties": {
+                                "label": { "type": "string" },
+                                "href": { "type": "string" },
+                                "kind": { "type": "string", "enum": ["navigate", "upload"] }
+                              }
+                            }
+                          },
+                          "modelId": { "type": ["string", "null"] },
+                          "promptVersion": { "type": ["string", "null"] },
+                          "inputHash": { "type": ["string", "null"] },
+                          "createdAt": { "type": "string", "format": "date-time" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid X-Tenant-Id or X-User-Id header, or a non-GUID id in the route.",
+            "content": { "application/json": { "schema": { "type": "string" } } }
+          },
+          "404": {
+            "description": "No such conversation for this tenant and caller (unknown id, another tenant's, or another user's -- one honest outcome, see this operation's own description)."
+          }
+        }
+      }
+    },
+    "/api/conversations/{id}/messages": {
+      "post": {
+        "operationId": "postConversationMessage",
+        "summary": "Asks a question in an existing conversation; runs the Ask engine and returns the reply.",
+        "description": "Maps to PostConversationMessageAsync in backend/src/Contigo.Api/ConversationsEndpointExtensions.cs -- the one endpoint that actually runs the Ask engine (Contigo.Api.AskCopilotService.AskAsync, task E13/F06/US01/T01), then persists both the caller's question and Contigo's reply (ConversationService.AppendMessageAsync) before wire-shaping the same object back (shared with POST /api/chat/query's own alias, ConversationsEndpointExtensions.AskAndAppendAsync). Request body `{ question }` (ConversationsEndpointExtensions.PostConversationMessageRequest, hand-written client-side, see this document's 'Codegen tool choice' paragraph). Reply shape is ADR-024 §6 / inputs/requirements.md §6, kind decides the layout: `answer` (markdown + citations + actions + followUps), `abstain` (a true-insufficiency reply, citations/actions/followUps empty), `redirect` (greeting/off-domain/needs_document, one CTA), `refusal` (legal, one CTA). `actions[].kind` is 'navigate' | 'upload' (Contigo.Chat.Application.Capabilities.CopilotActionKind) -- inputs/requirements.md §6's own JSON example shows 'primary'/'secondary' instead, an illustrative visual-priority label the real backend never emits; web/src/routes/ask/askViewModel.ts maps the real navigate/upload/index-ordered actions onto ReplyAction's presentational primary/secondary at the UI boundary (replyTypes.ts, task E13/F09/US01/T02, is out of this task's file scope to change). See GET /api/conversations/{id} above for why `corpus` is a plain string, not a 3-value enum. 404 under the identical tenant/user/unknown-id rule GET /api/conversations/{id} documents.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          },
+          {
+            "name": "X-User-Id",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "See GET /api/conversations above."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" },
+            "description": "Conversation.Id."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The routed reply -- always 200 once the conversation is confirmed to exist, per ChatEndpointExtensions' own long-standing convention for this same composition root; an abstain/redirect/refusal is a successful, honest answer, not an error status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "conversationId", "messageId", "kind", "answerMarkdown",
+                    "citations", "actions", "provenance", "followUps"
+                  ],
+                  "properties": {
+                    "conversationId": { "type": "string", "format": "uuid" },
+                    "messageId": { "type": "string", "format": "uuid" },
+                    "kind": { "type": "string", "enum": ["answer", "abstain", "redirect", "refusal"] },
+                    "answerMarkdown": {
+                      "type": "string",
+                      "description": "Narrated prose with inline [n] markers; empty for abstain/redirect/refusal? no -- redirect/refusal still carry warm prose here (R-ASK-07); only truly nothing to narrate is empty."
+                    },
+                    "citations": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "n", "corpus", "title", "subtitle", "snippet", "documentId",
+                          "contractId", "page", "section", "previewUrl", "href", "recordId"
+                        ],
+                        "properties": {
+                          "n": { "type": "integer" },
+                          "corpus": {
+                            "type": "string",
+                            "description": "See GET /api/conversations/{id} above's identical citations[].corpus for the full 'tenant/market/contigo, occasionally calc' provenance note."
+                          },
+                          "title": { "type": "string" },
+                          "subtitle": { "type": ["string", "null"] },
+                          "snippet": { "type": "string" },
+                          "documentId": { "type": ["string", "null"] },
+                          "contractId": { "type": ["string", "null"], "format": "uuid" },
+                          "page": { "type": ["integer", "null"] },
+                          "section": { "type": ["string", "null"] },
+                          "previewUrl": { "type": ["string", "null"] },
+                          "href": {
+                            "type": ["string", "null"],
+                            "description": "A tenant citation's own destination -- observed backend behaviour (AskCopilotService.cs's PackItem constructions) always sets this to the bare `/contracts/{contractId}`, never `/contracts/{contractId}?clause=...`, despite inputs/requirements.md §6's own illustrative example showing a `?clause=` suffix. web/src/routes/ask/askViewModel.ts appends `?page={page}` itself (when `page` is present) before navigating, reusing web/src/routes/contracts/contract360/contract360ViewModel.ts#resolveHighlightedClauseId's existing page-based clause lookup -- a `?clause=` deep link cannot be built client-side today because no citation field carries a raw clauseId (R-ASK-08 'no guids ever rendered' -- consistent with that, not a client oversight)."
+                          },
+                          "recordId": { "type": ["string", "null"] }
+                        }
+                      }
+                    },
+                    "actions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["label", "href", "kind"],
+                        "properties": {
+                          "label": { "type": "string" },
+                          "href": { "type": "string" },
+                          "kind": { "type": "string", "enum": ["navigate", "upload"] }
+                        }
+                      }
+                    },
+                    "provenance": {
+                      "type": "object",
+                      "required": ["sources", "modelId", "promptVersion", "inputHash"],
+                      "properties": {
+                        "sources": { "type": "array", "items": { "type": "string" } },
+                        "modelId": { "type": ["string", "null"] },
+                        "promptVersion": { "type": ["string", "null"] },
+                        "inputHash": { "type": ["string", "null"] }
+                      }
+                    },
+                    "followUps": { "type": "array", "items": { "type": "string" } }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid X-Tenant-Id or X-User-Id header, a non-GUID id in the route, or a blank 'question'.",
+            "content": { "application/json": { "schema": { "type": "string" } } }
+          },
+          "404": {
+            "description": "No such conversation for this tenant and caller."
+          }
+        }
+      }
+    },
+    "/api/capabilities": {
+      "get": {
+        "operationId": "getCapabilities",
+        "summary": "The versioned, static capability catalog.",
+        "description": "Maps to GetCapabilities in backend/src/Contigo.Api/CapabilitiesEndpointExtensions.cs, backed by the static Contigo.Chat.Application.Capabilities.CapabilityCatalog (task E13/F08/US01/T01, story us-01-capability-catalog AC-1; R-SYS-01). No X-Tenant-Id: the catalog is static, tenant-agnostic metadata, the same 'no tenant boundary to enforce' reasoning GET /api/market/records/{id} below shares. Role-aware: an admin-gated entry (Workspace & members) is hidden unless the optional X-Role header resolves to Admin (WorkspaceRoleClaimResolver.TryResolve, accepts 'Admin'/'Workspace Admin'/'Contigo.Admin'/...); a missing/unparseable/non-Admin header fails closed (hides it), never a 401/403 -- the catalog itself is not sensitive. web/src/routes/ask/index.tsx / web/src/components/ask-bar/askSuggestions.ts (task E13/F09/US01/T04) read only `capabilities[].exampleQuestions` for the two-chip suggestions this task adds; `CapabilityCatalog.SuggestionsFor`'s own richer per-screen/supplier-templated chip copy (app.jsx `chipsFor`/`c360Chips`) is a backend-internal helper with no HTTP surface at all -- this task reproduces the two prototype-verbatim supplier-templated strings client-side for the Contract-360-scoped case (askViewModel.ts) rather than inventing a new endpoint for them.",
+        "parameters": [
+          {
+            "name": "X-Role",
+            "in": "header",
+            "required": false,
+            "schema": { "type": "string" },
+            "description": "Optional. Gates the one Admin-only catalog entry. This client (web/src/api/client.ts#getCapabilities) never sends it -- suggestion chips only read exampleQuestions, which every capability carries regardless of roleGate."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The full, role-filtered catalog.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["version", "capabilities"],
+                  "properties": {
+                    "version": { "type": "string" },
+                    "capabilities": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "key", "title", "routePattern", "description",
+                          "exampleQuestions", "roleGate", "availability", "howTo"
+                        ],
+                        "properties": {
+                          "key": { "type": "string" },
+                          "title": { "type": "string" },
+                          "routePattern": {
+                            "type": "string",
+                            "description": "May carry an unresolved '{...}' placeholder (e.g. '/contracts/{contractId}') -- a route template, not always a complete href."
+                          },
+                          "description": { "type": "string" },
+                          "exampleQuestions": { "type": "array", "items": { "type": "string" } },
+                          "roleGate": { "type": "string", "enum": ["any", "admin"] },
+                          "availability": { "type": "string", "enum": ["always", "needsValidatedContract", "admin"] },
+                          "howTo": { "type": "array", "items": { "type": "string" } }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/market/records/{id}": {
+      "get": {
+        "operationId": "getMarketRecord",
+        "summary": "One market-intelligence record, for the Ask citation side panel.",
+        "description": "R-EVD-02 / requirements.md §6 API table: 'one market record (for the citation panel)'; parent story us-01-market-intelligence AC-5: 'returns one record with its provenance label and updatedAt for the citation panel'. No X-Tenant-Id: the market index is shared and read-only for every tenant (ADR-024 'three sources, one rule'), the same 'no authorization boundary to enforce' reasoning GET /api/capabilities above shares. Task E13/F06/US01/T01 (ask-engine) is this route's first writer (backend/src/Contigo.Api/MarketEndpointExtensions.cs); as of this task's own commit that file does not compile (two competing method bodies concatenated mid-statement -- a dangling `if` referencing an out-of-scope `endpoints` variable, a duplicate `deal` local, ~11 duplicate anonymous-object property names), which breaks the whole Contigo.Api assembly, and no Contigo.Api.Tests file exists for this route either. Rather than block this web task on a backend defect outside its own 'Files to create or modify' (backend/**), this operation is authored directly from the task's own coding-objective field list ('title, category, geography, band, provenance label, updatedAt') plus the real, clean, unbroken domain types it is built from: Contigo.Market.Contracts.MarketDeal (record shape), Contigo.Market.Retrieval.MarketNoteComposer.Compose (title/category/geography/provenance/updatedAt -- BuildTitle: '{Supplier} · {Product}'), Contigo.Market.Contracts.MarketProvenance.Label ('representative market data · mock feed · updated yyyy-MM-dd'). `band` is this task's own addition, not named on MarketNote -- the three real percentile prices (MarketDeal.UnitPriceP25/P50/P75) plus Currency, structured rather than left as the citation card's own prose snippet (which already exists separately on the citation, ReplyCitation.Snippet). Once F02/T02's persisted `market_record` store and a fixed MarketEndpointExtensions.cs land, whichever lands last should diff its real response against this document rather than assume a silent match (the same rule this document's own info.description already states for Documents V2).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "MarketDeal.RecordId."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The record.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["recordId", "title", "category", "geography", "band", "provenance", "updatedAt"],
+                  "properties": {
+                    "recordId": { "type": "string" },
+                    "title": { "type": "string", "description": "MarketNoteComposer.BuildTitle: '{Supplier} · {Product}', or '{Supplier} · {Product} ({Sku})' when a SKU is recorded." },
+                    "category": { "type": "string" },
+                    "geography": { "type": "string" },
+                    "band": {
+                      "type": "object",
+                      "required": ["p25", "p50", "p75", "currency"],
+                      "properties": {
+                        "p25": { "type": "number" },
+                        "p50": { "type": "number" },
+                        "p75": { "type": "number" },
+                        "currency": { "type": "string" }
+                      }
+                    },
+                    "provenance": { "type": "string", "description": "MarketProvenance.Label(deal), e.g. 'representative market data · mock feed · updated 2026-09-01'." },
+                    "updatedAt": { "type": "string", "format": "date-time" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No market record with this id."
+          }
+        }
+      }
+    },
+    "/api/insights/criticality": {
+      "get": {
+        "operationId": "getCriticality",
+        "summary": "Ranked criticality score for every contract in the tenant, with explained components.",
+        "description": "Maps to GetCriticalityAsync in backend/src/Contigo.Api/InsightsEndpointExtensions.cs, backed by Contigo.Insights.Criticality.CriticalityScoreCalculator (task E13/F07/US01/T01, story us-01-insights; R-PORT-01). Documented here for contract completeness (this document's own 'repeating chore' -- every landed operation gets an entry) -- task E13/F09/US01/T04 (web-ask-v2) does not add a web/src/api/client.ts wrapper for it: the Ask engine's own portfolio-strategy pack composition (backend/src/Contigo.Api/AskCopilotService.cs) calls this composition's own methods directly and narrates the numbers into the reply; no screen in this task's own coding objective renders a standalone criticality ranking. A future task that builds one can add getCriticality to client.ts against this same, already-documented shape.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Every contract's criticality score, portfolio order (not pre-sorted by score).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["items", "totalCount"],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["contractId", "totalScore", "components"],
+                        "properties": {
+                          "contractId": { "type": "string", "format": "uuid" },
+                          "totalScore": { "type": "number" },
+                          "components": {
+                            "type": "object",
+                            "required": ["renewalUrgency", "riskSeverity", "spendWeight", "savingsPotential", "openCriticalFacts"],
+                            "properties": {
+                              "renewalUrgency": {
+                                "type": "object",
+                                "required": ["score", "weight", "explanation"],
+                                "properties": {
+                                  "score": { "type": "number" },
+                                  "weight": { "type": "number" },
+                                  "explanation": { "type": "string" }
+                                }
+                              },
+                              "riskSeverity": {
+                                "type": "object",
+                                "required": ["score", "weight", "explanation"],
+                                "properties": {
+                                  "score": { "type": "number" },
+                                  "weight": { "type": "number" },
+                                  "explanation": { "type": "string" }
+                                }
+                              },
+                              "spendWeight": {
+                                "type": "object",
+                                "required": ["score", "weight", "explanation"],
+                                "properties": {
+                                  "score": { "type": "number" },
+                                  "weight": { "type": "number" },
+                                  "explanation": { "type": "string" }
+                                }
+                              },
+                              "savingsPotential": {
+                                "type": "object",
+                                "required": ["score", "weight", "explanation"],
+                                "properties": {
+                                  "score": { "type": "number" },
+                                  "weight": { "type": "number" },
+                                  "explanation": { "type": "string" }
+                                }
+                              },
+                              "openCriticalFacts": {
+                                "type": "object",
+                                "required": ["score", "weight", "explanation"],
+                                "properties": {
+                                  "score": { "type": "number" },
+                                  "weight": { "type": "number" },
+                                  "explanation": { "type": "string" }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "totalCount": { "type": "integer" }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid X-Tenant-Id header.",
+            "content": { "application/json": { "schema": { "type": "string" } } }
+          }
+        }
+      }
+    },
+    "/api/contracts/{id}/strategy": {
+      "get": {
+        "operationId": "getContractStrategy",
+        "summary": "The renewal-strategy pack for one contract -- the same numbers Ask narrates.",
+        "description": "Maps to GetContractStrategyAsync in backend/src/Contigo.Api/InsightsEndpointExtensions.cs, backed by Contigo.Insights.Strategy.StrategyPackBuilder (task E13/F07/US01/T01, story us-01-insights AC-3/AC-4; R-STR-01). Documented here for contract completeness, the same 'repeating chore' as GET /api/insights/criticality above -- task E13/F09/US01/T04 (web-ask-v2) does not add a client.ts wrapper: AskCopilotService composes this pack internally for the Ask reply's own 'renewal strategy' narration; no screen in this task's own coding objective renders it standalone. `whenYouMustMove`/`targets` dates and amounts are frequently null (no renewal/cancellation date yet, or no benchmark match -- StrategyInputs.SupplierName is always null today per that type's own doc comment, so no priced-line target ever resolves a real benchmark), an honest 'insufficient market data'/'not yet available' outcome per R-STR-01 AC-3, never a fabricated number.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" },
+            "description": "Contract.Id."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The strategy pack.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["contractId", "whenYouMustMove", "whereYouCanPush", "targets", "nextSteps", "openWeakFacts"],
+                  "properties": {
+                    "contractId": { "type": "string", "format": "uuid" },
+                    "whenYouMustMove": {
+                      "type": "object",
+                      "required": ["renewalDate", "cancellationDeadline", "daysLeft", "passedDeadline", "explanation"],
+                      "properties": {
+                        "renewalDate": { "type": ["string", "null"], "format": "date" },
+                        "cancellationDeadline": { "type": ["string", "null"], "format": "date" },
+                        "daysLeft": { "type": ["integer", "null"] },
+                        "passedDeadline": { "type": "boolean" },
+                        "explanation": { "type": "string" }
+                      }
+                    },
+                    "whereYouCanPush": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["leverType", "rationale", "citationKeys"],
+                        "properties": {
+                          "leverType": {
+                            "type": "string",
+                            "enum": ["Volume", "Term", "Utilization", "Alternatives", "QuarterEnd", "Bundle", "PaymentTerms"]
+                          },
+                          "rationale": { "type": "string" },
+                          "citationKeys": { "type": "array", "items": { "type": "string" } }
+                        }
+                      }
+                    },
+                    "targets": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["description", "openingTarget", "acceptableRangeLow", "acceptableRangeHigh", "walkAwayThreshold", "explanation"],
+                        "properties": {
+                          "description": { "type": "string" },
+                          "openingTarget": { "type": ["number", "null"] },
+                          "acceptableRangeLow": { "type": ["number", "null"] },
+                          "acceptableRangeHigh": { "type": ["number", "null"] },
+                          "walkAwayThreshold": { "type": ["number", "null"] },
+                          "explanation": { "type": "string" }
+                        }
+                      }
+                    },
+                    "nextSteps": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["label", "dueHint"],
+                        "properties": {
+                          "label": { "type": "string" },
+                          "dueHint": { "type": "string" }
+                        }
+                      }
+                    },
+                    "openWeakFacts": { "type": "array", "items": { "type": "string" } }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid X-Tenant-Id header, or a non-GUID id in the route.",
+            "content": { "application/json": { "schema": { "type": "string" } } }
+          },
+          "404": {
+            "description": "No such contract for this tenant."
           }
         }
       }

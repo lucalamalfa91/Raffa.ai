@@ -12,6 +12,20 @@
     <ProjectReference Include="..\Contigo.Benchmark\Contigo.Benchmark.csproj" />
     <ProjectReference Include="..\Contigo.AiGateway\Contigo.AiGateway.csproj" />
     <ProjectReference Include="..\Contigo.Audit\Contigo.Audit.csproj" />
+    <!-- Task E13/F07/US01/T01 (insights-calculators): InsightsEndpointExtensions.cs composes
+         Contigo.Insights' calculators/DTOs (CriticalityScoreCalculator, StrategyPackBuilder,
+         Contracts/*) — new, unmapped (Program.cs does not call MapInsightsEndpoints/
+         AddInsightsModule this task; F06/T01 maps it in phase 3). -->
+    <ProjectReference Include="..\Contigo.Insights\Contigo.Insights.csproj" />
+    <!-- Task E13/F02/US01/T02 (market-index): MarketEndpointExtensions.cs (GET
+         /api/market/records/{id}) composes Contigo.Market.Retrieval.MarketRecordQueryService —
+         new, unmapped (Program.cs does not call MapMarketEndpoints/AddMarketModule this task;
+         F06/T01 maps it in this same phase — see that file's own doc comment). -->
+    <!-- Task E13/F06/US01/T01 (ask-engine): AskCopilotService composes Contigo.Market's own
+         IMarketKnowledgeRetrieval (market notes) alongside Contigo.Benchmark's IBenchmarkService
+         (already transitively registered via AddSavingsModule/AddQuotesModule) — the market
+         -intelligence feed side of the three-source context pack (ADR-024). -->
+    <ProjectReference Include="..\Contigo.Market\Contigo.Market.csproj" />
   </ItemGroup>
 
   <ItemGroup>

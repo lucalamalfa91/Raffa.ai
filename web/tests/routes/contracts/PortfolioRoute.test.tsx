@@ -13,6 +13,12 @@ function mockApiClient(getPortfolio: ApiClient["getPortfolio"] = vi.fn()): ApiCl
     inviteWorkspaceMember: vi.fn(),
     uploadDocument: vi.fn(),
     getDocument: vi.fn(),
+    // Task E13/F09/US01/T03 (web-documents-v2): this suite does not exercise Documents -- bare
+    // vi.fn() is enough, same convention as getContract360 elsewhere in this file.
+    listDocuments: vi.fn(),
+    getDocumentPreviewUrl: vi.fn(),
+    reprocessDocument: vi.fn(),
+    deleteDocument: vi.fn(),
     getPortfolio,
     // Task E07/F02/US01/T01 (contract-360): this suite only exercises /contracts (PortfolioRoute
     // itself), never /contracts/:contractId (Contract360Route) -- bare vi.fn() is enough, the same
@@ -38,6 +44,14 @@ function mockApiClient(getPortfolio: ApiClient["getPortfolio"] = vi.fn()): ApiCl
     // enough, same convention as getContract360/getRenewals above.
     getSavingsKpis: vi.fn(),
     getSavingsOpportunities: vi.fn(),
+    // Task E13/F09/US01/T04 (web-ask-v2): this suite never reaches conversations/capabilities/
+    // market -- bare vi.fn() is enough, same convention as getContract360 above.
+    listConversations: vi.fn(),
+    createConversation: vi.fn(),
+    getConversation: vi.fn(),
+    postMessage: vi.fn(),
+    getCapabilities: vi.fn(),
+    getMarketRecord: vi.fn(),
   };
 }
 
@@ -45,6 +59,8 @@ function item(overrides: Partial<PortfolioListItem> = {}): PortfolioListItem {
   return {
     contractId: "contract-1",
     supplierId: null,
+    // Task E13/F03/US01/T02: supplierName is required now (null when unresolved).
+    supplierName: null,
     type: "Msa",
     annualSpend: 100_000,
     startDate: "2025-01-01",

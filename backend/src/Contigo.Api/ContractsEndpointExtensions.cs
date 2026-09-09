@@ -1,5 +1,7 @@
 using Contigo.Documents.Contracts.Application;
 using Contigo.SharedKernel;
+using Contigo.SharedKernel.Suppliers;
+using Contigo.SharedKernel.Tenancy;
 
 namespace Contigo.Api;
 
@@ -42,6 +44,17 @@ namespace Contigo.Api;
 /// composition can happen (ADR-002) and exactly which corrected fields trigger it. The response
 /// shape above is unchanged; the recompute is a side effect, not a new field this endpoint promises
 /// to report (no AC/task text names a response shape for it).
+///
+/// <para>
+/// Task E13/F03/US01/T02 (requirements R-SUP-04, ADR-024): the 360 header gains
+/// <c>supplierName</c>, resolved through <see cref="ISupplierNameLookup"/> — the same "join the
+/// name on here, in the one project allowed to reference every module" composition
+/// <see cref="PortfolioEndpointExtensions"/> does for the portfolio row, and for the same ADR-002
+/// reason. One id, so a one-entry batch rather than a second, single-id port. `PATCH
+/// /api/contracts/{id}` needs no change of its own: <c>supplier</c> is simply another correctable
+/// field name <see cref="ContractCorrectionService"/> accepts (R-SUP-03), and this endpoint has
+/// always passed the caller's <c>corrections</c> map through untouched.
+/// </para>
 /// </summary>
 public static class ContractsEndpointExtensions
 {
@@ -64,6 +77,8 @@ public static class ContractsEndpointExtensions
         string id,
         HttpRequest request,
         Contract360QueryService contract360QueryService,
+        ISupplierNameLookup supplierNameLookup,
+        ITenantContext tenantContext,
         CancellationToken cancellationToken)
     {
         if (!request.Headers.TryGetValue("X-Tenant-Id", out var tenantHeaderValues)
@@ -77,8 +92,10 @@ public static class ContractsEndpointExtensions
             return Results.BadRequest("The contract id in the route must be a GUID.");
         }
 
+        var tenantId = new TenantId(tenantGuid);
+
         var result = await contract360QueryService
-            .GetByIdAsync(new TenantId(tenantGuid), new EntityId(contractGuid), cancellationToken)
+            .GetByIdAsync(tenantId, new EntityId(contractGuid), cancellationToken)
             .ConfigureAwait(false);
 
         if (result is null)
@@ -86,7 +103,17 @@ public static class ContractsEndpointExtensions
             return Results.NotFound();
         }
 
-        return Results.Ok(ToContract360Response(result));
+        // One id, so a one-entry batch through the shared, tenant-scoped helper rather than a
+        // second single-id port — see PortfolioEndpointExtensions.ResolveSupplierNamesAsync's own
+        // doc comment on why the ambient tenant scope is not optional here.
+        var supplierName = result.Header.SupplierId is { } supplierId
+            ? (await PortfolioEndpointExtensions
+                    .ResolveSupplierNamesAsync(tenantId, [supplierId], supplierNameLookup, tenantContext, cancellationToken)
+                    .ConfigureAwait(false))
+                .GetValueOrDefault(supplierId)
+            : null;
+
+        return Results.Ok(ToContract360Response(result, supplierName));
     }
 
     /// <summary>
@@ -97,7 +124,7 @@ public static class ContractsEndpointExtensions
     /// <c>Program.cs</c>'s document endpoints already use, since neither has a custom JSON
     /// converter registered anywhere in this solution.
     /// </summary>
-    private static object ToContract360Response(Contract360Result result)
+    private static object ToContract360Response(Contract360Result result, string? supplierName)
     {
         var header = result.Header;
         var overview = result.Overview;
@@ -111,6 +138,7 @@ public static class ContractsEndpointExtensions
             {
                 contractId = header.ContractId.Value,
                 supplierId = header.SupplierId?.Value,
+                supplierName,
                 type = header.Type.ToString(),
                 status = header.Status,
                 annualSpend = header.AnnualSpend,

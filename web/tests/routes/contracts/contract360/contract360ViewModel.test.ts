@@ -23,6 +23,9 @@ import {
   computeNeedsAttention,
   computeTopRisks,
   formatPriorityFact,
+  resolveBackLink,
+  resolveHighlightedClauseId,
+  resolveSupplierLabel,
   toConfidencePercent,
 } from "../../../../src/routes/contracts/contract360/contract360ViewModel";
 
@@ -32,6 +35,8 @@ function header(overrides: Partial<Contract360HeaderBody> = {}): Contract360Head
   return {
     contractId: CONTRACT_ID,
     supplierId: null,
+    // Task E13/F03/US01/T02: supplierName is required now (null when unresolved).
+    supplierName: null,
     type: "Msa",
     status: "active",
     annualSpend: 500_000,
@@ -121,6 +126,8 @@ function renewalItem(overrides: Partial<RenewalPipelineItemBody> = {}): RenewalP
   return {
     contractId: CONTRACT_ID,
     supplierId: null,
+    // Task E13/F03/US01/T02: supplierName is required now (null when unresolved).
+    supplierName: null,
     status: "Determined",
     renewalDate: "2026-01-01",
     daysUntilRenewal: 30,
@@ -132,6 +139,8 @@ function renewalItem(overrides: Partial<RenewalPipelineItemBody> = {}): RenewalP
     insightCard: {
       facts: {
         supplierId: null,
+        // Task E13/F03/US01/T02: supplierName is required now (null when unresolved).
+        supplierName: null,
         renewalDate: "2026-01-01",
         daysUntilRenewal: 30,
         annualSpend: 500_000,
@@ -424,5 +433,68 @@ describe("buildRecommendation — facts vs AI separation (ADR-019 council decisi
 
     expect(everyFactValue).not.toContain(recommendation.statement);
     expect(everyFactValue).not.toContain(recommendation.rationale);
+  });
+});
+
+describe("resolveHighlightedClauseId (task E13/F10/US01/T01, AC-1 citation landing)", () => {
+  const clauses = [clause({ clauseId: "cl-1", sourcePage: 27 }), clause({ clauseId: "cl-2", sourcePage: 9 })];
+
+  it("matches by clauseId when the clause param names a real clause on this contract", () => {
+    expect(resolveHighlightedClauseId(clauses, "cl-2", null)).toBe("cl-2");
+  });
+
+  it("falls back to the first clause on that page when only page is given", () => {
+    expect(resolveHighlightedClauseId(clauses, null, "27")).toBe("cl-1");
+  });
+
+  it("consults page only when clauseParam is absent or unmatched, never silently combining the two", () => {
+    // An unmatched clauseParam does not fall through to pageParam -- "when clause matches" and "when
+    // only page is given" are the task's own two distinct branches, not a combined fallback chain.
+    expect(resolveHighlightedClauseId(clauses, "does-not-exist", "9")).toBeNull();
+  });
+
+  it("returns null when neither param identifies a real clause, or page is not a number", () => {
+    expect(resolveHighlightedClauseId(clauses, null, "999")).toBeNull();
+    expect(resolveHighlightedClauseId(clauses, null, "not-a-number")).toBeNull();
+    expect(resolveHighlightedClauseId(clauses, null, null)).toBeNull();
+  });
+});
+
+describe("resolveBackLink (task E13/F10/US01/T01, AC-1 'back label follows the origin', ADR-020 screen 5)", () => {
+  it('reads "Ask Contigo" -> /ask for from === "ask"', () => {
+    expect(resolveBackLink("ask")).toEqual({ label: "Ask Contigo", href: "/ask" });
+  });
+
+  it("also resolves the other three named origins (ready, even though nothing sends them yet)", () => {
+    expect(resolveBackLink("documents")).toEqual({ label: "Documents", href: "/documents" });
+    expect(resolveBackLink("portfolio")).toEqual({ label: "Portfolio", href: "/contracts" });
+    expect(resolveBackLink("renewals")).toEqual({ label: "Renewals", href: "/renewals" });
+  });
+
+  it("returns null for an absent or unrecognised origin -- no back link, same as before this task", () => {
+    expect(resolveBackLink(undefined)).toBeNull();
+    expect(resolveBackLink(null)).toBeNull();
+    expect(resolveBackLink("something-else")).toBeNull();
+  });
+});
+
+describe("resolveSupplierLabel (task E13/F10/US01/T01, AC-3 'supplier name, never a guid')", () => {
+  it("prefers a wire-provided supplierName over the id-fragment fallback", () => {
+    const withName: Contract360HeaderBody & { supplierName: string } = {
+      ...header({ supplierId: "33333333-3333-3333-3333-333333333333" }),
+      supplierName: "Salesforce",
+    };
+
+    expect(resolveSupplierLabel(withName)).toEqual({ label: "Salesforce", title: "33333333-3333-3333-3333-333333333333" });
+  });
+
+  it("falls back to the existing id-fragment label when supplierName is absent (field not in the generated client yet)", () => {
+    const withoutName = header({ supplierId: "33333333-3333-3333-3333-333333333333" });
+    expect(resolveSupplierLabel(withoutName)).toEqual({ label: "Supplier 33333333", title: "33333333-3333-3333-3333-333333333333" });
+  });
+
+  it("ignores a blank supplierName string rather than rendering whitespace", () => {
+    const blank: Contract360HeaderBody & { supplierName: string } = { ...header(), supplierName: "   " };
+    expect(resolveSupplierLabel(blank).label).not.toBe("   ");
   });
 });

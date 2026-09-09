@@ -11,7 +11,7 @@ import type {
 } from "../../../api/client";
 import { getConfidenceTag, type SemanticTag } from "../../../styles/semantics";
 import { daysUntil } from "../portfolioAttention";
-import { formatDateOnly } from "../portfolioTableFormatters";
+import { formatDateOnly, formatSupplier } from "../portfolioTableFormatters";
 
 /**
  * Pure view-model helpers for the Contract 360 screen (route `/contracts/:contractId`, ADR-018;
@@ -57,6 +57,99 @@ export type Contract360TabName = (typeof CONTRACT_360_TABS)[number];
  */
 export function isContract360TabName(value: unknown): value is Contract360TabName {
   return typeof value === "string" && (CONTRACT_360_TABS as readonly string[]).includes(value);
+}
+
+/**
+ * Task E13/F10/US01/T01 (contract360-landing): `?clause=`/`?page=` citation landing (ADR-024
+ * "citation landing, scoped conversations"; ADR-020 screen 5 amendment "citation landing with
+ * highlighted clause"; parent story us-01-contract360-landing AC-1/AC-2/AC-3) plus the header's
+ * defensive `supplierName` read (AC-3). The three exports below are grouped in one place because
+ * they are this one task's own addition, even though `resolveSupplierLabel` is a header concern and
+ * the other two are a Clauses-tab concern -- see each function's own doc comment for its specific AC.
+ */
+
+export interface BackLink {
+  label: string;
+  href: string;
+}
+
+/**
+ * ADR-020 screen 5: "Back label follows the origin (Ask Contigo / Documents / Portfolio /
+ * Renewals)." AC-1 only requires the Ask Contigo case ("the back label reads 'Ask Contigo' when
+ * arriving from a chat") -- the other three origins are wired here too (screens-v2.md #5's own
+ * `backLabels` map names all four) so a later task can start passing `state: { from: "documents" |
+ * "portfolio" | "renewals" }` without this module changing again, but nothing sends those yet --
+ * `web/src/routes/ask/**` (the only screen that could send `"ask"`) is out of this task's own "Files
+ * to create or modify", and Documents/Portfolio/Renewals's own Link/navigate calls are equally
+ * untouched. An absent or unrecognised `from` renders no back link at all -- exactly the behaviour
+ * Contract 360 already had before this task.
+ */
+const BACK_LINKS: Readonly<Record<string, BackLink>> = {
+  ask: { label: "Ask Contigo", href: "/ask" },
+  documents: { label: "Documents", href: "/documents" },
+  portfolio: { label: "Portfolio", href: "/contracts" },
+  renewals: { label: "Renewals", href: "/renewals" },
+};
+
+export function resolveBackLink(from: unknown): BackLink | null {
+  if (typeof from !== "string") return null;
+  const known = BACK_LINKS as Record<string, BackLink | undefined>;
+  return known[from] ?? null;
+}
+
+/**
+ * AC-1: "`/contracts/:id?clause=<clauseId>` (or `?page=<n>` for a page-level citation) opens
+ * Contract 360 with that clause highlighted." The task text's own two branches -- "when clause
+ * matches a clause of the 360 payload" vs. "when only page is given" -- are mutually exclusive, not
+ * a fallback chain: `pageParam` is consulted **only** when `clauseParam` is entirely absent, never as
+ * a second attempt after a present-but-unmatched `clauseParam` (a citation link names one or the
+ * other; silently retrying by page when the clause id it actually gave does not resolve risks
+ * highlighting a *different* clause than the one cited, which is worse than highlighting none).
+ * When consulted, page resolves to the first clause (in whatever order `tabs.clauses` already
+ * returns -- this contract's own extraction order, never re-sorted here) whose `sourcePage` equals
+ * the page number. Returns `null` whenever neither branch identifies a real clause: `index.tsx` then
+ * renders the Clauses tab exactly as it does today, with no fabricated highlight.
+ */
+export function resolveHighlightedClauseId(
+  clauses: readonly Contract360ClauseBody[],
+  clauseParam: string | null,
+  pageParam: string | null,
+): string | null {
+  if (clauseParam !== null) {
+    return clauses.find((c) => c.clauseId === clauseParam)?.clauseId ?? null;
+  }
+  if (pageParam !== null) {
+    const pageNumber = Number(pageParam);
+    if (!Number.isFinite(pageNumber)) return null;
+    return clauses.find((c) => c.sourcePage === pageNumber)?.clauseId ?? null;
+  }
+  return null;
+}
+
+export interface SupplierLabel {
+  label: string;
+  title: string | undefined;
+}
+
+/**
+ * AC-3: "The supplier name (never a guid) appears in the header." `Contract360HeaderBody` (the
+ * generated `web/src/api/generated/schema.ts` type) carries no `supplierName` field yet -- only the
+ * bare `supplierId` this same gap already forced `../portfolioTableFormatters.ts#formatSupplier` to
+ * work around for the Portfolio table. The phase-4 backend task that adds
+ * `Contract360Header.SupplierName` (ADR-024 "Supplier identity" -- `Supplier` entity,
+ * `ISupplierResolver`) regenerates both the OpenAPI contract and this client
+ * (`web/openapi/contigo-api.v1.json` / `web/src/api/generated/schema.ts` are out of this task's own
+ * "Files to create or modify"), at which point `header.supplierName` becomes a real, typed field.
+ * Reading it defensively off the wire object now -- rather than widening the generated type by hand
+ * -- means this function keeps working unchanged the moment that field lands for real, instead of
+ * silently going stale against whatever shape the generator actually produces.
+ */
+export function resolveSupplierLabel(header: Contract360HeaderBody): SupplierLabel {
+  const wire = header as unknown as { supplierName?: unknown };
+  if (typeof wire.supplierName === "string" && wire.supplierName.trim() !== "") {
+    return { label: wire.supplierName, title: header.supplierId ?? undefined };
+  }
+  return formatSupplier(header.supplierId);
 }
 
 /**

@@ -1,3 +1,5 @@
+import type { CapabilityBody } from "../../api/client";
+
 /**
  * Global Ask bar copy (ADR-019/design-system.md "Global Ask bar": "surface-
  * colored strip ... heading-weight input, 2 contextual suggestion chips").
@@ -13,11 +15,21 @@
  * screens that will know it ship in epic-07/epic-08. Suggestion copy is
  * placeholder text, not backed by real query intelligence; the actual Ask
  * Contigo chat ships in epic-07/feature-04-ask-contigo-ui.
+ *
+ * Task E13/F09/US01/T01 (ADR-024 V2 amendment, gap G-IA-V2) added the
+ * `kbReady` off-copy below: `contigo-v2/app.jsx`'s global bar swaps its
+ * whole placeholder to `askPlaceholder:kbReady?'...':'Ask Contigo switches
+ * on after your first validated contract'` regardless of route -- the
+ * route-contextual copy this module already had stays in force once ready,
+ * `getAskBarCopy` only overrides the placeholder text while `!kbReady`.
  */
 export interface AskBarCopy {
   placeholder: string;
   suggestions: readonly [string, string];
 }
+
+/** `contigo-v2/app.jsx` global-bar `askPlaceholder`'s own off-state literal, quoted verbatim. */
+const KB_OFF_PLACEHOLDER = "Ask Contigo switches on after your first validated contract";
 
 const DEFAULT_COPY: AskBarCopy = {
   placeholder: "Ask Contigo — spend, renewals, clauses, liability…",
@@ -62,8 +74,65 @@ const COPY_BY_PATH_PREFIX: ReadonlyArray<readonly [string, AskBarCopy]> = [
   ],
 ];
 
-/** Looks up contextual copy by the longest matching route prefix, falling back to the prototype's own default line. */
-export function getAskBarCopy(pathname: string): AskBarCopy {
+/**
+ * Looks up contextual copy by the longest matching route prefix, falling back to the prototype's own
+ * default line -- then, while `!kbReady`, overrides just the placeholder with the V2 off-copy
+ * (`KB_OFF_PLACEHOLDER`). Suggestion chips are left as-is even when off: this task's own text names
+ * only the placeholder swap (see this module's header comment).
+ *
+ * Task E13/F09/US01/T04 (web-ask-v2, gap G-CAPABILITIES): `capabilities`, when supplied and it has
+ * a matching entry for the current route, overrides the static `suggestions` pair with the real
+ * capability catalog's own `exampleQuestions` (task text: "suggestions from capabilities per screen
+ * (fallback to static copy)") -- `capabilities` defaults to `undefined`/`null` (every pre-existing
+ * call site keeps behaving exactly as before this task, unchanged).
+ */
+export function getAskBarCopy(
+  pathname: string,
+  kbReady: boolean,
+  capabilities?: readonly CapabilityBody[] | null,
+): AskBarCopy {
   const match = COPY_BY_PATH_PREFIX.find(([prefix]) => pathname.startsWith(prefix));
-  return match ? match[1] : DEFAULT_COPY;
+  const base = match ? match[1] : DEFAULT_COPY;
+  const placeholder = kbReady ? base.placeholder : KB_OFF_PLACEHOLDER;
+
+  const catalogSuggestions = suggestionsFromCapabilityCatalog(capabilities ?? null, capabilityKeyForPath(pathname));
+  const suggestions = catalogSuggestions ?? base.suggestions;
+
+  return { placeholder, suggestions };
+}
+
+/** `../../routes/ask/askViewModel.ts`'s own `CapabilityBody`-shaped catalog entries carry a `key`
+ * this module maps route prefixes onto -- additive to (not replacing) `COPY_BY_PATH_PREFIX` above,
+ * since that table's own static copy must keep working unchanged whenever the catalog has not
+ * loaded yet (see `getAskBarCopy`'s own doc comment). "/ask" itself, and any unmatched prefix, maps
+ * to the `ask` capability -- the same fallback `CapabilityCatalog.SuggestionsFor` (backend) uses for
+ * an unrecognised screen key. */
+const CAPABILITY_KEY_BY_PATH_PREFIX: ReadonlyArray<readonly [string, string]> = [
+  ["/contracts", "portfolio"],
+  ["/renewals", "renewals"],
+  ["/documents", "documents"],
+  ["/quotes", "quote-check"],
+  ["/savings", "savings"],
+  ["/workspace/members", "workspace-members"],
+];
+
+function capabilityKeyForPath(pathname: string): string {
+  const match = CAPABILITY_KEY_BY_PATH_PREFIX.find(([prefix]) => pathname.startsWith(prefix));
+  return match ? match[1] : "ask";
+}
+
+/**
+ * `capabilities[key].exampleQuestions`, first two -- `null` when `capabilities` has not loaded yet,
+ * has no entry for `key`, or that entry has fewer than two example questions (never a single-chip
+ * row; the caller's own static fallback covers that instead). Exported for direct unit coverage
+ * (`askSuggestions.test.ts` alongside `GlobalAskBar.test.tsx`'s own rendering-level proof).
+ */
+export function suggestionsFromCapabilityCatalog(
+  capabilities: readonly CapabilityBody[] | null,
+  key: string,
+): readonly [string, string] | null {
+  if (capabilities === null) return null;
+  const match = capabilities.find((capability) => capability.key === key);
+  if (!match || match.exampleQuestions.length < 2) return null;
+  return [match.exampleQuestions[0], match.exampleQuestions[1]];
 }

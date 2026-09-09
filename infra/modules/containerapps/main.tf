@@ -103,6 +103,37 @@ resource "azurerm_container_app" "api" {
         secret_name = "pg-cs"
       }
 
+      # Task E13/F05/US01/T02 (conversations-api): Contigo.Chat's first DbContext
+      # (ConversationService/ChatDbContext, ADR-024 "Conversations (D5)") -- Contigo.Api.Program
+      # now reads ConnectionStrings:Chat and throws at startup without it, the same fail-fast
+      # shape as every other ConnectionStrings__* above. Same "pg-cs" secret -- Chat is a separate
+      # schema on the same shared Postgres server (ADR-003), not a separate database. The worker
+      # does not call AddChatModule, so it gets no matching env block below.
+      env {
+        name        = "ConnectionStrings__Chat"
+        secret_name = "pg-cs"
+      }
+
+      # Task E13/F06/US01/T01 wired AddSuppliersProductsModule into the API, and
+      # Contigo.Api/Program.cs fail-fasts on ConnectionStrings:Suppliers exactly like the
+      # blocks above -- without this env var the container never starts. Found by task
+      # E13/F11/US01/T01 while writing the V2 acceptance runbook. Same "pg-cs" secret:
+      # Suppliers is a separate schema on the same shared Postgres server (ADR-003).
+      env {
+        name        = "ConnectionStrings__Suppliers"
+        secret_name = "pg-cs"
+      }
+
+      # Task E13/F02/US01/T02 (market-index): the shared, tenant-agnostic market_record /
+      # market_embedding index the Worker's `ingest-market` job fills and Ask reads
+      # (ADR-024, R-MKT-03). Unlike the blocks above this one is optional in the host --
+      # absent, the API falls back to the in-memory mock projection -- but a deployed
+      # environment must have it, or the seeded index is written and never read.
+      env {
+        name        = "ConnectionStrings__Market"
+        secret_name = "pg-cs"
+      }
+
       env {
         name        = "ConnectionStrings__Storage"
         secret_name = "st-cs"

@@ -1,8 +1,11 @@
 using Contigo.AiGateway;
 using Contigo.AiGateway.Contracts;
+using Contigo.Documents.Contracts.Application.Admission;
+using Contigo.Documents.Contracts.Application.Preview;
 using Contigo.Documents.Contracts.Domain;
 using Contigo.Documents.Contracts.Infrastructure;
 using Contigo.SharedKernel;
+using Contigo.SharedKernel.Suppliers;
 using Contigo.SharedKernel.Tenancy;
 using Microsoft.EntityFrameworkCore;
 
@@ -22,6 +25,20 @@ namespace Contigo.Documents.Contracts.Application.Extraction;
 /// "Uploaded" forever (parent story us-01-final-integration AC-1: "Upload -&gt; parse/OCR -&gt;
 /// classify -&gt; extract -&gt; portfolio -&gt; 360 -&gt; Ask Contigo ... works end-to-end").
 ///
+/// <b>Two entry points, one continuation</b> (task E13/F04/US01/T01, documents-admission):
+/// <list type="bullet">
+/// <item><see cref="ProcessAsync(TenantId, EntityId, string, string, ReadOnlyMemory{byte}, CancellationToken)"/>
+/// — bytes in: parse, classify, then extract + index. The original R1 shape, still the right one
+/// for a re-run over stored bytes (reprocess) and for any caller that has not classified yet.</item>
+/// <item><see cref="ProcessAsync(TenantId, EntityId, IReadOnlyList{DocumentPageText}, DocumentClassification, CancellationToken)"/>
+/// — pages + classification in: the admission gate (<see cref="DocumentAdmissionGate"/>) has
+/// already parsed and classified the upload before anything was persisted (ADR-024 "gate before
+/// persistence"), so <c>POST /api/documents</c> continues from that verdict and the classify role
+/// is called exactly once per upload. The queued <see cref="Domain.ExtractionJob"/> row is
+/// advanced with the gate's own verdict/metadata, exactly as the in-pipeline classify would have
+/// done.</item>
+/// </list>
+///
 /// <b>Ordering</b>: classify runs <em>after</em> the hybrid parse, not before, even though
 /// <see cref="ExtractionStage.Classification"/> is declared as the "zeroth" pipeline stage
 /// (<see cref="ExtractionStage"/>'s own doc comment). <see cref="AiClassificationRequest.DocumentText"/>
@@ -31,21 +48,19 @@ namespace Contigo.Documents.Contracts.Application.Extraction;
 /// <see cref="StagedExtractionService.RunAsync"/> is called: that service's own
 /// <c>EnsureContractAsync</c> seeds a freshly-created <see cref="Contract"/>'s
 /// <see cref="Contract.Type"/> from <see cref="Document.DocumentType"/>, so classification must be
-/// durable first (this method flushes it via <c>SaveChangesAsync</c> before calling
+/// durable first (both entry points flush it via <c>SaveChangesAsync</c> before calling
 /// <see cref="StagedExtractionService.RunAsync"/> — sharing the caller's own scoped
 /// <see cref="DocumentsContractsDbContext"/>, so <c>RunAsync</c>'s own re-query for the
 /// <see cref="Document"/> row returns the same tracked, already-updated entity rather than racing a
 /// second connection).
 ///
-/// <b>Bytes in, not a storage re-read</b>: <see cref="ProcessAsync"/> takes
-/// <paramref name="content"/> directly rather than loading it back through
-/// <c>Contigo.SharedKernel.Storage.IDocumentStorage</c> — that interface exposes no read/load
-/// method today (only <c>SaveAsync</c>; see its own doc comment), and adding one is a larger,
-/// separate change to a shared abstraction every module and both hosts depend on. The one caller
-/// this task wires (`POST /api/documents`, see <c>Contigo.Api.Program</c>) already holds the
-/// uploaded bytes in memory for <c>DocumentUploadService.UploadAsync</c>'s own storage write, so
-/// passing the same buffer here avoids the extra round trip entirely rather than working around a
-/// missing read API.
+/// <b>Bytes in, not a storage re-read</b>: the bytes overload takes <c>content</c> directly rather
+/// than loading it back through <c>Contigo.SharedKernel.Storage.IDocumentStorage</c> — that
+/// interface exposes no read/load method today (only <c>SaveAsync</c>; see its own doc comment),
+/// and adding one is a larger, separate change to a shared abstraction every module and both hosts
+/// depend on. The callers already hold the uploaded bytes in memory for
+/// <c>DocumentUploadService.UploadAsync</c>'s own storage write, so passing the same buffer here
+/// avoids the extra round trip entirely rather than working around a missing read API.
 ///
 /// <b>Synchronous, in-request, not a queue dispatch</b>: <c>Contigo.Worker.Queue
 /// .QueueConsumerHostedService</c> deliberately does not dispatch a received message to a domain
@@ -57,17 +72,28 @@ namespace Contigo.Documents.Contracts.Application.Extraction;
 /// integration task's scope. Running the rest of the pipeline synchronously, inline with the
 /// upload request, is the smallest honest way to make R1's "upload -&gt; ... -&gt; Ask Contigo"
 /// promise actually true on `dev`/`demo` today without redesigning the queue architecture — a
-/// documented interim choice, not a silently absorbed shortcut, the same "explicit gap" convention
-/// <c>Contigo.Api/Program.cs</c>'s own <c>X-Tenant-Id</c> placeholder already sets for this
-/// codebase. A later task can move this call behind a real durable queue without changing this
-/// method's own signature or behaviour.
+/// documented interim choice, not a silently absorbed shortcut (OQ-askv2-007 keeps it in force for
+/// V2). A later task can move this call behind a real durable queue without changing either
+/// signature or behaviour.
 ///
-/// <b>Never fails an already-durable upload</b>: every failure this method can report (parse
+/// <b>Never fails an already-durable upload</b>: every failure this type can report (parse
 /// failure, one extraction stage failing, one page failing to embed) is recorded on the
 /// <see cref="Document"/>/<see cref="Domain.ExtractionJob"/> rows and returned to the caller, but
 /// none of it unwinds the upload itself — the bytes are already safely stored and the document row
 /// already exists by the time this runs (mirrors <see cref="StagedExtractionService"/>'s own
 /// per-stage "one failure does not abort the others" posture, generalized one layer up).
+///
+/// <b>Supplier linking</b> (task E13/F03/US01/T02, requirements R-SUP-01/R-SUP-02): once staged
+/// extraction reports an accepted <c>supplier</c> fact
+/// (<see cref="StagedExtractionSummary.AcceptedSupplierName"/>), this pipeline turns that legal name
+/// into <see cref="Contract.SupplierId"/> through <see cref="ISupplierResolver"/>. It happens here,
+/// not in <see cref="StagedExtractionService"/>, because ADR-002 forbids Documents/Contracts from
+/// referencing <c>Contigo.Suppliers.Products</c> — the port lives in SharedKernel and this is the
+/// module's own orchestration layer. <paramref name="supplierResolver"/> is optional (defaulted to
+/// <see langword="null"/>, so the built-in container supplies it only where the Suppliers module is
+/// composed in, and unit tests that construct this type directly need not know about it at all): a
+/// host without that module keeps extracting exactly as before, contracts simply carry no supplier
+/// link.
 /// </summary>
 public sealed class DocumentProcessingPipeline(
     DocumentsContractsDbContext dbContext,
@@ -76,7 +102,9 @@ public sealed class DocumentProcessingPipeline(
     StagedExtractionService extractionService,
     EmbeddingRetrievalService embeddingRetrievalService,
     ITenantContext tenantContext,
-    IClock clock)
+    IClock clock,
+    DocumentPreviewService? previewService = null,
+    ISupplierResolver? supplierResolver = null)
 {
     /// <summary>Discriminator this pipeline indexes every chunk under (<see cref="Domain.Embedding.SourceType"/>),
     /// matching <c>Contigo.Api.ChatEndpointExtensions.ToEvidenceSnippet</c>'s own
@@ -93,6 +121,11 @@ public sealed class DocumentProcessingPipeline(
     /// </summary>
     private const double LowConfidenceThreshold = 0.6;
 
+    /// <summary>
+    /// Bytes in: hybrid parse → classify (gateway call) → staged extraction → Ask Contigo indexing.
+    /// A parse failure marks the document <see cref="DocumentProcessingStatus.Failed"/> (an honest
+    /// terminal state — not "still processing") and is returned; see the type doc comment.
+    /// </summary>
     public async Task<Result<DocumentProcessingSummary>> ProcessAsync(
         TenantId tenantId,
         EntityId documentId,
@@ -103,19 +136,15 @@ public sealed class DocumentProcessingPipeline(
     {
         using var tenantScope = tenantContext.BeginScope(tenantId);
 
-        var document = await dbContext.Documents
-            .SingleOrDefaultAsync(d => d.TenantId == tenantId && d.Id == documentId, cancellationToken)
-            .ConfigureAwait(false);
-
+        var document = await LoadDocumentAsync(tenantId, documentId, cancellationToken).ConfigureAwait(false);
         if (document is null)
         {
-            return Result<DocumentProcessingSummary>.Failure($"Document {documentId} was not found for this tenant.");
+            return NotFound(documentId);
         }
 
         var parseResult = await parsingService
             .ParseAsync(fileName, mimeType, content, cancellationToken)
             .ConfigureAwait(false);
-
         if (parseResult.IsFailure)
         {
             // Honest terminal state: a document whose bytes could not be read at all (neither
@@ -127,9 +156,102 @@ public sealed class DocumentProcessingPipeline(
         }
 
         var pages = parseResult.Value;
-
         var (documentType, classificationConfidence) = await ClassifyAsync(tenantId, document, pages, cancellationToken)
             .ConfigureAwait(false);
+
+        return await ExtractAndIndexAsync(
+            tenantId, document, pages, documentType, classificationConfidence, content, mimeType, fileName, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Pages + classification in (task E13/F04/US01/T01): the admission gate already parsed and
+    /// classified this upload, so this overload only applies that verdict to the
+    /// <see cref="Document"/> and its queued <see cref="ExtractionStage.Classification"/> job —
+    /// no second parse, no second classify call — then runs staged extraction and indexing exactly
+    /// as the bytes overload does.
+    /// </summary>
+    public async Task<Result<DocumentProcessingSummary>> ProcessAsync(
+        TenantId tenantId,
+        EntityId documentId,
+        IReadOnlyList<DocumentPageText> pages,
+        DocumentClassification classification,
+        ReadOnlyMemory<byte> content = default,
+        string? fileName = null,
+        string? mimeType = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(pages);
+        ArgumentNullException.ThrowIfNull(classification);
+
+        using var tenantScope = tenantContext.BeginScope(tenantId);
+
+        var document = await LoadDocumentAsync(tenantId, documentId, cancellationToken).ConfigureAwait(false);
+        if (document is null)
+        {
+            return NotFound(documentId);
+        }
+
+        var classificationJob = await FindQueuedClassificationJobAsync(tenantId, document, cancellationToken)
+            .ConfigureAwait(false);
+        var now = clock.UtcNow;
+        document.DocumentType = classification.DocumentType;
+        if (classificationJob is not null)
+        {
+            classificationJob.StartedAt = now;
+            classificationJob.ModelId = classification.Metadata.ModelId;
+            classificationJob.Status = classification.Confidence < LowConfidenceThreshold
+                ? ExtractionJobStatus.NeedsReview
+                : ExtractionJobStatus.Completed;
+            classificationJob.CompletedAt = now;
+        }
+
+        return await ExtractAndIndexAsync(
+            tenantId, document, pages, classification.DocumentType, classification.Confidence,
+            content, mimeType ?? document.MimeType, fileName ?? document.FileName, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private static Result<DocumentProcessingSummary> NotFound(EntityId documentId) =>
+        Result<DocumentProcessingSummary>.Failure($"Document {documentId} was not found for this tenant.");
+
+    private Task<Document?> LoadDocumentAsync(TenantId tenantId, EntityId documentId, CancellationToken cancellationToken) =>
+        dbContext.Documents
+            .SingleOrDefaultAsync(d => d.TenantId == tenantId && d.Id == documentId, cancellationToken);
+
+    /// <summary>
+    /// The continuation both entry points share once <paramref name="document"/>'s type is decided:
+    /// flush classification, run <see cref="StagedExtractionService.RunAsync"/>, index every page
+    /// for retrieval, report the summary.
+    /// </summary>
+    private async Task<Result<DocumentProcessingSummary>> ExtractAndIndexAsync(
+        TenantId tenantId,
+        Document document,
+        IReadOnlyList<DocumentPageText> pages,
+        ContractDocumentType documentType,
+        double? classificationConfidence,
+        ReadOnlyMemory<byte> content,
+        string mimeType,
+        string fileName,
+        CancellationToken cancellationToken)
+    {
+        // R-DOC-06's list column: what the parse really produced, recorded before extraction so a
+        // later stage failing still leaves an honest page count behind.
+        document.PageCount = pages.Count;
+
+        // R-DOC-08: render and store the first-page preview from the bytes we already hold. Never
+        // fatal - DocumentPreviewService returns null instead of throwing, and a document with no
+        // preview simply answers 404 on that endpoint (see that type's own doc comment).
+        if (previewService is not null && !content.IsEmpty)
+        {
+            var previewPath = await previewService
+                .RenderAndStoreAsync(tenantId, document.Id, fileName, mimeType, content, cancellationToken)
+                .ConfigureAwait(false);
+            if (previewPath is not null)
+            {
+                document.PreviewPath = previewPath;
+            }
+        }
 
         // Flush classification before StagedExtractionService.RunAsync runs — see the type doc
         // comment's "Ordering" remarks: EnsureContractAsync reads document.DocumentType to seed a
@@ -140,19 +262,20 @@ public sealed class DocumentProcessingPipeline(
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
         var extractionResult = await extractionService
-            .RunAsync(tenantId, documentId, pages, cancellationToken)
+            .RunAsync(tenantId, document.Id, pages, cancellationToken)
             .ConfigureAwait(false);
-
         if (extractionResult.IsFailure)
         {
             return Result<DocumentProcessingSummary>.Failure(extractionResult.Error);
         }
 
-        var chunksIndexed = await IndexForRetrievalAsync(tenantId, documentId, pages, cancellationToken)
+        await LinkSupplierAsync(tenantId, extractionResult.Value, cancellationToken).ConfigureAwait(false);
+
+        var chunksIndexed = await IndexForRetrievalAsync(tenantId, document.Id, pages, cancellationToken)
             .ConfigureAwait(false);
 
         return Result<DocumentProcessingSummary>.Success(new DocumentProcessingSummary(
-            documentId,
+            document.Id,
             extractionResult.Value.ContractId,
             documentType,
             classificationConfidence,
@@ -162,8 +285,53 @@ public sealed class DocumentProcessingPipeline(
     }
 
     /// <summary>
+    /// Task E13/F03/US01/T02: turns an accepted <c>supplier</c> fact into
+    /// <see cref="Contract.SupplierId"/> (requirements R-SUP-01/R-SUP-02, parent story AC-3). Runs
+    /// on every processing pass, including a re-run over an already-extracted document, so
+    /// re-processing a contract stored before this feature existed back-fills its supplier link
+    /// (R-SUP-03) without a bespoke migration job.
+    ///
+    /// <para>
+    /// Four no-ops, each deliberate: no resolver composed in (a host without the Suppliers module —
+    /// see the type doc comment), no accepted supplier fact (absent, or below the critical-field
+    /// bar — that document is already in <c>needs_review</c> with the fact's evidence, and a human
+    /// correction re-resolves it), a resolver failure (this pipeline never fails an already-durable
+    /// upload — see the type doc comment's own "Never fails an already-durable upload" remark), and
+    /// an unchanged link (no pointless <c>UPDATE</c> against
+    /// <see cref="Contract.Version"/>'s concurrency token on every re-processing pass).
+    /// </para>
+    /// </summary>
+    private async Task LinkSupplierAsync(
+        TenantId tenantId, StagedExtractionSummary summary, CancellationToken cancellationToken)
+    {
+        if (supplierResolver is null || summary.AcceptedSupplierName is not { } supplierName)
+        {
+            return;
+        }
+
+        var resolved = await supplierResolver
+            .ResolveAsync(tenantId, supplierName, cancellationToken)
+            .ConfigureAwait(false);
+        if (resolved.IsFailure)
+        {
+            return;
+        }
+
+        var contract = await dbContext.Contracts
+            .SingleOrDefaultAsync(c => c.TenantId == tenantId && c.Id == summary.ContractId, cancellationToken)
+            .ConfigureAwait(false);
+        if (contract is null || contract.SupplierId == resolved.Value.Id)
+        {
+            return;
+        }
+
+        contract.SupplierId = resolved.Value.Id;
+        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Runs the `classify` gateway role against the just-parsed text and applies the result onto
-    /// <paramref name="document"/> in memory (not yet saved — see <see cref="ProcessAsync"/>'s own
+    /// <paramref name="document"/> in memory (not yet saved — see the type doc comment's "Ordering"
     /// remarks). Resolves and updates the <see cref="Domain.ExtractionJob"/> row
     /// <c>DocumentUploadService</c> already queued at upload time (<see cref="ExtractionStage.Classification"/>,
     /// <see cref="ExtractionJobStatus.Queued"/>) — the same "advance the queued row to completion"
@@ -178,13 +346,7 @@ public sealed class DocumentProcessingPipeline(
     private async Task<(ContractDocumentType DocumentType, double? Confidence)> ClassifyAsync(
         TenantId tenantId, Document document, IReadOnlyList<DocumentPageText> pages, CancellationToken cancellationToken)
     {
-        var classificationJob = await dbContext.ExtractionJobs
-            .Where(j => j.TenantId == tenantId
-                && j.DocumentId == document.Id
-                && j.Stage == ExtractionStage.Classification
-                && j.Status == ExtractionJobStatus.Queued)
-            .OrderBy(j => j.QueuedAt)
-            .FirstOrDefaultAsync(cancellationToken)
+        var classificationJob = await FindQueuedClassificationJobAsync(tenantId, document, cancellationToken)
             .ConfigureAwait(false);
 
         var startedAt = clock.UtcNow;
@@ -198,7 +360,6 @@ public sealed class DocumentProcessingPipeline(
         var classifyResult = await aiGateway
             .ClassifyAsync(new AiClassificationRequest(classificationText), cancellationToken)
             .ConfigureAwait(false);
-
         var completedAt = clock.UtcNow;
 
         if (classifyResult.IsFailure)
@@ -213,7 +374,7 @@ public sealed class DocumentProcessingPipeline(
             return (document.DocumentType, null);
         }
 
-        var mappedType = MapDocumentType(classifyResult.Value.DocumentType);
+        var mappedType = ContractDocumentTypeMap.FromAi(classifyResult.Value.DocumentType);
         document.DocumentType = mappedType;
 
         if (classificationJob is not null)
@@ -228,51 +389,34 @@ public sealed class DocumentProcessingPipeline(
         return (mappedType, classifyResult.Value.Confidence);
     }
 
-    /// <summary>
-    /// Maps the AI Gateway's broader classify taxonomy onto the narrower contract-hierarchy one
-    /// (see <see cref="AiDocumentType"/>'s own doc comment on why the two are deliberately
-    /// distinct). A recognized-but-non-contract upload (Quote/Invoice/PriceList/Nda/Dpa) and a
-    /// genuinely unrecognized one both map to <see cref="ContractDocumentType.Other"/> — that is
-    /// this enum's own honest "not one of the named contract kinds" member, not a guess.
-    /// <see cref="ContractDocumentType.RenewalLetter"/> has no classify-role counterpart to map
-    /// from today; nothing in this wave's classify prompt/taxonomy names it.
-    /// </summary>
-    private static ContractDocumentType MapDocumentType(AiDocumentType aiDocumentType) => aiDocumentType switch
-    {
-        AiDocumentType.Msa => ContractDocumentType.Msa,
-        AiDocumentType.OrderForm => ContractDocumentType.OrderForm,
-        AiDocumentType.Sow => ContractDocumentType.Sow,
-        AiDocumentType.Amendment => ContractDocumentType.Amendment,
-        _ => ContractDocumentType.Other,
-    };
+    private Task<ExtractionJob?> FindQueuedClassificationJobAsync(
+        TenantId tenantId, Document document, CancellationToken cancellationToken) =>
+        dbContext.ExtractionJobs
+            .Where(j => j.TenantId == tenantId
+                && j.DocumentId == document.Id
+                && j.Stage == ExtractionStage.Classification
+                && j.Status == ExtractionJobStatus.Queued)
+            .OrderBy(j => j.QueuedAt)
+            .FirstOrDefaultAsync(cancellationToken);
 
     /// <summary>Representative text for the classify role (<see cref="AiClassificationRequest.DocumentText"/>:
     /// "the full text of the document (or a representative prefix)") — every page, in order, so a
-    /// document whose identifying keyword (e.g. "MASTER SERVICES AGREEMENT") lands on any page is
-    /// still recognized. Unlike <see cref="StagedExtractionService"/>'s own per-stage prompt text,
-    /// this is not persisted or cited anywhere, so it carries no page markers.</summary>
+    /// multi-page contract's type is judged on all of it, not on a cover page alone.</summary>
     private static string BuildClassificationText(IReadOnlyList<DocumentPageText> pages) =>
         string.Join("\n\n", pages.Select(p => p.Text));
 
     /// <summary>
-    /// Indexes each parsed page as one Ask Contigo retrieval chunk (spec §8.3), so a document is
-    /// actually answerable immediately after processing rather than only after some later,
-    /// separate indexing task runs (backend/README.md's own previously-recorded gap: "nothing yet
-    /// calls IndexChunkAsync outside tests"). One <see cref="Domain.Embedding"/> row per page is a
-    /// deliberate, documented first cut — splitting one very large page into multiple smaller
-    /// embedding rows (for models with a limited context/token budget per chunk) is a later tuning
-    /// task, not attempted here; every fixture and real contract page this pipeline has seen so far
-    /// fits comfortably in one chunk. A blank page is skipped (nothing to embed, not a failure); a
-    /// failed embed call for one page degrades only that page's retrievability — it does not fail
-    /// the whole call, since every fact this pipeline extracted is already durable by this point
-    /// (mirrors ADR-017's "fail visibly, never let one failure hide behind an aggregate success",
-    /// generalized from OCR page-budget to indexing).
+    /// Indexes every non-blank page as one retrieval chunk (<c>chunkIndex</c> = zero-based page
+    /// number) under <see cref="DocumentSourceType"/>, so Ask Contigo citations resolve back to
+    /// this document. One page failing to embed is counted out, never fatal — the document is
+    /// still partially askable, which is more honest than "not askable at all".
     /// </summary>
     private async Task<int> IndexForRetrievalAsync(
         TenantId tenantId, EntityId documentId, IReadOnlyList<DocumentPageText> pages, CancellationToken cancellationToken)
     {
+        var sectionsByPage = await SectionLabelsByPageAsync(tenantId, documentId, cancellationToken)
+            .ConfigureAwait(false);
         var indexed = 0;
-
         foreach (var page in pages)
         {
             if (string.IsNullOrWhiteSpace(page.Text))
@@ -280,10 +424,21 @@ public sealed class DocumentProcessingPipeline(
                 continue;
             }
 
+            // R-EVD-01 / R-DOC-07 AC-2: the chunk carries its own 1-based page (and, when the
+            // document has been sectioned, the section label). chunkIndex stays zero-based - it is
+            // a position within the source, not a page number, and Ask's own citation ids already
+            // depend on it.
             var indexResult = await embeddingRetrievalService
-                .IndexChunkAsync(tenantId, DocumentSourceType, documentId, page.PageNumber - 1, page.Text, cancellationToken)
+                .IndexChunkAsync(
+                    tenantId,
+                    DocumentSourceType,
+                    documentId,
+                    page.PageNumber - 1,
+                    page.Text,
+                    page.PageNumber,
+                    sectionsByPage.GetValueOrDefault(page.PageNumber),
+                    cancellationToken)
                 .ConfigureAwait(false);
-
             if (indexResult.IsSuccess)
             {
                 indexed++;
@@ -293,10 +448,37 @@ public sealed class DocumentProcessingPipeline(
         return indexed;
     }
 
-    /// <summary>Same truncation shape as <see cref="StagedExtractionService"/>'s own private
-    /// helper (not shared — see the type's own remarks on <see cref="LowConfidenceThreshold"/> for
-    /// why): keeps a gateway error message bounded before it lands on
-    /// <see cref="Domain.ExtractionJob.ErrorDetail"/>.</summary>
+    /// <summary>
+    /// Section label per page for the chunks of this document (R-EVD-01 "section label"): the
+    /// clause types staged extraction has already attributed to a page of this same document. A
+    /// page with several clauses is labelled with the first, in insertion order - one short label
+    /// is what a citation subtitle can show; a page with none stays unlabelled rather than being
+    /// given a made-up section name.
+    /// </summary>
+    private async Task<Dictionary<int, string>> SectionLabelsByPageAsync(
+        TenantId tenantId, EntityId documentId, CancellationToken cancellationToken)
+    {
+        var clauses = await dbContext.Clauses
+            .AsNoTracking()
+            .Where(c => c.TenantId == tenantId && c.SourceDocumentId == documentId && c.SourcePage != null)
+            .OrderBy(c => c.CreatedAt)
+            .Select(c => new { Page = c.SourcePage!.Value, c.ClauseType, c.SourceSpan })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var labels = new Dictionary<int, string>();
+        foreach (var clause in clauses)
+        {
+            var label = string.IsNullOrWhiteSpace(clause.SourceSpan) ? clause.ClauseType : clause.SourceSpan;
+            if (!string.IsNullOrWhiteSpace(label))
+            {
+                labels.TryAdd(clause.Page, label);
+            }
+        }
+
+        return labels;
+    }
+
     private static string Truncate(string value, int maxLength = 1000) =>
         value.Length <= maxLength ? value : value[..maxLength];
 }

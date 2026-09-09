@@ -1,237 +1,441 @@
-import type { ApiClient, AskContigoCitationBody, AskContigoIntent, AskContigoResponseBody } from "../../api/client";
+import type {
+  ApiClient,
+  CapabilityBody,
+  ConversationActionBody,
+  ConversationCitationBody,
+  ConversationDetailBody,
+  ConversationMessageBody,
+  ConversationReplyBody,
+  ConversationReplyKind,
+} from "../../api/client";
+import type { CitationCorpus, Reply, ReplyAction, ReplyCitation } from "./reply/replyTypes";
 
 /**
- * Pure(ish) view-model helpers for the Ask Contigo screen (route `/ask`, ADR-018; screens.md #7;
- * ADR-020 screen 7; task E07/F04/US01/T01, us-01-ask-contigo AC-1/AC-2/AC-3/AC-4). Same
- * one-concern-per-file split `../contracts/contract360/contract360ViewModel.ts` already established
- * for this app: `index.tsx` orchestrates React state/effects, this module decides what a chat turn
- * looks like from a raw `AskContigoResponseBody`.
+ * V2 view-model for the Ask Contigo screen (route `/ask`, `/ask/:conversationId`; ADR-024;
+ * ADR-020 V2 amendment "screen 2"; task E13/F09/US01/T04, us-01-web-v2 AC-1/AC-3/AC-5/AC-6). Same
+ * one-concern-per-file split the V1 module this file replaces already established: `index.tsx`
+ * orchestrates React state/effects/navigation, this module decides what a turn/screen looks like
+ * from the real wire shapes `../../api/client.ts` exposes (`ConversationReplyBody`,
+ * `ConversationMessageBody`, ...).
  *
- * **Why "abstain" and "unknown question fallback" (ADR-020 screen 7's two named failure states)
- * share one rendering path**: the compiled prototype's own chat-message template
- * (`inputs/design/prototypes/day1-demo.html`, the `scr.ask` block) renders both through the exact
- * same markup -- a bold "Cannot determine reliably." followed by `{{ m.reason }}`, inside one
- * `border-left:2px solid var(--color-accent);background:var(--color-accent-100)` block (the
- * `.abstain-block` class in `../../styles/components.css`) -- varying only the `reason`/`route`
- * text (the prototype's own canned "no match" fallback entry is itself `abstain:true` with
- * `route:'Intent detected: unknown ...'`). This module follows the same rule: both cases set
- * `ChatMessageView.abstain = true`; `route` (AC-1's own two named examples, "Structured query…" /
- * "Clause retrieval…") is what actually distinguishes a Structured-not-wired turn from a genuine
- * Semantic no-evidence abstain.
+ * **Wire reply -> presentational `Reply`, not two competing shapes.** `../../api/client.ts`'s
+ * `ConversationReplyBody`/`ConversationMessageBody` are the wire-exact ADR-024 §6 contract;
+ * `./reply/replyTypes.ts`'s `Reply` (task E13/F09/US01/T02, phase-2, out of this task's own "Files
+ * to create or modify") is the pure, API-agnostic union `ReplyBody`/`CitationCard`/`ActionRow`
+ * actually render. This module is the one place that maps one onto the other -- exactly the "F09/T04
+ * owns mapping the generated wire type onto `Reply`" hand-off `replyTypes.ts`'s own header comment
+ * already names.
  */
 
-/** AC-1's own two named route-line examples ("Chat with route line ('Structured query…', 'Clause
- * retrieval…')"), keyed by the real backend's `intent` enum (`ChatEndpointExtensions`). Used
- * verbatim, not paraphrased -- the task text names these two exact strings. */
-export const ROUTE_LINE_BY_INTENT: Readonly<Record<AskContigoIntent, string>> = {
-  Structured: "Structured query…",
-  Semantic: "Clause retrieval…",
-};
+// ---------------------------------------------------------------------------------------------
+// Citations: corpus normalisation + tenant-citation deep-link enrichment
+// ---------------------------------------------------------------------------------------------
 
 /**
- * The one case the real API cannot explain per-query: a Semantic question that came back
- * `canDetermine: false` always has `message: null` on the wire (`ChatEndpointExtensions
- * .ToAnsweredResponse` hard-codes it) -- `AbstainGuard`'s own free-text `Reason` is deliberately
- * excluded from the response and the audit trail alike (that type's own doc comment). This is a
- * fixed, honest line rather than a fabricated per-query reason: under the fixture `IAiGateway`
- * wired today, `canDetermine` is `false` in the Semantic branch in exactly one situation -- tenant
- * -scoped retrieval found zero evidence at all (`FixtureAiGateway.AnswerAsync`) -- and every reason
- * `AbstainGuard` itself can produce for a real model (zero citations, an empty answer, or an
- * ungrounded citation) still reduces to the same honest claim: no reliable, evidenced answer was
- * found. See `openapi/contigo-api.v1.json`'s `askContigo` operation description for the full
- * provenance.
+ * `citations[].corpus` is usually `"tenant" | "market" | "contigo"` (requirements.md §6 / R-WEB-04's
+ * three-corpus citation-badge vocabulary; `./reply/replyTypes.ts#CitationCorpus`, closed to exactly
+ * those three). The real backend admits a fourth internal value, `"calc"`
+ * (`Contigo.Chat.Application.Pack.PackCorpus.Calc` -- a deterministic-calculator-derived fact: a
+ * renewal date, a negotiation lever, a criticality score), with no remapping step anywhere before
+ * the wire (`ReplyCitation.Corpus`'s own doc comment: "Echoes `PackItem.Corpus`"); confirmed by
+ * reading `backend/src/Contigo.Api/AskCopilotService.cs`'s own `PackItem` constructions for
+ * `when-you-must-move`/lever/target/criticality items, which set a real `/contracts/{id}` `Href`
+ * despite `PackItem.Href`'s own doc comment claiming `Href` is null for `PackCorpus.Calc`. A
+ * calculator fact is always about *this tenant's own contract*, never a market/feature fact, so an
+ * unrecognised value folds into `"tenant"` -- the closer honest bucket -- rather than the more
+ * surprising `"contigo"` (a static feature card) or a thrown exception. Named here as a real
+ * backend/frontend contract gap, not a guess (see `web/openapi/contigo-api.v1.json`'s
+ * `postConversationMessage` operation description for the same note).
  */
-export const SEMANTIC_ABSTAIN_REASON =
-  "Contigo found no supporting evidence in your accessible contracts for this question.";
-
-/** A transport/backend failure (network error, or a genuine 400) -- distinct from an honest AI
- * abstention, see `ChatMessageView.kind`'s own doc comment. */
-export const TRANSPORT_ERROR_REASON = "Contigo's Q&A service is temporarily unavailable. Try again in a moment.";
-
-export type ChatRole = "you" | "contigo";
+export function toCitationCorpus(wireCorpus: string): CitationCorpus {
+  if (wireCorpus === "tenant" || wireCorpus === "market" || wireCorpus === "contigo") {
+    return wireCorpus;
+  }
+  return "tenant";
+}
 
 /**
- * `answer` = a real, cited (or citation-less) grounded answer. `abstain` = the AI honestly could not
- * determine an answer (Semantic no-evidence) or the question was routed Structured and is not
- * wired to live data yet (screens.md #7's two named failure states -- see this module's own header
- * comment for why they share one visual treatment). `error` = the request itself failed (network/
- * 400) -- never conflated with "the AI could not determine an answer": that is always `abstain`.
+ * A tenant citation's real `href` is always the bare `/contracts/{contractId}` on this backend
+ * today (`AskCopilotService.cs`'s own `PackItem` constructions -- confirmed, never `?clause=...`
+ * despite requirements.md §6's own illustrative example) -- so the citation-landing deep link
+ * (task text: "clicking a tenant citation -> `/contracts/<contractId>?clause=<clauseId>` (or
+ * `?page=`)") has to be finished client-side. There is no raw `clauseId` anywhere on the wire
+ * (R-ASK-08 "no guids ever rendered" -- consistent with that, not an oversight this function works
+ * around), only `page` (a plain integer), so this always takes the `?page=` branch of
+ * `../contracts/contract360/contract360ViewModel.ts#resolveHighlightedClauseId`'s own two mutually
+ * exclusive branches -- that screen resolves `page` back to a real clause itself once it loads.
+ * Defensive against a future backend fix: a `href` that already carries a query string (e.g. a
+ * `?clause=` this backend does not send yet) is trusted as-is, never double-appended.
  */
-export type ChatMessageKind = "answer" | "abstain" | "error";
-
-export interface ChatCitationView {
-  /** 1-based position within *this message's own* citation list (day1-demo.html's own `{n:i+1}`
-   * mapping) -- not a global counter across the whole conversation. */
-  n: number;
-  /** The raw composite id the API returned (`SourceType:SourceId`) -- shown verbatim as the chip's
-   * "doc" label. Resolving it to a human-readable filename would need an extra round trip per
-   * citation before the message can even render; `../../ask/index.tsx#resolveCitationContractId`
-   * resolves it lazily, only when the user actually clicks a chip. */
-  documentId: string;
-  /** Parsed `SourceType` half of `documentId` (e.g. `"Document"`, `"Clause"`), or `null` if
-   * `documentId` did not have the expected `type:id` shape at all. */
-  sourceType: string | null;
-  /** Parsed `SourceId` half of `documentId`, or `null` -- see `sourceType`. */
-  sourceId: string | null;
-  page: number | null;
-  section: string | null;
+export function buildTenantCitationHref(href: string | null, page: number | null): string | null {
+  if (href === null) return null;
+  if (href.includes("?")) return href;
+  return page !== null ? `${href}?page=${page}` : href;
 }
 
-export interface ChatMessageView {
-  /** Stable id for React keys -- an incrementing counter (`index.tsx`'s own `nextId` ref), not the
-   * array index, so a message never changes identity as the log grows. */
-  id: string;
-  role: ChatRole;
-  /** Empty string for every `abstain`/`error` turn (the block itself carries the message -- see
-   * `kind`'s own doc comment) and for a still-pending "You" bubble is never empty (the user's own
-   * typed text). */
-  text: string;
-  /** AC-1's route line, or `null` for a "You" message (a route is something Contigo decides, not
-   * the user). */
-  route: string | null;
-  kind: ChatMessageKind;
-  /** Populated only when `kind !== "answer"`. */
-  reason: string | null;
-  /** Populated only when `kind === "answer"` and the response actually carried citations. */
-  citations: readonly ChatCitationView[];
-}
-
-/** Parses the composite `documentId` the backend returns (`ChatEndpointExtensions
- * .ToEvidenceSnippet`'s `${SourceType}:${SourceId}`) into its two halves. Returns `null` rather
- * than guessing when the string does not have that shape at all -- an honest "cannot parse", not a
- * silently wrong split. */
-export function parseCitationSource(documentId: string): { sourceType: string; sourceId: string } | null {
-  const separatorIndex = documentId.indexOf(":");
-  if (separatorIndex <= 0 || separatorIndex === documentId.length - 1) return null;
+export function mapConversationCitation(body: ConversationCitationBody): ReplyCitation {
+  const corpus = toCitationCorpus(body.corpus);
   return {
-    sourceType: documentId.slice(0, separatorIndex),
-    sourceId: documentId.slice(separatorIndex + 1),
+    n: body.n,
+    corpus,
+    title: body.title,
+    subtitle: body.subtitle ?? "",
+    snippet: body.snippet,
+    previewUrl: body.previewUrl,
+    href: corpus === "tenant" ? buildTenantCitationHref(body.href, body.page) : body.href,
   };
 }
 
-export function buildCitationViews(citations: readonly AskContigoCitationBody[]): ChatCitationView[] {
-  return citations.map((citation, index) => {
-    const parsed = parseCitationSource(citation.documentId);
-    return {
-      n: index + 1,
-      documentId: citation.documentId,
-      sourceType: parsed?.sourceType ?? null,
-      sourceId: parsed?.sourceId ?? null,
-      page: citation.page,
-      section: citation.section,
-    };
+/** `actions[].kind` is really `"navigate" | "upload"` (`Contigo.Chat.Application.Capabilities
+ * .CopilotActionKind`) -- requirements.md §6's own illustrative JSON example shows `"primary"`/
+ * `"secondary"` instead, a visual-priority label the real backend never emits (confirmed reading
+ * `ConversationsEndpointExtensions.ToActionJson`). `navigate`/`upload` is an orthogonal axis (*what*
+ * the action does) from primary/secondary (*how prominent* the button is) -- that example's own
+ * ordering (`"Open Contract 360 →"` primary, `"Track it in Renewals"` secondary, both `navigate`)
+ * proves the two axes are independent. This client reproduces the visual axis the only way the wire
+ * actually supports it: by position -- the first action in `actions[]` is primary, every other one
+ * is secondary -- which also gives R-ASK-07's "redirect/refusal: one CTA" a primary-styled button for
+ * free, since `ReplyBody.tsx` (phase-2, out of this task's scope) already slices that array to its
+ * first entry only for those two kinds. */
+export function toReplyActionKind(index: number): ReplyAction["kind"] {
+  return index === 0 ? "primary" : "secondary";
+}
+
+export function mapConversationAction(body: ConversationActionBody, index: number): ReplyAction {
+  return { label: body.label, href: body.href, kind: toReplyActionKind(index) };
+}
+
+/** The common shape every turn boils down to, whichever wire object it came from (a live
+ * `ConversationReplyBody` carries `answerMarkdown`/`followUps`; a stored `ConversationMessageBody`
+ * carries `markdown` and no `followUps` at all -- see `mapConversationMessageToReply`'s own doc
+ * comment). Kept private: callers only ever see the two named `map*` functions below. */
+interface NormalizedTurnBody {
+  kind: ConversationReplyKind;
+  text: string;
+  citations: readonly ConversationCitationBody[];
+  actions: readonly ConversationActionBody[];
+  followUps: readonly string[];
+}
+
+function buildReply(turn: NormalizedTurnBody): Reply {
+  switch (turn.kind) {
+    case "answer":
+      return {
+        kind: "answer",
+        answerMarkdown: turn.text,
+        citations: turn.citations.map(mapConversationCitation),
+        actions: turn.actions.map(mapConversationAction),
+        followUps: turn.followUps,
+      };
+    case "redirect":
+    case "refusal":
+      return {
+        kind: turn.kind,
+        answerMarkdown: turn.text,
+        actions: turn.actions.map(mapConversationAction),
+      };
+    case "abstain":
+      // The backend's own abstain branch stores the reason *as* answerMarkdown/markdown
+      // (Contigo.Chat.Application.Reply.CopilotReplyBuilder's own abstain construction:
+      // `new(ReplyKind.Abstain, guarded.AbstainReason ?? "...", [], [], ..., [])`) -- there is no
+      // separate "reason" field on the wire to read instead.
+      return { kind: "abstain", reason: turn.text };
+    default: {
+      // Exhaustiveness guard: a future wire `kind` value fails this file's own build instead of
+      // silently rendering nothing for it (same convention `./reply/ReplyBody.tsx` already uses).
+      const exhaustive: never = turn.kind;
+      return exhaustive;
+    }
+  }
+}
+
+/** Maps a live `POST /api/conversations/{id}/messages` response (has `followUps`) onto `Reply`. */
+export function mapConversationReplyToReply(body: ConversationReplyBody): Reply {
+  return buildReply({
+    kind: body.kind,
+    text: body.answerMarkdown,
+    citations: body.citations,
+    actions: body.actions,
+    followUps: body.followUps,
   });
 }
 
-let messageIdCounter = 0;
-
-/** Monotonic, test-friendly id generator -- exported so `index.tsx` and tests share one counter
- * shape instead of each re-deriving one. Not `crypto.randomUUID()`: nothing here needs global
- * uniqueness, only "never repeats within one mounted screen". */
-export function nextMessageId(): string {
-  messageIdCounter += 1;
-  return `ask-message-${messageIdCounter}`;
+/** Maps one stored `GET /api/conversations/{id}` message (resume) onto `Reply`. `followUps` is
+ * always empty -- `ConversationMessage` has no such column (`ConversationsEndpointExtensions
+ * .ToMessageResponse`'s own field list), so a resumed conversation's past Contigo turns render
+ * without follow-up chips, an honest, real limitation (see that operation's own OpenAPI
+ * description), not an oversight this function papers over. */
+export function mapConversationMessageToReply(message: ConversationMessageBody): Reply {
+  return buildReply({
+    kind: message.kind,
+    text: message.markdown,
+    citations: message.citations,
+    actions: message.actions,
+    followUps: [],
+  });
 }
 
-export function buildYouMessage(id: string, text: string): ChatMessageView {
-  return { id, role: "you", text, route: null, kind: "answer", reason: null, citations: [] };
+// ---------------------------------------------------------------------------------------------
+// Turns -- what index.tsx actually renders, one per message
+// ---------------------------------------------------------------------------------------------
+
+/** A "you" turn is plain text -- there is no reply contract on the caller's own side of the
+ * conversation. A "contigo" turn carries both the mapped, presentational `Reply` (what
+ * `ReplyBody.tsx` renders) and the original wire `citations[]` (`wireCitations`) side by side --
+ * `ReplyCitation` (the presentational type) deliberately does not carry `contractId`/`recordId`
+ * (R-ASK-08 "no guids rendered"; `replyTypes.ts`'s own doc comment), so `index.tsx#openCitation`
+ * looks the clicked citation's `n` back up in `wireCitations` to recover the one field it actually
+ * needs to act (a market citation's `recordId`) -- see that function's own doc comment. */
+export type AskTurnView =
+  | { id: string; role: "you"; text: string }
+  | { id: string; role: "contigo"; reply: Reply; wireCitations: readonly ConversationCitationBody[] };
+
+let turnIdCounter = 0;
+
+/** Monotonic, test-friendly id generator for a locally-built turn (the optimistic "you" bubble, or
+ * a transport-error turn with no real message id yet) -- not `crypto.randomUUID()`, the same
+ * reasoning the V1 `askViewModel.ts#nextMessageId` this file replaces already gave: nothing here
+ * needs global uniqueness, only "never repeats within one mounted screen". */
+export function nextTurnId(): string {
+  turnIdCounter += 1;
+  return `ask-turn-${turnIdCounter}`;
 }
 
-/**
- * Turns a real `POST /api/chat/query` 200 response into a chat turn. `response.canDetermine ===
- * true` is the only path that ever surfaces `response.answer`/citations; every other outcome is an
- * honest `abstain` turn (see this module's header comment for why Structured-not-wired and Semantic
- * no-evidence share the same `kind`).
- */
-export function buildContigoMessage(id: string, response: AskContigoResponseBody): ChatMessageView {
-  const route = ROUTE_LINE_BY_INTENT[response.intent] ?? null;
-
-  if (response.canDetermine && response.answer !== null) {
-    return {
-      id,
-      role: "contigo",
-      text: response.answer,
-      route,
-      kind: "answer",
-      reason: null,
-      citations: buildCitationViews(response.citations),
-    };
-  }
-
-  return {
-    id,
-    role: "contigo",
-    text: "",
-    route,
-    kind: "abstain",
-    reason: response.message ?? SEMANTIC_ABSTAIN_REASON,
-    citations: [],
-  };
+export function buildYouTurn(id: string, text: string): AskTurnView {
+  return { id, role: "you", text };
 }
 
-export function buildErrorMessage(id: string, reason: string): ChatMessageView {
-  return { id, role: "contigo", text: "", route: null, kind: "error", reason, citations: [] };
+export function buildContigoTurnFromReply(id: string, body: ConversationReplyBody): AskTurnView {
+  return { id, role: "contigo", reply: mapConversationReplyToReply(body), wireCitations: body.citations };
 }
 
-/** AC-4 "thinking" state copy, quoted verbatim from the compiled prototype's own chat-log block
- * (day1-demo.html: "Authorising scope → detecting intent → retrieving evidence") -- matches
- * screens.md #7's own parenthetical, "thinking (authorise → intent → retrieve)". */
+export function buildContigoTurnFromMessage(message: ConversationMessageBody): AskTurnView {
+  return { id: message.id, role: "contigo", reply: mapConversationMessageToReply(message), wireCitations: message.citations };
+}
+
+/** AC-5 "resume": every stored message, oldest first (the wire's own order, `GET
+ * /api/conversations/{id}`'s own `messages` array -- `ConversationService.GetAsync`'s own
+ * `OrderBy(m => m.CreatedAt)`), turned into the same `AskTurnView` shape a live turn produces. */
+export function buildTurnsFromConversation(detail: ConversationDetailBody): readonly AskTurnView[] {
+  return detail.messages.map((message) =>
+    message.role === "you" ? buildYouTurn(message.id, message.markdown) : buildContigoTurnFromMessage(message),
+  );
+}
+
+/** A transport/network failure or a genuine 400/404 -- distinct from an honest AI abstention, the
+ * same rule the V1 `askViewModel.ts#ChatMessageKind` this file replaces already documented. */
+export function buildErrorTurn(id: string, reason: string): AskTurnView {
+  return { id, role: "contigo", reply: { kind: "error", reason }, wireCitations: [] };
+}
+
+export const TRANSPORT_ERROR_REASON =
+  "Contigo's Q&A service is temporarily unavailable. Try again in a moment.";
+
+// ---------------------------------------------------------------------------------------------
+// Off state (screens-v2.md #2; R-ASK-10) -- "Ask needs at least one validated contract."
+// ---------------------------------------------------------------------------------------------
+
+export interface AskOffCopy {
+  reason: string;
+  ctaLabel: string;
+}
+
+/** `app.jsx`'s own ternary, quoted verbatim: `askOffReason:docs.length?'...processing...':'...
+ * upload...'`, `askOffCta:docs.length?'Go to Documents':'Upload a contract'`. `hasAnyDocument`
+ * (task text point 1: "from the shell hook" decides *whether* Ask is off; this decides *which*
+ * off-copy variant) comes from `GET /api/documents`'s own `totalCount` (`index.tsx`'s own effect,
+ * scoped to only run while off) -- not the session-only `documentStore.ts` tracker `RailNav.tsx`'s
+ * own badge already documents as broken since task E13/F09/US01/T03 (nothing calls
+ * `rememberDocument` any more), which would silently under-report here the same way. */
+export function buildOffCopy(hasAnyDocument: boolean): AskOffCopy {
+  return hasAnyDocument
+    ? {
+        reason:
+          "Your document is still processing or waiting for review. Ask only answers from facts that passed validation — so it never guesses.",
+        ctaLabel: "Go to Documents",
+      }
+    : {
+        reason: "Upload a contract first. Contigo extracts the facts, you sign off the weak ones, and Ask switches on.",
+        ctaLabel: "Upload a contract",
+      };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Conversation title (header `convTitle` + "+ New chat", task text point (3))
+// ---------------------------------------------------------------------------------------------
+
+/** `ConversationService.DefaultTitle` ("New chat"), quoted verbatim -- the title a conversation
+ * carries server-side until its first "you" message derives a real one. Used here only as this
+ * screen's own client-side fallback for the brief window between "the you bubble appears" and "the
+ * server's create-then-ask round trip resolves" -- `app.jsx`'s own fallback
+ * (`'Ask Contigo · new chat'`) is a different string; this file follows the real backend constant
+ * instead, since `index.tsx` also shows this exact text for a conversation that is still
+ * genuinely titleless (a resumed one somehow has no messages at all yet -- not reachable today, but
+ * an honest label rather than an invented one if it ever is). */
+export const DEFAULT_CONVERSATION_TITLE = "New chat";
+
+/** `ConversationService.DeriveTitle`'s own rule, reproduced client-side (task E13/F09/US01/T04's
+ * own "duplicate a small pure predicate rather than cross-import between independent features"
+ * convention, e.g. `useValidatedContractCount.ts`'s identical reasoning for
+ * `isValidatedContractStatus`): collapse embedded whitespace/newlines to single spaces, then
+ * hard-truncate at 48 chars, no ellipsis. Lets the conversation header show *a* title immediately
+ * after the first question is typed, without waiting for the create-then-ask round trip to resolve
+ * and tell this screen the server's own (identically-computed) title. */
+const TITLE_MAX_LENGTH = 48;
+
+export function deriveConversationTitle(questionText: string): string {
+  const singleLine = questionText.split(/\s+/).filter((part) => part.length > 0).join(" ");
+  return singleLine.length <= TITLE_MAX_LENGTH ? singleLine : singleLine.slice(0, TITLE_MAX_LENGTH);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Scope line (R-ASK-10) -- "Answers only from N validated contracts (…) · cites or abstains"
+// ---------------------------------------------------------------------------------------------
+
+/** `app.jsx` `askScope`, quoted verbatim: `'Answers only from '+askable+' validated contract'+
+ * (askable===1?'':'s')+' ('+kbNames.join(', ')+') · cites or abstains'` -- except the parenthetical
+ * name list is omitted entirely (never rendered as an empty `()`) when `supplierNames` is empty, an
+ * honest degradation rather than the prototype's own always-present parens: `GET /api/contracts`
+ * does not resolve `supplierName` yet for any real tenant today (this task's own `supplierName`
+ * addition to `web/openapi/contigo-api.v1.json`'s `getPortfolio` operation is itself "documented
+ * ahead of the backend response projection actually selecting it" -- see that property's own
+ * description), so a real deployment renders the plain, still-truthful sentence until a future
+ * backend task fills the name in, at which point this same function starts rendering names with no
+ * further client change. */
+export function buildScopeLine(validatedContractCount: number, supplierNames: readonly string[]): string {
+  const plural = validatedContractCount === 1 ? "contract" : "contracts";
+  const names = supplierNames.length > 0 ? ` (${supplierNames.join(", ")})` : "";
+  return `Answers only from ${validatedContractCount} validated ${plural}${names} · cites or abstains`;
+}
+
+/** Screens-v2.md #2's own trailing sentence, appended after the scope line on the "new chat" state
+ * only (`app.jsx` `askScope+'. Structured questions...'` is one concatenated paragraph in the
+ * prototype; this module keeps the two halves separate so `index.tsx` can render `askScope` alone
+ * for the conversation-view's own smaller usage without repeating this sentence there). */
+export const NEW_CHAT_TRAILER =
+  "Structured questions run on validated fields, legal questions retrieve clauses — every answer cites its page or says it cannot answer.";
+
+/** screens-v2.md #2 "New chat": `askHello`, quoted verbatim. */
+export const ASK_HELLO = "What do you want to know?";
+
+/** ADR-024 §6 / task text point (2): input placeholder, quoted verbatim from the task's own coding
+ * objective ("Ask Contigo — spend, dates, clauses, liability…") -- distinct from the *global* Ask
+ * bar's own placeholder (`components/ask-bar/askSuggestions.ts`'s `DEFAULT_COPY.placeholder`,
+ * "spend, renewals, clauses, liability…"), a deliberate, task-text-pinned difference between the two
+ * screens, not a typo. */
+export const ASK_INPUT_PLACEHOLDER = "Ask Contigo — spend, dates, clauses, liability…";
+
+/** screens-v2.md #2 "Thinking": V1 copy retained verbatim until the reply streams. */
 export const THINKING_COPY = "Authorising scope → detecting intent → retrieving evidence";
 
-/** AC-4 "empty" state copy -- adapted from the compiled prototype's own `chatEmpty` block
- * (day1-demo.html), which states the same routing/citation/abstain contract this screen implements
- * rather than a generic "ask me anything" placeholder. */
-export const EMPTY_STATE_COPY =
-  "Structured questions run as deterministic queries on validated fields; legal and semantic questions retrieve clauses. Every answer cites its source, or says it cannot determine reliably.";
+// ---------------------------------------------------------------------------------------------
+// Suggestion chips (task text point (2): "two suggestion chips from GET /api/capabilities
+// (suggestionsFor("ask"))"; R-SYS-01)
+// ---------------------------------------------------------------------------------------------
 
-/** Right-rail "Try" suggestions, quoted verbatim from the compiled prototype's own `suggestionsTxt`
- * array (day1-demo.html) -- not invented copy (ADR-019: consume the prototype, do not fork it). */
-export const ASK_SUGGESTIONS: readonly string[] = [
-  "Which contracts renew in the next 120 days?",
-  "What is our Microsoft annual spend?",
-  "What liability do we have with AWS?",
-  "Which contracts contain unlimited liability?",
-  "What is our total liability exposure across all contracts?",
+/** `app.jsx` `c360Chips`, quoted verbatim -- the one screen whose chips are supplier-templated
+ * rather than catalog-sourced (`CapabilityCatalog.SuggestionsFor`'s own identical special case,
+ * server-side, has no HTTP surface at all -- see `web/openapi/contigo-api.v1.json`'s
+ * `getCapabilities` operation description). `supplierName` absent/blank falls back to "this
+ * supplier", the same fallback that C# method uses. */
+export function buildScopedSuggestions(supplierName: string | null): readonly [string, string] {
+  const supplier = supplierName === null || supplierName.trim() === "" ? "this supplier" : supplierName;
+  return [`When must we give notice to ${supplier}?`, `What is our liability cap with ${supplier}?`];
+}
+
+const ASK_CAPABILITY_KEY = "ask";
+
+/** The plain, unscoped case: the "ask" capability's own `exampleQuestions` (`GET /api/capabilities`,
+ * task text: "suggestionsFor(\"ask\")"), first two. Falls back to a small, static pair when the
+ * catalog has not loaded yet (or the fetch failed) -- never a blank rail, the same "fallback to
+ * static copy" contract `components/ask-bar/askSuggestions.ts#getAskBarCopy` already establishes for
+ * the *global* bar's own chips. */
+const ASK_SUGGESTIONS_FALLBACK: readonly [string, string] = [
+  "When does a contract expire?",
+  "What liabilities do we have?",
 ];
 
-export type CitationOpenResult = { ok: true; contractId: string } | { ok: false; reason: string };
+export function suggestionsFor(
+  capabilities: readonly CapabilityBody[] | null,
+  supplierName?: string | null,
+): readonly [string, string] {
+  if (supplierName !== undefined) {
+    return buildScopedSuggestions(supplierName);
+  }
+  const match = capabilities?.find((capability) => capability.key === ASK_CAPABILITY_KEY);
+  if (match && match.exampleQuestions.length >= 2) {
+    return [match.exampleQuestions[0], match.exampleQuestions[1]];
+  }
+  return ASK_SUGGESTIONS_FALLBACK;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Citation click resolution (AC-3; R-EVD-02) -- tenant navigates, market opens the panel, contigo
+// navigates
+// ---------------------------------------------------------------------------------------------
+
+export type CitationOpenAction =
+  | { kind: "navigate"; href: string }
+  | { kind: "market-panel"; recordId: string }
+  | { kind: "none" };
 
 /**
- * Resolves a citation chip to a Contract 360 id, or an honest reason it cannot (AC-2 "opening
- * Contract 360 > Clauses"). Only a `Document:<id>` citation is resolvable today: `GET
- * /api/documents/{id}` (already wrapped as `apiClient.getDocument`) is the one existing endpoint
- * that maps a source id back to a `contractId`. A `Clause:<id>` citation (or any other/unparsable
- * `sourceType`) has no equivalent lookup anywhere in this backend yet (`Embedding.SourceType`'s own
- * doc comment: "Document or Clause content today" is a loose pointer, not a foreign key) -- named
- * here as a real gap rather than guessed at, per `openapi/contigo-api.v1.json`'s `askContigo`
- * operation description.
+ * `index.tsx#openCitation`'s own decision table (task text point (3)): "clicking a tenant citation
+ * -> `/contracts/<contractId>?clause=<clauseId>` (or `?page=`) with `state.from = "ask"`" (already
+ * baked into `citation.href` by `mapConversationCitation`); "a market citation opens a side panel
+ * loading `GET /api/market/records/{id}`" (needs `wireCitation.recordId`, not on the presentational
+ * `ReplyCitation`); "a Contigo feature card navigates to its href". Looks the clicked citation's `n`
+ * up in `wireCitations` (the same array `AskTurnView.wireCitations` carries) rather than trusting
+ * `citation` alone, since only the wire object still has `recordId`.
  */
-export async function resolveCitationContractId(
+export function resolveCitationOpenAction(
+  citation: ReplyCitation,
+  wireCitations: readonly ConversationCitationBody[],
+): CitationOpenAction {
+  if (citation.corpus === "market") {
+    const wire = wireCitations.find((c) => c.n === citation.n);
+    return wire?.recordId ? { kind: "market-panel", recordId: wire.recordId } : { kind: "none" };
+  }
+  return citation.href ? { kind: "navigate", href: citation.href } : { kind: "none" };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Conversation-create request (?scope=)
+// ---------------------------------------------------------------------------------------------
+
+/** AC-5 `/ask?scope=<contractId>` "opens a scoped new chat" -- validated defensively (a malformed
+ * query value must never reach `POST /api/conversations` as a bad request; `undefined` here means
+ * "plain new chat", the same optional-field convention `CreateConversationRequest` itself uses). */
+export function parseScopeContractId(rawScope: string | null): string | undefined {
+  if (rawScope === null) return undefined;
+  const trimmed = rawScope.trim();
+  return trimmed === "" ? undefined : trimmed;
+}
+
+/** Thin, testable wrapper around the two-call "create, then ask" sequence every new chat runs
+ * (task text point (2): "a question creates a conversation ... then posts the message"). Returns
+ * the created conversation id on success so `index.tsx` can navigate to `/ask/<conversationId>`
+ * (task text: "the URL becomes `/ask/<conversationId>`") even when the first message itself somehow
+ * fails -- the conversation still exists and is worth resuming. */
+export async function createConversationAndAsk(
   apiClient: ApiClient,
   tenantId: string,
-  citation: ChatCitationView,
-): Promise<CitationOpenResult> {
-  if (citation.sourceType !== "Document" || citation.sourceId === null) {
-    return {
-      ok: false,
-      reason: "Contigo can't jump to Contract 360 from a clause-level citation yet — open the Documents tab to find the source contract.",
-    };
+  question: string,
+  scopeContractId: string | undefined,
+): Promise<
+  | { ok: true; conversationId: string; reply: ConversationReplyBody }
+  | { ok: false; conversationId: string | null; reason: string }
+> {
+  const created = await apiClient.createConversation(tenantId, scopeContractId ? { scopeContractId } : {});
+  if (!created.ok || !created.conversation) {
+    return { ok: false, conversationId: null, reason: created.error ?? TRANSPORT_ERROR_REASON };
   }
 
-  const result = await apiClient.getDocument(tenantId, citation.sourceId);
-  if (!result.ok || !result.document) {
-    return {
-      ok: false,
-      reason: result.error ?? "This citation could not be opened right now. Try again in a moment.",
-    };
+  const conversationId = created.conversation.id;
+  const posted = await apiClient.postMessage(tenantId, conversationId, { question });
+  if (!posted.ok || !posted.reply) {
+    return { ok: false, conversationId, reason: posted.error ?? TRANSPORT_ERROR_REASON };
   }
 
-  if (result.document.contractId === null) {
-    return {
-      ok: false,
-      reason: "This document is not linked to a contract yet.",
-    };
-  }
-
-  return { ok: true, contractId: result.document.contractId };
+  return { ok: true, conversationId, reply: posted.reply };
 }

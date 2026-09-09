@@ -14,10 +14,24 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     inviteWorkspaceMember: vi.fn(),
     uploadDocument: vi.fn(),
     getDocument: vi.fn(),
+    // Task E13/F09/US01/T03 (web-documents-v2): this suite does not exercise Documents -- bare
+    // vi.fn() is enough, same convention as getPortfolio below.
+    listDocuments: vi.fn(),
+    getDocumentPreviewUrl: vi.fn(),
+    reprocessDocument: vi.fn(),
+    deleteDocument: vi.fn(),
     getPortfolio: vi.fn(),
     getContract360: vi.fn(),
     getRenewals: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, renewals: { items: [], totalCount: 0 }, error: null }),
     getRenewalPriority: vi.fn().mockResolvedValue({ ok: false, statusCode: 404, priority: null, error: "No contract found." }),
+    // Task E13/F09/US01/T04 (web-ask-v2): this suite never reaches conversations/capabilities/
+    // market -- bare vi.fn() is enough, same convention as getCorrectionHistory below.
+    listConversations: vi.fn(),
+    createConversation: vi.fn(),
+    getConversation: vi.fn(),
+    postMessage: vi.fn(),
+    getCapabilities: vi.fn(),
+    getMarketRecord: vi.fn(),
     // Task E07/F03/US01/T01 (field-review-correction): this suite never reaches the Review screen --
     // bare vi.fn() is enough, same convention as getPortfolio above.
     getCorrectionHistory: vi.fn(),
@@ -46,6 +60,8 @@ function contract(overrides: Partial<Contract360Body> = {}): Contract360Body {
     header: {
       contractId: CONTRACT_ID,
       supplierId: "33333333-3333-3333-3333-333333333333",
+      // Task E13/F03/US01/T02: supplierName is required now (null when unresolved).
+      supplierName: null,
       type: "Msa",
       status: "active",
       annualSpend: 500_000,
@@ -168,6 +184,8 @@ function renewalPipelineItem(overrides: Partial<RenewalPipelineItemBody> = {}): 
   return {
     contractId: CONTRACT_ID,
     supplierId: null,
+    // Task E13/F03/US01/T02: supplierName is required now (null when unresolved).
+    supplierName: null,
     status: "Determined",
     renewalDate: "2026-01-01",
     daysUntilRenewal: 30,
@@ -179,6 +197,8 @@ function renewalPipelineItem(overrides: Partial<RenewalPipelineItemBody> = {}): 
     insightCard: {
       facts: {
         supplierId: null,
+        // Task E13/F03/US01/T02: supplierName is required now (null when unresolved).
+        supplierName: null,
         renewalDate: "2026-01-01",
         daysUntilRenewal: 30,
         annualSpend: 500_000,
@@ -212,9 +232,15 @@ function priorityFixture(overrides: Partial<RenewalPriorityBody> = {}): RenewalP
   };
 }
 
-function renderContract360(apiClient: ApiClient, contractId = CONTRACT_ID, state?: unknown) {
+/**
+ * `search` (task E13/F10/US01/T01, AC-1): the query string for a `?clause=`/`?page=` citation
+ * landing, e.g. `"?clause=cl-1"` -- a plain string, matching `MemoryRouter`'s own `InitialEntry`
+ * shape (`{ pathname, search, hash, state }`), the same convention `pathname`/`state` below already
+ * use. Defaults to `""` (no query string) so every pre-existing call site is unaffected.
+ */
+function renderContract360(apiClient: ApiClient, contractId = CONTRACT_ID, state?: unknown, search = "") {
   return render(
-    <MemoryRouter initialEntries={[{ pathname: `/contracts/${contractId}`, state }]}>
+    <MemoryRouter initialEntries={[{ pathname: `/contracts/${contractId}`, search, state }]}>
       <Routes>
         <Route path="/contracts/:contractId" element={<Contract360Route apiClient={apiClient} />} />
         <Route path="/renewals" element={<div>RENEWALS_SCREEN</div>} />
@@ -409,6 +435,85 @@ describe("Contract360Route", () => {
       await screen.findByRole("heading", { name: "MSA" });
 
       expect(screen.getByText(/no renewal recommendation for this contract/i)).toBeInTheDocument();
+    });
+  });
+
+  describe("citation landing (task E13/F10/US01/T01, ADR-024; parent story us-01-contract360-landing)", () => {
+    it("AC-1: ?clause=<id> opens on Clauses and shows the clause's rawText highlighted, without a click", async () => {
+      renderContract360(
+        mockApiClient({ getContract360: vi.fn().mockResolvedValue(ok(contract())) }),
+        CONTRACT_ID,
+        undefined,
+        "?clause=cl-1",
+      );
+      await screen.findByRole("heading", { name: "MSA" });
+
+      const tabs = screen.getByRole("navigation", { name: /contract 360 sections/i });
+      expect(within(tabs).getByRole("button", { name: "Clauses" })).toHaveAttribute("aria-pressed", "true");
+      // "12 months fees" is the fixture clause's own rawText (== normalizedValue here) -- the
+      // ClauseHighlight card renders it unconditionally, no row click required.
+      expect(screen.getByTestId("clause-highlight")).toBeInTheDocument();
+      expect(within(screen.getByTestId("clause-highlight")).getByText("12 months fees")).toBeInTheDocument();
+    });
+
+    it("AC-1: ?page=<n> highlights the first clause with that sourcePage when no clause id is given", async () => {
+      renderContract360(
+        mockApiClient({ getContract360: vi.fn().mockResolvedValue(ok(contract())) }),
+        CONTRACT_ID,
+        undefined,
+        "?page=27", // the fixture clause's own sourcePage
+      );
+      await screen.findByRole("heading", { name: "MSA" });
+
+      expect(within(screen.getByTestId("clause-highlight")).getByText("12 months fees")).toBeInTheDocument();
+    });
+
+    it("opens the Clauses tab on an unmatched clause param without fabricating a highlight", async () => {
+      renderContract360(
+        mockApiClient({ getContract360: vi.fn().mockResolvedValue(ok(contract())) }),
+        CONTRACT_ID,
+        undefined,
+        "?clause=does-not-exist",
+      );
+      await screen.findByRole("heading", { name: "MSA" });
+
+      const tabs = screen.getByRole("navigation", { name: /contract 360 sections/i });
+      expect(within(tabs).getByRole("button", { name: "Clauses" })).toHaveAttribute("aria-pressed", "true");
+      expect(screen.queryByTestId("clause-highlight")).toBeNull();
+    });
+
+    it("AC-1: state.from === 'ask' shows the back link '← Ask Contigo', linking to /ask", async () => {
+      renderContract360(mockApiClient({ getContract360: vi.fn().mockResolvedValue(ok(contract())) }), CONTRACT_ID, { from: "ask" });
+      await screen.findByRole("heading", { name: "MSA" });
+
+      expect(screen.getByRole("link", { name: /ask contigo/i })).toHaveAttribute("href", "/ask");
+    });
+
+    it("renders no back link when state.from is absent, same as before this task", async () => {
+      renderContract360(mockApiClient({ getContract360: vi.fn().mockResolvedValue(ok(contract())) }));
+      await screen.findByRole("heading", { name: "MSA" });
+
+      expect(screen.queryByRole("link", { name: /ask contigo/i })).toBeNull();
+    });
+
+    it("AC-2: 'Ask about it' links to /ask?scope=<contractId>", async () => {
+      renderContract360(mockApiClient({ getContract360: vi.fn().mockResolvedValue(ok(contract())) }));
+      await screen.findByRole("heading", { name: "MSA" });
+
+      expect(screen.getByRole("link", { name: /ask about it/i })).toHaveAttribute("href", `/ask?scope=${CONTRACT_ID}`);
+    });
+
+    it("AC-3: shows a wire-provided supplierName in the header kicker instead of the id-fragment fallback", async () => {
+      const withSupplierName: Contract360Body["header"] & { supplierName: string } = {
+        ...contract().header,
+        supplierName: "Salesforce",
+      };
+      renderContract360(
+        mockApiClient({ getContract360: vi.fn().mockResolvedValue(ok(contract({ header: withSupplierName }))) }),
+      );
+      await screen.findByRole("heading", { name: "MSA" });
+
+      expect(screen.getByText("Salesforce")).toBeInTheDocument();
     });
   });
 });

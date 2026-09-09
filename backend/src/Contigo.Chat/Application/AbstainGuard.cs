@@ -1,4 +1,5 @@
 using Contigo.AiGateway.Contracts;
+using Contigo.Chat.Application.Pack;
 
 namespace Contigo.Chat.Application;
 
@@ -106,6 +107,71 @@ public sealed class AbstainGuard
             new AiAnswerResult(CanDetermine: false, Answer: null, Citations: [], original.Metadata),
             Intervened: true,
             reason);
+
+    /// <summary>
+    /// Task E13/F06/US01/T01 (ask-engine) extension: the ADR-024 pack-based overload of
+    /// <see cref="Enforce(AiAnswerResult, IReadOnlyList{AiEvidenceSnippet})"/> — same "never trust
+    /// a `CanDetermine=true` verdict blindly" contract, checked against
+    /// <see cref="AiAnswerResult.CitationKeys"/>/<see cref="AiAnswerResult.AnswerMarkdown"/> and a
+    /// caller-assembled <see cref="PackItem"/> list instead of the legacy
+    /// <see cref="AiAnswerResult.Citations"/>/<see cref="AiEvidenceSnippet"/> evidence shape (R-ASK-06:
+    /// "existing AbstainGuard, extended to keys and to market/contigo corpora" — a pack item may be
+    /// <see cref="PackCorpus.Tenant"/>, <see cref="PackCorpus.Market"/>,
+    /// <see cref="PackCorpus.Contigo"/> or <see cref="PackCorpus.Calc"/>; every corpus is an equally
+    /// valid grounding source, so this overload never special-cases one over another).
+    ///
+    /// <see cref="Guards.GroundingGuard"/> is the fuller ADR-024 pipeline guard (this overload's own
+    /// citation-key check, plus the inline `[n]` marker check and the actionKey-resolves check
+    /// R-ASK-06 also requires) — composed from this method rather than duplicating its citation
+    /// -key logic a second time.
+    /// </summary>
+    /// <param name="result">The gateway's own `answer` role result, called with a pack
+    /// (<c>Contigo.AiGateway.Contracts.AiAnswerRequest.PackJson</c>) rather than a bare evidence
+    /// list.</param>
+    /// <param name="pack">The same already-assembled, already-authorized pack the gateway was
+    /// given — the only source of truth a <see cref="AiAnswerResult.CitationKeys"/> entry may
+    /// point back to.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="result"/> or <paramref name="pack"/>
+    /// is <see langword="null"/>.</exception>
+    public AbstainGuardOutcome Enforce(AiAnswerResult result, IReadOnlyList<PackItem> pack)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        ArgumentNullException.ThrowIfNull(pack);
+
+        if (!result.CanDetermine)
+        {
+            return new AbstainGuardOutcome(result, Intervened: false, Reason: null);
+        }
+
+        var citationKeys = result.CitationKeys ?? [];
+        if (citationKeys.Count == 0)
+        {
+            return Abstained(
+                result,
+                "gateway claimed CanDetermine=true with zero citationKeys — an unsupported claim " +
+                "(Appendix C rule 2: never show a fact without source evidence).");
+        }
+
+        if (string.IsNullOrWhiteSpace(result.AnswerMarkdown))
+        {
+            return Abstained(
+                result, "gateway claimed CanDetermine=true with no answerMarkdown — nothing to ground.");
+        }
+
+        var packKeys = pack.Select(item => item.CitationKey).ToHashSet(StringComparer.Ordinal);
+
+        var ungroundedKey = citationKeys.FirstOrDefault(key => !packKeys.Contains(key));
+        if (ungroundedKey is not null)
+        {
+            return Abstained(
+                result,
+                $"citationKey '{ungroundedKey}' does not match any of the {pack.Count} pack " +
+                "item(s) handed to the gateway — a fabricated or hallucinated citation (Appendix " +
+                "C rule 10: uncertainty over fabricated precision).");
+        }
+
+        return new AbstainGuardOutcome(result, Intervened: false, Reason: null);
+    }
 }
 
 /// <summary>

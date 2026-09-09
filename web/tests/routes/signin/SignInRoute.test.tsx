@@ -41,6 +41,12 @@ function mockApiClient(createWorkspace: ApiClient["createWorkspace"] = vi.fn()):
     inviteWorkspaceMember: vi.fn(),
     uploadDocument: vi.fn(),
     getDocument: vi.fn(),
+    // Task E13/F09/US01/T03 (web-documents-v2): this suite does not exercise Documents -- bare
+    // vi.fn() is enough, same convention as getPortfolio below.
+    listDocuments: vi.fn(),
+    getDocumentPreviewUrl: vi.fn(),
+    reprocessDocument: vi.fn(),
+    deleteDocument: vi.fn(),
     getPortfolio: vi.fn(),
     // Task E07/F02/US01/T01 (contract-360): this suite never reaches Contract 360 -- bare vi.fn().
     getContract360: vi.fn(),
@@ -64,6 +70,14 @@ function mockApiClient(createWorkspace: ApiClient["createWorkspace"] = vi.fn()):
     // matrix -- bare vi.fn() is enough, same convention as getContract360 above.
     getSavingsKpis: vi.fn(),
     getSavingsOpportunities: vi.fn(),
+    // Task E13/F09/US01/T04 (web-ask-v2): this suite never reaches conversations/capabilities/
+    // market -- bare vi.fn() is enough, same convention as getContract360 above.
+    listConversations: vi.fn(),
+    createConversation: vi.fn(),
+    getConversation: vi.fn(),
+    postMessage: vi.fn(),
+    getCapabilities: vi.fn(),
+    getMarketRecord: vi.fn(),
   };
 }
 

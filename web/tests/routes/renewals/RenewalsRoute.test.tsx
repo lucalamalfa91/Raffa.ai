@@ -21,10 +21,24 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     inviteWorkspaceMember: vi.fn(),
     uploadDocument: vi.fn(),
     getDocument: vi.fn(),
+    // Task E13/F09/US01/T03 (web-documents-v2): this suite does not exercise Documents -- bare
+    // vi.fn() is enough, same convention as getPortfolio below.
+    listDocuments: vi.fn(),
+    getDocumentPreviewUrl: vi.fn(),
+    reprocessDocument: vi.fn(),
+    deleteDocument: vi.fn(),
     getPortfolio: vi.fn(),
     getContract360: vi.fn(),
     getRenewals: vi.fn(),
     getRenewalPriority: vi.fn().mockResolvedValue({ ok: false, statusCode: 404, priority: null, error: "No contract found." }),
+    // Task E13/F09/US01/T04 (web-ask-v2): this suite never reaches conversations/capabilities/
+    // market -- bare vi.fn() is enough, same convention as getCorrectionHistory above.
+    listConversations: vi.fn(),
+    createConversation: vi.fn(),
+    getConversation: vi.fn(),
+    postMessage: vi.fn(),
+    getCapabilities: vi.fn(),
+    getMarketRecord: vi.fn(),
     getCorrectionHistory: vi.fn(),
     correctContract: vi.fn(),
     postRenewalAction: vi.fn(),
@@ -50,6 +64,8 @@ function pipelineItem(overrides: Partial<RenewalPipelineItemBody> = {}): Renewal
   return {
     contractId: "22222222-2222-2222-2222-222222222222",
     supplierId: "33333333-3333-3333-3333-333333333333",
+    // Task E13/F03/US01/T02: supplierName is required now (null when unresolved).
+    supplierName: null,
     status: "Determined",
     renewalDate: "2026-12-01",
     daysUntilRenewal: 20,
@@ -61,6 +77,8 @@ function pipelineItem(overrides: Partial<RenewalPipelineItemBody> = {}): Renewal
     insightCard: {
       facts: {
         supplierId: "33333333-3333-3333-3333-333333333333",
+        // Task E13/F03/US01/T02: supplierName is required now (null when unresolved).
+        supplierName: null,
         renewalDate: "2026-12-01",
         daysUntilRenewal: 20,
         annualSpend: 500_000,

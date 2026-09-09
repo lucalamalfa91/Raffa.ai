@@ -472,6 +472,15 @@ namespace Contigo.Documents.Contracts.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("mime_type");
 
+                    b.Property<int?>("PageCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("page_count");
+
+                    b.Property<string>("PreviewPath")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("preview_path");
+
                     b.Property<string>("ProcessingStatus")
                         .IsRequired()
                         .HasMaxLength(30)
@@ -577,6 +586,15 @@ namespace Contigo.Documents.Contracts.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")
                         .HasColumnName("model");
+
+                    b.Property<int?>("Page")
+                        .HasColumnType("integer")
+                        .HasColumnName("page");
+
+                    b.Property<string>("Section")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("section");
 
                     b.Property<Guid>("SourceId")
                         .HasColumnType("uuid")
