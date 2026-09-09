@@ -59,6 +59,8 @@ function item(overrides: Partial<PortfolioListItem> = {}): PortfolioListItem {
   return {
     contractId: "contract-1",
     supplierId: null,
+    // Task E13/F03/US01/T02: supplierName is required now (null when unresolved).
+    supplierName: null,
     type: "Msa",
     annualSpend: 100_000,
     startDate: "2025-01-01",

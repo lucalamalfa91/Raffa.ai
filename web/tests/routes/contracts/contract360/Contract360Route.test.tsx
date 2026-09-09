@@ -60,6 +60,8 @@ function contract(overrides: Partial<Contract360Body> = {}): Contract360Body {
     header: {
       contractId: CONTRACT_ID,
       supplierId: "33333333-3333-3333-3333-333333333333",
+      // Task E13/F03/US01/T02: supplierName is required now (null when unresolved).
+      supplierName: null,
       type: "Msa",
       status: "active",
       annualSpend: 500_000,
@@ -182,6 +184,8 @@ function renewalPipelineItem(overrides: Partial<RenewalPipelineItemBody> = {}): 
   return {
     contractId: CONTRACT_ID,
     supplierId: null,
+    // Task E13/F03/US01/T02: supplierName is required now (null when unresolved).
+    supplierName: null,
     status: "Determined",
     renewalDate: "2026-01-01",
     daysUntilRenewal: 30,
@@ -193,6 +197,8 @@ function renewalPipelineItem(overrides: Partial<RenewalPipelineItemBody> = {}): 
     insightCard: {
       facts: {
         supplierId: null,
+        // Task E13/F03/US01/T02: supplierName is required now (null when unresolved).
+        supplierName: null,
         renewalDate: "2026-01-01",
         daysUntilRenewal: 30,
         annualSpend: 500_000,

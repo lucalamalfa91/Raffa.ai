@@ -128,6 +128,8 @@ function contract360(overrides: Partial<Contract360Body["header"]> = {}): Contra
     header: {
       contractId: "contract-1",
       supplierId: null,
+      // Task E13/F03/US01/T02: supplierName is required now (null when unresolved).
+      supplierName: null,
       type: "Msa",
       status: "active",
       annualSpend: null,

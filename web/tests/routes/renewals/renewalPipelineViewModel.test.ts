@@ -29,6 +29,8 @@ function pipelineItem(overrides: Partial<RenewalPipelineItemBody> = {}): Renewal
   return {
     contractId: "11111111-1111-1111-1111-111111111111",
     supplierId: "22222222-2222-2222-2222-222222222222",
+    // Task E13/F03/US01/T02: supplierName is required now (null when unresolved).
+    supplierName: null,
     status: "Determined",
     renewalDate: "2026-12-01",
     daysUntilRenewal: 30,
@@ -40,6 +42,8 @@ function pipelineItem(overrides: Partial<RenewalPipelineItemBody> = {}): Renewal
     insightCard: {
       facts: {
         supplierId: "22222222-2222-2222-2222-222222222222",
+        // Task E13/F03/US01/T02: supplierName is required now (null when unresolved).
+        supplierName: null,
         renewalDate: "2026-12-01",
         daysUntilRenewal: 30,
         annualSpend: 500_000,

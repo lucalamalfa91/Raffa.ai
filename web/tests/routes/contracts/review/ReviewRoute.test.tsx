@@ -69,6 +69,8 @@ function minimalContract(overrides: Partial<Contract360Body> = {}): Contract360B
     header: {
       contractId: CONTRACT_ID,
       supplierId: null,
+      // Task E13/F03/US01/T02: supplierName is required now (null when unresolved).
+      supplierName: null,
       type: "Msa",
       status: "active",
       annualSpend: null,
