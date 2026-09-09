@@ -67,7 +67,18 @@ builder.Services.AddAuditModule(auditConnectionString);
 // already resolvable in this container by the time RagAnswerService is first requested; DI
 // registration order does not matter, only that every AddXxxModule call below happens before
 // builder.Build().
-builder.Services.AddChatModule();
+//
+// Task E13/F05/US01/T02 (story us-01-conversations, AC-4): AddChatModule now also accepts the
+// optional chatConnectionString parameter task E13/F05/US01/T01 added — this is the first caller
+// that passes one, the same fail-fast shape as every other required connection string above.
+// Passing it additionally registers ChatDbContext + ConversationService (see that overload's own
+// doc comment) — MapConversationsEndpoints below needs both.
+var chatConnectionString = builder.Configuration.GetConnectionString("Chat")
+    ?? throw new InvalidOperationException(
+        "Missing required configuration 'ConnectionStrings:Chat' " +
+        "(set env var ConnectionStrings__Chat in deployed environments).");
+
+builder.Services.AddChatModule(chatConnectionString);
 
 // Task E03/F03/US01/T01 (renewal-dashboard, GET /api/renewals): the Renewals module's own
 // AddRenewalsModule(IServiceCollection) (ADR-002) — task E03/F01/US01/T01 registered RenewalEngine
@@ -334,6 +345,16 @@ app.MapSavingsKpiEndpoints();
 // E02/F02/US02/T02) performs the tenant-scoped retrieval, and RagAnswerService (this task) turns
 // the two into a grounded answer with citations or an explicit "cannot determine".
 app.MapChatEndpoints();
+
+// Task E13/F05/US01/T02 (story us-01-conversations, AC-2/AC-3): GET/POST /api/conversations and
+// GET /api/conversations/{id} — list/create/get-with-messages over the conversations store task
+// E13/F05/US01/T01 added (ADR-024 "Conversations (D5)"). See ConversationsEndpointExtensions for
+// the endpoints themselves and their own doc comment for the caller-identity rule (token subject
+// when an authenticated principal is present, else the required X-User-Id header — ADR-022
+// posture, non-authoritative, OQ-askv2-005). POST /api/conversations/{id}/messages is deliberately
+// not mapped here — task F06/T01 (phase 3) adds it to that same file once the Ask engine can
+// produce a turn to persist.
+app.MapConversationsEndpoints();
 
 // Task E05/F01/US01/T01 (quote-extraction, parent story us-01-quote-line-extraction AC-1/AC-2/
 // AC-4): POST /api/quotes — upload a supplier quote, then synchronously reuse the epic-02 hybrid
