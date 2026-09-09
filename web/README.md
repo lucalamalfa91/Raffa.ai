@@ -95,7 +95,7 @@ own rail destination. Pixel/behaviour reference: `inputs/design/prototypes/Conti
 | `/ask/:conversationId` | Same `AskRoute` as `/ask` -- the route exists so a conversation id is a valid URL, but nothing reads it yet (`routes/ask/**` untouched; F09/T04 wires resume from `GET /api/conversations/{id}`). | E13/F09/US01/T01 (route only) |
 | `/documents` | V2 rebuild (ADR-024 amendment to ADR-020 screen 3): onboarding empty state ("First your contracts. Then your questions.") -> a server-backed list (`GET /api/documents`, survives a reload) with a **Needs your attention** (default) / **All documents · N** filter, multi-file drop (up to 20 files, <=3 uploads in flight, one row per file from the moment it is picked), real per-file stage text polled every 2s, a **Not added** card for a rejected file (422/415/oversized, session-only, never counted), Admin-only Delete, and Review as a *state* of this same route (`?review=<id>`, reusing `routes/contracts/review/*` as-is). Calls the real `GET /api/documents`, `GET /api/documents/{id}/preview`, `POST /api/documents`, `POST /api/documents/{id}/reprocess`, `DELETE /api/documents/{id}`. See "Documents" below. | E06/F05/US01/T01, E06/F05/US02/T01; V2 rebuild E13/F09/US01/T03 |
 | `/contracts` | Portfolio: filter chips + attention strip + a table sorted by severity then deadline (critical rows tinted + a red bar), plus loading/empty/error/no-match-for-filter states. Calls the real `GET /api/contracts`. See "Portfolio" below. | E07/F01/US01/T01 |
-| `/contracts/:id` | Contract 360: header + 6-cell fact row + 10 tabs (Overview's recommendation card + drivers + "Needs your attention" + "Top risks", then Commercials/Products/Clauses/Obligations/Risks/Documents/Benchmark/Renewal/Activity through one shared Term/Value/Source/Confidence table), plus loading/not-found/error states. Calls the real `GET /api/contracts/{id}`, `GET /api/renewals`, `GET /api/renewals/{contractId}/priority`. See "Contract 360" below. | E07/F02/US01/T01 |
+| `/contracts/:id` | Contract 360: header + 6-cell fact row + 10 tabs (Overview's recommendation card + drivers + "Needs your attention" + "Top risks", then Commercials/Products/Clauses/Obligations/Risks/Documents/Benchmark/Renewal/Activity through one shared Term/Value/Source/Confidence table), plus loading/not-found/error states. `?clause=<id>`/`?page=<n>` (an Ask citation landing) opens straight on Clauses with that clause's original wording highlighted; `state.from` drives the header's back link; header offers **Ask about it** -> `/ask?scope=<id>`. Calls the real `GET /api/contracts/{id}`, `GET /api/renewals`, `GET /api/renewals/{contractId}/priority`. See "Contract 360" below. | E07/F02/US01/T01; citation landing by E13/F10/US01/T01 |
 | `/contracts/:id/review` | Review / correction: 4-column field list (critical marker, extracted value, confidence/decision tag, Accept/Correct) + right-hand evidence pane (correction form + real correction-history trail) + gated "Mark as validated". Calls the real `GET /api/contracts/{id}`, `GET /api/contracts/{id}/corrections`, `PATCH /api/contracts/{id}`. See "Review / correction" below. | E07/F03/US01/T01 |
 | `/renewals` | Renewal pipeline: threshold strip (0-30 ... 270-365 d, click = filter) + priority table (Score/Supplier/Contract/Annual spend/Renews in/Cancel by/Status) + insight card (facts + recommended action + rationale) with three actions (Start negotiation / Assign to me / Snooze) -> confirmation + Contract 360 + Savings links, plus loading/error/empty/no-window states. Calls the real `GET /api/renewals`, `GET /api/renewals/{contractId}/priority`, `POST /api/renewals/{id}/action`. See "Renewal pipeline" below. | E08/F01/US01/T01 |
 | `/quotes`, `/quotes/:id` | Quote check: this task's own upload form (no id yet) -> 4-step stepper Extract (line table + unmatched-SKU manual mapping + recalculate) -> Assessment (4 numbers, line-level P25/P50/P75 + confidence, provenance card; blocked until every line resolves) -> Target (price ladder, editable target/walk-away) -> Negotiation (outcome capture -> recorded outcome). Calls the real `POST /api/quotes`, `POST /api/quotes/{id}/assessment/recalculate`, `POST /api/negotiations/outcomes`. See "Quote check" below. | E08/F03/US01/T01 |
@@ -534,6 +534,35 @@ added.
 - **Confidence is a 0-1 fraction on the wire** (`Contract360ProductBody.confidence` etc., e.g.
   `0.92`), not the 0-100 percentage `styles/semantics.ts#getConfidenceTag` expects --
   `contract360ViewModel.ts#toConfidencePercent` is the one conversion point every row builder uses.
+
+**Task E13/F10/US01/T01** (contract360-landing, ADR-024 "citation landing, scoped conversations";
+ADR-020 screen 5 amendment; us-01-contract360-landing) makes this screen the landing of every Ask
+citation, still inside today's tabbed shell (the no-tabs V2 answers-band layout is this feature's
+own P2 follow-up, R-WEB-06):
+
+- **`?clause=<clauseId>` / `?page=<n>`** (`contract360ViewModel.ts#resolveHighlightedClauseId`) open
+  straight on the Clauses tab; a `?clause=` naming a real clause on this contract wins outright, a
+  bare `?page=` highlights the first clause whose `sourcePage` matches -- the two never combine (an
+  unmatched `?clause=` does not fall back to `?page=` even when both are present, to avoid
+  highlighting a different clause than the one actually cited). The matched clause's own `rawText`
+  (its original wording, `sourceSpan` emphasised when present) renders unconditionally in a new
+  `ClauseHighlight.tsx` card directly below the unmodified Clauses list -- no row click required, and
+  it scrolls itself into view.
+- **`state.from`** (`contract360ViewModel.ts#resolveBackLink`) drives a "← Ask Contigo" back link
+  above the header when set to `"ask"` (ADR-020 screen 5 "Back label follows the origin"); the other
+  three named origins (Documents/Portfolio/Renewals) resolve too but nothing sends them yet -- only a
+  future Ask-route task (`web/src/routes/ask/**`, out of this task's own file scope) can set `"ask"`
+  for real, so this is proven by a router-state unit test today, not an end-to-end click from Ask.
+- **Ask about it** (`.btn-secondary`, header) links to `/ask?scope=<contractId>` -- a *new* chat
+  scoped to this contract. The Ask route does not consume `?scope=` yet (F09/T04's own scope); the
+  link is forward-compatible/dormant until that task lands, the same pattern this header's
+  always-real "Review extraction" link already uses.
+- **Supplier name, defensively** (`contract360ViewModel.ts#resolveSupplierLabel`) -- the header kicker
+  now prefers a wire-provided `supplierName` over the `formatSupplier` id-fragment fallback above,
+  reading it off the response object rather than the generated `Contract360HeaderBody` type (which
+  does not carry that field yet -- `web/openapi/contigo-api.v1.json` / `web/src/api/generated/` are
+  out of this task's own file scope). Once the phase-4 backend task regenerates both, this starts
+  rendering the real name with no further client change.
 
 ### Review / correction (ADR-020 screen 6, task E07/F03/US01/T01, us-01-field-review-correction)
 
