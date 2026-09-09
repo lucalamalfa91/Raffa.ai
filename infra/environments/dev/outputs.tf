@@ -101,3 +101,35 @@ output "static_web_app_hostname" {
   description = "Default hostname of the dev Static Web App (SPA origin / OIDC redirect)."
   value       = module.staticwebapp.default_host_name
 }
+
+# ADR-008 amendment 2026-09-09: the shared AI services account this root
+# owns, this environment's Foundry project and its model deployments.
+output "ai_resource_group_name" {
+  description = "Shared AI resource group owned by this root (rg-contigo-ai, tags env=shared)."
+  value       = module.foundry.ai_resource_group_name
+}
+
+output "ai_services_account_id" {
+  description = "ARM id of the shared aisvc-contigo Azure AI Services account."
+  value       = module.foundry.ai_services_account_id
+}
+
+output "ai_services_account_endpoint" {
+  description = "Endpoint of the shared account (live-probe target), independent of ai_gateway_wired."
+  value       = module.foundry.ai_services_account_endpoint
+}
+
+output "ai_services_endpoint" {
+  description = "Endpoint the Container Apps actually receive: \"\" until ai_gateway_wired = true."
+  value       = module.foundry.ai_services_endpoint
+}
+
+output "foundry_project_id" {
+  description = "ARM id of the contigo-dev Foundry project."
+  value       = module.foundry.foundry_project_id
+}
+
+output "ai_model_deployment_names" {
+  description = "Azure model name -> deployment name on the shared account (gpt-5.4-nano -> gpt-5.4-nano-dev, ...)."
+  value       = module.foundry.model_deployment_names
+}

@@ -133,6 +133,14 @@ EXPECTED_ROOT_OUTPUTS = {
     "log_analytics_workspace_id": "module.monitor.workspace_id",
     "static_web_app_name": "module.staticwebapp.name",
     "static_web_app_hostname": "module.staticwebapp.default_host_name",
+    # ADR-008 amendment 2026-09-09: the shared AI services account this root
+    # owns, dev's Foundry project and its model deployments.
+    "ai_resource_group_name": "module.foundry.ai_resource_group_name",
+    "ai_services_account_id": "module.foundry.ai_services_account_id",
+    "ai_services_account_endpoint": "module.foundry.ai_services_account_endpoint",
+    "ai_services_endpoint": "module.foundry.ai_services_endpoint",
+    "foundry_project_id": "module.foundry.foundry_project_id",
+    "ai_model_deployment_names": "module.foundry.model_deployment_names",
 }
 
 # module -> [(resource_type, resource_name), ...] this task must prove is

@@ -161,6 +161,18 @@ resource "azurerm_container_app" "api" {
         name  = "AiGateway__DocumentIntelligenceConnection"
         value = var.ai_gateway_document_intelligence_connection
       }
+
+      # ADR-004 amendment 2026-09-09: per-role model ids/versions from
+      # modules/foundry (one block per entry; nothing while the environment
+      # is not wired to the account -- see var.ai_gateway_model_env).
+      dynamic "env" {
+        for_each = var.ai_gateway_model_env
+
+        content {
+          name  = env.key
+          value = env.value
+        }
+      }
     }
   }
 
@@ -280,6 +292,17 @@ resource "azurerm_container_app" "worker" {
       env {
         name  = "AiGateway__DocumentIntelligenceConnection"
         value = var.ai_gateway_document_intelligence_connection
+      }
+
+      # Same per-role model map as the api app above (ADR-004 amendment
+      # 2026-09-09): the worker runs the same AI Gateway.
+      dynamic "env" {
+        for_each = var.ai_gateway_model_env
+
+        content {
+          name  = env.key
+          value = env.value
+        }
       }
     }
   }

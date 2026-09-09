@@ -22,3 +22,25 @@ output "static_web_app_hostname" {
   description = "Default hostname of the demo Static Web App (SPA origin / OIDC redirect)."
   value       = module.staticwebapp.default_host_name
 }
+
+# ADR-008 amendment 2026-09-09: the shared account demo attaches to, and
+# demo's own Foundry project and model deployments.
+output "ai_services_account_id" {
+  description = "ARM id of the shared aisvc-contigo account once attached (ai_account_attached = true), else \"\"."
+  value       = module.foundry.ai_services_account_id
+}
+
+output "ai_services_endpoint" {
+  description = "Endpoint the Container Apps actually receive: \"\" until ai_gateway_wired = true."
+  value       = module.foundry.ai_services_endpoint
+}
+
+output "foundry_project_id" {
+  description = "ARM id of the contigo-demo Foundry project, or null while not attached."
+  value       = module.foundry.foundry_project_id
+}
+
+output "ai_model_deployment_names" {
+  description = "Azure model name -> deployment name on the shared account (gpt-5.4 -> gpt-5.4-demo, ...)."
+  value       = module.foundry.model_deployment_names
+}

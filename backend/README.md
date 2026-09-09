@@ -356,10 +356,17 @@ cross-tenant contract source wired yet).
 
 `Contigo.AiGateway` is wired into DI by `Contigo.Documents.Contracts`'s own
 `AddDocumentsContractsModule` (so both the API and Worker hosts get a
-working `IAiGateway` with no host-side change). `IAiGateway` is bound to
-`FixtureAiGateway` — deterministic, provider-free — until a live Foundry /
-Document Intelligence endpoint exists (ADR-004/ADR-017); domain code
-depends only on the interface. The fixture's `extract` role is no longer an
+working `IAiGateway` with no host-side change). `IAiGateway` is
+`FoundryAiGateway` when `AiGateway:Endpoint` is set and `FixtureAiGateway`
+— deterministic, provider-free — otherwise, always wrapped by
+`LoggingAiGateway` (ADR-004/ADR-017/ADR-024); domain code depends only on
+the interface. On Azure the endpoint and the per-role deployment names are
+published by Terraform once `ai_gateway_wired = true` in
+`infra/environments/<env>` (ADR-008 amendment 2026-09-09: the shared
+`aisvc-contigo` account, the per-environment Foundry projects and the model
+deployments `gpt-5.4-nano-dev` / `text-embedding-3-small-dev` on dev,
+`gpt-5.4-demo` / `gpt-5.4-nano-demo` / `text-embedding-3-large-demo` on
+demo, OCR `prebuilt-read` — see `infra/README.md`). The fixture's `extract` role is no longer an
 empty `{}` placeholder: `Contigo.AiGateway.Fixtures.FixtureContractFactExtractor`
 reads the three scalar-fact stages (metadata, commercial terms, dates and
 renewal terms) from the page-marked text with regular expressions — every
@@ -369,8 +376,8 @@ states which rule fired (0.96 explicit cue, 0.9 a plain reading, 0.86
 derived from other facts, 0.52 an ambiguity the text does not resolve: two
 different annual amounts, a renewal clause that both affirms and denies
 auto-renewal, two parties named without a supplier role). The four list
-stages return an empty list. So on a fixture-backed host (local, CI, the
-deployed `dev` while ADR-008's AI services account does not exist) a plainly
+stages return an empty list. So on a fixture-backed host (local, CI, a
+deployed environment whose root still has `ai_gateway_wired = false`) a plainly
 written contract completes and an ambiguous one lands in `needs_review` with
 real per-field evidence — for real reasons, never by default. Two pipeline
 rules changed with it: an empty **list** stage (line items, clauses,
@@ -381,9 +388,10 @@ is recorded as the contract's `type` evidence row with its real confidence
 (a verdict below 0.6 routes the document to review like any other weak fact). Per-role model ids/versions
 (`classify`/`extract`/`embed`/`answer`/`ocr`) bind from the
 `AiGateway:Models` configuration section (`AiGateway:Models:Extract:ModelId`,
-etc. — env var form `AiGateway__Models__Extract__ModelId`) and default to
-ADR-004/ADR-017's candidate models when that section is absent, so no
-config is required to run locally. The `ocr` role's page-count safety
+etc. — env var form `AiGateway__Models__Extract__ModelId`; on Azure these
+are the deployment names Terraform publishes) and default to ADR-004's
+original candidate names when that section is absent (only meaningful on
+the fixture path), so no config is required to run locally. The `ocr` role's page-count safety
 budget (ADR-017: fail visibly, never silently truncate) is its own
 `AiGateway:Ocr:MaxPagesPerDocument` section (default 300 — see
 `AiGatewayOcrOptions`).
@@ -1412,13 +1420,14 @@ curl -s -X POST "$API/api/chat/query" -H "X-Tenant-Id: $TENANT" \
   -H 'Content-Type: application/json' -d '{"question":"What does this contract cover?"}' | jq .
 ```
 
-Honest caveat: `IAiGateway` still binds to `FixtureAiGateway` (no live
-Foundry/Document Intelligence endpoint exists yet, ADR-004/ADR-017) and its
-`ExtractAsync` always returns an empty `{}` — a real `demo` upload today
-lands `NeedsReview` with zero extracted facts. This smoke path proves the
-*pipeline wiring* end-to-end (every stage runs, links, and is queryable),
-not extraction accuracy; `R1EndToEndTests` proves the persistence/HTTP
-contract against a scripted gateway that returns real, schema-shaped facts.
+Honest caveat: on an environment whose root still has `ai_gateway_wired =
+false` (see `infra/README.md`) `IAiGateway` binds to `FixtureAiGateway`,
+whose `extract` role is the regex `FixtureContractFactExtractor` — a real
+upload there proves the *pipeline wiring* end-to-end (every stage runs,
+links, and is queryable), not model-grade extraction; `R1EndToEndTests`
+proves the persistence/HTTP contract against a scripted gateway that returns
+real, schema-shaped facts. With the flag `true` the same path runs on the
+Foundry deployments.
 
 ## R2 demo smoke test
 
@@ -2756,8 +2765,15 @@ not listed there — so nobody can quietly widen what the set forgives.
 ### Running it against Foundry (manual, OQ-askv2-009)
 
 ```bash
+# az login as an identity listed in infra/environments/dev ai_operator_principal_ids
+# (DefaultAzureCredential picks the CLI token up); deployment names = the
+# ModelId values Terraform publishes for that environment.
 AiEval__UseFoundry=true \
-AiGateway__Endpoint=https://<your-foundry-endpoint> \
+AiGateway__Endpoint=https://aisvc-contigo.cognitiveservices.azure.com/ \
+AiGateway__Models__Classify__ModelId=gpt-5.4-nano-dev \
+AiGateway__Models__Extract__ModelId=gpt-5.4-nano-dev \
+AiGateway__Models__Answer__ModelId=gpt-5.4-nano-dev \
+AiGateway__Models__Embed__ModelId=text-embedding-3-small-dev \
 dotnet test backend/tests/Contigo.AiEval
 ```
 

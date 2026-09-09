@@ -26,7 +26,7 @@ infra/
     acr/              # Azure Container Registry Basic, admin_enabled = false
     monitor/          # Log Analytics (Pay-As-You-Go, daily cap)
     staticwebapp/     # Azure Static Web Apps Free (web SPA; region West US 2)
-    foundry/          # Foundry / Document Intelligence connection info + RBAC (ADR-008/ADR-017)
+    foundry/          # shared Azure AI Services account + per-env Foundry project, model deployments, RBAC (ADR-004/008/017)
   environments/
     dev/              # thin root; HCP workspace contigo-dev
     demo/             # thin root; HCP workspace contigo-demo
@@ -37,7 +37,10 @@ infra/
 Each environment root instantiates the same modules into
 `rg-contigo-<env>` in **North Europe** (Static Web Apps excepted — see
 below). `var.environment` is locked per root (`dev` cannot become `demo`).
-Tagging is `project=contigo`, `env=dev|demo`.
+Tagging is `project=contigo`, `env=dev|demo`. The one deliberate exception
+is the shared AI services account (ADR-008): the `dev` root creates it in
+`rg-contigo-ai` (tags `env=shared`) and the `demo` root attaches to it —
+see "AI Gateway / Foundry + Document Intelligence" below.
 
 ## Remote state
 
@@ -59,8 +62,9 @@ State is never in git. Provider pins: Terraform `>= 1.8.0, < 2.0.0`,
 | GitHub Actions OIDC | `contigo-sp-dev` / `contigo-sp-demo` | GitHub Environment `dev` / `demo` vars `AZURE_CLIENT_ID` / `TENANT_ID` / `SUBSCRIPTION_ID` |
 
 The HCP service principal needs Contributor + User Access Administrator on
-the subscription (role assignments) and Cloud Application Administrator in
-Entra (app registrations). The GitHub deploy principal needs Reader on the
+the subscription (role assignments; since 2026-09-09 also the shared
+`rg-contigo-ai` resource group and the data-plane grants on `aisvc-contigo`)
+and Cloud Application Administrator in Entra (app registrations). The GitHub deploy principal needs Reader on the
 subscription (else `No subscriptions found`) and Contributor on that env's
 resource group. Federated credential subjects are immutable and environment-
 scoped (`repo:lucalamalfa91@…/contigo@…:environment:dev`).
@@ -127,6 +131,10 @@ already proven live, not just described here):
 | Workload identity | `id-contigo-<env>-workload` (tag `oidcPublicClientId` = public-client app id; `web.yml` reads it over ARM) |
 | ACR | `acrcontigo<env><6-char suffix>` (suffix is state-held) |
 | Static Web App | `swa-contigo-<env>` (Free SKU; resource location **West US 2**) |
+| Shared AI resource group | `rg-contigo-ai` (tags `env=shared`; owned by the `dev` root, ADR-008) |
+| AI services account | `aisvc-contigo` (kind `AIServices`, S0, custom subdomain `aisvc-contigo`, keys disabled) |
+| Foundry project | `contigo-<env>` (account-native sub-resource, no hub) |
+| Model deployments | `<model>-<env>` (e.g. `gpt-5.4-nano-dev`, `text-embedding-3-small-dev`, `gpt-5.4-demo`) |
 
 Container Apps boot from the placeholder image
 `mcr.microsoft.com/k8se/quickstart:latest` until the backend deploy job
@@ -148,46 +156,85 @@ through `modules/network` is later work.
 
 ## AI Gateway / Foundry + Document Intelligence (ADR-004, ADR-008, ADR-017)
 
-**Inventory (task E10/F02/US01/T01):** before this task, `ca-contigo-*-api`
-/ `-worker`'s env list was connection-strings-only (Postgres, Storage) on
-both `dev` and `demo` -- no Foundry project or Document Intelligence
-setting existed anywhere under `infra/modules` (confirmed by grepping
-`infra/` for `foundry|cognitive|DocumentIntelligence|OpenAI`, which
-matched only a forward-looking comment). This task added `modules/foundry`
-and three non-secret env vars on both Container Apps:
+Since 2026-09-09 (ADR-004/ADR-008/ADR-017 amendments) `modules/foundry`
+**creates** the AI resources; there is no hub and no portal step:
+
+- **Ownership.** The `dev` root (`create_shared_account = true`) creates the
+  shared resource group `rg-contigo-ai` and the single Azure AI Services
+  account `aisvc-contigo` (kind `AIServices`: Azure OpenAI + Document
+  Intelligence on one endpoint, `https://aisvc-contigo.cognitiveservices.azure.com/`;
+  S0; custom subdomain; `project_management_enabled`; system identity;
+  `local_auth_enabled = false` — no key exists anywhere, ADR-011). The
+  `demo` root attaches to that account by name once `ai_account_attached =
+  true` (a `data "azurerm_cognitive_account"` lookup inside the module —
+  never `terraform_remote_state`, never the other environment's resource
+  group). Never a second account (ADR-008).
+- **Per environment**, every root creates its own Foundry project
+  (`contigo-<env>`, an account-native sub-resource), its own model
+  deployments (named `<model>-<env>`, pinned versions, `NoAutoUpgrade`) and
+  its own role assignments: the workload identity gets `Cognitive Services
+  User` (Document Intelligence) and `Cognitive Services OpenAI User`
+  (inference); the object ids in `ai_operator_principal_ids` get the same
+  two roles for live probes and the Foundry playground (Owner carries no
+  data-plane rights). List an operator id in one root only.
+
+| Role | dev deployment | demo deployment |
+|---|---|---|
+| classify | `gpt-5.4-nano-dev` (gpt-5.4-nano 2026-03-17, DataZoneStandard, 300K TPM) | `gpt-5.4-nano-demo` (200K TPM) |
+| extract, answer | `gpt-5.4-nano-dev` | `gpt-5.4-demo` (gpt-5.4 2026-03-05, DataZoneStandard, 200K TPM) |
+| embed | `text-embedding-3-small-dev` (v1, GlobalStandard, 100K TPM) | `text-embedding-3-large-demo` (v1, GlobalStandard, 100K TPM; the backend forces `dimensions = 1536`) |
+| ocr | Document Intelligence `prebuilt-read` 2024-11-30 (built in, no deployment) | same |
+
+Every SKU/version was verified in `northeurope` for this subscription on
+2026-09-09 (`az cognitiveservices model list -l northeurope`);
+`gpt-4o-mini` / `gpt-4.1-*` exist there only as provisioned SKUs and are
+rejected by the module's validation.
+
+**Two-phase wiring (`ai_gateway_wired`, per root, default `false`).**
+`Contigo.Api` binds `IAiGateway` to the Foundry client whenever
+`AiGateway:Endpoint` is non-empty and to the fixture gateway otherwise, so
+the endpoint and the model map are published only when the account is
+created/attached **and** `ai_gateway_wired = true` (commit a750746's
+invariant, now read from the account resource in
+`modules/foundry/outputs.tf`). With the flag `false` the account, project
+and deployments exist and can be probed while the apps keep the fixture;
+flipping it to `true` by pull request publishes, on both Container Apps:
 
 | Env var | Config key | Value |
 |---|---|---|
-| `AiGateway__Endpoint` | `AiGateway:Endpoint` | `https://aisvc-contigo.cognitiveservices.azure.com/` (deterministic; ADR-008's single shared account) |
-| `AiGateway__ProjectName` | `AiGateway:ProjectName` | `contigo-dev` / `contigo-demo` (ADR-008 per-env Foundry project) |
-| `AiGateway__DocumentIntelligenceConnection` | `AiGateway:DocumentIntelligenceConnection` | `conn-docint-contigo-dev` / `-demo` (ADR-017 per-project connection) |
+| `AiGateway__Endpoint` | `AiGateway:Endpoint` | the account endpoint, or `""` while unwired |
+| `AiGateway__ProjectName` | `AiGateway:ProjectName` | `contigo-dev` / `contigo-demo` |
+| `AiGateway__DocumentIntelligenceConnection` | `AiGateway:DocumentIntelligenceConnection` | `conn-docint-contigo-dev` / `-demo` (informational header value) |
+| `AiGateway__Models__{Classify,Extract,Embed,Answer,Ocr}__ModelId` | `AiGateway:Models:<Role>:ModelId` | the deployment names above (`prebuilt-read` for ocr); one `dynamic "env"` block over `var.ai_gateway_model_env`, absent while unwired |
+| `AiGateway__Models__<Role>__ModelVersion` | `AiGateway:Models:<Role>:ModelVersion` | the pinned model version (`2024-11-30` for ocr) |
+| `ai_gateway_extra_env` entries | any `AiGateway:*` knob | per-role settings settled by the live probe (e.g. `AiGateway__Models__Extract__ReasoningEffort`) |
 
-None are Key Vault secrets: an endpoint URL and two names carry no key
-(ADR-011). `scripts/foundry_connection_verify.py` proves both this
-Terraform and `scripts/bootstrap_hcp_org.py`'s recorded shape still agree.
+None are Key Vault secrets (ADR-011). `scripts/foundry_connection_verify.py`
+holds the module and both roots to this shape (single owner, gated
+outputs, per-env deployment names, allowed SKUs, both roles, no hub) and
+`scripts/bootstrap_hcp_org.py` records the names it compares against.
 
-**Identity (RBAC), not yet live.** `modules/foundry` also grants the
-workload identity `Cognitive Services User` on the shared `aisvc-contigo`
-AI services account -- but only when `var.foundry_ai_services_resource_id`
-(this env root's own variable, default `""`) is set. Azure AI Foundry
-hub/project/account creation is an interactive Azure Portal step V1 keeps
-outside the Terraform module surface (ADR-008); nobody has performed it
-yet on either `dev` or `demo`. **Operator follow-up**, once that Portal
-step is done: record the AI services account's ARM resource id as the
-`foundry_ai_services_resource_id` HCP Terraform workspace variable on
-**both** `contigo-dev` and `contigo-demo` (same account, set in each
-workspace), then let HCP apply. Until then the role assignment simply does
-not exist yet -- it is not a failed apply, `terraform plan`/`apply` still
-succeed with it absent.
+**Live probe (after the `dev` apply, before wiring).** Wait a few minutes
+for RBAC propagation, then, as an operator listed in
+`ai_operator_principal_ids`:
 
-**What this does NOT close:** no live `IAiGateway` implementation exists
-in `backend/src/Contigo.AiGateway` yet -- only `Fixtures/FixtureAiGateway.cs`
-is registered (see that module's `ServiceCollectionExtensions.cs`). Adding
-these env vars removes the "env vars were absent" blocker only; a future
-backend task still has to read them and bind a real Foundry-backed
-gateway. Per ADR-022, an operator may accept fixture AI for a `demo` dry
-run in the meantime -- this Terraform still exists so `demo` is not
-*permanently* fixture-only.
+```bash
+EP=https://aisvc-contigo.cognitiveservices.azure.com
+TOKEN=$(az account get-access-token --resource https://cognitiveservices.azure.com --query accessToken -o tsv)
+# chat completions on the dev deployment (Azure OpenAI v1 surface)
+curl -sS "$EP/openai/v1/chat/completions" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"model":"gpt-5.4-nano-dev","messages":[{"role":"user","content":"Reply with {\"ok\":true}"}],"max_completion_tokens":64,"response_format":{"type":"json_schema","json_schema":{"name":"probe","strict":true,"schema":{"type":"object","properties":{"ok":{"type":"boolean"}},"required":["ok"],"additionalProperties":false}}}}'
+# embeddings
+curl -sS "$EP/openai/v1/embeddings" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"model":"text-embedding-3-small-dev","input":"probe"}' | jq '.data[0].embedding | length'
+# Document Intelligence Read (202 + Operation-Location, then poll it)
+curl -sS -D - -o /dev/null "$EP/documentintelligence/documentModels/prebuilt-read:analyze?_overload=analyzeDocument&api-version=2024-11-30" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d "{\"base64Source\":\"$(base64 -w0 sample.pdf)\"}"
+```
+
+A `401`/`403` right after the apply is RBAC propagation (retry later); a
+`404 DeploymentNotFound` is a deployment name; a `400` naming a parameter
+is a backend compatibility finding for the GPT-5.x request shape.
 
 ## Known gaps
 
@@ -216,13 +263,21 @@ run in the meantime -- this Terraform still exists so `demo` is not
   `Key Vault Secrets User` on that vault only
   (`azurerm_role_assignment.ci_secrets_user`). Confirm the HCP VCS apply
   before re-running the backend deploy job.
-- **Foundry account is still portal-only (ADR-008), so its RBAC grant is
-  conditional.** `modules/foundry` derives the AI Gateway endpoint/project/
-  connection names unconditionally (pure string derivation) but skips the
-  `Cognitive Services User` role assignment until an operator sets
-  `foundry_ai_services_resource_id` on both HCP workspaces. See "AI
-  Gateway / Foundry + Document Intelligence" above for the operator
-  follow-up step.
+- **Foundry wiring is two-phase.** The account, projects, deployments and
+  RBAC are Terraform-managed (`modules/foundry`); `AiGateway__Endpoint` and
+  the `AiGateway__Models__*` env vars are published only where the root sets
+  `ai_gateway_wired = true` (dev after the live probe, demo with the
+  promotion that carries the live-Foundry backend). `demo` also needs
+  `ai_account_attached = true` before it creates its project and
+  deployments — and `dev` and `demo` applies that touch the shared account
+  must not run at the same time (the account serialises deployment
+  writes).
+- **First-ever Cognitive Services account in the subscription.** If the
+  create fails with `ResourceKindRequireAcceptTerms`, the owner accepts the
+  Responsible AI terms once (`az cognitiveservices account create ... --yes`
+  for `aisvc-contigo` in `rg-contigo-ai`) and the resources are adopted with
+  `import {}` blocks in `environments/dev/imports.tf`, like the Postgres /
+  AcrPull objects above.
 
 ## Known gaps — Ask Contigo V2 (epic-13, ADR-024)
 

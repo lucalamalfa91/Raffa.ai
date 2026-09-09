@@ -123,21 +123,43 @@ module "containerapps" {
   ai_gateway_endpoint                         = module.foundry.ai_services_endpoint
   ai_gateway_project_name                     = module.foundry.foundry_project_name
   ai_gateway_document_intelligence_connection = module.foundry.document_intelligence_connection
+  ai_gateway_model_env                        = module.foundry.model_env
 }
 
-# Task E10/F02/US01/T01 (foundry-ocr-ca, ADR-008/ADR-011/ADR-017): this
+# ADR-008 amendment 2026-09-09: this root OWNS the single shared Azure AI
+# Services account (rg-contigo-ai / aisvc-contigo); demo attaches to it by
+# name and creates only its own project, deployments and grants. This
 # root's OWN identity module instance only -- never demo's -- so the grant
-# never crosses envs (same rule module.keyvault and module.acr already
-# follow). var.foundry_ai_services_resource_id is empty until an operator
-# completes the ADR-008 Azure Portal step and sets this root's HCP
-# Terraform workspace variable of the same name; see modules/foundry's own
-# variables.tf for why an empty value is a safe, non-blocking default.
+# never crosses envs (same rule module.keyvault and module.acr follow).
+# ADR-004 amendment 2026-09-09: dev is deliberately cheap (gpt-5.4-nano for
+# every chat role, text-embedding-3-small); demo carries the frontier
+# models. Every SKU/version below was verified in northeurope for this
+# subscription on 2026-09-09.
 module "foundry" {
   source = "../../modules/foundry"
 
-  environment             = local.environment
-  workload_principal_id   = module.identity.workload_principal_id
-  ai_services_resource_id = var.foundry_ai_services_resource_id
+  environment           = local.environment
+  location              = var.location
+  workload_principal_id = module.identity.workload_principal_id
+
+  create_shared_account = true
+  attach_shared_account = false
+  publish_endpoint      = var.ai_gateway_wired
+
+  ai_operator_principal_ids = var.ai_operator_principal_ids
+  extra_gateway_env         = var.ai_gateway_extra_env
+
+  model_deployments = {
+    "gpt-5.4-nano"           = { model_version = "2026-03-17", sku_name = "DataZoneStandard", capacity = 300 }
+    "text-embedding-3-small" = { model_version = "1", sku_name = "GlobalStandard", capacity = 100 }
+  }
+
+  model_roles = {
+    classify = "gpt-5.4-nano"
+    extract  = "gpt-5.4-nano"
+    answer   = "gpt-5.4-nano"
+    embed    = "text-embedding-3-small"
+  }
 }
 
 # ADR-015 SPs are out of band. display_name "contigo-sp-dev" matches more
