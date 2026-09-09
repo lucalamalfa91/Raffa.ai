@@ -1,6 +1,10 @@
 using Contigo.Chat.Application;
+using Contigo.Chat.Application.Answering;
 using Contigo.Chat.Application.Capabilities;
 using Contigo.Chat.Application.Conversations;
+using Contigo.Chat.Application.Gate;
+using Contigo.Chat.Application.Pack;
+using Contigo.Chat.Application.Planning;
 using Contigo.SharedKernel;
 using Contigo.SharedKernel.Tenancy;
 using Microsoft.EntityFrameworkCore;
@@ -77,6 +81,27 @@ public static class ServiceCollectionExtensions
         services.AddScoped<AbstainGuard>();
         services.AddScoped<RagAnswerService>();
         services.AddScoped<CapabilityRouting>();
+
+        // Task E13/F06/US01/T01 (ask-engine): the V2 gate/planner/answer engine. Each of these is
+        // stateless (no database, no per-request field), registered the same uniform
+        // per-request/job lifetime as every sibling service above.
+        services.AddScoped<DomainGate>();
+        services.AddScoped<IntentPlanner>();
+        services.AddScoped<AnswerComposer>();
+
+        // TryAdd: always-usable default (PackBudget.DefaultMaxTokens) with no IConfiguration
+        // dependency at all — this project has no PackageReference for
+        // Microsoft.Extensions.Configuration.Binder (unlike Contigo.Api/Program.cs, a full
+        // Microsoft.NET.Sdk.Web host where that package is always available), so binding
+        // Chat:PackTokenBudget here would be a new, untested package dependency for a single
+        // scalar read. Contigo.Api.Program registers the configuration-bound PackBudget *before*
+        // calling AddChatModule when a value is present — TryAddSingleton's "first registration
+        // wins" then makes the configured value the one that actually resolves, this default only
+        // when no configuration overrides it (same order-dependent override shape
+        // Contigo.Market.ServiceCollectionExtensions.MakeMarketFeedTheDefaultActiveAdapter's own
+        // doc comment documents, minus the Replace() call since ordering alone is enough for a
+        // TryAdd target no one has registered yet at that point).
+        services.TryAddSingleton(new PackBudget());
 
         if (chatConnectionString is not null)
         {

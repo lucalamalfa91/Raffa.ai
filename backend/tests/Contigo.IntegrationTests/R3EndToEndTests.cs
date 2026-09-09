@@ -61,17 +61,38 @@ public sealed class R3EndToEndTests : IClassFixture<R3IntegrationFixture>
     {
         using var scope = _fixture.Services.CreateScope();
 
-        // AC-3 "No paid benchmark provider is called": the only Contigo.Benchmark.Adapters
-        // .IBenchmarkProviderAdapter registered anywhere in this real, composed host is the fixture
-        // (ADR-001) — there is no paid-provider adapter in this solution at all to accidentally
-        // register or dial, and this is the structural proof of that, not an assumption.
+        // AC-3 "No paid benchmark provider is called": every Contigo.Benchmark.Adapters
+        // .IBenchmarkProviderAdapter registered anywhere in this real, composed host is either the
+        // fixture (ADR-001) or task E13/F06/US01/T01's own market-feed mock (R-MKT-02, registered
+        // by that task's AddMarketModule() — see backend/README.md "Market Intelligence") — there is
+        // no paid-provider adapter in this solution at all to accidentally register or dial, and
+        // this is the structural proof of that, not an assumption.
         var adapters = scope.ServiceProvider.GetServices<IBenchmarkProviderAdapter>().ToList();
-        var adapter = Assert.Single(adapters);
-        Assert.IsType<FixtureBenchmarkAdapter>(adapter);
+        Assert.Equal(2, adapters.Count);
+        Assert.All(adapters, a => Assert.Contains(a.Name, new[] { "fixture", "market-feed" }));
+        var adapter = adapters.OfType<FixtureBenchmarkAdapter>().Single();
         Assert.Equal("fixture", adapter.Name);
 
-        // benchmark-registry (task E04/F01/US01/T02): IBenchmarkService itself resolves to the
-        // registry, which dispatches to the fixture adapter above by configured name.
+        // benchmark-registry (task E04/F01/US01/T02): IBenchmarkService itself still resolves to
+        // the registry, but task E13/F06/US01/T01's AddMarketModule() now makes "market-feed" its
+        // configured *active* adapter (backend/README.md "Market Intelligence") — this story's own
+        // definition of success is specifically "savings from **fixture** benchmark", so this test
+        // (and its two siblings below) call the fixture adapter directly rather than through
+        // IBenchmarkService, exercising the identical deterministic catalog data regardless of
+        // which adapter production traffic is routed to (AddMarketModule's own doc comment:
+        // "FixtureBenchmarkAdapter stays registered, still directly testable").
+        //
+        // Reconciled with R4IntegrationFixture's own divergent-looking fix for the identical root
+        // cause (that type's own ConfigureWebHost doc comment, right above its
+        // BenchmarkAdapterOptions.ActiveAdapter UseSetting): R4EndToEndTests drives its assessment
+        // scenario through a real HTTP endpoint whose handler resolves IBenchmarkService from the
+        // host's own container — it cannot reach into the pipeline the way this test does, so R4
+        // has to pin the *host's* active-adapter config instead. This test suite has no such
+        // endpoint to drive (see this type's own doc comment, "no dedicated route exists yet") and
+        // resolves the adapter straight from the container, so pinning host config here would be
+        // unnecessary indirection for a service this test already holds a direct reference to. Two
+        // different mechanisms, one deliberate reason: whether the test reaches the adapter through
+        // HTTP or in-process.
         var benchmarkService = scope.ServiceProvider.GetRequiredService<IBenchmarkService>();
         Assert.IsType<BenchmarkAdapterRegistry>(benchmarkService);
 
@@ -88,7 +109,7 @@ public sealed class R3EndToEndTests : IClassFixture<R3IntegrationFixture>
             Currency: "USD",
             PurchaseDate: DateOnly.FromDateTime(DateTimeOffset.UtcNow.UtcDateTime));
 
-        var benchmarkOutcome = await benchmarkService.GetBenchmarkAsync(query);
+        var benchmarkOutcome = await adapter.GetBenchmarkAsync(query);
         Assert.True(benchmarkOutcome.IsSuccess);
         var benchmark = benchmarkOutcome.Value;
 
@@ -134,7 +155,13 @@ public sealed class R3EndToEndTests : IClassFixture<R3IntegrationFixture>
     public async Task Benchmark_comparison_honestly_abstains_with_provenance_when_market_data_is_too_thin()
     {
         using var scope = _fixture.Services.CreateScope();
-        var benchmarkService = scope.ServiceProvider.GetRequiredService<IBenchmarkService>();
+
+        // Calls the fixture adapter directly, not through IBenchmarkService — see the sibling test
+        // above for why (task E13/F06/US01/T01's AddMarketModule() made "market-feed" the
+        // container's active adapter; this test needs FixtureBenchmarkAdapter's own Notion catalog
+        // row specifically).
+        var adapter = scope.ServiceProvider.GetServices<IBenchmarkProviderAdapter>()
+            .OfType<FixtureBenchmarkAdapter>().Single();
 
         // fixture-confidence (task E04/F01/US02/T02): Notion's own catalog row clears every
         // baseline dimension (supplier/product/geography/currency/term/quantity/purchase-date) but
@@ -150,7 +177,7 @@ public sealed class R3EndToEndTests : IClassFixture<R3IntegrationFixture>
             Currency: "USD",
             PurchaseDate: DateOnly.FromDateTime(DateTimeOffset.UtcNow.UtcDateTime));
 
-        var benchmarkOutcome = await benchmarkService.GetBenchmarkAsync(query);
+        var benchmarkOutcome = await adapter.GetBenchmarkAsync(query);
         Assert.True(benchmarkOutcome.IsSuccess);
         var benchmark = benchmarkOutcome.Value;
 
@@ -203,8 +230,10 @@ public sealed class R3EndToEndTests : IClassFixture<R3IntegrationFixture>
         PriceComparisonResult comparison;
         using (var setupScope = _fixture.Services.CreateScope())
         {
-            var benchmarkService = setupScope.ServiceProvider.GetRequiredService<IBenchmarkService>();
-            var benchmark = (await benchmarkService.GetBenchmarkAsync(query)).Value;
+            // Fixture adapter directly, not IBenchmarkService — see the first test above for why.
+            var adapter = setupScope.ServiceProvider.GetServices<IBenchmarkProviderAdapter>()
+                .OfType<FixtureBenchmarkAdapter>().Single();
+            var benchmark = (await adapter.GetBenchmarkAsync(query)).Value;
             comparison = new PriceNormalizationCalculator().Compare(
                 new PriceComparisonRequest(Query: query, CurrentTotalCost: 195_000m, Benchmark: benchmark));
         }

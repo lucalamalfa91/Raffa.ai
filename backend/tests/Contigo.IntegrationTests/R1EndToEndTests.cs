@@ -96,16 +96,25 @@ public sealed class R1EndToEndTests : IClassFixture<R1IntegrationFixture>
             d => d.GetProperty("documentId").GetString() == documentId.ToString());
 
         // 5. Ask Contigo: a semantic question gets a grounded answer with a citation pointing back
-        //    at this document (AC-1 "Ask Contigo (with citations)"; spec §8.3/§8.4).
+        //    at this document (AC-1 "Ask Contigo (with citations)"; spec §8.3/§8.4). Task
+        //    E13/F06/US01/T01 (ask-engine) replaced the old `{ intent, canDetermine, citations:
+        //    [{documentId}] }` shape with the ADR-024 §6 reply contract (`kind`/`answerMarkdown`/
+        //    `citations[]` — see ChatEndpointTests' own doc comment on the supersession) and made
+        //    `POST /api/chat/query` resolve caller identity, so this call now needs an X-User-Id
+        //    header too. `citations[].documentId` now echoes the pack's own citationKey
+        //    (`Application.Pack.PackItem.CitationKey`, `AskCopilotService.BuildClausePackAsync`'s
+        //    own `fact:{sourceId}:chunk[{index}]` shape for a clause hit), not a bare
+        //    `Document:{id}` — still traceable back to this document by substring, same convention
+        //    `AskContigoRagCrossTenantIsolationTests` already uses for the identical new shape.
         var chatResponse = await PostAsync(
-            client, "/api/chat/query", tenantId, new { question = "What does the master services agreement cover?" });
+            client, "/api/chat/query", tenantId, "alice@example.com",
+            new { question = "What does the master services agreement cover?" });
         Assert.Equal(HttpStatusCode.OK, chatResponse.StatusCode);
         var chatBody = await ParseAsync(chatResponse);
-        Assert.Equal("Semantic", chatBody.GetProperty("intent").GetString());
-        Assert.True(chatBody.GetProperty("canDetermine").GetBoolean());
+        Assert.Equal("answer", chatBody.GetProperty("kind").GetString());
         var citations = chatBody.GetProperty("citations").EnumerateArray().ToList();
         Assert.NotEmpty(citations);
-        Assert.Contains(citations, c => c.GetProperty("documentId").GetString() == $"Document:{documentId}");
+        Assert.Contains(citations, c => c.GetProperty("documentId").GetString()!.Contains(documentId.ToString()));
 
         // 6. Correction: PATCH the low-confidence annualSpend field (AC-2).
         var correctResponse = await PatchAsync(
@@ -228,6 +237,22 @@ public sealed class R1EndToEndTests : IClassFixture<R1IntegrationFixture>
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = JsonContent.Create(body) };
         request.Headers.Add("X-Tenant-Id", tenantId.ToString());
+        return await client.SendAsync(request);
+    }
+
+    /// <summary>
+    /// Task E13/F06/US01/T01 (ask-engine): `POST /api/chat/query` now creates a conversation and
+    /// delegates into `AskCopilotService` (see `ChatEndpointExtensions`' own doc comment), so it now
+    /// resolves a caller identity the same way `POST/GET /api/conversations` already do — the
+    /// required `X-User-Id` header (ADR-022 posture, OQ-askv2-005) — where the plain
+    /// <see cref="PostAsync(HttpClient, string, Guid, object)"/> overload above never needed one.
+    /// </summary>
+    internal static async Task<HttpResponseMessage> PostAsync(
+        HttpClient client, string url, Guid tenantId, string userId, object body)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = JsonContent.Create(body) };
+        request.Headers.Add("X-Tenant-Id", tenantId.ToString());
+        request.Headers.Add("X-User-Id", userId);
         return await client.SendAsync(request);
     }
 

@@ -36,6 +36,8 @@ backend/
     Contigo.Market/               # R-MKT-01/02/03/04 mock feed + benchmark projection + in-memory notes retrieval (E13/F02/US01/T01); market_record/market_embedding pgvector index + ingestion job + DB-backed retrieval/benchmark + GET /api/market/records/{id} (not yet mapped) (E13/F02/US01/T02) — see "Market Intelligence" below
     Contigo.Suppliers.Products/  # Supplier entity, SupplierNameNormalizer, ISupplierResolver/ISupplierNameLookup impls, SuppliersDbContext + RLS (task E13/F03/US01/T01, ADR-024; live) — see "Supplier identity" below
     Contigo.Insights/             # criticality score, priced-line negotiation, strategy pack builder (E13/F07/US01/T01, ADR-024) — pure calculators fed by DTOs; AddInsightsModule() registers InsightsOptions + CriticalityScoreCalculator; no host maps InsightsEndpointExtensions.cs yet (F06/T01, phase 3) — see "Insights" below
+    Contigo.Market/               # scaffold (E13/F01/US01/T01, ADR-024) — feed/ingestion/index/benchmark-projection; AddMarketModule() wired into Contigo.Api by task E13/F06/US01/T01 (ask-engine)
+    Contigo.Insights/             # criticality score, priced-line negotiation, strategy pack builder (E13/F07/US01/T01, ADR-024) — pure calculators fed by DTOs; AddInsightsModule() registers InsightsOptions + CriticalityScoreCalculator; InsightsEndpointExtensions now mapped by task E13/F06/US01/T01 (ask-engine) — see "Insights" below
     Contigo.Renewals/            # renewal engine + opportunity + explainable priority score + threshold scheduler + dashboard pipeline + action (R2; live) — see "Renewal Intelligence" below
     Contigo.Savings/             # price normalization + percentile/target/savings-range calculator (R3; task E04/F02/US01/T01) + persisted, trackable SavingsOpportunity + GET/PATCH /api/savings (task E04/F02/US02/T01) — see "Savings Intelligence" below
     Contigo.Quotes/              # quote upload + hybrid-OCR-reused, schema-constrained line-item extraction (evidence + confidence; deterministic pricing) + POST /api/quotes (R4; task E05/F01/US01/T01) + SKU/edition normalization against a per-tenant canonical mapping, unmatched-SKU flagging (task E05/F01/US02/T01) + benchmark matching/above-in-line-below market assessment + GET /api/quotes/{id}/assessment, AddBenchmarkModule now wired (task E05/F02/US01/T01) + deterministic recommended target range/potential saving on that same endpoint (task E05/F02/US01/T02) + deterministic negotiation strategy (opening target/acceptable range/walk-away threshold + seven canonical levers with rationale, NegotiationStrategyService, no HTTP endpoint yet) (task E05/F03/US01/T01) + NegotiationOutcome capture (original/target/final/deterministic saving+discount/duration/levers used) + POST /api/negotiations/outcomes, append-only/audit-tracked (task E05/F03/US02/T01) — see "Quote Check" / "Market Assessment" / "Negotiation Strategy" / "Negotiation Outcome" below
@@ -199,10 +201,11 @@ that a second apply does not duplicate rows.
 | GET | `/api/audit` | tenant-scoped; expects a claims principal (integration tests inject one) |
 | GET | `/api/contracts` | portfolio list; spec §8.1 columns; `X-Tenant-Id` header; optional filters `supplierId`, `status`, `risk` (Low/Medium/High/Critical), `autoRenewal`, `minAnnualSpend`, `maxAnnualSpend`, `renewalFrom`/`renewalTo` (yyyy-MM-dd) — no `category` filter yet, see `PortfolioFilter`'s doc comment; optional paging `page` (default 1), `pageSize` (default 25, max 100); response is `{ items, page, pageSize, totalCount }`, not a bare array |
 | GET | `/api/contracts/{id}` | Contract 360 aggregate; spec §8.2 header + tabs (overview, commercials, products, clauses, obligations, risks, documents, benchmark, renewal, activity); `X-Tenant-Id` header; 404 when the contract does not exist or belongs to another tenant; `benchmark`/`activity` are always empty arrays — no task has yet mapped a real contract's line items into a `Contigo.Benchmark.Contracts.BenchmarkQuery` (no supplier-name/geography field exists on `Contract` today), so this tab stays empty even though R3's own benchmark comparison is real and provable elsewhere (see "R3 demo smoke test" below); `activity` remains an R4 placeholder — see `Contract360Result`'s doc comment |
-| POST | `/api/chat/query` | Ask Contigo (spec §8.3); `{ question: string }` + `X-Tenant-Id` header; routes via `AskContigoQueryRouter`. `Semantic` questions run the real RAG pipeline (`EmbeddingRetrievalService.SearchAsync` tenant-scoped retrieval → `RagAnswerService` → `IAiGateway.AnswerAsync`) and respond `{ question, intent, canDetermine, answer, citations: [{documentId, page, section}], message }` — `citations` empty and `canDetermine: false` when authorized retrieval finds nothing (spec §8.4 "no evidence, no claim"), never a fabricated answer. `Structured` questions get an honest `canDetermine: false` + explanatory `message` — no task has yet mapped a real, tenant-scoped `Contract` row into `Contigo.Chat.Application.ContractFact` for `DeterministicQueryHandler` to run against, see that type's own doc comment |
+| POST | `/api/chat/query` | Ask Contigo V2 (ADR-024 §6; task E13/F06/US01/T01, ask-engine); `{ question: string }` + `X-Tenant-Id` header + caller identity (see "Interim auth" below). Kept one release as a thin alias: creates a conversation, then delegates into the same `AskCopilotService`/`POST /api/conversations/{id}/messages` pipeline (see "Ask Contigo — conversations store" below) — the old direct `AskContigoQueryRouter` → `RagAnswerService` → `{ question, intent, canDetermine, answer, citations, message }` shape this route used to return (task E02/F04/US02/T01) no longer exists; that router is now reused *inside* `AskCopilotService` instead. Response is the ADR-024 §6 reply contract, same as the messages endpoint below |
 | GET | `/api/conversations` | Caller's last N conversations, most recently updated first (spec §7; R-CONV-02; story us-01-conversations AC-2, task E13/F05/US01/T02); `X-Tenant-Id` header + caller identity (see "Interim auth" below); optional `take` (default 5, must be a positive integer); response is a bare array of `{ id, title, scopeContractId, updatedAt }`, never an `{ items, totalCount }` envelope — there is no paging concept for "my last N conversations" |
 | POST | `/api/conversations` | Creates a conversation (AC-2); `X-Tenant-Id` header + caller identity; body `{ scopeContractId? }` — a GUID naming the contract "Ask about it" (Contract 360) was opened from, or omitted for the global Ask bar (ADR-024: "The global Ask bar always opens a new chat"); 201 with the same `{ id, title, scopeContractId, updatedAt }` shape as the list row above; `title` starts as `ConversationService.DefaultTitle` ("New chat") until the first message lands |
-| GET | `/api/conversations/{id}` | The conversation plus its messages, oldest first (AC-2); `X-Tenant-Id` header + caller identity; 404 when `{id}` does not exist, belongs to another tenant, or belongs to another user of the same tenant — RLS backstops the tenant half (ADR-009), `Contigo.Chat.Application.Conversations.ConversationService` itself is the only thing enforcing the per-user half (RLS has no per-user predicate), and both read back as the identical 404, never a distinguishing 403; response `{ id, title, scopeContractId, createdAt, updatedAt, messages: [{ id, role, kind, markdown, citations, actions, modelId, promptVersion, inputHash, createdAt }] }` — `role` is `you`/`contigo`, `kind` is `answer`/`abstain`/`redirect`/`refusal` (ADR-024 §6 wire literals); `citations`/`actions` are real JSON arrays, never a JSON string nested inside JSON; never the raw retrieval pack (ADR-011). `POST /api/conversations/{id}/messages` is not yet mapped — task F06/T01 (phase 3) adds it once the Ask engine can produce a turn to persist |
+| GET | `/api/conversations/{id}` | The conversation plus its messages, oldest first (AC-2); `X-Tenant-Id` header + caller identity; 404 when `{id}` does not exist, belongs to another tenant, or belongs to another user of the same tenant — RLS backstops the tenant half (ADR-009), `Contigo.Chat.Application.Conversations.ConversationService` itself is the only thing enforcing the per-user half (RLS has no per-user predicate), and both read back as the identical 404, never a distinguishing 403; response `{ id, title, scopeContractId, createdAt, updatedAt, messages: [{ id, role, kind, markdown, citations, actions, modelId, promptVersion, inputHash, createdAt }] }` — `role` is `you`/`contigo`, `kind` is `answer`/`abstain`/`redirect`/`refusal` (ADR-024 §6 wire literals); `citations`/`actions` are real JSON arrays, never a JSON string nested inside JSON; never the raw retrieval pack (ADR-011) |
+| POST | `/api/conversations/{id}/messages` | Ask Contigo V2 (ADR-024 §6; task E13/F06/US01/T01, ask-engine, AC-8); `{ question: string }` + `X-Tenant-Id` header + caller identity; 400 for a missing/invalid tenant or user header, an invalid `{id}`, or a blank `question` — all before any database call (see `Contigo.Api.Tests.ConversationsEndpointTests`). Runs the full engine (`AskCopilotService`: `Gate.DomainGate` →, for `in_domain` turns, `Planning.IntentPlanner` → per-intent context pack → guarded `answer` call → `Guards.GroundingGuard`/`NumericGuard`/`RegenerateOnce`), appends both the caller's question and Contigo's reply to the conversation via `ConversationService`, then returns the same ADR-024 §6 reply contract `GET /api/conversations/{id}` echoes back for one message: `{ kind, answerMarkdown, citations: [{ n, corpus, title, subtitle, snippet, documentId?, contractId?, page?, section?, previewUrl?, href?, recordId? }], actions: [{ label, href, kind }], provenance: { sources, modelId, promptVersion, inputHash }, followUps }` plus `conversationId`/`messageId` — never engineer chrome (a `Document:` guid, a "Structured query" line) in `answerMarkdown` |
 | GET | `/api/renewals` | Renewal pipeline + insight card (spec §9.3/§10.1); `X-Tenant-Id` header; auto-renewing contracts only, most urgent first; response is `{ items, totalCount }`, each item `{ contractId, supplierId, status, renewalDate, daysUntilRenewal, annualSpend, cancellationDeadline, daysUntilCancellationDeadline, autoRenewal, action, insightCard: { facts, recommendations } }` — `insightCard.recommendations`' benchmark/savings fields (`annualUpliftPercent`, `marketPosition`, `potentialSavingsRange`) are honestly `null` until the Benchmark/Savings modules land (R3); `action`/`recommendedAction` is a deterministic urgency rule, not the full spec §9.2 Priority Score — see `Contigo.Renewals.Application.RenewalPipelineBuilder`'s own doc comment |
 | GET | `/api/renewals/{contractId}/priority` | Explainable priority-score breakdown for one contract (spec §9.2; story us-02-priority-score AC-1/AC-2, task E03/F01/US02/T02); `X-Tenant-Id` header; 404 when the contract does not exist or belongs to another tenant (same rule as `GET /api/contracts/{id}`); response is `{ contractId, totalScore, components: { spendWeight, timeUrgency, benchmarkOpportunity, priceIncreaseRisk, contractRisk } }`, each component `{ score, explanation }` — component weights are configurable, see `Contigo.Renewals.Configuration.PriorityScoreWeightsOptions` below; `priceIncreaseRisk`/`benchmarkOpportunity` use their honest no-data default (minimum / neutral respectively) since no uplift or benchmark-position data is wired to real contracts yet |
 | POST | `/api/renewals/{id}/action` | Updates owner/status/action for one renewal (spec Appendix A; story us-01-renewal-dashboard-api AC-3); `X-Tenant-Id` header; `{id}` is the same `contractId` the GET above returns per row, not a separate stored "renewal" id; body `{ owner, status, action }` — `status` is one of `NotStarted`/`InProgress`/`Completed`; upserts one row (never a second for the same contract) and writes one `IAuditWriter` entry (`renewal.action_updated`); 400 (not 404) for a missing/invalid tenant header or route id, or for an empty `owner`/`action`/unrecognized `status` — see `Contigo.Renewals.Application.RenewalActionService`'s own doc comment for the honest gap this leaves (no check that `{id}` names an existing, tenant-owned contract; `Contigo.Renewals` cannot reference `Contigo.Documents.Contracts` at all) |
@@ -213,6 +216,10 @@ that a second apply does not duplicate rows.
 | GET | `/api/quotes/{id}/assessment` | Quote assessment (spec §4.4/§11.2, Appendix A "Quote assessment"; module-map.md "Quotes \| Quote, QuoteLine, Assessment... \| /api/quotes"; story us-01-market-assessment AC-1/AC-2 (both the "flag" half, task E05/F02/US01/T01, and the "recommended target range + potential saving" half, task E05/F02/US01/T02)/AC-3); `X-Tenant-Id` header; 404 when `{id}` does not name a quote for this tenant; one assessment per `Contigo.Quotes.Domain.QuoteLine` on the quote (creation order) — `{ quoteId, lines: [{ quoteLineId, status, position, unitPrice, quantity, benchmark, confidence, targetSaving, explanation }] }`. `status` is `Assessed`/`QuoteDataUnresolved`/`InsufficientBenchmarkData` (`Contigo.Quotes.Domain.MarketAssessmentStatus`); `position` (`BelowMarket`/`InLine`/`AboveMarket`) is populated only when `status` is `Assessed` — the market band is `[P25, P75]` of the matched `Contigo.Benchmark.Contracts.BenchmarkResult.Distribution`, `InLine` otherwise (see `MarketAssessmentCalculator`'s own doc comment); `benchmark`/`confidence`/`targetSaving` are `null` exactly when no Benchmark Service call was even attempted (`QuoteDataUnresolved`: the quote is missing `supplier`/`currency`/`geography`/`purchaseDate`, or the line itself has no usable product/quantity/term/price), never withheld just because the comparison itself abstained (spec §11.3's benchmark-trust rule — `InsufficientBenchmarkData` still carries real `source`/`sampleSize`/`comparisonDimensions` provenance, and a real `targetSaving` object whose `recommendedTargetLow`/`recommendedTargetHigh`/`savingsRangeLow`/`savingsRangeHigh`/`totalSavingsRangeLow`/`totalSavingsRangeHigh` are honestly `null` with a named `explanation` — see `TargetSavingCalculator`'s own doc comment) |
 | POST | `/api/quotes/{id}/assessment/recalculate` | Manual product-mapping correction + recalculate (spec Appendix A "Re-run after product mapping correction"; story us-02-sku-normalization AC-2's "...and allow manual product mapping" half, AC-3, task E05/F01/US02/T02, sku-recalculate); `X-Tenant-Id` header; body `{ mappings?: [{ sku, edition?, canonicalSku, canonicalEdition?, canonicalProductName? }] }` — `mappings` may be omitted/empty (`{}` is a valid body) for a pure "what's still unmatched" refresh with no new correction. 404 when `{id}` does not name a quote for this tenant; 400 when a supplied correction's `sku`/`canonicalSku` is blank — validated before any write. For each valid correction, upserts (never duplicates) one tenant-scoped `Contigo.Quotes.Domain.SkuProductMapping` row keyed on the normalized SKU (`Contigo.Quotes.Application.Normalization.SkuNormalizer.Normalize` — same case/whitespace rule `POST /api/quotes`'s own upload-time normalization uses), then re-runs `SkuNormalizationService.NormalizeAsync` for every line on the quote (not just the corrected one — a mapping learned here also resolves any other quote for this tenant sharing the same normalized SKU, the next time that quote is itself (re)normalized) and `MarketAssessmentService.AssessAsync`; response `{ quoteId, mappingsAppliedCount, normalization: { lineCount, matchedCount, unmatchedCount, notApplicableCount }, unmatchedLines: [{ quoteLineId, sku, normalizedSku, edition, description }], assessment: { ...same shape as GET .../assessment... } }` — `unmatchedLines` is AC-2's "Show unmatched SKUs" half made queryable over HTTP (deliberately not a field on the `GET .../assessment` response itself, see `SkuMappingService`'s own doc comment for why); writes one `IAuditWriter` entry (`quote.sku_mapping_recalculated`) per successful call, even a pure refresh. |
 | GET | `/api/savings/kpis` | Procurement-homepage KPI row (spec §4.3/§10.1; story us-01-savings-kpis AC-1, task E04/F03/US01/T01); `X-Tenant-Id` header; response `{ annualSpendAnalyzed: [{ currency, amount, contractCount }], contractsAnalyzedCount, savingsIdentified/savingsInProgress/savingsRealized: [{ currency, low, high, count, averageConfidence }], upcomingRenewalsCount }` — every money value is grouped by currency, never summed across currencies (no exchange-rate service exists anywhere in this codebase); `contractsAnalyzedCount` counts contracts whose linked document reached `DocumentProcessingStatus.Completed` (a `Contract` row can exist before that — see `Contigo.Documents.Contracts.Application.PortfolioAnalysisCalculator`'s own doc comment); `savingsRealized` reflects each opportunity's own estimated range, not yet the separate, audit-tracked `RealizedSavings` value (task E04/F02/US02/T02's own gap, see `SavingsOpportunityStatus.Realized`'s doc comment); `upcomingRenewalsCount` is the same auto-renewing-contract count `GET /api/renewals`'s own `totalCount` already reports (same 100-contract-per-tenant cap) — see `Contigo.Api.SavingsKpiEndpointExtensions`'s own comment for why it is not a second, independently-computed number |
+| GET | `/api/capabilities` | The versioned V2 capability catalog (R-SYS-01; story us-01-capability-catalog, task E13/F08/US01/T01; mapped by task E13/F06/US01/T01, ask-engine); no `X-Tenant-Id` — static, tenant-agnostic metadata, not a per-tenant read; optional `X-Role` header (resolved through `WorkspaceRoleClaimResolver`, same interim-header posture as every tenant-scoped endpoint above) hides `workspace-members` unless the caller resolves to `Admin`; see "Ask Contigo — capability catalog" below |
+| GET | `/api/insights/criticality` | Portfolio-wide criticality ranking (story insights-calculators, task E13/F07/US01/T01; mapped by task E13/F06/US01/T01); `X-Tenant-Id` header; the same `Contigo.Insights.Criticality.CriticalityScoreCalculator` output `AskCopilotService`'s own `PortfolioStrategy` intent narrates — see "Insights" below |
+| GET | `/api/contracts/{id}/strategy` | One contract's renewal-strategy pack (when you must move, where you can push, targets, next steps; task E13/F07/US01/T01; mapped by task E13/F06/US01/T01); `X-Tenant-Id` header; 404 when the contract does not exist or belongs to another tenant; the same `Contigo.Insights.Strategy.StrategyPackBuilder` output `AskCopilotService`'s own `RenewalStrategy` intent narrates — see "Insights" below |
+| GET | `/api/market/records/{id}` | One market-feed record, for the citation panel (R-EVD-02; task E13/F06/US01/T01, ask-engine); no `X-Tenant-Id` — shared, tenant-agnostic market data (ADR-024); 404 when `{id}` does not name a record in the mock feed; response `{ recordId, supplier, category, product, geography, currency, title, snippet, provenance, updatedAt, unitPriceP25, unitPriceP50, unitPriceP75, sampleSize, source, representative }` — see `Contigo.Api.MarketEndpointExtensions` |
 
 **Interim auth:** every endpoint above that takes an `X-Tenant-Id` header
 (all except `GET /api/audit`, which already expects a claims principal)
@@ -562,6 +569,37 @@ is deliberately not yet mapped from `Program.cs` — task F06/T01 (this same
 phase) is expected to call `MapMarketEndpoints()`, the same "endpoint exists,
 host wiring is a later task's job" shape `CapabilitiesEndpointExtensions`
 already uses.
+**Interim data source:** R-MKT-03 describes benchmark rows as "served from
+the persisted `market_record` rows, never from the provider at question
+time" once an ingestion job exists — this task adds no ingestion job and no
+`market_record` table (that is T02's own scope: "Market index, ingestion,
+DB-backed retrieval, record endpoint"). Until then,
+`MarketFeedBenchmarkAdapter` calls `IMarketIntelligenceProvider.GetDealsAsync`
+directly on every query — the only data source T01 has — an explicitly
+interim shortcut T02 is expected to replace with the persisted-store read,
+with no change to `Contigo.Benchmark.IBenchmarkService` or any domain-module
+call site.
+
+**In-memory notes retrieval (Projection 2, interface only in a later phase's
+DB-backed form):** `Retrieval.MarketNoteComposer.Compose` turns one
+`MarketDeal` into one narrative `Contracts.MarketNote` (e.g. "Companies of
+500-2000 employees closing Salesforce Sales Cloud Enterprise in CH in
+2026-Q1 paid P50 CHF 132 …, obtained a 4% uplift cap and 90-day notice…"),
+labelled via `Contracts.MarketProvenance.Label` (`"representative market
+data · mock feed · updated <yyyy-MM-dd>"`, R-MKT-04). `Retrieval
+.InMemoryMarketKnowledgeRetrieval` — this task's default
+`Retrieval.IMarketKnowledgeRetrieval` — scores every composed note by plain
+token overlap against the query (no index, no embedding call) and returns
+the top-K; task E13/F02/US01/T02 is expected to swap in a pgvector-backed
+implementation over the shared, tenant-free `market_embedding` index behind
+this same interface (R-MKT-03: "own table — never rows in the tenant
+`embedding` table").
+
+Task E13/F06/US01/T01 (ask-engine) is `AddMarketModule()`'s first real
+caller (`Contigo.Api.Program`), the same "wiring lands with the first real
+caller" sequencing this README already documents for `AddBenchmarkModule` /
+`AddChatModule` above; that task also maps `GET /api/market/records/{id}`
+(see the HTTP surface table above and `Contigo.Api.MarketEndpointExtensions`).
 
 ## Supplier identity
 
@@ -593,18 +631,21 @@ rawName, ct) → Result<SupplierRef>` and `ISupplierNameLookup.GetNamesAsync
 (TenantId, ids, ct) → IReadOnlyDictionary<EntityId, string>` (batched, so a
 list page resolves every row's supplier name in one call). Both are wired
 by `Infrastructure.ServiceCollectionExtensions.AddSuppliersProductsModule
-(string connectionString)` — connection string key `SuppliersProducts`
-(env var form `ConnectionStrings__SuppliersProducts`), the same
-dots-stripped-PascalCase naming convention every other module's own
-connection string already uses (`DocumentsContracts`, `IdentityWorkspace`).
-No host calls `AddSuppliersProductsModule` yet — task E13/F06/US01/T01
-wires it into `Contigo.Api`/`Contigo.Worker`'s `Program.cs` and adds the
-matching `appsettings.Development.json` entry, the same "wiring lands with
-the first real caller" sequencing this README already documents for
-`AddChatModule`/`AddRenewalsModule` above — so nothing in this codebase
-resolves a supplier name for a real contract yet; that is task
-E13/F03/US01/T02's own job (the `supplier` critical extraction fact, the
-pipeline's resolver call, and reprocess back-fill).
+(string connectionString)` — a raw connection string the caller resolves
+however it names its own configuration key; `Contigo.Api.Program` (task
+E13/F06/US01/T01, ask-engine, its first real caller) reads it from
+`ConnectionStrings:Suppliers` (env var form `ConnectionStrings__Suppliers`)
+rather than the dots-stripped-full-module-name convention every other
+module's own connection string uses (`DocumentsContracts`,
+`IdentityWorkspace`) — a shorter key, since `SuppliersProducts` would
+otherwise be the only three-word one. `Contigo.Worker` does not call
+`AddSuppliersProductsModule` — nothing in the worker needs a supplier name
+yet. Nothing in this codebase resolves a supplier name for a real contract
+during extraction yet; that is task E13/F03/US01/T02's own job (the
+`supplier` critical extraction fact, the pipeline's resolver call, and
+reprocess back-fill) — `AskCopilotService` (see "Ask Contigo — conversations
+store" below) is `ISupplierNameLookup`'s first real Ask-side caller, not
+the extraction pipeline.
 
 Tenant isolation is proved in
 `Contigo.IntegrationTests.SupplierCrossTenantIsolationTests` — deliberately
@@ -669,22 +710,25 @@ output/content in audit rows).
 `RagAnswerService` retrieves anything itself: both operate on caller-supplied
 data (`ContractFact` / a pre-retrieved evidence list respectively) — small
 DTOs/parameters the module owns or accepts, never the real `Contract`/
-`Embedding` entities. `Contigo.Api.ChatEndpointExtensions` (`POST
-/api/chat/query`, task E02/F04/US02/T01) is the composition root that closes
-this gap for the `Semantic` branch: it resolves the tenant, calls
-`EmbeddingRetrievalService.SearchAsync` (auth-before-retrieval, ADR-011),
-maps each hit into `Contigo.AiGateway.Contracts.AiEvidenceSnippet`, then
-calls `RagAnswerService`. `DocumentId` on that mapping is a
-`{SourceType}:{SourceId}` composite (not a bare id): an `Embedding` row's
-`SourceId` only really identifies a document when `SourceType` is
+`Embedding` entities. `DocumentId` on an `AiEvidenceSnippet` built from an
+`Embedding` hit is a `{SourceType}:{SourceId}` composite (not a bare id): a
+row's `SourceId` only really identifies a document when `SourceType` is
 `"Document"` — for `"Clause"`-sourced evidence it identifies the clause row,
 and silently relabelling one as the other would misattribute the citation.
-`Page` is left `null` (no page column on `Embedding` yet) and `Section`
-reports the real chunk index instead of a fabricated section title — true
-page/section resolution (joining back to `Clause.SourcePage`/`SourceSpan`) is
-a follow-up gap, not attempted by this task. No task has yet mapped a real,
-tenant-scoped `Contract` row into `ContractFact`, so the endpoint's
-`Structured` branch reports an honest "not wired yet" instead of guessing.
+
+**Superseded by the V2 engine (task E13/F06/US01/T01, ask-engine):**
+`Contigo.Api.ChatEndpointExtensions` (`POST /api/chat/query`) used to be the
+composition root that closed the gap above directly — it resolved the
+tenant, called `EmbeddingRetrievalService.SearchAsync` itself, and called
+`RagAnswerService` for the `Semantic` branch only, with the `Structured`
+branch left as an honest "not wired yet" (no `ContractFact` mapping existed).
+`POST /api/chat/query` now instead delegates into `AskCopilotService`, the
+new V2 pack-composition root that reuses this router/planner/handler trio as
+one of several intents — see "Ask Contigo — conversations store" below for
+where that composition now lives; `AskContigoQueryRouter`/
+`DeterministicQueryPlanner`/`DeterministicQueryHandler`/`RagAnswerService`/
+`AbstainGuard` themselves are unchanged, still pure, and still directly
+unit-tested exactly as this section describes.
 
 ## Ask Contigo — conversations store
 
@@ -740,9 +784,81 @@ required `X-User-Id` header — see "Interim auth" above) and tenant
 (`X-Tenant-Id`) itself, then calls straight into `ConversationService` —
 that service's own `tenantId`/`userId` parameters already do all the
 RLS/application-level scoping, so this file has no scoping logic of its
-own to get wrong. `POST /api/conversations/{id}/messages` is deliberately
-still not mapped — task F06/T01 (phase 3) adds it to this same file once
-the Ask engine exists to produce a turn worth persisting.
+own to get wrong.
+
+### The V2 engine (task E13/F06/US01/T01, ask-engine, ADR-024)
+
+`POST /api/conversations/{id}/messages` — deliberately left unmapped by
+T02 above until an engine existed to produce a turn worth persisting — is
+now mapped in this same file, and `POST /api/chat/query` (see "Ask Contigo
+— query router..." above) becomes a thin alias that creates a conversation
+and delegates into the identical pipeline. Both routes share one
+composition root, `Contigo.Api.AskCopilotService` (`AskAsync`) — the pack
+-composition root ADR-024 calls for: everything `Contigo.Chat`'s ADR-002
+allow-list (`[SharedKernel, AiGateway]`) forbids that module from doing
+itself (querying `PortfolioQueryService`/`Contract360QueryService`,
+`EmbeddingRetrievalService.SearchAsync`, `RenewalEngine`/
+`PriorityScoreCalculator`/`CriticalityScoreCalculator` (Insights),
+`SavingsOpportunityService`, `IBenchmarkService`/`IMarketKnowledgeRetrieval`
+(Market), `ISupplierNameLookup`) happens here, then gets handed to
+`Contigo.Chat`'s own gate/planner/guards/reply pipeline:
+
+1. **Gate** (`Contigo.Chat.Application.Gate.DomainGate.Classify`) — six
+   labels, deterministic lexicons first (greeting, off-domain small talk,
+   legal-advice, capability/how-to, then an unresolved named-supplier
+   check), an `in_domain` default on ambiguity (no live classify call yet —
+   see that type's own doc comment for the honest gap). `greeting` /
+   `off_domain` / `legal` / `capability` / `needs_document` are all
+   answered directly (`Reply.RedirectReplyBuilder`, real
+   `CapabilityRouting`-resolved actions) — **zero retrieval, zero model
+   call** — only `in_domain` reaches the planner (R-ASK-02).
+2. **Planner** (`Application.Planning.IntentPlanner.Plan`) — nine fixed
+   intents (structured fact, clause, market compare, renewal strategy,
+   portfolio strategy, savings, document status, quote route, navigate),
+   reusing `AskContigoQueryRouter`/`DeterministicQueryPlanner` for the
+   legacy structured/clause split. `AskCopilotService` composes one
+   `Pack.PackItem` list per intent (tenant facts, clause chunks, market
+   notes, calculator output — every item citable, tagged `tenant`/
+   `market`/`contigo`/`calc`).
+3. **Answer** (`Application.Answering.AnswerComposer`, persona prompt
+   `Prompts/answer/v2.1.md`) calls `IAiGateway.AnswerAsync` with the pack +
+   last N turns; `Fixtures.FixtureAiGateway.AnswerAsync` gives a
+   deterministic v2 behaviour when a pack is supplied (cites the first N
+   pack keys, copies their values verbatim — no chunk concatenation), so
+   every test below runs without Foundry.
+4. **Guards** — `Application.Guards.GroundingGuard` (every citationKey /
+   inline `[n]` marker / actionKey must resolve), `Guards.NumericGuard`
+   (every currency amount, percentage and date in the answer must equal a
+   pack value — currency-aware — or appear verbatim in a cited snippet),
+   `Guards.RegenerateOnce` (one retry naming the violation, then downgrade
+   to an honest abstain naming the pack's own facts, metadata preserved for
+   ADR-011 auditability) — never shown or persisted unguarded.
+5. **Reply** (`Application.Reply.CopilotReply`) — the one shape every gate
+   label / guard outcome produces: `{ kind, answerMarkdown, citations[],
+   actions[], provenance: { sources, modelId, promptVersion, inputHash },
+   followUps[] }`, `kind` one of `answer`/`abstain`/`redirect`/`refusal`
+   (see the HTTP surface table above for the full citation/action field
+   list) — never a `Document:` guid or a "Structured query" line in
+   `answerMarkdown` (R-ASK-08).
+
+`AskAsync` writes exactly one audit row per turn (`chat.answered`/
+`chat.redirected`/`chat.refused`/`chat.abstained` — counts + a pack hash,
+never text, ADR-011), with one further field on every row:
+`abstainGuardIntervened=true|false` (AC-7) — `true` only when
+`Answering.AnswerComposer`'s own guard pipeline actually rejected the first
+attempt and forced `Guards.RegenerateOnce`'s retry-then-downgrade path, never
+just because the reply happens to be `abstain` (an empty pack or a failed
+gateway call both also produce `kind=abstain` but leave this field `false` —
+the same field name/shape `RagAnswerService`'s older, evidence-only audit
+entry already uses; see this file's "Ask Contigo — query router" section
+above). The context pack's token budget is
+`Pack.PackBudget`, optionally configured via `Chat:PackTokenBudget`
+(`Chat__PackTokenBudget` env var form) and registered in `Program.cs`
+*before* `AddChatModule`'s own always-usable default so a configured value
+wins; absent configuration, `PackBudget.DefaultMaxTokens` applies.
+Cross-tenant isolation over this new endpoint (parent story AC-9) is
+proven the same way as `POST /api/chat/query`'s — see
+`Contigo.IntegrationTests.AskContigoRagCrossTenantIsolationTests`.
 
 ## Ask Contigo — capability catalog
 
@@ -775,8 +891,8 @@ reproduces `app.jsx`'s per-screen `chipsFor`/`c360Chips` suggestion chips.
 `Contigo.Identity.Workspace.Domain.WorkspaceRoleClaimResolver` — same
 interim-header posture as every `X-Tenant-Id` endpoint below, ADR-010 not
 yet on this host — hides `workspace-members` unless the caller resolves to
-`Admin`) but is **deliberately not called from `Program.cs` by this task**;
-a later task maps it, the same "endpoint exists, host wiring is a later
+`Admin`). Task E13/F06/US01/T01 (ask-engine) is this endpoint's first-mapped
+caller in `Program.cs`, the same "endpoint exists, host wiring is a later
 task's job" shape already used above for `AddChatModule`'s
 `chatConnectionString` overload. Unlike every other endpoint in this file,
 it takes no `X-Tenant-Id` — the catalog is static, tenant-agnostic
@@ -2075,14 +2191,17 @@ takes a pre-computed `LineTargetSaving`, not a raw
 `PortfolioQueryService`/`Contract360QueryService` (Documents/Contracts),
 `RenewalEngine`/`PriorityScoreCalculator` (Renewals) and
 `SavingsOpportunityService` (Savings) — the one project allowed to
-reference every module. **Not mapped in `Program.cs` by this task** (F06/
-T01 maps it in phase 3), so both routes are unreachable today; every
-composition/mapping method on that class is `public static` so it can be
-(and is) unit-tested directly with hand-built fakes from
+reference every module. Task E13/F06/US01/T01 (ask-engine) maps both routes
+in `Program.cs` (see the HTTP surface table above); every
+composition/mapping method on that class is also `public static` so it can
+be (and is) unit-tested directly with hand-built fakes from
 `Contigo.Insights.Tests` — no database, no `WebApplicationFactory` — which
 is why that test project also references `Contigo.Api` (a test-project
 reference is not constrained by `DependencyDirectionTests`, which only
-inspects `src/` projects). Per-contract benchmark matching is honestly not
+inspects `src/` projects). `AskCopilotService`'s own `PortfolioStrategy`/
+`RenewalStrategy` intents narrate the identical `CriticalityScoreCalculator`/
+`StrategyPackBuilder` output these two HTTP routes return — one calculation,
+reachable both ways. Per-contract benchmark matching is honestly not
 wired yet: a `BenchmarkQuery` needs a supplier name and geography, and
 `Contract` carries neither (only a bare `SupplierId` guid) — the same gap
 `Contract360Result.Benchmark` already has — so `PricedLine.Benchmark` is
