@@ -26,6 +26,16 @@ variable "resource_group_name" {
 # this environment's own workload identity, and therefore can only ever
 # reach this environment's own Key Vault (modules/keyvault's role
 # assignment is scoped to the matching `workload_principal_id`).
+# DefaultAzureCredential cannot guess WHICH user-assigned identity to use when a
+# container app has one attached: without AZURE_CLIENT_ID it asks IMDS for the
+# system-assigned identity, which does not exist here, and every token request
+# fails. Passed separately from workload_identity_id (an ARM resource id, which
+# the credential does not accept) -- modules/identity exposes both.
+variable "workload_identity_client_id" {
+  description = "Client (application) id of this environment's user-assigned workload identity (modules/identity's `workload_identity_client_id` output). Published to both containers as AZURE_CLIENT_ID so DefaultAzureCredential authenticates as that identity."
+  type        = string
+}
+
 variable "workload_identity_id" {
   description = "ARM resource ID of this environment's user-assigned managed identity (modules/identity's `workload_identity_id` output). Assigned to the API and worker Container Apps so they can authenticate to this environment's own Key Vault (and other Azure services) without a stored secret."
   type        = string

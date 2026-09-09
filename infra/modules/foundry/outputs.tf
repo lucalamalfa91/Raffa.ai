@@ -2,9 +2,19 @@
 # to wire modules/containerapps' three new AiGateway__* env vars (AC-2/
 # AC-3) -- non-secret (an endpoint URL and two names, no key), so these
 # are plain outputs, never a Key Vault secret (ADR-011).
+# Empty until the ADR-008 account really exists (var.ai_services_resource_id
+# set). This is not a cosmetic default: Contigo.Api binds IAiGateway to the
+# Foundry client whenever AiGateway:Endpoint is non-empty, and to the fixture
+# gateway otherwise. Publishing the derived endpoint string for an account that
+# has not been created yet made the dev API call a host that does not exist,
+# fail to get a managed-identity token, and answer HTTP 500 to every document
+# upload -- the product's main action, broken by a value that only *looked*
+# configured. An environment without the account now falls back to the fixture
+# gateway and the whole pipeline works end to end; the moment the account is
+# wired, the endpoint appears here and the same code takes the Foundry path.
 output "ai_services_endpoint" {
-  description = "Custom-subdomain endpoint of the shared ADR-008 AI services account (aisvc-contigo). Deterministic from the fixed account name; does not require the account to exist yet."
-  value       = local.ai_services_endpoint
+  description = "Custom-subdomain endpoint of the shared ADR-008 AI services account (aisvc-contigo), or \"\" while var.ai_services_resource_id is empty (the account does not exist yet, so the app must not be told to call it)."
+  value       = var.ai_services_resource_id != "" ? local.ai_services_endpoint : ""
 }
 
 output "foundry_project_name" {

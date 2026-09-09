@@ -27,6 +27,15 @@ output "issuer" {
   value       = "https://login.microsoftonline.com/${data.azuread_client_config.current.tenant_id}/v2.0"
 }
 
+# The client (application) id of the same identity. DefaultAzureCredential needs
+# this one -- an ARM resource id is not something it can authenticate with -- and
+# a container app with a user-assigned identity must publish it as AZURE_CLIENT_ID
+# or every managed-identity token request fails (see modules/containerapps).
+output "workload_identity_client_id" {
+  description = "Client (application) id of the user-assigned workload identity. Published to the container apps as AZURE_CLIENT_ID."
+  value       = azurerm_user_assigned_identity.workload.client_id
+}
+
 output "workload_principal_id" {
   description = "Principal (object) ID of this environment's user-assigned workload identity -- input to modules/keyvault's role assignment so the API/worker can read this environment's own vault only (ADR-011)."
   value       = azurerm_user_assigned_identity.workload.principal_id

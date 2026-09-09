@@ -143,6 +143,11 @@ resource "azurerm_container_app" "api" {
       # so plain `value`, never a Key Vault `secret_name` like the
       # ConnectionStrings__* blocks above.
       env {
+        name  = "AZURE_CLIENT_ID"
+        value = var.workload_identity_client_id
+      }
+
+      env {
         name  = "AiGateway__Endpoint"
         value = var.ai_gateway_endpoint
       }
@@ -257,6 +262,11 @@ resource "azurerm_container_app" "worker" {
       # Task E10/F02/US01/T01 (foundry-ocr-ca): the worker runs the hybrid
       # OCR pre-pass (ADR-017) and needs the same non-secret AI Gateway
       # connection info as the api app above.
+      env {
+        name  = "AZURE_CLIENT_ID"
+        value = var.workload_identity_client_id
+      }
+
       env {
         name  = "AiGateway__Endpoint"
         value = var.ai_gateway_endpoint
