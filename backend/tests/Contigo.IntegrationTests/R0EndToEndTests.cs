@@ -44,10 +44,14 @@ public sealed class R0EndToEndTests : IClassFixture<R0IntegrationFixture>
         Assert.Equal(HttpStatusCode.Created, inviteResponse.StatusCode);
 
         // 3. Upload a document (AC-1 "upload document"; ADR-009/ADR-011 tenant-scoped storage).
-        var fileBytes = "%PDF-1.4 sample contract bytes"u8.ToArray();
+        // Task E13/F04/US01/T01 (documents-admission): POST /api/documents now sniffs the format
+        // and runs the admission gate before persisting anything, so this path needs a document
+        // that is really a PDF and really reads as a contract — the same born-digital fixture R1
+        // uses, rather than a few bytes of placeholder text.
+        var fileBytes = R1ExtractionFixtures.BuildBornDigitalPdfBytes();
         using var uploadContent = new MultipartFormDataContent
         {
-            { new ByteArrayContent(fileBytes), "file", "contract.pdf" },
+            { new ByteArrayContent(fileBytes), "file", R1ExtractionFixtures.BornDigitalFileName },
         };
         using var uploadRequest = new HttpRequestMessage(HttpMethod.Post, "/api/documents")
         {

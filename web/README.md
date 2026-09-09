@@ -414,9 +414,14 @@ widened `documentType` / `detectedType` enum (the original six members plus
 `inputs/requirements.md` §6 and the sibling backend tasks' own spec text
 (epic-13/feature-04, `task-01-documents-admission.md` /
 `task-02-documents-v2-api.md`), **not read off a running handler**: none of
-those four operations, the enum widening, or the admission gate exist in
-`backend/` in this worktree yet. See each operation's own OpenAPI
-`description` for the exact provenance note. `npm run generate:api`
+those four operations, the enum widening, or the admission gate existed in
+`backend/` in this worktree yet. Task E13/F04/US01/T01 has since landed the
+admission gate itself -- `POST /api/documents` really does answer `413` /
+`415` / `422` now, and `documentType` really is the widened enum, matching
+what was documented here; `GET /api/documents`, the preview, reprocess and
+delete operations are still ahead of their backend counterpart (task
+E13/F04/US01/T02). See each operation's own OpenAPI `description` for the
+exact provenance note. `npm run generate:api`
 reproduces `src/api/generated/schema.ts` from this contract today regardless
 of backend state (AC-6) -- once the real backend lands, only its own
 response shapes need reconciling against what is already documented here,

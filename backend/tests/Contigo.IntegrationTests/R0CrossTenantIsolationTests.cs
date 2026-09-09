@@ -31,7 +31,10 @@ public sealed class R0CrossTenantIsolationTests : IClassFixture<R0IntegrationFix
 
         using var uploadContent = new MultipartFormDataContent
         {
-            { new ByteArrayContent("owned-by-tenant-a"u8.ToArray()), "file", "contract.pdf" },
+            // Task E13/F04/US01/T01: an admitted document (the shared born-digital contract
+            // fixture) — the admission gate refuses placeholder bytes before any row is written,
+            // and this test is about tenant isolation over a document that does exist.
+            { new ByteArrayContent(R1ExtractionFixtures.BuildBornDigitalPdfBytes()), "file", R1ExtractionFixtures.BornDigitalFileName },
         };
         using var uploadRequest = new HttpRequestMessage(HttpMethod.Post, "/api/documents")
         {

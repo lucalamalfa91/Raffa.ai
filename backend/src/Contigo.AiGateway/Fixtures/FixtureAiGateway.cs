@@ -63,6 +63,11 @@ public sealed class FixtureAiGateway(
     /// full <see cref="AiDocumentType"/> taxonomy (ADR-004 candidate: "Small instruction model...
     /// classification is low-complexity").
     /// </summary>
+    /// <summary>Image container signatures a fixture "scanned image" may start with — see
+    /// <see cref="DecodePages"/>.</summary>
+    private static readonly byte[] PngSignature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+    private static readonly byte[] JpegSignature = [0xFF, 0xD8, 0xFF];
+
     private static readonly (AiDocumentType Type, string Keyword)[] ClassificationKeywords =
     [
         (AiDocumentType.Msa, "MASTER SERVICES AGREEMENT"),
@@ -374,11 +379,26 @@ public sealed class FixtureAiGateway(
     /// </summary>
     private static IReadOnlyList<AiOcrPage> DecodePages(ReadOnlySpan<byte> content)
     {
+        // Task E13/F04/US01/T01 (documents-admission): POST /api/documents now admits an image only
+        // when its bytes carry a real PNG/JPEG signature, so a fixture "scanned image" is that
+        // signature followed by UTF-8 page text (form-feed separated) — the signature is stripped
+        // here and the remainder decoded exactly as before. A real photo (binary after the
+        // signature) still fails strict UTF-8 decoding and gets the honest placeholder below.
+        var payload = content;
+        if (payload.StartsWith(PngSignature))
+        {
+            payload = payload[PngSignature.Length..];
+        }
+        else if (payload.StartsWith(JpegSignature))
+        {
+            payload = payload[JpegSignature.Length..];
+        }
+
         string decoded;
         try
         {
             decoded = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true)
-                .GetString(content);
+                .GetString(payload);
         }
         catch (DecoderFallbackException)
         {

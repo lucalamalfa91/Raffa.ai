@@ -3,6 +3,7 @@ using Contigo.Chat.Infrastructure;
 using Contigo.Documents.Contracts.Domain;
 using Contigo.Documents.Contracts.Infrastructure;
 using Contigo.SharedKernel;
+using Contigo.SharedKernel.Storage;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
@@ -62,8 +63,19 @@ internal static class InMemoryAskEngineFactory
     /// <param name="clock">Defaults to a real <see cref="SystemClock"/>-equivalent when omitted;
     /// pass a <see cref="FixedClock"/> for a scenario whose seeded data is relative to "now" (e.g.
     /// a renewal-window question).</param>
+    /// <param name="documentStorage">Task E13/F04/US01/T01: pass a
+    /// <see cref="RecordingDocumentStorage"/> to prove what the upload path did (and did not)
+    /// write to blob storage; omitted, the host keeps its own Azure-backed registration, which is
+    /// never dialled as long as the test does not upload.</param>
+    /// <param name="auditWriter">Task E13/F04/US01/T01: pass a <see cref="RecordingAuditWriter"/> to
+    /// assert on the admission gate's single <c>document.rejected</c> row; omitted, audit writes
+    /// go to <see cref="NoOpAuditWriter"/> as before.</param>
     public static WebApplicationFactory<Program> WithInMemoryAskEngine(
-        this WebApplicationFactory<Program> factory, IAiGateway aiGateway, IClock? clock = null)
+        this WebApplicationFactory<Program> factory,
+        IAiGateway aiGateway,
+        IClock? clock = null,
+        IDocumentStorage? documentStorage = null,
+        IAuditWriter? auditWriter = null)
     {
         ArgumentNullException.ThrowIfNull(factory);
         ArgumentNullException.ThrowIfNull(aiGateway);
@@ -98,7 +110,12 @@ internal static class InMemoryAskEngineFactory
             // TryAdd-based core services above) really does let the last one added win for a
             // single GetRequiredService<T>() call.
             services.AddSingleton<IAiGateway>(aiGateway);
-            services.AddSingleton<IAuditWriter>(new NoOpAuditWriter());
+            services.AddSingleton(auditWriter ?? new NoOpAuditWriter());
+
+            if (documentStorage is not null)
+            {
+                services.AddSingleton(documentStorage);
+            }
 
             if (clock is not null)
             {

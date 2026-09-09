@@ -1,9 +1,11 @@
 using Contigo.AiGateway;
 using Contigo.Documents.Contracts.Application;
+using Contigo.Documents.Contracts.Application.Admission;
 using Contigo.Documents.Contracts.Application.Extraction;
 using Contigo.SharedKernel;
 using Contigo.SharedKernel.Tenancy;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -101,6 +103,21 @@ public static class ServiceCollectionExtensions
         // Scoped for the same reason every service above is: it shares this registration's own
         // DbContext instance, not a second one.
         services.AddScoped<DocumentProcessingPipeline>();
+
+        // Task E13/F04/US01/T01 (documents-admission): the admission gate and its thresholds.
+        // DocumentAdmissionOptions is bound once from the "Documents" section (defaults from its
+        // own property initializers when the section is absent) and registered as a plain
+        // singleton — the same shape Contigo.AiGateway uses for AiGatewayOcrOptions: the gate's
+        // constructor takes the options type directly, so IOptions<T> would add nothing here.
+        services.TryAddSingleton(sp =>
+        {
+            var options = new DocumentAdmissionOptions();
+            sp.GetRequiredService<IConfiguration>()
+                .GetSection(DocumentAdmissionOptions.SectionName)
+                .Bind(options);
+            return options;
+        });
+        services.AddScoped<DocumentAdmissionGate>();
 
         return services;
     }

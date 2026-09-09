@@ -249,7 +249,7 @@
         },
         "responses": {
           "201": {
-            "description": "Stored (and processed synchronously); contractId is null until classification links it.",
+            "description": "Admitted by the gate, stored, and processed synchronously; `contractId` is null only when the pipeline itself failed after the upload was already durable. `mimeType` is the sniffed canonical type (`application/pdf`, the two OOXML types, `image/png`, `image/jpeg`), never the browser's declared `Content-Type`. `processingStatus` reflects the pipeline's own run (task E02/F06/US01/T01), which reuses the parse and classification the admission gate already computed -- the classify role is called once per upload.",
             "content": {
               "application/json": {
                 "schema": {
@@ -310,7 +310,7 @@
             }
           },
           "413": {
-            "description": "Task E13/F04/US01/T01 (documents-admission): file exceeds `Documents:MaxFileBytes` (50 MB), rejected before any parse or AI-gateway call. Plain-string body, same `Results.BadRequest`-shaped text convention as the 400 above (DocumentsEndpointExtensions has not landed in this worktree yet -- see this document's own top-level provenance note; this response is authored from `inputs/requirements.md` R-DOC-01/§6 and task-01-documents-admission.md's own text, not read off a running handler).",
+            "description": "Task E13/F04/US01/T01 (documents-admission): file exceeds `Documents:MaxFileBytes` (50 MB), rejected before any parse or AI-gateway call -- both the declared `Content-Length` and the received part are checked (`Contigo.Api.DocumentsEndpointExtensions`). Plain-string body, same `Results.Json(string)` shape as the 415 below and the 400 above.",
             "content": {
               "application/json": {
                 "schema": {
@@ -321,7 +321,7 @@
             }
           },
           "415": {
-            "description": "Task E13/F04/US01/T01: format rejected by extension **and** magic-byte sniffing (`DocumentFormatSniffer`) before any parse or AI-gateway call -- a `.zip` renamed `.pdf` lands here, never a 422 (R-DOC-02 AC-1). Plain-string body, quoted verbatim from `inputs/requirements.md` R-DOC-02.",
+            "description": "Task E13/F04/US01/T01: format rejected by extension **and** magic-byte sniffing (`Contigo.Documents.Contracts.Application.Admission.DocumentFormatSniffer`) before any parse or AI-gateway call -- a `.zip` renamed `.pdf` lands here, never a 422 (R-DOC-02 AC-1), and so does a PNG renamed `.pdf`. Accepted: `.pdf` (`%PDF-` header), `.docx`/`.xlsx` (OOXML package holding `word/document.xml` / `xl/workbook.xml`), `.png`, `.jpg`/`.jpeg`. Plain-string body, quoted verbatim from `inputs/requirements.md` R-DOC-02.",
             "content": {
               "application/json": {
                 "schema": {

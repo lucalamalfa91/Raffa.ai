@@ -210,139 +210,16 @@ app.MapHealthChecks("/health");
 // WorkspaceEndpointExtensions for the endpoints themselves.
 app.MapWorkspaceEndpoints();
 
-// Task E01/F06/US01/T01 (us-01-document-upload, AC-1): stores the uploaded bytes in
-// tenant-scoped blob storage and creates the queued classification job
-// (DocumentUploadService owns the actual business logic; this delegate only translates
-// HTTP <-> the service call, per ADR-002's "host is a thin composition root").
-//
-// Task E02/F06/US01/T01 (r1-integration, AC-1 "upload -> parse/OCR -> classify -> extract"):
-// once the upload itself is durable, this handler also runs DocumentProcessingPipeline —
-// hybrid parse -> classify -> staged extraction -> Ask Contigo indexing — synchronously, in
-// this same request, before responding. See DocumentProcessingPipeline's own doc comment for
-// why synchronous/in-request is this task's deliberate interim choice (nothing in this
-// codebase dispatches the queued Classification job to a handler off a durable queue yet). The
-// file bytes are read into memory once, up front: DocumentUploadService needs a stream for
-// storage and DocumentProcessingPipeline needs the same bytes again afterward, and an
-// IFormFile's own stream is not guaranteed re-readable after the first copy. A pipeline
-// failure is reported honestly in the response (processingStatus/contractId fall back to the
-// just-uploaded, pre-processing values) but never turns an already-successful upload into an
-// HTTP error — the bytes are safely stored and the document row already exists either way.
-//
-// ADR-010 (Entra ID/OIDC) is not in the "architecture decisions in force" list for this task,
-// so there is no validated caller identity/JWT yet. The tenant is taken from an explicit
-// X-Tenant-Id header instead of a token claim — a deliberate interim placeholder (paired with
-// DocumentUploadService.UnattributedActor). Deliberately NOT promoted to
-// reports/open-questions.md by this task: that file is appended to by every wave/* implementer
-// branch in this fan-out, and concurrent appends to it have previously broken a phase-barrier
-// merge, so a mid-wave append here would risk repeating that. Fold one consolidated entry for
-// both placeholders into the ledger at a safe point (e.g. when the auth-middleware task is
-// authored), then replace both with claim-based tenant/actor resolution.
-app.MapPost("/api/documents", async Task<IResult> (
-    HttpRequest request,
-    DocumentUploadService uploadService,
-    DocumentProcessingPipeline processingPipeline,
-    CancellationToken cancellationToken) =>
-{
-    if (!request.Headers.TryGetValue("X-Tenant-Id", out var tenantHeaderValues)
-        || !Guid.TryParse(tenantHeaderValues.ToString(), out var tenantGuid))
-    {
-        return Results.BadRequest("A valid 'X-Tenant-Id' header (a GUID) is required.");
-    }
-
-    if (!request.HasFormContentType)
-    {
-        return Results.BadRequest("Expected multipart/form-data with a 'file' field.");
-    }
-
-    var form = await request.ReadFormAsync(cancellationToken);
-    var file = form.Files["file"];
-    if (file is null || file.Length == 0)
-    {
-        return Results.BadRequest("A non-empty 'file' form field is required.");
-    }
-
-    byte[] fileBytes;
-    await using (var uploadStream = file.OpenReadStream())
-    await using (var buffer = new MemoryStream())
-    {
-        await uploadStream.CopyToAsync(buffer, cancellationToken);
-        fileBytes = buffer.ToArray();
-    }
-
-    var tenantId = new TenantId(tenantGuid);
-
-    using var storageContent = new MemoryStream(fileBytes);
-    var result = await uploadService.UploadAsync(
-        tenantId, file.FileName, file.ContentType, storageContent, cancellationToken);
-
-    if (result.IsFailure)
-    {
-        return Results.BadRequest(result.Error);
-    }
-
-    var uploaded = result.Value;
-
-    var processingResult = await processingPipeline.ProcessAsync(
-        tenantId, uploaded.DocumentId, uploaded.FileName, uploaded.MimeType, fileBytes, cancellationToken);
-
-    var processingStatus = processingResult.IsSuccess
-        ? processingResult.Value.ProcessingStatus
-        : uploaded.ProcessingStatus;
-    var contractId = processingResult.IsSuccess ? processingResult.Value.ContractId.Value : (Guid?)null;
-
-    return Results.Created($"/api/documents/{uploaded.DocumentId}", new
-    {
-        id = uploaded.DocumentId.Value,
-        contractId,
-        fileName = uploaded.FileName,
-        mimeType = uploaded.MimeType,
-        processingStatus = processingStatus.ToString(),
-        createdAt = uploaded.CreatedAt,
-    });
-});
-
-// Task E01/F06/US01/T02 (us-01-document-upload, AC-3): reads back the metadata/status AC-2
-// already persists (task T01), scoped to the caller's tenant. Same interim X-Tenant-Id
-// placeholder as POST /api/documents above (ADR-010 is not in force for this task either, so
-// there is still no validated caller principal to take the tenant from) — see that endpoint's
-// comment for why this is not promoted to reports/open-questions.md by this task.
-app.MapGet("/api/documents/{id}", async Task<IResult> (
-    string id,
-    HttpRequest request,
-    DocumentQueryService queryService,
-    CancellationToken cancellationToken) =>
-{
-    if (!request.Headers.TryGetValue("X-Tenant-Id", out var tenantHeaderValues)
-        || !Guid.TryParse(tenantHeaderValues.ToString(), out var tenantGuid))
-    {
-        return Results.BadRequest("A valid 'X-Tenant-Id' header (a GUID) is required.");
-    }
-
-    if (!Guid.TryParse(id, out var documentGuid))
-    {
-        return Results.BadRequest("The document id in the route must be a GUID.");
-    }
-
-    var metadata = await queryService
-        .GetByIdAsync(new TenantId(tenantGuid), new EntityId(documentGuid), cancellationToken)
-        .ConfigureAwait(false);
-
-    if (metadata is null)
-    {
-        return Results.NotFound();
-    }
-
-    return Results.Ok(new
-    {
-        id = metadata.DocumentId.Value,
-        contractId = metadata.ContractId?.Value,
-        fileName = metadata.FileName,
-        mimeType = metadata.MimeType,
-        documentType = metadata.DocumentType.ToString(),
-        processingStatus = metadata.ProcessingStatus.ToString(),
-        createdAt = metadata.CreatedAt,
-    });
-});
+// Task E01/F06/US01/T01 (us-01-document-upload, AC-1) and E01/F06/US01/T02 (AC-3) first mapped
+// POST /api/documents and GET /api/documents/{id} inline here; task E02/F06/US01/T01
+// (r1-integration) made the upload also run DocumentProcessingPipeline synchronously. Task
+// E13/F04/US01/T01 (documents-admission, ADR-024 "gate before persistence") moved both into
+// DocumentsEndpointExtensions and reordered the upload: size (413) -> format by extension and
+// magic bytes (415) -> DocumentAdmissionGate (422, nothing persisted, one audit row) -> only then
+// DocumentUploadService + the pipeline, reusing the gate's own parse and classification. See that
+// file's own doc comment, including the interim X-Tenant-Id / X-User-Id posture (ADR-022,
+// OQ-askv2-005) every tenant-scoped endpoint in this host still shares.
+app.MapDocumentsEndpoints();
 
 // Task E02/F05/US01/T01 (us-01-correction-history, AC-1): versioned PATCH /api/contracts/{id}.
 // Task E02/F03/US02/T01 (us-02-contract-360-aggregate, AC-1/AC-2/AC-3): GET /api/contracts/{id},

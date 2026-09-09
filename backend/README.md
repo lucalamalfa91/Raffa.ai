@@ -20,76 +20,44 @@ backend/
     Contigo.Worker/              # thin worker composition root
     Contigo.SharedKernel/        # TenantId, EntityId, Result<T>, IClock, IAuditWriter, IDocumentStorage
     Contigo.Identity.Workspace/  # workspace, membership, roles (live)
-    Contigo.Documents.Contracts/ # upload, metadata, hybrid OCR pre-pass, staged extraction, contract correction (live)
+    Contigo.Documents.Contracts/ # upload + admission gate (task E13/F04/US01/T01), metadata, hybrid OCR pre-pass, staged extraction, portfolio list, Contract 360, contract correction + history (live)
     Contigo.Audit/               # append-only audit events (live)
     Contigo.AiGateway/           # IAiGateway (classify/extract/embed/answer/ocr): FixtureAiGateway + live FoundryAiGateway (Azure OpenAI-compatible + Document Intelligence, task E13/F01/US01/T02), always behind the LoggingAiGateway decorator
-    Contigo.Documents.Contracts/ # upload, metadata, extraction jobs, staged extraction pipeline,
-                                  # portfolio list, Contract 360, contract correction (live)
-    Contigo.Audit/               # append-only audit events (live)
-    Contigo.AiGateway/           # IAiGateway + FixtureAiGateway/FoundryAiGateway behind the
-                                  # LoggingAiGateway decorator, always wired via DI (task E13/F01/US01/T02)
-    Contigo.Documents.Contracts/ # upload, metadata, staged extraction, portfolio, contract correction + history (live)
-    Contigo.Audit/               # append-only audit events (live)
-    Contigo.AiGateway/           # IAiGateway + FixtureAiGateway/FoundryAiGateway (wired via DI) + LoggingAiGateway decorator (task E13/F01/US01/T02)
     Contigo.Benchmark/           # IBenchmarkService.GetBenchmarkAsync + normalized Contracts DTOs (E04/F01/US01/T01); BenchmarkAdapterRegistry + AddBenchmarkModule (E04/F01/US01/T02); FixtureBenchmarkAdapter registered as the default IBenchmarkProviderAdapter, incl. statistical weak-comparable abstain (E04/F01/US02/T01+T02) — no host calls AddBenchmarkModule yet (R3)
-    Contigo.Suppliers.Products/  # scaffold (R1+)
-    Contigo.Market/               # R-MKT-01/02/03/04 mock feed + benchmark projection + in-memory notes retrieval (E13/F02/US01/T01); market_record/market_embedding pgvector index + ingestion job + DB-backed retrieval/benchmark + GET /api/market/records/{id} (not yet mapped) (E13/F02/US01/T02) — see "Market Intelligence" below
-    Contigo.Suppliers.Products/  # Supplier entity, SupplierNameNormalizer, ISupplierResolver/ISupplierNameLookup impls, SuppliersDbContext + RLS (task E13/F03/US01/T01, ADR-024; live) — see "Supplier identity" below
-    Contigo.Insights/             # criticality score, priced-line negotiation, strategy pack builder (E13/F07/US01/T01, ADR-024) — pure calculators fed by DTOs; AddInsightsModule() registers InsightsOptions + CriticalityScoreCalculator; no host maps InsightsEndpointExtensions.cs yet (F06/T01, phase 3) — see "Insights" below
-    Contigo.Market/               # scaffold (E13/F01/US01/T01, ADR-024) — feed/ingestion/index/benchmark-projection; AddMarketModule() wired into Contigo.Api by task E13/F06/US01/T01 (ask-engine)
-    Contigo.Insights/             # criticality score, priced-line negotiation, strategy pack builder (E13/F07/US01/T01, ADR-024) — pure calculators fed by DTOs; AddInsightsModule() registers InsightsOptions + CriticalityScoreCalculator; InsightsEndpointExtensions now mapped by task E13/F06/US01/T01 (ask-engine) — see "Insights" below
+    Contigo.Suppliers.Products/  # Supplier entity, SupplierNameNormalizer, ISupplierResolver/ISupplierNameLookup impls, SuppliersDbContext + RLS (task E13/F03/US01/T01, ADR-024; live) - see "Supplier identity" below
+    Contigo.Market/              # R-MKT-01/02/03/04 mock feed + benchmark projection + in-memory notes retrieval (E13/F02/US01/T01); market_record/market_embedding pgvector index + ingestion job + DB-backed retrieval/benchmark + GET /api/market/records/{id} (E13/F02/US01/T02, mapped by E13/F06/US01/T01) - see "Market Intelligence" below
+    Contigo.Insights/            # criticality score, priced-line negotiation, strategy pack builder (E13/F07/US01/T01, ADR-024) - pure calculators fed by DTOs; InsightsEndpointExtensions mapped by task E13/F06/US01/T01 (ask-engine) - see "Insights" below
     Contigo.Renewals/            # renewal engine + opportunity + explainable priority score + threshold scheduler + dashboard pipeline + action (R2; live) — see "Renewal Intelligence" below
     Contigo.Savings/             # price normalization + percentile/target/savings-range calculator (R3; task E04/F02/US01/T01) + persisted, trackable SavingsOpportunity + GET/PATCH /api/savings (task E04/F02/US02/T01) — see "Savings Intelligence" below
     Contigo.Quotes/              # quote upload + hybrid-OCR-reused, schema-constrained line-item extraction (evidence + confidence; deterministic pricing) + POST /api/quotes (R4; task E05/F01/US01/T01) + SKU/edition normalization against a per-tenant canonical mapping, unmatched-SKU flagging (task E05/F01/US02/T01) + benchmark matching/above-in-line-below market assessment + GET /api/quotes/{id}/assessment, AddBenchmarkModule now wired (task E05/F02/US01/T01) + deterministic recommended target range/potential saving on that same endpoint (task E05/F02/US01/T02) + deterministic negotiation strategy (opening target/acceptable range/walk-away threshold + seven canonical levers with rationale, NegotiationStrategyService, no HTTP endpoint yet) (task E05/F03/US01/T01) + NegotiationOutcome capture (original/target/final/deterministic saving+discount/duration/levers used) + POST /api/negotiations/outcomes, append-only/audit-tracked (task E05/F03/US02/T01) — see "Quote Check" / "Market Assessment" / "Negotiation Strategy" / "Negotiation Outcome" below
     Contigo.Chat/                # Ask Contigo structured-vs-semantic query router (R1, task E02/F04/US01/T01) + deterministic dates/spend query handlers (task E02/F04/US01/T02) + RagAnswerService (task E02/F04/US02/T01) + AbstainGuard no-fabrication guard (task E02/F04/US02/T02); AddChatModule wired into Contigo.Api by this last task; own ChatDbContext + Conversation/ConversationMessage under RLS + ConversationService (create/list/get/append) (task E13/F05/US01/T01) — see "Ask Contigo — conversations store" below
-  tests/                         # per-module + architecture + R0 integration
+  tests/                         # per-module + architecture + R0-R4 integration
 ```
 
 Hosts are composition roots only: they register modules via `AddXxxModule`
 and map HTTP / hosted services. Business logic lives in the libraries.
 
-**V2 scaffold (task E13/F01/US01/T01, ADR-024):** `Contigo.Market` and
-`Contigo.Insights` started as solution-only scaffolds — a class library, an
-`AddMarketModule()` / `AddInsightsModule()` stub that registered nothing,
-and a matching `Contigo.Market.Tests` / `Contigo.Insights.Tests` project
-with one placeholder test — added without also touching `Contigo.slnx` or
-the architecture allow-list. Task E13/F02/US01/T01 filled in `Contigo.Market`
-(see "Market Intelligence" below); `Contigo.Insights` (the deterministic
-strategy/criticality calculators) remains that same empty scaffold, still
-pending its own task. `Contigo.Suppliers.Products.Tests` and `Contigo.AiEval`
-(references `Contigo.Chat`, `Contigo.AiGateway`, `Contigo.SharedKernel` — a
-future golden-set eval harness, story us-01-v2-foundation) are this same
-scaffold task's other two new, still-empty test projects.
-`Contigo.ArchitectureTests.DependencyDirectionTests` allow-lists
-`Contigo.Market` → `[SharedKernel, AiGateway, Benchmark]` and
-`Contigo.Insights` are solution-only scaffolds — a class library, an
-`AddMarketModule()` / `AddInsightsModule()` stub that registers nothing
-yet, and a matching `Contigo.Market.Tests` / `Contigo.Insights.Tests`
-project with one placeholder test — for the epic-13 tasks that add the
-mock market feed / ingestion / shared `market_embedding` index / benchmark
-projection (`Contigo.Market`) and the deterministic strategy/criticality
-calculators (`Contigo.Insights`) to fill in without also touching
-`Contigo.slnx` or the architecture allow-list. `Contigo.AiEval` (references
-`Contigo.Chat`, `Contigo.AiGateway`, `Contigo.SharedKernel` — a future
-golden-set eval harness, story us-01-v2-foundation) is this same task's
-other new, still-empty test project. `Contigo.Suppliers.Products.Tests` was
-that task's third new, then-empty test project — task E13/F03/US01/T01
-(story us-01-supplier-identity) gave it real coverage; see "Supplier
-identity" below. `Contigo.ArchitectureTests.DependencyDirectionTests` now allow-
-**V2 scaffold (task E13/F01/US01/T01, ADR-024):** `Contigo.Market` is
-still a solution-only scaffold — a class library, an `AddMarketModule()`
-stub that registers nothing yet, and a matching `Contigo.Market.Tests`
-project with one placeholder test — for a later epic-13 task that adds the
-mock market feed / ingestion / shared `market_embedding` index / benchmark
-projection. `Contigo.Insights` (below, "Insights") is filled in by task
-E13/F07/US01/T01. `Contigo.Suppliers.Products.Tests`
-and `Contigo.AiEval` (references `Contigo.Chat`, `Contigo.AiGateway`,
-`Contigo.SharedKernel` — a future golden-set eval harness, story
-us-01-v2-foundation) are this same task's other two new, still-empty test
-projects. `Contigo.ArchitectureTests.DependencyDirectionTests` now allow-
-lists `Contigo.Market` → `[SharedKernel, AiGateway, Benchmark]` and
-`Contigo.Insights` → `[SharedKernel, Benchmark]` and covers both in its
-domain-module direction/provider-SDK theories.
+**V2 scaffold (task E13/F01/US01/T01, ADR-024).** `Contigo.Market` and
+`Contigo.Insights` entered the solution as scaffolds — a class library, an
+`AddMarketModule()` / `AddInsightsModule()` stub that registered nothing, and
+a matching test project with one placeholder test — so the epic-13 tasks that
+fill them in would not also have to touch `Contigo.slnx` or the architecture
+allow-list. Both are now real: `Contigo.Market` by tasks E13/F02/US01/T01+T02
+(see "Market Intelligence" below), `Contigo.Insights` by task E13/F07/US01/T01
+(see "Insights"). `Contigo.Suppliers.Products.Tests` was that scaffold task's
+third new test project and got real coverage from task E13/F03/US01/T01 (see
+"Supplier identity"). `Contigo.AiEval` (references `Contigo.Chat`,
+`Contigo.AiGateway`, `Contigo.SharedKernel` — the golden-set eval harness of
+story us-01-v2-foundation) is the one still-placeholder project, pending task
+E13/F06/US01/T02. `Contigo.ArchitectureTests.DependencyDirectionTests`
+allow-lists `Contigo.Market` → `[SharedKernel, AiGateway, Benchmark]` and
+`Contigo.Insights` → `[SharedKernel, Benchmark]`, and covers both in its
+domain-module direction / provider-SDK theories.
+
+*(This section previously carried three interleaved copies of the project tree
+and of this paragraph — one truncated mid-sentence — merged in by the epic-13
+wave's phase barriers. Reconciled by task E13/F04/US01/T01 against the actual
+`Contigo.slnx` and `DependencyDirectionTests` allow-list.)*
 
 ## Commands
 
@@ -194,8 +162,8 @@ that a second apply does not duplicate rows.
 | GET | `/health` | ASP.NET health checks |
 | POST | `/api/workspaces` | create workspace |
 | POST | `/api/workspaces/{tenantId}/invites` | invite; roles Admin / Procurement / Legal / Finance / ReadOnly |
-| POST | `/api/documents` | multipart `file` + `X-Tenant-Id` header; also runs `DocumentProcessingPipeline` (classify → hybrid parse → staged extraction → RAG indexing) synchronously before responding (task E02/F06/US01/T01, r1-integration) — response `processingStatus`/`contractId` reflect that run's outcome, not just the initial "Uploaded" write |
-| GET | `/api/documents/{id}` | metadata/status; same header |
+| POST | `/api/documents` | multipart `file` + `X-Tenant-Id` header (optional `X-User-Id` names the actor of a rejection audit row). Task E13/F04/US01/T01 (documents-admission, ADR-024 “gate before persistence”) reordered this endpoint: size → **413**, format by extension *and* magic bytes → **415**, admission gate (parse/OCR → readable-text floor → `classify`) → **422** `{ rejected, detectedType, confidence, reason, hint }` with **nothing persisted** and one `document.rejected` audit row; only an admitted document is stored and then processed. Still runs `DocumentProcessingPipeline` (staged extraction → RAG indexing) synchronously before responding (task E02/F06/US01/T01, r1-integration) — reusing the gate's own parse and classification, so the `classify` role is called once per upload — and the response `processingStatus`/`contractId` reflect that run's outcome, not just the initial “Uploaded” write. See “Documents — admission gate” below |
+| GET | `/api/documents/{id}` | metadata/status; same header; `documentType` is the widened `ContractDocumentType` (`Msa`, `OrderForm`, `Amendment`, `Sow`, `RenewalLetter`, `Quote`, `Invoice`, `PriceList`, `Nda`, `Dpa`, `Other`) — task E13/F04/US01/T01 added the last five so “the documents around a contract” keep their own kind |
 | PATCH | `/api/contracts/{id}` | `{ corrections: { <field>: <string\|null> }, reason? }` + `X-Tenant-Id` header; versioned correction (ADR-003 `ContractVersion`/`CorrectionHistory`, ADR-009 RLS) — see `Contigo.Documents.Contracts.Application.ContractCorrectionService.CorrectableFieldNames` for the accepted field list; also writes one `IAuditWriter` entry (`contract.corrected`) |
 | GET | `/api/contracts/{id}/corrections` | `X-Tenant-Id` header; field-level correction history for one contract, newest first (`Contigo.Documents.Contracts.Application.ContractCorrectionHistoryQueryService`) — 404 if the contract does not exist for the tenant, `[]` if it exists but was never corrected |
 | GET | `/api/audit` | tenant-scoped; expects a claims principal (integration tests inject one) |
@@ -242,6 +210,66 @@ subject the same task that lands the API JWT on this host.
 The web client generates TypeScript types from
 `web/openapi/contigo-api.v1.json`. The API does **not** yet self-publish
 OpenAPI; that document is hand-authored and must grow with these routes.
+
+## Documents — admission gate (task E13/F04/US01/T01)
+
+`POST /api/documents` refuses anything that is not a contract-related
+document **before** it writes a blob, a `document` row, an `embedding` or an
+extraction job (ADR-024 “gate before persistence”, `inputs/requirements.md`
+R-DOC-01/02/03). The endpoint lives in
+`Contigo.Api.DocumentsEndpointExtensions`; the decision itself is
+`Contigo.Documents.Contracts.Application.Admission.DocumentAdmissionGate`.
+
+Order of checks, and what each one returns:
+
+| Step | Failure | Body |
+|------|---------|------|
+| tenant header, multipart shape, non-empty `file` | 400 | plain string |
+| `file.Length` ≤ `Documents:MaxFileBytes` | 413 | `Contigo accepts files up to 50 MB. This file is larger.` |
+| extension **and** magic bytes agree (`DocumentFormatSniffer`) | 415 | `Contigo reads PDF, Word, Excel and scanned images` |
+| readable text ≥ `Documents:MinReadableChars` | 422 | `{ rejected: true, detectedType, confidence: 0, reason: "no_readable_text", hint }` |
+| `classify` role returns a contract kind with confidence ≥ `Documents:AdmissionThreshold` | 422 | `{ rejected: true, detectedType, confidence, reason: "not_a_contract", hint }` |
+
+Accepted formats are exactly PDF, DOCX, XLSX, PNG and JPEG — checked by
+extension *and* signature, so a `.zip` renamed `.pdf` is a 415 that never
+reaches the AI gateway, and a PNG renamed `.pdf` is refused rather than
+silently re-labelled. What gets stored as `mimeType` is the **sniffed**
+canonical type, never the browser's declared `Content-Type`.
+
+A rejection persists nothing and writes exactly one audit row:
+`document.rejected`, `resourceType` `document-upload`, `resourceId` = the
+SHA-256 of the uploaded bytes, `detail` = `{ detectedType, confidence, reason,
+readableChars, bytes, mimeType }` — never the file name, never any document
+text (ADR-011). A parse/OCR or `classify` failure is **not** a rejection: it
+returns 400 with the underlying error, because “we could not read it” is not
+“it is not a contract”, and it leaves no audit row.
+
+An admitted document is uploaded, then processed by
+`DocumentProcessingPipeline`'s pages-and-classification overload, so the
+gate's own parse and `classify` result are reused instead of being computed a
+second time.
+
+Thresholds are configuration (defaults in `DocumentAdmissionOptions`, applied
+when the section is absent):
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `Documents:MaxFileBytes` | `52428800` (50 MiB) | larger uploads get 413 |
+| `Documents:MinReadableChars` | `200` | non-whitespace characters across all parsed pages |
+| `Documents:AdmissionThreshold` | `0.6` | minimum `classify` confidence for an admitted type |
+
+Admitted types are MSA, Order Form, SOW, Amendment, Quote, Invoice, Price
+list, NDA and DPA (`ContractDocumentType` gained the last five in this task).
+`Other` is never admitted, so no `document` row is stored with it any more.
+`RenewalLetter` remains reachable only by correction — nothing in the classify
+taxonomy names it.
+
+With the fixture gateway (no Foundry endpoint configured, ADR-004/ADR-017)
+the gate is fully testable: a recipe PDF classifies as `Other` and is
+rejected, a document containing “MASTER SERVICES AGREEMENT” is admitted as
+`Msa`, and a PNG/JPEG whose bytes are the signature followed by UTF-8 page
+text takes the `ocr` path — see `Contigo.Api.Tests.DocumentUploadEndpointTests`
+and `Contigo.Documents.Contracts.Tests.Admission`.
 
 ## Worker
 
@@ -1203,6 +1231,10 @@ API=https://<api-host>
 TENANT=$(curl -s -X POST "$API/api/workspaces" -H 'Content-Type: application/json' \
   -d '{"name":"Smoke Test Co"}' | jq -r .id)
 
+# 201 only for an admitted contract-related document: a non-contract PDF
+# gets 422 (reason not_a_contract | no_readable_text), an unsupported or
+# mismatched format 415, a file over Documents:MaxFileBytes 413 -- see
+# "Documents -- admission gate" above.
 DOC=$(curl -s -X POST "$API/api/documents" -H "X-Tenant-Id: $TENANT" \
   -F "file=@contract.pdf;type=application/pdf" | jq -r .id)
 
