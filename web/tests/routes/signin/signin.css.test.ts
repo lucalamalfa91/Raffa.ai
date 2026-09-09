@@ -37,11 +37,14 @@ describe("signin.css (E11/F02/US01/T01 -- 1:1 fill/grid/type vs day1-demo.html)"
     expect(body).toMatch(/justify-content:\s*space-between/);
   });
 
-  it("types the north-star at clamp(30px, 3.8vw, 52px) (gap G-S1-TYPE)", () => {
+  it("types the V2 north star at clamp(40px, 5vw, 76px)", () => {
+    // contigo-v2/markup.html: font-size:clamp(40px,5vw,76px);line-height:.98;
+    // letter-spacing:-.03em -- the V1 export's 30/3.8vw/52px scale no longer
+    // applies, the statement is three stacked lines now.
     const body = ruleBodyFor(css, ".signin-north-star");
-    expect(body).toMatch(/font-size:\s*clamp\(30px,\s*3\.8vw,\s*52px\)/);
-    expect(body).toMatch(/line-height:\s*1\.02/);
-    expect(body).toMatch(/letter-spacing:\s*-0\.02em/);
+    expect(body).toMatch(/font-size:\s*clamp\(40px,\s*5vw,\s*76px\)/);
+    expect(body).toMatch(/line-height:\s*0\.98/);
+    expect(body).toMatch(/letter-spacing:\s*-0\.03em/);
   });
 
   it("caps the right column at 520px (gap G-S1-RIGHT)", () => {

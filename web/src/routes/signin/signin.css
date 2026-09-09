@@ -77,14 +77,24 @@
   background: var(--color-accent);
 }
 
+.signin-statement-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-7);
+  min-width: 0;
+}
+
+/* V2 north star: three lines, the middle one in accent, stacked and tightly
+   tracked -- `contigo-v2/markup.html` (font-size clamp(40px,5vw,76px),
+   line-height .98, letter-spacing -.03em). */
 .signin-north-star {
-  max-width: 560px;
+  display: flex;
+  flex-direction: column;
   font-family: var(--font-heading);
-  font-size: clamp(30px, 3.8vw, 52px);
+  font-size: clamp(40px, 5vw, 76px);
   font-weight: var(--weight-heading);
-  line-height: 1.02;
-  letter-spacing: -0.02em;
-  text-wrap: pretty;
+  line-height: 0.98;
+  letter-spacing: -0.03em;
   margin: 0;
 }
 
@@ -92,37 +102,53 @@
   color: var(--color-accent);
 }
 
-.signin-jobs {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-  gap: var(--space-3) 0;
-  border-top: 2px solid var(--color-divider);
-  margin: var(--space-6) 0 0;
-  padding-top: var(--space-3);
-  max-width: 560px;
+/* "One platform, four answers": a kicker rule over four rows, each pairing a
+   capability with the question it answers, right-aligned and muted. */
+.signin-answers {
+  display: flex;
+  flex-direction: column;
+  max-width: 440px;
+  margin: 0;
 }
 
-.signin-job {
-  padding-right: var(--space-3);
-  border-right: 1px solid var(--color-divider);
-}
-
-.signin-job:last-child {
-  border-right: 0;
-}
-
-.signin-job dt {
+.signin-answers-kicker {
   font-size: 11px;
   letter-spacing: var(--tracking-kicker);
   text-transform: uppercase;
+  color: var(--color-accent);
+  padding-bottom: var(--space-2);
+  border-bottom: 2px solid var(--color-text);
+}
+
+.signin-answer {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.signin-answer:last-child {
+  border-bottom: 0;
+}
+
+.signin-answer dt {
+  font-family: var(--font-heading);
+  font-weight: var(--weight-heading);
+  font-size: 15px;
+}
+
+.signin-answer dd {
+  margin: 0;
+  font-size: 12px;
   color: var(--color-neutral-600);
 }
 
-.signin-job dd {
+.signin-statement-footer {
   margin: 0;
-  font-family: var(--font-heading);
-  font-weight: var(--weight-heading);
-  font-size: 14px;
+  font-size: 12px;
+  color: var(--color-neutral-600);
 }
 
 .signin-action {

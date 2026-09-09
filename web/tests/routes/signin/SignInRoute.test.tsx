@@ -128,7 +128,7 @@ describe("SignInRoute (sign-in -> workspace list)", () => {
       inProgress: InteractionStatus.HandleRedirect,
     });
     rerender(<SignInRoute appConfig={appConfig} apiClient={apiClient} />);
-    expect(screen.getByRole("button", { name: /redirecting to microsoft entra id/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /redirecting to login\.microsoftonline\.com/i })).toBeDisabled();
 
     // Stage 3: signed in -- the workspace picker takes over.
     useMsalMock.mockReturnValue({

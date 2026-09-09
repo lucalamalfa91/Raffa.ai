@@ -19,31 +19,36 @@ describe("SignInScreen", () => {
     await userEvent.click(screen.getByRole("button", { name: /continue with microsoft entra id/i }));
 
     expect(onContinue).toHaveBeenCalledTimes(1);
-    const button = screen.getByRole("button", { name: /redirecting to microsoft entra id/i });
+    const button = screen.getByRole("button", { name: /redirecting to login\.microsoftonline\.com/i });
     expect(button).toBeDisabled();
   });
 
   it("renders the redirecting state up front when MSAL already has an interaction in flight", () => {
     render(<SignInScreen onContinue={vi.fn()} interactionInFlight={true} />);
 
-    expect(screen.getByRole("button", { name: /redirecting to microsoft entra id/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /redirecting to login\.microsoftonline\.com/i })).toBeDisabled();
     expect(screen.queryByRole("button", { name: /^continue with microsoft entra id$/i })).not.toBeInTheDocument();
   });
 
-  it("renders the north-star statement and the four V1 job cells", () => {
+  it("renders the V2 three-line north star and the four answers", () => {
     render(<SignInScreen onContinue={vi.fn()} interactionInFlight={false} />);
 
-    expect(screen.getByText(/what we bought/i)).toBeInTheDocument();
-    expect(screen.getByText(/where we can save money/i)).toBeInTheDocument();
-    expect(screen.getByText("Contract")).toBeInTheDocument();
-    expect(screen.getByText("Renewal")).toBeInTheDocument();
-    expect(screen.getByText("Savings")).toBeInTheDocument();
-    expect(screen.getByText("New purchase")).toBeInTheDocument();
-    // Task E11/F02/US01/T01 (gap G-S1-JOBS): Contract, Renewal, and Savings
-    // all pair with the *same* bold word "Intelligence" in the compiled
-    // export -- three cells, not one, now render it.
-    expect(screen.getAllByText("Intelligence")).toHaveLength(3);
+    // contigo-v2/markup.html: three stacked lines, the middle one in accent.
+    expect(screen.getByText("Your contracts.")).toBeInTheDocument();
+    expect(screen.getByText("Your savings.")).toHaveClass("signin-accent");
+    expect(screen.getByText("Nothing missed.")).toBeInTheDocument();
+
+    expect(screen.getByText("One platform, four answers")).toBeInTheDocument();
+    expect(screen.getByText("Contract Intelligence")).toBeInTheDocument();
+    expect(screen.getByText("What you bought")).toBeInTheDocument();
+    expect(screen.getByText("Renewal Intelligence")).toBeInTheDocument();
+    expect(screen.getByText("When to act")).toBeInTheDocument();
+    expect(screen.getByText("Savings Intelligence")).toBeInTheDocument();
+    expect(screen.getByText("Where to save")).toBeInTheDocument();
     expect(screen.getByText("Quote Check")).toBeInTheDocument();
+    expect(screen.getByText("Before you buy")).toBeInTheDocument();
+
+    expect(screen.getByText("Contract intelligence for procurement teams.")).toBeInTheDocument();
   });
 
   it("tells a not-yet-provisioned user to ask their Workspace Admin", () => {
@@ -72,10 +77,9 @@ describe("SignInScreen", () => {
   it("shows the muted Entra sign-in sentence under the heading", () => {
     render(<SignInScreen onContinue={vi.fn()} interactionInFlight={false} />);
 
+    // contigo-v2/markup.html, verbatim.
     expect(
-      screen.getByText(
-        /use your organisation account\. contigo never stores your password.*microsoft entra id/i,
-      ),
+      screen.getByText(/your organisation account\. contigo never stores a password\./i),
     ).toBeInTheDocument();
   });
 
