@@ -1,4 +1,5 @@
 using Contigo.Chat.Application;
+using Contigo.Chat.Application.Capabilities;
 using Contigo.Chat.Application.Conversations;
 using Contigo.SharedKernel;
 using Contigo.SharedKernel.Tenancy;
@@ -51,6 +52,12 @@ namespace Contigo.Chat.Infrastructure;
 /// configuration. Task T02 is the first caller that passes one, from `Contigo.Api.Program`
 /// (`ConnectionStrings:Chat`, this story's own council-decided key) — this task deliberately does
 /// not touch `Program.cs` itself (see the task's own "Do not touch" list).
+///
+/// Task E13/F08/US01/T01 (story us-01-capability-catalog) adds <see cref="CapabilityRouting"/> —
+/// the phase-2 writer of this file, per that story's own dependency row ("`AddChatModule` file
+/// ownership order (T01 phase 1 → this phase 2)"). Registered unconditionally (like the query
+/// router/RAG services above, not gated on <paramref name="chatConnectionString"/>): it needs no
+/// database, only the static <see cref="CapabilityCatalog"/> it calls directly.
 /// </summary>
 public static class ServiceCollectionExtensions
 {
@@ -69,6 +76,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<DeterministicQueryHandler>();
         services.AddScoped<AbstainGuard>();
         services.AddScoped<RagAnswerService>();
+        services.AddScoped<CapabilityRouting>();
 
         if (chatConnectionString is not null)
         {
