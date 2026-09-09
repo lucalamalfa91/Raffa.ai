@@ -223,3 +223,44 @@ run in the meantime -- this Terraform still exists so `demo` is not
   `foundry_ai_services_resource_id` on both HCP workspaces. See "AI
   Gateway / Foundry + Document Intelligence" above for the operator
   follow-up step.
+
+## Known gaps — Ask Contigo V2 (epic-13, ADR-024)
+
+Recorded by task E13/F11/US01/T01 (`v2-integration`) while wiring the V2
+operator jobs and acceptance runbook. Terraform changes are outside that task's
+file scope; these are findings, not fixes.
+
+- **`ConnectionStrings__Suppliers` is missing from the API Container App —
+  blocks the first V2 deploy.** `backend/src/Contigo.Api/Program.cs` reads
+  `ConnectionStrings:Suppliers` and throws at startup without it (task
+  E13/F06/US01/T01 wired `AddSuppliersProductsModule`), but
+  `modules/containerapps/main.tf` only injects `IdentityWorkspace`,
+  `DocumentsContracts`, `Audit`, `Renewals`, `Savings`, `Quotes`, `Chat` and
+  `Storage`. Add the same `secret_name = "pg-cs"` env block its neighbours
+  already use — Suppliers is a separate schema on the same server (ADR-003),
+  not a separate database. This is the identical shape as the
+  `ConnectionStrings__Savings` / `__Quotes` gap that module's own comment
+  already records for an earlier wave.
+- **`ConnectionStrings__Market` is intentionally absent, and that has a
+  consequence.** `Contigo.Api/Program.cs` calls `AddMarketModule()` with no
+  connection string, so the API keeps the module's in-memory mock projection
+  and never reads the `market_record` / `market_embedding` rows
+  `.github/workflows/seed-market-intelligence.yml` writes. Ingesting the feed
+  is still the right pre-step (it is what R-MKT-03 specifies and what a live
+  provider will feed), but "the deployed API serves the seeded corpus" is not
+  yet true. Wiring it is an API composition change plus one env block here.
+- **The two new V2 operator workflows need no new Azure grant.**
+  `seed-market-intelligence.yml` and `reprocess-tenant-documents.yml` reuse the
+  per-environment OIDC deploy principal (`contigo-sp-<env>`) that already holds
+  `Key Vault Secrets User` on that vault via
+  `modules/keyvault`'s `azurerm_role_assignment.ci_secrets_user`, and they read
+  the same `postgres-connection` secret `backend.yml` and
+  `seed-demo-fixture.yml` already read. No secret was added, so no
+  `modules/keyvault` change is required for them.
+- **`reprocess-tenant-documents.yml` depends on public API ingress.** It calls
+  `POST /api/documents/{id}/reprocess` on `ca-contigo-<env>-api` from a GitHub
+  runner, resolving the FQDN exactly as `web.yml` already does for the SPA's
+  `config.json`. If `modules/containerapps` ever moves the API behind a private
+  endpoint or an IP allow-list, that workflow needs a `backend/scripts/`
+  database-side helper instead — its own header comment records why the API was
+  the right tool while ingress stays public.

@@ -1,0 +1,404 @@
+name: reprocess-tenant-documents
+
+# Task E13/F11/US01/T01 (v2-integration), `inputs/requirements.md` R-DOC-07
+# ("A reprocess path (API POST /api/documents/{id}/reprocess, Admin, plus an
+# operator job for the whole tenant) re-runs hybrid parse and embedding so
+# `chunk_text` is readable text with page numbers. Existing dev/demo documents
+# are reprocessed before V2 acceptance"; AC-1 "After reprocess, no embedding
+# row for the tenant starts with `%PDF`") and R-SUP-03 (supplier back-fill).
+# Parent story us-01-integration AC-2. ADR-011 (deploy identity, no stored
+# secrets), ADR-015 (OIDC), ADR-021 (schema by CI), ADR-022 (explicit operator
+# jobs, never a side effect of a push), ADR-009 (tenant scope is never
+# widened -- every call below carries exactly one `X-Tenant-Id`).
+#
+# ## Why the API and not a `backend/scripts/reprocess_tenant.py` helper
+#
+# The parent story allows either ("the reprocess job calls the API ... or a
+# `backend/scripts/` Python helper when the API is not the right tool"). This
+# workflow calls the **API**, because:
+#
+#   1. The API host is reachable from a GitHub runner. `ca-contigo-<env>-api`
+#      has public ingress -- `.github/workflows/web.yml` already resolves that
+#      exact FQDN with `az resource show` and bakes it into the SPA's
+#      `config.json` as `apiBaseUrl`. There is no private-link / VNet gate to
+#      work around, so the "API host is not reachable from CI" branch the task
+#      allows for simply does not apply here.
+#   2. `POST /api/documents/{id}/reprocess` *is* the R-DOC-07 seam: it re-runs
+#      the real `DocumentProcessingPipeline` (load -> hybrid parse/OCR ->
+#      page-aware re-embed -> supplier resolution) and writes the
+#      `document.reprocessed` audit row. A Python helper would have to
+#      re-implement that pipeline against the database and would drift from it
+#      the first time the pipeline changes -- and it could not write the audit
+#      trail the same way.
+#
+# `psql` is still used, but only *after* the fact, to verify the outcome the
+# API cannot report about itself (R-DOC-07 AC-1's "no embedding starts with
+# %PDF", and the supplier back-fill report).
+#
+# ## Role posture (interim, ADR-022)
+#
+# Reprocess is Admin-only (R-DOC-07 / R-DOC-10) and no host authentication is
+# wired yet, so the caller's role is carried as a header. Two spellings are in
+# flight in this codebase -- `X-Role` (`Contigo.Api.CapabilitiesEndpointExtensions`,
+# parsed by `WorkspaceRoleClaimResolver`) and `X-Workspace-Role` (the documented
+# posture for the admin-gated document endpoints, `web/openapi/contigo-api.v1.json`
+# `deleteDocument`/`reprocessDocument`) -- and neither is a declared parameter
+# of the operation yet. This workflow sends **both**, with the same value; a
+# 403 is surfaced as a named error rather than a silent skip. When ADR-010's
+# API JWT lands, both headers go away together with `X-Tenant-Id`.
+on:
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: >-
+          GitHub Environment (and Postgres database, contigo_<env>) whose
+          tenant is reprocessed.
+        required: true
+        type: choice
+        options: [dev, demo]
+        default: dev
+      tenant_id:
+        description: >-
+          The workspace/tenant UUID whose documents are re-OCR'd and
+          re-embedded (the same value the SPA sends as X-Tenant-Id). The
+          ADR-022 demo fixture tenant is
+          00000000-0000-0000-0000-000000000001.
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      target_environment:
+        description: 'GitHub Environment (and Postgres database) to reprocess in: "dev" or "demo".'
+        required: false
+        type: string
+        default: dev
+      tenant_id:
+        description: "The workspace/tenant UUID whose documents are reprocessed."
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  # Never two reprocess passes over the same tenant at once: they would race on
+  # the same embedding rows and make the %PDF verification below meaningless.
+  group: reprocess-tenant-documents-${{ inputs.target_environment }}-${{ inputs.tenant_id }}
+  cancel-in-progress: false
+
+env:
+  TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
+  TENANT_ID: ${{ inputs.tenant_id }}
+  # Audit actor for the `document.reprocessed` rows this run writes. Not an
+  # identity claim (ADR-022: X-User-Id is non-authoritative) -- it is the
+  # honest provenance string an operator reading the audit trail needs.
+  OPERATOR_USER_ID: github-actions/reprocess-tenant-documents
+
+jobs:
+  reprocess:
+    name: reprocess tenant documents (${{ inputs.target_environment }})
+    runs-on: ubuntu-latest
+    # Same GitHub Environment backend.yml's deploy job uses, so `demo`'s
+    # required reviewers (ADR-014 / ADR-016) gate this exactly like a deploy --
+    # this job rewrites real tenant evidence, it is not a read-only report.
+    environment: ${{ inputs.target_environment }}
+    permissions:
+      id-token: write # required so GitHub issues the OIDC token azure/login exchanges
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate tenant id
+        run: |
+          set -euo pipefail
+          if ! printf '%s' "$TENANT_ID" | grep -Eiq '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'; then
+            echo "::error::tenant_id '$TENANT_ID' is not a UUID. Pass the workspace id the SPA sends as X-Tenant-Id."
+            exit 1
+          fi
+
+      # OIDC auth (ADR-015): the same per-env least-privilege deploy service
+      # principal backend.yml / seed-demo-fixture.yml already use. It is used
+      # here to *resolve* the API ingress FQDN and read the Key Vault Postgres
+      # secret -- the API calls themselves are the ADR-022 header posture, not
+      # an Azure-authenticated call.
+      - name: Azure login (OIDC)
+        uses: ./.github/actions/azure-login
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Ensure containerapp CLI extension
+        run: az extension add --name containerapp --upgrade -y
+
+      - name: Resolve resource group
+        run: echo "RESOURCE_GROUP=rg-contigo-${TARGET_ENVIRONMENT}" >> "$GITHUB_ENV"
+
+      # Same two-step resolution web.yml uses for the SPA's apiBaseUrl (az
+      # resource show keeps the ARM shape; az containerapp show flattens some
+      # fields), so both dev and demo resolve identically.
+      - name: Resolve API base URL
+        run: |
+          set -euo pipefail
+          API_NAME="ca-contigo-${TARGET_ENVIRONMENT}-api"
+          HCP_RUNS="https://app.terraform.io/app/contigo-platform/workspaces/contigo-${TARGET_ENVIRONMENT}/runs"
+          API_FQDN=$(az resource show --resource-group "$RESOURCE_GROUP" --name "$API_NAME" \
+            --resource-type Microsoft.App/containerApps \
+            --query "properties.configuration.ingress.fqdn || properties.latestRevisionFqdn" -o tsv | tr -d '\r')
+          if [ -z "$API_FQDN" ]; then
+            API_FQDN=$(az containerapp show --name "$API_NAME" --resource-group "$RESOURCE_GROUP" \
+              --query "properties.configuration.ingress.fqdn || configuration.ingress.fqdn || properties.latestRevisionFqdn || latestRevisionFqdn" -o tsv | tr -d '\r')
+          fi
+          if [ -z "$API_FQDN" ]; then
+            echo "::error::could not resolve ingress FQDN for $API_NAME in $RESOURCE_GROUP. Confirm the HCP VCS apply at $HCP_RUNS and that backend.yml has deployed this environment, then re-run this job."
+            exit 1
+          fi
+          echo "API_BASE_URL=https://${API_FQDN}" >> "$GITHUB_ENV"
+          echo "Resolved API: https://${API_FQDN}"
+
+      # Whether this environment answers with a real Foundry gateway or the
+      # fixture one decides how strict the OCR-placeholder check at the end can
+      # be (R-AI-01: FoundryAiGateway is registered only when AiGateway:Endpoint
+      # is set; the fixture writes an honest `[fixture-ocr: N bytes ...]`
+      # placeholder for pages it cannot read).
+      - name: Detect the AI gateway this environment runs
+        run: |
+          set -euo pipefail
+          API_NAME="ca-contigo-${TARGET_ENVIRONMENT}-api"
+          ENDPOINT=$(az containerapp show --name "$API_NAME" --resource-group "$RESOURCE_GROUP" \
+            --query "properties.template.containers[0].env[?name=='AiGateway__Endpoint'].value | [0]" -o tsv 2>/dev/null | tr -d '\r' || true)
+          if [ -n "$ENDPOINT" ] && [ "$ENDPOINT" != "None" ]; then
+            echo "LIVE_FOUNDRY=1" >> "$GITHUB_ENV"
+            echo "AiGateway__Endpoint is set on $API_NAME -- OCR placeholders will be treated as a failure."
+          else
+            echo "LIVE_FOUNDRY=0" >> "$GITHUB_ENV"
+            echo "::notice::AiGateway__Endpoint is not set on $API_NAME: this environment runs the fixture gateway (ADR-004 / R-AI-01), so scanned pages re-embed as the honest '[fixture-ocr: ...]' placeholder. That is reported below, not failed."
+          fi
+
+      - name: Health check the API
+        run: |
+          set -euo pipefail
+          STATUS=$(curl -sS -o /tmp/health.json -w '%{http_code}' --max-time 30 "${API_BASE_URL}/health" || true)
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::${API_BASE_URL}/health returned HTTP ${STATUS:-<none>}. Deploy this environment (backend.yml) before reprocessing."
+            cat /tmp/health.json 2>/dev/null || true
+            exit 1
+          fi
+          echo "API healthy."
+
+      # GET /api/documents (R-DOC-06, web/openapi/contigo-api.v1.json
+      # `listDocuments`): tenant-scoped, paged, newest-first, `pageSize` capped
+      # at 100 by the same convention GET /api/contracts documents. No `status`
+      # filter -- R-DOC-07's operator job re-processes *every* document of the
+      # tenant, not only the ones currently needing attention.
+      - name: List the tenant's documents (GET /api/documents)
+        run: |
+          set -euo pipefail
+          PAGE=1
+          PAGE_SIZE=100
+          : > /tmp/document-ids.txt
+          : > /tmp/document-index.tsv
+          while : ; do
+            STATUS=$(curl -sS -o /tmp/documents.json -w '%{http_code}' --max-time 60 \
+              -H "X-Tenant-Id: ${TENANT_ID}" \
+              -H "X-User-Id: ${OPERATOR_USER_ID}" \
+              -H "X-Role: Admin" \
+              -H "X-Workspace-Role: Admin" \
+              "${API_BASE_URL}/api/documents?page=${PAGE}&pageSize=${PAGE_SIZE}")
+            if [ "$STATUS" != "200" ]; then
+              echo "::error::GET /api/documents?page=${PAGE} returned HTTP ${STATUS}. Body: $(head -c 500 /tmp/documents.json)"
+              exit 1
+            fi
+            COUNT=$(jq -r '(.items // []) | length' /tmp/documents.json)
+            TOTAL=$(jq -r '.totalCount // 0' /tmp/documents.json)
+            jq -r '.items[].id' /tmp/documents.json >> /tmp/document-ids.txt
+            jq -r '.items[] | [.id, .fileName, .documentType, .processingStatus, (.supplierName // "-")] | @tsv' /tmp/documents.json >> /tmp/document-index.tsv
+            SEEN=$(wc -l < /tmp/document-ids.txt)
+            if [ "$COUNT" -eq 0 ] || [ "$SEEN" -ge "$TOTAL" ]; then
+              break
+            fi
+            PAGE=$((PAGE + 1))
+            if [ "$PAGE" -gt 200 ]; then
+              echo "::error::stopped after 200 pages of GET /api/documents -- refusing to loop forever."
+              exit 1
+            fi
+          done
+          TOTAL_DOCS=$(wc -l < /tmp/document-ids.txt)
+          echo "DOCUMENT_COUNT=$TOTAL_DOCS" >> "$GITHUB_ENV"
+          echo "::group::documents of tenant ${TENANT_ID} (id / file / type / status / supplier)"
+          cat /tmp/document-index.tsv
+          echo "::endgroup::"
+          if [ "$TOTAL_DOCS" -eq 0 ]; then
+            echo "::warning::tenant ${TENANT_ID} has no documents in contigo_${TARGET_ENVIRONMENT} -- nothing to reprocess. Check the tenant id."
+          fi
+          echo "Found $TOTAL_DOCS document(s)."
+
+      # POST /api/documents/{id}/reprocess per document (R-DOC-07,
+      # web/openapi/contigo-api.v1.json `reprocessDocument`): 200 with
+      # {documentId, contractId, documentType, processingStatus, pagesParsed,
+      # chunksIndexed}, 403 if the caller is not Admin, 404 if the id is not
+      # this tenant's. One document's failure never hides the others
+      # (R-DOC-01 AC-2's spirit): every id is attempted, then the job fails at
+      # the end if any did not return 200.
+      - name: Reprocess every document (POST /api/documents/{id}/reprocess)
+        run: |
+          set -euo pipefail
+          OK=0
+          FAILED=0
+          PAGES=0
+          CHUNKS=0
+          while read -r DOC_ID; do
+            [ -n "$DOC_ID" ] || continue
+            STATUS=$(curl -sS -o /tmp/reprocess.json -w '%{http_code}' --max-time 600 \
+              -X POST \
+              -H "X-Tenant-Id: ${TENANT_ID}" \
+              -H "X-User-Id: ${OPERATOR_USER_ID}" \
+              -H "X-Role: Admin" \
+              -H "X-Workspace-Role: Admin" \
+              -H "Content-Length: 0" \
+              "${API_BASE_URL}/api/documents/${DOC_ID}/reprocess" || echo "000")
+            case "$STATUS" in
+              200)
+                # Defensive `|| echo`: a 200 with an unexpected body is worth
+                # reporting, never worth aborting the remaining documents.
+                DOC_PAGES=$(jq -r '.pagesParsed // 0' /tmp/reprocess.json 2>/dev/null || echo 0)
+                DOC_CHUNKS=$(jq -r '.chunksIndexed // 0' /tmp/reprocess.json 2>/dev/null || echo 0)
+                PAGES=$((PAGES + DOC_PAGES))
+                CHUNKS=$((CHUNKS + DOC_CHUNKS))
+                OK=$((OK + 1))
+                DETAIL=$(jq -rc '{documentType, processingStatus, pagesParsed, chunksIndexed}' /tmp/reprocess.json 2>/dev/null || head -c 200 /tmp/reprocess.json)
+                echo "  ok   ${DOC_ID}: ${DETAIL}"
+                ;;
+              403)
+                FAILED=$((FAILED + 1))
+                echo "::error::403 on ${DOC_ID}: the API did not accept this run as a Workspace Admin. See this file's 'Role posture' header comment -- both X-Workspace-Role and X-Role are sent as 'Admin'; if ADR-010's API JWT has landed, this job needs a token instead of headers."
+                ;;
+              404)
+                FAILED=$((FAILED + 1))
+                echo "::error::404 on ${DOC_ID}: GET /api/documents listed it for tenant ${TENANT_ID} but reprocess says it does not exist -- inconsistent tenant scoping, do not ignore."
+                ;;
+              *)
+                FAILED=$((FAILED + 1))
+                echo "::error::HTTP ${STATUS} on ${DOC_ID}. Body: $(head -c 500 /tmp/reprocess.json)"
+                ;;
+            esac
+          done < /tmp/document-ids.txt
+          echo "Reprocessed $OK document(s): $PAGES page(s) parsed, $CHUNKS chunk(s) indexed. $FAILED failure(s)."
+          if [ "$FAILED" -gt 0 ]; then
+            echo "::error::$FAILED document(s) failed to reprocess -- the verification below would report a half-migrated tenant. Fix the cause and re-run; the endpoint is idempotent."
+            exit 1
+          fi
+
+      - name: Install postgresql-client
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends postgresql-client
+          fi
+
+      # Identical fetch to backend.yml / seed-demo-fixture.yml -- same secret,
+      # same translation script, same masking.
+      - name: Fetch Postgres connection string (ADR-021)
+        run: |
+          set -euo pipefail
+          HCP_RUNS="https://app.terraform.io/app/contigo-platform/workspaces/contigo-${TARGET_ENVIRONMENT}/runs"
+          KV_NAME=$(az keyvault list --resource-group "$RESOURCE_GROUP" --query "[0].name" -o tsv)
+          if [ -z "$KV_NAME" ]; then
+            echo "::error::no Key Vault found in resource group $RESOURCE_GROUP. Confirm the HCP VCS apply at $HCP_RUNS, then re-run this job."
+            exit 1
+          fi
+          set +e
+          RAW_CONN=$(az keyvault secret show --vault-name "$KV_NAME" --name postgres-connection --query value -o tsv 2>/tmp/kv_secret_show.err)
+          KV_STATUS=$?
+          set -e
+          if [ $KV_STATUS -ne 0 ] || [ -z "$RAW_CONN" ]; then
+            echo "::error::could not read secret 'postgres-connection' from $KV_NAME. Either the HCP VCS apply at $HCP_RUNS has not created it yet, or this environment's CI deploy principal (contigo-sp-${TARGET_ENVIRONMENT}) is missing the 'Key Vault Secrets User' role on $KV_NAME. Azure CLI said: $(tail -c 500 /tmp/kv_secret_show.err | tr '\n' ' ')"
+            exit 1
+          fi
+          echo "::add-mask::$RAW_CONN"
+          PG_EXPORTS=$(printf '%s' "$RAW_CONN" | python3 scripts/pg_connection_string_env.py)
+          eval "$PG_EXPORTS"
+          echo "::add-mask::$PGPASSWORD"
+          if [ -z "${PGHOST:-}" ] || [ -z "${PGPASSWORD:-}" ]; then
+            echo "::error::scripts/pg_connection_string_env.py produced an incomplete environment from the postgres-connection secret"
+            exit 1
+          fi
+          {
+            echo "PGHOST=$PGHOST"
+            echo "PGPORT=$PGPORT"
+            echo "PGDATABASE=$PGDATABASE"
+            echo "PGUSER=$PGUSER"
+            echo "PGPASSWORD=$PGPASSWORD"
+            echo "PGSSLMODE=$PGSSLMODE"
+          } >> "$GITHUB_ENV"
+
+      # R-DOC-07 AC-1, asserted rather than assumed. `SET app.tenant_id` is the
+      # same per-session claim `TenantRlsConnectionInterceptor` sets at runtime
+      # and `backend/scripts/demo-fixture-seed.sql` already uses: the RLS
+      # policies stay on (ADR-009 AC-4 "seed does not disable RLS"), this
+      # session simply satisfies them for exactly one tenant.
+      #
+      # `left(chunk_text, 4) = '%PDF'` rather than a LIKE pattern: `%` is a
+      # LIKE wildcard, so `LIKE '%PDF%'` would also match the harmless word
+      # "PDF" anywhere in a clause.
+      - name: Verify no embedding is raw bytes (R-DOC-07 AC-1)
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -Atqc "SET app.tenant_id = '${TENANT_ID}';" >/dev/null
+          TOTAL=$(psql -Atqc "SET app.tenant_id = '${TENANT_ID}'; SELECT count(*) FROM embedding;")
+          RAW=$(psql -Atqc "SET app.tenant_id = '${TENANT_ID}'; SELECT count(*) FROM embedding WHERE left(chunk_text, 4) = '%PDF';")
+          PLACEHOLDER=$(psql -Atqc "SET app.tenant_id = '${TENANT_ID}'; SELECT count(*) FROM embedding WHERE position('[fixture-ocr:' in chunk_text) > 0;")
+          echo "Tenant ${TENANT_ID}: $TOTAL embedding row(s), $RAW starting with %PDF, $PLACEHOLDER carrying the fixture OCR placeholder."
+          if [ "$RAW" != "0" ]; then
+            echo "::group::sample raw-byte chunks"
+            psql -Atqc "SET app.tenant_id = '${TENANT_ID}'; SELECT source_type || ' ' || source_id || ' #' || chunk_index FROM embedding WHERE left(chunk_text, 4) = '%PDF' LIMIT 20;"
+            echo "::endgroup::"
+            echo "::error::$RAW embedding row(s) of tenant ${TENANT_ID} still start with %PDF after reprocess (R-DOC-07 AC-1). Ask would cite raw bytes as evidence; do not promote this environment."
+            exit 1
+          fi
+          if [ "$PLACEHOLDER" != "0" ]; then
+            if [ "$LIVE_FOUNDRY" = "1" ]; then
+              echo "::error::$PLACEHOLDER embedding row(s) carry the fixture OCR placeholder although this environment has AiGateway__Endpoint configured -- the ocr role fell back to the fixture (R-AI-01). Check the API's Foundry/Document Intelligence wiring."
+              exit 1
+            fi
+            echo "::warning::$PLACEHOLDER embedding row(s) carry the '[fixture-ocr: ...]' placeholder. Expected on a fixture-gateway environment (no AiGateway__Endpoint); re-run this job after Foundry is wired to turn scanned pages into real text (acceptance A2/A5 need it)."
+          fi
+
+      # R-SUP-03 / parent story AC-2's second half. This is a *report*, not a
+      # gate: SQL cannot know whether a given document actually names a
+      # supplier, so failing here would fail honestly-supplier-less contracts
+      # (an unsigned SOW, a price list) as if they were defects. The operator
+      # reads the list and decides -- `docs/ask-v2-acceptance.md` A5/A9 say
+      # what to do with it.
+      - name: Report contracts still without a supplier (R-SUP-03)
+        run: |
+          set -euo pipefail
+          CONTRACTS=$(psql -Atqc "SET app.tenant_id = '${TENANT_ID}'; SELECT count(*) FROM contract;")
+          MISSING=$(psql -Atqc "SET app.tenant_id = '${TENANT_ID}'; SELECT count(*) FROM contract WHERE supplier_id IS NULL;")
+          echo "Tenant ${TENANT_ID}: $CONTRACTS contract(s), $MISSING without a supplier."
+          if [ "$MISSING" != "0" ]; then
+            echo "::group::contracts without a supplier"
+            psql -Atqc "SET app.tenant_id = '${TENANT_ID}'; SELECT id || ' | ' || type || ' | ' || status FROM contract WHERE supplier_id IS NULL ORDER BY id;"
+            echo "::endgroup::"
+            echo "::warning::$MISSING contract(s) of tenant ${TENANT_ID} still have no supplier after reprocess (R-SUP-03). Ask will not resolve them by name; name the supplier through the review screen (/documents?review=<documentId>) for each one whose document does state it."
+          else
+            echo "Every contract of this tenant resolves to a supplier -- Ask can name them (R-SUP-04)."
+          fi
+
+      - name: Summary
+        run: |
+          set -euo pipefail
+          {
+            echo "### reprocess-tenant-documents"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Environment | \`${TARGET_ENVIRONMENT}\` (\`contigo_${TARGET_ENVIRONMENT}\`) |"
+            echo "| Tenant | \`${TENANT_ID}\` |"
+            echo "| API | ${API_BASE_URL} |"
+            echo "| Documents reprocessed | ${DOCUMENT_COUNT} |"
+            echo "| Live Foundry gateway | $([ "$LIVE_FOUNDRY" = "1" ] && echo yes || echo "no (fixture)") |"
+            echo
+            echo "Next: \`docs/ask-v2-acceptance.md\` A1-A14 against this environment."
+          } >> "$GITHUB_STEP_SUMMARY"

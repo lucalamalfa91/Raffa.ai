@@ -1421,3 +1421,115 @@ pass with real Entra test-account credentials against a live,
 `demo-v*`-promoted `demo` deployment -- that, and only that, is the actual
 gate this suite exists to satisfy; no local or CI session without those
 live credentials can supply it.
+
+## End-to-end (Ask Contigo V2 pilot path) -- task E13/F11/US01/T01, us-01-integration
+
+`e2e/v2.spec.ts` (same Playwright config, `playwright.config.ts`) is the V2
+replacement for `e2e/day1.spec.ts`. It walks `inputs/requirements.md` §10's own
+acceptance rows against a deployed environment -- `dev` first (this wave's
+Definition of Done), then `demo` after a `demo-v*` promotion (ADR-016). The
+prose runbook for the same rows, including the API/SQL checks a browser cannot
+make, is [`../docs/ask-v2-acceptance.md`](../docs/ask-v2-acceptance.md).
+
+`day1.spec.ts` stays checked in but is the V1 walk and is red against the V2
+shell -- see "Known regression" in the section above. `v2.spec.ts` shares no
+selector with it: the V2 screens are different components with different copy
+(no `.ask-citation-chip`, no `Home` screen, no `Use sample file` button).
+
+### What runs and what skips
+
+| Row | Test | Gate |
+|---|---|---|
+| A14 | `/` lands on `/ask`; the rail is two-tier; the secondary tier is greyed before validation; Ask is off with the prototype copy | always |
+| A1 | a recipe PDF and an unreadable PNG dropped together are both refused (**Not added** + reason), and neither ends up in the server-backed list | always |
+| A1 | ...and an MSA dropped alongside them still reaches a terminal status | needs `CONTIGO_E2E_MSA_PATH` |
+| A3 | `ciao` -> redirect prose, one CTA, **no** abstain block | always |
+| A4 | `Posso fare causa a Salesforce?` -> refusal + an action under `/contracts` | always |
+| A8 | `Cosa sai fare?` -> feature cards badged **Contigo**, every action an in-app route, and the first one actually navigates | always |
+| A9 | a reply carries a human citation card and an action, and never a guid / `Document:` chip / `Structured query...` route line | always |
+| A10 | asking moves the browser to `/ask/<id>`; a reload and a second tab both resume the same turns | always |
+| A2, A5, A6, A7 | OCR'd order form; Allianz vs market; Salesforce renewal strategy; portfolio criticality in a new chat | `E2E_LIVE_FOUNDRY=1` (A2 also needs `CONTIGO_E2E_ORDER_FORM_PNG`) |
+
+A2 / A5 / A6 / A7 are `test.skip`ped with the reason *"requires live Foundry"* --
+OQ-askv2-009 and `inputs/requirements.md` §13 A9 ("live Foundry on `dev`/`demo`
+is required for acceptance A2-A8; the fixture gateway proves the same paths in
+CI"). A8 and A9 stay unconditional because the capability catalog is static and
+"no engineer chrome" is a property of every reply, model or not.
+
+A11 (cross-tenant isolation), A12 (no tools/grounding in the Foundry request
+body) and A13 (golden set) are deliberately **not** browser assertions -- a
+browser cannot observe a request body or another tenant's rows without
+fabricating a second identity. They are proven by `Contigo.IntegrationTests`,
+`Contigo.AiGateway.Tests` and `Contigo.AiEval`, all of which run under
+`dotnet test Contigo.slnx` in `.github/workflows/backend.yml`.
+`docs/ask-v2-acceptance.md` names the real check for each.
+
+### Running it
+
+```bash
+npm ci
+npx playwright install --with-deps chromium   # one-time browser download
+
+CONTIGO_E2E_BASE_URL=https://<swa-dev-host> \
+CONTIGO_E2E_ENTRA_EMAIL=<a test-account UPN on that Entra tenant> \
+CONTIGO_E2E_ENTRA_PASSWORD=<that account's password> \
+CONTIGO_E2E_TENANT_ID=<the fixture-seeded workspace id> \
+  npx playwright test v2.spec.ts
+
+# Add the live-Foundry rows once Foundry is wired on that environment:
+E2E_LIVE_FOUNDRY=1 CONTIGO_E2E_ORDER_FORM_PNG=/path/to/scan.png \
+  ... npx playwright test v2.spec.ts
+
+npm run test:e2e:report   # trace / video / screenshot on failure
+```
+
+| Variable | Meaning |
+|---|---|
+| `CONTIGO_E2E_BASE_URL` | the deployed SPA origin (`dev`, or `demo` after promotion) |
+| `CONTIGO_E2E_ENTRA_EMAIL` / `_PASSWORD` | a real test account on that environment's Entra tenant, excluded from interactive MFA (the same constraint `day1.spec.ts` documents -- the spec drives the identifier/password/"stay signed in?" steps only) |
+| `CONTIGO_E2E_TENANT_ID` | the **fixture-seeded** workspace id, i.e. the tenant that has validated contracts |
+| `CONTIGO_E2E_EMPTY_TENANT_ID` | optional; a workspace known to hold zero validated contracts, for A14's greyed-rail row. Defaults to a generated uuid, which is equivalent for that assertion and is logged as such |
+| `CONTIGO_E2E_MSA_PATH`, `CONTIGO_E2E_ORDER_FORM_PNG` | optional paths to a real contract PDF / scanned order-form image |
+| `E2E_LIVE_FOUNDRY` | `1` to run A2 / A5 / A6 / A7 |
+
+With none of them set the suite reports all 14 rows as **skipped**, with the
+reason, and exits `0` -- the group-level skip is the callback form, so
+Playwright never enters `beforeAll` and never attempts a real Entra sign-in.
+
+### Why the workspace is pinned through `sessionStorage`
+
+There is still no endpoint that lists the workspaces an identity belongs to
+(`src/routes/signin/workspaceStore.ts`'s own documented gap), so a stock browser
+context always lands on "No workspaces yet" and creates an **empty** workspace --
+where Ask is correctly *off* (R-ASK-10) and A1/A3-A10 cannot be observed at all.
+Rather than assert an honestly-empty screen and call that acceptance, the spec
+writes the same `contigo.signin.currentWorkspace` key the app itself writes
+(`workspaceStore.ts`'s `CURRENT_WORKSPACE_KEY`) with the operator-supplied
+tenant id. That is the documented seam, not a mock: every `ApiClient` call then
+carries that tenant as `X-Tenant-Id` exactly as a human selecting the workspace
+in the picker would. Without `CONTIGO_E2E_TENANT_ID` the pilot-path group skips
+rather than walking an empty workspace.
+
+### The upload fixtures are built in the spec, on purpose
+
+This repo ships no `*.pdf` / `*.png` asset -- `src/routes/documents/sampleDocument.ts`
+records that and builds its own minimal PDF in the browser for the same reason.
+A1 needs a file whose *extracted text* reads as a recipe, so that the admission
+gate can answer `not_a_contract` rather than `no_readable_text`, which the
+sample's content-free PDF cannot provide. `v2.spec.ts` therefore builds a real,
+structurally-valid one-page PDF (correct xref offsets, a Helvetica text stream)
+and a valid 1x1 PNG in memory and feeds them through the ordinary
+`<input type="file">` a human uses -- nothing about the API is mocked. The
+assertion accepts **either** documented rejection reason and records which one
+the environment produced, because which of the two applies depends on whether
+that environment's parser reads the synthetic PDF's text; both are R-DOC-03
+refusals and neither is a claim Contigo cannot back.
+
+### Harness note
+
+Authored against the currently-committed V2 source of every screen it drives
+(cited inline in the spec). Verified here with `npx playwright test --list`
+(discovers all 14 rows) and `npx playwright test v2.spec.ts` with no environment
+set (14 skipped, exit `0`, no sign-in attempted). A real green run needs a
+deployed environment, a fixture-seeded tenant and Entra test credentials -- an
+operator/CI action, the same shape ADR-016's promotion gate already has.
