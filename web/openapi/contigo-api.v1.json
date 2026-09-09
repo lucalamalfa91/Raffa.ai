@@ -1185,7 +1185,7 @@
                             "string",
                             "null"
                           ],
-                          "description": "The supplier's display name, resolved from `supplierId` through `ISupplierNameLookup` -- never a raw supplier id (R-SUP-04, ADR-024). Null when the contract has no supplier or the id no longer resolves for this tenant. Projected by ContractsEndpointExtensions.GetContract360Async (task E13/F03/US01/T02); web/src/routes/contracts/contract360/contract360ViewModel.ts#resolveSupplierLabel already read this exact field defensively off the wire object while the property was documented but not yet emitted. See getPortfolio's identical supplierName property above for the full ISupplierNameLookup provenance."
+                          "description": "The supplier's display name, resolved from `supplierId` through `ISupplierNameLookup` -- never a raw supplier id (R-SUP-04, ADR-024). Null when the contract has no supplier or the id no longer resolves for this tenant. Projected by ContractsEndpointExtensions.GetContract360Async (task E13/F03/US01/T02); read straight off the generated type by web/src/routes/contracts/contract360/contract360ViewModel.ts#resolveSupplierLabel, which falls back to an id fragment on null rather than fabricating a name. See getPortfolio's identical supplierName property above for the full ISupplierNameLookup provenance."
                         },
                         "type": {
                           "type": "string",

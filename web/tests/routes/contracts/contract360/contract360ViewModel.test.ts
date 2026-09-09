@@ -479,22 +479,19 @@ describe("resolveBackLink (task E13/F10/US01/T01, AC-1 'back label follows the o
 });
 
 describe("resolveSupplierLabel (task E13/F10/US01/T01, AC-3 'supplier name, never a guid')", () => {
-  it("prefers a wire-provided supplierName over the id-fragment fallback", () => {
-    const withName: Contract360HeaderBody & { supplierName: string } = {
-      ...header({ supplierId: "33333333-3333-3333-3333-333333333333" }),
-      supplierName: "Salesforce",
-    };
+  it("prefers the resolved supplierName over the id-fragment fallback", () => {
+    const withName = header({ supplierId: "33333333-3333-3333-3333-333333333333", supplierName: "Salesforce" });
 
     expect(resolveSupplierLabel(withName)).toEqual({ label: "Salesforce", title: "33333333-3333-3333-3333-333333333333" });
   });
 
-  it("falls back to the existing id-fragment label when supplierName is absent (field not in the generated client yet)", () => {
+  it("falls back to the id-fragment label when supplierName is null (no supplier, or an id that no longer resolves)", () => {
     const withoutName = header({ supplierId: "33333333-3333-3333-3333-333333333333" });
     expect(resolveSupplierLabel(withoutName)).toEqual({ label: "Supplier 33333333", title: "33333333-3333-3333-3333-333333333333" });
   });
 
   it("ignores a blank supplierName string rather than rendering whitespace", () => {
-    const blank: Contract360HeaderBody & { supplierName: string } = { ...header(), supplierName: "   " };
+    const blank = header({ supplierName: "   " });
     expect(resolveSupplierLabel(blank).label).not.toBe("   ");
   });
 });

@@ -112,10 +112,11 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
 
   // Task text point (2): "chips then name the supplier as c360Chips" -- app.jsx's own
   // supplier-templated chip pair needs a real supplier name; GET /api/contracts/{id} is the only
-  // read that has one (defensively, off the wire object -- see
-  // ../contracts/contract360/contract360ViewModel.ts#resolveSupplierLabel's own doc comment for why
-  // this is not yet a typed generated field, reproduced here rather than imported per this task's
-  // own "independent, separately-evolving screens duplicate a small read" convention).
+  // read that has one (a typed `supplierName` on the 360 header since task E13/F03/US01/T02 -- see
+  // ../contracts/contract360/contract360ViewModel.ts#resolveSupplierLabel's own doc comment for the
+  // full provenance -- read here rather than imported, per this task's own "independent,
+  // separately-evolving screens duplicate a small read" convention). A null/blank name stays `null`
+  // so `buildScopedSuggestions` falls back to its own "this supplier" wording.
   const [scopedSupplierName, setScopedSupplierName] = useState<string | null>(null);
   useEffect(() => {
     if (scopeContractId === undefined || !workspace) {
@@ -127,12 +128,8 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
         setScopedSupplierName(null);
         return;
       }
-      const wireHeader = result.contract.header as unknown as { supplierName?: unknown };
-      setScopedSupplierName(
-        typeof wireHeader.supplierName === "string" && wireHeader.supplierName.trim() !== ""
-          ? wireHeader.supplierName
-          : null,
-      );
+      const { supplierName } = result.contract.header;
+      setScopedSupplierName(supplierName !== null && supplierName.trim() !== "" ? supplierName : null);
     });
   }, [apiClient, workspace?.id, scopeContractId]);
 
