@@ -56,8 +56,8 @@ export interface Contract360HeaderProps {
  * V1 header above. (1) `backLink`, when non-null, renders `markup.html`'s own `← {{ backLabel }}`
  * ghost link (`contract360ViewModel.ts#resolveBackLink`) ahead of the kicker/title, exactly the
  * prototype's screen-5 position. (2) The supplier kicker now prefers a real `supplierName`
- * (`resolveSupplierLabel`, read defensively -- see that function's own doc comment) over the
- * `formatSupplier` id-fragment fallback. (3) **Ask about it** (`.btn-secondary`) navigates to
+ * (`resolveSupplierLabel` -- see that function's own doc comment) over the `formatSupplier`
+ * id-fragment fallback. (3) **Ask about it** (`.btn-secondary`) navigates to
  * `/ask?scope=<contractId>`, a *new* chat scoped to this contract -- the Ask route itself does not
  * consume `?scope=` yet (`web/src/routes/ask/**` is F09/T04's own scope, out of this task's "Files
  * to create or modify"), so this link is forward-compatible/dormant until that task lands, the same
