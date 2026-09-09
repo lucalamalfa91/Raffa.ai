@@ -1,0 +1,171 @@
+/**
+ * Reply body — markdown + citation cards + actions + follow-ups (route `/ask`, ADR-024; ADR-020 V2
+ * amendment "screen 2"; requirements.md §6; task E13/F09/US01/T02, us-01-web-v2 AC-3).
+ *
+ * Scoped to this reply's own internal composition only -- the surrounding 72px role-column grid
+ * ("You" / "Contigo") stays `../ask.css`'s own `.ask-message` (F09/T04's file, not this task's;
+ * that task mounts `ReplyBody` inside its own content column). Component classes (.btn, .tag,
+ * .card, .abstain-block, .error-state, .micro-meta) come from `../../../styles/components.css`
+ * (ADR-019); this file adds only this folder's own composites, the same division of labour every
+ * other screen's own CSS file already establishes (e.g. `../../documents/documents.css`).
+ *
+ * Figures below are quoted from the compiled prototype's own Ask block where named
+ * (`inputs/design/prototypes/contigo-v2/markup.html`, the `sc-for list="{{ gchat }}"` block): 14px
+ * body text, `white-space: pre-line`; the action row's `gap:8px;margin-top:12px` (`m.hasActions`).
+ * The citation *chip* row's own `gap:6px;margin-top:10px` (`m.hasCites`) becomes a *card* row here
+ * (task text: "citation chip row -> cards", R-WEB-04) -- sized with this file's own
+ * `--space-*` tokens rather than the literal chip-row figures, since a card is a materially bigger
+ * element than a chip. The citation-card preview block (image / placeholder) and the follow-ups
+ * list have no prototype precedent at all (both are `req`, added by requirements.md §6, not shown
+ * in the static prototype) -- their figures are this task's own, not quoted from the export.
+ */
+
+.reply-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* ---- Markdown body ------------------------------------------------------ */
+
+.reply-markdown {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  font-size: 14px;
+}
+
+.reply-markdown p {
+  margin: 0;
+  white-space: pre-line;
+}
+
+.reply-markdown ul {
+  margin: 0;
+  padding-left: 1.25em;
+}
+
+.reply-markdown li + li {
+  margin-top: var(--space-1);
+}
+
+.reply-citation-ref {
+  font-weight: var(--weight-body-strong);
+  text-decoration: none;
+}
+
+.reply-citation-ref:hover {
+  text-decoration: underline;
+}
+
+/* ---- Citation cards (R-WEB-04: chip row -> cards) ----------------------- */
+
+.reply-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.citation-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  flex: 1 1 240px;
+  max-width: 280px;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.citation-card:hover {
+  background: var(--color-neutral-200);
+}
+
+.citation-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.citation-card-index {
+  font-size: 11px;
+  font-weight: var(--weight-body-strong);
+  color: var(--color-neutral-600);
+}
+
+.citation-card-title {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-heading);
+  font-size: 14px;
+  line-height: 1.3;
+}
+
+.citation-card-subtitle {
+  margin: 0;
+}
+
+.citation-card-snippet {
+  margin: 0;
+  padding-left: var(--space-2);
+  border-left: 2px solid var(--color-accent);
+  font-size: 12px;
+  font-style: italic;
+  color: var(--color-neutral-700);
+}
+
+.citation-card-preview {
+  width: 100%;
+  height: 120px;
+  object-fit: cover;
+  border: 1px solid var(--color-divider);
+}
+
+.citation-card-preview-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 120px;
+  border: 1px dashed var(--color-divider);
+  text-align: center;
+}
+
+/* ---- Actions (`m.hasActions`: gap 8px, margin-top 12px) ----------------- */
+
+.reply-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* ---- Follow-ups (req -- not in the static prototype; the same quiet-link
+   idiom already established by ../ask.css's own .ask-suggestion / the
+   compiled prototype's own askChips) --------------------------------------- */
+
+.reply-followups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.reply-followups-label {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-kicker);
+}
+
+.reply-followup {
+  align-self: flex-start;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font-size: 13px;
+  color: var(--color-neutral-600);
+  cursor: pointer;
+}
+
+.reply-followup:hover {
+  color: var(--color-accent-700);
+}
