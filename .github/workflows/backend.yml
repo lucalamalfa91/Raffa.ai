@@ -258,6 +258,7 @@ jobs:
             "backend/src/Contigo.Quotes/Migrations/Scripts/quotes.sql"
             "backend/src/Contigo.Chat/Migrations/Scripts/chat.sql"
             "backend/src/Contigo.Suppliers.Products/Migrations/Scripts/suppliers.sql"
+            "backend/src/Contigo.Market/Migrations/Scripts/market.sql"
           )
           for script in "${SCRIPTS[@]}"; do
             if [ ! -f "$script" ]; then
@@ -289,6 +290,7 @@ jobs:
             "backend/src/Contigo.Quotes/Migrations/Scripts/quotes.sql"
             "backend/src/Contigo.Chat/Migrations/Scripts/chat.sql"
             "backend/src/Contigo.Suppliers.Products/Migrations/Scripts/suppliers.sql"
+            "backend/src/Contigo.Market/Migrations/Scripts/market.sql"
           )
           echo "::group::tables in contigo_${TARGET_ENVIRONMENT}"
           psql -Atqc "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name;"

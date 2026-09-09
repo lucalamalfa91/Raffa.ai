@@ -1,7 +1,10 @@
+using System.Text.Json;
 using Contigo.Benchmark.Adapters;
 using Contigo.Benchmark.Contracts;
 using Contigo.Market.Contracts;
+using Contigo.Market.Infrastructure;
 using Contigo.SharedKernel;
+using Microsoft.EntityFrameworkCore;
 
 namespace Contigo.Market.Benchmark;
 
@@ -44,10 +47,60 @@ namespace Contigo.Market.Benchmark;
 /// shape as <c>FixtureBenchmarkAdapter</c>: a same-supplier/same-product-only "weak match" still
 /// reports honest (if thin) provenance when one exists; otherwise an honest empty result. Never a
 /// bare precise-looking number without provenance (ADR-001).
+///
+/// <b>Task E13/F02/US01/T02 (market-index)</b> adds this type's second data source: R-MKT-03 says
+/// benchmark rows are "served from the persisted `market_record` rows, never from the provider at
+/// question time" once an ingestion job exists. <see cref="MarketFeedBenchmarkAdapter(IDbContextFactory{MarketDbContext}, IClock)"/>
+/// is that DB-backed constructor — <c>ServiceCollectionExtensions.AddMarketModule</c> chooses it
+/// over the original, provider-backed constructor above when <c>ConnectionStrings:Market</c> is
+/// present (task objective: "MarketFeedBenchmarkAdapter likewise switches to read `market_record`
+/// when the connection string is present"). Every matching/confidence/provenance rule below is
+/// unchanged and shared by both constructors — <see cref="LoadDealsAsync"/> is the only seam that
+/// differs, so a query result is identical either way for the same underlying deals.
 /// </summary>
-public sealed class MarketFeedBenchmarkAdapter(IMarketIntelligenceProvider provider, IClock clock)
-    : IBenchmarkProviderAdapter
+public sealed class MarketFeedBenchmarkAdapter : IBenchmarkProviderAdapter
 {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
+    private readonly IMarketIntelligenceProvider? _provider;
+    private readonly IDbContextFactory<MarketDbContext>? _dbContextFactory;
+    private readonly IClock _clock;
+
+    /// <summary>
+    /// T01's original constructor: reads <see cref="MarketDeal"/> rows directly from
+    /// <paramref name="provider"/> on every call — the interim, question-time provider call
+    /// <see cref="IMarketIntelligenceProvider"/>'s own doc comment describes as "not the
+    /// steady-state shape R-MKT-03 describes". Kept, unchanged, for every existing caller
+    /// (<c>ServiceCollectionExtensions.AddMarketModule()</c> with no connection string;
+    /// <c>MarketFeedBenchmarkAdapterTests</c>) that constructs this type directly against the mock
+    /// feed with no database at all.
+    /// </summary>
+    public MarketFeedBenchmarkAdapter(IMarketIntelligenceProvider provider, IClock clock)
+    {
+        _provider = provider;
+        _clock = clock;
+    }
+
+    /// <summary>
+    /// T02's DB-backed constructor: reads every <see cref="MarketDeal"/> back out of the persisted
+    /// <c>market_record</c> table instead of calling <see cref="IMarketIntelligenceProvider"/> at
+    /// all — this constructor overload never even takes one, so it is structurally incapable of
+    /// reaching the provider at question time (ADR-024), regardless of what
+    /// <see cref="IMarketIntelligenceProvider"/> is registered elsewhere in the same container (see
+    /// the type-level "throwing provider" proof in <c>Contigo.Market.Tests</c>).
+    /// <paramref name="dbContextFactory"/>, not a directly-injected <see cref="MarketDbContext"/>:
+    /// this adapter is registered Singleton (same lifetime T01's provider-backed registration
+    /// already used, so <c>Contigo.Benchmark.BenchmarkAdapterRegistry</c>'s own Singleton
+    /// <c>IEnumerable&lt;IBenchmarkProviderAdapter&gt;</c> constructor injection is unaffected by
+    /// this task) — see <see cref="Retrieval.PgVectorMarketKnowledgeRetrieval"/>'s own doc comment
+    /// for the identical captive-dependency reasoning.
+    /// </summary>
+    public MarketFeedBenchmarkAdapter(IDbContextFactory<MarketDbContext> dbContextFactory, IClock clock)
+    {
+        _dbContextFactory = dbContextFactory;
+        _clock = clock;
+    }
+
     /// <summary>Registry key (<c>IBenchmarkProviderAdapter.Name</c>) and
     /// <c>BenchmarkAdapterOptions.ActiveAdapter</c> default — task objective, verbatim.
     /// Deliberately distinct from <see cref="ProvenanceSource"/> (the UX-facing provenance
@@ -96,20 +149,57 @@ public sealed class MarketFeedBenchmarkAdapter(IMarketIntelligenceProvider provi
     {
         ArgumentNullException.ThrowIfNull(query);
 
-        var feedResult = await provider.GetDealsAsync(feedVersion: null, cancellationToken).ConfigureAwait(false);
-        if (feedResult.IsFailure)
+        var dealsResult = await LoadDealsAsync(cancellationToken).ConfigureAwait(false);
+        if (dealsResult.IsFailure)
         {
-            return Result<BenchmarkResult>.Failure(feedResult.Error);
+            return Result<BenchmarkResult>.Failure(dealsResult.Error);
         }
 
-        var deals = feedResult.Value.Deals;
+        var deals = dealsResult.Value;
         var strongMatch = FindStrongMatch(deals, query);
 
         var result = strongMatch is not null
             ? BuildConfidentResult(query, strongMatch)
-            : BuildInsufficientDataResult(query, FindWeakMatch(deals, query), deals, clock);
+            : BuildInsufficientDataResult(query, FindWeakMatch(deals, query), deals, _clock);
 
         return Result<BenchmarkResult>.Success(result);
+    }
+
+    /// <summary>
+    /// The one seam that differs between this type's two constructors (see their own doc
+    /// comments): the DB-backed path (<see cref="_dbContextFactory"/> set) reads every persisted
+    /// <c>market_record</c> row and deserializes its <c>PayloadJson</c> back into a
+    /// <see cref="MarketDeal"/> — never calling <see cref="IMarketIntelligenceProvider"/> at all
+    /// (ADR-024: "the provider is called only by the ingestion job"); the provider-backed path
+    /// (T01, <see cref="_provider"/> set) is unchanged. Exactly one of the two fields is non-null
+    /// for any instance (enforced by which constructor ran), so exactly one branch below executes.
+    /// </summary>
+    private async Task<Result<IReadOnlyList<MarketDeal>>> LoadDealsAsync(CancellationToken cancellationToken)
+    {
+        if (_dbContextFactory is not null)
+        {
+            await using var dbContext = await _dbContextFactory
+                .CreateDbContextAsync(cancellationToken)
+                .ConfigureAwait(false);
+
+            var records = await dbContext.MarketRecords
+                .AsNoTracking()
+                .ToListAsync(cancellationToken)
+                .ConfigureAwait(false);
+
+            var deals = records
+                .Select(record => JsonSerializer.Deserialize<MarketDeal>(record.PayloadJson, JsonOptions))
+                .Where(deal => deal is not null)
+                .Select(deal => deal!)
+                .ToList();
+
+            return Result<IReadOnlyList<MarketDeal>>.Success(deals);
+        }
+
+        var feedResult = await _provider!.GetDealsAsync(feedVersion: null, cancellationToken).ConfigureAwait(false);
+        return feedResult.IsFailure
+            ? Result<IReadOnlyList<MarketDeal>>.Failure(feedResult.Error)
+            : Result<IReadOnlyList<MarketDeal>>.Success(feedResult.Value.Deals);
     }
 
     /// <summary>

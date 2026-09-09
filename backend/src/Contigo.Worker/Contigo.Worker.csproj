@@ -19,5 +19,9 @@
     <ProjectReference Include="..\Contigo.AiGateway\Contigo.AiGateway.csproj" />
     <ProjectReference Include="..\Contigo.Benchmark\Contigo.Benchmark.csproj" />
     <ProjectReference Include="..\Contigo.Audit\Contigo.Audit.csproj" />
+    <!-- Task E13/F02/US01/T02 (market-index): Commands/IngestMarketCommand.cs (the `ingest-market`
+         operator command) calls Contigo.Market.Ingestion.MarketIngestionService; Program.cs calls
+         Contigo.Market.ServiceCollectionExtensions.AddMarketModule. -->
+    <ProjectReference Include="..\Contigo.Market\Contigo.Market.csproj" />
   </ItemGroup>
 </Project>

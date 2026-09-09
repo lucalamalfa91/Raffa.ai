@@ -19,6 +19,10 @@
          suites above; it drives Infrastructure.SuppliersDbContext directly instead. -->
     <PackageReference Include="Npgsql" Version="10.0.3" />
     <PackageReference Include="Testcontainers.PostgreSql" Version="4.14.0" />
+    <!-- Task E13/F02/US01/T02 (market-index): MarketIndexIsolationTests seeds a market_embedding
+         row directly (same technique PgVectorMarketKnowledgeRetrievalTests already uses in
+         Contigo.Market.Tests), so this project needs the Vector CLR type by name too. -->
+    <PackageReference Include="Pgvector" Version="0.3.2" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
   </ItemGroup>
@@ -66,6 +70,12 @@
          Contigo.Api does not reference this module yet, so unlike the other references in this
          file there is no existing transitive path to it. -->
     <ProjectReference Include="..\..\src\Contigo.Suppliers.Products\Contigo.Suppliers.Products.csproj" />
+    <!-- Task E13/F02/US01/T02 (market-index): MarketIndexIsolationTests resolves
+         Contigo.Market.Infrastructure.MarketDbContext / Retrieval.PgVectorMarketKnowledgeRetrieval
+         directly — Contigo.Api does not reference Contigo.Market yet (MarketEndpointExtensions.cs
+         is not mapped from Program.cs this phase), so unlike the transitive references above there
+         is no existing path to it; same reasoning as the Contigo.Suppliers.Products reference above. -->
+    <ProjectReference Include="..\..\src\Contigo.Market\Contigo.Market.csproj" />
   </ItemGroup>
 
 </Project>

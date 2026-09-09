@@ -33,9 +33,8 @@ backend/
     Contigo.AiGateway/           # IAiGateway + FixtureAiGateway/FoundryAiGateway (wired via DI) + LoggingAiGateway decorator (task E13/F01/US01/T02)
     Contigo.Benchmark/           # IBenchmarkService.GetBenchmarkAsync + normalized Contracts DTOs (E04/F01/US01/T01); BenchmarkAdapterRegistry + AddBenchmarkModule (E04/F01/US01/T02); FixtureBenchmarkAdapter registered as the default IBenchmarkProviderAdapter, incl. statistical weak-comparable abstain (E04/F01/US02/T01+T02) — no host calls AddBenchmarkModule yet (R3)
     Contigo.Suppliers.Products/  # scaffold (R1+)
-    Contigo.Market/               # R-MKT-01/02/03/04 mock feed + benchmark projection + in-memory notes retrieval (task E13/F02/US01/T01) — see "Market Intelligence" below
+    Contigo.Market/               # R-MKT-01/02/03/04 mock feed + benchmark projection + in-memory notes retrieval (E13/F02/US01/T01); market_record/market_embedding pgvector index + ingestion job + DB-backed retrieval/benchmark + GET /api/market/records/{id} (not yet mapped) (E13/F02/US01/T02) — see "Market Intelligence" below
     Contigo.Suppliers.Products/  # Supplier entity, SupplierNameNormalizer, ISupplierResolver/ISupplierNameLookup impls, SuppliersDbContext + RLS (task E13/F03/US01/T01, ADR-024; live) — see "Supplier identity" below
-    Contigo.Market/               # scaffold (E13/F01/US01/T01, ADR-024) — feed/ingestion/index/benchmark-projection; AddMarketModule() registers nothing yet
     Contigo.Insights/             # criticality score, priced-line negotiation, strategy pack builder (E13/F07/US01/T01, ADR-024) — pure calculators fed by DTOs; AddInsightsModule() registers InsightsOptions + CriticalityScoreCalculator; no host maps InsightsEndpointExtensions.cs yet (F06/T01, phase 3) — see "Insights" below
     Contigo.Renewals/            # renewal engine + opportunity + explainable priority score + threshold scheduler + dashboard pipeline + action (R2; live) — see "Renewal Intelligence" below
     Contigo.Savings/             # price normalization + percentile/target/savings-range calculator (R3; task E04/F02/US01/T01) + persisted, trackable SavingsOpportunity + GET/PATCH /api/savings (task E04/F02/US02/T01) — see "Savings Intelligence" below
@@ -125,15 +124,17 @@ migrations, not in Terraform.
 **Deployable schema artifact (ADR-021):** every module above also checks in
 `Migrations/Scripts/<module>.sql` — `identity-workspace.sql`,
 `documents-contracts.sql`, `audit.sql`, `renewals.sql`, `savings.sql`,
-`quotes.sql`, `chat.sql`, `suppliers.sql` — generated with `dotnet ef
-migrations script --idempotent` from that module's `src/` folder. That
-checked-in script, applied with `psql` (or any plain Npgsql client), is the
-actual `dev`/`demo` deploy path: CI applies all eight, in ADR-021's fixed
-order (`chat.sql` appended seventh — task E13/F05/US01/T01 postdates
-ADR-021's own fixed list; `suppliers.sql` appended eighth — task
-E13/F03/US01/T01, same reasoning: the `supplier` table carries no FK to or
-from any other module's tables, so it has no ordering dependency on the
-other seven and is simply appended last), after both `az containerapp
+`quotes.sql`, `chat.sql`, `suppliers.sql`, `market.sql` — generated with
+`dotnet ef migrations script --idempotent` from that module's `src/`
+folder. That checked-in script, applied with `psql` (or any plain Npgsql
+client), is the actual `dev`/`demo` deploy path: CI applies all nine, in
+ADR-021's fixed order (`chat.sql` appended seventh — task E13/F05/US01/T01
+postdates ADR-021's own fixed list; `suppliers.sql` appended eighth — task
+E13/F03/US01/T01; `market.sql` appended ninth — task E13/F02/US01/T02, same
+reasoning as `suppliers.sql`: neither `market_record` nor `market_embedding`
+carries a FK to or from any other module's tables, so `market.sql` has no
+ordering dependency on the other eight and is simply appended last), after
+both `az containerapp
 update` steps (task E09/F02/US01/T02) — `Contigo.Api` and `Contigo.Worker`
 deliberately never call `Database.MigrateAsync()`, so a replica boot never
 mutates schema. Regenerate the script after adding or changing a
@@ -148,7 +149,7 @@ applies (and re-applies) cleanly to a bare `pgvector/pgvector:pg16` server.
 `.github/workflows/backend.yml`'s CI apply step (`scripts/pg_connection_string_env.py`
 turns the Key Vault `postgres-connection` secret into `psql`'s `PG*`
 environment variables; `scripts/schema_apply_verify.py` then proves every
-migration_id all eight scripts declare landed in `contigo_<env>`'s own
+migration_id all nine scripts declare landed in `contigo_<env>`'s own
 `__EFMigrationsHistory`, failing the job by name otherwise) needs the CI
 deploy principal to hold `Key Vault Secrets User` on that environment's
 vault (`modules/keyvault` `ci_secrets_user`, applied by HCP).
@@ -510,36 +511,58 @@ doc comment for the full reasoning. An explicit
 `Benchmark:Adapter:ActiveAdapter` configuration value still overrides the
 default either way, unchanged.
 
-**Interim data source:** R-MKT-03 describes benchmark rows as "served from
-the persisted `market_record` rows, never from the provider at question
-time" once an ingestion job exists — this task adds no ingestion job and no
-`market_record` table (that is T02's own scope: "Market index, ingestion,
-DB-backed retrieval, record endpoint"). Until then,
-`MarketFeedBenchmarkAdapter` calls `IMarketIntelligenceProvider.GetDealsAsync`
-directly on every query — the only data source T01 has — an explicitly
-interim shortcut T02 is expected to replace with the persisted-store read,
-with no change to `Contigo.Benchmark.IBenchmarkService` or any domain-module
-call site.
+**Two projections, one ingestion job (task E13/F02/US01/T02, market-index):**
+R-MKT-03's "served from the persisted `market_record` rows, never from the
+provider at question time" is now real. `Infrastructure.MarketDbContext`
+(pgvector, **no** tenant interceptor and no RLS policy — ADR-024/ADR-011's
+epic-13 amendment: shared, read-only, never a tenant row) owns `market_record`
+(one row per `MarketDeal`, keyed by `RecordId`) and `market_embedding` (one
+narrative chunk per record, `vector(1536)`, same convention
+`Contigo.Documents.Contracts.Domain.Embedding` uses), plus the checked-in
+idempotent `Migrations/Scripts/market.sql` (ADR-021 — see "Deployable schema
+artifact" above for its place in the apply order); that script's own header
+documents a conditional, self-activating grant (read for `contigo_app`,
+read/write for `contigo_market_ingest`) that stays a harmless no-op until a
+later infra task actually provisions those two roles.
 
-**In-memory notes retrieval (Projection 2, interface only in a later phase's
-DB-backed form):** `Retrieval.MarketNoteComposer.Compose` turns one
-`MarketDeal` into one narrative `Contracts.MarketNote` (e.g. "Companies of
-500-2000 employees closing Salesforce Sales Cloud Enterprise in CH in
-2026-Q1 paid P50 CHF 132 …, obtained a 4% uplift cap and 90-day notice…"),
-labelled via `Contracts.MarketProvenance.Label` (`"representative market
-data · mock feed · updated <yyyy-MM-dd>"`, R-MKT-04). `Retrieval
-.InMemoryMarketKnowledgeRetrieval` — this task's default
-`Retrieval.IMarketKnowledgeRetrieval` — scores every composed note by plain
-token overlap against the query (no index, no embedding call) and returns
-the top-K; task E13/F02/US01/T02 is expected to swap in a pgvector-backed
-implementation over the shared, tenant-free `market_embedding` index behind
-this same interface (R-MKT-03: "own table — never rows in the tenant
-`embedding` table").
+`Ingestion.MarketIngestionService.IngestAsync` is the *only* caller of
+`IMarketIntelligenceProvider` (ADR-024: "the provider is called only by that
+job"): it upserts `market_record` by `RecordId`, composes one narrative per
+record (`Retrieval.MarketNoteComposer.Compose`, unchanged from T01), embeds it
+via `IAiGateway.EmbedAsync` (ADR-004 `embed` role, hash-logged), and replaces
+that record's `market_embedding` row(s) — a second run against the same feed
+version and payload changes zero rows and issues zero embed calls (parent
+story AC-4). `Retrieval.PgVectorMarketKnowledgeRetrieval` (cosine distance,
+top-k, optional category/geography filters) and `MarketFeedBenchmarkAdapter`'s
+new `(IDbContextFactory<MarketDbContext>, IClock)` constructor then read only
+this store, never the provider, so a throwing `IMarketIntelligenceProvider`
+no longer affects either projection once ingestion has run
+(`Contigo.Market.Tests.MarketModuleQuestionTimeIsolationTests`);
+`Contigo.IntegrationTests.MarketIndexIsolationTests` proves AC-3's other half
+— a tenant embedding search never returns a market note, a market search
+never returns tenant chunks — against one shared Postgres database.
+`ServiceCollectionExtensions.AddMarketModule(string? marketConnectionString)`
+is the DI swap: `null` keeps T01's mock-feed/in-memory wiring (still the
+default `Retrieval.IMarketKnowledgeRetrieval` — token-overlap over composed
+notes, no index, no embedding call); a real `ConnectionStrings:Market`
+instead registers `MarketDbContext` and switches both the notes-retrieval and
+benchmark-adapter registrations to their DB-backed equivalents.
 
-No host calls `AddMarketModule()` yet — task F06/T01 is expected to be the
-first caller, the same "wiring lands with the first real caller" sequencing
-this README already documents for `AddBenchmarkModule` / `AddChatModule`
-above.
+`Contigo.Worker.Program` now calls `AddMarketModule` (the connection string
+stays optional — absent, T01's in-memory wiring stays) so its new one-shot
+operator command, `Commands.IngestMarketCommand`
+(`dotnet run --project backend/src/Contigo.Worker -- ingest-market --feed
+backend/fixtures/market-intelligence.mock.json`; `--feed` is an
+informational label only — the mock provider always ingests its one
+checked-in feed version, see that type's own doc comment), has something to
+call — still no scheduled/background ingestion job. `GET
+/api/market/records/{id}` (`Contigo.Api.MarketEndpointExtensions`, parent
+story AC-5 — one record with its provenance label and `updatedAt`) exists but
+is deliberately not yet mapped from `Program.cs` — task F06/T01 (this same
+phase) is expected to call `MapMarketEndpoints()`, the same "endpoint exists,
+host wiring is a later task's job" shape `CapabilitiesEndpointExtensions`
+already uses.
+
 ## Supplier identity
 
 Task E13/F03/US01/T01 (story us-01-supplier-identity, ADR-024 "Supplier

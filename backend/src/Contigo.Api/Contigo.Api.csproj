@@ -17,6 +17,11 @@
          Contracts/*) — new, unmapped (Program.cs does not call MapInsightsEndpoints/
          AddInsightsModule this task; F06/T01 maps it in phase 3). -->
     <ProjectReference Include="..\Contigo.Insights\Contigo.Insights.csproj" />
+    <!-- Task E13/F02/US01/T02 (market-index): MarketEndpointExtensions.cs (GET
+         /api/market/records/{id}) composes Contigo.Market.Retrieval.MarketRecordQueryService —
+         new, unmapped (Program.cs does not call MapMarketEndpoints/AddMarketModule this task;
+         F06/T01 maps it in this same phase — see that file's own doc comment). -->
+    <ProjectReference Include="..\Contigo.Market\Contigo.Market.csproj" />
   </ItemGroup>
 
   <ItemGroup>

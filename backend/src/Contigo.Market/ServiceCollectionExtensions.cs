@@ -1,9 +1,14 @@
+using Contigo.AiGateway;
 using Contigo.Benchmark.Adapters;
 using Contigo.Benchmark.Configuration;
 using Contigo.Market.Benchmark;
+using Contigo.Market.Infrastructure;
+using Contigo.Market.Ingestion;
 using Contigo.Market.Mock;
 using Contigo.Market.Retrieval;
 using Contigo.SharedKernel;
+using Contigo.SharedKernel.Tenancy;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -16,41 +21,122 @@ namespace Contigo.Market;
 /// <c>Contigo.Market</c> → <c>[SharedKernel, AiGateway, Benchmark]</c>).
 ///
 /// Task E13/F01/US01/T01 (v2-scaffold) created this project with an empty
-/// <see cref="AddMarketModule"/>. This task (E13/F02/US01/T01) is the first to register
-/// anything: the mock feed (<see cref="IMarketIntelligenceProvider"/> →
-/// <see cref="MockMarketIntelligenceProvider"/>), its benchmark projection
-/// (<see cref="MarketFeedBenchmarkAdapter"/>, registered into the same
+/// <see cref="AddMarketModule"/>. Task E13/F02/US01/T01 was the first to register anything: the
+/// mock feed (<see cref="IMarketIntelligenceProvider"/> → <see cref="MockMarketIntelligenceProvider"/>),
+/// its benchmark projection (<see cref="MarketFeedBenchmarkAdapter"/>, registered into the same
 /// <c>IBenchmarkProviderAdapter</c> enumerable <c>Contigo.Benchmark.BenchmarkAdapterRegistry</c>
 /// resolves), and its in-memory notes retrieval (<see cref="IMarketKnowledgeRetrieval"/> →
-/// <see cref="InMemoryMarketKnowledgeRetrieval"/>). No host calls <see cref="AddMarketModule"/>
-/// yet — task F06/T01 is expected to be the first caller, the same "wiring lands with the first
-/// real caller" sequencing this codebase already uses for
+/// <see cref="InMemoryMarketKnowledgeRetrieval"/>) — all still registered, unconditionally, when
+/// <paramref name="marketConnectionString"/> below is <see langword="null"/>.
+///
+/// Task E13/F02/US01/T02 (market-index) adds <paramref name="marketConnectionString"/> (task
+/// objective: "DI swap inside <c>AddMarketModule(string? marketConnectionString)</c>"), the same
+/// "optional trailing connection-string parameter, called with none by every existing test/caller"
+/// shape <c>Contigo.Chat.Infrastructure.ServiceCollectionExtensions.AddChatModule</c> already
+/// established for the identical reason: this module already has real, non-database callers (the
+/// mock-feed/in-memory-retrieval registrations above) that must keep resolving with zero
+/// configuration. Called with a connection string, this method instead registers
+/// <see cref="MarketDbContext"/> and swaps in the DB-backed
+/// <see cref="Retrieval.PgVectorMarketKnowledgeRetrieval"/> / DB-backed
+/// <see cref="MarketFeedBenchmarkAdapter"/> constructor — a branch, not a <c>Replace</c> override,
+/// so the "market-feed" <c>IBenchmarkProviderAdapter</c> slot is claimed by exactly one concrete
+/// data source per call, never both (a second, unconditional <c>TryAddEnumerable</c> registration
+/// under the same interface would make <c>Contigo.Benchmark.BenchmarkAdapterRegistry</c>'s own
+/// constructor throw "Duplicate benchmark provider adapter name"). No host calls
+/// <see cref="AddMarketModule"/> yet — task F06/T01 is expected to be the first caller, the same
+/// "wiring lands with the first real caller" sequencing this codebase already uses for
 /// <c>Contigo.Benchmark.ServiceCollectionExtensions.AddBenchmarkModule</c> and
 /// <c>Contigo.Chat.Infrastructure.ServiceCollectionExtensions.AddChatModule</c>.
 /// </summary>
 public static class ServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers the Market module's services into <paramref name="services"/>.
+    /// Registers the Market module's services into <paramref name="services"/>. Called with
+    /// <paramref name="marketConnectionString"/> <see langword="null"/> (every caller before task
+    /// E13/F02/US01/T02, and every test that does not exercise the persisted store), registers
+    /// exactly what it always has — the mock feed, in-memory notes retrieval, and the
+    /// provider-backed benchmark adapter. Called with a real connection string, additionally wires
+    /// <see cref="MarketDbContext"/> and swaps the notes-retrieval and benchmark-adapter
+    /// registrations for their DB-backed equivalents (see the type doc comment).
     /// </summary>
-    public static IServiceCollection AddMarketModule(this IServiceCollection services)
+    public static IServiceCollection AddMarketModule(
+        this IServiceCollection services, string? marketConnectionString = null)
     {
         // TryAdd: any module (or the host) may call this defensively; only the first registration
         // wins (mirrors Contigo.Benchmark.ServiceCollectionExtensions.AddBenchmarkModule).
         services.TryAddSingleton<IClock, SystemClock>();
 
         services.TryAddSingleton<IMarketIntelligenceProvider, MockMarketIntelligenceProvider>();
-        services.TryAddSingleton<IMarketKnowledgeRetrieval, InMemoryMarketKnowledgeRetrieval>();
 
-        // Registered into the same enumerable Contigo.Benchmark.BenchmarkAdapterRegistry's own
-        // constructor consumes (TryAddEnumerable — see that type's own doc comment for why not
-        // TryAddSingleton<IBenchmarkProviderAdapter, _>, which would silently no-op:
-        // Contigo.Benchmark.Fixtures.FixtureBenchmarkAdapter already took that one registration
-        // slot for IBenchmarkService, not this one, but IServiceCollection.TryAdd only checks the
-        // *service type*, so a second TryAddSingleton<IBenchmarkProviderAdapter, _> would already
-        // be occupied the moment more than one adapter exists in the container).
-        services.TryAddEnumerable(
-            ServiceDescriptor.Singleton<IBenchmarkProviderAdapter, MarketFeedBenchmarkAdapter>());
+        if (marketConnectionString is not null)
+        {
+            // Same defensive TryAdd every module that ends up needing the ambient tenant claim
+            // already uses -- MarketIngestionService/PgVectorMarketKnowledgeRetrieval's own
+            // "system tenant" AI Gateway logging scope is this module's first consumer of it (see
+            // MarketIngestionService.SystemTenantId's own doc comment). Never wired into
+            // MarketDbContext itself -- see that type's own doc comment for why.
+            services.TryAddSingleton<ITenantContext, TenantContext>();
+
+            // This module's own IAiGateway/AiGatewayModelOptions wiring -- only needed once real
+            // ingestion/DB-backed retrieval can actually call IAiGateway.EmbedAsync, so this call
+            // lives inside this branch rather than unconditionally at the top of this method (the
+            // in-memory T01 path above never touches IAiGateway at all). Idempotent (TryAdd
+            // throughout its own body), so calling it here is safe even when some other module in
+            // the same host (for example Contigo.Documents.Contracts) already called it first.
+            services.AddAiGatewayModule();
+
+            // Plain AddDbContext (Scoped): MarketIngestionService and MarketRecordQueryService
+            // below are both Scoped and take this type directly, the same shape every other
+            // module's own DbContext-backed service already uses.
+            services.AddDbContext<MarketDbContext>(options =>
+                MarketDbContextOptions.Configure(options, marketConnectionString));
+
+            // AddDbContextFactory (Singleton IDbContextFactory<MarketDbContext>): the DB-backed
+            // benchmark adapter below is registered Singleton (matching its T01 provider-backed
+            // predecessor's own lifetime -- forced by Contigo.Benchmark.BenchmarkAdapterRegistry's
+            // own eager IEnumerable<IBenchmarkProviderAdapter> constructor injection, see that
+            // adapter's own doc comment) and cannot instead take MarketDbContext (inherently
+            // Scoped) directly.
+            services.AddDbContextFactory<MarketDbContext>(options =>
+                MarketDbContextOptions.Configure(options, marketConnectionString));
+
+            // Scoped, not Singleton -- unlike the DB-backed IBenchmarkProviderAdapter below, this
+            // type also depends on the Scoped IAiGateway (to embed the search query); see its own
+            // doc comment for why nothing forces IMarketKnowledgeRetrieval to stay Singleton the
+            // way BenchmarkAdapterRegistry forces IBenchmarkProviderAdapter to.
+            services.Replace(ServiceDescriptor.Scoped<IMarketKnowledgeRetrieval, PgVectorMarketKnowledgeRetrieval>());
+
+            // Two generic arguments, not one: TryAddEnumerable(ServiceDescriptor.Singleton<TService>(factory))
+            // -- a factory registration with no distinct TImplementation -- unconditionally throws
+            // "Implementation type cannot be 'X' because it is indistinguishable from other services
+            // registered for 'X'" (Microsoft.Extensions.DependencyInjection's own defensive check: a
+            // factory-only descriptor's ImplementationType equals its ServiceType, and TryAddEnumerable
+            // requires a distinct one to de-duplicate against). Naming MarketFeedBenchmarkAdapter as the
+            // second type argument gives the descriptor its own, distinct ImplementationType, the same
+            // fix the else branch's own two-argument ServiceDescriptor.Singleton<IBenchmarkProviderAdapter,
+            // MarketFeedBenchmarkAdapter>() below already gets for free (no factory needed there).
+            services.TryAddEnumerable(ServiceDescriptor.Singleton<IBenchmarkProviderAdapter, MarketFeedBenchmarkAdapter>(sp =>
+                new MarketFeedBenchmarkAdapter(
+                    sp.GetRequiredService<IDbContextFactory<MarketDbContext>>(),
+                    sp.GetRequiredService<IClock>())));
+
+            services.AddScoped<MarketIngestionService>();
+            services.AddScoped<MarketRecordQueryService>();
+        }
+        else
+        {
+            services.TryAddSingleton<IMarketKnowledgeRetrieval, InMemoryMarketKnowledgeRetrieval>();
+
+            // Registered into the same enumerable Contigo.Benchmark.BenchmarkAdapterRegistry's own
+            // constructor consumes (TryAddEnumerable — see that type's own doc comment for why not
+            // TryAddSingleton<IBenchmarkProviderAdapter, _>, which would silently no-op:
+            // Contigo.Benchmark.Fixtures.FixtureBenchmarkAdapter already took that one registration
+            // slot for IBenchmarkService, not this one, but IServiceCollection.TryAdd only checks
+            // the *service type*, so a second TryAddSingleton<IBenchmarkProviderAdapter, _> would
+            // already be occupied the moment more than one adapter exists in the container).
+            services.TryAddEnumerable(
+                ServiceDescriptor.Singleton<IBenchmarkProviderAdapter, MarketFeedBenchmarkAdapter>());
+        }
 
         MakeMarketFeedTheDefaultActiveAdapter(services);
 
