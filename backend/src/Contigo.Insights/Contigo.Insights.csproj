@@ -16,6 +16,12 @@
          (Contigo.AiGateway / Contigo.Benchmark / Contigo.Chat already reference the same-family
          package for the same reason). -->
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
+    <!-- Task E13/F07/US01/T01 (insights-calculators): InsightsOptions binds from IConfiguration
+         inside AddInsightsModule, the same generic .NET configuration abstraction (not a provider
+         SDK) Contigo.Renewals.csproj already references for the identical
+         PriorityScoreWeightsOptions/ThresholdWindowOptions pattern — does not trip
+         Contigo.ArchitectureTests.DependencyDirectionTests.Domain_module_must_not_reference_provider_sdks. -->
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.11" />
   </ItemGroup>
 
   <PropertyGroup>
