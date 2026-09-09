@@ -5,26 +5,25 @@
  * a real drag-and-drop/file-picker upload uses -- a real end-to-end request against the deployed
  * API, not a client-only mock.
  *
- * **Two samples, two suppliers, two honest outcomes.** The outcome is still whatever the deployed
+ * **Two samples, two suppliers, two honest outcomes.** The outcome is whatever the deployed
  * pipeline really returns; the texts are written so that outcome is a *meaningful* one:
  *
  * - `clean` -- an MSA with Northwind Traders SA, every commercial term stated once, plainly, with
- *   the supplier role labelled. The fixture extractor (and any reasonable model) reads every field
- *   with high confidence, so the document completes and is askable straight away.
+ *   the supplier role labelled. A reader (model or fixture) finds every field with high confidence.
  * - `needs-review` -- an MSA with Fabrikam Software GmbH whose text is genuinely ambiguous: the
  *   parties are named without saying which one supplies, the body and Schedule 1 disagree on the
  *   annual fee, and the renewal clause both affirms and denies automatic renewal. Exactly those
- *   fields come back weak, the document lands in `needs_review`, and the review screen has real
- *   evidence (page, quoted span, confidence) to show for each of them.
+ *   fields deserve a low confidence and a human look, with real evidence (page, quoted span).
  *
- * **It has to be a readable contract, not a placeholder.** Each page is a syntactically real PDF
- * page object paired 1:1 with an uncompressed `BT ... Tj ... ET` content stream -- exactly the shape
- * `NativeDocumentTextExtractor` reads natively (it counts `/Type /Page` objects and pairs them with
- * text streams in file order, joining a stream's literals with spaces), so the samples take the
- * born-digital path, never spend an OCR call, clear `Documents:MinReadableChars` (200) comfortably,
- * and carry the words `MASTER SERVICES AGREEMENT` the classifier keys on. Text stays within Latin-1
- * (the encoding the extractor decodes an uncompressed stream with) and every `(`, `)` and `\` is
- * escaped as the PDF string syntax requires.
+ * **It has to be a real PDF, not a placeholder.** On Azure every PDF goes through Document
+ * Intelligence (ADR-017, amended 2026-09-09), which parses the file for real: so `buildSamplePdf`
+ * emits a structurally valid PDF -- catalog, page tree, one `/Type /Page` object with its own
+ * uncompressed `BT ... Tj ... ET` content stream per page, a shared Helvetica font, a correct
+ * cross-reference table with byte offsets, trailer and `startxref`. The same shape also stays
+ * readable by the fixture gateway's own lightweight scanner (CI, local dev), which pairs page objects
+ * with text streams in file order and joins a stream's literals with spaces. Text is kept to ASCII so
+ * byte offsets equal character offsets, and every `(`, `)` and `\` is escaped as the PDF string
+ * syntax requires.
  */
 
 export type SampleDocumentKey = "clean" | "needs-review";
@@ -33,7 +32,7 @@ export interface SampleDocumentDefinition {
   key: SampleDocumentKey;
   /** Button label, identical in both dropzone variants. */
   label: string;
-  /** One sentence for the button's `title`: who the supplier is and what to expect. */
+  /** One sentence for the button's `title`: who the supplier is and what the text is like. */
   description: string;
   fileName: string;
   supplier: string;
@@ -45,7 +44,7 @@ export const SAMPLE_DOCUMENTS: readonly SampleDocumentDefinition[] = [
   {
     key: "clean",
     label: "Sample MSA · clean",
-    description: "Northwind Traders SA — every term stated plainly; expected to complete without review.",
+    description: "Northwind Traders SA — every term stated once, plainly, with the supplier role labelled.",
     fileName: "contigo-sample-northwind-msa.pdf",
     supplier: "Northwind Traders SA",
     pages: [
@@ -65,7 +64,7 @@ export const SAMPLE_DOCUMENTS: readonly SampleDocumentDefinition[] = [
   {
     key: "needs-review",
     label: "Sample MSA · needs review",
-    description: "Fabrikam Software GmbH — ambiguous supplier, fee and renewal clauses; expected to need review.",
+    description: "Fabrikam Software GmbH — unlabelled parties, two annual fees and a self-contradicting renewal clause.",
     fileName: "contigo-sample-fabrikam-msa.pdf",
     supplier: "Fabrikam Software GmbH",
     pages: [
@@ -100,8 +99,8 @@ function escapePdfString(text: string): string {
   return text.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
 }
 
-/** Word-wraps one paragraph; the native extractor joins a stream's literals with single spaces, so
- * wrapping on spaces reproduces the paragraph text exactly. */
+/** Word-wraps one paragraph; a reader joins a stream's literals with single spaces, so wrapping
+ * on spaces reproduces the paragraph text exactly. */
 function wrapParagraph(paragraph: string): string[] {
   const lines: string[] = [];
   let current = "";
@@ -127,40 +126,59 @@ function buildContentStream(pageText: string): string {
   return `BT /F1 10.5 Tf 14 TL 54 740 Td\n${showOperators}\nET`;
 }
 
+/** Every character must be ASCII: the file is UTF-8 encoded on upload, and the cross-reference
+ * table below records *byte* offsets, which equal character offsets only for ASCII. */
+function assertAscii(text: string): void {
+  for (let index = 0; index < text.length; index += 1) {
+    if (text.charCodeAt(index) > 0x7f) {
+      throw new Error(`Sample PDF text must be ASCII; found U+${text.charCodeAt(index).toString(16)} at ${index}.`);
+    }
+  }
+}
+
 /**
- * A minimal but syntactically real multi-page PDF: one catalog, one page tree, then per page a
- * `/Type /Page` object and its own uncompressed content stream, and one shared Helvetica font --
- * the object count `NativeDocumentTextExtractor` needs to pair pages with streams 1:1. No xref
- * table: the extractor's lightweight scan never reads it (see that type's own doc comment), and
- * a browser preview is not what these bytes are for.
+ * A minimal but structurally valid multi-page PDF (see the header comment): one catalog, one page
+ * tree, per page a `/Type /Page` object and its own uncompressed content stream, one shared Helvetica
+ * font, then a cross-reference table with the byte offset of every object, the trailer and
+ * `startxref` -- what a real parser (Document Intelligence, a browser preview) needs to open the file.
  */
 export function buildSamplePdf(pages: readonly string[]): string {
   const pageCount = pages.length;
   const fontObjectNumber = 3 + pageCount * 2;
   const kids = pages.map((_, index) => `${3 + index * 2} 0 R`).join(" ");
 
-  const objects: string[] = [
-    "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj",
-    `2 0 obj << /Type /Pages /Kids [${kids}] /Count ${pageCount} >> endobj`,
+  const objectBodies: string[] = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    `<< /Type /Pages /Kids [${kids}] /Count ${pageCount} >>`,
   ];
 
   pages.forEach((pageText, index) => {
-    const pageObjectNumber = 3 + index * 2;
-    const contentObjectNumber = pageObjectNumber + 1;
+    const contentObjectNumber = 3 + index * 2 + 1;
     const stream = buildContentStream(pageText);
-    objects.push(
-      `${pageObjectNumber} 0 obj << /Type /Page /Parent 2 0 R /Resources << /Font << /F1 ${fontObjectNumber} 0 R >> >> /MediaBox [0 0 612 792] /Contents ${contentObjectNumber} 0 R >> endobj`,
-      `${contentObjectNumber} 0 obj << /Length ${stream.length} >>`,
-      "stream",
-      stream,
-      "endstream",
-      "endobj",
+    objectBodies.push(
+      `<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 ${fontObjectNumber} 0 R >> >> /MediaBox [0 0 612 792] /Contents ${contentObjectNumber} 0 R >>`,
+      `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
     );
   });
 
-  objects.push(`${fontObjectNumber} 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj`);
+  objectBodies.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
 
-  return ["%PDF-1.4", ...objects, "trailer << /Root 1 0 R >>", "%%EOF"].join("\n");
+  let pdf = "%PDF-1.4\n";
+  const offsets: number[] = [];
+  objectBodies.forEach((body, index) => {
+    offsets.push(pdf.length);
+    pdf += `${index + 1} 0 obj\n${body}\nendobj\n`;
+  });
+
+  const startXref = pdf.length;
+  pdf += `xref\n0 ${objectBodies.length + 1}\n0000000000 65535 f \n`;
+  for (const offset of offsets) {
+    pdf += `${offset.toString().padStart(10, "0")} 00000 n \n`;
+  }
+  pdf += `trailer\n<< /Size ${objectBodies.length + 1} /Root 1 0 R >>\nstartxref\n${startXref}\n%%EOF\n`;
+
+  assertAscii(pdf);
+  return pdf;
 }
 
 export function createSampleDocumentFile(key: SampleDocumentKey = "clean"): File {

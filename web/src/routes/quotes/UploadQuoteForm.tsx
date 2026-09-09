@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import type { UploadQuoteFields } from "../../api/client";
+import { buildSamplePdf } from "../documents/sampleDocument";
 
 export interface UploadQuoteFormProps {
   onUpload: (file: File, fields: UploadQuoteFields) => Promise<{ ok: boolean; error?: string }>;
@@ -7,23 +8,28 @@ export interface UploadQuoteFormProps {
 }
 
 /**
- * "Enterprise Support Tier — Custom Bundle. Map it manually..." — Kept a small,
- * syntactically-minimal PDF the same way `../documents/sampleDocument.ts` does for the Documents
- * screen's own "Use sample file" control: this repo ships no real sample quote asset (checked: no
- * `*.pdf` anywhere in the repo), so rather than disabling the convenience button or faking a network
- * response, this sends a real file through the exact same `apiClient.uploadQuote()` call a real
- * drag-and-drop/file-picker upload uses. Whatever the real `QuoteExtractionPipeline` returns for it
- * (very possibly zero line items, since this content-free stub has no extractable text -- see
- * `QuoteExtractionPipeline.ProcessAsync`'s own "at least one page of document text" guard) is the
- * honest answer, not a scripted one; a future task that adds a real fixture quote can replace this
- * function without touching anything else in this file.
+ * The "Use sample file" control builds a real, readable supplier quote the same way
+ * `../documents/sampleDocument.ts` builds the sample MSAs (a structurally valid one-page PDF,
+ * ASCII text, correct xref): this repo ships no real quote asset, so rather than disabling the
+ * convenience button or faking a network response, this sends a real file through the exact same
+ * `apiClient.uploadQuote()` call a real drag-and-drop/file-picker upload uses. Whatever the real
+ * `QuoteExtractionPipeline` returns for it is the honest answer, not a scripted one -- the text is
+ * written so a reader (model or fixture) can find two priced lines with SKU, quantity, unit price,
+ * list price, discount and term.
  */
-const SAMPLE_QUOTE_PDF_CONTENT =
-  "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[]/Count 0>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF";
+const SAMPLE_QUOTE_PAGES: readonly string[] = [
+  [
+    "QUOTE No. Q-2026-0042",
+    "Supplier: Northwind Traders SA, Rue du Rhone 12, 1204 Geneva, Switzerland. Customer: Contigo Demo AG. Quote date: 2026-09-01. Valid until: 2026-10-31. Currency: EUR. Payment terms: Net 30.",
+    "Line 1. SKU NW-PROC-ENT - Northwind Procurement Platform, Enterprise edition. Quantity: 250 seats. Unit price: EUR 160.00 per seat per year (list price EUR 200.00, discount 20%). Term: 12 months. Line total: EUR 40,000.00.",
+    "Line 2. SKU NW-SUP-PRM - Premium Support, 24x7 with a four-hour response time. Quantity: 1. Unit price: EUR 8,000.00 per year (list price EUR 10,000.00, discount 20%). Term: 12 months. Line total: EUR 8,000.00.",
+    "Total for the 12-month term: EUR 48,000.00. All prices exclude VAT. Prices are firm for the validity period of this quote.",
+  ].join("\n\n"),
+];
 const SAMPLE_QUOTE_FILE_NAME = "contigo-sample-quote.pdf";
 
 function createSampleQuoteFile(): File {
-  return new File([SAMPLE_QUOTE_PDF_CONTENT], SAMPLE_QUOTE_FILE_NAME, { type: "application/pdf" });
+  return new File([buildSamplePdf(SAMPLE_QUOTE_PAGES)], SAMPLE_QUOTE_FILE_NAME, { type: "application/pdf" });
 }
 
 /**
