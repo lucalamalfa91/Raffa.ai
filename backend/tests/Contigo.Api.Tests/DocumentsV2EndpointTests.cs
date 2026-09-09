@@ -174,6 +174,106 @@ public sealed class DocumentsV2EndpointTests : IClassFixture<WebApplicationFacto
     }
 
     [Fact]
+    public async Task Validate_completes_a_reviewed_document_audits_the_sign_off_and_is_idempotent()
+    {
+        var host = CreateHost();
+        var client = host.Factory.CreateClient();
+        var tenantId = Guid.NewGuid();
+        // MsaText names its two parties without a role label, so the fixture extractor proposes the
+        // supplier at low confidence and the upload lands in needs_review — a real review to close.
+        var documentId = await UploadAsync(client, tenantId, "msa.pdf");
+        var before = await ReadJsonAsync(await GetAsync(client, $"/api/documents/{documentId}", tenantId.ToString()));
+        Assert.Equal("NeedsReview", before.RootElement.GetProperty("processingStatus").GetString());
+
+        // Procurement signs off — no Admin gate on a review (unlike reprocess/delete).
+        var response = await SendJsonAsync(
+            client, HttpMethod.Post, $"/api/documents/{documentId}/validate", tenantId.ToString(),
+            """{"acceptedFields":["supplier","currency"]}""", "Procurement", "buyer@acme.example");
+        var body = await ReadJsonAsync(response);
+        Assert.Equal(documentId, body.RootElement.GetProperty("documentId").GetGuid());
+        Assert.Equal("Completed", body.RootElement.GetProperty("processingStatus").GetString());
+        Assert.False(body.RootElement.GetProperty("alreadyValidated").GetBoolean());
+        Assert.Equal(
+            ["supplier", "currency"],
+            body.RootElement.GetProperty("acceptedFields").EnumerateArray().Select(f => f.GetString()));
+
+        var audit = Assert.Single(host.Audit.Entries, e => e.Action == "document.validated");
+        Assert.Equal("buyer@acme.example", audit.Actor);
+        Assert.Contains("acceptedFields=supplier,currency", audit.Detail);
+
+        // The list now reports the document as completed — it feeds Ask/Portfolio/Renewals.
+        var list = await ReadJsonAsync(await GetAsync(client, "/api/documents", tenantId.ToString()));
+        var item = Assert.Single(list.RootElement.GetProperty("items").EnumerateArray());
+        Assert.Equal("Completed", item.GetProperty("processingStatus").GetString());
+
+        // A second click is a 200 no-op that says so, never an error.
+        var again = await ReadJsonAsync(await SendJsonAsync(
+            client, HttpMethod.Post, $"/api/documents/{documentId}/validate", tenantId.ToString(), "{}"));
+        Assert.True(again.RootElement.GetProperty("alreadyValidated").GetBoolean());
+
+        // Unknown and cross-tenant documents are 404; a malformed id is 400.
+        Assert.Equal(
+            HttpStatusCode.NotFound,
+            (await SendJsonAsync(client, HttpMethod.Post, $"/api/documents/{Guid.NewGuid()}/validate", tenantId.ToString(), "{}")).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.NotFound,
+            (await SendJsonAsync(client, HttpMethod.Post, $"/api/documents/{documentId}/validate", Guid.NewGuid().ToString(), "{}")).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.BadRequest,
+            (await SendJsonAsync(client, HttpMethod.Post, "/api/documents/not-a-guid/validate", tenantId.ToString(), "{}")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Evidence_lists_the_latest_fact_per_field_with_page_span_confidence_and_passage()
+    {
+        var host = CreateHost();
+        var client = host.Factory.CreateClient();
+        var tenantId = Guid.NewGuid();
+        var documentId = await UploadAsync(client, tenantId, "msa.pdf");
+
+        var document = await ReadJsonAsync(await GetAsync(client, $"/api/documents/{documentId}", tenantId.ToString()));
+        var contractId = document.RootElement.GetProperty("contractId").GetGuid();
+
+        var response = await GetAsync(client, $"/api/contracts/{contractId}/evidence", tenantId.ToString());
+        var evidence = (await ReadJsonAsync(response)).RootElement.EnumerateArray().ToList();
+        Assert.NotEmpty(evidence);
+
+        // The fixture extractor read these straight from MsaText: quoted span, real page, real
+        // confidence, the passage around the span and the file it came from.
+        var annualSpend = Assert.Single(evidence, e => e.GetProperty("fieldName").GetString() == "annualSpend");
+        Assert.Equal("48000", annualSpend.GetProperty("value").GetString());
+        Assert.Equal(1, annualSpend.GetProperty("sourcePage").GetInt32());
+        Assert.Equal("EUR 48,000,", annualSpend.GetProperty("sourceSpan").GetString());
+        Assert.True(annualSpend.GetProperty("confidence").GetDouble() > 0.9);
+        Assert.Equal("msa.pdf", annualSpend.GetProperty("sourceFileName").GetString());
+        Assert.Contains("Annual fees are EUR 48,000", annualSpend.GetProperty("passage").GetString());
+        Assert.Equal(JsonValueKind.Number, annualSpend.GetProperty("highlightStart").ValueKind);
+
+        // The classification verdict rides along as the `type` fact, with no page or span.
+        var type = Assert.Single(evidence, e => e.GetProperty("fieldName").GetString() == "type");
+        Assert.Equal("Msa", type.GetProperty("value").GetString());
+        Assert.Equal(JsonValueKind.Null, type.GetProperty("sourcePage").ValueKind);
+
+        // The unlabelled supplier is proposed below the critical bar: present, weak, reviewable.
+        var supplier = Assert.Single(evidence, e => e.GetProperty("fieldName").GetString() == "supplier");
+        Assert.Equal("Contoso Ltd", supplier.GetProperty("value").GetString());
+        Assert.True(supplier.GetProperty("confidence").GetDouble() < 0.8);
+
+        Assert.Equal(
+            HttpStatusCode.NotFound,
+            (await GetAsync(client, $"/api/contracts/{Guid.NewGuid()}/evidence", tenantId.ToString())).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.NotFound,
+            (await GetAsync(client, $"/api/contracts/{contractId}/evidence", Guid.NewGuid().ToString())).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.BadRequest,
+            (await GetAsync(client, "/api/contracts/not-a-guid/evidence", tenantId.ToString())).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.BadRequest,
+            (await client.GetAsync($"/api/contracts/{contractId}/evidence")).StatusCode);
+    }
+
+    [Fact]
     public async Task Delete_is_admin_only_removes_the_objects_and_audits()
     {
         var host = CreateHost();
@@ -296,6 +396,29 @@ public sealed class DocumentsV2EndpointTests : IClassFixture<WebApplicationFacto
         string userId = "operator@acme.example")
     {
         using var request = new HttpRequestMessage(method, url);
+        request.Headers.Add("X-Tenant-Id", tenantId);
+        request.Headers.Add("X-User-Id", userId);
+        if (role is not null)
+        {
+            request.Headers.Add("X-Role", role);
+        }
+
+        return await client.SendAsync(request);
+    }
+
+    private static async Task<HttpResponseMessage> SendJsonAsync(
+        HttpClient client,
+        HttpMethod method,
+        string url,
+        string tenantId,
+        string json,
+        string? role = null,
+        string userId = "operator@acme.example")
+    {
+        using var request = new HttpRequestMessage(method, url)
+        {
+            Content = new StringContent(json, Encoding.UTF8, "application/json"),
+        };
         request.Headers.Add("X-Tenant-Id", tenantId);
         request.Headers.Add("X-User-Id", userId);
         if (role is not null)

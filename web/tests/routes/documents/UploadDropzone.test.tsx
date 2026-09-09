@@ -10,11 +10,13 @@ function pdfFile(name = "contract.pdf") {
 // R-DOC-01/02: multi-file, widened accept (PDF/DOCX/XLSX/PNG/JPG); task's own "accept widened, up
 // to 20 files" -- the size/count ceilings themselves are proven in uploadPipeline.test.ts.
 describe("UploadDropzone", () => {
-  it("onboarding variant renders 'Upload contracts' and 'Use the sample MSA'", () => {
+  it("onboarding variant renders 'Upload contracts' and both sample MSAs", () => {
     render(<UploadDropzone variant="onboarding" onFilesSelected={vi.fn()} onUseSampleFile={vi.fn()} />);
 
     expect(screen.getByRole("button", { name: "Upload contracts" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Use the sample MSA" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sample MSA · clean" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sample MSA · needs review" })).toBeInTheDocument();
+    expect(screen.getByText("Or try a sample:")).toBeInTheDocument();
     expect(screen.getByText("or drop files anywhere in this box")).toBeInTheDocument();
   });
 
@@ -26,12 +28,24 @@ describe("UploadDropzone", () => {
     expect(screen.getByText("20 files at once")).toBeInTheDocument();
   });
 
-  it("list variant renders the compact 'Sample MSA' label and inline hint, no strip", () => {
+  it("list variant renders the same two sample buttons and the inline hint, no strip", () => {
     render(<UploadDropzone variant="list" onFilesSelected={vi.fn()} onUseSampleFile={vi.fn()} />);
 
-    expect(screen.getByRole("button", { name: "Sample MSA" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sample MSA · clean" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sample MSA · needs review" })).toBeInTheDocument();
     expect(screen.getByText(/drop PDF · DOCX · XLSX · PNG · JPG here/)).toBeInTheDocument();
     expect(screen.queryByText("50 MB / file")).not.toBeInTheDocument();
+    expect(screen.queryByText("Or try a sample:")).not.toBeInTheDocument();
+  });
+
+  it("names the supplier and the expected outcome on each sample button's title", () => {
+    render(<UploadDropzone variant="list" onFilesSelected={vi.fn()} onUseSampleFile={vi.fn()} />);
+
+    expect(screen.getByRole("button", { name: "Sample MSA · clean" })).toHaveAttribute("title", expect.stringContaining("Northwind Traders SA"));
+    expect(screen.getByRole("button", { name: "Sample MSA · needs review" })).toHaveAttribute(
+      "title",
+      expect.stringContaining("Fabrikam Software GmbH"),
+    );
   });
 
   it("the file input accepts the widened, D7 (PNG/JPG) extension list", () => {
@@ -79,12 +93,14 @@ describe("UploadDropzone", () => {
     expect(dropzone).not.toHaveClass("is-dragging");
   });
 
-  it("calls onUseSampleFile when the sample button is clicked", async () => {
+  it("calls onUseSampleFile with the sample's own key when either sample button is clicked", async () => {
     const onUseSampleFile = vi.fn();
     render(<UploadDropzone variant="onboarding" onFilesSelected={vi.fn()} onUseSampleFile={onUseSampleFile} />);
 
-    await userEvent.click(screen.getByRole("button", { name: "Use the sample MSA" }));
+    await userEvent.click(screen.getByRole("button", { name: "Sample MSA · clean" }));
+    await userEvent.click(screen.getByRole("button", { name: "Sample MSA · needs review" }));
 
-    expect(onUseSampleFile).toHaveBeenCalledTimes(1);
+    expect(onUseSampleFile).toHaveBeenNthCalledWith(1, "clean");
+    expect(onUseSampleFile).toHaveBeenNthCalledWith(2, "needs-review");
   });
 });

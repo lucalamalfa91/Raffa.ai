@@ -10,9 +10,9 @@ export interface ReviewFieldListProps {
 /**
  * The 4-column review list (screens.md #6 AC-1: "Field (critical marker) · Extracted value + source
  * · Confidence tag · Decision (Accept / Correct or result)"; task E07/F03/US01/T01). Column 2 folds
- * "value" and "source" into one cell (the AC itself names them as one column) -- source is an
- * honest "not yet available" note, not a fabricated citation: no endpoint exposes per-field
- * evidence for this field set yet (see `./reviewViewModel.ts`'s own header comment).
+ * "value" and "source" into one cell (the AC itself names them as one column); the source line is
+ * the field's real evidence -- page and quoted span from `GET /api/contracts/{id}/evidence` -- or an
+ * honest "no source recorded" when the extraction reported none, never a fabricated citation.
  *
  * Every row is reachable by keyboard through its own field-name button (`.btn.btn-ghost`, the same
  * reusable primitive `../contract360/OverviewTab.tsx`'s "All risks →" link already uses) -- row
@@ -21,9 +21,7 @@ export interface ReviewFieldListProps {
  *
  * Task E11/F07/US01/T01 (gap G-REV): "Correct" is `.btn.btn-ghost` (was `.btn-primary`) and the
  * value cell carries `.review-field-value` (ellipsis truncation) -- both copied from the export's
- * own inline styling on this exact row; column widths live in `./review.css` (`.table` is
- * `table-layout:fixed`, so the export's narrow-field/wide-value/auto-auto proportions need explicit
- * widths, not a markup change here).
+ * own inline styling on this exact row; column widths live in `./review.css`.
  */
 export default function ReviewFieldList({ rows, selectedField, onSelect, onAccept }: ReviewFieldListProps) {
   return (
@@ -54,7 +52,7 @@ export default function ReviewFieldList({ rows, selectedField, onSelect, onAccep
               </td>
               <td>
                 <div className="review-field-value">{row.displayValue}</div>
-                <div className="micro-meta">Source not yet available</div>
+                <div className="micro-meta review-field-source">{describeSource(row)}</div>
               </td>
               <td>
                 <span className={`tag tag-${tag.variant}`}>{tag.label}</span>
@@ -81,4 +79,23 @@ export default function ReviewFieldList({ rows, selectedField, onSelect, onAccep
       </tbody>
     </table>
   );
+}
+
+const MAX_SPAN_PREVIEW = 60;
+
+/** One line of provenance under the value: where the extraction read it, in the row's own words. */
+function describeSource(row: ReviewFieldRow): string {
+  const prefix = row.proposalPending ? "Proposed, not yet applied · " : "";
+  const { evidence } = row;
+  if (evidence === null) return `${prefix}No source recorded`;
+
+  const span = evidence.sourceSpan === null ? null : truncate(evidence.sourceSpan.replace(/\s+/g, " ").trim(), MAX_SPAN_PREVIEW);
+  if (evidence.sourcePage !== null && span !== null) return `${prefix}p. ${evidence.sourcePage} · “${span}”`;
+  if (span !== null) return `${prefix}“${span}”`;
+  if (evidence.sourcePage !== null) return `${prefix}p. ${evidence.sourcePage}`;
+  return `${prefix}From the whole document`;
+}
+
+function truncate(text: string, max: number): string {
+  return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
 }

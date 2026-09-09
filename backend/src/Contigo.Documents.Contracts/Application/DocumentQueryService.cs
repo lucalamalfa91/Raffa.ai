@@ -32,6 +32,25 @@ public sealed class DocumentQueryService(
     /// </summary>
     private const double WeakFactThreshold = 0.6;
 
+    /// <summary>
+    /// The stricter bar a <b>critical</b> field is judged against — the same 0.8
+    /// <c>StagedExtractionService.CriticalConfidenceThreshold</c> applies to the <c>supplier</c>
+    /// fact (requirements R-SUP-01, spec §7.3). A supplier fact between the two bars is exactly the
+    /// one the pipeline refused to link, so it must count towards "Review N fields" or the row
+    /// would announce nothing to review for a document that is in <c>needs_review</c> because of it.
+    /// </summary>
+    private const double CriticalWeakFactThreshold = 0.8;
+
+    private const string SupplierFieldName = "supplier";
+
+    private static bool IsWeak(string fieldName, double? confidence)
+    {
+        var threshold = string.Equals(fieldName, SupplierFieldName, StringComparison.OrdinalIgnoreCase)
+            ? CriticalWeakFactThreshold
+            : WeakFactThreshold;
+        return confidence is null || confidence < threshold;
+    }
+
     public async Task<DocumentMetadataResult?> GetByIdAsync(
         TenantId tenantId, EntityId documentId, CancellationToken cancellationToken = default)
     {
@@ -190,7 +209,7 @@ public sealed class DocumentQueryService(
                 byContract => byContract
                     .GroupBy(e => e.FieldName, StringComparer.OrdinalIgnoreCase)
                     .Select(byField => byField.OrderByDescending(e => e.CreatedAt).First())
-                    .Count(latest => latest.Confidence is null || latest.Confidence < WeakFactThreshold));
+                    .Count(latest => IsWeak(latest.FieldName, latest.Confidence)));
     }
 
     private async Task<Dictionary<EntityId, string>> SupplierNamesByContractAsync(

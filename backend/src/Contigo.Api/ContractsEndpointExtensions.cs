@@ -63,7 +63,58 @@ public static class ContractsEndpointExtensions
         endpoints.MapGet("/api/contracts/{id}", GetContract360Async);
         endpoints.MapPatch("/api/contracts/{id}", CorrectContractAsync);
         endpoints.MapGet("/api/contracts/{id}/corrections", GetCorrectionHistoryAsync);
+        endpoints.MapGet("/api/contracts/{id}/evidence", GetContractEvidenceAsync);
         return endpoints;
+    }
+
+    /// <summary>
+    /// `GET /api/contracts/{id}/evidence`: the latest per-field extraction evidence for one
+    /// contract (page, span, confidence, the quoted passage, the model) — the review screen's
+    /// evidence pane and its per-field confidence tags read this. Same guard-clause shape as
+    /// <see cref="GetCorrectionHistoryAsync"/>; 404 when <see cref="ContractEvidenceQueryService.GetLatestAsync"/>
+    /// returns <c>null</c> (no such contract for this tenant), 200 with an empty array for a
+    /// contract that exists but has no evidence yet.
+    /// </summary>
+    private static async Task<IResult> GetContractEvidenceAsync(
+        string id,
+        HttpRequest httpRequest,
+        ContractEvidenceQueryService evidenceQueryService,
+        CancellationToken cancellationToken)
+    {
+        if (!httpRequest.Headers.TryGetValue("X-Tenant-Id", out var tenantHeaderValues)
+            || !Guid.TryParse(tenantHeaderValues.ToString(), out var tenantGuid))
+        {
+            return Results.BadRequest("A valid 'X-Tenant-Id' header (a GUID) is required.");
+        }
+
+        if (!Guid.TryParse(id, out var contractGuid))
+        {
+            return Results.BadRequest("The contract id in the route must be a GUID.");
+        }
+
+        var evidence = await evidenceQueryService.GetLatestAsync(
+            new TenantId(tenantGuid), new EntityId(contractGuid), cancellationToken).ConfigureAwait(false);
+
+        if (evidence is null)
+        {
+            return Results.NotFound();
+        }
+
+        return Results.Ok(evidence.Select(e => new
+        {
+            fieldName = e.FieldName,
+            value = e.Value,
+            confidence = e.Confidence,
+            sourcePage = e.SourcePage,
+            sourceSpan = e.SourceSpan,
+            sourceDocumentId = e.SourceDocumentId?.Value,
+            sourceFileName = e.SourceFileName,
+            passage = e.Passage,
+            highlightStart = e.HighlightStart,
+            highlightLength = e.HighlightLength,
+            modelId = e.ModelId,
+            extractedAt = e.ExtractedAt,
+        }));
     }
 
     /// <summary>

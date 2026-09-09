@@ -172,6 +172,41 @@
   color: #222;
 }
 
+/* Evidence card internals (EvidencePane.tsx#EvidenceCard): the "FILE · PAGE N" header line in the
+ * export's own small uppercase tracking, the quoted passage, the span highlighted in the accent tint
+ * (never colour alone -- the <mark> element itself carries the meaning), and the model/confidence
+ * line underneath. */
+.review-evidence-source {
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-body);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-neutral-600);
+}
+
+.review-evidence-text {
+  margin: 0;
+}
+
+.review-evidence-highlight {
+  background: var(--color-accent-100);
+  color: inherit;
+  padding: 0 2px;
+}
+
+.review-evidence-meta {
+  margin: var(--space-2) 0 0;
+  font-family: var(--font-body);
+}
+
+/* Provenance line under the extracted value in the list (page + quoted span). */
+.review-field-source {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .review-correction-form {
   margin: var(--space-4) 0;
   padding-top: var(--space-3);

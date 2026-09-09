@@ -378,6 +378,8 @@ describe("createConversationAndAsk", () => {
       getRenewalPriority: vi.fn(),
       getCorrectionHistory: vi.fn(),
       correctContract: vi.fn(),
+      getContractEvidence: vi.fn(),
+      validateDocument: vi.fn(),
       postRenewalAction: vi.fn(),
       uploadQuote: vi.fn(),
       getQuoteAssessment: vi.fn(),

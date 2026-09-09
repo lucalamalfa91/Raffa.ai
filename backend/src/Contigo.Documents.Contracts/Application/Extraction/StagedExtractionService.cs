@@ -94,6 +94,29 @@ public sealed class StagedExtractionService(
     /// <c>ContractCorrectionService</c> accepts a human correction under the same name.</summary>
     public const string SupplierFieldName = "supplier";
 
+    /// <summary>Field name of the classification's own evidence row (<see cref="Contract.Type"/>).
+    /// Classification is the one extracted fact this pipeline does not produce itself — the
+    /// admission gate / <see cref="DocumentProcessingPipeline"/> run the `classify` role — yet the
+    /// review screen shows "Contract type" next to every other field and needs the same real
+    /// confidence behind it. <see cref="RunAsync(TenantId, EntityId, IReadOnlyList{DocumentPageText}, double?, CancellationToken)"/>
+    /// records it as an <see cref="ExtractionEvidence"/> row under this name, keyed exactly as
+    /// <c>ContractCorrectionService</c> accepts a <c>type</c> correction.</summary>
+    public const string TypeFieldName = "type";
+
+    /// <summary>The three stages whose facts are scalar <see cref="Contract"/> fields. A contract
+    /// with <em>none</em> of them (no supplier, currency, fee, date or renewal term at all) is not
+    /// a trusted extraction — that stage goes to review even though the gateway call succeeded.
+    /// The four "one row = one fact" list stages are deliberately not in this set: an empty list
+    /// is a legitimate outcome for them (a master agreement has no priced line items, a short
+    /// order form may carry no risk clause), and "nothing to review" is not a state a reviewer can
+    /// resolve — the only decision the review screen offers is per field.</summary>
+    private static readonly HashSet<ExtractionStage> ScalarFactStages =
+    [
+        ExtractionStage.Metadata,
+        ExtractionStage.CommercialTerms,
+        ExtractionStage.DatesAndRenewalTerms,
+    ];
+
     /// <summary><see cref="Contract"/> fields the `metadata` stage may propose (allow-listed
     /// both here and in the JSON Schema's <c>enum</c> — see <see cref="StagedExtractionJsonSchemas.Facts"/>).
     /// Deliberately excludes <see cref="Contract.Type"/>: that is Classification's field
@@ -139,10 +162,25 @@ public sealed class StagedExtractionService(
     /// even before the `metadata` stage has run.</summary>
     private const string BootstrapContractCurrency = "USD";
 
+    public Task<Result<StagedExtractionSummary>> RunAsync(
+        TenantId tenantId,
+        EntityId documentId,
+        IReadOnlyList<DocumentPageText> pages,
+        CancellationToken cancellationToken = default) =>
+        RunAsync(tenantId, documentId, pages, classificationConfidence: null, cancellationToken);
+
+    /// <summary>
+    /// Runs the seven stages; <paramref name="classificationConfidence"/>, when the caller has one
+    /// (the admission gate's or <see cref="DocumentProcessingPipeline"/>'s own `classify` verdict for
+    /// this document), is recorded as the <see cref="TypeFieldName"/> evidence row so the review
+    /// screen can show a real confidence for "Contract type" — and a classification below
+    /// <see cref="LowConfidenceThreshold"/> routes the document to review like any other weak fact.
+    /// </summary>
     public async Task<Result<StagedExtractionSummary>> RunAsync(
         TenantId tenantId,
         EntityId documentId,
         IReadOnlyList<DocumentPageText> pages,
+        double? classificationConfidence,
         CancellationToken cancellationToken = default)
     {
         if (pages.Count == 0)
@@ -170,6 +208,12 @@ public sealed class StagedExtractionService(
         var now = clock.UtcNow;
         var contract = await EnsureContractAsync(tenantId, document, now, cancellationToken).ConfigureAwait(false);
 
+        if (classificationConfidence is { } typeConfidence)
+        {
+            await RecordClassificationEvidenceAsync(tenantId, document, contract, typeConfidence, now, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         var documentText = BuildPageMarkedText(pages);
         var pageCount = pages.Count;
 
@@ -190,7 +234,7 @@ public sealed class StagedExtractionService(
             acceptedSupplierName ??= stageSupplierName;
         }
 
-        document.ProcessingStatus = DetermineDocumentStatus(stageResults);
+        document.ProcessingStatus = DetermineDocumentStatus(stageResults, classificationConfidence);
 
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
@@ -367,11 +411,14 @@ public sealed class StagedExtractionService(
             return (new StagedExtractionStageResult(stage, job.Status, 0, 0, job.ErrorDetail), null);
         }
 
-        // Human-in-the-loop principle: nothing extracted, something skipped, or any fact below its
-        // own confidence bar (LowConfidenceThreshold, or CriticalConfidenceThreshold for a
-        // CriticalFields entry) all mean a person should look at this stage before it is trusted,
-        // even though the AI Gateway call itself succeeded.
-        job.Status = applied.Extracted == 0 || applied.Skipped > 0 || applied.AnyBelowThreshold
+        // Human-in-the-loop principle: something skipped, any fact below its own confidence bar
+        // (LowConfidenceThreshold, or CriticalConfidenceThreshold for a CriticalFields entry), or
+        // a scalar-field stage that found nothing at all (see ScalarFactStages) all mean a person
+        // should look at this stage before it is trusted, even though the AI Gateway call itself
+        // succeeded. An empty *list* stage is a legitimate answer, not a review trigger — a
+        // reviewer cannot resolve "no line items", only a field.
+        var nothingWhereSomethingWasExpected = applied.Extracted == 0 && ScalarFactStages.Contains(stage);
+        job.Status = nothingWhereSomethingWasExpected || applied.Skipped > 0 || applied.AnyBelowThreshold
             ? ExtractionJobStatus.NeedsReview
             : ExtractionJobStatus.Completed;
         job.CompletedAt = completedAt;
@@ -806,7 +853,7 @@ public sealed class StagedExtractionService(
         DateOnly.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out result);
 
     private static DocumentProcessingStatus DetermineDocumentStatus(
-        IReadOnlyList<StagedExtractionStageResult> stages)
+        IReadOnlyList<StagedExtractionStageResult> stages, double? classificationConfidence)
     {
         if (stages.All(s => s.Status == ExtractionJobStatus.Failed))
         {
@@ -818,7 +865,53 @@ public sealed class StagedExtractionService(
             return DocumentProcessingStatus.NeedsReview;
         }
 
+        // The classification is a fact like any other (see TypeFieldName): a weak one means a
+        // human should confirm the contract type before the document counts as validated.
+        if (classificationConfidence is { } confidence && confidence < LowConfidenceThreshold)
+        {
+            return DocumentProcessingStatus.NeedsReview;
+        }
+
         return DocumentProcessingStatus.Completed;
+    }
+
+    /// <summary>
+    /// Writes the <see cref="TypeFieldName"/> evidence row for this run's classification verdict:
+    /// the proposed type is the document's (what the `classify` role said), never the contract's
+    /// current one (which a human may already have corrected), so the row records the proposal
+    /// exactly as every other <see cref="ExtractionEvidence"/> row does. Linked to the most recent
+    /// classification <see cref="ExtractionJob"/> for traceability when one exists; no page or span
+    /// — the classification reads the whole document, and inventing "page 1" would be the fabricated
+    /// precision Appendix C rule 10 forbids.
+    /// </summary>
+    private async Task RecordClassificationEvidenceAsync(
+        TenantId tenantId,
+        Document document,
+        Contract contract,
+        double confidence,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var classificationJobId = await dbContext.ExtractionJobs
+            .Where(j => j.TenantId == tenantId && j.DocumentId == document.Id && j.Stage == ExtractionStage.Classification)
+            .OrderByDescending(j => j.QueuedAt)
+            .Select(j => (EntityId?)j.Id)
+            .FirstOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        dbContext.ExtractionEvidences.Add(new ExtractionEvidence
+        {
+            TenantId = tenantId,
+            ContractId = contract.Id,
+            SourceDocumentId = document.Id,
+            ExtractionJobId = classificationJobId,
+            FieldName = TypeFieldName,
+            Value = document.DocumentType.ToString(),
+            SourceSpan = null,
+            SourcePage = null,
+            Confidence = confidence,
+            CreatedAt = now,
+        });
     }
 
     private static string Truncate(string value, int maxLength = 1000) =>

@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { ACCEPTED_EXTENSIONS } from "./uploadPipeline";
+import { SAMPLE_DOCUMENTS, type SampleDocumentKey } from "./sampleDocument";
 
 export interface UploadDropzoneProps {
   /** `"onboarding"` (bigger box, `contigo-v2/markup.html` `docsEmpty`) vs `"list"` (compact inline
@@ -7,7 +8,9 @@ export interface UploadDropzoneProps {
    * logic, different chrome/copy density (both quoted from the V2 prototype). */
   variant: "onboarding" | "list";
   onFilesSelected: (files: File[]) => void;
-  onUseSampleFile: () => void;
+  /** One of the two built-in sample MSAs (`sampleDocument.ts#SAMPLE_DOCUMENTS`): the clean one that
+   * completes, or the ambiguous one that needs review. */
+  onUseSampleFile: (key: SampleDocumentKey) => void;
 }
 
 /**
@@ -16,6 +19,12 @@ export interface UploadDropzoneProps {
  * `disabled` state -- more than one upload can be in flight at once (`useDocumentsList.ts`'s own
  * concurrency-capped batch runner), so the picker/drop target stays live regardless of how many
  * rows are already processing.
+ *
+ * The prototype's single "sample file" action became two: a first-time user should be able to see
+ * both ends of the product path -- a contract that completes and is askable at once, and one that
+ * genuinely needs a review pass -- without hunting for two real PDFs. Both buttons render the same
+ * labels in both variants (`SampleDocumentDefinition.label`), so a test or a user recognises them
+ * wherever the dropzone sits.
  */
 export default function UploadDropzone({ variant, onFilesSelected, onUseSampleFile }: UploadDropzoneProps) {
   const [dragging, setDragging] = useState(false);
@@ -59,9 +68,20 @@ export default function UploadDropzone({ variant, onFilesSelected, onUseSampleFi
       <span className="upload-dropzone-hint">
         {variant === "onboarding" ? "or drop files anywhere in this box" : "or drop PDF · DOCX · XLSX · PNG · JPG here — you can leave while they process"}
       </span>
-      <button type="button" className="btn btn-ghost upload-dropzone-sample" onClick={onUseSampleFile}>
-        {variant === "onboarding" ? "Use the sample MSA" : "Sample MSA"}
-      </button>
+      <div className="upload-dropzone-samples" role="group" aria-label="Sample contracts">
+        {variant === "onboarding" && <span className="micro-meta">Or try a sample:</span>}
+        {SAMPLE_DOCUMENTS.map((sample) => (
+          <button
+            key={sample.key}
+            type="button"
+            className="btn btn-ghost upload-dropzone-sample"
+            title={sample.description}
+            onClick={() => onUseSampleFile(sample.key)}
+          >
+            {sample.label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 

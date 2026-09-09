@@ -177,6 +177,34 @@ public sealed class R1EndToEndTests : IClassFixture<R1IntegrationFixture>
             Assert.Equal(0.35, evidence.Confidence);
         }
 
+        // 6b. Review sign-off: with the weak annualSpend corrected, the reviewer marks the document
+        //     validated (POST /api/documents/{id}/validate) — the one write that moves it from
+        //     needs_review to completed, so Ask/Portfolio/Renewals start reading it. Before this
+        //     endpoint existed the screen's "Mark as validated" was a client-side navigation only.
+        var validateResponse = await PostAsync(
+            client, $"/api/documents/{documentId}/validate", tenantId,
+            new { acceptedFields = new[] { "currency", "autoRenewal" } });
+        Assert.Equal(HttpStatusCode.OK, validateResponse.StatusCode);
+        var validateBody = await ParseAsync(validateResponse);
+        Assert.Equal("Completed", validateBody.GetProperty("processingStatus").GetString());
+        Assert.False(validateBody.GetProperty("alreadyValidated").GetBoolean());
+
+        var validatedDocumentResponse = await GetAsync(client, $"/api/documents/{documentId}", tenantId);
+        Assert.Equal(
+            "Completed",
+            (await ParseAsync(validatedDocumentResponse)).GetProperty("processingStatus").GetString());
+
+        // The per-field evidence behind the review is readable too: the original 0.35 annualSpend
+        // proposal, untouched by the correction above (Appendix C rule 5), with its page and span.
+        var evidenceResponse = await GetAsync(client, $"/api/contracts/{contractId}/evidence", tenantId);
+        Assert.Equal(HttpStatusCode.OK, evidenceResponse.StatusCode);
+        var annualSpendEvidence = Assert.Single(
+            (await ParseAsync(evidenceResponse)).EnumerateArray(),
+            e => e.GetProperty("fieldName").GetString() == "annualSpend");
+        Assert.Equal(R1ExtractionFixtures.OriginalAnnualSpend, annualSpendEvidence.GetProperty("value").GetString());
+        Assert.Equal(0.35, annualSpendEvidence.GetProperty("confidence").GetDouble());
+        Assert.Equal(R1ExtractionFixtures.BornDigitalFileName, annualSpendEvidence.GetProperty("sourceFileName").GetString());
+
         // 7. Scanned/image fixture (AC-4): routes through the `ocr` gateway role (Document
         //    Intelligence), not native parsing, and still extracts end-to-end.
         var ocrCallsBefore = _fixture.AiGateway.OcrCallCount;

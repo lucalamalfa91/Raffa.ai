@@ -129,6 +129,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<DocumentReprocessService>();
         services.AddScoped<DocumentDeleteService>();
 
+        // Review sign-off and the evidence read behind the review screen's pane
+        // (`POST /api/documents/{id}/validate`, `GET /api/contracts/{id}/evidence`). Scoped for the
+        // same reason as every DbContext-bound service above.
+        services.AddScoped<DocumentValidationService>();
+        services.AddScoped<ContractEvidenceQueryService>();
+
         return services;
     }
 }

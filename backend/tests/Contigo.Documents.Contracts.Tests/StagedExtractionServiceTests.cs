@@ -453,12 +453,15 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Fixture_ai_gateway_empty_payload_is_handled_without_throwing()
+    public async Task Fixture_ai_gateway_finding_nothing_in_a_text_routes_only_the_scalar_stages_to_review()
     {
-        // FixtureAiGateway.ExtractAsync always returns "{}" today (no live Foundry model behind
-        // it yet — see its own doc comment). This is the exact gateway AddAiGatewayModule
-        // registers, so the pipeline must run cleanly against it: zero facts is a fact in
-        // itself, not a crash.
+        // FixtureAiGateway.ExtractAsync reads facts deterministically from the text
+        // (FixtureContractFactExtractor); a text with no contract cues at all yields no fact for any
+        // scalar stage and an empty list for every list stage. This is the exact gateway
+        // AddAiGatewayModule registers, so the pipeline must run cleanly against it: the three
+        // scalar stages ("a contract with no supplier, fee or date is not a trusted extraction") go
+        // to review, the four list stages complete — an empty list of line items/clauses is a
+        // legitimate answer, not something a reviewer can resolve.
         var tenantId = TenantId.New();
         var tenantContext = new TenantContext();
 
@@ -477,9 +480,147 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
 
         Assert.True(result.IsSuccess);
         Assert.Equal(7, result.Value.Stages.Count);
-        Assert.All(result.Value.Stages, s => Assert.Equal(ExtractionJobStatus.NeedsReview, s.Status));
         Assert.All(result.Value.Stages, s => Assert.Equal(0, s.ExtractedCount));
+        var stages = result.Value.Stages.ToDictionary(s => s.Stage);
+        Assert.Equal(ExtractionJobStatus.NeedsReview, stages[ExtractionStage.Metadata].Status);
+        Assert.Equal(ExtractionJobStatus.NeedsReview, stages[ExtractionStage.CommercialTerms].Status);
+        Assert.Equal(ExtractionJobStatus.NeedsReview, stages[ExtractionStage.DatesAndRenewalTerms].Status);
+        Assert.Equal(ExtractionJobStatus.Completed, stages[ExtractionStage.LineItems].Status);
+        Assert.Equal(ExtractionJobStatus.Completed, stages[ExtractionStage.LegalClauses].Status);
+        Assert.Equal(ExtractionJobStatus.Completed, stages[ExtractionStage.Obligations].Status);
+        Assert.Equal(ExtractionJobStatus.Completed, stages[ExtractionStage.Risk].Status);
         Assert.Equal(DocumentProcessingStatus.NeedsReview, result.Value.DocumentProcessingStatus);
+    }
+
+    [Fact]
+    public async Task Fixture_ai_gateway_completes_a_clean_sample_contract_and_routes_an_ambiguous_one_to_review()
+    {
+        // The two sample contracts the web's "Sample MSA" buttons upload, through the real fixture
+        // gateway and the real pipeline: the clean one lands in Completed with every scalar fact
+        // evidenced, the ambiguous one in NeedsReview with exactly the weak facts its text leaves
+        // open (an unlabelled supplier, two annual amounts, a self-contradicting renewal clause).
+        var tenantId = TenantId.New();
+        var tenantContext = new TenantContext();
+
+        await using var seedDb = CreateContext(tenantContext);
+        var (_, cleanDocument) = await SeedDocumentAsync(seedDb, tenantId);
+        var (_, ambiguousDocument) = await SeedDocumentAsync(seedDb, tenantId);
+
+        var gateway = new FixtureAiGateway(new AiGatewayModelOptions(), new FixedClock(Now));
+
+        await using var runDb = CreateContext(tenantContext);
+        var service = new StagedExtractionService(
+            runDb, gateway, tenantContext, new FixedClock(Now), new RecordingAuditWriter());
+
+        var clean = await service.RunAsync(
+            tenantId,
+            cleanDocument.Id,
+            [
+                new DocumentPageText(1,
+                    "MASTER SERVICES AGREEMENT. This Master Services Agreement is entered into between Contigo Demo AG " +
+                    "(\"Customer\") and Northwind Traders SA (\"Supplier\"), effective 2026-01-01. The annual subscription fee " +
+                    "is EUR 48,000, invoiced yearly in advance. All invoices are payable within thirty (30) days of receipt."),
+                new DocumentPageText(2,
+                    "The initial term is thirty-six (36) months from the effective date. Thereafter this Agreement renews " +
+                    "automatically for successive twelve (12) month terms unless either party gives ninety (90) days written " +
+                    "notice before the end of the then-current term. This Agreement is governed by the laws of Switzerland."),
+            ],
+            classificationConfidence: 0.99);
+
+        Assert.True(clean.IsSuccess);
+        Assert.All(clean.Value.Stages, s => Assert.Equal(ExtractionJobStatus.Completed, s.Status));
+        Assert.Equal(DocumentProcessingStatus.Completed, clean.Value.DocumentProcessingStatus);
+        Assert.Equal("Northwind Traders SA", clean.Value.AcceptedSupplierName);
+
+        var ambiguous = await service.RunAsync(
+            tenantId,
+            ambiguousDocument.Id,
+            [
+                new DocumentPageText(1,
+                    "MASTER SERVICES AGREEMENT. This Master Services Agreement is made between Contigo Demo AG and Fabrikam " +
+                    "Software GmbH, effective 1 February 2026. The annual subscription fee is EUR 36,000, invoiced quarterly in " +
+                    "arrears; Schedule 1, however, lists an annual fee of EUR 39,600 after the agreed uplift. Invoices are " +
+                    "payable within forty-five (45) days."),
+                new DocumentPageText(2,
+                    "The initial term is twenty-four (24) months. This Agreement renews automatically for successive twelve (12) " +
+                    "month periods; notwithstanding the foregoing, the Customer may elect in writing that this Agreement shall " +
+                    "not automatically renew. Either party may give sixty (60) days written notice before the end of the current " +
+                    "term. This Agreement is governed by the laws of Germany."),
+            ],
+            classificationConfidence: 0.99);
+
+        Assert.True(ambiguous.IsSuccess);
+        Assert.Equal(DocumentProcessingStatus.NeedsReview, ambiguous.Value.DocumentProcessingStatus);
+        Assert.Null(ambiguous.Value.AcceptedSupplierName); // proposed below the critical bar, never linked
+
+        await using var readDb = CreateContext(tenantContext);
+        using var tenantScope = tenantContext.BeginScope(tenantId);
+        var weakFields = await readDb.ExtractionEvidences
+            .Where(e => e.ContractId == ambiguous.Value.ContractId && (e.Confidence == null || e.Confidence < 0.6))
+            .Select(e => e.FieldName)
+            .OrderBy(f => f)
+            .ToListAsync();
+        Assert.Equal(["annualSpend", "autoRenewal", "supplier"], weakFields);
+
+        var cleanContract = await readDb.Contracts.SingleAsync(c => c.Id == clean.Value.ContractId);
+        Assert.Equal("EUR", cleanContract.Currency);
+        Assert.Equal(48000m, cleanContract.AnnualSpend);
+        Assert.Equal(new DateOnly(2026, 1, 1), cleanContract.EffectiveDate);
+        Assert.Equal(new DateOnly(2028, 12, 31), cleanContract.EndDate);
+        Assert.True(cleanContract.AutoRenewal);
+        Assert.Equal(12, cleanContract.RenewalTermMonths);
+        Assert.Equal("Switzerland", cleanContract.GoverningLaw);
+        Assert.Equal("Net 30", cleanContract.PaymentTerms);
+        Assert.Equal("active", cleanContract.Status);
+    }
+
+    [Fact]
+    public async Task The_classification_verdict_is_recorded_as_type_evidence_and_a_weak_one_needs_review()
+    {
+        var tenantId = TenantId.New();
+        var tenantContext = new TenantContext();
+
+        await using var seedDb = CreateContext(tenantContext);
+        var (_, document) = await SeedDocumentAsync(seedDb, tenantId);
+        document.DocumentType = ContractDocumentType.Sow;
+        var classificationJob = new ExtractionJob
+        {
+            TenantId = tenantId,
+            DocumentId = document.Id,
+            Stage = ExtractionStage.Classification,
+            Status = ExtractionJobStatus.Completed,
+            QueuedAt = Now,
+            ModelId = "test-classify-model",
+        };
+        seedDb.ExtractionJobs.Add(classificationJob);
+        await seedDb.SaveChangesAsync();
+
+        await using var runDb = CreateContext(tenantContext);
+        var service = new StagedExtractionService(
+            runDb, new ScriptedAiGateway(HighConfidencePayloads()), tenantContext, new FixedClock(Now), new RecordingAuditWriter());
+
+        // Every staged fact is high-confidence, so only the weak classification can send this
+        // document to review.
+        var result = await service.RunAsync(
+            tenantId, document.Id, [new DocumentPageText(1, "text")], classificationConfidence: 0.5);
+
+        Assert.True(result.IsSuccess);
+        Assert.All(result.Value.Stages, s => Assert.Equal(ExtractionJobStatus.Completed, s.Status));
+        Assert.Equal(DocumentProcessingStatus.NeedsReview, result.Value.DocumentProcessingStatus);
+
+        await using var readDb = CreateContext(tenantContext);
+        using var tenantScope = tenantContext.BeginScope(tenantId);
+        var typeEvidence = Assert.Single(
+            await readDb.ExtractionEvidences.Where(e => e.ContractId == result.Value.ContractId && e.FieldName == "type").ToListAsync());
+        Assert.Equal("Sow", typeEvidence.Value);
+        Assert.Equal(0.5, typeEvidence.Confidence);
+        Assert.Equal(document.Id, typeEvidence.SourceDocumentId);
+        Assert.Equal(classificationJob.Id, typeEvidence.ExtractionJobId);
+        Assert.Null(typeEvidence.SourcePage);
+        Assert.Null(typeEvidence.SourceSpan);
+
+        // 11 staged facts + the type row: the overload without a verdict writes no type row at all.
+        Assert.Equal(12, await readDb.ExtractionEvidences.CountAsync(e => e.ContractId == result.Value.ContractId));
     }
 
     [Fact]

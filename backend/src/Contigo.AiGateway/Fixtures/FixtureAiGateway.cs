@@ -134,13 +134,19 @@ public sealed class FixtureAiGateway(
                 "Extraction requires a target JSON schema (spec §7.3: schema-constrained output)."));
         }
 
-        // No live structured-output model behind this fixture yet. An empty JSON object is a
-        // deliberately honest placeholder: "extraction ran, produced nothing to review" rather
-        // than fabricating plausible-looking commercial terms the way a naive stub might.
-        const string emptyPayload = "{}";
+        // No live structured-output model behind this fixture. Until the deployed environments
+        // gain a real Foundry account this fixture is what processes every upload, so it must
+        // produce facts that are true of the document rather than an empty placeholder: a
+        // deterministic, rule-based read of the page-marked text — every value quoted from the
+        // text, every span the literal match, every confidence a statement about the rule that
+        // fired (an explicit cue, a derived value, or a conflict the text does not resolve). See
+        // FixtureContractFactExtractor for the rules and for why this is honest, not fabricated:
+        // a document without a fee sentence gets no annualSpend; a preamble that does not say
+        // which party supplies gets a low-confidence supplier proposal a reviewer must confirm.
+        var payload = FixtureContractFactExtractor.Extract(request.StageName, request.DocumentText);
 
         var result = new AiExtractionResult(
-            emptyPayload,
+            payload,
             BuildMetadata(modelOptions.Extract, request.StageName + " " + request.DocumentText + " " + request.JsonSchema));
 
         return Task.FromResult(Result<AiExtractionResult>.Success(result));

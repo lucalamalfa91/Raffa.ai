@@ -96,7 +96,7 @@ own rail destination. Pixel/behaviour reference: `inputs/design/prototypes/Conti
 | `/documents` | V2 rebuild (ADR-024 amendment to ADR-020 screen 3): onboarding empty state ("First your contracts. Then your questions.") -> a server-backed list (`GET /api/documents`, survives a reload) with a **Needs your attention** (default) / **All documents · N** filter, multi-file drop (up to 20 files, <=3 uploads in flight, one row per file from the moment it is picked), real per-file stage text polled every 2s, a **Not added** card for a rejected file (422/415/oversized, session-only, never counted), Admin-only Delete, and Review as a *state* of this same route (`?review=<id>`, reusing `routes/contracts/review/*` as-is). Calls the real `GET /api/documents`, `GET /api/documents/{id}/preview`, `POST /api/documents`, `POST /api/documents/{id}/reprocess`, `DELETE /api/documents/{id}`. See "Documents" below. | E06/F05/US01/T01, E06/F05/US02/T01; V2 rebuild E13/F09/US01/T03 |
 | `/contracts` | Portfolio: filter chips + attention strip + a table sorted by severity then deadline (critical rows tinted + a red bar), plus loading/empty/error/no-match-for-filter states. Calls the real `GET /api/contracts`. See "Portfolio" below. | E07/F01/US01/T01 |
 | `/contracts/:id` | Contract 360: header + 6-cell fact row + 10 tabs (Overview's recommendation card + drivers + "Needs your attention" + "Top risks", then Commercials/Products/Clauses/Obligations/Risks/Documents/Benchmark/Renewal/Activity through one shared Term/Value/Source/Confidence table), plus loading/not-found/error states. `?clause=<id>`/`?page=<n>` (an Ask citation landing) opens straight on Clauses with that clause's original wording highlighted; `state.from` drives the header's back link; header offers **Ask about it** -> `/ask?scope=<id>`. Calls the real `GET /api/contracts/{id}`, `GET /api/renewals`, `GET /api/renewals/{contractId}/priority`. See "Contract 360" below. | E07/F02/US01/T01; citation landing by E13/F10/US01/T01 |
-| `/contracts/:id/review` | Review / correction: 4-column field list (critical marker, extracted value, confidence/decision tag, Accept/Correct) + right-hand evidence pane (correction form + real correction-history trail) + gated "Mark as validated". Calls the real `GET /api/contracts/{id}`, `GET /api/contracts/{id}/corrections`, `PATCH /api/contracts/{id}`. See "Review / correction" below. | E07/F03/US01/T01 |
+| `/contracts/:id/review` | Review / correction: 4-column field list (critical marker, extracted value + real source line, real per-field confidence tag from the extraction evidence, Accept/Correct) + right-hand evidence pane (file · page header, the quoted passage with the span highlighted, model + confidence, correction form, real correction-history trail) + gated "Mark as validated" that really signs the document off. Calls the real `GET /api/contracts/{id}`, `GET /api/contracts/{id}/corrections`, `GET /api/contracts/{id}/evidence`, `PATCH /api/contracts/{id}`, `POST /api/documents/{id}/validate`. Shares its whole lifecycle with the Documents review state through `routes/contracts/review/useReviewSession.ts`. See "Review / correction" below. | E07/F03/US01/T01 |
 | `/renewals` | Renewal pipeline: threshold strip (0-30 ... 270-365 d, click = filter) + priority table (Score/Supplier/Contract/Annual spend/Renews in/Cancel by/Status) + insight card (facts + recommended action + rationale) with three actions (Start negotiation / Assign to me / Snooze) -> confirmation + Contract 360 + Savings links, plus loading/error/empty/no-window states. Calls the real `GET /api/renewals`, `GET /api/renewals/{contractId}/priority`, `POST /api/renewals/{id}/action`. See "Renewal pipeline" below. | E08/F01/US01/T01 |
 | `/quotes`, `/quotes/:id` | Quote check: this task's own upload form (no id yet) -> 4-step stepper Extract (line table + unmatched-SKU manual mapping + recalculate) -> Assessment (4 numbers, line-level P25/P50/P75 + confidence, provenance card; blocked until every line resolves) -> Target (price ladder, editable target/walk-away) -> Negotiation (outcome capture -> recorded outcome). Calls the real `POST /api/quotes`, `POST /api/quotes/{id}/assessment/recalculate`, `POST /api/negotiations/outcomes`. See "Quote check" below. | E08/F03/US01/T01 |
 | `/savings` | Savings (moved from `/`, not a rail item in V2 -- reached from actions, Renewals and Contract 360): 6 KPI cells (Annual spend analyzed · Savings identified · Savings realized · Savings in progress · Contracts analyzed · Upcoming renewals) + opportunities table (Opportunity · Type · Current spend · Estimated savings · Confidence · Owner · Status · Realized), rows opening Contract 360 › Benchmark or Quote check; a benchmark-provider-unreachable KPI refresh degrades to the last-known numbers, stale-labelled, rather than blocking the screen. Calls the real `GET /api/savings/kpis`, `GET /api/savings`. See "Savings" below. | E08/F02/US01/T01; moved by E13/F09/US01/T01 |
@@ -303,10 +303,20 @@ upload-then-table screen:
   authoritative). A visible "Upload contracts" button plus a
   visually-hidden `aria-label="Choose contract files from your computer"`
   file input (the keyboard-/screen-reader-operable path, ADR-019) +
-  drag-and-drop as a progressive enhancement, + "Use sample file"
-  (`sampleDocument.ts`, unchanged from V1 -- a small, syntactically minimal,
-  content-free PDF; **this repo still ships no real sample contract
-  asset**).
+  drag-and-drop as a progressive enhancement, + two sample buttons,
+  **Sample MSA · clean** and **Sample MSA · needs review**
+  (`sampleDocument.ts#SAMPLE_DOCUMENTS`): two-page PDFs built in the browser
+  (one `/Type /Page` object per page paired with its own `BT ... Tj ... ET`
+  stream, exactly the shape `NativeDocumentTextExtractor` reads natively) and
+  sent through the same `POST /api/documents` a real upload uses. Two
+  different suppliers, two honest outcomes: the Northwind Traders SA MSA
+  states every term once with the supplier role labelled and completes
+  without review; the Fabrikam Software GmbH MSA names its parties without a
+  role, disagrees with its own Schedule 1 on the annual fee and both affirms
+  and denies automatic renewal, so exactly those fields come back weak and
+  the document lands in `needs_review` with real evidence to show. The
+  outcome is still whatever the deployed pipeline returns -- the texts only
+  make it meaningful, never scripted.
 - **Multi-file, R-DOC-01 AC-1**: up to 20 files per batch
   (`uploadPipeline.ts#MAX_FILES_PER_BATCH`; files beyond the 20th are
   silently dropped from the batch today -- there is no "N files ignored"
@@ -383,22 +393,36 @@ upload-then-table screen:
 R-WEB-05)**:
 
 - Reuses `../contracts/review/{ReviewHeader,ReviewFieldList,EvidencePane}.tsx`
-  and every pure function in `../contracts/review/reviewViewModel.ts`
-  **unmodified** (this task's own "reuse as-is" file-scope boundary) -- this
-  file is a new orchestration wrapper around those building blocks, not a
-  copy of them, because the routed `../contracts/review/index.tsx`'s own
-  `ReviewRoute` is bound to the URL param `:contractId` and hard-codes
-  `navigate('/contracts/:id')` on validation, neither of which fits a
-  document-id query param or "return to Documents with the validated hook."
-  Fetch order mirrors that same file's own logic (`getContract360` then
-  `getCorrectionHistory`) rather than importing it.
-- **No backend "finalize" endpoint exists, by design.** "Mark as validated"
-  is a purely client-side gate
-  (`computeReviewProgress`/`isValidationBlocked` -- every blocking field
-  resolved), with no write call of its own; a reload before that click
-  re-asks any field that was only session-`Accept`ed, never `Correct`ed --
-  the same, already-shipped consequence the routed Review screen's own
-  header comment names.
+  and the shared `../contracts/review/useReviewSession.ts` hook -- the same
+  fetch/decision lifecycle the routed `../contracts/review/index.tsx` runs
+  (`getContract360`, then `getCorrectionHistory` + `getContractEvidence`
+  together, each degrading independently with a visible banner), so the two
+  screens can no longer drift on what a decision does. This file only maps
+  the hook's phases onto the screen and returns to Documents with the
+  validated hook, where the routed screen navigates to Contract 360.
+- **"Mark as validated" is a real write.** The hook posts every Accepted
+  field's name to `POST /api/documents/{id}/validate` (`validateDocument`);
+  the backend moves the reviewed document (`?review=<id>`) from
+  `needs_review` to `completed` and writes one `document.validated` audit row
+  naming those fields, and only a `200` fires the validated hook. A `409`
+  (still processing / failed) or a network failure shows the server's own
+  reason under the CTA and stays on the screen. An already-`Completed`
+  document reads as closed ("Validated", disabled). Corrections are durable
+  the moment they are saved (`PATCH /api/contracts/{id}`); a reload before the
+  sign-off re-asks any field that was only session-`Accept`ed.
+- **Accept can be a write too.** A `supplier` proposed below the critical
+  bar is recorded as evidence but never linked by the pipeline
+  (`ReviewFieldRow.proposalPending`); its row shows the proposed name with
+  its real weak confidence, and Accept sends it through `correctContract`
+  -- that is the correction the backend is waiting for, and what makes the
+  supplier appear on the Documents row and in Ask.
+- **Confidence and source are real** (`GET /api/contracts/{id}/evidence`):
+  each row's tag applies spec §7.3's >95 / 80-95 / <80 thresholds to the
+  extraction's own score, the source line reads `p. N · “quoted span”`, and
+  the evidence pane renders `FILE · PAGE N`, the passage of page text with the
+  span highlighted, and `Extracted by <model> · confidence NN%`. A field with
+  no evidence row keeps the conservative "Needs review" tag and says no source
+  was recorded -- nothing is ever invented to fill the card.
 - On validation, `index.tsx` returns to the list and shows the "*X* is now
   askable." hook (`justValidated`, a single slot, superseded by the next
   upload batch or another validation) with an "Ask: when does it expire?"

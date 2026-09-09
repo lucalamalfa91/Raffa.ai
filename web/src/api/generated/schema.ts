@@ -154,6 +154,29 @@ export interface operations {
       };
     };
   };
+  validateDocument: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { documentId: string; contractId: string | null; processingStatus: "Uploaded" | "Processing" | "NeedsReview" | "Completed" | "Failed"; validatedAt: string; acceptedFields: (string)[]; alreadyValidated: boolean };
+        };
+      };
+      400: {
+        content: {
+          "application/json": string;
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+      409: {
+        content: {
+          "application/json": string;
+        };
+      };
+    };
+  };
   getPortfolio: {
     responses: {
       200: {
@@ -209,6 +232,24 @@ export interface operations {
       200: {
         content: {
           "application/json": ({ fieldName: string; previousValue: string | null; newValue: string | null; correctedBy: string; correctedAt: string; reason: string | null })[];
+        };
+      };
+      400: {
+        content: {
+          "application/json": string;
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  getContractEvidence: {
+    responses: {
+      200: {
+        content: {
+          "application/json": ({ fieldName: string; value: string | null; confidence: number | null; sourcePage: number | null; sourceSpan: string | null; sourceDocumentId: string | null; sourceFileName: string | null; passage: string | null; highlightStart: number | null; highlightLength: number | null; modelId: string | null; extractedAt: string })[];
         };
       };
       400: {
@@ -525,6 +566,9 @@ export interface paths {
   "/api/documents/{id}/reprocess": {
     post: operations["reprocessDocument"];
   };
+  "/api/documents/{id}/validate": {
+    post: operations["validateDocument"];
+  };
   "/api/contracts": {
     get: operations["getPortfolio"];
   };
@@ -534,6 +578,9 @@ export interface paths {
   };
   "/api/contracts/{id}/corrections": {
     get: operations["getCorrectionHistory"];
+  };
+  "/api/contracts/{id}/evidence": {
+    get: operations["getContractEvidence"];
   };
   "/api/renewals": {
     get: operations["getRenewals"];

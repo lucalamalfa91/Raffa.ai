@@ -5,14 +5,18 @@ import ReviewRoute from "../../../../src/routes/contracts/review";
 import type {
   ApiClient,
   Contract360Body,
+  ContractFieldEvidenceBody,
   CorrectContractResult,
   CorrectionHistoryEntryBody,
   GetContract360Result,
+  GetContractEvidenceResult,
   GetCorrectionHistoryResult,
+  ValidateDocumentResult,
 } from "../../../../src/api/client";
 
 const WORKSPACE_ID = "11111111-1111-1111-1111-111111111111";
 const CONTRACT_ID = "22222222-2222-2222-2222-222222222222";
+const DOCUMENT_ID = "55555555-5555-5555-5555-555555555555";
 
 function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
   return {
@@ -33,6 +37,22 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     getRenewalPriority: vi.fn(),
     getCorrectionHistory: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, history: [], error: null }),
     correctContract: vi.fn(),
+    // No evidence by default: every field keeps the conservative "Needs review" posture, which is
+    // what the AC-4 gating tests below rely on; the evidence-pane tests pass real rows explicitly.
+    getContractEvidence: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, evidence: [], error: null }),
+    validateDocument: vi.fn().mockResolvedValue({
+      ok: true,
+      statusCode: 200,
+      validation: {
+        documentId: DOCUMENT_ID,
+        contractId: CONTRACT_ID,
+        processingStatus: "Completed",
+        validatedAt: "2026-09-09T10:00:00Z",
+        acceptedFields: [],
+        alreadyValidated: false,
+      },
+      error: null,
+    } satisfies ValidateDocumentResult),
     // Task E13/F09/US01/T04 (web-ask-v2): this suite never reaches conversations/capabilities/
     // market -- bare vi.fn() is enough, same convention as getRenewalPriority above.
     listConversations: vi.fn(),
@@ -108,11 +128,44 @@ function minimalContract(overrides: Partial<Contract360Body> = {}): Contract360B
       clauses: [],
       obligations: [],
       risks: [],
-      documents: [],
+      // The document this review signs off: the routed screen has no document id of its own and
+      // resolves it from here (reviewViewModel.ts#resolveReviewDocument).
+      documents: [
+        {
+          documentId: DOCUMENT_ID,
+          fileName: "acme-msa.pdf",
+          mimeType: "application/pdf",
+          documentType: "Msa",
+          processingStatus: "NeedsReview",
+          createdAt: "2026-09-09T09:00:00Z",
+        },
+      ],
       benchmark: [],
       renewal: { endDate: null, renewalDate: null, cancellationDeadline: null, autoRenewal: true, renewalTermMonths: null },
       activity: [],
     },
+    ...overrides,
+  };
+}
+
+function evidenceOk(rows: ContractFieldEvidenceBody[]): GetContractEvidenceResult {
+  return { ok: true, statusCode: 200, evidence: rows, error: null };
+}
+
+function evidenceRow(overrides: Partial<ContractFieldEvidenceBody> = {}): ContractFieldEvidenceBody {
+  return {
+    fieldName: "paymentTerms",
+    value: "Net 45",
+    confidence: 0.96,
+    sourcePage: 2,
+    sourceSpan: "payable within forty-five (45) days",
+    sourceDocumentId: DOCUMENT_ID,
+    sourceFileName: "acme-msa.pdf",
+    passage: "All invoices are payable within forty-five (45) days of receipt.",
+    highlightStart: 17,
+    highlightLength: 35,
+    modelId: "fixture-extract-model",
+    extractedAt: "2026-09-09T10:00:00Z",
     ...overrides,
   };
 }
@@ -305,8 +358,9 @@ describe("ReviewRoute", () => {
       expect(screen.getByText(/still needs? review before this contract can be marked validated/i)).toBeInTheDocument();
     });
 
-    it("becomes enabled once every field is Accepted, and navigates to Contract 360 on click", async () => {
-      renderReview(mockApiClient({ getContract360: vi.fn().mockResolvedValue(ok(minimalContract())) }));
+    it("becomes enabled once every field is Accepted, writes the sign-off with the accepted field names, then navigates to Contract 360", async () => {
+      const client = mockApiClient({ getContract360: vi.fn().mockResolvedValue(ok(minimalContract())) });
+      renderReview(client);
       await screen.findByText("Review extraction");
 
       for (const button of screen.getAllByRole("button", { name: "Accept" })) {
@@ -318,6 +372,11 @@ describe("ReviewRoute", () => {
 
       fireEvent.click(cta);
       expect(await screen.findByText("CONTRACT_360_SCREEN")).toBeInTheDocument();
+      // The document resolved from the contract's own documents tab, every Accepted field named --
+      // this is the write that moves the document to Completed (DocumentValidationService).
+      expect(client.validateDocument).toHaveBeenCalledWith(WORKSPACE_ID, DOCUMENT_ID, {
+        acceptedFields: ["type", "status", "currency", "autoRenewal"],
+      });
     });
 
     it("a field with real correction history does not block the gate on its own", async () => {
@@ -434,14 +493,155 @@ describe("ReviewRoute", () => {
       expect(await screen.findByText("Supplier 33333333 · MSA")).toBeInTheDocument();
     });
 
-    it("wraps the evidence pane's honest 'not yet available' note in the highlighted-passage card", async () => {
-      const { container } = renderReview(mockApiClient({ getContract360: vi.fn().mockResolvedValue(ok(fullContract())) }));
+    it("renders the real evidence card: file · page header, the passage with the span highlighted, model and confidence", async () => {
+      const { container } = renderReview(
+        mockApiClient({
+          getContract360: vi.fn().mockResolvedValue(ok(fullContract())),
+          getContractEvidence: vi.fn().mockResolvedValue(evidenceOk([evidenceRow()])),
+        }),
+      );
       await screen.findByText("Review extraction");
 
       fireEvent.click(screen.getByRole("button", { name: "Payment terms" }));
 
-      expect(await screen.findByText(/source passage not yet available/i)).toBeInTheDocument();
-      expect(container.querySelector(".review-evidence-passage")).toBeInTheDocument();
+      const card = container.querySelector(".review-evidence-passage");
+      expect(card).not.toBeNull();
+      expect(await screen.findByText("ACME-MSA.PDF · PAGE 2")).toBeInTheDocument();
+      expect(card!.querySelector("mark.review-evidence-highlight")).toHaveTextContent("payable within forty-five (45) days");
+      expect(card).toHaveTextContent("All invoices are payable within forty-five (45) days of receipt.");
+      expect(screen.getByText("Extracted by fixture-extract-model · confidence 96%")).toBeInTheDocument();
+      // The list row carries the same provenance and a real, non-fabricated confidence tag.
+      expect(screen.getByText("p. 2 · “payable within forty-five (45) days”")).toBeInTheDocument();
+      expect(screen.getByText("Accepted · 96%")).toBeInTheDocument();
+    });
+
+    it("shows the quote alone when the page text could not be located, and says so when no source was recorded at all", async () => {
+      renderReview(
+        mockApiClient({
+          getContract360: vi.fn().mockResolvedValue(ok(fullContract())),
+          getContractEvidence: vi.fn().mockResolvedValue(
+            evidenceOk([evidenceRow({ passage: null, highlightStart: null, highlightLength: null })]),
+          ),
+        }),
+      );
+      await screen.findByText("Review extraction");
+
+      fireEvent.click(screen.getByRole("button", { name: "Payment terms" }));
+      expect(await screen.findByText("payable within forty-five (45) days", { selector: "mark" })).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: "Annual spend" }));
+      expect(await screen.findByText(/no source passage was recorded for this field/i)).toBeInTheDocument();
+    });
+
+    it("describes a classification verdict (no page, no span) as read from the whole document", async () => {
+      renderReview(
+        mockApiClient({
+          getContract360: vi.fn().mockResolvedValue(ok(minimalContract())),
+          getContractEvidence: vi.fn().mockResolvedValue(
+            evidenceOk([evidenceRow({ fieldName: "type", value: "Msa", confidence: 0.99, sourcePage: null, sourceSpan: null, passage: null, highlightStart: null, highlightLength: null, modelId: null })]),
+          ),
+        }),
+      );
+      await screen.findByText("Review extraction");
+
+      fireEvent.click(screen.getByRole("button", { name: "Contract type" }));
+
+      expect(await screen.findByText("ACME-MSA.PDF · WHOLE DOCUMENT")).toBeInTheDocument();
+      expect(screen.getByText(/read from the full document text/i)).toBeInTheDocument();
+      expect(screen.getByText("Extracted · confidence 99%")).toBeInTheDocument();
+    });
+
+    it("builds a Supplier row from a weak, unapplied proposal and makes Accept write it through correctContract", async () => {
+      const correctContract = vi.fn().mockResolvedValue({
+        ok: true,
+        statusCode: 200,
+        correction: { contractId: CONTRACT_ID, versionNumber: 2, correctedFields: ["supplier"], correctedAt: "2026-09-09T10:00:00Z" },
+        error: null,
+      } satisfies CorrectContractResult);
+      renderReview(
+        mockApiClient({
+          getContract360: vi.fn().mockResolvedValue(ok(minimalContract())),
+          getContractEvidence: vi.fn().mockResolvedValue(
+            evidenceOk([evidenceRow({ fieldName: "supplier", value: "Fabrikam Software GmbH", confidence: 0.52, sourcePage: 1, sourceSpan: "between Contigo Demo AG and Fabrikam Software GmbH", passage: null, highlightStart: null, highlightLength: null })]),
+          ),
+          correctContract,
+        }),
+      );
+      await screen.findByText("Review extraction");
+
+      const supplierRow = screen.getByRole("button", { name: "Supplier" }).closest("tr")!;
+      expect(supplierRow).toHaveTextContent("Fabrikam Software GmbH");
+      expect(supplierRow).toHaveTextContent("Proposed, not yet applied");
+      expect(supplierRow).toHaveTextContent("Review · 52%");
+
+      fireEvent.click(within(supplierRow).getByRole("button", { name: "Accept" }));
+
+      await waitFor(() =>
+        expect(correctContract).toHaveBeenCalledWith(WORKSPACE_ID, CONTRACT_ID, {
+          corrections: { supplier: "Fabrikam Software GmbH" },
+          reason: "Accepted as extracted.",
+        }),
+      );
+    });
+
+    it("shows a visible banner and keeps every field reviewable when the evidence call fails", async () => {
+      renderReview(
+        mockApiClient({
+          getContract360: vi.fn().mockResolvedValue(ok(minimalContract())),
+          getContractEvidence: vi.fn().mockResolvedValue({ ok: false, statusCode: 503, evidence: null, error: "Service Unavailable" }),
+        }),
+      );
+      await screen.findByText("Review extraction");
+
+      expect(screen.getByText(/extraction evidence could not be loaded/i)).toBeInTheDocument();
+      expect(screen.getAllByText("Needs review").length).toBeGreaterThan(0);
+    });
+  });
+
+  describe("Mark as validated writes the sign-off (POST /api/documents/{id}/validate)", () => {
+    it("shows the server's own refusal under the CTA and stays on the screen when validation fails", async () => {
+      const validateDocument = vi.fn().mockResolvedValue({
+        ok: false,
+        statusCode: 409,
+        validation: null,
+        error: "This document is still being processed; wait for extraction to finish before validating it.",
+      } satisfies ValidateDocumentResult);
+      renderReview(mockApiClient({ getContract360: vi.fn().mockResolvedValue(ok(minimalContract())), validateDocument }));
+      await screen.findByText("Review extraction");
+
+      for (const button of screen.getAllByRole("button", { name: "Accept" })) {
+        fireEvent.click(button);
+      }
+      fireEvent.click(screen.getByRole("button", { name: /mark as validated/i }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(/still being processed/i);
+      expect(screen.queryByText("CONTRACT_360_SCREEN")).toBeNull();
+      expect(screen.getByRole("button", { name: /mark as validated/i })).toBeEnabled();
+    });
+
+    it("reads an already-validated document as closed: the CTA says Validated and stays disabled", async () => {
+      const validated = minimalContract();
+      validated.tabs.documents[0].processingStatus = "Completed";
+      const validateDocument = vi.fn();
+      renderReview(mockApiClient({ getContract360: vi.fn().mockResolvedValue(ok(validated)), validateDocument }));
+      await screen.findByText("Review extraction");
+
+      for (const button of screen.getAllByRole("button", { name: "Accept" })) {
+        fireEvent.click(button);
+      }
+
+      expect(screen.getByRole("button", { name: "Validated" })).toBeDisabled();
+      expect(screen.getByText(/this document is already validated/i)).toBeInTheDocument();
+      expect(validateDocument).not.toHaveBeenCalled();
+    });
+
+    it("explains when the contract has no document to validate", async () => {
+      const noDocuments = minimalContract({ tabs: { ...minimalContract().tabs, documents: [] } });
+      renderReview(mockApiClient({ getContract360: vi.fn().mockResolvedValue(ok(noDocuments)) }));
+      await screen.findByText("Review extraction");
+
+      expect(screen.getByRole("button", { name: /mark as validated/i })).toBeDisabled();
+      expect(screen.getByText(/no document to validate/i)).toBeInTheDocument();
     });
   });
 });

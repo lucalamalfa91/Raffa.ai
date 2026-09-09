@@ -455,6 +455,52 @@ export interface CorrectContractResult {
   error: string | null;
 }
 
+// Review sign-off + evidence (ADR-020 screen 6; product spec §7.1 "needs review -> completed", §7.3
+// "every extracted fact carries source span + confidence"). getContractEvidence wraps
+// `GET /api/contracts/{id}/evidence` -- the per-field ExtractionEvidence trail (page, quoted span,
+// confidence, the passage around the span, the model) the review screen's evidence pane and
+// confidence tags read; until this operation existed the pane could only say "not yet available".
+type GetContractEvidenceResponses = paths["/api/contracts/{id}/evidence"]["get"]["responses"];
+export type ContractEvidenceBody = GetContractEvidenceResponses[200]["content"]["application/json"];
+export type ContractFieldEvidenceBody = ContractEvidenceBody[number];
+
+export interface GetContractEvidenceResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** Latest evidence per field, alphabetical by fieldName (possibly empty -- a contract with no evidence yet is still `ok: true`), present only when `ok` is true. */
+  evidence: ContractEvidenceBody | null;
+  /** Plain-language failure reason (400/404 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
+// validateDocument wraps `POST /api/documents/{id}/validate` -- the one write behind "Mark as
+// validated" (DocumentValidationService): the document moves from NeedsReview to Completed and one
+// `document.validated` audit row names the accepted fields. Before it existed that button was a
+// client-side navigation, so an accepted-as-extracted document stayed in needs_review forever.
+type ValidateDocumentResponses = paths["/api/documents/{id}/validate"]["post"]["responses"];
+export type DocumentValidationBody = ValidateDocumentResponses[200]["content"]["application/json"];
+
+/** `POST /api/documents/{id}/validate` request body. Hand-written, not generated -- same reason as
+ * `CorrectContractRequest` above (the generator does not parse `requestBody`). `acceptedFields` are
+ * the review screen's own field names the reviewer accepted as extracted; corrections are already
+ * durable through `correctContract` and are not repeated here. */
+export interface ValidateDocumentRequest {
+  acceptedFields: string[];
+}
+
+export interface ValidateDocumentResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** The resulting status summary, present only when `ok` is true. */
+  validation: DocumentValidationBody | null;
+  /** Plain-language failure reason (400/404/409 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
 // Task E08/F01/US01/T01 (renewal-pipeline, ADR-020 screen 8): postRenewalAction, wrapping
 // `POST /api/renewals/{id}/action` -- the insight card's own three actions (Start negotiation /
 // Assign to me / Snooze, AC-3). `{id}` is the same `contractId` GET /api/renewals returns per row
@@ -979,6 +1025,20 @@ export interface ApiClient {
    * inline, not an exception.
    */
   correctContract(tenantId: string, id: string, request: CorrectContractRequest): Promise<CorrectContractResult>;
+
+  /**
+   * `GET /api/contracts/{id}/evidence` -- latest extraction evidence per field (page, span,
+   * confidence, quoted passage, model) for the review screen. Never throws; 404 and network
+   * failures surface as `ok: false` with a plain-language `error`.
+   */
+  getContractEvidence(tenantId: string, id: string): Promise<GetContractEvidenceResult>;
+
+  /**
+   * `POST /api/documents/{id}/validate` -- the review sign-off that moves a document from
+   * NeedsReview to Completed. Never throws; 404 (no such document), 409 (not reviewable yet) and
+   * network failures surface as `ok: false` with a plain-language `error`.
+   */
+  validateDocument(tenantId: string, id: string, request: ValidateDocumentRequest): Promise<ValidateDocumentResult>;
   /**
    * Calls `POST /api/renewals/{id}/action` (operationId `postRenewalAction`) -- upserts the one
    * `RenewalAction` row for (tenant, contractId). Same never-throws shape as every other call here:
@@ -1661,6 +1721,86 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
       }
 
       return { ok: false, statusCode: response.status, correction: null, error };
+    },
+
+    async getContractEvidence(tenantId, id) {
+      let response: Response;
+      try {
+        response = await fetch(new URL(`/api/contracts/${encodeURIComponent(id)}/evidence`, baseUrl), {
+          headers: { "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          evidence: null,
+          error: `Unable to reach ${baseUrl}/api/contracts/${id}/evidence. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const evidence = (await response.json()) as ContractEvidenceBody;
+        return { ok: true, statusCode: 200, evidence, error: null };
+      }
+
+      // Same empty-body 404 shape as getContract360's own 404 above (Results.NotFound()).
+      if (response.status === 404) {
+        return { ok: false, statusCode: 404, evidence: null, error: `No contract found for id ${id}.` };
+      }
+
+      // Same Results.BadRequest(string) shape as the other calls' 400s above.
+      let error: string;
+      try {
+        const errorBody: unknown = await response.json();
+        error = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, evidence: null, error };
+    },
+
+    async validateDocument(tenantId, id, request) {
+      let response: Response;
+      try {
+        response = await fetch(new URL(`/api/documents/${encodeURIComponent(id)}/validate`, baseUrl), {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
+          body: JSON.stringify(request),
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          validation: null,
+          error: `Unable to reach ${baseUrl}/api/documents/${id}/validate. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const validation = (await response.json()) as DocumentValidationBody;
+        return { ok: true, statusCode: 200, validation, error: null };
+      }
+
+      // Same empty-body 404 shape as deleteDocument's own 404 above (Results.NotFound()).
+      if (response.status === 404) {
+        return { ok: false, statusCode: 404, validation: null, error: `No document found for id ${id}.` };
+      }
+
+      // 400 (Results.BadRequest(string)) and 409 (Results.Conflict(string): the document is still
+      // processing, or failed) both carry the reason as a bare JSON string -- surfaced verbatim, the
+      // same way correctContract's own 400 is.
+      let error: string;
+      try {
+        const errorBody: unknown = await response.json();
+        error = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, validation: null, error };
     },
 
     async askContigo(tenantId, request) {

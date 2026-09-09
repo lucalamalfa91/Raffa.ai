@@ -1,14 +1,18 @@
 import { describe, expect, it } from "vitest";
-import type { Contract360Body, CorrectionHistoryEntryBody } from "../../../../src/api/client";
+import type { Contract360Body, ContractFieldEvidenceBody, CorrectionHistoryEntryBody } from "../../../../src/api/client";
 import {
+  acceptedFieldNames,
   blockedReason,
   buildReviewFields,
   computeReviewProgress,
   fieldTag,
   formatCorrectableValue,
+  indexEvidence,
   isFieldBlocking,
   isValidationBlocked,
   readCorrectableValue,
+  resolveReviewDocument,
+  splitPassage,
   type ReviewFieldRow,
 } from "../../../../src/routes/contracts/review/reviewViewModel";
 
@@ -237,5 +241,168 @@ describe("computeReviewProgress / isValidationBlocked / blockedReason", () => {
 
     expect(progress.blockingCount).toBe(1);
     expect(blockedReason(progress)).toBe("1 field still needs review before this contract can be marked validated.");
+  });
+});
+
+function evidence(overrides: Partial<ContractFieldEvidenceBody> = {}): ContractFieldEvidenceBody {
+  return {
+    fieldName: "annualSpend",
+    value: "500000",
+    confidence: 0.96,
+    sourcePage: 2,
+    sourceSpan: "EUR 500,000 per year",
+    sourceDocumentId: "44444444-4444-4444-4444-444444444444",
+    sourceFileName: "acme-msa.pdf",
+    passage: "The fees are EUR 500,000 per year, invoiced annually.",
+    highlightStart: 13,
+    highlightLength: 20,
+    modelId: "fixture-extract-model",
+    extractedAt: "2026-09-09T10:00:00Z",
+    ...overrides,
+  };
+}
+
+describe("buildReviewFields with real evidence (GET /api/contracts/{id}/evidence)", () => {
+  it("carries the field's real confidence (0..1 -> 0..100) and evidence row, so the tag and gate use a real score", () => {
+    const rows = buildReviewFields(contract(), [], new Set(), indexEvidence([evidence()]));
+    const annualSpend = rows.find((row) => row.name === "annualSpend")!;
+
+    expect(annualSpend.confidencePct).toBe(96);
+    expect(annualSpend.evidence?.sourcePage).toBe(2);
+    expect(fieldTag(annualSpend)).toEqual({ variant: "neutral", label: "Accepted · 96%" });
+    expect(isFieldBlocking(annualSpend)).toBe(false);
+    expect(annualSpend.proposalPending).toBe(false);
+  });
+
+  it("matches evidence to fields case-insensitively (the backend compares field names that way)", () => {
+    const rows = buildReviewFields(contract(), [], new Set(), indexEvidence([evidence({ fieldName: "AnnualSpend", confidence: 0.5 })]));
+
+    expect(rows.find((row) => row.name === "annualSpend")!.confidencePct).toBe(50);
+  });
+
+  it("keeps the conservative 'Needs review' posture for a field with no evidence row -- never an invented score", () => {
+    const rows = buildReviewFields(contract(), [], new Set(), indexEvidence([evidence()]));
+    const currency = rows.find((row) => row.name === "currency")!;
+
+    expect(currency.confidencePct).toBeNull();
+    expect(currency.evidence).toBeNull();
+    expect(fieldTag(currency)).toEqual({ variant: "outline", label: "Needs review" });
+    expect(isFieldBlocking(currency)).toBe(true);
+  });
+
+  it("builds a Supplier row from a proposal the pipeline did not apply (a weak supplier fact) and flags it as pending a write", () => {
+    const weakSupplier = evidence({
+      fieldName: "supplier",
+      value: "Fabrikam Software GmbH",
+      confidence: 0.52,
+      sourcePage: 1,
+      sourceSpan: "between Contigo Demo AG and Fabrikam Software GmbH",
+    });
+    // contract() has no linked supplier (supplierName null) -- without evidence there would be no row.
+    expect(buildReviewFields(contract(), [], new Set()).some((row) => row.name === "supplier")).toBe(false);
+
+    const rows = buildReviewFields(contract(), [], new Set(), indexEvidence([weakSupplier]));
+    const supplier = rows.find((row) => row.name === "supplier")!;
+
+    expect(supplier.rawValue).toBe("Fabrikam Software GmbH");
+    expect(supplier.displayValue).toBe("Fabrikam Software GmbH");
+    expect(supplier.proposalPending).toBe(true);
+    expect(supplier.confidencePct).toBe(52);
+    expect(fieldTag(supplier)).toEqual({ variant: "outline", label: "Review · 52%" });
+    expect(isFieldBlocking(supplier)).toBe(true);
+    // Rows keep the catalogue order: type, then supplier, then status...
+    expect(rows.map((row) => row.name).slice(0, 3)).toEqual(["type", "supplier", "status"]);
+  });
+
+  it("reads a linked supplier's name from the header, as an ordinary (applied) value", () => {
+    const linked = contract({ header: { ...contract().header, supplierName: "Northwind Traders SA" } });
+
+    const rows = buildReviewFields(linked, [], new Set());
+    const supplier = rows.find((row) => row.name === "supplier")!;
+
+    expect(readCorrectableValue(linked, "supplier")).toBe("Northwind Traders SA");
+    expect(supplier.rawValue).toBe("Northwind Traders SA");
+    expect(supplier.proposalPending).toBe(false);
+  });
+
+  it("a proposed bool is normalised to the canonical 'true'/'false' wire string", () => {
+    const noValue = contract({ header: { ...contract().header, autoRenewal: false } });
+    // autoRenewal is never null on a contract, so the proposal path is exercised through a text
+    // field instead: a governingLaw the contract lacks but the extraction proposed.
+    const withProposal = contract({ tabs: { ...noValue.tabs, overview: { ...noValue.tabs.overview, governingLaw: null } } });
+    const rows = buildReviewFields(
+      withProposal,
+      [],
+      new Set(),
+      indexEvidence([evidence({ fieldName: "governingLaw", value: "  Switzerland ", confidence: 0.9 })]),
+    );
+
+    const law = rows.find((row) => row.name === "governingLaw")!;
+    expect(law.rawValue).toBe("Switzerland");
+    expect(law.proposalPending).toBe(true);
+  });
+
+  it("a proposal with an empty value does not create a row (nothing to review)", () => {
+    const noLaw = contract({ tabs: { ...contract().tabs, overview: { ...contract().tabs.overview, governingLaw: null } } });
+    const rows = buildReviewFields(noLaw, [], new Set(), indexEvidence([evidence({ fieldName: "governingLaw", value: "" })]));
+
+    expect(rows.some((row) => row.name === "governingLaw")).toBe(false);
+  });
+});
+
+describe("acceptedFieldNames", () => {
+  it("lists exactly the fields the reviewer Accepted -- corrected rows are already durable, pending ones are not decisions", () => {
+    const rows = buildReviewFields(contract(), [correction()], new Set(["currency", "type"]));
+
+    expect(acceptedFieldNames(rows)).toEqual(["type", "currency"]);
+  });
+});
+
+describe("resolveReviewDocument", () => {
+  const needsReview = { documentId: "doc-1", fileName: "a.pdf", mimeType: "application/pdf", documentType: "Msa" as const, processingStatus: "NeedsReview" as const, createdAt: "2026-09-09T09:00:00Z" };
+  const completed = { ...needsReview, documentId: "doc-0", processingStatus: "Completed" as const };
+
+  it("prefers the caller's own document id and reports its status when the aggregate lists it", () => {
+    const withDocs = contract({ tabs: { ...contract().tabs, documents: [completed, needsReview] } });
+
+    expect(resolveReviewDocument(withDocs, "doc-0")).toEqual({ documentId: "doc-0", processingStatus: "Completed" });
+    expect(resolveReviewDocument(withDocs, "doc-9")).toEqual({ documentId: "doc-9", processingStatus: null });
+  });
+
+  it("falls back to the document still needing review, else the first one, else null", () => {
+    const withDocs = contract({ tabs: { ...contract().tabs, documents: [completed, needsReview] } });
+    expect(resolveReviewDocument(withDocs)).toEqual({ documentId: "doc-1", processingStatus: "NeedsReview" });
+
+    const onlyCompleted = contract({ tabs: { ...contract().tabs, documents: [completed] } });
+    expect(resolveReviewDocument(onlyCompleted)).toEqual({ documentId: "doc-0", processingStatus: "Completed" });
+
+    expect(resolveReviewDocument(contract())).toBeNull();
+  });
+});
+
+describe("splitPassage", () => {
+  it("splits the passage around the span using the backend's own offsets", () => {
+    expect(splitPassage(evidence())).toEqual({
+      before: "The fees are ",
+      highlight: "EUR 500,000 per year",
+      after: ", invoiced annually.",
+    });
+  });
+
+  it("returns the whole passage un-highlighted when the offsets do not fit it -- never a wrong highlight", () => {
+    expect(splitPassage(evidence({ highlightStart: 40, highlightLength: 30 }))).toEqual({
+      before: "The fees are EUR 500,000 per year, invoiced annually.",
+      highlight: "",
+      after: "",
+    });
+    expect(splitPassage(evidence({ highlightStart: null, highlightLength: null }))).toEqual({
+      before: "The fees are EUR 500,000 per year, invoiced annually.",
+      highlight: "",
+      after: "",
+    });
+  });
+
+  it("returns null when the evidence carries no passage at all", () => {
+    expect(splitPassage(evidence({ passage: null }))).toBeNull();
   });
 });
