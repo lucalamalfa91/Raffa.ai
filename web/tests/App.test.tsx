@@ -40,9 +40,14 @@ function mockApiClient(result: Promise<HealthCheckResult> | HealthCheckResult): 
     // Task E06/F05/US02/T01 (document-status-readback): exercised by
     // tests/routes/documents/*.test.tsx; same plain-stub convention.
     getDocument: vi.fn(),
-    // Task E13/F09/US01/T03 (web-documents-v2): this suite does not exercise Documents -- bare
-    // vi.fn() is enough, same convention as getContract360 below.
-    listDocuments: vi.fn(),
+    // Task E13/F09/US01/T04 (web-ask-v2): `/` now redirects to `/ask` (R-WEB-01), so every "signed
+    // in + workspace selected" test below actually mounts AskRoute, not the old Home/Savings
+    // default -- AskRoute's own off-state (kbReady is false here, getPortfolio below resolves
+    // empty) calls listDocuments once to pick between its two off-copy variants (screens-v2.md #2),
+    // so an unconfigured vi.fn() would throw the moment that call's .then() runs, the same
+    // "unconditional shell-level call needs a resolved default" reasoning getPortfolio's own comment
+    // below already gives.
+    listDocuments: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, page: { items: [], page: 1, pageSize: 100, totalCount: 0 }, error: null }),
     getDocumentPreviewUrl: vi.fn(),
     reprocessDocument: vi.fn(),
     deleteDocument: vi.fn(),
@@ -99,6 +104,18 @@ function mockApiClient(result: Promise<HealthCheckResult> | HealthCheckResult): 
     getSavingsOpportunities: vi
       .fn()
       .mockResolvedValue({ ok: true, statusCode: 200, opportunities: { items: [], totalCount: 0 }, error: null }),
+    // Task E13/F09/US01/T04 (web-ask-v2): RailNav's own `useRecentConversations` and GlobalAskBar's
+    // own capability fetch both call these unconditionally on every shell mount (they render outside
+    // `<Outlet/>`, in AppShell.tsx, on every route) -- same "resolved default required" reasoning as
+    // getPortfolio/listDocuments above. No test in this suite resumes a conversation or asserts
+    // capability-sourced chip copy -- see tests/components/shell/RailNav.test.tsx and
+    // tests/components/ask-bar/GlobalAskBar.test.tsx for that coverage.
+    listConversations: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, conversations: [], error: null }),
+    createConversation: vi.fn(),
+    getConversation: vi.fn(),
+    postMessage: vi.fn(),
+    getCapabilities: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, catalog: { version: "test", capabilities: [] }, error: null }),
+    getMarketRecord: vi.fn(),
   };
 }
 

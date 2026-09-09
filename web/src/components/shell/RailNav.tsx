@@ -1,4 +1,5 @@
 import { Link, NavLink } from "react-router-dom";
+import type { ApiClient } from "../../api/client";
 import {
   buildPrimaryNavItems,
   buildSecondaryNavItems,
@@ -9,16 +10,26 @@ import {
   type WorkspaceRole,
 } from "./navItems";
 import { loadTrackedDocuments } from "../../routes/documents/documentStore";
+import { useRecentConversations } from "../../routes/ask/useRecentConversations";
 
 export interface RailNavProps {
   workspaceName: string;
   role: WorkspaceRole;
   userLabel: string;
   /** `useValidatedContractCount`'s result, fetched once by `AppShell.tsx` and passed down -- this
-   * component never calls the API itself. */
+   * component never calls that API itself. */
   kbReady: boolean;
   validatedContractCount: number;
   onSignOut: () => void;
+  /**
+   * Task E13/F09/US01/T04 (web-ask-v2, gap G-CONVERSATIONS): threaded through so this component can
+   * call `useRecentConversations` itself for the rail's own "last 5 conversations" slot (task text
+   * point (5): "RailNav.tsx consumes a useRecentConversations hook"). Unlike `kbReady`/
+   * `validatedContractCount` above (fetched once by `AppShell.tsx`, since a validated contract is a
+   * rare event), conversations are routine enough (every "+ New chat") that this component owns its
+   * own re-fetch-on-navigation timing -- see that hook's own doc comment for why.
+   */
+  apiClient: ApiClient;
 }
 
 function RailBadge({ badge }: { badge: NavBadge | null }) {
@@ -44,6 +55,7 @@ export default function RailNav({
   kbReady,
   validatedContractCount,
   onSignOut,
+  apiClient,
 }: RailNavProps) {
   // Session-local read, not React state -- re-evaluated on every render, the same "read-only
   // consumer" shape `../../routes/renewals/renewalActionStore.ts`'s own consumer
@@ -53,6 +65,10 @@ export default function RailNav({
   // change). There is still no `GET /api/documents` collection endpoint (gap G-DOC-API) -- see
   // `navItems.ts#DocumentCounts`'s own doc comment for the full provenance.
   const trackedDocuments = loadTrackedDocuments();
+  // Task E13/F09/US01/T04 (gap G-CONVERSATIONS): last 5 conversations + which one (if any) is
+  // active -- see that hook's own doc comment for why this re-fetches on navigation rather than
+  // once per shell mount.
+  const { conversations, activeConversationId } = useRecentConversations(apiClient);
   const documentsBadge = getDocumentsBadge({
     total: trackedDocuments.length,
     needsReview: trackedDocuments.filter((doc) => doc.processingStatus === "NeedsReview").length,
@@ -81,9 +97,18 @@ export default function RailNav({
 
             {item.hasConversationSlot && (
               <div className="shell-rail-conversations">
-                {/* The last 5 conversations render here once F09/T04 wires `GET /api/conversations`
-                    (`app.jsx` `convs`, "resume by click") -- intentionally empty today, no
-                    conversation source exists yet (gap G-CONVERSATIONS). */}
+                {/* R-CONV-02 "the rail shows the user's last 5 conversations, resume by click,
+                    active one in accent" -- `useRecentConversations` already caps this at the
+                    backend's own default (5); `.slice(0, 5)` here is defensive, not load-bearing. */}
+                {conversations.slice(0, 5).map((conversation) => (
+                  <Link
+                    key={conversation.id}
+                    to={`/ask/${conversation.id}`}
+                    className={`shell-rail-conv-item${conversation.id === activeConversationId ? " is-active" : ""}`}
+                  >
+                    <span className="shell-rail-conv-title">{conversation.title}</span>
+                  </Link>
+                ))}
                 <Link to="/ask" state={{ newChat: true }} className="shell-rail-new-chat">
                   + New chat
                 </Link>

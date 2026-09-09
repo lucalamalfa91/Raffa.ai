@@ -1,12 +1,20 @@
 /**
- * Ask Contigo screen (route `/ask`, ADR-018; screens.md #7; ADR-020 screen 7; task
- * E07/F04/US01/T01, us-01-ask-contigo). Component classes (.input, .btn, .abstain-block,
- * .error-state, .empty-state, .micro-meta, .screen-kicker, .screen-title, .hint) come from
- * ../../styles/components.css (ADR-019 component catalogue) -- this file adds only this screen's
- * own composites, the same division of labour ../contracts/review/review.css already established
- * for this app. Layout figures (72px role column, 300px suggestions rail) are quoted from the
- * compiled prototype's own `scr.ask` block (inputs/design/prototypes/day1-demo.html), translated
- * from its inline styles into named classes.
+ * Ask Contigo screen V2 (route `/ask`, `/ask/:conversationId`; ADR-018; screens-v2.md #2;
+ * ADR-020 V2 amendment "screen 2"; task E13/F09/US01/T04, us-01-web-v2). Component classes (.input,
+ * .btn, .abstain-block, .error-state, .empty-state, .micro-meta, .screen-kicker, .screen-title,
+ * .hint, .skeleton, .tag, .table, .detail-pane) come from ../../styles/components.css (ADR-019
+ * component catalogue) -- this file adds only this screen's own composites, the same division of
+ * labour ../contracts/review/review.css already established for this app.
+ *
+ * V1 (task E07/F04/US01/T01) left `.ask-screen`/`.ask-screen-header`/`.ask-screen-body`/
+ * `.ask-chat-column`/`.ask-chat-log`/`.ask-message*`/`.ask-thinking*`/`.ask-input-row`/
+ * `.ask-suggestion` here; this task keeps every one of those class *names* (so
+ * `./reply/ReplyBody.tsx`'s own header comment -- "the surrounding 72px role-column grid stays
+ * ../ask.css's own .ask-message" -- is still true) but reshapes their rules for the V2 layout:
+ * the permanent 300px "Try" rail is gone (V2's own chips are a New-chat-only, inline affordance,
+ * `app.jsx`'s `askChips`/`c360Chips`, never a persistent column -- screens-v2.md #2 only lists
+ * "two suggestion chips" under **New chat**, not under **Conversation**), replaced by an optional
+ * market-citation side panel that only occupies space while open.
  */
 
 .ask-screen {
@@ -19,25 +27,35 @@
 
 .ask-screen-header {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
   padding-bottom: var(--space-4);
   border-bottom: 2px solid var(--color-divider);
 }
 
+.ask-screen-header .screen-title {
+  font-size: 22px;
+}
+
 .ask-screen-body {
-  display: grid;
-  grid-template-columns: 1fr 300px;
+  display: flex;
+  gap: var(--space-4);
   flex: 1;
   min-height: 0;
+}
+
+/* Market citation panel occupies a fixed column only while open (task text point (3); R-EVD-02) --
+   see market-record-panel below. */
+.ask-screen-body.has-panel .ask-chat-column {
+  min-width: 0;
 }
 
 .ask-chat-column {
   display: flex;
   flex-direction: column;
+  flex: 1;
   min-height: 0;
-  border-right: 2px solid var(--color-divider);
 }
 
 .ask-chat-log {
@@ -49,15 +67,37 @@
   padding: var(--space-4) var(--space-4) var(--space-4) 0;
 }
 
-.ask-chat-empty {
-  max-width: 560px;
+/* ---- New chat (screens-v2.md #2 "New chat": askHello + askScope + two chips) -------------- */
+
+.ask-new-chat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 640px;
 }
+
+.ask-new-chat-hello {
+  font-size: 22px;
+}
+
+.ask-new-chat-scope {
+  max-width: 56ch;
+}
+
+.ask-new-chat-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+/* ---- One turn (72px role column + content, shared by You/Contigo) ------------------------- */
 
 .ask-message {
   display: grid;
   grid-template-columns: 72px 1fr;
   gap: var(--space-4);
-  max-width: 760px;
+  max-width: 820px;
 }
 
 .ask-message-who {
@@ -74,38 +114,10 @@
 }
 
 .ask-message-text {
-  font-size: 14px;
+  font-size: 17px;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-heading);
   white-space: pre-line;
-}
-
-.ask-citations {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-top: var(--space-2);
-}
-
-.ask-citation-chip {
-  border: 1px solid var(--color-divider);
-  background: transparent;
-  padding: 4px var(--space-2);
-  font-size: 11px;
-  cursor: pointer;
-  color: inherit;
-  text-align: left;
-}
-
-.ask-citation-chip:hover:not(:disabled) {
-  background: var(--color-neutral-200);
-}
-
-.ask-citation-index {
-  color: var(--color-accent);
-  font-weight: var(--weight-body-strong);
-}
-
-.ask-message-route {
-  margin-top: var(--space-2);
 }
 
 .ask-thinking {
@@ -164,19 +176,11 @@
   flex: 1;
 }
 
-.ask-suggestions {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  padding: 0 0 0 var(--space-4);
-}
-
 .ask-suggestion {
   text-align: left;
-  border: 0;
-  border-bottom: 1px solid var(--color-divider);
+  border: 1px solid var(--color-divider);
   background: transparent;
-  padding: var(--space-2) 0;
+  padding: var(--space-2) var(--space-3);
   font-size: 13px;
   line-height: 1.4;
   cursor: pointer;
@@ -184,20 +188,83 @@
 }
 
 .ask-suggestion:hover {
+  background: var(--color-neutral-200);
   color: var(--color-accent-700);
+}
+
+.ask-resume-skeleton-row {
+  height: 48px;
+  margin-top: var(--space-2);
+}
+
+/* ---- Off state (screens-v2.md #2 "Off"; R-ASK-10) ------------------------------------------ */
+
+.ask-off {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  max-width: 640px;
+  gap: var(--space-2);
+}
+
+.ask-off-title {
+  font-size: clamp(26px, 3vw, 36px);
+}
+
+.ask-off-reason {
+  max-width: 52ch;
+}
+
+.ask-off-actions {
+  margin-top: var(--space-2);
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* ---- Market citation side panel (task text point (3); R-EVD-02) --------------------------- */
+
+.market-record-panel {
+  flex: none;
+  width: 100%;
+  min-width: 320px;
+  max-width: 360px;
+}
+
+.market-record-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+
+.market-record-panel-close {
+  padding: 4px var(--space-2);
+}
+
+.market-record-panel-title {
+  margin: 0 0 var(--space-1);
+}
+
+.market-record-panel-meta {
+  margin: 0 0 var(--space-3);
+}
+
+.market-record-panel-band {
+  margin-bottom: var(--space-3);
+}
+
+.market-record-panel-skeleton {
+  height: 20px;
+  margin-bottom: var(--space-2);
 }
 
 @media (max-width: 900px) {
   .ask-screen-body {
-    grid-template-columns: 1fr;
+    flex-direction: column;
   }
 
-  .ask-chat-column {
-    border-right: 0;
-  }
-
-  .ask-suggestions {
-    padding: var(--space-4) 0 0;
-    border-top: 2px solid var(--color-divider);
+  .market-record-panel {
+    max-width: none;
   }
 }

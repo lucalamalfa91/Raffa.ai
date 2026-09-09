@@ -46,7 +46,19 @@ async function bootstrap() {
   // Task E01/F07/US01/T02: the generated-type-backed API client (src/api/client.ts),
   // built from the same runtime config as MSAL (ADR-012 "config, not code") --
   // never a hard-coded origin.
-  const apiClient = createApiClient(appConfig.apiBaseUrl);
+  //
+  // Task E13/F09/US01/T04 (OQ-askv2-005/R-CONV-03/ADR-022): `getUserId` is resolved lazily, at
+  // request time, off `msalInstance` directly (its own synchronous, non-React
+  // `getActiveAccount()`/`getAllAccounts()` API) rather than the `useMsal()` hook -- this bootstrap
+  // runs before `<MsalProvider>` even mounts, so no React account state exists yet at the point
+  // `createApiClient` is called, only the instance itself. `getActiveAccount()` is null until
+  // something calls `setActiveAccount`, which nothing in this app does today (single-account usage
+  // throughout, `App.tsx`'s own `accounts[0]`), so this falls back to the first cached account --
+  // the same account `App.tsx` itself already treats as "the" signed-in one.
+  const apiClient = createApiClient(
+    appConfig.apiBaseUrl,
+    () => msalInstance.getActiveAccount()?.username ?? msalInstance.getAllAccounts()[0]?.username ?? null,
+  );
 
   root.render(
     <StrictMode>

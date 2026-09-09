@@ -24,6 +24,14 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     inviteWorkspaceMember: vi.fn(),
     uploadDocument: vi.fn(),
     getDocument: vi.fn(),
+    // Task E13/F09/US01/T04 (web-ask-v2): this suite never reaches conversations/capabilities/
+    // market -- bare vi.fn() is enough, same convention as getContract360 below.
+    listConversations: vi.fn(),
+    createConversation: vi.fn(),
+    getConversation: vi.fn(),
+    postMessage: vi.fn(),
+    getCapabilities: vi.fn(),
+    getMarketRecord: vi.fn(),
     listDocuments: vi.fn().mockResolvedValue(emptyPage()),
     getDocumentPreviewUrl: vi.fn(),
     reprocessDocument: vi.fn(),

@@ -24,6 +24,14 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     getContract360: vi.fn(),
     getRenewals: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, renewals: { items: [], totalCount: 0 }, error: null }),
     getRenewalPriority: vi.fn().mockResolvedValue({ ok: false, statusCode: 404, priority: null, error: "No contract found." }),
+    // Task E13/F09/US01/T04 (web-ask-v2): this suite never reaches conversations/capabilities/
+    // market -- bare vi.fn() is enough, same convention as getCorrectionHistory below.
+    listConversations: vi.fn(),
+    createConversation: vi.fn(),
+    getConversation: vi.fn(),
+    postMessage: vi.fn(),
+    getCapabilities: vi.fn(),
+    getMarketRecord: vi.fn(),
     // Task E07/F03/US01/T01 (field-review-correction): this suite never reaches the Review screen --
     // bare vi.fn() is enough, same convention as getPortfolio above.
     getCorrectionHistory: vi.fn(),

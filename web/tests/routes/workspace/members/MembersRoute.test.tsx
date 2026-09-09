@@ -34,6 +34,14 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     askContigo: vi.fn(),
     getSavingsKpis: vi.fn(),
     getSavingsOpportunities: vi.fn(),
+    // Task E13/F09/US01/T04 (web-ask-v2): this suite never reaches conversations/capabilities/
+    // market -- bare vi.fn() is enough, same convention as getRenewalPriority above.
+    listConversations: vi.fn(),
+    createConversation: vi.fn(),
+    getConversation: vi.fn(),
+    postMessage: vi.fn(),
+    getCapabilities: vi.fn(),
+    getMarketRecord: vi.fn(),
     ...overrides,
   };
 }

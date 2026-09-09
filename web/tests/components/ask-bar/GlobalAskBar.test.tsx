@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import GlobalAskBar from "../../../src/components/ask-bar/GlobalAskBar";
+import type { ApiClient, CapabilityBody } from "../../../src/api/client";
 
 /** Renders whatever router state `/ask` was reached with, so a test can assert on `newChat`/`query`
  * without `routes/ask/**` itself (this task's own "do not touch" boundary) -- a plain
@@ -13,12 +14,66 @@ function AskProbe() {
   return <div>ASK SCREEN {JSON.stringify(location.state)}</div>;
 }
 
-function renderAtPath(path: string, kbReady = true) {
+/** Minimal full `ApiClient` mock -- this suite only ever exercises `getCapabilities` (task
+ * E13/F09/US01/T04, gap G-CAPABILITIES); every other method is a bare `vi.fn()`. Defaults to a
+ * pending (never-resolving) promise so a test that does not care about capability-sourced copy
+ * keeps seeing the static fallback for its whole run, the same "never resolves == stays on the
+ * fallback forever" shape a real unconfigured fetch never actually produces but is a safe, simple
+ * stand-in for "the catalog has not loaded yet". */
+function mockApiClient(getCapabilities: ApiClient["getCapabilities"] = vi.fn(() => new Promise<never>(() => {}))): ApiClient {
+  return {
+    getHealth: vi.fn(),
+    createWorkspace: vi.fn(),
+    inviteWorkspaceMember: vi.fn(),
+    uploadDocument: vi.fn(),
+    getDocument: vi.fn(),
+    listDocuments: vi.fn(),
+    getDocumentPreviewUrl: vi.fn(),
+    reprocessDocument: vi.fn(),
+    deleteDocument: vi.fn(),
+    getPortfolio: vi.fn(),
+    getContract360: vi.fn(),
+    getRenewals: vi.fn(),
+    getRenewalPriority: vi.fn(),
+    getCorrectionHistory: vi.fn(),
+    correctContract: vi.fn(),
+    postRenewalAction: vi.fn(),
+    uploadQuote: vi.fn(),
+    getQuoteAssessment: vi.fn(),
+    recalculateQuoteAssessment: vi.fn(),
+    captureNegotiationOutcome: vi.fn(),
+    askContigo: vi.fn(),
+    getSavingsKpis: vi.fn(),
+    getSavingsOpportunities: vi.fn(),
+    listConversations: vi.fn(),
+    createConversation: vi.fn(),
+    getConversation: vi.fn(),
+    postMessage: vi.fn(),
+    getCapabilities,
+    getMarketRecord: vi.fn(),
+  };
+}
+
+function capability(overrides: Partial<CapabilityBody> = {}): CapabilityBody {
+  return {
+    key: "ask",
+    title: "Ask Contigo",
+    routePattern: "/ask",
+    description: "Ask about dates, spend, notice periods and clauses.",
+    exampleQuestions: ["What can Contigo do?", "When does this contract expire?", "What liabilities do we have?"],
+    roleGate: "any",
+    availability: "always",
+    howTo: [],
+    ...overrides,
+  };
+}
+
+function renderAtPath(path: string, kbReady = true, apiClient: ApiClient = mockApiClient()) {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
         <Route path="/ask" element={<AskProbe />} />
-        <Route path="*" element={<GlobalAskBar kbReady={kbReady} />} />
+        <Route path="*" element={<GlobalAskBar kbReady={kbReady} apiClient={apiClient} />} />
       </Routes>
     </MemoryRouter>,
   );
@@ -101,6 +156,66 @@ describe("GlobalAskBar", () => {
     it("still shows the route's own suggestion chips while off (only the placeholder swaps)", () => {
       renderAtPath("/", false);
       expect(screen.getAllByRole("button")).toHaveLength(2);
+    });
+  });
+
+  describe("capability-sourced suggestions (task E13/F09/US01/T04, gap G-CAPABILITIES)", () => {
+    it("fetches the catalog once on mount", () => {
+      const getCapabilities = vi.fn(() => new Promise<never>(() => {}));
+      renderAtPath("/", true, mockApiClient(getCapabilities));
+
+      expect(getCapabilities).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps the static fallback chips while the catalog is still loading", () => {
+      renderAtPath("/");
+
+      expect(screen.getByRole("button", { name: "Which contracts renew in the next 45 days?" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Where can we save money this quarter?" })).toBeInTheDocument();
+    });
+
+    it("swaps to the catalog's own first two exampleQuestions for the matching screen once it resolves", async () => {
+      const getCapabilities = vi.fn().mockResolvedValue({
+        ok: true,
+        statusCode: 200,
+        catalog: {
+          version: "capabilities-v2.0",
+          capabilities: [
+            capability({
+              key: "portfolio",
+              exampleQuestions: ["Which of these have uncapped liability?", "Which contracts renew in the next 120 days?"],
+            }),
+          ],
+        },
+        error: null,
+      });
+      renderAtPath("/contracts", true, mockApiClient(getCapabilities));
+
+      expect(await screen.findByRole("button", { name: "Which of these have uncapped liability?" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Which contracts renew in the next 120 days?" })).toBeInTheDocument();
+      // The pre-existing static copy for this route is gone once the catalog wins.
+      expect(screen.queryByText("Which contracts are missing a renewal date?")).not.toBeInTheDocument();
+    });
+
+    it("keeps the static fallback when the catalog resolves with no entry for the current screen", async () => {
+      const getCapabilities = vi.fn().mockResolvedValue({
+        ok: true,
+        statusCode: 200,
+        catalog: { version: "capabilities-v2.0", capabilities: [capability({ key: "documents" })] },
+        error: null,
+      });
+      renderAtPath("/contracts", true, mockApiClient(getCapabilities));
+
+      await waitFor(() => expect(getCapabilities).toHaveBeenCalled());
+      expect(screen.getByRole("button", { name: "Which contracts are missing a renewal date?" })).toBeInTheDocument();
+    });
+
+    it("keeps the static fallback when the catalog fetch fails", async () => {
+      const getCapabilities = vi.fn().mockResolvedValue({ ok: false, statusCode: null, catalog: null, error: "network down" });
+      renderAtPath("/", true, mockApiClient(getCapabilities));
+
+      await waitFor(() => expect(getCapabilities).toHaveBeenCalled());
+      expect(screen.getByRole("button", { name: "Which contracts renew in the next 45 days?" })).toBeInTheDocument();
     });
   });
 });

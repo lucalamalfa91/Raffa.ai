@@ -37,9 +37,10 @@ export default function AppShell({ workspaceName, role, userLabel, onSignOut, ap
         onSignOut={onSignOut}
         kbReady={kbReady}
         validatedContractCount={count}
+        apiClient={apiClient}
       />
       <main className="shell-main">
-        <GlobalAskBar kbReady={kbReady} />
+        <GlobalAskBar kbReady={kbReady} apiClient={apiClient} />
         <div className="shell-content">
           <Outlet />
         </div>

@@ -115,6 +115,18 @@ function mockApiClient(): ApiClient {
     getSavingsOpportunities: vi
       .fn()
       .mockResolvedValue({ ok: true, statusCode: 200, opportunities: { items: [], totalCount: 0 }, error: null }),
+    // Task E13/F09/US01/T04 (web-ask-v2): RailNav's own `useRecentConversations` and GlobalAskBar's
+    // own capability fetch both call these unconditionally on every shell mount (they render outside
+    // `<Outlet/>`, in AppShell.tsx, on every route this suite exercises) -- same "resolved default
+    // required" reasoning as getPortfolio/listDocuments above. No test in this suite resumes a
+    // conversation or asserts capability-sourced chip copy -- see
+    // tests/components/shell/RailNav.test.tsx and tests/components/ask-bar/GlobalAskBar.test.tsx.
+    listConversations: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, conversations: [], error: null }),
+    createConversation: vi.fn(),
+    getConversation: vi.fn(),
+    postMessage: vi.fn(),
+    getCapabilities: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, catalog: { version: "test", capabilities: [] }, error: null }),
+    getMarketRecord: vi.fn(),
   };
 }
 
@@ -146,7 +158,13 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
     renderShell("admin");
 
     expect(screen.getByRole("navigation", { name: /primary/i })).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "Ask Contigo" })).toBeInTheDocument();
+    // This suite's own mockApiClient() above resolves getPortfolio to an empty page (0 validated
+    // contracts), so the real V2 AskRoute this shell mounts renders its off state (AskOffState.tsx),
+    // not the "What do you want to know?" on-state -- proves the real route (task E13/F09/US01/T04),
+    // not a scaffold, is mounted, the same "assert on the real route's own honest content" convention
+    // every other screen in this suite already follows (see e.g. the Contract 360/Renewals cases
+    // below). The full off/on state matrix is covered in depth by tests/routes/ask/AskRoute.test.tsx.
+    expect(await screen.findByRole("heading", { name: "Ask needs at least one validated contract." })).toBeInTheDocument();
   });
 
   it("renders the global Ask bar on a routed screen (AC-3, every app screen)", () => {
@@ -194,7 +212,10 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
 
     renderShell("admin", "/this-route-does-not-exist");
 
-    expect(await screen.findByRole("heading", { name: "Ask Contigo" })).toBeInTheDocument();
+    // See the identical assertion (and its own comment) in the "redirects / to /ask..." test above --
+    // this suite's shared mock always resolves 0 validated contracts, so the real Ask screen the
+    // catch-all redirect lands on is its off state.
+    expect(await screen.findByRole("heading", { name: "Ask needs at least one validated contract." })).toBeInTheDocument();
   });
 
   it("/review redirects to /documents?filter=attention (Review is a state of Documents in V2, not a rail destination)", async () => {

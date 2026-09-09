@@ -91,8 +91,8 @@ own rail destination. Pixel/behaviour reference: `inputs/design/prototypes/Conti
 |-------|-----------|------|
 | `/signin` | Sign-in (Entra redirect, idle/redirecting states) -> workspace picker (list + create + confirm) | E06/F03/US01/T01 |
 | `/` | Redirects to `/ask` (R-WEB-01) -- there is no standalone Home screen in V2. | E13/F09/US01/T01 |
-| `/ask` | Ask Contigo: chat with a route line, numbered citation chips, abstain block (V1 shape; the V2 reply contract -- markdown, citation cards, redirect/refusal/abstain layouts -- lands in F09/T02/T04). Calls the real `POST /api/chat/query`. See "Ask Contigo" below. | E07/F04/US01/T01 |
-| `/ask/:conversationId` | Same `AskRoute` as `/ask` -- the route exists so a conversation id is a valid URL, but nothing reads it yet (`routes/ask/**` untouched; F09/T04 wires resume from `GET /api/conversations/{id}`). | E13/F09/US01/T01 (route only) |
+| `/ask` | Ask Contigo, V2 rebuild: off state below 1 validated contract (fixed headline + doc-count-dependent reason + one CTA to `/documents`); new chat (hello line, scope line naming the validated count, two capability-sourced suggestion chips, optional `?scope=<contractId>`); conversation view rendering the phase-2 reply contract (markdown, numbered citation cards, actions, follow-ups) via `ReplyBody`. Calls the real `GET/POST /api/conversations`, `POST /api/conversations/{id}/messages`, `GET /api/capabilities`, `GET /api/market/records/{id}`. See "Ask Contigo" below. | E07/F04/US01/T01; V2 rebuild E13/F09/US01/T04 |
+| `/ask/:conversationId` | Same `AskRoute` as `/ask`, resuming: `useConversation` loads the conversation (`GET /api/conversations/{id}`) and renders every past turn, oldest first, with citation cards and actions still clickable; a named "not found" state for an unknown/foreign/another-user's id. | E13/F09/US01/T01 (route only); resume wired by E13/F09/US01/T04 |
 | `/documents` | V2 rebuild (ADR-024 amendment to ADR-020 screen 3): onboarding empty state ("First your contracts. Then your questions.") -> a server-backed list (`GET /api/documents`, survives a reload) with a **Needs your attention** (default) / **All documents · N** filter, multi-file drop (up to 20 files, <=3 uploads in flight, one row per file from the moment it is picked), real per-file stage text polled every 2s, a **Not added** card for a rejected file (422/415/oversized, session-only, never counted), Admin-only Delete, and Review as a *state* of this same route (`?review=<id>`, reusing `routes/contracts/review/*` as-is). Calls the real `GET /api/documents`, `GET /api/documents/{id}/preview`, `POST /api/documents`, `POST /api/documents/{id}/reprocess`, `DELETE /api/documents/{id}`. See "Documents" below. | E06/F05/US01/T01, E06/F05/US02/T01; V2 rebuild E13/F09/US01/T03 |
 | `/contracts` | Portfolio: filter chips + attention strip + a table sorted by severity then deadline (critical rows tinted + a red bar), plus loading/empty/error/no-match-for-filter states. Calls the real `GET /api/contracts`. See "Portfolio" below. | E07/F01/US01/T01 |
 | `/contracts/:id` | Contract 360: header + 6-cell fact row + 10 tabs (Overview's recommendation card + drivers + "Needs your attention" + "Top risks", then Commercials/Products/Clauses/Obligations/Risks/Documents/Benchmark/Renewal/Activity through one shared Term/Value/Source/Confidence table), plus loading/not-found/error states. `?clause=<id>`/`?page=<n>` (an Ask citation landing) opens straight on Clauses with that clause's original wording highlighted; `state.from` drives the header's back link; header offers **Ask about it** -> `/ask?scope=<id>`. Calls the real `GET /api/contracts/{id}`, `GET /api/renewals`, `GET /api/renewals/{contractId}/priority`. See "Contract 360" below. | E07/F02/US01/T01; citation landing by E13/F10/US01/T01 |
@@ -164,8 +164,11 @@ what re-evaluates `App.tsx`'s check with both facts already true.
 
 - **Two-tier rail** (`src/components/shell/RailNav.tsx`, model in
   `src/components/shell/navItems.ts`) replaces the flat, eight-item Day-1 list.
-  **Primary**: Ask Contigo (badge `⌘K`, a nested "+ New chat" slot -- empty of
-  real conversations until F09/T04 wires `GET /api/conversations`) and
+  **Primary**: Ask Contigo (badge `⌘K`, a nested conversations slot -- the
+  caller's own last 5 conversations from `GET /api/conversations`, active one
+  in accent, plus "+ New chat"; `useRecentConversations` re-fetches on every
+  navigation rather than once per shell mount, since a new conversation is a
+  routine, every-few-clicks event -- wired by task E13/F09/US01/T04) and
   Documents (badge `N to review`, accent, when this browser has a tracked
   document in `NeedsReview`, else `N docs`, else no badge --
   `src/routes/documents/documentStore.ts`'s session-scoped tracked list).
@@ -222,16 +225,19 @@ what re-evaluates `App.tsx`'s check with both facts already true.
   renders on every routed screen (mounted once, above `<Outlet/>`, in
   `AppShell.tsx`). Enter (or a suggestion chip) always opens a **new chat**:
   it navigates to `/ask` with `{ state: { query, newChat: true } }`
-  (`useLocation().state` -- consumed by whichever future task builds
-  conversations, epic-13/feature-09/T04; today `AskRoute` only reads
-  `state.query`, so `newChat` is an inert, additive contract). Cmd/Ctrl+K
+  (`useLocation().state` -- `AskRoute` reads `state.query` to seed and ask a
+  brand-new conversation immediately, task E13/F09/US01/T04). Cmd/Ctrl+K
   focuses the input from anywhere. Suggestion-chip copy
-  (`src/components/ask-bar/askSuggestions.ts`) is placeholder text keyed by
-  route prefix, not real query intelligence; the placeholder itself switches
-  to "Ask Contigo switches on after your first validated contract" while
-  `!kbReady`, regardless of route (ADR-024 V2 amendment) -- this bar is
-  explicitly a scaffold that gets the user to `/ask`, it does not answer
-  them.
+  (`src/components/ask-bar/askSuggestions.ts#getAskBarCopy`) fetches
+  `GET /api/capabilities` once (task E13/F09/US01/T04, gap G-CAPABILITIES)
+  and, once it resolves, prefers that catalog's own `exampleQuestions` for
+  the capability key matching the current route; the pre-existing static
+  per-route copy is the fallback while the fetch is in flight, fails, or has
+  no entry for the current screen -- never a blank chip row. The placeholder
+  itself still switches to "Ask Contigo switches on after your first
+  validated contract" while `!kbReady`, regardless of route (ADR-024 V2
+  amendment) -- this bar gets the user to `/ask`, it does not answer them
+  itself.
 
 **Workspace list is a client-side cache, not a server query** -- there is no
 backend endpoint that lists the workspaces a signed-in identity belongs to
@@ -554,9 +560,11 @@ own P2 follow-up, R-WEB-06):
   future Ask-route task (`web/src/routes/ask/**`, out of this task's own file scope) can set `"ask"`
   for real, so this is proven by a router-state unit test today, not an end-to-end click from Ask.
 - **Ask about it** (`.btn-secondary`, header) links to `/ask?scope=<contractId>` -- a *new* chat
-  scoped to this contract. The Ask route does not consume `?scope=` yet (F09/T04's own scope); the
-  link is forward-compatible/dormant until that task lands, the same pattern this header's
-  always-real "Review extraction" link already uses.
+  scoped to this contract. Live since task E13/F09/US01/T04: `AskRoute` reads `?scope=` (while no
+  conversation is open yet), passes `scopeContractId` to `POST /api/conversations`, and templates its
+  two suggestion chips with this contract's own supplier name (`GET /api/contracts/{id}`, defensively
+  read off the wire object -- see that task's own `askViewModel.ts#suggestionsFor` doc comment for
+  why this is not yet a typed generated field).
 - **Supplier name, defensively** (`contract360ViewModel.ts#resolveSupplierLabel`) -- the header kicker
   now prefers a wire-provided `supplierName` over the `formatSupplier` id-fragment fallback above,
   reading it off the response object rather than the generated `Contract360HeaderBody` type (which
@@ -620,49 +628,73 @@ never a fabricated document name/page/quote. See `review.css.test.ts` for the CS
 (`test.css: false` means no computed style exists to assert against under jsdom, same reasoning
 `signin.css.test.ts` already documents).
 
-### Ask Contigo (ADR-020 screen 7, task E07/F04/US01/T01, us-01-ask-contigo)
+### Ask Contigo (ADR-020 screen 7 / ADR-024 §6, task E07/F04/US01/T01; V2 rebuild task
+E13/F09/US01/T04, us-01-web-v2 AC-1/AC-3/AC-5/AC-6, `contigo-v2/screens-v2.md` #2)
 
-`src/routes/ask/` implements screen 7: AC-1 chat + route line, AC-2 numbered citation chips opening
-Contract 360 › Clauses, AC-3 abstain block, AC-4 empty/thinking/answered/abstain/unknown-fallback
-states. Reached from the global Ask bar (`components/ask-bar/GlobalAskBar.tsx`, Enter or Cmd/Ctrl+K)
-on any screen, or directly at `/ask`.
+`src/routes/ask/` implements screen 2: one screen, four faces (off / new chat / conversation /
+resume -- `turns.length === 0` vs `> 0` and two route-derived ids inside one component, not four
+separate components; see `index.tsx`'s own header comment for the full state-machine reasoning).
+Reached from the global Ask bar (`components/ask-bar/GlobalAskBar.tsx`, Enter or Cmd/Ctrl+K) on any
+screen, directly at `/ask`, a rail conversation click, or Contract 360's "Ask about it"
+(`/ask?scope=<contractId>`). Replaces the V1 single-turn `POST /api/chat/query` screen this same
+task deleted (`ChatMessage.tsx`, `askViewModel.ts#ROUTE_LINE_BY_INTENT`) with real, resumable,
+per-user conversations.
 
-- **One call, one turn** (`index.tsx`) -- every question (typed, a "Try" suggestion click, or the
-  seed query the global Ask bar carries in router state) calls the real `POST /api/chat/query`
-  (`apiClient.askContigo`) exactly once and appends one "You" bubble plus one "Contigo" bubble.
-  `askViewModel.ts#buildContigoMessage` decides whether that reply is an `answer` (AC-2), an
-  `abstain` (AC-3), or an `error` (a transport/400 failure) -- an error is never rendered as an
-  abstain: "the request failed" and "the AI honestly could not determine an answer" are different
-  claims (`ChatMessageKind`'s own doc comment).
-- **AC-1, route line** -- quoted verbatim from the task text: `"Structured query…"` for the
-  backend's `Structured` intent, `"Clause retrieval…"` for `Semantic` (`askViewModel.ts
-  #ROUTE_LINE_BY_INTENT`).
-- **AC-3/AC-4, abstain and the unknown-question fallback share one block** -- the compiled
-  prototype's own chat template (`inputs/design/prototypes/day1-demo.html`) renders both through the
-  same "Cannot determine reliably." + reason markup (`.abstain-block`,
-  `styles/components.css`), varying only the reason/route text; this screen follows the same rule
-  (`askViewModel.ts`'s own header comment has the full reasoning). A `Structured`-intent question is
-  not wired to live data by any task yet (`ChatEndpointExtensions`'s own doc comment), so it always
-  comes back `canDetermine: false` with a real backend `message` explaining the gap -- shown
-  verbatim as the reason. A `Semantic`-intent `canDetermine: false` always has `message: null` on the
-  wire (`AbstainGuard`'s own free-text reason is deliberately excluded from the response), so this
-  screen renders a fixed, honest "Contigo found no supporting evidence..." line instead of inventing
-  a per-query reason the API does not supply.
-- **AC-2, citations open Contract 360 › Clauses** -- only resolved on click
-  (`askViewModel.ts#resolveCitationContractId`), not eagerly for every citation on every answer. The
-  backend's `citations[].documentId` is a composite `SourceType:SourceId` string
-  (`ChatEndpointExtensions.ToEvidenceSnippet`); a `Document:<id>` citation resolves via the existing
-  `GET /api/documents/{id}` (its `contractId` field) and then navigates to `/contracts/:id` with
-  `{ state: { tab: "Clauses" } }` -- `contracts/contract360/index.tsx` reads that exact shape
-  (`contract360ViewModel.ts#isContract360TabName`) to open directly on the Clauses tab instead of
-  always resetting to Overview. A `Clause:<id>` citation has no equivalent lookup endpoint anywhere
-  in this backend yet (`Embedding.SourceType`'s own doc comment: "Document or Clause content today"
-  is a loose pointer, not a foreign key) -- that chip shows an honest inline reason instead of a
-  guessed link.
-- **Citation label is the raw composite id, not a resolved filename** -- resolving every citation's
-  real document name up front would need one extra round trip per citation before the message could
-  even render; `openapi/contigo-api.v1.json`'s `askContigo` operation does not return a filename at
-  all. A deliberate, documented scope cut, not an oversight.
+- **Off** (`AskOffState.tsx`, R-ASK-10) -- gated by `useValidatedContractCount`'s `kbReady`, the same
+  shell hook `AppShell.tsx`/`GlobalAskBar.tsx` already share for the identical signal, never
+  re-derived here. Fixed headline ("Ask needs at least one validated contract.") never varies; the
+  reason + CTA do (`askViewModel.ts#buildOffCopy`): "Upload a contract first" / "Upload a contract"
+  when the tenant has no document at all, "still processing or waiting for review" / "Go to
+  Documents" once at least one exists but none is validated yet (`GET /api/documents`'s own
+  `totalCount`, fetched only while off -- not the session-only `documentStore.ts` tracker the rail
+  badge's own known gap above already documents as broken).
+- **New chat** -- hello line (`ASK_HELLO`, "What do you want to know?"), scope line naming the
+  validated count (`askViewModel.ts#buildScopeLine`, "Answers only from N validated contract(s) ·
+  cites or abstains", the parenthetical supplier-name list omitted honestly until a future backend
+  task resolves it) plus the prototype's structured/legal trailer sentence, input placeholder "Ask
+  Contigo — spend, dates, clauses, liability…", two suggestion chips (`suggestionsFor`) from the
+  `ask` capability's own `exampleQuestions` (`GET /api/capabilities`), falling back to a small static
+  pair while the catalog has not loaded. Asking (typed, a chip, or the seed query the global Ask bar
+  carries in router state, `newChat: true`) runs `createConversationAndAsk`:
+  `POST /api/conversations` (with `scopeContractId` when `?scope=` is present) then
+  `POST /api/conversations/{id}/messages`, then the URL becomes `/ask/<conversationId>`
+  (`navigate(..., { replace: true })`). `?scope=<contractId>` templates the two chips with the real
+  supplier name instead (`buildScopedSuggestions`, defensively read off `GET /api/contracts/{id}`
+  until that field is a typed generated one).
+- **Conversation** -- header shows the derived title (`deriveConversationTitle`, collapsed
+  whitespace, hard-truncated at 48 chars, no ellipsis) + "+ New chat"; every turn renders through the
+  phase-2 `ReplyBody` (task E13/F09/US01/T02, `routes/ask/reply/*`, this task maps the wire reply
+  onto it -- `askViewModel.ts#mapConversationReplyToReply`/`mapConversationMessageToReply` -- but
+  does not modify that renderer itself): `answer` gets markdown + numbered citation cards + actions +
+  follow-up chips, `redirect`/`refusal` share warm prose + one CTA, `abstain` is the accent-left
+  block, `error` is a transport/400 failure -- never confused with an abstain. Citation clicks
+  resolve by corpus (`resolveCitationOpenAction`): a **tenant** citation navigates to
+  `/contracts/<contractId>?page=<n>` (the real backend never sends `?clause=` yet -- confirmed
+  against `AskCopilotService.cs`'s own `PackItem` constructions, a documented, honest gap, not a
+  guess) with `state.from: "ask"`, which Contract 360's own back-link picks up; a **market** citation
+  opens `MarketRecordPanel.tsx` (`GET /api/market/records/{id}`: title, category, geography,
+  P25/P50/P75 band, provenance label, updated date); a **contigo** feature citation navigates to its
+  own href. Follow-up chips post as a new message in the same conversation, the same `ask()` path a
+  typed question uses.
+- **Resume** (`/ask/:conversationId`, R-CONV-02 AC-1) -- `useConversation.ts` loads the conversation
+  (`GET /api/conversations/{id}`) and turns every stored message, oldest first, into the same turn
+  shape a live turn produces (`askViewModel.ts#buildTurnsFromConversation`); a resumed Contigo turn's
+  `followUps` is always empty (`ConversationMessage` has no such column on the wire -- an honest
+  limitation, not an oversight). A `404` (unknown id, another tenant's, or another user's -- one
+  honest outcome per that operation's own OpenAPI description) renders a named "Conversation not
+  found" state with a "+ New chat" link, never a generic error.
+- **Rail** -- the shell's nested conversations slot (see "App shell" above); `RailNav.tsx` consumes
+  `useRecentConversations.ts` itself, not threaded through as a prop from a fetch-once parent.
+- **No raw ids, no route line, no V1 copy anywhere** (R-ASK-08) -- `Reply`
+  (`routes/ask/reply/replyTypes.ts`) carries no `route`/raw-id field for any variant to leak; a
+  tenant citation's deep link is built client-side from `contractId`/`page` only. `"Structured
+  query…"`, `ROUTE_LINE_BY_INTENT`, and a raw `Document:<guid>`/`Clause:<guid>` chip are gone with
+  the V1 screen this task deleted -- the "thinking" copy (`THINKING_COPY`) is the one line kept
+  verbatim.
+- **`X-User-Id` on every call** (`client.ts`, OQ-askv2-005/ADR-022) -- see "API client" below for the
+  full header provenance; today only `/api/conversations*` actually reads it
+  (`ConversationsEndpointExtensions.TryResolveUserId`).
+
 ### Renewal pipeline (ADR-020 screen 8, task E08/F01/US01/T01, us-01-renewal-pipeline)
 
 `src/routes/renewals/` implements screen 8: AC-1 threshold strip, AC-2 priority table, AC-3 insight
@@ -1074,6 +1106,22 @@ Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
   header. `deleteDocument`'s only success shape is `204 No Content` (no body to parse at all,
   unlike `getDocument`'s already-established `404`-no-body special case).
 
+- **Task E13/F09/US01/T04 (web-ask-v2, ADR-024 §6)** extended `openapi/contigo-api.v1.json` with
+  `GET/POST /api/conversations`, `GET /api/conversations/{id}`,
+  `POST /api/conversations/{id}/messages` (the reply contract), `GET /api/capabilities`,
+  `GET /api/market/records/{id}`, and `supplierName` on the portfolio/360/renewals/documents
+  responses -- the seventh web epic to extend this document (see "API client" provenance paragraphs
+  above), and the first to add a header every method in this file now sends when supplied:
+  `X-User-Id` (`userIdHeaders`, OQ-askv2-005/ADR-022), resolved lazily via a `getUserId` callback
+  `main.tsx` supplies once MSAL resolves an account, mirroring `X-Tenant-Id`'s own
+  resolved-per-request shape -- an absent/blank id omits the header key entirely (never a blank
+  `X-User-Id: ""`), so every pre-existing call site/test keeps its exact `toEqual` headers check
+  passing unchanged. `getCapabilities`/`getMarketRecord` are the first genuinely tenant-agnostic
+  reads in this file (no `X-Tenant-Id` at all -- the catalog and the market index are both
+  static/shared, not per-tenant); `getCapabilities` also has no documented non-2xx body
+  (`CapabilitiesEndpointExtensions` has no failure branch), so its own error path is a status-based
+  message only, never an attempted JSON parse, unlike every write/tenant-scoped read above it.
+
 ## Directory layout
 
 ```
@@ -1091,7 +1139,7 @@ web/
   src/
     api/
       generated/schema.ts     # AUTO-GENERATED; do not edit by hand
-      client.ts                # createApiClient(baseUrl) -> { getHealth(), createWorkspace({ name }), uploadDocument(tenantId, file), getDocument(tenantId, id), listDocuments(tenantId, query?), getDocumentPreviewUrl(tenantId, id), reprocessDocument(tenantId, id), deleteDocument(tenantId, id), getPortfolio(tenantId, query?), getContract360(tenantId, id), getRenewals(tenantId), getRenewalPriority(tenantId, contractId), getCorrectionHistory(tenantId, id), correctContract(tenantId, id, request), postRenewalAction(tenantId, contractId, request), askContigo(tenantId, request), uploadQuote(tenantId, file, fields?), getQuoteAssessment(tenantId, id), recalculateQuoteAssessment(tenantId, id, mappings?), captureNegotiationOutcome(tenantId, request), getSavingsKpis(tenantId), getSavingsOpportunities(tenantId) }
+      client.ts                # createApiClient(baseUrl, getUserId?) -> { getHealth(), createWorkspace({ name }), uploadDocument(tenantId, file), getDocument(tenantId, id), listDocuments(tenantId, query?), getDocumentPreviewUrl(tenantId, id), reprocessDocument(tenantId, id), deleteDocument(tenantId, id), getPortfolio(tenantId, query?), getContract360(tenantId, id), getRenewals(tenantId), getRenewalPriority(tenantId, contractId), getCorrectionHistory(tenantId, id), correctContract(tenantId, id, request), postRenewalAction(tenantId, contractId, request), askContigo(tenantId, request), uploadQuote(tenantId, file, fields?), getQuoteAssessment(tenantId, id), recalculateQuoteAssessment(tenantId, id, mappings?), captureNegotiationOutcome(tenantId, request), getSavingsKpis(tenantId), getSavingsOpportunities(tenantId), listConversations(tenantId), createConversation(tenantId, request?), getConversation(tenantId, id), postMessage(tenantId, conversationId, request), getCapabilities(), getMarketRecord(id) } -- every method also sends X-User-Id when getUserId is supplied (task E13/F09/US01/T04, OQ-askv2-005)
     config/appConfig.ts       # fetch + validate runtime config
     auth/msalConfig.ts        # AppConfig -> MSAL Configuration (no secret, ever)
     styles/                   # design system (tokens + component catalogue); see below
@@ -1141,10 +1189,14 @@ web/
           EvidencePane.tsx        # AC-3: evidence + correction form + real correction-history trail
           reviewViewModel.ts      # pure helpers: correctable-field catalogue, decision/tag/gate computation (no live confidence yet -- see its own header comment)
           review.css              # this screen's styles
-      ask/                  # task E07/F04/US01/T01 -- ADR-020 screen 7 (see "Ask Contigo" above)
-        index.tsx              # AskRoute -- one apiClient.askContigo() call per turn, seeds the global Ask bar's router-state query once
-        ChatMessage.tsx        # one chat turn: text, abstain block, numbered citation chips, route line
-        askViewModel.ts        # pure(ish) helpers: chat-turn construction, citation parsing, resolveCitationContractId (the one impure call)
+      ask/                  # task E07/F04/US01/T01 -- ADR-020 screen 7; V2 rebuild task E13/F09/US01/T04 (see "Ask Contigo" above)
+        index.tsx              # AskRoute -- off/new-chat/conversation/resume states; seeds+asks the global Ask bar's router-state query once; create-then-ask, citation-click routing
+        AskOffState.tsx        # off state (0 validated contracts): fixed headline, doc-count-dependent reason + one CTA to /documents
+        MarketRecordPanel.tsx  # side panel for a market citation: GET /api/market/records/{id}
+        useConversation.ts     # resume: GET /api/conversations/{id} -> turns, oldest first
+        useRecentConversations.ts # rail's last-5 list: GET /api/conversations, refetches on navigation (see "App shell" above)
+        reply/                  # phase-2 (task E13/F09/US01/T02) rich reply renderer -- ReplyBody/CitationCard/ActionRow/ReplyMarkdown/replyTypes; this task maps the wire reply onto it (askViewModel.ts) but does not modify it
+        askViewModel.ts        # pure(ish) helpers: wire reply -> presentational Reply, turn construction, off-copy/scope-line/suggestion-chip text, citation-click resolution
         ask.css                # this screen's styles
       renewals/                 # task E08/F01/US01/T01 -- ADR-020 screen 8 (see "Renewal pipeline" above)
         index.tsx                 # RenewalsRoute -- fetch-then-score-batch state machine (AC-4 states), selection, action handling
@@ -1182,9 +1234,9 @@ web/
         AppShell.tsx             # rail + global Ask bar + <Outlet/>; fetches kbReady once via useValidatedContractCount
         WorkspaceShellApp.tsx    # <BrowserRouter> + V2 route table (ShellRoutes is the router-free export tests use)
         shell.css                # rail/shell layout
-      ask-bar/                # task E06/F03/US02/T01 -- global Ask bar scaffold (AC-3); V2 new-chat state + off placeholder by E13/F09/US01/T01
-        GlobalAskBar.tsx         # the bar itself: input, chips, Enter -> /ask with { query, newChat: true }, Cmd/Ctrl+K focus
-        askSuggestions.ts        # per-route placeholder copy (not real query intelligence); kbReady off-copy
+      ask-bar/                # task E06/F03/US02/T01 -- global Ask bar scaffold (AC-3); V2 new-chat state + off placeholder by E13/F09/US01/T01; capability-sourced chips by E13/F09/US01/T04
+        GlobalAskBar.tsx         # the bar itself: input, chips, Enter -> /ask with { query, newChat: true }, Cmd/Ctrl+K focus, fetches GET /api/capabilities once
+        askSuggestions.ts        # getAskBarCopy: static per-route fallback copy + kbReady off-copy, overridden by the capability catalog's own exampleQuestions once it resolves for the current route
         ask-bar.css
     App.tsx                   # composition root: /health effect; SignInRoute, or (signed in + workspace picked) WorkspaceShellApp
     main.tsx                  # boot: load config -> construct MSAL + API client -> render

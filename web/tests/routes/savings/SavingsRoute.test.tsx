@@ -38,6 +38,14 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     recalculateQuoteAssessment: vi.fn(),
     captureNegotiationOutcome: vi.fn(),
     askContigo: vi.fn(),
+    // Task E13/F09/US01/T04 (web-ask-v2): this suite never reaches conversations/capabilities/
+    // market -- bare vi.fn() is enough, same convention as getContract360 above.
+    listConversations: vi.fn(),
+    createConversation: vi.fn(),
+    getConversation: vi.fn(),
+    postMessage: vi.fn(),
+    getCapabilities: vi.fn(),
+    getMarketRecord: vi.fn(),
     getSavingsKpis: vi.fn(),
     getSavingsOpportunities: vi.fn(),
     ...overrides,
