@@ -73,6 +73,9 @@ REQUIRED_MODULES = (
     "acr",
     "monitor",
     "staticwebapp",
+    # ADR-008 amendment 2026-09-09: the shared AI services account, this
+    # environment's Foundry project, deployments and grants.
+    "foundry",
 )
 REQUIRED_PROVIDERS = ("azurerm", "azuread", "random")
 

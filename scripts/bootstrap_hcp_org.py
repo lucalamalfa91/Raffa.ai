@@ -59,23 +59,22 @@ What it does, in order:
      .gitignore from E01/F01/US01/T01 already excludes .terraform/,
      *.tfstate and *.tfstate.*, so this should always pass; it exists so a
      regression is caught here too, not only trusted to .gitignore. AC-3.
-  5. Foundry account (ADR-008, ADR-017) -- task E01/F02/US05/T01. Records,
-     as documentation plus a structural assertion
-     (FOUNDRY_HUB_NAME / AI_SERVICES_ACCOUNT_NAME / FOUNDRY_PROJECTS
-     below), the one hub + two projects (`contigo-dev`, `contigo-demo`) +
-     one pay-as-you-go Azure AI services account + a per-project Document
-     Intelligence connection shape the parent story's AC-1..AC-4 call
-     for. Like VCS wiring above, this is never a live API call from this
-     script: Azure AI Foundry hub/project/account creation is an
-     interactive Azure Portal (or `az` CLI against a live subscription)
-     step, and ADR-008 explicitly keeps it outside the Terraform module
-     surface for V1 ("Model deployment may be a one-time Azure-based or
-     portal step recorded as an implementation task, not part of the
-     Terraform module surface initially"). check_foundry_account_recorded()
-     only proves the recorded shape is complete and internally consistent
-     (one hub, exactly the two named projects, one account, a Document
-     Intelligence connection per project) -- it cannot and does not claim
-     the Portal resources themselves exist.
+  5. Foundry account (ADR-008, ADR-017) -- task E01/F02/US05/T01, shape
+     amended 2026-09-09. Records, as documentation plus a structural
+     assertion (AI_RESOURCE_GROUP_NAME / AI_SERVICES_ACCOUNT_NAME /
+     FOUNDRY_PROJECTS below), the one shared Azure AI Services account in
+     its own resource group + two account-native Foundry projects
+     (`contigo-dev`, `contigo-demo`) + a per-project Document Intelligence
+     connection name. Since 2026-09-09 those resources are created by
+     Terraform (infra/modules/foundry: the dev root owns the account, demo
+     attaches to it) -- there is no hub and no portal step any more. This
+     script still never calls Azure: the constants are the recorded shape
+     scripts/foundry_connection_verify.py holds the Terraform module to
+     (account name, resource group, projects, connection names).
+     check_foundry_account_recorded() only proves the recorded shape is
+     complete and internally consistent (one account, one resource group,
+     exactly the two named projects, a Document Intelligence connection
+     name per project).
 
 Auth: `TFE_TOKEN` (the standard env var Terraform CLI and the `tfe`
 provider read) or `HCP_TERRAFORM_TOKEN` as a Contigo-side alias. Address
@@ -109,9 +108,9 @@ Foundry account's recorded shape (point 5) is complete and consistent.
 "Not-yet-VCS-wired" is reported on stdout but is deliberately not a gate:
 making it one would make this script permanently unable to succeed until a
 human completes a step no script can perform (see point 3 above). The
-Foundry Portal resources are the same kind of human-only step, so their
-*existence* is not gated either -- what this script can and does always
-assert is that the recorded shape describing them is complete.
+Foundry resources' *existence* is not gated either (they are Terraform's,
+applied through HCP) -- what this script can and does always assert is
+that the recorded shape describing them is complete.
 """
 
 from __future__ import annotations
@@ -396,33 +395,35 @@ def check_no_state_in_git() -> tuple[bool, str]:
 
 
 # ---------------------------------------------------------------------------
-# Foundry account (ADR-008, ADR-017) -- portal-recorded, not HCP/Terraform
+# Foundry account (ADR-008, ADR-017) -- the recorded shape Terraform
+# (infra/modules/foundry) is held to by scripts/foundry_connection_verify.py
 # ---------------------------------------------------------------------------
 
-# ADR-008: one Azure AI Foundry hub, two projects (`contigo-dev`,
-# `contigo-demo`), one pay-as-you-go Azure AI services account backing
-# both -- never a second account/subscription. ADR-017 adds Document
-# Intelligence S0 (`prebuilt-read`, `prebuilt-layout`) on that *same*
-# account, with its own connection per project. Task E01/F02/US05/T01.
+# ADR-008 (amended 2026-09-09): one shared pay-as-you-go Azure AI Services
+# account (kind AIServices -- Azure OpenAI + Document Intelligence on one
+# endpoint) in its own resource group, two account-native Foundry projects
+# (`contigo-dev`, `contigo-demo`) -- never a second account/subscription,
+# no hub. ADR-017 (amended the same day): Document Intelligence
+# `prebuilt-read` is native to that *same* account; the per-project
+# "connection" below is an informational value the backend sends as a
+# request header, not a resource. Task E01/F02/US05/T01 recorded the
+# original shape; the 2026-09-09 amendment made Terraform its owner: the
+# dev root creates the resource group and the account, every root creates
+# its own project, model deployments (named <model>-<env>) and role
+# assignments, demo attaches to the account by name.
 #
-# None of this is created by this script, or by Terraform, in V1: Azure AI
-# Foundry hub/project creation is an interactive Azure Portal (or `az` CLI
-# against a live subscription) step -- the same reason VCS wiring above
-# cannot be completed from an API token -- and ADR-008 explicitly keeps
-# the hub/project/account control plane outside the Terraform module
-# surface for V1 ("Model deployment may be a one-time Azure-based or
-# portal step recorded as an implementation task, not part of the
-# Terraform module surface initially"). These constants are the recorded
-# shape a human confirms when performing that Portal step; the managed
-# identity that later authenticates the AI Gateway to it (ADR-011) is
-# infra/modules/identity's `workload_identity_id` / `workload_principal_id`
-# outputs (same task).
+# This script still never calls Azure. These constants are the one
+# recorded copy of the names infra/modules/foundry/main.tf's locals must
+# match (scripts/foundry_connection_verify.py asserts both sides agree);
+# the managed identity that authenticates the AI Gateway to the account
+# (ADR-011) is infra/modules/identity's `workload_identity_id` /
+# `workload_principal_id` outputs.
 #
 # AI_SERVICES_ACCOUNT_NAME deliberately carries no dev/demo suffix -- it
 # is the one shared account ADR-008 requires; isolation between
-# environments is by distinct Foundry project/connection, never a second
-# account.
-FOUNDRY_HUB_NAME = "hub-contigo"
+# environments is by distinct Foundry project, per-environment deployment
+# names and per-environment RBAC principals, never a second account.
+AI_RESOURCE_GROUP_NAME = "rg-contigo-ai"
 AI_SERVICES_ACCOUNT_NAME = "aisvc-contigo"
 
 FOUNDRY_PROJECTS: tuple[dict, ...] = (
@@ -445,17 +446,16 @@ def check_foundry_account_recorded() -> tuple[bool, str]:
     """Local, structural proof of the ADR-008/ADR-017 recorded shape.
 
     Not a live Azure API call -- see the module docstring point 5 and the
-    comment above FOUNDRY_HUB_NAME for why this script cannot create or
-    query the actual Portal resources. This only asserts the constants
-    above still describe exactly: one hub, the two ADR-008 projects
-    (`contigo-dev`, `contigo-demo`, no more, no fewer), one shared AI
-    services account, and a non-empty Document Intelligence connection
-    name recorded for each project -- i.e. that the recorded shape has
-    not silently drifted (e.g. someone adding a second account, which
-    ADR-008 forbids).
+    comment above AI_RESOURCE_GROUP_NAME. This only asserts the constants
+    above still describe exactly: one shared resource group, one shared AI
+    services account, the two ADR-008 projects (`contigo-dev`,
+    `contigo-demo`, no more, no fewer), and a non-empty Document
+    Intelligence connection name recorded for each project -- i.e. that
+    the recorded shape has not silently drifted (e.g. someone adding a
+    second account, which ADR-008 forbids).
     """
-    if not FOUNDRY_HUB_NAME.strip():
-        return False, "no Foundry hub name recorded"
+    if not AI_RESOURCE_GROUP_NAME.strip():
+        return False, "no shared AI resource group name recorded"
     if not AI_SERVICES_ACCOUNT_NAME.strip():
         return False, "no Foundry AI services account name recorded"
 
@@ -477,7 +477,7 @@ def check_foundry_account_recorded() -> tuple[bool, str]:
 
     connections = [p["document_intelligence_connection"] for p in FOUNDRY_PROJECTS]
     return True, (
-        f"hub={FOUNDRY_HUB_NAME} account={AI_SERVICES_ACCOUNT_NAME} "
+        f"rg={AI_RESOURCE_GROUP_NAME} account={AI_SERVICES_ACCOUNT_NAME} "
         f"projects={sorted(recorded_projects)} document_intelligence_connections={connections}"
     )
 
@@ -541,15 +541,17 @@ def main() -> int:
     ok_foundry, detail_foundry = check_foundry_account_recorded()
     print(
         f"[{'PASS' if ok_foundry else 'FAIL'}] foundry account "
-        f"(portal-recorded, ADR-008/ADR-017): {detail_foundry}"
+        f"(recorded shape, ADR-008/ADR-017): {detail_foundry}"
     )
     print(
-        "[INFO] Foundry: hub/projects/AI services account are provisioned by hand in the Azure "
-        "Portal, never by this script or Terraform in V1 (ADR-008) -- the check above only "
-        "proves the recorded shape is complete and internally consistent, not that the Portal "
-        "resources exist live. The workload managed identity that will authenticate to it "
-        "(ADR-011) is infra/modules/identity's workload_identity_id/workload_principal_id "
-        "outputs (task E01/F02/US05/T01)."
+        "[INFO] Foundry: the shared AI services account, the per-environment projects, model "
+        "deployments and role assignments are Terraform-managed since 2026-09-09 "
+        "(infra/modules/foundry; the dev root owns the account, demo attaches to it) and are "
+        "applied through HCP Terraform like everything else under infra/. The check above only "
+        "proves the recorded shape is complete and internally consistent -- "
+        "scripts/foundry_connection_verify.py holds the Terraform module to it. The workload "
+        "managed identity that authenticates to the account (ADR-011) is "
+        "infra/modules/identity's workload_identity_id/workload_principal_id outputs."
     )
 
     if not (ok_org and all_ws_ok and ok_git and ok_foundry):
