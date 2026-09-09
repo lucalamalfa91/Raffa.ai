@@ -42,7 +42,10 @@ export default function AppShell({ workspaceName, role, userLabel, onSignOut, ap
       <main className="shell-main">
         <GlobalAskBar kbReady={kbReady} apiClient={apiClient} />
         <div className="shell-content">
-          <Outlet />
+          {/* Shared with every screen through the router outlet (shellContext.ts): the same kbReady /
+              validated-count verdict the rail and the Ask bar already render, so a screen never has to
+              re-fetch the portfolio for a second opinion. */}
+          <Outlet context={{ kbReady, validatedContractCount: count }} />
         </div>
       </main>
     </div>

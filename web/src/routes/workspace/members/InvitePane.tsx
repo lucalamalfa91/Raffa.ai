@@ -1,27 +1,40 @@
 import type { FormEvent } from "react";
-import type { Day1InviteRole } from "./memberViewModel";
-import { INVITE_ROLE_LABEL, INVITE_ROLE_SUMMARY } from "./memberViewModel";
+import {
+  INVITATION_SENT_MESSAGE,
+  INVITE_ROLE_LABEL,
+  INVITE_ROLE_ORDER,
+  INVITE_ROLE_SUMMARY,
+  inviteEmailPlaceholder,
+  type Day1InviteRole,
+} from "./memberViewModel";
 
 export interface InvitePaneProps {
   email: string;
   role: Day1InviteRole;
+  /** The signed-in Admin's own email domain -- drives the placeholder; `null` when it cannot be derived. */
+  tenantDomain: string | null;
   error: string | null;
+  /** `true` right after a successful invite, until the form is edited or submitted again. */
+  sent: boolean;
   submitting: boolean;
   onEmailChange: (email: string) => void;
   onRoleChange: (role: Day1InviteRole) => void;
   onSubmit: () => void;
 }
 
-const ROLES: readonly Day1InviteRole[] = ["Admin", "Procurement"];
-
 /**
- * AC-2 invite pane: email + role radio (Admin vs Procurement with permission summaries) + Send.
- * Radios use the ADR-019 `.radio + .dot` pair; the native control stays in the accessibility tree.
+ * The V2 "Invite a colleague" pane (screens-v2.md #10; `contigo-v2/markup.html` "WORKSPACE &
+ * MEMBERS" block, right column): h4 → "Work email" field → two stacked radios (Procurement first,
+ * each with a bold label and a muted one-line summary, `.radio` + `.dot` from the ADR-019 catalogue,
+ * the native control stays in the accessibility tree) → block "Send invitation" → either the accent
+ * error line or "Invitation sent.".
  */
 export default function InvitePane({
   email,
   role,
+  tenantDomain,
   error,
+  sent,
   submitting,
   onEmailChange,
   onRoleChange,
@@ -33,19 +46,19 @@ export default function InvitePane({
   };
 
   return (
-    <aside className="detail-pane members-invite-pane">
-      <h3>Invite a member</h3>
-      <p className="micro-meta">Send an invitation with a Day-1 role. They appear in the table as Invited until they sign in.</p>
+    <aside className="members-invite-pane" aria-label="Invite a colleague">
+      <h4>Invite a colleague</h4>
 
-      <form onSubmit={handleSubmit}>
-        <div className="field">
-          <label htmlFor="invite-email">Email</label>
+      <form onSubmit={handleSubmit} noValidate>
+        <div className="field members-invite-field">
+          <label htmlFor="invite-email">Work email</label>
           <input
             id="invite-email"
             className="input"
             type="email"
             name="email"
             autoComplete="off"
+            placeholder={inviteEmailPlaceholder(tenantDomain)}
             value={email}
             onChange={(event) => onEmailChange(event.target.value)}
             disabled={submitting}
@@ -53,8 +66,8 @@ export default function InvitePane({
         </div>
 
         <fieldset className="invite-role-fieldset">
-          <legend>Role</legend>
-          {ROLES.map((option) => (
+          <legend className="visually-hidden">Role</legend>
+          {INVITE_ROLE_ORDER.map((option) => (
             <label key={option} className="invite-role-option">
               <span className="invite-role-control">
                 <input
@@ -69,22 +82,27 @@ export default function InvitePane({
                 <span className="dot" />
               </span>
               <span className="invite-role-copy">
-                <span className="invite-role-label">{INVITE_ROLE_LABEL[option]}</span>
-                <span className="micro-meta">{INVITE_ROLE_SUMMARY[option]}</span>
+                <strong className="invite-role-label">{INVITE_ROLE_LABEL[option]}</strong>
+                <span className="invite-role-summary">{INVITE_ROLE_SUMMARY[option]}</span>
               </span>
             </label>
           ))}
         </fieldset>
 
-        {error !== null && (
-          <p className="hint" role="alert">
-            {error}
-          </p>
-        )}
-
         <button type="submit" className="btn btn-primary btn-block" disabled={submitting}>
           {submitting ? "Sending…" : "Send invitation"}
         </button>
+
+        {error !== null && (
+          <p className="members-invite-error" role="alert">
+            {error}
+          </p>
+        )}
+        {sent && error === null && (
+          <p className="members-invite-sent" role="status">
+            {INVITATION_SENT_MESSAGE}
+          </p>
+        )}
       </form>
     </aside>
   );

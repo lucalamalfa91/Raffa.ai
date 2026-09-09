@@ -15,7 +15,7 @@ export interface ReviewFieldListProps {
  * honest "no source recorded" when the extraction reported none, never a fabricated citation.
  *
  * Every row is reachable by keyboard through its own field-name button (`.btn.btn-ghost`, the same
- * reusable primitive `../contract360/OverviewTab.tsx`'s "All risks →" link already uses) -- row
+ * reusable primitive `../contract360/DetailsSection.tsx`'s "Review all →" link already uses) -- row
  * `onClick` would not be, so this is the real interactive surface, not a mouse-only convenience on
  * top of it.
  *

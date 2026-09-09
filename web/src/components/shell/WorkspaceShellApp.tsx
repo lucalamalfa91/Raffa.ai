@@ -28,18 +28,15 @@ export interface WorkspaceShellAppProps {
 }
 
 /**
- * V2 route table (ADR-024 amendment to ADR-018's locked "Route map"; task E13/F09/US01/T01, gap
- * G-IA-V2). `ia-v2.md` "Route map (V2)" is the source: `/` -> `/ask` (R-WEB-01, sign-in and every
- * stale bookmark lands on the new home); `ask` / `ask/:conversationId` -> `AskRoute` (the
- * `:conversationId` param is not read yet -- `routes/ask/**` is this task's own "do not touch"
- * boundary; F09/T04 wires resume); `savings` -> `SavingsRoute` (renamed from the old index/Home
- * route, "keep behaviour" -- see `routes/savings/index.tsx`'s own header comment); `review` now
- * redirects to `/documents?filter=attention` (Review is a *state* of Documents in V2, not a rail
- * destination or its own screen -- `routes/review/` itself is untouched/unrouted dead code until a
- * cleanup task removes it, out of this task's own file scope). Every other route
- * (`documents`, `contracts`, `contracts/:contractId`, `contracts/:contractId/review`, `renewals`,
- * `quotes`, `quotes/:quoteId`, `workspace/members`) is unchanged -- "still reachable" per this
- * task's own text.
+ * V2 route table (ADR-024 amendment to ADR-018's locked "Route map"; `ia-v2.md` "Route map (V2)"):
+ * `/` -> `/ask` (R-WEB-01, sign-in and every stale bookmark lands on the new home); `ask` /
+ * `ask/:conversationId` -> `AskRoute`; `savings` -> `SavingsRoute` (not a rail item -- reached from
+ * Ask actions, Renewals and Contract 360); `review` redirects to `/documents?filter=attention`
+ * (Review is a *state* of Documents in V2, not a rail destination or its own screen -- the old
+ * `routes/review/` rail landing has been deleted). `contracts`, `contracts/:contractId`,
+ * `renewals`, `quotes`, `quotes/:quoteId` and `workspace/members` all render their V2 screens
+ * (`contigo-v2/screens-v2.md` #5-#10); `userLabel` reaches Renewals and Contract 360 as the owner
+ * of every renewal action they post.
  */
 export function ShellRoutes({ workspaceName, role, userLabel, onSignOut, apiClient }: WorkspaceShellAppProps) {
   return (
@@ -60,7 +57,7 @@ export function ShellRoutes({ workspaceName, role, userLabel, onSignOut, apiClie
         <Route path="ask/:conversationId" element={<AskRoute apiClient={apiClient} />} />
         <Route path="savings" element={<SavingsRoute apiClient={apiClient} />} />
         <Route path="contracts" element={<PortfolioRoute apiClient={apiClient} />} />
-        <Route path="contracts/:contractId" element={<Contract360Route apiClient={apiClient} />} />
+        <Route path="contracts/:contractId" element={<Contract360Route apiClient={apiClient} userLabel={userLabel} />} />
         <Route path="contracts/:contractId/review" element={<ReviewRoute apiClient={apiClient} />} />
         <Route path="renewals" element={<RenewalsRoute apiClient={apiClient} userLabel={userLabel} />} />
         <Route path="quotes" element={<QuoteCheckRoute apiClient={apiClient} />} />

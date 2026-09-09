@@ -13,41 +13,28 @@ function mockApiClient(getPortfolio: ApiClient["getPortfolio"] = vi.fn()): ApiCl
     inviteWorkspaceMember: vi.fn(),
     uploadDocument: vi.fn(),
     getDocument: vi.fn(),
-    // Task E13/F09/US01/T03 (web-documents-v2): this suite does not exercise Documents -- bare
-    // vi.fn() is enough, same convention as getContract360 elsewhere in this file.
     listDocuments: vi.fn(),
     getDocumentPreviewUrl: vi.fn(),
     reprocessDocument: vi.fn(),
     deleteDocument: vi.fn(),
     getPortfolio,
-    // Task E07/F02/US01/T01 (contract-360): this suite only exercises /contracts (PortfolioRoute
-    // itself), never /contracts/:contractId (Contract360Route) -- bare vi.fn() is enough, the same
-    // convention this file's own getPortfolio parameter replaced when it was still bare.
+    // This suite only exercises /contracts (PortfolioRoute itself) -- every other call is a bare
+    // vi.fn(), the same convention every route suite in this folder follows.
     getContract360: vi.fn(),
     getRenewals: vi.fn(),
     getRenewalPriority: vi.fn(),
-    // Task E07/F03/US01/T01 (field-review-correction): this suite never reaches the Review screen --
-    // bare vi.fn() is enough, same convention as getContract360 above.
     getCorrectionHistory: vi.fn(),
     correctContract: vi.fn(),
     getContractEvidence: vi.fn(),
     validateDocument: vi.fn(),
-    // Task E08/F01/US01/T01 (renewal-pipeline): this suite only exercises /contracts -- bare
-    // vi.fn() is enough, same convention as getContract360/getRenewals above.
     postRenewalAction: vi.fn(),
-    // Task E08/F03/US01/T01 (quote-check-ui): this suite never reaches the Quote Check screen --
-    // bare vi.fn() is enough, same convention as getContract360 above.
     uploadQuote: vi.fn(),
     getQuoteAssessment: vi.fn(),
     recalculateQuoteAssessment: vi.fn(),
     captureNegotiationOutcome: vi.fn(),
     askContigo: vi.fn(),
-    // Task E08/F02/US01/T01 (savings-home): this suite only exercises /contracts -- bare vi.fn() is
-    // enough, same convention as getContract360/getRenewals above.
     getSavingsKpis: vi.fn(),
     getSavingsOpportunities: vi.fn(),
-    // Task E13/F09/US01/T04 (web-ask-v2): this suite never reaches conversations/capabilities/
-    // market -- bare vi.fn() is enough, same convention as getContract360 above.
     listConversations: vi.fn(),
     createConversation: vi.fn(),
     getConversation: vi.fn(),
@@ -57,21 +44,28 @@ function mockApiClient(getPortfolio: ApiClient["getPortfolio"] = vi.fn()): ApiCl
   };
 }
 
+/** A notice deadline safely outside the 45-day window whatever today's date is, so a plain row never
+ * reads as urgent by accident; urgent rows set their own deadline relative to now. */
+function isoDaysFromNow(days: number): string {
+  const date = new Date(Date.now() + days * 86_400_000);
+  return date.toISOString().slice(0, 10);
+}
+
 function item(overrides: Partial<PortfolioListItem> = {}): PortfolioListItem {
   return {
     contractId: "contract-1",
-    supplierId: null,
-    // Task E13/F03/US01/T02: supplierName is required now (null when unresolved).
-    supplierName: null,
+    supplierId: "33333333-3333-3333-3333-333333333333",
+    supplierName: "Salesforce",
     type: "Msa",
-    annualSpend: 100_000,
-    startDate: "2025-01-01",
-    endDate: "2026-01-01",
-    renewalDate: null,
-    cancellationDeadline: null,
-    autoRenewal: false,
+    annualSpend: 640_000,
+    currency: "CHF",
+    startDate: "2024-03-01",
+    endDate: "2027-01-15",
+    renewalDate: "2027-01-15",
+    cancellationDeadline: isoDaysFromNow(200),
+    autoRenewal: true,
     status: "active",
-    risk: null,
+    risk: "High",
     ...overrides,
   };
 }
@@ -96,7 +90,7 @@ function renderPortfolio(apiClient: ApiClient) {
   );
 }
 
-describe("PortfolioRoute", () => {
+describe("PortfolioRoute (V2, screens-v2.md #6 / markup.html PORTFOLIO block)", () => {
   beforeEach(() => {
     window.sessionStorage.clear();
     window.sessionStorage.setItem(
@@ -115,7 +109,7 @@ describe("PortfolioRoute", () => {
     expect(getPortfolio).not.toHaveBeenCalled();
   });
 
-  it("AC-4 loading state: shows a skeleton while the request is in flight, then replaces it", async () => {
+  it("shows a skeleton while the request is in flight, then the header summary and table", async () => {
     let resolveFetch!: (value: GetPortfolioResult) => void;
     const pending = new Promise<GetPortfolioResult>((resolve) => {
       resolveFetch = resolve;
@@ -123,13 +117,14 @@ describe("PortfolioRoute", () => {
     const { container } = renderPortfolio(mockApiClient(vi.fn().mockReturnValue(pending)));
 
     expect(container.querySelector(".portfolio-skeleton")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Portfolio" })).toBeInTheDocument();
 
     await act(async () => {
       resolveFetch(ok([item()]));
     });
 
-    expect(container.querySelector(".portfolio-skeleton")).not.toBeInTheDocument();
     expect(await screen.findByRole("table")).toBeInTheDocument();
+    expect(container.querySelector(".portfolio-skeleton")).not.toBeInTheDocument();
   });
 
   it("calls getPortfolio with the current workspace id and the backend's own page-size ceiling", () => {
@@ -139,15 +134,18 @@ describe("PortfolioRoute", () => {
     expect(getPortfolio).toHaveBeenCalledWith(WORKSPACE_ID, { pageSize: 100 });
   });
 
-  it("AC-4 empty state: an empty portfolio shows the first-upload CTA linking to /documents", async () => {
-    renderPortfolio(mockApiClient(vi.fn().mockResolvedValue(ok([]))));
+  it("reroute state (R-WEB-02): with no validated contract the tier's own copy and 'Upload a contract' show, no table", async () => {
+    renderPortfolio(mockApiClient(vi.fn().mockResolvedValue(ok([item({ status: "needs_review" }), item({ contractId: "p", status: "processing" })]))));
 
-    expect(await screen.findByText("No contracts yet")).toBeInTheDocument();
-    const link = screen.getByRole("link", { name: /upload a contract/i });
-    expect(link).toHaveAttribute("href", "/documents");
+    expect(await screen.findByText("Nothing to triage yet")).toBeInTheDocument();
+    expect(screen.getByText("The portfolio lights up from validated contracts. Upload one to start.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Upload a contract" })).toHaveAttribute("href", "/documents");
+    expect(screen.getByText("Lights up from validated contracts")).toBeInTheDocument();
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.queryByRole("button", { name: "More columns" })).toBeNull();
   });
 
-  it("AC-4 error state: a 503 renders a plain-language message with a Retry that re-fetches", async () => {
+  it("error state: a 503 renders a plain-language message with a Retry that re-fetches", async () => {
     const getPortfolio = vi
       .fn()
       .mockResolvedValueOnce({ ok: false, statusCode: 503, portfolio: null, error: "Service Unavailable" })
@@ -163,67 +161,96 @@ describe("PortfolioRoute", () => {
     expect(getPortfolio).toHaveBeenCalledTimes(2);
   });
 
-  it("AC-3: renders a populated table sorted by severity then deadline, with a Contract 360 link", async () => {
-    const failed = item({ contractId: "failed-1", status: "Failed" });
-    const normal = item({ contractId: "normal-1" });
-    renderPortfolio(mockApiClient(vi.fn().mockResolvedValue(ok([normal, failed]))));
+  it("renders the pfSummary line from the validated rows: count, per-currency annual spend, urgent deadlines", async () => {
+    renderPortfolio(
+      mockApiClient(
+        vi.fn().mockResolvedValue(
+          ok([
+            item({ contractId: "a", annualSpend: 640_000, cancellationDeadline: isoDaysFromNow(20) }),
+            item({ contractId: "b", supplierName: "Microsoft", annualSpend: 1_200_000, cancellationDeadline: isoDaysFromNow(200) }),
+            item({ contractId: "c", status: "needs_review", annualSpend: 9_999_999 }),
+          ]),
+        ),
+      ),
+    );
+
+    expect(await screen.findByText("2 validated contracts · CHF 1.8M annual · 1 notice deadline within 45 days")).toBeInTheDocument();
+  });
+
+  it("renders the V2 columns, sorted by notice deadline, with the urgent row tinted and its day count shown", async () => {
+    renderPortfolio(
+      mockApiClient(
+        vi.fn().mockResolvedValue(
+          ok([
+            item({ contractId: "later", supplierName: "Microsoft", cancellationDeadline: isoDaysFromNow(200) }),
+            item({ contractId: "soon", supplierName: "Salesforce", cancellationDeadline: isoDaysFromNow(40) }),
+          ]),
+        ),
+      ),
+    );
 
     const table = await screen.findByRole("table");
-    const rows = within(table).getAllByRole("row").slice(1); // drop the header row
-    // The failed (severity 3) row sorts before the untouched (severity 0) row, even though it was
-    // second in the API response.
-    expect(within(rows[0]).getByText(/processing failed/i)).toBeInTheDocument();
-    expect(rows[0]).toHaveClass("row-critical");
-    expect(rows[1]).not.toHaveClass("row-critical");
+    expect(within(table).getAllByRole("columnheader").map((cell) => cell.textContent)).toEqual([
+      "Supplier",
+      "Contract",
+      "Annual spend",
+      "Ends",
+      "Give notice by",
+      "Status",
+    ]);
 
-    fireEvent.click(within(rows[1]).getByRole("link", { name: "MSA" }));
+    const rows = within(table).getAllByRole("row").slice(1);
+    expect(within(rows[0]).getByText("Salesforce")).toBeInTheDocument();
+    expect(rows[0]).toHaveClass("row-critical");
+    expect(within(rows[0]).getByText("· 40 d")).toBeInTheDocument();
+    expect(within(rows[1]).getByText("Microsoft")).toBeInTheDocument();
+    expect(rows[1]).not.toHaveClass("row-critical");
+    // Validated rows only, so no processing/review statuses ever appear; the business status does.
+    expect(within(rows[0]).getByText("Active")).toBeInTheDocument();
+  });
+
+  it("'More columns' reveals Start · Auto · Risk and reads 'Fewer columns' while expanded", async () => {
+    renderPortfolio(mockApiClient(vi.fn().mockResolvedValue(ok([item({ risk: "High", autoRenewal: true })]))));
+
+    await screen.findByRole("table");
+    const toggle = screen.getByRole("button", { name: "More columns" });
+    fireEvent.click(toggle);
+
+    expect(screen.getByRole("button", { name: "Fewer columns" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getAllByRole("columnheader").map((cell) => cell.textContent)).toEqual([
+      "Supplier",
+      "Contract",
+      "Annual spend",
+      "Ends",
+      "Give notice by",
+      "Start",
+      "Auto",
+      "Risk",
+      "Status",
+    ]);
+    expect(screen.getByText("High risk")).toBeInTheDocument();
+    expect(screen.getByText("Yes")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Fewer columns" }));
+    expect(screen.queryByText("Start")).toBeNull();
+  });
+
+  it("rows open Contract 360: the Contract cell is a real link, and clicking elsewhere on the row follows it too", async () => {
+    renderPortfolio(mockApiClient(vi.fn().mockResolvedValue(ok([item({ contractId: "c-1" }), item({ contractId: "c-2", supplierName: "Microsoft" })]))));
+
+    const table = await screen.findByRole("table");
+    const rows = within(table).getAllByRole("row").slice(1);
+    expect(within(rows[0]).getByRole("link", { name: "MSA" })).toHaveAttribute("href", "/contracts/c-1");
+
+    fireEvent.click(within(rows[1]).getByText("Microsoft"));
     expect(await screen.findByText("CONTRACT_360_SCREEN")).toBeInTheDocument();
   });
 
-  it("AC-2: clicking an attention-strip cell filters the table to that bucket, and clicking again clears it", async () => {
-    const highRisk = item({ contractId: "risk-1", risk: "High" });
-    const plain = item({ contractId: "plain-1" });
-    renderPortfolio(mockApiClient(vi.fn().mockResolvedValue(ok([highRisk, plain]))));
+  it("shows an honest em dash for a validated contract with no linked supplier, never an id fragment", async () => {
+    renderPortfolio(mockApiClient(vi.fn().mockResolvedValue(ok([item({ supplierId: null, supplierName: null })]))));
 
-    await screen.findByRole("table");
-    expect(screen.getAllByRole("row")).toHaveLength(3); // header + 2 rows
-
-    const riskCell = screen.getByRole("button", { name: /High risk/ });
-    fireEvent.click(riskCell);
-
-    expect(screen.getAllByRole("row")).toHaveLength(2); // header + 1 matching row
-    expect(riskCell).toHaveAttribute("aria-pressed", "true");
-
-    fireEvent.click(riskCell);
-    expect(screen.getAllByRole("row")).toHaveLength(3); // cleared back to both rows
-  });
-
-  it("AC-1: a filter chip narrows the table the same way the attention strip does", async () => {
-    const active = item({ contractId: "active-1", status: "active" });
-    const expired = item({ contractId: "expired-1", status: "expired" });
-    renderPortfolio(mockApiClient(vi.fn().mockResolvedValue(ok([active, expired]))));
-
-    await screen.findByRole("table");
-    fireEvent.change(screen.getByLabelText("Status"), { target: { value: "active" } });
-
-    expect(screen.getAllByRole("row")).toHaveLength(2); // header + the one "active" row
-  });
-
-  it("AC-4 no-match-for-filter state: a filter matching nothing shows the named empty state with its own Clear filters CTA", async () => {
-    renderPortfolio(mockApiClient(vi.fn().mockResolvedValue(ok([item({ status: "active" })]))));
-
-    await screen.findByRole("table");
-    fireEvent.change(screen.getByLabelText("Status"), { target: { value: "no-such-status" } });
-
-    const heading = await screen.findByText("No contracts match these filters");
-    const emptyState = heading.closest(".empty-state");
-    expect(emptyState).not.toBeNull();
-
-    // Scoped to this specific empty-state block: PortfolioFilters renders its own, differently-scoped
-    // "Clear filters" button at all times (disabled when nothing is active), so an unscoped query here
-    // would be ambiguous once both are on screen.
-    fireEvent.click(within(emptyState as HTMLElement).getByRole("button", { name: /clear filters/i }));
-
-    expect(await screen.findByRole("table")).toBeInTheDocument();
+    const table = await screen.findByRole("table");
+    expect(within(table).getByText("—")).toBeInTheDocument();
+    expect(within(table).queryByText(/^Supplier [0-9a-f]{8}$/)).toBeNull();
   });
 });

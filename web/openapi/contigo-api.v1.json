@@ -1164,6 +1164,10 @@
                               "null"
                             ]
                           },
+                          "currency": {
+                            "type": "string",
+                            "description": "The contract's own ISO currency code (Contract.Currency). Added so the V2 Portfolio summary can sum annualSpend per currency (\"N validated contracts · CHF 4.2M annual\"); deliberately not in `required` so earlier typed fixtures stay valid -- the backend always emits it."
+                          },
                           "startDate": {
                             "type": [
                               "string",

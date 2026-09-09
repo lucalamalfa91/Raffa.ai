@@ -1,22 +1,19 @@
 /**
- * Savings screen (route `/savings` -- moved from `/`, ADR-024 V2 IA amendment: "No Home item";
- * Savings reached from actions, Renewals and Contract 360, not the rail. Originally `/ (home)`,
- * screens.md #9 "Home -- Savings", ADR-020 screen 9, task E08/F02/US01/T01; task E13/F09/US01/T01
- * (gap G-IA-V2) renamed the folder/classes only -- every rule below is unchanged). Component classes
- * (.screen-kicker, .screen-title, .micro-meta, .kpi-number, .tag, .table, .skeleton, .empty-state,
- * .error-state, .btn, .portfolio-table-wrapper) come from ../../styles/components.css (ADR-019
- * component catalogue) and ../contracts/contracts.css (`.portfolio-table-wrapper`, reused bare -- the
- * same cross-screen reuse `../renewals/renewals.css` already established for that same class) -- this
- * file adds only this screen's own composites.
+ * Savings screen, V2 (route `/savings`; ADR-024 V2 IA "No Home item"; screens-v2.md #8; `app.jsx`
+ * `kpis` / `opps`). Component classes (.screen-header, .screen-title, .screen-header-summary,
+ * .screen-reroute, .table, .tag, .btn, .skeleton, .empty-state, .error-state, .micro-meta) come from
+ * ../../styles/components.css (ADR-019) -- this file adds only this screen's own composites, in the
+ * same band/table idiom the prototype uses for its other three-cell bands (Quote check, Contract 360):
+ * 11px uppercase kicker label, 22px heading-face value, 12px muted meta, 2px rules above and below.
  */
 
 .savings-screen {
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
+  gap: var(--space-4);
 }
 
-/* ---- KPI row (AC-1) + stale notice (AC-3) --------------------------------- */
+/* ---- KPI band + stale notice ------------------------------------------------- */
 
 .savings-kpi-section {
   display: flex;
@@ -26,7 +23,7 @@
 
 .savings-kpi-row {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   border-top: 2px solid var(--color-divider);
   border-bottom: 2px solid var(--color-divider);
 }
@@ -36,17 +33,22 @@
   flex-direction: column;
   align-items: flex-start;
   gap: var(--space-1);
-  padding: var(--space-4) var(--space-3);
+  padding: 14px;
   border-right: 1px solid var(--color-divider);
 }
 
+.savings-kpi-cell:first-child {
+  padding-left: 0;
+}
+
 .savings-kpi-cell:last-child {
+  padding-right: 0;
   border-right: 0;
 }
 
 .savings-kpi-label {
   font-size: 11px;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-kicker);
   text-transform: uppercase;
   color: var(--color-neutral-600);
 }
@@ -55,11 +57,15 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-heading);
+  font-size: 22px;
+  line-height: 1.1;
 }
 
-/* "Savings realized" only, quoted from day1-demo.html's own kpis[2].fg:'var(--color-accent-700)'. */
-.savings-kpi-emphasize {
-  color: var(--color-accent-700);
+.savings-kpi-meta {
+  font-size: 12px;
+  color: var(--color-neutral-600);
 }
 
 .savings-kpi-stale-tag {
@@ -76,7 +82,7 @@
   height: 64px;
 }
 
-/* ---- Opportunities table (AC-2) -------------------------------------------- */
+/* ---- Opportunities table ------------------------------------------------------- */
 
 .savings-opportunities-section {
   display: flex;
@@ -84,18 +90,51 @@
   gap: var(--space-3);
 }
 
-.savings-opportunities-table {
-  min-width: 900px;
+.savings-opportunities-section h6 {
+  margin: 0;
 }
 
-/* `.table th`/`.table td` (components.css) already set text-align: left at a higher specificity
-   (class + element) than a bare `.savings-table-numeric` class alone could win against -- these two
-   selectors match that specificity exactly so the right-alignment actually takes effect (the same
-   fix contracts.css's own `.portfolio-table-numeric` / renewals.css's own `.renewal-table-numeric`
-   already apply). */
-.savings-opportunities-table th.savings-table-numeric,
-.savings-opportunities-table td.savings-table-numeric {
+.savings-table-wrapper {
+  overflow-x: auto;
+}
+
+.savings-table {
+  min-width: 560px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.savings-table th {
+  letter-spacing: var(--tracking-kicker);
+}
+
+.savings-table .savings-col-status {
+  width: 18%;
+}
+
+/* `.table th`/`.table td` (components.css) set text-align: left at class + element specificity --
+   these two selectors match it exactly so the right-alignment actually takes effect. */
+.savings-table th.savings-table-numeric,
+.savings-table td.savings-table-numeric {
   text-align: right;
+}
+
+.savings-table tbody tr.savings-row {
+  cursor: pointer;
+}
+
+.savings-table tbody tr.savings-row:hover {
+  background: var(--color-neutral-200);
+}
+
+.savings-cell-supplier {
+  font-weight: var(--weight-body-strong);
+}
+
+.savings-confidence-tag {
+  margin-left: var(--space-2);
+  padding: 2px 8px;
+  font-size: 10px;
 }
 
 .savings-opportunities-skeleton {
@@ -106,4 +145,20 @@
 
 .savings-opportunities-skeleton-row {
   height: 32px;
+}
+
+@media (max-width: 900px) {
+  .savings-kpi-row {
+    grid-template-columns: 1fr;
+  }
+
+  .savings-kpi-cell {
+    padding: 14px 0;
+    border-right: 0;
+    border-bottom: 1px solid var(--color-divider);
+  }
+
+  .savings-kpi-cell:last-child {
+    border-bottom: 0;
+  }
 }

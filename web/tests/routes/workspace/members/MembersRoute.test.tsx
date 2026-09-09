@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { MemoryRouter, Outlet, Route, Routes } from "react-router-dom";
 import MembersRoute from "../../../../src/routes/workspace/members";
+import type { ShellOutletContext } from "../../../../src/components/shell/shellContext";
 import type { ApiClient, InviteWorkspaceMemberResult } from "../../../../src/api/client";
 
 const WORKSPACE_ID = "11111111-1111-1111-1111-111111111111";
@@ -14,8 +15,6 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     inviteWorkspaceMember: vi.fn(),
     uploadDocument: vi.fn(),
     getDocument: vi.fn(),
-    // Task E13/F09/US01/T03 (web-documents-v2): this suite does not exercise Documents -- bare
-    // vi.fn() is enough, same convention as getPortfolio below.
     listDocuments: vi.fn(),
     getDocumentPreviewUrl: vi.fn(),
     reprocessDocument: vi.fn(),
@@ -36,8 +35,6 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     askContigo: vi.fn(),
     getSavingsKpis: vi.fn(),
     getSavingsOpportunities: vi.fn(),
-    // Task E13/F09/US01/T04 (web-ask-v2): this suite never reaches conversations/capabilities/
-    // market -- bare vi.fn() is enough, same convention as getRenewalPriority above.
     listConversations: vi.fn(),
     createConversation: vi.fn(),
     getConversation: vi.fn(),
@@ -62,17 +59,17 @@ function invited(overrides: Partial<NonNullable<InviteWorkspaceMemberResult["mem
   };
 }
 
-function renderMembers(apiClient: ApiClient) {
+/** `shell` renders the route under the app shell's own `<Outlet context>` (see `AppShell.tsx`); omitted = outside the shell, as before. */
+function renderMembers(apiClient: ApiClient, shell?: ShellOutletContext) {
+  const route = <Route path="/workspace/members" element={<MembersRoute apiClient={apiClient} userLabel={USER_LABEL} />} />;
   return render(
     <MemoryRouter initialEntries={["/workspace/members"]}>
-      <Routes>
-        <Route path="/workspace/members" element={<MembersRoute apiClient={apiClient} userLabel={USER_LABEL} />} />
-      </Routes>
+      <Routes>{shell ? <Route element={<Outlet context={shell} />}>{route}</Route> : route}</Routes>
     </MemoryRouter>,
   );
 }
 
-describe("MembersRoute", () => {
+describe("MembersRoute (V2, ADR-024 / screens-v2.md #10)", () => {
   beforeEach(() => {
     window.sessionStorage.clear();
     window.sessionStorage.setItem(
@@ -90,60 +87,83 @@ describe("MembersRoute", () => {
     expect(inviteWorkspaceMember).not.toHaveBeenCalled();
   });
 
-  it("AC-1: shows the members table with the current Admin as an Active row", () => {
+  it("renders the V2 header (Setup kicker, title, workspace · tenant line) and the three-column members table with the Admin as an Active row", () => {
     renderMembers(mockApiClient());
 
-    expect(screen.getByRole("heading", { name: "Workspace & members" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Member" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Role" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Status" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Last active" })).toBeInTheDocument();
-    expect(screen.getByText(USER_LABEL)).toBeInTheDocument();
-    expect(screen.getByRole("cell", { name: "Workspace Admin" })).toBeInTheDocument();
-    expect(screen.getByText("Active")).toBeInTheDocument();
+    expect(screen.getByText("Setup")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "Workspace & members" })).toBeInTheDocument();
+    expect(screen.getByText(`Acme Procurement · tenant ${WORKSPACE_ID}`)).toBeInTheDocument();
+
+    const table = screen.getByRole("table");
+    expect(within(table).getAllByRole("columnheader").map((cell) => cell.textContent)).toEqual(["Member", "Role", "Status"]);
+    expect(within(table).getByText(USER_LABEL)).toBeInTheDocument();
+    expect(within(table).getByText("You")).toBeInTheDocument();
+    expect(within(table).getByRole("cell", { name: "Workspace Admin" })).toBeInTheDocument();
+    expect(within(table).getByText("Active")).toHaveClass("tag-neutral");
   });
 
-  it("AC-2: invite pane has email, Admin vs Procurement radios, permission summaries, and Send", () => {
+  it("shows the invite tip only while the knowledge base has no validated contract yet", () => {
+    const { unmount } = renderMembers(mockApiClient(), { kbReady: false, validatedContractCount: 0 });
+    expect(screen.getByRole("note")).toHaveTextContent(
+      "Tip: invite the team once the first contract is validated — there is nothing for them to ask before that.",
+    );
+    unmount();
+
+    renderMembers(mockApiClient(), { kbReady: true, validatedContractCount: 3 });
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+  });
+
+  it("invite pane: Work email with the tenant-domain placeholder, Procurement (default) then Workspace Admin radios with D8 summaries, Send invitation", () => {
     renderMembers(mockApiClient());
 
-    expect(screen.getByLabelText("Email")).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: /workspace admin/i })).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: /procurement/i })).toBeChecked();
-    expect(screen.getByText(/including member management and invites/i)).toBeInTheDocument();
-    expect(screen.getByText(/cannot invite or change roles/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /send invitation/i })).toBeInTheDocument();
+    const pane = screen.getByRole("complementary", { name: "Invite a colleague" });
+    expect(within(pane).getByRole("heading", { level: 4, name: "Invite a colleague" })).toBeInTheDocument();
+    expect(within(pane).getByLabelText("Work email")).toHaveAttribute("placeholder", "name@acme.example");
+
+    const radios = within(pane).getAllByRole("radio");
+    expect(radios.map((radio) => radio.getAttribute("value"))).toEqual(["Procurement", "Admin"]);
+    expect(within(pane).getByRole("radio", { name: /procurement/i })).toBeChecked();
+    expect(within(pane).getByText("Asks, uploads, reviews, triages renewals")).toBeInTheDocument();
+    expect(within(pane).getByText("Also deletes documents and manages members")).toBeInTheDocument();
+    expect(within(pane).getByRole("button", { name: "Send invitation" })).toHaveClass("btn-block");
   });
 
-  it("shows the non-tenant-domain validation error without calling the API", () => {
+  it("shows the domain error, in the prototype's own words, without calling the API", () => {
     const inviteWorkspaceMember = vi.fn();
     renderMembers(mockApiClient({ inviteWorkspaceMember }));
 
-    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "buyer@gmail.com" } });
-    fireEvent.click(screen.getByRole("button", { name: /send invitation/i }));
+    fireEvent.change(screen.getByLabelText("Work email"), { target: { value: "buyer@gmail.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
 
-    expect(screen.getByRole("alert")).toHaveTextContent(/workspace's domain \(@acme\.example\)/i);
+    expect(screen.getByRole("alert")).toHaveTextContent("Use an @acme.example address.");
     expect(inviteWorkspaceMember).not.toHaveBeenCalled();
   });
 
-  it("appends an Invited row after a successful invite (screens.md #2 sent state)", async () => {
-    const inviteWorkspaceMember = vi.fn().mockResolvedValue(invited());
+  it("a successful invite posts the real request, appends an Invited row, clears the field and says 'Invitation sent.'", async () => {
+    const inviteWorkspaceMember = vi.fn().mockResolvedValue(invited({ role: "Admin" }));
     renderMembers(mockApiClient({ inviteWorkspaceMember }));
 
-    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "buyer@acme.example" } });
-    fireEvent.click(screen.getByRole("button", { name: /send invitation/i }));
+    fireEvent.change(screen.getByLabelText("Work email"), { target: { value: "buyer@acme.example" } });
+    fireEvent.click(screen.getByRole("radio", { name: /workspace admin/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
 
     await waitFor(() => {
       expect(screen.getByText("buyer@acme.example")).toBeInTheDocument();
     });
-    expect(screen.getByText("Invited")).toBeInTheDocument();
-    expect(inviteWorkspaceMember).toHaveBeenCalledWith(WORKSPACE_ID, {
-      email: "buyer@acme.example",
-      role: "Procurement",
-    });
-    expect(screen.getByLabelText("Email")).toHaveValue("");
+    expect(inviteWorkspaceMember).toHaveBeenCalledWith(WORKSPACE_ID, { email: "buyer@acme.example", role: "Admin" });
+
+    const table = screen.getByRole("table");
+    expect(within(table).getByText("Invited")).toHaveClass("tag-accent");
+    expect(within(table).getAllByRole("cell", { name: "Workspace Admin" })).toHaveLength(2);
+    expect(screen.getByLabelText("Work email")).toHaveValue("");
+    expect(screen.getByRole("status")).toHaveTextContent("Invitation sent.");
+
+    // Editing the field again clears the confirmation.
+    fireEvent.change(screen.getByLabelText("Work email"), { target: { value: "x" } });
+    expect(screen.queryByText("Invitation sent.")).not.toBeInTheDocument();
   });
 
-  it("surfaces a 400 from the invite API inline", async () => {
+  it("surfaces a 400 from the invite API inline, with no 'Invitation sent.'", async () => {
     const inviteWorkspaceMember = vi.fn().mockResolvedValue({
       ok: false,
       statusCode: 400,
@@ -152,11 +172,12 @@ describe("MembersRoute", () => {
     });
     renderMembers(mockApiClient({ inviteWorkspaceMember }));
 
-    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "buyer@acme.example" } });
-    fireEvent.click(screen.getByRole("button", { name: /send invitation/i }));
+    fireEvent.change(screen.getByLabelText("Work email"), { target: { value: "buyer@acme.example" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent(/already holds the Procurement role/i);
     });
+    expect(screen.queryByText("Invitation sent.")).not.toBeInTheDocument();
   });
 });

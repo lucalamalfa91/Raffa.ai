@@ -1,70 +1,68 @@
-import { Link } from "react-router-dom";
-import type { OpportunityRowView } from "./savingsViewModel";
+import { Link, useNavigate } from "react-router-dom";
+import type { OpportunityNavigation, OpportunityRowView } from "./savingsViewModel";
 
 export interface OpportunitiesTableProps {
   rows: readonly OpportunityRowView[];
 }
 
+function hrefFor(navigation: OpportunityNavigation): string {
+  return navigation.kind === "contract" ? `/contracts/${navigation.contractId}` : "/quotes";
+}
+
 /**
- * AC-2 "Opportunities table: Opportunity - Type - Current spend - Estimated savings - Confidence -
- * Owner - Status - Realized", quoted verbatim as the eight columns below (screens.md #9). AC-3 "Rows
- * open Contract 360 > Benchmark or Quote check" -- the "Opportunity" cell's own label is a real
- * `<Link>` carrying `row.navigation` (`savingsViewModel.ts#getOpportunityNavigation`), the same
- * cell-level-link-not-whole-row-click pattern `../contracts/PortfolioTable.tsx` already established
- * for its own "Rows open Contract 360" row (a bare `<tr onClick>` is not a keyboard-operable control
- * -- ADR-019 accessibility baseline).
+ * The V2 opportunities table (screens-v2.md #8: "Supplier · Action · Estimate · Status, rows open
+ * Contract 360"; `app.jsx` `opps`). The Supplier cell's `<Link>` is the keyboard-operable control
+ * (ADR-019 accessibility baseline); the row's own click is the prototype's `cg-row` mouse
+ * convenience on top. Contract 360 reads `state.from === "savings"` for its back label.
  */
 export default function OpportunitiesTable({ rows }: OpportunitiesTableProps) {
+  const navigate = useNavigate();
+
   return (
-    <div className="portfolio-table-wrapper">
-      <table className="table savings-opportunities-table">
+    <div className="savings-table-wrapper">
+      <table className="table savings-table">
         <thead>
           <tr>
-            <th scope="col">Opportunity</th>
-            <th scope="col">Type</th>
+            <th scope="col">Supplier</th>
+            <th scope="col">Action</th>
             <th scope="col" className="savings-table-numeric">
-              Current spend
+              Estimate
             </th>
-            <th scope="col" className="savings-table-numeric">
-              Estimated savings
-            </th>
-            <th scope="col">Confidence</th>
-            <th scope="col">Owner</th>
-            <th scope="col">Status</th>
-            <th scope="col" className="savings-table-numeric">
-              Realized
+            <th scope="col" className="savings-col-status">
+              Status
             </th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
-            <tr key={row.key}>
-              <td title={row.primaryTitle}>
-                {row.navigation.kind === "contract" ? (
-                  <Link to={`/contracts/${row.navigation.contractId}`} state={{ tab: "Benchmark" }}>
-                    {row.primaryLabel}
+          {rows.map((row) => {
+            const href = hrefFor(row.navigation);
+            return (
+              <tr
+                key={row.key}
+                className="savings-row"
+                onClick={(event) => {
+                  if ((event.target as HTMLElement).closest("a") !== null) return;
+                  navigate(href, { state: { from: "savings" } });
+                }}
+              >
+                <td className="savings-cell-supplier" title={row.supplierTitle}>
+                  <Link to={href} state={{ from: "savings" }}>
+                    {row.supplierLabel}
                   </Link>
-                ) : (
-                  <Link to="/quotes">{row.primaryLabel}</Link>
-                )}
-              </td>
-              <td>{row.type}</td>
-              <td className="savings-table-numeric">{row.currentSpend}</td>
-              <td className="savings-table-numeric">{row.estimatedSavings}</td>
-              <td>
-                {row.confidence !== null ? (
-                  <span className={`tag tag-${row.confidence.variant}`}>{row.confidence.label}</span>
-                ) : (
-                  <span className="micro-meta">Not yet available</span>
-                )}
-              </td>
-              <td>{row.owner}</td>
-              <td>
-                <span className={`tag tag-${row.status.variant}`}>{row.status.label}</span>
-              </td>
-              <td className="savings-table-numeric">{row.realized}</td>
-            </tr>
-          ))}
+                </td>
+                <td>{row.action}</td>
+                <td className="savings-table-numeric">
+                  {row.estimate}
+                  {row.confidence !== null && (
+                    <span className={`tag tag-${row.confidence.variant} savings-confidence-tag`}>{row.confidence.label}</span>
+                  )}
+                </td>
+                <td>
+                  <span className={`tag tag-${row.status.variant}`}>{row.status.label}</span>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

@@ -4,68 +4,51 @@ import {
   type QuoteLineAssessmentBody,
   type QuoteMarketPosition,
   type UnmatchedQuoteLineBody,
+  type UploadedQuote,
 } from "../../api/client";
-import type { SemanticTag } from "../../styles/semantics";
+import type { SemanticTag, TagVariant } from "../../styles/semantics";
 
 /**
- * Pure view-model helpers for the Quote check stepper (route `/quotes/:quoteId`, ADR-018; ADR-020
- * screen 10; task E08/F03/US01/T01, us-01-quote-check AC-1/AC-2/AC-3/AC-4). Same one-concern-per-file
- * split `../contracts/contract360/contract360ViewModel.ts`/`../contracts/review/reviewViewModel.ts`
- * already established for this codebase: no React here, so every rule below is unit-testable
- * without rendering anything.
+ * Pure view-model helpers for the V2 Quote check screen (route `/quotes[/:quoteId]`; ADR-024 V2
+ * IA; screens-v2.md #9; `contigo-v2/markup.html` "QUOTE CHECK (optional)" block). No React here, so
+ * every rule below is unit-testable without rendering anything (`quoteCheckViewModel.test.ts`).
  *
- * **This screen is real, not a fixture.** `inputs/design/prototypes/day1-demo.html`'s own Quote
- * check screen is a single hard-coded demo scenario (Databricks Proposal Q-88213 -- `qlines`/
- * `assess`/`qbench`/`levers` are all fixed JS array literals, never derived from real state except
- * `qstep`/`mapChoice`/`mapped`/`outcome`). This module instead derives every number from the real
- * backend surface `backend/src/Contigo.Api/QuotesEndpointExtensions.cs` /
- * `NegotiationsEndpointExtensions.cs` already expose (epic E05, wired into `Program.cs` before this
- * task started) -- see `../../api/client.ts`'s own header comments on `uploadQuote`/
- * `getQuoteAssessment`/`recalculateQuoteAssessment`/`captureNegotiationOutcome` for the exact
- * provenance of every field this module reads.
+ * **This screen is real, not a fixture.** The prototype's Quote check is one hard-coded Databricks
+ * scenario. This module derives every number from the real backend surface
+ * `backend/src/Contigo.Api/QuotesEndpointExtensions.cs` / `NegotiationsEndpointExtensions.cs`
+ * expose -- see `../../api/client.ts`'s own header comments on `uploadQuote` /
+ * `recalculateQuoteAssessment` / `captureNegotiationOutcome` for the provenance of every field read
+ * here.
  *
  * **No quote-level rollup exists server-side, on purpose.** `Contigo.Quotes.Application.Assessment
  * .QuoteMarketAssessment`'s own doc comment: "No quote-level rollup (e.g. 'overall position'): ...
- * no ADR/spec names a deterministic way to collapse several lines' positions into one -- inventing
- * one here would be exactly the fabricated-precision Appendix C rule 10 warns against." This module
- * honours that restraint instead of re-introducing the rollup on the client: `summarizePositions`
- * below returns a real *tally* (how many lines are in each bucket), never a single synthesized
- * verdict.
+ * inventing one here would be exactly the fabricated-precision Appendix C rule 10 warns against."
+ * The prototype's single "Above market" verdict therefore becomes `summarizePositions`' real
+ * *tally* ("2 above market · 1 in line"), never a synthesized single word.
+ *
+ * The Day-1 four-step stepper (Extract → Assessment → Target → Negotiation) is not part of the V2
+ * design: the lines and their market position are the screen; target and levers sit one step
+ * further, behind `QUOTE_LEVERS_FOOTER`.
  */
 
-export const QUOTE_STEP_LABELS = ["Extract", "Assessment", "Target", "Negotiation"] as const;
-export type QuoteStepIndex = 0 | 1 | 2 | 3;
+/** Header description, quoted verbatim from the prototype block. */
+export const QUOTE_INTRO =
+  "Drop a supplier proposal; Contigo normalises the lines and compares them with the market and with what you already pay.";
 
-export interface QuoteStepView {
-  index: QuoteStepIndex;
-  /** "01".."04" -- day1-demo.html's own `qsteps` numbering (`String(i+1).padStart(2,'0')`). */
-  number: string;
-  label: string;
-}
-
-/** The 4 steps, in order -- `QuoteStepper.tsx` renders exactly this list (AC-1). Every step is
- * directly reachable by clicking its own header (day1-demo.html's own `qsteps[i].go`); only the
- * *content* of the Assessment step gates on `isAssessmentBlocked` below (AC-2), never the stepper
- * navigation itself. */
-export const QUOTE_STEPS: readonly QuoteStepView[] = QUOTE_STEP_LABELS.map((label, index) => ({
-  index: index as QuoteStepIndex,
-  number: String(index + 1).padStart(2, "0"),
-  label,
-}));
+/** Footer under the lines table, quoted verbatim from the prototype block. */
+export const QUOTE_LEVERS_FOOTER = "Target and negotiation levers are one step further — shown only if you want them.";
 
 /**
- * AC-2's own gate, verbatim: "assessment blocked until resolved". `unmatchedLines` is
- * `recalculateQuoteAssessment`'s own real, server-computed list -- every `QuoteLine` still
- * `SkuMatchStatus.Unmatched` after whatever corrections were last applied (`SkuMappingService
- * .GetUnmatchedLinesAsync`, tenant/quote-scoped). This function does not re-derive that judgement;
- * it only names the boolean AC-2 needs (day1-demo.html's own `unmapped: !s.mapped` plays the
- * identical role against its own fixed fixture).
+ * "assessment blocked until resolved": `unmatchedLines` is `recalculateQuoteAssessment`'s own real,
+ * server-computed list -- every `QuoteLine` still `SkuMatchStatus.Unmatched` after whatever
+ * corrections were last applied. This function does not re-derive that judgement; it only names the
+ * boolean the screen needs to swap the levers footer for the mapping block.
  */
 export function isAssessmentBlocked(unmatchedLines: readonly UnmatchedQuoteLineBody[]): boolean {
   return unmatchedLines.length > 0;
 }
 
-/** `null` renders as "Not yet available" (Appendix C rule 10) -- never a fabricated placeholder. */
+/** `null` renders as "Not yet available" (Appendix C rule 10) -- never a fabricated placeholder. Whole-currency totals, rounded. */
 export function formatMoney(amount: number | null, currency: string | null): string {
   if (amount === null) return "Not yet available";
   const rounded = Math.round(amount);
@@ -73,14 +56,19 @@ export function formatMoney(amount: number | null, currency: string | null): str
   return currency ? `${currency} ${formatted}` : formatted;
 }
 
-/** A single-value estimate, used only for the two user-editable Target step inputs' own computed
- * *starting point* -- never for a line/table fact, which always uses `formatMoney`'s honest
- * "Not yet available" instead. */
+/** Per-unit prices (a DBU at 0.55) must keep their decimals -- `formatMoney`'s rounding is for totals only. */
+export function formatUnitPrice(amount: number | null, currency: string | null): string {
+  if (amount === null) return "Not yet available";
+  const formatted = new Intl.NumberFormat("en-GB", { maximumFractionDigits: 2 }).format(amount);
+  return currency ? `${currency} ${formatted}` : formatted;
+}
+
+/** A single-value estimate, used only for the two user-editable Target inputs' own computed *starting point*. */
 export function formatMoneyInputValue(amount: number | null): string {
   return amount === null ? "" : String(Math.round(amount));
 }
 
-function formatRange(low: number | null, high: number | null, currency: string | null): string {
+export function formatRange(low: number | null, high: number | null, currency: string | null): string {
   if (low === null && high === null) return "Not yet available";
   if (low === null) return formatMoney(high, currency);
   if (high === null) return formatMoney(low, currency);
@@ -91,6 +79,12 @@ function formatRange(low: number | null, high: number | null, currency: string |
   return currency ? `${currency} ${low0}–${high0}` : `${low0}–${high0}`;
 }
 
+/** Header meta line once a quote is loaded: file · supplier · currency · geography from the upload response this session, else the quote id. */
+export function formatQuoteMeta(quote: UploadedQuote | null, quoteId: string): string {
+  if (quote === null) return `Quote ${quoteId.slice(0, 8)}`;
+  return [quote.fileName, quote.supplier, quote.currency, quote.geography].filter((part) => part !== null && part !== "").join(" · ");
+}
+
 export interface LineDetail {
   sku: string;
   edition: string | null;
@@ -98,11 +92,9 @@ export interface LineDetail {
 }
 
 /** Merges a fresh `unmatchedLines` read into this screen's own running memory of every line's
- * sku/edition/description it has ever actually seen (see `buildExtractRows`'s own doc comment for
- * why this memory exists at all: the assessment projection never carries these fields, matched or
- * not, so once a line resolves it would otherwise lose the very name a person just read). Never
- * removes an entry -- a line that is resolved this round keeps the description this round's own
- * response, or an earlier round's, already gave it. */
+ * sku/edition/description it has ever actually seen (the assessment projection never carries these
+ * fields, matched or not, so once a line resolves it would otherwise lose the very name a person just
+ * read). Never removes an entry. */
 export function mergeKnownLineDetails(
   existing: ReadonlyMap<string, LineDetail>,
   unmatchedLines: readonly UnmatchedQuoteLineBody[],
@@ -116,29 +108,19 @@ export function mergeKnownLineDetails(
 
 export interface ExtractLineRow {
   quoteLineId: string;
-  /** The line's real description when known (this round's `unmatchedLines`, or a cached earlier
-   * one) -- `Line {n}` otherwise (AC-2's own table still needs one row per line even though the
-   * assessment projection carries no name for an already-matched line; see this module's own header
-   * comment). */
+  /** The line's real description when known (this round's `unmatchedLines`, or a cached earlier one) -- `Line {n}` otherwise. */
   label: string;
   sku: string | null;
   edition: string | null;
   quantity: number | null;
   unitPrice: number | null;
-  /** `unitPrice * quantity` when both are known -- deterministic, never a value either endpoint
-   * returns directly (Appendix C rule 6). */
+  /** `unitPrice * quantity` when both are known -- deterministic, never a value either endpoint returns directly. */
   annual: number | null;
   matchTag: SemanticTag;
   isUnmatched: boolean;
 }
 
-/**
- * Extract step's own line table (screens.md #10 AC-2: "line table with benchmark match"). Every row
- * comes from `assessment.lines` (quantity/unitPrice, present for every line); `unmatchedLines`
- * layers the real sku/edition/description on top for whichever lines are currently unresolved.
- * `.tag-outline`/`.tag-neutral` reuse ADR-019's own locked variants (outline = needs attention,
- * neutral = resolved) rather than inventing a third "matched" visual language for this screen alone.
- */
+/** One row per assessed line, with the real sku/edition/description layered on for whichever lines are currently unresolved. */
 export function buildExtractRows(
   lines: readonly QuoteLineAssessmentBody[],
   unmatchedLines: readonly UnmatchedQuoteLineBody[],
@@ -168,38 +150,24 @@ export function buildExtractRows(
 }
 
 export interface QuoteAggregate {
-  /** `sum(unitPrice * quantity)` over every line where both are known -- the only real source for
-   * "the quote total" anywhere in this screen (there is no `GET /api/quotes/{id}` that echoes the
-   * upload-time total back; see `../../api/client.ts`'s own header comment on why `uploadQuote`'s
-   * response is the only place a quote-level total is ever directly returned, and it is not
-   * re-fetchable after this session ends). `null` only when no line has both fields. */
+  /** `sum(unitPrice * quantity)` over every line where both are known -- the only real source for "the quote total" anywhere in this screen. `null` only when no line has both fields. */
   originalTotal: number | null;
-  /** `sum(P25 * quantity)` .. `sum(P75 * quantity)` over lines with both a distribution and a
-   * quantity -- a deterministic "expected market spend" range, the same per-line-then-summed shape
-   * `totalSavingsLow/High` below already uses (never a value either endpoint returns as a total
-   * directly). `null` when no line contributed. */
+  /** `sum(P25 * quantity)` .. `sum(P75 * quantity)` over lines with both a distribution and a quantity. `null` when no line contributed. */
   expectedMarketLow: number | null;
   expectedMarketHigh: number | null;
-  /** `sum(recommendedTargetLow/High * quantity)` -- same summed-per-line shape as
-   * `expectedMarketLow/High`. */
+  /** `sum(recommendedTargetLow/High * quantity)` -- same summed-per-line shape as `expectedMarketLow/High`. */
   recommendedTargetLow: number | null;
   recommendedTargetHigh: number | null;
-  /** Direct sums of `targetSaving.totalSavingsRangeLow/High` -- already totals on the wire, per
-   * line; this is the only field here that is a plain sum, not a per-unit-times-quantity one. */
+  /** Direct sums of `targetSaving.totalSavingsRangeLow/High` -- already totals on the wire, per line. */
   totalSavingsLow: number | null;
   totalSavingsHigh: number | null;
-  /** First non-null `benchmark.currency` found across the lines -- display-only; the capture
-   * request itself carries no currency field (see `../../api/client.ts`'s own
-   * `CaptureNegotiationOutcomeRequest` doc comment). */
+  /** First non-null `benchmark.currency` found across the lines -- display-only. */
   currency: string | null;
   assessedLineCount: number;
   totalLineCount: number;
 }
 
-/** Deterministic aggregation over every line's own assessment (Appendix C rule 6) -- the single
- * place every other view in this module reads a quote-level number from, so the 4-number grid, the
- * Target ladder, and the outcome form's "Original quote total" default can never drift apart from
- * one another. */
+/** Deterministic aggregation over every line's own assessment (Appendix C rule 6) -- the single place every other view reads a quote-level number from. */
 export function aggregateQuote(lines: readonly QuoteLineAssessmentBody[]): QuoteAggregate {
   let originalTotal: number | null = null;
   let expectedMarketLow: number | null = null;
@@ -255,9 +223,7 @@ export function aggregateQuote(lines: readonly QuoteLineAssessmentBody[]): Quote
   };
 }
 
-/** A real *tally*, never a synthesized single verdict -- see this module's own header comment for
- * why (`QuoteMarketAssessment`'s own doc comment explicitly declines to collapse several lines'
- * positions into one). */
+/** A real *tally*, never a synthesized single verdict -- see this module's own header comment. */
 export function summarizePositions(lines: readonly QuoteLineAssessmentBody[]): string {
   let above = 0;
   let inLine = 0;
@@ -277,75 +243,47 @@ export function summarizePositions(lines: readonly QuoteLineAssessmentBody[]): s
   return parts.join(" · ");
 }
 
-export interface AssessmentNumber {
-  key: string;
+export interface AssessmentBandCell {
+  key: "quote" | "market" | "assessment";
   label: string;
   value: string;
-  /** `true` renders in `--color-accent-700` (ADR-019 "emphasise a noteworthy figure"), mirroring
-   * day1-demo.html's own `assess` array (`Assessment`/`Potential saving` are the two emphasised
-   * entries there). */
+  /** The prototype renders the Assessment cell in accent-700; text carries the meaning, the colour only adds emphasis. */
   emphasize: boolean;
 }
 
-/** The "4 numbers" (screens.md #10 AC-3: "quote, market range, assessment, potential saving"),
- * derived from `aggregateQuote`'s own output -- never a second, independent calculation. */
-export function buildAssessmentNumbers(aggregate: QuoteAggregate, lines: readonly QuoteLineAssessmentBody[]): AssessmentNumber[] {
+/**
+ * The V2 three-cell band above the lines (`markup.html`: "Supplier quote CHF 520k · Market range
+ * CHF 390–470k · Assessment Above market"), derived from `aggregateQuote`'s own output -- never a
+ * second, independent calculation. Potential saving is not a band cell in V2; it lives one step
+ * further, in the Target step.
+ */
+export function buildAssessmentBand(aggregate: QuoteAggregate, lines: readonly QuoteLineAssessmentBody[]): AssessmentBandCell[] {
   return [
     { key: "quote", label: "Supplier quote", value: formatMoney(aggregate.originalTotal, aggregate.currency), emphasize: false },
     {
       key: "market",
-      label: "Expected market range",
+      label: "Market range",
       value: formatRange(aggregate.expectedMarketLow, aggregate.expectedMarketHigh, aggregate.currency),
       emphasize: false,
     },
     { key: "assessment", label: "Assessment", value: summarizePositions(lines), emphasize: true },
-    {
-      key: "saving",
-      label: "Potential saving",
-      value: formatRange(aggregate.totalSavingsLow, aggregate.totalSavingsHigh, aggregate.currency),
-      emphasize: true,
-    },
   ];
 }
 
-export interface LineMarketPositionRow {
+export interface QuoteLineRow {
   quoteLineId: string;
   label: string;
-  unitPrice: string;
-  p25: string;
+  quoted: string;
   p50: string;
-  p75: string;
-  positionTag: SemanticTag;
-  confidence: string;
+  position: SemanticTag;
+  /** `"+20% vs P50"` -- deterministic from the line's own unit price and P50; `null` when either is unknown. */
+  vsP50: string | null;
+  /** Benchmark confidence "High · n=96" as a tag (High neutral, Medium accent, Low outline); `null` when no benchmark matched. */
+  benchmark: SemanticTag | null;
+  needsMapping: boolean;
 }
 
-/** Assessment step's own "Line-level market position" table (screens.md #10 AC-3). */
-export function buildLineMarketPositionRows(rows: readonly ExtractLineRow[], lines: readonly QuoteLineAssessmentBody[]): LineMarketPositionRow[] {
-  const linesById = new Map(lines.map((line) => [line.quoteLineId, line]));
-
-  return rows.map((row) => {
-    const line = linesById.get(row.quoteLineId);
-    const distribution = line?.benchmark?.distribution ?? null;
-    const currency = line?.benchmark?.currency ?? null;
-    // `line.position` is generated as a bare `string | null` (see ../../api/client.ts's own
-    // QuoteMarketPosition doc comment for why); narrow it through the same runtime guard
-    // isPortfolioRiskSeverity's own callers use for the identical generator limitation -- an
-    // unrecognized value renders as "Not yet assessed" (positionTag's own `default` branch) rather
-    // than mis-tagging it.
-    const position = line?.position !== null && line?.position !== undefined && isQuoteMarketPosition(line.position) ? line.position : null;
-
-    return {
-      quoteLineId: row.quoteLineId,
-      label: row.label,
-      unitPrice: line?.unitPrice !== null && line?.unitPrice !== undefined ? formatMoney(line.unitPrice, currency) : "Not yet available",
-      p25: distribution ? formatMoney(distribution.p25, currency) : "Not yet available",
-      p50: distribution ? formatMoney(distribution.p50, currency) : "Not yet available",
-      p75: distribution ? formatMoney(distribution.p75, currency) : "Not yet available",
-      positionTag: positionTag(position),
-      confidence: line?.confidence ? `${line.confidence.level} · n=${line.confidence.sampleSize ?? "—"}` : "Not yet available",
-    };
-  });
-}
+const BENCHMARK_VARIANT_BY_LEVEL: Readonly<Record<string, TagVariant>> = { High: "neutral", Medium: "accent", Low: "outline" };
 
 function positionTag(position: QuoteMarketPosition | null): SemanticTag {
   switch (position) {
@@ -360,9 +298,44 @@ function positionTag(position: QuoteMarketPosition | null): SemanticTag {
   }
 }
 
-/** The 7-member closed vocabulary `POST /api/negotiations/outcomes` validates `leversUsed` against
- * (`NegotiationOutcomeService.LeversUsedInvalidError`) -- labels only; the wire value is the bare
- * enum name (`NEGOTIATION_LEVER_TYPES` in `../../api/client.ts`). */
+/** `+20% vs P50` / `-5% vs P50` / `At P50`, from the real unit price and the real median only. */
+export function formatVersusP50(unitPrice: number | null, p50: number | null): string | null {
+  if (unitPrice === null || p50 === null || p50 <= 0) return null;
+  const percent = Math.round((unitPrice / p50 - 1) * 100);
+  if (percent === 0) return "At P50";
+  return `${percent > 0 ? "+" : ""}${percent}% vs P50`;
+}
+
+/** The V2 lines table (Line · Quoted · P50 · Position · Benchmark), one row per assessed line. */
+export function buildQuoteLineRows(rows: readonly ExtractLineRow[], lines: readonly QuoteLineAssessmentBody[]): QuoteLineRow[] {
+  const linesById = new Map(lines.map((line) => [line.quoteLineId, line]));
+
+  return rows.map((row) => {
+    const line = linesById.get(row.quoteLineId);
+    const distribution = line?.benchmark?.distribution ?? null;
+    const currency = line?.benchmark?.currency ?? null;
+    // `line.position` is generated as a bare `string | null`; narrow it through the runtime guard --
+    // an unrecognised value renders as "Not yet assessed" rather than mis-tagging it.
+    const position = line?.position !== null && line?.position !== undefined && isQuoteMarketPosition(line.position) ? line.position : null;
+    const confidence = line?.confidence ?? null;
+
+    return {
+      quoteLineId: row.quoteLineId,
+      label: row.label,
+      quoted: formatUnitPrice(line?.unitPrice ?? null, currency),
+      p50: distribution ? formatUnitPrice(distribution.p50, currency) : "Not yet available",
+      position: row.isUnmatched ? { variant: "outline", label: "Needs mapping" } : positionTag(position),
+      vsP50: formatVersusP50(line?.unitPrice ?? null, distribution?.p50 ?? null),
+      benchmark:
+        confidence !== null
+          ? { variant: BENCHMARK_VARIANT_BY_LEVEL[confidence.level] ?? "neutral", label: `${confidence.level} · n=${confidence.sampleSize ?? "—"}` }
+          : null,
+      needsMapping: row.isUnmatched,
+    };
+  });
+}
+
+/** The 7-member closed vocabulary `POST /api/negotiations/outcomes` validates `leversUsed` against -- labels only; the wire value is the bare enum name. */
 export const NEGOTIATION_LEVER_LABELS: ReadonlyArray<{ value: NegotiationLeverTypeName; label: string }> = [
   { value: "Volume", label: "Volume" },
   { value: "Term", label: "Term" },
@@ -380,11 +353,9 @@ export interface OutcomePreview {
 
 /**
  * Client-side preview of what `POST /api/negotiations/outcomes` will compute
- * (`NegotiationOutcomeCalculator.Compute`, mirrored here verbatim: `realizedSaving = originalTotal -
- * finalPrice`, `discountPercent = realizedSaving / originalTotal * 100`) -- shown before submit so a
- * person sees the consequence of the final price they are about to record. The *recorded* outcome
- * table never uses this function's output; it always renders the server's own response (see
- * `NegotiationStep.tsx`'s own header comment).
+ * (`NegotiationOutcomeCalculator.Compute`, mirrored verbatim: `realizedSaving = originalTotal -
+ * finalPrice`, `discountPercent = realizedSaving / originalTotal * 100`). The *recorded* outcome
+ * always renders the server's own response instead (`NegotiationStep.tsx`).
  */
 export function previewOutcome(originalTotal: number | null, finalPrice: number | null): OutcomePreview {
   if (originalTotal === null || finalPrice === null || originalTotal <= 0) {

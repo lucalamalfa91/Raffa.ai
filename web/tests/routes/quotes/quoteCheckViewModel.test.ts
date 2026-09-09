@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { QuoteLineAssessmentBody, UnmatchedQuoteLineBody } from "../../../src/api/client";
 import {
+  QUOTE_LEVERS_FOOTER,
   aggregateQuote,
-  buildAssessmentNumbers,
+  buildAssessmentBand,
   buildExtractRows,
+  buildQuoteLineRows,
+  formatQuoteMeta,
+  formatUnitPrice,
+  formatVersusP50,
   isAssessmentBlocked,
   mergeKnownLineDetails,
   previewOutcome,
@@ -57,11 +62,7 @@ function unmatched(overrides: Partial<UnmatchedQuoteLineBody> = {}): UnmatchedQu
   };
 }
 
-// The task's own named "Tests required" row: "unmatched SKU blocks assessment until mapped"
-// (parent story us-01-quote-check AC-2). `isAssessmentBlocked` is the single, pure, testable gate
-// every caller (index.tsx, AssessmentStep.tsx) reads instead of re-deriving the rule -- mirrors
-// ../contracts/review/reviewViewModel.ts#isFieldBlocking's own precedent for the identical AC shape.
-describe("isAssessmentBlocked (AC-2: unmatched SKU blocks assessment until mapped)", () => {
+describe("isAssessmentBlocked (unmatched SKU blocks assessment until mapped)", () => {
   it("blocks when at least one line is still unmatched", () => {
     expect(isAssessmentBlocked([unmatched()])).toBe(true);
   });
@@ -98,11 +99,7 @@ describe("mergeKnownLineDetails", () => {
 
 describe("buildExtractRows", () => {
   it("labels an unmatched line with its real description and a 'Needs mapping' outline tag", () => {
-    const rows = buildExtractRows(
-      [line({ quoteLineId: "22222222-2222-2222-2222-222222222222" })],
-      [unmatched()],
-      new Map(),
-    );
+    const rows = buildExtractRows([line({ quoteLineId: "22222222-2222-2222-2222-222222222222" })], [unmatched()], new Map());
     expect(rows[0].label).toBe("Enterprise Support Tier — Custom Bundle");
     expect(rows[0].sku).toBe("ENT-SUP-CUSTOM");
     expect(rows[0].isUnmatched).toBe(true);
@@ -151,9 +148,6 @@ describe("aggregateQuote", () => {
     const aggregate = aggregateQuote([line({ benchmark: null, targetSaving: null, status: "QuoteDataUnresolved", position: null })]);
     expect(aggregate.expectedMarketLow).toBeNull();
     expect(aggregate.totalSavingsLow).toBeNull();
-    // unitPrice/quantity are independent of benchmark/targetSaving (LineMarketAssessment's own doc
-    // comment: "Populated whenever the line had one, independent of Status") -- originalTotal still
-    // resolves.
     expect(aggregate.originalTotal).toBe(1000);
   });
 
@@ -180,6 +174,106 @@ describe("summarizePositions (a real tally, never a fabricated single verdict)",
   });
 });
 
+describe("buildAssessmentBand (markup.html: Supplier quote · Market range · Assessment)", () => {
+  it("returns exactly the three V2 cells, in the prototype's order, with only Assessment emphasised", () => {
+    const aggregate = aggregateQuote([line()]);
+    const band = buildAssessmentBand(aggregate, [line()]);
+    expect(band.map((cell) => [cell.key, cell.label, cell.value])).toEqual([
+      ["quote", "Supplier quote", "CHF 1,000"],
+      ["market", "Market range", "CHF 800–1,000"],
+      ["assessment", "Assessment", "1 above market"],
+    ]);
+    expect(band.map((cell) => cell.emphasize)).toEqual([false, false, true]);
+  });
+
+  it("is honest about missing data", () => {
+    const band = buildAssessmentBand(aggregateQuote([]), []);
+    expect(band.map((cell) => cell.value)).toEqual(["Not yet available", "Not yet available", "Not yet assessed"]);
+  });
+});
+
+describe("unit prices and P50 comparison", () => {
+  it("keeps decimals on per-unit prices while totals stay whole", () => {
+    expect(formatUnitPrice(0.55, "CHF")).toBe("CHF 0.55");
+    expect(formatUnitPrice(50_000, "CHF")).toBe("CHF 50,000");
+    expect(formatUnitPrice(null, "CHF")).toBe("Not yet available");
+  });
+
+  it("formats the deterministic distance to the median, or nothing when a figure is missing", () => {
+    expect(formatVersusP50(0.55, 0.46)).toBe("+20% vs P50");
+    expect(formatVersusP50(90, 100)).toBe("-10% vs P50");
+    expect(formatVersusP50(90, 90)).toBe("At P50");
+    expect(formatVersusP50(null, 90)).toBeNull();
+    expect(formatVersusP50(90, null)).toBeNull();
+    expect(formatVersusP50(90, 0)).toBeNull();
+  });
+});
+
+describe("buildQuoteLineRows (Line · Quoted · P50 · Position · Benchmark)", () => {
+  it("carries the real per-line figures, the position tag, the P50 distance and the benchmark confidence tag", () => {
+    const rows = buildExtractRows([line()], [], new Map());
+    const [row] = buildQuoteLineRows(rows, [line()]);
+    expect(row.label).toBe("Line 1");
+    expect(row.quoted).toBe("CHF 100");
+    expect(row.p50).toBe("CHF 90");
+    expect(row.position).toEqual({ variant: "accent", label: "Above market" });
+    expect(row.vsP50).toBe("+11% vs P50");
+    expect(row.benchmark).toEqual({ variant: "neutral", label: "High · n=42" });
+    expect(row.needsMapping).toBe(false);
+  });
+
+  it("maps benchmark confidence levels to High neutral / Medium accent / Low outline", () => {
+    const medium = line({ confidence: { ...line().confidence!, level: "Medium", sampleSize: 22 } });
+    const low = line({ confidence: { ...line().confidence!, level: "Low", sampleSize: null } });
+    const [mediumRow] = buildQuoteLineRows(buildExtractRows([medium], [], new Map()), [medium]);
+    const [lowRow] = buildQuoteLineRows(buildExtractRows([low], [], new Map()), [low]);
+    expect(mediumRow.benchmark).toEqual({ variant: "accent", label: "Medium · n=22" });
+    expect(lowRow.benchmark).toEqual({ variant: "outline", label: "Low · n=—" });
+  });
+
+  it("says 'Needs mapping' for an unmatched line instead of a position it does not have, and has no benchmark tag", () => {
+    const unresolved = line({ quoteLineId: "22222222-2222-2222-2222-222222222222", benchmark: null, position: null, status: "QuoteDataUnresolved", confidence: null });
+    const rows = buildExtractRows([unresolved], [unmatched()], new Map());
+    const [row] = buildQuoteLineRows(rows, [unresolved]);
+    expect(row.label).toBe("Enterprise Support Tier — Custom Bundle");
+    expect(row.position).toEqual({ variant: "outline", label: "Needs mapping" });
+    expect(row.p50).toBe("Not yet available");
+    expect(row.vsP50).toBeNull();
+    expect(row.benchmark).toBeNull();
+    expect(row.needsMapping).toBe(true);
+  });
+});
+
+describe("header copy", () => {
+  it("quotes the levers footer verbatim", () => {
+    expect(QUOTE_LEVERS_FOOTER).toBe("Target and negotiation levers are one step further — shown only if you want them.");
+  });
+
+  it("formats the meta line from the upload response, or falls back to the quote id", () => {
+    expect(
+      formatQuoteMeta(
+        {
+          id: "q",
+          fileName: "Databricks_Proposal_Q-88213.pdf",
+          mimeType: "application/pdf",
+          processingStatus: "NeedsReview",
+          lineItemCount: 3,
+          normalizedLineItemCount: 3,
+          unresolvedNormalizationCount: 0,
+          unmatchedSkuCount: 0,
+          supplier: "Databricks",
+          currency: "CHF",
+          geography: null,
+          purchaseDate: null,
+          createdAt: "2026-09-06T00:00:00Z",
+        },
+        "q",
+      ),
+    ).toBe("Databricks_Proposal_Q-88213.pdf · Databricks · CHF");
+    expect(formatQuoteMeta(null, "22222222-2222-2222-2222-222222222222")).toBe("Quote 22222222");
+  });
+});
+
 describe("previewOutcome (mirrors NegotiationOutcomeCalculator.Compute verbatim)", () => {
   it("reproduces spec §12.2's own worked example: 520,000 -> 435,000 = 85,000 saving, ~16.3%", () => {
     const preview = previewOutcome(520_000, 435_000);
@@ -195,16 +289,5 @@ describe("previewOutcome (mirrors NegotiationOutcomeCalculator.Compute verbatim)
   it("returns nulls (not a fabricated 0%) when either figure is not known yet", () => {
     expect(previewOutcome(null, 100)).toEqual({ realizedSaving: null, discountPercent: null });
     expect(previewOutcome(100, null)).toEqual({ realizedSaving: null, discountPercent: null });
-  });
-});
-
-describe("buildAssessmentNumbers (screens.md #10 AC-3: quote / market range / assessment / potential saving)", () => {
-  it("returns exactly 4 numbers in the AC's own order", () => {
-    const aggregate = aggregateQuote([line()]);
-    const numbers = buildAssessmentNumbers(aggregate, [line()]);
-    expect(numbers.map((n) => n.key)).toEqual(["quote", "market", "assessment", "saving"]);
-    expect(numbers[2].value).toBe("1 above market");
-    expect(numbers[0].emphasize).toBe(false);
-    expect(numbers[2].emphasize).toBe(true);
   });
 });

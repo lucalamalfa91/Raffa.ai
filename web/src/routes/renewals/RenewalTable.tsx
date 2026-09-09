@@ -1,90 +1,95 @@
-import { Link } from "react-router-dom";
-import { daysUntil } from "../contracts/portfolioAttention";
-import { formatAnnualSpend, formatDateOnly, formatSupplier } from "../contracts/portfolioTableFormatters";
-import { isDeadlineCritical } from "../../styles/semantics";
 import {
   formatContractRef,
+  formatDays,
+  formatRenewalSupplier,
   formatScore,
   getRenewalStatusTag,
   isHighPriorityScore,
+  isNoticeUrgent,
   type RenewalTableRow,
 } from "./renewalPipelineViewModel";
 
 export interface RenewalTableProps {
+  /** Already sorted by priority (`renewalPipelineViewModel.ts#buildRenewalRows`). */
   rows: readonly RenewalTableRow[];
   selectedContractId: string | null;
   onSelect: (contractId: string) => void;
 }
 
 /**
- * AC-2 "Table: Score - Supplier - contract - Annual spend - Renews in - Cancel by - Status" (screens.md
- * #8), quoted verbatim as the seven columns below. `rows` is expected already filtered by the
- * currently-active threshold window (`index.tsx`) -- this component only renders and lets a row be
- * selected for the insight card (AC-3).
+ * The V2 priority list (screens-v2.md #7; `contigo-v2/markup.html` "RENEWALS" block): Score (64px,
+ * heading face 18px/800, accent-700 from 80 up) · Supplier · contract (supplier bold, "· contract"
+ * muted, one line, ellipsis) · Renews in (right, "N d") · Notice in (right, "N d", accent-700 + 600
+ * within 45 days) · Status (tag), `font-size:13px; font-variant-numeric:tabular-nums;
+ * table-layout:fixed`. The selected row carries the prototype's own `bg`/`bar` treatment
+ * (neutral-200 background, 3px accent bar -- `.row-selected`, `renewals.css`).
  *
- * Selecting a row is a native `<button>` inside the Score cell (ADR-019 accessibility baseline:
- * "every interactive control is native"), not a bare `<tr onClick>` -- a table row itself is not a
- * keyboard-operable control, unlike day1-demo.html's own framework-level `sc-camel-on-click` on its
- * raw `<tr>`. The selected row still gets the visible `.row-selected` treatment
- * (`renewals.css`, mirroring `--color-neutral-200)` quoted from day1-demo.html's own
- * `bg:s.rsel===c.id?'var(--color-neutral-200)':'transparent'`) regardless of which exact control
- * triggered it.
+ * Selecting a row is a native `<button>` in the Score cell (ADR-019 accessibility baseline: every
+ * interactive control is native); the row's own click is the prototype's `cg-row` mouse convenience
+ * layered on top, never the only way in.
  */
 export default function RenewalTable({ rows, selectedContractId, onSelect }: RenewalTableProps) {
   return (
-    <div className="portfolio-table-wrapper">
+    <div className="renewal-table-wrapper">
       <table className="table renewal-table">
         <thead>
           <tr>
-            <th scope="col" className="renewal-table-numeric">
+            <th scope="col" className="renewal-col-score">
               Score
             </th>
-            <th scope="col">Supplier</th>
-            <th scope="col">Contract</th>
-            <th scope="col" className="renewal-table-numeric">
-              Annual spend
-            </th>
-            <th scope="col" className="renewal-table-numeric">
+            <th scope="col">Supplier · contract</th>
+            <th scope="col" className="renewal-table-numeric renewal-col-days">
               Renews in
             </th>
-            <th scope="col">Cancel by</th>
-            <th scope="col">Status</th>
+            <th scope="col" className="renewal-table-numeric renewal-col-days">
+              Notice in
+            </th>
+            <th scope="col" className="renewal-col-status">
+              Status
+            </th>
           </tr>
         </thead>
         <tbody>
           {rows.map(({ item, score, tracked }) => {
-            const supplier = formatSupplier(item.supplierId);
+            const supplier = formatRenewalSupplier(item.supplierName);
             const contractRef = formatContractRef(item.contractId);
-            const cancelDays = daysUntil(item.cancellationDeadline);
             const statusTag = getRenewalStatusTag(tracked);
             const isSelected = item.contractId === selectedContractId;
-            const isUrgentScore = score !== null && isHighPriorityScore(score);
+            const urgentScore = score !== null && isHighPriorityScore(score);
+            const urgentNotice = isNoticeUrgent(item.daysUntilCancellationDeadline);
 
             return (
-              <tr key={item.contractId} className={isSelected ? "row-selected" : undefined}>
-                <td className="renewal-table-numeric">
+              <tr
+                key={item.contractId}
+                className={`renewal-row${isSelected ? " row-selected" : ""}`}
+                aria-selected={isSelected}
+                onClick={(event) => {
+                  // The Score cell's own <button> handles its click natively; everywhere else on the
+                  // row, select it too (markup.html's `cg-row` row click).
+                  if ((event.target as HTMLElement).closest("button") !== null) return;
+                  onSelect(item.contractId);
+                }}
+              >
+                <td className="renewal-cell-score">
                   <button
                     type="button"
-                    className="renewal-score-select"
-                    aria-label={`Show insight card for ${supplier.label} - ${contractRef.label}`}
+                    className={`renewal-score-select${urgentScore ? " is-urgent" : ""}`}
+                    aria-label={`Show why ${supplier} · ${contractRef.label} is here`}
+                    aria-pressed={isSelected}
                     onClick={() => onSelect(item.contractId)}
                   >
-                    {/* Quoted from day1-demo.html's own `scoreFg:c.score>=80?'var(--color-accent-700)':'inherit'`. */}
-                    <span style={isUrgentScore ? { color: "var(--color-accent-700)", fontWeight: 600 } : undefined}>
-                      {formatScore(score)}
-                    </span>
+                    {formatScore(score)}
                   </button>
                 </td>
-                <td title={supplier.title}>{supplier.label}</td>
-                <td>
-                  <Link to={`/contracts/${item.contractId}`} title={contractRef.title}>
-                    {contractRef.label}
-                  </Link>
+                <td className="renewal-cell-contract">
+                  <span className="renewal-supplier">{supplier}</span>{" "}
+                  <span className="renewal-contract-ref" title={contractRef.title}>
+                    · {contractRef.label}
+                  </span>
                 </td>
-                <td className="renewal-table-numeric">{formatAnnualSpend(item.annualSpend)}</td>
-                <td className="renewal-table-numeric">{item.daysUntilRenewal !== null ? `${item.daysUntilRenewal} d` : "—"}</td>
-                <td className={cancelDays !== null && isDeadlineCritical(cancelDays) ? "deadline-critical" : undefined}>
-                  {formatDateOnly(item.cancellationDeadline)}
+                <td className="renewal-table-numeric">{formatDays(item.daysUntilRenewal)}</td>
+                <td className={`renewal-table-numeric${urgentNotice ? " deadline-critical" : ""}`}>
+                  {formatDays(item.daysUntilCancellationDeadline)}
                 </td>
                 <td>
                   <span className={`tag tag-${statusTag.variant}`}>{statusTag.label}</span>

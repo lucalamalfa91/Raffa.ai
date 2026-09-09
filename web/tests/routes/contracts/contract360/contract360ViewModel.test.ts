@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type {
   Contract360Body,
   Contract360ClauseBody,
+  Contract360DocumentBody,
   Contract360HeaderBody,
   Contract360ObligationBody,
   Contract360ProductBody,
@@ -10,19 +11,26 @@ import type {
   RenewalPriorityBody,
 } from "../../../../src/api/client";
 import {
-  buildClausesRows,
-  buildCommercialsRows,
-  buildDocumentsRows,
+  DETAILS_LABEL_CLOSED,
+  DETAILS_LABEL_OPEN,
+  LEVER_NOT_YET_AVAILABLE,
+  NO_ATTENTION_MESSAGE,
+  buildAnswers,
+  buildClauseEvidence,
+  buildClauseRows,
+  buildDocumentRows,
+  buildKeyTerms,
+  buildNegotiationSteps,
   buildObligationsRows,
-  buildOverviewDetailRows,
   buildPriorityComponentRows,
   buildProductsRows,
   buildRecommendation,
-  buildRenewalFactRows,
   buildRisksRows,
   computeNeedsAttention,
-  computeTopRisks,
+  formatHeaderMeta,
   formatPriorityFact,
+  formatTrackerMeta,
+  getClauseRiskTag,
   resolveBackLink,
   resolveHighlightedClauseId,
   resolveSupplierLabel,
@@ -35,7 +43,6 @@ function header(overrides: Partial<Contract360HeaderBody> = {}): Contract360Head
   return {
     contractId: CONTRACT_ID,
     supplierId: null,
-    // Task E13/F03/US01/T02: supplierName is required now (null when unresolved).
     supplierName: null,
     type: "Msa",
     status: "active",
@@ -77,7 +84,7 @@ function clause(overrides: Partial<Contract360ClauseBody> = {}): Contract360Clau
   return {
     clauseId: "cl-1",
     clauseType: "Liability cap",
-    rawText: "12 months fees",
+    rawText: "Liability is capped at 12 months fees, save for confidentiality.",
     normalizedValue: "12 months fees",
     riskLevel: "Medium",
     sourceDocumentId: "doc-1",
@@ -126,7 +133,6 @@ function renewalItem(overrides: Partial<RenewalPipelineItemBody> = {}): RenewalP
   return {
     contractId: CONTRACT_ID,
     supplierId: null,
-    // Task E13/F03/US01/T02: supplierName is required now (null when unresolved).
     supplierName: null,
     status: "Determined",
     renewalDate: "2026-01-01",
@@ -139,7 +145,6 @@ function renewalItem(overrides: Partial<RenewalPipelineItemBody> = {}): RenewalP
     insightCard: {
       facts: {
         supplierId: null,
-        // Task E13/F03/US01/T02: supplierName is required now (null when unresolved).
         supplierName: null,
         renewalDate: "2026-01-01",
         daysUntilRenewal: 30,
@@ -174,324 +179,276 @@ function priority(overrides: Partial<RenewalPriorityBody> = {}): RenewalPriority
   };
 }
 
+const renewalTab: Contract360Body["tabs"]["renewal"] = {
+  endDate: "2026-01-01",
+  renewalDate: "2026-01-01",
+  cancellationDeadline: "2025-11-17",
+  autoRenewal: true,
+  renewalTermMonths: 12,
+};
+
+function contractBody(overrides: Partial<Contract360Body["tabs"]> = {}): Contract360Body {
+  return {
+    contractId: CONTRACT_ID,
+    header: header(),
+    tabs: {
+      overview: {
+        currency: "CHF",
+        effectiveDate: "2025-01-01",
+        renewalTermMonths: 12,
+        paymentTerms: "Net 45",
+        governingLaw: "Switzerland, Zürich",
+        parentContractId: null,
+        version: 1,
+        createdAt: "2025-01-01T00:00:00Z",
+      },
+      commercials: {
+        annualSpend: 500_000,
+        totalContractValue: 1_500_000,
+        currency: "CHF",
+        paymentTerms: "Net 45",
+        autoRenewal: true,
+        renewalTermMonths: 12,
+        lineItemCount: 1,
+        lineItemAnnualCostTotal: 66_000,
+        lineItemTotalCostTotal: 198_000,
+      },
+      products: [product()],
+      clauses: [clause()],
+      obligations: [obligation()],
+      risks: [risk()],
+      documents: [
+        { documentId: "doc-1", fileName: "MSA.pdf", mimeType: "application/pdf", documentType: "Msa", processingStatus: "Completed", createdAt: "2026-01-01T00:00:00Z" },
+      ],
+      benchmark: [],
+      renewal: renewalTab,
+      activity: [],
+      ...overrides,
+    },
+  };
+}
+
 describe("toConfidencePercent", () => {
-  it("converts a 0-1 fraction to a 0-100 percentage", () => {
+  it("converts a 0-1 fraction to a 0-100 percentage and passes null through", () => {
     expect(toConfidencePercent(0.92)).toBe(92);
     expect(toConfidencePercent(0)).toBe(0);
-  });
-
-  it("passes null through unchanged", () => {
     expect(toConfidencePercent(null)).toBeNull();
   });
 });
 
-describe("row builders (deterministic facts)", () => {
-  it("buildCommercialsRows formats money with currency and honours null aggregates", () => {
-    const rows = buildCommercialsRows({
-      annualSpend: 500_000,
-      totalContractValue: null,
-      currency: "CHF",
-      paymentTerms: "Net 45",
-      autoRenewal: true,
-      renewalTermMonths: 12,
-      lineItemCount: 0,
-      lineItemAnnualCostTotal: null,
-      lineItemTotalCostTotal: null,
+describe("header", () => {
+  it("resolveBackLink follows the origin, including Savings, and is null for anything else", () => {
+    expect(resolveBackLink("ask")).toEqual({ label: "Ask Contigo", href: "/ask" });
+    expect(resolveBackLink("documents")).toEqual({ label: "Documents", href: "/documents" });
+    expect(resolveBackLink("portfolio")).toEqual({ label: "Portfolio", href: "/contracts" });
+    expect(resolveBackLink("renewals")).toEqual({ label: "Renewals", href: "/renewals" });
+    expect(resolveBackLink("savings")).toEqual({ label: "Savings", href: "/savings" });
+    expect(resolveBackLink(undefined)).toBeNull();
+    expect(resolveBackLink(null)).toBeNull();
+    expect(resolveBackLink("something-else")).toBeNull();
+  });
+
+  it("resolveSupplierLabel prefers the resolved name, falls back to the id fragment, ignores blanks", () => {
+    expect(resolveSupplierLabel(header({ supplierId: "33333333-3333-3333-3333-333333333333", supplierName: "Salesforce" }))).toEqual({
+      label: "Salesforce",
+      title: "33333333-3333-3333-3333-333333333333",
     });
-
-    expect(rows.find((r) => r.key === "annualSpend")?.value).toBe("CHF 500,000");
-    expect(rows.find((r) => r.key === "totalContractValue")?.value).toBe("—");
-    expect(rows.every((r) => r.confidencePct === null)).toBe(true);
+    expect(resolveSupplierLabel(header({ supplierId: "33333333-3333-3333-3333-333333333333" }))).toEqual({
+      label: "Supplier 33333333",
+      title: "33333333-3333-3333-3333-333333333333",
+    });
+    expect(resolveSupplierLabel(header({ supplierName: "   " })).label).not.toBe("   ");
   });
 
-  it("buildProductsRows carries real confidence (converted to a percentage) and a formatted source", () => {
-    const rows = buildProductsRows([product()]);
+  it("formatHeaderMeta reads '{type} · {spend} / year · {docs} documents · {status}' and is honest about missing spend", () => {
+    expect(formatHeaderMeta(header(), "CHF", 2)).toMatch(/^MSA · CHF 500,000 \/ year · 2 documents · /);
+    expect(formatHeaderMeta(header({ annualSpend: null }), "CHF", 1)).toMatch(/^MSA · spend not recorded · 1 document · /);
+  });
+});
 
-    expect(rows).toHaveLength(1);
-    expect(rows[0].term).toBe("Premium DBU — committed");
-    expect(rows[0].confidencePct).toBe(97);
-    expect(rows[0].source).toBe("p.9 · §6.2");
+describe("answers band", () => {
+  it("buildRecommendation sources the real recommendedAction/explanation from the matching pipeline item", () => {
+    const recommendation = buildRecommendation(header(), [renewalItem()]);
+    expect(recommendation).toEqual({
+      hasRecommendation: true,
+      statement: "Start renewal negotiation now",
+      rationale: "Renews in 30 days with a cancellation notice due in 14 days.",
+    });
   });
 
-  it("buildProductsRows renders 'Linked document' when a source document exists with no page/span, and null source when there is none at all", () => {
-    const withDocOnly = buildProductsRows([product({ sourceDocumentId: "doc-1", sourceSpan: null, sourcePage: null })]);
-    const withoutDoc = buildProductsRows([product({ sourceDocumentId: null, sourceSpan: null, sourcePage: null })]);
-
-    expect(withDocOnly[0].source).toBe("Linked document");
-    expect(withoutDoc[0].source).toBeNull();
+  it("buildRecommendation names an honest gap when there is no pipeline entry, specific to auto-renewal", () => {
+    expect(buildRecommendation(header(), [])).toMatchObject({ hasRecommendation: false, statement: "No renewal recommendation for this contract" });
+    expect(buildRecommendation(header({ autoRenewal: false }), []).rationale).toMatch(/only for auto-renewing contracts/i);
+    expect(buildRecommendation(header(), []).rationale).toMatch(/did not appear in the current renewal pipeline yet/i);
   });
 
-  it("buildClausesRows appends the risk level to the value when present", () => {
-    const rows = buildClausesRows([clause({ riskLevel: "Medium" })]);
-    expect(rows[0].value).toContain("Medium risk");
+  it("Where you can save renders the pipeline's own figures, or honest 'not yet' copy", () => {
+    const unknown = buildAnswers(header(), renewalTab, [renewalItem()], new Date("2025-11-10T00:00:00Z"));
+    expect(unknown.save).toEqual({ estimate: "Not yet available", lever: LEVER_NOT_YET_AVAILABLE });
+
+    const uplift = renewalItem();
+    uplift.insightCard.recommendations.annualUpliftPercent = 7;
+    expect(buildAnswers(header(), renewalTab, [uplift]).save.lever).toBe("A 7% uplift clause applies at renewal.");
+
+    const known = renewalItem();
+    known.insightCard.recommendations.potentialSavingsRange = "CHF 80–120k / yr";
+    known.insightCard.recommendations.marketPosition = "9% above market";
+    expect(buildAnswers(header(), renewalTab, [known]).save).toEqual({ estimate: "CHF 80–120k / yr", lever: "9% above market" });
   });
 
-  it("buildObligationsRows joins description, due date, and criticality", () => {
-    const rows = buildObligationsRows([obligation()]);
-    expect(rows[0].value).toBe("Annual true-up of committed DBU · due 15/01/2026 · high");
+  it("When you must move: deadline, days left, urgency, term end and auto-renewal", () => {
+    const soon = buildAnswers(header(), renewalTab, [], new Date("2025-11-10T00:00:00Z")).move;
+    expect(soon.deadline).toBe("17/11/2025");
+    expect(soon.cancelDays).toBe(7);
+    expect(soon.isUrgent).toBe(true);
+    expect(soon.detail).toBe("in 7 days — last day to give notice. Term ends 01/01/2026 and auto-renews for 12 months.");
+
+    const far = buildAnswers(header({ cancellationDeadline: "2026-06-01", endDate: "2026-09-01" }), { ...renewalTab, renewalTermMonths: null }, [], new Date("2025-11-10T00:00:00Z")).move;
+    expect(far.isUrgent).toBe(false);
+    expect(far.detail).toBe("in 203 days — last day to give notice. Term ends 01/09/2026 and auto-renews.");
+
+    const past = buildAnswers(header({ autoRenewal: false }), { ...renewalTab, autoRenewal: false }, [], new Date("2025-12-01T00:00:00Z")).move;
+    expect(past.detail).toBe("14 days ago — the notice window has closed. Term ends 01/01/2026.");
+
+    const none = buildAnswers(header({ cancellationDeadline: null, endDate: null }), renewalTab, []).move;
+    expect(none.deadline).toBe("Not determined");
+    expect(none.cancelDays).toBeNull();
+    expect(none.isUrgent).toBe(false);
+    expect(none.detail).toBe("No notice deadline determined. Term end not recorded and auto-renews for 12 months.");
   });
 
-  it("buildRisksRows always includes severity as text, never colour-only", () => {
-    const rows = buildRisksRows([risk({ severity: "Critical" })]);
-    expect(rows[0].value).toContain("Critical risk");
-  });
-
-  it("buildDocumentsRows has no per-document confidence (there is nothing to grade)", () => {
-    const rows = buildDocumentsRows([
-      { documentId: "doc-1", fileName: "MSA.pdf", mimeType: "application/pdf", documentType: "Msa", processingStatus: "Completed", createdAt: "2026-01-01T00:00:00Z" },
+  it("the tracker steps and meta follow the real supplier and deadline", () => {
+    expect(buildNegotiationSteps("Salesforce", "17/11/2025")).toEqual([
+      { label: "Notify Salesforce of intent to renegotiate", due: "this week" },
+      { label: "Request revised pricing and licence mix", due: "+10 days" },
+      { label: "Counter with the market benchmark", due: "+20 days" },
+      { label: "Sign, or send non-renewal notice", due: "by 17/11/2025" },
     ]);
-    expect(rows[0].confidencePct).toBeNull();
-    expect(rows[0].source).toBe("application/pdf");
+    const answers = buildAnswers(header(), renewalTab, [], new Date("2025-11-10T00:00:00Z"));
+    expect(formatTrackerMeta(answers.save, answers.move)).toBe("target Not yet available · close by 17/11/2025");
+  });
+});
+
+describe("why — the clauses behind it", () => {
+  it("getClauseRiskTag emphasises High/Critical only, text first; null without a level", () => {
+    expect(getClauseRiskTag("High")).toEqual({ variant: "accent", label: "High" });
+    expect(getClauseRiskTag("Critical")).toEqual({ variant: "accent", label: "Critical" });
+    expect(getClauseRiskTag("Medium")).toEqual({ variant: "neutral", label: "Medium" });
+    expect(getClauseRiskTag(null)).toBeNull();
+    expect(getClauseRiskTag("  ")).toBeNull();
   });
 
-  it("buildRenewalFactRows and buildOverviewDetailRows never carry a confidence either (contract-level fields, not extractions)", () => {
-    const renewalRows = buildRenewalFactRows({
-      endDate: "2026-01-01",
-      renewalDate: "2026-01-01",
-      cancellationDeadline: "2025-11-17",
-      autoRenewal: true,
-      renewalTermMonths: 12,
+  it("buildClauseRows carries type · normalised · source · risk · confidence", () => {
+    const [row] = buildClauseRows([clause()]);
+    expect(row).toEqual({
+      clauseId: "cl-1",
+      type: "Liability cap",
+      normalized: "12 months fees",
+      source: "p.27 · §17.2",
+      risk: { variant: "neutral", label: "Medium" },
+      confidencePct: 78,
     });
-    const overviewRows = buildOverviewDetailRows({
-      currency: "CHF",
-      effectiveDate: "2025-01-01",
-      renewalTermMonths: 12,
-      paymentTerms: "Net 45",
-      governingLaw: "Switzerland, Zürich",
-      parentContractId: null,
-      version: 2,
-      createdAt: "2025-01-01T00:00:00Z",
+    expect(buildClauseRows([clause({ normalizedValue: null, sourceDocumentId: null })])[0]).toMatchObject({
+      normalized: "Liability is capped at 12 months fees, save for confidentiality.",
+      source: null,
     });
-
-    expect(renewalRows.every((r) => r.confidencePct === null)).toBe(true);
-    expect(overviewRows.every((r) => r.confidencePct === null)).toBe(true);
-    expect(overviewRows.find((r) => r.key === "governingLaw")?.value).toBe("Switzerland, Zürich");
-  });
-});
-
-describe("buildPriorityComponentRows / formatPriorityFact", () => {
-  it("returns all five named components with their real score and explanation", () => {
-    const rows = buildPriorityComponentRows(priority());
-    expect(rows.map((r) => r.label)).toEqual([
-      "Spend weight",
-      "Time urgency",
-      "Benchmark opportunity",
-      "Price-increase risk",
-      "Contract risk",
-    ]);
-    expect(rows[0].score).toBe(20);
-    expect(rows[0].explanation).toContain("500,000 or more");
   });
 
-  it("returns an empty list, never a fabricated all-zero table, when priority is null", () => {
-    expect(buildPriorityComponentRows(null)).toEqual([]);
+  it("buildClauseEvidence marks the normalised value inside the raw text, else the whole wording, and cites file · page · §", () => {
+    const documents: Contract360DocumentBody[] = [{ documentId: "doc-1", fileName: "MSA.pdf", mimeType: "application/pdf", documentType: "Msa", processingStatus: "Completed", createdAt: "x" }];
+    expect(buildClauseEvidence(clause(), documents)).toEqual({
+      citation: "MSA.pdf · page 27 · §17.2",
+      before: "Liability is capped at ",
+      quote: "12 months fees",
+      after: ", save for confidentiality.",
+    });
+    expect(buildClauseEvidence(clause({ normalizedValue: "Capped at twelve months" }), documents)).toMatchObject({
+      before: "",
+      quote: "Liability is capped at 12 months fees, save for confidentiality.",
+      after: "",
+    });
+    expect(buildClauseEvidence(clause({ sourceSpan: "17.2", sourcePage: null, sourceDocumentId: null }), documents).citation).toBe("§17.2");
+    expect(buildClauseEvidence(clause({ sourceSpan: null, sourcePage: null, sourceDocumentId: null }), documents).citation).toBe("Liability cap");
   });
 
-  it("formatPriorityFact renders the rounded total score out of 100, or an honest gap", () => {
-    expect(formatPriorityFact(priority({ totalScore: 71.6 }))).toBe("priority 72/100");
-    expect(formatPriorityFact(null)).toBe("priority not yet available");
-  });
-});
-
-describe("computeNeedsAttention (AC-3 'Needs your attention')", () => {
-  const tabs: Contract360Body["tabs"] = {
-    overview: {
-      currency: "CHF",
-      effectiveDate: null,
-      renewalTermMonths: null,
-      paymentTerms: null,
-      governingLaw: null,
-      parentContractId: null,
-      version: 1,
-      createdAt: "2025-01-01T00:00:00Z",
-    },
-    commercials: {
-      annualSpend: null,
-      totalContractValue: null,
-      currency: "CHF",
-      paymentTerms: null,
-      autoRenewal: true,
-      renewalTermMonths: null,
-      lineItemCount: 0,
-      lineItemAnnualCostTotal: null,
-      lineItemTotalCostTotal: null,
-    },
-    products: [
-      product({ lineItemId: "p-accepted", confidence: 0.99 }),
-      product({ lineItemId: "p-flagged", confidence: 0.88, description: "SQL Serverless DBU" }),
-    ],
-    clauses: [clause({ clauseId: "c-review", confidence: 0.71, clauseType: "Termination for convenience" })],
-    obligations: [obligation({ obligationId: "o-no-confidence", confidence: null })],
-    risks: [] as Contract360RiskBody[],
-    documents: [],
-    benchmark: [],
-    renewal: { endDate: null, renewalDate: null, cancellationDeadline: null, autoRenewal: true, renewalTermMonths: null },
-    activity: [],
-  };
-
-  it("excludes fields at or above 95% confidence and fields with no confidence at all", () => {
-    const attention = computeNeedsAttention(tabs);
-    expect(attention.map((a) => a.term)).not.toContain("Premium DBU — committed"); // 99% accepted
-    expect(attention.some((a) => a.key === "obligation-o-no-confidence")).toBe(false); // null confidence
-  });
-
-  it("sorts lowest confidence first and caps at 3", () => {
-    const attention = computeNeedsAttention(tabs);
-    expect(attention.map((a) => a.term)).toEqual(["Termination for convenience", "SQL Serverless DBU"]);
-    expect(attention[0].confidencePct).toBe(71);
-    expect(attention[0].tag.variant).toBe("outline");
-    expect(attention[1].tag.variant).toBe("accent");
-  });
-});
-
-describe("computeTopRisks (AC-3 'Top risks')", () => {
-  it("orders by severity (Critical > High > Medium > Low) and caps at 2", () => {
-    const risks = [
-      risk({ riskId: "low", severity: "Low" }),
-      risk({ riskId: "critical", severity: "Critical" }),
-      risk({ riskId: "medium", severity: "Medium" }),
-      risk({ riskId: "high", severity: "High" }),
-    ];
-
-    const top = computeTopRisks(risks);
-    expect(top.map((r) => r.riskId)).toEqual(["critical", "high"]);
-  });
-
-  it("breaks a severity tie by ascending confidence (the least-certain risk first)", () => {
-    const risks = [
-      risk({ riskId: "confident", severity: "High", confidence: 0.9 }),
-      risk({ riskId: "uncertain", severity: "High", confidence: 0.6 }),
-    ];
-
-    expect(computeTopRisks(risks).map((r) => r.riskId)).toEqual(["uncertain", "confident"]);
-  });
-});
-
-describe("buildRecommendation — facts vs AI separation (ADR-019 council decision)", () => {
-  it("sources the real recommendedAction/explanation text from the matching GET /api/renewals item, never inventing copy", () => {
-    const recommendation = buildRecommendation(header(), [renewalItem()]);
-
-    expect(recommendation.hasRecommendation).toBe(true);
-    expect(recommendation.statement).toBe("Start renewal negotiation now");
-    expect(recommendation.rationale).toBe("Renews in 30 days with a cancellation notice due in 14 days.");
-  });
-
-  it("names an honest gap, not a fabricated recommendation, when this contract has no pipeline entry", () => {
-    const recommendation = buildRecommendation(header(), []);
-
-    expect(recommendation.hasRecommendation).toBe(false);
-    expect(recommendation.statement).toMatch(/no renewal recommendation/i);
-  });
-
-  it("names the non-auto-renewal reason specifically when the header itself says autoRenewal is false", () => {
-    const recommendation = buildRecommendation(header({ autoRenewal: false }), []);
-    expect(recommendation.rationale).toMatch(/only for auto-renewing contracts/i);
-  });
-
-  it("always includes a real Cancellation-deadline driver from the header, independent of whether a recommendation exists", () => {
-    const withRecommendation = buildRecommendation(header(), [renewalItem()], new Date("2025-11-10T00:00:00Z"));
-    const withoutRecommendation = buildRecommendation(header(), [], new Date("2025-11-10T00:00:00Z"));
-
-    expect(withRecommendation.drivers.find((d) => d.key === "cancellationDeadline")?.value).toBe("7 days");
-    expect(withoutRecommendation.drivers.find((d) => d.key === "cancellationDeadline")?.value).toBe("7 days");
-  });
-
-  it("renders Market position / Potential savings as an honest 'Not yet available', never a guess (both are always null this wave)", () => {
-    const recommendation = buildRecommendation(header(), [renewalItem()]);
-    expect(recommendation.drivers.find((d) => d.key === "marketPosition")?.value).toBe("Not yet available");
-    expect(recommendation.drivers.find((d) => d.key === "potentialSavings")?.value).toBe("Not yet available");
-  });
-
-  it("keeps the recommendation's statement/rationale/drivers structurally separate from every deterministic FactRow shape (never mixed, per ADR-019)", () => {
-    const recommendation = buildRecommendation(header(), [renewalItem()]);
-
-    // A Recommendation is never a FactRow and is never concatenated into one: it carries no
-    // `source`/`confidencePct` keys at all, the two fields that identify a FactRow.
-    expect(recommendation).not.toHaveProperty("source");
-    expect(recommendation).not.toHaveProperty("confidencePct");
-
-    // The recommendation's own real, Renewals-module-sourced text never leaks into any tab's
-    // deterministic fact rows -- each row builder only ever reads its own tab's data, never the
-    // renewal pipeline.
-    const everyFactValue = [
-      ...buildCommercialsRows({
-        annualSpend: 1,
-        totalContractValue: 1,
-        currency: "CHF",
-        paymentTerms: null,
-        autoRenewal: true,
-        renewalTermMonths: null,
-        lineItemCount: 0,
-        lineItemAnnualCostTotal: null,
-        lineItemTotalCostTotal: null,
-      }),
-      ...buildProductsRows([product()]),
-      ...buildClausesRows([clause()]),
-      ...buildObligationsRows([obligation()]),
-      ...buildRisksRows([risk()]),
-    ].map((row) => row.value);
-
-    expect(everyFactValue).not.toContain(recommendation.statement);
-    expect(everyFactValue).not.toContain(recommendation.rationale);
-  });
-});
-
-describe("resolveHighlightedClauseId (task E13/F10/US01/T01, AC-1 citation landing)", () => {
-  const clauses = [clause({ clauseId: "cl-1", sourcePage: 27 }), clause({ clauseId: "cl-2", sourcePage: 9 })];
-
-  it("matches by clauseId when the clause param names a real clause on this contract", () => {
+  it("resolveHighlightedClauseId matches by clause id, else by page only when no clause id was given", () => {
+    const clauses = [clause({ clauseId: "cl-1", sourcePage: 27 }), clause({ clauseId: "cl-2", sourcePage: 9 })];
     expect(resolveHighlightedClauseId(clauses, "cl-2", null)).toBe("cl-2");
-  });
-
-  it("falls back to the first clause on that page when only page is given", () => {
     expect(resolveHighlightedClauseId(clauses, null, "27")).toBe("cl-1");
-  });
-
-  it("consults page only when clauseParam is absent or unmatched, never silently combining the two", () => {
-    // An unmatched clauseParam does not fall through to pageParam -- "when clause matches" and "when
-    // only page is given" are the task's own two distinct branches, not a combined fallback chain.
     expect(resolveHighlightedClauseId(clauses, "does-not-exist", "9")).toBeNull();
-  });
-
-  it("returns null when neither param identifies a real clause, or page is not a number", () => {
     expect(resolveHighlightedClauseId(clauses, null, "999")).toBeNull();
     expect(resolveHighlightedClauseId(clauses, null, "not-a-number")).toBeNull();
     expect(resolveHighlightedClauseId(clauses, null, null)).toBeNull();
   });
 });
 
-describe("resolveBackLink (task E13/F10/US01/T01, AC-1 'back label follows the origin', ADR-020 screen 5)", () => {
-  it('reads "Ask Contigo" -> /ask for from === "ask"', () => {
-    expect(resolveBackLink("ask")).toEqual({ label: "Ask Contigo", href: "/ask" });
+describe("details ▾", () => {
+  it("labels", () => {
+    expect(DETAILS_LABEL_CLOSED).toBe("All terms, documents and open facts ▾");
+    expect(DETAILS_LABEL_OPEN).toBe("Hide details");
+    expect(NO_ATTENTION_MESSAGE).toBe("None — every fact is above 95% or signed off by you.");
   });
 
-  it("also resolves the other three named origins (ready, even though nothing sends them yet)", () => {
-    expect(resolveBackLink("documents")).toEqual({ label: "Documents", href: "/documents" });
-    expect(resolveBackLink("portfolio")).toEqual({ label: "Portfolio", href: "/contracts" });
-    expect(resolveBackLink("renewals")).toEqual({ label: "Renewals", href: "/renewals" });
+  it("buildKeyTerms reads the real contract-level fields, with no borrowed source or confidence", () => {
+    const rows = buildKeyTerms(contractBody());
+    const byKey = Object.fromEntries(rows.map((row) => [row.key, row.value]));
+    expect(byKey).toMatchObject({
+      annualSpend: "CHF 500,000",
+      totalContractValue: "CHF 1,500,000",
+      term: "01/01/2025 → 01/01/2026",
+      cancellationDeadline: "17/11/2025",
+      autoRenewal: "Yes",
+      renewalTermMonths: "12 months",
+      paymentTerms: "Net 45",
+      governingLaw: "Switzerland, Zürich",
+      effectiveDate: "01/01/2025",
+      lineItemCount: "1",
+    });
+    expect(rows.every((row) => row.source === null && row.confidencePct === null)).toBe(true);
+    expect(rows.some((row) => row.key === "parentContractId")).toBe(false);
   });
 
-  it("returns null for an absent or unrecognised origin -- no back link, same as before this task", () => {
-    expect(resolveBackLink(undefined)).toBeNull();
-    expect(resolveBackLink(null)).toBeNull();
-    expect(resolveBackLink("something-else")).toBeNull();
-  });
-});
+  it("extracted rows carry real confidence (as a percentage) and a formatted source", () => {
+    const [productRow] = buildProductsRows([product()]);
+    expect(productRow).toMatchObject({ term: "Premium DBU — committed", confidencePct: 97, source: "p.9 · §6.2" });
+    expect(buildProductsRows([product({ sourceSpan: null, sourcePage: null })])[0].source).toBe("Linked document");
+    expect(buildProductsRows([product({ sourceDocumentId: null })])[0].source).toBeNull();
 
-describe("resolveSupplierLabel (task E13/F10/US01/T01, AC-3 'supplier name, never a guid')", () => {
-  it("prefers the resolved supplierName over the id-fragment fallback", () => {
-    const withName = header({ supplierId: "33333333-3333-3333-3333-333333333333", supplierName: "Salesforce" });
-
-    expect(resolveSupplierLabel(withName)).toEqual({ label: "Salesforce", title: "33333333-3333-3333-3333-333333333333" });
+    expect(buildObligationsRows([obligation()])[0].value).toBe("Annual true-up of committed DBU · due 15/01/2026 · high");
+    expect(buildRisksRows([risk({ severity: "Critical" })])[0].value).toContain("Critical risk");
   });
 
-  it("falls back to the id-fragment label when supplierName is null (no supplier, or an id that no longer resolves)", () => {
-    const withoutName = header({ supplierId: "33333333-3333-3333-3333-333333333333" });
-    expect(resolveSupplierLabel(withoutName)).toEqual({ label: "Supplier 33333333", title: "33333333-3333-3333-3333-333333333333" });
+  it("buildDocumentRows gives type · file · status tag", () => {
+    const [row] = buildDocumentRows(contractBody().tabs.documents);
+    expect(row.documentId).toBe("doc-1");
+    expect(row.type).toBe("MSA");
+    expect(row.fileName).toBe("MSA.pdf");
+    expect(row.status.label.length).toBeGreaterThan(0);
   });
 
-  it("ignores a blank supplierName string rather than rendering whitespace", () => {
-    const blank = header({ supplierName: "   " });
-    expect(resolveSupplierLabel(blank).label).not.toBe("   ");
+  it("priority breakdown: five named components, or an empty list and an honest fact when missing", () => {
+    const rows = buildPriorityComponentRows(priority());
+    expect(rows.map((r) => r.label)).toEqual(["Spend weight", "Time urgency", "Benchmark opportunity", "Price-increase risk", "Contract risk"]);
+    expect(rows[0].score).toBe(20);
+    expect(rows[0].explanation).toContain("500,000 or more");
+    expect(buildPriorityComponentRows(null)).toEqual([]);
+    expect(formatPriorityFact(priority({ totalScore: 71.6 }))).toBe("priority 72/100");
+    expect(formatPriorityFact(null)).toBe("priority not yet available");
+  });
+
+  it("computeNeedsAttention lists every sub-95% fact with its value, lowest confidence first, skipping accepted and unscored ones", () => {
+    const tabs = contractBody({
+      products: [product({ lineItemId: "p-accepted", confidence: 0.99 }), product({ lineItemId: "p-flagged", confidence: 0.88, description: "SQL Serverless DBU" })],
+      clauses: [clause({ clauseId: "c-review", confidence: 0.71, clauseType: "Termination for convenience", normalizedValue: "Not permitted during the term." })],
+      obligations: [obligation({ obligationId: "o-no-confidence", confidence: null })],
+    }).tabs;
+
+    const attention = computeNeedsAttention(tabs);
+    expect(attention.map((a) => a.term)).toEqual(["Termination for convenience", "SQL Serverless DBU"]);
+    expect(attention[0].value).toBe("Not permitted during the term.");
+    expect(attention[0].confidencePct).toBe(71);
+    expect(attention[0].tag.variant).toBe("outline");
+    expect(attention[1].tag.variant).toBe("accent");
+    expect(attention.some((a) => a.key === "obligation-o-no-confidence")).toBe(false);
   });
 });
