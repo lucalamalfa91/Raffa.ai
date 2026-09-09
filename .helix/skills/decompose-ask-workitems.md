@@ -81,3 +81,53 @@ python scripts/cut_ask_slices.py
 - a task that mixes tenant `embedding` with the market index, persists
   rejected documents, adds attachments to the chat, implements legal
   advice, a paid market API client, or web / tool grounding
+
+## Lesson from the e13 wave — the barrier merge concatenates, it does not reconcile
+
+Two files broke on PR #67 because the "single writer per file, per phase"
+table above did not cover them. Both failures have the same shape: the phase
+barrier's `merge_auto` union merge **concatenates** two versions of a region
+instead of choosing between them. Extend the table with two more rules.
+
+**1. Creation is a write. A file one task creates must not be *required to
+exist* by another task of the same phase.**
+`backend/src/Contigo.Api/MarketEndpointExtensions.cs` was created by
+E13/F02/US01/T02 (`market-index`) and, in the same phase 3, by
+E13/F06/US01/T01 (`ask-engine`), which owns the `Program.cs` wiring and had to
+map the endpoint. F06/T01's own doc comment records the trap exactly: *"this
+endpoint's first writer — the market-ingestion task that owns
+`Contigo.Market`'s own persisted `market_record` store … has not landed in
+this wave"*. It had not landed because it was running **in the same phase**,
+in a sibling worktree F06/T01 could not see. Neither task was wrong on its
+own; the union merge then put both handlers back to back (duplicate `deal`,
+undefined `endpoints`/`detail`) and `dotnet build Contigo.slnx` failed.
+Reconciled by hand in `50b38a7`. When task A creates an endpoint/extension
+file and task B must call into it, put B **one phase later** than A, or make
+the call site itself A's deliverable — never let two tasks in one phase both
+bring the file into existence.
+
+**2. A prose file several tasks append to needs a single writer per phase.**
+`backend/README.md` is edited by nearly every backend task (the
+`readme-hygiene` skill requires it — ten of the e13 task commits touched it).
+Its `## Solution` section is not a list — it *describes the current state* —
+so each task rewrote it, and the union merge kept every rewrite. The damage
+compounded barrier by barrier: one copy of the "V2 scaffold" paragraph at the
+phase-1 barrier, two at the phase-3 barrier, and by `50b38a7`
+`Contigo.Documents.Contracts/`, `Contigo.Audit/` and `Contigo.AiGateway/` were
+each listed three times in the module tree, with three mutually contradicting
+descriptions of the same modules. Rebuilt by hand in `1ca7888`. The same risk
+applies to any index or catalog file (`INDEX.md`, an ADR index, an OpenAPI
+`paths` object).
+
+Rule to apply when decomposing:
+
+- Append-only regions (a new row, a new bullet, a new section at the end) may
+  have several writers per phase — union merge is safe there.
+- Any region that states *the current state* — a module tree, a "what exists
+  today" paragraph, an index — gets **one nominated writer per phase**, listed
+  in the table above like `Program.cs` already is. The other tasks of that
+  phase say nothing about it; the nominated writer describes the whole phase's
+  result.
+- Files to add to the table for a wave of this shape: every
+  `*EndpointExtensions.cs` any task creates, `backend/README.md` (the
+  `## Solution` section), `web/README.md`, and any `INDEX.md`.

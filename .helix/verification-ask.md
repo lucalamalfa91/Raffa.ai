@@ -39,10 +39,46 @@ Wave-spec validity (fail-closed, five DAG checks):
 <helix backend>\.venv\Scripts\helix.exe validate-wavespec reports\plan\slices\e13.yaml
 ```
 
-Passata 2 is **blocked** until `reports/plan/gates/ask-v2.hitl-ok` exists.
-Then, from **Helix Studio** (`contigo-process.yaml` → `execution-fanout`) or:
+On disk after Passata 2 (the `e13` wave, 2026-09-09):
+
+The wave **has run**. Helix run `5dec6283-bd05-4779-bda4-b91b9f0408b0`,
+`execution-fanout` on `contigo-process.yaml`, 2026-09-08 19:43:33 →
+2026-09-09 09:30:19 UTC, five phases, 20 live tasks, `maxParallel: 3`.
+
+- Studio finished green: `completed`, `failed_task_ids: []`,
+  `skipped_task_ids: []`, `helix.fanout.wave_finished` `completedCount: 20`.
+  **Green is the orchestration, not the product** — only **15 of the 20**
+  tasks produced a commit.
+- Five tasks finished with no commit: E13/F04/US01/T01, E13/F04/US01/T02,
+  E13/F03/US01/T02, E13/F06/US01/T02, E13/F11/US01/T01. Three hit
+  `CodingAgentTurnTimeout` (`HELIX_CODING_AGENT_TURN_DEADLINE_SECONDS=3600` in
+  `.env`); the other two closed with `HALTED:` because the phase-1 task they
+  depend on had produced nothing. Their `wave/*` branches point at a barrier
+  merge or an unrelated commit; part of the lost work survives as
+  `salvage/E13-*` tags.
+- Two phase-barrier union merges had to be repaired by hand on `integration`:
+  `50b38a7` (`MarketEndpointExtensions.cs`, created by two phase-3 tasks — it
+  broke the build on PR #67) and `1ca7888` (`backend/README.md`, three
+  interleaved copies of the `## Solution` section).
+- The five missing tasks are being finished **directly on `integration`**
+  (PR #67), not by a second slice: E13/F04/US01/T01 landed that way as
+  `1ca7888`, the other four are in progress and have no commit yet. `e13` is
+  still the only slice; there is no `e13b`.
+  `reports/plan/slice.current.yaml` is unchanged and still equals
+  `reports/plan/slices/e13.yaml`; `status: planned` in every slice file is the
+  cutter's fixed field, not a live run state.
+- Full post-mortem with the task → commit table and the run-index evidence:
+  `reports/execution/wave-close-e13.md`. Hook-written close record:
+  `reports/execution/wave-close.md`.
+
+The launch gate that actually ran was `hitl_previous` —
+`check_slice_prereqs.py` looks for `reports/plan/gates/<previous>.hitl-ok`,
+i.e. `e1011.hitl-ok` for `e13`; there is no `ask-v2.hitl-ok` check in that
+script. For reference, the launch was:
 
 ```
 python scripts/check_slice_prereqs.py --slice e13
 ./run.ps1 -Max -Slice e13 -o execution-fanout
 ```
+
+or **Helix Studio** (`contigo-process.yaml` → `execution-fanout`).
