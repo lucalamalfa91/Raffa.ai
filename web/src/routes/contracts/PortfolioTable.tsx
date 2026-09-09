@@ -1,106 +1,103 @@
-import { Link } from "react-router-dom";
-import type { AttentionRow } from "./portfolioAttention";
-import {
-  formatAnnualSpend,
-  formatAutoRenewal,
-  formatDateOnly,
-  formatSupplier,
-  getContractTypeLabel,
-  getPortfolioRiskTag,
-  getPortfolioStatusTag,
-} from "./portfolioTableFormatters";
+import { Link, useNavigate } from "react-router-dom";
+import { formatAnnualSpend, formatAutoRenewal, formatDateOnly, getContractTypeLabel, getPortfolioRiskTag, getPortfolioStatusTag } from "./portfolioTableFormatters";
+import type { PortfolioRow } from "./portfolioViewModel";
 
 export interface PortfolioTableProps {
-  rows: readonly AttentionRow[];
+  /** Already validated-only and sorted by notice deadline (`portfolioViewModel.ts#buildPortfolioRows`). */
+  rows: readonly PortfolioRow[];
+  /** `moreCols` (`app.jsx`): also show Start · Auto · Risk. */
+  moreColumns: boolean;
 }
 
 /**
- * Column-one text colour by severity tier, quoted verbatim from day1-demo.html's own
- * `issueFg: sev===3 ? 'var(--color-accent-700)' : sev===2 ? 'var(--color-text)' :
- * 'var(--color-neutral-500)'` -- ADR-019's "urgency in column one, not colour-only": the *label*
- * ("Cancellation notice due in 12 d", "Needs review", ...) is what actually carries the meaning; this
- * colour only reinforces it, it never stands alone.
+ * The V2 Portfolio table (screens-v2.md #6; `contigo-v2/markup.html` "PORTFOLIO" block): Supplier ·
+ * Contract · Annual spend · Ends · Give notice by (+ "· N d") [· Start · Auto · Risk when "More
+ * columns" is on] · Status, `font-size:13px; font-variant-numeric:tabular-nums; table-layout:fixed;
+ * min-width:760px`, a 3px left bar on the supplier cell and an accent-100 row tint for the rows whose
+ * notice deadline falls within 45 days (`c.rowBg` / `c.bar` / `c.cancelFg` / `c.cancelW`), and
+ * "Rows open Contract 360" (`c.open`).
+ *
+ * Every row is a real `<Link>` in its Contract cell (the keyboard-/screen-reader-operable control,
+ * ADR-019 accessibility baseline); the row's own click is the prototype's `cg-row` mouse convenience
+ * layered on top of it, never the only way in. Supplier is the wire's own `supplierName` (R-SUP-04),
+ * an honest "—" when no supplier is linked; Contract shows the type label -- `Contract` has no
+ * title field, the same proxy every other screen uses for this gap.
  */
-function issueColor(severity: AttentionRow["severity"]): string {
-  if (severity === 3) return "var(--color-accent-700)";
-  if (severity === 2) return "var(--color-text)";
-  return "var(--color-neutral-500)";
-}
+export default function PortfolioTable({ rows, moreColumns }: PortfolioTableProps) {
+  const navigate = useNavigate();
 
-/**
- * The issue cell's weight/size/line-height, quoted verbatim from day1-demo.html's own compiled
- * template -- `<sc-raw-td style="border-left:3px solid {{ c.bar }};padding-left:12px;
- * font-weight:600;color:{{ c.issueFg }};font-size:12px;line-height:1.3">{{ c.issue }}` -- these three
- * are *static* in that template (only `color` is a `{{ }}` binding), i.e. every row gets weight 600 /
- * 12px / 1.3 regardless of severity; only the colour varies (task E11/F05/US01/T01, gap G-PORT).
- */
-const ISSUE_TEXT_STYLE = { fontWeight: 600, fontSize: "12px", lineHeight: 1.3 } as const;
-
-/**
- * AC-3 "Table sorted by severity -> deadline; critical rows tinted + red bar." `rows` is expected
- * already sorted (`portfolioAttention.ts#compareBySeverityThenDeadline`) and already filtered
- * (`index.tsx`) -- this component only renders. Columns are quoted verbatim from screens.md #4:
- * "Attention · Supplier · Contract · Annual spend · Start · End · Renewal · Cancel by · Auto ·
- * Status" -- ten columns, no separate Risk column (risk surfaces as attention-column text/tag
- * instead, the same way the compiled prototype's own row view-model folds it in rather than giving it
- * a column of its own).
- */
-export default function PortfolioTable({ rows }: PortfolioTableProps) {
   return (
-    // screens.md #4: "Table (fixed widths, min 1000px, scrolls)" -- the wrapper, not the <table>
-    // itself, owns the horizontal scrollbar so .table's own border/hover-tint rules stay unchanged.
     <div className="portfolio-table-wrapper">
       <table className="table portfolio-table">
         <thead>
           <tr>
-            <th scope="col">Attention</th>
-            <th scope="col">Supplier</th>
+            <th scope="col" className="portfolio-col-supplier">
+              Supplier
+            </th>
             <th scope="col">Contract</th>
-            <th scope="col" className="portfolio-table-numeric">
+            <th scope="col" className="portfolio-table-numeric portfolio-col-spend">
               Annual spend
             </th>
-            <th scope="col">Start</th>
-            <th scope="col">End</th>
-            <th scope="col">Renewal</th>
-            <th scope="col">Cancel by</th>
-            <th scope="col">Auto</th>
-            <th scope="col">Status</th>
+            <th scope="col" className="portfolio-col-ends">
+              Ends
+            </th>
+            <th scope="col" className="portfolio-col-notice">
+              Give notice by
+            </th>
+            {moreColumns && (
+              <>
+                <th scope="col" className="portfolio-col-start">
+                  Start
+                </th>
+                <th scope="col" className="portfolio-col-auto">
+                  Auto
+                </th>
+                <th scope="col" className="portfolio-col-risk">
+                  Risk
+                </th>
+              </>
+            )}
+            <th scope="col" className="portfolio-col-status">
+              Status
+            </th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => {
-            const { item } = row;
+          {rows.map(({ item, cancelDays, isUrgent }) => {
             const statusTag = getPortfolioStatusTag(item.status);
             const riskTag = getPortfolioRiskTag(item.risk);
-            const supplier = formatSupplier(item.supplierId);
-            // AC-3 "critical rows tinted + red bar" is exactly severity 3 (the shared .row-critical
-            // class, ADR-019 component catalogue); severity 2 gets a lighter, screen-scoped
-            // acknowledgement (.row-attention, contracts.css) rather than the full accent treatment --
-            // both quoted verbatim from day1-demo.html's own `rowBg`/`bar` fields (sev===3 -> accent
-            // tint + accent bar; sev===2 -> no tint, a neutral bar only).
-            const rowClassName = row.severity === 3 ? "row-critical" : row.severity === 2 ? "row-attention" : undefined;
+            const contractHref = `/contracts/${item.contractId}`;
 
             return (
-              <tr key={item.contractId} className={rowClassName}>
-                <td>
-                  <div className="portfolio-attention-cell">
-                    <span style={{ ...ISSUE_TEXT_STYLE, color: issueColor(row.severity) }}>{row.issue}</span>
-                    {row.isHighRisk && <span className={`tag tag-${riskTag.variant}`}>{riskTag.label}</span>}
-                  </div>
+              <tr
+                key={item.contractId}
+                className={`portfolio-row${isUrgent ? " row-critical" : ""}`}
+                onClick={(event) => {
+                  // The Contract cell's own <Link> handles its click natively; everywhere else on
+                  // the row, follow it (markup.html's `cg-row` row click).
+                  if ((event.target as HTMLElement).closest("a") !== null) return;
+                  navigate(contractHref);
+                }}
+              >
+                <td className="portfolio-cell-supplier">{item.supplierName ?? "—"}</td>
+                <td className="portfolio-cell-contract">
+                  <Link to={contractHref}>{getContractTypeLabel(item.type)}</Link>
                 </td>
-                <td title={supplier.title}>{supplier.label}</td>
-                <td>
-                  <Link to={`/contracts/${item.contractId}`}>{getContractTypeLabel(item.type)}</Link>
-                </td>
-                <td className="portfolio-table-numeric">{formatAnnualSpend(item.annualSpend)}</td>
-                <td>{formatDateOnly(item.startDate)}</td>
+                <td className="portfolio-table-numeric portfolio-cell-spend">{formatAnnualSpend(item.annualSpend)}</td>
                 <td>{formatDateOnly(item.endDate)}</td>
-                <td>{formatDateOnly(item.renewalDate)}</td>
-                <td className={row.isDeadlineSoon ? "deadline-critical" : undefined}>
+                <td className={isUrgent ? "portfolio-cell-notice deadline-critical" : "portfolio-cell-notice"}>
                   {formatDateOnly(item.cancellationDeadline)}
-                  {row.cancelDays !== null && <div className="micro-meta">{row.cancelDays} d</div>}
+                  {cancelDays !== null && <span className="portfolio-notice-days"> · {cancelDays} d</span>}
                 </td>
-                <td>{formatAutoRenewal(item.autoRenewal)}</td>
+                {moreColumns && (
+                  <>
+                    <td className="portfolio-cell-start">{formatDateOnly(item.startDate)}</td>
+                    <td>{formatAutoRenewal(item.autoRenewal)}</td>
+                    <td>
+                      <span className={`tag tag-${riskTag.variant}`}>{riskTag.label}</span>
+                    </td>
+                  </>
+                )}
                 <td>
                   <span className={`tag tag-${statusTag.variant}`}>{statusTag.label}</span>
                 </td>

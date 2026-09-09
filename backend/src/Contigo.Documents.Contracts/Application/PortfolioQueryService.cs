@@ -122,6 +122,7 @@ public sealed class PortfolioQueryService(
             c.SupplierId?.Value,
             c.Type,
             c.AnnualSpend,
+            c.Currency,
             c.StartDate,
             c.EndDate,
             c.AutoRenewal ? c.EndDate : null,

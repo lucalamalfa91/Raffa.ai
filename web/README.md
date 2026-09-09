@@ -94,14 +94,14 @@ own rail destination. Pixel/behaviour reference: `inputs/design/prototypes/Conti
 | `/ask` | Ask Contigo, V2 rebuild: off state below 1 validated contract (fixed headline + doc-count-dependent reason + one CTA to `/documents`); new chat (hello line, scope line naming the validated count, two capability-sourced suggestion chips, optional `?scope=<contractId>`); conversation view rendering the phase-2 reply contract (markdown, numbered citation cards, actions, follow-ups) via `ReplyBody`. Calls the real `GET/POST /api/conversations`, `POST /api/conversations/{id}/messages`, `GET /api/capabilities`, `GET /api/market/records/{id}`. See "Ask Contigo" below. | E07/F04/US01/T01; V2 rebuild E13/F09/US01/T04 |
 | `/ask/:conversationId` | Same `AskRoute` as `/ask`, resuming: `useConversation` loads the conversation (`GET /api/conversations/{id}`) and renders every past turn, oldest first, with citation cards and actions still clickable; a named "not found" state for an unknown/foreign/another-user's id. | E13/F09/US01/T01 (route only); resume wired by E13/F09/US01/T04 |
 | `/documents` | V2 rebuild (ADR-024 amendment to ADR-020 screen 3): onboarding empty state ("First your contracts. Then your questions.") -> a server-backed list (`GET /api/documents`, survives a reload) with a **Needs your attention** (default) / **All documents · N** filter, multi-file drop (up to 20 files, <=3 uploads in flight, one row per file from the moment it is picked), real per-file stage text polled every 2s, a **Not added** card for a rejected file (422/415/oversized, session-only, never counted), Admin-only Delete, and Review as a *state* of this same route (`?review=<id>`, reusing `routes/contracts/review/*` as-is). Calls the real `GET /api/documents`, `GET /api/documents/{id}/preview`, `POST /api/documents`, `POST /api/documents/{id}/reprocess`, `DELETE /api/documents/{id}`. See "Documents" below. | E06/F05/US01/T01, E06/F05/US02/T01; V2 rebuild E13/F09/US01/T03 |
-| `/contracts` | Portfolio: filter chips + attention strip + a table sorted by severity then deadline (critical rows tinted + a red bar), plus loading/empty/error/no-match-for-filter states. Calls the real `GET /api/contracts`. See "Portfolio" below. | E07/F01/US01/T01 |
-| `/contracts/:id` | Contract 360: header + 6-cell fact row + 10 tabs (Overview's recommendation card + drivers + "Needs your attention" + "Top risks", then Commercials/Products/Clauses/Obligations/Risks/Documents/Benchmark/Renewal/Activity through one shared Term/Value/Source/Confidence table), plus loading/not-found/error states. `?clause=<id>`/`?page=<n>` (an Ask citation landing) opens straight on Clauses with that clause's original wording highlighted; `state.from` drives the header's back link; header offers **Ask about it** -> `/ask?scope=<id>`. Calls the real `GET /api/contracts/{id}`, `GET /api/renewals`, `GET /api/renewals/{contractId}/priority`. See "Contract 360" below. | E07/F02/US01/T01; citation landing by E13/F10/US01/T01 |
+| `/contracts` | Portfolio, V2: header ("Portfolio" + "N validated contracts · CHF 4.2M annual · K notice deadlines within 45 days", or "Lights up from validated contracts"), one table sorted by notice deadline (Supplier · Contract · Annual spend · Ends · Give notice by · Status; **More columns** adds Start · Auto · Risk; rows inside the 45-day window tinted + accent bar; rows open Contract 360), and the reroute state ("Nothing to triage yet" → Upload a contract) while nothing is validated. Calls the real `GET /api/contracts` (now carrying `currency`). See "Portfolio" below. | E07/F01/US01/T01; V2 design alignment (Sept 2026) |
+| `/contracts/:id` | Contract 360, V2 **no tabs**: origin back link ("← Ask Contigo / Documents / Portfolio / Renewals / Savings", else "← Back"), supplier · title · "{type} · {spend} / year · N documents · {status}", **Ask about it** → `/ask?scope=<id>`; the **answers band** (Where you can save · When you must move · What to do, with Start negotiation / Assign to me or the negotiation tracker once acted); **Why — the clauses behind it** (clause rows; click → the original wording highlighted in a serif evidence card; `?clause=<id>`/`?page=<n>` pre-select it); **Details ▾** (key terms, documents, facts still to decide, priority score, Products/Obligations/Risks). Calls the real `GET /api/contracts/{id}`, `GET /api/renewals`, `GET /api/renewals/{contractId}/priority`, `POST /api/renewals/{id}/action`. See "Contract 360" below. | E07/F02/US01/T01; citation landing E13/F10/US01/T01; V2 layout (Sept 2026) |
 | `/contracts/:id/review` | Review / correction: 4-column field list (critical marker, extracted value + real source line, real per-field confidence tag from the extraction evidence, Accept/Correct) + right-hand evidence pane (file · page header, the quoted passage with the span highlighted, model + confidence, correction form, real correction-history trail) + gated "Mark as validated" that really signs the document off. Calls the real `GET /api/contracts/{id}`, `GET /api/contracts/{id}/corrections`, `GET /api/contracts/{id}/evidence`, `PATCH /api/contracts/{id}`, `POST /api/documents/{id}/validate`. Shares its whole lifecycle with the Documents review state through `routes/contracts/review/useReviewSession.ts`. See "Review / correction" below. | E07/F03/US01/T01 |
-| `/renewals` | Renewal pipeline: threshold strip (0-30 ... 270-365 d, click = filter) + priority table (Score/Supplier/Contract/Annual spend/Renews in/Cancel by/Status) + insight card (facts + recommended action + rationale) with three actions (Start negotiation / Assign to me / Snooze) -> confirmation + Contract 360 + Savings links, plus loading/error/empty/no-window states. Calls the real `GET /api/renewals`, `GET /api/renewals/{contractId}/priority`, `POST /api/renewals/{id}/action`. See "Renewal pipeline" below. | E08/F01/US01/T01 |
-| `/quotes`, `/quotes/:id` | Quote check: this task's own upload form (no id yet) -> 4-step stepper Extract (line table + unmatched-SKU manual mapping + recalculate) -> Assessment (4 numbers, line-level P25/P50/P75 + confidence, provenance card; blocked until every line resolves) -> Target (price ladder, editable target/walk-away) -> Negotiation (outcome capture -> recorded outcome). Calls the real `POST /api/quotes`, `POST /api/quotes/{id}/assessment/recalculate`, `POST /api/negotiations/outcomes`. See "Quote check" below. | E08/F03/US01/T01 |
-| `/savings` | Savings (moved from `/`, not a rail item in V2 -- reached from actions, Renewals and Contract 360): 6 KPI cells (Annual spend analyzed · Savings identified · Savings realized · Savings in progress · Contracts analyzed · Upcoming renewals) + opportunities table (Opportunity · Type · Current spend · Estimated savings · Confidence · Owner · Status · Realized), rows opening Contract 360 › Benchmark or Quote check; a benchmark-provider-unreachable KPI refresh degrades to the last-known numbers, stale-labelled, rather than blocking the screen. Calls the real `GET /api/savings/kpis`, `GET /api/savings`. See "Savings" below. | E08/F02/US01/T01; moved by E13/F09/US01/T01 |
-| `/review` | Redirects to `/documents?filter=attention` -- Review is a *state* of Documents in V2, not its own rail destination or screen. `src/routes/review/` (the old rail-landing component) is no longer routed; it is unrouted/orphaned pending a cleanup task, not deleted (outside this task's own file scope). See "Review queue" below. | E13/F09/US01/T01 |
-| `/workspace/members` | Members & roles: Member/Role/Status/Last active table + invite pane (email, Admin vs Procurement radios, Send). Calls the real `POST /api/workspaces/{tenantId}/invites`. Non-admin visits stay on the shell's request-access gate. See "Members & roles" below. | E06/F04/US01/T01 |
+| `/renewals` | Renewals, V2: header ("Renewals" + "N contracts with validated dates · sorted by priority"), one list sorted by score (Score · Supplier · contract · Renews in · Notice in · Status) and the selected row's **Why it is here** pane (recommended action + rationale, Start negotiation / Assign to me, "See the facts behind this →"), plus loading/error states and the reroute "No renewal dates yet" while nothing is validated. Calls the real `GET /api/renewals`, `GET /api/renewals/{contractId}/priority`, `POST /api/renewals/{id}/action`. See "Renewals" below. | E08/F01/US01/T01; V2 design alignment (Sept 2026) |
+| `/quotes`, `/quotes/:id` | Quote check, V2: constant header ("Optional · new purchase" · intro sentence); landing = the dashed drop card (**Upload a quote** + "or use the sample: Databricks proposal Q-88213", optional supplier/currency/geography/date under a disclosure); loaded = the Supplier quote · Market range · Assessment band, the lines table (Line · Quoted · P50 · Position · Benchmark) and "Target and negotiation levers are one step further — shown only if you want them." revealing Target, then Negotiation (outcome capture); unmapped SKUs show the mapping block instead. Calls the real `POST /api/quotes`, `POST /api/quotes/{id}/assessment/recalculate`, `POST /api/negotiations/outcomes`. See "Quote check" below. | E08/F03/US01/T01; V2 design alignment (Sept 2026) |
+| `/savings` | Savings, V2 (not a rail item -- reached from Ask actions, Renewals and Contract 360): header + summary, three KPI cells (Contracts analyzed · Upcoming renewals · Savings identified, each with a meta line), the opportunities table (Supplier · Action · Estimate · Status; rows open Contract 360), a stale-labelled KPI degrade when the benchmark provider is unreachable, and the reroute "No savings opportunities yet" → Renewals. Calls the real `GET /api/savings/kpis`, `GET /api/savings`, plus `GET /api/contracts` for supplier names. See "Savings" below. | E08/F02/US01/T01; moved by E13/F09/US01/T01; V2 design alignment (Sept 2026) |
+| `/review` | Redirects to `/documents?filter=attention` -- Review is a *state* of Documents in V2, not its own rail destination or screen. The old `src/routes/review/` rail landing (V1 review queue) has been deleted. | E13/F09/US01/T01 |
+| `/workspace/members` | Workspace & members, V2: "Setup" header ("{workspace} · tenant {id}"), the "invite the team once the first contract is validated" tip while nothing is validated, the Member/Role/Status table and the **Invite a colleague** pane (Work email, Procurement / Workspace Admin radios with D8 permission summaries, Send invitation, "Invitation sent."). Calls the real `POST /api/workspaces/{tenantId}/invites`. Non-admin visits stay on the shell's request-access gate. See "Workspace & members" below. | E06/F04/US01/T01; V2 design alignment (Sept 2026) |
 
 ### Layout -- full-bleed, matching the prototype's own canvas (ADR-018/019/020, task E06/F06/US01/T01)
 
@@ -457,148 +457,79 @@ never the other way around.
 shell, navigation, and the role guard" above for the full gap and its own
 named follow-up.
 
-### Portfolio (ADR-020 screen 4, task E07/F01/US01/T01, us-01-portfolio-list-filters)
+### Portfolio (ADR-024 V2, `contigo-v2/screens-v2.md` #6; originally ADR-020 screen 4, task E07/F01/US01/T01)
 
-`src/routes/contracts/` implements screen 4: AC-1 filter chips, AC-2 attention strip, AC-3
-severity/deadline sort with critical-row tinting, AC-4 loading/empty/error/no-match states. This is
-the first web epic to build a screen against a backend route from E02-E05 that `typescript-client-regen`
-deliberately left out of `openapi/contigo-api.v1.json` -- see "API client" below for what this task
-added to the contract.
+`src/routes/contracts/` is the V2 Portfolio: one list of validated contracts sorted by the soonest
+notice deadline, the header summary the prototype's `pfSummary` builds, and the R-WEB-02 reroute
+state while nothing is validated. The Day-1 filter chips and attention strip are gone with V2.
 
-- **Fetch-once, filter client-side** (`index.tsx`'s own header comment has the full reasoning): the
-  screen calls `GET /api/contracts` exactly once per mount (plus once per manual Retry), for the whole
-  first page (`PortfolioPageRequest.MaxPageSize` = 100 rows), then computes every row's
-  attention/severity and applies both the seven AC-1 chips and the AC-2 attention-strip toggle entirely
-  in memory (`portfolioAttention.ts`, `portfolioFilterState.ts`) -- mirroring day1-demo.html's own
-  `allContracts.filter(...)` architecture. The attention-strip counts must reflect the whole portfolio
-  regardless of which filters are active, and the severity computation (deadline-within-45-days,
-  needs-review, ...) has no server-side query-parameter equivalent at all, so a fetch-once/filter-local
-  design avoids seven independent round trips for no accuracy gain. `apiClient.getPortfolio` still
-  accepts the endpoint's full filter/paging surface for a future task to push filtering server-side once
-  portfolios routinely exceed one page.
-- **AC-1, filter chips** (`PortfolioFilters.tsx`) -- Supplier, Category, Renewal period, Spend, Status,
-  Risk, Auto-renewal, in that order (day1-demo.html's own `filters` array). Two are honest placeholders:
-  **Category** is disabled (`PortfolioFilter.cs`'s own doc comment: no Category concept exists anywhere
-  in the schema yet -- Suppliers/Products is still an empty scaffold); **Supplier** filters by the raw
-  id `GET /api/contracts` itself returns, entered as free text, because no supplier-name-resolution
-  endpoint exists anywhere in this codebase (same gap `documents/documentStore.ts` already names for the
-  Documents table).
-- **AC-2, attention strip** (`AttentionStrip.tsx`) -- "Deadlines < 45 d", "Need review",
-  "Failed / processing", "High risk", quoted verbatim from day1-demo.html's own `attDef` array. Each
-  cell's count is always computed from the whole portfolio; clicking one narrows the table to that
-  bucket (click again to clear) via the exact same `AttentionRow` predicates the seven chips use.
-- **AC-3, sort + tint** (`portfolioAttention.ts`, `PortfolioTable.tsx`) -- severity (0-3) then soonest
-  cancellation deadline; severity 3 gets the shared `.row-critical` tint + red bar (ADR-019 component
-  catalogue), severity 2 gets a lighter, screen-scoped neutral bar (`.row-attention`, `contracts.css`) --
-  both quoted from day1-demo.html's own per-row `rowBg`/`bar` fields. Column one (`Attention`) always
-  carries a text label (ADR-019 "urgency in column one, not colour-only"), never a bare colour. Two
-  fields the compiled prototype's own mock data has but `GET /api/contracts` does not are adapted, not
-  fabricated: the prototype's `status` is a closed `'Failed' | 'Processing' | 'Needs review' | ...`
-  enum, while the real `Contract.Status` is free text (bootstrap default is the literal string
-  `processing`), so this module matches case-insensitively and treats "contains 'review'" as the
-  needs-review signal; and the domain's fourth risk tier, `RiskSeverity.Critical` (ADR-019 only defines
-  three), folds into the same "High risk" bucket/tag as `High`.
-- **AC-4, states** (`index.tsx`) -- loading (a `.skeleton`-bar placeholder), empty (zero contracts at
-  all -> a "No contracts yet" CTA linking to `/documents`), error (any non-2xx, with a 503-specific
-  plain-language message + Retry), no-match-for-filter (contracts exist but none pass the current
-  filters -> its own "Clear filters" CTA, separate from the filter panel's own always-present one).
-- **No currency anywhere**: `GET /api/contracts` (`PortfolioListItem`) carries no currency code --
-  `PortfolioEndpointExtensions.GetPortfolioAsync`'s own response projection never selects
-  `Contract.Currency` -- so "Annual spend" renders a grouped plain number, never a fabricated symbol.
-  "Contract" shows the contract's `Type` (Msa/OrderForm/...), the closest identifying field the schema
-  currently records; `Contract` itself has no title/name column yet.
+- **Fetch once** (`index.tsx`): `GET /api/contracts` for the whole first page
+  (`PortfolioPageRequest.MaxPageSize` = 100), then everything is derived in memory
+  (`portfolioViewModel.ts`): `buildPortfolioRows` keeps only validated contracts (the shared
+  `contractStatus.ts#isValidatedContractStatus` predicate the rail's `kbReady` also uses -- the two
+  can never disagree), sorts by days-to-notice ascending (nulls last, then end date, then id) and
+  flags rows inside the locked 45-day window (`styles/semantics.ts#isDeadlineCritical`);
+  `buildPortfolioSummary`/`formatPortfolioSummary` produce "N validated contracts · CHF 4.2M annual
+  · K notice deadlines within 45 days", grouping spend **per currency** (`GET /api/contracts` now
+  returns `currency`, added to `PortfolioListItem`/the OpenAPI document for this screen) rather than
+  summing across currencies.
+- **Table** (`PortfolioTable.tsx`, `contracts.css`) -- Supplier · Contract · Annual spend · Ends ·
+  Give notice by (+ "· N d") · Status, 13px tabular figures; **More columns** (`aria-pressed`) adds
+  Start · Auto · Risk. A row inside the 45-day window carries the shared `.row-critical` tint + inset
+  accent bar and the notice cell turns accent-700 -- text carries the meaning, colour only adds
+  emphasis. The Contract cell is a real `<Link>` to Contract 360; the row's own click is the
+  prototype's mouse convenience on top. Supplier is the wire's resolved `supplierName` (R-SUP-04) or
+  an honest "—"; "Contract" still shows the type label (`Contract` has no title field yet).
+- **States** -- loading (`.portfolio-skeleton`), error (503-aware + Retry), and the reroute
+  `.screen-reroute` ("Nothing to triage yet · The portfolio lights up from validated contracts.
+  Upload one to start." → `/documents`) when nothing is validated yet. The header summary reads
+  "Lights up from validated contracts" in that state.
 
-### Contract 360 (ADR-020 screen 5, task E07/F02/US01/T01, us-01-contract-360)
+### Contract 360 (ADR-024 V2 "no tabs", `contigo-v2/screens-v2.md` #5; originally ADR-020 screen 5, task E07/F02/US01/T01; citation landing task E13/F10/US01/T01)
 
-`src/routes/contracts/contract360/` implements screen 5: AC-1 header (supplier kicker, type/status
-tags, doc count), AC-2 6-cell fact row (annual spend, TCV, start→end, renewal, cancellation
-deadline, risk + priority score), AC-3 Overview (recommendation card + drivers + "Needs your
-attention" + "Top risks"), AC-4 the remaining 9 tabs with facts/AI never mixed (ADR-019). This is
-the second web epic to build a screen against E02-E05 backend routes `typescript-client-regen`
-deliberately left out of `openapi/contigo-api.v1.json` -- see "API client" below for what this task
-added.
+`src/routes/contracts/contract360/` is the V2 Contract 360: one page -- header, answers band, "Why —
+the clauses behind it", then a "Details ▾" drawer. The Day-1 ten-tab strip is gone; every fact the
+tabs held is still on the page, inside the drawer.
 
-- **Fetch order, not fetch-once**: unlike Portfolio's single call, this screen fetches
-  `GET /api/contracts/{id}` first (`index.tsx`'s own header comment has the full reasoning) -- a
-  `404` there is a named "not found" state, distinct from a transport/5xx error, and short-circuits
-  before anything else runs. Once the contract is confirmed to exist, `GET /api/renewals` (the
-  tenant's whole auto-renewing pipeline) and `GET /api/renewals/{contractId}/priority` (this
-  contract's score breakdown) fetch together -- **both independently optional**: a non-auto-renewing
-  contract legitimately has no pipeline entry, and either failing degrades the Overview
-  recommendation / header priority fact to its own honest "not yet available" state rather than
-  failing the whole screen.
-- **AC-1/AC-2, header + fact row** (`Contract360Header.tsx`) -- quoted verbatim from
-  day1-demo.html's own header block. Two gaps already established for the identical problem on the
-  Portfolio screen are reused, not re-solved: `Contract` has no title field, so the h2 title reuses
-  the type-label proxy (`getContractTypeLabel`); `Contract.SupplierId` is a bare id, so the kicker
-  reuses `formatSupplier`'s short-id-plus-tooltip treatment. The prototype's "N-day notice" subtext
-  is dropped (no `CancellationNoticeDays` column exists anywhere yet) in favour of a real days-until
-  countdown; "N documents in family" becomes "N documents" (this endpoint returns one contract's own
-  linked documents, not the full `ParentContractId` amendment chain).
-- **AC-3, Overview tab** (`OverviewTab.tsx`, `contract360ViewModel.ts#buildRecommendation`) -- the
-  recommendation's `statement`/`rationale` are the Renewals module's own real, deterministic (not
-  LLM) `recommendedAction`/`explanation` text for whichever `GET /api/renewals` pipeline item
-  matches this contract's id (`Contigo.Renewals` is not reachable from `GET /api/contracts/{id}`
-  at all) -- never invented UI copy. A contract with no matching pipeline entry gets a named gap
-  ("No renewal recommendation for this contract"), not a fabricated one. The 3 driver numbers are
-  quoted from day1-demo.html's own `cur.cancelDays`/`cur.market`/`cur.potential` block: Cancellation
-  deadline is a real header fact shown regardless of whether a recommendation exists; Market
-  position/Potential savings are honestly "Not yet available" (need the R3 Benchmark/Savings
-  modules, `RenewalInsightRecommendations`'s own backend doc comment). "Needs your attention" and
-  "Top risks" adapt the cited prototype's own `keyTerms`/`topRisks` filter-and-slice rules to every
-  real per-field confidence this aggregate carries (Products/Clauses/Obligations; Risks gets its own
-  section instead of competing for the same 3 slots).
-- **AC-4, the other 9 tabs** (`FactTable.tsx`, `RenewalTab.tsx`) -- one shared Term/Value/Source/
-  Confidence template (ADR-020: "one template ... .table pattern") reused by Commercials, Products,
-  Clauses, Obligations, Risks, Documents, and Overview's own supplementary "Contract details" block
-  (the `Contract360Overview` fields -- effective date, governing law, version -- have no other tab
-  home in the whole 10-tab set, so they render here rather than being silently dropped). Benchmark
-  and Activity render the template's own empty state with a named reason (R3/R4), never a blank box.
-  Renewal adds the priority-score component table on top of its own facts half (`RenewalTab.tsx`) --
-  `PriorityScoreCalculator`'s five named components, each with its own real, computed explanation
-  string. "Why this score" switches this same screen's own tab to Renewal (no navigation); "Open in
-  renewals" is a real link to `/renewals`.
-- **Facts vs AI (ADR-019)**: kept apart at the type level, not just in markup --
-  `contract360ViewModel.ts#buildRecommendation` returns a `Recommendation` (statement/rationale/
-  drivers) that is never merged into the `FactRow[]` shape every tab-row builder returns; only
-  `OverviewTab.tsx` ever mounts the `.ai-recommendation` card, and every other tab renders through
-  the shared `FactTable`. `tests/routes/contracts/contract360/*.test.tsx` assert the separation both
-  ways: structurally (a `Recommendation` has no `source`/`confidencePct` keys) and in the rendered
-  DOM (the recommendation card contains no `<table>`; no fact table repeats the recommendation's own
-  text).
-- **Confidence is a 0-1 fraction on the wire** (`Contract360ProductBody.confidence` etc., e.g.
-  `0.92`), not the 0-100 percentage `styles/semantics.ts#getConfidenceTag` expects --
-  `contract360ViewModel.ts#toConfidencePercent` is the one conversion point every row builder uses.
-
-**Task E13/F10/US01/T01** (contract360-landing, ADR-024 "citation landing, scoped conversations";
-ADR-020 screen 5 amendment; us-01-contract360-landing) makes this screen the landing of every Ask
-citation, still inside today's tabbed shell (the no-tabs V2 answers-band layout is this feature's
-own P2 follow-up, R-WEB-06):
-
-- **`?clause=<clauseId>` / `?page=<n>`** (`contract360ViewModel.ts#resolveHighlightedClauseId`) open
-  straight on the Clauses tab; a `?clause=` naming a real clause on this contract wins outright, a
-  bare `?page=` highlights the first clause whose `sourcePage` matches -- the two never combine (an
-  unmatched `?clause=` does not fall back to `?page=` even when both are present, to avoid
-  highlighting a different clause than the one actually cited). The matched clause's own `rawText`
-  (its original wording, `sourceSpan` emphasised when present) renders unconditionally in a new
-  `ClauseHighlight.tsx` card directly below the unmodified Clauses list -- no row click required, and
-  it scrolls itself into view.
-- **`state.from`** (`contract360ViewModel.ts#resolveBackLink`) drives a "← Ask Contigo" back link
-  above the header when set to `"ask"` (ADR-020 screen 5 "Back label follows the origin"); the other
-  three named origins (Documents/Portfolio/Renewals) resolve too but nothing sends them yet -- only a
-  future Ask-route task (`web/src/routes/ask/**`, out of this task's own file scope) can set `"ask"`
-  for real, so this is proven by a router-state unit test today, not an end-to-end click from Ask.
-- **Ask about it** (`.btn-secondary`, header) links to `/ask?scope=<contractId>` -- a *new* chat
-  scoped to this contract. Live since task E13/F09/US01/T04: `AskRoute` reads `?scope=` (while no
-  conversation is open yet), passes `scopeContractId` to `POST /api/conversations`, and templates its
-  two suggestion chips with this contract's own supplier name (`GET /api/contracts/{id}` -- see that
-  task's own `askViewModel.ts#suggestionsFor` doc comment).
-- **Supplier name** (`contract360ViewModel.ts#resolveSupplierLabel`) -- the header kicker prefers the
-  contract's `supplierName` over the `formatSupplier` id-fragment fallback above. Since task
-  E13/F03/US01/T02 that is a real, typed field on `Contract360HeaderBody` (`ISupplierNameLookup`,
-  ADR-024), read directly off the generated type; it is still nullable, so a contract with no
-  supplier -- or a `supplierId` that no longer resolves for the tenant -- keeps falling back to the
-  id fragment rather than showing a fabricated name.
+- **Fetch order** (`index.tsx`): `GET /api/contracts/{id}` first (a `404` is the named "not found"
+  state), then `GET /api/renewals` (this contract's recommendation) and `GET /api/renewals/{id}/
+  priority` together, both independently optional -- either failing degrades its own answer to an
+  honest "not yet", never the screen.
+- **Header** (`Contract360Header.tsx`) -- the origin back link (`resolveBackLink`: Ask Contigo /
+  Documents / Portfolio / Renewals / Savings from `state.from`, else a plain "← Back" that walks
+  history), the supplier kicker (`resolveSupplierLabel`: the wire's `supplierName`, else the id
+  fragment), the type-label title, the meta line `formatHeaderMeta` ("{type} · {spend} / year · N
+  documents · {status}"), **Ask about it** (`/ask?scope=<id>`) and **Review extraction**.
+- **Answers band** (`AnswersBand.tsx`, `contract360ViewModel.ts#buildAnswers`) -- *Where you can
+  save* (the pipeline item's `potentialSavingsRange` and `marketPosition`/uplift lever, honestly
+  "Not yet available" until the Benchmark Service produces them), *When you must move* (the notice
+  deadline, accent-700 inside the 45-day window, "in **N days** — last day to give notice. Term ends
+  {end} and auto-renews for N months."), *What to do* (`buildRecommendation`: the Renewals module's
+  own deterministic `recommendedAction`/`explanation`, or the named gap "No renewal recommendation
+  for this contract"). The last cell carries **Start negotiation** / **Assign to me** -- the same real
+  `POST /api/renewals/{id}/action` the Renewals screen makes, owner = the signed-in `userLabel` --
+  or, once acted, the tracker: "{action} · owner {user}", "target … · close by …", the four-step
+  checklist (`buildNegotiationSteps`, ticks kept per contract in `negotiationStepsStore.ts`),
+  **Track it in Renewals →** and **Undo** (forgets the local mirror and re-posts NotStarted / "Open").
+  The recorded action is the same `renewalActionStore.ts` row the Renewals list, its pane and Savings
+  read, so all four agree.
+- **Why — the clauses behind it** (`WhyClauses.tsx`, `ClauseHighlight.tsx`) -- one native button
+  row per clause (type · normalised value · "p.N · §span" · risk tag · confidence tag); the selected
+  clause opens the evidence card: "{file} · page N · §span" over the original wording with the
+  normalised value `<mark>`ed inside it when it is a literal substring (`buildClauseEvidence`), else
+  the whole `rawText`. The citation landing `?clause=<clauseId>` / `?page=<n>`
+  (`resolveHighlightedClauseId`, R-EVD-02) pre-selects the cited clause with no click; an unmatched
+  `?clause=` never falls back to `?page=`.
+- **Details ▾** (`DetailsSection.tsx`) -- "All terms, documents and open facts ▾" / "Hide details":
+  key terms (`buildKeyTerms`, contract-level fields with no borrowed source/confidence), documents
+  (`buildDocumentRows`), "Facts you still need to decide" (`computeNeedsAttention`: every sub-95%
+  extracted fact, lowest first, with **Review all →**, else "None — every fact is above 95% or signed
+  off by you."), the explainable priority score (`buildPriorityComponentRows`, `formatPriorityFact`),
+  and the extracted Products / Obligations / Risks through the shared `FactTable.tsx`.
+- **Facts vs AI (ADR-019)**: the recommendation is a `Recommendation`, never a `FactRow`; the answers
+  band contains no table and no drawer table repeats the recommendation's text --
+  `tests/routes/contracts/contract360/*.test.tsx` assert both.
+- **Confidence is a 0-1 fraction on the wire**; `toConfidencePercent` is the one conversion point.
 
 ### Review / correction (ADR-020 screen 6, task E07/F03/US01/T01, us-01-field-review-correction)
 
@@ -606,7 +537,7 @@ own P2 follow-up, R-WEB-06):
 extracted value + source, confidence tag, decision), AC-2 confidence mapping, AC-3 evidence pane
 (correction form + version history), AC-4 gated "Mark as validated" with a visible reason. Reached
 from `contract360/Contract360Header.tsx`'s "Review extraction" button and
-`contract360/OverviewTab.tsx`'s "Needs your attention → Review all" link (both already wired by
+`contract360/DetailsSection.tsx`'s "Review all →" link (both already wired by
 task E07/F02/US01/T01 to this exact route).
 
 - **Field set is the backend's real correctable set, not the cited prototype's own mock fields**
@@ -723,244 +654,110 @@ per-user conversations.
   full header provenance; today only `/api/conversations*` actually reads it
   (`ConversationsEndpointExtensions.TryResolveUserId`).
 
-### Renewal pipeline (ADR-020 screen 8, task E08/F01/US01/T01, us-01-renewal-pipeline)
+### Renewals (ADR-024 V2, `contigo-v2/screens-v2.md` #7; originally ADR-020 screen 8, task E08/F01/US01/T01)
 
-`src/routes/renewals/` implements screen 8: AC-1 threshold strip, AC-2 priority table, AC-3 insight
-card + three actions with a real write + confirmation, AC-4 loading/error/empty/no-window states.
+`src/routes/renewals/` is the V2 Renewals screen: a header with the prototype's `rnSummary`, one list
+sorted by priority, the selected row's **Why it is here** pane, and the reroute state while nothing
+has validated dates. The Day-1 threshold strip, seven-column table, six-fact card and "Snooze" are
+gone with V2.
 
-- **Fetch order, gated on the whole score set**: like Contract 360, this screen calls `GET /api/renewals`
-  first (a non-2xx is the named "error (engine unavailable)" state) and only declares `"ready"` once
-  every row's own `GET /api/renewals/{contractId}/priority` score has *also* resolved (`Promise.all`) --
-  AC-2's "Score" column is a named, required column, not an optional extra, and there is no bulk
-  priority endpoint on the backend (it only ever answers for one contract at a time), so this is
-  genuinely N calls. A single row's own priority call failing degrades only that row's Score cell to
-  "-", never the whole screen.
-- **AC-1, threshold strip** (`ThresholdStrip.tsx`, `renewalPipelineViewModel.ts`) -- seven buckets, 0-30
-  through 270-365 days, quoted from day1-demo.html's own `winDef=[365,270,180,120,90,60,30]` window
-  list and rendered ascending to match this task's own AC-1 wording (the prototype's own array order is
-  descending, an implementation detail of its JS, not a locked visual spec). Reuses the exact same
-  `.attention-strip`/`.attention-cell` classes Portfolio's own `AttentionStrip.tsx` already established
-  (ADR-019 names "attention/threshold strip" as one shared catalogue entry); `.is-urgent` is gated on
-  both a non-zero count *and* the bucket's own upper bound being <=120 days (quoted from that
-  prototype's own `fg` rule for its window strip) -- unlike Portfolio's four buckets, a renewal due in
-  270-365 days is not inherently bad news.
-- **AC-2, priority table** (`RenewalTable.tsx`) -- Score / Supplier / Contract / Annual spend / Renews
-  in / Cancel by / Status, quoted verbatim from screens.md #8. Two honest, cited adaptations: `GET
-  /api/renewals` carries no contract name or type at all (unlike `GET /api/contracts`), so "Contract"
-  reuses the same short-id-plus-tooltip treatment `formatSupplier` already established for the
-  identical `supplierId` gap, applied to `contractId` instead, rather than adding a second whole-portfolio
-  fetch just to resolve one column; "Status" has no server read-back at all (`POST
-  /api/renewals/{id}/action` has no matching `GET`), so it shows this browser's own session-tracked
-  action text once set, "Open" otherwise (`renewalActionStore.ts`). Selecting a row for the insight card
-  is a native `<button>` in the Score cell (ADR-019: "every interactive control is native"), not a bare
-  `<tr onClick>`.
-- **AC-3, insight card + actions** (`InsightCard.tsx`) -- spec §9.3's fields (spend, cancellation
-  deadline, uplift, market position, potential savings, owner) plus the recommended action + rationale,
-  in one `.detail-pane` card (ADR-019's own "340-400px ... wraps below the list" component). Unlike
-  Contract 360's Overview tab (a *separate* card from every fact table), spec §9.3 and screens.md #8
-  both put facts and the recommendation in one card -- the backend's own `RenewalInsightCard` wire
-  shape already keeps the two apart as named, non-overlapping objects, so this component preserves that
-  same separation visually (plain facts, then a nested `.ai-recommendation` block) without needing a
-  second card. Uplift/market position/potential savings are honestly "Not yet available" (need the R3
-  Benchmark/Savings modules) -- never a fabricated figure.
-  - **The three actions call the real, durable `POST /api/renewals/{id}/action`** (`RenewalActionService
-    .SetActionAsync`, task E03/F03/US01/T02) -- not a client-side simulation. "Start negotiation" /
-    "Assign to me" / "Snooze to 90-day threshold" map to `RenewalActionStatus`/free-text `action`
-    quoted verbatim from day1-demo.html's own `rAct` object (`renewalPipelineViewModel.ts#getRenewalActionPlan`);
-    `owner` is always this screen's own signed-in `userLabel` (threaded from `WorkspaceShellApp.tsx`,
-    the same identity `RailNav.tsx` renders) -- there is no separate assignee picker in V1.
-  - **The confirmation panel is adapted, not copied, from the prototype.** day1-demo.html's own
-    confirmation text claims "A SavingsOpportunity was created and appears on the Savings screen" --
-    this app cannot honestly say that: `SavingsOpportunityService.CreateAsync` ("identify" a new
-    opportunity) exists on the backend but is not yet wired to any HTTP route (`POST /api/savings` does
-    not exist; `GET`/`PATCH /api/savings/{id}` both need an id this screen has no way to obtain). The
-    real, durable write here is the renewal action above; `renewalActionStore.ts`
-    (`sessionStorage`, the same interim pattern `workspaceStore.ts`/`documentStore.ts` already
-    establish for their own missing-endpoint gaps) records it as this browser's own tracked opportunity
-    for the council decision carried into this story ("Action creates an opportunity visible on Home",
-    its own literal wording at the time), and the confirmation links to both **Home** (`/`) and
-    **Contract 360** (`/contracts/:id`, AC-3's own named link) instead of overclaiming a backend entity
-    that was not actually created. Home (task E08/F02/US01/T01, see "Savings" below) landed and does
-    exactly this: `savingsViewModel.ts#buildOpportunityRows` imports `loadTrackedRenewalActions()` from
-    this module and merges its rows -- most-recently-acted first -- ahead of the real, persisted
-    opportunity list. **Known gap, task E13/F09/US01/T01 (out of that task's own file scope):** V2
-    moved this screen to `/savings` and made `/` redirect to `/ask` -- this confirmation panel's own
-    `<Link to="/">` (`InsightCard.tsx`) still targets the old path verbatim and now lands on Ask, not
-    Savings; likewise `../quotes/NegotiationStep.tsx`'s "See it on Home ->" link. Neither
-    `routes/renewals/**` nor `routes/quotes/**` is in that task's "Files to create or modify" -- a
-    follow-up task should repoint both links to `/savings`.
-- **AC-4, states** -- loading (`.renewal-skeleton`), error (503-aware, names the renewal engine
-  specifically per screens.md #8's own "error (engine unavailable)", with Retry), empty (zero renewals
-  at all -> "No renewals in your pipeline yet" + a link to `/contracts`), no-window (renewals exist but
-  none fall in the selected threshold bucket -> its own "Show all renewals" CTA, the same
-  named-empty-state-per-cause convention Portfolio's own no-match-for-filter state already uses).
+- **Fetch order, gated on the whole score set** (`index.tsx`): `GET /api/renewals` first (a non-2xx
+  is the named "Renewals unavailable" error with Retry), then every row's own
+  `GET /api/renewals/{contractId}/priority` together before declaring ready -- Score is the sort
+  key. One row's failure degrades only its score to "—" (it sorts last), never the screen.
+- **List** (`RenewalTable.tsx`, `renewalPipelineViewModel.ts#buildRenewalRows`) -- Score (heading
+  face, accent-700 from 80 up) · Supplier · contract · Renews in · Notice in (accent-700 inside the
+  45-day window) · Status, sorted by score descending (ties: sooner notice, then id). The selected row
+  carries the neutral-200 background + accent bar; selection is a native button in the Score cell,
+  the row click a convenience on top. Supplier is the wire's name or "Supplier not resolved";
+  `GET /api/renewals` carries no contract name, so the contract half is "Contract {short id}" with the
+  full id as tooltip. Status is "Open" until this browser acts, then the acted label from
+  `renewalActionStore.ts` (no server read-back exists yet).
+- **Why it is here** (`InsightCard.tsx`) -- "{supplier} — N days to notice", the contract line, the
+  accent "Recommended action" kicker, the Renewals module's own deterministic action + rationale,
+  **Start negotiation** (primary → InProgress / "In negotiation") and **Assign to me** (NotStarted /
+  "Assigned"), both the real `POST /api/renewals/{id}/action` with owner = the signed-in `userLabel`;
+  once acted, the bordered "{action} · owner … Open contract →" box. "See the facts behind this →"
+  opens Contract 360.
+- **States** -- loading, error, and the reroute "No renewal dates yet · Renewals are computed from
+  validated end dates and notice periods. Upload a contract to start." → `/documents`.
 
-### Quote check (ADR-020 screen 10, task E08/F03/US01/T01, us-01-quote-check)
+### Quote check (ADR-024 V2, `contigo-v2/screens-v2.md` #9; originally ADR-020 screen 10, task E08/F03/US01/T01)
 
-`src/routes/quotes/` implements screen 10: AC-1 the 4-step stepper (Extract -> Assessment -> Target
--> Negotiation), AC-2 Extract's line table + unmatched-SKU manual mapping + recalculate (assessment
-blocked until resolved), AC-3 Assessment's 4 numbers + line-level P25/P50/P75 table + provenance
-card, and Target's price ladder + editable target, AC-4 Negotiation's outcome form -> recorded
-outcome.
+`src/routes/quotes/` is the V2 Quote check: a constant header ("Optional · new purchase" · "Quote
+check" · "Drop a supplier proposal; …"), the landing drop card, and -- once a quote is loaded -- the
+three-cell band, the lines table and the "one step further" footer. The Day-1 four-step stepper is
+gone; the same real calls remain.
 
-- **Real backend, not the cited prototype's own fixture.** By the time this task started, backend
-  epic E05 (`Contigo.Quotes` module) had already implemented and wired `POST /api/quotes`,
-  `GET /api/quotes/{id}/assessment`, `POST /api/quotes/{id}/assessment/recalculate`, and
-  `POST /api/negotiations/outcomes` into `Program.cs` -- the parent story's own "E05 quote API
-  (assumed)" dependency turned out to already be real. `inputs/design/prototypes/day1-demo.html`'s
-  own Quote check screen is one hard-coded demo scenario (fixed `qlines`/`assess`/`qbench`/`levers`
-  array literals); this screen instead derives every number from the real endpoints above -- see
-  `src/routes/quotes/quoteCheckViewModel.ts`'s own header comment and "API client" below.
-- **No upload screen exists in the design** (screens.md #10 starts directly at "Extracted line
-  items"; ADR-018 names only the detail route `/quotes/:id`, no list/upload route) --
-  `src/routes/quotes/index.tsx` renders `UploadQuoteForm.tsx` itself whenever the route has no
-  `quoteId` yet (both the rail nav's own `/quotes` and a fresh `/quotes/:quoteId` visit before any
-  upload), then navigates to the real id `POST /api/quotes` returns. `UploadQuoteForm.tsx`'s own
-  "Use sample file" button mirrors `../documents/sampleDocument.ts`'s exact precedent (a small,
-  syntactically-minimal, content-free PDF -- this repo ships no real sample quote asset either).
-- **AC-2, Extract** (`ExtractStep.tsx`) -- the line table's Product/SKU/discount/annual-total columns
-  cannot all be sourced honestly: `QuotesEndpointExtensions.BuildAssessmentResponse` never serializes
-  `QuoteLine.Sku`/`Description`/`DiscountPercent` for a *matched* line (only `SkuMappingService
-  .GetUnmatchedLinesAsync`'s own small query returns those, for the still-unresolved lines only) --
-  a real, pre-existing backend gap this task's `contigo-web` file scope cannot close.
-  `quoteCheckViewModel.ts#mergeKnownLineDetails` keeps a running, session-local memory of every
-  sku/edition/description this screen has actually seen from a real response, so a line does not
-  lose its own real name the moment it resolves; an unmatched line still renders honestly as
-  `Line {n}` the first time it is seen (before any correction has ever been read back). The
-  manual-mapping control is a free-text "canonical SKU"/"product name" pair, not the cited
-  prototype's fixed 3-option `<select>`: `SkuMappingCorrection`'s real wire shape takes an arbitrary
-  caller-chosen canonical SKU and no endpoint exposes a catalog to pick from.
-- **AC-2's own gate** (`quoteCheckViewModel.ts#isAssessmentBlocked`) is exactly
-  `unmatchedLines.length > 0` -- `recalculateQuoteAssessment`'s own real, server-computed list, never
-  re-derived. Gated at the *content* level (`AssessmentStep.tsx`'s own "Assessment blocked" card +
-  "<- Back to extract"), never at the stepper-navigation level: every step is directly clickable
-  (day1-demo.html's own `qsteps[i].go` behaviour), matching AC-1's "stepper" literally.
-- **`recalculateQuoteAssessment`, not `getQuoteAssessment`, is this screen's own read call** -- see
-  `src/api/client.ts`'s own header comment on `recalculateQuoteAssessment` for why: called with an
-  empty `mappings` array as this screen's "read the current assessment + unmatched lines" call
-  (`SkuMappingService.RecalculateAsync`'s own doc comment names this a valid, side-effect-free "pure
-  refresh" -- there is no separate `GET` that also returns `unmatchedLines`).
-- **AC-3, Assessment** (`AssessmentStep.tsx`, `quoteCheckViewModel.ts#aggregateQuote`) -- every
-  quote-level number (the 4-number grid, the Target ladder, the outcome form's default "Original
-  quote total") is deterministically summed from each line's own real assessment (Appendix C rule
-  6), never a second, independent calculation. **No quote-level "overall position" rollup**:
-  `Contigo.Quotes.Application.Assessment.QuoteMarketAssessment`'s own doc comment explicitly declines
-  to invent one ("no ADR/spec names a deterministic way to collapse several lines' positions into
-  one"); `summarizePositions` renders a real *tally* ("2 above market · 1 in line") instead.
-- **AC-3, Target** (`TargetStep.tsx`) -- two honest departures from the cited prototype: no backend
-  endpoint computes a distinct "opening target" or "walk-away/escalation" figure
-  (`LineTargetSaving` gives exactly one recommended range), so "Your target"/"Walk-away" are real,
-  user-editable inputs pre-filled from the real aggregate as a starting point, not a third computed
-  tier; the ladder is drawn proportionally from whatever real figures `aggregateQuote` produced, not
-  the prototype's own fixed pixel positions (those were specific to its one hard-coded demo quote).
-- **AC-4, Negotiation levers** (`NegotiationStep.tsx`) -- a named, honest gap: `Contigo.Quotes
-  .Application.Strategy.NegotiationStrategyService` (negotiation-lever recommendations + evidence,
-  spec §12.1) is fully implemented and unit-tested, but `backend/src/Contigo.Api/Program.cs` never
-  maps an HTTP endpoint for it (checked: no `MapGet`/`MapPost` anywhere in `backend/src/Contigo.Api`
-  references `NegotiationStrategyService`/`NegotiationStrategyCalculator`/`QuoteNegotiationStrategy`)
-  -- a backend task would need to add one (e.g. `GET /api/quotes/{id}/strategy`) before this screen
-  can show AI-recommended levers/evidence for real. The outcome-capture control is still real: a
-  required multi-select of the same 7-member `NegotiationLeverType` vocabulary
-  `POST /api/negotiations/outcomes` itself validates `leversUsed` against.
-- **AC-4, outcome capture** -- `realizedSaving`/`discountPercent` are always the server's own
-  response (`NegotiationOutcomeCalculator.Compute`), never the client-side `previewOutcome` figure
-  shown before submit; the two happen to agree only because the arithmetic is mirrored verbatim
-  (spec §12.2's own worked example: 520,000 -> 435,000 = 85,000 saving, ~16.3%).
-- **"...-> Home Savings Realized updates"** -- there is no `GET` (list or single) anywhere on
-  `POST /api/negotiations/outcomes`, and this screen never supplies a `savingsOpportunityId` (no
-  Savings UI exists yet to pick one from), so `NegotiationOutcomePropagationService`'s own
-  cross-module write never runs for an outcome this screen records. `quoteOutcomeStore.ts` is the
-  same kind of interim `../documents/documentStore.ts`/`../signin/workspaceStore.ts` already
-  establish: a real, `sessionStorage`-scoped record of every outcome this browser actually captured.
-  Savings (task E08/F02/US01/T01, see "Savings" below) has since landed, but its own "Savings
-  realized" KPI cell reads the real `GET /api/savings/kpis` response directly, not this store --
-  `quoteOutcomeStore.ts` stays this screen's own unconsumed local record, the propagation gap named
-  above being the real, pre-existing reason no code path connects the two yet. The recorded-outcome
-  panel's own "See it on Home ->" link (`<Link to="/">`, `NegotiationStep.tsx`) is real, but --
-  **known gap, task E13/F09/US01/T01, out of that task's own file scope** -- `/` now redirects to
-  `/ask` (V2 "No Home item"), not Savings; `routes/quotes/**` is not in that task's file scope to
-  repoint it to `/savings`.
+- **Real backend, not the prototype's fixture** -- `POST /api/quotes`,
+  `POST /api/quotes/{id}/assessment/recalculate` (called with an empty `mappings` array as the
+  documented "pure refresh" read; it is the only call that also returns `unmatchedLines`) and
+  `POST /api/negotiations/outcomes`. Two named gaps: no `GET /api/quotes/{id}` to re-read upload
+  metadata after this session (the header meta line falls back to the quote id), and no HTTP endpoint
+  for `NegotiationStrategyService`'s lever recommendations (`NegotiationStep.tsx`).
+- **Landing** (`UploadQuoteForm.tsx`, `sampleQuote.ts`) -- the dashed card: **Upload a quote**
+  (file picker; drag-and-drop on the card) uploads straight away, "or use the sample: Databricks
+  proposal Q-88213" sends a real PDF built with `documents/sampleDocument.ts#buildSamplePdf` (three
+  priced lines) with its own supplier/currency/geography -- whatever the real pipeline extracts is
+  the honest answer. Supplier · currency · geography · purchase date stay reachable under a compact
+  disclosure (the Benchmark Service cannot match without them).
+- **Loaded** (`quoteCheckViewModel.ts`, `QuoteLinesTable.tsx`) -- `buildAssessmentBand`: Supplier
+  quote (`sum(unitPrice × quantity)`) · Market range (`sum(P25..P75 × quantity)`) · Assessment
+  (`summarizePositions`, a real tally such as "2 above market · 1 in line" -- the backend deliberately
+  has no quote-level rollup); `buildQuoteLineRows`: Line · Quoted (`formatUnitPrice`, decimals kept)
+  · P50 · Position (tag + "+20% vs P50", `formatVersusP50`) · Benchmark (confidence tag "High ·
+  n=96"). Zero extracted lines renders an honest note, never a scripted table.
+- **One step further** -- the footer "Target and negotiation levers are one step further — shown only
+  if you want them." toggles `TargetStep.tsx` (price ladder, editable target/walk-away seeded once from
+  the real aggregate), whose "Build negotiation strategy →" reveals `NegotiationStep.tsx` (outcome
+  capture; the recorded panel always renders the server's own `realizedSaving`/`discountPercent`,
+  then links "See it in Savings →").
+- **Blocked assessment** (`MappingBlock.tsx`, `isAssessmentBlocked`) -- while any line is still
+  `SkuMatchStatus.Unmatched` the band shows what it honestly can, the line says "Needs mapping", and
+  the mapping block (free-text canonical SKU / product name per line, one recalculate call) takes the
+  footer's place; `mergeKnownLineDetails` keeps each line's real description once it resolves.
 
-### Savings (ADR-020 screen 9, task E08/F02/US01/T01, us-01-savings-home; moved from `/` to `/savings` by task E13/F09/US01/T01, ADR-024 V2 amendment, gap G-IA-V2)
+### Savings (ADR-024 V2 "No Home item", `contigo-v2/screens-v2.md` #8; originally ADR-020 screen 9, task E08/F02/US01/T01; moved to `/savings` by task E13/F09/US01/T01)
 
-`src/routes/savings/` implements screen 9: AC-1 six KPI cells, AC-2 opportunities table, AC-3 row
-navigation to Contract 360 › Benchmark or Quote check plus the benchmark-provider-unreachable
-stale-labelled KPI state. Originally wired into `components/shell/WorkspaceShellApp.tsx`'s index
-route (`/`, ADR-018 "/ (home)"); task E13/F09/US01/T01 moved the folder and the route to `/savings`
-(V2 "No Home item" -- Savings is reached from actions, Renewals and Contract 360, not the rail) --
-every fetch/render rule below is unchanged, "keep behaviour" per that task's own text.
+`src/routes/savings/` is the V2 Savings screen: a header with a summary, three KPI cells, and the
+opportunities table -- reached from Ask actions, Renewals and Contract 360, not the rail. The Day-1
+six-cell row and eight-column table are gone with V2.
 
-- **Two independent fetches, two independent degrade states** (`index.tsx`) -- `GET
-  /api/savings/kpis` backs AC-1's KPI row and `GET /api/savings` backs AC-2's opportunities table;
-  each fetch's own failure degrades only its own section, the same "independently optional" shape
-  `../contracts/contract360/index.tsx` already established for its own renewals+priority pair.
-- **AC-1, KPI row** (`KpiRow.tsx`, `savingsViewModel.ts#buildKpiCells`) -- the six cells, in AC-1's own
-  order: Annual spend analyzed, Savings identified, Savings realized, Savings in progress, Contracts
-  analyzed, Upcoming renewals, one formatted line per currency bucket (never summed across
-  currencies -- the same "group by currency" discipline `SavingsRangeByCurrency`'s own backend doc
-  comment states). Only "Savings realized" carries the accent-700 highlight, quoted from
-  day1-demo.html's own `kpis[2].fg` rule. `kpis === null` (never fetched, or a first-load failure)
-  renders an honest "-" per cell rather than a fabricated number (Appendix C rule 10).
-- **AC-3, benchmark-provider-unreachable -> stale-labelled** (`savingsViewModel.ts#reduceKpiFetch`,
-  this task's own required test, proven at both the reducer level and the rendered-component level)
-  -- a failed KPI refresh never blanks the row: the reducer keeps whichever summary it last
-  successfully fetched (or `null`, before any success) and marks every cell `Stale` (text, not
-  colour, ADR-019 accessibility baseline), with a named `.error-state` notice ("Benchmark provider
-  unreachable") + Retry, copy quoted from day1-demo.html's own text for this exact state. Retrying
-  never flashes the row back to a loading skeleton -- the stale numbers stay visible, tagged, for the
-  whole in-flight retry, only updating once it resolves.
-- **AC-2, opportunities table** (`OpportunitiesTable.tsx`) -- the eight named columns (Opportunity /
-  Type / Current spend / Estimated savings / Confidence / Owner / Status / Realized), the
-  "Opportunity" cell a real `<Link>` (cell-level link, not a whole-row click -- the same pattern
-  `../contracts/PortfolioTable.tsx` already established, ADR-019 accessibility baseline). Loading
-  (skeleton rows), error (a scoped `.error-state` + Retry, independent of the KPI row's own error
-  state), and empty ("No savings opportunities yet" -> `/renewals`) states.
-- **Council decision "Action creates an opportunity visible on Savings"** (`savingsViewModel.ts
-  #buildOpportunityRows`) -- this session's own tracked renewal actions
-  (`../renewals/renewalActionStore.ts#loadTrackedRenewalActions`, recorded by
-  `../renewals/InsightCard.tsx`'s three actions) render first, ahead of every real, persisted
-  `SavingsOpportunity` row from `GET /api/savings` -- immediate, visible confirmation of that
-  decision without inventing a backend write this task's own file scope cannot make (`POST
-  /api/savings` still does not exist; see "Renewal pipeline" above). No de-duplication is attempted
-  between the two lists: a tracked action never actually creates a `SavingsOpportunity` row, so there
-  is no shared id to merge on (Appendix C rule 10). A tracked row's own honest gaps -- no confidence,
-  "Not yet available" estimated savings, no realized value, no currency on current spend -- render as
-  such rather than a borrowed or invented figure.
-- **AC-3, row navigation** (`savingsViewModel.ts#getOpportunityNavigation`) -- quoted from
-  day1-demo.html's own row handler for this screen: a contract-linked opportunity opens Contract
-  360's Benchmark tab (`/contracts/:id`, `state: { tab: "Benchmark" }` -- the same
-  `location.state.tab` deep-link seam `../ask/index.tsx` already uses to open Clauses); one with no
-  `contractId` (`SavingsOpportunityResult` carries no `quoteId` at all yet) falls back to the
-  `/quotes` landing route, the same "no id yet" seam `../quotes/index.tsx` already establishes.
-- **No workspace guard bypassed** -- like every other route, this screen reads
-  `loadCurrentWorkspace()` directly rather than trusting `App.tsx`'s own earlier check, rendering a
-  named "No workspace selected" state if that invariant is ever violated.
+- **Three independent fetches, independent degrade states** (`index.tsx`) -- `GET /api/savings/kpis`
+  backs the KPI band and degrades to a stale-labelled last-known state (`reduceKpiFetch`: "Benchmark
+  provider unreachable" + Retry refresh, every cell tagged `Stale`, never blanked); `GET /api/savings`
+  backs the table with its own scoped error + Retry; `GET /api/contracts` only supplies supplier
+  *names* (`buildSupplierNameIndex` -- `SavingsOpportunityResult` carries a supplier id only) and
+  falls back to the id fragment when unavailable.
+- **KPI band** (`KpiRow.tsx`, `buildKpiCells`) -- Contracts analyzed ("CHF 6,270,000 annual spend"),
+  Upcoming renewals ("auto-renewing contracts in the pipeline"), Savings identified (one range per
+  currency, never summed across currencies; "6 identified · 2 in progress · 1 realized"). `kpis ===
+  null` renders "—", never a fabricated number. The header summary (`formatSavingsSummary`) reads
+  "N opportunities · CHF 410,000–590,000 identified", or "Lights up from validated contracts and
+  actioned renewals".
+- **Opportunities** (`OpportunitiesTable.tsx`, `buildOpportunityRows`) -- Supplier · Action (the
+  opportunity type) · Estimate (+ confidence tag "High · 92%") · Status; the Supplier cell is a real
+  `<Link>` to Contract 360 (`state.from = "savings"` drives its back label), the row click a
+  convenience on top; an opportunity with no `contractId` opens `/quotes`. This session's tracked
+  renewal actions (`renewalActionStore.ts`) render first with honest gaps ("Not yet available"
+  estimate, no confidence, the acted label as status); no de-duplication with real rows (no shared id).
+- **Reroute** -- "No savings opportunities yet · Opportunities appear once a renewal is actioned or a
+  saving is identified from validated contracts." → **Open renewals**.
 
-### Review queue (unrouted since ADR-024 V2, task E13/F09/US01/T01, gap G-IA-V2)
+### Workspace & members (ADR-024 V2, `contigo-v2/screens-v2.md` #10; originally ADR-020 screen 2, task E06/F04/US01/T01)
 
-`src/routes/review/` used to be the `/review` rail landing (ia.md/ADR-018 only ever named
-`/contracts/:id/review`, the field-review detail, as a locked route; `/review` itself was this app's
-own list-landing convention for it). V2 makes Review a *state* of Documents instead
-(`/documents?review=:id`, F09/T03) -- `/review` now redirects to `/documents?filter=attention`
-(`WorkspaceShellApp.tsx`), and this folder's own `ReviewQueueRoute` component is no longer mounted by
-any route. It is **not deleted** -- `routes/review/**` is outside task E13/F09/US01/T01's own "Files
-to create or modify" table -- so the code (and its own passing unit tests,
-`tests/routes/review/*.test.tsx`) still exists and still compiles, just unreachable from the app. A
-future cleanup task should remove it. For the record, its old behaviour: it called
-`GET /api/contracts` and kept rows whose status contains "review" (the same signal Portfolio's
-attention strip uses), plus this-session uploads still in `NeedsReview` that were not already on that
-page; rows with a `contractId` opened the detail screen, unlinked uploads stayed visible with "Not
-yet linked to a contract".
-
-### Members & roles (ADR-020 screen 2, task E06/F04/US01/T01)
-
-`src/routes/workspace/members/` is the `/workspace/members` screen: AC-1 Member/Role/Status/Last
-active table, AC-2 invite pane (email, Admin vs Procurement radios with permission summaries, Send).
-AC-3 (non-admin) stays on `RequireRole` around this route. Invite is a real
-`POST /api/workspaces/{tenantId}/invites`. There is still no list-members GET, so the table seeds the
-current Admin locally and appends each successful invite in `sessionStorage` -- discovery gap, not
-fabricated members. Client-side validation rejects a different email domain than the signed-in Admin
-(screens.md #2 "non-tenant domain").
+`src/routes/workspace/members/` is the V2 Workspace & members screen: the "Setup" header
+("Workspace & members" · "{workspace} · tenant {id}"), the tip "invite the team once the first
+contract is validated — there is nothing for them to ask before that." while the shell reports no
+validated contract (`components/shell/shellContext.ts#useShellContext`), the Member / Role / Status
+table (`MembersTable.tsx`; the signed-in row says "You"; no display name is derived from the email),
+and the **Invite a colleague** pane (`InvitePane.tsx`: "Work email" with a `name@{domain}`
+placeholder, Procurement first then Workspace Admin with the D8 summaries "Asks, uploads, reviews,
+triages renewals" / "Also deletes documents and manages members", block **Send invitation**, then
+"Invitation sent." or the accent error "Use an @{domain} address."). Invite is a real
+`POST /api/workspaces/{tenantId}/invites`; there is still no list-members GET, so the table seeds the
+current Admin locally and appends each successful invite in `sessionStorage` (`memberStore.ts`) --
+discovery gap, not fabricated members. The non-admin state stays on `RequireRole`.
 
 ## API client (ADR-012 "one generated TypeScript client, no hand-written divergent DTOs")
 
@@ -1193,29 +990,31 @@ web/
         documentTable.ts      # pure helpers: type-label mapping, status/action derivation, attention-filter bucketing, kb summary
         documentStore.ts      # DEPRECATED for this route (V2 reads GET /api/documents instead) -- kept only because RailNav.tsx's badge still reads it; see "Documents" above
         documents.css         # this route's styles (V2: stacked single-column layout, no more the V1 two-column grid)
-      contracts/            # task E07/F01/US01/T01 -- ADR-020 screen 4 (see "Portfolio" above)
-        index.tsx             # PortfolioRoute -- fetch-once-filter-client-side state machine (AC-4 states)
-        AttentionStrip.tsx    # AC-2: the four-cell strip, click = filter
-        PortfolioFilters.tsx  # AC-1: the seven filter chips
-        PortfolioTable.tsx    # AC-3: the sorted, tinted table
-        portfolioAttention.ts       # pure helpers: per-row severity/issue text, sort comparator, attention buckets
-        portfolioFilterState.ts     # pure helpers: filter state + the AND-composed row predicate
-        portfolioTableFormatters.ts # pure helpers: date/number formatting, status/risk -> tag mapping
+      contracts/            # Portfolio, V2 (see "Portfolio" above)
+        index.tsx             # PortfolioRoute -- fetch-once state machine, header summary, More columns, reroute
+        PortfolioTable.tsx    # the V2 table (Supplier · Contract · Annual spend · Ends · Give notice by · Status [+ Start · Auto · Risk])
+        portfolioViewModel.ts # pure helpers: validated rows sorted by notice deadline, per-currency summary, compact amounts
+        portfolioAttention.ts # pure helper: daysUntil (UTC day arithmetic) shared with Contract 360
+        portfolioTableFormatters.ts # pure helpers: date/number formatting, type label, status/risk -> tag mapping, supplier fallback
+        contractStatus.ts     # isValidatedContractStatus -- the one "validated" predicate Portfolio and the rail share
         contracts.css         # this route's styles
-        contract360/          # task E07/F02/US01/T01 -- ADR-020 screen 5 (see "Contract 360" above)
-          index.tsx              # Contract360Route -- fetch-order state machine (contract, then renewals + priority together)
-          Contract360Header.tsx  # AC-1/AC-2: header + 6-cell fact row
-          OverviewTab.tsx        # AC-3: recommendation card (.ai-recommendation) + drivers + attention + top risks
-          FactTable.tsx          # AC-4: the shared Term/Value/Source/Confidence table (Commercials..Activity)
-          RenewalTab.tsx         # AC-4: Renewal's own facts + the priority-score component table
-          contract360ViewModel.ts # pure helpers: row builders per tab, needs-attention/top-risks derivation, recommendation lookup
+        contract360/          # Contract 360, V2 no tabs (see "Contract 360" above)
+          index.tsx              # Contract360Route -- fetch order (contract, then renewals + priority), actions, tracker, clause selection
+          Contract360Header.tsx  # back link · supplier · title · meta line · Ask about it / Review extraction
+          AnswersBand.tsx        # Where you can save · When you must move · What to do (+ actions or the negotiation tracker)
+          WhyClauses.tsx         # clause rows, click -> ClauseHighlight
+          ClauseHighlight.tsx    # the serif evidence card: "{file} · page N · §span" + <mark>ed wording
+          DetailsSection.tsx     # "Details ▾": key terms, documents, facts to decide, priority score, Products/Obligations/Risks
+          FactTable.tsx          # Term/Value/Source/Confidence list for the extracted rows inside Details
+          negotiationStepsStore.ts # sessionStorage ticks of the 4-step tracker, per contract
+          contract360ViewModel.ts # pure helpers: answers, recommendation, clause rows/evidence, key terms, attention, priority rows
           contract360.css        # this screen's styles
         review/                # task E07/F03/US01/T01 -- ADR-020 screen 6 (see "Review / correction" above)
           index.tsx              # ReviewRoute -- fetch order (contract, then correction history), decision state, correction submit
           ReviewHeader.tsx        # AC-4: title/summary + gated "Mark as validated" + progress line + confidence legend
           ReviewFieldList.tsx     # AC-1: the 4-column field list (critical marker, value, confidence tag, decision)
           EvidencePane.tsx        # AC-3: evidence + correction form + real correction-history trail
-          reviewViewModel.ts      # pure helpers: correctable-field catalogue, decision/tag/gate computation (no live confidence yet -- see its own header comment)
+          reviewViewModel.ts      # pure helpers: correctable-field catalogue, decision/tag/gate computation
           review.css              # this screen's styles
       ask/                  # task E07/F04/US01/T01 -- ADR-020 screen 7; V2 rebuild task E13/F09/US01/T04 (see "Ask Contigo" above)
         index.tsx              # AskRoute -- off/new-chat/conversation/resume states; seeds+asks the global Ask bar's router-state query once; create-then-ask, citation-click routing
@@ -1223,33 +1022,32 @@ web/
         MarketRecordPanel.tsx  # side panel for a market citation: GET /api/market/records/{id}
         useConversation.ts     # resume: GET /api/conversations/{id} -> turns, oldest first
         useRecentConversations.ts # rail's last-5 list: GET /api/conversations, refetches on navigation (see "App shell" above)
-        reply/                  # phase-2 (task E13/F09/US01/T02) rich reply renderer -- ReplyBody/CitationCard/ActionRow/ReplyMarkdown/replyTypes; this task maps the wire reply onto it (askViewModel.ts) but does not modify it
+        reply/                  # phase-2 (task E13/F09/US01/T02) rich reply renderer -- ReplyBody/CitationCard/ActionRow/ReplyMarkdown/replyTypes
         askViewModel.ts        # pure(ish) helpers: wire reply -> presentational Reply, turn construction, off-copy/scope-line/suggestion-chip text, citation-click resolution
         ask.css                # this screen's styles
-      renewals/                 # task E08/F01/US01/T01 -- ADR-020 screen 8 (see "Renewal pipeline" above)
-        index.tsx                 # RenewalsRoute -- fetch-then-score-batch state machine (AC-4 states), selection, action handling
-        ThresholdStrip.tsx        # AC-1: the seven-bucket strip, click = filter
-        RenewalTable.tsx          # AC-2: the priority table, native button per row to select for the insight card
-        InsightCard.tsx           # AC-3: facts + recommendation + three actions + confirmation (Contract 360 + Home links)
-        renewalPipelineViewModel.ts # pure helpers: threshold buckets, score/status/contract-ref formatting, the three action plans
-        renewalActionStore.ts     # sessionStorage-scoped mirror of this session's own renewal actions -- no GET read-back endpoint exists yet, and the honest stand-in for "opportunity visible on Home"
+      renewals/                 # Renewals, V2 (see "Renewals" above)
+        index.tsx                 # RenewalsRoute -- fetch-then-score-batch state machine, selection, actions, reroute
+        RenewalTable.tsx          # the priority list (Score · Supplier · contract · Renews in · Notice in · Status)
+        InsightCard.tsx           # the "Why it is here" pane: action + rationale, Start negotiation / Assign to me, acted box
+        renewalPipelineViewModel.ts # pure helpers: rows sorted by score, summary, formatting, the two action plans
+        renewalActionStore.ts     # sessionStorage-scoped mirror of this session's renewal actions (shared with Contract 360 and Savings)
         renewals.css              # this screen's styles
-      quotes/                 # task E08/F03/US01/T01 -- ADR-020 screen 10 (see "Quote check" above)
-        index.tsx               # QuoteCheckRoute
-        UploadQuoteForm.tsx      # upload entry point + sample-file convenience
-        QuoteStepper.tsx         # AC-1: the 4-step header
-        ExtractStep.tsx          # AC-2: line table + unmatched-SKU mapping
-        AssessmentStep.tsx       # AC-3: numbers + P25/P50/P75 + provenance
-        TargetStep.tsx           # AC-3: price ladder + editable target
-        NegotiationStep.tsx      # AC-4: outcome capture
-        quoteCheckViewModel.ts   # pure helpers
+      quotes/                 # Quote check, V2 (see "Quote check" above)
+        index.tsx               # QuoteCheckRoute -- header, landing, band + lines + footer, one-step-further reveal
+        UploadQuoteForm.tsx      # the dashed drop card + optional metadata disclosure
+        sampleQuote.ts           # the Databricks sample proposal, a real PDF built with buildSamplePdf
+        QuoteLinesTable.tsx      # Line · Quoted · P50 · Position · Benchmark
+        MappingBlock.tsx         # unmatched-SKU mapping (shown instead of the footer while blocked)
+        TargetStep.tsx           # one step further: price ladder + editable target
+        NegotiationStep.tsx      # one step further: outcome capture
+        quoteCheckViewModel.ts   # pure helpers: aggregate, band, line rows, unit-price/P50 formatting
         quoteOutcomeStore.ts     # sessionStorage-scoped outcomes
         quotes.css               # this screen's styles
-      savings/                 # task E08/F02/US01/T01 -- ADR-020 screen 9; moved from routes/home/ to /savings by E13/F09/US01/T01 (see "Savings" above)
-        index.tsx                # SavingsRoute -- two independent fetches (KPIs, opportunities), two independent degrade states
-        KpiRow.tsx               # AC-1: the six KPI cells + AC-3's stale-labelled notice
-        OpportunitiesTable.tsx   # AC-2: the eight-column table, cell-level links (AC-3 navigation)
-        savingsViewModel.ts      # pure helpers: reduceKpiFetch (AC-3), buildKpiCells (AC-1), buildOpportunityRows (AC-2, council "opportunity visible on Savings")
+      savings/                 # Savings, V2 (see "Savings" above)
+        index.tsx                # SavingsRoute -- three independent fetches (KPIs, opportunities, portfolio names), independent degrade states
+        KpiRow.tsx               # the three KPI cells + the stale-labelled notice
+        OpportunitiesTable.tsx   # Supplier · Action · Estimate · Status, rows open Contract 360
+        savingsViewModel.ts      # pure helpers: reduceKpiFetch, buildKpiCells, formatSavingsSummary, buildOpportunityRows, buildSupplierNameIndex
         savings.css              # this screen's styles
     components/
       shell/                  # task E06/F03/US02/T01 -- app shell, router, role guard; V2 two-tier rail by E13/F09/US01/T01 (see "App shell" above)
@@ -1394,10 +1192,10 @@ spec's own header comment has the full citations -- in short:
    populated state. A reused Playwright `storageState` pointed at a
    pre-seeded fixture workspace exercises the fuller, populated path
    instead -- the same `pickOrCreateWorkspace` code path handles both.
-3. **A recorded quote outcome does not update Home's "Savings realized"
-   KPI** (`NegotiationOutcomePropagationService` never runs for it -- see
+3. **A recorded quote outcome does not update the Savings figures**
+   (`NegotiationOutcomePropagationService` never runs for it -- see
    `src/routes/quotes/NegotiationStep.tsx`'s own header comment). The final
-   step asserts the real outcome + the real "See it on Home ->" link, not a
+   step asserts the real outcome + the real "See it in Savings →" link, not a
    KPI change this build does not perform.
 
 ### CI wiring is a follow-up, not this task

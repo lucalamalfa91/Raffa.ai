@@ -1,32 +1,36 @@
 /**
- * Renewal pipeline screen (route `/renewals`, ADR-018; screens.md #8 "Renewal pipeline"; task
- * E08/F01/US01/T01, us-01-renewal-pipeline). Component classes (.field, .btn, .tag, .table,
- * .attention-strip/.attention-cell, .detail-pane, .card, .ai-recommendation, .deadline-critical,
- * .skeleton, .empty-state, .error-state, .hint, .screen-kicker/.screen-title, .micro-meta,
- * .key-fact-number) come from ../../styles/components.css (ADR-019 component catalogue) -- this file
- * adds only this screen's own composites, the same division of labour contracts.css/contract360.css
- * already established for this repo.
+ * Renewals screen, V2 (route `/renewals`; ADR-024 V2 IA; screens-v2.md #7; `contigo-v2/markup.html`
+ * "RENEWALS" block). Component classes (.screen-header, .screen-reroute, .btn, .btn-block, .tag,
+ * .table, .card-kicker, .deadline-critical, .skeleton, .error-state, .hint, .micro-meta) come from
+ * ../../styles/components.css (ADR-019 component catalogue) -- this file adds only this screen's own
+ * composites, quoted from the prototype's own inline styles on this exact block:
+ *
+ *   <div style="display:flex;flex-wrap:wrap;flex:1;min-height:0;align-content:flex-start">
+ *     <div style="padding:0 32px 32px;flex:1 1 480px;min-width:0">
+ *       <sc-raw-table class="table" style="font-size:13px;font-variant-numeric:tabular-nums;table-layout:fixed">
+ *         <th style="width:64px">Score</th> <th>Supplier · contract</th>
+ *         <th style="text-align:right;width:15%">Renews in</th> <th style="text-align:right;width:15%">Notice in</th>
+ *         <th style="width:18%">Status</th>
+ *       <tr class="cg-row" style="background:{{ r.bg }}">
+ *         <td style="border-left:3px solid {{ r.bar }};padding-left:10px"><span style="font-family:var(--font-heading);font-weight:800;font-size:18px;color:{{ r.scoreFg }}">{{ r.score }}</span></td>
+ *         <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span style="font-weight:600">{{ r.supplier }}</span> <span style="color:var(--color-neutral-600)">· {{ r.name }}</span></td>
+ *     <div style="border-left:2px solid var(--color-divider);padding:20px 24px;background:var(--color-surface);flex:1 1 300px;max-width:380px">
+ *       <span class="card-kicker">Why it is here</span>
+ *       <h3 style="margin:4px 0 2px">…</h3>
+ *       <div style="font-size:12px;color:var(--color-neutral-600);margin-bottom:14px">{{ rsel.name }}</div>
+ *       <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-accent);margin-bottom:4px">Recommended action</div>
+ *       <div style="font-family:var(--font-heading);font-weight:800;font-size:18px;line-height:1.2">{{ rsel.action }}</div>
+ *       <p style="font-size:12px;color:var(--color-neutral-600);margin:6px 0 16px">{{ rsel.rationale }}</p>
+ *       <div style="padding:12px;border:1px solid var(--color-divider);font-size:13px">…</div>
  */
 
 .renewal-screen {
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
+  gap: var(--space-4);
 }
 
-/* ---- Threshold-strip selection feedback -----------------------------------
-   components.css sets `aria-pressed` as the accessible state for every
-   .attention-cell but does not yet style `.is-active` for any strip -- this
-   is a small additive rule, scoped to this screen's own strip only, quoted
-   from day1-demo.html's own window-strip `bg`/`bar` fields
-   (`bg:on?'var(--color-neutral-200)':'transparent'`,
-   `bar:on?'var(--color-accent)':'transparent'`). */
-.renewal-screen .attention-cell.is-active {
-  background: var(--color-neutral-200);
-  box-shadow: inset 0 -3px 0 var(--color-accent);
-}
-
-/* ---- Loading skeleton (AC-4) --------------------------------------------- */
+/* ---- Loading skeleton ------------------------------------------------------- */
 
 .renewal-skeleton {
   display: flex;
@@ -38,94 +42,185 @@
   height: 32px;
 }
 
-/* ---- Table + insight-card layout (AC-2/AC-3) ------------------------------
-   The table takes the remaining width; the insight card is the shared
-   .detail-pane (ADR-019: "340-400px ... wraps below the list under ~900px
-   main width" -- that wrap is components.css's own media query, unchanged
-   here). */
+/* ---- List + pane ------------------------------------------------------------- */
 
 .renewal-screen-body {
   display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
   align-items: flex-start;
-  gap: var(--space-6);
+  gap: var(--space-4) 0;
 }
 
-.renewal-screen-body > .portfolio-table-wrapper {
-  flex: 1;
+.renewal-table-wrapper {
+  flex: 1 1 480px;
   min-width: 0;
+  overflow-x: auto;
+  padding-right: var(--space-6);
 }
 
 .renewal-table {
-  min-width: 720px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
 
-/* `.table th`/`.table td` (components.css) already set text-align: left at a higher specificity
-   (class + element) than a bare `.renewal-table-numeric` class alone could win against -- these two
-   selectors match that specificity exactly so the right-alignment actually takes effect (the same
-   fix contracts.css's own `.portfolio-table-numeric` already applies). */
+.renewal-table th,
+.renewal-table td {
+  padding: var(--space-2);
+}
+
+.renewal-table th {
+  letter-spacing: var(--tracking-kicker);
+}
+
 .renewal-table th.renewal-table-numeric,
 .renewal-table td.renewal-table-numeric {
   text-align: right;
 }
 
-/* Selected row (AC-3 "insight card" follows the selected row) -- quoted from day1-demo.html's own
-   `bg:s.rsel===c.id?'var(--color-neutral-200)':'transparent'`. */
-.renewal-table tr.row-selected {
-  background: var(--color-neutral-200);
+.renewal-table .renewal-col-score {
+  width: 64px;
 }
 
-/* Native <button> reset for the Score cell's row-select control (RenewalTable.tsx) -- paints as a
-   plain numeric cell, not a button, while staying a real, keyboard-operable control. */
-.renewal-score-select {
-  display: block;
-  width: 100%;
-  padding: 0;
-  background: transparent;
-  border: 0;
-  font: inherit;
-  text-align: right;
+.renewal-table .renewal-col-days {
+  width: 15%;
+}
+
+.renewal-table .renewal-col-status {
+  width: 18%;
+}
+
+/* Rows select the pane (markup.html `cg-row` + `r.select`); the Score cell's own <button> stays the
+   keyboard-operable control. */
+.renewal-table tbody tr.renewal-row {
   cursor: pointer;
 }
 
-/* ---- Insight card (AC-3) --------------------------------------------------- */
-
-.renewal-insight-card h6 {
-  margin-bottom: var(--space-4);
+.renewal-table tbody tr.renewal-row:hover {
+  background: var(--color-neutral-200);
 }
 
-.renewal-insight-facts {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: var(--space-4);
-  margin-bottom: var(--space-4);
+/* `bg: sel ? neutral-200 : transparent`, `bar: sel ? accent : transparent` -- same inset-bar
+   mechanism as `.row-critical` so the column never shifts. */
+.renewal-table tr.row-selected {
+  background: var(--color-neutral-200);
+  box-shadow: inset 3px 0 0 var(--color-accent);
 }
 
-.renewal-fact-cell {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
+.renewal-cell-score {
+  padding-left: 10px;
 }
 
-.renewal-insight-card .ai-recommendation {
-  margin-bottom: var(--space-4);
+.renewal-score-select {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-heading);
+  font-size: 18px;
+  line-height: 1.2;
+  color: inherit;
 }
 
-.renewal-recommendation-statement {
+/* `scoreFg: c.score>=80 ? accent-700 : inherit` -- paired with the number itself, never colour alone. */
+.renewal-score-select.is-urgent {
+  color: var(--color-accent-700);
+}
+
+.renewal-cell-contract {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.renewal-supplier {
   font-weight: var(--weight-body-strong);
 }
 
-.renewal-insight-actions {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  margin-bottom: var(--space-4);
+.renewal-contract-ref {
+  color: var(--color-neutral-600);
 }
 
-.renewal-confirmation {
+/* ---- "Why it is here" pane ---------------------------------------------------- */
+
+.renewal-pane {
+  flex: 1 1 300px;
+  max-width: 380px;
+  padding: 20px 24px;
+  background: var(--color-surface);
+  border-left: 2px solid var(--color-divider);
+}
+
+.renewal-pane-heading {
+  margin: var(--space-1) 0 2px;
+  font-size: 20px;
+}
+
+.renewal-pane-contract {
+  margin: 0 0 14px;
+  font-size: 12px;
+  color: var(--color-neutral-600);
+}
+
+.renewal-pane-action-kicker {
+  margin: 0 0 var(--space-1);
+  font-size: 11px;
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+
+.renewal-pane-action {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-heading);
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.renewal-pane-rationale {
+  margin: 6px 0 16px;
+  font-size: 12px;
+  color: var(--color-neutral-600);
+}
+
+.renewal-pane-actions {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-2);
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--color-divider);
+  gap: 6px;
+}
+
+.renewal-pane-actions .btn-block {
+  margin: 0;
+}
+
+.renewal-pane-acted {
+  padding: 12px;
+  border: 1px solid var(--color-divider);
+  font-size: 13px;
+}
+
+.renewal-pane-inline-link {
+  font-size: 12px;
+  padding: 0 var(--space-1);
+}
+
+.renewal-pane-facts-link {
+  margin-top: 14px;
+  padding: 0;
+  font-size: 12px;
+}
+
+@media (max-width: 900px) {
+  .renewal-table-wrapper {
+    padding-right: 0;
+  }
+
+  .renewal-pane {
+    max-width: none;
+    border-left: 0;
+    border-top: 2px solid var(--color-divider);
+  }
 }

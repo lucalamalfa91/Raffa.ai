@@ -1,70 +1,150 @@
 /**
- * Members & roles screen (route `/workspace/members`, ADR-018; screens.md #2).
- * Component classes (.table, .tag, .btn, .field, .input, .radio + .dot, .detail-pane,
- * .screen-kicker/.screen-title, .micro-meta, .hint, .empty-state) come from
- * ../../../styles/components.css (ADR-019). This file adds only this screen's composites.
+ * Workspace & members screen, V2 (route `/workspace/members`; ADR-024 V2 IA; screens-v2.md #10;
+ * `contigo-v2/markup.html` "WORKSPACE & MEMBERS" block). Component classes (.screen-header,
+ * .screen-kicker, .screen-title, .table, .tag, .btn, .btn-block, .field, .input, .radio + .dot,
+ * .empty-state, .visually-hidden) come from ../../../styles/components.css (ADR-019) -- this file
+ * adds only this screen's own composites, quoted from the prototype's inline styles on this block:
+ *
+ *   <div style="margin:20px 32px 0;border-left:2px solid var(--color-accent);background:var(--color-accent-100);padding:10px 16px;font-size:13px;max-width:720px">Tip: …</div>
+ *   <div style="display:grid;grid-template-columns:minmax(0,1fr) 340px;flex:1">
+ *     <div style="padding:24px 32px;border-right:2px solid var(--color-divider)"> <table class="table" style="font-size:13px"> <th style="width:22%">Role</th><th style="width:16%">Status</th>
+ *       <td><div style="font-weight:600">{{ m.name }}</div><div style="font-size:12px;color:var(--color-neutral-600)">{{ m.email }}</div></td>
+ *     <div style="padding:24px"> <h4 style="margin-bottom:14px">Invite a colleague</h4> <div class="field" style="margin-bottom:12px">
+ *       <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px"> <label class="radio" style="align-items:flex-start">
+ *       <button class="btn btn-primary btn-block" style="margin:0">Send invitation</button>
+ *       <p style="font-size:12px;color:var(--color-accent-700);margin-top:10px">Use an @… address.</p> <p style="font-size:12px;margin-top:10px">Invitation sent.</p>
  */
 
 .members-screen {
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
+  gap: var(--space-4);
+}
+
+.members-tip {
+  margin: 0;
+  max-width: 720px;
+  padding: 10px 16px;
+  border-left: 2px solid var(--color-accent);
+  background: var(--color-accent-100);
+  font-size: 13px;
 }
 
 .members-body {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-6);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  align-items: start;
 }
 
 .members-table-column {
-  flex: 1;
   min-width: 0;
+  padding-right: var(--space-6);
+  border-right: 2px solid var(--color-divider);
 }
 
-.members-invite-pane h3 {
-  margin: 0 0 var(--space-2);
+.members-table {
+  font-size: 13px;
+}
+
+.members-table .members-col-role {
+  width: 22%;
+}
+
+.members-table .members-col-status {
+  width: 16%;
+}
+
+.members-member-primary {
+  font-weight: var(--weight-body-strong);
+}
+
+.members-member-secondary {
+  font-size: 12px;
+  color: var(--color-neutral-600);
+}
+
+.members-status-tag {
+  padding: 2px 8px;
+  font-size: 10px;
+}
+
+.members-invite-pane {
+  padding-left: var(--space-6);
+}
+
+.members-invite-pane h4 {
+  margin: 0 0 14px;
+}
+
+.members-invite-field {
+  margin-bottom: 12px;
 }
 
 .invite-role-fieldset {
-  margin: 0 0 var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 16px;
   padding: 0;
   border: 0;
-}
-
-.invite-role-fieldset legend {
-  font-size: 12px;
-  font-weight: var(--weight-body-strong);
-  margin-bottom: var(--space-2);
 }
 
 .invite-role-option {
   display: flex;
   align-items: flex-start;
   gap: var(--space-3);
-  margin-bottom: var(--space-3);
   cursor: pointer;
 }
 
 .invite-role-control {
   display: inline-flex;
   align-items: center;
-  margin-top: 2px;
+  margin-top: 3px;
 }
 
 .invite-role-copy {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
 }
 
 .invite-role-label {
-  font-size: 14px;
   font-weight: var(--weight-body-strong);
+}
+
+.invite-role-summary {
+  font-size: 12px;
+  color: var(--color-neutral-600);
+}
+
+.members-invite-pane .btn-block {
+  margin: 0;
+}
+
+.members-invite-error {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--color-accent-700);
+}
+
+.members-invite-sent {
+  margin: 10px 0 0;
+  font-size: 12px;
 }
 
 @media (max-width: 900px) {
   .members-body {
-    flex-direction: column;
+    grid-template-columns: 1fr;
+  }
+
+  .members-table-column {
+    padding-right: 0;
+    padding-bottom: var(--space-4);
+    border-right: 0;
+    border-bottom: 2px solid var(--color-divider);
+  }
+
+  .members-invite-pane {
+    padding-left: 0;
+    padding-top: var(--space-4);
   }
 }

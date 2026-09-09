@@ -9,64 +9,30 @@ import type {
   RenewalPipelineItemBody,
   RenewalPriorityBody,
 } from "../../../api/client";
-import { getConfidenceTag, type SemanticTag } from "../../../styles/semantics";
+import { getConfidenceTag, isDeadlineCritical, type SemanticTag } from "../../../styles/semantics";
 import { daysUntil } from "../portfolioAttention";
-import { formatDateOnly, formatSupplier } from "../portfolioTableFormatters";
+import { formatDateOnly, formatSupplier, getContractTypeLabel, getPortfolioStatusTag } from "../portfolioTableFormatters";
 
 /**
- * Pure view-model helpers for the Contract 360 screen (route `/contracts/:contractId`, ADR-018;
- * ADR-020 screen 5 "header + 10 tabs"; task E07/F02/US01/T01, us-01-contract-360 AC-1/AC-2/AC-3/
- * AC-4). Same one-concern-per-file split `../portfolioAttention.ts`/`../portfolioTableFormatters.ts`
- * already established for this folder: no React here, so every rule below is unit-testable without
- * rendering anything.
+ * Pure view-model helpers for the V2 Contract 360 screen (route `/contracts/:contractId`; ADR-024
+ * V2 IA; screens-v2.md #5 "Contract 360 — no tabs"; `contigo-v2/markup.html` "CONTRACT 360 — three
+ * answers, then proof, then details" block; `app.jsx` `cur` / `clauses` / `otherRows` / `steps360`).
+ * No React here, so every rule below is unit-testable without rendering anything
+ * (`contract360ViewModel.test.ts`).
  *
- * **Facts vs AI (ADR-019, council decision "AI recommendation lives in its own labelled block,
- * never mixed with deterministic facts")**: this module keeps that separation at the *type* level,
- * not just in markup -- `buildRecommendation` returns a `Recommendation` (statement/rationale/
- * drivers, sourced from the Renewals module's own derived text) that is never merged into a
- * `FactRow[]` array, and every `FactRow`-returning function below only ever reads extracted/
- * contract-level facts, never recommendation text. `Contract360Route`/`OverviewTab` render the two
- * in visually distinct blocks (`.ai-recommendation` vs `.table`) but the separation is real here
- * first -- a caller cannot accidentally concatenate the two into one list even if it tried, because
- * they are different, non-overlapping shapes.
+ * **Facts vs AI (ADR-019).** The "What to do" answer is the Renewals module's own deterministic
+ * recommendation text (`buildRecommendation`), never merged into a `FactRow[]`; every `FactRow`-
+ * returning function below only ever reads extracted or contract-level facts. The two shapes share
+ * no keys, so a caller cannot concatenate them by accident.
+ *
+ * The Day-1 ten-tab layout (`CONTRACT_360_TABS`, `isContract360TabName`) is gone with V2: the
+ * screen is one page -- header, answers band, "Why — the clauses behind it", then a "Details ▾"
+ * drawer holding what the tabs used to hold.
  */
 
-/** Exact tab order -- ADR-020 screen 5 / day1-demo.html's own `tabNames` array (`kt`-driven `.table` template for every tab except Overview/Benchmark/Renewal, which each add their own extra block). */
-export const CONTRACT_360_TABS = [
-  "Overview",
-  "Commercials",
-  "Products",
-  "Clauses",
-  "Obligations",
-  "Risks",
-  "Documents",
-  "Benchmark",
-  "Renewal",
-  "Activity",
-] as const;
-
-export type Contract360TabName = (typeof CONTRACT_360_TABS)[number];
-
-/**
- * Task E07/F04/US01/T01 (ask-contigo-ui): a citation chip on the Ask Contigo screen
- * (`../../ask/`) navigates here with `{ state: { tab: "Clauses" } }` so "opening Contract 360 >
- * Clauses" (AC-2) actually lands on that tab instead of always resetting to Overview. `index.tsx`
- * reads `useLocation().state?.tab` through this guard rather than trusting an arbitrary string --
- * an unrecognised or absent value falls back to Overview, the same default this screen already had
- * before that task existed.
- */
-export function isContract360TabName(value: unknown): value is Contract360TabName {
-  return typeof value === "string" && (CONTRACT_360_TABS as readonly string[]).includes(value);
-}
-
-/**
- * Task E13/F10/US01/T01 (contract360-landing): `?clause=`/`?page=` citation landing (ADR-024
- * "citation landing, scoped conversations"; ADR-020 screen 5 amendment "citation landing with
- * highlighted clause"; parent story us-01-contract360-landing AC-1/AC-2/AC-3) plus the header's
- * `supplierName` read (AC-3). The three exports below are grouped in one place because
- * they are this one task's own addition, even though `resolveSupplierLabel` is a header concern and
- * the other two are a Clauses-tab concern -- see each function's own doc comment for its specific AC.
- */
+// ---------------------------------------------------------------------------------------------
+// Header
+// ---------------------------------------------------------------------------------------------
 
 export interface BackLink {
   label: string;
@@ -74,21 +40,17 @@ export interface BackLink {
 }
 
 /**
- * ADR-020 screen 5: "Back label follows the origin (Ask Contigo / Documents / Portfolio /
- * Renewals)." AC-1 only requires the Ask Contigo case ("the back label reads 'Ask Contigo' when
- * arriving from a chat") -- the other three origins are wired here too (screens-v2.md #5's own
- * `backLabels` map names all four) so a later task can start passing `state: { from: "documents" |
- * "portfolio" | "renewals" }` without this module changing again, but nothing sends those yet --
- * `web/src/routes/ask/**` (the only screen that could send `"ask"`) is out of this task's own "Files
- * to create or modify", and Documents/Portfolio/Renewals's own Link/navigate calls are equally
- * untouched. An absent or unrecognised `from` renders no back link at all -- exactly the behaviour
- * Contract 360 already had before this task.
+ * screens-v2.md #5: "Back label follows the origin (Ask Contigo / Documents / Portfolio /
+ * Renewals)" -- plus Savings, whose rows open this screen (`app.jsx` `back:'home'`). Read from
+ * `location.state.from`; an absent or unrecognised origin resolves to `null` and the header falls
+ * back to a plain "← Back" (`app.jsx`: `backLabels[s.back]||'Back'`).
  */
 const BACK_LINKS: Readonly<Record<string, BackLink>> = {
   ask: { label: "Ask Contigo", href: "/ask" },
   documents: { label: "Documents", href: "/documents" },
   portfolio: { label: "Portfolio", href: "/contracts" },
   renewals: { label: "Renewals", href: "/renewals" },
+  savings: { label: "Savings", href: "/savings" },
 };
 
 export function resolveBackLink(from: unknown): BackLink | null {
@@ -97,18 +59,240 @@ export function resolveBackLink(from: unknown): BackLink | null {
   return known[from] ?? null;
 }
 
+export interface SupplierLabel {
+  label: string;
+  title: string | undefined;
+}
+
 /**
- * AC-1: "`/contracts/:id?clause=<clauseId>` (or `?page=<n>` for a page-level citation) opens
- * Contract 360 with that clause highlighted." The task text's own two branches -- "when clause
- * matches a clause of the 360 payload" vs. "when only page is given" -- are mutually exclusive, not
- * a fallback chain: `pageParam` is consulted **only** when `clauseParam` is entirely absent, never as
- * a second attempt after a present-but-unmatched `clauseParam` (a citation link names one or the
- * other; silently retrying by page when the clause id it actually gave does not resolve risks
- * highlighting a *different* clause than the one cited, which is worse than highlighting none).
- * When consulted, page resolves to the first clause (in whatever order `tabs.clauses` already
- * returns -- this contract's own extraction order, never re-sorted here) whose `sourcePage` equals
- * the page number. Returns `null` whenever neither branch identifies a real clause: `index.tsx` then
- * renders the Clauses tab exactly as it does today, with no fabricated highlight.
+ * R-SUP-04 / ADR-024 "Supplier identity": the header kicker is the wire's resolved `supplierName`,
+ * never a guid. `null` (no supplier, or an id that no longer resolves for this tenant) and a blank
+ * name fall back to the same id-fragment label the Portfolio table renders -- never a fabricated
+ * supplier.
+ */
+export function resolveSupplierLabel(header: Contract360HeaderBody): SupplierLabel {
+  if (header.supplierName !== null && header.supplierName.trim() !== "") {
+    return { label: header.supplierName, title: header.supplierId ?? undefined };
+  }
+  return formatSupplier(header.supplierId);
+}
+
+function formatMoney(amount: number | null, currency: string): string {
+  if (amount === null) return "—";
+  return `${currency} ${new Intl.NumberFormat("en-GB").format(amount)}`;
+}
+
+function formatPlainNumber(value: number | null): string {
+  if (value === null) return "—";
+  return new Intl.NumberFormat("en-GB").format(value);
+}
+
+/** `markup.html`: "{{ cur.type }} · {{ cur.spendFmt }} / year · {{ cur.docCount }} documents · {{ cur.status }}". */
+export function formatHeaderMeta(header: Contract360HeaderBody, currency: string, docCount: number): string {
+  const spend = header.annualSpend === null ? "spend not recorded" : `${formatMoney(header.annualSpend, currency)} / year`;
+  return `${getContractTypeLabel(header.type)} · ${spend} · ${docCount} document${docCount === 1 ? "" : "s"} · ${getPortfolioStatusTag(header.status).label}`;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Answers band: Where you can save · When you must move · What to do
+// ---------------------------------------------------------------------------------------------
+
+export interface Recommendation {
+  /** False when this contract has no entry in `GET /api/renewals` (not auto-renewing, or beyond that endpoint's own page-size ceiling) -- a real, named gap, never a fabricated recommendation. */
+  hasRecommendation: boolean;
+  statement: string;
+  rationale: string;
+}
+
+/**
+ * "What to do": the Renewals module's own real, deterministic `recommendedAction` / `explanation`
+ * for whichever `GET /api/renewals` pipeline item matches this contract -- never invented UI copy.
+ */
+export function buildRecommendation(header: Contract360HeaderBody, renewals: readonly RenewalPipelineItemBody[]): Recommendation {
+  const item = renewals.find((r) => r.contractId === header.contractId) ?? null;
+
+  if (item === null) {
+    return {
+      hasRecommendation: false,
+      statement: "No renewal recommendation for this contract",
+      rationale: header.autoRenewal
+        ? "This contract did not appear in the current renewal pipeline yet."
+        : "Contigo tracks renewal recommendations only for auto-renewing contracts; this contract ends on its end date with no renewal to act on.",
+    };
+  }
+
+  return { hasRecommendation: true, statement: item.action, rationale: item.insightCard.recommendations.explanation };
+}
+
+export interface SaveAnswer {
+  /** `potentialSavingsRange` from the pipeline item, or an honest "Not yet available". */
+  estimate: string;
+  /** The lever sentence under it -- market position / uplift when known, else why it is not. */
+  lever: string;
+}
+
+export interface MoveAnswer {
+  /** The notice deadline as a date, or "Not determined". */
+  deadline: string;
+  cancelDays: number | null;
+  /** Inside the locked 45-day window (`styles/semantics.ts#isDeadlineCritical`). */
+  isUrgent: boolean;
+  /** `markup.html`: "in **N days** — last day to give notice. Term ends {end}{ and auto-renews for N months}." */
+  detail: string;
+}
+
+export interface AnswersBand {
+  save: SaveAnswer;
+  move: MoveAnswer;
+  act: Recommendation;
+}
+
+export const SAVINGS_NOT_YET_AVAILABLE = "Not yet available";
+export const LEVER_NOT_YET_AVAILABLE =
+  "Market position and savings estimate light up with the Benchmark Service — the notice deadline and clauses below are already validated.";
+
+/**
+ * The three answers (`markup.html` "CONTRACT 360 — three answers"). Every figure is either a real
+ * header/pipeline field or an honest "not yet" -- the prototype's own `cur.saving`/`cur.lever` are
+ * benchmark outputs the R3 Benchmark Service does not produce yet (`RenewalInsightRecommendations`'
+ * backend doc comment), so they render as such rather than as a guess (Appendix C rule 10).
+ */
+export function buildAnswers(
+  header: Contract360HeaderBody,
+  renewal: Contract360Body["tabs"]["renewal"],
+  renewals: readonly RenewalPipelineItemBody[],
+  now: Date = new Date(),
+): AnswersBand {
+  const item = renewals.find((r) => r.contractId === header.contractId) ?? null;
+  const recommendations = item?.insightCard.recommendations ?? null;
+
+  const upliftLever =
+    recommendations?.annualUpliftPercent !== null && recommendations?.annualUpliftPercent !== undefined
+      ? `A ${recommendations.annualUpliftPercent}% uplift clause applies at renewal.`
+      : null;
+  const save: SaveAnswer = {
+    estimate: recommendations?.potentialSavingsRange ?? SAVINGS_NOT_YET_AVAILABLE,
+    lever: recommendations?.marketPosition ?? upliftLever ?? LEVER_NOT_YET_AVAILABLE,
+  };
+
+  const cancelDays = daysUntil(header.cancellationDeadline, now);
+  const termEnd = header.endDate !== null ? `Term ends ${formatDateOnly(header.endDate)}` : "Term end not recorded";
+  const autoText =
+    header.autoRenewal && renewal.renewalTermMonths !== null
+      ? ` and auto-renews for ${renewal.renewalTermMonths} months`
+      : header.autoRenewal
+        ? " and auto-renews"
+        : "";
+  let detail: string;
+  if (cancelDays === null) detail = `No notice deadline determined. ${termEnd}${autoText}.`;
+  else if (cancelDays < 0) detail = `${Math.abs(cancelDays)} day${cancelDays === -1 ? "" : "s"} ago — the notice window has closed. ${termEnd}${autoText}.`;
+  else detail = `in ${cancelDays} day${cancelDays === 1 ? "" : "s"} — last day to give notice. ${termEnd}${autoText}.`;
+
+  const move: MoveAnswer = {
+    deadline: header.cancellationDeadline !== null ? formatDateOnly(header.cancellationDeadline) : "Not determined",
+    cancelDays,
+    isUrgent: cancelDays !== null && isDeadlineCritical(cancelDays),
+    detail,
+  };
+
+  return { save, move, act: buildRecommendation(header, renewals) };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Negotiation tracker (after "Start negotiation")
+// ---------------------------------------------------------------------------------------------
+
+export interface NegotiationStep {
+  label: string;
+  due: string;
+}
+
+/** `app.jsx` `stepDefs`, with the real supplier and deadline: 4 steps, due "this week" · "+10 days" · "+20 days" · "by {cancel}". */
+export function buildNegotiationSteps(supplierLabel: string, deadlineLabel: string): NegotiationStep[] {
+  return [
+    { label: `Notify ${supplierLabel} of intent to renegotiate`, due: "this week" },
+    { label: "Request revised pricing and licence mix", due: "+10 days" },
+    { label: "Counter with the market benchmark", due: "+20 days" },
+    { label: "Sign, or send non-renewal notice", due: `by ${deadlineLabel}` },
+  ];
+}
+
+/** `markup.html`: "target {{ cur.saving }} · close by {{ cur.cancel }}". */
+export function formatTrackerMeta(save: SaveAnswer, move: MoveAnswer): string {
+  return `target ${save.estimate} · close by ${move.deadline}`;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Why — the clauses behind it
+// ---------------------------------------------------------------------------------------------
+
+export interface ClauseRow {
+  clauseId: string;
+  type: string;
+  normalized: string;
+  /** "p.27 · §17.2" -- page and span when recorded, else "Linked document", else null (no source at all). */
+  source: string | null;
+  risk: SemanticTag | null;
+  confidencePct: number | null;
+}
+
+/** High/Critical risk gets the accent tag, the rest stay neutral; `null` when the clause carries no risk level. Text first, colour only as emphasis. */
+export function getClauseRiskTag(riskLevel: string | null): SemanticTag | null {
+  if (riskLevel === null || riskLevel.trim() === "") return null;
+  const emphasised = riskLevel === "High" || riskLevel === "Critical";
+  return { variant: emphasised ? "accent" : "neutral", label: riskLevel };
+}
+
+export function buildClauseRows(clauses: readonly Contract360ClauseBody[]): ClauseRow[] {
+  return clauses.map((c) => ({
+    clauseId: c.clauseId,
+    type: c.clauseType,
+    normalized: c.normalizedValue ?? c.rawText,
+    source: formatSource(c),
+    risk: getClauseRiskTag(c.riskLevel),
+    confidencePct: toConfidencePercent(c.confidence),
+  }));
+}
+
+export interface ClauseEvidence {
+  /** "{file} · page N · §span", each part only when known. */
+  citation: string;
+  before: string;
+  quote: string;
+  after: string;
+}
+
+/**
+ * The evidence card (`markup.html` `hl`: "{{ hl.doc }} · page {{ hl.page }} · §{{ hl.sec }}" over
+ * `{{ hl.before }}<mark>{{ hl.quote }}</mark>{{ hl.after }}`). The backend `Clause` carries one
+ * `rawText`, not separate before/quote/after strings: when the normalised value is a literal
+ * substring of the raw text that substring is the highlighted quote, otherwise the whole original
+ * wording is -- never a synthesised excerpt.
+ */
+export function buildClauseEvidence(clause: Contract360ClauseBody, documents: readonly Contract360DocumentBody[]): ClauseEvidence {
+  const document = documents.find((d) => d.documentId === clause.sourceDocumentId) ?? null;
+  const parts: string[] = [];
+  if (document !== null) parts.push(document.fileName);
+  if (clause.sourcePage !== null) parts.push(`page ${clause.sourcePage}`);
+  if (clause.sourceSpan !== null && clause.sourceSpan.trim() !== "") parts.push(clause.sourceSpan.trim().startsWith("§") ? clause.sourceSpan.trim() : `§${clause.sourceSpan.trim()}`);
+  const citation = parts.length > 0 ? parts.join(" · ") : clause.clauseType;
+
+  const raw = clause.rawText;
+  const normalized = clause.normalizedValue;
+  if (normalized !== null && normalized.trim() !== "" && normalized !== raw) {
+    const index = raw.indexOf(normalized);
+    if (index >= 0) {
+      return { citation, before: raw.slice(0, index), quote: normalized, after: raw.slice(index + normalized.length) };
+    }
+  }
+  return { citation, before: "", quote: raw, after: "" };
+}
+
+/**
+ * Citation landing (`/contracts/:id?clause=<clauseId>` or `?page=<n>`): `pageParam` is consulted
+ * **only** when `clauseParam` is entirely absent -- a citation names one or the other, and retrying
+ * by page when the clause id it gave does not resolve risks highlighting a *different* clause than
+ * the one cited. Returns `null` when neither identifies a real clause: nothing is highlighted.
  */
 export function resolveHighlightedClauseId(
   clauses: readonly Contract360ClauseBody[],
@@ -126,62 +310,28 @@ export function resolveHighlightedClauseId(
   return null;
 }
 
-export interface SupplierLabel {
-  label: string;
-  title: string | undefined;
-}
+// ---------------------------------------------------------------------------------------------
+// Details ▾ — key terms, documents, facts to decide, priority score, extracted lists
+// ---------------------------------------------------------------------------------------------
+
+export const DETAILS_LABEL_CLOSED = "All terms, documents and open facts ▾";
+export const DETAILS_LABEL_OPEN = "Hide details";
 
 /**
- * AC-3: "The supplier name (never a guid) appears in the header." `supplierName` is a real, typed
- * field on `Contract360HeaderBody` since task E13/F03/US01/T02 made the backend project
- * `Contract360Header.SupplierName` (ADR-024 "Supplier identity" -- the `Supplier` entity resolved
- * through `ISupplierNameLookup`, never a raw supplier id), so it is read straight off the generated
- * `web/src/api/generated/schema.ts` type here.
- *
- * It is still `string | null`: the backend resolves it to `null` when the contract has no supplier
- * at all, or when its `supplierId` no longer resolves for this tenant (that property's own
- * description in `web/openapi/contigo-api.v1.json`). That `null` -- and a blank name -- fall back to
- * `../portfolioTableFormatters.ts#formatSupplier`'s id-fragment label, the same honest "no name to
- * show" degradation the Portfolio table already renders, never a fabricated supplier.
- */
-export function resolveSupplierLabel(header: Contract360HeaderBody): SupplierLabel {
-  if (header.supplierName !== null && header.supplierName.trim() !== "") {
-    return { label: header.supplierName, title: header.supplierId ?? undefined };
-  }
-  return formatSupplier(header.supplierId);
-}
-
-/**
- * One row of the shared Term / Value / Source / Confidence table template (screens.md #5: "one
- * template ... .table (Term · Value · Source · Confidence pattern)"), used by every tab except
- * Overview (the recommendation/attention/risks screen) and the non-generic half of Renewal (the
- * priority-score component table, `PriorityComponentRow` below).
+ * One row of the Term / Value / Source / Confidence template used by the drawer's extracted lists
+ * (Products / Obligations / Risks) and by the key-terms list.
  */
 export interface FactRow {
   key: string;
   term: string;
   value: string;
-  /** `null` renders as "—" -- a contract-level field (e.g. Commercials/Renewal) has no source span. */
+  /** `null` renders as "—" -- a contract-level field has no source span. */
   source: string | null;
   /** 0-100, or `null` when this fact carries no extraction confidence at all. Never a 0-1 fraction -- see `toConfidencePercent`. */
   confidencePct: number | null;
 }
 
-function formatMoney(amount: number | null, currency: string): string {
-  if (amount === null) return "—";
-  return `${currency} ${new Intl.NumberFormat("en-GB").format(amount)}`;
-}
-
-function formatPlainNumber(value: number | null): string {
-  if (value === null) return "—";
-  return new Intl.NumberFormat("en-GB").format(value);
-}
-
-/**
- * `Contract360ProductBody.confidence`/`Contract360ClauseBody.confidence`/etc. are 0-1 fractions on
- * the wire (backend `double? Confidence`, e.g. `0.92`) -- `styles/semantics.ts#getConfidenceTag`
- * expects a 0-100 percentage (its own thresholds are `>95`, `>=80`). `null` in, `null` out.
- */
+/** Wire confidences are 0-1 fractions; `styles/semantics.ts#getConfidenceTag` expects 0-100. `null` in, `null` out. */
 export function toConfidencePercent(confidence: number | null): number | null {
   return confidence === null ? null : confidence * 100;
 }
@@ -192,7 +342,7 @@ interface SourceFields {
   sourcePage: number | null;
 }
 
-/** `FactRow.source` for any extracted row (Products/Clauses/Obligations/Risks). `null` when there is no linked source document at all -- distinct from "linked, but no page/span recorded" (`"Linked document"`), an honest "not yet available" rather than a fabricated citation. */
+/** `null` when there is no linked source document at all -- distinct from "linked, but no page/span recorded" (`"Linked document"`). */
 function formatSource(row: SourceFields): string | null {
   if (row.sourceDocumentId === null) return null;
   const parts: string[] = [];
@@ -202,58 +352,36 @@ function formatSource(row: SourceFields): string | null {
 }
 
 /**
- * Overview tab's own supplementary "Contract details" block. `Contract360Overview`'s own backend
- * doc comment names these as "the descriptive/administrative Contract fields not already surfaced
- * on Contract360Header ... an implementer judgment call (spec §8.2 names the tab, not its fields)".
- * The cited prototype's Overview screen never renders these fields (its own `keyTerms` array is a
- * curated, unrelated "Needs your attention" source -- see `computeNeedsAttention` below) because
- * `governingLaw`/`effectiveDate`/`version`/`createdAt` have no other tab home in the whole 10-tab
- * set (not Commercials, not Renewal), so dropping them entirely would silently discard real
- * extracted/contract-level data rather than leaving a named gap. Rendered as a plain `.table` below
- * the recommendation card, never inside `.ai-recommendation` (ADR-019 facts/AI separation).
+ * "Key terms" (`app.jsx` `otherRows`: Annual spend · Start → end · Notice period · Uplift ·
+ * Auto-renewal), from the real contract-level fields on the header / commercials / renewal /
+ * overview. Contract-level fields carry no per-field source or confidence (they are aggregates, not
+ * span extractions), so those cells stay empty rather than borrowing a clause's.
  */
-export function buildOverviewDetailRows(overview: Contract360Body["tabs"]["overview"]): FactRow[] {
+export function buildKeyTerms(contract: Contract360Body): FactRow[] {
+  const { header, tabs } = contract;
+  const currency = tabs.commercials.currency;
   const rows: FactRow[] = [
-    { key: "effectiveDate", term: "Effective date", value: formatDateOnly(overview.effectiveDate), source: null, confidencePct: null },
-    { key: "governingLaw", term: "Governing law", value: overview.governingLaw ?? "—", source: null, confidencePct: null },
-    { key: "version", term: "Version", value: `v${overview.version}`, source: null, confidencePct: null },
-  ];
-  if (overview.parentContractId !== null) {
-    rows.push({ key: "parentContractId", term: "Parent contract", value: overview.parentContractId, source: null, confidencePct: null });
-  }
-  return rows;
-}
-
-/** Commercials tab (screens.md #5). Contract-level aggregate fields -- no per-field source/confidence exists for any of them (Contract360Commercials carries none), unlike Products/Clauses/Obligations/Risks. */
-export function buildCommercialsRows(commercials: Contract360Body["tabs"]["commercials"]): FactRow[] {
-  return [
-    { key: "annualSpend", term: "Annual spend", value: formatMoney(commercials.annualSpend, commercials.currency), source: null, confidencePct: null },
-    { key: "totalContractValue", term: "Total contract value (TCV)", value: formatMoney(commercials.totalContractValue, commercials.currency), source: null, confidencePct: null },
-    { key: "paymentTerms", term: "Payment terms", value: commercials.paymentTerms ?? "—", source: null, confidencePct: null },
-    { key: "autoRenewal", term: "Auto-renewal", value: commercials.autoRenewal ? "Yes" : "No", source: null, confidencePct: null },
+    { key: "annualSpend", term: "Annual spend", value: formatMoney(header.annualSpend, currency), source: null, confidencePct: null },
+    { key: "totalContractValue", term: "Total contract value", value: formatMoney(header.totalContractValue, currency), source: null, confidencePct: null },
+    { key: "term", term: "Start → end", value: `${formatDateOnly(header.startDate)} → ${formatDateOnly(header.endDate)}`, source: null, confidencePct: null },
+    { key: "cancellationDeadline", term: "Notice deadline", value: formatDateOnly(header.cancellationDeadline), source: null, confidencePct: null },
+    { key: "autoRenewal", term: "Auto-renewal", value: header.autoRenewal ? "Yes" : "No", source: null, confidencePct: null },
     {
       key: "renewalTermMonths",
       term: "Renewal term",
-      value: commercials.renewalTermMonths !== null ? `${commercials.renewalTermMonths} months` : "—",
+      value: tabs.renewal.renewalTermMonths !== null ? `${tabs.renewal.renewalTermMonths} months` : "—",
       source: null,
       confidencePct: null,
     },
-    { key: "lineItemCount", term: "Line items", value: formatPlainNumber(commercials.lineItemCount), source: null, confidencePct: null },
-    {
-      key: "lineItemAnnualCostTotal",
-      term: "Line items — annual cost",
-      value: formatMoney(commercials.lineItemAnnualCostTotal, commercials.currency),
-      source: null,
-      confidencePct: null,
-    },
-    {
-      key: "lineItemTotalCostTotal",
-      term: "Line items — total cost",
-      value: formatMoney(commercials.lineItemTotalCostTotal, commercials.currency),
-      source: null,
-      confidencePct: null,
-    },
+    { key: "paymentTerms", term: "Payment terms", value: tabs.commercials.paymentTerms ?? "—", source: null, confidencePct: null },
+    { key: "governingLaw", term: "Governing law", value: tabs.overview.governingLaw ?? "—", source: null, confidencePct: null },
+    { key: "effectiveDate", term: "Effective date", value: formatDateOnly(tabs.overview.effectiveDate), source: null, confidencePct: null },
+    { key: "lineItemCount", term: "Line items", value: formatPlainNumber(tabs.commercials.lineItemCount), source: null, confidencePct: null },
   ];
+  if (tabs.overview.parentContractId !== null) {
+    rows.push({ key: "parentContractId", term: "Parent contract", value: tabs.overview.parentContractId, source: null, confidencePct: null });
+  }
+  return rows;
 }
 
 function formatProductValue(p: Contract360ProductBody): string {
@@ -265,7 +393,7 @@ function formatProductValue(p: Contract360ProductBody): string {
   return parts.length > 0 ? parts.join(" ") : "—";
 }
 
-/** Products tab (AC-2 "products read from ... line items", Contract360ProductLineItem). */
+/** Products (line items). */
 export function buildProductsRows(products: readonly Contract360ProductBody[]): FactRow[] {
   return products.map((p) => ({
     key: p.lineItemId,
@@ -276,22 +404,6 @@ export function buildProductsRows(products: readonly Contract360ProductBody[]): 
   }));
 }
 
-function formatClauseValue(c: Contract360ClauseBody): string {
-  const base = c.normalizedValue ?? c.rawText;
-  return c.riskLevel !== null ? `${base} — ${c.riskLevel} risk` : base;
-}
-
-/** Clauses tab (AC-2 "clauses ... from extracted facts", Contract360Clause). */
-export function buildClausesRows(clauses: readonly Contract360ClauseBody[]): FactRow[] {
-  return clauses.map((c) => ({
-    key: c.clauseId,
-    term: c.clauseType,
-    value: formatClauseValue(c),
-    source: formatSource(c),
-    confidencePct: toConfidencePercent(c.confidence),
-  }));
-}
-
 function formatObligationValue(o: Contract360ObligationBody): string {
   const parts = [o.description];
   if (o.dueDate !== null) parts.push(`due ${formatDateOnly(o.dueDate)}`);
@@ -299,7 +411,7 @@ function formatObligationValue(o: Contract360ObligationBody): string {
   return parts.join(" · ");
 }
 
-/** Obligations tab (AC-2 "obligations ... from extracted facts", Contract360Obligation). */
+/** Obligations. */
 export function buildObligationsRows(obligations: readonly Contract360ObligationBody[]): FactRow[] {
   return obligations.map((o) => ({
     key: o.obligationId,
@@ -310,7 +422,7 @@ export function buildObligationsRows(obligations: readonly Contract360Obligation
   }));
 }
 
-/** Risks tab (AC-2 "risks ... from extracted facts", Contract360Risk). Severity is always textual (ADR-019 "no colour-only semantics"), never rendered as a bare tint. */
+/** Risks. Severity is always textual (ADR-019 "no colour-only semantics"). */
 export function buildRisksRows(risks: readonly Contract360RiskBody[]): FactRow[] {
   return risks.map((r) => ({
     key: r.riskId,
@@ -321,43 +433,21 @@ export function buildRisksRows(risks: readonly Contract360RiskBody[]): FactRow[]
   }));
 }
 
-/**
- * Documents tab. Kept inside the same generic template as every other fact tab (ADR-020's "one
- * template" for Commercials..Activity) rather than forking into a second, differently-shaped table
- * -- `source` is the document's own MIME type (there is no span/page for a document *about itself*)
- * and `confidencePct` is always `null` (a document has no extraction confidence of its own).
- */
-export function buildDocumentsRows(documents: readonly Contract360DocumentBody[]): FactRow[] {
-  return documents.map((d) => ({
-    key: d.documentId,
-    term: d.fileName,
-    value: `${d.documentType} · ${d.processingStatus}`,
-    source: d.mimeType,
-    confidencePct: null,
-  }));
+export interface DocumentRow {
+  documentId: string;
+  type: string;
+  fileName: string;
+  status: SemanticTag;
 }
 
-/** Renewal tab's generic facts half (screens.md #5 "Renewal adds priority-score component table" -- this is the *other*, template-shaped half of that same tab). Contract360Renewal carries no per-field source/confidence, same as Commercials. */
-export function buildRenewalFactRows(renewal: Contract360Body["tabs"]["renewal"]): FactRow[] {
-  return [
-    { key: "endDate", term: "End date", value: formatDateOnly(renewal.endDate), source: null, confidencePct: null },
-    { key: "renewalDate", term: "Renewal date", value: formatDateOnly(renewal.renewalDate), source: null, confidencePct: null },
-    {
-      key: "cancellationDeadline",
-      term: "Cancellation deadline",
-      value: formatDateOnly(renewal.cancellationDeadline),
-      source: null,
-      confidencePct: null,
-    },
-    { key: "autoRenewal", term: "Auto-renewal", value: renewal.autoRenewal ? "Yes" : "No", source: null, confidencePct: null },
-    {
-      key: "renewalTermMonths",
-      term: "Renewal term",
-      value: renewal.renewalTermMonths !== null ? `${renewal.renewalTermMonths} months` : "—",
-      source: null,
-      confidencePct: null,
-    },
-  ];
+/** "Documents" (`app.jsx` `family`: type · file · status tag). */
+export function buildDocumentRows(documents: readonly Contract360DocumentBody[]): DocumentRow[] {
+  return documents.map((d) => ({
+    documentId: d.documentId,
+    type: getContractTypeLabel(d.documentType),
+    fileName: d.fileName,
+    status: getPortfolioStatusTag(d.processingStatus),
+  }));
 }
 
 export interface PriorityComponentRow {
@@ -367,7 +457,7 @@ export interface PriorityComponentRow {
   explanation: string;
 }
 
-/** Order + labels quoted from `PriorityScoreCalculator`'s own product-spec §9.2 term order ("Spend Weight + Time Urgency + Benchmark Opportunity + Price Increase Risk + Contract Risk"). */
+/** Order + labels quoted from `PriorityScoreCalculator`'s own product-spec §9.2 term order. */
 const PRIORITY_COMPONENT_LABELS: ReadonlyArray<{ key: keyof RenewalPriorityBody["components"]; label: string }> = [
   { key: "spendWeight", label: "Spend weight" },
   { key: "timeUrgency", label: "Time urgency" },
@@ -376,7 +466,7 @@ const PRIORITY_COMPONENT_LABELS: ReadonlyArray<{ key: keyof RenewalPriorityBody[
   { key: "contractRisk", label: "Contract risk" },
 ];
 
-/** Renewal tab's priority-score component table (screens.md #5). `null` (the priority fetch failed/is still loading) renders as an empty list -- `RenewalTab.tsx` shows its own honest "not yet available" note in that case, never a fabricated all-zero table. */
+/** The explainable priority-score breakdown. `null` renders as an empty list -- never a fabricated all-zero table. */
 export function buildPriorityComponentRows(priority: RenewalPriorityBody | null): PriorityComponentRow[] {
   if (priority === null) return [];
   return PRIORITY_COMPONENT_LABELS.map(({ key, label }) => ({
@@ -387,7 +477,7 @@ export function buildPriorityComponentRows(priority: RenewalPriorityBody | null)
   }));
 }
 
-/** Contract 360 header's "priority {score}/100" fact (screens.md #5 fact-row cell 6, `cur.score`). */
+/** "priority 72/100", or an honest gap while the score has not resolved. */
 export function formatPriorityFact(priority: RenewalPriorityBody | null): string {
   return priority !== null ? `priority ${Math.round(priority.totalScore)}/100` : "priority not yet available";
 }
@@ -395,117 +485,34 @@ export function formatPriorityFact(priority: RenewalPriorityBody | null): string
 export interface AttentionTerm {
   key: string;
   term: string;
+  value: string;
   confidencePct: number;
   tag: SemanticTag;
 }
 
 /**
- * Overview tab's "Needs your attention" (screens.md #5; day1-demo.html's own `attnTerms:
- * keyTerms.filter(k=>k.tag!=='tag-neutral').slice(0,3)`, i.e. every key term whose confidence is
- * NOT the >95% "Accepted" band, lowest confidence first, capped at 3). The prototype's `keyTerms` is
- * a small illustrative list; this applies the same rule to every REAL per-field confidence this
- * aggregate carries -- Products, Clauses, and Obligations (Commercials/Overview/Renewal have no
- * per-field confidence: they are contract-level aggregates, not span-extractions; Risks gets its
- * own "Top risks" section below instead of competing for the same 3 slots). A row with `confidence:
- * null` is excluded rather than treated as "needs attention" -- there is no number to grade it
- * against (an honest omission, not a downgrade to "accepted").
+ * "Facts you still need to decide" (`app.jsx` `attnTerms`: every key term whose confidence is not
+ * the >95% band). Applied to every REAL per-field confidence this aggregate carries -- Products,
+ * Clauses, Obligations (contract-level aggregates have none) -- lowest confidence first. A field
+ * with `confidence: null` is excluded rather than treated as "needs attention": there is no number
+ * to grade it against.
  */
 export function computeNeedsAttention(tabs: Contract360Body["tabs"]): AttentionTerm[] {
   const candidates: AttentionTerm[] = [];
 
-  const consider = (key: string, term: string, confidence: number | null) => {
+  const consider = (key: string, term: string, value: string, confidence: number | null) => {
     if (confidence === null) return;
     const confidencePct = toConfidencePercent(confidence) as number;
     const tag = getConfidenceTag(confidencePct);
-    if (tag.variant !== "neutral") candidates.push({ key, term, confidencePct, tag });
+    if (tag.variant !== "neutral") candidates.push({ key, term, value, confidencePct, tag });
   };
 
-  for (const p of tabs.products) consider(`product-${p.lineItemId}`, p.description, p.confidence);
-  for (const c of tabs.clauses) consider(`clause-${c.clauseId}`, c.clauseType, c.confidence);
-  for (const o of tabs.obligations) consider(`obligation-${o.obligationId}`, o.obligationType, o.confidence);
+  for (const p of tabs.products) consider(`product-${p.lineItemId}`, p.description !== "" ? p.description : (p.sku ?? "Line item"), formatProductValue(p), p.confidence);
+  for (const c of tabs.clauses) consider(`clause-${c.clauseId}`, c.clauseType, c.normalizedValue ?? c.rawText, c.confidence);
+  for (const o of tabs.obligations) consider(`obligation-${o.obligationId}`, o.obligationType, o.description, o.confidence);
 
-  return candidates.sort((a, b) => a.confidencePct - b.confidencePct).slice(0, 3);
+  return candidates.sort((a, b) => a.confidencePct - b.confidencePct);
 }
 
-const RISK_SEVERITY_RANK: Readonly<Record<string, number>> = { Critical: 3, High: 2, Medium: 1, Low: 0 };
-
-/**
- * Overview tab's "Top risks" (screens.md #5; day1-demo.html's own `topRisks: curRisks.slice(0,2)`).
- * Highest severity first; ties broken by ascending confidence (the least-certain highest-severity
- * risk surfaces first, since that is the one most worth a human's attention).
- */
-export function computeTopRisks(risks: readonly Contract360RiskBody[]): Contract360RiskBody[] {
-  return [...risks]
-    .sort((a, b) => {
-      const bySeverity = (RISK_SEVERITY_RANK[b.severity] ?? 0) - (RISK_SEVERITY_RANK[a.severity] ?? 0);
-      if (bySeverity !== 0) return bySeverity;
-      return (a.confidence ?? 1) - (b.confidence ?? 1);
-    })
-    .slice(0, 2);
-}
-
-export interface RecommendationDriver {
-  key: string;
-  label: string;
-  value: string;
-}
-
-export interface Recommendation {
-  /** False when this contract has no entry in `GET /api/renewals` (not auto-renewing, or beyond that endpoint's own page-size ceiling) -- a real, named gap, never a fabricated recommendation. */
-  hasRecommendation: boolean;
-  statement: string;
-  rationale: string;
-  drivers: readonly RecommendationDriver[];
-}
-
-/**
- * Overview's recommended-action block (screens.md #5: "recommended-action block (big statement +
- * rationale + Open in renewals / Why this score) with 3 driver numbers"; council decision "AI
- * recommendation lives in its own labelled block, never mixed with deterministic facts", carried
- * into us-01-contract-360). `statement`/`rationale` are the Renewals module's own real, deterministic
- * (not LLM) `recommendedAction`/`explanation` text for whichever `GET /api/renewals` pipeline item
- * matches this contract's id -- never invented UI copy (see `GetRenewalsResult`'s own doc comment in
- * `api/client.ts` for why that call, not this contract's own header/tabs, is the only honest
- * source). The 3 "driver numbers" are quoted verbatim from day1-demo.html's own `cur.cancelDays`/
- * `cur.market`/`cur.potential` block: Cancellation deadline is a real header fact (shown regardless
- * of whether a recommendation exists); Market position/Potential savings are Recommendations-module
- * fields that are honestly `null` until the R3 Benchmark/Savings modules exist
- * (`RenewalInsightRecommendations`'s own backend doc comment) -- rendered as "Not yet available",
- * never guessed (Appendix C rule 10).
- */
-export function buildRecommendation(
-  header: Contract360HeaderBody,
-  renewals: readonly RenewalPipelineItemBody[],
-  now: Date = new Date(),
-): Recommendation {
-  const item = renewals.find((r) => r.contractId === header.contractId) ?? null;
-  const cancelDays = daysUntil(header.cancellationDeadline, now);
-
-  const drivers: RecommendationDriver[] = [
-    { key: "cancellationDeadline", label: "Cancellation deadline", value: cancelDays !== null ? `${cancelDays} days` : "—" },
-    { key: "marketPosition", label: "Market position", value: item?.insightCard.recommendations.marketPosition ?? "Not yet available" },
-    {
-      key: "potentialSavings",
-      label: "Potential savings",
-      value: item?.insightCard.recommendations.potentialSavingsRange ?? "Not yet available",
-    },
-  ];
-
-  if (item === null) {
-    return {
-      hasRecommendation: false,
-      statement: "No renewal recommendation for this contract",
-      rationale: header.autoRenewal
-        ? "This contract did not appear in the current renewal pipeline yet."
-        : "Contigo tracks renewal recommendations only for auto-renewing contracts; this contract ends on its end date with no renewal to act on.",
-      drivers,
-    };
-  }
-
-  return {
-    hasRecommendation: true,
-    statement: item.action,
-    rationale: item.insightCard.recommendations.explanation,
-    drivers,
-  };
-}
+/** `markup.html` `noAttn`, verbatim. */
+export const NO_ATTENTION_MESSAGE = "None — every fact is above 95% or signed off by you.";

@@ -295,7 +295,7 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
     // route (which renders its own named empty state) is mounted, not the scaffold; the fetch-outcome
     // matrix itself (populated/loading/error/empty/no-window) is covered in depth by
     // tests/routes/renewals/*.test.tsx.
-    expect(await screen.findByText(/no renewals in your pipeline yet/i)).toBeInTheDocument();
+    expect(await screen.findByText("No renewal dates yet")).toBeInTheDocument();
     expect(screen.queryByText(/ships in epic-08\/feature-01-renewal-pipeline-ui/i)).not.toBeInTheDocument();
   });
 
@@ -311,7 +311,7 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
     // proves the real route (KPI row AND opportunities table) is mounted at its new V2 path; the
     // fetch-outcome matrix itself (populated/loading/error/empty/stale) is covered in depth by
     // tests/routes/savings/*.test.tsx.
-    expect(await screen.findByText("Annual spend analyzed")).toBeInTheDocument();
+    expect(await screen.findByText("Contracts analyzed")).toBeInTheDocument();
     expect(await screen.findByText(/no savings opportunities yet/i)).toBeInTheDocument();
   });
 });

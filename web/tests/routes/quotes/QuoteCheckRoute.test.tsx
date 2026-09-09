@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import QuoteCheckRoute from "../../../src/routes/quotes";
 import type {
@@ -22,8 +22,6 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     inviteWorkspaceMember: vi.fn(),
     uploadDocument: vi.fn(),
     getDocument: vi.fn(),
-    // Task E13/F09/US01/T03 (web-documents-v2): this suite does not exercise Documents -- bare
-    // vi.fn() is enough, same convention as getPortfolio below.
     listDocuments: vi.fn(),
     getDocumentPreviewUrl: vi.fn(),
     reprocessDocument: vi.fn(),
@@ -36,28 +34,18 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     correctContract: vi.fn(),
     getContractEvidence: vi.fn(),
     validateDocument: vi.fn(),
-    // Task E13/F09/US01/T04 (web-ask-v2): this suite never reaches conversations/capabilities/
-    // market -- bare vi.fn() is enough, same convention as getRenewalPriority above.
     listConversations: vi.fn(),
     createConversation: vi.fn(),
     getConversation: vi.fn(),
     postMessage: vi.fn(),
     getCapabilities: vi.fn(),
     getMarketRecord: vi.fn(),
-    // Task E08/F01/US01/T01 (renewal-pipeline): this suite never reaches the Renewals screen -- bare
-    // vi.fn() is enough, same convention as getRenewalPriority above. (Pre-existing gap in this
-    // file's own mock literal, backfilled here while task E08/F02/US01/T01 was already touching this
-    // exact object for its own two additions below.)
     postRenewalAction: vi.fn(),
     uploadQuote: vi.fn(),
     getQuoteAssessment: vi.fn(),
     recalculateQuoteAssessment: vi.fn(),
     captureNegotiationOutcome: vi.fn(),
-    // Task E07/F04/US01/T01 (ask-contigo-ui): this suite never reaches the Ask Contigo screen --
-    // bare vi.fn() is enough, same convention as postRenewalAction above.
     askContigo: vi.fn(),
-    // Task E08/F02/US01/T01 (savings-home): this suite never reaches Home's own fetch-outcome
-    // matrix -- bare vi.fn() is enough, same convention as postRenewalAction above.
     getSavingsKpis: vi.fn(),
     getSavingsOpportunities: vi.fn(),
     ...overrides,
@@ -123,13 +111,15 @@ function renderRoute(apiClient: ApiClient, initialPath = `/quotes/${QUOTE_ID}`) 
       <Routes>
         <Route path="/quotes" element={<QuoteCheckRoute apiClient={apiClient} />} />
         <Route path="/quotes/:quoteId" element={<QuoteCheckRoute apiClient={apiClient} />} />
-        <Route path="/" element={<div>HOME_SCREEN</div>} />
+        <Route path="/savings" element={<div>SAVINGS_SCREEN</div>} />
       </Routes>
     </MemoryRouter>,
   );
 }
 
-describe("QuoteCheckRoute (route /quotes/:quoteId, ADR-020 screen 10)", () => {
+const LEVERS_FOOTER = "Target and negotiation levers are one step further — shown only if you want them.";
+
+describe("QuoteCheckRoute (V2, ADR-024 / screens-v2.md #9)", () => {
   beforeEach(() => {
     window.sessionStorage.clear();
     window.sessionStorage.setItem("contigo.signin.currentWorkspace", JSON.stringify({ id: WORKSPACE_ID, name: "Acme Procurement" }));
@@ -144,27 +134,35 @@ describe("QuoteCheckRoute (route /quotes/:quoteId, ADR-020 screen 10)", () => {
     expect(recalculateQuoteAssessment).not.toHaveBeenCalled();
   });
 
-  it("renders its own upload form when no quoteId is in the route yet (ADR-018 names no list screen)", () => {
+  it("landing: the V2 header, the dashed drop card with 'Upload a quote' and the sample, and no stepper", () => {
     const recalculateQuoteAssessment = vi.fn();
     renderRoute(mockApiClient({ recalculateQuoteAssessment }), "/quotes");
 
-    expect(screen.getByRole("heading", { name: "Quote check" })).toBeInTheDocument();
+    expect(screen.getByText("Optional · new purchase")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "Quote check" })).toBeInTheDocument();
+    expect(
+      screen.getByText("Drop a supplier proposal; Contigo normalises the lines and compares them with the market and with what you already pay."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Upload a quote" })).toHaveClass("btn-primary");
+    expect(screen.getByText(/or use the sample:/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Databricks proposal Q-88213" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
     expect(recalculateQuoteAssessment).not.toHaveBeenCalled();
   });
 
-  it("uploads via the sample-file convenience button and loads the real returned quote id", async () => {
+  it("uploads the sample proposal as a real file with its own metadata, then loads the returned quote id", async () => {
     const uploadedQuote: UploadQuoteResult["quote"] = {
       id: QUOTE_ID,
-      fileName: "contigo-sample-quote.pdf",
+      fileName: "Databricks_Proposal_Q-88213.pdf",
       mimeType: "application/pdf",
       processingStatus: "NeedsReview",
-      lineItemCount: 0,
-      normalizedLineItemCount: 0,
+      lineItemCount: 3,
+      normalizedLineItemCount: 3,
       unresolvedNormalizationCount: 0,
       unmatchedSkuCount: 0,
-      supplier: null,
-      currency: null,
-      geography: null,
+      supplier: "Databricks",
+      currency: "CHF",
+      geography: "CH",
       purchaseDate: null,
       createdAt: "2026-09-06T00:00:00Z",
     };
@@ -172,12 +170,32 @@ describe("QuoteCheckRoute (route /quotes/:quoteId, ADR-020 screen 10)", () => {
     const recalculateQuoteAssessment = vi.fn().mockResolvedValue(recalcOk([], []));
     renderRoute(mockApiClient({ uploadQuote, recalculateQuoteAssessment }), "/quotes");
 
-    fireEvent.click(screen.getByRole("button", { name: /use sample file/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Databricks proposal Q-88213" }));
 
     await waitFor(() => expect(uploadQuote).toHaveBeenCalledTimes(1));
-    expect(uploadQuote.mock.calls[0][0]).toBe(WORKSPACE_ID);
+    const [tenantId, file, fields] = uploadQuote.mock.calls[0];
+    expect(tenantId).toBe(WORKSPACE_ID);
+    expect((file as File).name).toBe("Databricks_Proposal_Q-88213.pdf");
+    expect((file as File).size).toBeGreaterThan(200);
+    expect(fields).toMatchObject({ supplier: "Databricks", currency: "CHF", geography: "CH" });
+
     await waitFor(() => expect(recalculateQuoteAssessment).toHaveBeenCalledWith(WORKSPACE_ID, QUOTE_ID, []));
-    expect(await screen.findByText("contigo-sample-quote.pdf")).toBeInTheDocument();
+    expect(await screen.findByText("Databricks_Proposal_Q-88213.pdf · Databricks · CHF · CH")).toBeInTheDocument();
+    // Zero extracted lines is an honest answer, never a scripted table.
+    expect(screen.getByText(/no line items were extracted from this quote yet/i)).toBeInTheDocument();
+  });
+
+  it("uploads a picked file straight away with the optional metadata typed under the disclosure", async () => {
+    const uploadQuote = vi.fn().mockResolvedValue({ ok: false, statusCode: 400, quote: null, error: "Unsupported file type." });
+    renderRoute(mockApiClient({ uploadQuote }), "/quotes");
+
+    fireEvent.change(screen.getByLabelText("Supplier"), { target: { value: "Acme" } });
+    const file = new File(["%PDF-1.4"], "proposal.pdf", { type: "application/pdf" });
+    fireEvent.change(screen.getByLabelText("Quote file"), { target: { files: [file] } });
+
+    await waitFor(() => expect(uploadQuote).toHaveBeenCalledTimes(1));
+    expect(uploadQuote.mock.calls[0][2]).toEqual({ supplier: "Acme", currency: undefined, geography: undefined, purchaseDate: undefined });
+    expect(await screen.findByRole("alert")).toHaveTextContent("Unsupported file type.");
   });
 
   it("calls recalculateQuoteAssessment with an empty mappings array on load (the endpoint's own documented 'pure refresh' read)", async () => {
@@ -187,42 +205,101 @@ describe("QuoteCheckRoute (route /quotes/:quoteId, ADR-020 screen 10)", () => {
     await waitFor(() => expect(recalculateQuoteAssessment).toHaveBeenCalledWith(WORKSPACE_ID, QUOTE_ID, []));
   });
 
-  it("renders a named not-found state on a 404", async () => {
+  it("renders a named not-found state on a 404, under the same header", async () => {
     renderRoute(
       mockApiClient({
         recalculateQuoteAssessment: vi.fn().mockResolvedValue({ ok: false, statusCode: 404, recalculation: null, error: "Quote not found." }),
       }),
     );
 
-    expect(await screen.findByText(/quote not found/i)).toBeInTheDocument();
+    expect(await screen.findByText("Quote not found")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "Quote check" })).toBeInTheDocument();
   });
 
-  describe("AC-2: unmatched SKU blocks assessment until mapped", () => {
-    it("shows the unmatched-SKU block on Extract, and a blocked card when Assessment is opened", async () => {
-      const recalculateQuoteAssessment = vi.fn().mockResolvedValue(recalcOk([assessedLine()], [unmatchedLine()]));
+  describe("once loaded", () => {
+    it("renders the three-cell band, the five-column lines table and the levers footer", async () => {
+      renderRoute(mockApiClient({ recalculateQuoteAssessment: vi.fn().mockResolvedValue(recalcOk([assessedLine()], [])) }));
+
+      const table = await screen.findByRole("table");
+      expect(within(table).getAllByRole("columnheader").map((cell) => cell.textContent)).toEqual([
+        "Line",
+        "Quoted",
+        "P50",
+        "Position",
+        "Benchmark",
+      ]);
+      const row = within(table).getAllByRole("row")[1];
+      expect(within(row).getByText("Line 1")).toBeInTheDocument();
+      expect(within(row).getByText("CHF 100")).toBeInTheDocument();
+      expect(within(row).getByText("CHF 90")).toBeInTheDocument();
+      expect(within(row).getByText("Above market")).toHaveClass("tag-accent");
+      expect(within(row).getByText("+11% vs P50")).toBeInTheDocument();
+      expect(within(row).getByText("High · n=42")).toHaveClass("tag-neutral");
+
+      const band = screen.getByRole("region", { name: "Quote assessment" });
+      expect(within(band).getByText("Supplier quote").nextSibling).toHaveTextContent("CHF 1,000");
+      expect(within(band).getByText("Market range").nextSibling).toHaveTextContent("CHF 800–1,000");
+      expect(within(band).getByText("Assessment").nextSibling).toHaveTextContent("1 above market");
+      expect(within(band).getByText("1 above market")).toHaveClass("quote-emphasize");
+
+      expect(screen.getByText(LEVERS_FOOTER)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Show target and levers →" })).toHaveAttribute("aria-expanded", "false");
+      expect(screen.queryByText("Adjust target")).not.toBeInTheDocument();
+    });
+
+    it("keeps unit prices' decimals (a 0.55 DBU is not 'CHF 1')", async () => {
+      renderRoute(
+        mockApiClient({
+          recalculateQuoteAssessment: vi.fn().mockResolvedValue(
+            recalcOk(
+              [assessedLine({ unitPrice: 0.55, quantity: 600_000, benchmark: { hasSufficientData: true, distribution: { p25: 0.4, p50: 0.46, p75: 0.5 }, metric: "DBU", currency: "CHF" } })],
+              [],
+            ),
+          ),
+        }),
+      );
+
+      const table = await screen.findByRole("table");
+      expect(within(table).getByText("CHF 0.55")).toBeInTheDocument();
+      expect(within(table).getByText("CHF 0.46")).toBeInTheDocument();
+      expect(within(table).getByText("+20% vs P50")).toBeInTheDocument();
+    });
+
+    it("the footer reveals the Target step, whose own continue reveals Negotiation; the toggle hides both again", async () => {
+      renderRoute(mockApiClient({ recalculateQuoteAssessment: vi.fn().mockResolvedValue(recalcOk([assessedLine()], [])) }));
+      await screen.findByText(LEVERS_FOOTER);
+
+      fireEvent.click(screen.getByRole("button", { name: "Show target and levers →" }));
+      expect(await screen.findByText("Adjust target")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Hide target and levers" })).toHaveAttribute("aria-expanded", "true");
+      expect(screen.queryByText("Record the outcome")).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: /build negotiation strategy/i }));
+      expect(await screen.findByText("Record the outcome")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: "Hide target and levers" }));
+      expect(screen.queryByText("Adjust target")).not.toBeInTheDocument();
+      expect(screen.queryByText("Record the outcome")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("unmatched SKU blocks assessment until mapped", () => {
+    it("shows the mapping block instead of the levers footer, and marks the unmatched line 'Needs mapping'", async () => {
+      const recalculateQuoteAssessment = vi
+        .fn()
+        .mockResolvedValue(recalcOk([assessedLine(), assessedLine({ quoteLineId: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", benchmark: null, position: null, status: "QuoteDataUnresolved", confidence: null })], [unmatchedLine()]));
       renderRoute(mockApiClient({ recalculateQuoteAssessment }));
 
       expect(await screen.findByText(/could not be matched to the benchmark model/i)).toBeInTheDocument();
+      expect(screen.queryByText(LEVERS_FOOTER)).not.toBeInTheDocument();
 
-      fireEvent.click(screen.getByRole("tab", { name: "Assessment" }));
-
-      expect(await screen.findByText("Assessment blocked")).toBeInTheDocument();
+      const table = screen.getByRole("table");
+      expect(within(table).getByText("Enterprise Support Tier — Custom Bundle")).toBeInTheDocument();
+      expect(within(table).getByText("Needs mapping")).toHaveClass("tag-outline");
+      expect(within(table).getByText("Enterprise Support Tier — Custom Bundle").closest("tr")).toHaveClass("row-critical");
     });
 
-    it("← Back to extract returns to the Extract step", async () => {
-      const recalculateQuoteAssessment = vi.fn().mockResolvedValue(recalcOk([assessedLine()], [unmatchedLine()]));
-      renderRoute(mockApiClient({ recalculateQuoteAssessment }));
-
-      await screen.findByText(/could not be matched to the benchmark model/i);
-      fireEvent.click(screen.getByRole("tab", { name: "Assessment" }));
-      await screen.findByText("Assessment blocked");
-
-      fireEvent.click(screen.getByRole("button", { name: /back to extract/i }));
-
-      expect(await screen.findByText(/could not be matched to the benchmark model/i)).toBeInTheDocument();
-    });
-
-    it("applying a mapping recalculates with the real correction, and Assessment unblocks once no line is unmatched", async () => {
+    it("applying a mapping recalculates with the real correction; once no line is unmatched the levers footer appears", async () => {
       const recalculateQuoteAssessment = vi
         .fn()
         .mockResolvedValueOnce(recalcOk([assessedLine()], [unmatchedLine()]))
@@ -239,12 +316,8 @@ describe("QuoteCheckRoute (route /quotes/:quoteId, ADR-020 screen 10)", () => {
         ]),
       );
 
-      expect(await screen.findByText("All lines normalised")).toBeInTheDocument();
-
-      fireEvent.click(screen.getByRole("tab", { name: "Assessment" }));
-
-      expect(screen.queryByText("Assessment blocked")).not.toBeInTheDocument();
-      expect(await screen.findByText("Line-level market position")).toBeInTheDocument();
+      expect(await screen.findByText(LEVERS_FOOTER)).toBeInTheDocument();
+      expect(screen.queryByText(/could not be matched to the benchmark model/i)).not.toBeInTheDocument();
     });
 
     it("does not call recalculateQuoteAssessment again when no mapping draft has a canonical SKU filled in", async () => {
@@ -252,13 +325,20 @@ describe("QuoteCheckRoute (route /quotes/:quoteId, ADR-020 screen 10)", () => {
       renderRoute(mockApiClient({ recalculateQuoteAssessment }));
 
       await screen.findByText(/could not be matched to the benchmark model/i);
-      const applyButton = screen.getByRole("button", { name: /apply mapping & recalculate/i });
-      expect(applyButton).toBeDisabled();
+      expect(screen.getByRole("button", { name: /apply mapping & recalculate/i })).toBeDisabled();
+      expect(recalculateQuoteAssessment).toHaveBeenCalledTimes(1);
     });
   });
 
-  describe("AC-4: negotiation outcome capture", () => {
-    it("records an outcome and renders the server's own recorded figures, never a locally-recomputed one", async () => {
+  describe("negotiation outcome capture (one step further)", () => {
+    async function openNegotiation() {
+      await screen.findByText(LEVERS_FOOTER);
+      fireEvent.click(screen.getByRole("button", { name: "Show target and levers →" }));
+      fireEvent.click(await screen.findByRole("button", { name: /build negotiation strategy/i }));
+      await screen.findByText("Record the outcome");
+    }
+
+    it("records an outcome and renders the server's own recorded figures, then links to Savings", async () => {
       const recalculateQuoteAssessment = vi.fn().mockResolvedValue(recalcOk([assessedLine()], []));
       const outcomeBody: CaptureNegotiationOutcomeResult["outcome"] = {
         id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
@@ -277,9 +357,7 @@ describe("QuoteCheckRoute (route /quotes/:quoteId, ADR-020 screen 10)", () => {
       };
       const captureNegotiationOutcome = vi.fn().mockResolvedValue({ ok: true, statusCode: 201, outcome: outcomeBody, error: null });
       renderRoute(mockApiClient({ recalculateQuoteAssessment, captureNegotiationOutcome }));
-
-      await screen.findByText("All lines normalised");
-      fireEvent.click(screen.getByRole("tab", { name: "Negotiation" }));
+      await openNegotiation();
 
       fireEvent.change(screen.getByLabelText("Final price"), { target: { value: "950" } });
       fireEvent.click(screen.getByLabelText("Term"));
@@ -292,35 +370,28 @@ describe("QuoteCheckRoute (route /quotes/:quoteId, ADR-020 screen 10)", () => {
       );
 
       expect(await screen.findByText("Negotiation outcome")).toBeInTheDocument();
-      // The recorded panel renders outcomeBody's own server-computed realizedSaving/discountPercent
-      // (50 / 5.0%) verbatim, not a locally-recomputed preview (which would use the 1000/950 the
-      // form itself submitted and land on the same numbers only by coincidence of this fixture).
       expect(screen.getByText("CHF 50 · 5.0%")).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "See it in Savings →" })).toHaveAttribute("href", "/savings");
     });
 
     it("disables Record outcome until at least one lever is selected (backend LeversUsedRequiredError)", async () => {
-      const recalculateQuoteAssessment = vi.fn().mockResolvedValue(recalcOk([assessedLine()], []));
-      renderRoute(mockApiClient({ recalculateQuoteAssessment }));
+      renderRoute(mockApiClient({ recalculateQuoteAssessment: vi.fn().mockResolvedValue(recalcOk([assessedLine()], [])) }));
+      await openNegotiation();
 
-      await screen.findByText("All lines normalised");
-      fireEvent.click(screen.getByRole("tab", { name: "Negotiation" }));
       fireEvent.change(screen.getByLabelText("Final price"), { target: { value: "950" } });
-
       expect(screen.getByRole("button", { name: /record outcome/i })).toBeDisabled();
     });
 
     it("shows an inline error and does not clear the form on a failed capture", async () => {
-      const recalculateQuoteAssessment = vi.fn().mockResolvedValue(recalcOk([assessedLine()], []));
       const captureNegotiationOutcome = vi.fn().mockResolvedValue({
         ok: false,
         statusCode: 400,
         outcome: null,
         error: "'leversUsed' entries must each be one of: Volume, Term, Utilization, Alternatives, QuarterEnd, Bundle, PaymentTerms.",
       });
-      renderRoute(mockApiClient({ recalculateQuoteAssessment, captureNegotiationOutcome }));
+      renderRoute(mockApiClient({ recalculateQuoteAssessment: vi.fn().mockResolvedValue(recalcOk([assessedLine()], [])), captureNegotiationOutcome }));
+      await openNegotiation();
 
-      await screen.findByText("All lines normalised");
-      fireEvent.click(screen.getByRole("tab", { name: "Negotiation" }));
       fireEvent.change(screen.getByLabelText("Final price"), { target: { value: "950" } });
       fireEvent.click(screen.getByLabelText("Term"));
       fireEvent.click(screen.getByRole("button", { name: /record outcome/i }));

@@ -1,18 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import type { ApiClient } from "../../api/client";
+import type { ApiClient, PortfolioListItem } from "../../api/client";
 import { loadCurrentWorkspace } from "../signin/workspaceStore";
-import AttentionStrip from "./AttentionStrip";
-import PortfolioFilters from "./PortfolioFilters";
 import PortfolioTable from "./PortfolioTable";
-import {
-  compareBySeverityThenDeadline,
-  computeAttentionBucketCounts,
-  computeAttentionRow,
-  type AttentionBucketKey,
-  type AttentionRow,
-} from "./portfolioAttention";
-import { EMPTY_PORTFOLIO_FILTERS, applyPortfolioFilters, isAnyPortfolioFilterActive, type PortfolioFilterState } from "./portfolioFilterState";
+import { buildPortfolioRows, buildPortfolioSummary, formatPortfolioSummary, moreColumnsLabel, PORTFOLIO_SUMMARY_OFF } from "./portfolioViewModel";
 import "./contracts.css";
 
 export interface PortfolioRouteProps {
@@ -25,38 +16,29 @@ const PORTFOLIO_PAGE_SIZE = 100;
 type FetchState =
   | { phase: "loading" }
   | { phase: "error"; statusCode: number | null; message: string }
-  | { phase: "ready"; rows: AttentionRow[] };
+  | { phase: "ready"; items: readonly PortfolioListItem[] };
 
 /**
- * Route `/contracts` (ADR-018; screens.md #4 "Portfolio"; task E07/F01/US01/T01,
- * us-01-portfolio-list-filters AC-1 filters / AC-2 attention strip / AC-3 sort+tint / AC-4 states).
- * Wired into `../../components/shell/WorkspaceShellApp.tsx`'s `contracts` route in place of that
- * shell task's `ScaffoldScreen` placeholder, the same seam `../documents/index.tsx` already used for
- * `/documents`.
+ * Route `/contracts` -- Portfolio, V2 (ADR-024 V2 IA amending ADR-018/ADR-020 screen 4;
+ * screens-v2.md #6; `contigo-v2/markup.html` "PORTFOLIO" block, `app.jsx` `kbContracts` /
+ * `pfSummary` / `moreCols`). Replaces the Day-1 screen's seven filter chips, attention strip and
+ * ten-column severity-sorted table with the prototype's own shape: a header ("Portfolio" + the
+ * `pfSummary` line + "More columns"), the validated contracts only, sorted by how soon notice must
+ * be given, urgent rows tinted, rows opening Contract 360 -- and, while no contract is validated,
+ * the tier's reroute state (R-WEB-02): "Nothing to triage yet · The portfolio lights up from
+ * validated contracts. Upload one to start. · Upload a contract".
  *
- * **Fetch-once, filter client-side.** This screen calls `GET /api/contracts`
- * (`apiClient.getPortfolio`) exactly once per mount (and once per manual Retry), for the tenant's
- * whole first page (`PORTFOLIO_PAGE_SIZE`, the backend's own page-size ceiling) with no server-side
- * filter applied, then computes every row's attention/severity (`portfolioAttention.ts`) and applies
- * both the seven AC-1 chips and the AC-2 attention-strip toggle (`portfolioFilterState.ts`) entirely in
- * memory, mirroring day1-demo.html's own `allContracts.filter(...)` architecture. Two reasons, not
- * one:
- *  1. The attention-strip's four counts (AC-2) must reflect the *whole* portfolio regardless of which
- *     filters are currently active (screens.md's own attention strip is a portfolio-wide summary, not
- *     a per-filter one) -- computing them from a server-filtered result would require a second,
- *     always-unfiltered fetch anyway.
- *  2. Two of the attention buckets (`isDeadlineSoon`, computed severity) and the risk/status-based
- *     ones have no server-side query-parameter equivalent at all (`PortfolioFilter`, backend, only
- *     ever filters raw columns, never a derived "due within 45 days" or "needs review" concept) -- the
- *     severity computation has to happen client-side regardless, so filtering client-side over the
- *     same already-fetched rows avoids seven independent round trips for no accuracy gain.
- * `apiClient.getPortfolio` still accepts the endpoint's full filter/paging surface (`src/api/client.ts`)
- * for a future task to push filtering server-side once portfolios routinely exceed one page.
+ * **Fetch-once, derive client-side.** One `GET /api/contracts` call per mount (and per Retry) for
+ * the tenant's first page (`PORTFOLIO_PAGE_SIZE`, the backend's own ceiling); validated-only
+ * filtering, ordering, urgency and the summary are all `portfolioViewModel.ts` over that page --
+ * the same architecture the Day-1 screen already used, minus the client-side filter chips the V2
+ * design does not have. "Validated" is `contractStatus.ts`'s one shared predicate, so this screen
+ * can never show a contract the rail's own "From your contracts" count excludes.
  */
 export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
   const workspace = loadCurrentWorkspace();
   const [fetchState, setFetchState] = useState<FetchState>({ phase: "loading" });
-  const [filters, setFilters] = useState<PortfolioFilterState>(EMPTY_PORTFOLIO_FILTERS);
+  const [moreColumns, setMoreColumns] = useState(false);
 
   const loadPortfolio = useCallback(() => {
     if (!workspace) return;
@@ -67,10 +49,9 @@ export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
         setFetchState({
           phase: "error",
           statusCode: result.statusCode,
-          // AC-4 "error (503 + retry)": a 503 (or a proxy/gateway response the API handler never ran)
-          // gets a plain-language, service-shaped message; anything else surfaces the API's own
-          // plain-language reason (ADR-019 accessibility baseline: "names the failing job, never a raw
-          // stack trace").
+          // A 503 (or a proxy/gateway response the API handler never ran) gets a plain-language,
+          // service-shaped message; anything else surfaces the API's own reason (ADR-019
+          // accessibility baseline: "names the failing job, never a raw stack trace").
           message:
             result.statusCode === 503 || result.statusCode === null
               ? "Contigo's portfolio service is temporarily unavailable. Try again in a moment."
@@ -78,27 +59,23 @@ export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
         });
         return;
       }
-
-      const now = new Date();
-      setFetchState({ phase: "ready", rows: result.portfolio.items.map((item) => computeAttentionRow(item, now)) });
+      setFetchState({ phase: "ready", items: result.portfolio.items });
     });
     // Depends on workspace?.id (a primitive), not workspace itself: loadCurrentWorkspace() returns a
-    // fresh object every call, and re-creating this callback every render would re-run the effect
-    // below on every render too. workspace is treated as stable for a mounted component's lifetime,
-    // the same convention ../documents/index.tsx's own startUpload already documents -- switching
-    // workspace mid-session is not a V1 flow this screen needs to defend against.
+    // fresh object every call, the same convention every other route's own load() callback follows.
   }, [apiClient, workspace?.id]);
 
-  // Mount-only (plus whenever the tenant id itself changes) -- loadPortfolio's own identity (above)
-  // already captures every other dependency it needs.
   useEffect(() => {
     loadPortfolio();
   }, [loadPortfolio]);
 
+  const rows = useMemo(() => (fetchState.phase === "ready" ? buildPortfolioRows(fetchState.items) : []), [fetchState]);
+  const summary = useMemo(() => buildPortfolioSummary(rows), [rows]);
+
   if (!workspace) {
     // Should not normally be reachable -- App.tsx only mounts the shell (and therefore this route)
     // once a workspace is current -- but this route reads the store directly rather than trusting
-    // that earlier check, the same defensive convention ../documents/index.tsx already follows.
+    // that earlier check, the same defensive convention every other route under `src/routes/` follows.
     return (
       <div className="empty-state" role="status">
         <h3>No workspace selected</h3>
@@ -107,28 +84,26 @@ export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
     );
   }
 
-  const allRows = fetchState.phase === "ready" ? fetchState.rows : [];
-  const attentionBuckets = computeAttentionBucketCounts(allRows);
-  const visibleRows = applyPortfolioFilters(allRows, filters).sort(compareBySeverityThenDeadline);
-
-  const handleToggleAttentionBucket = (key: AttentionBucketKey) => {
-    setFilters((current) => ({ ...current, attentionBucket: current.attentionBucket === key ? null : key }));
-  };
+  const ready = fetchState.phase === "ready";
+  const lit = ready && rows.length > 0;
 
   return (
     <div className="portfolio-screen">
-      <p className="screen-kicker">R1</p>
-      <h2 className="screen-title">Portfolio</h2>
-      <p className="micro-meta">
-        {fetchState.phase === "ready" &&
-          (isAnyPortfolioFilterActive(filters)
-            ? `${visibleRows.length} of ${allRows.length} contracts`
-            : `${allRows.length} contract${allRows.length === 1 ? "" : "s"}`)}
-        {fetchState.phase !== "ready" && "Renewal and cancellation deadlines, risk, and status across every contract."}
-      </p>
-
-      <PortfolioFilters filters={filters} onChange={setFilters} />
-      <AttentionStrip buckets={attentionBuckets} activeKey={filters.attentionBucket} onToggle={handleToggleAttentionBucket} />
+      <header className="screen-header">
+        <div>
+          <h2 className="screen-title">Portfolio</h2>
+          <p className="screen-header-summary">
+            {ready ? formatPortfolioSummary(summary) : fetchState.phase === "loading" ? "Loading portfolio…" : PORTFOLIO_SUMMARY_OFF}
+          </p>
+        </div>
+        {lit && (
+          <div className="screen-header-actions">
+            <button type="button" className="btn btn-ghost portfolio-columns-toggle" aria-pressed={moreColumns} onClick={() => setMoreColumns((current) => !current)}>
+              {moreColumnsLabel(moreColumns)}
+            </button>
+          </div>
+        )}
+      </header>
 
       {fetchState.phase === "loading" && (
         <div className="portfolio-skeleton" role="status" aria-live="polite">
@@ -152,27 +127,18 @@ export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
         </div>
       )}
 
-      {fetchState.phase === "ready" && allRows.length === 0 && (
-        <div className="empty-state" role="status">
-          <h3>No contracts yet</h3>
-          <p className="micro-meta">Upload your first contract and it will appear here once processing finishes.</p>
+      {ready && rows.length === 0 && (
+        // markup.html `kbOff`: the tier's reroute state -- copy verbatim.
+        <div className="screen-reroute" role="status">
+          <h3>Nothing to triage yet</h3>
+          <p>The portfolio lights up from validated contracts. Upload one to start.</p>
           <Link to="/documents" className="btn btn-primary">
             Upload a contract
           </Link>
         </div>
       )}
 
-      {fetchState.phase === "ready" && allRows.length > 0 && visibleRows.length === 0 && (
-        <div className="empty-state" role="status">
-          <h3>No contracts match these filters</h3>
-          <p className="micro-meta">Try widening a filter, or clear them to see the whole portfolio.</p>
-          <button type="button" className="btn btn-secondary" onClick={() => setFilters(EMPTY_PORTFOLIO_FILTERS)}>
-            Clear filters
-          </button>
-        </div>
-      )}
-
-      {fetchState.phase === "ready" && visibleRows.length > 0 && <PortfolioTable rows={visibleRows} />}
+      {lit && <PortfolioTable rows={rows} moreColumns={moreColumns} />}
     </div>
   );
 }

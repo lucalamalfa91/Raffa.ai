@@ -32,11 +32,15 @@ namespace Contigo.Documents.Contracts.Application;
 /// converter registered anywhere in this solution, so serializing the wrapper directly would leak
 /// it as a nested <c>{"value":"..."}</c> object instead of a plain GUID string.
 /// </summary>
+/// <param name="Currency">The contract's own ISO currency code (<see cref="Contract.Currency"/>) —
+/// the V2 Portfolio screen sums <see cref="AnnualSpend"/> across rows for its summary line
+/// ("N validated contracts · CHF 4.2M annual"), which is only meaningful per currency.</param>
 public sealed record PortfolioListItem(
     Guid ContractId,
     Guid? SupplierId,
     ContractDocumentType Type,
     decimal? AnnualSpend,
+    string Currency,
     DateOnly? StartDate,
     DateOnly? EndDate,
     DateOnly? RenewalDate,

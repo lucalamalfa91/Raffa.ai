@@ -2,42 +2,32 @@ import { getConfidenceTag } from "../../../styles/semantics";
 import type { FactRow } from "./contract360ViewModel";
 
 export interface FactTableProps {
-  /** h6 title, left of the table (screens.md #5: "h6 title + summary line right + .table"). */
   title: string;
-  /** Summary line, right-aligned next to the title. */
-  summary?: string;
   rows: readonly FactRow[];
-  /** Shown instead of the table when `rows` is empty -- never a blank box (ADR-018 empty-state contract). */
+  /** Shown instead of the table when `rows` is empty -- never a blank box. */
   emptyMessage: string;
 }
 
 /**
- * The shared Term / Value / Source / Confidence table template (ADR-020 screen 5: "one template —
- * h6 title + summary line right + .table (Term · Value · Source · Confidence pattern)"), reused by
- * Commercials/Products/Clauses/Obligations/Risks/Documents/Overview's own "Contract details" block
- * and the generic half of Renewal. Every row here is a deterministic, extracted, or contract-level
- * fact -- never the AI recommendation (`OverviewTab.tsx`'s `.ai-recommendation` card is the only
- * place that renders, ADR-019 facts/AI separation; see `contract360ViewModel.ts`'s own header
- * comment for why the two can never be accidentally merged).
+ * Term / Value / Source / Confidence list used inside the "Details ▾" drawer for the extracted
+ * Products / Obligations / Risks. Every row is a deterministic, extracted fact -- never the
+ * recommendation (ADR-019 facts vs AI).
  */
-export default function FactTable({ title, summary, rows, emptyMessage }: FactTableProps) {
+export default function FactTable({ title, rows, emptyMessage }: FactTableProps) {
   return (
-    <section className="contract360-tab-panel">
-      <div className="contract360-tab-panel-header">
-        <h6>{title}</h6>
-        {summary !== undefined && <span className="micro-meta">{summary}</span>}
-      </div>
+    <section className="contract360-facts">
+      <h6>{title}</h6>
 
       {rows.length === 0 ? (
-        <p className="micro-meta">{emptyMessage}</p>
+        <p className="contract360-detail-empty">{emptyMessage}</p>
       ) : (
-        <table className="table">
+        <table className="table contract360-facts-table">
           <thead>
             <tr>
-              <th>Term</th>
-              <th>Value</th>
-              <th>Source</th>
-              <th>Confidence</th>
+              <th scope="col">Term</th>
+              <th scope="col">Value</th>
+              <th scope="col">Source</th>
+              <th scope="col">Confidence</th>
             </tr>
           </thead>
           <tbody>
