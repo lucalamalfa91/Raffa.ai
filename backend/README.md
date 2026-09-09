@@ -2401,3 +2401,160 @@ reference need the identical shared input/arithmetic (`Contigo.Quotes` and
 E13/F07/US01/T01), put the shared DTO/arithmetic in a module both already
 allow-list — see "Insights" above for the worked example
 (`Contigo.Benchmark.Contracts.PricedLine` / `PricedLineNegotiationMath`).
+
+## Ask Contigo V2 — operator jobs, golden set and acceptance (task E13/F11/US01/T01)
+
+Everything a new engineer needs to run the V2 flows end to end against a
+deployed environment. The screen-by-screen acceptance list lives in
+[`../docs/ask-v2-acceptance.md`](../docs/ask-v2-acceptance.md) (A1–A14, one
+exact command or click-path and one observable pass condition per row).
+
+### Order of operations on a fresh environment
+
+| # | Step | How |
+|---|------|-----|
+| 1 | Deploy + apply schema (ADR-021) | merge to `main` (`dev`), or `git tag demo-v<N> && git push` (`demo`) |
+| 2 | Seed the Day-1 fixture rows | Actions → **seed-demo-fixture** (`target_environment`) |
+| 3 | Seed the shared market corpus | Actions → **seed-market-intelligence** (`target_environment`) |
+| 4 | Re-OCR / re-embed a tenant, back-fill suppliers | Actions → **reprocess-tenant-documents** (`target_environment`, `tenant_id`) |
+| 5 | Walk A1–A14 | `docs/ask-v2-acceptance.md`, plus `web/e2e/v2.spec.ts` |
+
+### `seed-market-intelligence` — the market feed ingestion job (R-MKT-03)
+
+`.github/workflows/seed-market-intelligence.yml`, `workflow_dispatch` /
+`workflow_call`, input `target_environment` (`dev` | `demo`). Same OIDC login,
+resource-group resolution and `postgres-connection` Key Vault fetch as
+`seed-demo-fixture.yml`; the `demo` GitHub Environment's required reviewers
+gate it exactly like a deploy.
+
+It runs this host's own one-shot operator command
+(`Contigo.Worker/Commands/IngestMarketCommand.cs`) on the runner, against that
+environment's database:
+
+```bash
+ConnectionStrings__DocumentsContracts=<npgsql> \
+ConnectionStrings__Audit=<npgsql> \
+ConnectionStrings__Renewals=<npgsql> \
+ConnectionStrings__Market=<npgsql> \
+  dotnet run --project backend/src/Contigo.Worker -- \
+    ingest-market --feed backend/fixtures/market-intelligence.mock.json
+# Ingested feed 'mock-2026.09.0': 65 inserted, 0 updated, 0 unchanged.
+```
+
+The first three connection strings are what `Contigo.Worker/Program.cs`
+fail-fasts on when it builds the host; only the fourth is what the command
+itself needs. All four are the same database (ADR-003: separate schemas, one
+server). `--feed` is an informational label — the mock provider reads its
+fixture from an embedded resource, not from that path (see
+`IngestMarketCommand`'s own doc comment).
+
+The job then **runs the command a second time and fails unless it reports
+`0 inserted, 0 updated`** (R-MKT-03 AC-1, "re-running the job with the same file
+changes nothing"), and verifies that `market_record` has ≥ 60 rows (R-MKT-02),
+that `market_embedding` is non-empty, and that neither table has a `tenant_id`
+column (R-MKT-03 AC-2 / ADR-011's epic-13 amendment — the market corpus is
+shared and read-only for every tenant, and would be a defect if it were
+tenant-scoped).
+
+`AiGateway__Endpoint` is deliberately **not** set on the job: with it unset the
+gateway DI swap keeps the fixture `embed` role, which is deterministic and
+free, and the numbers the job seeds (`market_record`) never come from a model
+anyway. Set `AiGateway__Endpoint` / `AiGateway__ProjectName` on the job to embed
+the market notes with Foundry instead.
+
+### `reprocess-tenant-documents` — re-OCR, re-embed, back-fill (R-DOC-07, R-SUP-03)
+
+`.github/workflows/reprocess-tenant-documents.yml`, `workflow_dispatch` /
+`workflow_call`, inputs `target_environment` and `tenant_id`.
+
+**It calls the API, not a `backend/scripts/` helper**, and this is deliberate.
+The parent story allowed either; the API wins because (a) the API host is
+reachable from a GitHub runner — `web.yml` already resolves that same
+`ca-contigo-<env>-api` ingress FQDN and bakes it into the SPA's `config.json`,
+so the "API host is not reachable from CI" branch simply does not apply, and
+(b) `POST /api/documents/{id}/reprocess` *is* the R-DOC-07 seam: it re-runs the
+real `DocumentProcessingPipeline` (load → hybrid parse/OCR → page-aware
+re-embed → supplier resolution) and writes the `document.reprocessed` audit
+row. A Python helper would have to re-implement that pipeline against the
+database, would drift from it on the first pipeline change, and could not write
+the same audit trail. There is therefore **no** `backend/scripts/reprocess_tenant.py`.
+
+What the job does, in order:
+
+1. Resolves the API ingress FQDN and health-checks it.
+2. Detects whether that environment runs a live Foundry gateway (reads
+   `AiGateway__Endpoint` off the Container App) — this decides how strict the
+   OCR check in step 5 can be.
+3. Pages through `GET /api/documents?page=&pageSize=100` for the tenant (no
+   `status` filter — the operator job reprocesses *every* document, not only
+   the ones needing attention).
+4. `POST /api/documents/{id}/reprocess` per document, attempting all of them and
+   failing at the end if any did not return `200`, so one bad document never
+   hides the rest. It prints `pagesParsed` / `chunksIndexed` per document.
+5. Verifies by SQL, with `SET app.tenant_id` (RLS stays on — the same session
+   claim `TenantRlsConnectionInterceptor` sets, never a disabled policy):
+   - **`left(chunk_text, 4) = '%PDF'` must be 0** — R-DOC-07 AC-1. This is a
+     hard failure: an embedding that is raw bytes means Ask would cite bytes as
+     evidence.
+   - The `[fixture-ocr: …]` placeholder count is a **failure** when the
+     environment has `AiGateway__Endpoint` set (the `ocr` role fell back), and a
+     **warning** otherwise (expected fixture behaviour).
+6. Reports the tenant's contracts that still have `supplier_id IS NULL`
+   (R-SUP-03). A *report*, not a gate: SQL cannot know whether a given document
+   actually names a supplier, so failing here would fail honestly supplier-less
+   contracts (an unsigned SOW, a price list). Name the supplier through the
+   review screen (`/documents?review=<documentId>`) for each one that should
+   have had one.
+
+**Role headers.** Reprocess is Admin-only and no host authentication is wired
+yet (ADR-022), so the job sends **both** `X-Workspace-Role: Admin` and
+`X-Role: Admin` — two spellings are in flight in this codebase
+(`CapabilitiesEndpointExtensions` parses `X-Role`; the OpenAPI's
+`reprocessDocument` / `deleteDocument` descriptions name `X-Workspace-Role`) and
+neither is a declared parameter of the operation. A `403` is surfaced as a named
+error, never a silent skip. Both headers disappear with `X-Tenant-Id` when
+ADR-010's API JWT lands.
+
+### AI golden set (`Contigo.AiEval`) — how it runs and how to filter it
+
+`backend/tests/Contigo.AiEval/Contigo.AiEval.csproj` is a member of
+`Contigo.slnx`, so **`.github/workflows/backend.yml` already runs it** through
+its existing `dotnet test Contigo.slnx` step. There is no `--filter` step in
+CI and none is wanted: a numeric-guard intervention or a kind mismatch fails
+the `build + test` job like any other test failure, which is the required
+status check on `main` (ADR-014).
+
+Locally, the filters an engineer actually needs:
+
+```bash
+# The whole solution, golden set included — what CI runs.
+cd backend && dotnet test Contigo.slnx --configuration Release
+
+# Only the golden set, by project (works whatever traits the suite carries).
+dotnet test backend/tests/Contigo.AiEval/Contigo.AiEval.csproj
+
+# Only the golden set, by trait, from the solution — the suite marks its cases
+# [Trait("Category","AiEval")] (task E13/F06/US01/T02).
+dotnet test backend/Contigo.slnx --filter "Category=AiEval"
+
+# Everything except the golden set — the fast inner loop.
+dotnet test backend/Contigo.slnx --filter "Category!=AiEval"
+
+# By fully-qualified name, if the trait is not there yet.
+dotnet test backend/Contigo.slnx --filter "FullyQualifiedName~Contigo.AiEval"
+```
+
+The set runs against the **fixture** gateway so it is reproducible and free;
+the on-demand Foundry run is manual (`AiEval__UseFoundry=true` with
+`AiGateway__Endpoint` set) and never part of CI.
+
+### Known gap that blocks the first V2 promotion
+
+`Contigo.Api/Program.cs` fail-fasts on `ConnectionStrings:Suppliers` (task
+E13/F06/US01/T01 wired `AddSuppliersProductsModule`), but
+`infra/modules/containerapps/main.tf` injects `IdentityWorkspace`,
+`DocumentsContracts`, `Audit`, `Renewals`, `Savings`, `Quotes`, `Chat` and
+`Storage` — **not** `Suppliers`. The deployed API will not boot until that env
+block is added (same `pg-cs` secret as its neighbours). Recorded in
+`infra/README.md` and in `docs/ask-v2-acceptance.md`'s "Known gaps" table; it is
+an `infra/` change, outside this task's file scope.

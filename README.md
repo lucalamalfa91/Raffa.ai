@@ -93,3 +93,55 @@ does not.
 
 Per-domain how-to (run, test, plan, deploy) lives in that folder's README.
 Architecture decisions live under `.helix/reports/architecture/`.
+
+## Ask Contigo V2 — the pilot path and its operator jobs (epic-13, ADR-024)
+
+V2 makes **Ask Contigo the home of the product**: sign-in lands on `/ask`, the
+rail is two-tier, uploads happen only in Documents (non-contracts are refused
+at the door), and every answer cites one of three sources — your validated
+contracts, the market-intelligence feed, or Contigo's own capability catalog —
+or abstains. The buyer journey it has to survive is one flow:
+
+> Sign in → **Documents** (drop one or more contracts; non-contracts are
+> refused) → review weak facts → **Ask** (contract vs market, renewal
+> strategy) → **new chat** (portfolio strategy) → follow a citation into
+> **Contract 360**.
+
+**Acceptance checklist**: [`docs/ask-v2-acceptance.md`](docs/ask-v2-acceptance.md)
+— A1–A14 as a runbook, one exact command or click-path and one observable pass
+condition per row, plus the gaps that currently shape what a row can prove.
+**Data flow**: [`docs/architecture/ask-contigo-v2-data-flow.md`](docs/architecture/ask-contigo-v2-data-flow.md).
+
+### The two V2 operator jobs
+
+Both are `workflow_dispatch` (and `workflow_call`) only — never a side effect
+of a push, exactly like `seed-demo-fixture.yml` (ADR-021 / ADR-022). Both reuse
+the same per-environment OIDC deploy identity and the same `postgres-connection`
+Key Vault secret, so neither needs a new Azure role assignment (ADR-011,
+ADR-015).
+
+| Workflow | Inputs | What it does |
+|----------|--------|--------------|
+| [`.github/workflows/seed-market-intelligence.yml`](.github/workflows/seed-market-intelligence.yml) | `target_environment` (`dev` \| `demo`) | Runs the Worker's `ingest-market` command against that environment's database with the checked-in mock feed (`backend/fixtures/market-intelligence.mock.json`), prints the ingestion summary, **re-runs it and fails unless the second pass reports `0 inserted, 0 updated`** (R-MKT-03 AC-1), then verifies `market_record` / `market_embedding` landed and still carry no `tenant_id`. |
+| [`.github/workflows/reprocess-tenant-documents.yml`](.github/workflows/reprocess-tenant-documents.yml) | `target_environment`, `tenant_id` | Lists that tenant's documents through `GET /api/documents`, calls `POST /api/documents/{id}/reprocess` for each, then verifies by SQL that **no embedding of that tenant starts with `%PDF`** (R-DOC-07 AC-1) and reports the contracts that still have no supplier (R-SUP-03). |
+
+Order for a fresh environment: deploy (schema apply, ADR-021) → **seed-demo-fixture**
+→ **seed-market-intelligence** → **reprocess-tenant-documents** → walk
+`docs/ask-v2-acceptance.md`. The same order applies to `demo` after a `demo-v*`
+promotion.
+
+### Proving it in a browser
+
+`web/e2e/v2.spec.ts` (Playwright) walks A1, A3, A4, A8, A9, A10 and A14 against
+a deployed environment, and A2 / A5 / A6 / A7 as well when `E2E_LIVE_FOUNDRY=1`.
+Unconfigured it reports every row as skipped with the reason and exits `0`. See
+[`web/README.md`](web/README.md) "End-to-end (Ask Contigo V2 pilot path)". The
+V1 walk, `web/e2e/day1.spec.ts`, is red against the V2 shell by design; this
+suite replaces it.
+
+The AI golden set (A13) needs no CI step of its own:
+`backend/tests/Contigo.AiEval` is a member of `Contigo.slnx`, so
+`.github/workflows/backend.yml`'s existing `dotnet test Contigo.slnx` runs it
+and a guard intervention fails the build. See
+[`backend/README.md`](backend/README.md) "Ask Contigo V2 — operator jobs, golden
+set and acceptance".
