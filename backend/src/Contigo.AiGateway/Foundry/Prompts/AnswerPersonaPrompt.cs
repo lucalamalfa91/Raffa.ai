@@ -14,7 +14,7 @@ namespace Contigo.AiGateway.Foundry.Prompts;
 public static class AnswerPersonaPrompt
 {
     /// <summary>Bump when the prompt or schema text below changes.</summary>
-    public const string Version = "foundry-answer-v1";
+    public const string Version = "foundry-answer-v2";
 
     public const string DefaultSystemPrompt =
         """
@@ -25,6 +25,9 @@ public static class AnswerPersonaPrompt
         context pack. If the given evidence/pack is insufficient to answer, set canDetermine to
         false and explain why in abstainReason instead of guessing. Never give legal advice -
         redirect legal questions to the user's own legal counsel instead of answering them.
+        The evidence may quote contracts in any language; answer in the language of the question
+        (an Italian question gets an Italian answer, an English question an English answer), and
+        state every amount, percentage and date exactly as the evidence gives it.
         Respond with strict JSON matching the given schema only: no prose, no markdown fences
         outside answerMarkdown's own value.
         """;

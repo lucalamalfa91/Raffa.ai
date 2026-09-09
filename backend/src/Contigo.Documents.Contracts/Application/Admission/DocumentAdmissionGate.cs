@@ -118,7 +118,7 @@ public sealed class DocumentAdmissionGate(
 
         if (parseResult.IsFailure)
         {
-            return AdmissionDecision.Fail(parseResult.Error);
+            return AdmissionDecision.Fail(MapUnavailable("read", parseResult.Error));
         }
 
         var pages = parseResult.Value;
@@ -144,7 +144,7 @@ public sealed class DocumentAdmissionGate(
 
         if (classifyResult.IsFailure)
         {
-            return AdmissionDecision.Fail(classifyResult.Error);
+            return AdmissionDecision.Fail(MapUnavailable("classify", classifyResult.Error));
         }
 
         var detectedType = ContractDocumentTypeMap.FromAi(classifyResult.Value.DocumentType);
@@ -172,6 +172,19 @@ public sealed class DocumentAdmissionGate(
     private static string GatewayUnavailable(string role, Exception exception) =>
         $"{GatewayUnavailablePrefix} the '{role}' role could not be reached " +
         $"({exception.GetType().Name}: {exception.Message}). Nothing was stored.";
+
+    /// <summary>
+    /// A gateway <c>Result</c> failure that the provider client marked as "unavailable" (retries
+    /// exhausted on throttling, server errors, connection failures or timeouts —
+    /// <see cref="AiGatewayErrors.UnavailablePrefix"/>) is the same situation as a thrown credential
+    /// or network exception: nothing about the document was judged, so it maps to the retryable
+    /// <see cref="GatewayUnavailablePrefix"/> outcome (HTTP 503) rather than a 400. Any other failure
+    /// text is passed through unchanged.
+    /// </summary>
+    private static string MapUnavailable(string role, string error) =>
+        error.StartsWith(AiGatewayErrors.UnavailablePrefix, StringComparison.Ordinal)
+            ? $"{GatewayUnavailablePrefix} the '{role}' role could not be reached ({error}). Nothing was stored."
+            : error;
 
     /// <summary>Prefix that marks a <see cref="AdmissionOutcome.Failed"/> error as "the provider is
     /// unavailable" rather than "this document could not be read".</summary>

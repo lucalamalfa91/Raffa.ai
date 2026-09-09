@@ -23,17 +23,24 @@ public sealed class AiGatewayModelOptions
     /// <summary>Conventional configuration section path for binding this options object.</summary>
     public const string SectionName = "AiGateway:Models";
 
-    /// <summary>ADR-004 candidate: "Small instruction model (e.g. GPT-4o-mini / Phi-class)".</summary>
-    public AiModelSelection Classify { get; init; } = new("gpt-4o-mini", "unconfirmed");
+    /// <summary>ADR-004 candidate: "Small instruction model (e.g. GPT-4o-mini / Phi-class)". On
+    /// Azure the deployment name comes from configuration (ADR-004 amendment 2026-09-09);
+    /// <see cref="AiModelSelection.MaxCompletionTokens"/> is small because the verdict is two
+    /// fields.</summary>
+    public AiModelSelection Classify { get; init; } = new("gpt-4o-mini", "unconfirmed") { MaxCompletionTokens = 2048 };
 
-    /// <summary>ADR-004 candidate: "Structured-output-capable (e.g. GPT-4o-mini with JSON-schema mode)".</summary>
-    public AiModelSelection Extract { get; init; } = new("gpt-4o-mini", "unconfirmed");
+    /// <summary>ADR-004 candidate: "Structured-output-capable (e.g. GPT-4o-mini with JSON-schema mode)".
+    /// A list stage over a long contract can legitimately return thousands of tokens of JSON, so the
+    /// completion cap is generous; hitting it is a visible stage failure, never truncated JSON.</summary>
+    public AiModelSelection Extract { get; init; } = new("gpt-4o-mini", "unconfirmed") { MaxCompletionTokens = 16384 };
 
-    /// <summary>ADR-004 candidate: "text-embedding-3-small" — "small dimension preferred for cost/size".</summary>
-    public AiModelSelection Embed { get; init; } = new("text-embedding-3-small", "unconfirmed");
+    /// <summary>ADR-004 candidate: "text-embedding-3-small" — "small dimension preferred for cost/size".
+    /// <see cref="AiModelSelection.Dimensions"/> pins the vector width to the pgvector column so a
+    /// wider deployment (demo's text-embedding-3-large) is reduced on the wire, never at insert time.</summary>
+    public AiModelSelection Embed { get; init; } = new("text-embedding-3-small", "unconfirmed") { Dimensions = AiGatewayConstants.EmbeddingDimensions };
 
     /// <summary>ADR-004 candidate: "Same instruction model as extract, or one tier up if citation quality is insufficient".</summary>
-    public AiModelSelection Answer { get; init; } = new("gpt-4o-mini", "unconfirmed");
+    public AiModelSelection Answer { get; init; } = new("gpt-4o-mini", "unconfirmed") { MaxCompletionTokens = 4096 };
 
     /// <summary>
     /// ADR-017 candidate: Azure AI Document Intelligence <c>prebuilt-read</c> — the cheapest model

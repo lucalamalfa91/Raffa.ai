@@ -9,10 +9,10 @@ namespace Contigo.Documents.Contracts.Application.Extraction;
 /// doc, no 2-page cap)". Produces the page-mapped <see cref="DocumentPageText"/> list
 /// <see cref="StagedExtractionService"/> already depends on as its own input seam (see that
 /// service's own AC-3 remarks: "this service does not read document bytes at all... that parsing
-/// step is task T02's own coding objective") and ADR-017's hybrid parse: native text for
-/// born-digital pages, Azure AI Document Intelligence (behind
-/// <see cref="Contigo.AiGateway.IAiGateway.OcrAsync"/>) for scanned/image/low-text/unsupported
-/// documents — full document, always, no 2-page cap.
+/// step is task T02's own coding objective") and ADR-017's hybrid parse as amended on 2026-09-09:
+/// native text for the Office formats (<see cref="NativeDocumentTextExtractor"/>: DOCX/XLSX), Azure
+/// AI Document Intelligence (behind <see cref="Contigo.AiGateway.IAiGateway.OcrAsync"/>) for every
+/// PDF and image — full document, always, no 2-page cap.
 ///
 /// Deliberately takes bytes/mime-type directly rather than a <see cref="Domain.Document"/> id +
 /// <see cref="Contigo.SharedKernel.Storage.IDocumentStorage"/> lookup, mirroring

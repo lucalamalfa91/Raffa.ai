@@ -8,11 +8,16 @@ namespace Contigo.AiGateway.Foundry;
 
 /// <summary>
 /// `classify` role (ADR-004; ADR-024: "classify is reused for the document admission gate and for
-/// the Ask domain gate with fixed label sets"). Temperature 0 — classification is the one role
-/// where determinism, not creativity, is the goal.
+/// the Ask domain gate with fixed label sets"). Reads a representative prefix of the document
+/// (<see cref="AiGatewayFoundryOptions.ClassifyMaxInputChars"/>) — the verdict does not improve with
+/// page 200 and the tokens would be billed for nothing. Determinism knobs (temperature, reasoning
+/// effort) come from the role's configuration, see <see cref="AiModelSelection"/>.
 /// </summary>
 public sealed class FoundryClassifyClient(
-    FoundryChatCompletionsClient chatClient, AiGatewayModelOptions modelOptions, IClock clock)
+    FoundryChatCompletionsClient chatClient,
+    AiGatewayModelOptions modelOptions,
+    AiGatewayFoundryOptions foundryOptions,
+    IClock clock)
 {
     private sealed record ClassifyPayload(string? DocumentType, double Confidence);
 
@@ -25,12 +30,16 @@ public sealed class FoundryClassifyClient(
         }
 
         var model = modelOptions.Classify;
+        var maxChars = Math.Max(1, foundryOptions.ClassifyMaxInputChars);
+        var documentText = request.DocumentText.Length <= maxChars
+            ? request.DocumentText
+            : request.DocumentText[..maxChars];
 
         var completion = await chatClient.CompleteAsync(
-                model.ModelId,
+                "Classify",
+                model,
                 ClassifyPromptTemplate.SystemPrompt,
-                request.DocumentText,
-                temperature: 0,
+                documentText,
                 schemaName: "contigo_document_classification",
                 ClassifyPromptTemplate.Schema,
                 cancellationToken)
@@ -44,7 +53,7 @@ public sealed class FoundryClassifyClient(
         ClassifyPayload? payload;
         try
         {
-            payload = JsonSerializer.Deserialize<ClassifyPayload>(completion.Value, FoundryJsonOptions.Web);
+            payload = JsonSerializer.Deserialize<ClassifyPayload>(completion.Value.Content, FoundryJsonOptions.Web);
         }
         catch (JsonException ex)
         {
@@ -60,10 +69,12 @@ public sealed class FoundryClassifyClient(
                 $"'{payload?.DocumentType}'.");
         }
 
+        var confidence = Math.Clamp(payload.Confidence, 0, 1);
+
         var metadata = FoundryCallMetadataFactory.Build(
-            model, ClassifyPromptTemplate.Version, clock, request.DocumentText);
+            model, ClassifyPromptTemplate.Version, clock, documentText, completion.Value.Usage);
 
         return Result<AiClassificationResult>.Success(
-            new AiClassificationResult(documentType, payload.Confidence, metadata));
+            new AiClassificationResult(documentType, confidence, metadata));
     }
 }

@@ -495,6 +495,15 @@ public sealed class StagedExtractionService(
                 continue;
             }
 
+            if (string.IsNullOrWhiteSpace(fact.Value))
+            {
+                // Strict structured outputs cannot omit a property, so a model reports "the
+                // document does not state this" as value: null (ExtractPromptTemplate rule 2). That
+                // is an absent fact — not extracted, not skipped, no evidence row, and never a null
+                // overwrite of a contract field a previous stage or a human already set.
+                continue;
+            }
+
             applyToContract(contract, fact.Field, fact.Value);
 
             var isCritical = CriticalFields.Contains(fact.Field);
