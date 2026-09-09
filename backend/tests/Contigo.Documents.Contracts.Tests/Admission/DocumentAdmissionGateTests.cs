@@ -262,6 +262,36 @@ public sealed class DocumentAdmissionGateTests
     }
 
     [Fact]
+    public async Task A_gateway_that_throws_is_a_failed_decision_the_caller_can_report_as_unavailable()
+    {
+        // A Foundry deployment whose managed identity cannot get a token throws out of the client
+        // rather than returning Result.Failure -- on the deployed dev environment that turned every
+        // upload into an opaque HTTP 500. The gate must answer with a decision, not an exception.
+        var harness = Harness.WithScriptedGateway(new ThrowingAiGateway());
+
+        var decision = await harness.Gate.EvaluateAsync(
+            Tenant, Actor, "msa.pdf", "application/pdf", BuildPdf(MsaText));
+
+        Assert.Equal(AdmissionOutcome.Failed, decision.Outcome);
+        Assert.StartsWith(DocumentAdmissionGate.GatewayUnavailablePrefix, decision.Error);
+        Assert.Contains("classify", decision.Error);
+        Assert.Empty(harness.Audit.Entries);
+    }
+
+    [Fact]
+    public async Task A_throwing_ocr_role_is_reported_the_same_way()
+    {
+        var harness = Harness.WithScriptedGateway(new ThrowingAiGateway());
+
+        var decision = await harness.Gate.EvaluateAsync(
+            Tenant, Actor, "scan.png", "image/png", new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x01 });
+
+        Assert.Equal(AdmissionOutcome.Failed, decision.Outcome);
+        Assert.StartsWith(DocumentAdmissionGate.GatewayUnavailablePrefix, decision.Error);
+        Assert.Contains("read", decision.Error);
+    }
+
+    [Fact]
     public void Readable_chars_ignore_whitespace_and_blank_pages()
     {
         var pages = new List<DocumentPageText>
@@ -375,6 +405,28 @@ public sealed class DocumentAdmissionGateTests
             OcrCalls++;
             return inner.OcrAsync(request, cancellationToken);
         }
+    }
+
+    /// <summary>Every role throws, the way a provider client with no usable credential does.</summary>
+    private sealed class ThrowingAiGateway : IAiGateway
+    {
+        private static InvalidOperationException Unreachable() =>
+            new("ManagedIdentityCredential authentication failed: no token endpoint.");
+
+        public Task<Result<AiClassificationResult>> ClassifyAsync(
+            AiClassificationRequest request, CancellationToken cancellationToken = default) => throw Unreachable();
+
+        public Task<Result<AiExtractionResult>> ExtractAsync(
+            AiExtractionRequest request, CancellationToken cancellationToken = default) => throw Unreachable();
+
+        public Task<Result<AiEmbeddingResult>> EmbedAsync(
+            AiEmbeddingRequest request, CancellationToken cancellationToken = default) => throw Unreachable();
+
+        public Task<Result<AiAnswerResult>> AnswerAsync(
+            AiAnswerRequest request, CancellationToken cancellationToken = default) => throw Unreachable();
+
+        public Task<Result<AiOcrResult>> OcrAsync(
+            AiOcrRequest request, CancellationToken cancellationToken = default) => throw Unreachable();
     }
 
     private sealed class ScriptedAiGateway(

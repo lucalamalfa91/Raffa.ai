@@ -43,6 +43,16 @@ namespace Contigo.Documents.Contracts.Application.Admission;
 /// </para>
 ///
 /// <para>
+/// <b>An unreachable model is a failed decision, not a crashed request.</b> The gateway roles
+/// return <c>Result</c>, but a provider client can also throw — a Foundry deployment whose managed
+/// identity cannot get a token throws <c>AuthenticationFailedException</c> from deep inside
+/// <c>DefaultAzureCredential</c>, and on the deployed dev environment that turned every single
+/// upload into an opaque HTTP 500. Those exceptions are caught here and reported as
+/// <see cref="AdmissionOutcome.Failed"/> too, so the endpoint can answer "we could not assess this
+/// document right now, nothing was stored" instead of a bare 500. Cancellation is never swallowed.
+/// </para>
+///
+/// <para>
 /// <b>Classified once.</b> An admitted decision carries the parsed pages and the
 /// <see cref="DocumentClassification"/> so <see cref="DocumentProcessingPipeline"/> continues from
 /// them instead of re-parsing and re-classifying (ADR-017 page budget, ADR-004 cost posture).
@@ -94,9 +104,18 @@ public sealed class DocumentAdmissionGate(
         // scope rather than trusting one is already active.
         using var tenantScope = tenantContext.BeginScope(tenantId);
 
-        var parseResult = await parsingService
-            .ParseAsync(fileName, mimeType, content, cancellationToken)
-            .ConfigureAwait(false);
+        Result<IReadOnlyList<DocumentPageText>> parseResult;
+        try
+        {
+            parseResult = await parsingService
+                .ParseAsync(fileName, mimeType, content, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return AdmissionDecision.Fail(GatewayUnavailable("read", exception));
+        }
+
         if (parseResult.IsFailure)
         {
             return AdmissionDecision.Fail(parseResult.Error);
@@ -111,9 +130,18 @@ public sealed class DocumentAdmissionGate(
             return noText;
         }
 
-        var classifyResult = await aiGateway
-            .ClassifyAsync(new AiClassificationRequest(BuildClassificationText(pages)), cancellationToken)
-            .ConfigureAwait(false);
+        Result<AiClassificationResult> classifyResult;
+        try
+        {
+            classifyResult = await aiGateway
+                .ClassifyAsync(new AiClassificationRequest(BuildClassificationText(pages)), cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return AdmissionDecision.Fail(GatewayUnavailable("classify", exception));
+        }
+
         if (classifyResult.IsFailure)
         {
             return AdmissionDecision.Fail(classifyResult.Error);
@@ -133,6 +161,21 @@ public sealed class DocumentAdmissionGate(
             readableChars,
             new DocumentClassification(detectedType, confidence, classifyResult.Value.Metadata));
     }
+
+    /// <summary>
+    /// The message an unreachable AI provider produces. Names the role that could not run and the
+    /// exception type, so an operator reading the response (or the audit trail) can tell "the model
+    /// endpoint is down/mis-configured" from "this document is not a contract" without opening the
+    /// container logs. Marked with <see cref="GatewayUnavailablePrefix"/> so the endpoint can map
+    /// it to 503 rather than 400.
+    /// </summary>
+    private static string GatewayUnavailable(string role, Exception exception) =>
+        $"{GatewayUnavailablePrefix} the '{role}' role could not be reached " +
+        $"({exception.GetType().Name}: {exception.Message}). Nothing was stored.";
+
+    /// <summary>Prefix that marks a <see cref="AdmissionOutcome.Failed"/> error as "the provider is
+    /// unavailable" rather than "this document could not be read".</summary>
+    public const string GatewayUnavailablePrefix = "The document could not be assessed:";
 
     /// <summary>Non-whitespace characters across every page — a scanned blank page or an OCR
     /// placeholder line does not count as "readable contract text" (R-DOC-03 AC-2).</summary>

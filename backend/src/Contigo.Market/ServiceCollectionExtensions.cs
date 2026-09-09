@@ -85,20 +85,27 @@ public static class ServiceCollectionExtensions
             // the same host (for example Contigo.Documents.Contracts) already called it first.
             services.AddAiGatewayModule();
 
-            // Plain AddDbContext (Scoped): MarketIngestionService and MarketRecordQueryService
-            // below are both Scoped and take this type directly, the same shape every other
-            // module's own DbContext-backed service already uses.
-            services.AddDbContext<MarketDbContext>(options =>
-                MarketDbContextOptions.Configure(options, marketConnectionString));
-
-            // AddDbContextFactory (Singleton IDbContextFactory<MarketDbContext>): the DB-backed
-            // benchmark adapter below is registered Singleton (matching its T01 provider-backed
-            // predecessor's own lifetime -- forced by Contigo.Benchmark.BenchmarkAdapterRegistry's
-            // own eager IEnumerable<IBenchmarkProviderAdapter> constructor injection, see that
-            // adapter's own doc comment) and cannot instead take MarketDbContext (inherently
-            // Scoped) directly.
+            // One registration, two shapes -- and the order matters.
+            //
+            // AddDbContextFactory registers BOTH the Singleton IDbContextFactory<MarketDbContext>
+            // (which the Singleton DB-backed benchmark adapter below needs -- see that adapter's
+            // own doc comment for why its lifetime is forced) AND a Singleton
+            // DbContextOptions<MarketDbContext>. The Scoped MarketDbContext that
+            // MarketIngestionService/MarketRecordQueryService take directly is then created from
+            // that same factory.
+            //
+            // Calling AddDbContext as well would overwrite those options with a *Scoped*
+            // registration, which the Singleton factory then consumes -- and the DI scope
+            // validator refuses it: any ASP.NET Core host in Development (ValidateScopes on) fails
+            // to start with "Cannot consume scoped service DbContextOptions<MarketDbContext> from
+            // singleton IDbContextFactory<MarketDbContext>". That is exactly what happened the
+            // first time Contigo.Api was given ConnectionStrings:Market: the API would not boot at
+            // all. Every Market test constructs its own options directly, so only running the real
+            // host surfaced it.
             services.AddDbContextFactory<MarketDbContext>(options =>
                 MarketDbContextOptions.Configure(options, marketConnectionString));
+
+            services.AddScoped(sp => sp.GetRequiredService<IDbContextFactory<MarketDbContext>>().CreateDbContext());
 
             // Scoped, not Singleton -- unlike the DB-backed IBenchmarkProviderAdapter below, this
             // type also depends on the Scoped IAiGateway (to embed the search query); see its own
