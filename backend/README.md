@@ -721,6 +721,44 @@ own to get wrong. `POST /api/conversations/{id}/messages` is deliberately
 still not mapped — task F06/T01 (phase 3) adds it to this same file once
 the Ask engine exists to produce a turn worth persisting.
 
+## Ask Contigo — capability catalog
+
+Task E13/F08/US01/T01 (story us-01-capability-catalog, ADR-024 "Capability
+catalog (R-SYS)") adds `Contigo.Chat.Application.Capabilities`: a static,
+versioned (`CapabilityCatalog.Version`, `"capabilities-v2.0"`) catalog of
+the ten V2 capabilities (`ask`, `documents`, `documents-attention`,
+`documents-review`, `portfolio`, `contract-360`, `renewals`, `savings`,
+`quote-check`, `workspace-members` — R-SYS-01, `contigo-v2/ia-v2.md`'s own
+route map), each a `Capability` record (key/title/route pattern/
+description/example questions/role gate/availability/how-to steps).
+`CapabilityRouting` (registered `AddScoped` by `AddChatModule` — the same
+"stateless router, still an injected instance" convention
+`AskContigoQueryRouter` above already uses) turns a planner intent
+(`CapabilityIntent` — benchmark, unknown supplier, deadline, savings,
+how-to, capability list) plus a `RoutingContext` (validated-contract count,
+caller role, known contract/quote/document id) into `CopilotAction`s built
+only from catalog patterns and known object ids (R-SYS-02) — and, per
+R-SYS-04, replaces any action whose target capability is
+`needsValidatedContract` with the Documents upload action and the
+prototype's own empty-state copy (`CapabilityRouting
+.ValidatedContractsEmptyStateCopy`, `markup.html` "The portfolio lights up
+from validated contracts. Upload one to start.") when the caller has zero
+validated contracts. `FeatureCitation.For(capability)` builds the R-SYS-03
+feature-card shape (`corpus: contigo`); `CapabilityCatalog.SuggestionsFor`
+reproduces `app.jsx`'s per-screen `chipsFor`/`c360Chips` suggestion chips.
+
+`Contigo.Api.CapabilitiesEndpointExtensions` maps `GET /api/capabilities`
+(role-aware: an `X-Role` header, resolved through
+`Contigo.Identity.Workspace.Domain.WorkspaceRoleClaimResolver` — same
+interim-header posture as every `X-Tenant-Id` endpoint below, ADR-010 not
+yet on this host — hides `workspace-members` unless the caller resolves to
+`Admin`) but is **deliberately not called from `Program.cs` by this task**;
+a later task maps it, the same "endpoint exists, host wiring is a later
+task's job" shape already used above for `AddChatModule`'s
+`chatConnectionString` overload. Unlike every other endpoint in this file,
+it takes no `X-Tenant-Id` — the catalog is static, tenant-agnostic
+metadata, not a per-tenant read.
+
 ## Renewal Intelligence — deterministic renewal engine
 
 `Contigo.Renewals.Application.RenewalEngine` (task E03/F01/US01/T01,
