@@ -24,6 +24,19 @@ def test_merge_verify_exclude_env(monkeypatch: pytest.MonkeyPatch) -> None:
     assert not merge_verify._is_excluded("docs/other.md")
 
 
+def test_needs_dotnet_build_only_for_backend_sources() -> None:
+    assert merge_verify.needs_dotnet_build(["backend/src/Contigo.Api/MarketEndpointExtensions.cs"])
+    assert merge_verify.needs_dotnet_build(["backend\\src\\Contigo.Market\\Contigo.Market.csproj"])
+    assert not merge_verify.needs_dotnet_build(["backend/README.md", "web/src/app.tsx"])
+    assert not merge_verify.needs_dotnet_build([".helix/reports/open-questions.md"])
+    assert not merge_verify.needs_dotnet_build([])
+
+
+def test_dotnet_build_skipped_by_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MERGE_VERIFY_SKIP_BUILD", "1")
+    assert merge_verify.dotnet_build(tmp_path) == 0
+
+
 def test_files_with_markers_ignores_skipped(tmp_path: Path) -> None:
     agents = tmp_path / ".helix" / "agents"
     agents.mkdir(parents=True)

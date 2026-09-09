@@ -66,7 +66,8 @@ YAML constants. They are ADR output of the council.
 | Separate run target | `contigo-execution` / `execution-fanout`; not in `contigo-design` edges | **RIPRODOTTA** |
 | Produce → gate → revise, not a deliberation table | `execution-loop` `workflow`: implementer → reviewer unless `HALTED:`; back-edge only on `IMPLEMENTATION_GAPS:` | **RIPRODOTTA** |
 | Pattern E Claude Code; reviewer read-only | harness `allowed_tools` | **RIPRODOTTA** |
-| `IMPLEMENTATION_APPROVED:` / `IMPLEMENTATION_GAPS:` / `HALTED:`, line-anchored; not `on_approved_or_halted` | workflow edges + engine halt-guard | **RIPRODOTTA** |
+| `IMPLEMENTATION_APPROVED:` / `IMPLEMENTATION_GAPS:` / `HALTED:`, line-anchored; not `on_approved_or_halted` | workflow edges + `fan_out.task_failure_markers: ["HALTED:"]` (the engine has no halt-guard for a workflow instance — D2, D13) | **RIPRODOTTA** |
+| A task is delivered only with committed work on its branch | `fan_out.require_delivery: true` on the fork-point predicate; `close_wave_slice.py` delivery audit; `salvage/*` tags for dead turns | **RIPRODOTTA** — D13 |
 | Fan_out over **one slice wave-spec** | `execution-fanout` `over: slice.current.yaml` | **RIPRODOTTA** — D1 |
 | `isolation: git-worktree` + `base_branch: main` + `max_parallel: 3` | worktrees of the local clone | **RIPRODOTTA** (D1) |
 | After a green slice, PR to GitHub `main` | `execution-fanout.hooks` `on_orchestration_stop` → `command: scripts/open_fanout_pr.py` (`gh pr create` `integration` → `origin/main`) | **RIPRODOTTA** (`fan_out.write_back` is inert; this is the write-back) |
@@ -145,11 +146,15 @@ also fire on `IMPLEMENTATION_APPROVED:` buried in prose). We do not use it.
 `execution-loop` is a `workflow`. `HALTED:` from the implementer skips the
 reviewer (`on_marker_absent` `HALTED:`). `HALTED:` from the reviewer has no
 back-edge. Either ends **this task** at once — no extra implementer/reviewer
-laps. Helix then raises outcome `halted` so fan-out records a task failure;
-`on_task_failure: block-dependents` skips only tasks that need this one's
-`produces`. Independent tasks in the same wave still run. The only loop-back
-is `IMPLEMENTATION_GAPS:`. `IMPLEMENTATION_APPROVED:` has no outgoing edge
-(success). `max_iterations: 10` bounds GAPS laps, not halt.
+laps. The engine does **not** raise on it: a turn that matches no edge ends
+the instance as a normal stop (`stop_reason.kind = no_edge_matched`), and
+until 2026-09-09 the fan-out counted that as a delivered task (e13: F04/T02,
+F03/T02, F06/T02). `fan_out.task_failure_markers: ["HALTED:"]` now records the
+task as failed from its last line; `on_task_failure: block-dependents` skips
+only tasks that need this one's `produces`. Independent tasks in the same
+wave still run. The only loop-back is `IMPLEMENTATION_GAPS:`.
+`IMPLEMENTATION_APPROVED:` has no outgoing edge (success). `max_iterations: 10`
+bounds GAPS laps, not halt.
 
 ### D3 — Decomposition gate fail-open if no marker is emitted
 
@@ -218,9 +223,12 @@ model id alone does not disable thinking.
 ### D9 — Decomposition writers are not Pattern E (`CodingAgentTurnTimeout`)
 
 The mandate used Pattern E (Claude Code) for *authoring many files*. A coding-
-agent turn has a **600s wall-clock** deadline in the engine; writing or
-rewriting the four-level tree in one subprocess exceeds it
-(`CodingAgentTurnTimeout`, retryable). That timeout is not a YAML field.
+agent turn had a **600 s wall-clock** deadline in the engine when this was
+decided; writing or rewriting the four-level tree in one subprocess exceeded it
+(`CodingAgentTurnTimeout`, retryable). Since 2026-09-09 the deadline is an
+**inactivity** deadline (D13) and this reason no longer applies; the split
+stays because the chat writers are cheaper per file and the tree is stable.
+That timeout is not a YAML field.
 
 **What we do:** `backlog-decomposer` and `decomposition-remediator` are
 `deepseek-reasoning` + native `write_file` / `glob` / `list_dir` (same path as
@@ -298,9 +306,11 @@ opened when `close_wave_slice.py` finds open points after a green wave.
 `./run.ps1 -Max -Slice r0-a -o execution-fanout`. That copies
 `reports/plan/slices/r0-a.yaml` onto `slice.current.yaml` (the only file
 `execution-fanout` walks). `fan_out.resume_completed: true` skips tasks
-whose `wave/*` branch already diffs against `main`. Intra-phase
-`max_parallel: 3` shortens wall-clock on wide slices; it does **not**
-reduce tokens. `max_task_attempts` stays 1.
+whose `wave/*` branch carries committed work beyond its fork point (D13).
+Intra-phase `max_parallel: 3` shortens wall-clock on wide slices; it does
+**not** reduce tokens. `max_task_attempts: 3` retries a transient death
+(connection lost, hung subprocess) on a fresh worktree; an
+`IMPLEMENTATION_GAPS:` lap is not an attempt.
 
 ### D12 — Cost hub and CEO briefing are not in this artifact
 
@@ -310,6 +320,61 @@ skills, and the Firecrawl MCP are **unwired**. Passata 1 ends on
 `DECOMPOSITION_OK:`. The operator reviews the tree and launches
 `execution-fanout` by hand. Leftover `reports/costs/` and `reports/briefing/`
 files from earlier runs are not inputs to passata 2.
+
+### D13 — Delivery contract: a task is done only with committed work (2026-09-09)
+
+**What happened (e13, run `5dec6283`).** Studio reported 20/20 tasks
+finished, 0 failed, and the stop hook opened PR #67. Five tasks had delivered
+nothing: F04/T01, F11/T01 (implementer turn killed at the 3600 s deadline
+before `git commit`, then every retry burned in seconds), F04/T02 and F03/T02
+(implementer `HALTED:` because F04/T01 was missing), F06/T02 (reviewer closed
+without a verdict). A sixth defect shipped a broken build: F02/T02 and F06/T01
+both created `MarketEndpointExtensions.cs` in phase 3 and the barrier
+union-merged the two files.
+
+**Engine defects, fixed in Helix (branch `fix/fanout-delivery-contract`):**
+
+1. The turn deadline was a total cap that killed healthy sessions. It is now
+   an inactivity deadline (`HELIX_CODING_AGENT_TURN_DEADLINE_SECONDS`, re-armed
+   on every streamed message) plus an optional absolute cap
+   (`HELIX_CODING_AGENT_TURN_MAX_SECONDS`).
+2. `soft-accept`, `resume_completed` and the retry checkpoint measured a task
+   branch against `main`. A phase ≥ 2 branch forks from the advanced
+   `integration` tip, so it "had commits" at creation. They now measure the
+   branch's own diff beyond its fork point (`refs/helix/fork/<branch>`,
+   pinned at provisioning; reflog creation entry for older branches).
+3. A workflow instance that ended on `HALTED:` or with no marker was a
+   success. `fan_out.task_failure_markers` and `fan_out.require_delivery`
+   record such tasks as failed; dependents are blocked.
+4. A stale worktree that Windows could not delete (a build server or test
+   host outliving the coding agent) made `git worktree add` refuse every
+   retry. A retry now provisions at `<id>.r<n>` when the directory survives.
+5. The deterministic union pass unioned source files. It is limited to prose
+   (`.md`, `.txt`, `.gitignore`, …); code conflicts go to `conflict-fixer`,
+   then abort.
+6. Every failed attempt now emits `helix.fanout.task_attempt_failed` with its
+   reason, so the run index explains retries.
+
+**Process changes (this artifact):** `require_delivery: true`,
+`task_failure_markers: ["HALTED:"]`; implementer commits WIP checkpoints and
+runs `dotnet build-server shutdown`; reviewer verifies the commit and never
+ends a turn without a marker; `merge_verify.py` runs `dotnet build` when a
+barrier conflict touched backend C#; `close_wave_slice.py` audits delivery
+per task and lists `salvage/*` tags; `check_single_writer.py` refuses a slice
+whose same-phase tasks claim one file (also a start hook).
+
+**Operator rules.**
+
+- Never commit on `integration`, `git pull` it, or move the clone's HEAD while
+  a wave runs: the clone's HEAD is the barrier's checkout and worktrees fork
+  from it (e13 phase 1 forked from an operator docs commit).
+- A dead turn's uncommitted files are on `salvage/<task>/<n>` tags:
+  `git show --stat <tag>`, then `git checkout <tag> -- <paths>` on a branch
+  from `integration`. The wave-close report lists them per undelivered task.
+- After changing the deadline variables in `.env`, restart the Studio
+  backend (they are read at import).
+- Run `python scripts/check_slice_prereqs.py --slice <id>` before every
+  launch; it fails closed on a same-phase single-writer collision.
 
 ---
 

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -85,6 +86,86 @@ def _commits(repo: Path) -> list[str]:
     return [line for line in (proc.stdout or "").splitlines() if line.strip()]
 
 
+_TASK_ID_RE = re.compile(r"\bid:\s*['\"]?([A-Z]\d+/F\d+/US\d+/T\d+)")
+
+
+def _slice_live_tasks() -> list[str]:
+    """Live task ids of slice.current.yaml (one flow-mapping task per line)."""
+    if not CURRENT.is_file():
+        return []
+    ids: list[str] = []
+    for line in CURRENT.read_text(encoding="utf-8").splitlines():
+        m = _TASK_ID_RE.search(line)
+        if m and re.search(r"status:\s*['\"]?live", line):
+            ids.append(m.group(1))
+    return ids
+
+
+def _fork_point(repo: Path, branch: str) -> str | None:
+    """Where ``branch`` forked: the engine's pinned ref, else the oldest reflog
+    entry (git records the creation tip), else the merge-base with integration/main."""
+    ref = _git(repo, "rev-parse", "--verify", "--quiet", f"refs/helix/fork/{branch}")
+    if ref.returncode == 0 and (ref.stdout or "").strip():
+        return ref.stdout.strip()
+    log = _git(repo, "reflog", "show", "--format=%H", branch)
+    entries = [line.strip() for line in (log.stdout or "").splitlines() if line.strip()]
+    if log.returncode == 0 and entries:
+        return entries[-1]
+    for base in ("integration", "main"):
+        mb = _git(repo, "merge-base", base, branch)
+        if mb.returncode == 0 and (mb.stdout or "").strip():
+            return mb.stdout.strip()
+    return None
+
+
+def _delivery_audit(repo: Path) -> tuple[list[str], list[str]]:
+    """Per live task of the slice: does ``wave/<task>`` carry committed work of
+    its own beyond its fork point, and did that work reach ``integration``?
+
+    Returns (markdown table lines, undelivered task ids). This is the
+    process-side check of the engine's ``require_delivery``: a green wave
+    whose branches are empty is the failure e13 shipped (five tasks reported
+    finished with zero commits)."""
+    rows: list[str] = [
+        "| Task | Branch | Own paths | On integration | Salvage tags | Verdict |",
+        "|---|---|---|---|---|---|",
+    ]
+    undelivered: list[str] = []
+    for task_id in _slice_live_tasks():
+        flat = task_id.replace("/", "-")
+        branch = f"wave/{flat}"
+        tags = [
+            t.strip()
+            for t in (_git(repo, "tag", "-l", f"salvage/{flat}/*").stdout or "").splitlines()
+            if t.strip()
+        ]
+        tag_cell = ", ".join(f"`{t}`" for t in tags) if tags else "—"
+        exists = _git(repo, "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}")
+        if exists.returncode != 0:
+            rows.append(f"| `{task_id}` | missing | — | — | {tag_cell} | **undelivered** |")
+            undelivered.append(task_id)
+            continue
+        own: list[str] = []
+        fork = _fork_point(repo, branch)
+        if fork:
+            diff = _git(repo, "diff", "--name-only", fork, branch)
+            own = [line for line in (diff.stdout or "").splitlines() if line.strip()]
+        merged = _git(repo, "merge-base", "--is-ancestor", branch, "integration").returncode == 0
+        if own and merged:
+            verdict = "delivered"
+        elif own:
+            verdict = "**committed, not on integration**"
+        else:
+            verdict = "**undelivered** (no own commits)"
+        rows.append(
+            f"| `{task_id}` | `{branch}` | {len(own)} | {'yes' if merged else 'no'} | "
+            f"{tag_cell} | {verdict} |"
+        )
+        if not own or not merged:
+            undelivered.append(task_id)
+    return rows, undelivered
+
+
 def _hcp_pending(repo: Path) -> str | None:
     script = repo / "scripts" / "hcp_vcs_wiring.py"
     if not script.is_file():
@@ -107,7 +188,18 @@ def _hcp_pending(repo: Path) -> str | None:
 def _collect(repo: Path, slice_id: str) -> tuple[str, list[str]]:
     pr = _pr_url(repo)
     commits = _commits(repo)
+    delivery_rows, undelivered = _delivery_audit(repo)
     open_points: list[str] = []
+    if undelivered:
+        open_points.append(
+            "Undelivered tasks — no committed work on their `wave/*` branch beyond its "
+            "fork point, or work not on `integration`: "
+            + ", ".join(f"`{t}`" for t in undelivered)
+            + ". Do not treat the wave as complete. A dead turn's uncommitted files are "
+            "on the `salvage/<task>/<n>` tags in the table below: `git show --stat <tag>`, "
+            "then `git checkout <tag> -- <paths>` on a branch from `integration`, finish, "
+            "commit with the task id."
+        )
     if not pr:
         open_points.append(
             "No open PR `integration` → `main` on the product remote. "
@@ -139,19 +231,27 @@ def _collect(repo: Path, slice_id: str) -> tuple[str, list[str]]:
         lines.extend(f"- `{c}`" for c in commits)
     else:
         lines.append("- (none, or `integration` / `origin/main` missing)")
+    lines += ["", "## Delivery per task", ""]
+    if len(delivery_rows) > 2:
+        lines.extend(delivery_rows)
+    else:
+        lines.append("- (slice.current.yaml has no live tasks)")
     lines += ["", "## Open points", ""]
     if open_points:
         for i, point in enumerate(open_points, 1):
             lines.append(f"{i}. {point}")
             lines.append("")
     else:
-        lines.append("None. PR is open and no scripted warnings fired.")
+        lines.append("None. PR is open, every task delivered, no scripted warnings fired.")
         lines.append("")
     lines += [
         "## How to read Studio",
         "",
         "Green on `execution-fanout` means the orchestration finished "
-        "(`failed_task_ids` empty). It does **not** mean a PR exists, and it "
+        "(`failed_task_ids` empty). With `fan_out.require_delivery` that also "
+        "means every live task carried committed work on its branch; the table "
+        "above is the independent audit of that claim (engine and hook measure "
+        "the same fork-point diff). Green does **not** mean a PR exists, and it "
         "does **not** mean there were zero warnings. `on_orchestration_stop` "
         "is observation-only (fail-open): a hook error is recorded and the "
         "wave still completes. This file is the close record; HITL is the "

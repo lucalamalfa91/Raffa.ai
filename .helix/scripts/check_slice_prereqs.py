@@ -123,6 +123,12 @@ HOW = {
         "After the morning HITL of the previous slice, stamp it: "
         "python scripts/check_slice_prereqs.py --record-hitl <previous-id>"
     ),
+    "single_writer": (
+        "Two tasks of one phase claim the same file, or one task creates a file "
+        "another task of the same phase names. Move the consumer one phase later "
+        "or merge the tasks (skills/decompose-workitems.md, 'Single writer'), then "
+        "re-cut the slice."
+    ),
 }
 
 
@@ -511,6 +517,9 @@ def run_checks(slice_id: str) -> int:
     for name in names:
         ok, detail = _dispatch(name, previous)
         results.append((name, ok, detail))
+    # Always-on: the same-phase single-writer rule of the slice's task files
+    # (the e13 phase-3 MarketEndpointExtensions.cs collision broke the build).
+    results.append(("single_writer", *_single_writer_check(slice_id)))
 
     failed = [(n, d) for n, ok, d in results if not ok]
     passed = [(n, d) for n, ok, d in results if ok]
@@ -542,6 +551,18 @@ def run_checks(slice_id: str) -> int:
         print(f"  ./run.sh  --max --slice {slice_id} -o execution-fanout")
         return 1
     return 0
+
+
+def _single_writer_check(slice_id: str) -> tuple[bool, str]:
+    """Run scripts/check_single_writer.py on the slice file; fail-closed on error."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    try:
+        import check_single_writer  # noqa: PLC0415 — sibling script, imported lazily
+
+        slice_file = HERE / "reports" / "plan" / "slices" / f"{slice_id}.yaml"
+        return check_single_writer.check_slice_file(slice_file)
+    except Exception as exc:  # noqa: BLE001 — a crashed check must not pass silently
+        return False, f"single-writer check crashed: {exc!r}"
 
 
 def main() -> int:
