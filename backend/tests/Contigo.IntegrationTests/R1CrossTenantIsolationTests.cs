@@ -56,12 +56,17 @@ public sealed class R1CrossTenantIsolationTests : IClassFixture<R1IntegrationFix
 
         // Ask Contigo: tenant B's own semantic query never retrieves or cites tenant A's document —
         // an authorized retrieval that genuinely finds nothing for this tenant is an honest
-        // "cannot determine" (spec §8.4 "no evidence, no claim"), never tenant A's answer.
+        // "cannot determine" (spec §8.4 "no evidence, no claim"), never tenant A's answer. Task
+        // E13/F06/US01/T01 (ask-engine) replaced the old `{ canDetermine, citations }` shape with
+        // the ADR-024 §6 reply contract (`kind: "abstain"` for the identical "nothing to ground"
+        // case) and made `POST /api/chat/query` resolve caller identity — see
+        // R1EndToEndTests.PostAsync's own doc comment on the X-User-Id overload this now needs.
         var chatAsB = await R1EndToEndTests.PostAsync(
-            client, "/api/chat/query", tenantB, new { question = "What does the master services agreement cover?" });
+            client, "/api/chat/query", tenantB, "bob@tenant-b.example",
+            new { question = "What does the master services agreement cover?" });
         Assert.Equal(HttpStatusCode.OK, chatAsB.StatusCode);
         var chatBodyB = await R1EndToEndTests.ParseAsync(chatAsB);
-        Assert.False(chatBodyB.GetProperty("canDetermine").GetBoolean());
+        Assert.Equal("abstain", chatBodyB.GetProperty("kind").GetString());
         Assert.Equal(0, chatBodyB.GetProperty("citations").GetArrayLength());
 
         // Sanity check, both directions: tenant A's own reads still work — the 404s/empty results
@@ -77,9 +82,10 @@ public sealed class R1CrossTenantIsolationTests : IClassFixture<R1IntegrationFix
         Assert.Equal(HttpStatusCode.OK, contract360AsA.StatusCode);
 
         var chatAsA = await R1EndToEndTests.PostAsync(
-            client, "/api/chat/query", tenantA, new { question = "What does the master services agreement cover?" });
+            client, "/api/chat/query", tenantA, "alice@tenant-a.example",
+            new { question = "What does the master services agreement cover?" });
         var chatBodyA = await R1EndToEndTests.ParseAsync(chatAsA);
-        Assert.True(chatBodyA.GetProperty("canDetermine").GetBoolean());
+        Assert.Equal("answer", chatBodyA.GetProperty("kind").GetString());
         Assert.NotEmpty(chatBodyA.GetProperty("citations").EnumerateArray());
     }
 }

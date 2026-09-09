@@ -152,6 +152,31 @@ public sealed class R4IntegrationFixture : WebApplicationFactory<Program>, IAsyn
         // syntactically-valid-value approach every prior R*IntegrationFixture uses).
         builder.UseSetting("ConnectionStrings:Storage", "UseDevelopmentStorage=true");
 
+        // Task E13/F06/US01/T01 (ask-engine) wires AddMarketModule() into every Contigo.Api host,
+        // which makes "market-feed" the container's *default* active Benchmark Service adapter
+        // (backend/README.md "Market Intelligence"; Contigo.Market's own ServiceCollectionExtensions
+        // doc comment) — but this fixture's own R4ExtractionFixtures scripted quote line is built to
+        // match Contigo.Benchmark.Fixtures.FixtureBenchmarkAdapter's own catalog row exactly (P25/P50/
+        // P75 = 1500/1800/2100, "per seat / year", sample size 512, source "fixture" — see
+        // R4EndToEndTests' own assertions), not market-feed's independent mock deals. Pinned back to
+        // "fixture" here so this fixture's real, composed HTTP host keeps resolving the deterministic
+        // catalog data its own tests were written against, regardless of what a real deployment's
+        // default now is.
+        //
+        // Reconciled with R3EndToEndTests' own divergent-looking fix for the identical root cause
+        // (that file's own comment, right above its FixtureBenchmarkAdapter.Single() call): R3 has
+        // no dedicated HTTP endpoint to drive for its benchmark-comparison scenario, so it resolves
+        // FixtureBenchmarkAdapter directly from the container instead. R4EndToEndTests, by contrast,
+        // drives its assessment scenario through a real GET endpoint whose handler resolves
+        // IBenchmarkService itself — this fixture cannot reach into that call from the outside, so
+        // pinning the *host's* active-adapter config here is the only lever available. Two different
+        // mechanisms, one deliberate reason: whether the test reaches the adapter through HTTP or
+        // in-process.
+        builder.UseSetting(
+            $"{Contigo.Benchmark.Configuration.BenchmarkAdapterOptions.SectionName}:" +
+            $"{nameof(Contigo.Benchmark.Configuration.BenchmarkAdapterOptions.ActiveAdapter)}",
+            "fixture");
+
         builder.ConfigureTestServices(services =>
         {
             services.AddSingleton<IDocumentStorage>(DocumentStorage);

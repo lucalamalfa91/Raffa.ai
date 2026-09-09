@@ -1,7 +1,9 @@
 using System.Globalization;
 using System.Security.Claims;
 using System.Text.Json;
+using Contigo.Chat.Application.Capabilities;
 using Contigo.Chat.Application.Conversations;
+using Contigo.Chat.Application.Reply;
 using Contigo.Chat.Domain.Conversations;
 using Contigo.SharedKernel;
 
@@ -49,21 +51,37 @@ namespace Contigo.Api;
 /// </para>
 ///
 /// <para>
-/// `POST /api/conversations/{id}/messages` is deliberately <b>not</b> mapped here — task F06/T01
-/// (phase 3) adds it to this same file once the Ask engine can produce a turn to persist (see
-/// <see cref="AppendConversationMessageRequest"/>'s own doc comment: this module only persists
-/// what a caller already computed).
+/// <b>`POST /api/conversations/{id}/messages` (task E13/F06/US01/T01, ask-engine; ADR-024 §6)</b>:
+/// the one endpoint that actually runs the Ask engine. Resolves tenant/user exactly like every
+/// other handler in this file, loads the conversation's own recent turns (R-ASK-05 "the pack + last
+/// N turns"), calls <see cref="AskCopilotService.AskAsync"/> (the pack-composition root —
+/// <c>Contigo.Api.AskCopilotService</c>'s own doc comment), then persists both the caller's
+/// question and Contigo's reply through <see cref="ConversationService.AppendMessageAsync"/> — this
+/// module still never computes a reply itself (<see cref="AppendConversationMessageRequest"/>'s own
+/// doc comment: "this module only persists what a caller already computed" — <c>AskCopilotService</c>
+/// is that caller now). <see cref="ChatEndpointExtensions"/>'s `POST /api/chat/query` alias creates a
+/// conversation and calls straight into <see cref="AskAndAppendAsync"/> below, so the two endpoints
+/// share one implementation of "ask, then persist both turns, then wire-shape the reply" rather than
+/// two independent copies.
 /// </para>
 /// </summary>
 public static class ConversationsEndpointExtensions
 {
     private const string UserIdHeaderName = "X-User-Id";
 
+    /// <summary>R-ASK-05 "the pack + last N turns" — how many of the conversation's own prior
+    /// messages <see cref="AskAndAppendAsync"/> feeds <c>AskCopilotService.AskAsync</c> as history.
+    /// Not council-pinned to an exact number; three full exchanges (six turns) is generous enough
+    /// for pronoun/follow-up continuity without growing the prompt unbounded as a conversation gets
+    /// long.</summary>
+    private const int RecentTurnsLimit = 6;
+
     public static IEndpointRouteBuilder MapConversationsEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapGet("/api/conversations", GetConversationsAsync);
         endpoints.MapPost("/api/conversations", PostConversationAsync);
         endpoints.MapGet("/api/conversations/{id}", GetConversationAsync);
+        endpoints.MapPost("/api/conversations/{id}/messages", PostConversationMessageAsync);
         return endpoints;
     }
 
@@ -173,7 +191,168 @@ public static class ConversationsEndpointExtensions
         return Results.Ok(ToDetailResponse(conversation));
     }
 
-    private static bool TryResolveTenant(HttpRequest request, out TenantId tenantId, out string error)
+    /// <summary>
+    /// `POST /api/conversations/{id}/messages` (AC-8: returns the §6 reply contract). Same guard
+    /// order as <see cref="GetConversationAsync"/> (tenant, then user, then route-id GUID) before
+    /// any database call; 404 under the identical "wrong tenant / wrong user / unknown id, one
+    /// honest outcome" rule.
+    /// </summary>
+    private static async Task<IResult> PostConversationMessageAsync(
+        string id,
+        PostConversationMessageRequest? request,
+        HttpRequest httpRequest,
+        ConversationService conversationService,
+        Contigo.Api.AskCopilotService askCopilotService,
+        CancellationToken cancellationToken)
+    {
+        if (!TryResolveTenant(httpRequest, out var tenantId, out var tenantError))
+        {
+            return Results.BadRequest(tenantError);
+        }
+
+        if (!TryResolveUserId(httpRequest, out var userId, out var userError))
+        {
+            return Results.BadRequest(userError);
+        }
+
+        if (!Guid.TryParse(id, out var conversationGuid))
+        {
+            return Results.BadRequest("The conversation id in the route must be a GUID.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request?.Question))
+        {
+            return Results.BadRequest("A non-empty 'question' is required.");
+        }
+
+        var conversationId = new EntityId(conversationGuid);
+
+        var conversation = await conversationService
+            .GetAsync(tenantId, userId, conversationId, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (conversation is null)
+        {
+            return Results.NotFound();
+        }
+
+        var reply = await AskAndAppendAsync(
+                askCopilotService, conversationService, tenantId, userId, conversationId, conversation, request.Question, cancellationToken)
+            .ConfigureAwait(false);
+
+        return Results.Ok(reply);
+    }
+
+    /// <summary>
+    /// Shared by <see cref="PostConversationMessageAsync"/> and
+    /// <see cref="ChatEndpointExtensions"/>'s `POST /api/chat/query` alias: runs the Ask engine
+    /// against <paramref name="conversation"/>'s own recent turns, then persists both the user's
+    /// question and Contigo's reply as new <see cref="ConversationMessage"/> rows — one
+    /// implementation of "ask, then persist both turns, then wire-shape the reply", not two.
+    /// </summary>
+    internal static async Task<object> AskAndAppendAsync(
+        Contigo.Api.AskCopilotService askCopilotService,
+        ConversationService conversationService,
+        TenantId tenantId,
+        string userId,
+        EntityId conversationId,
+        ConversationDetailResult conversation,
+        string question,
+        CancellationToken cancellationToken)
+    {
+        var recentTurns = conversation.Messages
+            .TakeLast(RecentTurnsLimit)
+            .Select(m => (Role: ToWireRole(m.Role), Markdown: m.Markdown))
+            .ToList();
+
+        var reply = await askCopilotService
+            .AskAsync(tenantId, question, recentTurns, cancellationToken)
+            .ConfigureAwait(false);
+
+        await conversationService.AppendMessageAsync(
+                tenantId, userId, conversationId,
+                new AppendConversationMessageRequest(ConversationRole.You, ConversationMessageKind.Answer, question, "[]", "[]"),
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        var contigoMessage = await conversationService.AppendMessageAsync(
+                tenantId, userId, conversationId,
+                new AppendConversationMessageRequest(
+                    ConversationRole.Contigo,
+                    ToMessageKind(reply.Kind),
+                    reply.AnswerMarkdown,
+                    JsonSerializer.Serialize(reply.Citations.Select(ToCitationJson)),
+                    JsonSerializer.Serialize(reply.Actions.Select(ToActionJson)),
+                    reply.Provenance.ModelId,
+                    reply.Provenance.PromptVersion,
+                    reply.Provenance.InputHash),
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        var messageId = contigoMessage?.MessageId ?? conversationId;
+
+        return new
+        {
+            conversationId = conversationId.Value,
+            messageId = messageId.Value,
+            kind = reply.Kind.ToApiValue(),
+            answerMarkdown = reply.AnswerMarkdown,
+            citations = reply.Citations.Select(ToCitationJson),
+            actions = reply.Actions.Select(ToActionJson),
+            provenance = new
+            {
+                sources = reply.Provenance.Sources,
+                modelId = reply.Provenance.ModelId,
+                promptVersion = reply.Provenance.PromptVersion,
+                inputHash = reply.Provenance.InputHash,
+            },
+            followUps = reply.FollowUps,
+        };
+    }
+
+    private static object ToCitationJson(ReplyCitation citation) => new
+    {
+        n = citation.N,
+        corpus = citation.Corpus,
+        title = citation.Title,
+        subtitle = citation.Subtitle,
+        snippet = citation.Snippet,
+        documentId = citation.DocumentId,
+        contractId = citation.ContractId,
+        page = citation.Page,
+        section = citation.Section,
+        previewUrl = citation.PreviewUrl,
+        href = citation.Href,
+        recordId = citation.RecordId,
+    };
+
+    private static object ToActionJson(CopilotAction action) => new
+    {
+        label = action.Label,
+        href = action.Href,
+        kind = action.Kind switch
+        {
+            CopilotActionKind.Navigate => "navigate",
+            CopilotActionKind.Upload => "upload",
+            _ => throw new ArgumentOutOfRangeException(nameof(action), action.Kind, "Unknown CopilotActionKind."),
+        },
+    };
+
+    /// <summary>Same PascalCase-member-to-lowercase-wire-literal mapping <see cref="ToWireRole"/>/
+    /// <see cref="ToWireKind"/> already establish, extended to
+    /// <c>Contigo.Chat.Application.Reply.ReplyKind</c> — its own
+    /// <c>Contigo.Chat.Application.Reply.ReplyKindWireFormat.ToApiValue</c> already does exactly
+    /// this; reused, not re-implemented.</summary>
+    private static ConversationMessageKind ToMessageKind(ReplyKind kind) => kind switch
+    {
+        ReplyKind.Answer => ConversationMessageKind.Answer,
+        ReplyKind.Abstain => ConversationMessageKind.Abstain,
+        ReplyKind.Redirect => ConversationMessageKind.Redirect,
+        ReplyKind.Refusal => ConversationMessageKind.Refusal,
+        _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown ReplyKind."),
+    };
+
+    internal static bool TryResolveTenant(HttpRequest request, out TenantId tenantId, out string error)
     {
         tenantId = default;
         error = string.Empty;
@@ -190,7 +369,7 @@ public static class ConversationsEndpointExtensions
     }
 
     /// <summary>See the type doc comment's "Caller identity" section.</summary>
-    private static bool TryResolveUserId(HttpRequest request, out string userId, out string error)
+    internal static bool TryResolveUserId(HttpRequest request, out string userId, out string error)
     {
         userId = string.Empty;
         error = string.Empty;
@@ -316,4 +495,11 @@ public static class ConversationsEndpointExtensions
     /// failure for an un-parseable route/body <see cref="Guid"/>.
     /// </summary>
     public sealed record CreateConversationRequest(string? ScopeContractId = null);
+
+    /// <summary>
+    /// `POST /api/conversations/{id}/messages` request body (ADR-024 §6: <c>{ question }</c>) — a
+    /// nested type for the identical reason <see cref="CreateConversationRequest"/>'s own doc
+    /// comment gives.
+    /// </summary>
+    public sealed record PostConversationMessageRequest(string? Question);
 }

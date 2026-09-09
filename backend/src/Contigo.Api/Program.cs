@@ -8,10 +8,13 @@ using Contigo.Documents.Contracts.Application;
 using Contigo.Documents.Contracts.Application.Extraction;
 using Contigo.Documents.Contracts.Infrastructure;
 using Contigo.Identity.Workspace.Infrastructure;
+using Contigo.Insights;
+using Contigo.Market;
 using Contigo.Quotes.Infrastructure;
 using Contigo.Renewals.Infrastructure;
 using Contigo.Savings.Infrastructure;
 using Contigo.SharedKernel;
+using Contigo.Suppliers.Products.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -79,6 +82,52 @@ var chatConnectionString = builder.Configuration.GetConnectionString("Chat")
         "(set env var ConnectionStrings__Chat in deployed environments).");
 
 builder.Services.AddChatModule(chatConnectionString);
+
+// Task E13/F06/US01/T01 (ask-engine): Chat:PackTokenBudget, registered *before* AddChatModule's
+// own always-usable-default TryAddSingleton<PackBudget> so a configured value wins (TryAdd's
+// "first registration wins" — see Contigo.Chat.Infrastructure.ServiceCollectionExtensions's own
+// doc comment on this exact ordering contract). Absent configuration, GetValue<int?> returns
+// null and PackBudget falls back to its own DefaultMaxTokens, unchanged from before this line.
+builder.Services.AddSingleton(new Contigo.Chat.Application.Pack.PackBudget(
+    builder.Configuration.GetValue<int?>(Contigo.Chat.Application.Pack.PackBudget.SectionName)));
+
+// Task E13/F06/US01/T01 (ask-engine): Suppliers/Products' own AddSuppliersProductsModule(string)
+// (ADR-002) — task E13/F03/US01/T01 registered ISupplierResolver/ISupplierNameLookup here but no
+// host called it yet (that task's own doc comment: "task E13/F06/US01/T01 is the first real
+// caller"). Same fail-fast connection-string shape as every other required module above.
+var suppliersConnectionString = builder.Configuration.GetConnectionString("Suppliers")
+    ?? throw new InvalidOperationException(
+        "Missing required configuration 'ConnectionStrings:Suppliers' " +
+        "(set env var ConnectionStrings__Suppliers in deployed environments).");
+
+builder.Services.AddSuppliersProductsModule(suppliersConnectionString);
+
+// Task E13/F06/US01/T01 (ask-engine): the Market module's own AddMarketModule() (ADR-002) — task
+// E13/F02/US01/T01 registered the mock feed, its benchmark projection and its in-memory notes
+// retrieval here but no host called it yet (that task's own doc comment: "task F06/T01 is
+// expected to be the first caller"). No connection string: this module has no persisted store yet
+// (R-MKT-03's own "T02" scope, not landed in this wave) — every registration is in-memory/config
+// -only. Also makes "market-feed" the default active Benchmark Service adapter (replacing the
+// fixture default AddBenchmarkModule alone would leave in place — R-MKT-02), regardless of the
+// order AddBenchmarkModule (transitively, via AddSavingsModule/AddQuotesModule above) already ran
+// in.
+builder.Services.AddMarketModule();
+
+// Task E13/F06/US01/T01 (ask-engine): the Insights module's own AddInsightsModule() (ADR-002) —
+// task E13/F07/US01/T01 registered InsightsOptions/CriticalityScoreCalculator here but no host
+// called it yet (that task's own doc comment: "Program.cs wiring is a later phase's task
+// (F06/T01)"). No connection string: every Insights type is a pure calculator over caller-supplied
+// DTOs (Contigo.Insights' own allow-list is [SharedKernel, Benchmark] — no DbContext of its own).
+builder.Services.AddInsightsModule();
+
+// AskCopilotService is host-composition wiring (this task's own new pack-composition root — see
+// that type's own doc comment: "everything Contigo.Chat's allow-list forbids that module from
+// doing itself happens here"), the same kind of direct registration
+// QuoteExtractionPipeline/NegotiationOutcomePropagationService already use below for the identical
+// "the one place that calls into several modules at once" reason — not a domain module's own
+// AddXxxModule. Scoped: shares this request's own DbContext-backed services (all already Scoped)
+// rather than a second, independently-tracked instance of any of them.
+builder.Services.AddScoped<AskCopilotService>();
 
 // Task E03/F03/US01/T01 (renewal-dashboard, GET /api/renewals): the Renewals module's own
 // AddRenewalsModule(IServiceCollection) (ADR-002) — task E03/F01/US01/T01 registered RenewalEngine
@@ -338,23 +387,38 @@ app.MapSavingsEndpoints();
 // for why this gap is not promoted to reports/open-questions.md by this task.
 app.MapSavingsKpiEndpoints();
 
-// Task E02/F04/US02/T01 (us-02-rag-citations, AC-1/AC-2/AC-3): POST /api/chat/query — the RAG
-// retrieval + grounded-answer-with-citations path for Ask Contigo semantic questions (spec §8.3).
-// See ChatEndpointExtensions for the endpoint itself; AskContigoQueryRouter (task
-// E02/F04/US01/T01) decides Structured vs Semantic, EmbeddingRetrievalService (task
-// E02/F02/US02/T02) performs the tenant-scoped retrieval, and RagAnswerService (this task) turns
-// the two into a grounded answer with citations or an explicit "cannot determine".
+// Task E13/F06/US01/T01 (ask-engine, ADR-024 §6): POST /api/chat/query — kept one release as a
+// thin alias that creates a conversation and delegates into AskCopilotService (see
+// ChatEndpointExtensions' own doc comment). Supersedes task E02/F04/US02/T01's own
+// Structured-vs-Semantic RAG path at this same route — that router/planner/handler trio is now
+// reused *inside* AskCopilotService instead (see that type's own doc comment), never called
+// directly from this handler any more.
 app.MapChatEndpoints();
 
-// Task E13/F05/US01/T02 (story us-01-conversations, AC-2/AC-3): GET/POST /api/conversations and
-// GET /api/conversations/{id} — list/create/get-with-messages over the conversations store task
-// E13/F05/US01/T01 added (ADR-024 "Conversations (D5)"). See ConversationsEndpointExtensions for
-// the endpoints themselves and their own doc comment for the caller-identity rule (token subject
-// when an authenticated principal is present, else the required X-User-Id header — ADR-022
-// posture, non-authoritative, OQ-askv2-005). POST /api/conversations/{id}/messages is deliberately
-// not mapped here — task F06/T01 (phase 3) adds it to that same file once the Ask engine can
-// produce a turn to persist.
+// Task E13/F05/US01/T02 (story us-01-conversations, AC-2/AC-3) mapped GET/POST /api/conversations
+// and GET /api/conversations/{id}; task E13/F06/US01/T01 (ask-engine, AC-8) adds
+// POST /api/conversations/{id}/messages to the same call — list/create/get-with-messages/ask over
+// the conversations store task E13/F05/US01/T01 added (ADR-024 "Conversations (D5)"). See
+// ConversationsEndpointExtensions for the endpoints themselves and their own doc comment for the
+// caller-identity rule (token subject when an authenticated principal is present, else the
+// required X-User-Id header — ADR-022 posture, non-authoritative, OQ-askv2-005).
 app.MapConversationsEndpoints();
+
+// Task E13/F08/US01/T01 (story us-01-capability-catalog, AC-1): GET /api/capabilities — the
+// versioned, role-aware capability catalog (R-SYS-01). See CapabilitiesEndpointExtensions; this
+// task (F06/T01) is its first-mapped caller.
+app.MapCapabilitiesEndpoints();
+
+// Task E13/F07/US01/T01 (insights-calculators, AC-5): GET /api/insights/criticality and
+// GET /api/contracts/{id}/strategy — the portfolio criticality ranking and the per-contract
+// renewal-strategy pack Ask itself narrates (same numbers, one source — see
+// InsightsEndpointExtensions/AskCopilotService's own doc comments). This task (F06/T01) is this
+// file's first-mapped caller.
+app.MapInsightsEndpoints();
+
+// Task E13/F06/US01/T01 (ask-engine): GET /api/market/records/{id} — the market citation panel
+// (R-EVD-02). See MarketEndpointExtensions.
+app.MapMarketEndpoints();
 
 // Task E05/F01/US01/T01 (quote-extraction, parent story us-01-quote-line-extraction AC-1/AC-2/
 // AC-4): POST /api/quotes — upload a supplier quote, then synchronously reuse the epic-02 hybrid

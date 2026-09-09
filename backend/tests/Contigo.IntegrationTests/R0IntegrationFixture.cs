@@ -1,7 +1,9 @@
 using Contigo.Audit.Infrastructure;
+using Contigo.Chat.Infrastructure;
 using Contigo.Documents.Contracts.Infrastructure;
 using Contigo.Identity.Workspace.Infrastructure;
 using Contigo.SharedKernel.Storage;
+using Contigo.Suppliers.Products.Infrastructure;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -66,6 +68,32 @@ public sealed class R0IntegrationFixture : WebApplicationFactory<Program>, IAsyn
             await db.Database.MigrateAsync();
         }
 
+        // Task E13/F06/US01/T01 (ask-engine): AskCopilotService (behind both POST /api/chat/query
+        // and POST /api/conversations/{id}/messages, which AskContigoRagCrossTenantIsolationTests
+        // now exercises for its own AC-9 proof) resolves supplier names via ISupplierNameLookup for
+        // every turn whose portfolio has at least one contract with a SupplierId, and every turn
+        // persists through ConversationService — so this fixture, previously scoped to the R0 path
+        // only, must also migrate Contigo.Chat's and Contigo.Suppliers.Products' own tables and
+        // route their connection strings at this same Testcontainer (see ConfigureWebHost below),
+        // the same "a later task's new required ConnectionStrings key needs a matching migration
+        // block here" pattern this fixture already applies for Renewals/Savings above.
+        var chatOptions = new DbContextOptionsBuilder<ChatDbContext>();
+        ChatDbContextOptions.Configure(chatOptions, superuserConnectionString);
+        await using (var db = new ChatDbContext(chatOptions.Options))
+        {
+            // Applies Initial + AddTenantRowLevelSecurity for Contigo.Chat's own tables
+            // (Conversation, ConversationMessage).
+            await db.Database.MigrateAsync();
+        }
+
+        var suppliersOptions = new DbContextOptionsBuilder<SuppliersDbContext>();
+        SuppliersDbContextOptions.Configure(suppliersOptions, superuserConnectionString);
+        await using (var db = new SuppliersDbContext(suppliersOptions.Options))
+        {
+            // Applies Initial + AddTenantRowLevelSecurity for Contigo.Suppliers.Products' own table.
+            await db.Database.MigrateAsync();
+        }
+
         var auditOptions = new DbContextOptionsBuilder<AuditDbContext>();
         AuditDbContextOptions.Configure(auditOptions, superuserConnectionString);
         await using (var db = new AuditDbContext(auditOptions.Options))
@@ -118,6 +146,14 @@ public sealed class R0IntegrationFixture : WebApplicationFactory<Program>, IAsyn
         // R1IntegrationFixture's own doc comment on this same line for why it points at this run's
         // own Testcontainers instance rather than appsettings.Development.json's static default.
         builder.UseSetting("ConnectionStrings:Savings", _appConnectionString);
+        // Task E13/F06/US01/T01 (ask-engine): Program.cs now also requires ConnectionStrings:Chat
+        // (already true since task E13/F05/US01/T02) and ConnectionStrings:Suppliers (new, this
+        // task) — both point at this same migrated Testcontainer, not
+        // appsettings.Development.json's static (never-dialled-here) default, since
+        // AskCopilotService and ConversationService both genuinely query them for this fixture's
+        // own tests.
+        builder.UseSetting("ConnectionStrings:Chat", _appConnectionString);
+        builder.UseSetting("ConnectionStrings:Suppliers", _appConnectionString);
         // Never actually dialled — IDocumentStorage is replaced with an in-memory fake below —
         // but Program.cs's own startup check requires a non-null configuration value to be
         // present (same syntactically-valid-value approach Contigo.Api.Tests already uses).
