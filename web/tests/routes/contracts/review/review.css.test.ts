@@ -29,8 +29,12 @@ describe("review.css (E11/F07/US01/T01 -- list/legend/evidence-pane vs day1-demo
 
   it("no longer references the non-existent --space-5 token (scale skips 5/7)", () => {
     expect(css).not.toMatch(/--space-5/);
-    expect(ruleBodyFor(css, ".review-screen")).toMatch(/gap:\s*var\(--space-6\)/);
-    expect(ruleBodyFor(css, ".review-body")).toMatch(/gap:\s*var\(--space-6\)/);
+  });
+
+  it("pads the review screen like the V2 export (22px 32px) and flushes the evidence pane to the right edge", () => {
+    expect(ruleBodyFor(css, ".review-screen")).toMatch(/padding:\s*22px 32px 0/);
+    expect(ruleBodyFor(css, ".review-evidence-pane")).toMatch(/border-left:\s*2px solid var\(--color-divider\)/);
+    expect(ruleBodyFor(css, ".review-evidence-pane")).toMatch(/max-width:\s*400px/);
   });
 
   it("wraps the list below the evidence pane under ~900px (AC-1)", () => {

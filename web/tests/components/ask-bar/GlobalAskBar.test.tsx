@@ -86,17 +86,18 @@ describe("GlobalAskBar", () => {
     renderAtPath("/");
 
     expect(
-      screen.getByPlaceholderText("Ask Contigo — spend, renewals, clauses, liability…"),
+      screen.getByPlaceholderText("Ask Contigo — spend, dates, clauses, liability…"),
     ).toBeInTheDocument();
     expect(screen.getAllByRole("button")).toHaveLength(2);
   });
 
-  it("shows contextual copy for the portfolio route", () => {
+  it("uses the same placeholder on every screen, including portfolio", () => {
     renderAtPath("/contracts");
 
     expect(
-      screen.getByPlaceholderText("Ask Contigo about this portfolio — clauses, dates, spend…"),
+      screen.getByPlaceholderText("Ask Contigo — spend, dates, clauses, liability…"),
     ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Which of these have uncapped liability?" })).toBeInTheDocument();
   });
 
   it("submits the typed query on Enter, clears the input, and navigates to /ask with a new-chat state (task E13/F09/US01/T01)", async () => {
@@ -123,7 +124,7 @@ describe("GlobalAskBar", () => {
     renderAtPath("/");
 
     await userEvent.click(
-      screen.getByRole("button", { name: "Which contracts renew in the next 45 days?" }),
+      screen.getByRole("button", { name: "When does Salesforce expire?" }),
     );
 
     expect(await screen.findByText(/ASK SCREEN/)).toBeInTheDocument();
@@ -155,9 +156,10 @@ describe("GlobalAskBar", () => {
       ).toBeInTheDocument();
     });
 
-    it("still shows the route's own suggestion chips while off (only the placeholder swaps)", () => {
+    it("disables the input and empties the chips while off (app.jsx disabled={kbOff} / askChips:[])", () => {
       renderAtPath("/", false);
-      expect(screen.getAllByRole("button")).toHaveLength(2);
+      expect(screen.getByRole("textbox", { name: /ask contigo/i })).toBeDisabled();
+      expect(screen.queryAllByRole("button")).toHaveLength(0);
     });
   });
 
@@ -172,8 +174,8 @@ describe("GlobalAskBar", () => {
     it("keeps the static fallback chips while the catalog is still loading", () => {
       renderAtPath("/");
 
-      expect(screen.getByRole("button", { name: "Which contracts renew in the next 45 days?" })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Where can we save money this quarter?" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "When does Salesforce expire?" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "What liabilities do we have?" })).toBeInTheDocument();
     });
 
     it("swaps to the catalog's own first two exampleQuestions for the matching screen once it resolves", async () => {
@@ -209,7 +211,7 @@ describe("GlobalAskBar", () => {
       renderAtPath("/contracts", true, mockApiClient(getCapabilities));
 
       await waitFor(() => expect(getCapabilities).toHaveBeenCalled());
-      expect(screen.getByRole("button", { name: "Which contracts are missing a renewal date?" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Which of these have uncapped liability?" })).toBeInTheDocument();
     });
 
     it("keeps the static fallback when the catalog fetch fails", async () => {
@@ -217,7 +219,7 @@ describe("GlobalAskBar", () => {
       renderAtPath("/", true, mockApiClient(getCapabilities));
 
       await waitFor(() => expect(getCapabilities).toHaveBeenCalled());
-      expect(screen.getByRole("button", { name: "Which contracts renew in the next 45 days?" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "When does Salesforce expire?" })).toBeInTheDocument();
     });
   });
 });

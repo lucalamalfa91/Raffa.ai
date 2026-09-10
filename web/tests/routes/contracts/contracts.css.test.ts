@@ -63,18 +63,19 @@ describe("contracts.css (V2 Portfolio table vs markup.html's own inline instance
 });
 
 describe("components.css (shared V2 screen chrome used by Portfolio, Renewals, Quote check, Savings, Members)", () => {
-  it("draws the screen header as the export does: flex, 2px divider rule under it, 13px neutral summary", () => {
+  it("draws the screen header as the export does: flex, full 28px 32px 16px pad, 2px divider, 13px neutral summary", () => {
     const header = ruleBodyFor(componentsCss, ".screen-header");
     expect(header).toMatch(/display:\s*flex/);
+    expect(header).toMatch(/padding:\s*28px 32px 16px/);
     expect(header).toMatch(/border-bottom:\s*2px solid var\(--color-divider\)/);
     const summary = ruleBodyFor(componentsCss, ".screen-header-summary");
     expect(summary).toMatch(/font-size:\s*13px/);
     expect(summary).toMatch(/color:\s*var\(--color-neutral-600\)/);
   });
 
-  it("gives the reroute block the export's own 48px vertical padding and 520px measure", () => {
+  it("gives the reroute block the export's own 48px 32px padding and 520px measure", () => {
     const reroute = ruleBodyFor(componentsCss, ".screen-reroute");
-    expect(reroute).toMatch(/padding:\s*48px 0/);
+    expect(reroute).toMatch(/padding:\s*48px 32px/);
     expect(reroute).toMatch(/max-width:\s*520px/);
   });
 

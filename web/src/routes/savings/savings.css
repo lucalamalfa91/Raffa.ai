@@ -10,7 +10,6 @@
 .savings-screen {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
 }
 
 /* ---- KPI band + stale notice ------------------------------------------------- */
@@ -19,6 +18,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+  padding: 20px 32px 0;
 }
 
 .savings-kpi-row {
@@ -76,6 +76,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  padding: 20px 32px;
 }
 
 .savings-kpi-skeleton-cell {
@@ -88,6 +89,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  padding: 20px 32px 32px;
 }
 
 .savings-opportunities-section h6 {

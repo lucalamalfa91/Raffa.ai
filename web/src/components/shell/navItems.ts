@@ -82,10 +82,10 @@ const ASK_BADGE: NavBadge = { text: "⌘K", tone: "muted" };
 const QUOTE_CHECK_BADGE: NavBadge = { text: "optional", tone: "muted" };
 
 export interface DocumentCounts {
-  /** Every document this browser knows about this session
-   * (`../../routes/documents/documentStore.ts#loadTrackedDocuments`) -- the same session-scoped
-   * interim source that module's own doc comment names, since there is still no
-   * `GET /api/documents` collection endpoint (gap G-DOC-API, F09/T03). */
+  /** Count used for the Documents rail badge. `GET /api/documents` exists
+   * (R-DOC-06); the list screen reads it via `useDocumentsList`. The rail
+   * still calls `documentStore.ts#loadTrackedDocuments()` (sessionStorage,
+   * no longer written) -- `inputs/next-waves-todo.md` NW-10. */
   total: number;
   /** `processingStatus === "NeedsReview"` count within `total`. */
   needsReview: number;

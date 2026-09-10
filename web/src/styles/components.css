@@ -79,7 +79,7 @@
 
 .btn-secondary {
   background: var(--color-surface);
-  border-color: var(--color-text);
+  border-color: var(--color-divider);
   color: var(--color-text);
 }
 
@@ -87,14 +87,16 @@
   background: var(--color-neutral-200);
 }
 
+/* V2 `styles.css`: `.btn-ghost { color: var(--color-accent); padding-inline: var(--space-1); }` */
 .btn-ghost {
   background: transparent;
   border-color: transparent;
-  color: var(--color-text);
+  color: var(--color-accent);
+  padding-inline: var(--space-1);
 }
 
 .btn-ghost:hover:not(:disabled) {
-  background: var(--color-neutral-200);
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
 }
 
 .btn-block {
@@ -547,8 +549,9 @@
  * contracts" screens share one reroute block while no contract is validated
  * (R-WEB-02 "greyed with reroute empty states"): `padding:48px 32px;
  * max-width:520px` with an h3, one muted sentence and a primary action.
- * The shell already pads the content area, so only the bottom padding and
- * the rule are drawn here.
+ * The shell no longer pads the content area (screens must be able to bleed
+ * a header rule and a right-edge band), so the prototype's own
+ * `padding:28px 32px 16px` lives here.
  * ========================================================================= */
 
 .screen-header {
@@ -556,7 +559,7 @@
   align-items: flex-end;
   justify-content: space-between;
   gap: var(--space-6);
-  padding-bottom: var(--space-4);
+  padding: 28px 32px 16px;
   border-bottom: 2px solid var(--color-divider);
 }
 
@@ -578,7 +581,7 @@
 }
 
 .screen-reroute {
-  padding: 48px 0;
+  padding: 48px 32px;
   max-width: 520px;
 }
 

@@ -22,7 +22,7 @@
 .review-screen {
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
+  padding: 22px 32px 0;
 }
 
 /* ---- Header (AC-4) ---------------------------------------------------------- */
@@ -83,13 +83,15 @@
 
 .review-body {
   display: flex;
-  align-items: flex-start;
-  gap: var(--space-6);
+  flex-wrap: wrap;
+  align-content: flex-start;
+  margin: 0 -32px 0 0;
 }
 
 .review-field-table {
-  flex: 1 1 auto;
+  flex: 1 1 520px;
   min-width: 0;
+  padding: 0 32px 32px 0;
 }
 
 /* Fixed-layout column widths (`.table` sets `table-layout:fixed`, components.css) -- narrow Field,
@@ -153,7 +155,11 @@
 }
 
 .review-evidence-pane {
-  flex: none;
+  flex: 1 1 300px;
+  max-width: 400px;
+  padding: 16px 24px;
+  background: var(--color-surface);
+  border-left: 2px solid var(--color-divider);
 }
 
 /* "Highlighted passage" card (screens.md #6: "evidence page with highlighted passage"; export's own
@@ -231,6 +237,17 @@
 @media (max-width: 900px) {
   .review-body {
     flex-direction: column;
+    margin-right: 0;
+  }
+
+  .review-field-table {
+    padding: 0 0 24px;
+  }
+
+  .review-evidence-pane {
+    max-width: none;
+    border-left: 0;
+    border-top: 2px solid var(--color-divider);
   }
 }
 
@@ -240,6 +257,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  padding: 22px 32px;
 }
 
 .review-skeleton-row {

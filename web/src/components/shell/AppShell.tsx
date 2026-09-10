@@ -21,7 +21,7 @@ export interface AppShellProps {
 }
 
 /**
- * The composite ADR-018/ADR-024 names: 224px rail + global Ask bar + routed content. AC-3 ("Global
+ * The composite ADR-018/ADR-024 names: 232px rail + global Ask bar + routed content. AC-3 ("Global
  * Ask bar on every app screen") is why GlobalAskBar lives here, above `<Outlet/>`, rather than
  * inside each screen -- every route rendered through WorkspaceShellApp.tsx gets it automatically.
  */

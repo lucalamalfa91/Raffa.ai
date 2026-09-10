@@ -171,10 +171,12 @@ export default function DocumentsRoute({ apiClient }: DocumentsRouteProps) {
 
   return (
     <div className="documents-screen documents-screen--list">
-      <div className="documents-list-header">
-        <h2 className="screen-title">Documents</h2>
-        <p className="micro-meta">{buildKbSummary(list.documents)}</p>
-      </div>
+      <header className="screen-header">
+        <div>
+          <h2 className="screen-title">Documents</h2>
+          <p className="screen-header-summary">{buildKbSummary(list.documents)}</p>
+        </div>
+      </header>
 
       <UploadDropzone variant="list" onFilesSelected={handleFilesSelected} onUseSampleFile={handleUseSampleFile} />
 
@@ -193,6 +195,7 @@ export default function DocumentsRoute({ apiClient }: DocumentsRouteProps) {
         </div>
       )}
 
+      <div className="documents-list-main">
       {deleteError !== null && (
         <p className="hint" role="alert">
           {deleteError}
@@ -222,6 +225,7 @@ export default function DocumentsRoute({ apiClient }: DocumentsRouteProps) {
         uploaded → processing → needs review → completed. Only <strong>completed</strong> documents feed Ask Contigo,
         Portfolio and Renewals.
       </p>
+      </div>
     </div>
   );
 }

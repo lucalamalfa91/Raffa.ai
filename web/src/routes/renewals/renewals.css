@@ -27,7 +27,8 @@
 .renewal-screen {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  flex: 1;
+  min-height: 0;
 }
 
 /* ---- Loading skeleton ------------------------------------------------------- */
@@ -36,6 +37,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  padding: 20px 32px 32px;
 }
 
 .renewal-skeleton-row {
@@ -47,16 +49,17 @@
 .renewal-screen-body {
   display: flex;
   flex-wrap: wrap;
+  flex: 1;
+  min-height: 0;
   align-content: flex-start;
-  align-items: flex-start;
-  gap: var(--space-4) 0;
+  align-items: stretch;
 }
 
 .renewal-table-wrapper {
   flex: 1 1 480px;
   min-width: 0;
   overflow-x: auto;
-  padding-right: var(--space-6);
+  padding: 0 32px 32px;
 }
 
 .renewal-table {

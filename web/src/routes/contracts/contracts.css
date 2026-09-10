@@ -26,7 +26,6 @@
 .portfolio-screen {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
 }
 
 .portfolio-columns-toggle {
@@ -40,6 +39,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  padding: 20px 32px 32px;
 }
 
 .portfolio-skeleton-row {
@@ -50,6 +50,7 @@
 
 .portfolio-table-wrapper {
   overflow-x: auto;
+  padding: 20px 32px 32px;
 }
 
 .portfolio-table {
