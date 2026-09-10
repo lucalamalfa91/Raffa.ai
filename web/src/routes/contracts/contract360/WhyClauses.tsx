@@ -51,19 +51,9 @@ export default function WhyClauses({ contractId, clauses, documents, selectedCla
                 <span className="contract360-clause-type">{row.type}</span>
                 <span className="contract360-clause-normalized">{row.normalized}</span>
                 <span className="contract360-clause-meta">
-                  {row.source ?? "No source recorded"}
-                  {row.risk !== null && (
-                    <>
-                      {" · "}
-                      <span className={`tag tag-${row.risk.variant} contract360-clause-tag`}>{row.risk.label}</span>
-                    </>
-                  )}
-                  {confidence !== null && (
-                    <>
-                      {" · "}
-                      <span className={`tag tag-${confidence.variant} contract360-clause-tag`}>{confidence.label}</span>
-                    </>
-                  )}
+                  <span className="contract360-clause-source">{row.source ?? "No source recorded"}</span>
+                  {row.risk !== null && <span className={`tag tag-${row.risk.variant} contract360-clause-tag`}>{row.risk.label}</span>}
+                  {confidence !== null && <span className={`tag tag-${confidence.variant} contract360-clause-tag`}>{confidence.label}</span>}
                 </span>
               </button>
             );
