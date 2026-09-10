@@ -32,7 +32,7 @@ export default function MappingBlock({ unmatchedLines, mapDrafts, onChangeMapDra
         {unmatchedLines.length} line{unmatchedLines.length === 1 ? "" : "s"} could not be matched to the benchmark model
       </div>
       <p className="micro-meta">
-        Map each line to a canonical product so unit economics can be normalised — Raffa will not compute a target until
+        Map each line to a canonical product so unit economics can be normalised — Raffa.ai will not compute a target until
         every line is resolved.
       </p>
 

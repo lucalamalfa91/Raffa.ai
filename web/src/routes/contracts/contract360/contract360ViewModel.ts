@@ -117,7 +117,7 @@ export function buildRecommendation(header: Contract360HeaderBody, renewals: rea
       statement: "No renewal recommendation for this contract",
       rationale: header.autoRenewal
         ? "This contract did not appear in the current renewal pipeline yet."
-        : "Raffa tracks renewal recommendations only for auto-renewing contracts; this contract ends on its end date with no renewal to act on.",
+        : "Raffa.ai tracks renewal recommendations only for auto-renewing contracts; this contract ends on its end date with no renewal to act on.",
     };
   }
 

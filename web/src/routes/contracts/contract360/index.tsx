@@ -89,7 +89,7 @@ export default function Contract360Route({ apiClient, userLabel }: Contract360Ro
           statusCode: result.statusCode,
           message:
             result.statusCode === 503 || result.statusCode === null
-              ? "Raffa's contract service is temporarily unavailable. Try again in a moment."
+              ? "Raffa.ai's contract service is temporarily unavailable. Try again in a moment."
               : (result.error ?? "The contract could not be loaded."),
         });
         return;

@@ -107,7 +107,7 @@ export default function WorkspacePickerScreen({
         <SignInStatementPanel />
         <section className="signin-action">
           <div className="card">
-            <p className="screen-kicker">Raffa</p>
+            <p className="screen-kicker">Raffa.ai</p>
             <h1 className="screen-title">You&apos;re in {current.name}</h1>
             <p className="micro-meta">Signed in as {accountLabel}.</p>
             <div className="workspace-actions">

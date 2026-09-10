@@ -100,7 +100,7 @@ export default function QuoteCheckRoute({ apiClient }: QuoteCheckRouteProps) {
             statusCode: result.statusCode,
             message:
               result.statusCode === 503 || result.statusCode === null
-                ? "Raffa's quote service is temporarily unavailable. Try again in a moment."
+                ? "Raffa.ai's quote service is temporarily unavailable. Try again in a moment."
                 : (result.error ?? "The quote could not be loaded."),
           });
           return;

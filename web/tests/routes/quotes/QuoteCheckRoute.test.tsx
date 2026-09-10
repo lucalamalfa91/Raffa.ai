@@ -141,7 +141,7 @@ describe("QuoteCheckRoute (V2, ADR-024 / screens-v2.md #9)", () => {
     expect(screen.getByText("Optional · new purchase")).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 2, name: "Quote check" })).toBeInTheDocument();
     expect(
-      screen.getByText("Drop a supplier proposal; Raffa normalises the lines and compares them with the market and with what you already pay."),
+      screen.getByText("Drop a supplier proposal; Raffa.ai normalises the lines and compares them with the market and with what you already pay."),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Upload a quote" })).toHaveClass("btn-primary");
     expect(screen.getByText(/or use the sample:/)).toBeInTheDocument();

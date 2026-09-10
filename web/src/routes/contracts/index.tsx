@@ -54,7 +54,7 @@ export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
           // accessibility baseline: "names the failing job, never a raw stack trace").
           message:
             result.statusCode === 503 || result.statusCode === null
-              ? "Raffa's portfolio service is temporarily unavailable. Try again in a moment."
+              ? "Raffa.ai's portfolio service is temporarily unavailable. Try again in a moment."
               : (result.error ?? "The portfolio could not be loaded."),
         });
         return;

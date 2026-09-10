@@ -33,7 +33,7 @@ import type { SemanticTag, TagVariant } from "../../styles/semantics";
 
 /** Header description, quoted verbatim from the prototype block. */
 export const QUOTE_INTRO =
-  "Drop a supplier proposal; Raffa normalises the lines and compares them with the market and with what you already pay.";
+  "Drop a supplier proposal; Raffa.ai normalises the lines and compares them with the market and with what you already pay.";
 
 /** Footer under the lines table, quoted verbatim from the prototype block. */
 export const QUOTE_LEVERS_FOOTER = "Target and negotiation levers are one step further — shown only if you want them.";
