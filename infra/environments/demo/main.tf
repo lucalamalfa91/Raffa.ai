@@ -193,8 +193,13 @@ module "foundry" {
 # ADR-015 SPs are out of band. display_name "raffa-sp-demo" is not
 # unique in this tenant; pin the GitHub Environment AZURE_CLIENT_ID
 # (not a secret) so the grant hits the OIDC deploy SP.
+# Rotated 2026-09-10 with the Contigo -> Raffa rebrand: contigo-sp-demo
+# (1f7f7bd7-f741-4aff-b572-368a36a07879) was replaced by raffa-sp-demo,
+# so this literal and the GitHub Environment variable must be changed
+# together -- a stale value here fails the plan outright ("no matching
+# service principal"), not just the Key Vault grant.
 data "azuread_service_principal" "ci_deploy" {
-  client_id = "1f7f7bd7-f741-4aff-b572-368a36a07879"
+  client_id = "de126866-abe0-4956-b273-8533080069f2"
 }
 
 module "keyvault" {
