@@ -37,7 +37,7 @@ function mockApiClient(createWorkspace: ApiClient["createWorkspace"] = vi.fn()):
     getQuoteAssessment: vi.fn(),
     recalculateQuoteAssessment: vi.fn(),
     captureNegotiationOutcome: vi.fn(),
-    askContigo: vi.fn(),
+    askRaffa: vi.fn(),
     // Task E08/F02/US01/T01 (savings-home): this suite never reaches Home's own fetch-outcome
     // matrix -- bare vi.fn() is enough, same convention as getContract360 above.
     getSavingsKpis: vi.fn(),
@@ -138,7 +138,7 @@ describe("WorkspacePickerScreen", () => {
     expect(await screen.findByRole("heading", { name: /you.re in acme procurement/i })).toBeInTheDocument();
 
     // Persisted for next time (workspaceStore.ts), not just held in memory.
-    expect(window.localStorage.getItem(`contigo.signin.knownWorkspaces.${ACCOUNT_KEY}`)).toContain(
+    expect(window.localStorage.getItem(`raffa.signin.knownWorkspaces.${ACCOUNT_KEY}`)).toContain(
       "Acme Procurement",
     );
   });
@@ -172,7 +172,7 @@ describe("WorkspacePickerScreen", () => {
 
   it("lists a previously remembered workspace and selects it on click", async () => {
     window.localStorage.setItem(
-      `contigo.signin.knownWorkspaces.${ACCOUNT_KEY}`,
+      `raffa.signin.knownWorkspaces.${ACCOUNT_KEY}`,
       JSON.stringify([
         {
           id: "w-2",
@@ -200,14 +200,14 @@ describe("WorkspacePickerScreen", () => {
     await userEvent.click(screen.getByRole("button", { name: /globex sandbox/i }));
 
     expect(await screen.findByRole("heading", { name: /you.re in globex sandbox/i })).toBeInTheDocument();
-    expect(JSON.parse(window.sessionStorage.getItem("contigo.signin.currentWorkspace") ?? "null")).toEqual({
+    expect(JSON.parse(window.sessionStorage.getItem("raffa.signin.currentWorkspace") ?? "null")).toEqual({
       id: "w-2",
       name: "Globex Sandbox",
     });
   });
 
   it("offers a Continue link into the app shell once a workspace is current (task E06/F03/US02/T01)", () => {
-    window.sessionStorage.setItem("contigo.signin.currentWorkspace", JSON.stringify({ id: "w-2", name: "Globex Sandbox" }));
+    window.sessionStorage.setItem("raffa.signin.currentWorkspace", JSON.stringify({ id: "w-2", name: "Globex Sandbox" }));
 
     render(
       <WorkspacePickerScreen
@@ -223,7 +223,7 @@ describe("WorkspacePickerScreen", () => {
   });
 
   it("returns to the list from the confirmation panel via Switch workspace", async () => {
-    window.sessionStorage.setItem("contigo.signin.currentWorkspace", JSON.stringify({ id: "w-2", name: "Globex Sandbox" }));
+    window.sessionStorage.setItem("raffa.signin.currentWorkspace", JSON.stringify({ id: "w-2", name: "Globex Sandbox" }));
 
     render(
       <WorkspacePickerScreen
@@ -239,11 +239,11 @@ describe("WorkspacePickerScreen", () => {
     await userEvent.click(screen.getByRole("button", { name: /switch workspace/i }));
 
     expect(screen.getByRole("heading", { name: /choose a workspace/i })).toBeInTheDocument();
-    expect(window.sessionStorage.getItem("contigo.signin.currentWorkspace")).toBeNull();
+    expect(window.sessionStorage.getItem("raffa.signin.currentWorkspace")).toBeNull();
   });
 
   it("clears the current workspace and calls onSignOut", async () => {
-    window.sessionStorage.setItem("contigo.signin.currentWorkspace", JSON.stringify({ id: "w-2", name: "Globex Sandbox" }));
+    window.sessionStorage.setItem("raffa.signin.currentWorkspace", JSON.stringify({ id: "w-2", name: "Globex Sandbox" }));
     const onSignOut = vi.fn();
 
     render(
@@ -258,6 +258,6 @@ describe("WorkspacePickerScreen", () => {
     await userEvent.click(screen.getByRole("button", { name: /sign out/i }));
 
     expect(onSignOut).toHaveBeenCalledTimes(1);
-    expect(window.sessionStorage.getItem("contigo.signin.currentWorkspace")).toBeNull();
+    expect(window.sessionStorage.getItem("raffa.signin.currentWorkspace")).toBeNull();
   });
 });

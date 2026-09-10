@@ -4,7 +4,7 @@ type: task
 story: us-01-ask-engine
 wave: 13
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-ask-engine — Domain gate, planner, context pack, answer contract, guards, messages endpoint, host wiring
@@ -13,7 +13,7 @@ target_repo: contigo-backend
 
 Replace the single-turn `POST /api/chat/query` behaviour with the V2
 copilot (`inputs/requirements.md` R-ASK-01…10, R-CMP-01…03, R-STR-01/03,
-R-PORT-02/03, §6). In `backend/src/Contigo.Chat/Application/`:
+R-PORT-02/03, §6). In `backend/src/Raffa.Chat/Application/`:
 
 1. `Gate/DomainGate` — labels `greeting`, `off_domain`, `legal`,
    `capability`, `needs_document`, `in_domain`; deterministic rules first
@@ -26,14 +26,14 @@ R-PORT-02/03, §6). In `backend/src/Contigo.Chat/Application/`:
 2. `Planning/IntentPlanner` — fixed intents `structured_fact`, `clause`,
    `market_compare`, `renewal_strategy`, `portfolio_strategy`, `savings`,
    `document_status`, `quote_route`, `navigate`; reuse and extend
-   `AskContigoQueryRouter` / `DeterministicQueryPlanner` (they stay pure);
-   the prototype outcomes in `inputs/design/prototypes/contigo-v2/app.jsx`
-   `ask()` and `contigo-v2/ia-v2.md` "Ask intents" are the oracle.
+   `AskRaffaQueryRouter` / `DeterministicQueryPlanner` (they stay pure);
+   the prototype outcomes in `inputs/design/prototypes/raffa-v2/app.jsx`
+   `ask()` and `raffa-v2/ia-v2.md` "Ask intents" are the oracle.
 3. `Pack/ContextPack` DTOs — `PackItem(citationKey, corpus tenant|market|
-   contigo|calc, title, subtitle, page?, section?, snippet, href?,
+   raffa|calc, title, subtitle, page?, section?, snippet, href?,
    previewUrl?, recordId?, provenance, values[] numeric facts)`,
    `PackBudget` (`Chat:PackTokenBudget`), `PackBuilder` (composition lives
-   in `Contigo.Api`, see below — Chat only owns the DTOs and the budget).
+   in `Raffa.Api`, see below — Chat only owns the DTOs and the budget).
 4. `Answering/AnswerPromptV2` — versioned persona prompt file
    `Prompts/answer/v2.1.md` (savings specialist, never a lawyer, never
    invent, cite only pack keys, answer in the question's language, output
@@ -55,14 +55,14 @@ R-PORT-02/03, §6). In `backend/src/Contigo.Chat/Application/`:
 7. Audit per turn (`chat.answered` / `chat.redirected` / `chat.refused` /
    `chat.abstained`, counts + pack hash, never text).
 
-In `Contigo.Api`: `ChatEndpointExtensions.cs` becomes the **pack
+In `Raffa.Api`: `ChatEndpointExtensions.cs` becomes the **pack
 composition root** (`AskCopilotService`): authorization scope first;
 tenant facts via `PortfolioQueryService`, `Contract360QueryService`,
 renewals (`RenewalEngine`, `PriorityScoreCalculator`, `RenewalPipelineBuilder`),
 `SavingsOpportunityService`, weak facts; clause chunks via
 `EmbeddingRetrievalService.SearchAsync` (page-aware, top-k); market via
 `IBenchmarkService` + `IMarketKnowledgeRetrieval`; calculators via
-`Contigo.Insights` (`CriticalityScoreCalculator`, `StrategyPackBuilder`);
+`Raffa.Insights` (`CriticalityScoreCalculator`, `StrategyPackBuilder`);
 capability entries via `CapabilityRouting`. Add
 `POST /api/conversations/{id}/messages` to `ConversationsEndpointExtensions.cs`
 (`{ question }` → runs the pipeline, appends both messages through
@@ -85,36 +85,36 @@ so the guards and the golden set run without Foundry.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| `backend/src/Contigo.Chat/Application/Gate/*`, `Planning/*`, `Pack/*`, `Answering/*`, `Guards/*`, `Reply/*`, `Prompts/answer/v2.1.md` | new |
-| `backend/src/Contigo.Chat/Application/AbstainGuard.cs`, `AskContigoQueryRouter.cs`, `DeterministicQueryPlanner.cs`, `RagAnswerService.cs` | extend / reuse |
-| `backend/src/Contigo.Chat/Infrastructure/ServiceCollectionExtensions.cs` | register the engine (phase-3 writer) |
-| `backend/src/Contigo.AiGateway/Fixtures/FixtureAiGateway.cs` | deterministic v2 answer when a pack is supplied (F01/T02 landed in phase 1; this is the only AiGateway edit this phase) |
-| `backend/src/Contigo.Api/ChatEndpointExtensions.cs` | pack composition + alias |
-| `backend/src/Contigo.Api/AskCopilotService.cs` | new composition service |
-| `backend/src/Contigo.Api/ConversationsEndpointExtensions.cs` | `POST /{id}/messages` |
-| `backend/src/Contigo.Api/Program.cs`, `appsettings.Development.json` | module registrations, endpoint maps, connection string (phase-3 writer) |
-| `backend/tests/Contigo.Chat.Tests/{Gate,Planning,Guards,Reply}/*` | unit tests incl. ciao / carbonara / legal / Allianz band / 120 days / criticality narration |
-| `backend/tests/Contigo.Api.Tests/ChatEndpointTests.cs`, `ConversationsEndpointTests.cs` | reply contract, no guid / route line, alias |
-| `backend/tests/Contigo.IntegrationTests/AskContigoRagCrossTenantIsolationTests.cs` | extended to the messages endpoint |
+| `backend/src/Raffa.Chat/Application/Gate/*`, `Planning/*`, `Pack/*`, `Answering/*`, `Guards/*`, `Reply/*`, `Prompts/answer/v2.1.md` | new |
+| `backend/src/Raffa.Chat/Application/AbstainGuard.cs`, `AskRaffaQueryRouter.cs`, `DeterministicQueryPlanner.cs`, `RagAnswerService.cs` | extend / reuse |
+| `backend/src/Raffa.Chat/Infrastructure/ServiceCollectionExtensions.cs` | register the engine (phase-3 writer) |
+| `backend/src/Raffa.AiGateway/Fixtures/FixtureAiGateway.cs` | deterministic v2 answer when a pack is supplied (F01/T02 landed in phase 1; this is the only AiGateway edit this phase) |
+| `backend/src/Raffa.Api/ChatEndpointExtensions.cs` | pack composition + alias |
+| `backend/src/Raffa.Api/AskCopilotService.cs` | new composition service |
+| `backend/src/Raffa.Api/ConversationsEndpointExtensions.cs` | `POST /{id}/messages` |
+| `backend/src/Raffa.Api/Program.cs`, `appsettings.Development.json` | module registrations, endpoint maps, connection string (phase-3 writer) |
+| `backend/tests/Raffa.Chat.Tests/{Gate,Planning,Guards,Reply}/*` | unit tests incl. ciao / carbonara / legal / Allianz band / 120 days / criticality narration |
+| `backend/tests/Raffa.Api.Tests/ChatEndpointTests.cs`, `ConversationsEndpointTests.cs` | reply contract, no guid / route line, alias |
+| `backend/tests/Raffa.IntegrationTests/AskRaffaRagCrossTenantIsolationTests.cs` | extended to the messages endpoint |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-024 (pipeline, reply contract, guards, no tools), ADR-004 (amended), ADR-011 (amended: authz before retrieval; off-domain retrieves nothing; hash-only audit), ADR-002 (Chat allow-list `[SharedKernel, AiGateway]` — composition in Api), spec §8.3–§8.4, §10.4, §12.1, Appendix C rules 2, 6, 10.
-- **Design oracle**: `inputs/design/prototypes/Contigo V2 Prototype.html`; unpacked `contigo-v2/app.jsx` `ask()` (intent outcomes, abstain copy "Nothing in the N validated contracts supports a reliable answer…", unknown supplier copy), `contigo-v2/screens-v2.md` §2, `contigo-v2/ia-v2.md` "Ask intents" + divergences (inline comparison when validated).
+- **Design oracle**: `inputs/design/prototypes/Raffa V2 Prototype.html`; unpacked `raffa-v2/app.jsx` `ask()` (intent outcomes, abstain copy "Nothing in the N validated contracts supports a reliable answer…", unknown supplier copy), `raffa-v2/screens-v2.md` §2, `raffa-v2/ia-v2.md` "Ask intents" + divergences (inline comparison when validated).
 - Gaps G-DOMAIN-GATE, G-NOT-WIRED, G-ANSWER-ROLE, G-COMPARE (pack side), G-STRATEGY / G-CRITICALITY (narration side).
-- **Do not touch**: `Contigo.Market` internals (F02/T02 this phase), `StagedExtractionService` / pipeline (F03/T02 this phase), `Contigo.Insights` (phase 2, consumed only), `web/`, OpenAPI json (phase-4 web task documents the endpoints).
+- **Do not touch**: `Raffa.Market` internals (F02/T02 this phase), `StagedExtractionService` / pipeline (F03/T02 this phase), `Raffa.Insights` (phase 2, consumed only), `web/`, OpenAPI json (phase-4 web task documents the endpoints).
 
 ## Definition of done
-- [ ] `dotnet test backend/tests/Contigo.Chat.Tests` exit 0 — gate labels for "ciao", "ricetta della carbonara", "posso fare causa?", "cosa sai fare?", "quando scade Databricks?" (needs_document), "Is my Allianz contract above market?" (in_domain / market_compare); numeric guard downgrades a fake "P50 CHF 140" vs pack 132; grounding guard rejects a foreign key; actions never contain `{`
-- [ ] `dotnet test backend/tests/Contigo.Api.Tests` exit 0 — `POST /api/conversations/{id}/messages` returns the §6 contract for answer / abstain / redirect / refusal; zero retrieval calls on "ciao" (recording retrieval fake); 120-day renewal question answered with per-contract citations; no `Document:` guid and no "Structured query" substring in any reply
-- [ ] `dotnet test backend/tests/Contigo.IntegrationTests --filter AskContigo` exit 0 — cross-tenant evidence never appears
-- [ ] `dotnet test backend/Contigo.slnx` exit 0
+- [ ] `dotnet test backend/tests/Raffa.Chat.Tests` exit 0 — gate labels for "ciao", "ricetta della carbonara", "posso fare causa?", "cosa sai fare?", "quando scade Databricks?" (needs_document), "Is my Allianz contract above market?" (in_domain / market_compare); numeric guard downgrades a fake "P50 CHF 140" vs pack 132; grounding guard rejects a foreign key; actions never contain `{`
+- [ ] `dotnet test backend/tests/Raffa.Api.Tests` exit 0 — `POST /api/conversations/{id}/messages` returns the §6 contract for answer / abstain / redirect / refusal; zero retrieval calls on "ciao" (recording retrieval fake); 120-day renewal question answered with per-contract citations; no `Document:` guid and no "Structured query" substring in any reply
+- [ ] `dotnet test backend/tests/Raffa.IntegrationTests --filter AskRaffa` exit 0 — cross-tenant evidence never appears
+- [ ] `dotnet test backend/Raffa.slnx` exit 0
 
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | gate, planner, guards, reply builders | `Contigo.Chat.Tests/*` |
-| API | reply contract, alias, no engineer chrome | `Contigo.Api.Tests/ChatEndpointTests.cs`, `ConversationsEndpointTests.cs` |
-| integration | RLS on evidence via the new endpoint | `Contigo.IntegrationTests/AskContigoRagCrossTenantIsolationTests.cs` |
+| unit | gate, planner, guards, reply builders | `Raffa.Chat.Tests/*` |
+| API | reply contract, alias, no engineer chrome | `Raffa.Api.Tests/ChatEndpointTests.cs`, `ConversationsEndpointTests.cs` |
+| integration | RLS on evidence via the new endpoint | `Raffa.IntegrationTests/AskRaffaRagCrossTenantIsolationTests.cs` |
 
 ## Open questions blocking this task
 - OQ-askv2-006 — answer language follows the question (assumed)

@@ -44,7 +44,7 @@ function mockApiClient(getCapabilities: ApiClient["getCapabilities"] = vi.fn(() 
     getQuoteAssessment: vi.fn(),
     recalculateQuoteAssessment: vi.fn(),
     captureNegotiationOutcome: vi.fn(),
-    askContigo: vi.fn(),
+    askRaffa: vi.fn(),
     getSavingsKpis: vi.fn(),
     getSavingsOpportunities: vi.fn(),
     listConversations: vi.fn(),
@@ -59,10 +59,10 @@ function mockApiClient(getCapabilities: ApiClient["getCapabilities"] = vi.fn(() 
 function capability(overrides: Partial<CapabilityBody> = {}): CapabilityBody {
   return {
     key: "ask",
-    title: "Ask Contigo",
+    title: "Ask Raffa",
     routePattern: "/ask",
     description: "Ask about dates, spend, notice periods and clauses.",
-    exampleQuestions: ["What can Contigo do?", "When does this contract expire?", "What liabilities do we have?"],
+    exampleQuestions: ["What can Raffa do?", "When does this contract expire?", "What liabilities do we have?"],
     roleGate: "any",
     availability: "always",
     howTo: [],
@@ -86,7 +86,7 @@ describe("GlobalAskBar", () => {
     renderAtPath("/");
 
     expect(
-      screen.getByPlaceholderText("Ask Contigo — spend, dates, clauses, liability…"),
+      screen.getByPlaceholderText("Ask Raffa — spend, dates, clauses, liability…"),
     ).toBeInTheDocument();
     expect(screen.getAllByRole("button")).toHaveLength(2);
   });
@@ -95,14 +95,14 @@ describe("GlobalAskBar", () => {
     renderAtPath("/contracts");
 
     expect(
-      screen.getByPlaceholderText("Ask Contigo — spend, dates, clauses, liability…"),
+      screen.getByPlaceholderText("Ask Raffa — spend, dates, clauses, liability…"),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Which of these have uncapped liability?" })).toBeInTheDocument();
   });
 
   it("submits the typed query on Enter, clears the input, and navigates to /ask with a new-chat state (task E13/F09/US01/T01)", async () => {
     renderAtPath("/");
-    const input = screen.getByRole("textbox", { name: /ask contigo/i });
+    const input = screen.getByRole("textbox", { name: /ask raffa/i });
 
     await userEvent.type(input, "What is overdue?{Enter}");
 
@@ -113,7 +113,7 @@ describe("GlobalAskBar", () => {
 
   it("does nothing on Enter with a blank/whitespace-only query", async () => {
     renderAtPath("/");
-    const input = screen.getByRole("textbox", { name: /ask contigo/i });
+    const input = screen.getByRole("textbox", { name: /ask raffa/i });
 
     await userEvent.type(input, "   {Enter}");
 
@@ -133,7 +133,7 @@ describe("GlobalAskBar", () => {
 
   it("focuses the input on Ctrl+K from anywhere on the screen", async () => {
     renderAtPath("/");
-    const input = screen.getByRole("textbox", { name: /ask contigo/i });
+    const input = screen.getByRole("textbox", { name: /ask raffa/i });
     expect(input).not.toHaveFocus();
 
     await userEvent.keyboard("{Control>}k{/Control}");
@@ -145,20 +145,20 @@ describe("GlobalAskBar", () => {
     it("switches the placeholder to the prototype's off-copy regardless of route", () => {
       renderAtPath("/", false);
       expect(
-        screen.getByPlaceholderText("Ask Contigo switches on after your first validated contract"),
+        screen.getByPlaceholderText("Ask Raffa switches on after your first validated contract"),
       ).toBeInTheDocument();
     });
 
     it("overrides even a route-contextual placeholder while off", () => {
       renderAtPath("/contracts", false);
       expect(
-        screen.getByPlaceholderText("Ask Contigo switches on after your first validated contract"),
+        screen.getByPlaceholderText("Ask Raffa switches on after your first validated contract"),
       ).toBeInTheDocument();
     });
 
     it("disables the input and empties the chips while off (app.jsx disabled={kbOff} / askChips:[])", () => {
       renderAtPath("/", false);
-      expect(screen.getByRole("textbox", { name: /ask contigo/i })).toBeDisabled();
+      expect(screen.getByRole("textbox", { name: /ask raffa/i })).toBeDisabled();
       expect(screen.queryAllByRole("button")).toHaveLength(0);
     });
   });

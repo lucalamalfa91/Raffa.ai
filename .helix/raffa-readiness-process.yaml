@@ -1,0 +1,240 @@
+# =============================================================================
+# raffa-readiness-process -- Helix Passata 1 for DEMO-READINESS only.
+# Does NOT replace raffa-process.yaml. Launch with ./run-readiness.ps1
+# (never --fresh, never -Slice / execution-fanout).
+#
+# PASSATA 1 -- raffa-readiness-design (DEFAULT)
+#   docs-intake-readiness → 6-seat council → append epic-10 → checker ⇄ remediator.
+#   Writes wave-spec.readiness.yaml and slices/e10.yaml.
+#   Never touches wave-spec.execution.yaml, e01–e09, or slice.current.yaml.
+#
+# PASSATA 2 is NOT in this document. After HITL on the gap report and
+# e05 idle + e09 + e06–e08 closed:
+#   ./run.ps1 -Max -Slice e10 -o execution-fanout
+# =============================================================================
+
+version: "0.1"
+runtime: maf
+output_dir: reports
+
+defaults:
+  harness:
+    memory: { scope: session }
+    governance:
+      hooks: { allow_external: false }
+      policy:
+        model_allowlist: [deepseek-reasoning, deepseek-fast]
+
+models:
+  - id: deepseek-reasoning
+    provider: openai
+    model: ${DEEPSEEK_REASONING_MODEL}
+    options:
+      base_url: ${DEEPSEEK_BASE_URL}
+      api_key: ${DEEPSEEK_API_KEY}
+      api: chat_completions
+      context_window_tokens: 786432
+      max_output_tokens: 65536
+      tool_call_content: ensure
+      normalize_turns: false
+      tool_turn_cue: false
+      timeout: 900
+      max_retries: 2
+      extra_body:
+        thinking:
+          type: disabled
+
+  - id: deepseek-fast
+    provider: openai
+    model: ${DEEPSEEK_FAST_MODEL}
+    options:
+      base_url: ${DEEPSEEK_BASE_URL}
+      api_key: ${DEEPSEEK_API_KEY}
+      api: chat_completions
+      context_window_tokens: 786432
+      max_output_tokens: 65536
+      tool_call_content: ensure
+      normalize_turns: false
+      tool_turn_cue: false
+      timeout: 900
+      max_retries: 2
+      extra_body:
+        thinking:
+          type: disabled
+
+tools:
+  - { id: read-file,    kind: function, ref: read_file }
+  - { id: read-files,   kind: function, ref: read_files }
+  - { id: list-dir,     kind: function, ref: list_dir }
+  - { id: glob-files,   kind: function, ref: glob }
+  - { id: grep-files,   kind: function, ref: grep }
+  - { id: write-file,   kind: function, ref: write_file }
+  - { id: shell,        kind: function, ref: bash }
+
+skills:
+  - { id: kb-contract,                   instructions_file: skills/kb-contract.md }
+  - { id: kb-contract-readiness,         instructions_file: skills/kb-contract-readiness.md }
+  - { id: marker-discipline,             instructions_file: skills/marker-discipline.md }
+  - { id: council-protocol-readiness,    instructions_file: skills/council-protocol-readiness.md }
+  - { id: decompose-readiness-workitems, instructions_file: skills/decompose-readiness-workitems.md }
+  - { id: wavespec-readiness,            instructions_file: skills/wavespec-readiness.md }
+
+agents:
+  - id: docs-ingester-readiness
+    model: deepseek-fast
+    skills: [kb-contract, kb-contract-readiness, marker-discipline]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, write-file]
+    instructions_file: agents/docs-ingester-readiness.md
+
+  - id: product-owner-readiness
+    model: deepseek-reasoning
+    skills: [kb-contract, kb-contract-readiness, marker-discipline, council-protocol-readiness]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, write-file]
+    instructions_file: agents/product-owner-readiness.md
+
+  - id: software-architect-readiness
+    model: deepseek-reasoning
+    skills: [kb-contract, kb-contract-readiness, marker-discipline, council-protocol-readiness]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, write-file]
+    instructions_file: agents/software-architect-readiness.md
+
+  - id: client-architect-readiness
+    model: deepseek-reasoning
+    skills: [kb-contract, kb-contract-readiness, marker-discipline, council-protocol-readiness]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, write-file]
+    instructions_file: agents/client-architect-readiness.md
+
+  - id: cloud-architect-readiness
+    model: deepseek-reasoning
+    skills: [kb-contract, kb-contract-readiness, marker-discipline, council-protocol-readiness]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, write-file]
+    instructions_file: agents/cloud-architect-readiness.md
+
+  - id: delivery-manager-readiness
+    model: deepseek-reasoning
+    skills: [kb-contract, kb-contract-readiness, marker-discipline, council-protocol-readiness]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, write-file]
+    instructions_file: agents/delivery-manager-readiness.md
+
+  - id: security-architect-readiness
+    model: deepseek-reasoning
+    skills: [kb-contract, kb-contract-readiness, marker-discipline, council-protocol-readiness]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, write-file]
+    instructions_file: agents/security-architect-readiness.md
+
+  - id: council-gate-readiness
+    model: deepseek-fast
+    skills: [kb-contract, kb-contract-readiness, marker-discipline, council-protocol-readiness]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files]
+    instructions_file: agents/council-gate-readiness.md
+
+  - id: backlog-decomposer-readiness
+    model: deepseek-reasoning
+    skills: [kb-contract, kb-contract-readiness, marker-discipline, decompose-readiness-workitems, wavespec-readiness]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, write-file, shell]
+    instructions_file: agents/backlog-decomposer-readiness.md
+
+  - id: decomposition-checker-readiness
+    model: deepseek-reasoning
+    skills: [kb-contract, kb-contract-readiness, marker-discipline, decompose-readiness-workitems, wavespec-readiness]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files]
+    instructions_file: agents/decomposition-checker-readiness.md
+
+  - id: decomposition-remediator-readiness
+    model: deepseek-reasoning
+    skills: [kb-contract, kb-contract-readiness, marker-discipline, decompose-readiness-workitems, wavespec-readiness]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, write-file, shell]
+    instructions_file: agents/decomposition-remediator-readiness.md
+
+orchestrations:
+  - id: docs-intake-readiness
+    topology: sequential
+    participants: [docs-ingester-readiness]
+
+  - id: lane-product-owner-readiness
+    topology: sequential
+    participants: [product-owner-readiness]
+
+  - id: lane-software-architect-readiness
+    topology: sequential
+    participants: [software-architect-readiness]
+
+  - id: lane-client-architect-readiness
+    topology: sequential
+    participants: [client-architect-readiness]
+
+  - id: lane-cloud-architect-readiness
+    topology: sequential
+    participants: [cloud-architect-readiness]
+
+  - id: lane-delivery-manager-readiness
+    topology: sequential
+    participants: [delivery-manager-readiness]
+
+  - id: lane-security-architect-readiness
+    topology: sequential
+    participants: [security-architect-readiness]
+
+  - id: architecture-lanes-readiness
+    topology: concurrent
+    aggregator: concat
+    participants:
+      - lane-product-owner-readiness
+      - lane-software-architect-readiness
+      - lane-client-architect-readiness
+      - lane-cloud-architect-readiness
+      - lane-delivery-manager-readiness
+      - lane-security-architect-readiness
+
+  - id: council-close-readiness
+    topology: group_chat
+    participants:
+      - product-owner-readiness
+      - software-architect-readiness
+      - client-architect-readiness
+      - cloud-architect-readiness
+      - delivery-manager-readiness
+      - security-architect-readiness
+      - council-gate-readiness
+    selection: round_robin
+    max_rounds: 24
+    termination: on_marker
+    marker: "COUNCIL_APPROVED:"
+    marker_line_anchored: true
+    close_requires_glob: "reports/audit/demo-readiness-gaps.md"
+    close_requires_marker: "COUNCIL_FILES_WRITTEN:"
+    limits: { max_identical_turns: 3 }
+
+  - id: architecture-council-readiness
+    topology: sequential
+    participants: [architecture-lanes-readiness, council-close-readiness]
+
+  - id: decomposition-readiness
+    topology: sequential
+    participants: [backlog-decomposer-readiness]
+
+  - id: decomposition-check-readiness
+    topology: sequential
+    participants: [decomposition-checker-readiness]
+
+  - id: decomposition-remediation-readiness
+    topology: sequential
+    participants: [decomposition-remediator-readiness]
+
+  - id: raffa-readiness-design
+    default: true
+    topology: workflow
+    participants:
+      - docs-intake-readiness
+      - architecture-council-readiness
+      - decomposition-readiness
+      - decomposition-check-readiness
+      - decomposition-remediation-readiness
+    start: docs-intake-readiness
+    edges:
+      - [docs-intake-readiness, architecture-council-readiness]
+      - [architecture-council-readiness, decomposition-readiness]
+      - [decomposition-readiness, decomposition-check-readiness]
+      - [decomposition-check-readiness, decomposition-remediation-readiness, needs_remediation]
+      - [decomposition-remediation-readiness, decomposition-check-readiness]
+    limits: { max_steps: 200000, max_iterations: 15, run_timeout_s: 14400 }

@@ -7,7 +7,7 @@
  * records checklist progress yet; this is the honest interim, never a fabricated server state.
  */
 
-const STEPS_KEY_PREFIX = "contigo.contract360.steps.";
+const STEPS_KEY_PREFIX = "raffa.contract360.steps.";
 export const NEGOTIATION_STEP_COUNT = 4;
 
 function storageKey(contractId: string): string {

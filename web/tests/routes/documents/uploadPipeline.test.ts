@@ -44,20 +44,20 @@ describe("isOversized", () => {
 describe("getRejectionReasonCopy", () => {
   it("maps not_a_contract to the recipe example sentence", () => {
     expect(getRejectionReasonCopy("not_a_contract")).toBe(
-      "Not added: this looks like a recipe, not a contract. Contigo only keeps contracts, order forms, quotes and the documents around them. Drop the signed agreement or the supplier's proposal.",
+      "Not added: this looks like a recipe, not a contract. Raffa only keeps contracts, order forms, quotes and the documents around them. Drop the signed agreement or the supplier's proposal.",
     );
   });
 
   it("maps no_readable_text to its own distinct sentence", () => {
     expect(getRejectionReasonCopy("no_readable_text")).toBe(
-      "Not added: Contigo could not read any contract text in this file. Try a clearer scan or the original PDF.",
+      "Not added: Raffa could not read any contract text in this file. Try a clearer scan or the original PDF.",
     );
   });
 });
 
 describe("getOversizedCopy", () => {
   it("names the file and the 50 MB ceiling", () => {
-    expect(getOversizedCopy("huge.pdf")).toBe("Not added: huge.pdf is larger than 50 MB. Contigo accepts files up to 50 MB.");
+    expect(getOversizedCopy("huge.pdf")).toBe("Not added: huge.pdf is larger than 50 MB. Raffa accepts files up to 50 MB.");
   });
 });
 
@@ -150,7 +150,7 @@ describe("runUploadBatch", () => {
         key: "a",
         fileName: "recipe.pdf",
         message:
-          "Not added: this looks like a recipe, not a contract. Contigo only keeps contracts, order forms, quotes and the documents around them. Drop the signed agreement or the supplier's proposal.",
+          "Not added: this looks like a recipe, not a contract. Raffa only keeps contracts, order forms, quotes and the documents around them. Drop the signed agreement or the supplier's proposal.",
       },
     ]);
   });
@@ -161,7 +161,7 @@ describe("runUploadBatch", () => {
       statusCode: 415,
       document: null,
       rejection: null,
-      error: "Contigo reads PDF, Word, Excel and scanned images",
+      error: "Raffa reads PDF, Word, Excel and scanned images",
     }));
     const outcomes: UploadBatchOutcome[] = [];
 
@@ -170,7 +170,7 @@ describe("runUploadBatch", () => {
     );
 
     expect(outcomes).toEqual([
-      { kind: "rejected", key: "a", fileName: "archive.zip", message: "Contigo reads PDF, Word, Excel and scanned images" },
+      { kind: "rejected", key: "a", fileName: "archive.zip", message: "Raffa reads PDF, Word, Excel and scanned images" },
     ]);
   });
 
@@ -187,7 +187,7 @@ describe("runUploadBatch", () => {
 
     expect(uploadDocument).not.toHaveBeenCalled();
     expect(outcomes).toEqual([
-      { kind: "rejected", key: "a", fileName: "huge.pdf", message: "Not added: huge.pdf is larger than 50 MB. Contigo accepts files up to 50 MB." },
+      { kind: "rejected", key: "a", fileName: "huge.pdf", message: "Not added: huge.pdf is larger than 50 MB. Raffa accepts files up to 50 MB." },
     ]);
   });
 

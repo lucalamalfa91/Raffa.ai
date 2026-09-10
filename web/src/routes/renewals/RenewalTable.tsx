@@ -17,7 +17,7 @@ export interface RenewalTableProps {
 }
 
 /**
- * The V2 priority list (screens-v2.md #7; `contigo-v2/markup.html` "RENEWALS" block): Score (64px,
+ * The V2 priority list (screens-v2.md #7; `raffa-v2/markup.html` "RENEWALS" block): Score (64px,
  * heading face 18px/800, accent-700 from 80 up) · Supplier · contract (supplier bold, "· contract"
  * muted, one line, ellipsis) · Renews in (right, "N d") · Notice in (right, "N d", accent-700 + 600
  * within 45 days) · Status (tag), `font-size:13px; font-variant-numeric:tabular-nums;

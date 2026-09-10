@@ -4,7 +4,7 @@ type: task
 story: us-04-deployable-api
 wave: R0
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-02-deployable-worker — 02 Deployable Worker
@@ -18,7 +18,7 @@ Create the thin worker host consuming the queue and shared app services.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `deployable-worker` |
+| workspace/raffa-backend/src/ | implementation for `deployable-worker` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-002.
@@ -30,7 +30,7 @@ Create the thin worker host consuming the queue and shared app services.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | deployable-worker behaviour | workspace/contigo-backend/tests |
+| unit | deployable-worker behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

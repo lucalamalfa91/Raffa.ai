@@ -7,7 +7,7 @@
 
 ## Context and problem statement
 
-All model I/O flows through the Contigo AI Gateway (brief §8), and Foundry is the only provider. The brief (§4) explicitly leaves **one-vs-two Foundry accounts and billing** to the council, under the cost guideline. The decision must balance isolation (contract content in `demo` must not touch public/shared models) against cost (a second Foundry/AI services subscription could add fixed charges).
+All model I/O flows through the Raffa AI Gateway (brief §8), and Foundry is the only provider. The brief (§4) explicitly leaves **one-vs-two Foundry accounts and billing** to the council, under the cost guideline. The decision must balance isolation (contract content in `demo` must not touch public/shared models) against cost (a second Foundry/AI services subscription could add fixed charges).
 
 ## Decision drivers
 
@@ -23,7 +23,7 @@ All model I/O flows through the Contigo AI Gateway (brief §8), and Foundry is t
 
 ## Decision outcome
 
-**Chosen: Option 1** — a single Azure AI Foundry hub with **one project per environment** (`contigo-dev` and `contigo-demo`), under a **single pay-as-you-go Azure AI services account**, because it gives per-environment logical isolation (distinct model deployments, connections, and audit trails) without paying for two AI services subscriptions, staying within the cheapest-SKU mandate. Foundry has no meaningful free tier for inferencing, so billing is usage-based (pay-per-token) on one account with no fixed idle charge.
+**Chosen: Option 1** — a single Azure AI Foundry hub with **one project per environment** (`raffa-dev` and `raffa-demo`), under a **single pay-as-you-go Azure AI services account**, because it gives per-environment logical isolation (distinct model deployments, connections, and audit trails) without paying for two AI services subscriptions, staying within the cheapest-SKU mandate. Foundry has no meaningful free tier for inferencing, so billing is usage-based (pay-per-token) on one account with no fixed idle charge.
 
 ### Consequences
 
@@ -36,11 +36,11 @@ All model I/O flows through the Contigo AI Gateway (brief §8), and Foundry is t
 | Concern | Resource | SKU / tier | Notes |
 | --- | --- | --- | --- |
 | Foundry control surface | Azure AI Foundry **Hub** | One hub, **no hub-level SKU charge** (hub is metadata) | One hub for the whole org. |
-| Per-env isolation | Azure AI Foundry **Project** | Two projects (`contigo-dev`, `contigo-demo`), **no project-level charge** | Distinct deployments, connections, audit. |
+| Per-env isolation | Azure AI Foundry **Project** | Two projects (`raffa-dev`, `raffa-demo`), **no project-level charge** | Distinct deployments, connections, audit. |
 | Inference billing | Azure AI Services account | **Pay-as-you-go (standard / S0)** — metered per 1K tokens; no free tier for model inference | One shared account; usage attributed per project. |
 | Deployments | Foundry model deployments | **Serverless / standard deployment** — check regional availability in `westeurope` | Exact model IDs + pricing confirmed jointly with software-architect (CQ-008). |
 | Embeddings | Foundry embedding model | **Pay-per-token** | Cheapest compatible embedding model, e.g. text-embedding-3-small (confirm at implementation). |
-| OCR / layout | Azure AI Document Intelligence | **S0 / pay-per-page** on the same AI services account | V1 capability (ADR-017). `prebuilt-read` + `prebuilt-layout`; per-project connection (`contigo-dev` / `contigo-demo`). No second account. |
+| OCR / layout | Azure AI Document Intelligence | **S0 / pay-per-page** on the same AI services account | V1 capability (ADR-017). `prebuilt-read` + `prebuilt-layout`; per-project connection (`raffa-dev` / `raffa-demo`). No second account. |
 
 > Note: HCP Terraform does **not** fully manage Foundry projects/deployments in V1; the gateway reads endpoints + managed identity to call Foundry. Terraform manages the identity/Key Vault/connection secrets that let the AI Gateway authenticate to the Foundry account (see security-architect ADR). Model deployment may be a one-time Azure-based or portal step recorded as an implementation task, not part of the Terraform module surface initially.
 
@@ -60,7 +60,7 @@ All model I/O flows through the Contigo AI Gateway (brief §8), and Foundry is t
 
 ## Implications for the decomposition
 
-- Any task wiring the AI Gateway must target distinct Foundry **projects** per environment (`contigo-dev` and `contigo-demo`) under a single hub and a single pay-as-you-go AI services account.
+- Any task wiring the AI Gateway must target distinct Foundry **projects** per environment (`raffa-dev` and `raffa-demo`) under a single hub and a single pay-as-you-go AI services account.
 - Do not create two AI services accounts/subscriptions; attribute usage per project for the cost researcher.
 - Model IDs/prices must be confirmed for `westeurope` before pinning (CQ-008); pick the cheapest that meets extract / embed / grounded-Q&A-with-citations **and** Document Intelligence Read/Layout for V1 OCR (ADR-004, ADR-017; jointly with software-architect).
 - The AI Gateway reads Foundry endpoint + credentials via managed identity/Key Vault; no model key in Terraform source or app code.

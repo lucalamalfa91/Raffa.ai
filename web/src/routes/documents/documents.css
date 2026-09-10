@@ -1,10 +1,10 @@
 /**
- * Documents V2 (route `/documents`, ADR-024 amendment to ADR-018/020; `contigo-v2/markup.html`
+ * Documents V2 (route `/documents`, ADR-024 amendment to ADR-018/020; `raffa-v2/markup.html`
  * `docsEmpty`/`docsList` blocks; task E13/F09/US01/T03). Component classes (.btn, .tag, .table,
  * .seg, .empty-state, .error-state, .skeleton, .screen-kicker/.screen-title, .micro-meta, .hint)
  * come from ../../styles/components.css (ADR-019); this file adds only the screen-specific
  * composites, the same division of labour V1's own documents.css already established. Literal
- * (non `--space-*`) px values below are quoted from `contigo-v2/markup.html`'s own inline styles,
+ * (non `--space-*`) px values below are quoted from `raffa-v2/markup.html`'s own inline styles,
  * the same "no matching step, kept literal" convention this file's V1 predecessor already used.
  */
 
@@ -317,7 +317,7 @@
   gap: var(--space-1);
 }
 
-/* Bare progress bar under the status tag (contigo-v2/markup.html row template: 4px, neutral-200
+/* Bare progress bar under the status tag (raffa-v2/markup.html row template: 4px, neutral-200
    track, accent fill) -- the stage *label* renders as plain text in the "next step" cell instead
    (DocumentStatusTable.tsx), not inside this component. */
 .document-row-progress {

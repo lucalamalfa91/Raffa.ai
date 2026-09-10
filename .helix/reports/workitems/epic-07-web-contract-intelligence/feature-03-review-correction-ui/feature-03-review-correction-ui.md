@@ -25,4 +25,4 @@ validated" gating.
 
 ## Target repo
 
-`contigo-web`
+`raffa-web`

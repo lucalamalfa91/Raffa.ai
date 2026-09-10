@@ -1,5 +1,5 @@
 /**
- * Contigo design system — single entry point.
+ * Raffa design system — single entry point.
  *
  * `web/src/index.css` imports this file (main.tsx already imports
  * `./index.css` at boot); anything else in `web/` that wants the design

@@ -3,7 +3,7 @@
 
 Parent story `us-01-terraform-module-library` AC-4: `infra/environments/dev/`
 and `infra/environments/demo/` exist with separate `backend.tf` pointing at
-distinct HCP Terraform workspaces (`contigo-dev` / `contigo-demo`), and the
+distinct HCP Terraform workspaces (`raffa-dev` / `raffa-demo`), and the
 story-wide definition of done ("AC-1..AC-4 verified by `terraform fmt -check`
 and a structural scan") names a structural scan as the repeatable proof --
 this is that scan.
@@ -22,8 +22,8 @@ Checks, all read-only, no network, no `terraform` binary required:
   1. both env roots (`dev`, `demo`) exist with the required root files
      (main.tf, backend.tf, variables.tf, outputs.tf).
   2. each backend.tf's `terraform { cloud { ... } }` block points at the
-     `contigo-platform` HCP Terraform organization and at the workspace
-     name that belongs to that environment (`contigo-dev` / `contigo-demo`).
+     `raffa-platform` HCP Terraform organization and at the workspace
+     name that belongs to that environment (`raffa-dev` / `raffa-demo`).
   3. dev and demo do not point at the same HCP Terraform workspace (ADR-007:
      the two environments never share state).
   4. each main.tf wires all required modules (AC-1's list plus staticwebapp),
@@ -33,7 +33,7 @@ Checks, all read-only, no network, no `terraform` binary required:
      (`environment = var.environment`, resolved via that root's own
      variables.tf default; dev uses this form as of task E01/F02/US02/T01)
      -- and the root's `azurerm_resource_group.this` is tagged
-     `project = "contigo"` / `env = local.environment` (AC-3's tagging rule,
+     `project = "raffa"` / `env = local.environment` (AC-3's tagging rule,
      applied at the root level).
   6. each variables.tf pins `location` to "North Europe" (ADR-006).
   7. each root's own embedded `terraform{}` block (required_version + the
@@ -79,8 +79,8 @@ REQUIRED_MODULES = (
 )
 REQUIRED_PROVIDERS = ("azurerm", "azuread", "random")
 
-EXPECTED_ORGANIZATION = "contigo-platform"
-EXPECTED_WORKSPACE_BY_ENV = {"dev": "contigo-dev", "demo": "contigo-demo"}
+EXPECTED_ORGANIZATION = "raffa-platform"
+EXPECTED_WORKSPACE_BY_ENV = {"dev": "raffa-dev", "demo": "raffa-demo"}
 EXPECTED_LOCATION_DEFAULT = "North Europe"
 
 
@@ -315,14 +315,14 @@ def check_environment_and_tags(env: str, environments_root: Path = ENVIRONMENTS_
     if local_env != env:
         return False, f"{env}/main.tf locals.environment resolves to {local_env!r}, expected {env!r}"
     tags = find_resource_group_tags(text)
-    if tags.get("project") != "contigo" or tags.get("env") != "local.environment":
+    if tags.get("project") != "raffa" or tags.get("env") != "local.environment":
         return False, (
             f"{env}/main.tf azurerm_resource_group.this tags={tags!r}, "
-            'expected project="contigo" and env=local.environment'
+            'expected project="raffa" and env=local.environment'
         )
     return True, (
         f"{env}/main.tf locals.environment resolves to {env!r}; "
-        "resource group tagged project=contigo, env=local.environment"
+        "resource group tagged project=raffa, env=local.environment"
     )
 
 

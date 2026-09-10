@@ -21,7 +21,7 @@ inputs/design/
 ```
 
 - **Project link** (from `inputs/design/README.md`):
-  `https://claude.ai/design/p/325f13ce-8fe3-4212-b22c-2ffd1700435e?file=Contigo+Day-1.dc.html`
+  `https://claude.ai/design/p/325f13ce-8fe3-4212-b22c-2ffd1700435e?file=Raffa+Day-1.dc.html`
 - **Design system identity**: Modernist, bound folder
   `_ds/modernist-584f2982-aad7-48d1-aef0-a80897b0b5e4/` (per design-system.md).
 

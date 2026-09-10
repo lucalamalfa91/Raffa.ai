@@ -4,7 +4,7 @@ type: task
 story: us-01-final-integration
 wave: R2
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-r2-integration — 01 R2 Integration
@@ -18,7 +18,7 @@ Prove R2 end-to-end: dates + alerts + prioritized pipeline.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `r2-integration` |
+| workspace/raffa-backend/src/ | implementation for `r2-integration` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-002, ADR-003, ADR-009, ADR-016.
@@ -30,7 +30,7 @@ Prove R2 end-to-end: dates + alerts + prioritized pipeline.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | r2-integration behaviour | workspace/contigo-backend/tests |
+| unit | r2-integration behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

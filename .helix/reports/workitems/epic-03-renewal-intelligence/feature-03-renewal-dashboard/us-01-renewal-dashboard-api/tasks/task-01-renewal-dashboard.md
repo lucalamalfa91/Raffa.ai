@@ -4,7 +4,7 @@ type: task
 story: us-01-renewal-dashboard-api
 wave: R2
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-renewal-dashboard — 01 Renewal Dashboard
@@ -18,7 +18,7 @@ GET /api/renewals pipeline + insight card.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `renewal-dashboard` |
+| workspace/raffa-backend/src/ | implementation for `renewal-dashboard` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-002, ADR-009.
@@ -30,7 +30,7 @@ GET /api/renewals pipeline + insight card.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | renewal-dashboard behaviour | workspace/contigo-backend/tests |
+| unit | renewal-dashboard behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

@@ -10,7 +10,7 @@ variable "location" {
 # project, deployment or role assignment, so `terraform plan` never fails
 # on an account that does not exist yet.
 variable "ai_account_attached" {
-  description = "true once the dev root has applied the shared aisvc-contigo account in rg-contigo-ai: attach to it and create demo's own project, deployments and role assignments."
+  description = "true once the dev root has applied the shared aisvc-raffa account in rg-raffa-ai: attach to it and create demo's own project, deployments and role assignments."
   type        = bool
   default     = true
 }

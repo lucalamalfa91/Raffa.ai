@@ -5,7 +5,7 @@
 Do not rewrite epic-01…08, ADR-001…020, `wave-spec.execution.yaml`,
 `slices/e01.yaml`–`e08.yaml`, `slice.current.yaml`.
 
-Ids start at **E09/F01/US01/T01**. `layer: backend`. `target_repo: contigo-backend`.
+Ids start at **E09/F01/US01/T01**. `layer: backend`. `target_repo: raffa-backend`.
 
 ## Shape (keep it small)
 
@@ -15,7 +15,7 @@ Ids start at **E09/F01/US01/T01**. `layer: backend`. `target_repo: contigo-backe
   `ConnectionStrings__Quotes`; `backend.yml` applies scripts after container
   update; prove tables on `dev`.
 
-No Swagger tasks. No `MigrateAsync` in `Contigo.Api`.
+No Swagger tasks. No `MigrateAsync` in `Raffa.Api`.
 
 After `wave-spec.schema.yaml`, run only:
 

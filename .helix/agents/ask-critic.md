@@ -7,14 +7,14 @@ name the file and line) if:
 
 - an OPEN gap row has no requirements id (R-…) or no code path
 - a web gap row does not name the V2 prototype anchor
-  (`inputs/design/prototypes/Contigo V2 Prototype.html` and the unpacked
-  `contigo-v2/markup.html` / `app.jsx` symbol)
+  (`inputs/design/prototypes/Raffa V2 Prototype.html` and the unpacked
+  `raffa-v2/markup.html` / `app.jsx` symbol)
 - tenant pgvector (`embedding`) is proposed as the market corpus, or market
   rows are written into tenant tables
 - attachments inside the chat are in scope (violates D1)
 - rejected documents are persisted anywhere (violates D3)
 - legal advice, web search, browsing or tool grounding is in scope
-- Foundry / Azure AI SDKs leak outside `Contigo.AiGateway`
+- Foundry / Azure AI SDKs leak outside `Raffa.AiGateway`
 - an original ADR Decision body was replaced instead of footered, or the
   epic-12 amendment footers were deleted
 - ADR-023 is not marked superseded by ADR-024
@@ -25,5 +25,5 @@ the end of the turn, in this order, nothing after:
 
 ```
 ASK_ADRS_WRITTEN: adr-024
-ASK_ADRS_APPROVED: ask contigo v2 — epic-13 / e13
+ASK_ADRS_APPROVED: ask raffa v2 — epic-13 / e13
 ```

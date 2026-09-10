@@ -1,25 +1,25 @@
-# Launch the ASK V2 process only. Never points at contigo-process.yaml.
+# Launch the ASK V2 process only. Never points at raffa-process.yaml.
 # Refuses --fresh and -Slice (live fan-out stays on the other process).
-# Oracle: inputs/requirements.md + inputs/design/prototypes/Contigo V2 Prototype.html.
+# Oracle: inputs/requirements.md + inputs/design/prototypes/Raffa V2 Prototype.html.
 param(
     [switch]$Check,
     [switch]$Max,
-    [Alias("orchestration")][string]$o = "contigo-ask-design",
-    [Alias("input")][string]$i = "Contigo Ask V2 (inputs/requirements.md): epic-13 / e13 replaces epic-12 / e12; ADR-024 supersedes ADR-023; verify-or-write the authored outputs",
+    [Alias("orchestration")][string]$o = "raffa-ask-design",
+    [Alias("input")][string]$i = "Raffa Ask V2 (inputs/requirements.md): epic-13 / e13 replaces epic-12 / e12; ADR-024 supersedes ADR-023; verify-or-write the authored outputs",
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$Rest
 )
 
 $ErrorActionPreference = "Stop"
 $Here = $PSScriptRoot
-$Artifact = Join-Path $Here "contigo-ask-process.yaml"
+$Artifact = Join-Path $Here "raffa-ask-process.yaml"
 $envFile = Join-Path $Here ".env"
 
 if (-not (Test-Path $envFile)) {
     throw "missing .env -- copy .env.example to .env and fill values"
 }
 if (-not (Test-Path $Artifact)) {
-    throw "missing contigo-ask-process.yaml"
+    throw "missing raffa-ask-process.yaml"
 }
 
 foreach ($a in @($Rest)) {
@@ -27,7 +27,7 @@ foreach ($a in @($Rest)) {
         throw "run-ask.ps1 refuses --fresh (would wipe the live plan this delta sits on)"
     }
     if ($a -eq "--slice" -or $a -eq "-Slice") {
-        throw "run-ask.ps1 has no fan-out. After ADR-024 HITL: Studio -> contigo-process.yaml -> execution-fanout (slice.current.yaml = e13), or ./run.ps1 -Max -Slice e13 -o execution-fanout"
+        throw "run-ask.ps1 has no fan-out. After ADR-024 HITL: Studio -> raffa-process.yaml -> execution-fanout (slice.current.yaml = e13), or ./run.ps1 -Max -Slice e13 -o execution-fanout"
     }
 }
 
@@ -74,11 +74,11 @@ elseif (-not $Check -and -not [string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KE
 }
 
 $askOrchs = @(
-    "contigo-ask-design", "docs-intake-ask", "ask-adr-gate",
+    "raffa-ask-design", "docs-intake-ask", "ask-adr-gate",
     "decomposition-ask", "decomposition-check-ask", "decomposition-remediation-ask"
 )
 if ($askOrchs -notcontains $o) {
-    throw "run-ask.ps1 only launches ask orchs (got '$o'). Default is contigo-ask-design."
+    throw "run-ask.ps1 only launches ask orchs (got '$o'). Default is raffa-ask-design."
 }
 
 if ($Check) {
@@ -87,7 +87,7 @@ if ($Check) {
 }
 
 $assert = Join-Path $Here "scripts\assert_ask_plan_untouched.py"
-Write-Host "artifact: contigo-ask-process.yaml  orch: $o"
+Write-Host "artifact: raffa-ask-process.yaml  orch: $o"
 Write-Host "protect: e01-e11 e1011 e12, prior wave-specs, locked ADRs incl. ADR-023 (superseded), epic-01..12 (ADR-001/004/011/018/020 footers + ADR-024 + epic-13 writable)"
 & python $assert snapshot
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

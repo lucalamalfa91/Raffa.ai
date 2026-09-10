@@ -1,0 +1,163 @@
+# =============================================================================
+# raffa-visual-process -- Helix Passata 1 for MOCKUP FIDELITY only.
+# Does NOT replace raffa-process.yaml. Launch with ./run-visual.ps1
+# (never --fresh, never -Slice / execution-fanout).
+#
+# PASSATA 1 -- raffa-visual-design (DEFAULT)
+#   docs-intake-visual → visual-audit-gate → decomposer → checker ⇄ remediator.
+#   Writes wave-spec.visual.yaml and slices/e11.yaml.
+#   Never touches wave-spec.execution.yaml, e01–e10, or slice.current.yaml.
+#
+# PASSATA 2 is NOT in this document. After HITL on the gap report:
+#   ./run.ps1 -Max -Slice e11 -o execution-fanout
+# =============================================================================
+
+version: "0.1"
+runtime: maf
+output_dir: reports
+
+defaults:
+  harness:
+    memory: { scope: session }
+    governance:
+      hooks: { allow_external: false }
+      policy:
+        model_allowlist: [deepseek-reasoning, deepseek-fast]
+
+models:
+  - id: deepseek-reasoning
+    provider: openai
+    model: ${DEEPSEEK_REASONING_MODEL}
+    options:
+      base_url: ${DEEPSEEK_BASE_URL}
+      api_key: ${DEEPSEEK_API_KEY}
+      api: chat_completions
+      context_window_tokens: 786432
+      max_output_tokens: 65536
+      tool_call_content: ensure
+      normalize_turns: false
+      tool_turn_cue: false
+      timeout: 900
+      max_retries: 2
+      extra_body:
+        thinking:
+          type: disabled
+
+  - id: deepseek-fast
+    provider: openai
+    model: ${DEEPSEEK_FAST_MODEL}
+    options:
+      base_url: ${DEEPSEEK_BASE_URL}
+      api_key: ${DEEPSEEK_API_KEY}
+      api: chat_completions
+      context_window_tokens: 786432
+      max_output_tokens: 65536
+      tool_call_content: ensure
+      normalize_turns: false
+      tool_turn_cue: false
+      timeout: 900
+      max_retries: 2
+      extra_body:
+        thinking:
+          type: disabled
+
+tools:
+  - { id: read-file,    kind: function, ref: read_file }
+  - { id: read-files,   kind: function, ref: read_files }
+  - { id: list-dir,     kind: function, ref: list_dir }
+  - { id: glob-files,   kind: function, ref: glob }
+  - { id: grep-files,   kind: function, ref: grep }
+  - { id: write-file,   kind: function, ref: write_file }
+  - { id: shell,        kind: function, ref: bash }
+
+skills:
+  - { id: kb-contract,                 instructions_file: skills/kb-contract.md }
+  - { id: kb-contract-visual,          instructions_file: skills/kb-contract-visual.md }
+  - { id: marker-discipline,           instructions_file: skills/marker-discipline.md }
+  - { id: council-protocol-visual,     instructions_file: skills/council-protocol-visual.md }
+  - { id: decompose-visual-workitems,  instructions_file: skills/decompose-visual-workitems.md }
+  - { id: wavespec-visual,             instructions_file: skills/wavespec-visual.md }
+
+agents:
+  - id: docs-ingester-visual
+    model: deepseek-fast
+    skills: [kb-contract, kb-contract-visual, marker-discipline]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, write-file]
+    instructions_file: agents/docs-ingester-visual.md
+
+  - id: visual-auditor
+    model: deepseek-reasoning
+    skills: [kb-contract, kb-contract-visual, marker-discipline, council-protocol-visual]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, write-file, shell]
+    instructions_file: agents/visual-auditor.md
+
+  - id: visual-critic
+    model: deepseek-fast
+    skills: [kb-contract, kb-contract-visual, marker-discipline, council-protocol-visual]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files]
+    instructions_file: agents/visual-critic.md
+
+  - id: backlog-decomposer-visual
+    model: deepseek-reasoning
+    skills: [kb-contract, kb-contract-visual, marker-discipline, decompose-visual-workitems, wavespec-visual]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, write-file, shell]
+    instructions_file: agents/backlog-decomposer-visual.md
+
+  - id: decomposition-checker-visual
+    model: deepseek-reasoning
+    skills: [kb-contract, kb-contract-visual, marker-discipline, decompose-visual-workitems, wavespec-visual]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files]
+    instructions_file: agents/decomposition-checker-visual.md
+
+  - id: decomposition-remediator-visual
+    model: deepseek-reasoning
+    skills: [kb-contract, kb-contract-visual, marker-discipline, decompose-visual-workitems, wavespec-visual]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, write-file, shell]
+    instructions_file: agents/decomposition-remediator-visual.md
+
+orchestrations:
+  - id: docs-intake-visual
+    topology: sequential
+    participants: [docs-ingester-visual]
+
+  - id: visual-audit-gate
+    topology: group_chat
+    participants: [visual-auditor, visual-critic]
+    selection: round_robin
+    max_rounds: 12
+    termination: on_marker
+    marker: "VISUAL_GAPS_APPROVED:"
+    marker_line_anchored: true
+    close_requires_glob: "reports/audit/visual-fidelity-gaps.md"
+    close_requires_marker: "VISUAL_GAPS_WRITTEN:"
+    limits: { max_identical_turns: 3 }
+
+  - id: decomposition-visual
+    topology: sequential
+    participants: [backlog-decomposer-visual]
+
+  - id: decomposition-check-visual
+    topology: sequential
+    participants: [decomposition-checker-visual]
+
+  - id: decomposition-remediation-visual
+    topology: sequential
+    participants: [decomposition-remediator-visual]
+
+  - id: raffa-visual-design
+    default: true
+    topology: workflow
+    participants:
+      - docs-intake-visual
+      - visual-audit-gate
+      - decomposition-visual
+      - decomposition-check-visual
+      - decomposition-remediation-visual
+    start: docs-intake-visual
+    edges:
+      - [docs-intake-visual, visual-audit-gate]
+      - [visual-audit-gate, decomposition-visual]
+      - [decomposition-visual, decomposition-check-visual]
+      - [decomposition-check-visual, decomposition-remediation-visual, needs_remediation]
+      - [decomposition-remediation-visual, decomposition-check-visual]
+    limits: { max_steps: 200000, max_iterations: 15, run_timeout_s: 14400 }

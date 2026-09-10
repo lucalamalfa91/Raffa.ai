@@ -21,7 +21,7 @@ export interface MembersRouteProps {
 
 /**
  * Route `/workspace/members` -- Workspace & members, V2 (ADR-024 V2 IA; screens-v2.md #10;
- * `contigo-v2/markup.html` "WORKSPACE & MEMBERS" block). Header ("Setup" kicker · "Workspace &
+ * `raffa-v2/markup.html` "WORKSPACE & MEMBERS" block). Header ("Setup" kicker · "Workspace &
  * members" · "{workspace} · tenant {id}"), the `kbOff` tip while nothing is validated yet, then the
  * two-column body: members table left, "Invite a colleague" right.
  *

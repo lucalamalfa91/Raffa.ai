@@ -1,23 +1,23 @@
-# Launch the DEMO-READINESS process only. Never points at contigo-process.yaml.
+# Launch the DEMO-READINESS process only. Never points at raffa-process.yaml.
 # Refuses --fresh and -Slice (live e05 fan-out stays on the other process).
 param(
     [switch]$Check,
-    [Alias("orchestration")][string]$o = "contigo-readiness-design",
-    [Alias("input")][string]$i = "Contigo demo-readiness: epic-10 / e10 residuals after wave 9",
+    [Alias("orchestration")][string]$o = "raffa-readiness-design",
+    [Alias("input")][string]$i = "Raffa demo-readiness: epic-10 / e10 residuals after wave 9",
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$Rest
 )
 
 $ErrorActionPreference = "Stop"
 $Here = $PSScriptRoot
-$Artifact = Join-Path $Here "contigo-readiness-process.yaml"
+$Artifact = Join-Path $Here "raffa-readiness-process.yaml"
 $envFile = Join-Path $Here ".env"
 
 if (-not (Test-Path $envFile)) {
     throw "missing .env -- copy .env.example to .env and fill values"
 }
 if (-not (Test-Path $Artifact)) {
-    throw "missing contigo-readiness-process.yaml"
+    throw "missing raffa-readiness-process.yaml"
 }
 
 foreach ($a in @($Rest)) {
@@ -53,12 +53,12 @@ if ([string]::IsNullOrWhiteSpace($backend)) {
 }
 
 $readinessOrchs = @(
-    "contigo-readiness-design", "docs-intake-readiness", "architecture-council-readiness",
+    "raffa-readiness-design", "docs-intake-readiness", "architecture-council-readiness",
     "architecture-lanes-readiness", "council-close-readiness", "decomposition-readiness",
     "decomposition-check-readiness", "decomposition-remediation-readiness"
 )
 if ($readinessOrchs -notcontains $o) {
-    throw "run-readiness.ps1 only launches readiness orchs (got '$o'). Default is contigo-readiness-design."
+    throw "run-readiness.ps1 only launches readiness orchs (got '$o'). Default is raffa-readiness-design."
 }
 
 if ($Check) {
@@ -67,7 +67,7 @@ if ($Check) {
 }
 
 $assert = Join-Path $Here "scripts\assert_readiness_plan_untouched.py"
-Write-Host "artifact: contigo-readiness-process.yaml  orch: $o"
+Write-Host "artifact: raffa-readiness-process.yaml  orch: $o"
 Write-Host "protect: e01-e05, wave-spec.execution.yaml, ADR-001..021, epic-01..09 (not slice.current.yaml)"
 & python $assert snapshot
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

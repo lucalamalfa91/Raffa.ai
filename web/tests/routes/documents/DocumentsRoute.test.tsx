@@ -61,7 +61,7 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     getQuoteAssessment: vi.fn(),
     recalculateQuoteAssessment: vi.fn(),
     captureNegotiationOutcome: vi.fn(),
-    askContigo: vi.fn(),
+    askRaffa: vi.fn(),
     getSavingsKpis: vi.fn(),
     getSavingsOpportunities: vi.fn(),
     ...overrides,
@@ -194,7 +194,7 @@ describe("DocumentsRoute (task E13/F09/US01/T03, web-documents-v2)", () => {
   beforeEach(() => {
     window.sessionStorage.clear();
     window.sessionStorage.setItem(
-      "contigo.signin.currentWorkspace",
+      "raffa.signin.currentWorkspace",
       JSON.stringify({ id: WORKSPACE_ID, name: "Acme Procurement" }),
     );
   });
@@ -256,7 +256,7 @@ describe("DocumentsRoute (task E13/F09/US01/T03, web-documents-v2)", () => {
 
     expect(
       await screen.findByText(
-        "Not added: this looks like a recipe, not a contract. Contigo only keeps contracts, order forms, quotes and the documents around them. Drop the signed agreement or the supplier's proposal.",
+        "Not added: this looks like a recipe, not a contract. Raffa only keeps contracts, order forms, quotes and the documents around them. Drop the signed agreement or the supplier's proposal.",
       ),
     ).toBeInTheDocument();
     expect(screen.getByText("Not added")).toHaveClass("tag");
@@ -271,14 +271,14 @@ describe("DocumentsRoute (task E13/F09/US01/T03, web-documents-v2)", () => {
       statusCode: 415,
       document: null,
       rejection: null,
-      error: "Contigo reads PDF, Word, Excel and scanned images",
+      error: "Raffa reads PDF, Word, Excel and scanned images",
     });
     renderDocuments(mockApiClient({ uploadDocument, listDocuments: vi.fn().mockResolvedValue(emptyPage()) }));
 
     await screen.findByText("First your contracts. Then your questions.");
     selectFiles([pdfFile("archive.zip")]);
 
-    expect(await screen.findByText("Contigo reads PDF, Word, Excel and scanned images")).toBeInTheDocument();
+    expect(await screen.findByText("Raffa reads PDF, Word, Excel and scanned images")).toBeInTheDocument();
   });
 
   it("the attention filter hides completed rows and shows the empty message; 'All documents' reveals them", async () => {
@@ -444,7 +444,7 @@ describe("DocumentsRoute (task E13/F09/US01/T03, web-documents-v2)", () => {
   });
 
   it("hides Delete for Procurement", async () => {
-    window.sessionStorage.setItem("contigo.shell.workspaceRole", "procurement");
+    window.sessionStorage.setItem("raffa.shell.workspaceRole", "procurement");
     // See "shows Delete for Admin only" above for why this is NeedsReview, not the docItem() default.
     const items = [docItem({ processingStatus: "NeedsReview" })];
     renderDocuments(mockApiClient({ listDocuments: vi.fn().mockResolvedValue(listOk(items)) }));

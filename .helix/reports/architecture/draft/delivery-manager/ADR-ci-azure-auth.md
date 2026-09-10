@@ -39,7 +39,7 @@ authenticates* to the council (brief §1 "how CI authenticates to Azure").
 ## Decision outcome
 
 **Chosen: Option 1 — OIDC federated credentials** from GitHub Actions to Entra ID, one least-privilege
-service principal per environment (`contigo-sp-dev`, `contigo-sp-demo`), each federated to the Contigo
+service principal per environment (`raffa-sp-dev`, `raffa-sp-demo`), each federated to the Raffa
 repo/branch/path scope. No client secret is ever stored in GitHub; the only credential material is the
 OIDC trust relationship (subject claim → service principal). This is the cheapest option, satisfies
 "no secrets in code" and "managed identity" semantics (short-lived tokens issued to a known identity),
@@ -75,7 +75,7 @@ and is reproducible as Terraform output for the federation config.
 
 - Terraform (`infra/`) must create and output the two service principals with least-privilege role
   assignments scoped to the `dev` and `demo` resource groups respectively.
-- A one-time bootstrap records the GitHub OIDC federation (subject claim = `repo:lucalamalfa91/contigo:*`
+- A one-time bootstrap records the GitHub OIDC federation (subject claim = `repo:lucalamalfa91/raffa:*`
   plus environment claim for `demo`); the workflow never contains a client secret.
 - GitHub Actions workflow for `demo` promotion runs under the `demo` environment with the federation
   restricted to tag-triggered runs (see `ADR-promotion-dev-demo.md`).

@@ -4,7 +4,7 @@
 ./run-schema.ps1 -Check
 ```
 
-OK `docs-intake-schema` … `contigo-schema-design` (12 orchestrations).
+OK `docs-intake-schema` … `raffa-schema-design` (12 orchestrations).
 Prompt files present. Protected snapshot: 239 files (e01–e05, execution
 wave-spec, ADR-001…020, epic-01…08).
 

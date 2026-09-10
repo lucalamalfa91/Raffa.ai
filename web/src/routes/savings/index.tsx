@@ -58,7 +58,7 @@ export default function SavingsRoute({ apiClient }: SavingsRouteProps) {
           statusCode: result.statusCode,
           message:
             result.statusCode === 503 || result.statusCode === null
-              ? "Contigo's savings service is temporarily unavailable. Try again in a moment."
+              ? "Raffa's savings service is temporarily unavailable. Try again in a moment."
               : (result.error ?? "The opportunities list could not be loaded."),
         });
         return;

@@ -28,23 +28,23 @@ import check_demo_swa_config as chk  # noqa: E402
 # Real payloads fetched live from the demo and dev Static Web Apps on
 # 2026-09-07/08 (see the runbook cited in the module docstring above).
 DEMO_CONFIG = {
-    "apiBaseUrl": "https://ca-contigo-demo-api.lemonsea-be9510a4.northeurope.azurecontainerapps.io",
+    "apiBaseUrl": "https://ca-raffa-demo-api.lemonsea-be9510a4.northeurope.azurecontainerapps.io",
     "oidcAuthority": "https://login.microsoftonline.com/248eb472-b4dc-401b-8c3b-44443f0e92a3",
     "oidcClientId": "85065229-1707-40b0-98ad-2b3d21db58cf",
     "oidcRedirectUri": "https://mango-desert-084c2231e.6.azurestaticapps.net/",
     "oidcApiScopes": [
-        "api://contigo-demo-api/Contigo.Read",
-        "api://contigo-demo-api/Contigo.Write",
+        "api://raffa-demo-api/Raffa.Read",
+        "api://raffa-demo-api/Raffa.Write",
     ],
 }
 DEV_CONFIG = {
-    "apiBaseUrl": "https://ca-contigo-dev-api.politetree-8bd9702e.northeurope.azurecontainerapps.io",
+    "apiBaseUrl": "https://ca-raffa-dev-api.politetree-8bd9702e.northeurope.azurecontainerapps.io",
     "oidcAuthority": "https://login.microsoftonline.com/248eb472-b4dc-401b-8c3b-44443f0e92a3",
     "oidcClientId": "da08e279-f6f4-4713-bee1-9dc70406e030",
     "oidcRedirectUri": "https://mango-pond-061bc6d1e.6.azurestaticapps.net/",
     "oidcApiScopes": [
-        "api://contigo-dev-api/Contigo.Read",
-        "api://contigo-dev-api/Contigo.Write",
+        "api://raffa-dev-api/Raffa.Read",
+        "api://raffa-dev-api/Raffa.Write",
     ],
 }
 

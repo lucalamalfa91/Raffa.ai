@@ -1,4 +1,4 @@
-# KB contract — canonical paths for Contigo
+# KB contract — canonical paths for Raffa
 
 Native Helix file tools (`read_file`, `read_files`, `list_dir`, `glob`, `grep`,
 `write_file`) resolve **relative to this artifact folder** (`.helix/`). Absolute
@@ -63,8 +63,8 @@ file — later phases do not read them to decide routing.
 ## Passata 2 — code sandbox (declared, not GitHub)
 
 Application code, if written, lives under `workspace/<repo>/` inside this
-artifact (`contigo-infra`, `contigo-backend`, `contigo-web`, `contigo-mobile`).
-Those directories are **not** the Contigo GitHub org. Fan-out worktrees isolate
+artifact (`raffa-infra`, `raffa-backend`, `raffa-web`, `raffa-mobile`).
+Those directories are **not** the Raffa GitHub org. Fan-out worktrees isolate
 **this artifact** (`.helix` git repo, `base_branch: main`), not those remotes
 (PROCESS.md D1). Do not invent paths into a remote you cannot see.
 

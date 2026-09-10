@@ -7,12 +7,12 @@ export interface OnboardingEmptyStateProps {
 }
 
 /**
- * `docsEmpty` (`contigo-v2/markup.html` lines ~116-131; `contigo-v2/screens-v2.md` #3 "Onboarding
+ * `docsEmpty` (`raffa-v2/markup.html` lines ~116-131; `raffa-v2/screens-v2.md` #3 "Onboarding
  * empty"): shown before this tenant has any tracked document at all (not even a rejected/in-flight
  * one this session -- see `index.tsx`'s own state machine). Headline and three-step copy are quoted
  * **verbatim from the literal prototype markup** (`01 · Upload` / `Drop your contracts`, `02 ·
- * Process` / `Contigo extracts the facts`, `03 · Ask` / `Ask Contigo`) -- not from
- * `contigo-v2/screens-v2.md`'s own shorthand summary of the same block ("02 · Review"), which
+ * Process` / `Raffa extracts the facts`, `03 · Ask` / `Ask Raffa`) -- not from
+ * `raffa-v2/screens-v2.md`'s own shorthand summary of the same block ("02 · Review"), which
  * paraphrases the middle step's *purpose* rather than quoting its actual heading; ADR-024 names the
  * prototype itself, not a summary of it, as the pixel/copy reference.
  */
@@ -30,12 +30,12 @@ export default function OnboardingEmptyState({ onFilesSelected, onUseSampleFile 
         </div>
         <div className="documents-onboarding-step">
           <div className="documents-onboarding-step-kicker documents-onboarding-step-kicker--muted">02 · Process</div>
-          <div className="documents-onboarding-step-title">Contigo extracts the facts</div>
+          <div className="documents-onboarding-step-title">Raffa extracts the facts</div>
           <p className="micro-meta">Every fact has a source and a confidence. You sign off the weak ones.</p>
         </div>
         <div className="documents-onboarding-step">
           <div className="documents-onboarding-step-kicker documents-onboarding-step-kicker--muted">03 · Ask</div>
-          <div className="documents-onboarding-step-title">Ask Contigo</div>
+          <div className="documents-onboarding-step-title">Ask Raffa</div>
           <p className="micro-meta">Answers only from validated facts, with the page that proves them.</p>
         </div>
       </div>

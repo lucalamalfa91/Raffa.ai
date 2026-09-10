@@ -28,7 +28,7 @@ import type { DocumentType } from "../../api/client";
  * per workspace -- see the git history for the original, fuller header comment on why).
  */
 
-const TRACKED_DOCUMENTS_KEY = "contigo.documents.readback";
+const TRACKED_DOCUMENTS_KEY = "raffa.documents.readback";
 
 export interface TrackedDocument {
   id: string;

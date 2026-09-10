@@ -5,7 +5,7 @@ Runs in the integration worktree (product clone root). Must not require
 MERGE_HEAD to be absent (the auto pass verifies before it commits).
 
 Exit 0: no leftover conflict markers in tracked text files, and — when the
-        merge touched backend C# sources — `dotnet build backend/Contigo.slnx`
+        merge touched backend C# sources — `dotnet build backend/Raffa.slnx`
         succeeds.
 Exit 1: a tracked file still contains git conflict marker lines, or the build
         gate failed / timed out.
@@ -113,9 +113,9 @@ def dotnet_build(repo_root: Path) -> int:
         print("merge_verify: MERGE_VERIFY_SKIP_BUILD set; build gate skipped", file=sys.stderr)
         return 0
     dotnet = shutil.which("dotnet")
-    solution = repo_root / "backend" / "Contigo.slnx"
+    solution = repo_root / "backend" / "Raffa.slnx"
     if dotnet is None or not solution.is_file():
-        print("merge_verify: dotnet or backend/Contigo.slnx missing; build gate skipped", file=sys.stderr)
+        print("merge_verify: dotnet or backend/Raffa.slnx missing; build gate skipped", file=sys.stderr)
         return 0
     env = os.environ.copy()
     # No lingering servers in the integration checkout: they lock bin/obj and

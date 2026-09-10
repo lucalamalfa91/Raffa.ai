@@ -39,11 +39,11 @@ locals {
 }
 
 resource "azurerm_resource_group" "this" {
-  name     = "rg-contigo-${local.environment}"
+  name     = "rg-raffa-${local.environment}"
   location = var.location
 
   tags = {
-    project = "contigo"
+    project = "raffa"
     env     = local.environment
   }
 }
@@ -127,7 +127,7 @@ module "containerapps" {
 }
 
 # ADR-008 amendment 2026-09-09: this root OWNS the single shared Azure AI
-# Services account (rg-contigo-ai / aisvc-contigo); demo attaches to it by
+# Services account (rg-raffa-ai / aisvc-raffa); demo attaches to it by
 # name and creates only its own project, deployments and grants. This
 # root's OWN identity module instance only -- never demo's -- so the grant
 # never crosses envs (same rule module.keyvault and module.acr follow).
@@ -162,7 +162,7 @@ module "foundry" {
   }
 }
 
-# ADR-015 SPs are out of band. display_name "contigo-sp-dev" matches more
+# ADR-015 SPs are out of band. display_name "raffa-sp-dev" matches more
 # than one principal in this tenant; pin the GitHub Environment
 # AZURE_CLIENT_ID (not a secret) so the grant hits the OIDC deploy SP.
 data "azuread_service_principal" "ci_deploy" {

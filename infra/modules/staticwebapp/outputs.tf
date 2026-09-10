@@ -4,7 +4,7 @@ output "id" {
 }
 
 output "name" {
-  description = "Name of the Static Web App (swa-contigo-<env>); web.yml composes this."
+  description = "Name of the Static Web App (swa-raffa-<env>); web.yml composes this."
   value       = azurerm_static_web_app.this.name
 }
 

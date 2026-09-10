@@ -11,11 +11,11 @@
 # and pulled into Container Apps via managed identity (ADR-011).
 locals {
   tags = {
-    project = "contigo"
+    project = "raffa"
     env     = var.environment
   }
 
-  database_name = "contigo_${var.environment}"
+  database_name = "raffa_${var.environment}"
 
   # Npgsql keyword format. override_special below excludes ';' so the
   # password cannot split the connection string.
@@ -33,7 +33,7 @@ resource "random_password" "administrator" {
 }
 
 resource "azurerm_postgresql_flexible_server" "this" {
-  name                   = "psql-contigo-${var.environment}"
+  name                   = "psql-raffa-${var.environment}"
   location               = var.location
   resource_group_name    = var.resource_group_name
   version                = var.postgres_version

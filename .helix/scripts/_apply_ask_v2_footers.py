@@ -70,10 +70,10 @@ the epic-12 amendment above. See ADR-024.
 ## Amendment (2026-09-08, epic-13 / ADR-024)
 
 The V2 IA replaces the Day-1 sitemap. Pixel and behaviour reference:
-`inputs/design/prototypes/Contigo V2 Prototype.html`, unpacked at
-`inputs/design/prototypes/contigo-v2/` (`ia-v2.md` is the canonical route
+`inputs/design/prototypes/Raffa V2 Prototype.html`, unpacked at
+`inputs/design/prototypes/raffa-v2/` (`ia-v2.md` is the canonical route
 map). Sign-in lands on **`/ask`** (`/` redirects); `/ask/:conversationId`
-resumes a chat. **Two-tier rail**: Ask Contigo (⌘K, last 5 conversations,
+resumes a chat. **Two-tier rail**: Ask Raffa (⌘K, last 5 conversations,
 "+ New chat") and Documents; "From your contracts": Portfolio, Renewals,
 Quote check, greyed until the first validated contract. **No Home item**;
 Savings lives at `/savings`, reached from actions, Renewals and Contract 360.
@@ -86,8 +86,8 @@ supersedes the epic-12 amendment above. See ADR-024.
     "ADR-020-web-screen-inventory.md": """
 ## Amendment (2026-09-08, epic-13 / ADR-024)
 
-Screen inventory V2 is `inputs/design/prototypes/contigo-v2/screens-v2.md`
-(authored from `Contigo V2 Prototype.html`): 1 Sign-in → Ask, 2 Ask Contigo
+Screen inventory V2 is `inputs/design/prototypes/raffa-v2/screens-v2.md`
+(authored from `Raffa V2 Prototype.html`): 1 Sign-in → Ask, 2 Ask Raffa
 (home; off / new chat / conversation / abstain / redirect / refusal /
 resumed), 3 Documents (onboarding, multi-file, **Not added**, attention
 filter, real stages, validated hook), 4 Review as a state of Documents,
@@ -104,28 +104,28 @@ epic-12 amendment above. See ADR-024.
 
 INDEX_SECTION = """
 
-## Ask Contigo V2 (wave 13 / e13, appended 2026-09-08)
+## Ask Raffa V2 (wave 13 / e13, appended 2026-09-08)
 
 ADR-001…022 keep their original Decision; ADR-001, 004, 011, 018, 020 gain
 an **epic-13 amendment footer** (superseding their epic-12 footers).
 **ADR-023 is superseded by ADR-024** (HITL 2026-09-08, `inputs/requirements.md`
 §0 D4; epic-12 / e12 never launched). New accepted ADR from
-`contigo-ask-process.yaml` (Ask V2):
+`raffa-ask-process.yaml` (Ask V2):
 
 | ADR | Topic | Seat | One-line decision |
 | --- | --- | --- | --- |
-| ADR-024 | Ask Contigo V2 | product-owner + software-architect + security-architect + ux-ui-designer | Documents-only intake with an admission gate before persistence (non-contracts refused, never stored); server-side conversations under RLS; three sources of truth (validated contracts, market-intelligence feed with its own index — mock now, API later —, capability catalog); structured no-tools `answer` role with grounding + numeric guards; deterministic strategies (contract vs market, renewal strategy, portfolio criticality); V2 IA with `inputs/design/prototypes/Contigo V2 Prototype.html` (unpacked `contigo-v2/`) as the pixel reference. |
+| ADR-024 | Ask Raffa V2 | product-owner + software-architect + security-architect + ux-ui-designer | Documents-only intake with an admission gate before persistence (non-contracts refused, never stored); server-side conversations under RLS; three sources of truth (validated contracts, market-intelligence feed with its own index — mock now, API later —, capability catalog); structured no-tools `answer` role with grounding + numeric guards; deterministic strategies (contract vs market, renewal strategy, portfolio criticality); V2 IA with `inputs/design/prototypes/Raffa V2 Prototype.html` (unpacked `raffa-v2/`) as the pixel reference. |
 """
 
 BACKLOG_OLD = "| epic-12 | ask-copilot | 12 | active — decomposed (Ask savings copilot) |"
 BACKLOG_NEW = (
     "| epic-12 | ask-copilot | 12 | superseded by epic-13 (never launched; ADR-023 → ADR-024) |\n"
-    "| epic-13 | ask-v2 | 13 | active — decomposed (Ask Contigo V2: Documents intake + admission gate, "
+    "| epic-13 | ask-v2 | 13 | active — decomposed (Ask Raffa V2: Documents intake + admission gate, "
     "conversations, market feed, strategies, capability catalog, V2 IA) |"
 )
 BACKLOG_ADR_ROWS = """
 | ADR-023 | Ask savings copilot (superseded) | epic-12 (superseded by epic-13) |
-| ADR-024 | Ask Contigo V2 | epic-13 (all features); design oracle `inputs/design/prototypes/Contigo V2 Prototype.html` |
+| ADR-024 | Ask Raffa V2 | epic-13 (all features); design oracle `inputs/design/prototypes/Raffa V2 Prototype.html` |
 """
 
 OQ_SECTION = """
@@ -134,9 +134,9 @@ OQ_SECTION = """
 
 Source: `inputs/requirements.md` §13. Every entry has an assumption in force; none gates a task.
 
-- **OQ-askv2-001** — The mock market-intelligence record shape (`MarketDeal`, R-MKT-01) is Contigo's own normalized contract; the third-party API will be mapped onto it. **Status**: `assumed-confirmed`. **Assumption in force**: build `IMarketIntelligenceProvider` around `MarketDeal`; the live client maps into it. Ref: ADR-024.
-- **OQ-askv2-002** — Admission threshold (0.6) and minimum readable text (200 chars) are right for the golden set. **Status**: `assumed-confirmed`. **Assumption in force**: both are configuration (`Documents:AdmissionThreshold`, `Documents:MinReadableChars`), tuned on `Contigo.AiEval`. Ref: R-DOC-03.
-- **OQ-askv2-003** — Savings KPIs / opportunities are not a rail item in V2. **Status**: `assumed-confirmed`. **Assumption in force**: route `/savings` (renamed from Home), reached from Ask actions, Renewals and Contract 360. Ref: R-WEB-02, `contigo-v2/ia-v2.md`.
+- **OQ-askv2-001** — The mock market-intelligence record shape (`MarketDeal`, R-MKT-01) is Raffa's own normalized contract; the third-party API will be mapped onto it. **Status**: `assumed-confirmed`. **Assumption in force**: build `IMarketIntelligenceProvider` around `MarketDeal`; the live client maps into it. Ref: ADR-024.
+- **OQ-askv2-002** — Admission threshold (0.6) and minimum readable text (200 chars) are right for the golden set. **Status**: `assumed-confirmed`. **Assumption in force**: both are configuration (`Documents:AdmissionThreshold`, `Documents:MinReadableChars`), tuned on `Raffa.AiEval`. Ref: R-DOC-03.
+- **OQ-askv2-003** — Savings KPIs / opportunities are not a rail item in V2. **Status**: `assumed-confirmed`. **Assumption in force**: route `/savings` (renamed from Home), reached from Ask actions, Renewals and Contract 360. Ref: R-WEB-02, `raffa-v2/ia-v2.md`.
 - **OQ-askv2-004** — Conversation retention. **Status**: `assumed-confirmed`. **Assumption in force**: unlimited in V2; deletion by the owner only. Ref: R-CONV-01.
 - **OQ-askv2-005** — Per-user identity for conversations under the ADR-022 header posture. **Status**: `assumed-confirmed`. **Assumption in force**: `X-User-Id` = MSAL account username, non-authoritative; the task that lands the API JWT (ADR-010) replaces it with the token subject. Ref: R-CONV-03.
 - **OQ-askv2-006** — Answer language. **Status**: `assumed-confirmed`. **Assumption in force**: follows the question's language; fixtures and golden set cover Italian and English. Ref: ADR-024.
@@ -169,7 +169,7 @@ def main() -> int:
         print("BACKLOG epic rows updated")
     elif "epic-13" not in t:
         print("WARN: epic-12 row not found verbatim; epic-13 row appended after the epics table")
-        t = t.replace("| epic-12 | ask-copilot | 12 |", "| epic-13 | ask-v2 | 13 | active — decomposed (Ask Contigo V2) |\n| epic-12 | ask-copilot | 12 |", 1)
+        t = t.replace("| epic-12 | ask-copilot | 12 |", "| epic-13 | ask-v2 | 13 | active — decomposed (Ask Raffa V2) |\n| epic-12 | ask-copilot | 12 |", 1)
     if "ADR-024" not in t:
         t = t.rstrip("\n") + "\n" + BACKLOG_ADR_ROWS.lstrip("\n")
         print("BACKLOG ADR rows appended")

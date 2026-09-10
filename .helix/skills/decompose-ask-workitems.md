@@ -1,17 +1,17 @@
-# Decomposition — Ask Contigo V2 (epic-13 / e13, replaces epic-12 / e12)
+# Decomposition — Ask Raffa V2 (epic-13 / e13, replaces epic-12 / e12)
 
 Ids start at **E13/F01/US01/T01**. Templates: `templates/*.md`.
 
 Oracles: `inputs/requirements.md` (§5 requirements, §6 API, §7 data, §12
-decomposition) + ADR-024 + `inputs/design/prototypes/contigo-v2/ia-v2.md`
-and `screens-v2.md` (authored from `Contigo V2 Prototype.html`).
+decomposition) + ADR-024 + `inputs/design/prototypes/raffa-v2/ia-v2.md`
+and `screens-v2.md` (authored from `Raffa V2 Prototype.html`).
 
 ## Design-citation rule (checker fails without it)
 
 Every **web** task cites, in `## Coding objective` or `## Context`:
 
-1. `inputs/design/prototypes/Contigo V2 Prototype.html` (the bundled export), and
-2. the unpacked anchor it implements: a `contigo-v2/markup.html` string
+1. `inputs/design/prototypes/Raffa V2 Prototype.html` (the bundled export), and
+2. the unpacked anchor it implements: a `raffa-v2/markup.html` string
    (e.g. *"From your contracts"*, *"Nothing needs you right now."*), an
    `app.jsx` symbol (e.g. `primaryNav`, `askScope`, `ask()`), and the
    `screens-v2.md` section.
@@ -23,7 +23,7 @@ prose, intents) cite `app.jsx` → `ask()` and `screens-v2.md` too.
 
 | Task | Title | produces | depends_on | Phase | Layer | Effort |
 |------|-------|----------|------------|-------|-------|--------|
-| E13/F01/US01/T01 | V2 solution scaffold: `Contigo.Market`, `Contigo.Insights` (+ `.Tests`), `Contigo.Suppliers.Products.Tests`, `Contigo.AiEval`; `backend/Contigo.slnx`; `DependencyDirectionTests` allow-list | v2-scaffold | — | 1 | backend | M |
+| E13/F01/US01/T01 | V2 solution scaffold: `Raffa.Market`, `Raffa.Insights` (+ `.Tests`), `Raffa.Suppliers.Products.Tests`, `Raffa.AiEval`; `backend/Raffa.slnx`; `DependencyDirectionTests` allow-list | v2-scaffold | — | 1 | backend | M |
 | E13/F01/US01/T02 | `FoundryAiGateway` five roles, DI swap on `AiGateway:Endpoint`, `LoggingAiGateway` wrap, structured `classify`/`answer` output, no-tools compliance | foundry-gateway | — | 1 | backend | L |
 | E13/F05/US01/T01 | Conversations store: `Conversation` / `ConversationMessage`, `ChatDbContext`, RLS migration + `chat.sql`, `ConversationService`, `AddChatModule` overload | conversations-store | — | 1 | backend | M |
 | E13/F04/US01/T01 | Documents admission gate before persistence, magic-byte formats (PDF/DOCX/XLSX/PNG/JPG → OCR), `DocumentsEndpointExtensions.cs` (moved out of `Program.cs`), 415 / 422 replies, OpenAPI update | documents-admission | — | 1 | backend | L |
@@ -33,13 +33,13 @@ prose, intents) cite `app.jsx` → `ask()` and `screens-v2.md` too.
 | E13/F04/US01/T02 | Documents V2 API: `IDocumentStorage.LoadAsync`, list, preview, reprocess (re-OCR / re-embed), delete, page-aware embeddings | documents-v2-api | documents-admission, foundry-gateway | 2 | backend | L |
 | E13/F05/US01/T02 | Conversations API (`/api/conversations`), `Program.cs` registration of the Chat DbContext, RLS integration tests | conversations-api | conversations-store | 2 | backend | M |
 | E13/F07/US01/T01 | Insights: criticality score, priced-line negotiation levers (generalized `NegotiationStrategyCalculator`), strategy pack builder, `InsightsEndpointExtensions.cs` (unmapped) | insights-calculators | v2-scaffold | 2 | backend | L |
-| E13/F08/US01/T01 | Capability catalog in `Contigo.Chat`, routing table, `CapabilitiesEndpointExtensions.cs` (unmapped) | capability-catalog | — | 2 | backend | M |
+| E13/F08/US01/T01 | Capability catalog in `Raffa.Chat`, routing table, `CapabilitiesEndpointExtensions.cs` (unmapped) | capability-catalog | — | 2 | backend | M |
 | E13/F09/US01/T02 | Rich reply components: markdown, citation cards with corpus badge + preview, actions, redirect / refusal / abstain layouts | web-rich-reply | web-shell-v2 | 2 | web | L |
 | E13/F06/US01/T01 | Ask engine V2: domain gate, planner, context pack, answer contract, guards, messages endpoint, `Program.cs` wiring (Suppliers, Market, Insights, endpoint maps) | ask-engine | foundry-gateway, market-feed-mock, supplier-entity, documents-v2-api, conversations-api, insights-calculators, capability-catalog | 3 | backend | L |
 | E13/F02/US01/T02 | Market index: `market_embedding` + `market.sql`, ingestion (embed role), DB-backed retrieval (DI swap), `MarketEndpointExtensions.cs` | market-index | market-feed-mock, foundry-gateway | 3 | backend | L |
 | E13/F03/US01/T02 | Supplier extraction: `supplier` critical fact, resolver call in the pipeline, weak-supplier review, back-fill through reprocess | supplier-extraction | supplier-entity, documents-v2-api | 3 | backend | L |
 | E13/F09/US01/T03 | Web Documents V2: multi-file, per-file outcome, **Not added** cards, attention filter, list from API, real stages, review state; OpenAPI + client regen (documents) | web-documents-v2 | documents-v2-api, web-shell-v2 | 3 | web | L |
-| E13/F06/US01/T02 | AI golden set (`Contigo.AiEval`): ≥ 40 questions, expected kinds / citations / numbers, CI on the fixture gateway | ask-golden-set | ask-engine | 4 | backend | M |
+| E13/F06/US01/T02 | AI golden set (`Raffa.AiEval`): ≥ 40 questions, expected kinds / citations / numbers, CI on the fixture gateway | ask-golden-set | ask-engine | 4 | backend | M |
 | E13/F09/US01/T04 | Web Ask V2: conversations in the rail, resume, new chat, reply-contract wiring, scope line, suggestions from capabilities, `?scope=`; OpenAPI + client regen (conversations, messages, capabilities, market, insights) | web-ask-v2 | ask-engine, market-index, web-rich-reply, web-documents-v2 | 4 | web | L |
 | E13/F10/US01/T01 | Contract 360 citation landing (`?clause=` highlight, original wording) + "Ask about it" → `/ask?scope=` | web-contract360-landing | web-shell-v2 | 4 | web | M |
 | E13/F11/US01/T01 | Integration: CI jobs (market seed, tenant reprocess), `web/e2e/v2.spec.ts`, demo acceptance checklist, README sweep | v2-integration | ask-golden-set, web-ask-v2, web-contract360-landing, supplier-extraction, market-index | 5 | backend | L |
@@ -52,22 +52,22 @@ F06, F09 carry 2–4 tasks, the others one task (delta process — the generic
 
 | File | Phase 1 | Phase 2 | Phase 3 | Phase 4 | Phase 5 |
 |------|---------|---------|---------|---------|---------|
-| `backend/src/Contigo.Api/Program.cs` | F04/T01 | F05/T02 | F06/T01 | — | F11/T01 |
-| `backend/Contigo.slnx` | F01/T01 | — | — | — | — |
-| `backend/tests/Contigo.ArchitectureTests/DependencyDirectionTests.cs` | F01/T01 | — | — | — | — |
+| `backend/src/Raffa.Api/Program.cs` | F04/T01 | F05/T02 | F06/T01 | — | F11/T01 |
+| `backend/Raffa.slnx` | F01/T01 | — | — | — | — |
+| `backend/tests/Raffa.ArchitectureTests/DependencyDirectionTests.cs` | F01/T01 | — | — | — | — |
 | `.github/workflows/backend.yml` (schema SCRIPTS list) | F05/T01 | F03/T01 | F02/T02 | — | F11/T01 |
-| `web/openapi/contigo-api.v1.json` | F04/T01 | — | F09/T03 | F09/T04 | — |
+| `web/openapi/raffa-api.v1.json` | F04/T01 | — | F09/T03 | F09/T04 | — |
 | `web/src/api/client.ts`, `generated/schema.ts` | — | — | F09/T03 | F09/T04 | — |
-| `backend/src/Contigo.Chat/Infrastructure/ServiceCollectionExtensions.cs` | F05/T01 | F08/T01 | F06/T01 | — | — |
-| `backend/src/Contigo.Documents.Contracts/Application/Extraction/DocumentProcessingPipeline.cs` | F04/T01 | F04/T02 | F03/T02 | — | — |
-| `backend/src/Contigo.Api/appsettings*.json` | — | F05/T02 | F06/T01 | — | — |
+| `backend/src/Raffa.Chat/Infrastructure/ServiceCollectionExtensions.cs` | F05/T01 | F08/T01 | F06/T01 | — | — |
+| `backend/src/Raffa.Documents.Contracts/Application/Extraction/DocumentProcessingPipeline.cs` | F04/T01 | F04/T02 | F03/T02 | — | — |
+| `backend/src/Raffa.Api/appsettings*.json` | — | F05/T02 | F06/T01 | — | — |
 
 Backend tasks in phases 2–4 do **not** edit the OpenAPI contract; the web
 task of the next phase documents the landed endpoints (shapes fixed by
 `inputs/requirements.md` §6) and regenerates the client.
 
 **Creation counts as writing (lesson of e13 phase 3).** F02/T02 created
-`backend/src/Contigo.Api/MarketEndpointExtensions.cs` and F06/T01 mapped
+`backend/src/Raffa.Api/MarketEndpointExtensions.cs` and F06/T01 mapped
 `MapMarketEndpoints()` in `Program.cs` in the same phase; F06/T01 had to stub
 the file to compile, the barrier union-merged the two files, and CI failed on
 18 errors. A file created by a task may not be named by any other task of the
@@ -99,16 +99,16 @@ instead of choosing between them. Extend the table with two more rules.
 
 **1. Creation is a write. A file one task creates must not be *required to
 exist* by another task of the same phase.**
-`backend/src/Contigo.Api/MarketEndpointExtensions.cs` was created by
+`backend/src/Raffa.Api/MarketEndpointExtensions.cs` was created by
 E13/F02/US01/T02 (`market-index`) and, in the same phase 3, by
 E13/F06/US01/T01 (`ask-engine`), which owns the `Program.cs` wiring and had to
 map the endpoint. F06/T01's own doc comment records the trap exactly: *"this
 endpoint's first writer — the market-ingestion task that owns
-`Contigo.Market`'s own persisted `market_record` store … has not landed in
+`Raffa.Market`'s own persisted `market_record` store … has not landed in
 this wave"*. It had not landed because it was running **in the same phase**,
 in a sibling worktree F06/T01 could not see. Neither task was wrong on its
 own; the union merge then put both handlers back to back (duplicate `deal`,
-undefined `endpoints`/`detail`) and `dotnet build Contigo.slnx` failed.
+undefined `endpoints`/`detail`) and `dotnet build Raffa.slnx` failed.
 Reconciled by hand in `50b38a7`. When task A creates an endpoint/extension
 file and task B must call into it, put B **one phase later** than A, or make
 the call site itself A's deliverable — never let two tasks in one phase both
@@ -121,7 +121,7 @@ Its `## Solution` section is not a list — it *describes the current state* —
 so each task rewrote it, and the union merge kept every rewrite. The damage
 compounded barrier by barrier: one copy of the "V2 scaffold" paragraph at the
 phase-1 barrier, two at the phase-3 barrier, and by `50b38a7`
-`Contigo.Documents.Contracts/`, `Contigo.Audit/` and `Contigo.AiGateway/` were
+`Raffa.Documents.Contracts/`, `Raffa.Audit/` and `Raffa.AiGateway/` were
 each listed three times in the module tree, with three mutually contradicting
 descriptions of the same modules. Rebuilt by hand in `1ca7888`. The same risk
 applies to any index or catalog file (`INDEX.md`, an ADR index, an OpenAPI

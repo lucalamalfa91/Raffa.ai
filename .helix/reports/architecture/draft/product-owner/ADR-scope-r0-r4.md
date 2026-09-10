@@ -2,7 +2,7 @@
 
 - **Status**: proposed
 - **Date**: 2026-09-01
-- **Deciders**: product-owner (owner) + remaining Contigo council seats at council-close
+- **Deciders**: product-owner (owner) + remaining Raffa council seats at council-close
 - **Locked citations**: none — this ADR is the product scope elaboration of the
   locked WHAT (`inputs/product-spec.md`); no platform lock is added here.
 
@@ -23,7 +23,7 @@ ambiguous backlog.
 
 ## Decision drivers
 
-- Day-1 customer promise (spec §20): *"Contigo knows what we bought, what we pay,
+- Day-1 customer promise (spec §20): *"Raffa knows what we bought, what we pay,
   when we need to act, and where we can save money."* Every wave must visibly
   advance that promise, not just ship platform plumbing.
 - Appendix C decision rule #10 and the benchmark-trust requirement (spec §10.4):

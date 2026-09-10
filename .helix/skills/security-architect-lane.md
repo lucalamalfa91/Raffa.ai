@@ -14,7 +14,7 @@ documents; TLS in transit; managed identity; audit of access and corrections.
   or equivalent — you choose, and write the ADR).
 - Entra app registrations / OIDC for web and mobile against the API.
 - Key Vault layout per env; how CI authenticates (jointly with delivery).
-- Authorization **before** retrieval for Ask Contigo (spec §8.3 / §14).
+- Authorization **before** retrieval for Ask Raffa (spec §8.3 / §14).
 - Audit log: what is recorded, what is never logged (unauthorized content).
 - Customer contract content must not train public/shared models.
 

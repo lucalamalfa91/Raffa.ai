@@ -1,0 +1,39 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Raffa.AiGateway/Raffa.AiGateway.csproj" />
+    <Project Path="src/Raffa.Api/Raffa.Api.csproj" />
+    <Project Path="src/Raffa.Audit/Raffa.Audit.csproj" />
+    <Project Path="src/Raffa.Benchmark/Raffa.Benchmark.csproj" />
+    <Project Path="src/Raffa.Chat/Raffa.Chat.csproj" />
+    <Project Path="src/Raffa.Documents.Contracts/Raffa.Documents.Contracts.csproj" />
+    <Project Path="src/Raffa.Identity.Workspace/Raffa.Identity.Workspace.csproj" />
+    <Project Path="src/Raffa.Insights/Raffa.Insights.csproj" />
+    <Project Path="src/Raffa.Market/Raffa.Market.csproj" />
+    <Project Path="src/Raffa.Quotes/Raffa.Quotes.csproj" />
+    <Project Path="src/Raffa.Renewals/Raffa.Renewals.csproj" />
+    <Project Path="src/Raffa.Savings/Raffa.Savings.csproj" />
+    <Project Path="src/Raffa.SharedKernel/Raffa.SharedKernel.csproj" />
+    <Project Path="src/Raffa.Suppliers.Products/Raffa.Suppliers.Products.csproj" />
+    <Project Path="src/Raffa.Worker/Raffa.Worker.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Raffa.AiEval/Raffa.AiEval.csproj" />
+    <Project Path="tests/Raffa.AiGateway.Tests/Raffa.AiGateway.Tests.csproj" />
+    <Project Path="tests/Raffa.Api.Tests/Raffa.Api.Tests.csproj" />
+    <Project Path="tests/Raffa.ArchitectureTests/Raffa.ArchitectureTests.csproj" />
+    <Project Path="tests/Raffa.Audit.Tests/Raffa.Audit.Tests.csproj" />
+    <Project Path="tests/Raffa.Benchmark.Tests/Raffa.Benchmark.Tests.csproj" />
+    <Project Path="tests/Raffa.Chat.Tests/Raffa.Chat.Tests.csproj" />
+    <Project Path="tests/Raffa.Documents.Contracts.Tests/Raffa.Documents.Contracts.Tests.csproj" />
+    <Project Path="tests/Raffa.Identity.Workspace.Tests/Raffa.Identity.Workspace.Tests.csproj" />
+    <Project Path="tests/Raffa.Insights.Tests/Raffa.Insights.Tests.csproj" />
+    <Project Path="tests/Raffa.IntegrationTests/Raffa.IntegrationTests.csproj" />
+    <Project Path="tests/Raffa.Market.Tests/Raffa.Market.Tests.csproj" />
+    <Project Path="tests/Raffa.Quotes.Tests/Raffa.Quotes.Tests.csproj" />
+    <Project Path="tests/Raffa.Renewals.Tests/Raffa.Renewals.Tests.csproj" />
+    <Project Path="tests/Raffa.Savings.Tests/Raffa.Savings.Tests.csproj" />
+    <Project Path="tests/Raffa.Suppliers.Products.Tests/Raffa.Suppliers.Products.Tests.csproj" />
+    <Project Path="tests/Raffa.Tenancy/Raffa.Tenancy.csproj" />
+    <Project Path="tests/Raffa.Worker.Tests/Raffa.Worker.Tests.csproj" />
+  </Folder>
+</Solution>

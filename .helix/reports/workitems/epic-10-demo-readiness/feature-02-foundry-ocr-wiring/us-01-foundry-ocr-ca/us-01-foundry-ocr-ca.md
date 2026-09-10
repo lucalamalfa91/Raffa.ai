@@ -12,7 +12,7 @@ status: active
 
 - [ ] AC-1 Inventory `dev` and `demo` CA env for AI Gateway / Foundry /
       Document Intelligence. If already present, document and skip apply.
-- [ ] AC-2 If missing, Terraform + HCP (`contigo-dev` / `contigo-demo`)
+- [ ] AC-2 If missing, Terraform + HCP (`raffa-dev` / `raffa-demo`)
       injects the required endpoints/identities. No laptop `terraform apply`.
 - [ ] AC-3 API/worker can resolve ADR-004 roles without remaining on
       `FixtureAiGateway` solely because env vars were absent.

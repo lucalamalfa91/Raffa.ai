@@ -13,9 +13,9 @@
 # demo must never share a Postgres/Storage/Service Bus, and promotion
 # moves code only, never data) is structural, not configured:
 # `locals.environment = "demo"` feeds every module's naming/tagging, so
-# every resource name (rg-contigo-demo, psql-contigo-demo,
-# sbns-contigo-demo, ...) and the remote state backend
-# (backend.tf -> HCP workspace "contigo-demo", ADR-007) are distinct
+# every resource name (rg-raffa-demo, psql-raffa-demo,
+# sbns-raffa-demo, ...) and the remote state backend
+# (backend.tf -> HCP workspace "raffa-demo", ADR-007) are distinct
 # from the "dev" root's by construction -- there is no shared store id
 # to assert against. See scripts/terraform_env_roots_scan.py for the
 # automated structural proof and task E01/F02/US03/T02 for the
@@ -51,13 +51,13 @@ locals {
 
 # ADR-005: one resource group per environment (never shared); ADR-016:
 # this is demo's own isolated resource group -- structurally distinct
-# from dev's "rg-contigo-dev", never a target of data-plane promotion.
+# from dev's "rg-raffa-dev", never a target of data-plane promotion.
 resource "azurerm_resource_group" "this" {
-  name     = "rg-contigo-${local.environment}"
+  name     = "rg-raffa-${local.environment}"
   location = var.location
 
   tags = {
-    project = "contigo"
+    project = "raffa"
     env     = local.environment
   }
 }
@@ -151,7 +151,7 @@ module "containerapps" {
 }
 
 # ADR-008 amendment 2026-09-09: demo NEVER creates the shared account (the
-# dev root owns rg-contigo-ai / aisvc-contigo); it attaches by name inside
+# dev root owns rg-raffa-ai / aisvc-raffa); it attaches by name inside
 # modules/foundry once var.ai_account_attached is true and creates only its
 # own project, deployments and grants. This root's OWN identity module
 # instance only -- never dev's. ADR-004 amendment 2026-09-09: demo is
@@ -190,7 +190,7 @@ module "foundry" {
 
 # ADR-005: Key Vault Standard tier (no Premium/HSM), RBAC-authorized;
 # per-env, never shared with dev's vault.
-# ADR-015 SPs are out of band. display_name "contigo-sp-demo" is not
+# ADR-015 SPs are out of band. display_name "raffa-sp-demo" is not
 # unique in this tenant; pin the GitHub Environment AZURE_CLIENT_ID
 # (not a secret) so the grant hits the OIDC deploy SP.
 data "azuread_service_principal" "ci_deploy" {

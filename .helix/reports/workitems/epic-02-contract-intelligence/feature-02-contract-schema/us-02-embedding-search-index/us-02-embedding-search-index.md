@@ -11,7 +11,7 @@ status: active
 ## Story
 
 As a **backend engineer**, I want embeddings stored in pgvector and a tenant-scoped
-similarity search, so that semantic retrieval for Ask Contigo works without leaking
+similarity search, so that semantic retrieval for Ask Raffa works without leaking
 data across tenants.
 
 ## Acceptance criteria

@@ -3,7 +3,7 @@
 Delta only. ADR-001 still forbids a paid market API on the first `demo`.
 ADR-004 still splits Foundry into five roles behind `IAiGateway`.
 ADR-011 still requires authz-before-retrieval and tenant-scoped RAG.
-This wave makes Ask Contigo a **savings / negotiation copilot**, not a
+This wave makes Ask Raffa a **savings / negotiation copilot**, not a
 generic document dump.
 
 ## Oracle
@@ -28,5 +28,5 @@ RAG. Rewriting epic-01…11. Touching `slice.current.yaml` while e1011 runs.
 ## Success
 
 An operator on `demo` asking “ciao”, “carbonara”, “is Allianz above market?”,
-or “can I sue?” gets natural-language Contigo that saves money or honestly
+or “can I sue?” gets natural-language Raffa that saves money or honestly
 abstains — never a PDF dump or “not wired to an endpoint”.

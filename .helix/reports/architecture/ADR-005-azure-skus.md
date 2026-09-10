@@ -7,7 +7,7 @@
 
 ## Context and problem statement
 
-Contigo V1 must run two isolated Azure environments (`dev` and `demo`) that satisfy the product topology intent (spec §5.1): a modular-monolith API, a background worker, a relational store with vectors/search, object storage, and a queue, plus secrets, identity, and the Foundry AI path. The brief (§4) mandates the cheapest/free SKU that still supports the product and forbids idle-expensive resources, production HA, and any shared PostgreSQL or document storage between the two environments. Every named service needs a concrete SKU so the infra cost researcher can price it at retail.
+Raffa V1 must run two isolated Azure environments (`dev` and `demo`) that satisfy the product topology intent (spec §5.1): a modular-monolith API, a background worker, a relational store with vectors/search, object storage, and a queue, plus secrets, identity, and the Foundry AI path. The brief (§4) mandates the cheapest/free SKU that still supports the product and forbids idle-expensive resources, production HA, and any shared PostgreSQL or document storage between the two environments. Every named service needs a concrete SKU so the infra cost researcher can price it at retail.
 
 ## Decision drivers
 
@@ -45,7 +45,7 @@ Contigo V1 must run two isolated Azure environments (`dev` and `demo`) that sati
 | Identity | Microsoft Entra ID | **Free tier** (app registrations, users/groups) | OIDC / SSO-ready; no premium P1/P2 licenses. |
 | Monitoring | Azure Monitor / Log Analytics | **Log Analytics Workspace, Pay-As-You-Go with a data cap** (e.g. 1 GB/day) | Billing is per-GB; a daily cap prevents idle-log runaway. |
 | Container registry | Azure Container Registry | **Basic tier** (per env is redundant → **one** Basic registry shared across envs is rejected to preserve isolation; use one Basic per env) | Each env pulls from its own registry namespace; Basic supports geo-less, 10 GiB, `data endpoints = none`. |
-| OCR / document layout | Azure AI Document Intelligence (on the ADR-008 AI services account) | **S0 / pay-per-page** — `prebuilt-read` + `prebuilt-layout` | In V1 (ADR-017). No idle SKU. F0 page caps are insufficient for the 100-contract Day-1 path. Per-env endpoint via Foundry projects `contigo-dev` / `contigo-demo`. |
+| OCR / document layout | Azure AI Document Intelligence (on the ADR-008 AI services account) | **S0 / pay-per-page** — `prebuilt-read` + `prebuilt-layout` | In V1 (ADR-017). No idle SKU. F0 page caps are insufficient for the 100-contract Day-1 path. Per-env endpoint via Foundry projects `raffa-dev` / `raffa-demo`. |
 
 > **Shared-vs-isolated note**: one ACR per environment is chosen strictly to honor the isolation rule for any deployment-time secrets/pull identity, but ACR is a publish surface, not a data store. The infra cost researcher may note ACR Basic is metered on storage+pull bandwidth; a single ACR with per-env repositories is an acceptable cost-optimization the council can ratify later. Default here: one ACR Basic per env.
 
@@ -71,7 +71,7 @@ Contigo V1 must run two isolated Azure environments (`dev` and `demo`) that sati
 
 ## Implications for the decomposition
 
-- Every Terraform task must tag resources `project=contigo` and `env=dev|demo`.
+- Every Terraform task must tag resources `project=raffa` and `env=dev|demo`.
 - `dev` and `demo` each get their own Remote State, Resource Group, Postgres Flexible Server, Storage Account, Service Bus namespace, Key Vault, and ACR.
 - Any task touching the queue must target Service Bus Standard (topics) plus the Storage Queue for simple inbox where cheap; do not introduce a second queue product.
 - Any task wiring extraction MUST provision Document Intelligence S0 (`prebuilt-read` / `prebuilt-layout`) on the existing AI services account (ADR-008, ADR-017). Do not add a second AI subscription or an idle-expensive OCR cluster. Do not ship native-PDF-only extraction as the V1 path.
@@ -92,8 +92,8 @@ the same date).
 
 | Concern | Service | SKU / tier | Notes |
 | --- | --- | --- | --- |
-| AI account (shared) | Azure AI Services, kind `AIServices` | **S0, pay-as-you-go**, no idle charge | ONE account `aisvc-contigo` in its own `rg-contigo-ai` (tags `env=shared`) -- the single deliberate exception to "one of everything per env", per ADR-008. Keys disabled; Entra-only auth. |
-| Foundry projects | `Microsoft.CognitiveServices/accounts/projects` | no charge | `contigo-dev`, `contigo-demo` (account-native, no hub). |
+| AI account (shared) | Azure AI Services, kind `AIServices` | **S0, pay-as-you-go**, no idle charge | ONE account `aisvc-raffa` in its own `rg-raffa-ai` (tags `env=shared`) -- the single deliberate exception to "one of everything per env", per ADR-008. Keys disabled; Entra-only auth. |
+| Foundry projects | `Microsoft.CognitiveServices/accounts/projects` | no charge | `raffa-dev`, `raffa-demo` (account-native, no hub). |
 | Chat / extraction models | Model deployments on the account | **DataZoneStandard** (EU) or **GlobalStandard**, per-1K-token, capacity in K TPM per deployment | dev: gpt-5.4-nano; demo: gpt-5.4 + gpt-5.4-nano. Provisioned SKUs rejected (fixed cost). |
 | Embeddings | Model deployments | **GlobalStandard**, per-1K-token | dev: text-embedding-3-small; demo: text-embedding-3-large (dimensions forced to 1536). |
 | OCR | Document Intelligence on the same account | **S0 pay-per-page**, `prebuilt-read` | No deployment resource; billed per page on the shared account. |

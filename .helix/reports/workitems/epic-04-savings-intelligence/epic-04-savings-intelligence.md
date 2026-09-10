@@ -12,7 +12,7 @@ status: active
 Introduce the Benchmark Service interface with a replaceable **fixture adapter** (no
 paid external market API for the first `demo`), normalize current unit prices,
 compare against P25/P50/P75 with confidence + provenance, and surface a savings
-dashboard plus a trackable SavingsOpportunity workflow — so that **Contigo quantifies
+dashboard plus a trackable SavingsOpportunity workflow — so that **Raffa quantifies
 credible savings opportunities** (spec §16 R3).
 
 ## Product coverage

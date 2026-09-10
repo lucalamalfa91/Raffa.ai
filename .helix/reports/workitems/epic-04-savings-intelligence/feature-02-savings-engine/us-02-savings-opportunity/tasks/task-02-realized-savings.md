@@ -4,7 +4,7 @@ type: task
 story: us-02-savings-opportunity
 wave: R3
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-02-realized-savings — 02 Realized Savings
@@ -18,7 +18,7 @@ Record realized value + audit event.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `realized-savings` |
+| workspace/raffa-backend/src/ | implementation for `realized-savings` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-009.
@@ -30,7 +30,7 @@ Record realized value + audit event.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | realized-savings behaviour | workspace/contigo-backend/tests |
+| unit | realized-savings behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

@@ -2,7 +2,7 @@
 
 - **Status**: proposed | accepted | superseded by ADR-NNN
 - **Date**: YYYY-MM-DD
-- **Deciders**: <seats at the Contigo council>
+- **Deciders**: <seats at the Raffa council>
 - **Locked citations**: <rows from reports/context/locked-decisions.md, or "none — council-owned">
 
 ## Context and problem statement

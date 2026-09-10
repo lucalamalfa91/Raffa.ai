@@ -10,7 +10,7 @@ status: active
 
 ## Story
 
-As **procurement**, I want my Ask conversations to be kept by Contigo —
+As **procurement**, I want my Ask conversations to be kept by Raffa —
 resumable from another browser days later, with citation cards and actions
 still clickable — and private to me inside my workspace, so that the
 copilot is a place I return to, not a one-shot query box.
@@ -67,7 +67,7 @@ conversation_id, role, kind, markdown, citations_json, actions_json,
 model_id, prompt_version, input_hash, created_at)`; RLS policy identical to
 the other tenant tables (`app.tenant_id`). Connection string key
 `ConnectionStrings:Chat` (same database as the other modules). Script
-`backend/src/Contigo.Chat/Migrations/Scripts/chat.sql` added to the
+`backend/src/Raffa.Chat/Migrations/Scripts/chat.sql` added to the
 fixed-order SCRIPTS list in `.github/workflows/backend.yml`.
 
 ## Open questions

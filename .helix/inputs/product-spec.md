@@ -1,4 +1,4 @@
-**CONTIGO**
+**RAFFA**
 
 # **V1 Technical & Product
 
@@ -18,12 +18,12 @@ AI-native Procurement & Contract Intelligence Platform
 | Status           | V1 Developer Handoff                                                                                    |
 | Date             | 25 August 2026                                                                                          |
 | Primary audience | Technical co-founder / software developer / solution architect                                          |
-| Core principle   | Contigo owns the normalized procurement intelligence layer; external data providers remain replaceable. |
+| Core principle   | Raffa owns the normalized procurement intelligence layer; external data providers remain replaceable. |
 
 
 **North Star**
 
-*“Contigo knows what we bought, what we pay, when we need to act, and where we can save money.”*
+*“Raffa knows what we bought, what we pay, when we need to act, and where we can save money.”*
 
 # **Contents**
 
@@ -75,7 +75,7 @@ AI-native Procurement & Contract Intelligence Platform
 
 # **1. Product Objective and V1 Scope**
 
-Contigo is an AI-native Procurement Intelligence Platform. V1 transforms contracts and supplier quotes into structured, queryable and actionable procurement intelligence. The product is not intended to replace ERP, CLM or P2P systems in its first phase; it sits above them as the intelligence and decision layer.
+Raffa is an AI-native Procurement Intelligence Platform. V1 transforms contracts and supplier quotes into structured, queryable and actionable procurement intelligence. The product is not intended to replace ERP, CLM or P2P systems in its first phase; it sits above them as the intelligence and decision layer.
 
 
 |     | **V1 mission**Give Procurement a trusted view of contracts, renewals, pricing position and savings opportunities — and make a new supplier quote assessable in minutes. |
@@ -122,13 +122,13 @@ Complex enterprise approval orchestration
 
 # **2. Architectural Principles**
 
-**System of intelligence, not system of record.** ERP/CLM/P2P can remain authoritative transaction systems; Contigo creates the normalized intelligence layer.
+**System of intelligence, not system of record.** ERP/CLM/P2P can remain authoritative transaction systems; Raffa creates the normalized intelligence layer.
 
 **Source evidence is mandatory.** Every critical extracted fact must preserve document, page/section and confidence.
 
 **AI is not the database.** The LLM extracts and reasons; canonical facts live in structured storage.
 
-**Benchmark providers are interchangeable.** Business logic calls a Contigo Benchmark Service, never a provider directly.
+**Benchmark providers are interchangeable.** Business logic calls a Raffa Benchmark Service, never a provider directly.
 
 **Human-in-the-loop for consequential decisions.** Low-confidence extraction, benchmark matching and negotiation recommendations must be reviewable.
 
@@ -232,7 +232,7 @@ Allow the user to correct product/SKU matching before accepting the assessment.
 # **5. High-Level System Architecture**
 
   
-Figure 1 — Contigo target architecture and roadmap
+Figure 1 — Raffa target architecture and roadmap
 
 ## **5.1 Deployable V1 topology**
 
@@ -366,7 +366,7 @@ Header: supplier, contract name/type, annual spend, TCV, start/end, renewal date
 
 Tabs: Overview, Commercials, Products, Clauses, Obligations, Risks, Documents, Benchmark, Renewal, Activity.
 
-## **8.3 Ask Contigo**
+## **8.3 Ask Raffa**
 
 The query engine must route structured questions to deterministic queries and semantic/legal questions to RAG.
 
@@ -479,7 +479,7 @@ Store both total score and component scores so the recommendation is explainable
 | P25 / P50 / P75         | Yes when provider supports distribution |
 | Metric / currency       | Yes                                     |
 | Sample size             | If available                            |
-| Confidence              | Yes — Contigo score                     |
+| Confidence              | Yes — Raffa score                     |
 | Source/provider         | Yes                                     |
 | Updated at              | Yes                                     |
 | Comparison dimensions   | Yes                                     |
@@ -728,7 +728,7 @@ Define RPO/RTO before enterprise production commitments.
 | R0 — Foundation            | Auth, workspace, multi-tenancy, roles, upload, storage, DB, audit baseline | A secure workspace can ingest documents                  |
 | R1 — Contract Intelligence | Extraction, schema, portfolio, Contract 360, Q&A, citations, validation    | Customer can upload contracts and ask reliable questions |
 | R2 — Renewals              | Dates, cancellation deadline, alerts, dashboard, priority, recommendations | Procurement does not miss material renewal windows       |
-| R3 — Savings               | Benchmark service/adapters, price comparison, savings dashboard/workflow   | Contigo quantifies credible savings opportunities        |
+| R3 — Savings               | Benchmark service/adapters, price comparison, savings dashboard/workflow   | Raffa quantifies credible savings opportunities        |
 | R4 — Quote Check           | Quote extraction, benchmark, assessment, target, negotiation strategy      | A new proposal can be assessed in minutes                |
 
 
@@ -848,7 +848,7 @@ AI and benchmark cost per tenant/document
 
 
 
-|     | **Architecture north star**The Unified Procurement Data Layer + Procurement Graph + proprietary pricing and negotiation outcome dataset should become Contigo's long-term moat. |
+|     | **Architecture north star**The Unified Procurement Data Layer + Procurement Graph + proprietary pricing and negotiation outcome dataset should become Raffa's long-term moat. |
 | --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 
 
@@ -897,7 +897,7 @@ Track realized savings.
 Use the outcome as permissioned proprietary learning data.
 
 
-|     | **V1 customer promise**Contigo knows what we bought, what we pay, when we need to act, and where we can save money. |
+|     | **V1 customer promise**Raffa knows what we bought, what we pay, when we need to act, and where we can save money. |
 | --- | -------------------------------------------------------------------------------------------------------------------- |
 
 
@@ -970,7 +970,7 @@ Capture negotiation outcomes and corrections from day one.
 If data quality is insufficient, return uncertainty instead of fabricated precision.
 
 
-|     | **Final engineering test**For every architectural decision ask: Does this help Contigo build its own procurement intelligence layer, or are we simply building a UI around somebody else's API? |
+|     | **Final engineering test**For every architectural decision ask: Does this help Raffa build its own procurement intelligence layer, or are we simply building a UI around somebody else's API? |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 
 

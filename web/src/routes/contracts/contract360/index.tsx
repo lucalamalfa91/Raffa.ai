@@ -31,7 +31,7 @@ type FetchState =
 
 /**
  * Route `/contracts/:contractId` -- Contract 360, V2 "no tabs" (ADR-024 V2 IA; screens-v2.md #5;
- * `contigo-v2/markup.html` "CONTRACT 360 — three answers, then proof, then details"). One page:
+ * `raffa-v2/markup.html` "CONTRACT 360 — three answers, then proof, then details"). One page:
  * header (origin back link · supplier · title · meta), the answers band (Where you can save · When
  * you must move · What to do, with Start negotiation / Assign to me or the tracker once acted),
  * "Why — the clauses behind it" with the selected clause's original wording, and the "Details ▾"
@@ -89,7 +89,7 @@ export default function Contract360Route({ apiClient, userLabel }: Contract360Ro
           statusCode: result.statusCode,
           message:
             result.statusCode === 503 || result.statusCode === null
-              ? "Contigo's contract service is temporarily unavailable. Try again in a moment."
+              ? "Raffa's contract service is temporarily unavailable. Try again in a moment."
               : (result.error ?? "The contract could not be loaded."),
         });
         return;

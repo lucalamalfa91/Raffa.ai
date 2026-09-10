@@ -18,8 +18,8 @@ with pinned provider/Terraform versions and mandatory `project`/`env` tagging, s
 
 - [ ] AC-1 `infra/modules/` contains `network identity postgres storage servicebus containerapps keyvault acr monitor`.
 - [ ] AC-2 `versions.tf` pins `azurerm`, `azuread`, `random` providers and Terraform version.
-- [ ] AC-3 Every module applies `project = "contigo"` and `env = var.environment`.
-- [ ] AC-4 `infra/environments/dev/` and `infra/environments/demo/` exist with separate `backend.tf` (HCP workspaces `contigo-dev`/`contigo-demo`).
+- [ ] AC-3 Every module applies `project = "raffa"` and `env = var.environment`.
+- [ ] AC-4 `infra/environments/dev/` and `infra/environments/demo/` exist with separate `backend.tf` (HCP workspaces `raffa-dev`/`raffa-demo`).
 
 ## Definition of done
 
@@ -46,7 +46,7 @@ with pinned provider/Terraform versions and mandatory `project`/`env` tagging, s
 
 ## Council decisions carried into this story
 
-Modules: network, identity, postgres, storage, servicebus, containerapps, keyvault, acr, monitor. Providers `hashicorp/azurerm` + `hashicorp/azuread` + `hashicorp/random`. Tagging `project=contigo`, `env=dev|demo`.
+Modules: network, identity, postgres, storage, servicebus, containerapps, keyvault, acr, monitor. Providers `hashicorp/azurerm` + `hashicorp/azuread` + `hashicorp/random`. Tagging `project=raffa`, `env=dev|demo`.
 
 ## Open questions
 

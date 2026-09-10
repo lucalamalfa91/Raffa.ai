@@ -4,7 +4,7 @@ type: task
 story: us-01-negotiation-strategy
 wave: R4
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-02-strategy-evidence — 02 Strategy Evidence
@@ -18,7 +18,7 @@ Cite evidence per lever.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `strategy-evidence` |
+| workspace/raffa-backend/src/ | implementation for `strategy-evidence` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-002.
@@ -30,7 +30,7 @@ Cite evidence per lever.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | strategy-evidence behaviour | workspace/contigo-backend/tests |
+| unit | strategy-evidence behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

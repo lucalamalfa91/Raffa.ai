@@ -25,4 +25,4 @@ TypeScript API client, hosted statically (Static Web Apps free tier).
 
 ## Target repo
 
-`contigo-web`
+`raffa-web`

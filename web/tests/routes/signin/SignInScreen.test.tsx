@@ -33,7 +33,7 @@ describe("SignInScreen", () => {
   it("renders the V2 three-line north star and the four answers", () => {
     render(<SignInScreen onContinue={vi.fn()} interactionInFlight={false} />);
 
-    // contigo-v2/markup.html: three stacked lines, the middle one in accent.
+    // raffa-v2/markup.html: three stacked lines, the middle one in accent.
     expect(screen.getByText("Your contracts.")).toBeInTheDocument();
     expect(screen.getByText("Your savings.")).toHaveClass("signin-accent");
     expect(screen.getByText("Nothing missed.")).toBeInTheDocument();
@@ -58,28 +58,28 @@ describe("SignInScreen", () => {
   });
 
   // Task E11/F02/US01/T01 (signin-1to1) -- gaps G-S1-LOCKUP/G-S1-RIGHT.
-  it("renders the Contigo lockup (accent mark + wordmark) above the north-star", () => {
+  it("renders the Raffa lockup (accent mark + wordmark) above the north-star", () => {
     const { container } = render(<SignInScreen onContinue={vi.fn()} interactionInFlight={false} />);
 
     const lockup = container.querySelector(".signin-lockup");
     expect(lockup).toBeInTheDocument();
-    expect(lockup).toHaveTextContent("Contigo");
+    expect(lockup).toHaveTextContent("Raffa");
     expect(container.querySelector(".signin-lockup-mark")).toBeInTheDocument();
   });
 
-  it("heads the right column 'Sign in' (h2), not a 'Contigo' heading", () => {
+  it("heads the right column 'Sign in' (h2), not a 'Raffa' heading", () => {
     render(<SignInScreen onContinue={vi.fn()} interactionInFlight={false} />);
 
     expect(screen.getByRole("heading", { name: "Sign in", level: 2 })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Contigo" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Raffa" })).not.toBeInTheDocument();
   });
 
   it("shows the muted Entra sign-in sentence under the heading", () => {
     render(<SignInScreen onContinue={vi.fn()} interactionInFlight={false} />);
 
-    // contigo-v2/markup.html, verbatim.
+    // raffa-v2/markup.html, verbatim.
     expect(
-      screen.getByText(/your organisation account\. contigo never stores a password\./i),
+      screen.getByText(/your organisation account\. raffa never stores a password\./i),
     ).toBeInTheDocument();
   });
 

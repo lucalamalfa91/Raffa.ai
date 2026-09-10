@@ -75,7 +75,7 @@ jobs:
         run: terraform validate
 
   # Plans against the real HCP Terraform workspace for TF_ENVIRONMENT
-  # ("contigo-dev" / "contigo-demo", ADR-007, backend.tf per environment
+  # ("raffa-dev" / "raffa-demo", ADR-007, backend.tf per environment
   # root). Runs on PRs too (read-only) so a plan is visible before merge.
   plan:
     name: terraform plan (${{ inputs.target_environment || 'dev' }})
@@ -87,7 +87,7 @@ jobs:
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_wrapper: false
-          # HCP Terraform's own API token (organization contigo-platform).
+          # HCP Terraform's own API token (organization raffa-platform).
           # This is *not* an Azure credential and is outside ADR-015's
           # "CI -> Azure auth" scope -- it authenticates the CLI to the HCP
           # Terraform API/backend, nothing more.
@@ -122,14 +122,14 @@ jobs:
     steps:
       - name: HCP VCS owns apply
         env:
-          TF_WORKSPACE: contigo-${{ env.TF_ENVIRONMENT }}
+          TF_WORKSPACE: raffa-${{ env.TF_ENVIRONMENT }}
         run: |
           set -euo pipefail
           {
             echo "### Infra apply is owned by HCP Terraform (VCS)"
             echo ""
             echo "Workspace \`$TF_WORKSPACE\` is VCS-connected. Confirm the run at:"
-            echo "https://app.terraform.io/app/contigo-platform/workspaces/$TF_WORKSPACE/runs"
+            echo "https://app.terraform.io/app/raffa-platform/workspaces/$TF_WORKSPACE/runs"
             echo ""
             echo "Do not run \`terraform apply\` from GitHub Actions against a VCS-connected workspace."
           } >> "$GITHUB_STEP_SUMMARY"

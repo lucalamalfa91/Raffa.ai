@@ -14,8 +14,8 @@ name: demo-config-check
 # navigation-fallback rewrite). The operator supplies the already-known
 # Static Web App hostname -- e.g. the web.yml / demo-promote.yml deploy
 # job's own "Project deployed to https://<host>" log line, or
-# `az staticwebapp show --name swa-contigo-<env> --resource-group
-# rg-contigo-<env> --query defaultHostname -o tsv`. See
+# `az staticwebapp show --name swa-raffa-<env> --resource-group
+# rg-raffa-<env> --query defaultHostname -o tsv`. See
 # .helix/reports/execution/demo-v-promotion-runbook.md for the full
 # runbook this check is step 4 of.
 on:

@@ -4,7 +4,7 @@ type: task
 story: us-02-priority-score
 wave: R2
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-02-priority-explainability — 02 Priority Explainability
@@ -18,7 +18,7 @@ Explainability query + tunable weights.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `renewal-priority-explain` |
+| workspace/raffa-backend/src/ | implementation for `renewal-priority-explain` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-002.
@@ -30,7 +30,7 @@ Explainability query + tunable weights.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | renewal-priority-explain behaviour | workspace/contigo-backend/tests |
+| unit | renewal-priority-explain behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

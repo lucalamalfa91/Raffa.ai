@@ -1,6 +1,6 @@
 # Demo-readiness brief — V1 Day-1 on Azure `demo`
 
-Operator brief for **`contigo-readiness-process.yaml`**. Audit whether
+Operator brief for **`raffa-readiness-process.yaml`**. Audit whether
 everything **defined through wave 9** is enough to open `demo` and walk
 product-spec §20 without errors. Then decompose **only residuals** into e10.
 
@@ -29,9 +29,9 @@ quote check → record outcome → Home realized.
 
 ## Known residuals (confirm in the gap matrix; these are e10 candidates)
 
-- Fixture benchmark + savings **seed** on Flexible Server `contigo_demo` (today
+- Fixture benchmark + savings **seed** on Flexible Server `raffa_demo` (today
   only Testcontainers / in-process).
-- Foundry project `contigo-demo` + Document Intelligence (OCR) **wired into
+- Foundry project `raffa-demo` + Document Intelligence (OCR) **wired into
   Container Apps** (Terraform has identity hooks; live CA env list on `dev`
   showed only a subset of connection strings, no confirmed AI/OCR vars).
 - No evidence a `demo-v*` promotion has ever run; SWA `config.json` must

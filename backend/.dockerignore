@@ -1,5 +1,5 @@
-# backend/ is the docker build context for src/Contigo.Api/Dockerfile and
-# src/Contigo.Worker/Dockerfile (az acr build --file backend/src/.../Dockerfile
+# backend/ is the docker build context for src/Raffa.Api/Dockerfile and
+# src/Raffa.Worker/Dockerfile (az acr build --file backend/src/.../Dockerfile
 # backend). Keep local build output and tooling cruft out of the image context.
 **/bin/
 **/obj/

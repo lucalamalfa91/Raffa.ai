@@ -4,7 +4,7 @@ type: task
 story: us-01-dotnet-solution-shape
 wave: R0
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-02-architecture-test — 02 Architecture Test
@@ -18,7 +18,7 @@ Add an architecture test blocking domain->provider/domain-internals references.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `dotnet-architecture-test` |
+| workspace/raffa-backend/src/ | implementation for `dotnet-architecture-test` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-002.
@@ -30,7 +30,7 @@ Add an architecture test blocking domain->provider/domain-internals references.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | dotnet-architecture-test behaviour | workspace/contigo-backend/tests |
+| unit | dotnet-architecture-test behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

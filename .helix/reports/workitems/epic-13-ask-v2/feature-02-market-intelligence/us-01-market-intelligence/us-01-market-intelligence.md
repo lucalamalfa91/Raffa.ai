@@ -6,11 +6,11 @@ wave: 13
 status: active
 ---
 
-# us-01-market-intelligence — Market intelligence Contigo can cite
+# us-01-market-intelligence — Market intelligence Raffa can cite
 
 ## Story
 
-As **procurement**, I want Contigo to compare my contract with how
+As **procurement**, I want Raffa to compare my contract with how
 companies actually close contracts (bands, discounts, uplift caps, notice
 periods, clauses) and to quote that market knowledge with its provenance,
 so that I know where I stand without a paid feed on the first `demo` and
@@ -47,7 +47,7 @@ without ever seeing another customer's contract.
 
 | Depends on | Why |
 |------------|-----|
-| us-01-v2-foundation | `Contigo.Market` project exists (T01); `embed` role (T02) |
+| us-01-v2-foundation | `Raffa.Market` project exists (T01); `embed` role (T02) |
 
 ## Architecture decisions in force
 
@@ -78,4 +78,4 @@ table `market_record`.
 
 ## Open questions
 
-- OQ-askv2-001 — the mock record shape is Contigo's own; the live API maps onto it (assumed)
+- OQ-askv2-001 — the mock record shape is Raffa's own; the live API maps onto it (assumed)

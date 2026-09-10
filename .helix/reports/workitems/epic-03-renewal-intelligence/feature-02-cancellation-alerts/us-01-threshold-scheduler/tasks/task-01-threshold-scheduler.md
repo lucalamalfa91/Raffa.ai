@@ -4,7 +4,7 @@ type: task
 story: us-01-threshold-scheduler
 wave: R2
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-threshold-scheduler — 01 Threshold Scheduler
@@ -18,7 +18,7 @@ Daily scheduler + threshold windows + renewal.approaching event.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `threshold-scheduler` |
+| workspace/raffa-backend/src/ | implementation for `threshold-scheduler` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-002, ADR-003.
@@ -30,7 +30,7 @@ Daily scheduler + threshold windows + renewal.approaching event.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | threshold-scheduler behaviour | workspace/contigo-backend/tests |
+| unit | threshold-scheduler behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

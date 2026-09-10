@@ -4,7 +4,7 @@ type: task
 story: us-02-staged-extraction
 wave: R1
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-02-hybrid-ocr — 02 Hybrid Ocr
@@ -18,7 +18,7 @@ Add hybrid OCR pre-pass behind gateway (full doc, no 2-page cap).
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `hybrid-ocr` |
+| workspace/raffa-backend/src/ | implementation for `hybrid-ocr` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-004, ADR-011.
@@ -30,7 +30,7 @@ Add hybrid OCR pre-pass behind gateway (full doc, no 2-page cap).
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | hybrid-ocr behaviour | workspace/contigo-backend/tests |
+| unit | hybrid-ocr behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

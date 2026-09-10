@@ -2,7 +2,7 @@
 # (ADR-005). dev and demo each get their own account; never shared.
 locals {
   tags = {
-    project = "contigo"
+    project = "raffa"
     env     = var.environment
   }
 }
@@ -15,7 +15,7 @@ resource "random_string" "suffix" {
 }
 
 resource "azurerm_storage_account" "this" {
-  name                     = "stcontigo${var.environment}${random_string.suffix.result}"
+  name                     = "straffa${var.environment}${random_string.suffix.result}"
   location                 = var.location
   resource_group_name      = var.resource_group_name
   account_kind             = "StorageV2"

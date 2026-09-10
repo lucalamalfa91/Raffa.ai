@@ -9,7 +9,7 @@
 
 ## Context and problem statement
 
-Contigo must be SSO-ready on Entra ID and every client (web and mobile) consumes the backend API over
+Raffa must be SSO-ready on Entra ID and every client (web and mobile) consumes the backend API over
 OIDC. There are two Azure environments (`dev`, `demo`), each fully isolated (data, identities, resource
 groups). The same codebase and client apps must authenticate against whichever environment they target,
 without shipping secrets or environment-specific config into client bundles.
@@ -43,7 +43,7 @@ use against the API?**
 `dev`, and the same pair in `demo` (four app registrations total).** Web and mobile share the public
 client registration via a browser redirect URI (web) and a native reply/custom redirect (mobile), both
 using the OIDC **authorization-code + PKCE** flow (spec §14.1 "OIDC/SAML; Entra ID"). The API
-registration exposes scopes (e.g. `Contigo.Read`, `Contigo.Write`) that both clients request. Each
+registration exposes scopes (e.g. `Raffa.Read`, `Raffa.Write`) that both clients request. Each
 environment's API validates `iss` + `aud` against that environment's known Entra tenant/registration, so
 a `demo` token never works on `dev`.
 
@@ -74,12 +74,12 @@ a `demo` token never works on `dev`.
 ## Implications for the decomposition
 
 - Terraform (cloud-architect's ADR) must declare two app registrations per environment (public client +
-  API) with the API exposing `Contigo.*` scopes and the client pre-authorized for them.
+  API) with the API exposing `Raffa.*` scopes and the client pre-authorized for them.
 - The backend API must configure JWT bearer auth using that environment's Entra `issuer` and `audience`
   (metadata via OIDC discovery URL), not a single hard-coded authority — injected per environment at
   runtime from a config value that is not a secret.
 - Mobile uses the native OIDC authorization-code + PKCE flow (no secret); the redirect URI for the
-  native client is the platform's declared scheme (e.g. `contigo://callback`), registered on the public
+  native client is the platform's declared scheme (e.g. `raffa://callback`), registered on the public
   client registration.
 - Tokens are validated by signature/issuer/audience/expiry only; the API does **not** store or share
   client secrets (there are none).
@@ -89,5 +89,5 @@ a `demo` token never works on `dev`.
 - Client stack selection (client-architect) produces a web client and a native mobile client that both
   support the OIDC authorization-code + PKCE flow (SAML is listed as future, not required in V1 — we
   adopt OIDC only, consistent with the locked row "OIDC, SSO-ready (Entra ID)").
-- The exact scopes (`Contigo.Read`/`Contigo.Write`) are named here as placeholders; final scope names are
+- The exact scopes (`Raffa.Read`/`Raffa.Write`) are named here as placeholders; final scope names are
   adopted when the API surface (software-architect) is fixed, without changing the registration shape.

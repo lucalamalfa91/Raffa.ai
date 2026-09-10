@@ -10,7 +10,7 @@ status: active
 
 ## Story
 
-As **procurement**, I want to read Contigo as a specialist (prose, contract
+As **procurement**, I want to read Raffa as a specialist (prose, contract
 preview, a button to 360 / Renewals / Savings), not as a list of document
 ids.
 

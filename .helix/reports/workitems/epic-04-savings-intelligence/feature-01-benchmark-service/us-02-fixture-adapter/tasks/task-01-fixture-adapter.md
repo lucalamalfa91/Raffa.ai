@@ -4,7 +4,7 @@ type: task
 story: us-02-fixture-adapter
 wave: R3
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-fixture-adapter — 01 Fixture Adapter
@@ -18,7 +18,7 @@ Fixture adapter returning P25/P50/P75 + confidence + provenance.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `fixture-adapter` |
+| workspace/raffa-backend/src/ | implementation for `fixture-adapter` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-001.
@@ -30,7 +30,7 @@ Fixture adapter returning P25/P50/P75 + confidence + provenance.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | fixture-adapter behaviour | workspace/contigo-backend/tests |
+| unit | fixture-adapter behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

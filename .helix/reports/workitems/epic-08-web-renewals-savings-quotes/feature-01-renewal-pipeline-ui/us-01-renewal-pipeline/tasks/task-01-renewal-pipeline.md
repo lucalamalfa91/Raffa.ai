@@ -4,7 +4,7 @@ type: task
 story: us-01-renewal-pipeline
 wave: 8
 status: live
-target_repo: contigo-web
+target_repo: raffa-web
 ---
 
 # task-01-renewal-pipeline — Renewal pipeline + insight + action UI
@@ -18,7 +18,7 @@ Implement the renewal threshold strip, priority table, insight card, and actions
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-web/src/routes/renewals/ | renewal UI |
+| workspace/raffa-web/src/routes/renewals/ | renewal UI |
 | inputs/design/prototypes/screens.md | screen 8 (read, cite) |
 | inputs/design/prototypes/day1-demo.html | reference (cite) |
 
@@ -32,7 +32,7 @@ Implement the renewal threshold strip, priority table, insight card, and actions
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | action creates opportunity link to Home | workspace/contigo-web/tests |
+| unit | action creates opportunity link to Home | workspace/raffa-web/tests |
 
 ## Wave-spec entry
 ```yaml

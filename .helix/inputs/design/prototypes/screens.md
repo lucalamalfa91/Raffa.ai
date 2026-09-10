@@ -1,6 +1,6 @@
-# Contigo — Screens (web V1, Day-1 path)
+# Raffa — Screens (web V1, Day-1 path)
 
-Prototype: `Contigo Day-1.dc.html` (Claude Design) · standalone export `Contigo Day-1 Prototype.html`.
+Prototype: `Raffa Day-1.dc.html` (Claude Design) · standalone export `Raffa Day-1 Prototype.html`.
 Spec references: §7.1/7.3 (status, confidence), §8.1–8.4 (portfolio, 360, Ask, evidence), §9.1–9.3 (renewals), §10.1 (KPIs), §11.1–11.3 (quote), §12.1–12.2 (negotiation), **§16** (release mapping R0–R4), **§20** (Definition of V1 done).
 
 Tweaks available in the prototype: `role` (admin | procurement), `dataState` (populated | empty | loading | error), `uploadOutcome` (needs_review | completed | failed).
@@ -32,7 +32,7 @@ Header: supplier kicker, contract name, type/status tags, doc count; 6-cell fact
 Header + "Mark as validated" (disabled until all < 80% fields decided). Progress line + legend. 4-column list: Field (critical marker) · Extracted value + source · Confidence tag · Decision (Accept / Correct or result). Right pane: evidence page with highlighted passage, correction form, model/prompt version.
 States: pending · accepted · corrected (value shown) · auto-accepted · blocked CTA.
 
-## 7. Ask Contigo — R1 (§8.3 routing, §8.4 evidence)
+## 7. Ask Raffa — R1 (§8.3 routing, §8.4 evidence)
 Global Ask bar on every screen (contextual suggestions; Enter → this screen; ⌘K). Chat with route line ("Structured query…", "Clause retrieval…"), numbered citation chips (doc · page · §) opening Contract 360 › Clauses. **Abstain** block: "Cannot determine reliably" + reason. Right rail: suggested questions.
 States: empty · thinking (authorise → intent → retrieve) · answered · abstain · unknown question fallback.
 

@@ -1,6 +1,6 @@
-# contigo-mobile
+# raffa-mobile
 
-React Native (Expo) + TypeScript app for Contigo (ADR-013). This is a
+React Native (Expo) + TypeScript app for Raffa (ADR-013). This is a
 **non-gating** lane: V1 is web-first, and neither this app nor a store
 release is required for any R0–R4 wave or the Day-1 `demo` (see
 `.github/workflows/mobile.yml`, which runs with `continue-on-error: true`
@@ -10,7 +10,7 @@ at both the job and step level so a failure here can never block `dev`/
 ## Status
 
 - Task T01 (scaffold): Expo + TypeScript app, native redirect scheme
-  (`contigo://callback`, AC-1) and per-environment config plumbing
+  (`raffa://callback`, AC-1) and per-environment config plumbing
   (`src/config/`).
 - Task T02 (this task): wires the OIDC Authorization Code + PKCE flow (AC-2)
   against Entra ID (`src/auth/`), using `getNativeRedirectUri()` /
@@ -52,7 +52,7 @@ build-time env vars — see `.env.example` and `src/config/env.ts`:
 - `EXPO_PUBLIC_OIDC_AUTHORITY` — Entra ID issuer for this environment's tenant.
 - `EXPO_PUBLIC_OIDC_CLIENT_ID` — the public-client application ID (no secret).
 - `EXPO_PUBLIC_OIDC_API_SCOPES` — comma-separated API scopes requested at
-  sign-in (ADR-010 placeholder `Contigo.Read`/`Contigo.Write`-shaped values,
+  sign-in (ADR-010 placeholder `Raffa.Read`/`Raffa.Write`-shaped values,
   pending the API surface being fixed — `reports/open-questions.md`
   OQ-client-007). The standard `openid`/`profile`/`offline_access` scopes are
   added automatically (`src/auth/oidcConfig.ts`) and should not be listed here.
@@ -63,9 +63,9 @@ app at the wrong environment.
 
 ## Native redirect scheme
 
-`app.json`'s `expo.scheme` is `contigo`, which is also Entra ID's registered
+`app.json`'s `expo.scheme` is `raffa`, which is also Entra ID's registered
 native reply URL for the public client (ADR-010). `src/config/redirectUri.ts`
-builds this as `contigo://callback` (`getNativeRedirectUri()`), read from
+builds this as `raffa://callback` (`getNativeRedirectUri()`), read from
 `app.json` rather than duplicated as a literal.
 
 ## OIDC Authorization Code + PKCE (`src/auth/`)

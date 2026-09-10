@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body>
+<x-dc>
+<helmet>
+</helmet>
+<div style="width:100vw;height:100vh;display:flex;flex-direction:column;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body);font-size:14px;line-height:1.5">
+<!-- Prototype chrome: pilot acts -->
+<div style="flex:none;height:40px;background:var(--color-neutral-900);color:var(--color-neutral-300);display:flex;align-items:center;gap:20px;padding:0 16px;font-size:11px;border-bottom:2px solid var(--color-accent)">
+  <span style="font-family:var(--font-heading);font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--color-accent-400)">Pilot demo</span>
+  <div style="display:flex;gap:18px;flex:1;overflow:hidden">
+    <sc-for list="{{ acts }}" as="a" hint-placeholder-count="6">
+      <span style="display:flex;align-items:center;gap:6px;white-space:nowrap;color:{{ a.fg }}"><span style="width:8px;height:8px;background:{{ a.dot }};display:inline-block"></span>{{ a.label }}</span>
+    </sc-for>
+  </div>
+  <button sc-camel-on-click="{{ resetDemo }}" style="height:24px;border:1px solid var(--color-neutral-600);background:transparent;color:var(--color-neutral-300);font-size:11px;padding:0 10px;cursor:pointer">Reset demo</button>
+</div>
+<!-- SIGN-IN / WORKSPACE -->
+<sc-if value="{{ isSignin }}" hint-placeholder-val="{{ true }}">
+<div style="flex:1;display:grid;grid-template-columns:1fr 1fr;min-height:0">
+  <div style="background:var(--color-accent-100);color:var(--color-text);padding:clamp(24px,4vw,48px);display:flex;flex-direction:column;justify-content:space-between;gap:24px;border-right:2px solid var(--color-divider);overflow:auto;min-width:0;background-image:linear-gradient(var(--color-accent-200) 1px,transparent 1px),linear-gradient(90deg,var(--color-accent-200) 1px,transparent 1px);background-size:48px 48px">
+    <div style="font-family:var(--font-heading);font-weight:800;font-size:22px;display:flex;align-items:center;gap:10px"><span style="width:14px;height:14px;background:var(--color-accent);display:inline-block"></span>Raffa</div>
+    <div style="display:flex;flex-direction:column;gap:40px">
+      <div style="font-family:var(--font-heading);font-weight:800;font-size:clamp(40px,5vw,76px);line-height:.98;letter-spacing:-.03em;display:flex;flex-direction:column"><span>Your contracts.</span><span style="color:var(--color-accent)">Your savings.</span><span>Nothing missed.</span></div>
+      <div style="display:flex;flex-direction:column;max-width:440px">
+        <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-accent);padding-bottom:8px;border-bottom:2px solid var(--color-text)">One platform, four answers</div>
+        <div style="display:grid;grid-template-columns:1fr auto;align-items:baseline;gap:12px;padding:10px 0;border-bottom:1px solid var(--color-divider)"><span style="font-family:var(--font-heading);font-weight:800;font-size:15px">Contract Intelligence</span><span style="font-size:12px;color:var(--color-neutral-600)">What you bought</span></div>
+        <div style="display:grid;grid-template-columns:1fr auto;align-items:baseline;gap:12px;padding:10px 0;border-bottom:1px solid var(--color-divider)"><span style="font-family:var(--font-heading);font-weight:800;font-size:15px">Renewal Intelligence</span><span style="font-size:12px;color:var(--color-neutral-600)">When to act</span></div>
+        <div style="display:grid;grid-template-columns:1fr auto;align-items:baseline;gap:12px;padding:10px 0;border-bottom:1px solid var(--color-divider)"><span style="font-family:var(--font-heading);font-weight:800;font-size:15px">Savings Intelligence</span><span style="font-size:12px;color:var(--color-neutral-600)">Where to save</span></div>
+        <div style="display:grid;grid-template-columns:1fr auto;align-items:baseline;gap:12px;padding:10px 0"><span style="font-family:var(--font-heading);font-weight:800;font-size:15px">Quote Check</span><span style="font-size:12px;color:var(--color-neutral-600)">Before you buy</span></div>
+      </div>
+    </div>
+    <div style="font-size:12px;color:var(--color-neutral-600)">Contract intelligence for procurement teams.</div>
+  </div>
+  <div style="padding:48px;display:flex;flex-direction:column;justify-content:center;max-width:520px;overflow:auto">
+    <sc-if value="{{ sign0 }}" hint-placeholder-val="{{ true }}">
+      <h2 style="margin:0 0 8px">Sign in</h2>
+      <p class="text-muted" style="margin:0 0 24px">Your organisation account. Raffa never stores a password.</p>
+      <button class="btn btn-primary btn-block" sc-camel-on-click="{{ signIn }}" style="justify-content:flex-start;padding:12px 14px;margin:0">
+        <svg width="16" height="16" sc-camel-view-box="0 0 16 16"><rect x="1" y="1" width="6.5" height="6.5" fill="currentColor"></rect><rect x="8.5" y="1" width="6.5" height="6.5" fill="currentColor" opacity=".7"></rect><rect x="1" y="8.5" width="6.5" height="6.5" fill="currentColor" opacity=".7"></rect><rect x="8.5" y="8.5" width="6.5" height="6.5" fill="currentColor" opacity=".45"></rect></svg>
+        Continue with Microsoft Entra ID
+      </button>
+    </sc-if>
+    <sc-if value="{{ sign1 }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;gap:12px"><div style="width:18px;height:18px;border:2px solid var(--color-neutral-300);border-top-color:var(--color-accent);animation:cg-spin .8s linear infinite"></div><span>Redirecting to login.microsoftonline.com …</span></div>
+    </sc-if>
+    <sc-if value="{{ signCreate }}" hint-placeholder-val="{{ false }}">
+      <h6 style="color:var(--color-accent);margin-bottom:6px">Signed in as luca.lamalfa@helvetiafoods.ch</h6>
+      <h2 style="margin:0 0 6px">Create your workspace</h2>
+      <p class="text-muted" style="margin:0 0 22px">A workspace is your tenant. Contracts uploaded here never leave it.</p>
+      <div class="field" style="margin-bottom:14px"><label>Company</label><input class="input" value="{{ wsName }}" sc-camel-on-change="{{ setWsName }}"></div>
+      <div class="field" style="margin-bottom:14px"><label>Industry</label><sc-raw-select class="input"><option>Food &amp; beverage</option><option>Manufacturing</option><option>Financial services</option><option>Software</option><option>Other</option></sc-raw-select></div>
+      <div class="field" style="margin-bottom:22px"><label>Country</label><sc-raw-select class="input"><option>Switzerland</option><option>Italy</option><option>Germany</option><option>Austria</option></sc-raw-select></div>
+      <button class="btn btn-primary btn-block" sc-camel-on-click="{{ enterWs }}" style="margin:0">Create workspace</button>
+    </sc-if>
+    <sc-if value="{{ signPick }}" hint-placeholder-val="{{ false }}">
+      <h6 style="color:var(--color-accent);margin-bottom:6px">Signed in as luca.lamalfa@helvetiafoods.ch</h6>
+      <h2 style="margin:0 0 20px">Your workspace</h2>
+      <button class="cg-row" sc-camel-on-click="{{ enterWs }}" style="display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;text-align:left;background:transparent;border:0;border-top:2px solid var(--color-divider);border-bottom:2px solid var(--color-divider);padding:16px 8px;cursor:pointer;color:inherit;font:inherit">
+        <div><div style="font-family:var(--font-heading);font-weight:800;font-size:16px">{{ wsName }}</div><div style="font-size:12px;color:var(--color-neutral-600)">{{ seededCount }} validated contracts · CHF · eu-west</div></div>
+        <span class="tag tag-accent">{{ roleLabel }}</span>
+      </button>
+    </sc-if>
+  </div>
+</div>
+</sc-if>
+<!-- APP SHELL -->
+<sc-if value="{{ isApp }}" hint-placeholder-val="{{ false }}">
+<div style="flex:1;display:grid;grid-template-columns:232px 1fr;min-height:0">
+  <nav style="border-right:2px solid var(--color-divider);display:flex;flex-direction:column;background:var(--color-bg);min-height:0">
+    <div style="padding:20px 16px 14px;border-bottom:2px solid var(--color-divider)">
+      <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-600)">Workspace</div>
+      <div style="font-family:var(--font-heading);font-weight:800;font-size:15px;line-height:1.2;margin-top:4px">{{ wsName }}</div>
+    </div>
+    <div style="display:flex;flex-direction:column;padding:10px 0 6px">
+      <sc-for list="{{ primaryNav }}" as="n" hint-placeholder-count="2">
+        <button class="cg-nav" sc-camel-on-click="{{ n.go }}" style="display:flex;align-items:center;gap:10px;text-align:left;border:0;background:transparent;padding:11px 16px 11px 13px;font-family:var(--font-heading);font-weight:800;font-size:15px;cursor:pointer;color:{{ n.fg }};border-left:3px solid {{ n.bar }}">{{ n.label }}<span style="margin-left:auto;font-size:11px;font-family:var(--font-body);font-weight:600;color:{{ n.badgeFg }}">{{ n.badge }}</span></button>
+        <sc-if value="{{ n.isAsk }}" hint-placeholder-val="{{ false }}">
+          <sc-for list="{{ convs }}" as="cv" hint-placeholder-count="0">
+            <button class="cg-nav" sc-camel-on-click="{{ cv.resume }}" style="display:flex;align-items:center;gap:8px;text-align:left;border:0;background:transparent;padding:6px 16px 6px 28px;font-size:12px;cursor:pointer;color:{{ cv.fg }};font-weight:{{ cv.w }};min-width:0"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ cv.title }}</span><span style="margin-left:auto;font-size:11px;color:var(--color-neutral-600);flex:none">{{ cv.meta }}</span></button>
+          </sc-for>
+          <sc-if value="{{ showNewChat }}" hint-placeholder-val="{{ false }}"><button class="cg-nav" sc-camel-on-click="{{ newChat }}" style="text-align:left;border:0;background:transparent;padding:6px 16px 8px 28px;font-size:12px;cursor:pointer;color:var(--color-accent-700);font-weight:600">+ New chat</button></sc-if>
+        </sc-if>
+      </sc-for>
+    </div>
+    <div style="padding:14px 16px 6px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-600);border-top:1px solid var(--color-divider);display:flex;align-items:center;gap:8px">From your contracts <span style="width:6px;height:6px;background:{{ kbDot }};display:inline-block"></span></div>
+    <div style="display:flex;flex-direction:column">
+      <sc-for list="{{ kbNav }}" as="n" hint-placeholder-count="4">
+        <button class="cg-nav" sc-camel-on-click="{{ n.go }}" style="display:flex;align-items:center;gap:10px;text-align:left;border:0;background:transparent;padding:8px 16px 8px 13px;font-size:13px;cursor:pointer;color:{{ n.fg }};font-weight:{{ n.w }};border-left:3px solid {{ n.bar }}">{{ n.label }}<span style="margin-left:auto;font-size:11px;color:var(--color-neutral-600)">{{ n.badge }}</span></button>
+      </sc-for>
+    </div>
+    <div style="margin-top:auto;border-top:2px solid var(--color-divider);padding:12px 16px;display:flex;flex-direction:column;gap:4px">
+      <sc-if value="{{ isAdmin }}" hint-placeholder-val="{{ true }}">
+        <button class="cg-nav" sc-camel-on-click="{{ goWorkspace }}" style="text-align:left;border:0;background:transparent;padding:6px 0;font-size:13px;cursor:pointer;color:inherit">Workspace &amp; members</button>
+      </sc-if>
+      <div style="font-size:12px;margin-top:6px">Luca Lamalfa</div>
+      <div style="font-size:11px;color:var(--color-neutral-600)">{{ roleLabel }} · sign out</div>
+    </div>
+  </nav>
+  <main style="min-width:0;overflow:auto;display:flex;flex-direction:column;min-height:0">
+  <!-- Ask bar — one pattern on every screen -->
+  <div style="padding:22px 32px 16px;border-bottom:2px solid var(--color-divider);background:var(--color-surface)">
+    <div style="display:flex;align-items:center;gap:14px">
+      <span style="width:14px;height:14px;background:{{ askBarDot }};display:inline-block;flex:none"></span>
+      <input class="input" placeholder="{{ askPlaceholder }}" value="{{ q }}" sc-camel-on-change="{{ setQ }}" sc-camel-on-key-down="{{ qKey }}" disabled="{{ kbOff }}" style="flex:1;min-width:0;background:transparent;border:0;border-bottom:2px solid var(--color-text);font-size:18px;padding:8px 0;min-height:44px;font-family:var(--font-heading);font-weight:600">
+    </div>
+    <div style="display:flex;gap:6px 18px;flex-wrap:wrap;align-items:center;padding:10px 0 0 28px;min-height:22px">
+      <sc-for list="{{ askChips }}" as="c" hint-placeholder-count="2"><button sc-camel-on-click="{{ c.ask }}" style="border:0;background:transparent;padding:0;font-size:12px;cursor:pointer;color:var(--color-neutral-600);text-align:left" style-hover="color:var(--color-accent)">{{ c.text }} →</button></sc-for>
+    </div>
+  </div>
+  <!-- DOCUMENTS -->
+  <sc-if value="{{ scr.documents }}" hint-placeholder-val="{{ true }}">
+    <sc-if value="{{ docsEmpty }}" hint-placeholder-val="{{ true }}">
+      <div style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:48px clamp(24px,5vw,72px);max-width:1040px">
+        <h6 style="color:var(--color-accent);margin-bottom:10px">Start here</h6>
+        <div style="font-family:var(--font-heading);font-weight:800;font-size:clamp(30px,3.4vw,46px);line-height:1.05;letter-spacing:-.02em;max-width:620px;text-wrap:pretty;margin-bottom:28px">First your contracts. Then your questions.</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);border-top:2px solid var(--color-divider);border-bottom:2px solid var(--color-divider);margin-bottom:28px">
+          <div style="padding:16px 16px 16px 0;border-right:1px solid var(--color-divider)"><div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-accent-700)">01 · Upload</div><div style="font-family:var(--font-heading);font-weight:800;font-size:17px;margin:4px 0">Drop your contracts</div><div style="font-size:13px;color:var(--color-neutral-600)">MSA, order forms, SOWs, amendments. PDF, DOCX, XLSX.</div></div>
+          <div style="padding:16px;border-right:1px solid var(--color-divider)"><div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-600)">02 · Process</div><div style="font-family:var(--font-heading);font-weight:800;font-size:17px;margin:4px 0">Raffa extracts the facts</div><div style="font-size:13px;color:var(--color-neutral-600)">Every fact has a source and a confidence. You sign off the weak ones.</div></div>
+          <div style="padding:16px 0 16px 16px"><div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-600)">03 · Ask</div><div style="font-family:var(--font-heading);font-weight:800;font-size:17px;margin:4px 0">Ask Raffa</div><div style="font-size:13px;color:var(--color-neutral-600)">Answers only from validated facts, with the page that proves them.</div></div>
+        </div>
+        <div sc-camel-on-drag-over="{{ dragOver }}" sc-camel-on-drag-leave="{{ dragLeave }}" sc-camel-on-drop="{{ dropFiles }}" style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;border:2px dashed {{ dropBorder }};background:{{ dropBg }};padding:22px 24px">
+          <input type="file" multiple="" accept=".pdf,.docx,.xlsx" ref="{{ fileRef }}" sc-camel-on-change="{{ filesChosen }}" style="display:none">
+          <button class="btn btn-primary" sc-camel-on-click="{{ browse }}" style="font-size:16px;padding:12px 18px">Upload contracts</button>
+          <span style="font-size:14px">or drop files anywhere in this box</span>
+          <button class="btn btn-ghost" sc-camel-on-click="{{ useSample }}" style="margin-left:auto;font-size:12px">Use the sample MSA</button>
+        </div>
+      </div>
+    </sc-if>
+    <sc-if value="{{ docsList }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:28px 32px 16px;display:flex;align-items:flex-end;justify-content:space-between;gap:24px;border-bottom:2px solid var(--color-divider)">
+        <div><h2 style="margin:0">Documents</h2><div style="font-size:13px;color:var(--color-neutral-600);margin-top:4px">{{ kbSummary }}</div></div>
+      </div>
+      <div sc-camel-on-drag-over="{{ dragOver }}" sc-camel-on-drag-leave="{{ dragLeave }}" sc-camel-on-drop="{{ dropFiles }}" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin:20px 32px 0;border:2px dashed {{ dropBorder }};background:{{ dropBg }};padding:14px 18px">
+        <input type="file" multiple="" accept=".pdf,.docx,.xlsx" ref="{{ fileRef }}" sc-camel-on-change="{{ filesChosen }}" style="display:none">
+        <button class="btn btn-primary" sc-camel-on-click="{{ browse }}">Upload contracts</button>
+        <span style="font-size:13px;color:var(--color-neutral-700)">or drop PDF · DOCX · XLSX here — you can leave while they process</span>
+        <button class="btn btn-ghost" sc-camel-on-click="{{ useSample }}" style="margin-left:auto;font-size:12px">Sample MSA</button>
+      </div>
+      <sc-if value="{{ justValidated }}" hint-placeholder-val="{{ false }}">
+        <div style="margin:16px 32px 0;display:flex;align-items:center;gap:14px;flex-wrap:wrap;border-left:2px solid var(--color-accent);background:var(--color-accent-100);padding:12px 16px">
+          <span style="font-weight:600">{{ justValidatedName }} is now askable.</span>
+          <button sc-camel-on-click="{{ askValidated }}" style="border:1px solid var(--color-divider);background:var(--color-bg);padding:5px 10px;font-size:12px;cursor:pointer;color:inherit">Ask: when does it expire?</button>
+          <sc-if value="{{ isAdmin }}" hint-placeholder-val="{{ true }}"><button class="btn btn-ghost" sc-camel-on-click="{{ goWorkspace }}" style="font-size:12px;margin-left:auto">Invite the team →</button></sc-if>
+        </div>
+      </sc-if>
+      <div style="padding:20px 32px 32px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:12px">
+          <div style="display:flex;border:2px solid var(--color-divider)">
+            <button sc-camel-on-click="{{ filterAttn }}" style="border:0;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;background:{{ attnBg }};color:{{ attnFg }}">Needs your attention · {{ attnCount }}</button>
+            <button sc-camel-on-click="{{ filterAll }}" style="border:0;border-left:2px solid var(--color-divider);padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;background:{{ allBg }};color:{{ allFg }}">All documents · {{ allCount }}</button>
+          </div>
+          <span style="font-size:12px;color:var(--color-neutral-600)">{{ filterHint }}</span>
+        </div>
+        <sc-if value="{{ attnEmpty }}" hint-placeholder-val="{{ false }}">
+          <div style="border-top:2px solid var(--color-divider);padding:28px 0 8px;max-width:520px"><h3 style="margin:0 0 6px">Nothing needs you right now.</h3><p class="text-muted" style="margin:0;font-size:13px">Every uploaded document is validated and askable. Completed documents are tucked away — switch to <strong>All documents</strong> to browse them.</p></div>
+        </sc-if>
+        <sc-if value="{{ rowsVisible }}" hint-placeholder-val="{{ true }}">
+        <div style="display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) 150px 170px;gap:12px;padding:8px 12px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-600);border-bottom:2px solid var(--color-divider)"><span>Document</span><span>Supplier · type</span><span>Status</span><span style="text-align:right">Next step</span></div>
+        </sc-if>
+        <sc-for list="{{ docRows }}" as="d" hint-placeholder-count="3">
+          <div class="cg-row" sc-camel-on-click="{{ d.open }}" style="display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) 150px 170px;gap:12px;align-items:center;padding:13px 12px 13px 9px;border-bottom:1px solid var(--color-divider);border-left:3px solid {{ d.bar }};background:{{ d.bg }}">
+            <div style="min-width:0"><div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ d.file }}</div><div style="font-size:11px;color:var(--color-neutral-600)">{{ d.meta }}</div></div>
+            <div style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ d.supplier }} <span style="color:var(--color-neutral-600)">· {{ d.type }}</span></div>
+            <div><span class="tag {{ d.tag }}" style="padding:2px 8px;font-size:10px">{{ d.status }}</span><sc-if value="{{ d.processing }}" hint-placeholder-val="{{ false }}"><div style="height:4px;background:var(--color-neutral-200);margin-top:6px"><div style="height:4px;background:var(--color-accent);width:{{ d.pct }}"></div></div></sc-if></div>
+            <div style="display:flex;justify-content:flex-end"><sc-if value="{{ d.hasAction }}" hint-placeholder-val="{{ true }}"><button class="btn {{ d.actionCls }}" sc-camel-on-click="{{ d.action }}" style="font-size:12px;padding:5px 10px;white-space:nowrap">{{ d.actionLabel }}</button></sc-if><sc-if value="{{ d.processing }}" hint-placeholder-val="{{ false }}"><span style="font-size:11px;color:var(--color-neutral-600);text-align:right">{{ d.stageLabel }}</span></sc-if></div>
+          </div>
+        </sc-for>
+        <p style="font-size:12px;color:var(--color-neutral-600);margin-top:14px">uploaded → processing → needs review → completed. Only <strong>completed</strong> documents feed Ask Raffa, Portfolio and Renewals.</p>
+      </div>
+    </sc-if>
+    <!-- REVIEW (state of Documents) -->
+    <sc-if value="{{ docsReview }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:22px 32px 14px;border-bottom:2px solid var(--color-divider)">
+        <button class="btn btn-ghost" sc-camel-on-click="{{ backToDocs }}" style="padding:0;font-size:12px;margin-bottom:8px">← Documents</button>
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px">
+          <div style="min-width:0"><h6 style="color:var(--color-accent);margin-bottom:4px">Review · {{ rdoc.file }}</h6><h2 style="margin:0">{{ reviewTitle }}</h2><div style="font-size:13px;color:var(--color-neutral-600);margin-top:4px">{{ reviewSub }}</div></div>
+          <button class="btn btn-primary" sc-camel-on-click="{{ finishReview }}" disabled="{{ reviewBlocked }}" style="flex:none;white-space:nowrap">Mark as validated</button>
+        </div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;flex:1;min-height:0;align-content:flex-start">
+        <div style="padding:0 32px 32px;flex:1 1 520px;min-width:0">
+          <sc-if value="{{ confTip }}" hint-placeholder-val="{{ true }}">
+            <div style="margin:16px 0 4px;display:grid;grid-template-columns:1fr auto;gap:16px;align-items:start;border:2px solid var(--color-divider);padding:14px 16px;background:var(--color-surface)">
+              <div style="font-size:13px"><strong>How confidence works.</strong> <span class="tag tag-neutral" style="padding:1px 6px;font-size:10px">&gt;95%</span> accepted automatically · <span class="tag tag-accent" style="padding:1px 6px;font-size:10px">80–95%</span> flagged, usable · <span class="tag tag-outline" style="padding:1px 6px;font-size:10px">&lt;80%</span> you decide. Below 80% Raffa will not use the fact for renewals or Ask.</div>
+              <button class="btn btn-ghost" sc-camel-on-click="{{ dismissTip }}" style="font-size:12px;padding:0 4px">Got it</button>
+            </div>
+          </sc-if>
+          <div style="display:grid;grid-template-columns:minmax(120px,1fr) minmax(140px,1.3fr) auto auto;gap:12px;padding:14px 12px 8px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-600);border-bottom:2px solid var(--color-divider)"><span>Field</span><span>Extracted value</span><span>Confidence</span><span style="text-align:right">Decision</span></div>
+          <sc-for list="{{ reviewFields }}" as="f" hint-placeholder-count="2">
+            <div class="cg-row" sc-camel-on-click="{{ f.select }}" style="display:grid;grid-template-columns:minmax(120px,1fr) minmax(140px,1.3fr) auto auto;gap:12px;align-items:center;padding:12px 12px 12px 9px;border-bottom:1px solid var(--color-divider);background:{{ f.bg }};border-left:3px solid {{ f.bar }}">
+              <div style="min-width:0"><div style="font-weight:600;font-size:13px;line-height:1.3">{{ f.label }}</div><div style="font-size:11px;color:var(--color-accent-700)">{{ f.critical }}</div></div>
+              <div style="min-width:0"><div style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ f.value }}</div><div style="font-size:11px;color:var(--color-neutral-600)">{{ f.src }}</div></div>
+              <span class="tag {{ f.tag }}" style="justify-self:start;padding:2px 8px;font-size:10px;white-space:nowrap">{{ f.confLabel }}</span>
+              <div style="display:flex;gap:4px;justify-content:flex-end;white-space:nowrap;min-width:120px"><sc-if value="{{ f.pending }}" hint-placeholder-val="{{ true }}"><button class="btn btn-secondary" sc-camel-on-click="{{ f.accept }}" style="font-size:12px;padding:4px 10px">Accept</button><button class="btn btn-ghost" sc-camel-on-click="{{ f.correct }}" style="font-size:12px;padding:4px 6px">Correct</button></sc-if><sc-if value="{{ f.done }}" hint-placeholder-val="{{ false }}"><span style="font-size:11px;color:var(--color-neutral-600);text-align:right;line-height:1.3;white-space:normal;max-width:120px">{{ f.doneLabel }}</span></sc-if></div>
+            </div>
+          </sc-for>
+          <button class="btn btn-ghost" sc-camel-on-click="{{ toggleAllFields }}" style="font-size:12px;margin-top:12px;padding:0 4px">{{ allFieldsLabel }}</button>
+        </div>
+        <div style="padding:16px 24px;background:var(--color-surface);flex:1 1 300px;max-width:400px;border-left:2px solid var(--color-divider)">
+          <h6 style="margin-bottom:8px">Evidence · {{ sel.src }}</h6>
+          <div style="background:#fff;border:1px solid var(--color-divider);padding:20px;font-family:Georgia,serif;font-size:12.5px;line-height:1.6;color:#222;min-height:220px">
+            <div style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#888;margin-bottom:12px">{{ rdoc.file }} · page {{ sel.page }}</div>
+            <p style="margin:0 0 10px">{{ sel.before }}<mark style="background:var(--color-accent-200);color:inherit;padding:1px 2px">{{ sel.quote }}</mark>{{ sel.after }}</p>
+          </div>
+          <sc-if value="{{ correcting }}" hint-placeholder-val="{{ false }}">
+            <div style="margin-top:16px;border-top:2px solid var(--color-divider);padding-top:12px">
+              <div class="field"><label>Corrected value for “{{ sel.label }}”</label><input class="input" value="{{ correctVal }}" sc-camel-on-change="{{ setCorrectVal }}"></div>
+              <div style="display:flex;gap:8px;margin-top:10px"><button class="btn btn-primary" sc-camel-on-click="{{ saveCorrection }}">Save</button><button class="btn btn-secondary" sc-camel-on-click="{{ cancelCorrection }}">Cancel</button></div>
+            </div>
+          </sc-if>
+          <div style="margin-top:16px;font-size:12px;color:var(--color-neutral-600)">Original extraction and every correction are kept as versions.</div>
+        </div>
+      </div>
+    </sc-if>
+  </sc-if>
+  <!-- ASK RAFFA -->
+  <sc-if value="{{ scr.ask }}" hint-placeholder-val="{{ false }}">
+    <sc-if value="{{ kbOff }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:48px clamp(24px,5vw,72px);max-width:760px">
+        <h6 style="color:var(--color-accent);margin-bottom:10px">Ask Raffa</h6>
+        <div style="font-family:var(--font-heading);font-weight:800;font-size:clamp(28px,3vw,40px);line-height:1.05;letter-spacing:-.02em;margin-bottom:14px;text-wrap:pretty">Ask needs at least one validated contract.</div>
+        <p class="text-muted" style="margin:0 0 22px;max-width:52ch">{{ askOffReason }}</p>
+        <div style="display:flex;gap:8px"><button class="btn btn-primary" sc-camel-on-click="{{ goDocuments }}">{{ askOffCta }}</button></div>
+      </div>
+    </sc-if>
+    <sc-if value="{{ kbReady }}" hint-placeholder-val="{{ true }}">
+      <div style="flex:1;overflow:auto;padding:20px 32px 24px;display:flex;flex-direction:column;gap:22px">
+        <sc-if value="{{ chatEmpty }}" hint-placeholder-val="{{ true }}">
+          <div style="max-width:56ch"><div style="font-family:var(--font-heading);font-weight:800;font-size:22px;letter-spacing:-.01em;margin-bottom:8px">{{ askHello }}</div><p class="text-muted" style="margin:0;font-size:13px">{{ askScope }}. Structured questions run on validated fields, legal questions retrieve clauses — every answer cites its page or says it cannot answer.</p></div>
+        </sc-if>
+        <sc-for list="{{ gchat }}" as="m" hint-placeholder-count="0">
+          <div style="display:grid;grid-template-columns:72px 1fr;gap:16px;max-width:820px">
+            <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:{{ m.fg }};padding-top:3px">{{ m.who }}</div>
+            <div>
+              <div style="font-size:{{ m.size }};font-weight:{{ m.w }};white-space:pre-line;font-family:{{ m.font }}">{{ m.text }}</div>
+              <sc-if value="{{ m.abstain }}" hint-placeholder-val="{{ false }}"><div style="margin-top:8px;border-left:2px solid var(--color-accent);padding:8px 12px;font-size:13px;background:var(--color-accent-100)"><strong>I don't have data I trust enough to answer.</strong> {{ m.reason }}</div></sc-if>
+              <sc-if value="{{ m.hasCites }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px"><sc-for list="{{ m.cites }}" as="c" hint-placeholder-count="0"><button sc-camel-on-click="{{ c.open }}" style="border:1px solid var(--color-divider);background:transparent;padding:4px 8px;font-size:11px;cursor:pointer;color:inherit;text-align:left;white-space:nowrap"><span style="color:var(--color-accent);font-weight:600">[{{ c.n }}]</span> {{ c.doc }} · p.{{ c.page }} §{{ c.sec }}</button></sc-for></div></sc-if>
+              <sc-if value="{{ m.hasActions }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px"><sc-for list="{{ m.actions }}" as="a" hint-placeholder-count="0"><button class="btn btn-secondary" sc-camel-on-click="{{ a.go }}" style="font-size:12px;padding:6px 12px">{{ a.label }}</button></sc-for></div></sc-if>
+              <sc-if value="{{ m.route }}" hint-placeholder-val="{{ false }}"><div style="font-size:11px;color:var(--color-neutral-600);margin-top:8px">{{ m.route }}</div></sc-if>
+            </div>
+          </div>
+        </sc-for>
+        <sc-if value="{{ asking }}" hint-placeholder-val="{{ false }}"><div style="display:grid;grid-template-columns:72px 1fr;gap:16px"><div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-accent);padding-top:3px">Raffa</div><div style="display:flex;gap:10px;align-items:center;font-size:13px;color:var(--color-neutral-600)"><div style="width:14px;height:14px;border:2px solid var(--color-neutral-300);border-top-color:var(--color-accent);animation:cg-spin .8s linear infinite"></div>Authorising scope → detecting intent → retrieving evidence</div></div></sc-if>
+      </div>
+    </sc-if>
+  </sc-if>
+  <!-- CONTRACT 360 — three answers, then proof, then details -->
+  <sc-if value="{{ scr.c360 }}" hint-placeholder-val="{{ false }}">
+    <div style="padding:22px 32px 0">
+      <button class="btn btn-ghost" sc-camel-on-click="{{ backFrom360 }}" style="padding:0;font-size:12px;margin-bottom:8px;white-space:nowrap">← {{ backLabel }}</button>
+      <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap">
+        <div><h6 style="color:var(--color-accent);margin-bottom:4px">{{ cur.supplier }}</h6><h2 style="margin:0">{{ cur.name }}</h2></div>
+        <div style="font-size:12px;color:var(--color-neutral-600);white-space:nowrap">{{ cur.type }} · {{ cur.spendFmt }} / year · {{ cur.docCount }} documents · {{ cur.status }}</div>
+      </div>
+    </div>
+    <div style="margin:22px 0 0 32px;display:flex;flex-wrap:wrap;border-top:2px solid var(--color-text);border-bottom:2px solid var(--color-text)">
+      <div style="flex:1 1 240px;min-width:0;padding:20px 24px 20px 0;border-right:1px solid var(--color-divider)">
+        <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-600)">Where you can save</div>
+        <div style="font-family:var(--font-heading);font-weight:800;font-size:clamp(26px,2.4vw,34px);line-height:1.05;letter-spacing:-.02em;margin:8px 0 6px;white-space:nowrap">{{ cur.saving }}</div>
+        <div style="font-size:13px;color:var(--color-neutral-700);text-wrap:pretty">{{ cur.lever }}</div>
+      </div>
+      <div style="flex:1 1 240px;min-width:0;padding:20px 24px;border-right:1px solid var(--color-divider)">
+        <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-600)">When you must move</div>
+        <div style="font-family:var(--font-heading);font-weight:800;font-size:clamp(26px,2.4vw,34px);line-height:1.05;letter-spacing:-.02em;margin:8px 0 6px;white-space:nowrap;color:{{ cur.cancelFg }}">{{ cur.cancel }}</div>
+        <div style="font-size:13px;color:var(--color-neutral-700)">in <strong>{{ cur.cancelDays }} days</strong> — last day to give notice. Term ends {{ cur.end }}{{ cur.autoText }}.</div>
+      </div>
+      <div style="flex:1 1 320px;min-width:0;padding:20px 32px 20px 24px;background:var(--color-accent-100)">
+        <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-accent-700)">What to do</div>
+        <div style="font-family:var(--font-heading);font-weight:800;font-size:clamp(22px,2vw,28px);line-height:1.1;letter-spacing:-.02em;margin:8px 0 6px;text-wrap:pretty">{{ cur.action }}</div>
+        <div style="font-size:13px;color:var(--color-neutral-700);text-wrap:pretty;margin-bottom:14px">{{ cur.rationale }}</div>
+        <sc-if value="{{ c360Open }}" hint-placeholder-val="{{ true }}"><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" sc-camel-on-click="{{ act360 }}">{{ cur.action }}</button><button class="btn btn-ghost" sc-camel-on-click="{{ assign360 }}" style="font-size:12px">Assign to a colleague</button></div></sc-if>
+        <sc-if value="{{ c360Acted }}" hint-placeholder-val="{{ false }}">
+          <div style="border-top:2px solid var(--color-accent);padding-top:12px">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;font-size:12px"><span><strong>{{ c360Status }}</strong> · owner Luca Lamalfa</span><span style="color:var(--color-neutral-600)">target {{ cur.saving }} · close by {{ cur.cancel }}</span></div>
+            <div style="display:flex;flex-direction:column;margin-top:10px">
+              <sc-for list="{{ steps360 }}" as="st" hint-placeholder-count="4">
+                <button sc-camel-on-click="{{ st.toggle }}" style="display:grid;grid-template-columns:16px 1fr auto;gap:10px;align-items:baseline;text-align:left;border:0;background:transparent;padding:6px 0;border-bottom:1px solid var(--color-accent-200);cursor:pointer;color:inherit;font-size:13px"><span style="width:12px;height:12px;border:2px solid var(--color-text);background:{{ st.box }};display:inline-block;position:relative;top:1px"></span><span style="text-decoration:{{ st.deco }};color:{{ st.fg }}">{{ st.label }}</span><span style="font-size:11px;color:var(--color-neutral-600);white-space:nowrap">{{ st.due }}</span></button>
+              </sc-for>
+            </div>
+            <div style="display:flex;gap:14px;margin-top:12px;flex-wrap:wrap"><button class="btn btn-ghost" sc-camel-on-click="{{ goRenewals360 }}" style="padding:0;font-size:12px">Track it in Renewals →</button><button class="btn btn-ghost" sc-camel-on-click="{{ undo360 }}" style="padding:0;font-size:12px;color:var(--color-neutral-600)">Undo</button></div>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+    <div style="padding:26px 32px 0;max-width:960px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:16px;margin-bottom:6px"><h6 style="margin:0">Why — the clauses behind it</h6><span style="font-size:12px;color:var(--color-neutral-600)">Click a clause to read the original wording</span></div>
+      <sc-for list="{{ clauses }}" as="c" hint-placeholder-count="3">
+        <button class="cg-row" sc-camel-on-click="{{ c.show }}" style="display:grid;grid-template-columns:minmax(120px,.7fr) minmax(0,2fr) auto;gap:16px;align-items:baseline;width:100%;text-align:left;border:0;border-bottom:1px solid var(--color-divider);background:{{ c.bg }};padding:12px 8px 12px 0;cursor:pointer;color:inherit;font-size:13px">
+          <span style="font-weight:600">{{ c.type }}</span>
+          <span style="text-wrap:pretty">{{ c.normalized }}</span>
+          <span style="font-size:11px;color:var(--color-neutral-600);white-space:nowrap">{{ c.src }} · <span class="tag {{ c.riskTag }}" style="padding:1px 6px;font-size:10px">{{ c.risk }}</span></span>
+        </button>
+      </sc-for>
+      <sc-if value="{{ hasHl }}" hint-placeholder-val="{{ false }}"><div style="margin-top:16px;background:#fff;border:1px solid var(--color-divider);padding:20px;font-family:Georgia,serif;font-size:12.5px;line-height:1.6;color:#222;max-width:720px"><div style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#888;margin-bottom:12px">{{ hl.doc }} · page {{ hl.page }} · §{{ hl.sec }}</div><p style="margin:0">{{ hl.before }}<mark style="background:var(--color-accent-200);color:inherit;padding:1px 2px">{{ hl.quote }}</mark>{{ hl.after }}</p></div></sc-if>
+    </div>
+    <div style="padding:28px 32px 40px;max-width:960px">
+      <button class="btn btn-ghost" sc-camel-on-click="{{ toggleDetails }}" style="padding:0 4px;font-size:12px">{{ detailsLabel }}</button>
+      <sc-if value="{{ showDetails }}" hint-placeholder-val="{{ false }}">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:32px;margin-top:16px;border-top:2px solid var(--color-divider);padding-top:18px">
+          <div>
+            <h6 style="margin:0 0 6px">Key terms</h6>
+            <sc-for list="{{ otherRows }}" as="k" hint-placeholder-count="5"><div style="display:grid;grid-template-columns:1fr auto;gap:12px;align-items:baseline;padding:8px 0;border-bottom:1px solid var(--color-divider);font-size:13px"><div><span style="color:var(--color-neutral-600)">{{ k.label }}</span> &nbsp;<strong>{{ k.value }}</strong></div><span style="font-size:11px;color:var(--color-neutral-600);white-space:nowrap">{{ k.src }} · {{ k.conf }}</span></div></sc-for>
+          </div>
+          <div>
+            <h6 style="margin:0 0 6px">Documents</h6>
+            <sc-for list="{{ family }}" as="d" hint-placeholder-count="2"><div style="display:grid;grid-template-columns:1fr auto;gap:12px;align-items:baseline;padding:8px 0;border-bottom:1px solid var(--color-divider);font-size:13px"><div><span style="color:var(--color-neutral-600)">{{ d.type }}</span> &nbsp;{{ d.file }}</div><span class="tag {{ d.tag }}" style="padding:1px 6px;font-size:10px">{{ d.status }}</span></div></sc-for>
+            <h6 style="margin:22px 0 6px">Facts you still need to decide</h6>
+            <sc-for list="{{ attnTerms }}" as="k" hint-placeholder-count="0"><div style="display:grid;grid-template-columns:1fr auto;gap:12px;align-items:baseline;padding:8px 0;border-bottom:1px solid var(--color-divider);font-size:13px"><div><span style="color:var(--color-neutral-600)">{{ k.label }}</span> &nbsp;<strong>{{ k.value }}</strong></div><span class="tag {{ k.tag }}" style="padding:1px 6px;font-size:10px">{{ k.conf }}</span></div></sc-for>
+            <sc-if value="{{ noAttn }}" hint-placeholder-val="{{ true }}"><p class="text-muted" style="font-size:13px;margin:0;padding:8px 0">None — every fact is above 95% or signed off by you.</p></sc-if>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+  </sc-if>
+  <!-- PORTFOLIO -->
+  <sc-if value="{{ scr.portfolio }}" hint-placeholder-val="{{ false }}">
+    <div style="padding:28px 32px 16px;display:flex;align-items:flex-end;justify-content:space-between;gap:24px;border-bottom:2px solid var(--color-divider)">
+      <div><h2 style="margin:0">Portfolio</h2><div style="font-size:13px;color:var(--color-neutral-600);margin-top:4px">{{ pfSummary }}</div></div>
+      <sc-if value="{{ kbReady }}" hint-placeholder-val="{{ true }}"><button class="btn btn-ghost" sc-camel-on-click="{{ toggleCols }}" style="font-size:12px;white-space:nowrap">{{ colsLabel }}</button></sc-if>
+    </div>
+    <sc-if value="{{ kbOff }}" hint-placeholder-val="{{ false }}"><div style="padding:48px 32px;max-width:520px"><h3>Nothing to triage yet</h3><p class="text-muted">The portfolio lights up from validated contracts. Upload one to start.</p><button class="btn btn-primary" sc-camel-on-click="{{ goDocuments }}">Upload a contract</button></div></sc-if>
+    <sc-if value="{{ kbReady }}" hint-placeholder-val="{{ true }}">
+      <div style="padding:20px 32px 32px;overflow-x:auto">
+        <sc-raw-table class="table" style="font-size:13px;font-variant-numeric:tabular-nums;table-layout:fixed;min-width:760px">
+          <sc-raw-thead><sc-raw-tr><sc-raw-th style="width:14%">Supplier</sc-raw-th><sc-raw-th>Contract</sc-raw-th><sc-raw-th style="text-align:right;width:13%">Annual spend</sc-raw-th><sc-raw-th style="width:12%">Ends</sc-raw-th><sc-raw-th style="width:14%">Give notice by</sc-raw-th><sc-if value="{{ moreCols }}" hint-placeholder-val="{{ false }}"><sc-raw-th style="width:10%">Start</sc-raw-th><sc-raw-th style="width:8%">Auto</sc-raw-th><sc-raw-th style="width:8%">Risk</sc-raw-th></sc-if><sc-raw-th style="width:12%">Status</sc-raw-th></sc-raw-tr></sc-raw-thead>
+          <sc-raw-tbody><sc-for list="{{ kbContracts }}" as="c" hint-placeholder-count="3">
+            <sc-raw-tr class="cg-row" sc-camel-on-click="{{ c.open }}" style="background:{{ c.rowBg }}"><sc-raw-td style="font-weight:600;border-left:3px solid {{ c.bar }};padding-left:10px">{{ c.supplier }}</sc-raw-td><sc-raw-td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.name }}</sc-raw-td><sc-raw-td style="text-align:right;font-weight:600">{{ c.spendFmt }}</sc-raw-td><sc-raw-td>{{ c.end }}</sc-raw-td><sc-raw-td style="color:{{ c.cancelFg }};font-weight:{{ c.cancelW }}">{{ c.cancel }} <span style="font-size:11px">· {{ c.cancelDays }} d</span></sc-raw-td><sc-if value="{{ moreCols }}" hint-placeholder-val="{{ false }}"><sc-raw-td style="color:var(--color-neutral-700)">{{ c.start }}</sc-raw-td><sc-raw-td>{{ c.auto }}</sc-raw-td><sc-raw-td>{{ c.risk }}</sc-raw-td></sc-if><sc-raw-td><span class="tag {{ c.statusTag }}" style="padding:2px 8px;font-size:10px">{{ c.status }}</span></sc-raw-td></sc-raw-tr>
+          </sc-for></sc-raw-tbody>
+        </sc-raw-table>
+      </div>
+    </sc-if>
+  </sc-if>
+  <!-- RENEWALS -->
+  <sc-if value="{{ scr.renewals }}" hint-placeholder-val="{{ false }}">
+    <div style="padding:28px 32px 16px;border-bottom:2px solid var(--color-divider)"><h2 style="margin:0">Renewals</h2><div style="font-size:13px;color:var(--color-neutral-600);margin-top:4px">{{ rnSummary }}</div></div>
+    <sc-if value="{{ kbOff }}" hint-placeholder-val="{{ false }}"><div style="padding:48px 32px;max-width:520px"><h3>No renewal dates yet</h3><p class="text-muted">Renewals are computed from validated end dates and notice periods. Upload a contract to start.</p><button class="btn btn-primary" sc-camel-on-click="{{ goDocuments }}">Upload a contract</button></div></sc-if>
+    <sc-if value="{{ kbReady }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-wrap:wrap;flex:1;min-height:0;align-content:flex-start">
+        <div style="padding:0 32px 32px;flex:1 1 480px;min-width:0">
+          <sc-raw-table class="table" style="font-size:13px;font-variant-numeric:tabular-nums;table-layout:fixed"><sc-raw-thead><sc-raw-tr><sc-raw-th style="width:64px">Score</sc-raw-th><sc-raw-th>Supplier · contract</sc-raw-th><sc-raw-th style="text-align:right;width:15%">Renews in</sc-raw-th><sc-raw-th style="text-align:right;width:15%">Notice in</sc-raw-th><sc-raw-th style="width:18%">Status</sc-raw-th></sc-raw-tr></sc-raw-thead>
+          <sc-raw-tbody><sc-for list="{{ renewals }}" as="r" hint-placeholder-count="3"><sc-raw-tr class="cg-row" sc-camel-on-click="{{ r.select }}" style="background:{{ r.bg }}"><sc-raw-td style="border-left:3px solid {{ r.bar }};padding-left:10px"><span style="font-family:var(--font-heading);font-weight:800;font-size:18px;color:{{ r.scoreFg }}">{{ r.score }}</span></sc-raw-td><sc-raw-td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span style="font-weight:600">{{ r.supplier }}</span> <span style="color:var(--color-neutral-600)">· {{ r.name }}</span></sc-raw-td><sc-raw-td style="text-align:right">{{ r.days }} d</sc-raw-td><sc-raw-td style="text-align:right;color:{{ r.cancelFg }};font-weight:{{ r.cancelW }}">{{ r.cancelDays }} d</sc-raw-td><sc-raw-td><span class="tag {{ r.stTag }}" style="padding:1px 6px;font-size:10px">{{ r.st }}</span></sc-raw-td></sc-raw-tr></sc-for></sc-raw-tbody></sc-raw-table>
+        </div>
+        <div style="border-left:2px solid var(--color-divider);padding:20px 24px;background:var(--color-surface);flex:1 1 300px;max-width:380px">
+          <span class="card-kicker">Why it is here</span>
+          <h3 style="margin:4px 0 2px">{{ rsel.supplier }} — {{ rsel.cancelDays }} days to notice</h3>
+          <div style="font-size:12px;color:var(--color-neutral-600);margin-bottom:14px">{{ rsel.name }}</div>
+          <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-accent);margin-bottom:4px">Recommended action</div>
+          <div style="font-family:var(--font-heading);font-weight:800;font-size:18px;line-height:1.2">{{ rsel.action }}</div>
+          <p style="font-size:12px;color:var(--color-neutral-600);margin:6px 0 16px">{{ rsel.rationale }}</p>
+          <sc-if value="{{ rselOpen }}" hint-placeholder-val="{{ true }}"><div style="display:flex;flex-direction:column;gap:6px"><button class="btn btn-primary btn-block" sc-camel-on-click="{{ rAct.negotiate }}" style="margin:0">Start negotiation</button><button class="btn btn-secondary btn-block" sc-camel-on-click="{{ rAct.assign }}" style="margin:0">Assign to me</button></div></sc-if>
+          <sc-if value="{{ rselActed }}" hint-placeholder-val="{{ false }}"><div style="padding:12px;border:1px solid var(--color-divider);font-size:13px"><strong>{{ rsel.st }}</strong> · owner Luca Lamalfa. <button class="btn btn-ghost" sc-camel-on-click="{{ open360R }}" style="font-size:12px;padding:0 4px">Open contract →</button></div></sc-if>
+          <button class="btn btn-ghost" sc-camel-on-click="{{ open360R }}" style="font-size:12px;margin-top:14px;padding:0">See the facts behind this →</button>
+        </div>
+      </div>
+    </sc-if>
+  </sc-if>
+  <!-- QUOTE CHECK (optional) -->
+  <sc-if value="{{ scr.quote }}" hint-placeholder-val="{{ false }}">
+    <div style="padding:28px 32px 16px;border-bottom:2px solid var(--color-divider)"><h6 style="color:var(--color-accent);margin-bottom:4px">Optional · new purchase</h6><h2 style="margin:0">Quote check</h2><div style="font-size:13px;color:var(--color-neutral-600);margin-top:4px">Drop a supplier proposal; Raffa normalises the lines and compares them with the market and with what you already pay.</div></div>
+    <sc-if value="{{ noQuote }}" hint-placeholder-val="{{ true }}"><div style="padding:32px;max-width:640px"><div style="border:2px dashed var(--color-divider);background:var(--color-surface);padding:24px;display:flex;gap:16px;align-items:center;flex-wrap:wrap"><button class="btn btn-primary" sc-camel-on-click="{{ loadQuote }}">Upload a quote</button><span style="font-size:13px;color:var(--color-neutral-700)">or use the sample: Databricks proposal Q-88213</span></div></div></sc-if>
+    <sc-if value="{{ hasQuote }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:24px 32px;max-width:1000px">
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);border-top:2px solid var(--color-divider);border-bottom:2px solid var(--color-divider);margin-bottom:24px">
+          <div style="padding:14px 14px 14px 0;border-right:1px solid var(--color-divider)"><div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-600)">Supplier quote</div><div style="font-family:var(--font-heading);font-weight:800;font-size:22px">CHF 520k</div></div>
+          <div style="padding:14px;border-right:1px solid var(--color-divider)"><div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-600)">Market range</div><div style="font-family:var(--font-heading);font-weight:800;font-size:22px">CHF 390–470k</div></div>
+          <div style="padding:14px 0 14px 14px"><div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-600)">Assessment</div><div style="font-family:var(--font-heading);font-weight:800;font-size:22px;color:var(--color-accent-700)">Above market</div></div>
+        </div>
+        <sc-raw-table class="table" style="font-size:13px"><sc-raw-thead><sc-raw-tr><sc-raw-th style="width:28%">Line</sc-raw-th><sc-raw-th style="text-align:right">Quoted</sc-raw-th><sc-raw-th style="text-align:right">P50</sc-raw-th><sc-raw-th>Position</sc-raw-th><sc-raw-th style="width:18%">Benchmark</sc-raw-th></sc-raw-tr></sc-raw-thead><sc-raw-tbody>
+          <sc-raw-tr><sc-raw-td style="font-weight:600">Premium DBU · committed</sc-raw-td><sc-raw-td style="text-align:right">0.55</sc-raw-td><sc-raw-td style="text-align:right">0.46</sc-raw-td><sc-raw-td>+20% vs P50</sc-raw-td><sc-raw-td><span class="tag tag-neutral" style="padding:2px 8px;font-size:10px">High · n=96</span></sc-raw-td></sc-raw-tr>
+          <sc-raw-tr><sc-raw-td style="font-weight:600">SQL Serverless DBU</sc-raw-td><sc-raw-td style="text-align:right">0.70</sc-raw-td><sc-raw-td style="text-align:right">0.62</sc-raw-td><sc-raw-td>+13% vs P50</sc-raw-td><sc-raw-td><span class="tag tag-neutral" style="padding:2px 8px;font-size:10px">High · n=71</span></sc-raw-td></sc-raw-tr>
+          <sc-raw-tr><sc-raw-td style="font-weight:600">Enterprise Support</sc-raw-td><sc-raw-td style="text-align:right">5.0%</sc-raw-td><sc-raw-td style="text-align:right">4.0%</sc-raw-td><sc-raw-td>At P75</sc-raw-td><sc-raw-td><span class="tag tag-accent" style="padding:2px 8px;font-size:10px">Medium · n=22</span></sc-raw-td></sc-raw-tr>
+        </sc-raw-tbody></sc-raw-table>
+        <p style="font-size:12px;color:var(--color-neutral-600);margin-top:12px">Target and negotiation levers are one step further — shown only if you want them.</p>
+      </div>
+    </sc-if>
+  </sc-if>
+  <!-- WORKSPACE & MEMBERS -->
+  <sc-if value="{{ scr.workspace }}" hint-placeholder-val="{{ false }}">
+    <div style="padding:28px 32px 16px;border-bottom:2px solid var(--color-divider)"><h6 style="color:var(--color-accent);margin-bottom:4px">Setup</h6><h2 style="margin:0">Workspace &amp; members</h2><div style="font-size:13px;color:var(--color-neutral-600);margin-top:4px">{{ wsName }} · tenant HF-CH-001</div></div>
+    <sc-if value="{{ isAdmin }}" hint-placeholder-val="{{ true }}">
+      <sc-if value="{{ kbOff }}" hint-placeholder-val="{{ false }}"><div style="margin:20px 32px 0;border-left:2px solid var(--color-accent);background:var(--color-accent-100);padding:10px 16px;font-size:13px;max-width:720px">Tip: invite the team once the first contract is validated — there is nothing for them to ask before that.</div></sc-if>
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) 340px;flex:1">
+        <div style="padding:24px 32px;border-right:2px solid var(--color-divider)">
+          <sc-raw-table class="table" style="font-size:13px"><sc-raw-thead><sc-raw-tr><sc-raw-th>Member</sc-raw-th><sc-raw-th style="width:22%">Role</sc-raw-th><sc-raw-th style="width:16%">Status</sc-raw-th></sc-raw-tr></sc-raw-thead><sc-raw-tbody><sc-for list="{{ members }}" as="m" hint-placeholder-count="3"><sc-raw-tr><sc-raw-td><div style="font-weight:600">{{ m.name }}</div><div style="font-size:12px;color:var(--color-neutral-600)">{{ m.email }}</div></sc-raw-td><sc-raw-td>{{ m.role }}</sc-raw-td><sc-raw-td><span class="tag {{ m.tag }}" style="padding:2px 8px;font-size:10px">{{ m.status }}</span></sc-raw-td></sc-raw-tr></sc-for></sc-raw-tbody></sc-raw-table>
+        </div>
+        <div style="padding:24px">
+          <h4 style="margin-bottom:14px">Invite a colleague</h4>
+          <div class="field" style="margin-bottom:12px"><label>Work email</label><input class="input" placeholder="name@helvetiafoods.ch" value="{{ inviteEmail }}" sc-camel-on-change="{{ setInviteEmail }}"></div>
+          <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
+            <label class="radio" style="align-items:flex-start"><input type="radio" name="role" checked="{{ inviteIsProc }}" sc-camel-on-change="{{ pickProc }}"><span class="dot" style="margin-top:3px"></span><span><strong>Procurement</strong><br><span style="font-size:12px;color:var(--color-neutral-600)">Asks, reviews, triages renewals</span></span></label>
+            <label class="radio" style="align-items:flex-start"><input type="radio" name="role" checked="{{ inviteIsAdmin }}" sc-camel-on-change="{{ pickAdmin }}"><span class="dot" style="margin-top:3px"></span><span><strong>Workspace Admin</strong><br><span style="font-size:12px;color:var(--color-neutral-600)">Also uploads, deletes, manages members</span></span></label>
+          </div>
+          <button class="btn btn-primary btn-block" sc-camel-on-click="{{ sendInvite }}" style="margin:0">Send invitation</button>
+          <sc-if value="{{ inviteError }}" hint-placeholder-val="{{ false }}"><p style="font-size:12px;color:var(--color-accent-700);margin-top:10px">Use an @helvetiafoods.ch address.</p></sc-if>
+          <sc-if value="{{ inviteSent }}" hint-placeholder-val="{{ false }}"><p style="font-size:12px;margin-top:10px">Invitation sent.</p></sc-if>
+        </div>
+      </div>
+    </sc-if>
+    <sc-if value="{{ notAdmin }}" hint-placeholder-val="{{ false }}"><div style="padding:48px 32px;max-width:520px"><h4>You don't manage this workspace</h4><p class="text-muted">Only a Workspace Admin can invite members. Admins: Marta Keller.</p><button class="btn btn-secondary">Request access</button></div></sc-if>
+  </sc-if>
+  </main>
+</div>
+</sc-if>
+</div>
+</x-dc>
+</body></html>

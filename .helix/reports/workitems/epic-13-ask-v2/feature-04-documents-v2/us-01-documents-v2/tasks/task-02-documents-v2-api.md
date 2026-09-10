@@ -4,7 +4,7 @@ type: task
 story: us-01-documents-v2
 wave: 13
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-02-documents-v2-api — `LoadAsync`, list, preview, reprocess, delete, page-aware embeddings
@@ -32,7 +32,7 @@ back-fill), return the summary; exposed as `POST /api/documents/{id}/reprocess`
 (Admin, `X-Workspace-Role` / claims as the existing admin checks do).
 (5) `DocumentPreviewService`: render page 1 to PNG at upload (PDF via the
 existing native parser's raster path or `PDFtoImage`-class library allowed
-in `Contigo.Api` infrastructure only; PNG / JPG copied; DOCX / XLSX → a
+in `Raffa.Api` infrastructure only; PNG / JPG copied; DOCX / XLSX → a
 generated placeholder PNG with the file type), stored under the tenant
 prefix; `GET /api/documents/{id}/preview` streams it, tenant-scoped.
 (6) `DELETE /api/documents/{id}` (Admin): blob + preview + rows +
@@ -40,7 +40,7 @@ embeddings; detach `Contract` document link; audit `document.deleted`;
 Procurement → 403. Regenerate `Migrations/Scripts/documents-contracts.sql`
 (ADR-021; script test keeps it honest). All endpoints go in
 `DocumentsEndpointExtensions.cs` (created by T01); do not edit
-`Program.cs` and do not touch `web/openapi/contigo-api.v1.json` (the
+`Program.cs` and do not touch `web/openapi/raffa-api.v1.json` (the
 phase-3 web task documents these endpoints from `inputs/requirements.md` §6).
 
 ## Parent story AC covered
@@ -49,16 +49,16 @@ phase-3 web task documents these endpoints from `inputs/requirements.md` §6).
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| `backend/src/Contigo.SharedKernel/Storage/IDocumentStorage.cs` | `LoadAsync` |
-| `backend/src/Contigo.Api/Infrastructure/AzureBlobDocumentStorage.cs` | implement load + delete + preview blob helpers |
-| `backend/tests/Contigo.IntegrationTests/RecordingDocumentStorage.cs` | implement load / delete |
-| `backend/src/Contigo.Documents.Contracts/Domain/Embedding.cs`, `Document.cs` | `Page`, `Section`, `PageCount`, `PreviewPath` |
-| `backend/src/Contigo.Documents.Contracts/Application/EmbeddingRetrievalService.cs`, `EmbeddingSearchResult.cs` | page-aware index + search |
-| `backend/src/Contigo.Documents.Contracts/Application/Extraction/DocumentProcessingPipeline.cs` | page-aware indexing, page count, preview hook (phase-2 writer of this file) |
-| `backend/src/Contigo.Documents.Contracts/Application/DocumentQueryService.cs`, `DocumentListItem.cs`, `DocumentReprocessService.cs`, `DocumentPreviewService.cs`, `DocumentDeleteService.cs` | new / extended |
-| `backend/src/Contigo.Documents.Contracts/Infrastructure/Configurations/*`, `Migrations/*`, `Migrations/Scripts/documents-contracts.sql` | migration + regenerated script |
-| `backend/src/Contigo.Api/DocumentsEndpointExtensions.cs` | list, preview, reprocess, delete |
-| `backend/tests/Contigo.Documents.Contracts.Tests/*`, `backend/tests/Contigo.Api.Tests/Document*EndpointTests.cs` | tests |
+| `backend/src/Raffa.SharedKernel/Storage/IDocumentStorage.cs` | `LoadAsync` |
+| `backend/src/Raffa.Api/Infrastructure/AzureBlobDocumentStorage.cs` | implement load + delete + preview blob helpers |
+| `backend/tests/Raffa.IntegrationTests/RecordingDocumentStorage.cs` | implement load / delete |
+| `backend/src/Raffa.Documents.Contracts/Domain/Embedding.cs`, `Document.cs` | `Page`, `Section`, `PageCount`, `PreviewPath` |
+| `backend/src/Raffa.Documents.Contracts/Application/EmbeddingRetrievalService.cs`, `EmbeddingSearchResult.cs` | page-aware index + search |
+| `backend/src/Raffa.Documents.Contracts/Application/Extraction/DocumentProcessingPipeline.cs` | page-aware indexing, page count, preview hook (phase-2 writer of this file) |
+| `backend/src/Raffa.Documents.Contracts/Application/DocumentQueryService.cs`, `DocumentListItem.cs`, `DocumentReprocessService.cs`, `DocumentPreviewService.cs`, `DocumentDeleteService.cs` | new / extended |
+| `backend/src/Raffa.Documents.Contracts/Infrastructure/Configurations/*`, `Migrations/*`, `Migrations/Scripts/documents-contracts.sql` | migration + regenerated script |
+| `backend/src/Raffa.Api/DocumentsEndpointExtensions.cs` | list, preview, reprocess, delete |
+| `backend/tests/Raffa.Documents.Contracts.Tests/*`, `backend/tests/Raffa.Api.Tests/Document*EndpointTests.cs` | tests |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-024 (page-aware evidence, tenant-scoped preview), ADR-009 / ADR-011 (never a raw blob URL; tenant prefix), ADR-017 (hybrid parse on reprocess; page budget), ADR-021 (regenerated idempotent script), ADR-004 (`ocr` / `embed` roles).
@@ -66,16 +66,16 @@ phase-3 web task documents these endpoints from `inputs/requirements.md` §6).
 - **Do not touch**: `DocumentAdmissionGate` (T01), `StagedExtractionService` fact mapping (F03/T02), `Program.cs`, OpenAPI json, `web/`.
 
 ## Definition of done
-- [ ] `dotnet test backend/tests/Contigo.Documents.Contracts.Tests` exit 0 — save then load round-trip; list paging + status filter; reprocess of a `%PDF-1.4` fixture leaves no chunk starting with `%PDF` and every chunk with `Page ≥ 1`; migration script test green
-- [ ] `dotnet test backend/tests/Contigo.Api.Tests` exit 0 — list, preview (PNG content type; placeholder for DOCX), reprocess (Admin 200 / Procurement 403), delete (Admin 204 and storage delete recorded / Procurement 403)
-- [ ] `dotnet test backend/Contigo.slnx` exit 0
+- [ ] `dotnet test backend/tests/Raffa.Documents.Contracts.Tests` exit 0 — save then load round-trip; list paging + status filter; reprocess of a `%PDF-1.4` fixture leaves no chunk starting with `%PDF` and every chunk with `Page ≥ 1`; migration script test green
+- [ ] `dotnet test backend/tests/Raffa.Api.Tests` exit 0 — list, preview (PNG content type; placeholder for DOCX), reprocess (Admin 200 / Procurement 403), delete (Admin 204 and storage delete recorded / Procurement 403)
+- [ ] `dotnet test backend/Raffa.slnx` exit 0
 
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | load / list / reprocess / preview / delete services | `Contigo.Documents.Contracts.Tests/*` |
-| API | endpoints, roles, content types | `Contigo.Api.Tests/Document*EndpointTests.cs` |
-| integration | reprocess removes `%PDF` on the R1 fixtures | `Contigo.IntegrationTests/R1EndToEndTests.cs` (extend) |
+| unit | load / list / reprocess / preview / delete services | `Raffa.Documents.Contracts.Tests/*` |
+| API | endpoints, roles, content types | `Raffa.Api.Tests/Document*EndpointTests.cs` |
+| integration | reprocess removes `%PDF` on the R1 fixtures | `Raffa.IntegrationTests/R1EndToEndTests.cs` (extend) |
 
 ## Open questions blocking this task
 - none

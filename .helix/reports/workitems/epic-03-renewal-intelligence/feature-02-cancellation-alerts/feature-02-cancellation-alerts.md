@@ -27,4 +27,4 @@ daily schedule.
 
 ## Target repo
 
-`contigo-backend`
+`raffa-backend`

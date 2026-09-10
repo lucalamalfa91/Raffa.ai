@@ -4,7 +4,7 @@ type: task
 story: us-01-threshold-scheduler
 wave: R2
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-02-alert-recompute — 02 Alert Recompute
@@ -18,7 +18,7 @@ Create alerts and recompute on contract correction.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `renewal-alerts` |
+| workspace/raffa-backend/src/ | implementation for `renewal-alerts` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-002.
@@ -31,7 +31,7 @@ Create alerts and recompute on contract correction.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | renewal-alerts behaviour | workspace/contigo-backend/tests |
+| unit | renewal-alerts behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

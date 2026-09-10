@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cut wave-spec.ask.yaml into slices/e13.yaml only (Ask Contigo V2).
+"""Cut wave-spec.ask.yaml into slices/e13.yaml only (Ask Raffa V2).
 
 Never writes slice.current.yaml.
 Never overwrites slices/e01.yaml–e11.yaml, e1011.yaml, e12.yaml (superseded),
@@ -32,7 +32,7 @@ SLICE_ID = f"e{EPIC_NUMBER}"
 PREVIOUS = "e1011"
 SUPERSEDED_SLICE = "e12"
 PROTECTED_SLICES = frozenset({*(f"e{n:02d}" for n in range(1, 12)), "e1011", SUPERSEDED_SLICE})
-ASK_TITLE = "E13 Ask Contigo V2 (documents, conversations, market feed, strategies, system-aware)"
+ASK_TITLE = "E13 Ask Raffa V2 (documents, conversations, market feed, strategies, system-aware)"
 
 
 def manifest_row(*, tokens: int, tasks: int, stories: list[str]) -> dict:
@@ -46,7 +46,7 @@ def manifest_row(*, tokens: int, tasks: int, stories: list[str]) -> dict:
         "stories": stories,
         "tokens": tokens,
         "tasks": tasks,
-        "design_oracle": "inputs/design/prototypes/Contigo V2 Prototype.html",
+        "design_oracle": "inputs/design/prototypes/Raffa V2 Prototype.html",
         "requirements": "inputs/requirements.md",
     }
 
@@ -111,9 +111,9 @@ def main() -> int:
         body = base.emit_yaml(sl.slice_id, ASK_TITLE, selected, sl.tokens)
         body = body.replace(
             "phases:\n",
-            "# Design oracle: inputs/design/prototypes/Contigo V2 Prototype.html "
-            "(unpacked: inputs/design/prototypes/contigo-v2/). Requirements: inputs/requirements.md.\n"
-            "# Studio: contigo-process.yaml -> execution-fanout after copying this file to slice.current.yaml.\n"
+            "# Design oracle: inputs/design/prototypes/Raffa V2 Prototype.html "
+            "(unpacked: inputs/design/prototypes/raffa-v2/). Requirements: inputs/requirements.md.\n"
+            "# Studio: raffa-process.yaml -> execution-fanout after copying this file to slice.current.yaml.\n"
             "phases:\n",
             1,
         )
@@ -128,7 +128,7 @@ def main() -> int:
         "",
         "mode: ask-v2",
         "master: reports/plan/wave-spec.ask.yaml",
-        "design_oracle: inputs/design/prototypes/Contigo V2 Prototype.html",
+        "design_oracle: inputs/design/prototypes/Raffa V2 Prototype.html",
         "requirements: inputs/requirements.md",
         "slices:",
     ]
@@ -146,11 +146,11 @@ def main() -> int:
         "",
         "Produced by `python scripts/cut_ask_slices.py` from `reports/plan/wave-spec.ask.yaml`.",
         "Supersedes e12 (never launched). Design oracle:",
-        "`inputs/design/prototypes/Contigo V2 Prototype.html` (unpacked under",
-        "`inputs/design/prototypes/contigo-v2/`). Requirements: `inputs/requirements.md`.",
+        "`inputs/design/prototypes/Raffa V2 Prototype.html` (unpacked under",
+        "`inputs/design/prototypes/raffa-v2/`). Requirements: `inputs/requirements.md`.",
         "",
         "Launch only after `reports/plan/gates/ask-v2.hitl-ok` exists and no other",
-        "wave is running. From Helix Studio: open `contigo-process.yaml`, make sure",
+        "wave is running. From Helix Studio: open `raffa-process.yaml`, make sure",
         f"`reports/plan/slice.current.yaml` is this slice, run `execution-fanout`.",
         "Or from PowerShell:",
         "",

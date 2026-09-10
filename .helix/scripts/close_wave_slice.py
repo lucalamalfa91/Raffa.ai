@@ -5,7 +5,7 @@ Studio green means the orchestration finished, not that a PR exists or that
 there were no warnings. This hook always writes
 `reports/execution/wave-close.md`. Open points also go to the predefined HITL
 channel: a GitHub issue on the product remote (label `hitl`). Optional
-`CONTIGO_HITL_WEBHOOK_URL` (only present when the operator runs this script
+`RAFFA_HITL_WEBHOOK_URL` (only present when the operator runs this script
 outside the stripped hook env).
 
 Observation hook: empty stdout, log on stderr, non-zero is fail-open.
@@ -30,7 +30,7 @@ CURRENT = ARTIFACT / "reports" / "plan" / "slice.current.yaml"
 OUT_DIR = ARTIFACT / "reports" / "execution"
 SUMMARY = OUT_DIR / "wave-close.md"
 HITL_LABEL = "hitl"
-WEBHOOK_ENV = "CONTIGO_HITL_WEBHOOK_URL"
+WEBHOOK_ENV = "RAFFA_HITL_WEBHOOK_URL"
 
 
 def _log(msg: str) -> None:

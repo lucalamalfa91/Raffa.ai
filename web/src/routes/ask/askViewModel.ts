@@ -11,7 +11,7 @@ import type {
 import type { CitationCorpus, Reply, ReplyAction, ReplyCitation } from "./reply/replyTypes";
 
 /**
- * V2 view-model for the Ask Contigo screen (route `/ask`, `/ask/:conversationId`; ADR-024;
+ * V2 view-model for the Ask Raffa screen (route `/ask`, `/ask/:conversationId`; ADR-024;
  * ADR-020 V2 amendment "screen 2"; task E13/F09/US01/T04, us-01-web-v2 AC-1/AC-3/AC-5/AC-6). Same
  * one-concern-per-file split the V1 module this file replaces already established: `index.tsx`
  * orchestrates React state/effects/navigation, this module decides what a turn/screen looks like
@@ -32,23 +32,23 @@ import type { CitationCorpus, Reply, ReplyAction, ReplyCitation } from "./reply/
 // ---------------------------------------------------------------------------------------------
 
 /**
- * `citations[].corpus` is usually `"tenant" | "market" | "contigo"` (requirements.md §6 / R-WEB-04's
+ * `citations[].corpus` is usually `"tenant" | "market" | "raffa"` (requirements.md §6 / R-WEB-04's
  * three-corpus citation-badge vocabulary; `./reply/replyTypes.ts#CitationCorpus`, closed to exactly
  * those three). The real backend admits a fourth internal value, `"calc"`
- * (`Contigo.Chat.Application.Pack.PackCorpus.Calc` -- a deterministic-calculator-derived fact: a
+ * (`Raffa.Chat.Application.Pack.PackCorpus.Calc` -- a deterministic-calculator-derived fact: a
  * renewal date, a negotiation lever, a criticality score), with no remapping step anywhere before
  * the wire (`ReplyCitation.Corpus`'s own doc comment: "Echoes `PackItem.Corpus`"); confirmed by
- * reading `backend/src/Contigo.Api/AskCopilotService.cs`'s own `PackItem` constructions for
+ * reading `backend/src/Raffa.Api/AskCopilotService.cs`'s own `PackItem` constructions for
  * `when-you-must-move`/lever/target/criticality items, which set a real `/contracts/{id}` `Href`
  * despite `PackItem.Href`'s own doc comment claiming `Href` is null for `PackCorpus.Calc`. A
  * calculator fact is always about *this tenant's own contract*, never a market/feature fact, so an
  * unrecognised value folds into `"tenant"` -- the closer honest bucket -- rather than the more
- * surprising `"contigo"` (a static feature card) or a thrown exception. Named here as a real
- * backend/frontend contract gap, not a guess (see `web/openapi/contigo-api.v1.json`'s
+ * surprising `"raffa"` (a static feature card) or a thrown exception. Named here as a real
+ * backend/frontend contract gap, not a guess (see `web/openapi/raffa-api.v1.json`'s
  * `postConversationMessage` operation description for the same note).
  */
 export function toCitationCorpus(wireCorpus: string): CitationCorpus {
-  if (wireCorpus === "tenant" || wireCorpus === "market" || wireCorpus === "contigo") {
+  if (wireCorpus === "tenant" || wireCorpus === "market" || wireCorpus === "raffa") {
     return wireCorpus;
   }
   return "tenant";
@@ -86,7 +86,7 @@ export function mapConversationCitation(body: ConversationCitationBody): ReplyCi
   };
 }
 
-/** `actions[].kind` is really `"navigate" | "upload"` (`Contigo.Chat.Application.Capabilities
+/** `actions[].kind` is really `"navigate" | "upload"` (`Raffa.Chat.Application.Capabilities
  * .CopilotActionKind`) -- requirements.md §6's own illustrative JSON example shows `"primary"`/
  * `"secondary"` instead, a visual-priority label the real backend never emits (confirmed reading
  * `ConversationsEndpointExtensions.ToActionJson`). `navigate`/`upload` is an orthogonal axis (*what*
@@ -136,7 +136,7 @@ function buildReply(turn: NormalizedTurnBody): Reply {
       };
     case "abstain":
       // The backend's own abstain branch stores the reason *as* answerMarkdown/markdown
-      // (Contigo.Chat.Application.Reply.CopilotReplyBuilder's own abstain construction:
+      // (Raffa.Chat.Application.Reply.CopilotReplyBuilder's own abstain construction:
       // `new(ReplyKind.Abstain, guarded.AbstainReason ?? "...", [], [], ..., [])`) -- there is no
       // separate "reason" field on the wire to read instead.
       return { kind: "abstain", reason: turn.text };
@@ -162,7 +162,7 @@ export function mapConversationReplyToReply(body: ConversationReplyBody): Reply 
 
 /** Maps one stored `GET /api/conversations/{id}` message (resume) onto `Reply`. `followUps` is
  * always empty -- `ConversationMessage` has no such column (`ConversationsEndpointExtensions
- * .ToMessageResponse`'s own field list), so a resumed conversation's past Contigo turns render
+ * .ToMessageResponse`'s own field list), so a resumed conversation's past Raffa turns render
  * without follow-up chips, an honest, real limitation (see that operation's own OpenAPI
  * description), not an oversight this function papers over. */
 export function mapConversationMessageToReply(message: ConversationMessageBody): Reply {
@@ -180,7 +180,7 @@ export function mapConversationMessageToReply(message: ConversationMessageBody):
 // ---------------------------------------------------------------------------------------------
 
 /** A "you" turn is plain text -- there is no reply contract on the caller's own side of the
- * conversation. A "contigo" turn carries both the mapped, presentational `Reply` (what
+ * conversation. A "raffa" turn carries both the mapped, presentational `Reply` (what
  * `ReplyBody.tsx` renders) and the original wire `citations[]` (`wireCitations`) side by side --
  * `ReplyCitation` (the presentational type) deliberately does not carry `contractId`/`recordId`
  * (R-ASK-08 "no guids rendered"; `replyTypes.ts`'s own doc comment), so `index.tsx#openCitation`
@@ -188,7 +188,7 @@ export function mapConversationMessageToReply(message: ConversationMessageBody):
  * needs to act (a market citation's `recordId`) -- see that function's own doc comment. */
 export type AskTurnView =
   | { id: string; role: "you"; text: string }
-  | { id: string; role: "contigo"; reply: Reply; wireCitations: readonly ConversationCitationBody[] };
+  | { id: string; role: "raffa"; reply: Reply; wireCitations: readonly ConversationCitationBody[] };
 
 let turnIdCounter = 0;
 
@@ -205,12 +205,12 @@ export function buildYouTurn(id: string, text: string): AskTurnView {
   return { id, role: "you", text };
 }
 
-export function buildContigoTurnFromReply(id: string, body: ConversationReplyBody): AskTurnView {
-  return { id, role: "contigo", reply: mapConversationReplyToReply(body), wireCitations: body.citations };
+export function buildRaffaTurnFromReply(id: string, body: ConversationReplyBody): AskTurnView {
+  return { id, role: "raffa", reply: mapConversationReplyToReply(body), wireCitations: body.citations };
 }
 
-export function buildContigoTurnFromMessage(message: ConversationMessageBody): AskTurnView {
-  return { id: message.id, role: "contigo", reply: mapConversationMessageToReply(message), wireCitations: message.citations };
+export function buildRaffaTurnFromMessage(message: ConversationMessageBody): AskTurnView {
+  return { id: message.id, role: "raffa", reply: mapConversationMessageToReply(message), wireCitations: message.citations };
 }
 
 /** AC-5 "resume": every stored message, oldest first (the wire's own order, `GET
@@ -218,18 +218,18 @@ export function buildContigoTurnFromMessage(message: ConversationMessageBody): A
  * `OrderBy(m => m.CreatedAt)`), turned into the same `AskTurnView` shape a live turn produces. */
 export function buildTurnsFromConversation(detail: ConversationDetailBody): readonly AskTurnView[] {
   return detail.messages.map((message) =>
-    message.role === "you" ? buildYouTurn(message.id, message.markdown) : buildContigoTurnFromMessage(message),
+    message.role === "you" ? buildYouTurn(message.id, message.markdown) : buildRaffaTurnFromMessage(message),
   );
 }
 
 /** A transport/network failure or a genuine 400/404 -- distinct from an honest AI abstention, the
  * same rule the V1 `askViewModel.ts#ChatMessageKind` this file replaces already documented. */
 export function buildErrorTurn(id: string, reason: string): AskTurnView {
-  return { id, role: "contigo", reply: { kind: "error", reason }, wireCitations: [] };
+  return { id, role: "raffa", reply: { kind: "error", reason }, wireCitations: [] };
 }
 
 export const TRANSPORT_ERROR_REASON =
-  "Contigo's Q&A service is temporarily unavailable. Try again in a moment.";
+  "Raffa's Q&A service is temporarily unavailable. Try again in a moment.";
 
 // ---------------------------------------------------------------------------------------------
 // Off state (screens-v2.md #2; R-ASK-10) -- "Ask needs at least one validated contract."
@@ -255,7 +255,7 @@ export function buildOffCopy(hasAnyDocument: boolean): AskOffCopy {
         ctaLabel: "Go to Documents",
       }
     : {
-        reason: "Upload a contract first. Contigo extracts the facts, you sign off the weak ones, and Ask switches on.",
+        reason: "Upload a contract first. Raffa extracts the facts, you sign off the weak ones, and Ask switches on.",
         ctaLabel: "Upload a contract",
       };
 }
@@ -268,7 +268,7 @@ export function buildOffCopy(hasAnyDocument: boolean): AskOffCopy {
  * carries server-side until its first "you" message derives a real one. Used here only as this
  * screen's own client-side fallback for the brief window between "the you bubble appears" and "the
  * server's create-then-ask round trip resolves" -- `app.jsx`'s own fallback
- * (`'Ask Contigo · new chat'`) is a different string; this file follows the real backend constant
+ * (`'Ask Raffa · new chat'`) is a different string; this file follows the real backend constant
  * instead, since `index.tsx` also shows this exact text for a conversation that is still
  * genuinely titleless (a resumed one somehow has no messages at all yet -- not reachable today, but
  * an honest label rather than an invented one if it ever is). */
@@ -320,7 +320,7 @@ export const ASK_HELLO = "What do you want to know?";
 
 /** ADR-024 §6 / screens-v2.md #2: the same placeholder the global Ask bar uses
  * (`components/ask-bar/askSuggestions.ts` READY_PLACEHOLDER). */
-export const ASK_INPUT_PLACEHOLDER = "Ask Contigo — spend, dates, clauses, liability…";
+export const ASK_INPUT_PLACEHOLDER = "Ask Raffa — spend, dates, clauses, liability…";
 
 /** screens-v2.md #2 "Thinking": V1 copy retained verbatim until the reply streams. */
 export const THINKING_COPY = "Authorising scope → detecting intent → retrieving evidence";
@@ -332,7 +332,7 @@ export const THINKING_COPY = "Authorising scope → detecting intent → retriev
 
 /** `app.jsx` `c360Chips`, quoted verbatim -- the one screen whose chips are supplier-templated
  * rather than catalog-sourced (`CapabilityCatalog.SuggestionsFor`'s own identical special case,
- * server-side, has no HTTP surface at all -- see `web/openapi/contigo-api.v1.json`'s
+ * server-side, has no HTTP surface at all -- see `web/openapi/raffa-api.v1.json`'s
  * `getCapabilities` operation description). `supplierName` absent/blank falls back to "this
  * supplier", the same fallback that C# method uses. */
 export function buildScopedSuggestions(supplierName: string | null): readonly [string, string] {
@@ -367,7 +367,7 @@ export function suggestionsFor(
 }
 
 // ---------------------------------------------------------------------------------------------
-// Citation click resolution (AC-3; R-EVD-02) -- tenant navigates, market opens the panel, contigo
+// Citation click resolution (AC-3; R-EVD-02) -- tenant navigates, market opens the panel, raffa
 // navigates
 // ---------------------------------------------------------------------------------------------
 
@@ -381,7 +381,7 @@ export type CitationOpenAction =
  * -> `/contracts/<contractId>?clause=<clauseId>` (or `?page=`) with `state.from = "ask"`" (already
  * baked into `citation.href` by `mapConversationCitation`); "a market citation opens a side panel
  * loading `GET /api/market/records/{id}`" (needs `wireCitation.recordId`, not on the presentational
- * `ReplyCitation`); "a Contigo feature card navigates to its href". Looks the clicked citation's `n`
+ * `ReplyCitation`); "a Raffa feature card navigates to its href". Looks the clicked citation's `n`
  * up in `wireCitations` (the same array `AskTurnView.wireCitations` carries) rather than trusting
  * `citation` alone, since only the wire object still has `recordId`.
  */

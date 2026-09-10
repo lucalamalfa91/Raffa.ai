@@ -1,4 +1,4 @@
-# Council protocol — Contigo architecture table
+# Council protocol — Raffa architecture table
 
 Six producers decide everything the engineering brief listed under
 **Council decides**. One critic closes. Locked decisions are **cited, never
@@ -37,7 +37,7 @@ unrelated decisions in one file.
 5. .NET solution shape (modular monolith + worker) — software-architect
 6. Web stack — client-architect
 7. Mobile stack — client-architect
-8. Foundry model IDs (cheapest that meet extract / embed / Ask Contigo) — software-architect + cloud-architect
+8. Foundry model IDs (cheapest that meet extract / embed / Ask Raffa) — software-architect + cloud-architect
 9. CI -> Azure auth — delivery-manager + cloud-architect + security-architect
 10. Promotion `dev` -> `demo` (explicit, not accidental copy) — delivery-manager
 

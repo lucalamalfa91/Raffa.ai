@@ -17,8 +17,8 @@ and resource group.
 ## Acceptance criteria
 
 - [ ] AC-1 `dev` provisions: Container Apps Environment (consumption, min 0 replicas) for API + worker, PostgreSQL Flexible Server (Burstable Standard_B1ms) with `pgvector` enabled, Storage Account (blob+queue), Service Bus Standard, Key Vault Standard, Container Registry Basic, Log Analytics with data cap.
-- [ ] AC-2 All `dev` resources tagged `project=contigo`, `env=dev`, `location=West Europe`.
-- [ ] AC-3 `dev` has its own resource group and remote state in HCP `contigo-dev`.
+- [ ] AC-2 All `dev` resources tagged `project=raffa`, `env=dev`, `location=West Europe`.
+- [ ] AC-3 `dev` has its own resource group and remote state in HCP `raffa-dev`.
 
 ## Definition of done
 

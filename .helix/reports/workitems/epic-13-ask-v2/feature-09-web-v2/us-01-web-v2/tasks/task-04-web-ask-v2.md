@@ -4,21 +4,21 @@ type: task
 story: us-01-web-v2
 wave: 13
 status: live
-target_repo: contigo-web
+target_repo: raffa-web
 ---
 
 # task-04-web-ask-v2 — Conversations in the rail, resume, reply wiring, scope line, suggestions; OpenAPI + client regen
 
 ## Coding objective
 
-Turn `/ask` into screen 2 of `inputs/design/prototypes/contigo-v2/screens-v2.md`
-from `inputs/design/prototypes/Contigo V2 Prototype.html` — search the
-unpacked `contigo-v2/markup.html` for **"Ask needs at least one validated
+Turn `/ask` into screen 2 of `inputs/design/prototypes/raffa-v2/screens-v2.md`
+from `inputs/design/prototypes/Raffa V2 Prototype.html` — search the
+unpacked `raffa-v2/markup.html` for **"Ask needs at least one validated
 contract."**, **"{{ askHello }}"**, **"{{ askScope }}"**, **"+ New chat"**
-and `contigo-v2/app.jsx` for `askOffReason`, `askOffCta`, `askScope`,
+and `raffa-v2/app.jsx` for `askOffReason`, `askOffCta`, `askScope`,
 `askPlaceholder`, `askChips` / `chipsFor` / `c360Chips`, `convs`,
 `activeConv`, `convTitle`, `newChat`, `closeChat`, `gchat`, `mkMsg`.
-First, document in `web/openapi/contigo-api.v1.json` every endpoint this
+First, document in `web/openapi/raffa-api.v1.json` every endpoint this
 task uses, exactly as `inputs/requirements.md` §6 and the backend tests
 define them (`GET/POST /api/conversations`, `GET /api/conversations/{id}`,
 `POST /api/conversations/{id}/messages` with the reply contract,
@@ -33,7 +33,7 @@ when the validated-contract count is 0 (from the shell hook): title,
 `askOffReason`, one CTA (`askOffCta`) → `/documents`. (2) **New chat**:
 "What do you want to know?", scope line "Answers only from N validated
 contracts (names) · cites or abstains" + the prototype sentence, input
-placeholder "Ask Contigo — spend, dates, clauses, liability…", two
+placeholder "Ask Raffa — spend, dates, clauses, liability…", two
 suggestion chips from `GET /api/capabilities` (`suggestionsFor("ask")`);
 a question creates a conversation (`POST /api/conversations`, with
 `scopeContractId` when `?scope=` is present — chips then name the supplier
@@ -46,7 +46,7 @@ phase-2 `ReplyBody` from the reply contract (`kind`, `answerMarkdown`,
 `/contracts/<contractId>?clause=<clauseId>` (or `?page=`) with
 `state.from = "ask"`; a market citation opens a side panel loading
 `GET /api/market/records/{id}` (title, category, geography, band,
-provenance label, updatedAt); a Contigo feature card navigates to its
+provenance label, updatedAt); a Raffa feature card navigates to its
 href; actions navigate to their href; follow-ups post as new messages.
 (4) **Resume**: `/ask/:conversationId` loads the conversation and renders
 past turns with cards and actions clickable. (5) **Rail**: the shell's
@@ -57,7 +57,7 @@ active one in accent, click → resume (`RailNav.tsx` consumes a
 `Structured query…` line; the "thinking" copy stays. The SPA sends
 `X-User-Id` = the MSAL account username on every API call
 (`client.ts`, OQ-askv2-005). Keep ADR-019 tokens; `ask.css` updated to the
-prototype measurements (`contigo-v2/styles.css`).
+prototype measurements (`raffa-v2/styles.css`).
 
 ## Parent story AC covered
 - AC-1 (rail conversations), AC-3, AC-5, AC-6
@@ -65,7 +65,7 @@ prototype measurements (`contigo-v2/styles.css`).
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| `web/openapi/contigo-api.v1.json` | conversations, messages, capabilities, market, insights, `supplierName` (phase-4 writer) |
+| `web/openapi/raffa-api.v1.json` | conversations, messages, capabilities, market, insights, `supplierName` (phase-4 writer) |
 | `web/src/api/generated/schema.ts`, `web/src/api/client.ts` | regenerate + new methods + `X-User-Id` (phase-4 writer) |
 | `web/src/routes/ask/index.tsx`, `askViewModel.ts`, `ChatMessage.tsx` (replaced by `reply/ReplyBody`), `ask.css` | V2 screen |
 | `web/src/routes/ask/useConversation.ts`, `useRecentConversations.ts`, `MarketRecordPanel.tsx`, `AskOffState.tsx` | new |
@@ -74,7 +74,7 @@ prototype measurements (`contigo-v2/styles.css`).
 | `web/tests/routes/ask/*`, `web/tests/components/shell/RailNav.test.tsx`, `web/tests/api/client.test.ts` | updated / new tests |
 
 ## Context the implementer needs
-- **Design**: `inputs/design/prototypes/Contigo V2 Prototype.html`; unpacked anchors above; `contigo-v2/screens-v2.md` §2; `contigo-v2/ia-v2.md` (cross-links, divergences: no route line, redirect layouts, `/savings`); reply contract `inputs/requirements.md` §6; requirements R-CONV-02, R-ASK-07/08/10, R-EVD-02, R-SYS-03, R-WEB-03/04.
+- **Design**: `inputs/design/prototypes/Raffa V2 Prototype.html`; unpacked anchors above; `raffa-v2/screens-v2.md` §2; `raffa-v2/ia-v2.md` (cross-links, divergences: no route line, redirect layouts, `/savings`); reply contract `inputs/requirements.md` §6; requirements R-CONV-02, R-ASK-07/08/10, R-EVD-02, R-SYS-03, R-WEB-03/04.
 - **Architecture decisions in force**: ADR-024, ADR-018 / ADR-020 (amended), ADR-019, ADR-012, ADR-022 (`X-User-Id` non-authoritative).
 - Gaps G-RICH-UI (wiring), G-CONVERSATIONS (web), G-CAPABILITIES (web), G-IA-V2 (rail slot).
 - **Do not touch**: `routes/ask/reply/*` internals (phase 2; extend props only if a contract field is missing), `routes/documents/**` (phase 3), `routes/contracts/contract360/**` (F10 this wave, phase 3), shell CSS beyond the rail slot.

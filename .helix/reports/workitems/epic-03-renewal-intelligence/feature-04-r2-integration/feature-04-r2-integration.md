@@ -25,4 +25,4 @@ definition of success end-to-end on `dev`/`demo`.
 
 ## Target repo
 
-`contigo-backend` (integration test)
+`raffa-backend` (integration test)

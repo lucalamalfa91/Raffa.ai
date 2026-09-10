@@ -4,7 +4,7 @@ type: task
 story: us-01-portfolio-list-filters
 wave: R1
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-02-portfolio-filters — 02 Portfolio Filters
@@ -18,7 +18,7 @@ Add filters + pagination.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `portfolio-filters` |
+| workspace/raffa-backend/src/ | implementation for `portfolio-filters` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-002.
@@ -30,7 +30,7 @@ Add filters + pagination.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | portfolio-filters behaviour | workspace/contigo-backend/tests |
+| unit | portfolio-filters behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

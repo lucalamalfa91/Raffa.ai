@@ -6,8 +6,8 @@
 
 Unset ${VAR} is a hard error unless --stub-env.
 
-    python scripts/validate-artifact.py contigo-process.yaml
-    python scripts/validate-artifact.py contigo-process.yaml --stub-env
+    python scripts/validate-artifact.py raffa-process.yaml
+    python scripts/validate-artifact.py raffa-process.yaml --stub-env
 """
 
 from __future__ import annotations

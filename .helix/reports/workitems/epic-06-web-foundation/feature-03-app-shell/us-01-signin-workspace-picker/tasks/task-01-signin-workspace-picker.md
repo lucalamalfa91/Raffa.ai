@@ -4,7 +4,7 @@ type: task
 story: us-01-signin-workspace-picker
 wave: 6
 status: live
-target_repo: contigo-web
+target_repo: raffa-web
 ---
 
 # task-01-signin-workspace-picker — Sign-in + workspace picker screen
@@ -18,8 +18,8 @@ Implement sign-in (Entra) → workspace picker (list + Create new) with redirect
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-web/src/routes/signin/ | sign-in + picker |
-| workspace/contigo-web/public/config.json | env config (read, wire) |
+| workspace/raffa-web/src/routes/signin/ | sign-in + picker |
+| workspace/raffa-web/public/config.json | env config (read, wire) |
 | inputs/design/prototypes/ia.md | route `/signin` (cite) |
 | inputs/design/prototypes/screens.md | screen 1 (read, cite) |
 | inputs/design/prototypes/day1-demo.html | interactive reference (read, cite) |
@@ -34,7 +34,7 @@ Implement sign-in (Entra) → workspace picker (list + Create new) with redirect
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| e2e | sign-in → workspace list | workspace/contigo-web/tests |
+| e2e | sign-in → workspace list | workspace/raffa-web/tests |
 
 ## Wave-spec entry
 ```yaml

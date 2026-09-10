@@ -10,7 +10,7 @@ status: active
 
 ## Story
 
-As **procurement**, I want Contigo to compare my Allianz-class commercial
+As **procurement**, I want Raffa to compare my Allianz-class commercial
 terms to a labelled representative market band, so I know if I am above
 P75 without pretending the numbers are a live paid feed.
 

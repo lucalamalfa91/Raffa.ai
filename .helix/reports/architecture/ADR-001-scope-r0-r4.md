@@ -2,7 +2,7 @@
 
 - **Status**: accepted
 - **Date**: 2026-09-01
-- **Deciders**: product-owner (owner) + remaining Contigo council seats at council-close
+- **Deciders**: product-owner (owner) + remaining Raffa council seats at council-close
 - **Locked citations**: none — this ADR is the product scope elaboration of the
   locked WHAT (`inputs/product-spec.md`); no platform lock is added here.
 
@@ -23,7 +23,7 @@ ambiguous backlog.
 
 ## Decision drivers
 
-- Day-1 customer promise (spec §20): *"Contigo knows what we bought, what we pay,
+- Day-1 customer promise (spec §20): *"Raffa knows what we bought, what we pay,
   when we need to act, and where we can save money."* Every wave must visibly
   advance that promise, not just ship platform plumbing.
 - Appendix C decision rule #10 and the benchmark-trust requirement (spec §10.4):
@@ -108,7 +108,7 @@ fixture adapter**, never a paid external API for the first `demo`.
 
 ## Amendment (2026-09-08, epic-12 / ADR-023)
 
-Ask Contigo uses this ADR’s **Internal Dataset** as the **market corpus** for
+Ask Raffa uses this ADR’s **Internal Dataset** as the **market corpus** for
 commercial comparison (in line / below / above P25–P75). The fixture catalog
 must be expanded into a labelled *representative* worldwide mock (including
 insurance names such as Allianz) so the copilot has something to narrate.

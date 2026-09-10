@@ -4,7 +4,7 @@ type: task
 story: us-02-dev-environment
 wave: R0
 status: live
-target_repo: contigo-infra
+target_repo: raffa-infra
 ---
 
 # task-02-dev-outputs-verify — 02 Dev Outputs Verify
@@ -18,7 +18,7 @@ Verify dev Terraform outputs expose resource ids/endpoints and tags applied.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-infra/src/ | implementation for `dev-outputs-verified` |
+| workspace/raffa-infra/src/ | implementation for `dev-outputs-verified` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-005, ADR-006.
@@ -30,7 +30,7 @@ Verify dev Terraform outputs expose resource ids/endpoints and tags applied.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | dev-outputs-verified behaviour | workspace/contigo-infra/tests |
+| unit | dev-outputs-verified behaviour | workspace/raffa-infra/tests |
 
 ## Open questions blocking this task
 - none

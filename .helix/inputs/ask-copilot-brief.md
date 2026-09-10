@@ -1,10 +1,10 @@
-# Ask Contigo — requirements (savings copilot)
+# Ask Raffa — requirements (savings copilot)
 
-> **Superseded (2026-09-08)** by `inputs/requirements.md` (Ask Contigo V2, epic-13 / e13, ADR-024). Kept for the record; do not use as an oracle.
+> **Superseded (2026-09-08)** by `inputs/requirements.md` (Ask Raffa V2, epic-13 / e13, ADR-024). Kept for the record; do not use as an oracle.
 
-Status: **binding input** for epic-12 / e12. Oracle for Passata 1 (`contigo-ask-process.yaml`)
+Status: **binding input** for epic-12 / e12. Oracle for Passata 1 (`raffa-ask-process.yaml`)
 and for fan-out prompts. Does not replace `inputs/product-spec.md`; it **amends** how
-Ask Contigo (§8.3–§8.4) and the benchmark fixture (ADR-001) show up to the buyer.
+Ask Raffa (§8.3–§8.4) and the benchmark fixture (ADR-001) show up to the buyer.
 
 Audience: procurement. Language: the user's language. Tone: a specialist who helps you
 **save money on contracts**, not a lawyer and not a generic chatbot.
@@ -25,7 +25,7 @@ That is not an assistant.
 
 ## 2. Goal
 
-Ask Contigo is a **domain-specialized AI assistant** hosted on **Microsoft Foundry**
+Ask Raffa is a **domain-specialized AI assistant** hosted on **Microsoft Foundry**
 (ADR-004, ADR-008). It reasons over:
 
 | Corpus | What | Isolation |
@@ -35,7 +35,7 @@ Ask Contigo is a **domain-specialized AI assistant** hosted on **Microsoft Found
 
 It tells you whether **the contract you are loading or looking at** is **in line, below, or
 above** the market band (P25–P75), and **where you can push in negotiation** vs where you
-cannot — using deterministic savings/negotiation numbers already in Contigo, not invented
+cannot — using deterministic savings/negotiation numbers already in Raffa, not invented
 prices.
 
 ## 3. Personas and non-goals
@@ -60,7 +60,7 @@ prices.
 
 ### 4.1 Natural language
 
-Every Contigo turn is **articulated prose** (short paragraphs, optional short bullets).
+Every Raffa turn is **articulated prose** (short paragraphs, optional short bullets).
 Not a file dump. Not a list of document ids. Documents appear as **evidence inside the
 story**.
 
@@ -71,7 +71,7 @@ data** (spec §10.4). Do not fabricate P50, savings, or clause text.
 
 ### 4.3 Off-domain and greetings
 
-If the question is outside Contigo (e.g. carbonara) **or** a bare greeting:
+If the question is outside Raffa (e.g. carbonara) **or** a bare greeting:
 
 > I can’t help with that. I can help you save money on contracts. Want to look at
 > **Allianz**? I can see commercial terms we can improve.
@@ -132,4 +132,4 @@ Hide engineer chrome: no “Structured query…” / “Clause retrieval…” r
 | Savings / negotiation facts | epic-04 / epic-05 calculators |
 
 Amended ADRs: **001, 004, 011, 018, 020**. New: **ADR-023**.
-Work: **epic-12**, slice **`e12`**, fan-out on the **live** `contigo-process.yaml` after HITL.
+Work: **epic-12**, slice **`e12`**, fan-out on the **live** `raffa-process.yaml` after HITL.

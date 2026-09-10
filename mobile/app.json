@@ -1,18 +1,18 @@
 {
   "expo": {
-    "name": "Contigo",
-    "slug": "contigo-mobile",
+    "name": "Raffa.ai",
+    "slug": "raffa-mobile",
     "version": "1.0.0",
-    "scheme": "contigo",
+    "scheme": "raffa",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.contigo.mobile"
+      "bundleIdentifier": "com.raffa.mobile"
     },
     "android": {
-      "package": "com.contigo.mobile",
+      "package": "com.raffa.mobile",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",

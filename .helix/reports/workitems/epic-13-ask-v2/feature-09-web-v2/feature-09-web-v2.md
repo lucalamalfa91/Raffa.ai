@@ -11,11 +11,11 @@ status: active
 ## Slice
 
 The web side of the V2 pilot path, built 1:1 from
-`inputs/design/prototypes/Contigo V2 Prototype.html` (unpacked
-`contigo-v2/`: `markup.html`, `app.jsx`, `styles.css`, `ia-v2.md`,
+`inputs/design/prototypes/Raffa V2 Prototype.html` (unpacked
+`raffa-v2/`: `markup.html`, `app.jsx`, `styles.css`, `ia-v2.md`,
 `screens-v2.md`) on the ADR-019 tokens already in `web/`:
 
-1. **Shell V2** — two-tier rail (Ask Contigo with recent chats and
+1. **Shell V2** — two-tier rail (Ask Raffa with recent chats and
    "+ New chat", Documents; "From your contracts": Portfolio, Renewals,
    Quote check greyed until the first validated contract; no Home item),
    `/` → `/ask`, `/ask/:conversationId`, `/savings`, `/documents?review=`,
@@ -46,4 +46,4 @@ Absorbs e12 F05 (`inputs/requirements.md` R-WEB-01…05, R-WEB-07).
 
 ## Target repo
 
-`contigo-web`
+`raffa-web`

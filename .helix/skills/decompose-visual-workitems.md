@@ -1,6 +1,6 @@
 # Decomposition — visual fidelity (epic-11 / e11)
 
-Ids start at **E11/F01/US01/T01**. All `layer: web`, `target_repo: contigo-web`.
+Ids start at **E11/F01/US01/T01**. All `layer: web`, `target_repo: raffa-web`.
 
 Oracle: `inputs/design/prototypes/day1-demo.html`. Live SWA is evidence, not
 a second design.

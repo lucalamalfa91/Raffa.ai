@@ -15,7 +15,7 @@ import { formatDateOnly, formatSupplier, getContractTypeLabel, getPortfolioStatu
 
 /**
  * Pure view-model helpers for the V2 Contract 360 screen (route `/contracts/:contractId`; ADR-024
- * V2 IA; screens-v2.md #5 "Contract 360 — no tabs"; `contigo-v2/markup.html` "CONTRACT 360 — three
+ * V2 IA; screens-v2.md #5 "Contract 360 — no tabs"; `raffa-v2/markup.html` "CONTRACT 360 — three
  * answers, then proof, then details" block; `app.jsx` `cur` / `clauses` / `otherRows` / `steps360`).
  * No React here, so every rule below is unit-testable without rendering anything
  * (`contract360ViewModel.test.ts`).
@@ -40,13 +40,13 @@ export interface BackLink {
 }
 
 /**
- * screens-v2.md #5: "Back label follows the origin (Ask Contigo / Documents / Portfolio /
+ * screens-v2.md #5: "Back label follows the origin (Ask Raffa / Documents / Portfolio /
  * Renewals)" -- plus Savings, whose rows open this screen (`app.jsx` `back:'home'`). Read from
  * `location.state.from`; an absent or unrecognised origin resolves to `null` and the header falls
  * back to a plain "← Back" (`app.jsx`: `backLabels[s.back]||'Back'`).
  */
 const BACK_LINKS: Readonly<Record<string, BackLink>> = {
-  ask: { label: "Ask Contigo", href: "/ask" },
+  ask: { label: "Ask Raffa", href: "/ask" },
   documents: { label: "Documents", href: "/documents" },
   portfolio: { label: "Portfolio", href: "/contracts" },
   renewals: { label: "Renewals", href: "/renewals" },
@@ -117,7 +117,7 @@ export function buildRecommendation(header: Contract360HeaderBody, renewals: rea
       statement: "No renewal recommendation for this contract",
       rationale: header.autoRenewal
         ? "This contract did not appear in the current renewal pipeline yet."
-        : "Contigo tracks renewal recommendations only for auto-renewing contracts; this contract ends on its end date with no renewal to act on.",
+        : "Raffa tracks renewal recommendations only for auto-renewing contracts; this contract ends on its end date with no renewal to act on.",
     };
   }
 

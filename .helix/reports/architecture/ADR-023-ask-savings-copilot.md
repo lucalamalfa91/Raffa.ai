@@ -1,4 +1,4 @@
-# ADR-023 — Ask Contigo is a domain savings copilot
+# ADR-023 — Ask Raffa is a domain savings copilot
 
 - **Status**: superseded by ADR-024 (2026-09-08)
 - **Date**: 2026-09-08
@@ -7,7 +7,7 @@
 
 ## Context and problem statement
 
-Ask Contigo on `demo` today is not an assistant. Structured questions return
+Ask Raffa on `demo` today is not an assistant. Structured questions return
 “not wired to an endpoint”. Semantic questions dump retrieved chunk text
 (including raw PDF headers) because the fixture answer role concatenates
 evidence. Citation chips show `Document:<guid>` with no preview and no
@@ -16,7 +16,7 @@ articulated prose.
 The buyer’s job is to **save money on contracts**, not to search a document
 dump or receive legal advice. The product already has deterministic savings
 and negotiation numbers (`IBenchmarkService`, `NegotiationStrategyCalculator`).
-The missing decision is how Ask Contigo uses Foundry, tenant RAG, and the
+The missing decision is how Ask Raffa uses Foundry, tenant RAG, and the
 market catalog together.
 
 ## Decision drivers
@@ -27,7 +27,7 @@ market catalog together.
 - Market comparison must not mean “other tenants’ PDFs”.
 - First `demo` must not depend on a paid Tropic/Vendr API (ADR-001).
 - No legal advice (spec §1.2).
-- Foundry SDKs stay inside `Contigo.AiGateway` (ADR-002 / ADR-004).
+- Foundry SDKs stay inside `Raffa.AiGateway` (ADR-002 / ADR-004).
 
 ## Considered options
 
@@ -40,7 +40,7 @@ market catalog together.
 
 ## Decision outcome
 
-**Chosen: Option 3.** Ask Contigo is a **domain-specialized savings and
+**Chosen: Option 3.** Ask Raffa is a **domain-specialized savings and
 negotiation copilot** hosted on Microsoft Foundry.
 
 | Corpus | Seam | Isolation |
@@ -82,11 +82,11 @@ does not retrieve `%PDF-1.4`.
 
 ## Superseded (2026-09-08, epic-13 / ADR-024)
 
-Superseded by `ADR-024-ask-contigo-v2.md` after the HITL of 2026-09-08
+Superseded by `ADR-024-ask-raffa-v2.md` after the HITL of 2026-09-08
 (`inputs/requirements.md` §0, decision D4: V2 replaces e12). The two-corpus
 principle, the savings-copilot persona, the refusal of legal advice and the
 Foundry-behind-`IAiGateway` rule survive in ADR-024; the market corpus now
 has its own index fed by a market-intelligence feed (mock now, API later),
 uploads live only in Documents with an admission gate, conversations are
-server-side, and the V2 prototype (`inputs/design/prototypes/Contigo V2
+server-side, and the V2 prototype (`inputs/design/prototypes/Raffa V2
 Prototype.html`) is the pixel reference. epic-12 / e12 were never launched.

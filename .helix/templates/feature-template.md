@@ -20,4 +20,4 @@ status: active
 - ADR-NNN — <title>
 
 ## Target repo
-`contigo-infra` | `contigo-backend` | `contigo-web` | `contigo-mobile` | mixed (name the split)
+`raffa-infra` | `raffa-backend` | `raffa-web` | `raffa-mobile` | mixed (name the split)

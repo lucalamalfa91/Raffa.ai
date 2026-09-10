@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Apply `main`-branch protection to lucalamalfa91/contigo, per ADR-014.
+"""Apply `main`-branch protection to lucalamalfa91/raffa, per ADR-014.
 
 Require pull request, no direct push, status-checks machinery enabled —
 task E01/F01/US01/T01 AC-3. Idempotent: the PUT sets the full desired state
 every run, so re-running is safe.
 
-Owner/repo resolve from CONTIGO_GITHUB_OWNER / CONTIGO_GITHUB_REPO
-(defaults lucalamalfa91 / contigo). CONTIGO_GITHUB_ORG is accepted as an
+Owner/repo resolve from RAFFA_GITHUB_OWNER / RAFFA_GITHUB_REPO
+(defaults lucalamalfa91 / raffa). RAFFA_GITHUB_ORG is accepted as an
 alias for the owner. Authenticates via whatever `gh` already has configured.
 
 The product remote is **public**. Classic branch protection works on GitHub
@@ -37,11 +37,11 @@ import json
 import os
 import subprocess
 
-OWNER_ENV = "CONTIGO_GITHUB_OWNER"
-ORG_ENV = "CONTIGO_GITHUB_ORG"
-REPO_ENV = "CONTIGO_GITHUB_REPO"
+OWNER_ENV = "RAFFA_GITHUB_OWNER"
+ORG_ENV = "RAFFA_GITHUB_ORG"
+REPO_ENV = "RAFFA_GITHUB_REPO"
 DEFAULT_OWNER = "lucalamalfa91"
-DEFAULT_REPO = "contigo"
+DEFAULT_REPO = "raffa"
 
 PROTECTION = {
     "required_status_checks": {"strict": False, "contexts": []},

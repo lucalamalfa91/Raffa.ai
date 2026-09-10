@@ -5,7 +5,7 @@
 Parent story `us-02-dev-environment` AC-1 ("dev provisions: ... Container
 Apps Environment ... PostgreSQL Flexible Server ... Storage Account ...
 Service Bus ... Key Vault ... Container Registry ... Log Analytics")
-and AC-2 ("All dev resources tagged project=contigo, env=dev,
+and AC-2 ("All dev resources tagged project=raffa, env=dev,
 location=North Europe") need a repeatable proof that the *outputs* of
 `infra/environments/dev/` actually surface a resource id/endpoint per
 service, and that the per-service resources underneath are tagged. Task
@@ -26,14 +26,14 @@ named in that table and are left untouched, matching this task's own
 Checks, all read-only, no network, no `terraform` binary required:
 
   1. `infra/environments/dev/main.tf`'s `azurerm_resource_group.this` is
-     tagged `project = "contigo"` / `env = local.environment` (AC-2 at
+     tagged `project = "raffa"` / `env = local.environment` (AC-2 at
      the root).
   2. each of the seven modules' `outputs.tf` exists and declares exactly
      the resource id/endpoint outputs ADR-005 calls for, each with a
      `value` expression that references the real resource attribute
      (not a copy/paste stand-in).
   3. each of those same modules' `main.tf`: `locals.tags` is
-     `project = "contigo"` / `env = var.environment`, and every
+     `project = "raffa"` / `env = var.environment`, and every
      taggable resource in that module (the ones with a `tags` argument
      in the Azure provider schema -- sub-resources such as
      `azurerm_storage_queue`/`azurerm_subnet` do not have one) is tagged
@@ -216,9 +216,9 @@ def check_root_resource_group_tags(dev_root: Path = DEV_ROOT) -> tuple:
     if tags_body is None:
         return False, "infra/environments/dev/main.tf azurerm_resource_group.this has no tags block"
     tags = dict(re.findall(r'(\w+)\s*=\s*"?([^"\n]+?)"?\s*\n', tags_body + "\n"))
-    if tags.get("project") != "contigo" or tags.get("env") != "local.environment":
+    if tags.get("project") != "raffa" or tags.get("env") != "local.environment":
         return False, f"infra/environments/dev/main.tf azurerm_resource_group.this tags={tags!r}"
-    return True, "infra/environments/dev/main.tf azurerm_resource_group.this tagged project=contigo, env=local.environment"
+    return True, "infra/environments/dev/main.tf azurerm_resource_group.this tagged project=raffa, env=local.environment"
 
 
 def check_module_outputs(module: str, modules_root: Path = MODULES_ROOT) -> tuple:
@@ -243,10 +243,10 @@ def check_module_resource_tags(module: str, modules_root: Path = MODULES_ROOT) -
         return False, f"infra/modules/{module}/main.tf does not exist"
     text = main_path.read_text(encoding="utf-8")
     tags = find_locals_tags(text)
-    if tags.get("project") != "contigo" or tags.get("env") != "var.environment":
+    if tags.get("project") != "raffa" or tags.get("env") != "var.environment":
         return False, (
             f"infra/modules/{module}/main.tf locals.tags={tags!r}, "
-            'expected project="contigo" and env=var.environment'
+            'expected project="raffa" and env=var.environment'
         )
     untagged = []
     for resource_type, resource_name in TAGGED_RESOURCES_BY_MODULE[module]:
@@ -256,7 +256,7 @@ def check_module_resource_tags(module: str, modules_root: Path = MODULES_ROOT) -
     if untagged:
         return False, f"infra/modules/{module}/main.tf resource(s) not tagged with local.tags: {', '.join(untagged)}"
     return True, (
-        f"infra/modules/{module}/main.tf locals.tags=project=contigo/env=var.environment; "
+        f"infra/modules/{module}/main.tf locals.tags=project=raffa/env=var.environment; "
         f"{len(TAGGED_RESOURCES_BY_MODULE[module])} resource(s) tagged with local.tags"
     )
 

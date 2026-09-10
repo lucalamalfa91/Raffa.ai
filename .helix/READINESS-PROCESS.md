@@ -1,13 +1,13 @@
-# Contigo demo-readiness process (epic-10 / e10)
+# Raffa demo-readiness process (epic-10 / e10)
 
 Separate Helix artifact from the live R0–R4 process, the web-delta, and schema-apply.
 
 | File | Role |
 |---|---|
-| `contigo-process.yaml` + `./run.ps1` | **Do not touch while e05 is running.** |
-| `contigo-web-process.yaml` + `./run-web.ps1` | Web delta. Do not mix. |
-| `contigo-schema-process.yaml` + `./run-schema.ps1` | Schema-apply. Do not mix. |
-| `contigo-readiness-process.yaml` + `./run-readiness.ps1` | Demo-readiness Passata 1 only. |
+| `raffa-process.yaml` + `./run.ps1` | **Do not touch while e05 is running.** |
+| `raffa-web-process.yaml` + `./run-web.ps1` | Web delta. Do not mix. |
+| `raffa-schema-process.yaml` + `./run-schema.ps1` | Schema-apply. Do not mix. |
+| `raffa-readiness-process.yaml` + `./run-readiness.ps1` | Demo-readiness Passata 1 only. |
 
 ## Launch Passata 1 (safe while e05 runs)
 

@@ -10,7 +10,7 @@ status: active
 
 ## Story
 
-As a **web implementer**, I want the Contigo design system in `web/` as a shared
+As a **web implementer**, I want the Raffa design system in `web/` as a shared
 token sheet and component catalogue, so all screens share one visual language
 (not a divergent one per screen).
 

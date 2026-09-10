@@ -8,11 +8,11 @@ superseded_by: epic-13
 
 > **Superseded (2026-09-08).** Replaced by `epic-13-ask-v2` (ADR-024, `inputs/requirements.md` D4). Never launched; slice `e12` is kept for the record only.
 
-# epic-12-ask-copilot — Ask Contigo savings copilot
+# epic-12-ask-copilot — Ask Raffa savings copilot
 
 ## Business capability
 
-Procurement can talk to Contigo in natural language and learn whether a
+Procurement can talk to Raffa in natural language and learn whether a
 contract is in line, below, or above the representative market band, and
 where they can push in negotiation — without legal advice and without
 dumping raw PDFs.

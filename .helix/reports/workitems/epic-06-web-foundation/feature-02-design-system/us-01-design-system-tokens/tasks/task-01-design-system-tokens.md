@@ -4,7 +4,7 @@ type: task
 story: us-01-design-system-tokens
 wave: 6
 status: live
-target_repo: contigo-web
+target_repo: raffa-web
 ---
 
 # task-01-design-system-tokens — Port design system tokens + components
@@ -19,7 +19,7 @@ catalogue, consuming `styles.css` values verbatim.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-web/src/styles/ | token sheet + component classes |
+| workspace/raffa-web/src/styles/ | token sheet + component classes |
 | inputs/design/prototypes/design-system.md | source (read, cite) |
 | inputs/design/prototypes/day1-demo.html | executable reference (read, cite) |
 
@@ -33,7 +33,7 @@ catalogue, consuming `styles.css` values verbatim.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| build | shared sheet compiles | workspace/contigo-web |
+| build | shared sheet compiles | workspace/raffa-web |
 
 ## Wave-spec entry
 ```yaml

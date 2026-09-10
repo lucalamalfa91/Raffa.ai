@@ -16,7 +16,7 @@ Container Apps (consumption, scale-to-zero), PostgreSQL Flexible Server (Burstab
 with `pgvector`, Storage Account (blob + queue), Service Bus Standard, Key Vault,
 Entra ID app registrations (OIDC), Container Registry (Basic), and the Azure AI
 Foundry account shape (one hub, two projects) with Document Intelligence S0 on
-the same PAYG AI services account (ADR-017, OCR in V1) — all tagged `project=contigo`,
+the same PAYG AI services account (ADR-017, OCR in V1) — all tagged `project=raffa`,
 `env=dev|demo`, never sharing a store between envs.
 
 ## User stories
@@ -41,4 +41,4 @@ the same PAYG AI services account (ADR-017, OCR in V1) — all tagged `project=c
 
 ## Target repo
 
-`contigo-infra`
+`raffa-infra`

@@ -137,11 +137,11 @@ describe("ReplyBody (task E13/F09/US01/T02, AC-3)", () => {
   it("error: renders the existing .error-state, not the abstain block", () => {
     const { container } = renderReply({
       kind: "error",
-      reason: "Contigo's Q&A service is temporarily unavailable. Try again in a moment.",
+      reason: "Raffa's Q&A service is temporarily unavailable. Try again in a moment.",
     });
 
     expect(container.querySelector(".error-state")).not.toBeNull();
     expect(container.querySelector(".abstain-block")).toBeNull();
-    expect(screen.getByRole("alert")).toHaveTextContent("Contigo's Q&A service is temporarily unavailable. Try again in a moment.");
+    expect(screen.getByRole("alert")).toHaveTextContent("Raffa's Q&A service is temporarily unavailable. Try again in a moment.");
   });
 });

@@ -4,7 +4,7 @@ type: task
 story: us-01-benchmark-interface
 wave: R3
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-benchmark-interface — 01 Benchmark Interface
@@ -18,7 +18,7 @@ Benchmark Service interface getBenchmark + normalized DTO.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `benchmark-interface` |
+| workspace/raffa-backend/src/ | implementation for `benchmark-interface` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-001, ADR-002.
@@ -30,7 +30,7 @@ Benchmark Service interface getBenchmark + normalized DTO.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | benchmark-interface behaviour | workspace/contigo-backend/tests |
+| unit | benchmark-interface behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

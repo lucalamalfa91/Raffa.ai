@@ -4,7 +4,7 @@ type: task
 story: us-01-reindex
 wave: 12
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-reindex — LoadAsync + re-OCR / re-embed
@@ -29,7 +29,7 @@ re-embed. Do not skip tenant checks.
 
 | Path | Change |
 |------|--------|
-| `backend/src/Contigo.SharedKernel/Storage/IDocumentStorage.cs` | `LoadAsync` |
+| `backend/src/Raffa.SharedKernel/Storage/IDocumentStorage.cs` | `LoadAsync` |
 | blob adapter + test fakes | implement load |
 | Documents / worker reprocess | re-OCR + re-embed |
 | tests | load + no `%PDF-1.4` after reprocess |

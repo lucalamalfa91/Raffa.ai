@@ -26,7 +26,7 @@ until the live provider lands behind the same seam
 
 | ID | Title | Wave |
 |----|-------|------|
-| us-01 | Market intelligence Contigo can cite | 13 |
+| us-01 | Market intelligence Raffa can cite | 13 |
 
 ## Architecture decisions in force
 
@@ -38,4 +38,4 @@ until the live provider lands behind the same seam
 
 ## Target repo
 
-`contigo-backend`
+`raffa-backend`

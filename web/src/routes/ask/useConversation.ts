@@ -50,7 +50,7 @@ export function useConversation(apiClient: ApiClient, tenantId: string | undefin
           // accessibility baseline: "names the failing job, never a raw stack trace").
           message:
             result.statusCode === 503 || result.statusCode === null
-              ? "Contigo's conversation service is temporarily unavailable. Try again in a moment."
+              ? "Raffa's conversation service is temporarily unavailable. Try again in a moment."
               : (result.error ?? "This conversation could not be loaded."),
         });
         return;

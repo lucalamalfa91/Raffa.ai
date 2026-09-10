@@ -26,4 +26,4 @@ layout, not only the red abstain block.
 
 ## Target repo
 
-`contigo-web`
+`raffa-web`

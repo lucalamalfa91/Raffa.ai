@@ -19,7 +19,7 @@ output "environment" {
 }
 
 output "tags" {
-  description = "project/env tags applied to every dev resource (AC-2); every module below tags its own resources with this same project=contigo, env=dev pair (see infra/modules/*/main.tf locals.tags)."
+  description = "project/env tags applied to every dev resource (AC-2); every module below tags its own resources with this same project=raffa, env=dev pair (see infra/modules/*/main.tf locals.tags)."
   value       = azurerm_resource_group.this.tags
 }
 
@@ -93,7 +93,7 @@ output "log_analytics_workspace_id" {
 }
 
 output "static_web_app_name" {
-  description = "Name of the dev Static Web App (swa-contigo-dev); web.yml composes this."
+  description = "Name of the dev Static Web App (swa-raffa-dev); web.yml composes this."
   value       = module.staticwebapp.name
 }
 
@@ -105,12 +105,12 @@ output "static_web_app_hostname" {
 # ADR-008 amendment 2026-09-09: the shared AI services account this root
 # owns, this environment's Foundry project and its model deployments.
 output "ai_resource_group_name" {
-  description = "Shared AI resource group owned by this root (rg-contigo-ai, tags env=shared)."
+  description = "Shared AI resource group owned by this root (rg-raffa-ai, tags env=shared)."
   value       = module.foundry.ai_resource_group_name
 }
 
 output "ai_services_account_id" {
-  description = "ARM id of the shared aisvc-contigo Azure AI Services account."
+  description = "ARM id of the shared aisvc-raffa Azure AI Services account."
   value       = module.foundry.ai_services_account_id
 }
 
@@ -125,7 +125,7 @@ output "ai_services_endpoint" {
 }
 
 output "foundry_project_id" {
-  description = "ARM id of the contigo-dev Foundry project."
+  description = "ARM id of the raffa-dev Foundry project."
   value       = module.foundry.foundry_project_id
 }
 

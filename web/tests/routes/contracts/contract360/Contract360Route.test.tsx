@@ -52,7 +52,7 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     getQuoteAssessment: vi.fn(),
     recalculateQuoteAssessment: vi.fn(),
     captureNegotiationOutcome: vi.fn(),
-    askContigo: vi.fn(),
+    askRaffa: vi.fn(),
     getSavingsKpis: vi.fn(),
     getSavingsOpportunities: vi.fn(),
     ...overrides,
@@ -271,7 +271,7 @@ function populatedClient(overrides: Partial<ApiClient> = {}): ApiClient {
 describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
   beforeEach(() => {
     window.sessionStorage.clear();
-    window.sessionStorage.setItem("contigo.signin.currentWorkspace", JSON.stringify({ id: WORKSPACE_ID, name: "Acme Procurement" }));
+    window.sessionStorage.setItem("raffa.signin.currentWorkspace", JSON.stringify({ id: WORKSPACE_ID, name: "Acme Procurement" }));
   });
 
   it("guards on no current workspace instead of sending an undefined X-Tenant-Id", () => {
@@ -342,10 +342,10 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
       expect(screen.queryByRole("button", { name: "Commercials" })).not.toBeInTheDocument();
     });
 
-    it("follows the origin for the back label: Ask Contigo, Savings", async () => {
+    it("follows the origin for the back label: Ask Raffa, Savings", async () => {
       const { unmount } = renderContract360(populatedClient(), CONTRACT_ID, { from: "ask" });
       await screen.findByRole("heading", { level: 2, name: "MSA" });
-      expect(screen.getByRole("link", { name: "← Ask Contigo" })).toHaveAttribute("href", "/ask");
+      expect(screen.getByRole("link", { name: "← Ask Raffa" })).toHaveAttribute("href", "/ask");
       unmount();
 
       renderContract360(populatedClient(), CONTRACT_ID, { from: "savings" });

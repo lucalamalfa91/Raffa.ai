@@ -19,11 +19,11 @@ vi.mock("@azure/msal-react", () => ({
 }));
 
 const appConfig: AppConfig = {
-  apiBaseUrl: "https://api.dev.contigo.example",
+  apiBaseUrl: "https://api.dev.raffa.example",
   oidcAuthority: "https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000",
   oidcClientId: "11111111-1111-1111-1111-111111111111",
-  oidcRedirectUri: "https://web.dev.contigo.example",
-  oidcApiScopes: ["api://11111111-1111-1111-1111-111111111111/Contigo.Read"],
+  oidcRedirectUri: "https://web.dev.raffa.example",
+  oidcApiScopes: ["api://11111111-1111-1111-1111-111111111111/Raffa.Read"],
 };
 
 /** src/api/client.ts (task E01/F07/US01/T02, extended by E06/F03/US01/T01) is exercised by its own tests/api/client.test.ts; here it is a plain mock so App's rendering is isolated. */
@@ -80,7 +80,7 @@ function mockApiClient(result: Promise<HealthCheckResult> | HealthCheckResult): 
     getQuoteAssessment: vi.fn(),
     recalculateQuoteAssessment: vi.fn(),
     captureNegotiationOutcome: vi.fn(),
-    askContigo: vi.fn(),
+    askRaffa: vi.fn(),
     // Task E08/F02/US01/T01 (savings-home): unlike getPortfolio/getContract360/etc. above (never
     // invoked here -- this file never navigates away from the shell's default route), HomeRoute IS
     // that default route ("/", WorkspaceShellApp's own `index` route) -- every "signed in + workspace
@@ -182,7 +182,7 @@ describe("App", () => {
         inProgress: InteractionStatus.None,
       });
       window.sessionStorage.setItem(
-        "contigo.signin.currentWorkspace",
+        "raffa.signin.currentWorkspace",
         JSON.stringify({ id: "w-1", name: "Acme Procurement" }),
       );
 
@@ -200,7 +200,7 @@ describe("App", () => {
         inProgress: InteractionStatus.None,
       });
       window.sessionStorage.setItem(
-        "contigo.signin.currentWorkspace",
+        "raffa.signin.currentWorkspace",
         JSON.stringify({ id: "w-1", name: "Acme Procurement" }),
       );
 
@@ -218,7 +218,7 @@ describe("App", () => {
         inProgress: InteractionStatus.None,
       });
       window.sessionStorage.setItem(
-        "contigo.signin.currentWorkspace",
+        "raffa.signin.currentWorkspace",
         JSON.stringify({ id: "w-1", name: "Acme Procurement" }),
       );
 
@@ -278,7 +278,7 @@ describe("App", () => {
       const apiClient = mockApiClient({
         ok: false,
         statusCode: null,
-        body: "Unable to reach https://api.dev.contigo.example/health. Cause: network down",
+        body: "Unable to reach https://api.dev.raffa.example/health. Cause: network down",
       });
       render(<App appConfig={appConfig} apiClient={apiClient} />);
 

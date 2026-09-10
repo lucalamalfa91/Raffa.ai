@@ -8,7 +8,7 @@ a throwaway repo and, finally, that same scan against this real working
 tree.
 
 main()'s live GET orchestration and its re-run of bootstrap_hcp_org.py need
-a real TFE_TOKEN and the real `contigo-platform` HCP Terraform organization,
+a real TFE_TOKEN and the real `raffa-platform` HCP Terraform organization,
 so that path is intentionally exercised live via
 `python scripts/hcp_vcs_wiring.py [--check-only]`, not from this unit-test
 file -- parity with scripts/bootstrap_hcp_org.py, whose main() is likewise
@@ -31,7 +31,7 @@ sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 import hcp_vcs_wiring as vcs  # noqa: E402
 
-IDENTIFIER = "lucalamalfa91/contigo"
+IDENTIFIER = "lucalamalfa91/raffa"
 
 
 def _attrs(
@@ -85,7 +85,7 @@ class ClassifyVcsWiringTests(unittest.TestCase):
 
     def test_wrong_identifier_is_mismatched(self) -> None:
         attrs = _attrs(
-            vcs_repo={"identifier": "someone-else/contigo", "branch": "main"},
+            vcs_repo={"identifier": "someone-else/raffa", "branch": "main"},
             trigger_prefixes=["infra/"],
             file_triggers_enabled=True,
         )
@@ -126,7 +126,7 @@ class ClassifyVcsWiringTests(unittest.TestCase):
 
 class EvaluateWorkspaceTests(unittest.TestCase):
     def test_remote_and_pending_is_ok_overall(self) -> None:
-        ok, lines = vcs.evaluate_workspace("contigo-dev", _attrs(execution_mode="remote"), IDENTIFIER)
+        ok, lines = vcs.evaluate_workspace("raffa-dev", _attrs(execution_mode="remote"), IDENTIFIER)
         self.assertTrue(ok, lines)
         self.assertTrue(any("PASS" in l and "remote-execution-mode" in l for l in lines), lines)
         self.assertTrue(any("WARN" in l and "pending" in l for l in lines), lines)
@@ -138,12 +138,12 @@ class EvaluateWorkspaceTests(unittest.TestCase):
             trigger_prefixes=["infra/"],
             file_triggers_enabled=True,
         )
-        ok, lines = vcs.evaluate_workspace("contigo-dev", attrs, IDENTIFIER)
+        ok, lines = vcs.evaluate_workspace("raffa-dev", attrs, IDENTIFIER)
         self.assertTrue(ok, lines)
         self.assertTrue(any("PASS" in l and "wired" in l for l in lines), lines)
 
     def test_local_execution_mode_fails_overall_even_if_vcs_pending(self) -> None:
-        ok, lines = vcs.evaluate_workspace("contigo-dev", _attrs(execution_mode="local"), IDENTIFIER)
+        ok, lines = vcs.evaluate_workspace("raffa-dev", _attrs(execution_mode="local"), IDENTIFIER)
         self.assertFalse(ok, lines)
 
     def test_mismatched_vcs_fails_overall_even_if_remote(self) -> None:
@@ -153,7 +153,7 @@ class EvaluateWorkspaceTests(unittest.TestCase):
             trigger_prefixes=["infra/"],
             file_triggers_enabled=True,
         )
-        ok, lines = vcs.evaluate_workspace("contigo-dev", attrs, IDENTIFIER)
+        ok, lines = vcs.evaluate_workspace("raffa-dev", attrs, IDENTIFIER)
         self.assertFalse(ok, lines)
 
 

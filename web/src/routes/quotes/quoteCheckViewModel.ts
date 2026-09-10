@@ -10,17 +10,17 @@ import type { SemanticTag, TagVariant } from "../../styles/semantics";
 
 /**
  * Pure view-model helpers for the V2 Quote check screen (route `/quotes[/:quoteId]`; ADR-024 V2
- * IA; screens-v2.md #9; `contigo-v2/markup.html` "QUOTE CHECK (optional)" block). No React here, so
+ * IA; screens-v2.md #9; `raffa-v2/markup.html` "QUOTE CHECK (optional)" block). No React here, so
  * every rule below is unit-testable without rendering anything (`quoteCheckViewModel.test.ts`).
  *
  * **This screen is real, not a fixture.** The prototype's Quote check is one hard-coded Databricks
  * scenario. This module derives every number from the real backend surface
- * `backend/src/Contigo.Api/QuotesEndpointExtensions.cs` / `NegotiationsEndpointExtensions.cs`
+ * `backend/src/Raffa.Api/QuotesEndpointExtensions.cs` / `NegotiationsEndpointExtensions.cs`
  * expose -- see `../../api/client.ts`'s own header comments on `uploadQuote` /
  * `recalculateQuoteAssessment` / `captureNegotiationOutcome` for the provenance of every field read
  * here.
  *
- * **No quote-level rollup exists server-side, on purpose.** `Contigo.Quotes.Application.Assessment
+ * **No quote-level rollup exists server-side, on purpose.** `Raffa.Quotes.Application.Assessment
  * .QuoteMarketAssessment`'s own doc comment: "No quote-level rollup (e.g. 'overall position'): ...
  * inventing one here would be exactly the fabricated-precision Appendix C rule 10 warns against."
  * The prototype's single "Above market" verdict therefore becomes `summarizePositions`' real
@@ -33,7 +33,7 @@ import type { SemanticTag, TagVariant } from "../../styles/semantics";
 
 /** Header description, quoted verbatim from the prototype block. */
 export const QUOTE_INTRO =
-  "Drop a supplier proposal; Contigo normalises the lines and compares them with the market and with what you already pay.";
+  "Drop a supplier proposal; Raffa normalises the lines and compares them with the market and with what you already pay.";
 
 /** Footer under the lines table, quoted verbatim from the prototype block. */
 export const QUOTE_LEVERS_FOOTER = "Target and negotiation levers are one step further — shown only if you want them.";

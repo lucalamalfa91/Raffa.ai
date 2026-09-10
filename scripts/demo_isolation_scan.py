@@ -2,7 +2,7 @@
 """Cross-environment isolation scan for `demo` vs `dev` (task E01/F02/US03/T02).
 
 Parent story `us-03-demo-environment` AC-3: "`demo` has its own resource group
-and HCP `contigo-demo` state; no shared Postgres/Storage/Service Bus with
+and HCP `raffa-demo` state; no shared Postgres/Storage/Service Bus with
 `dev`." Task `task-01-demo-environment-provision` instantiated the `demo` root
 and explicitly deferred the automated proof to this task (see the header
 comments on `infra/environments/demo/main.tf` and `.../demo/outputs.tf`,
@@ -25,7 +25,7 @@ credentials required:
   3. `azurerm_resource_group.this.name` resolves to a different concrete
      string for `dev` and `demo` (ADR-016: distinct resource groups).
   4. each root's `backend.tf` points at the same HCP Terraform organization
-     but a different workspace (`contigo-dev` vs `contigo-demo`) -- ADR-016:
+     but a different workspace (`raffa-dev` vs `raffa-demo`) -- ADR-016:
      distinct remote state, never shared.
   5. for each of postgres/storage/servicebus: the env root's `module` block
      passes its OWN `azurerm_resource_group.this.name` and OWN
@@ -97,7 +97,7 @@ def _strip_line_comments(text: str) -> str:
 
     Several files this scan reads (e.g. infra/environments/demo/main.tf,
     infra/environments/demo/outputs.tf) carry long `#`-comment headers that
-    mention *this task's own id* and words like "dev"/"rg-contigo-dev" as
+    mention *this task's own id* and words like "dev"/"rg-raffa-dev" as
     prose. Left unstripped, that text would be indistinguishable from a real
     cross-environment reference to check_no_cross_environment_coupling.
     """

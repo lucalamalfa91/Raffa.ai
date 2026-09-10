@@ -6,7 +6,7 @@ import type { RenewalActionStatusValue } from "../../api/client";
  * here" pane's acted state, Contract 360's negotiation tracker and the Savings opportunities table).
  *
  * Why this exists even though the write itself is real and durable: `POST /api/renewals/{id}/action`
- * (`Contigo.Renewals.Application.RenewalActionService.SetActionAsync`, wrapped by
+ * (`Raffa.Renewals.Application.RenewalActionService.SetActionAsync`, wrapped by
  * `apiClient.postRenewalAction`, see `../../api/client.ts`) really does persist owner/status/action
  * for this renewal -- this is not a fabricated write. But there is no way to read it back over HTTP
  * yet: `RenewalActionService.GetActionAsync` exists but its own doc comment says "no HTTP route
@@ -19,13 +19,13 @@ import type { RenewalActionStatusValue } from "../../api/client";
  * uses, for the same "one current workspace per session" reason).
  *
  * This also doubles as the honest stand-in for "Action creates an opportunity visible on Savings":
- * `Contigo.Savings.Application.SavingsOpportunityService.CreateAsync` exists but is "not yet wired
+ * `Raffa.Savings.Application.SavingsOpportunityService.CreateAsync` exists but is "not yet wired
  * to an HTTP route" (its own doc comment), so no screen can durably create a real
  * `SavingsOpportunity` row via HTTP. `../savings/` merges these rows into its own table alongside
  * whatever the real `GET /api/savings` returns.
  */
 
-const TRACKED_RENEWAL_ACTIONS_KEY = "contigo.renewals.actions";
+const TRACKED_RENEWAL_ACTIONS_KEY = "raffa.renewals.actions";
 
 export interface TrackedRenewalAction {
   contractId: string;

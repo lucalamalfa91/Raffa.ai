@@ -4,7 +4,7 @@ type: task
 story: us-02-embedding-search-index
 wave: R1
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-embedding-entity — 01 Embedding Entity
@@ -18,7 +18,7 @@ Add Embedding entity with pgvector vector column + fixed dimension.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `embedding-entity` |
+| workspace/raffa-backend/src/ | implementation for `embedding-entity` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-003, ADR-004.
@@ -30,7 +30,7 @@ Add Embedding entity with pgvector vector column + fixed dimension.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | embedding-entity behaviour | workspace/contigo-backend/tests |
+| unit | embedding-entity behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

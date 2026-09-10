@@ -13,7 +13,7 @@ export interface TargetStepProps {
  * Target step (screens.md #10 AC-3: "price ladder (range, target, quote), opening/acceptable/
  * walk-away table, editable target"). Two honest departures from the cited prototype, both named
  * here rather than silently copied: no backend endpoint computes a distinct "opening target" or
- * "walk-away/escalation" figure (`Contigo.Quotes.Application.Assessment.LineTargetSaving` gives
+ * "walk-away/escalation" figure (`Raffa.Quotes.Application.Assessment.LineTargetSaving` gives
  * exactly one recommended range, `RecommendedTargetLow/High`) -- "Your target"/"Walk-away" are
  * therefore real, user-editable inputs (pre-filled from the real recommended-range/quote-total
  * aggregate as a starting point), not a third computed tier; and the ladder is drawn proportionally

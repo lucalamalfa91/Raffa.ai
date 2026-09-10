@@ -45,7 +45,7 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     getQuoteAssessment: vi.fn(),
     recalculateQuoteAssessment: vi.fn(),
     captureNegotiationOutcome: vi.fn(),
-    askContigo: vi.fn(),
+    askRaffa: vi.fn(),
     getSavingsKpis: vi.fn(),
     getSavingsOpportunities: vi.fn(),
     ...overrides,
@@ -122,7 +122,7 @@ const LEVERS_FOOTER = "Target and negotiation levers are one step further — sh
 describe("QuoteCheckRoute (V2, ADR-024 / screens-v2.md #9)", () => {
   beforeEach(() => {
     window.sessionStorage.clear();
-    window.sessionStorage.setItem("contigo.signin.currentWorkspace", JSON.stringify({ id: WORKSPACE_ID, name: "Acme Procurement" }));
+    window.sessionStorage.setItem("raffa.signin.currentWorkspace", JSON.stringify({ id: WORKSPACE_ID, name: "Acme Procurement" }));
   });
 
   it("guards on no current workspace instead of sending an undefined X-Tenant-Id", () => {
@@ -141,7 +141,7 @@ describe("QuoteCheckRoute (V2, ADR-024 / screens-v2.md #9)", () => {
     expect(screen.getByText("Optional · new purchase")).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 2, name: "Quote check" })).toBeInTheDocument();
     expect(
-      screen.getByText("Drop a supplier proposal; Contigo normalises the lines and compares them with the market and with what you already pay."),
+      screen.getByText("Drop a supplier proposal; Raffa normalises the lines and compares them with the market and with what you already pay."),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Upload a quote" })).toHaveClass("btn-primary");
     expect(screen.getByText(/or use the sample:/)).toBeInTheDocument();

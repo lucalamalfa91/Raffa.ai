@@ -24,4 +24,4 @@ Quote-check stepper (Extract → Assessment → Target → Negotiation) + outcom
 
 ## Target repo
 
-`contigo-web`
+`raffa-web`

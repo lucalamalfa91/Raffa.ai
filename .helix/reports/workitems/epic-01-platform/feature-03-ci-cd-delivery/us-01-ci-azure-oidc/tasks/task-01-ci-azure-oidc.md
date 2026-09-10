@@ -4,7 +4,7 @@ type: task
 story: us-01-ci-azure-oidc
 wave: R0
 status: live
-target_repo: contigo-infra
+target_repo: raffa-infra
 # requires: [azure_subscription]
 ---
 
@@ -12,10 +12,10 @@ target_repo: contigo-infra
 
 ## Coding objective
 
-Create two least-privilege service principals `contigo-sp-dev` and
-`contigo-sp-demo` (ADR-015) with role assignments scoped to the `dev` and `demo`
+Create two least-privilege service principals `raffa-sp-dev` and
+`raffa-sp-demo` (ADR-015) with role assignments scoped to the `dev` and `demo`
 resource groups respectively. Configure GitHub → Entra OIDC federated credentials
-with subject claims pinned to `repo:lucalamalfa91/contigo:*` (and the `demo` environment
+with subject claims pinned to `repo:lucalamalfa91/raffa:*` (and the `demo` environment
 claim for `demo`). Author a reusable GitHub Actions auth step using
 `azure/login` with only `client-id`, `tenant-id`, `subscription-id` — never a
 client secret or `AZURE_CREDENTIALS`. Record the federation config as Terraform
@@ -31,9 +31,9 @@ output so it is reproducible.
 
 | Path | Change |
 |------|--------|
-| workspace/contigo-infra/modules/identity/main.tf | SPs + federation subject claims |
-| workspace/contigo-infra/modules/identity/outputs.tf | sp client-id/tenant-id/subscription |
-| workspace/contigo-infra/.github/actions/azure-login/action.yml | OIDC `azure/login` step |
+| workspace/raffa-infra/modules/identity/main.tf | SPs + federation subject claims |
+| workspace/raffa-infra/modules/identity/outputs.tf | sp client-id/tenant-id/subscription |
+| workspace/raffa-infra/.github/actions/azure-login/action.yml | OIDC `azure/login` step |
 
 ## Context the implementer needs
 

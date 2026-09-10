@@ -1,7 +1,7 @@
 # Decomposition — demo-readiness (epic-10 / e10)
 
 Ids start at **E10/F01/US01/T01**. Mix of `layer: backend` and infra/CI.
-`target_repo` is `contigo-backend` or `contigo-infra` as appropriate.
+`target_repo` is `raffa-backend` or `raffa-infra` as appropriate.
 
 ## Only residuals
 
@@ -10,7 +10,7 @@ apply + Savings/Quotes conn strings), or e06–e08 (web screens).
 
 Typical e10 stories (drop any the gap report marked WAVE_COVERED):
 
-- seed fixture data on `contigo_demo` (and optionally `contigo_dev`)
+- seed fixture data on `raffa_demo` (and optionally `raffa_dev`)
 - Foundry/OCR env on Container Apps if missing
 - `demo-v*` / SWA config smoke
 

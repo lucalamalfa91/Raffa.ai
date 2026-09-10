@@ -6,17 +6,17 @@ status: active
 supersedes: epic-12
 ---
 
-# epic-13-ask-v2 — Ask Contigo V2: Documents intake, conversations, market feed, strategies, system-aware routing
+# epic-13-ask-v2 — Ask Raffa V2: Documents intake, conversations, market feed, strategies, system-aware routing
 
 ## Business capability
 
-Procurement drops one or more contracts into Contigo (anything that is not
+Procurement drops one or more contracts into Raffa (anything that is not
 a contract is refused and never stored), reviews the weak facts, and then
-talks to Contigo — the home of the product — about **that contract against
+talks to Raffa — the home of the product — about **that contract against
 the market**, about **how to approach its renewal**, and, in a new chat,
 about **the whole portfolio** (most critical contracts, where to save, what
 to improve). Every answer is articulated prose whose every claim cites a
-validated contract page, a market record with provenance, or a Contigo
+validated contract page, a market record with provenance, or a Raffa
 capability, and every answer routes the user to the right screen
 (Contract 360, Renewals, Documents, Quote check, Savings). Nothing is
 invented, nothing comes from the web, another tenant never appears.
@@ -26,7 +26,7 @@ invented, nothing comes from the web, another tenant never appears.
 | Source | Item |
 |--------|------|
 | `inputs/requirements.md` | Full requirements, HITL decisions D1–D8, API §6, data §7, acceptance §10 |
-| `inputs/design/prototypes/Contigo V2 Prototype.html` (unpacked `contigo-v2/`) | Pixel + behaviour reference for every web task (`ia-v2.md`, `screens-v2.md`) |
+| `inputs/design/prototypes/Raffa V2 Prototype.html` (unpacked `raffa-v2/`) | Pixel + behaviour reference for every web task (`ia-v2.md`, `screens-v2.md`) |
 | ADR-024 | Supersedes ADR-023: intake gate, conversations, market feed + index, engine contract, strategies, catalog, V2 IA, module map |
 | ADR-001 / 004 / 011 / 018 / 020 amendments | Market feed as Internal Dataset; Foundry roles + no tools; two corpora + conversations under RLS; V2 IA; V2 screens |
 | spec §4.1, §7, §8.3–§8.4, §9, §10, §12.1, §14.2, §15.3 | Types, statuses, evidence, renewals, benchmarks, negotiation, AI privacy, AI evaluation |
@@ -58,7 +58,7 @@ interventions.
 
 ## Architecture decisions in force
 
-- ADR-024 — Ask Contigo V2 (supersedes ADR-023)
+- ADR-024 — Ask Raffa V2 (supersedes ADR-023)
 - ADR-001, 004, 011, 018, 020 — epic-13 amendment footers
 - ADR-002, 003, 009, 017, 019, 021, 022 — unchanged and binding
 

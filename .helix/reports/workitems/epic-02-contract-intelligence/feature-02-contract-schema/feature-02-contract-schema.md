@@ -29,4 +29,4 @@ migrations over PostgreSQL + pgvector.
 
 ## Target repo
 
-`contigo-backend`
+`raffa-backend`

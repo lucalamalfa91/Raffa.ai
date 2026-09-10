@@ -4,7 +4,7 @@ type: task
 story: us-01-final-integration
 wave: R4
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-r4-integration — 01 R4 Integration
@@ -18,7 +18,7 @@ Prove R4 Day-1 path: quote->assess->strategy->outcome.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `r4-integration` |
+| workspace/raffa-backend/src/ | implementation for `r4-integration` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-001, ADR-002, ADR-003, ADR-009, ADR-016.
@@ -30,7 +30,7 @@ Prove R4 Day-1 path: quote->assess->strategy->outcome.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | r4-integration behaviour | workspace/contigo-backend/tests |
+| unit | r4-integration behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

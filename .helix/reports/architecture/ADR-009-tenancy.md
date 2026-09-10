@@ -7,7 +7,7 @@
 
 ## Context and problem statement
 
-Contigo is a multi-tenant procurement intelligence product: many customer workspaces share one
+Raffa is a multi-tenant procurement intelligence product: many customer workspaces share one
 relational store (PostgreSQL + pgvector) and one object store in each Azure environment. The product
 spec §3.2 is unambiguous: *"Every business object must carry `tenant_id`. Tenant isolation must be
 enforced at both application and database level. No cross-tenant query path is acceptable."* The same
@@ -24,7 +24,7 @@ tenant's rows.
 - **Database-level isolation is a hard product constraint**, not a nice-to-have (spec §3.2 verbatim).
 - **Shared infra per environment** means a single application bug (forgotten `WHERE tenant_id`) must
   still be blocked by the database, not silently leak rows.
-- **RAG retrieval** (Ask Contigo, spec §8.3) assembles contract sections/clauses into an LLM context.
+- **RAG retrieval** (Ask Raffa, spec §8.3) assembles contract sections/clauses into an LLM context.
   A retrieval path that is filtered only by role and not by tenant would exfiltrate cross-tenant content.
 - Cost guideline: cheapest store that still satisfies isolation — so we cannot justify per-tenant
   dedicated databases in V1 (spec §3.2 "future enterprise option").

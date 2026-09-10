@@ -5,13 +5,13 @@
 # subnets created here.
 locals {
   tags = {
-    project = "contigo"
+    project = "raffa"
     env     = var.environment
   }
 }
 
 resource "azurerm_virtual_network" "this" {
-  name                = "vnet-contigo-${var.environment}"
+  name                = "vnet-raffa-${var.environment}"
   location            = var.location
   resource_group_name = var.resource_group_name
   address_space       = var.address_space
@@ -20,7 +20,7 @@ resource "azurerm_virtual_network" "this" {
 }
 
 resource "azurerm_subnet" "apps" {
-  name                 = "snet-contigo-${var.environment}-apps"
+  name                 = "snet-raffa-${var.environment}-apps"
   resource_group_name  = var.resource_group_name
   virtual_network_name = azurerm_virtual_network.this.name
   address_prefixes     = ["10.0.1.0/24"]
@@ -30,7 +30,7 @@ resource "azurerm_subnet" "apps" {
 }
 
 resource "azurerm_subnet" "postgres" {
-  name                 = "snet-contigo-${var.environment}-postgres"
+  name                 = "snet-raffa-${var.environment}-postgres"
   resource_group_name  = var.resource_group_name
   virtual_network_name = azurerm_virtual_network.this.name
   address_prefixes     = ["10.0.2.0/24"]

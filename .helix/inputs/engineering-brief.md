@@ -1,11 +1,11 @@
-# Contigo V1 — Technical Engineering Brief
+# Raffa V1 — Technical Engineering Brief
 
 **Audience:** Helix council  
 **Status:** Engineering mandate — Azure `dev` + `demo`  
 **Date:** 1 September 2026 (v1.2 — supersedes 27 August source-control lock)  
 **Product source of truth:** [`product-spec.md`](./product-spec.md)
 
-**v1.2:** source control is **one public** GitHub repository (monorepo) with domain folders, called "contigo" with description "Contigo platform" in the lucalamalfa91 account ([https://github.com/lucalamalfa91/contigo](https://github.com/lucalamalfa91/contigo)). Helix `fan_out` isolates a single git toplevel. 
+**v1.2:** source control is **one public** GitHub repository (monorepo) with domain folders, called "raffa" with description "Raffa platform" in the lucalamalfa91 account ([https://github.com/lucalamalfa91/raffa](https://github.com/lucalamalfa91/raffa)). Helix `fan_out` isolates a single git toplevel. 
 
 ---
 
@@ -38,9 +38,9 @@ Do not treat examples, SKUs, model names, branch names, or library choices elsew
 | IaC | HCP Terraform. Infra code lives in the `infra/` folder of the monorepo. |
 | Backend | C# / ASP.NET Core (current LTS at implementation time). Modular monolith + background worker. No microservices split in V1. |
 | Frontend / mobile | Council decides the stacks. |
-| Source control | GitHub account **lucalamalfa91**. **One public** repository [`contigo`](https://github.com/lucalamalfa91/contigo) (see §2). Description "Contigo platform". Not four remotes. |
+| Source control | GitHub account **lucalamalfa91**. **One public** repository [`raffa`](https://github.com/lucalamalfa91/raffa) (see §2). Description "Raffa platform". Not four remotes. |
 | Delivery | GitHub CI/CD releases to Azure `dev` and Azure `demo`. |
-| AI | Microsoft Foundry only, via a Contigo **AI Gateway**. Domain modules never call a provider directly. Use the cheapest Foundry models that still meet the product tasks. |
+| AI | Microsoft Foundry only, via a Raffa **AI Gateway**. Domain modules never call a provider directly. Use the cheapest Foundry models that still meet the product tasks. |
 | Auth / secrets | OIDC, SSO-ready (Entra ID). Secrets in Key Vault. No secrets in code, client bundles, or Terraform source. |
 | API | API-first. Web and mobile consume the backend API. |
 | Code authoring | Claude Code via Helix, for infra, backend, web, and mobile. |
@@ -55,7 +55,7 @@ Record council decisions as ADRs. Do not invent extra locked rules.
 
 ## 2. GitHub
 
-The product remote already exists and is **public**: [`https://github.com/lucalamalfa91/contigo`](https://github.com/lucalamalfa91/contigo) (owner `lucalamalfa91`, name `contigo`, description **Contigo platform**). That repository is the Helix run repo and the only product remote. Do not create a GitHub organization. Do not make the repository private.
+The product remote already exists and is **public**: [`https://github.com/lucalamalfa91/raffa`](https://github.com/lucalamalfa91/raffa) (owner `lucalamalfa91`, name `raffa`, description **Raffa platform**). That repository is the Helix run repo and the only product remote. Do not create a GitHub organization. Do not make the repository private.
 
 Locked folder layout (do not invent extra top-level product trees):
 
@@ -67,7 +67,7 @@ Locked folder layout (do not invent extra top-level product trees):
 | `mobile/` | Mobile client (stack: council) |
 | `.helix/` | Helix process artifact (this brief, ADRs, work items, wave-spec). Not a nested git repo. |
 
-No second product remote. No `contigo-infra` / `contigo-backend` / `contigo-web` / `contigo-mobile` as separate GitHub repositories. Extra remotes only if the council justifies them against the product spec **and** against Helix’s one-repo isolation.
+No second product remote. No `raffa-infra` / `raffa-backend` / `raffa-web` / `raffa-mobile` as separate GitHub repositories. Extra remotes only if the council justifies them against the product spec **and** against Helix’s one-repo isolation.
 
 Passata 2 `fan_out` worktrees are checkouts of **this** repository (branch per task, same tree: `.helix` + the four domain folders). Claude Code cwd is that worktree root. Product files go under `infra/`, `backend/`, `web/`, `mobile/` — not under a synthetic `workspace/<repo>/` and not into four remotes.
 
@@ -93,7 +93,7 @@ Do not assume a default branch, GitHub Flow, Git Flow, tags, or Environment appr
 
 Build V1 as in the product spec (jobs, entities, APIs, events, non-goals, Appendix C). Topology intent from the spec: modular monolith, worker, relational store, object storage, queue, AI gateway.
 
-**In scope for `dev`/`demo`:** workspace and roles; document upload and async extraction with evidence + confidence; human correction history; portfolio and Contract 360; Ask Contigo with citations and auth-before-retrieval; deterministic renewals; benchmark **interface** (fixture adapter is enough); savings and quote-check paths as in the product delivery plan.
+**In scope for `dev`/`demo`:** workspace and roles; document upload and async extraction with evidence + confidence; human correction history; portfolio and Contract 360; Ask Raffa with citations and auth-before-retrieval; deterministic renewals; benchmark **interface** (fixture adapter is enough); savings and quote-check paths as in the product delivery plan.
 
 **Out of scope:** product §1.2 non-goals; production-only platform (AKS, multi-region, dedicated-per-tenant DB).
 
@@ -106,7 +106,7 @@ Two isolated landing zones, same architecture, different names/data/identities.
 **Guidelines**
 
 - Cheapest (or free) SKU that still supports the product: HTTPS app, worker, object storage, queue, relational DB with tenant isolation and vectors/search as the spec requires, secrets, Entra, Foundry.
-- Tag resources with `project=contigo` and `env=dev|demo`.
+- Tag resources with `project=raffa` and `env=dev|demo`.
 - `dev` and `demo` must not share PostgreSQL (or equivalent) or document storage.
 - Foundry billing vs one-vs-two accounts: council, under the cost guideline.
 - Region: council (keep `dev` and `demo` in the same region).
@@ -140,7 +140,7 @@ Module layout, networking, and identity wiring: council, within locked auth/cost
 
 ASP.NET Core modular monolith + worker in `backend/`. Module boundaries follow the product spec (identity/workspace, documents/contracts, suppliers/products, renewals, savings, quotes, benchmark, chat, audit, AI gateway).
 
-Benchmark is an interface + replaceable adapter. Calculations that the spec marks deterministic (dates, money) stay in code, not in the LLM. Extraction is staged and schema-constrained, with source + confidence. Ask Contigo routes structured vs semantic queries as in the spec.
+Benchmark is an interface + replaceable adapter. Calculations that the spec marks deterministic (dates, money) stay in code, not in the LLM. Extraction is staged and schema-constrained, with source + confidence. Ask Raffa routes structured vs semantic queries as in the spec.
 
 Solution layout, libraries, and API versioning scheme: council, as long as Appendix A capabilities exist.
 
@@ -158,7 +158,7 @@ OCR vs native document parse: council, provided full contract documents can be p
 
 ## 9. Frontend and mobile
 
-**Web:** council picks the stack. The client must deliver the product UX (auth, portfolio, Contract 360, evidence, review, Ask Contigo, then renewals/savings/quotes as those slices land) against the API.
+**Web:** council picks the stack. The client must deliver the product UX (auth, portfolio, Contract 360, evidence, review, Ask Raffa, then renewals/savings/quotes as those slices land) against the API.
 
 **Mobile:** council picks the stack. Product V1 topology is web-first; native must not block `dev`/`demo`. The `mobile/` folder still exists in the monorepo.
 
@@ -176,7 +176,7 @@ How that is implemented (RLS, query filters, etc.): council.
 
 ## 11. Delivery order
 
-Follow product §16 (R0–R4). First technical slice is platform: the public `lucalamalfa91/contigo` monorepo (folder layout above) + Terraform for `dev` and `demo` + CI/CD to both + git-flow ADR, then an API that can be deployed.
+Follow product §16 (R0–R4). First technical slice is platform: the public `lucalamalfa91/raffa` monorepo (folder layout above) + Terraform for `dev` and `demo` + CI/CD to both + git-flow ADR, then an API that can be deployed.
 
 R3/R4 must not depend on a paid external benchmark API for the first `demo`.
 
@@ -197,6 +197,6 @@ R3/R4 must not depend on a paid external benchmark API for the first `demo`.
 1. `dev` and `demo` exist in Azure, isolated, applied from Terraform.
 2. GitHub can release to both environments, using the council’s git flow.
 3. Backend API + worker run in both environments.
-4. Product “Day 1” path works on `demo` (workspace, upload, extract, review) with Foundry, including Ask Contigo **with citations** or an explicit “cannot determine”.
-5. The public repository [`lucalamalfa91/contigo`](https://github.com/lucalamalfa91/contigo) exists with `infra/`, `backend/`, `web/`, `mobile/`, and `.helix/`; all application and infra code came from Claude Code via Helix.
+4. Product “Day 1” path works on `demo` (workspace, upload, extract, review) with Foundry, including Ask Raffa **with citations** or an explicit “cannot determine”.
+5. The public repository [`lucalamalfa91/raffa`](https://github.com/lucalamalfa91/raffa) exists with `infra/`, `backend/`, `web/`, `mobile/`, and `.helix/`; all application and infra code came from Claude Code via Helix.
 6. Cost stays on free/cheap SKUs; no production HA platform.

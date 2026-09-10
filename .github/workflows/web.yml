@@ -131,8 +131,8 @@ jobs:
       # not a GitHub secret.
       #
       # SWA name is composed like backend.yml's Container Apps
-      # (ca-contigo-<env>-api): infra/modules/staticwebapp names the
-      # resource swa-contigo-<env>. No GitHub Environment variable.
+      # (ca-raffa-<env>-api): infra/modules/staticwebapp names the
+      # resource swa-raffa-<env>. No GitHub Environment variable.
       - name: Ensure Azure CLI extensions
         run: |
           az extension add --name staticwebapp --upgrade -y
@@ -146,11 +146,11 @@ jobs:
           TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
         run: |
           set -euo pipefail
-          RG="rg-contigo-${TARGET_ENVIRONMENT}"
-          SWA_NAME="swa-contigo-${TARGET_ENVIRONMENT}"
-          API_NAME="ca-contigo-${TARGET_ENVIRONMENT}-api"
-          UAI_NAME="id-contigo-${TARGET_ENVIRONMENT}-workload"
-          HCP_RUNS="https://app.terraform.io/app/contigo-platform/workspaces/contigo-${TARGET_ENVIRONMENT}/runs"
+          RG="rg-raffa-${TARGET_ENVIRONMENT}"
+          SWA_NAME="swa-raffa-${TARGET_ENVIRONMENT}"
+          API_NAME="ca-raffa-${TARGET_ENVIRONMENT}-api"
+          UAI_NAME="id-raffa-${TARGET_ENVIRONMENT}-workload"
+          HCP_RUNS="https://app.terraform.io/app/raffa-platform/workspaces/raffa-${TARGET_ENVIRONMENT}/runs"
           if [[ ! -f web/dist/config.json ]]; then
             echo "::error::web/dist/config.json is missing from the web-dist artifact"
             exit 1
@@ -160,7 +160,7 @@ jobs:
             exit 1
           fi
           if ! az staticwebapp show --name "$SWA_NAME" --resource-group "$RG" >/dev/null 2>&1; then
-            echo "::error::$SWA_NAME was not found in $RG. Confirm the HCP VCS apply for workspace contigo-${TARGET_ENVIRONMENT} at $HCP_RUNS, wait until it is CURRENT, then re-run this job."
+            echo "::error::$SWA_NAME was not found in $RG. Confirm the HCP VCS apply for workspace raffa-${TARGET_ENVIRONMENT} at $HCP_RUNS, wait until it is CURRENT, then re-run this job."
             exit 1
           fi
           # CLI `show` flattens some resources (SWA defaultHostname) and
@@ -201,15 +201,15 @@ jobs:
             --oidc-authority "https://login.microsoftonline.com/${TENANT_ID}" \
             --oidc-client-id "$CLIENT_ID" \
             --oidc-redirect-uri "https://${SWA_HOST}/" \
-            --oidc-api-scope "api://contigo-${TARGET_ENVIRONMENT}-api/Contigo.Read" \
-            --oidc-api-scope "api://contigo-${TARGET_ENVIRONMENT}-api/Contigo.Write"
+            --oidc-api-scope "api://raffa-${TARGET_ENVIRONMENT}-api/Raffa.Read" \
+            --oidc-api-scope "api://raffa-${TARGET_ENVIRONMENT}-api/Raffa.Write"
 
       - name: Deploy to Azure Static Web Apps
         run: |
           set -euo pipefail
-          RG="rg-contigo-${TARGET_ENVIRONMENT}"
-          SWA_NAME="swa-contigo-${TARGET_ENVIRONMENT}"
-          HCP_RUNS="https://app.terraform.io/app/contigo-platform/workspaces/contigo-${TARGET_ENVIRONMENT}/runs"
+          RG="rg-raffa-${TARGET_ENVIRONMENT}"
+          SWA_NAME="swa-raffa-${TARGET_ENVIRONMENT}"
+          HCP_RUNS="https://app.terraform.io/app/raffa-platform/workspaces/raffa-${TARGET_ENVIRONMENT}/runs"
           DEPLOY_TOKEN=$(az staticwebapp secrets list \
             --name "$SWA_NAME" \
             --resource-group "$RG" \

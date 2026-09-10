@@ -1,4 +1,4 @@
-# Council protocol — Contigo **web delta** table
+# Council protocol — Raffa **web delta** table
 
 This is **not** the platform council. ADR-001…017 and epic-01…05 are **done**.
 You decide only the **web experience** that consumes that backend, starting at

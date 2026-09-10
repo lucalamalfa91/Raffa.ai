@@ -26,4 +26,4 @@ weak-sample abstain. UX/API must label representative vs live.
 
 ## Target repo
 
-`contigo-backend`
+`raffa-backend`

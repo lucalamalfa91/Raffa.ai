@@ -4,7 +4,7 @@ type: task
 story: us-02-staged-extraction
 wave: R1
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-staged-extraction — 01 Staged Extraction
@@ -18,7 +18,7 @@ Implement staged schema-constrained extraction with source+confidence.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `extraction-pipeline` |
+| workspace/raffa-backend/src/ | implementation for `extraction-pipeline` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-004, ADR-002.
@@ -30,7 +30,7 @@ Implement staged schema-constrained extraction with source+confidence.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | extraction-pipeline behaviour | workspace/contigo-backend/tests |
+| unit | extraction-pipeline behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

@@ -4,7 +4,7 @@ type: task
 story: us-02-fixture-adapter
 wave: R3
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-02-fixture-confidence — 02 Fixture Confidence
@@ -18,7 +18,7 @@ Weak-comparable abstain; no paid API.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `fixture-confidence` |
+| workspace/raffa-backend/src/ | implementation for `fixture-confidence` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-001.
@@ -30,7 +30,7 @@ Weak-comparable abstain; no paid API.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | fixture-confidence behaviour | workspace/contigo-backend/tests |
+| unit | fixture-confidence behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

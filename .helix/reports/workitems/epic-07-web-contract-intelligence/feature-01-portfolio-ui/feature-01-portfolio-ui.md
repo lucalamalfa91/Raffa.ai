@@ -24,4 +24,4 @@ Portfolio table with filters, attention strip, and states.
 
 ## Target repo
 
-`contigo-web`
+`raffa-web`

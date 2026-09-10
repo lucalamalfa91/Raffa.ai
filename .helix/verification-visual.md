@@ -6,7 +6,7 @@ Helix backend was not on the authoring machine. First operator command:
 ./run-visual.ps1 -Check
 ```
 
-Expected: OK `docs-intake-visual` … `contigo-visual-design` (6 orchestrations).
+Expected: OK `docs-intake-visual` … `raffa-visual-design` (6 orchestrations).
 Prompt files present. Protected snapshot: e01–e10, four prior wave-specs,
 ADR-001…022, epic-01…10.
 

@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 /**
- * V2 Portfolio CSS (`contigo-v2/markup.html` PORTFOLIO block: the table's own inline instance
+ * V2 Portfolio CSS (`raffa-v2/markup.html` PORTFOLIO block: the table's own inline instance
  * values and column widths) plus the shared V2 screen chrome added to components.css for every
  * module screen. Same "read the stylesheet, assert the rule body" shape the other *.css.test.ts
  * files in this repo use -- these are the values a reviewer would otherwise measure by eye.

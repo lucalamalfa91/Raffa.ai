@@ -1,4 +1,4 @@
-# Contigo — Helix design then execution process
+# Raffa — Helix design then execution process
 
 Passata 1 designs from inputs: **all ADRs**, then **R0–R4 decomposition**,
 then slices. **No application code** until you launch passata 2 by hand.
@@ -11,7 +11,7 @@ Phase-by-phase mapping: **[PROCESS.md](PROCESS.md)**. Catalogue: **[config.md](c
 ## Quick start
 
 ```bash
-cd contigo-flow/.helix
+cd raffa-flow/.helix
 cp .env.example .env
 ./run.ps1 --check
 
@@ -29,10 +29,10 @@ python scripts/check_slice_prereqs.py --slice r0-a
 
 # Re-analysis ONLY if inputs or ADRs change. Wipes design outputs, then:
 # docs → every council ADR → five epics (not R0-only) → cut slices. STOPS.
-./run.ps1 --fresh -o contigo-design -i "Contigo V1: full scope from current inputs"
+./run.ps1 --fresh -o raffa-design -i "Raffa V1: full scope from current inputs"
 ```
 
-`contigo-plan-close` is still `default: true` in the YAML (Studio Run without
+`raffa-plan-close` is still `default: true` in the YAML (Studio Run without
 `-o`). Do **not** use that for coding. Coding is always `-Slice` +
 `execution-fanout`. The launcher inits the local clone as a git toplevel
 (worktrees). The PR is the fan-out `on_orchestration_stop` hook, not a

@@ -4,7 +4,7 @@ type: task
 story: us-01-renewal-dashboard-api
 wave: R2
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-02-renewal-action — 02 Renewal Action
@@ -18,7 +18,7 @@ POST /api/renewals/{id}/action + tenant scoping.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `renewal-action` |
+| workspace/raffa-backend/src/ | implementation for `renewal-action` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-002, ADR-009.
@@ -30,7 +30,7 @@ POST /api/renewals/{id}/action + tenant scoping.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | renewal-action behaviour | workspace/contigo-backend/tests |
+| unit | renewal-action behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

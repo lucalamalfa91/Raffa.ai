@@ -20,7 +20,7 @@ type FetchState =
 
 /**
  * Route `/contracts` -- Portfolio, V2 (ADR-024 V2 IA amending ADR-018/ADR-020 screen 4;
- * screens-v2.md #6; `contigo-v2/markup.html` "PORTFOLIO" block, `app.jsx` `kbContracts` /
+ * screens-v2.md #6; `raffa-v2/markup.html` "PORTFOLIO" block, `app.jsx` `kbContracts` /
  * `pfSummary` / `moreCols`). Replaces the Day-1 screen's seven filter chips, attention strip and
  * ten-column severity-sorted table with the prototype's own shape: a header ("Portfolio" + the
  * `pfSummary` line + "More columns"), the validated contracts only, sorted by how soon notice must
@@ -54,7 +54,7 @@ export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
           // accessibility baseline: "names the failing job, never a raw stack trace").
           message:
             result.statusCode === 503 || result.statusCode === null
-              ? "Contigo's portfolio service is temporarily unavailable. Try again in a moment."
+              ? "Raffa's portfolio service is temporarily unavailable. Try again in a moment."
               : (result.error ?? "The portfolio could not be loaded."),
         });
         return;

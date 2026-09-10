@@ -4,7 +4,7 @@ type: task
 story: us-02-outcome-capture
 wave: R4
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-outcome-capture — 01 Outcome Capture
@@ -18,7 +18,7 @@ NegotiationOutcome entity + POST /api/negotiations/outcomes.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `negotiation-outcome` |
+| workspace/raffa-backend/src/ | implementation for `negotiation-outcome` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-002, ADR-003.
@@ -30,7 +30,7 @@ NegotiationOutcome entity + POST /api/negotiations/outcomes.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | negotiation-outcome behaviour | workspace/contigo-backend/tests |
+| unit | negotiation-outcome behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

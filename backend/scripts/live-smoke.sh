@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Live smoke test for the Foundry-backed document pipeline (ADR-004/008/017 amendments,
-# 2026-09-09). Uploads a real two-page Italian supply contract to a running Contigo API and
+# 2026-09-09). Uploads a real two-page Italian supply contract to a running Raffa API and
 # checks that the model actually read it: classification, extracted facts with page-numbered
 # evidence, and an Ask answer with citations.
 #
@@ -9,13 +9,13 @@
 # the page text, gpt-5.4-nano-dev for classify/extract/answer, text-embedding-3-small-dev for the
 # retrieval vectors.
 #
-#   ./live-smoke.sh https://ca-contigo-dev-api.<region>.azurecontainerapps.io
+#   ./live-smoke.sh https://ca-raffa-dev-api.<region>.azurecontainerapps.io
 #
 # Requires: bash, curl, python3 (builds the PDF), and jq.
 set -euo pipefail
 
-BASE_URL="${1:-${CONTIGO_API_URL:-http://localhost:5080}}"
-TENANT_ID="${CONTIGO_TENANT_ID:-$(python3 -c 'import uuid; print(uuid.uuid4())')}"
+BASE_URL="${1:-${RAFFA_API_URL:-http://localhost:5080}}"
+TENANT_ID="${RAFFA_TENANT_ID:-$(python3 -c 'import uuid; print(uuid.uuid4())')}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORK_DIR="$(mktemp -d)"
 PDF="$WORK_DIR/contratto-quadro-smoke.pdf"
@@ -37,7 +37,7 @@ api() { # api METHOD PATH [body-file]
   fi
 }
 
-echo "Contigo live smoke"
+echo "Raffa live smoke"
 echo "  api    : $BASE_URL"
 echo "  tenant : $TENANT_ID"
 
@@ -126,7 +126,7 @@ if [ "$failures" -eq 0 ]; then
 else
   echo "$failures live-smoke check(s) failed."
   echo "Check the model ids the app actually used:"
-  echo "  az containerapp show -n ca-contigo-dev-api -g rg-contigo-dev --query \"properties.template.containers[0].env[?starts_with(name,'AiGateway__')]\" -o table"
-  echo "  az containerapp logs show -n ca-contigo-dev-api -g rg-contigo-dev --tail 100"
+  echo "  az containerapp show -n ca-raffa-dev-api -g rg-raffa-dev --query \"properties.template.containers[0].env[?starts_with(name,'AiGateway__')]\" -o table"
+  echo "  az containerapp logs show -n ca-raffa-dev-api -g rg-raffa-dev --tail 100"
 fi
 exit "$failures"

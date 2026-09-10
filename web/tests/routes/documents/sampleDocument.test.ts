@@ -48,7 +48,7 @@ describe("SAMPLE_DOCUMENTS", () => {
   it("the needs-review sample is genuinely ambiguous: unlabelled parties, two annual fees, a self-contradicting renewal clause", () => {
     const text = getSampleDocument("needs-review").pages.join(" ");
 
-    expect(text).toContain("between Contigo Demo AG and Fabrikam Software GmbH");
+    expect(text).toContain("between Raffa Demo AG and Fabrikam Software GmbH");
     expect(text).not.toContain('("Supplier")');
     expect(text).toContain("EUR 36,000");
     expect(text).toContain("EUR 39,600");
@@ -98,8 +98,8 @@ describe("createSampleDocumentFile", () => {
     const ambiguous = createSampleDocumentFile("needs-review");
 
     expect(clean).toBeInstanceOf(File);
-    expect(clean.name).toBe("contigo-sample-northwind-msa.pdf");
-    expect(ambiguous.name).toBe("contigo-sample-fabrikam-msa.pdf");
+    expect(clean.name).toBe("raffa-sample-northwind-msa.pdf");
+    expect(ambiguous.name).toBe("raffa-sample-fabrikam-msa.pdf");
     expect(clean.type).toBe("application/pdf");
     expect(clean.size).toBeGreaterThan(0);
   });
@@ -108,7 +108,7 @@ describe("createSampleDocumentFile", () => {
     const first = createSampleDocumentFile();
     const second = createSampleDocumentFile();
 
-    expect(first.name).toBe("contigo-sample-northwind-msa.pdf");
+    expect(first.name).toBe("raffa-sample-northwind-msa.pdf");
     expect(first).not.toBe(second);
   });
 });

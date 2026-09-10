@@ -26,4 +26,4 @@ Upload dropzone + processing pipeline, and document table + status read-back
 
 ## Target repo
 
-`contigo-web`
+`raffa-web`

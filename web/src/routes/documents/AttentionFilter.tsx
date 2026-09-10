@@ -8,8 +8,8 @@ export interface AttentionFilterProps {
 }
 
 /**
- * The "Needs your attention · N" / "All documents · N" segmented toggle (`contigo-v2/markup.html`
- * lines ~152-156; `contigo-v2/app.jsx`'s `filterAttn`/`filterAll`/`filterHint`). Default filter is
+ * The "Needs your attention · N" / "All documents · N" segmented toggle (`raffa-v2/markup.html`
+ * lines ~152-156; `raffa-v2/app.jsx`'s `filterAttn`/`filterAll`/`filterHint`). Default filter is
  * "attention" (R-DOC-06) -- `index.tsx` owns the initial value (including reading `?filter=` from
  * the `/review` redirect `WorkspaceShellApp.tsx` already wires), this component is a controlled
  * pair of native `<button aria-pressed>` toggles (ADR-019 `.seg` catalogue entry: "native

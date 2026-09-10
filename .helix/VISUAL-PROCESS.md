@@ -1,15 +1,15 @@
-# Contigo visual-fidelity process (epic-11 / e11)
+# Raffa visual-fidelity process (epic-11 / e11)
 
 Separate Helix artifact from the live R0–R4 process, web-delta, schema-apply,
 and demo-readiness.
 
 | File | Role |
 |---|---|
-| `contigo-process.yaml` + `./run.ps1` | **Do not touch while a wave is running.** |
-| `contigo-web-process.yaml` + `./run-web.ps1` | Web delta. Do not mix. |
-| `contigo-schema-process.yaml` + `./run-schema.ps1` | Schema-apply. Do not mix. |
-| `contigo-readiness-process.yaml` + `./run-readiness.ps1` | Demo-readiness. Do not mix. |
-| `contigo-visual-process.yaml` + `./run-visual.ps1` | Mockup vs `dev` CSS Passata 1 only. |
+| `raffa-process.yaml` + `./run.ps1` | **Do not touch while a wave is running.** |
+| `raffa-web-process.yaml` + `./run-web.ps1` | Web delta. Do not mix. |
+| `raffa-schema-process.yaml` + `./run-schema.ps1` | Schema-apply. Do not mix. |
+| `raffa-readiness-process.yaml` + `./run-readiness.ps1` | Demo-readiness. Do not mix. |
+| `raffa-visual-process.yaml` + `./run-visual.ps1` | Mockup vs `dev` CSS Passata 1 only. |
 
 Oracle: [Claude artifact](https://claude.ai/code/artifact/9249d66d-5e60-4823-a1d0-8a1758273f58)
 = `inputs/design/prototypes/day1-demo.html`.

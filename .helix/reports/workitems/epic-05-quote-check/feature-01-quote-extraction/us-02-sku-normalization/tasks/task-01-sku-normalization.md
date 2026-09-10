@@ -4,7 +4,7 @@ type: task
 story: us-02-sku-normalization
 wave: R4
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-sku-normalization — 01 Sku Normalization
@@ -18,7 +18,7 @@ Normalize SKU/edition; flag unmatched.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `sku-normalization` |
+| workspace/raffa-backend/src/ | implementation for `sku-normalization` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-002.
@@ -30,7 +30,7 @@ Normalize SKU/edition; flag unmatched.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | sku-normalization behaviour | workspace/contigo-backend/tests |
+| unit | sku-normalization behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

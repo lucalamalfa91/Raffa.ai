@@ -4,14 +4,14 @@ type: task
 story: us-01-foundry-gateway
 wave: 12
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-foundry-gateway — FoundryAiGateway + LoggingAiGateway wrap
 
 ## Coding objective
 
-Implement `FoundryAiGateway` in `Contigo.AiGateway` covering ADR-004's five
+Implement `FoundryAiGateway` in `Raffa.AiGateway` covering ADR-004's five
 roles (`ocr`, `classify`, `extract`, `embed`, `answer`). Azure SDKs (Foundry /
 Document Intelligence / embeddings) live **only** in this project.
 
@@ -31,10 +31,10 @@ tested with a fake handler — no live Azure in unit tests.
 
 | Path | Change |
 |------|--------|
-| `backend/src/Contigo.AiGateway/` | `FoundryAiGateway` + role clients |
-| `backend/src/Contigo.AiGateway/ServiceCollectionExtensions.cs` | endpoint swap + log wrap |
-| `backend/src/Contigo.AiGateway/Logging/LoggingAiGateway.cs` | register as decorator |
-| `backend/tests/Contigo.AiGateway.Tests/` | fake HTTP + DI tests |
+| `backend/src/Raffa.AiGateway/` | `FoundryAiGateway` + role clients |
+| `backend/src/Raffa.AiGateway/ServiceCollectionExtensions.cs` | endpoint swap + log wrap |
+| `backend/src/Raffa.AiGateway/Logging/LoggingAiGateway.cs` | register as decorator |
+| `backend/tests/Raffa.AiGateway.Tests/` | fake HTTP + DI tests |
 
 ## Context the implementer needs
 
@@ -45,16 +45,16 @@ tested with a fake handler — no live Azure in unit tests.
 
 ## Definition of done
 
-- [ ] `dotnet test` on `Contigo.AiGateway.Tests` — Foundry registration when
+- [ ] `dotnet test` on `Raffa.AiGateway.Tests` — Foundry registration when
       endpoint set; fixture when unset; `LoggingAiGateway` is the outer type.
 - [ ] Architecture test or csproj assert: Azure AI SDK refs only in
-      `Contigo.AiGateway`.
+      `Raffa.AiGateway`.
 
 ## Tests required
 
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | DI swap + log wrap | `Contigo.AiGateway.Tests` |
+| unit | DI swap + log wrap | `Raffa.AiGateway.Tests` |
 | unit | no SDK leak | allow-list test |
 
 ## Open questions blocking this task
