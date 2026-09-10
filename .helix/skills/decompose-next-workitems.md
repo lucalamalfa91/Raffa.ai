@@ -77,8 +77,8 @@ two files and CI failed). Wire a new endpoint file one phase later than its
 creation, or make the call site the creator's own deliverable.
 
 Nominate **one writer per phase** for the files that state current state:
-`backend/src/Contigo.Api/Program.cs`, `backend/Contigo.slnx`,
-`DependencyDirectionTests.cs`, `web/openapi/contigo-api.v1.json`,
+`backend/src/Raffa.Api/Program.cs`, `backend/Raffa.slnx`,
+`DependencyDirectionTests.cs`, `web/openapi/raffa-api.v1.json`,
 `web/src/api/client.ts` + `generated/schema.ts`, every
 `*EndpointExtensions.cs`, `ServiceCollectionExtensions.cs` of a module,
 `appsettings*.json`, `.github/workflows/*.yml`, `infra/**/main.tf` of a
@@ -90,7 +90,7 @@ Write the table into `reports/audit/<w>-hitl.md`. Then run
 
 The last story of the wave is `us-NN-final-integration` with exactly one
 task depending on every leaf artifact of the wave. It: builds and tests the
-backend (`dotnet build backend/Contigo.slnx`, `dotnet test` per project),
+backend (`dotnet build backend/Raffa.slnx`, `dotnet test` per project),
 type-checks, lints and tests the web (`npm run lint`, `npm run typecheck`,
 `npm test`, the Playwright spec the wave added), runs the e2e cases that do
 not need live Foundry, sweeps the READMEs whose public surface changed, and

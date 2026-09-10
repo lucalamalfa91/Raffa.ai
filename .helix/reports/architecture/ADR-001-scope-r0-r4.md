@@ -168,7 +168,7 @@ behaviour* — the R0 task that wrote a membership row at invite time is
 superseded by this wave (see `reports/architecture/waves/w14.md`).
 
 **5 — The workspace profile is `name` + `industry` + `country`.** Industry and
-country are **closed lists** (`inputs/design/prototypes/contigo-v2/markup.html:55-56`),
+country are **closed lists** (`inputs/design/prototypes/raffa-v2/markup.html:55-56`),
 not free text. **Currency and business region are derived from `country` and
 stored; the user is never asked for them** — the prototype's create form has no
 currency control, and `CHF · eu-west` appears only as pick-row *output*

@@ -9,7 +9,7 @@ Skills in force: `kb-contract-next`, `cc-passata1-harness`,
 ## 1. Inspect
 
 - First the cwd guard of `cc-passata1-harness` (`Glob
-  contigo-next-process.yaml` must hit; otherwise `HALTED: cwd is <path>, not
+  raffa-next-process.yaml` must hit; otherwise `HALTED: cwd is <path>, not
   the artifact folder — …`).
 - `reports/plan/next-run.json` (wave, caps) or the `kb-contract-next`
   fallbacks.

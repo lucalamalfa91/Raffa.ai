@@ -161,7 +161,7 @@ numbering** of the epic-13 footer at `:135-149` (1 Sign-in → Ask … 10 Worksp
 "Members & roles". The body is unchanged and remains the R0 record. **Screen 11
 is the next free number in the V2 list.**
 
-Pixel oracle: `inputs/design/prototypes/contigo-v2/` — `screens-v2.md`,
+Pixel oracle: `inputs/design/prototypes/raffa-v2/` — `screens-v2.md`,
 `ia-v2.md`, `markup.html`, `app.jsx` — the newest export and the one the w14
 requirements name. Where the export and the requirements differ the
 **requirements win and the difference is named**, per `ia-v2.md:125-136`.

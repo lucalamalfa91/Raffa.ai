@@ -1,8 +1,8 @@
-# Contigo next-wave process — phase by phase
+# Raffa next-wave process — phase by phase
 
-`contigo-next-process.yaml` + `run-next.ps1`. The process used after the
+`raffa-next-process.yaml` + `run-next.ps1`. The process used after the
 initial build: stakeholder tests, customer demos, feedback, new ideas, bug
-fixes. It does the same loop as `contigo-process.yaml` (intake → council →
+fixes. It does the same loop as `raffa-process.yaml` (intake → council →
 ADRs → decomposition → wave) but **starts from the existing code,
 infrastructure, ADRs and backlog**, reasons on three things — the initial
 requirements, the new requirements of this round, what is already built —
@@ -11,8 +11,8 @@ the backlog only grows, ADRs only get footers, old slices stay.
 
 | File | Role |
 |---|---|
-| `contigo-process.yaml` + `run.ps1` / Helix Studio | the initial design process **and the live Passata 2** (`execution-fanout`). Unchanged. |
-| `contigo-next-process.yaml` + `run-next.ps1` | Passata 1 for every later wave. Produces `reports/plan/slices/<w>.yaml`; the wave runs on the file above. |
+| `raffa-process.yaml` + `run.ps1` / Helix Studio | the initial design process **and the live Passata 2** (`execution-fanout`). Unchanged. |
+| `raffa-next-process.yaml` + `run-next.ps1` | Passata 1 for every later wave. Produces `reports/plan/slices/<w>.yaml`; the wave runs on the file above. |
 
 Language of this file: English (artifact). Deliberation may be Italian.
 
@@ -95,7 +95,7 @@ the routing table; `skills/council-protocol-next.md` the protocol.
 
 Not in this document. `run-next.ps1 -Launch` / `-LaunchOnly` records the
 HITL of the previous wave, runs `check_slice_prereqs.py --slice <w>` and
-calls `./run.ps1 -Max -Slice <w> -o execution-fanout` (contigo-process.yaml,
+calls `./run.ps1 -Max -Slice <w> -o execution-fanout` (raffa-process.yaml,
 PROCESS.md §2.4 and D13 apply unchanged).
 
 ---
@@ -238,7 +238,7 @@ Operator rules that still apply: never commit on `integration` while a
 wave runs; restart the Studio backend after `.env` changes; Passata 1 on
 the Max login (`-Max`), never the Console API.
 
-**From Helix Studio**: open `contigo-next-process.yaml`, pick the
+**From Helix Studio**: open `raffa-next-process.yaml`, pick the
 orchestration, and either leave the working directory unset ("This run will
 use the artifact folder") or pick `.helix` itself. Studio remembers the last
 picked folder per session; a stale pick (run `f3018639` ran in
@@ -268,7 +268,7 @@ when the artifact was authored.
 
 ## Verification (2026-09-10)
 
-Helix Realization Engineer, artifact `contigo-next-process.yaml` (written
+Helix Realization Engineer, artifact `raffa-next-process.yaml` (written
 this pass). Runtime re-read for this pass, cited by `file:line` below:
 `contract/schema.py`, `contract/validate.py`, `orchestration/registry.py`,
 `orchestration/builders.py`, `orchestration/marker_guard.py`,
@@ -286,7 +286,7 @@ minus `--stub-env`; `-Check` needs a `.env`, which this worktree does not
 carry):
 
 ```text
-"C:/Users/luca.la-malfa/source/repos/helix/src/backend/.venv/Scripts/python.exe" scripts/validate-artifact.py contigo-next-process.yaml --stub-env --helix-backend "C:/Users/luca.la-malfa/source/repos/helix/src/backend"
+"C:/Users/luca.la-malfa/source/repos/helix/src/backend/.venv/Scripts/python.exe" scripts/validate-artifact.py raffa-next-process.yaml --stub-env --helix-backend "C:/Users/luca.la-malfa/source/repos/helix/src/backend"
 ```
 
 Verbatim output (stdout + stderr), exit code 0:
@@ -333,7 +333,7 @@ accepts for `-o` (`next-design`, `next-from-council`, `next-plan-close`,
 exists in the document.
 
 Files as checked (sha256):
-`contigo-next-process.yaml`
+`raffa-next-process.yaml`
 `b6451b7eeb8406f68e2b2d79ce9f0f06d99d5cac31d44fc79244ed4c5932a03b`,
 `agents/next-intake.md`
 `c23efb2f341f89d63a55665ab1da16a6d4c4ed32cfab3509885fdedf841b9061`,
@@ -362,7 +362,7 @@ snapshot).
   refused (`:151-160`), so the glob is `reports/architecture/waves/*.md`.
   Base = `get_output_dir()` (`transcript_session.py:166-173`), which is the
   `working_dir` bound at launch (`launch.py:1439-1454`) and defaults to the
-  artifact dir — `.helix/`, the same base `contigo-process.yaml`'s
+  artifact dir — `.helix/`, the same base `raffa-process.yaml`'s
   `reports/architecture/*.md` gate ran on. No `reset_globs`: earlier waves'
   records share the folder and would be deleted at run start.
 - **Edges.** `on_marker_absent` is in `MARKER_EDGE_CONDITIONS`
@@ -372,7 +372,7 @@ snapshot).
   `DECOMPOSITION_GAPS:` leading a line (`registry.py:290-297`). Edge text of
   a nested `sequential` is its finalized assistant text
   (`registry.py:227-258` → `transcript_session.py:219-259`), the extraction
-  `contigo-process.yaml`'s `decomposition-check → needs_remediation` edge
+  `raffa-process.yaml`'s `decomposition-check → needs_remediation` edge
   already runs on.
 - **Loop bound.** `limits.max_iterations` bounds back-edge LAPS; the MAF
   superstep ceiling is derived as `depth × max_iterations + 1`
@@ -416,7 +416,7 @@ snapshot).
 | 2.3 Cap / queue | process rule in `register_wave.py`, checker fails on its exit code | **DICHIARATA** (D-N4) |
 | 2.3 Gate loop | `[next-check, next-remediation, needs_remediation]` + `[next-remediation, next-check]`, `limits: { max_steps: 300000, max_iterations: 15, run_timeout_s: 21600 }`; `DECOMPOSITION_OK:` has no edge = terminal | **RIPRODOTTA** |
 | 2.3 Read-only checker with Bash | `allowed_tools: [Read, Grep, Glob, Bash]` + `disallowed_tools: [Write, Edit, MultiEdit, NotebookEdit]`; a write through Bash is prompt-forbidden only | **RIPRODOTTA** with D-N5 residual |
-| 2.4 Wave | not in this document; `contigo-process.yaml` `execution-fanout` via `run-next.ps1 -Launch` / `./run.ps1 -Max -Slice <w>` | **DICHIARATA** (by design, §2.4) |
+| 2.4 Wave | not in this document; `raffa-process.yaml` `execution-fanout` via `run-next.ps1 -Launch` / `./run.ps1 -Max -Slice <w>` | **DICHIARATA** (by design, §2.4) |
 | HITL | operator (`reports/audit/<w>-hitl.md`, `gates/<w>.hitl-ok`) | **DICHIARATA** (D-N6) |
 | Re-entry targets | `next-from-council` (start `next-council`), `next-plan-close` (start `next-check`, `run_timeout_s: 14400`); standalone `next-intake-phase` / `next-council` / `next-decomposition` / `next-check` | **RIPRODOTTA** |
 
@@ -525,7 +525,7 @@ sources) only. No skill was changed.
     re-writes it). A launcher touch in `run-next.ps1 -o next-from-council`
     would remove the manual step (launcher owner).
 12. **`max_steps: 300000`** counts streamed chunks (`MaxStepsExceeded`), not
-    turns — sized from `contigo-process.yaml`'s history (60000 died,
+    turns — sized from `raffa-process.yaml`'s history (60000 died,
     500000/800000 in use there). `run_timeout_s` 21600 / 14400 within
     `1..86400` (`schema.py:541`).
 

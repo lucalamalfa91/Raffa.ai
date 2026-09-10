@@ -173,7 +173,7 @@ licensed M365 mailbox — a per-seat cost, not an Azure meter — and the
 tenant-wide `Mail.Send` application permission, narrowable only by an
 out-of-band Exchange policy Terraform cannot own).
 
-**One per environment, never shared.** ADR-008's shared `aisvc-contigo`
+**One per environment, never shared.** ADR-008's shared `aisvc-raffa`
 account is the single deliberate exception to one-of-everything-per-env
 (`:95`) and it exists to amortise a fixed cost. Mail has **no fixed cost to
 amortise**, so sharing would buy nothing and would blur the environment

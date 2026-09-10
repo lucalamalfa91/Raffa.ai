@@ -1,7 +1,7 @@
 # Next-wave slices
 
 Produced by `python scripts/register_wave.py --wave <id>` from the wave the
-next-wave process (`contigo-next-process.yaml`) cut. One wave per run; the
+next-wave process (`raffa-next-process.yaml`) cut. One wave per run; the
 backlog keeps everything, the wave carries at most the cap.
 
 Launch (after reviewing `reports/audit/<id>-hitl.md`):

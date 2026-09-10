@@ -2,7 +2,7 @@
 wave: w14
 source: inputs/next/next-waves-todo.md
 source_sha256: e3fd34176de46d24f4c8fdb7526c29c91930fe97874cf75fd36c44554bacd23c
-design_sources: [inputs/design/prototypes/contigo-v2/screens-v2.md, inputs/design/prototypes/contigo-v2/ia-v2.md, inputs/design/prototypes/contigo-v2/markup.html, inputs/design/prototypes/contigo-v2/app.jsx]
+design_sources: [inputs/design/prototypes/raffa-v2/screens-v2.md, inputs/design/prototypes/raffa-v2/ia-v2.md, inputs/design/prototypes/raffa-v2/markup.html, inputs/design/prototypes/raffa-v2/app.jsx]
 baseline: 1650213 (helix/next-wave-process) — 8 uncommitted web edits in the tree; origin/main is 25b10da (5 commits ahead, post-rebrand)
 generated: 2026-09-10T16:05Z
 previous_wave: e13
@@ -40,11 +40,11 @@ Theme, from the raw file's own §7 grouping: **W14 — Workspace is real**.
   ADR-011 (invitation token secret in Key Vault), ADR-012 / ADR-018 / ADR-020
   (routes, screens 1 and 10), ADR-014 (wave base branch), ADR-016 (per-env
   config on promotion).
-- Design: `inputs/design/prototypes/contigo-v2/screens-v2.md` §1 (workspace
+- Design: `inputs/design/prototypes/raffa-v2/screens-v2.md` §1 (workspace
   pick row `"{{ seededCount }} validated contracts · CHF · eu-west"`) and §10
   (Workspace & members: table `name · email · role · status`, invite form,
   Admin "Also uploads, deletes, manages members");
-  `inputs/design/prototypes/contigo-v2/ia-v2.md` route map `/signin`,
+  `inputs/design/prototypes/raffa-v2/ia-v2.md` route map `/signin`,
   `/workspace/members`; anchors in `markup.html:63` and `markup.html:395,397`;
   `app.jsx:133-134,138-139,169-170` (`signCreate` / `signPick` / `enterWs`,
   `members`, `sendInvite`, `status: Invited`).
@@ -61,13 +61,13 @@ Theme, from the raw file's own §7 grouping: **W14 — Workspace is real**.
 ### Baseline hazards (read before decomposing)
 
 1. **`origin/main` is not this tree.** `origin/main` @ `25b10da` carries PR #77
-   (`87b7976` "rebrand: mechanical Contigo -> Raffa rename across the
+   (`87b7976` "rebrand: mechanical Raffa -> Raffa rename across the
    monorepo", 1477 files, 840 path renames, + `266e86f`) and PR #78
    (`c7d1e18` infra import cleanup). This checkout is `1650213`, two commits
    ahead of a **pre-rebrand** base and five behind `origin/main`. Every path in
    this document is verified on **this** tree; on `origin/main` translate
-   `backend/src/Contigo.X` → `backend/src/Raffa.X`, namespace `Contigo.*` →
-   `Raffa.*`, `inputs/design/prototypes/contigo-v2/` → `raffa-v2/`. The rename
+   `backend/src/Raffa.X` → `backend/src/Raffa.X`, namespace `Raffa.*` →
+   `Raffa.*`, `inputs/design/prototypes/raffa-v2/` → `raffa-v2/`. The rename
    is mechanical: every W14 gap below was re-checked against `origin/main` and
    is byte-identical there (`git show origin/main:backend/src/Raffa.Api/
    WorkspaceEndpointExtensions.cs` still maps only the two POSTs;
@@ -88,7 +88,7 @@ Theme, from the raw file's own §7 grouping: **W14 — Workspace is real**.
 
 | ID | Title | Kind | Priority | Area | Status today | Seats | ADR touchpoints | Design refs | Acceptance |
 |---|---|---|---|---|---|---|---|---|---|
-| W14-01 | Wave base is the post-rebrand `origin/main` (`Contigo.*` → `Raffa.*`) | ops | must | ci | OPEN | delivery-manager | ADR-014 | — | W14-A1 |
+| W14-01 | Wave base is the post-rebrand `origin/main` (`Raffa.*` → `Raffa.*`) | ops | must | ci | OPEN | delivery-manager | ADR-014 | — | W14-A1 |
 | NW-02 | Create workspace also writes the creator's membership (Admin) | bug | must | auth | OPEN | software-architect, security-architect | ADR-009, ADR-010, ADR-022 | — | N1 |
 | NW-01 | `GET /api/workspaces` for the signed-in identity | feature | must | backend | OPEN | software-architect, security-architect, client-architect | ADR-009, ADR-010, ADR-022 | screens-v2 §1 | N2, N4, N5 |
 | NW-14 | Delete and Retry upload 403 for the workspace creator | bug | must | auth | OPEN | security-architect, client-architect | ADR-022, ADR-010 | — | N9 |
@@ -136,7 +136,7 @@ Theme, from the raw file's own §7 grouping: **W14 — Workspace is real**.
 
 ---
 
-### W14-01 — Wave base is the post-rebrand `origin/main` (`Contigo.*` → `Raffa.*`)
+### W14-01 — Wave base is the post-rebrand `origin/main` (`Raffa.*` → `Raffa.*`)
 
 - **Source**: no raw id — found by this intake auditing the checkout against
   `origin/main`.
@@ -145,21 +145,21 @@ Theme, from the raw file's own §7 grouping: **W14 — Workspace is real**.
 - **Today (evidence)**: `git log --oneline origin/main ^HEAD` returns
   `25b10da`, `c7d1e18`, `0dc9611`, `266e86f`, `87b7976`. `87b7976` is a
   mechanical rename of every module: `git ls-tree -d origin/main backend/src/`
-  lists `Raffa.Api`, `Raffa.Identity.Workspace`, … — no `Contigo.*` directory
-  survives. `.helix` itself was renamed (`contigo-process.yaml` →
-  `raffa-process.yaml`, `inputs/design/prototypes/contigo-v2/` →
-  `raffa-v2/`); this branch's own `contigo-next-process.yaml` (`54cbd27`) does
+  lists `Raffa.Api`, `Raffa.Identity.Workspace`, … — no `Raffa.*` directory
+  survives. `.helix` itself was renamed (`raffa-process.yaml` →
+  `raffa-process.yaml`, `inputs/design/prototypes/raffa-v2/` →
+  `raffa-v2/`); this branch's own `raffa-next-process.yaml` (`54cbd27`) does
   not exist on `origin/main`, so a merge produces a mixed tree.
 - **Gap**: every path this document cites resolves on `1650213` and on none of
   them on `origin/main`. A wave branch cut from `main` whose tasks name
-  `backend/src/Contigo.*` fails at the first `Read`.
+  `backend/src/Raffa.*` fails at the first `Read`.
 - **Seats**: delivery-manager (git flow, wave order, which commit the wave
   branches from — ADR-014).
 - **ADR touchpoints**: amend ADR-014 only if the branch/base rule changes;
   otherwise `none — mechanical rename, no decision`.
 - **Design refs**: none.
 - **Acceptance**: **W14-A1** — the wave branch's base contains `87b7976`;
-  `rg -n "Contigo\." backend/src web/src` returns nothing on the wave branch;
+  `rg -n "Raffa\." backend/src web/src` returns nothing on the wave branch;
   `dotnet build` and `npm test` are green on the base before the first task.
 - **Proposed epic**: epic-14-workspace-identity (ordering task, phase 1).
 - **Task sketch**: one pre-flight task — rebase/merge `helix/next-wave-process`
@@ -173,11 +173,11 @@ Theme, from the raw file's own §7 grouping: **W14 — Workspace is real**.
 - **Raw**: "creating identity becomes Workspace Admin in `workspace_membership`.
   Without this row, NW-01 cannot return the workspace and NW-14 always 403s."
 - **Today (evidence)**:
-  `../backend/src/Contigo.Identity.Workspace/Infrastructure/WorkspaceProvisioningService.cs:40-46`
+  `../backend/src/Raffa.Identity.Workspace/Infrastructure/WorkspaceProvisioningService.cs:40-46`
   builds `WorkspaceFactory.CreateWorkspaceWithDefaultRoles` and adds
   `db.Workspaces` + `db.WorkspaceRoles` only — no `WorkspaceMembership`, no
   `WorkspaceUser`. Its own doc comment (`:12-15`) and
-  `../backend/src/Contigo.Api/WorkspaceEndpointExtensions.cs:14-20` call
+  `../backend/src/Raffa.Api/WorkspaceEndpointExtensions.cs:14-20` call
   creation "the pre-authentication signup step (nobody has a tenant claim yet)".
   `CreateWorkspaceAsync` (`WorkspaceEndpointExtensions.cs:36-57`) takes only a
   name — no caller identity reaches the service. Same on `origin/main`.
@@ -209,15 +209,15 @@ Theme, from the raw file's own §7 grouping: **W14 — Workspace is real**.
 - **Source**: NW-01, `inputs/next/next-waves-todo.md` §1.
 - **Raw**: "list workspaces the caller belongs to (membership), RLS."
 - **Today (evidence)**:
-  `../backend/src/Contigo.Api/WorkspaceEndpointExtensions.cs:31-32` maps
+  `../backend/src/Raffa.Api/WorkspaceEndpointExtensions.cs:31-32` maps
   `POST /api/workspaces` and `POST /api/workspaces/{tenantId}/invites` and
-  nothing else. `../backend/src/Contigo.Identity.Workspace/Infrastructure/WorkspaceMembershipService.cs`
+  nothing else. `../backend/src/Raffa.Identity.Workspace/Infrastructure/WorkspaceMembershipService.cs`
   has `InviteAsync` / `LinkSignInAsync`, no "list workspaces for this user"
   query. The web substitutes
   `../web/src/routes/signin/workspaceStore.ts:32,88-106` — a `localStorage`
-  array under `contigo.signin.knownWorkspaces.{homeAccountId}`, whose own
+  array under `raffa.signin.knownWorkspaces.{homeAccountId}`, whose own
   header comment (`:1-30`) states the gap and names the exact backend types a
-  future task must extend. `../web/openapi/contigo-api.v1.json:53` documents the
+  future task must extend. `../web/openapi/raffa-api.v1.json:53` documents the
   same ("No `GET` (list-workspaces-for-caller) endpoint exists yet").
 - **Gap**: workspace discovery lives in one browser. A second browser, a
   cleared profile or another device cannot find the tenant, so the user
@@ -231,7 +231,7 @@ Theme, from the raw file's own §7 grouping: **W14 — Workspace is real**.
   not doubled).
 - **ADR touchpoints**: amend ADR-009 (a cross-tenant-safe list keyed on the
   caller, not on a tenant header) and ADR-022 (interim caller identity).
-- **Design refs**: `inputs/design/prototypes/contigo-v2/screens-v2.md` §1 —
+- **Design refs**: `inputs/design/prototypes/raffa-v2/screens-v2.md` §1 —
   pick row `"{{ seededCount }} validated contracts · CHF · eu-west"`;
   `app.jsx:138` (`signCreate` when nothing is seeded, `signPick` when it is).
 - **Acceptance**: **N2** second browser / cleared storage → same workspace, no
@@ -241,7 +241,7 @@ Theme, from the raw file's own §7 grouping: **W14 — Workspace is real**.
 - **Task sketch**:
   - `GET /api/workspaces` → `[{ id, name, createdAt, role, contractCount, … }]`
     from `workspace_membership` for the caller; RLS-scoped per row.
-  - Extend `web/openapi/contigo-api.v1.json` + regenerate
+  - Extend `web/openapi/raffa-api.v1.json` + regenerate
     `web/src/api/generated/schema.ts`; add `listWorkspaces` to `client.ts`.
   - `WorkspacePickerScreen` renders the server list; delete
     `knownWorkspaces` read/write from `workspaceStore.ts`.
@@ -255,10 +255,10 @@ Theme, from the raw file's own §7 grouping: **W14 — Workspace is real**.
   200). … Do not 'fix' this by sending a spoofable `X-Role: Admin` from the SPA
   as the product solution."
 - **Today (evidence)**:
-  `../backend/src/Contigo.Api/DocumentsEndpointExtensions.cs:85,87` maps
+  `../backend/src/Raffa.Api/DocumentsEndpointExtensions.cs:85,87` maps
   `POST /api/documents/{id}/reprocess` and `DELETE /api/documents/{id}`, both
   Admin-only (`:52-55`, R-DOC-07/R-DOC-10).
-  `../backend/src/Contigo.Api/Infrastructure/WorkspaceRoleResolver.cs:45-63`
+  `../backend/src/Raffa.Api/Infrastructure/WorkspaceRoleResolver.cs:45-63`
   resolves in order claims → `X-Role`/`X-Workspace-Role` (`:70-83`) →
   `workspace_membership` by `X-User-Id` (`:85-119`). No auth is wired, the SPA
   sends no role header, and NW-02 never wrote the membership row — so the join
@@ -322,7 +322,7 @@ Theme, from the raw file's own §7 grouping: **W14 — Workspace is real**.
 - **Raw**: "one membership → enter it; several → picker from NW-01."
 - **Today (evidence)**:
   `../web/src/routes/signin/workspaceStore.ts:33,117-145` keeps the selection
-  in `sessionStorage` under `contigo.signin.currentWorkspace`;
+  in `sessionStorage` under `raffa.signin.currentWorkspace`;
   `../web/src/App.tsx:37,43` notes that `loadCurrentWorkspace()` plus MSAL's own
   `sessionStorage` account is the whole gate. Deliberate at the time ("switching
   tabs/reopening the browser should not silently resume a previous tenant") —
@@ -352,7 +352,7 @@ Theme, from the raw file's own §7 grouping: **W14 — Workspace is real**.
 - **Source**: NW-04, `inputs/next/next-waves-todo.md` §1.
 - **Raw**: "invite POST is real; table is `memberStore.ts` session cache."
 - **Today (evidence)**:
-  `../backend/src/Contigo.Api/WorkspaceEndpointExtensions.cs:31-32` — no member
+  `../backend/src/Raffa.Api/WorkspaceEndpointExtensions.cs:31-32` — no member
   list route. `../web/src/routes/workspace/members/memberStore.ts:57,77` reads
   and writes `sessionStorage`; `memberViewModel.ts:39` defines
   `INVITATION_SENT_MESSAGE = "Invitation sent."` and
@@ -387,22 +387,22 @@ Theme, from the raw file's own §7 grouping: **W14 — Workspace is real**.
   member until an Admin **removes** them. Re-adding them needs a **new
   invite**." Plus: "UI must not say 'sent' unless the mail left."
 - **Today (evidence)**:
-  - `../backend/src/Contigo.Api/WorkspaceEndpointExtensions.cs:59-97` —
+  - `../backend/src/Raffa.Api/WorkspaceEndpointExtensions.cs:59-97` —
     `POST …/invites` validates the email and role and calls
     `WorkspaceMembershipService.InviteAsync`. Nothing else.
-  - `../backend/src/Contigo.Identity.Workspace/Infrastructure/WorkspaceMembershipService.cs:56-108`
+  - `../backend/src/Raffa.Identity.Workspace/Infrastructure/WorkspaceMembershipService.cs:56-108`
     writes `workspace_user` (`:80-88`) + `workspace_membership` (`:98-105`).
     No token, no expiry, no accept URL. A repeat invite of the **same** role
     fails at `:90-96` ("already holds the {role} role in this workspace").
   - **No mail transport exists anywhere**: a repo-wide grep for
     `smtp|sendgrid|MailKit|Graph…sendMail|IEmailSender|communication.services`
     over `backend/src` and `infra` returns **zero** files.
-  - `../backend/src/Contigo.Identity.Workspace/Domain/WorkspaceSignIn.cs:28-44`
+  - `../backend/src/Raffa.Identity.Workspace/Domain/WorkspaceSignIn.cs:28-44`
     and `WorkspaceMembershipService.LinkSignInAsync:118-145` implement the
     "first sign-in after being invited" link — but **no host endpoint calls
     them** (they appear only in
-    `../backend/tests/Contigo.Identity.Workspace.Tests/WorkspaceSignInTests.cs`).
-  - **No membership DELETE**: `grep -n "MapDelete" backend/src/Contigo.Api/`
+    `../backend/tests/Raffa.Identity.Workspace.Tests/WorkspaceSignInTests.cs`).
+  - **No membership DELETE**: `grep -n "MapDelete" backend/src/Raffa.Api/`
     finds only `DocumentsEndpointExtensions.cs:87`.
   - `../web/src/routes/workspace/members/InvitePane.tsx:93,103` says
     "Sending…" then "Invitation sent." unconditionally on a 201.
@@ -467,7 +467,7 @@ Theme, from the raw file's own §7 grouping: **W14 — Workspace is real**.
   `(HITL)`.
 - **Raw**: "Workspace has no currency / region (HITL)".
 - **Today (evidence)**:
-  `../backend/src/Contigo.Identity.Workspace/Domain/WorkspaceTenant.cs:24-28` —
+  `../backend/src/Raffa.Identity.Workspace/Domain/WorkspaceTenant.cs:24-28` —
   the entity has `Name` and `CreatedAt` and nothing else.
   `../web/src/routes/signin/WorkspacePickerScreen.tsx:60-90` — the create form
   submits `{ name }` only. `../web/src/routes/signin/workspaceStore.ts:47-55`
@@ -507,7 +507,7 @@ file's own §7 proposal.
 - **NW-05** — OPEN. No `AddJwtBearer` / `AddAuthentication` /
   `JwtBearerDefaults` call exists in any `.cs` under `../backend/src`; tenant is
   `X-Tenant-Id` and actor `X-User-Id`, read straight off `HttpRequest.Headers`
-  (`../backend/src/Contigo.Api/DocumentsEndpointExtensions.cs:69-70`;
+  (`../backend/src/Raffa.Api/DocumentsEndpointExtensions.cs:69-70`;
   `ConversationsEndpointExtensions.cs:360`). `../backend/README.md:198-211` is
   the canonical prose statement of the interim posture.
 - **NW-06** — OPEN. `../web/src/components/shell/workspaceRole.ts:40-46` reads
@@ -515,44 +515,44 @@ file's own §7 proposal.
   defaults to `"admin"`. *Partly relieved by w14*: once NW-01 returns the
   caller's role per workspace, the Admin-only affordances stop guessing — see
   NW-14. The `?role=` override itself dies with NW-05.
-- **NW-07** — PARTIAL. `../backend/src/Contigo.Api/ConversationsEndpointExtensions.cs:372-399`
+- **NW-07** — PARTIAL. `../backend/src/Raffa.Api/ConversationsEndpointExtensions.cs:372-399`
   tries `ClaimsPrincipal` `NameIdentifier`/`sub` first (never authenticated
   today), then the required `X-User-Id` header; a missing header is a 400.
-  Conversations *are* stored per user (`../backend/src/Contigo.Chat/Domain/Conversations/Conversation.cs:16`),
+  Conversations *are* stored per user (`../backend/src/Raffa.Chat/Domain/Conversations/Conversation.cs:16`),
   just keyed on a non-authoritative header (OQ-askv2-005).
-- **NW-08** — OPEN. `../backend/src/Contigo.Api/AuditEndpointExtensions.cs:22-36`
+- **NW-08** — OPEN. `../backend/src/Raffa.Api/AuditEndpointExtensions.cs:22-36`
   binds a `ClaimsPrincipal` and requires Admin via
   `WorkspacePrincipalAuthorization.TryAuthorize`; with no auth wired it always
-  401s. Absent from `../web/openapi/contigo-api.v1.json` (28 paths).
+  401s. Absent from `../web/openapi/raffa-api.v1.json` (28 paths).
 - **NW-31** — PARTIAL. `WorkspaceRoleResolver.cs:37-38,72` reads both `X-Role`
-  and `X-Workspace-Role`; `../backend/src/Contigo.Api/CapabilitiesEndpointExtensions.cs:54`
+  and `X-Workspace-Role`; `../backend/src/Raffa.Api/CapabilitiesEndpointExtensions.cs:54`
   reads only `X-Role`. Two spellings, two readers.
 - **NW-32** — OPEN. `DocumentsEndpointExtensions.cs:71,569-574` writes the
   literal `"unattributed"` as the audit actor when `X-User-Id` is absent; the
   same constant is used by
-  `../backend/src/Contigo.Savings/Application/SavingsOpportunityService.cs:95,165,316`.
+  `../backend/src/Raffa.Savings/Application/SavingsOpportunityService.cs:95,165,316`.
 
 **W16 — No session as source of truth**
 
 - **NW-10** — OPEN. `../web/src/components/shell/RailNav.tsx:12,67` is the only
   remaining reader of `loadTrackedDocuments()`
   (`../web/src/routes/documents/documentStore.ts:31,67`,
-  `sessionStorage["contigo.documents.readback"]`); nothing writes that key any
+  `sessionStorage["raffa.documents.readback"]`); nothing writes that key any
   more, so the badge reads empty while `/documents` lists files.
-- **NW-11** — OPEN. `../backend/src/Contigo.Api/RenewalsEndpointExtensions.cs:94-96`
+- **NW-11** — OPEN. `../backend/src/Raffa.Api/RenewalsEndpointExtensions.cs:94-96`
   maps `GET /api/renewals`, `GET …/{contractId}/priority`,
   `POST …/{id}/action`. `RenewalActionService.GetActionAsync` exists but is
   unrouted; `../web/src/routes/renewals/renewalActionStore.ts:8-19` mirrors
   posted actions in `sessionStorage`.
-- **NW-12** — OPEN. `../backend/src/Contigo.Api/QuotesEndpointExtensions.cs:35-39`
+- **NW-12** — OPEN. `../backend/src/Raffa.Api/QuotesEndpointExtensions.cs:35-39`
   maps upload / assessment / recalculate only — no `GET /api/quotes`, no
   `GET /api/quotes/{id}`; `../web/src/routes/quotes/quoteOutcomeStore.ts:31`
   keeps outcomes in `sessionStorage`.
 - **NW-13** — OPEN (**no longer this-branch-only**: PR #75 `27dfe75` is an
   ancestor of HEAD). `../web/src/routes/contracts/contract360/negotiationStepsStore.ts:10-38`
   stores four booleans per contract under
-  `sessionStorage["contigo.contract360.steps.<id>"]`; no endpoint records them.
-- **NW-21** — PARTIAL. `../backend/src/Contigo.Api/NegotiationsEndpointExtensions.cs:86-95`
+  `sessionStorage["raffa.contract360.steps.<id>"]`; no endpoint records them.
+- **NW-21** — PARTIAL. `../backend/src/Raffa.Api/NegotiationsEndpointExtensions.cs:86-95`
   calls `NegotiationOutcomePropagationService.PropagateAsync` **only** when the
   body carries `savingsOpportunityId`; the web never sends one
   (`../web/src/routes/quotes/quoteOutcomeStore.ts:16`), so a recorded outcome
@@ -560,21 +560,21 @@ file's own §7 proposal.
 
 **W17 — Domain completeness (Contract 360)**
 
-- **NW-20** — OPEN. `../backend/src/Contigo.Api/ContractsEndpointExtensions.cs:298-310`
+- **NW-20** — OPEN. `../backend/src/Raffa.Api/ContractsEndpointExtensions.cs:298-310`
   emits `benchmark = Array.Empty<object>()` and `activity = Array.Empty<object>()`
   unconditionally.
-- **NW-22** — OPEN. `../backend/src/Contigo.Renewals/Application/RenewalPipelineBuilder.cs:89-92`
+- **NW-22** — OPEN. `../backend/src/Raffa.Renewals/Application/RenewalPipelineBuilder.cs:89-92`
   hardcodes `MarketPosition: null` (with `AnnualUpliftPercent` and
   `PotentialSavingsRange`) for every item.
-- **NW-23** — OPEN. `../backend/src/Contigo.Documents.Contracts/Application/PortfolioFilter.cs:11-18`
-  has no `Category`; `../backend/src/Contigo.Api/PortfolioEndpointExtensions.cs:170`
+- **NW-23** — OPEN. `../backend/src/Raffa.Documents.Contracts/Application/PortfolioFilter.cs:11-18`
+  has no `Category`; `../backend/src/Raffa.Api/PortfolioEndpointExtensions.cs:170`
   parses supplier/status/risk/autoRenewal/spend/renewal dates only.
 - **NW-25** — OPEN. `../web/src/routes/savings/index.tsx` renders header + KPI
   band + a flat `OpportunitiesTable`; no filter, search or sort control exists
   in that folder.
 - **NW-26** — OPEN. `PlaceholderDocumentPreviewRenderer` is the only
   `IDocumentPreviewRenderer` in the tree
-  (`../backend/src/Contigo.Documents.Contracts/Infrastructure/ServiceCollectionExtensions.cs:125-127`)
+  (`../backend/src/Raffa.Documents.Contracts/Infrastructure/ServiceCollectionExtensions.cs:125-127`)
   and `Preview/DocumentPreviewService.cs:54` falls back to
   `RenderPlaceholder("FILE")`.
 - **NW-62** — OPEN. `../web/src/routes/contracts/contract360/contract360ViewModel.ts:150-152,160-199`
@@ -589,7 +589,7 @@ file's own §7 proposal.
   highlighting is text-level `<mark>` (`ClauseHighlight.tsx:19-36`,
   `EvidencePane.tsx:141-160`) and the persisted model keeps only `SourceSpan`
   (string) + `SourcePage` (int) —
-  `../backend/src/Contigo.Documents.Contracts/Domain/ExtractionEvidence.cs:46-48` —
+  `../backend/src/Raffa.Documents.Contracts/Domain/ExtractionEvidence.cs:46-48` —
   no bounding boxes.
 - **NW-64** — OPEN. `../web/src/routes/contracts/review/reviewViewModel.ts:245`
   `continue`s when both the value and the proposal are empty, so an
@@ -607,11 +607,11 @@ file's own §7 proposal.
 
 **W18 — Contract, ops, and the Ask/Quote product residuals**
 
-- **NW-27** — OPEN. `../backend/src/Contigo.Api/DocumentsEndpointExtensions.cs:265-280`
+- **NW-27** — OPEN. `../backend/src/Raffa.Api/DocumentsEndpointExtensions.cs:265-280`
   awaits `processingPipeline.ProcessAsync(...)` inline before returning 201;
-  `../backend/src/Contigo.Worker/Queue/InMemoryQueueConsumer.cs:5-16` is an
+  `../backend/src/Raffa.Worker/Queue/InMemoryQueueConsumer.cs:5-16` is an
   in-process `ConcurrentQueue` with nothing enqueuing document work.
-- **NW-30** — OPEN. `../web/openapi/contigo-api.v1.json` `/api/conversations`
+- **NW-30** — OPEN. `../web/openapi/raffa-api.v1.json` `/api/conversations`
   `post` declares parameters but no `requestBody`; `/api/audit` is absent.
 - **NW-40** — PARTIAL. `../infra/environments/dev/main.tf:121-147` passes
   `ai_gateway_endpoint` / `project_name` / `document_intelligence_connection` /
@@ -628,7 +628,7 @@ file's own §7 proposal.
 - **NW-55** — OPEN. `../web/src/routes/ask/reply/CitationCard.tsx:38-44` renders
   an `<img>` or the "No page preview available" block for every citation kind,
   and all twelve `new PackItem(...)` constructions in
-  `../backend/src/Contigo.Api/AskCopilotService.cs` pass `null` for
+  `../backend/src/Raffa.Api/AskCopilotService.cs` pass `null` for
   `PreviewUrl` — the placeholder ships 100 % of the time.
 - **NW-56** — PARTIAL. `../web/src/routes/contracts/contract360/Contract360Header.tsx:49`
   links to `/ask?scope=<id>` with no `state.query`; the scope *is* honoured for
@@ -640,7 +640,7 @@ file's own §7 proposal.
   free-text target / walk-away numbers; `NegotiationStep.tsx:85-89,191-193` ends
   on "See it in Savings →"; there is no quote history route or list endpoint;
   with no fixture match
-  `../backend/src/Contigo.Benchmark/Fixtures/FixtureBenchmarkAdapter.cs:207,312`
+  `../backend/src/Raffa.Benchmark/Fixtures/FixtureBenchmarkAdapter.cs:207,312`
   returns a null distribution which `MarketAssessmentCalculator.cs:45-54`
   classifies `InsufficientBenchmarkData`.
 - **NW-59** — OPEN. `../web/src/routes/ask/reply/replyTypes.ts:102-116` types
@@ -764,16 +764,16 @@ No seat is listed "just in case": every row above names the decision it owns.
   and must **not** say "Invitation sent." (NW-58's own must #1), and N3b is
   read with that substitution.
 - **OQ-w14-003** — Which commit does the wave branch from?
-  `origin/main` @ `25b10da` renamed every `Contigo.*` module to `Raffa.*`
+  `origin/main` @ `25b10da` renamed every `Raffa.*` module to `Raffa.*`
   (PR #77, `87b7976`); this checkout `1650213` is pre-rebrand and carries the
   `.helix` next-wave process that `origin/main` does not.
   **Assumption**: the operator rebases/merges `helix/next-wave-process` onto
   `origin/main` **before** fan-out; every path in this document is then read
-  with `Contigo.X` → `Raffa.X` and `contigo-v2/` → `raffa-v2/`. Every w14 gap
+  with `Raffa.X` → `Raffa.X` and `raffa-v2/` → `raffa-v2/`. Every w14 gap
   was re-verified on `origin/main` and is unchanged by the rename.
 - **OQ-w14-004** — Which workspace profile fields (NW-24)?
   `percorso-pilota-v1.md` §2 step 1 asks for "nome / industria / paese";
-  `contigo-v2/markup.html:63` shows "CHF · eu-west".
+  `raffa-v2/markup.html:63` shows "CHF · eu-west".
   **Assumption**: `country` and `currency` are added as first-class columns and
   drive the picker row; `industry` is optional free text; "region" is a business
   region and does **not** touch ADR-006 (`northeurope` stays). A workspace

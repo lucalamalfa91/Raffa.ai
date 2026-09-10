@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Snapshot / verify that the next-wave process only APPENDED to the live plan.
 
-The next-wave process (contigo-next-process.yaml) may create files for its own
+The next-wave process (raffa-next-process.yaml) may create files for its own
 wave, append to the shared indexes, and add footers to ADRs. It must never
 rewrite what an earlier council or wave produced, and it must never edit the
 raw inputs. This script is generic: it does not know the wave's epics ahead of
@@ -14,7 +14,7 @@ Locked byte-identical:
   reports/context/*.md (top level), reports/context/waves/* of OTHER waves
   reports/architecture/draft/** (existing), reports/architecture/waves/* of OTHER waves
   reports/audit/*, reports/execution/*  (existing, other waves)
-  contigo-process.yaml, run.ps1, run.sh
+  raffa-process.yaml, run.ps1, run.sh
 
 Locked append-only (new text may follow the old text):
   reports/architecture/ADR-*.md   (status line may change: superseded)
@@ -134,7 +134,7 @@ def collect(wave: str | None) -> tuple[dict[str, str], dict[str, dict]]:
     arch = HERE / "reports" / "architecture"
     lock_identical([p for p in (arch / "draft").rglob("*") if p.is_file()] + _files(arch / "waves", "*.md"))
     lock_identical(_files(HERE / "reports" / "audit", "*.md") + _files(HERE / "reports" / "execution", "*.md"))
-    lock_identical([HERE / n for n in ("contigo-process.yaml", "run.ps1", "run.sh") if (HERE / n).is_file()])
+    lock_identical([HERE / n for n in ("raffa-process.yaml", "run.ps1", "run.sh") if (HERE / n).is_file()])
 
     lock_append(_files(arch, "ADR-*.md"), "adr")
     lock_append([p for p in (arch / "INDEX.md", HERE / "reports" / "workitems" / "BACKLOG.md", HERE / "reports" / "open-questions.md") if p.is_file()], "text")

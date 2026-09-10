@@ -156,7 +156,7 @@ rewrites every non-asset path to `/index.html` and excludes only
 (`reports/execution/demo-v-promotion-runbook.md:8-11,99-113`). **Path warning**:
 that is the **repo-root** `scripts/`, not `.helix/scripts/` — two different
 directories, and the kb-contract's `scripts/` means the latter. That checker
-asserts on the brand substring `contigo-<env>-api`, so it is also a rename
+asserts on the brand substring `raffa-<env>-api`, so it is also a rename
 surface (ADR-014 w14 footer, clause 3c).
 
 **7. Sequence for w14.** `demo-v3` (`2db5734`) is the current live promotion and
@@ -197,7 +197,7 @@ third workflow file would make that task fail a legitimate change. It does not:
   ADR-026 `:360-362` both assert the script is already in the ADR-021 arrays;
   both cite one source, so this seat checked the source: `backend.yml:277` and
   `:309` each list
-  `backend/src/Contigo.Identity.Workspace/Migrations/Scripts/identity-workspace.sql`
+  `backend/src/Raffa.Identity.Workspace/Migrations/Scripts/identity-workspace.sql`
   — the exact file all three migrations regenerate. Present in **both** arrays,
   which `:274-275` keeps "in lockstep".
 - The post-close footers add **code, one config line, tests and copy** — no
@@ -213,7 +213,7 @@ gate.** The two halves of the suite are not equally enforced, and no decision in
 this wave says so:
 
 - **Backend gates.** `backend.yml:72-74` runs
-  `dotnet test Contigo.slnx --configuration Release --no-build` — **unfiltered**,
+  `dotnet test Raffa.slnx --configuration Release --no-build` — **unfiltered**,
   so ADR-025 §H's Postgres/RLS tests (T1c, T1d, T5, T6, T13) really do gate in
   CI, as that ADR states.
 - **Browser does not.** `web.yml:79-81` runs `npm test --if-present`, which

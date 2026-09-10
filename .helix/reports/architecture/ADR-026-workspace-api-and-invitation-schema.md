@@ -23,8 +23,8 @@ workspaces does this caller belong to?"*, but every table that could answer it
 is tenant-scoped and the RLS guard fails closed: with no `app.tenant_id` the
 policy predicate `tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid`
 evaluates to NULL and every row is denied
-(`backend/src/Contigo.SharedKernel/Tenancy/TenantRlsConnectionInterceptor.cs:15-16,53-57`;
-`backend/src/Contigo.Identity.Workspace/Migrations/Scripts/identity-workspace.sql:143-182`).
+(`backend/src/Raffa.SharedKernel/Tenancy/TenantRlsConnectionInterceptor.cs:15-16,53-57`;
+`backend/src/Raffa.Identity.Workspace/Migrations/Scripts/identity-workspace.sql:143-182`).
 `workspace_user` is itself tenant-scoped — the same person in two workspaces
 is two rows, unique on `(tenant_id, email)` (SQL `:118`). So the caller's
 identity is only discoverable once the tenant is already known, which is the
@@ -48,7 +48,7 @@ offer that is only redeemed on accept.
 - One definition per fact. Five surfaces currently disagree about "validated
   contracts"; this wave must end with one number produced in one place.
 - Module boundaries are enforced by a test, not by convention
-  (`backend/tests/Contigo.ArchitectureTests/DependencyDirectionTests.cs:62`).
+  (`backend/tests/Raffa.ArchitectureTests/DependencyDirectionTests.cs:62`).
 - Cheapest correct change: no new project, no new module, no denormalised
   projection to keep in step.
 
@@ -106,7 +106,7 @@ GET /api/workspaces
 - Order by `createdAt` ascending, stable, so the picker does not reshuffle
   between loads.
 - Implemented by a new `WorkspaceDirectoryService` in
-  `Contigo.Identity.Workspace/Infrastructure/`, exposing
+  `Raffa.Identity.Workspace/Infrastructure/`, exposing
   `ListForIdentityAsync(identity, ct)`. It owns both phases' identity-side
   reads and **does not know what a contract is**.
 
@@ -126,9 +126,9 @@ already served as `contractsAnalyzedCount` on `GET /api/savings/kpis`
 - `contractCount` is a **field on the NW-01 row**, not a second round-trip per
   workspace.
 - **Composition happens in the host, not in a module.**
-  `Contigo.Identity.Workspace` may reference only `Contigo.SharedKernel`
+  `Raffa.Identity.Workspace` may reference only `Raffa.SharedKernel`
   (`DependencyDirectionTests.cs:62`), so it cannot see `Documents.Contracts`.
-  `Contigo.Api` is the one project allowed to see both; the endpoint handler
+  `Raffa.Api` is the one project allowed to see both; the endpoint handler
   calls `WorkspaceDirectoryService` and the Documents.Contracts query service
   and joins them in the response projection. Precedent for exactly this shape:
   `SavingsKpiEndpointExtensions.cs:73-88`. **Adding a SharedKernel port for
@@ -188,7 +188,7 @@ unscoped read, which is strictly better on ADR-009's own criterion. The
 security-architect ratifies the token's strength and lifecycle; this clause is
 the shape only.
 
-`workspace_invitation` (new, tenant-scoped, in `Contigo.Identity.Workspace`):
+`workspace_invitation` (new, tenant-scoped, in `Raffa.Identity.Workspace`):
 
 | Column | Type | Null | Note |
 |---|---|---|---|
@@ -249,7 +249,7 @@ DELETE /api/workspaces/{tenantId}/members/{membershipId}  (new, Admin — remove
 
 ### D6 — the mailer seam keeps the transport question out of the critical path
 
-`IInvitationMailer` in `Contigo.Identity.Workspace` with
+`IInvitationMailer` in `Raffa.Identity.Workspace` with
 `Task<bool> TrySendAsync(...)`; default `NullInvitationMailer` returns `false`
 and logs. When it returns `false` the 201 carries `mailDelivered: false` and
 the SPA shows the copyable `acceptUrl` without claiming delivery.
@@ -356,7 +356,7 @@ guards, so the code may ship before the infrastructure exists.
    `IdentityWorkspaceMigrationScriptStaleCheckTests` byte-compares against an
    in-process regeneration. **Never hand-edit the `.sql`**; regenerate with
    `dotnet ef migrations script --idempotent` from
-   `backend/src/Contigo.Identity.Workspace`. Two tasks regenerating
+   `backend/src/Raffa.Identity.Workspace`. Two tasks regenerating
    concurrently **will** conflict — order them. The script is already in both
    CI arrays (`.github/workflows/backend.yml:276-286`, `:308-318`), so no
    workflow edit is needed for the migrations themselves.

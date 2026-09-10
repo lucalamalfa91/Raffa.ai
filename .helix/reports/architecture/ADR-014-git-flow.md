@@ -133,15 +133,15 @@ The PR `integration → main` is the wave's single merge event.
 
 **3. A wave base is proven green before its first task (W14-A1).** The body has
 no such rule; w14 needs one because `origin/main` carries a mechanical
-`Contigo.*` → `Raffa.*` rename that crosses the **CI ↔ cloud ↔ identity**
+`Raffa.*` → `Raffa.*` rename that crosses the **CI ↔ cloud ↔ identity**
 boundary. Before `reports/plan/gates/<w>.hitl-ok` is created the operator
 verifies, on the rebased base:
-(a) `rg -n "Contigo\." backend/src web/src` returns nothing;
+(a) `rg -n "Raffa\." backend/src web/src` returns nothing;
 (b) `dotnet build` and `npm test` are green;
-(c) `rg -ni "contigo" .github/ infra/ scripts/ backend/scripts/` is reviewed
+(c) `rg -ni "raffa" .github/ infra/ scripts/ backend/scripts/` is reviewed
 line by line against live Azure / HCP / **Entra**, including **both** ADR-021
 schema arrays (`backend.yml:277-285` **and** `:309-317`, kept "in lockstep" by
-`:274-275`), the Entra scope literals `api://contigo-<env>-api/Contigo.{Read,Write}`
+`:274-275`), the Entra scope literals `api://raffa-<env>-api/Raffa.{Read,Write}`
 (`web.yml:204-205`), and the brand-asserting checker
 `scripts/check_demo_swa_config.py` with its unit tests;
 (d) **one throwaway deploy to `dev` from the rebased base is green**, reaching

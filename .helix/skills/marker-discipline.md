@@ -62,7 +62,7 @@ Every factual claim must be backed by a file you read, a command you ran with
 its exit code, or a path you listed. "The file was written" without a `list_dir`
 or `ls` in the same phase is not delivery.
 
-## Next-wave process (`contigo-next-process.yaml`) — additional rows
+## Next-wave process (`raffa-next-process.yaml`) — additional rows
 
 | Marker | Only this role |
 |---|---|

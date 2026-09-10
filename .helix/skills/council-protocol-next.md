@@ -60,7 +60,7 @@ normalized requirements, with the seat roster) and its companion
 - Keep `Status: accepted` on every existing ADR unless superseded.
 - Never weaken ADR-009 (RLS), ADR-011 (authz before retrieval), ADR-001 §1.2
   non-goals; never pull a paid market API into `demo`; never put Foundry SDKs
-  outside `Contigo.AiGateway`.
+  outside `Raffa.AiGateway`.
 - A design decision cites the design oracle path (`inputs/design/…`) and the
   anchor (a markup string, a `.jsx` symbol, a section of an `ia-*.md` /
   `screens-*.md`).

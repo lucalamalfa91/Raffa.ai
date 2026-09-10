@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Register ONE next-wave slice: validate it, upsert its MANIFEST row, refresh INDEX-next.md.
 
-The next-wave process (contigo-next-process.yaml) writes the wave directly as
+The next-wave process (raffa-next-process.yaml) writes the wave directly as
 ``reports/plan/slices/<wave>.yaml`` in the slice grammar the fan-out walks.
 This script is the fail-closed gate between the decomposer and the checker:
 
@@ -330,7 +330,7 @@ def write_index_next() -> None:
         "# Next-wave slices",
         "",
         "Produced by `python scripts/register_wave.py --wave <id>` from the wave the",
-        "next-wave process (`contigo-next-process.yaml`) cut. One wave per run; the",
+        "next-wave process (`raffa-next-process.yaml`) cut. One wave per run; the",
         "backlog keeps everything, the wave carries at most the cap.",
         "",
         "Launch (after reviewing `reports/audit/<id>-hitl.md`):",

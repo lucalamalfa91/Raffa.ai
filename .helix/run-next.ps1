@@ -1,7 +1,7 @@
-# Launch the NEXT-WAVE process (contigo-next-process.yaml): raw requirements
+# Launch the NEXT-WAVE process (raffa-next-process.yaml): raw requirements
 # file -> normalized requirements -> dynamic council (ADRs) -> new epics ->
 # ONE wave (reports/plan/slices/<wave>.yaml). Passata 1 only; the wave itself
-# runs on contigo-process.yaml (execution-fanout), chained here by -Launch.
+# runs on raffa-process.yaml (execution-fanout), chained here by -Launch.
 #
 #   ./run-next.ps1 -Check
 #   ./run-next.ps1 -Max -Todo inputs/next/next-waves-todo.md
@@ -29,11 +29,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 $Here = $PSScriptRoot
-$Artifact = Join-Path $Here "contigo-next-process.yaml"
+$Artifact = Join-Path $Here "raffa-next-process.yaml"
 $envFile = Join-Path $Here ".env"
 
 if (-not (Test-Path $envFile)) { throw "missing .env -- copy .env.example to .env and fill values" }
-if (-not (Test-Path $Artifact)) { throw "missing contigo-next-process.yaml" }
+if (-not (Test-Path $Artifact)) { throw "missing raffa-next-process.yaml" }
 
 foreach ($a in @($Rest)) {
     if ($a -eq "--fresh" -or $a -eq "-Fresh") { throw "run-next.ps1 refuses --fresh (the next-wave process is append-only on the live plan)" }
@@ -136,7 +136,7 @@ if (-not $LaunchOnly) {
     }
     $runJson = Join-Path $Here "reports\plan\next-run.json"
     ($params | ConvertTo-Json -Compress) | Set-Content -Encoding ascii -LiteralPath $runJson
-    Write-Host "artifact: contigo-next-process.yaml  orch: $o  wave: $Wave  previous: $Previous"
+    Write-Host "artifact: raffa-next-process.yaml  orch: $o  wave: $Wave  previous: $Previous"
     Write-Host "todo: $Todo  caps: $MaxTasks tasks / $MaxPhases phases  focus: '$Focus'"
 
     $protect = Join-Path $Here "scripts\assert_next_plan_untouched.py"
@@ -197,7 +197,7 @@ if ($Launch -or $LaunchOnly) {
     }
     & python $prereqs --slice $Wave
     if ($LASTEXITCODE -ne 0) { Write-Host "[run-next.ps1] prerequisites not met -- fix them, then ./run-next.ps1 -LaunchOnly -Wave $Wave"; exit $LASTEXITCODE }
-    Write-Host "[run-next.ps1] launching execution-fanout on slice $Wave (contigo-process.yaml)"
+    Write-Host "[run-next.ps1] launching execution-fanout on slice $Wave (raffa-process.yaml)"
     & (Join-Path $Here "run.ps1") -Max -Slice $Wave -o execution-fanout
     exit $LASTEXITCODE
 }

@@ -95,7 +95,7 @@ only as a UI rule.
 "Region" in the prototype's `"CHF · eu-west"` is a **business** region string
 and has no relationship to ADR-006's Azure region; `northeurope` is untouched.
 
-**2. One new table, `workspace_invitation`, in `Contigo.Identity.Workspace`.**
+**2. One new table, `workspace_invitation`, in `Raffa.Identity.Workspace`.**
 Ordinary tenant-scoped table: `tenant_id` column, `ENABLE` + `FORCE ROW LEVEL
 SECURITY` and its `tenant_isolation` policy shipped **in the same migration as
 the table**. Shape, indexes and rationale are in **ADR-026 §D4**; the
@@ -118,7 +118,7 @@ against an in-process regeneration by
 `IdentityWorkspaceMigrationScriptStaleCheckTests`, so it must **never** be
 hand-edited, and two tasks regenerating it concurrently will conflict — the
 decomposer orders them. Regenerate with `dotnet ef migrations script
---idempotent` from `backend/src/Contigo.Identity.Workspace`. The script is
+--idempotent` from `backend/src/Raffa.Identity.Workspace`. The script is
 already listed in both CI arrays (`.github/workflows/backend.yml:276-286` and
 `:308-318`), so appended migrations need no workflow edit (ADR-021 unchanged).
 

@@ -734,7 +734,7 @@ the rule now is what makes W15 a one-file change instead of a re-litigation.
   shapes it) — existing `dev` workspaces cannot be attributed retroactively; the
   operator supplies `(tenant id, email)` pairs at HITL or recreates them (D.2e).
 - Line numbers are the wave base `1650213`; on `origin/main` (`25b10da`,
-  post-rebrand) read every `Contigo.*` path as `Raffa.*` (W14-01, OQ-w14-003). The
+  post-rebrand) read every `Raffa.*` path as `Raffa.*` (W14-01, OQ-w14-003). The
   rename is mechanical and does not move lines within a file.
 - RLS behaviour asserted here is **not** backed by a green local run: those suites
   need Postgres Testcontainers and Docker will not start on this machine. They are

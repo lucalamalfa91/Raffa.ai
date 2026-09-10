@@ -1,6 +1,6 @@
 # KB contract — next-wave process (delta on the existing product)
 
-The next-wave process (`contigo-next-process.yaml`, launcher `run-next.ps1`)
+The next-wave process (`raffa-next-process.yaml`, launcher `run-next.ps1`)
 does **not** start from scratch. It starts from the code on the current
 checkout (normally `origin/main`), the accepted ADRs, and the full backlog,
 and it adds **one wave at a time**. Every agent runs as Claude Code with

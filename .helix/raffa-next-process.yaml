@@ -1,5 +1,5 @@
 # =============================================================================
-# contigo-next-process -- Helix Passata 1 for EVERY wave after the initial
+# raffa-next-process -- Helix Passata 1 for EVERY wave after the initial
 # build: stakeholder tests, customer demos, feedback, bug lists, new ideas.
 # Starts from the code on this checkout, the accepted ADRs and the backlog;
 # never removes earlier work (ADRs get footers, epics are appended, old
@@ -14,7 +14,7 @@
 #     -> next-check <-> next-remediation      DECOMPOSITION_OK: is TERMINAL
 #
 # PASSATA 1 ONLY. This document declares no fan_out. The wave it plans runs on
-# contigo-process.yaml `execution-fanout`, launched by the operator after HITL:
+# raffa-process.yaml `execution-fanout`, launched by the operator after HITL:
 #   ./run-next.ps1 -LaunchOnly -Wave <w>            (check_slice_prereqs.py + execution-fanout)
 #   ./run.ps1 -Max -Slice <w> -o execution-fanout   (the same, by hand)
 # Launcher for this document: ./run-next.ps1 -Max -Todo inputs/next/<file>.md
@@ -383,7 +383,7 @@ orchestrations:
   # execution-fanout by hand (or run-next.ps1 -Launch).
   # Edge text = the nested sequential's finalized assistant text
   # (registry._edge_msg_text_with_source -> text_from_agent_response), the
-  # same extraction contigo-process.yaml's needs_remediation edge runs on.
+  # same extraction raffa-process.yaml's needs_remediation edge runs on.
   # FAIL-CLOSED edges (coordinator decision 2026-09-10, on the engineer's
   # proposal): the intake -> council edge fires only on CONTEXT_READY: and the
   # decomposition -> check edge only on DECOMPOSITION_DONE: (registry.py
@@ -392,7 +392,7 @@ orchestrations:
   # with no marker matches no edge: the workflow ENDS there instead of
   # spending Opus turns on a phase whose input is missing. run-next.ps1 then
   # reports the missing wave file. on_marker_absent HALTED: (the pattern of
-  # contigo-process.yaml execution-loop) was the fail-open alternative.
+  # raffa-process.yaml execution-loop) was the fail-open alternative.
   # ===========================================================================
   - id: next-design
     default: true

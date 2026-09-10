@@ -127,10 +127,10 @@ and `X-User-Id: B` acts as `A` and **never** as `B`. Precedence is not enough �
 the header must stop being read at all.
 
 **4. Scope names are no longer placeholders, and they are now a rename risk.**
-The Assumptions above call `Contigo.Read`/`Contigo.Write` placeholders. They are
+The Assumptions above call `Raffa.Read`/`Raffa.Write` placeholders. They are
 live and **hardcoded in CI**: `.github/workflows/web.yml:204-205` builds
-`api://contigo-<env>-api/Contigo.Read|Write`. Recorded because it is the
-*identity-plane* half of the `Contigo` → `Raffa` rebrand (W14-01, OQ-w14-003) and
+`api://raffa-<env>-api/Raffa.Read|Write`. Recorded because it is the
+*identity-plane* half of the `Raffa` → `Raffa` rebrand (W14-01, OQ-w14-003) and
 it fails differently from a resource name: a wrong resource name fails a deploy
 loudly, whereas a scope that no longer matches the app registration fails at
 **token acquisition, in the browser, after CI is green**. Every w14 item is about

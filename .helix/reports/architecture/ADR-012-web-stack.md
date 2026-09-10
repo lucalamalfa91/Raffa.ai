@@ -95,7 +95,7 @@ always, `memberStore.ts:62-68`) and the hardcoded self-row `role: "Admin"`
 the table.
 
 **2. The one surviving key is a hint, never a source of truth.**
-`contigo.signin.currentWorkspace` keeps its name and its three functions, but
+`raffa.signin.currentWorkspace` keeps its name and its three functions, but
 nothing trusts it until it is checked against the server list. Resolution
 order on every mount, once `GET /api/workspaces` has resolved: list empty →
 create form; exactly one row → enter it (`percorso-pilota-v1.md` §2 step 1);
@@ -116,7 +116,7 @@ literal unions (`:63-65`), which is what keeps `RequireRole` and
 parsed** (`:132-146`), so request bodies, path parameters and headers stay
 hand-written in `client.ts` (`:17-21`). Because `schema.ts` is regenerated
 wholesale on every build (`:21-23`), two tasks editing
-`web/openapi/contigo-api.v1.json` in one phase produce a conflicting
+`web/openapi/raffa-api.v1.json` in one phase produce a conflicting
 regenerated artefact rather than a mergeable diff: **one task owns the
 contract file per phase.**
 

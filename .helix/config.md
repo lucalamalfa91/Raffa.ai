@@ -94,7 +94,7 @@ chat agents (PROCESS.md D9), not a coding harness.
 
 ---
 
-## 6. Next-wave process (`contigo-next-process.yaml`)
+## 6. Next-wave process (`raffa-next-process.yaml`)
 
 One model, `cc-opus` (`provider: claude-code`, `model:
 ${ANTHROPIC_DEFAULT_OPUS_MODEL}`, lineage only), and one harness path: every
