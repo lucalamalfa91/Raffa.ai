@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { ApiClient, PortfolioListItem } from "../../api/client";
+import { isValidatedContractStatus } from "../../routes/contracts/contractStatus";
 import { loadCurrentWorkspace } from "../../routes/signin/workspaceStore";
 
 /**
@@ -36,15 +37,6 @@ const INITIAL_STATE: ValidatedContractCountState = { count: 0, kbReady: false };
  * tenant with more validated contracts than this undercounts here exactly as that screen's own
  * attention-strip counts would, a known, shared limitation, not a new one this hook introduces. */
 const MAX_PAGE_SIZE = 100;
-
-function isValidatedContractStatus(status: string): boolean {
-  const normalized = status.trim().toLowerCase();
-  if (normalized === "" || normalized === "processing" || normalized === "failed") return false;
-  // requirements.md R-CMP-03 "Not-validated contracts. If the contract is `needs_review`, Ask says
-  // which weak facts block the comparison" -- `needs_review` (in any casing/spacing `GET
-  // /api/contracts` might emit) is the one other named not-yet-validated state.
-  return !normalized.includes("review");
-}
 
 function countValidated(items: readonly PortfolioListItem[]): number {
   return items.filter((item) => isValidatedContractStatus(item.status)).length;

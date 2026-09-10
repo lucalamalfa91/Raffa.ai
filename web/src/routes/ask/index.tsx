@@ -318,8 +318,8 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
                 </p>
                 <div className="ask-new-chat-chips">
                   {suggestions.map((suggestion) => (
-                    <button key={suggestion} type="button" className="ask-suggestion" onClick={() => ask(suggestion)}>
-                      {suggestion}
+                    <button key={suggestion} type="button" className="ask-suggestion" aria-label={suggestion} onClick={() => ask(suggestion)}>
+                      {suggestion} →
                     </button>
                   ))}
                 </div>

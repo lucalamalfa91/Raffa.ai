@@ -10,21 +10,22 @@ import type {
   UploadQuoteFields,
 } from "../../api/client";
 import { loadCurrentWorkspace } from "../signin/workspaceStore";
-import QuoteStepper from "./QuoteStepper";
 import UploadQuoteForm from "./UploadQuoteForm";
-import ExtractStep, { type MapDraft } from "./ExtractStep";
-import AssessmentStep from "./AssessmentStep";
+import QuoteLinesTable from "./QuoteLinesTable";
+import MappingBlock, { type MapDraft } from "./MappingBlock";
 import TargetStep, { defaultTargetPrice, defaultWalkAway } from "./TargetStep";
 import NegotiationStep, { type NegotiationOutcomeInput } from "./NegotiationStep";
 import {
+  QUOTE_INTRO,
+  QUOTE_LEVERS_FOOTER,
   aggregateQuote,
-  buildAssessmentNumbers,
+  buildAssessmentBand,
   buildExtractRows,
-  buildLineMarketPositionRows,
+  buildQuoteLineRows,
+  formatQuoteMeta,
   isAssessmentBlocked,
   mergeKnownLineDetails,
   type LineDetail,
-  type QuoteStepIndex,
 } from "./quoteCheckViewModel";
 import { rememberNegotiationOutcome } from "./quoteOutcomeStore";
 import "./quotes.css";
@@ -39,35 +40,29 @@ type FetchState =
   | { phase: "error"; quoteId: string; statusCode: number | null; message: string }
   | { phase: "ready"; quoteId: string; recalculation: QuoteRecalculationBody };
 
+/** How far past the lines table the reader has chosen to go (`QUOTE_LEVERS_FOOTER`: "shown only if you want them"). */
+type LeversStage = "hidden" | "target" | "negotiation";
+
 /**
- * Route `/quotes/:quoteId` (ADR-018; screens.md #10 "Quote check"; ADR-020 screen 10; task
- * E08/F03/US01/T01, us-01-quote-check AC-1/AC-2/AC-3/AC-4). Wired into
- * `../../components/shell/WorkspaceShellApp.tsx`'s `quotes`/`quotes/:quoteId` routes in place of
- * that shell task's own `ScaffoldScreen` placeholder, the same seam `../contracts/contract360/index.tsx`
- * already used.
+ * Route `/quotes` and `/quotes/:quoteId` -- Quote check, V2 (ADR-024 V2 IA; screens-v2.md #9;
+ * `contigo-v2/markup.html` "QUOTE CHECK (optional)" block). The header is constant ("Optional · new
+ * purchase" · "Quote check" · the intro sentence); below it either the landing (`UploadQuoteForm`)
+ * or, once a quote is loaded, the three-cell band (Supplier quote · Market range · Assessment), the
+ * lines table (Line · Quoted · P50 · Position · Benchmark) and the footer "Target and negotiation
+ * levers are one step further — shown only if you want them." that reveals the Target step, then
+ * Negotiation. The Day-1 four-step stepper is gone; the same real calls remain.
  *
- * **Real backend, not the cited prototype's own fixture.** `inputs/design/prototypes/day1-demo.html`'s
- * Quote check screen is one hard-coded demo scenario. By the time this task started, backend epic
- * E05 (`Contigo.Quotes` module) had already implemented and wired `POST /api/quotes`,
- * `GET /api/quotes/{id}/assessment`, `POST /api/quotes/{id}/assessment/recalculate`, and
- * `POST /api/negotiations/outcomes` into `Program.cs` (the parent story's own "E05 quote API
- * (assumed)" dependency turned out to already be real) -- this route calls them for real. See
- * `../../api/client.ts`'s own doc comments on each method, and `./quoteCheckViewModel.ts`'s own
- * header comment, for the exact provenance of every number this screen shows and the two real,
- * named backend gaps it works around (no `GET /api/quotes/{id}` to re-read upload metadata after
- * this session ends; no HTTP endpoint for `NegotiationStrategyService`'s lever
- * recommendations/evidence).
+ * **Real backend, not the prototype's fixture.** `POST /api/quotes`, `POST /api/quotes/{id}/
+ * assessment/recalculate` (a strict superset of `GET …/assessment`: same `assessment`, plus
+ * `unmatchedLines`; an empty `mappings` array is its documented "pure refresh") and
+ * `POST /api/negotiations/outcomes` -- see `../../api/client.ts`. Two named gaps: no
+ * `GET /api/quotes/{id}` to re-read upload metadata after this session (the header meta line falls
+ * back to the quote id), and no HTTP endpoint for `NegotiationStrategyService`'s lever
+ * recommendations (`NegotiationStep.tsx`).
  *
- * **No dedicated "new quote" screen exists in the design** (screens.md #10 starts directly at
- * "Extracted line items"; ADR-018's route map names only the detail route `/quotes/:id`) -- this
- * component renders `UploadQuoteForm` itself whenever the route has no `quoteId` yet (both the rail
- * nav's own `/quotes` landing path and a direct `/quotes/:quoteId` visit before any upload has
- * happened), then navigates to the real id `POST /api/quotes` returns.
- *
- * **`recalculateQuoteAssessment`, not `getQuoteAssessment`, is this screen's own read call** -- see
- * `../../api/client.ts`'s header comment on `recalculateQuoteAssessment` for why (it is a strict
- * superset: the same `assessment` shape `getQuoteAssessment` returns, plus `unmatchedLines`, and
- * calling it with an empty `mappings` array is the endpoint's own documented "pure refresh").
+ * **Blocked assessment.** While any line is still `SkuMatchStatus.Unmatched`, the band shows what
+ * it honestly can, the unmapped lines say "Needs mapping", and the mapping block takes the footer's
+ * place -- target and levers only open once every line is resolved.
  */
 export default function QuoteCheckRoute({ apiClient }: QuoteCheckRouteProps) {
   const { quoteId: routeQuoteId } = useParams<{ quoteId?: string }>();
@@ -75,7 +70,7 @@ export default function QuoteCheckRoute({ apiClient }: QuoteCheckRouteProps) {
   const workspace = loadCurrentWorkspace();
 
   const [fetchState, setFetchState] = useState<FetchState | null>(null);
-  const [step, setStep] = useState<QuoteStepIndex>(0);
+  const [leversStage, setLeversStage] = useState<LeversStage>("hidden");
   const [quoteMetaById, setQuoteMetaById] = useState<Readonly<Record<string, UploadedQuote>>>({});
   const [knownLineDetails, setKnownLineDetails] = useState<ReadonlyMap<string, LineDetail>>(new Map());
   const [mapDrafts, setMapDrafts] = useState<Readonly<Record<string, MapDraft>>>({});
@@ -121,7 +116,7 @@ export default function QuoteCheckRoute({ apiClient }: QuoteCheckRouteProps) {
   );
 
   useEffect(() => {
-    setStep(0);
+    setLeversStage("hidden");
     setMapDrafts({});
     setApplyError(null);
     setOutcome(null);
@@ -157,41 +152,67 @@ export default function QuoteCheckRoute({ apiClient }: QuoteCheckRouteProps) {
     return { ok: true };
   };
 
+  const header = (metaLine: string | null) => (
+    <header className="quote-header">
+      <p className="screen-kicker">Optional · new purchase</p>
+      <h2 className="screen-title">Quote check</h2>
+      <p className="quote-header-intro">{QUOTE_INTRO}</p>
+      {metaLine !== null && <p className="micro-meta quote-header-meta">{metaLine}</p>}
+    </header>
+  );
+
   if (!routeQuoteId) {
-    return <UploadQuoteForm onUpload={handleUpload} submitting={uploading} />;
+    return (
+      <div className="quote-screen">
+        {header(null)}
+        <UploadQuoteForm onUpload={handleUpload} submitting={uploading} />
+      </div>
+    );
   }
 
   if (fetchState === null || fetchState.phase === "loading") {
     return (
-      <div className="quote-skeleton" role="status" aria-live="polite">
-        <p className="micro-meta">Loading quote…</p>
-        {Array.from({ length: 4 }, (_, index) => (
-          <div key={index} className="skeleton" style={{ height: 32, marginBottom: 8 }} />
-        ))}
+      <div className="quote-screen">
+        {header(null)}
+        <div className="quote-skeleton" role="status" aria-live="polite">
+          <p className="micro-meta">Loading quote…</p>
+          {Array.from({ length: 4 }, (_, index) => (
+            <div key={index} className="skeleton quote-skeleton-row" />
+          ))}
+        </div>
       </div>
     );
   }
 
   if (fetchState.phase === "not-found") {
     return (
-      <div className="empty-state" role="status">
-        <h3>Quote not found</h3>
-        <p className="micro-meta">This quote does not exist, or is not in your workspace.</p>
+      <div className="quote-screen">
+        {header(null)}
+        <div className="screen-reroute" role="status">
+          <h3>Quote not found</h3>
+          <p>This quote does not exist, or is not in your workspace.</p>
+          <button type="button" className="btn btn-primary" onClick={() => navigate("/quotes")}>
+            Upload a quote
+          </button>
+        </div>
       </div>
     );
   }
 
   if (fetchState.phase === "error") {
     return (
-      <div className="error-state" role="alert">
-        <h4>Quote check unavailable</h4>
-        <p className="micro-meta">
-          {fetchState.message}
-          {fetchState.statusCode !== null && ` (HTTP ${fetchState.statusCode})`}
-        </p>
-        <button type="button" className="btn btn-secondary" onClick={() => load(routeQuoteId)}>
-          Retry
-        </button>
+      <div className="quote-screen">
+        {header(null)}
+        <div className="error-state" role="alert">
+          <h4>Quote check unavailable</h4>
+          <p className="micro-meta">
+            {fetchState.message}
+            {fetchState.statusCode !== null && ` (HTTP ${fetchState.statusCode})`}
+          </p>
+          <button type="button" className="btn btn-secondary" onClick={() => load(routeQuoteId)}>
+            Retry
+          </button>
+        </div>
       </div>
     );
   }
@@ -199,17 +220,15 @@ export default function QuoteCheckRoute({ apiClient }: QuoteCheckRouteProps) {
   const { recalculation } = fetchState;
   const quoteMeta = quoteMetaById[routeQuoteId] ?? null;
   const blocked = isAssessmentBlocked(recalculation.unmatchedLines);
-  const rows = buildExtractRows(recalculation.assessment.lines, recalculation.unmatchedLines, knownLineDetails);
+  const extractRows = buildExtractRows(recalculation.assessment.lines, recalculation.unmatchedLines, knownLineDetails);
+  const lineRows = buildQuoteLineRows(extractRows, recalculation.assessment.lines);
   const aggregate = aggregateQuote(recalculation.assessment.lines);
-  const currency = quoteMeta?.currency ?? aggregate.currency;
+  const band = buildAssessmentBand(aggregate, recalculation.assessment.lines);
 
   if (targetInitializedFor !== routeQuoteId && !blocked) {
-    // Seed the two editable Target-step inputs from the real aggregate exactly once per quote --
-    // never again on a later recalculation refresh (e.g. after applying a mapping), so mid-edit
-    // keystrokes are never clobbered by a background reload. Deferred until `!blocked`: before every
-    // line resolves, `aggregate.recommendedTargetHigh`/`originalTotal` are the most incomplete they
-    // will ever be (see `../contracts/review/EvidencePane.tsx`'s own precedent for re-seeding a form
-    // from freshly-loaded data rather than doing it inline during render).
+    // Seed the two editable Target inputs from the real aggregate exactly once per quote -- never
+    // again on a later recalculation refresh, so mid-edit keystrokes are never clobbered. Deferred
+    // until `!blocked`: before every line resolves the aggregate is the most incomplete it will be.
     setTargetInitializedFor(routeQuoteId);
     setTargetPrice(defaultTargetPrice(aggregate));
     setWalkAway(defaultWalkAway(aggregate));
@@ -274,60 +293,65 @@ export default function QuoteCheckRoute({ apiClient }: QuoteCheckRouteProps) {
 
   return (
     <div className="quote-screen">
-      <header>
-        <p className="screen-kicker">R4 · New Purchase / Quote Check</p>
-        <h2 className="screen-title">{quoteMeta?.fileName ?? `Quote ${routeQuoteId}`}</h2>
-        {quoteMeta && (
-          <p className="micro-meta">
-            {[quoteMeta.supplier, quoteMeta.currency, quoteMeta.geography].filter(Boolean).join(" · ") || "No supplier/currency/geography recorded"}
-          </p>
+      {header(formatQuoteMeta(quoteMeta, routeQuoteId))}
+
+      <section className="quote-results" aria-label="Quote assessment">
+        <div className="quote-band">
+          {band.map((cell) => (
+            <div key={cell.key} className="quote-band-cell">
+              <span className="quote-band-label">{cell.label}</span>
+              <span className={`quote-band-value${cell.emphasize ? " quote-emphasize" : ""}`}>{cell.value}</span>
+            </div>
+          ))}
+        </div>
+
+        <QuoteLinesTable rows={lineRows} />
+
+        {blocked ? (
+          <MappingBlock
+            unmatchedLines={recalculation.unmatchedLines}
+            mapDrafts={mapDrafts}
+            onChangeMapDraft={handleChangeMapDraft}
+            onApplyMappings={handleApplyMappings}
+            applying={applying}
+            applyError={applyError}
+          />
+        ) : (
+          <div className="quote-levers-footer">
+            <p className="quote-levers-footer-copy">{QUOTE_LEVERS_FOOTER}</p>
+            <button
+              type="button"
+              className="btn btn-ghost quote-levers-toggle"
+              aria-expanded={leversStage !== "hidden"}
+              onClick={() => setLeversStage((stage) => (stage === "hidden" ? "target" : "hidden"))}
+            >
+              {leversStage === "hidden" ? "Show target and levers →" : "Hide target and levers"}
+            </button>
+          </div>
         )}
-      </header>
+      </section>
 
-      <QuoteStepper activeStep={step} onSelectStep={setStep} />
-
-      {step === 0 && (
-        <ExtractStep
-          rows={rows}
-          unmatchedLines={recalculation.unmatchedLines}
-          currency={currency}
-          mapDrafts={mapDrafts}
-          onChangeMapDraft={handleChangeMapDraft}
-          onApplyMappings={handleApplyMappings}
-          applying={applying}
-          applyError={applyError}
-          onContinue={() => setStep(1)}
-        />
-      )}
-      {step === 1 && (
-        <AssessmentStep
-          blocked={blocked}
-          onBackToExtract={() => setStep(0)}
-          numbers={buildAssessmentNumbers(aggregate, recalculation.assessment.lines)}
-          positionRows={buildLineMarketPositionRows(rows, recalculation.assessment.lines)}
-          aggregate={aggregate}
-          onContinue={() => setStep(2)}
-        />
-      )}
-      {step === 2 && (
-        <TargetStep
-          aggregate={aggregate}
-          targetPrice={targetPrice}
-          onChangeTargetPrice={setTargetPrice}
-          walkAway={walkAway}
-          onChangeWalkAway={setWalkAway}
-          onContinue={() => setStep(3)}
-        />
-      )}
-      {step === 3 && (
-        <NegotiationStep
-          aggregate={aggregate}
-          targetPrice={targetPrice}
-          outcome={outcome}
-          onSubmit={handleSubmitOutcome}
-          submitting={outcomeSubmitting}
-          submitError={outcomeError}
-        />
+      {!blocked && leversStage !== "hidden" && (
+        <section className="quote-levers" aria-label="Target and negotiation levers">
+          <TargetStep
+            aggregate={aggregate}
+            targetPrice={targetPrice}
+            onChangeTargetPrice={setTargetPrice}
+            walkAway={walkAway}
+            onChangeWalkAway={setWalkAway}
+            onContinue={() => setLeversStage("negotiation")}
+          />
+          {leversStage === "negotiation" && (
+            <NegotiationStep
+              aggregate={aggregate}
+              targetPrice={targetPrice}
+              outcome={outcome}
+              onSubmit={handleSubmitOutcome}
+              submitting={outcomeSubmitting}
+              submitError={outcomeError}
+            />
+          )}
+        </section>
       )}
     </div>
   );

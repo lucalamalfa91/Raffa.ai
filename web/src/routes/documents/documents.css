@@ -13,6 +13,10 @@
   flex-direction: column;
 }
 
+.documents-screen:not(.documents-screen--list):not(.documents-onboarding) {
+  padding: 28px 32px 32px;
+}
+
 /* ---- Onboarding empty state (docsEmpty) -------------------------------- */
 
 .documents-onboarding {
@@ -94,7 +98,7 @@
 
 .upload-dropzone--list {
   padding: 14px 18px;
-  margin-bottom: var(--space-4);
+  margin: 20px 32px 0;
 }
 
 .upload-dropzone.is-dragging {
@@ -159,17 +163,7 @@
   font-weight: var(--weight-body-strong);
 }
 
-/* ---- List header + validated hook (docsList) --------------------------- */
-
-.documents-list-header {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: var(--space-6);
-  padding-bottom: var(--space-4);
-  border-bottom: 2px solid var(--color-divider);
-  margin-bottom: var(--space-4);
-}
+/* ---- Validated hook (docsList) ----------------------------------------- */
 
 .documents-validated-hook {
   display: flex;
@@ -179,7 +173,7 @@
   border-left: 2px solid var(--color-accent);
   background: var(--color-accent-100);
   padding: var(--space-3) var(--space-4);
-  margin-bottom: var(--space-4);
+  margin: 16px 32px 0;
 }
 
 .documents-validated-hook-ask {
@@ -197,6 +191,12 @@
 }
 
 /* ---- Attention / all filter row (AttentionFilter.tsx) ------------------ */
+
+.documents-list-main {
+  display: flex;
+  flex-direction: column;
+  padding: 20px 32px 32px;
+}
 
 .documents-filter-row {
   display: flex;

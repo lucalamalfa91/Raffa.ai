@@ -16,7 +16,7 @@ export interface ReviewRouteProps {
  * screen 6; task E07/F03/US01/T01, us-01-field-review-correction AC-1/AC-2/AC-3/AC-4). Wired into
  * `../../../components/shell/WorkspaceShellApp.tsx`'s `contracts/:contractId/review` route. Reached
  * from `../contract360/Contract360Header.tsx`'s "Review extraction" button and
- * `../contract360/OverviewTab.tsx`'s "Needs your attention → Review all" link.
+ * `../contract360/DetailsSection.tsx`'s "Review all →" link.
  *
  * All fetching and decision state lives in the shared `useReviewSession` hook (also behind
  * `../../documents/ReviewState.tsx`, Review-as-a-state-of-Documents); this file only maps the hook's

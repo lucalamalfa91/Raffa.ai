@@ -188,8 +188,8 @@ export default function NegotiationStep({ aggregate, targetPrice, outcome, onSub
               Saved to this browser's Savings Realized record for this session (see this screen's own outcome-store gap
               note — no backend list endpoint exists yet).
             </p>
-            <Link to="/" className="btn btn-secondary">
-              See it on Home →
+            <Link to="/savings" className="btn btn-secondary">
+              See it in Savings →
             </Link>
           </>
         )}

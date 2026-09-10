@@ -1,17 +1,22 @@
 /**
- * Global Ask bar (design-system.md "Global Ask bar": surface strip, red
- * square, heading-weight input, 2 chips). Measurements confirmed against
- * inputs/design/prototypes/day1-demo.html's compiled
- * `<sc-if value="{{ showAskBar }}">` block, not invented.
+ * Global Ask bar — V2 (`contigo-v2/markup.html` "Ask bar — one pattern on every screen").
+ *
+ * Two rows, not the Day-1 single strip of input + pill chips:
+ *
+ *   padding:22px 32px 16px; border-bottom:2px solid divider; background:surface
+ *   row 1: 14px square + input (18px heading 600, min-height 44px, 2px text underline)
+ *   row 2: text chips with a trailing "→", indented 28px, no chrome
  */
 .ask-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px 14px;
-  padding: var(--space-3) var(--space-8);
+  padding: 22px 32px 16px;
   border-bottom: 2px solid var(--color-divider);
   background: var(--color-surface);
+}
+
+.ask-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
 }
 
 .ask-bar-mark {
@@ -21,16 +26,20 @@
   background: var(--color-accent);
 }
 
+.ask-bar-mark.is-off {
+  background: var(--color-neutral-400);
+}
+
 .ask-bar-input.input {
-  flex: 1 1 280px;
+  flex: 1;
   min-width: 0;
   background: transparent;
   border: 0;
-  border-bottom: 2px solid var(--color-divider);
+  border-bottom: 2px solid var(--color-text);
   border-radius: 0;
-  font-size: 16px;
-  padding: var(--space-2) 0;
-  min-height: 36px;
+  font-size: 18px;
+  padding: 8px 0;
+  min-height: 44px;
   font-family: var(--font-heading);
   font-weight: var(--weight-body-strong);
 }
@@ -40,23 +49,30 @@
   border-bottom-color: var(--color-accent);
 }
 
+.ask-bar-input.input:disabled {
+  color: var(--color-neutral-600);
+  cursor: not-allowed;
+}
+
 .ask-bar-chips {
   display: flex;
-  gap: var(--space-2);
-  flex: none;
+  gap: 6px 18px;
   flex-wrap: wrap;
+  align-items: center;
+  padding: 10px 0 0 28px;
+  min-height: 22px;
 }
 
 .ask-bar-chip {
-  border: 1px solid var(--color-divider);
+  border: 0;
   background: transparent;
-  padding: 5px var(--space-3);
+  padding: 0;
   font-size: 12px;
   cursor: pointer;
-  color: inherit;
-  white-space: nowrap;
+  color: var(--color-neutral-600);
+  text-align: left;
 }
 
 .ask-bar-chip:hover {
-  background: var(--color-neutral-200);
+  color: var(--color-accent);
 }

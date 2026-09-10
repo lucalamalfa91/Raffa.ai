@@ -1,16 +1,15 @@
 /**
- * App shell layout — the 224px rail + main column composite that
- * design-system.md names under "App-level patterns" but ADR-019 deliberately
- * leaves out of its locked component catalogue ("the global Ask bar, the app
- * shell ... belong to the app-shell/screen tasks that consume this sheet",
- * see src/styles/components.css's own header comment). Consumes the shared
- * tokens (src/styles/tokens.css) — no new colours, radii, or spacing values
- * are introduced here.
+ * App shell layout — the 232px rail + main column composite from
+ * `contigo-v2/markup.html` (`grid-template-columns:232px 1fr`). ADR-019
+ * leaves the shell out of its locked component catalogue ("the global Ask
+ * bar, the app shell ... belong to the app-shell/screen tasks that consume
+ * this sheet"). Consumes the shared tokens (src/styles/tokens.css) — no new
+ * colours, radii, or spacing values are introduced here.
  */
 
 .shell-layout {
   display: grid;
-  grid-template-columns: 224px 1fr;
+  grid-template-columns: 232px 1fr;
   min-height: 100vh;
 }
 
@@ -247,14 +246,25 @@
      "shell-main">`), but this stays spelled out so `.shell-main` can never
      again be silently capped by some other ancestor/element-selector rule --
      it must fill the shell grid's `1fr` track (design-system.md app shell:
-     224px rail + fluid main), not float as a narrow column inside it. */
+     232px rail + fluid main), not float as a narrow column inside it. */
   max-width: none;
   overflow: auto;
   display: flex;
   flex-direction: column;
 }
 
+/* Screens own their padding (`contigo-v2/markup.html`: headers `28px 32px 16px`,
+   bands flush to the right edge). A fallback pads bare empty/error states that
+   render as the only child of this slot. */
 .shell-content {
-  padding: var(--space-6) var(--space-8);
+  padding: 0;
   flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.shell-content > .empty-state,
+.shell-content > .error-state {
+  padding: 48px 32px;
 }

@@ -318,11 +318,8 @@ export const NEW_CHAT_TRAILER =
 /** screens-v2.md #2 "New chat": `askHello`, quoted verbatim. */
 export const ASK_HELLO = "What do you want to know?";
 
-/** ADR-024 §6 / task text point (2): input placeholder, quoted verbatim from the task's own coding
- * objective ("Ask Contigo — spend, dates, clauses, liability…") -- distinct from the *global* Ask
- * bar's own placeholder (`components/ask-bar/askSuggestions.ts`'s `DEFAULT_COPY.placeholder`,
- * "spend, renewals, clauses, liability…"), a deliberate, task-text-pinned difference between the two
- * screens, not a typo. */
+/** ADR-024 §6 / screens-v2.md #2: the same placeholder the global Ask bar uses
+ * (`components/ask-bar/askSuggestions.ts` READY_PLACEHOLDER). */
 export const ASK_INPUT_PLACEHOLDER = "Ask Contigo — spend, dates, clauses, liability…";
 
 /** screens-v2.md #2 "Thinking": V1 copy retained verbatim until the reply streams. */

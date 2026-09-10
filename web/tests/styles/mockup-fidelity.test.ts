@@ -71,11 +71,29 @@ describe("signin.css -- north-star type and statement ground (AC-2, gaps G-S1-TY
   });
 });
 
-describe("shell.css -- rail stays a fixed 224px beside the fluid main track (gap G-SHELL)", () => {
-  it("keeps .shell-layout's grid at 224px 1fr", () => {
+describe("shell.css -- rail stays a fixed 232px beside the fluid main track (gap G-SHELL)", () => {
+  it("keeps .shell-layout's grid at 232px 1fr (contigo-v2/markup.html)", () => {
     const css = readSource("../../src/components/shell/shell.css");
     const body = ruleBodyFor(css, ".shell-layout");
-    expect(body).toMatch(/grid-template-columns:\s*224px\s+1fr/);
+    expect(body).toMatch(/grid-template-columns:\s*232px\s+1fr/);
+  });
+});
+
+describe("ask-bar.css -- V2 two-row bar (contigo-v2/markup.html)", () => {
+  it("keeps the 18px heading input, 44px min-height, and a 2px text underline", () => {
+    const css = readSource("../../src/components/ask-bar/ask-bar.css");
+    const body = ruleBodyFor(css, ".ask-bar-input.input");
+    expect(body).toMatch(/font-size:\s*18px/);
+    expect(body).toMatch(/min-height:\s*44px/);
+    expect(body).toMatch(/border-bottom:\s*2px solid var\(--color-text\)/);
+  });
+
+  it("keeps chips as unchromed text, not Day-1 bordered pills", () => {
+    const css = readSource("../../src/components/ask-bar/ask-bar.css");
+    const body = ruleBodyFor(css, ".ask-bar-chip");
+    expect(body).toMatch(/border:\s*0/);
+    expect(body).toMatch(/background:\s*transparent/);
+    expect(body).toMatch(/padding:\s*0/);
   });
 });
 

@@ -16,7 +16,7 @@ body {
    E01 OIDC-scaffold rule that hit *every* app-level main landmark (sign-in,
    the workspace picker, and the whole authenticated shell via
    AppShell.tsx's `<main className="shell-main">`), squeezing the full-bleed
-   mockup (ADR-018/019/020: 224px rail + fluid main; sign-in a 100vh
+   mockup (ADR-018/019/020: 232px rail + fluid main; sign-in a 100vh
    two-column page) into a centered ~640px card. The bare `<main>` element
    now carries no width opinion at all -- each screen owns its own full-bleed
    layout (signin.css `.signin-screen`, shell.css `.shell-main`). Only the

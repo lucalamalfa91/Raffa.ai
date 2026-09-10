@@ -21,7 +21,7 @@ export interface AppShellProps {
 }
 
 /**
- * The composite ADR-018/ADR-024 names: 224px rail + global Ask bar + routed content. AC-3 ("Global
+ * The composite ADR-018/ADR-024 names: 232px rail + global Ask bar + routed content. AC-3 ("Global
  * Ask bar on every app screen") is why GlobalAskBar lives here, above `<Outlet/>`, rather than
  * inside each screen -- every route rendered through WorkspaceShellApp.tsx gets it automatically.
  */
@@ -42,7 +42,10 @@ export default function AppShell({ workspaceName, role, userLabel, onSignOut, ap
       <main className="shell-main">
         <GlobalAskBar kbReady={kbReady} apiClient={apiClient} />
         <div className="shell-content">
-          <Outlet />
+          {/* Shared with every screen through the router outlet (shellContext.ts): the same kbReady /
+              validated-count verdict the rail and the Ask bar already render, so a screen never has to
+              re-fetch the portfolio for a second opinion. */}
+          <Outlet context={{ kbReady, validatedContractCount: count }} />
         </div>
       </main>
     </div>

@@ -89,6 +89,7 @@ public static class PortfolioEndpointExtensions
                 supplierName = LookupSupplierName(supplierNames, item.SupplierId),
                 type = item.Type.ToString(),
                 annualSpend = item.AnnualSpend,
+                currency = item.Currency,
                 startDate = item.StartDate,
                 endDate = item.EndDate,
                 renewalDate = item.RenewalDate,

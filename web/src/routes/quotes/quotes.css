@@ -1,103 +1,243 @@
 /**
- * Quote check screen (route `/quotes/:quoteId`, ADR-020 screen 10; task E08/F03/US01/T01).
- * Component classes (.table, .tag, .btn, .card, .field, .input, .hint, .row-critical,
- * .screen-kicker/.screen-title, .micro-meta, .key-fact-number, .empty-state, .error-state,
- * .skeleton) come from ../../styles/components.css (ADR-019 component catalogue) -- this file adds
- * only this screen's own composites, the same division of labour ../contracts/review/review.css
- * already established for this codebase.
+ * Quote check screen, V2 (routes `/quotes`, `/quotes/:quoteId`; ADR-024 V2 IA; screens-v2.md #9;
+ * `contigo-v2/markup.html` "QUOTE CHECK (optional)" block). Component classes (.screen-kicker,
+ * .screen-title, .screen-reroute, .table, .tag, .btn, .field, .input, .hint, .row-critical,
+ * .micro-meta, .empty-state, .error-state, .skeleton, .visually-hidden) come from
+ * ../../styles/components.css (ADR-019) -- this file adds only this screen's own composites, quoted
+ * from the prototype's inline styles on this block:
  *
- * The stepper (`.quote-stepper`) is a new, screen-scoped composite, not a reuse of the locked `.seg`
- * segmented control -- same reasoning ../contracts/contract360/contract360.css's own header comment
- * already gives for that screen's own `.contract360-tabs`: `.seg` is a bordered 2-3-option toggle,
- * while this stepper is a flush-left, flat 4-item row with a numbered prefix and an accent
- * underline on the active step (day1-demo.html's own `qsteps` markup).
+ *   <div style="padding:28px 32px 16px;border-bottom:2px solid var(--color-divider)"> <h6 class=accent>Optional · new purchase</h6> <h2>Quote check</h2> <div style="font-size:13px;color:neutral-600;margin-top:4px">Drop a supplier proposal; …</div>
+ *   <div style="padding:32px;max-width:640px"><div style="border:2px dashed var(--color-divider);background:var(--color-surface);padding:24px;display:flex;gap:16px;align-items:center;flex-wrap:wrap"> <button class="btn btn-primary">Upload a quote</button> <span style="font-size:13px;color:neutral-700">or use the sample: …</span>
+ *   <div style="padding:24px 32px;max-width:1000px">
+ *     <div style="display:grid;grid-template-columns:repeat(3,1fr);border-top:2px solid divider;border-bottom:2px solid divider;margin-bottom:24px">
+ *       <div style="padding:14px 14px 14px 0;border-right:1px solid divider"><div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:neutral-600">Supplier quote</div><div style="font-family:heading;font-weight:800;font-size:22px">CHF 520k</div></div>
+ *       … <div style="…;color:var(--color-accent-700)">Above market</div>
+ *     <table class="table" style="font-size:13px"> <th style="width:28%">Line</th> <th style="text-align:right">Quoted</th> <th style="text-align:right">P50</th> <th>Position</th> <th style="width:18%">Benchmark</th>
+ *       <td style="font-weight:600">…</td> <span class="tag tag-neutral" style="padding:2px 8px;font-size:10px">High · n=96</span>
+ *     <p style="font-size:12px;color:neutral-600;margin-top:12px">Target and negotiation levers are one step further — shown only if you want them.</p>
  */
 
 .quote-screen {
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
 }
 
-/* ---- Stepper (AC-1) ---------------------------------------------------------- */
+/* ---- Header ------------------------------------------------------------------- */
 
-.quote-stepper {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
+.quote-header {
+  padding: 28px 32px 16px;
   border-bottom: 2px solid var(--color-divider);
 }
 
-.quote-stepper-step {
-  appearance: none;
-  background: transparent;
-  border: 0;
-  border-bottom: 3px solid transparent;
-  margin-bottom: -2px;
-  padding: var(--space-2) var(--space-3) var(--space-2) 0;
-  text-align: left;
+.quote-header .screen-title {
+  margin: 0;
+}
+
+.quote-header-intro {
+  margin: var(--space-1) 0 0;
   font-size: 13px;
-  font-weight: var(--weight-body);
   color: var(--color-neutral-600);
-  cursor: pointer;
 }
 
-.quote-stepper-step[data-active="true"] {
-  color: var(--color-text);
-  border-bottom-color: var(--color-accent);
-  font-weight: var(--weight-body-strong);
+.quote-header-meta {
+  margin-top: var(--space-2);
 }
 
-.quote-stepper-number {
-  margin-right: var(--space-2);
-  opacity: 0.55;
-}
+/* ---- Landing: dashed drop card --------------------------------------------------- */
 
-/* ---- Upload form (no quoteId yet) --------------------------------------------- */
-
-.quote-upload {
+.quote-drop {
   max-width: 640px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: 32px;
 }
 
-.quote-upload-intro {
-  margin: var(--space-3) 0 var(--space-4);
+.quote-drop-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  padding: 24px;
+  border: 2px dashed var(--color-divider);
+  background: var(--color-surface);
 }
 
-.quote-upload-fields-grid {
+.quote-drop-card.is-dragging {
+  border-color: var(--color-accent);
+  background: var(--color-accent-100);
+}
+
+.quote-drop-hint {
+  font-size: 13px;
+  color: var(--color-neutral-700);
+}
+
+.quote-drop-sample {
+  padding: 0;
+  font-size: 13px;
+  text-decoration: underline;
+}
+
+.quote-drop-details {
+  font-size: 13px;
+}
+
+.quote-drop-details summary {
+  cursor: pointer;
+  color: var(--color-neutral-600);
+}
+
+.quote-drop-fields {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 0 var(--space-4);
+  margin-top: var(--space-3);
 }
 
-.quote-upload-actions {
+/* ---- Loading skeleton ------------------------------------------------------------ */
+
+.quote-skeleton {
   display: flex;
+  flex-direction: column;
   gap: var(--space-2);
+  padding: 24px 32px;
 }
 
-/* ---- Extract step (AC-2) ------------------------------------------------------ */
+.quote-skeleton-row {
+  height: 32px;
+}
 
-.quote-step-heading {
+/* ---- Results: band + lines + footer ----------------------------------------------- */
+
+.quote-results {
+  max-width: 1000px;
+  padding: 24px 32px;
+}
+
+.quote-band {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin-bottom: 24px;
+  border-top: 2px solid var(--color-divider);
+  border-bottom: 2px solid var(--color-divider);
+}
+
+.quote-band-cell {
   display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  margin-bottom: var(--space-2);
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: 14px;
+  border-right: 1px solid var(--color-divider);
 }
 
-.quote-sku-cell {
-  font-family: ui-monospace, monospace;
+.quote-band-cell:first-child {
+  padding-left: 0;
+}
+
+.quote-band-cell:last-child {
+  padding-right: 0;
+  border-right: 0;
+}
+
+.quote-band-label {
+  font-size: 11px;
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+  color: var(--color-neutral-600);
+}
+
+.quote-band-value {
+  font-family: var(--font-heading);
+  font-weight: var(--weight-heading);
+  font-size: 22px;
+  line-height: 1.1;
+}
+
+.quote-emphasize {
+  color: var(--color-accent-700);
+}
+
+.quote-lines-table {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.quote-lines-table .quote-col-line {
+  width: 28%;
+}
+
+.quote-lines-table .quote-col-benchmark {
+  width: 18%;
+}
+
+.quote-lines-table th.quote-table-numeric,
+.quote-lines-table td.quote-table-numeric {
+  text-align: right;
+}
+
+.quote-cell-line {
+  font-weight: var(--weight-body-strong);
+}
+
+.quote-vs-p50 {
+  margin-left: var(--space-2);
+  font-size: 12px;
+  color: var(--color-neutral-600);
+}
+
+.quote-benchmark-tag {
+  padding: 2px 8px;
+  font-size: 10px;
+}
+
+.quote-empty-lines {
+  padding: var(--space-4) 0;
+}
+
+.quote-levers-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-3);
+  margin-top: 12px;
+}
+
+.quote-levers-footer-copy {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-neutral-600);
+}
+
+.quote-levers-toggle {
+  padding: 0 var(--space-1);
   font-size: 12px;
 }
 
+/* ---- One step further: Target + Negotiation ------------------------------------- */
+
+.quote-levers {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  max-width: 1000px;
+  padding: var(--space-4) 32px 32px;
+  border-top: 2px solid var(--color-divider);
+}
+
+/* ---- Mapping block (assessment blocked until every line resolves) ------------------ */
+
 .quote-unmatched-block {
   margin-top: var(--space-4);
-  border-left: 2px solid var(--color-accent);
-  padding: var(--space-3) var(--space-4);
   max-width: 720px;
+  padding: var(--space-3) var(--space-4);
+  border-left: 2px solid var(--color-accent);
   background: var(--color-accent-100);
 }
 
 .quote-unmatched-heading {
-  font-weight: var(--weight-body-strong);
   margin-bottom: var(--space-1);
+  font-weight: var(--weight-body-strong);
 }
 
 .quote-map-row {
@@ -115,48 +255,7 @@
   gap: var(--space-1);
 }
 
-.quote-mapped-block {
-  margin-top: var(--space-4);
-  display: flex;
-  gap: var(--space-3);
-  align-items: center;
-}
-
-/* ---- Assessment step (AC-3) ---------------------------------------------------- */
-
-.quote-blocked-card {
-  max-width: 520px;
-}
-
-.quote-assessment-numbers {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  border-top: 2px solid var(--color-divider);
-  border-bottom: 2px solid var(--color-divider);
-  margin-bottom: var(--space-6);
-}
-
-.quote-assessment-number {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  padding: var(--space-3) var(--space-3) var(--space-3) 0;
-  border-right: 1px solid var(--color-divider);
-}
-
-.quote-assessment-number:last-child {
-  border-right: 0;
-}
-
-.quote-emphasize {
-  color: var(--color-accent-700);
-}
-
-.quote-step-continue {
-  margin: var(--space-5) 0;
-}
-
-/* ---- Target step ---------------------------------------------------------------- */
+/* ---- Target step ------------------------------------------------------------------ */
 
 .quote-ladder {
   margin-bottom: var(--space-4);
@@ -207,7 +306,7 @@
   text-align: right;
 }
 
-/* ---- Negotiation step (AC-4) ---------------------------------------------------- */
+/* ---- Negotiation step -------------------------------------------------------------- */
 
 .quote-negotiation-step {
   display: grid;
@@ -215,24 +314,9 @@
   gap: var(--space-6);
 }
 
-@media (max-width: 900px) {
-  .quote-negotiation-step {
-    grid-template-columns: 1fr;
-  }
-}
-
 .quote-outcome-panel {
   border-left: 2px solid var(--color-divider);
   padding-left: var(--space-6);
-}
-
-@media (max-width: 900px) {
-  .quote-outcome-panel {
-    border-left: 0;
-    padding-left: 0;
-    border-top: 2px solid var(--color-divider);
-    padding-top: var(--space-4);
-  }
 }
 
 .quote-lever-checklist {
@@ -254,4 +338,36 @@
   gap: var(--space-2);
   padding: var(--space-1) 0;
   font-size: 13px;
+}
+
+@media (max-width: 900px) {
+  .quote-band {
+    grid-template-columns: 1fr;
+  }
+
+  .quote-band-cell {
+    padding: 14px 0;
+    border-right: 0;
+    border-bottom: 1px solid var(--color-divider);
+  }
+
+  .quote-band-cell:last-child {
+    border-bottom: 0;
+  }
+
+  .quote-drop-fields,
+  .quote-map-row {
+    grid-template-columns: 1fr;
+  }
+
+  .quote-negotiation-step {
+    grid-template-columns: 1fr;
+  }
+
+  .quote-outcome-panel {
+    border-left: 0;
+    padding-left: 0;
+    border-top: 2px solid var(--color-divider);
+    padding-top: var(--space-4);
+  }
 }

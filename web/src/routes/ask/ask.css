@@ -23,6 +23,7 @@
   gap: var(--space-4);
   height: 100%;
   min-height: 0;
+  padding: 20px 32px 24px;
 }
 
 .ask-screen-header {
@@ -87,7 +88,7 @@
 .ask-new-chat-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2);
+  gap: 6px 18px;
   margin-top: var(--space-2);
 }
 
@@ -178,18 +179,18 @@
 
 .ask-suggestion {
   text-align: left;
-  border: 1px solid var(--color-divider);
+  border: 0;
   background: transparent;
-  padding: var(--space-2) var(--space-3);
-  font-size: 13px;
+  padding: 0;
+  font-size: 12px;
   line-height: 1.4;
   cursor: pointer;
-  color: inherit;
+  color: var(--color-neutral-600);
 }
 
 .ask-suggestion:hover {
-  background: var(--color-neutral-200);
-  color: var(--color-accent-700);
+  color: var(--color-accent);
+  background: transparent;
 }
 
 .ask-resume-skeleton-row {
@@ -204,12 +205,15 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  max-width: 640px;
+  padding: 48px clamp(24px, 5vw, 72px);
+  max-width: 760px;
   gap: var(--space-2);
 }
 
 .ask-off-title {
-  font-size: clamp(26px, 3vw, 36px);
+  font-size: clamp(28px, 3vw, 40px);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
 }
 
 .ask-off-reason {

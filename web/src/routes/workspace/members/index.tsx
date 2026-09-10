@@ -1,10 +1,13 @@
 import { useCallback, useState } from "react";
 import type { ApiClient } from "../../../api/client";
+import { useShellContext } from "../../../components/shell/shellContext";
 import { loadCurrentWorkspace } from "../../signin/workspaceStore";
 import InvitePane from "./InvitePane";
 import MembersTable from "./MembersTable";
 import { loadWorkspaceMembers, rememberInvitedMember } from "./memberStore";
 import {
+  MEMBERS_TIP,
+  formatWorkspaceLine,
   validateInviteEmail,
   workspaceDomainFromEmail,
   type Day1InviteRole,
@@ -17,29 +20,35 @@ export interface MembersRouteProps {
 }
 
 /**
- * Route `/workspace/members` (ADR-018; screens.md #2 "Members & roles"; ADR-020 screen 2;
- * task E06/F04/US01/T01, us-01-workspace-members-invite AC-1/AC-2). Wired into
- * `../../../components/shell/WorkspaceShellApp.tsx` in place of that shell task's
- * `ScaffoldScreen` placeholder. AC-3 (non-admin "You don't manage this workspace") stays on
+ * Route `/workspace/members` -- Workspace & members, V2 (ADR-024 V2 IA; screens-v2.md #10;
+ * `contigo-v2/markup.html` "WORKSPACE & MEMBERS" block). Header ("Setup" kicker · "Workspace &
+ * members" · "{workspace} · tenant {id}"), the `kbOff` tip while nothing is validated yet, then the
+ * two-column body: members table left, "Invite a colleague" right.
+ *
+ * The non-admin state ("You don't manage this workspace … Request access", R-WEB-07) stays on
  * `RequireRole` around this route -- this component only renders for Workspace Admin.
  *
- * Invite is a real `POST /api/workspaces/{tenantId}/invites`. The table is session-local
- * (see `memberStore.ts`) because no list-members endpoint exists yet.
+ * Invite is a real `POST /api/workspaces/{tenantId}/invites`. The table is session-local (see
+ * `memberStore.ts`) because no list-members endpoint exists yet -- a discovery gap, never fabricated
+ * rows.
  */
 export default function MembersRoute({ apiClient, userLabel }: MembersRouteProps) {
   const workspace = loadCurrentWorkspace();
-  const [members, setMembers] = useState(() =>
-    workspace ? loadWorkspaceMembers(workspace.id, userLabel) : [],
-  );
+  const shell = useShellContext();
+  const [members, setMembers] = useState(() => (workspace ? loadWorkspaceMembers(workspace.id, userLabel) : []));
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<Day1InviteRole>("Procurement");
   const [error, setError] = useState<string | null>(null);
+  const [sent, setSent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  const tenantDomain = workspaceDomainFromEmail(userLabel);
 
   const sendInvite = useCallback(() => {
     if (!workspace) return;
 
-    const validationError = validateInviteEmail(email, workspaceDomainFromEmail(userLabel));
+    setSent(false);
+    const validationError = validateInviteEmail(email, tenantDomain);
     if (validationError !== null) {
       setError(validationError);
       return;
@@ -66,8 +75,9 @@ export default function MembersRoute({ apiClient, userLabel }: MembersRouteProps
       );
       setEmail("");
       setError(null);
+      setSent(true);
     });
-  }, [apiClient, email, role, userLabel, workspace]);
+  }, [apiClient, email, role, tenantDomain, workspace]);
 
   if (!workspace) {
     return (
@@ -80,20 +90,36 @@ export default function MembersRoute({ apiClient, userLabel }: MembersRouteProps
 
   return (
     <div className="members-screen">
-      <p className="screen-kicker">R0</p>
-      <h2 className="screen-title">Workspace & members</h2>
-      <p className="micro-meta">Members, roles, and invitations for this workspace.</p>
+      <header className="screen-header">
+        <div>
+          <p className="screen-kicker">Setup</p>
+          <h2 className="screen-title">Workspace &amp; members</h2>
+          <p className="screen-header-summary">{formatWorkspaceLine(workspace.name, workspace.id)}</p>
+        </div>
+      </header>
+
+      {shell?.kbReady === false && (
+        <p className="members-tip" role="note">
+          {MEMBERS_TIP}
+        </p>
+      )}
 
       <div className="members-body">
         <div className="members-table-column">
-          <MembersTable members={members} />
+          <MembersTable members={members} currentUserEmail={userLabel} />
         </div>
         <InvitePane
           email={email}
           role={role}
+          tenantDomain={tenantDomain}
           error={error}
+          sent={sent}
           submitting={submitting}
-          onEmailChange={setEmail}
+          onEmailChange={(value) => {
+            setEmail(value);
+            setSent(false);
+            setError(null);
+          }}
           onRoleChange={setRole}
           onSubmit={sendInvite}
         />
