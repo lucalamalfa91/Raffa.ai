@@ -675,6 +675,76 @@ percorso pilota §2 step 1; R-WEB-01; ADR-009; ADR-010; D5.
   `buildReviewFields` skip; `DetailsSection.tsx`;
   `computeNeedsAttention`; `CORRECTABLE_FIELDS`.
 
+### NW-65 — Details: only officialized facts; drop the “still need to decide” list
+
+- **Status:** OPEN on this branch (observed 2026-09-10)
+- **Reported:** opening Details creates an **ugly empty left column**
+  (short Key terms) next to a **long “Facts you still need to
+  decide”** dump (Review · 65–72%, Flagged · 80–85%). That list
+  **disorients**. Show **only officialized data** (auto-accepted or
+  assigned by the user). **Remove this list from Details** — there is
+  already a button to review fields.
+
+- **Today:** `DetailsSection` two-column grid: Key terms (all header
+  fields, including “—”) vs Documents + `computeNeedsAttention` (every
+  product/clause/obligation **not** in the >95% band) + “Review all →”.
+  Flagged/Review rows duplicate Review and the Why list.
+
+- **Must:**
+  1. Details (and Key terms / Products / Obligations / Risks on this
+     page) show **only officialized** values: auto-accepted (≥90%) or
+     human Accept / Correct. No Flagged / Review · N% here.
+  2. **Delete** the “Facts you still need to decide” block. Keep
+     **Review all →** / Review extraction as the only path to pending
+     fields.
+  3. No sparse two-column hole. Unrecovered empties belong in NW-64,
+     not this list.
+
+- **Evidence:** screenshot 2026-09-10 Details; `DetailsSection.tsx`;
+  `computeNeedsAttention`; `NO_ATTENTION_MESSAGE`.
+
+### NW-66 — Why-clauses: no original quote on the row; click = specchietto; viewer link; explain leverage, not confidence
+
+- **Status:** OPEN on this branch (observed 2026-09-10)
+- **Reported:** each Why-row shows the **original citation on the
+  right** (p.1 + wording) plus **Medium / Low / High** and
+  **Flagged · N%**. The original should **not** sit on the row —
+  **click the record** opens the **specchietto** (evidence card) for
+  that text. **Always** a link to the **full document in the viewer**
+  (NW-63). **Medium / Low / High** is unexplained and useless.
+  **Remove confidence** — what is on this list is **already
+  validated**. Instead, say how **important the field is for
+  negotiation**: can they **leverage** it, or is it a **weak** value
+  — and **say so clearly**.
+
+- **Today:** `WhyClauses` row = type · normalized · `source` (page +
+  span, often the long quote) · `getClauseRiskTag` (raw
+  `riskLevel` string, no legend) · `getConfidenceTag` (Flagged /
+  Accepted · %). Click already selects and shows `ClauseHighlight`.
+  No viewer link.
+
+- **Must:**
+  1. Row: type + officialized value only. **No** original wording /
+     page quote in the right column.
+  2. Click → specchietto with original text (keep `ClauseHighlight`).
+  3. Every row (and the specchietto) has **Open in document viewer**
+     to that page/span (NW-63).
+  4. **No confidence %** on this list.
+  5. Replace bare Medium/Low/High with a **plain-language
+     negotiation tag**, e.g. **Leverage** (you can push) vs **Weak
+     for you** / **Protect** (unfavourable or little room) vs
+     **Watch** — plus a one-line why. A short legend on the section
+     so the tag is never colour-only.
+  6. Only officialized clauses here (same gate as NW-65). Pending
+     stay in Review.
+
+- **Related:** NW-62 (this list is proof of save/move), NW-63
+  (viewer), NW-65 (Details vs Review).
+
+- **Evidence:** screenshot 2026-09-10 Why-clauses; `WhyClauses.tsx`;
+  `getClauseRiskTag`; `ClauseHighlight.tsx`; ADR-019 (text, not
+  colour alone).
+
 ---
 
 ## 7. Suggested grouping
@@ -684,7 +754,7 @@ percorso pilota §2 step 1; R-WEB-01; ADR-009; ADR-010; D5.
 | **W14 — Workspace is real** | membership + list | NW-01, NW-02, NW-03, NW-04, NW-09, NW-14, NW-24, NW-58 | Second browser sees the workspace. Delete/Retry work for the creator. Picker count matches Documents. Invitee joins from the email link; Admin remove needs a new invite. |
 | **W15 — API JWT** | ADR-010 | NW-05, NW-06, NW-07, NW-08, NW-31, NW-32 | Spoofed headers rejected. |
 | **W16 — No session as SoT** | remaining GET | NW-10, NW-11, NW-12, NW-13, NW-21 | Reload / other device sees badge, actions, outcomes. |
-| **W17 — Domain completeness** | empty tabs / numbers | NW-20, NW-22, NW-23, NW-25, NW-26, NW-62, NW-63, NW-64 | 360 answers save + move from RAG × this document; a page viewer shows OCR highlights; fields OCR missed are listed for the user to fill. |
+| **W17 — Domain completeness** | empty tabs / numbers | NW-20, NW-22, NW-23, NW-25, NW-26, NW-62, NW-63, NW-64, NW-65, NW-66 | 360 answers save + move; viewer + OCR; missing fields fill-in; Details = officialized only; Why-rows = leverage, not confidence or the original quote. |
 | **W18 — Contract + ops** | OpenAPI, e2e, live env | NW-30, NW-40, NW-41, NW-50, NW-51, NW-55, NW-56, NW-57, NW-59, NW-60, NW-27, NW-61 | OpenAPI matches host; Foundry A2/A5–A7; Ask citations show a page or a section CTA; Contract 360 “Ask about it” briefs that contract; Quote check is a re-openable market benchmark; Ask abstain always has a clickable recovery; no duplicate Ask bar on the chat screen; upload feels instant and details wait for ready docs. |
 
 **Order:** W15 (token) then W14 (create membership from `sub`) then W16.
@@ -717,6 +787,8 @@ W14 can land membership using `X-User-Id` as an interim if JWT slips.
 | N16 | Open a validated contract whose text has term, notice and fees (e.g. Northwind MSA). **Where you can save** and **When you must move** are concrete answers with citations into that document (and market/similar when available). No “Not yet available” / “Not determined” while those facts are in the file. The clause list under the band supports those answers, not a tokenized field dump. |
 | N17 | From that 360, open the **document viewer**: the uploaded file’s pages, OCR phrases highlighted. Click a clause → that page/span. Edit a highlighted phrase → it persists as a correction and the 360/review field updates. |
 | N18 | A contract missing `endDate` / notice (or any catalogue field OCR did not recover) shows those fields in a **separate empty section** the user can fill. They are **not** omitted from Review. Saving a value there updates the header and the save/move band. |
+| N19 | Details shows only officialized key terms (auto-accepted or human-assigned). **No** “Facts you still need to decide” list. **Review all →** is still there and opens Review. No empty left column beside a Flagged dump. |
+| N20 | Why-rows: type + officialized value; **no** original quote on the right. Click opens the specchietto. Each row has **Open in document viewer**. **No** Flagged · N%. Tag is leverage / weak-for-you (or equivalent) with a legend — not unexplained Medium/Low/High. |
 
 ---
 
@@ -734,6 +806,8 @@ W14 can land membership using `X-User-Id` as an interim if JWT slips.
 | NW-62, N16 | Contract 360 empty save/move + clause dump, 2026-09-10 |
 | NW-63, N17 | 360 document viewer + editable OCR highlights |
 | NW-64, N18 | Fields OCR missed hidden (Review skip + Details ▾); fill-in section |
+| NW-65, N19 | Details Flagged dump + empty left column, 2026-09-10 |
+| NW-66, N20 | Why-row original quote + unexplained Medium/Flagged % |
 | NW-55, N10 | Ask citation cards, 2026-09-10; `CitationCard.tsx` placeholder |
 | NW-56, N11 | Contract 360 Ask about it → Ask-off “upload”, 2026-09-10 |
 | NW-57, N12 | Quote check unclear / manual savings / Home gone; history + Ask |
