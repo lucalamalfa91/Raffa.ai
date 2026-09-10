@@ -229,7 +229,7 @@ export function buildErrorTurn(id: string, reason: string): AskTurnView {
 }
 
 export const TRANSPORT_ERROR_REASON =
-  "Raffa's Q&A service is temporarily unavailable. Try again in a moment.";
+  "Raffa.ai's Q&A service is temporarily unavailable. Try again in a moment.";
 
 // ---------------------------------------------------------------------------------------------
 // Off state (screens-v2.md #2; R-ASK-10) -- "Ask needs at least one validated contract."
@@ -255,7 +255,7 @@ export function buildOffCopy(hasAnyDocument: boolean): AskOffCopy {
         ctaLabel: "Go to Documents",
       }
     : {
-        reason: "Upload a contract first. Raffa extracts the facts, you sign off the weak ones, and Ask switches on.",
+        reason: "Upload a contract first. Raffa.ai extracts the facts, you sign off the weak ones, and Ask switches on.",
         ctaLabel: "Upload a contract",
       };
 }

@@ -256,7 +256,7 @@ describe("DocumentsRoute (task E13/F09/US01/T03, web-documents-v2)", () => {
 
     expect(
       await screen.findByText(
-        "Not added: this looks like a recipe, not a contract. Raffa only keeps contracts, order forms, quotes and the documents around them. Drop the signed agreement or the supplier's proposal.",
+        "Not added: this looks like a recipe, not a contract. Raffa.ai only keeps contracts, order forms, quotes and the documents around them. Drop the signed agreement or the supplier's proposal.",
       ),
     ).toBeInTheDocument();
     expect(screen.getByText("Not added")).toHaveClass("tag");

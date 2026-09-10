@@ -63,15 +63,15 @@ describe("SignInScreen", () => {
 
     const lockup = container.querySelector(".signin-lockup");
     expect(lockup).toBeInTheDocument();
-    expect(lockup).toHaveTextContent("Raffa");
+    expect(lockup).toHaveTextContent("Raffa.ai");
     expect(container.querySelector(".signin-lockup-mark")).toBeInTheDocument();
   });
 
-  it("heads the right column 'Sign in' (h2), not a 'Raffa' heading", () => {
+  it("heads the right column 'Sign in' (h2), not a 'Raffa.ai' heading", () => {
     render(<SignInScreen onContinue={vi.fn()} interactionInFlight={false} />);
 
     expect(screen.getByRole("heading", { name: "Sign in", level: 2 })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Raffa" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Raffa.ai" })).not.toBeInTheDocument();
   });
 
   it("shows the muted Entra sign-in sentence under the heading", () => {
@@ -79,7 +79,7 @@ describe("SignInScreen", () => {
 
     // raffa-v2/markup.html, verbatim.
     expect(
-      screen.getByText(/your organisation account\. raffa never stores a password\./i),
+      screen.getByText(/your organisation account\. raffa\.ai never stores a password\./i),
     ).toBeInTheDocument();
   });
 

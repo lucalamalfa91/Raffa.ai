@@ -15,7 +15,7 @@ export default function QuoteLinesTable({ rows }: QuoteLinesTableProps) {
   if (rows.length === 0) {
     return (
       <p className="quote-empty-lines micro-meta" role="status">
-        No line items were extracted from this quote yet. Raffa only assesses lines it could read — nothing here is estimated.
+        No line items were extracted from this quote yet. Raffa.ai only assesses lines it could read — nothing here is estimated.
       </p>
     );
   }

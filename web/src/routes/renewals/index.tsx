@@ -66,7 +66,7 @@ export default function RenewalsRoute({ apiClient, userLabel }: RenewalsRoutePro
           // "names the failing job, never a raw stack trace").
           message:
             result.statusCode === 503 || result.statusCode === null
-              ? "Raffa's renewal engine is temporarily unavailable. Try again in a moment."
+              ? "Raffa.ai's renewal engine is temporarily unavailable. Try again in a moment."
               : (result.error ?? "Renewals could not be loaded."),
         });
         return;
