@@ -13,3 +13,4 @@ python scripts/check_slice_prereqs.py --slice <id>
 
 | Slice | Tasks | Tokens | Previous | Epics | Title | Source |
 |-------|-------|--------|----------|-------|-------|--------|
+| `w14` | 11 | 15.8M | e13 | E14, E15 | W14 — workspace is real: membership, discovery, roster, role, profile, invitation lifecycle | inputs/next/next-waves-todo.md |

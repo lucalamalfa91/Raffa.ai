@@ -301,6 +301,36 @@
       "tasks": 20,
       "design_oracle": "inputs/design/prototypes/Raffa V2 Prototype.html",
       "requirements": "inputs/requirements.md"
+    },
+    {
+      "id": "w14",
+      "title": "W14 \u2014 workspace is real: membership, discovery, roster, role, profile, invitation lifecycle",
+      "previous": "e13",
+      "tokens": 15800000,
+      "tasks": 11,
+      "epic": "E14, E15",
+      "integration": false,
+      "checks": [
+        "github_auth",
+        "github_org",
+        "github_repos",
+        "hitl_previous"
+      ],
+      "stories": [
+        "E14/F01/US01",
+        "E14/F02/US01",
+        "E14/F02/US02",
+        "E14/F03/US01",
+        "E14/F03/US02",
+        "E14/F04/US01",
+        "E14/F05/US01",
+        "E14/F06/US01",
+        "E15/F01/US01",
+        "E15/F02/US01"
+      ],
+      "mode": "next",
+      "source": "inputs/next/next-waves-todo.md",
+      "requirements": "reports/context/waves/w14-requirements.md"
     }
   ]
 }
