@@ -2,14 +2,14 @@ import type { AdmittedDocumentType, DocumentListItemBody } from "../../api/clien
 import { getStatusTag, type DocumentStatus, type SemanticTag } from "../../styles/semantics";
 
 /**
- * Pure view-model for the Documents V2 row grid (`contigo-v2/markup.html`'s `docRows`/`kbSummary`/
- * `filterHint`; `contigo-v2/screens-v2.md` #3). Kept separate from `uploadPipeline.ts` (the upload
+ * Pure view-model for the Documents V2 row grid (`raffa-v2/markup.html`'s `docRows`/`kbSummary`/
+ * `filterHint`; `raffa-v2/screens-v2.md` #3). Kept separate from `uploadPipeline.ts` (the upload
  * half's own outcome/batch concerns) and `useDocumentsList.ts` (data-fetching/React state) -- the
  * same one-concern-per-file split this folder already established in V1.
  */
 
 /**
- * Task E13/F04/US01/T01's widened admitted-type vocabulary (`web/openapi/contigo-api.v1.json`'s own
+ * Task E13/F04/US01/T01's widened admitted-type vocabulary (`web/openapi/raffa-api.v1.json`'s own
  * `listDocuments`/`getDocument` operations): the original 6 plus Quote, Invoice, PriceList, Nda, Dpa.
  * Labels for the 6 original members are quoted verbatim from `ContractDocumentType.cs`'s own doc
  * comment (spec §6.1); the 5 new members follow the same plain-English convention.
@@ -48,10 +48,10 @@ export function formatUploadedAt(createdAt: string): string {
   return UPLOADED_AT_FORMATTER.format(new Date(createdAt));
 }
 
-/** R-DOC-09's six real stage names, quoted verbatim (also `contigo-v2/app.jsx`'s own `stageLabels`).
+/** R-DOC-09's six real stage names, quoted verbatim (also `raffa-v2/app.jsx`'s own `stageLabels`).
  * `Uploaded`/`Processing` (`DocumentProcessingStatus`) both map to this row family -- see
  * `getRowStatus` below -- `stage` (a free-text field on the wire, not a closed enum; see
- * `web/openapi/contigo-api.v1.json`'s own `listDocuments` operation for why) narrows which of the
+ * `web/openapi/raffa-api.v1.json`'s own `listDocuments` operation for why) narrows which of the
  * six is current. */
 export const DOCUMENT_PROCESSING_STAGES: readonly string[] = [
   "Uploading",
@@ -62,7 +62,7 @@ export const DOCUMENT_PROCESSING_STAGES: readonly string[] = [
   "Validating schema",
 ];
 
-/** Percent-complete for the inline progress bar (`contigo-v2/app.jsx`: `Math.round(d.stage/6*100)`),
+/** Percent-complete for the inline progress bar (`raffa-v2/app.jsx`: `Math.round(d.stage/6*100)`),
  * derived from the stage's own position in `DOCUMENT_PROCESSING_STAGES` -- never a client timer. An
  * unrecognised or absent stage renders 0%, an honest "just started" reading rather than a guess. */
 export function getStagePercent(stage: string | null): number {
@@ -106,7 +106,7 @@ export interface RowAction {
 }
 
 /**
- * Next-step action per row (`contigo-v2/app.jsx`'s own `docRows` action ternary; screens-v2.md #3
+ * Next-step action per row (`raffa-v2/app.jsx`'s own `docRows` action ternary; screens-v2.md #3
  * "Review N fields / Ask about it / Retry upload"). A `Quote`-typed document is routed to Quote
  * check instead of the review/ask flow at any resolved status -- OQ-askv2-008's own assumption in
  * force: "no automatic Quote record; the result card and Ask route to Quote check (/quotes) where
@@ -133,7 +133,7 @@ export function getRowAction(item: Pick<DocumentListItemBody, "processingStatus"
   return null;
 }
 
-/** `"Needs your attention"` (default) vs `"All documents"` (`contigo-v2/app.jsx`'s own
+/** `"Needs your attention"` (default) vs `"All documents"` (`raffa-v2/app.jsx`'s own
  * `attnDocs=docs.filter(d=>d.status!=='completed')` -- everything except `completed`, i.e.
  * processing/needs_review/failed, R-DOC-06). */
 export type AttentionFilterValue = "attention" | "all";
@@ -149,7 +149,7 @@ export function filterDocumentsByAttention(
   return filter === "attention" ? items.filter((item) => isAttentionStatus(item.processingStatus)) : items;
 }
 
-/** `contigo-v2/app.jsx`'s own `kbSummary` string: "N documents · M askable[ · K waiting for your
+/** `raffa-v2/app.jsx`'s own `kbSummary` string: "N documents · M askable[ · K waiting for your
  * review]". */
 export function buildKbSummary(items: readonly DocumentListItemBody[]): string {
   const total = items.length;
@@ -159,7 +159,7 @@ export function buildKbSummary(items: readonly DocumentListItemBody[]): string {
   return needsReview > 0 ? `${base} · ${needsReview} waiting for your review` : base;
 }
 
-/** `contigo-v2/app.jsx`'s own `filterHint` ternary, verbatim. */
+/** `raffa-v2/app.jsx`'s own `filterHint` ternary, verbatim. */
 export function getFilterHint(filter: AttentionFilterValue): string {
   return filter === "attention"
     ? "Completed documents are hidden — they are already askable."

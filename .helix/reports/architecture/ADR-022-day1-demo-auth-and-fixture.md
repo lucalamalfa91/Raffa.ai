@@ -17,7 +17,7 @@ Two residuals would otherwise look like Day-1 blockers:
    (Authorization Code + PKCE, JWT to the API) is **not** on the host.
 2. Savings / benchmark numbers for the first `demo` are specified as the
    **fixture adapter** (ADR-001). That adapter is proven in tests and is
-   **not** seeded onto Flexible Server `contigo_demo`.
+   **not** seeded onto Flexible Server `raffa_demo`.
 
 Opening `demo` for a stakeholder walk of spec §20 should not wait for a
 full Entra-on-API retrofit.
@@ -30,7 +30,7 @@ full Entra-on-API retrofit.
 2. **Accept `X-Tenant-Id` + fixture seed for the first `demo-v*`** —
    SPA still uses Entra PKCE (public client in `config.json`); API tenancy
    stays the header; savings rows come from a checked-in seed job on
-   `contigo_demo`. ADR-010 remains the post-Day-1 host target.
+   `raffa_demo`. ADR-010 remains the post-Day-1 host target.
 3. **Skip seed and rely on live extract + empty savings** — breaks the
    §20 “see prioritized savings opportunities” step on a fresh DB.
 
@@ -42,7 +42,7 @@ full Entra-on-API retrofit.
   Entra PKCE. Do not treat missing API JWT as a Day-1 BLOCKER unless the
   operator overrides at HITL on `reports/audit/demo-readiness-gaps.md`.
 - e10 seeds fixture benchmark + at least one savings/contract row on
-  `contigo_demo` (optional same job on `contigo_dev`) **after** e09 has
+  `raffa_demo` (optional same job on `raffa_dev`) **after** e09 has
   applied schema. Seed runs as a CI/operator job, not `MigrateAsync`.
 - Foundry/OCR on Container Apps is a separate e10 residual: if CA env is
   still empty, wire endpoints/identities so extract/Ask are not fixture-

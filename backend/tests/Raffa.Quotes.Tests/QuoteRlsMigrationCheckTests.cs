@@ -1,0 +1,115 @@
+using Raffa.Quotes.Domain;
+using Raffa.Quotes.Infrastructure;
+using Microsoft.EntityFrameworkCore;
+using Testcontainers.PostgreSql;
+
+namespace Raffa.Quotes.Tests;
+
+/// <summary>
+/// The CI migration check ADR-009 requires for this module's own tenant-scoped tables (task
+/// E05/F01/US01/T01, quote-extraction) — mirrors
+/// <c>Raffa.Savings.Tests.SavingsOpportunityRlsMigrationCheckTests</c> exactly, scoped to this
+/// module's own <see cref="QuotesDbContext"/>. Runs as part of the normal `dotnet test` step in
+/// `.github/workflows/backend.yml`, migrates a disposable Postgres instance, and fails the build if
+/// any tenant-scoped table in this module is missing `ROW LEVEL SECURITY`,
+/// `FORCE ROW LEVEL SECURITY`, or an actual policy.
+///
+/// The table list is discovered dynamically from the EF model (every this module's own
+/// <see cref="TenantScopedEntity"/> subclass) instead of being hardcoded, so this check keeps
+/// working — and keeps rejecting an omission — as new tenant-scoped tables are added to this module
+/// by future tasks, without anyone remembering to update this test.
+/// </summary>
+public sealed class QuoteRlsMigrationCheckTests : IAsyncLifetime
+{
+    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine").Build();
+
+    public Task InitializeAsync() => _postgres.StartAsync();
+
+    public Task DisposeAsync() => _postgres.DisposeAsync().AsTask();
+
+    [Fact]
+    public async Task Every_tenant_scoped_table_has_forced_row_level_security_and_a_policy()
+    {
+        var optionsBuilder = new DbContextOptionsBuilder<QuotesDbContext>();
+        QuotesDbContextOptions.Configure(optionsBuilder, _postgres.GetConnectionString());
+
+        await using var db = new QuotesDbContext(optionsBuilder.Options);
+        await db.Database.MigrateAsync();
+
+        var tenantScopedTables = db.Model.GetEntityTypes()
+            .Where(entityType => typeof(TenantScopedEntity).IsAssignableFrom(entityType.ClrType))
+            .Select(entityType => entityType.GetTableName())
+            .Where(tableName => tableName is not null)
+            .Cast<string>()
+            .Distinct()
+            .OrderBy(tableName => tableName, StringComparer.Ordinal)
+            .ToList();
+
+        // Guards the guard: if this is ever empty, table discovery itself is broken (e.g. a
+        // renamed base type) and every assertion below would pass vacuously without proving
+        // anything.
+        Assert.NotEmpty(tenantScopedTables);
+
+        await db.Database.OpenConnectionAsync();
+        try
+        {
+            foreach (var table in tenantScopedTables)
+            {
+                var (rowSecurityEnabled, rowSecurityForced) = await ReadRowSecurityFlagsAsync(db, table);
+
+                Assert.True(
+                    rowSecurityEnabled,
+                    $"[ADR-009] Tenant-scoped table \"{table}\" does not have ROW LEVEL " +
+                    "SECURITY enabled. Add a migration: ALTER TABLE ... ENABLE ROW LEVEL SECURITY.");
+                Assert.True(
+                    rowSecurityForced,
+                    $"[ADR-009] Tenant-scoped table \"{table}\" is not FORCE ROW LEVEL " +
+                    "SECURITY, so the policy would not apply to the table owner. Add a " +
+                    "migration: ALTER TABLE ... FORCE ROW LEVEL SECURITY.");
+
+                var policyCount = await ReadPolicyCountAsync(db, table);
+
+                Assert.True(
+                    policyCount >= 1,
+                    $"[ADR-009] Tenant-scoped table \"{table}\" has no RLS policy. Add a " +
+                    "migration: CREATE POLICY ... ON ... USING (tenant_id = " +
+                    "current_setting('app.tenant_id', true)::uuid).");
+            }
+        }
+        finally
+        {
+            await db.Database.CloseConnectionAsync();
+        }
+    }
+
+    private static async Task<(bool Enabled, bool Forced)> ReadRowSecurityFlagsAsync(
+        QuotesDbContext db, string table)
+    {
+        var command = db.Database.GetDbConnection().CreateCommand();
+        command.CommandText =
+            "SELECT relrowsecurity, relforcerowsecurity FROM pg_class WHERE oid = to_regclass(@table)";
+        var parameter = command.CreateParameter();
+        parameter.ParameterName = "table";
+        parameter.Value = table;
+        command.Parameters.Add(parameter);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        var hasRow = await reader.ReadAsync();
+        Assert.True(hasRow, $"[ADR-009] Table \"{table}\" was not found in pg_class after migrating.");
+
+        return (reader.GetBoolean(0), reader.GetBoolean(1));
+    }
+
+    private static async Task<long> ReadPolicyCountAsync(QuotesDbContext db, string table)
+    {
+        var command = db.Database.GetDbConnection().CreateCommand();
+        command.CommandText =
+            "SELECT count(*) FROM pg_policies WHERE schemaname = 'public' AND tablename = @table";
+        var parameter = command.CreateParameter();
+        parameter.ParameterName = "table";
+        parameter.Value = table;
+        command.Parameters.Add(parameter);
+
+        return Convert.ToInt64(await command.ExecuteScalarAsync());
+    }
+}

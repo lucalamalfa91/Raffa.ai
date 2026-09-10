@@ -1,0 +1,262 @@
+# =============================================================================
+# raffa-web-process -- Helix Passata 1 for the WEB DELTA only.
+# Does NOT replace raffa-process.yaml (leave that file for the live R0–R4
+# fan-out). Launch with ./run-web.ps1  (never --fresh, never this YAML from
+# ./run.ps1 while execution-fanout is on the other artifact).
+#
+# Ground truth: inputs/product-spec.md + engineering-brief.md +
+# engineering-constraints.md + web-integration-brief.md, plus the already
+# accepted ADR-001…017 and epic-01…05 tree (treated as done).
+#
+# PASSATA 1 -- raffa-web-design (DEFAULT here)
+#   docs-intake-web → 7-seat council (incl. ux-ui-designer) → append epic-06+
+#   → checker ⇄ remediator. TERMINAL on DECOMPOSITION_OK:.
+#   Writes wave-spec.web.yaml and slices/e06+. Never touches
+#   wave-spec.execution.yaml, slices/e01–e05, or slice.current.yaml.
+#
+# PASSATA 2 is NOT in this document. After e06 exists and the live wave is
+# idle:  ./run.ps1 -Max -Slice e06 -o execution-fanout
+# =============================================================================
+
+version: "0.1"
+runtime: maf
+output_dir: reports
+
+defaults:
+  harness:
+    memory: { scope: session }
+    governance:
+      hooks: { allow_external: false }
+      policy:
+        model_allowlist: [deepseek-reasoning, deepseek-fast]
+
+models:
+  - id: deepseek-reasoning
+    provider: openai
+    model: ${DEEPSEEK_REASONING_MODEL}
+    options:
+      base_url: ${DEEPSEEK_BASE_URL}
+      api_key: ${DEEPSEEK_API_KEY}
+      api: chat_completions
+      context_window_tokens: 786432
+      max_output_tokens: 65536
+      tool_call_content: ensure
+      normalize_turns: false
+      tool_turn_cue: false
+      timeout: 900
+      max_retries: 2
+      extra_body:
+        thinking:
+          type: disabled
+
+  - id: deepseek-fast
+    provider: openai
+    model: ${DEEPSEEK_FAST_MODEL}
+    options:
+      base_url: ${DEEPSEEK_BASE_URL}
+      api_key: ${DEEPSEEK_API_KEY}
+      api: chat_completions
+      context_window_tokens: 786432
+      max_output_tokens: 65536
+      tool_call_content: ensure
+      normalize_turns: false
+      tool_turn_cue: false
+      timeout: 900
+      max_retries: 2
+      extra_body:
+        thinking:
+          type: disabled
+
+tools:
+  - { id: read-file,    kind: function, ref: read_file }
+  - { id: read-files,   kind: function, ref: read_files }
+  - { id: list-dir,     kind: function, ref: list_dir }
+  - { id: glob-files,   kind: function, ref: glob }
+  - { id: grep-files,   kind: function, ref: grep }
+  - { id: write-file,   kind: function, ref: write_file }
+  - { id: shell,        kind: function, ref: bash }
+
+skills:
+  - { id: kb-contract,             instructions_file: skills/kb-contract.md }
+  - { id: kb-contract-web,         instructions_file: skills/kb-contract-web.md }
+  - { id: marker-discipline,       instructions_file: skills/marker-discipline.md }
+  - { id: council-protocol-web,    instructions_file: skills/council-protocol-web.md }
+  - { id: ux-ui-designer-lane,     instructions_file: skills/ux-ui-designer-lane.md }
+  - { id: decompose-web-workitems, instructions_file: skills/decompose-web-workitems.md }
+  - { id: wavespec-schema,         instructions_file: skills/wavespec-schema.md }
+
+agents:
+  - id: docs-ingester-web
+    model: deepseek-fast
+    skills: [kb-contract, kb-contract-web, marker-discipline]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, write-file]
+    instructions_file: agents/docs-ingester-web.md
+
+  - id: ux-ui-designer
+    model: deepseek-reasoning
+    skills: [kb-contract, kb-contract-web, marker-discipline, council-protocol-web, ux-ui-designer-lane]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, write-file]
+    instructions_file: agents/ux-ui-designer.md
+
+  - id: product-owner-web
+    model: deepseek-reasoning
+    skills: [kb-contract, kb-contract-web, marker-discipline, council-protocol-web]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, write-file]
+    instructions_file: agents/product-owner-web.md
+
+  - id: client-architect-web
+    model: deepseek-reasoning
+    skills: [kb-contract, kb-contract-web, marker-discipline, council-protocol-web]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, write-file]
+    instructions_file: agents/client-architect-web.md
+
+  - id: software-architect-web
+    model: deepseek-reasoning
+    skills: [kb-contract, kb-contract-web, marker-discipline, council-protocol-web]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, write-file]
+    instructions_file: agents/software-architect-web.md
+
+  - id: delivery-manager-web
+    model: deepseek-reasoning
+    skills: [kb-contract, kb-contract-web, marker-discipline, council-protocol-web]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, write-file]
+    instructions_file: agents/delivery-manager-web.md
+
+  - id: cloud-architect-web
+    model: deepseek-reasoning
+    skills: [kb-contract, kb-contract-web, marker-discipline, council-protocol-web]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, write-file]
+    instructions_file: agents/cloud-architect-web.md
+
+  - id: security-architect-web
+    model: deepseek-reasoning
+    skills: [kb-contract, kb-contract-web, marker-discipline, council-protocol-web]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, write-file]
+    instructions_file: agents/security-architect-web.md
+
+  - id: council-gate-web
+    model: deepseek-fast
+    skills: [kb-contract, kb-contract-web, marker-discipline, council-protocol-web]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files]
+    instructions_file: agents/council-gate-web.md
+
+  - id: backlog-decomposer-web
+    model: deepseek-reasoning
+    skills: [kb-contract, kb-contract-web, marker-discipline, decompose-web-workitems, wavespec-schema]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, write-file, shell]
+    instructions_file: agents/backlog-decomposer-web.md
+
+  - id: decomposition-checker-web
+    model: deepseek-reasoning
+    skills: [kb-contract, kb-contract-web, marker-discipline, decompose-web-workitems, wavespec-schema]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files]
+    instructions_file: agents/decomposition-checker-web.md
+
+  - id: decomposition-remediator-web
+    model: deepseek-reasoning
+    skills: [kb-contract, kb-contract-web, marker-discipline, decompose-web-workitems, wavespec-schema]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, write-file, shell]
+    instructions_file: agents/decomposition-remediator-web.md
+
+orchestrations:
+  - id: docs-intake-web
+    topology: sequential
+    participants: [docs-ingester-web]
+
+  - id: lane-ux-ui-designer
+    topology: sequential
+    participants: [ux-ui-designer]
+
+  - id: lane-product-owner-web
+    topology: sequential
+    participants: [product-owner-web]
+
+  - id: lane-client-architect-web
+    topology: sequential
+    participants: [client-architect-web]
+
+  - id: lane-software-architect-web
+    topology: sequential
+    participants: [software-architect-web]
+
+  - id: lane-delivery-manager-web
+    topology: sequential
+    participants: [delivery-manager-web]
+
+  - id: lane-cloud-architect-web
+    topology: sequential
+    participants: [cloud-architect-web]
+
+  - id: lane-security-architect-web
+    topology: sequential
+    participants: [security-architect-web]
+
+  - id: architecture-lanes-web
+    topology: concurrent
+    aggregator: concat
+    participants:
+      - lane-ux-ui-designer
+      - lane-product-owner-web
+      - lane-client-architect-web
+      - lane-software-architect-web
+      - lane-delivery-manager-web
+      - lane-cloud-architect-web
+      - lane-security-architect-web
+
+  - id: council-close-web
+    topology: group_chat
+    participants:
+      - ux-ui-designer
+      - product-owner-web
+      - client-architect-web
+      - software-architect-web
+      - delivery-manager-web
+      - cloud-architect-web
+      - security-architect-web
+      - council-gate-web
+    selection: round_robin
+    # 6 table rounds x 8 participants. 4 rounds burned out on talk
+    # without promoting ADR-018+; extra turns after files exist to vote-close.
+    max_rounds: 48
+    termination: on_marker
+    marker: "COUNCIL_APPROVED:"
+    marker_line_anchored: true
+    close_requires_glob: "reports/architecture/ADR-018*.md"
+    close_requires_marker: "COUNCIL_FILES_WRITTEN:"
+    limits: { max_identical_turns: 3 }
+
+  - id: architecture-council-web
+    topology: sequential
+    participants: [architecture-lanes-web, council-close-web]
+
+  - id: decomposition-web
+    topology: sequential
+    participants: [backlog-decomposer-web]
+
+  - id: decomposition-check-web
+    topology: sequential
+    participants: [decomposition-checker-web]
+
+  - id: decomposition-remediation-web
+    topology: sequential
+    participants: [decomposition-remediator-web]
+
+  - id: raffa-web-design
+    default: true
+    topology: workflow
+    participants:
+      - docs-intake-web
+      - architecture-council-web
+      - decomposition-web
+      - decomposition-check-web
+      - decomposition-remediation-web
+    start: docs-intake-web
+    edges:
+      - [docs-intake-web, architecture-council-web]
+      - [architecture-council-web, decomposition-web]
+      - [decomposition-web, decomposition-check-web]
+      - [decomposition-check-web, decomposition-remediation-web, needs_remediation]
+      - [decomposition-remediation-web, decomposition-check-web]
+      # decomposition_complete: no edge. Passata 1 terminal. Operator later
+      # launches the OTHER artifact's execution-fanout with -Slice e06.
+    limits: { max_steps: 500000, max_iterations: 25, run_timeout_s: 28800 }

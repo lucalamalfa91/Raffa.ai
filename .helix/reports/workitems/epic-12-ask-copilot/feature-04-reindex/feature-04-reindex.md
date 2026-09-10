@@ -25,4 +25,4 @@ Ask retrieval is text, not `%PDF-1.4`.
 
 ## Target repo
 
-`contigo-backend`
+`raffa-backend`

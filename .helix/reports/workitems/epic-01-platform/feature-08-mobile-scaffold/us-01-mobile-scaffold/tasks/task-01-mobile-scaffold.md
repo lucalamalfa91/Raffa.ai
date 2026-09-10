@@ -4,7 +4,7 @@ type: task
 story: us-01-mobile-scaffold
 wave: R0
 status: live
-target_repo: contigo-mobile
+target_repo: raffa-mobile
 ---
 
 # task-01-mobile-scaffold — 01 Mobile Scaffold
@@ -18,7 +18,7 @@ Scaffold React Native (Expo) + TypeScript app (non-blocking).
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-mobile/src/ | implementation for `mobile-scaffold` |
+| workspace/raffa-mobile/src/ | implementation for `mobile-scaffold` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-013.
@@ -30,7 +30,7 @@ Scaffold React Native (Expo) + TypeScript app (non-blocking).
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | mobile-scaffold behaviour | workspace/contigo-mobile/tests |
+| unit | mobile-scaffold behaviour | workspace/raffa-mobile/tests |
 
 ## Open questions blocking this task
 - none

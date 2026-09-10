@@ -4,7 +4,7 @@ type: task
 story: us-01-correction-history
 wave: R1
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-02-correction-audit — 02 Correction Audit
@@ -18,7 +18,7 @@ Emit audit event on correction; correction history query.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `correction-audit` |
+| workspace/raffa-backend/src/ | implementation for `correction-audit` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-011.
@@ -30,7 +30,7 @@ Emit audit event on correction; correction history query.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | correction-audit behaviour | workspace/contigo-backend/tests |
+| unit | correction-audit behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

@@ -14,7 +14,7 @@ import {
   NEW_CHAT_TRAILER,
   THINKING_COPY,
   TRANSPORT_ERROR_REASON,
-  buildContigoTurnFromReply,
+  buildRaffaTurnFromReply,
   buildErrorTurn,
   buildOffCopy,
   buildScopeLine,
@@ -40,7 +40,7 @@ interface CitationNoticeState {
 }
 
 /**
- * Route `/ask`, `/ask/:conversationId` (ADR-018/ADR-024; screens-v2.md #2 "Ask Contigo — home";
+ * Route `/ask`, `/ask/:conversationId` (ADR-018/ADR-024; screens-v2.md #2 "Ask Raffa — home";
  * ADR-020 V2 amendment "screen 2"; task E13/F09/US01/T04, us-01-web-v2 AC-1/AC-3/AC-5/AC-6). V2
  * rebuild of the V1 screen `web/src/routes/ask/index.tsx` (task E07/F04/US01/T01) already occupied
  * -- replaces its single-turn `POST /api/chat/query` chat with real, resumable, per-user
@@ -185,7 +185,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
             return;
           }
           createdConversationId.current = result.conversationId;
-          setTurns((previous) => [...previous, buildContigoTurnFromReply(nextTurnId(), result.reply)]);
+          setTurns((previous) => [...previous, buildRaffaTurnFromReply(nextTurnId(), result.reply)]);
           navigate(`/ask/${result.conversationId}`, { replace: true });
         });
         return;
@@ -195,7 +195,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
         setAsking(false);
         const turn =
           result.ok && result.reply
-            ? buildContigoTurnFromReply(nextTurnId(), result.reply)
+            ? buildRaffaTurnFromReply(nextTurnId(), result.reply)
             : buildErrorTurn(nextTurnId(), result.error ?? TRANSPORT_ERROR_REASON);
         setTurns((previous) => [...previous, turn]);
       });
@@ -220,12 +220,12 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
 
   /**
    * Task text point (3): a tenant citation navigates (with `state.from = "ask"`, AC-1 of the
-   * sibling contract360-landing story); a market citation opens the side panel; a Contigo feature
+   * sibling contract360-landing story); a market citation opens the side panel; a Raffa feature
    * card navigates to its own href. `askViewModel.ts#resolveCitationOpenAction`'s own doc comment
    * has the full decision table -- this is only the "then do it" half.
    */
   const openCitation = useCallback(
-    (turn: Extract<AskTurnView, { role: "contigo" }>, citation: ReplyCitation) => {
+    (turn: Extract<AskTurnView, { role: "raffa" }>, citation: ReplyCitation) => {
       setCitationNotice(null);
       const action = resolveCitationOpenAction(citation, turn.wireCitations);
 
@@ -246,7 +246,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     return (
       <div className="empty-state" role="status">
         <h3>No workspace selected</h3>
-        <p className="micro-meta">Choose a workspace before asking Contigo a question.</p>
+        <p className="micro-meta">Choose a workspace before asking Raffa a question.</p>
       </div>
     );
   }
@@ -335,8 +335,8 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
                   </div>
                 </div>
               ) : (
-                <div key={turn.id} className="ask-message" data-role="contigo">
-                  <div className="ask-message-who">Contigo</div>
+                <div key={turn.id} className="ask-message" data-role="raffa">
+                  <div className="ask-message-who">Raffa</div>
                   <div className="ask-message-content">
                     <ReplyBody reply={turn.reply} onOpenCitation={(citation) => openCitation(turn, citation)} onFollowUp={ask} />
                     {citationNotice !== null && citationNotice.turnId === turn.id && (
@@ -351,7 +351,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
 
             {asking && (
               <div className="ask-thinking" role="status" aria-live="polite">
-                <div className="ask-thinking-who">Contigo</div>
+                <div className="ask-thinking-who">Raffa</div>
                 <div className="ask-thinking-copy">
                   <span className="ask-thinking-spinner" aria-hidden="true" />
                   {THINKING_COPY}
@@ -364,7 +364,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
             <input
               className="input"
               placeholder={ASK_INPUT_PLACEHOLDER}
-              aria-label="Ask Contigo a question"
+              aria-label="Ask Raffa a question"
               value={question}
               onChange={(event) => setQuestion(event.target.value)}
               onKeyDown={(event) => {

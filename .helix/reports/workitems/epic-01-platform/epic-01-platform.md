@@ -10,7 +10,7 @@ status: active
 ## Business capability
 
 Deliver the secure multi-tenant foundation every later wave builds on: the
-existing GitHub repository [`lucalamalfa91/contigo`](https://github.com/lucalamalfa91/contigo),
+existing GitHub repository [`lucalamalfa91/raffa`](https://github.com/lucalamalfa91/raffa),
 HCP Terraform provisioning of two
 isolated Azure environments (`dev`/`demo`), trunk-based CI/CD with an explicit
 `demo` promotion gate, a deployable ASP.NET Core modular-monolith API + background
@@ -46,7 +46,7 @@ document upload into tenant-scoped object storage, and an audit baseline — so 
 
 | ID | Title | Wave |
 |----|-------|------|
-| feature-01 | platform-bootstrap (lucalamalfa91/contigo + HCP + git flow) | R0 |
+| feature-01 | platform-bootstrap (lucalamalfa91/raffa + HCP + git flow) | R0 |
 | feature-02 | azure-infrastructure (Terraform dev/demo) | R0 |
 | feature-03 | ci-cd-delivery (CI auth + pipelines + promotion) | R0 |
 | feature-04 | backend-foundation (monolith + store + RLS + deployable API) | R0 |

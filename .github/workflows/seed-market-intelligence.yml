@@ -17,10 +17,10 @@ name: seed-market-intelligence
 # against one named environment.
 #
 # What it actually runs is the Worker's own one-shot operator command
-# (`backend/src/Contigo.Worker/Commands/IngestMarketCommand.cs`, task
+# (`backend/src/Raffa.Worker/Commands/IngestMarketCommand.cs`, task
 # E13/F02/US01/T02):
 #
-#   dotnet run --project backend/src/Contigo.Worker -- \
+#   dotnet run --project backend/src/Raffa.Worker -- \
 #     ingest-market --feed backend/fixtures/market-intelligence.mock.json
 #
 # ...from the runner, against this environment's Postgres, using the same
@@ -34,7 +34,7 @@ on:
     inputs:
       target_environment:
         description: >-
-          GitHub Environment (and Postgres database, contigo_<env>) whose
+          GitHub Environment (and Postgres database, raffa_<env>) whose
           shared market corpus is ingested.
         required: true
         type: choice
@@ -99,7 +99,7 @@ jobs:
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: Resolve resource group
-        run: echo "RESOURCE_GROUP=rg-contigo-${TARGET_ENVIRONMENT}" >> "$GITHUB_ENV"
+        run: echo "RESOURCE_GROUP=rg-raffa-${TARGET_ENVIRONMENT}" >> "$GITHUB_ENV"
 
       - name: Install postgresql-client
         run: |
@@ -119,7 +119,7 @@ jobs:
       - name: Fetch Postgres connection string (ADR-021)
         run: |
           set -euo pipefail
-          HCP_RUNS="https://app.terraform.io/app/contigo-platform/workspaces/contigo-${TARGET_ENVIRONMENT}/runs"
+          HCP_RUNS="https://app.terraform.io/app/raffa-platform/workspaces/raffa-${TARGET_ENVIRONMENT}/runs"
           KV_NAME=$(az keyvault list --resource-group "$RESOURCE_GROUP" --query "[0].name" -o tsv)
           if [ -z "$KV_NAME" ]; then
             echo "::error::no Key Vault found in resource group $RESOURCE_GROUP. Confirm the HCP VCS apply at $HCP_RUNS, then re-run this job."
@@ -130,7 +130,7 @@ jobs:
           KV_STATUS=$?
           set -e
           if [ $KV_STATUS -ne 0 ] || [ -z "$RAW_CONN" ]; then
-            echo "::error::could not read secret 'postgres-connection' from $KV_NAME. Either the HCP VCS apply at $HCP_RUNS has not created it yet, or this environment's CI deploy principal (contigo-sp-${TARGET_ENVIRONMENT}) is missing the 'Key Vault Secrets User' role on $KV_NAME. Azure CLI said: $(tail -c 500 /tmp/kv_secret_show.err | tr '\n' ' ')"
+            echo "::error::could not read secret 'postgres-connection' from $KV_NAME. Either the HCP VCS apply at $HCP_RUNS has not created it yet, or this environment's CI deploy principal (raffa-sp-${TARGET_ENVIRONMENT}) is missing the 'Key Vault Secrets User' role on $KV_NAME. Azure CLI said: $(tail -c 500 /tmp/kv_secret_show.err | tr '\n' ' ')"
             exit 1
           fi
           echo "::add-mask::$RAW_CONN"
@@ -159,7 +159,7 @@ jobs:
           set -euo pipefail
           PRESENT=$(psql -Atqc "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('market_record','market_embedding');")
           if [ "$PRESENT" -lt 2 ]; then
-            echo "::error::contigo_${TARGET_ENVIRONMENT} is missing market_record/market_embedding -- run backend.yml's schema apply (ADR-021, backend/src/Contigo.Market/Migrations/Scripts/market.sql) against this environment before ingesting."
+            echo "::error::raffa_${TARGET_ENVIRONMENT} is missing market_record/market_embedding -- run backend.yml's schema apply (ADR-021, backend/src/Raffa.Market/Migrations/Scripts/market.sql) against this environment before ingesting."
             exit 1
           fi
 
@@ -175,12 +175,12 @@ jobs:
       - name: Build the Worker host
         run: |
           set -euo pipefail
-          dotnet restore backend/src/Contigo.Worker/Contigo.Worker.csproj
-          dotnet build backend/src/Contigo.Worker/Contigo.Worker.csproj \
+          dotnet restore backend/src/Raffa.Worker/Raffa.Worker.csproj
+          dotnet build backend/src/Raffa.Worker/Raffa.Worker.csproj \
             --configuration Release --no-restore
 
       # `ingest-market` fails fast without ConnectionStrings:DocumentsContracts,
-      # :Audit and :Renewals (Contigo.Worker/Program.cs builds the whole host
+      # :Audit and :Renewals (Raffa.Worker/Program.cs builds the whole host
       # before dispatching the command) and requires ConnectionStrings:Market
       # for the ingestion service itself (IngestMarketCommand.RunAsync). All
       # four are the same environment database.
@@ -199,7 +199,7 @@ jobs:
           export ConnectionStrings__Audit="$MARKET_DB_CONNECTION"
           export ConnectionStrings__Renewals="$MARKET_DB_CONNECTION"
           export ConnectionStrings__Market="$MARKET_DB_CONNECTION"
-          dotnet run --project backend/src/Contigo.Worker/Contigo.Worker.csproj \
+          dotnet run --project backend/src/Raffa.Worker/Raffa.Worker.csproj \
             --configuration Release --no-build --no-restore \
             -- ingest-market --feed "$FEED_PATH" | tee /tmp/ingest-first.log
           if ! grep -qE "^Ingested feed '.*': [0-9]+ inserted, [0-9]+ updated, [0-9]+ unchanged\.$" /tmp/ingest-first.log; then
@@ -220,7 +220,7 @@ jobs:
           export ConnectionStrings__Audit="$MARKET_DB_CONNECTION"
           export ConnectionStrings__Renewals="$MARKET_DB_CONNECTION"
           export ConnectionStrings__Market="$MARKET_DB_CONNECTION"
-          dotnet run --project backend/src/Contigo.Worker/Contigo.Worker.csproj \
+          dotnet run --project backend/src/Raffa.Worker/Raffa.Worker.csproj \
             --configuration Release --no-build --no-restore \
             -- ingest-market --feed "$FEED_PATH" | tee /tmp/ingest-second.log
           SUMMARY=$(grep -E "^Ingested feed '" /tmp/ingest-second.log | tail -1)
@@ -256,7 +256,7 @@ jobs:
             echo "::error::market_record/market_embedding gained a tenant_id column -- the market corpus is shared and read-only for every tenant (ADR-011 epic-13 amendment, R-MKT-03 AC-2)."
             exit 1
           fi
-          echo "::group::feed versions in contigo_${TARGET_ENVIRONMENT}"
+          echo "::group::feed versions in raffa_${TARGET_ENVIRONMENT}"
           psql -Atqc "SELECT feed_version, count(*), max(updated_at) FROM market_record GROUP BY feed_version ORDER BY feed_version;"
           echo "::endgroup::"
-          echo "Market corpus OK in contigo_${TARGET_ENVIRONMENT}: $RECORDS market_record row(s), $NOTES market_embedding row(s), no tenant_id column."
+          echo "Market corpus OK in raffa_${TARGET_ENVIRONMENT}: $RECORDS market_record row(s), $NOTES market_embedding row(s), no tenant_id column."

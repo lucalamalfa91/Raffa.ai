@@ -1,23 +1,23 @@
-# Launch the VISUAL-FIDELITY process only. Never points at contigo-process.yaml.
+# Launch the VISUAL-FIDELITY process only. Never points at raffa-process.yaml.
 # Refuses --fresh and -Slice (live fan-out stays on the other process).
 param(
     [switch]$Check,
-    [Alias("orchestration")][string]$o = "contigo-visual-design",
-    [Alias("input")][string]$i = "Contigo visual fidelity: epic-11 / e11 mockup vs dev SWA",
+    [Alias("orchestration")][string]$o = "raffa-visual-design",
+    [Alias("input")][string]$i = "Raffa visual fidelity: epic-11 / e11 mockup vs dev SWA",
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$Rest
 )
 
 $ErrorActionPreference = "Stop"
 $Here = $PSScriptRoot
-$Artifact = Join-Path $Here "contigo-visual-process.yaml"
+$Artifact = Join-Path $Here "raffa-visual-process.yaml"
 $envFile = Join-Path $Here ".env"
 
 if (-not (Test-Path $envFile)) {
     throw "missing .env -- copy .env.example to .env and fill values"
 }
 if (-not (Test-Path $Artifact)) {
-    throw "missing contigo-visual-process.yaml"
+    throw "missing raffa-visual-process.yaml"
 }
 
 foreach ($a in @($Rest)) {
@@ -53,11 +53,11 @@ if ([string]::IsNullOrWhiteSpace($backend)) {
 }
 
 $visualOrchs = @(
-    "contigo-visual-design", "docs-intake-visual", "visual-audit-gate",
+    "raffa-visual-design", "docs-intake-visual", "visual-audit-gate",
     "decomposition-visual", "decomposition-check-visual", "decomposition-remediation-visual"
 )
 if ($visualOrchs -notcontains $o) {
-    throw "run-visual.ps1 only launches visual orchs (got '$o'). Default is contigo-visual-design."
+    throw "run-visual.ps1 only launches visual orchs (got '$o'). Default is raffa-visual-design."
 }
 
 if ($Check) {
@@ -66,7 +66,7 @@ if ($Check) {
 }
 
 $assert = Join-Path $Here "scripts\assert_visual_plan_untouched.py"
-Write-Host "artifact: contigo-visual-process.yaml  orch: $o"
+Write-Host "artifact: raffa-visual-process.yaml  orch: $o"
 Write-Host "protect: e01-e10, wave-spec.execution/web/schema/readiness, ADR-001..022, epic-01..10"
 & python $assert snapshot
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

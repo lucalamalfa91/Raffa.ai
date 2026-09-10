@@ -30,11 +30,11 @@ async function bootstrap() {
         ? error.message
         : "Unexpected startup error while loading runtime config. See console for details.";
     // eslint-disable-next-line no-console
-    console.error("Contigo web client failed to start:", error);
+    console.error("Raffa web client failed to start:", error);
     root.render(
       <StrictMode>
         <div role="alert" className="startup-error">
-          <h1>Contigo could not start</h1>
+          <h1>Raffa could not start</h1>
           <p>{message}</p>
         </div>
       </StrictMode>,

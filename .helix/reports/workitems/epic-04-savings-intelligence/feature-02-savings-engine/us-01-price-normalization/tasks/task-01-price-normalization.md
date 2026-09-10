@@ -4,7 +4,7 @@ type: task
 story: us-01-price-normalization
 wave: R3
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-price-normalization — 01 Price Normalization
@@ -18,7 +18,7 @@ Normalize unit price; compute percentile/target/range.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `savings-normalization` |
+| workspace/raffa-backend/src/ | implementation for `savings-normalization` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-002, ADR-003.
@@ -30,7 +30,7 @@ Normalize unit price; compute percentile/target/range.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | savings-normalization behaviour | workspace/contigo-backend/tests |
+| unit | savings-normalization behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

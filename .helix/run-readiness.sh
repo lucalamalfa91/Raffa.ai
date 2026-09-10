@@ -3,12 +3,12 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ARTIFACT="$HERE/contigo-readiness-process.yaml"
+ARTIFACT="$HERE/raffa-readiness-process.yaml"
 HELIX_BACKEND="${HELIX_BACKEND:-$HERE/../../../helix/src/backend}"
 
 CHECK=0
-O="contigo-readiness-design"
-I="Contigo demo-readiness: epic-10 / e10 residuals after wave 9"
+O="raffa-readiness-design"
+I="Raffa demo-readiness: epic-10 / e10 residuals after wave 9"
 ARGS=()
 
 for a in "$@"; do

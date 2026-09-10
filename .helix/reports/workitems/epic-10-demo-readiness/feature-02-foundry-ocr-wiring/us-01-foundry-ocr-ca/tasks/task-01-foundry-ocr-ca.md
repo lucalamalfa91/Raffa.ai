@@ -4,17 +4,17 @@ type: task
 story: us-01-foundry-ocr-ca
 wave: 10
 status: live
-target_repo: contigo-infra
+target_repo: raffa-infra
 ---
 
 # task-01-foundry-ocr-ca — Wire Foundry + Document Intelligence into CA
 
 ## Coding objective
 
-Confirm whether `ca-contigo-*-api` / worker already have Foundry project
+Confirm whether `ca-raffa-*-api` / worker already have Foundry project
 and Document Intelligence (ADR-017) settings. If the live env list is still
 connection-strings-only, add Terraform for the missing endpoints/identities
-and let HCP apply `contigo-dev` / `contigo-demo`. Do not laptop-apply. Do
+and let HCP apply `raffa-dev` / `raffa-demo`. Do not laptop-apply. Do
 not add Savings/Quotes connection strings (e09 F02). Do not generate SQL.
 
 ## Parent story AC covered
@@ -25,8 +25,8 @@ not add Savings/Quotes connection strings (e09 F02). Do not generate SQL.
 
 | Path | Change |
 |------|--------|
-| workspace/contigo-infra/modules/containerapps/ | CA env for AI Gateway / DI |
-| workspace/contigo-infra/modules/ (Foundry/DI) | only if hooks are incomplete |
+| workspace/raffa-infra/modules/containerapps/ | CA env for AI Gateway / DI |
+| workspace/raffa-infra/modules/ (Foundry/DI) | only if hooks are incomplete |
 
 ## Context the implementer needs
 

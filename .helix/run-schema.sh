@@ -3,12 +3,12 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ARTIFACT="$HERE/contigo-schema-process.yaml"
+ARTIFACT="$HERE/raffa-schema-process.yaml"
 HELIX_BACKEND="${HELIX_BACKEND:-$HERE/../../../helix/src/backend}"
 
 CHECK=0
-O="contigo-schema-design"
-I="Contigo schema-apply: epic-09 / e09 from existing R0-R4 plan"
+O="raffa-schema-design"
+I="Raffa schema-apply: epic-09 / e09 from existing R0-R4 plan"
 ARGS=()
 
 for a in "$@"; do

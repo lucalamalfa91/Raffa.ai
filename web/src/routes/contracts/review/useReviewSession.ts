@@ -113,7 +113,7 @@ export function useReviewSession(
           // baseline: "names the failing job, never a raw stack trace").
           message:
             contractResult.statusCode === 503 || contractResult.statusCode === null
-              ? "Contigo's contract service is temporarily unavailable. Try again in a moment."
+              ? "Raffa's contract service is temporarily unavailable. Try again in a moment."
               : (contractResult.error ?? "The contract could not be loaded."),
         });
         return;

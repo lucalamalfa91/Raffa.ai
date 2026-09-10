@@ -4,7 +4,7 @@ type: task
 story: us-01-ci-azure-oidc
 wave: R0
 status: live
-target_repo: contigo-infra
+target_repo: raffa-infra
 ---
 
 # task-02-workflow-auth-step — 02 Workflow Auth Step
@@ -18,7 +18,7 @@ Author a reusable azure/login OIDC step (no secret, only client/tenant/sub).
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-infra/src/ | implementation for `ci-workflow-auth` |
+| workspace/raffa-infra/src/ | implementation for `ci-workflow-auth` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-015.
@@ -30,7 +30,7 @@ Author a reusable azure/login OIDC step (no secret, only client/tenant/sub).
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | ci-workflow-auth behaviour | workspace/contigo-infra/tests |
+| unit | ci-workflow-auth behaviour | workspace/raffa-infra/tests |
 
 ## Open questions blocking this task
 - none

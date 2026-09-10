@@ -4,7 +4,7 @@ type: task
 story: us-02-audit-baseline
 wave: R0
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-02-audit-query — 02 Audit Query
@@ -18,7 +18,7 @@ Implement authorized GET /api/audit with tenant scoping.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `audit-query` |
+| workspace/raffa-backend/src/ | implementation for `audit-query` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-009.
@@ -30,7 +30,7 @@ Implement authorized GET /api/audit with tenant scoping.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | audit-query behaviour | workspace/contigo-backend/tests |
+| unit | audit-query behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

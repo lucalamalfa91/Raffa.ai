@@ -1,0 +1,34 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Raffa.SharedKernel\Raffa.SharedKernel.csproj" />
+    <ProjectReference Include="..\Raffa.AiGateway\Raffa.AiGateway.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Task E02/F04/US02/T01 (rag-citations): this module's own AddChatModule(IServiceCollection)
+         composition-root wiring (Infrastructure/ServiceCollectionExtensions.cs) — ADR-002's "each
+         module exposes an AddXxx(IServiceCollection) extension method", not yet done when this
+         project was created because no host took a dependency on any Raffa.Chat service yet.
+         Same generic .NET hosting abstraction (not a provider SDK) Raffa.AiGateway's own
+         Raffa.AiGateway.csproj already references for the identical reason — does not trip
+         Raffa.ArchitectureTests.DependencyDirectionTests.Domain_module_must_not_reference_provider_sdks. -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
+    <!-- Task E13/F05/US01/T01 (conversations-store): ChatDbContext's own EF Core / Npgsql
+         packages — same set as Raffa.Documents.Contracts.csproj / Raffa.Audit.csproj, minus
+         Pgvector (neither Conversation nor ConversationMessage has a vector column). -->
+    <PackageReference Include="EFCore.NamingConventions" Version="10.0.1" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.4">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

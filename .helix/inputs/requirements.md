@@ -1,4 +1,4 @@
-# Contigo V2 — Ask Contigo requirements
+# Raffa V2 — Ask Raffa requirements
 
 Status: **binding input** for the V2 Ask process (oracle for Passata 1 and for
 fan-out prompts). **Supersedes** `inputs/ask-copilot-brief.md`, `epic-12`
@@ -9,7 +9,7 @@ up to the buyer. Does not re-open `reports/context/locked-decisions.md`.
 
 | Oracle | Path |
 |--------|------|
-| Design (V2) | `inputs/design/prototypes/Contigo V2 Prototype.html` + `inputs/design/_claude-design-brief.md` ("V2 principles") |
+| Design (V2) | `inputs/design/prototypes/Raffa V2 Prototype.html` + `inputs/design/_claude-design-brief.md` ("V2 principles") |
 | Product spec | `inputs/product-spec.md` |
 | Code baseline audited | branch `integration` @ `4a1bddf`, 2026-09-08 |
 | ADRs in force | ADR-001…022 (ADR-023 is superseded by this document, see §8) |
@@ -26,7 +26,7 @@ not a lawyer, not a generic chatbot, **never a web search**.
 | # | Question | Decision |
 |---|----------|----------|
 | D1 | Where do uploads happen | **Documents only.** Ask never accepts attachments. When a document is needed, Ask answers with an action to `/documents`. |
-| D2 | What is the "knowledge base" | A **third-party market-intelligence API**: a worldwide benchmark of how companies close contracts (price bands, discounts, uplift caps, notice periods, negotiated clauses). Not available yet → a **mock feed** now, which populates Contigo's RAG (a *market* index) and the benchmark numbers. The live API later plugs into the same adapter. |
+| D2 | What is the "knowledge base" | A **third-party market-intelligence API**: a worldwide benchmark of how companies close contracts (price bands, discounts, uplift caps, notice periods, negotiated clauses). Not available yet → a **mock feed** now, which populates Raffa's RAG (a *market* index) and the benchmark numbers. The live API later plugs into the same adapter. |
 | D3 | Non-contract documents | **Rejected immediately** by an admission gate: not stored, audit event only, warm message with the reason. |
 | D4 | Relation to epic-12 | **V2 replaces e12.** One epic absorbs and rewrites the five e12 features. ADR-023 is superseded by a new ADR. |
 | D5 | Conversations | **Server-side, per user and per workspace**, under RLS; resumable from any device. |
@@ -43,29 +43,29 @@ either closed by a requirement in §5 or listed as a non-goal in §3.
 
 | # | Today | Evidence |
 |---|-------|----------|
-| P1 | Structured questions ("which contracts renew in 120 days?", spend) return "not wired to an endpoint". | `backend/src/Contigo.Api/ChatEndpointExtensions.cs` → `ToStructuredNotWiredResponse` |
-| P2 | Semantic questions echo retrieved chunk text (including `%PDF-1.4` headers) as the answer. | `backend/src/Contigo.AiGateway/Fixtures/FixtureAiGateway.cs` → `AnswerAsync` concatenates evidence |
-| P3 | No Foundry implementation: only the fixture is registered; `LoggingAiGateway` exists but is never wrapped. | `backend/src/Contigo.AiGateway/ServiceCollectionExtensions.cs` (`TryAddSingleton<IAiGateway, FixtureAiGateway>()`) |
-| P4 | No domain gate: "ciao" / "carbonara" / "can I sue?" go straight to RAG. | `backend/src/Contigo.Chat/Application/AskContigoQueryRouter.cs` (keyword router, two intents only) |
+| P1 | Structured questions ("which contracts renew in 120 days?", spend) return "not wired to an endpoint". | `backend/src/Raffa.Api/ChatEndpointExtensions.cs` → `ToStructuredNotWiredResponse` |
+| P2 | Semantic questions echo retrieved chunk text (including `%PDF-1.4` headers) as the answer. | `backend/src/Raffa.AiGateway/Fixtures/FixtureAiGateway.cs` → `AnswerAsync` concatenates evidence |
+| P3 | No Foundry implementation: only the fixture is registered; `LoggingAiGateway` exists but is never wrapped. | `backend/src/Raffa.AiGateway/ServiceCollectionExtensions.cs` (`TryAddSingleton<IAiGateway, FixtureAiGateway>()`) |
+| P4 | No domain gate: "ciao" / "carbonara" / "can I sue?" go straight to RAG. | `backend/src/Raffa.Chat/Application/AskRaffaQueryRouter.cs` (keyword router, two intents only) |
 | P5 | Single-turn chat: no conversations, no history, no "new chat / resume". | `POST /api/chat/query` only; `web/src/routes/ask/index.tsx` keeps messages in component state |
 | P6 | Citations are `Document:<guid>` chips; `Page` is always null; the engineer route line ("Structured query…") is shown; abstain is only the red block. | `ChatEndpointExtensions.ToEvidenceSnippet` (`Page: null`, `Section: "chunk n"`); `web/src/routes/ask/ChatMessage.tsx`, `askViewModel.ts` |
 | P7 | No in-app actions / deep links in replies. | reply shape `{question,intent,canDetermine,answer,citations,message}` |
-| P8 | Upload accepts only `.pdf/.docx/.xlsx`; **a non-contract is never rejected** — a document classified `Other` is still extracted and indexed into tenant RAG. | `web/src/routes/documents/UploadDropzone.tsx` (`ACCEPTED_EXTENSIONS`); `backend/src/Contigo.Documents.Contracts/Application/Extraction/DocumentProcessingPipeline.cs` (`MapDocumentType → Other`, then `IndexForRetrievalAsync`) |
-| P9 | Upload is synchronous inside the HTTP request; bytes are saved to blob **before** classification. | `backend/src/Contigo.Api/Program.cs` `MapPost("/api/documents")` |
+| P8 | Upload accepts only `.pdf/.docx/.xlsx`; **a non-contract is never rejected** — a document classified `Other` is still extracted and indexed into tenant RAG. | `web/src/routes/documents/UploadDropzone.tsx` (`ACCEPTED_EXTENSIONS`); `backend/src/Raffa.Documents.Contracts/Application/Extraction/DocumentProcessingPipeline.cs` (`MapDocumentType → Other`, then `IndexForRetrievalAsync`) |
+| P9 | Upload is synchronous inside the HTTP request; bytes are saved to blob **before** classification. | `backend/src/Raffa.Api/Program.cs` `MapPost("/api/documents")` |
 | P10 | No document list endpoint; the Documents screen remembers uploads in `sessionStorage`. | API has only `POST /api/documents`, `GET /api/documents/{id}`; `web/src/routes/documents/documentStore.ts` |
-| P11 | `IDocumentStorage` cannot load a saved object; no re-OCR / re-embed; no first-page preview. | `backend/src/Contigo.SharedKernel/Storage/IDocumentStorage.cs` (`SaveAsync` only); no `/preview` anywhere |
-| P12 | **Supplier identity does not exist**: no `Supplier` entity, no `supplier` fact extracted, `Contract.SupplierId` is never set. Ask cannot say "your Allianz contract". | `backend/src/Contigo.Suppliers.Products/` contains only the `.csproj`; `StagedExtractionService` fact switch has no `supplier` case |
-| P13 | Market corpus is a thin fixture (8 rows: AWS, Salesforce, Slack, Snowflake, Zoom, Notion) with no narrative and no insurance / facilities rows. | `backend/src/Contigo.Benchmark/Fixtures/FixtureBenchmarkAdapter.cs` |
-| P14 | Deterministic calculators exist but are not reachable from Ask: renewal engine + priority score, negotiation levers (quote lines only), savings opportunities. Renewal insight card has `MarketPosition = null`. | `Contigo.Renewals/Application/{RenewalEngine,PriorityScoreCalculator,RenewalPipelineBuilder}.cs`; `Contigo.Quotes/Application/Strategy/NegotiationStrategyCalculator.cs`; `Contigo.Savings/Application/SavingsOpportunityService.cs` |
-| P15 | No capability catalog: Ask does not know Contigo's own screens, so it cannot route the user. | suggestions are static strings in `web/src/routes/ask/askViewModel.ts` / `components/ask-bar/askSuggestions.ts` |
+| P11 | `IDocumentStorage` cannot load a saved object; no re-OCR / re-embed; no first-page preview. | `backend/src/Raffa.SharedKernel/Storage/IDocumentStorage.cs` (`SaveAsync` only); no `/preview` anywhere |
+| P12 | **Supplier identity does not exist**: no `Supplier` entity, no `supplier` fact extracted, `Contract.SupplierId` is never set. Ask cannot say "your Allianz contract". | `backend/src/Raffa.Suppliers.Products/` contains only the `.csproj`; `StagedExtractionService` fact switch has no `supplier` case |
+| P13 | Market corpus is a thin fixture (8 rows: AWS, Salesforce, Slack, Snowflake, Zoom, Notion) with no narrative and no insurance / facilities rows. | `backend/src/Raffa.Benchmark/Fixtures/FixtureBenchmarkAdapter.cs` |
+| P14 | Deterministic calculators exist but are not reachable from Ask: renewal engine + priority score, negotiation levers (quote lines only), savings opportunities. Renewal insight card has `MarketPosition = null`. | `Raffa.Renewals/Application/{RenewalEngine,PriorityScoreCalculator,RenewalPipelineBuilder}.cs`; `Raffa.Quotes/Application/Strategy/NegotiationStrategyCalculator.cs`; `Raffa.Savings/Application/SavingsOpportunityService.cs` |
+| P15 | No capability catalog: Ask does not know Raffa's own screens, so it cannot route the user. | suggestions are static strings in `web/src/routes/ask/askViewModel.ts` / `components/ask-bar/askSuggestions.ts` |
 | P16 | Web IA is still Day-1: Home first, flat rail, Ask is one item, Contract 360 with tabs, Review as its own route. V2 says Ask is home, two-tier nav, recent chats, review is a state of Documents. | `web/src/components/shell/navItems.ts`, `WorkspaceShellApp.tsx`, `routes/contracts/contract360/*` |
-| P17 | Chat module may only reference `SharedKernel` + `AiGateway`; benchmark / calculators cannot be composed inside it. | `backend/tests/Contigo.ArchitectureTests/DependencyDirectionTests.cs` allow-list |
+| P17 | Chat module may only reference `SharedKernel` + `AiGateway`; benchmark / calculators cannot be composed inside it. | `backend/tests/Raffa.ArchitectureTests/DependencyDirectionTests.cs` allow-list |
 
 ---
 
 ## 2. Goal
 
-Ask Contigo V2 is the **home** of Contigo (sign-in lands on `/ask`). It is a
+Ask Raffa V2 is the **home** of Raffa (sign-in lands on `/ask`). It is a
 **savings and negotiation copilot** that reasons only over three sources of
 truth and always says which one it used:
 
@@ -73,11 +73,11 @@ truth and always says which one it used:
 |--------|---------------|----------------|-----------|
 | **Your validated contracts** | structured facts (dates, spend, notice, uplift, liability…), clauses, pages | tenant tables + tenant `embedding` index (RLS) | ADR-009 / ADR-011: never another tenant |
 | **Market intelligence** | how companies close contracts: P25–P75 price bands, discounts achieved, uplift caps, notice periods, clauses obtained, by category / supplier / geography / company size / term | `IMarketIntelligenceProvider` (mock now, third-party API later) → benchmark rows **and** a shared, read-only **market index** | never tenant data, never another tenant's PDFs; written only by the ingestion job |
-| **Contigo itself** | capability catalog: what each screen does, its route, how to use it | static, versioned in the API | — |
+| **Raffa itself** | capability catalog: what each screen does, its route, how to use it | static, versioned in the API | — |
 
-The one rule: **every claim traces to one of the three sources, or Contigo
+The one rule: **every claim traces to one of the three sources, or Raffa
 abstains.** No web search, no model memory, no invented price, saving, date or
-clause text. Numbers come from Contigo's deterministic calculators
+clause text. Numbers come from Raffa's deterministic calculators
 (renewal engine, priority score, criticality score, benchmark bands,
 negotiation levers); the model **narrates** them.
 
@@ -154,7 +154,7 @@ processed independently and shows its own row and outcome.
 **R-DOC-02 Accepted formats.** `application/pdf`, DOCX, XLSX, `image/png`,
 `image/jpeg`. Format is checked by extension **and** magic bytes before any
 model call. Other formats are refused client-side and server-side (HTTP 415)
-with a plain message ("Contigo reads PDF, Word, Excel and scanned images").
+with a plain message ("Raffa reads PDF, Word, Excel and scanned images").
 - AC-1 A `.zip` renamed `.pdf` is refused (415) without touching the AI
   gateway.
 - AC-2 A PNG of a scanned order form goes through OCR (ADR-017) and is
@@ -184,7 +184,7 @@ detectedType, confidence, reason, hint }`.
 
 **R-DOC-04 Rejection copy.** The Documents result card for a rejected file
 reads warm and specific, e.g. *"Not added: this looks like a recipe, not a
-contract. Contigo only keeps contracts, order forms, quotes and the documents
+contract. Raffa only keeps contracts, order forms, quotes and the documents
 around them. Drop the signed agreement or the supplier's proposal."* Rejected
 files are shown for the current session only (they are not stored) and are
 never counted in "documents" or "askable".
@@ -243,7 +243,7 @@ prompt version, input hash — never the raw pack).
 - AC-2 Another tenant cannot read it even with a guessed id (RLS test).
 
 **R-CONV-02 New chat / resume.** The rail shows the user's last 5
-conversations nested under **Ask Contigo**, resume by click, "+ New chat".
+conversations nested under **Ask Raffa**, resume by click, "+ New chat".
 Asking from the global Ask bar on any screen **always opens a new chat**
 (V2 principle). ⌘K / Ctrl+K focuses the bar.
 - AC-1 Resuming a conversation renders past turns with citation cards and
@@ -293,7 +293,7 @@ intents, never free-form.
 
 **R-ASK-04 Context pack.** Assembled in the composition root from the three
 sources, **after** authorization, only for the intents planned. Every item
-carries a `citationKey`, a `corpus` (`tenant` | `market` | `contigo`), a
+carries a `citationKey`, a `corpus` (`tenant` | `market` | `raffa`), a
 human title / subtitle, page / section, snippet, `href` and provenance.
 Items:
 - tenant facts (contracts, renewals, risks, obligations, savings
@@ -317,7 +317,7 @@ are attached to the deployment or the request; temperature ≤ 0.2.
 
 **R-ASK-06 Grounding guards.** Before persisting or returning:
 1. every `[n]` and every `citationKey` must exist in the pack (existing
-   `AbstainGuard`, extended to keys and to market / contigo corpora);
+   `AbstainGuard`, extended to keys and to market / raffa corpora);
 2. every monetary amount, percentage and date in `answerMarkdown` must equal
    a value present in the pack (normalized; currency-aware) — otherwise the
    reply is regenerated once with the violation named, then downgraded to an
@@ -352,7 +352,7 @@ first…") and one CTA to Documents.
 
 ### 5.4 Contract vs market comparison
 
-**R-CMP-01** "Is my Allianz contract in line / above market?" → Contigo
+**R-CMP-01** "Is my Allianz contract in line / above market?" → Raffa
 resolves the supplier and the validated contract(s), queries the benchmark
 per priced line (unit price, term, geography, currency, quantity tier —
 spec §10.4 dimensions) and answers **below / in line / above the P25–P75
@@ -429,7 +429,7 @@ totals are calculator sums with currency, never model arithmetic.
 
 **R-PORT-03 Improvement hints.** "What should we improve" may propose
 clause-level improvements (e.g. add an uplift cap) only when a market note
-supports it; otherwise it limits itself to Contigo facts (missing notice
+supports it; otherwise it limits itself to Raffa facts (missing notice
 period, unlimited liability, auto-renewal without cap).
 
 ### 5.7 System-aware routing and capability catalog
@@ -438,7 +438,7 @@ period, unlimited liability, auto-renewal without cap).
 the API (`GET /api/capabilities`): for each capability — key, title, route
 pattern, one-paragraph description, example questions, role gate,
 availability condition (e.g. "needs one validated contract"), how-to steps.
-Initial entries: Ask Contigo, Documents (upload / attention / review),
+Initial entries: Ask Raffa, Documents (upload / attention / review),
 Portfolio, Contract 360 (answers band, clauses, details, tracker),
 Renewals (priority list, insight, action, tracker), Savings (KPIs,
 opportunities), Quote check (extract → assessment → target → negotiation),
@@ -451,8 +451,8 @@ unknown supplier → `Upload in Documents`; deadlines → `Renewals`;
 "what can you do" / "come faccio a…" → the module list with one action per
 module. Every reply carries ≥ 1 action when a capability applies.
 
-**R-SYS-03 Feature citations.** When Ask explains a Contigo capability, the
-citation card is a **feature card** (`corpus: contigo`): title = capability,
+**R-SYS-03 Feature citations.** When Ask explains a Raffa capability, the
+citation card is a **feature card** (`corpus: raffa`): title = capability,
 snippet = what it does, `href` = route. Deep links carry the object id when
 known (`/contracts/{id}`, `/quotes/{id}`, `/documents?review={id}`).
 - AC-1 "How do I review weak facts?" → answer from the catalog + feature
@@ -506,8 +506,8 @@ looking number without provenance is a defect (ADR-001).
 
 **R-MKT-05 Live API later.** The third-party client is a new
 `IMarketIntelligenceProvider` implementation behind the same ingestion job;
-no Ask, Chat or UI change. The provider feeds Contigo's store and is never
-queried live: at question time Ask reads only Contigo's database and indexes
+no Ask, Chat or UI change. The provider feeds Raffa's store and is never
+queried live: at question time Ask reads only Raffa's database and indexes
 (tenant tables + `embedding`; `market_record` + `market_embedding`). Licence
 restrictions from the provider are stored and respected (spec §10.3).
 
@@ -516,7 +516,7 @@ restrictions from the provider are stored and respected (spec §10.3).
 **R-SUP-01 Extraction.** Staged extraction gains the `supplier` fact
 (legal name, page, span, confidence) as a **critical field** (spec §7.3).
 
-**R-SUP-02 Entity.** `Contigo.Suppliers.Products` gets `Supplier`
+**R-SUP-02 Entity.** `Raffa.Suppliers.Products` gets `Supplier`
 (tenant-scoped, RLS): name, normalized name, aliases, category, country,
 created/updated. `Contract.SupplierId` is set through a resolver port
 (`ISupplierResolver` in SharedKernel, implemented by Suppliers.Products,
@@ -537,14 +537,14 @@ list, Portfolio, Renewals, Ask citations ("Salesforce · MSA 2024 · p.12
 **R-AI-01 FoundryAiGateway** implements the five ADR-004 roles (`ocr` via
 Document Intelligence `prebuilt-read` / `prebuilt-layout`, `classify`,
 `extract`, `embed`, `answer`) with Azure SDKs **only** in
-`Contigo.AiGateway`. Registered when `AiGateway:Endpoint` is set (Container
+`Raffa.AiGateway`. Registered when `AiGateway:Endpoint` is set (Container
 Apps already inject `AiGateway__Endpoint` / `ProjectName` /
 `DocumentIntelligenceConnection`, `infra/modules/containerapps/main.tf`);
 fixture otherwise. Always wrapped by `LoggingAiGateway`.
 - AC-1 DI tests: endpoint set → Foundry inside Logging; unset → fixture
   inside Logging.
 - AC-2 Architecture test: no Azure AI SDK reference outside
-  `Contigo.AiGateway`.
+  `Raffa.AiGateway`.
 
 **R-AI-02 Structured output.** `classify` returns a label from a fixed set +
 confidence; `answer` returns the JSON of R-ASK-05. Prompts are versioned
@@ -582,7 +582,7 @@ CI against the fixture gateway and on demand against Foundry; hallucination
 **R-WEB-01 Ask is home.** `/` redirects to `/ask`; sign-in → workspace
 picker → `/ask`. Route `/ask/:conversationId` resumes a chat.
 
-**R-WEB-02 Two-tier navigation** (prototype): primary **Ask Contigo**
+**R-WEB-02 Two-tier navigation** (prototype): primary **Ask Raffa**
 (⌘K badge, recent conversations nested, "+ New chat") and **Documents**
 ("N to review" badge); secondary **From your contracts**: Portfolio,
 Renewals, Quote check — greyed with reroute empty states until the first
@@ -596,7 +596,7 @@ screen); Enter opens a **new chat** on `/ask` with the question.
 
 **R-WEB-04 Rich reply.** Markdown body with inline `[n]`; citation cards
 (human title, page / section, snippet, first-page preview or placeholder,
-corpus badge *validated contract* / *market · representative* / *Contigo*);
+corpus badge *validated contract* / *market · representative* / *Raffa*);
 actions as buttons; redirect and refusal layouts (warm prose + one CTA);
 abstain block only for true insufficiency. No route line, no guids.
 
@@ -620,7 +620,7 @@ members read-only with "request access".
 ## 6. API contract (additions and changes)
 
 All endpoints tenant-scoped (`X-Tenant-Id` under ADR-022, token later) and
-described in `web/openapi/contigo-api.v1.json`; the TS client is regenerated
+described in `web/openapi/raffa-api.v1.json`; the TS client is regenerated
 (`npm run generate:api`).
 
 | Method & path | Purpose |
@@ -655,7 +655,7 @@ Reply of a message (`kind` decides the layout):
     { "n": 2, "corpus": "market", "title": "Sales Cloud Enterprise · CH · 500–2 000 employees",
       "subtitle": "representative market data · mock feed · updated 2026-09-01",
       "snippet": "P25 118 · P50 132 · P75 149 CHF/user/month · n = 214", "recordId": "…" },
-    { "n": 3, "corpus": "contigo", "title": "Renewals", "subtitle": "/renewals",
+    { "n": 3, "corpus": "raffa", "title": "Renewals", "subtitle": "/renewals",
       "snippet": "Priority list, insight card, action and tracker." }
   ],
   "actions": [ { "label": "Open Contract 360 →", "href": "/contracts/…", "kind": "primary" },
@@ -670,7 +670,7 @@ Rejected upload (422):
 ```json
 { "rejected": true, "detectedType": "Other", "confidence": 0.93,
   "reason": "not_a_contract | no_readable_text",
-  "hint": "Contigo only keeps contracts, order forms, quotes and the documents around them." }
+  "hint": "Raffa only keeps contracts, order forms, quotes and the documents around them." }
 ```
 
 ---
@@ -693,7 +693,7 @@ Schema lands as checked-in idempotent SQL applied by CI (ADR-021); no
 
 ## 8. Architecture and ADR implications
 
-- **ADR-023 is superseded** by a new ADR ("Ask Contigo V2: conversations,
+- **ADR-023 is superseded** by a new ADR ("Ask Raffa V2: conversations,
   admission gate, market-intelligence feed, capability catalog"). The council
   writes it; the decisions it must contain are D1–D8 and §2's three sources.
 - **ADR-011 amendment.** Two corpora stay: tenant RAG (unchanged) and market.
@@ -709,21 +709,21 @@ Schema lands as checked-in idempotent SQL applied by CI (ADR-021); no
 - **ADR-017.** PNG / JPG are first-class inputs to the `ocr` role.
 - **ADR-018 / ADR-020 amendment.** V2 IA replaces the Day-1 sitemap: Ask
   home, two-tier nav, no Home item, review as a state of Documents,
-  `Contigo V2 Prototype.html` as the pixel reference.
+  `Raffa V2 Prototype.html` as the pixel reference.
 - **ADR-002 (module map).** New modules and allow-list changes, proposed for
   the council (`DependencyDirectionTests.AllowedReferences`):
-  - `Contigo.Chat` → `[SharedKernel, AiGateway]` unchanged; it gains its own
+  - `Raffa.Chat` → `[SharedKernel, AiGateway]` unchanged; it gains its own
     DbContext (conversations), the domain gate, planner, guards, prompt
     versions and pack DTOs. Composition (facts, benchmark, calculators)
-    stays in `Contigo.Api`.
-  - `Contigo.Market` (new) → `[SharedKernel, AiGateway, Benchmark]`: feed
+    stays in `Raffa.Api`.
+  - `Raffa.Market` (new) → `[SharedKernel, AiGateway, Benchmark]`: feed
     adapter, mock, ingestion, `market_embedding`, market retrieval,
     benchmark projection registered into `BenchmarkAdapterRegistry`.
-  - `Contigo.Insights` (new) → `[SharedKernel, Benchmark]`: pure
+  - `Raffa.Insights` (new) → `[SharedKernel, Benchmark]`: pure
     calculators (criticality, contract-level negotiation levers via a
     shared *priced line* input, strategy pack builder) fed by DTOs.
-  - `Contigo.Suppliers.Products` → `[SharedKernel]`: `Supplier`, resolver.
-  - `Contigo.Documents.Contracts` → unchanged allow-list; admission gate,
+  - `Raffa.Suppliers.Products` → `[SharedKernel]`: `Supplier`, resolver.
+  - `Raffa.Documents.Contracts` → unchanged allow-list; admission gate,
     page-aware index, `LoadAsync` consumer, preview.
 - **Locked decisions** untouched: Azure, Foundry via the gateway, Key Vault,
   API-first, trunk-based flow.
@@ -739,8 +739,8 @@ Schema lands as checked-in idempotent SQL applied by CI (ADR-021); no
 | 3 | Ask about the uploaded contract vs the knowledge base | tenant RAG exists (page-less chunks, `%PDF` text); market = 8 fixture rows, no narrative; no supplier names | market index + mock feed + supplier identity + page-aware chunks missing | R-MKT-01…05, R-SUP-01…04, R-DOC-07, R-EVD-01, R-CMP-01…03 |
 | 4 | Renewal strategy for that contract | renewal engine, priority score, insight card, quote-line levers exist; none reachable from Ask; `MarketPosition = null` | strategy pack, contract-level levers, narration | R-STR-01…03, `/api/contracts/{id}/strategy` |
 | 5 | New chat: portfolio strategy (most critical, improve, save) | no conversations; no criticality score; savings opportunities exist | conversations, criticality calculator, portfolio intents | R-CONV-01…03, R-PORT-01…03 |
-| 6 | Verified info from Contigo's data only, never the web | fixture only; no Foundry; no numeric guard; abstain guard on document ids only | Foundry gateway with no tools, guards on keys / numbers / actions, AI eval set | R-AI-01…03, R-ASK-06, R-EVD-03 |
-| 7 | Ask knows every Contigo feature and routes with the right citation | static suggestion strings; no catalog; no actions in replies | capability catalog, routing, feature citations | R-SYS-01…04 |
+| 6 | Verified info from Raffa's data only, never the web | fixture only; no Foundry; no numeric guard; abstain guard on document ids only | Foundry gateway with no tools, guards on keys / numbers / actions, AI eval set | R-AI-01…03, R-ASK-06, R-EVD-03 |
+| 7 | Ask knows every Raffa feature and routes with the right citation | static suggestion strings; no catalog; no actions in replies | capability catalog, routing, feature citations | R-SYS-01…04 |
 | 8 | Structured questions answered (not "not wired") | planner + handler exist, never fed with real contracts | composition of `ContractFact` from tenant store | R-ASK-03/04 |
 | 9 | Off-domain / greeting / legal handled warmly | no gate | domain gate | R-ASK-02 |
 | 10 | Rich reply (prose, cards, preview, deep links) | raw text, guid chips, route line | reply contract + UI | R-ASK-07/08, R-DOC-08, R-WEB-04 |
@@ -776,17 +776,17 @@ Schema lands as checked-in idempotent SQL applied by CI (ADR-021); no
 
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | admission gate (types, thresholds, min readable text, fixture classifier), format sniffing | `Contigo.Documents.Contracts.Tests` |
-| unit | domain gate labels, planner intents, supplier resolution in questions | `Contigo.Chat.Tests` |
-| unit | grounding guards (keys, numbers, actions), reply builder, prompt version pinning | `Contigo.Chat.Tests` |
-| unit | criticality components, contract-level levers, strategy pack | `Contigo.Insights.Tests` (new) |
-| unit | feed → benchmark rows + market notes; idempotent ingestion; provenance | `Contigo.Market.Tests` (new) |
-| unit | Foundry DI swap + logging wrap; no-tools request shape; SDK allow-list | `Contigo.AiGateway.Tests`, `Contigo.ArchitectureTests` |
-| API | 415 / 422 / 201 upload outcomes; list; preview; reprocess; conversations CRUD; capabilities | `Contigo.Api.Tests` |
-| integration | RLS on conversations; market index shared but never tenant; reprocess removes `%PDF`; supplier back-fill | `Contigo.IntegrationTests` |
+| unit | admission gate (types, thresholds, min readable text, fixture classifier), format sniffing | `Raffa.Documents.Contracts.Tests` |
+| unit | domain gate labels, planner intents, supplier resolution in questions | `Raffa.Chat.Tests` |
+| unit | grounding guards (keys, numbers, actions), reply builder, prompt version pinning | `Raffa.Chat.Tests` |
+| unit | criticality components, contract-level levers, strategy pack | `Raffa.Insights.Tests` (new) |
+| unit | feed → benchmark rows + market notes; idempotent ingestion; provenance | `Raffa.Market.Tests` (new) |
+| unit | Foundry DI swap + logging wrap; no-tools request shape; SDK allow-list | `Raffa.AiGateway.Tests`, `Raffa.ArchitectureTests` |
+| API | 415 / 422 / 201 upload outcomes; list; preview; reprocess; conversations CRUD; capabilities | `Raffa.Api.Tests` |
+| integration | RLS on conversations; market index shared but never tenant; reprocess removes `%PDF`; supplier back-fill | `Raffa.IntegrationTests` |
 | web | rail V2, Ask home, rich reply, redirect layout, Documents multi + Not added, resume | `web/tests` (vitest) |
 | e2e | V2 pilot path (A1 → A8) against `dev` | `web/e2e/v2.spec.ts` (playwright) |
-| AI eval | golden set (R-EVD-03) | `backend/tests/Contigo.AiEval` (new), CI on fixture, manual on Foundry |
+| AI eval | golden set (R-EVD-03) | `backend/tests/Raffa.AiEval` (new), CI on fixture, manual on Foundry |
 
 ---
 
@@ -818,7 +818,7 @@ F03 / F05 / F08 (M).
 
 | # | Assumption (in force unless overridden at HITL) |
 |---|--------------------------------------------------|
-| A1 | The mock feed's record shape (R-MKT-01) is Contigo's own normalized contract; the third-party API will be mapped onto it, not the reverse. |
+| A1 | The mock feed's record shape (R-MKT-01) is Raffa's own normalized contract; the third-party API will be mapped onto it, not the reverse. |
 | A2 | Admission threshold 0.6 and min readable text 200 chars are configuration, tuned on the golden set. |
 | A3 | Savings KPIs / opportunities live at `/savings` (renamed from Home), not in the rail; reachable from Ask actions, Renewals and Contract 360. |
 | A4 | Conversations retention: unlimited in V2; deletion by the owner only. |
@@ -829,7 +829,7 @@ F03 / F05 / F08 (M).
 | A9 | Live Foundry on `dev` / `demo` is required for acceptance A2–A8; the fixture gateway proves the same paths in CI. |
 
 Open for the council: ADR-024 text; final module placement of criticality
-and levers (`Contigo.Insights` vs existing modules); whether `market_record`
+and levers (`Raffa.Insights` vs existing modules); whether `market_record`
 lives in Postgres or only in the feed file.
 
 ---
@@ -839,12 +839,12 @@ lives in Postgres or only in the feed file.
 | This document | Existing decision / spec |
 |---------------|--------------------------|
 | Documents only, admission gate | spec §4.1 types, §7.1 statuses; ADR-017 OCR; D1, D3, D7 |
-| Two corpora + Contigo catalog | ADR-009, ADR-011 (amended), ADR-023 (superseded) |
+| Two corpora + Raffa catalog | ADR-009, ADR-011 (amended), ADR-023 (superseded) |
 | Market feed mock → API | ADR-001, spec §10.2–§10.4; D2 |
 | Foundry roles, no tools, logging | ADR-004, ADR-008, ADR-011, spec §14.2 |
 | Deterministic numbers narrated | spec §9, §10, §12.1, Appendix C rules 6 and 10; D6 |
 | Conversations | D5, ADR-009 (RLS), ADR-022 (identity posture) |
-| V2 IA | ADR-018 / ADR-020 (amended), design brief V2 principles, `Contigo V2 Prototype.html` |
+| V2 IA | ADR-018 / ADR-020 (amended), design brief V2 principles, `Raffa V2 Prototype.html` |
 | Schema changes | ADR-021 |
 | Evidence and citations | spec §8.3–§8.4, §15.3 |
 

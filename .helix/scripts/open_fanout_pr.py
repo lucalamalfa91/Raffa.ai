@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Helix `on_orchestration_stop` hook: push product `integration` and open a PR.
 
-Must operate on the *product* clone (`lucalamalfa91/contigo`), never the
+Must operate on the *product* clone (`lucalamalfa91/raffa`), never the
 nested `.helix` git that `ensure_artifact_git` used to create. That nest has
 no `origin`; the r0-a hook exited 1 there and Helix stayed green (observation,
 fail-open).

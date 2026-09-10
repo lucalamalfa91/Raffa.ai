@@ -25,4 +25,4 @@ must not block `dev`/`demo`.
 
 ## Target repo
 
-`contigo-mobile`
+`raffa-mobile`

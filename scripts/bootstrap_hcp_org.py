@@ -14,16 +14,16 @@ did for the GitHub side in E01/F01/US01/T01.
 What it does, in order:
 
   1. organization -- GET the org; if absent, POST to create it (needs an
-     owner email, see CONTIGO_TFC_ORG_EMAIL below). AC-1.
-  2. workspaces    -- GET, then POST or PATCH `contigo-dev` and
-     `contigo-demo` so each converges to: execution-mode=remote (HCP
+     owner email, see RAFFA_TFC_ORG_EMAIL below). AC-1.
+  2. workspaces    -- GET, then POST or PATCH `raffa-dev` and
+     `raffa-demo` so each converges to: execution-mode=remote (HCP
      Terraform itself runs plan/apply and owns state) and its own
      working-directory under infra/environments/{dev,demo} (ADR-007
      layout, created by a later feature-02 task). Every HCP Terraform
      workspace stores its state in HCP by construction -- there is no
      local-file or in-repo backend option -- so two separate workspaces
      *is* independent remote state per environment. AC-2. Each workspace
-     also gets `project:contigo` / `env:{dev,demo}` organizational tags
+     also gets `project:raffa` / `env:{dev,demo}` organizational tags
      for filtering, applied via `POST .../relationships/tags` -- the
      `tag-names` convenience attribute on the workspace resource itself
      is accepted by this account's API without error but silently has no
@@ -33,13 +33,13 @@ What it does, in order:
   3. VCS wiring    -- best-effort, never a hard gate. If the organization
      already has a VCS provider connected (an `oauth-client`, e.g. a
      linked GitHub App or legacy OAuth connection), this script attaches
-     `vcs-repo` (owner/repo from CONTIGO_GITHUB_OWNER/CONTIGO_GITHUB_REPO,
-     default lucalamalfa91/contigo) plus file-triggers-enabled=true and
+     `vcs-repo` (owner/repo from RAFFA_GITHUB_OWNER/RAFFA_GITHUB_REPO,
+     default lucalamalfa91/raffa) plus file-triggers-enabled=true and
      trigger-prefixes=["infra/"], so a change anywhere under infra/
      (shared modules or either environment root) triggers that
      workspace's plan/apply -- the parent task's stated goal. Verified
      live against this org on 2026-09-02
-     (GET /organizations/contigo-platform/oauth-clients -> zero results):
+     (GET /organizations/raffa-platform/oauth-clients -> zero results):
      today there is no VCS provider connected, because connecting GitHub
      to HCP Terraform is an interactive, human-driven step (an OAuth
      authorize redirect, or installing HCP Terraform's GitHub App) that no
@@ -64,7 +64,7 @@ What it does, in order:
      assertion (AI_RESOURCE_GROUP_NAME / AI_SERVICES_ACCOUNT_NAME /
      FOUNDRY_PROJECTS below), the one shared Azure AI Services account in
      its own resource group + two account-native Foundry projects
-     (`contigo-dev`, `contigo-demo`) + a per-project Document Intelligence
+     (`raffa-dev`, `raffa-demo`) + a per-project Document Intelligence
      connection name. Since 2026-09-09 those resources are created by
      Terraform (infra/modules/foundry: the dev root owns the account, demo
      attaches to it) -- there is no hub and no portal step any more. This
@@ -77,14 +77,14 @@ What it does, in order:
      name per project).
 
 Auth: `TFE_TOKEN` (the standard env var Terraform CLI and the `tfe`
-provider read) or `HCP_TERRAFORM_TOKEN` as a Contigo-side alias. Address
+provider read) or `HCP_TERRAFORM_TOKEN` as a Raffa-side alias. Address
 defaults to https://app.terraform.io (`TFE_ADDRESS` / `HCP_TERRAFORM_ADDRESS`
 to override, e.g. for Terraform Enterprise). Organization defaults to
-`contigo-platform` (`CONTIGO_TFC_ORG` to override) -- `contigo` itself is
+`raffa-platform` (`RAFFA_TFC_ORG` to override) -- `raffa` itself is
 *not* the org slug: that name was already taken in app.terraform.io's
 global namespace, so the org actually backing this product is
-`contigo-platform` (confirmed live via GET /api/v2/organizations against
-the configured token). Do not "fix" this back to a bare `contigo`; that
+`raffa-platform` (confirmed live via GET /api/v2/organizations against
+the configured token). Do not "fix" this back to a bare `raffa`; that
 org is not the one wired to this account or token.
 
 This script never handles a GitHub token or credential: VCS wiring only
@@ -130,14 +130,14 @@ ADDRESS_ENV_PRIMARY = "TFE_ADDRESS"
 ADDRESS_ENV_ALIAS = "HCP_TERRAFORM_ADDRESS"
 DEFAULT_ADDRESS = "https://app.terraform.io"
 
-ORG_ENV = "CONTIGO_TFC_ORG"
-DEFAULT_ORG = "contigo-platform"  # verified live 2026-09-02; "contigo" was unavailable
-ORG_EMAIL_ENV = "CONTIGO_TFC_ORG_EMAIL"  # only needed if the org must be created fresh
+ORG_ENV = "RAFFA_TFC_ORG"
+DEFAULT_ORG = "raffa-platform"  # verified live 2026-09-02; "raffa" was unavailable
+ORG_EMAIL_ENV = "RAFFA_TFC_ORG_EMAIL"  # only needed if the org must be created fresh
 
-GITHUB_OWNER_ENV = "CONTIGO_GITHUB_OWNER"
-GITHUB_REPO_ENV = "CONTIGO_GITHUB_REPO"
+GITHUB_OWNER_ENV = "RAFFA_GITHUB_OWNER"
+GITHUB_REPO_ENV = "RAFFA_GITHUB_REPO"
 DEFAULT_GITHUB_OWNER = "lucalamalfa91"
-DEFAULT_GITHUB_REPO = "contigo"
+DEFAULT_GITHUB_REPO = "raffa"
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -145,8 +145,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # the task/ADR, not environment-configurable, the same way BRANCH="main" is
 # a constant (not an env var) in apply_github_branch_protection.py.
 WORKSPACES: tuple[dict, ...] = (
-    {"name": "contigo-dev", "env": "dev", "working_directory": "infra/environments/dev"},
-    {"name": "contigo-demo", "env": "demo", "working_directory": "infra/environments/demo"},
+    {"name": "raffa-dev", "env": "dev", "working_directory": "infra/environments/dev"},
+    {"name": "raffa-demo", "env": "demo", "working_directory": "infra/environments/demo"},
 )
 
 JSON_API_HEADERS = {
@@ -277,7 +277,7 @@ def get_oauth_token_id(token: str, org: str) -> str | None:
 
 
 def _workspace_tags(spec: dict) -> list[str]:
-    return ["project:contigo", f"env:{spec['env']}"]
+    return ["project:raffa", f"env:{spec['env']}"]
 
 
 def _workspace_attributes(spec: dict, oauth_token_id: str | None) -> dict:
@@ -402,7 +402,7 @@ def check_no_state_in_git() -> tuple[bool, str]:
 # ADR-008 (amended 2026-09-09): one shared pay-as-you-go Azure AI Services
 # account (kind AIServices -- Azure OpenAI + Document Intelligence on one
 # endpoint) in its own resource group, two account-native Foundry projects
-# (`contigo-dev`, `contigo-demo`) -- never a second account/subscription,
+# (`raffa-dev`, `raffa-demo`) -- never a second account/subscription,
 # no hub. ADR-017 (amended the same day): Document Intelligence
 # `prebuilt-read` is native to that *same* account; the per-project
 # "connection" below is an informational value the backend sends as a
@@ -423,21 +423,21 @@ def check_no_state_in_git() -> tuple[bool, str]:
 # is the one shared account ADR-008 requires; isolation between
 # environments is by distinct Foundry project, per-environment deployment
 # names and per-environment RBAC principals, never a second account.
-AI_RESOURCE_GROUP_NAME = "rg-contigo-ai"
-AI_SERVICES_ACCOUNT_NAME = "aisvc-contigo"
+AI_RESOURCE_GROUP_NAME = "rg-raffa-ai"
+AI_SERVICES_ACCOUNT_NAME = "aisvc-raffa"
 
 FOUNDRY_PROJECTS: tuple[dict, ...] = (
     {
-        "project": "contigo-dev",
+        "project": "raffa-dev",
         "env": "dev",
         # ADR-017 AC-4: one Document Intelligence connection per project,
         # both pointing at the same AI_SERVICES_ACCOUNT_NAME account.
-        "document_intelligence_connection": "conn-docint-contigo-dev",
+        "document_intelligence_connection": "conn-docint-raffa-dev",
     },
     {
-        "project": "contigo-demo",
+        "project": "raffa-demo",
         "env": "demo",
-        "document_intelligence_connection": "conn-docint-contigo-demo",
+        "document_intelligence_connection": "conn-docint-raffa-demo",
     },
 )
 
@@ -448,8 +448,8 @@ def check_foundry_account_recorded() -> tuple[bool, str]:
     Not a live Azure API call -- see the module docstring point 5 and the
     comment above AI_RESOURCE_GROUP_NAME. This only asserts the constants
     above still describe exactly: one shared resource group, one shared AI
-    services account, the two ADR-008 projects (`contigo-dev`,
-    `contigo-demo`, no more, no fewer), and a non-empty Document
+    services account, the two ADR-008 projects (`raffa-dev`,
+    `raffa-demo`, no more, no fewer), and a non-empty Document
     Intelligence connection name recorded for each project -- i.e. that
     the recorded shape has not silently drifted (e.g. someone adding a
     second account, which ADR-008 forbids).
@@ -459,7 +459,7 @@ def check_foundry_account_recorded() -> tuple[bool, str]:
     if not AI_SERVICES_ACCOUNT_NAME.strip():
         return False, "no Foundry AI services account name recorded"
 
-    expected_projects = {"contigo-dev", "contigo-demo"}
+    expected_projects = {"raffa-dev", "raffa-demo"}
     recorded_projects = {p["project"] for p in FOUNDRY_PROJECTS}
     if recorded_projects != expected_projects:
         return (

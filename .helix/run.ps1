@@ -1,4 +1,4 @@
-# contigo-flow Windows launcher. Prefer this in PowerShell; run.sh needs Git Bash.
+# raffa-flow Windows launcher. Prefer this in PowerShell; run.sh needs Git Bash.
 param(
     [switch]$Check,
     [switch]$Fresh,
@@ -14,7 +14,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $Here = $PSScriptRoot
-$Artifact = Join-Path $Here "contigo-process.yaml"
+$Artifact = Join-Path $Here "raffa-process.yaml"
 $envFile = Join-Path $Here ".env"
 
 if (-not (Test-Path $envFile)) {

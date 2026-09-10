@@ -49,13 +49,13 @@ describe("documentStore (us-02-document-status-readback: session-scoped document
   });
 
   it("treats malformed sessionStorage content as an empty list rather than throwing", () => {
-    window.sessionStorage.setItem("contigo.documents.readback", "not json");
+    window.sessionStorage.setItem("raffa.documents.readback", "not json");
 
     expect(loadTrackedDocuments()).toEqual([]);
   });
 
   it("treats a non-array JSON payload under the key as an empty list", () => {
-    window.sessionStorage.setItem("contigo.documents.readback", JSON.stringify({ not: "an array" }));
+    window.sessionStorage.setItem("raffa.documents.readback", JSON.stringify({ not: "an array" }));
 
     expect(loadTrackedDocuments()).toEqual([]);
   });

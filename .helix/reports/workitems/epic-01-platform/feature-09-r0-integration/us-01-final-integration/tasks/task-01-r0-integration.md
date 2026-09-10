@@ -4,7 +4,7 @@ type: task
 story: us-01-final-integration
 wave: R0
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-r0-integration — 01 R0 Integration
@@ -18,7 +18,7 @@ Prove R0 end-to-end: workspace->upload->storage->audit on dev/demo.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `r0-integration` |
+| workspace/raffa-backend/src/ | implementation for `r0-integration` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-001, ADR-002, ADR-009, ADR-011, ADR-016.
@@ -30,7 +30,7 @@ Prove R0 end-to-end: workspace->upload->storage->audit on dev/demo.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | r0-integration behaviour | workspace/contigo-backend/tests |
+| unit | r0-integration behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

@@ -4,7 +4,7 @@ type: task
 story: us-05-foundry-account
 wave: R0
 status: live
-target_repo: contigo-infra
+target_repo: raffa-infra
 ---
 
 # task-02-foundry-connection-verify — 02 Foundry Connection Verify
@@ -18,7 +18,7 @@ Verify Foundry hub/projects availability in westeurope; record connection ids.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-infra/src/ | implementation for `foundry-connection` |
+| workspace/raffa-infra/src/ | implementation for `foundry-connection` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-008, ADR-006.
@@ -30,7 +30,7 @@ Verify Foundry hub/projects availability in westeurope; record connection ids.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | foundry-connection behaviour | workspace/contigo-infra/tests |
+| unit | foundry-connection behaviour | workspace/raffa-infra/tests |
 
 ## Open questions blocking this task
 - none

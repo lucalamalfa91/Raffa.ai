@@ -45,7 +45,7 @@ type LeversStage = "hidden" | "target" | "negotiation";
 
 /**
  * Route `/quotes` and `/quotes/:quoteId` -- Quote check, V2 (ADR-024 V2 IA; screens-v2.md #9;
- * `contigo-v2/markup.html` "QUOTE CHECK (optional)" block). The header is constant ("Optional · new
+ * `raffa-v2/markup.html` "QUOTE CHECK (optional)" block). The header is constant ("Optional · new
  * purchase" · "Quote check" · the intro sentence); below it either the landing (`UploadQuoteForm`)
  * or, once a quote is loaded, the three-cell band (Supplier quote · Market range · Assessment), the
  * lines table (Line · Quoted · P50 · Position · Benchmark) and the footer "Target and negotiation
@@ -100,7 +100,7 @@ export default function QuoteCheckRoute({ apiClient }: QuoteCheckRouteProps) {
             statusCode: result.statusCode,
             message:
               result.statusCode === 503 || result.statusCode === null
-                ? "Contigo's quote service is temporarily unavailable. Try again in a moment."
+                ? "Raffa's quote service is temporarily unavailable. Try again in a moment."
                 : (result.error ?? "The quote could not be loaded."),
           });
           return;

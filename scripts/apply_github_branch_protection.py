@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Apply and verify `main`-branch protection on lucalamalfa91/contigo.
+"""Apply and verify `main`-branch protection on lucalamalfa91/raffa.
 
 Task E01/F01/US01/T01 (parent story AC-3, ADR-014): `main` must require a
 pull request, disallow direct pushes and force-pushes, and require status
@@ -16,7 +16,7 @@ Settings and the reasoning behind each one:
   reach `main`; a plain `git push origin main` is rejected. This is the
   literal "no direct push" requirement.
 - `required_approving_review_count: 0` -> the PR gate exists, but merging
-  does not block on an approval. Contigo's `main` has exactly one account
+  does not block on an approval. Raffa's `main` has exactly one account
   (lucalamalfa91) with write access and no standing second reviewer;
   combined with `enforce_admins: true` below, a required count >= 1 would
   make every merge to `main` permanently unapprovable -- nobody could ever
@@ -39,8 +39,8 @@ Settings and the reasoning behind each one:
 - `allow_force_pushes` / `allow_deletions: false` -> `main` cannot be
   rewritten or removed by anyone, admin included.
 
-Owner/repo resolve from CONTIGO_GITHUB_OWNER / CONTIGO_GITHUB_REPO
-(defaults lucalamalfa91 / contigo). CONTIGO_GITHUB_ORG is accepted as an
+Owner/repo resolve from RAFFA_GITHUB_OWNER / RAFFA_GITHUB_REPO
+(defaults lucalamalfa91 / raffa). RAFFA_GITHUB_ORG is accepted as an
 alias for the owner. Authenticates via whatever `gh` already has configured
 -- this script never handles a token itself, so there is nothing here to
 leak.
@@ -64,11 +64,11 @@ import os
 import subprocess
 import sys
 
-OWNER_ENV = "CONTIGO_GITHUB_OWNER"
-ORG_ENV = "CONTIGO_GITHUB_ORG"
-REPO_ENV = "CONTIGO_GITHUB_REPO"
+OWNER_ENV = "RAFFA_GITHUB_OWNER"
+ORG_ENV = "RAFFA_GITHUB_ORG"
+REPO_ENV = "RAFFA_GITHUB_REPO"
 DEFAULT_OWNER = "lucalamalfa91"
-DEFAULT_REPO = "contigo"
+DEFAULT_REPO = "raffa"
 BRANCH = "main"
 
 # No CI workflow exists yet at T01 (R0). Later CI-setup tasks add the

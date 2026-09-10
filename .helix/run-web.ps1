@@ -1,24 +1,24 @@
-# Launch the WEB DELTA process only. Never points at contigo-process.yaml.
+# Launch the WEB DELTA process only. Never points at raffa-process.yaml.
 # Does not accept --fresh (would wipe ADR-001…017 / epic-01…05).
 # Does not copy slice.current.yaml (live fan-out stays on the other process).
 param(
     [switch]$Check,
-    [Alias("orchestration")][string]$o = "contigo-web-design",
-    [Alias("input")][string]$i = "Contigo web delta: wave 6+ from existing R0-R4 plan",
+    [Alias("orchestration")][string]$o = "raffa-web-design",
+    [Alias("input")][string]$i = "Raffa web delta: wave 6+ from existing R0-R4 plan",
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$Rest
 )
 
 $ErrorActionPreference = "Stop"
 $Here = $PSScriptRoot
-$Artifact = Join-Path $Here "contigo-web-process.yaml"
+$Artifact = Join-Path $Here "raffa-web-process.yaml"
 $envFile = Join-Path $Here ".env"
 
 if (-not (Test-Path $envFile)) {
     throw "missing .env -- copy .env.example to .env and fill values"
 }
 if (-not (Test-Path $Artifact)) {
-    throw "missing contigo-web-process.yaml"
+    throw "missing raffa-web-process.yaml"
 }
 
 foreach ($a in @($Rest)) {
@@ -54,12 +54,12 @@ if ([string]::IsNullOrWhiteSpace($backend)) {
 }
 
 $webOrchs = @(
-    "contigo-web-design", "docs-intake-web", "architecture-council-web",
+    "raffa-web-design", "docs-intake-web", "architecture-council-web",
     "architecture-lanes-web", "council-close-web", "decomposition-web",
     "decomposition-check-web", "decomposition-remediation-web"
 )
 if ($webOrchs -notcontains $o) {
-    throw "run-web.ps1 only launches web orchs (got '$o'). Default is contigo-web-design. Never execution-fanout / contigo-design."
+    throw "run-web.ps1 only launches web orchs (got '$o'). Default is raffa-web-design. Never execution-fanout / raffa-design."
 }
 
 if ($Check) {
@@ -68,7 +68,7 @@ if ($Check) {
 }
 
 $assert = Join-Path $Here "scripts\assert_plan_untouched.py"
-Write-Host "artifact: contigo-web-process.yaml  orch: $o"
+Write-Host "artifact: raffa-web-process.yaml  orch: $o"
 Write-Host "protect: e01-e05, wave-spec.execution.yaml, ADR-001..017, epic-01..05 (not slice.current.yaml)"
 & python $assert snapshot
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

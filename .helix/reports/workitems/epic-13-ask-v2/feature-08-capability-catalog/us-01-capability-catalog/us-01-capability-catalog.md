@@ -6,14 +6,14 @@ wave: 13
 status: active
 ---
 
-# us-01-capability-catalog — Contigo routes me to the right screen with the right citation
+# us-01-capability-catalog — Raffa routes me to the right screen with the right citation
 
 ## Story
 
 As **procurement**, I want to ask "cosa sai fare?" or "come faccio a
 rivedere i campi deboli?" and get the module I need with a button that
 opens it, and I want every other answer to end with the right in-app
-action, so that Ask is the front door of Contigo and never sends me to a
+action, so that Ask is the front door of Raffa and never sends me to a
 page that does not exist.
 
 ## Acceptance criteria
@@ -21,7 +21,7 @@ page that does not exist.
 - [ ] AC-1 `GET /api/capabilities` returns the versioned catalog: key,
       title, routePattern, description, exampleQuestions[], roleGate,
       availability (`always` | `needsValidatedContract` | `admin`),
-      howTo[] — entries for Ask Contigo, Documents (upload / attention /
+      howTo[] — entries for Ask Raffa, Documents (upload / attention /
       review), Portfolio, Contract 360, Renewals, Savings, Quote check,
       Workspace & members.
 - [ ] AC-2 A routing table maps planner intents to catalog keys
@@ -34,7 +34,7 @@ page that does not exist.
 - [ ] AC-3 An availability condition not met (no validated contract)
       replaces the action with the Documents upload action and the copy
       "The portfolio lights up from validated contracts."
-- [ ] AC-4 Feature citation items (`corpus: contigo`, title = capability,
+- [ ] AC-4 Feature citation items (`corpus: raffa`, title = capability,
       snippet = description, href = route) are produced for capability
       answers.
 
@@ -53,7 +53,7 @@ page that does not exist.
 ## Architecture decisions in force
 
 - ADR-024 — capability catalog; actions only from catalog hrefs
-- ADR-018 (amended) — V2 route map (`contigo-v2/ia-v2.md`)
+- ADR-018 (amended) — V2 route map (`raffa-v2/ia-v2.md`)
 
 ## Tasks
 
@@ -63,11 +63,11 @@ page that does not exist.
 
 ## Council decisions carried into this story
 
-Catalog lives in `backend/src/Contigo.Chat/Application/Capabilities/`
+Catalog lives in `backend/src/Raffa.Chat/Application/Capabilities/`
 (`CapabilityCatalog`, `CapabilityRouting`), version string
-`capabilities-v2.0`. Prototype oracle: `contigo-v2/app.jsx` `ask()`
+`capabilities-v2.0`. Prototype oracle: `raffa-v2/app.jsx` `ask()`
 capabilities branch ("I answer from your validated contracts and route
-you to the right part of Contigo: • Documents … • Portfolio … • Renewals …
+you to the right part of Raffa: • Documents … • Portfolio … • Renewals …
 • Quote check …") and `chipsFor` per screen; empty-state copy from
 `markup.html` ("The portfolio lights up from validated contracts. Upload
 one to start.").

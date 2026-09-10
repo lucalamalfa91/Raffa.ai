@@ -12,7 +12,7 @@ status: active
 
 As **procurement**, I want every contract to carry its supplier's name —
 in Documents, Portfolio, Renewals and in Ask ("your Allianz contract",
-"Salesforce · MSA 2024 · p.12 §8.4") — so that I can talk to Contigo about
+"Salesforce · MSA 2024 · p.12 §8.4") — so that I can talk to Raffa about
 a deal the way I name it, not by a guid.
 
 ## Acceptance criteria
@@ -44,13 +44,13 @@ a deal the way I name it, not by a guid.
 
 | Depends on | Why |
 |------------|-----|
-| us-01-v2-foundation | `Contigo.Suppliers.Products.Tests` project exists (T01) |
+| us-01-v2-foundation | `Raffa.Suppliers.Products.Tests` project exists (T01) |
 | us-01-documents-v2 | reprocess path (T02) for the back-fill |
 
 ## Architecture decisions in force
 
-- ADR-024 — supplier identity; `Contigo.Suppliers.Products` → `[SharedKernel]`
-- ADR-002 — Documents may not reference Suppliers; port in SharedKernel; composition in `Contigo.Api`
+- ADR-024 — supplier identity; `Raffa.Suppliers.Products` → `[SharedKernel]`
+- ADR-002 — Documents may not reference Suppliers; port in SharedKernel; composition in `Raffa.Api`
 - ADR-009 — RLS; ADR-021 — `suppliers.sql` in the CI apply list
 - spec §7.3 — critical fields
 
@@ -63,10 +63,10 @@ a deal the way I name it, not by a guid.
 
 ## Council decisions carried into this story
 
-Port: `Contigo.SharedKernel.Suppliers.ISupplierResolver` (`ResolveAsync(TenantId, string rawName, CancellationToken) → Result<EntityId>`).
+Port: `Raffa.SharedKernel.Suppliers.ISupplierResolver` (`ResolveAsync(TenantId, string rawName, CancellationToken) → Result<EntityId>`).
 Normalization: lower-case, strip legal suffixes (Inc, Ltd, GmbH, AG, SA, SpA, S.r.l., LLC, Corp), punctuation and whitespace. Table `supplier`
 with unique `(tenant_id, normalized_name)`. Schema script
-`backend/src/Contigo.Suppliers.Products/Migrations/Scripts/suppliers.sql`
+`backend/src/Raffa.Suppliers.Products/Migrations/Scripts/suppliers.sql`
 added to the fixed-order SCRIPTS list in `.github/workflows/backend.yml`
 (Apply schema + Verify schema applied).
 

@@ -60,7 +60,7 @@ the decomposer and the reviewer.
 4. **Portfolio** — R1 (columns, filters, attention strip).
 5. **Contract 360** — R1 (header + 10 tabs).
 6. **Review / correction** — R1 (confidence thresholds, evidence pane).
-7. **Ask Contigo** — R1 (chat, citations, abstain).
+7. **Ask Raffa** — R1 (chat, citations, abstain).
 8. **Renewal pipeline** — R2 (threshold strip, table, insight card + actions).
 9. **Home / Savings** — R3 (6 KPIs, opportunities table).
 10. **Quote check** — R4 (Extract → Assessment → Target → Negotiation).

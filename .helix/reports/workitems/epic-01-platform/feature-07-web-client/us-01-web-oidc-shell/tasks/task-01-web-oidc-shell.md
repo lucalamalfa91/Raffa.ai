@@ -4,7 +4,7 @@ type: task
 story: us-01-web-oidc-shell
 wave: R0
 status: live
-target_repo: contigo-web
+target_repo: raffa-web
 ---
 
 # task-01-web-oidc-shell — 01 Web Oidc Shell
@@ -18,7 +18,7 @@ Scaffold React+TS+Vite SPA with OIDC PKCE + config injection.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-web/src/ | implementation for `web-client` |
+| workspace/raffa-web/src/ | implementation for `web-client` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-012, ADR-010.
@@ -30,7 +30,7 @@ Scaffold React+TS+Vite SPA with OIDC PKCE + config injection.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | web-client behaviour | workspace/contigo-web/tests |
+| unit | web-client behaviour | workspace/raffa-web/tests |
 
 ## Open questions blocking this task
 - none

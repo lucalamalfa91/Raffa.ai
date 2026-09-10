@@ -1,8 +1,8 @@
 # Ask V2 ADR protocol (two seats)
 
 Oracle is `inputs/requirements.md` (HITL decisions D1–D8) with the design
-oracle `inputs/design/prototypes/Contigo V2 Prototype.html` (unpacked at
-`inputs/design/prototypes/contigo-v2/`). Existing ADRs stay accepted; this
+oracle `inputs/design/prototypes/Raffa V2 Prototype.html` (unpacked at
+`inputs/design/prototypes/raffa-v2/`). Existing ADRs stay accepted; this
 gate **amends** ADR-001/004/011/018/020, **supersedes** ADR-023 and adds
 ADR-024.
 

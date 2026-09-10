@@ -10,7 +10,7 @@ Helix native tools. What that changes:
   A read-only role (critic, checker) has no `Write`, `Edit` or `Bash`; do
   not try to write through a shell.
 - **cwd is `.helix`** (this artifact folder). Process paths are relative to
-  it: `inputs/requirements.md`, `reports/architecture/ADR-024-ask-contigo-v2.md`,
+  it: `inputs/requirements.md`, `reports/architecture/ADR-024-ask-raffa-v2.md`,
   `reports/workitems/epic-13-ask-v2/…`. Product code is one level up:
   `../backend/src/…`, `../web/src/…`, `../.github/workflows/…`. Read it, never
   edit it — Passata 1 writes **no application code**.
@@ -18,8 +18,8 @@ Helix native tools. What that changes:
   reviewed at HITL and committed by the operator.
 - **Verify-or-write.** Before writing a file that a prompt names, `Read` it.
   If it exists and carries the requirements (cites `inputs/requirements.md`
-  ids and, for design-facing content, `inputs/design/prototypes/Contigo V2
-  Prototype.html` + an unpacked anchor under `contigo-v2/`), keep it and
+  ids and, for design-facing content, `inputs/design/prototypes/Raffa V2
+  Prototype.html` + an unpacked anchor under `raffa-v2/`), keep it and
   append only what is missing. Never rewrite a locked file
   (`skills/kb-contract-ask.md` "Never write").
 - **Markers** (`skills/marker-discipline.md`) are unchanged: your control

@@ -4,7 +4,7 @@ type: task
 story: us-05-foundry-account
 wave: R0
 status: live
-target_repo: contigo-infra
+target_repo: raffa-infra
 # requires: [azure_subscription]
 ---
 
@@ -18,7 +18,7 @@ target_repo: contigo-infra
 ## Coding objective
 
 Provision the Azure AI Foundry account shape from ADR-008: a single Azure AI Foundry
-**hub**, two **projects** `contigo-dev` and `contigo-demo` under the hub, and a single
+**hub**, two **projects** `raffa-dev` and `raffa-demo` under the hub, and a single
 pay-as-you-go Azure AI services account backing inference for both (no second AI
 services subscription). Model deployments are recorded per project and are not
 managed by Terraform in V1 — this task provisions the account/hub/project control
@@ -29,7 +29,7 @@ account (ADR-017), and the managed-identity/keyvault connection material the AI 
 ## Parent story AC covered
 
 - AC-1 (single hub)
-- AC-2 (two projects `contigo-dev`/`contigo-demo`)
+- AC-2 (two projects `raffa-dev`/`raffa-demo`)
 - AC-3 (single PAYG AI services account)
 - AC-4 (Document Intelligence S0 on that account, per-project connections)
 
@@ -37,7 +37,7 @@ account (ADR-017), and the managed-identity/keyvault connection material the AI 
 
 | Path | Change |
 |------|--------|
-| workspace/contigo-infra/modules/identity/outputs.tf | add Foundry managed-identity output |
+| workspace/raffa-infra/modules/identity/outputs.tf | add Foundry managed-identity output |
 | scripts/bootstrap_hcp_org.py | note/assert Foundry account (portal-recorded) as documentation |
 
 ## Context the implementer needs
@@ -47,7 +47,7 @@ account (ADR-017), and the managed-identity/keyvault connection material the AI 
 
 ## Definition of done
 
-- [ ] Bootstrap records hub + `contigo-dev` + `contigo-demo` + one AI services account id + Document Intelligence endpoint/connection per project.
+- [ ] Bootstrap records hub + `raffa-dev` + `raffa-demo` + one AI services account id + Document Intelligence endpoint/connection per project.
 
 ## Tests required
 

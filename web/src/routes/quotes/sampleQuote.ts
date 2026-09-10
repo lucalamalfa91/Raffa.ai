@@ -2,7 +2,7 @@ import type { UploadQuoteFields } from "../../api/client";
 import { buildSamplePdf } from "../documents/sampleDocument";
 
 /**
- * The Quote check landing's sample proposal (`contigo-v2/markup.html` "QUOTE CHECK" block: "or use
+ * The Quote check landing's sample proposal (`raffa-v2/markup.html` "QUOTE CHECK" block: "or use
  * the sample: Databricks proposal Q-88213"). Built with the same minimal-but-real PDF writer the
  * Documents screen's own samples use (`../documents/sampleDocument.ts#buildSamplePdf`), so the
  * file carries extractable page text -- three priced line items -- and goes through the exact

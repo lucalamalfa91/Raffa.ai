@@ -26,4 +26,4 @@ DTOs.
 
 ## Target repo
 
-`contigo-web`
+`raffa-web`

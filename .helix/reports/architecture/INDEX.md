@@ -1,4 +1,4 @@
-# Contigo V1 — Architecture Decision Records (INDEX)
+# Raffa V1 — Architecture Decision Records (INDEX)
 
 Accepted ADRs promoted at council-close (2026-09-01/02), plus ADR-017 (OCR in V1). Source drafts live under
 `reports/architecture/draft/<seat>/`; accepted copies below carry the canonical `ADR-NNN` number and
@@ -44,7 +44,7 @@ remains unaddressed.
 
 ## Web delta (wave 6+, appended 2026-09-05)
 
-ADR-001…017 are unchanged. New accepted ADRs from `contigo-web-design`:
+ADR-001…017 are unchanged. New accepted ADRs from `raffa-web-design`:
 
 | ADR | Topic | Seat | One-line decision |
 | --- | --- | --- | --- |
@@ -54,7 +54,7 @@ ADR-001…017 are unchanged. New accepted ADRs from `contigo-web-design`:
 
 ## Schema-apply (wave 9 / e09, appended 2026-09-05)
 
-ADR-001…020 are unchanged. New accepted ADR from `contigo-schema-design`:
+ADR-001…020 are unchanged. New accepted ADR from `raffa-schema-design`:
 
 | ADR | Topic | Seat | One-line decision |
 | --- | --- | --- | --- |
@@ -62,38 +62,38 @@ ADR-001…020 are unchanged. New accepted ADR from `contigo-schema-design`:
 
 ## Demo-readiness (wave 10 / e10, appended 2026-09-05)
 
-ADR-001…021 are unchanged. New accepted ADR from `contigo-readiness-design`:
+ADR-001…021 are unchanged. New accepted ADR from `raffa-readiness-design`:
 
 | ADR | Topic | Seat | One-line decision |
 | --- | --- | --- | --- |
-| ADR-022 | Day-1 demo auth + fixture seed | security-architect | First `demo-v*` may keep `X-Tenant-Id` on the API; savings numbers come from a seeded fixture on `contigo_demo`; ADR-010 remains the post-Day-1 host target. |
+| ADR-022 | Day-1 demo auth + fixture seed | security-architect | First `demo-v*` may keep `X-Tenant-Id` on the API; savings numbers come from a seeded fixture on `raffa_demo`; ADR-010 remains the post-Day-1 host target. |
 
 ## Ask savings copilot (wave 12 / e12, appended 2026-09-08)
 
 ADR-001, 004, 011, 018, 020 keep their original Decision and gain an
-**amendment footer**. New accepted ADR from `contigo-ask-design`:
+**amendment footer**. New accepted ADR from `raffa-ask-design`:
 
 | ADR | Topic | Seat | One-line decision |
 | --- | --- | --- | --- |
-| ADR-023 | Ask Contigo savings copilot | product-owner + software-architect | Foundry-hosted copilot over tenant RAG + `IBenchmarkService` (fixture now); narrates P25–P75 / negotiation numbers; no legal advice; rich `/ask` reply. |
+| ADR-023 | Ask Raffa savings copilot | product-owner + software-architect | Foundry-hosted copilot over tenant RAG + `IBenchmarkService` (fixture now); narrates P25–P75 / negotiation numbers; no legal advice; rich `/ask` reply. |
 
-## Ask Contigo V2 (wave 13 / e13, appended 2026-09-08)
+## Ask Raffa V2 (wave 13 / e13, appended 2026-09-08)
 
 ADR-001…022 keep their original Decision; ADR-001, 004, 011, 018, 020 gain
 an **epic-13 amendment footer** (superseding their epic-12 footers).
 **ADR-023 is superseded by ADR-024** (HITL 2026-09-08, `inputs/requirements.md`
 §0 D4; epic-12 / e12 never launched). New accepted ADR from
-`contigo-ask-process.yaml` (Ask V2):
+`raffa-ask-process.yaml` (Ask V2):
 
 | ADR | Topic | Seat | One-line decision |
 | --- | --- | --- | --- |
-| ADR-024 | Ask Contigo V2 | product-owner + software-architect + security-architect + ux-ui-designer | Documents-only intake with an admission gate before persistence (non-contracts refused, never stored); server-side conversations under RLS; three sources of truth (validated contracts, market-intelligence feed with its own index — mock now, API later —, capability catalog); structured no-tools `answer` role with grounding + numeric guards; deterministic strategies (contract vs market, renewal strategy, portfolio criticality); V2 IA with `inputs/design/prototypes/Contigo V2 Prototype.html` (unpacked `contigo-v2/`) as the pixel reference. |
+| ADR-024 | Ask Raffa V2 | product-owner + software-architect + security-architect + ux-ui-designer | Documents-only intake with an admission gate before persistence (non-contracts refused, never stored); server-side conversations under RLS; three sources of truth (validated contracts, market-intelligence feed with its own index — mock now, API later —, capability catalog); structured no-tools `answer` role with grounding + numeric guards; deterministic strategies (contract vs market, renewal strategy, portfolio criticality); V2 IA with `inputs/design/prototypes/Raffa V2 Prototype.html` (unpacked `raffa-v2/`) as the pixel reference. |
 
 ## Live Foundry (appended 2026-09-09)
 
 ADR-001…024 keep their original Decision. ADR-004, ADR-005, ADR-008 and
 ADR-017 gain an **amendment footer** dated 2026-09-09: the shared Azure AI
-Services account `aisvc-contigo` (kind `AIServices`, account-native Foundry
+Services account `aisvc-raffa` (kind `AIServices`, account-native Foundry
 projects, no hub), its per-environment projects, model deployments and RBAC
 are created by Terraform (`infra/modules/foundry`; owned by the `dev` root,
 attached by `demo`; two-phase wiring behind `ai_gateway_wired`); confirmed

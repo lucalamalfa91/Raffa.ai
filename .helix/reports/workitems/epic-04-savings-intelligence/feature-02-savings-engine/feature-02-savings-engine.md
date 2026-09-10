@@ -29,4 +29,4 @@ SavingsOpportunity with status, owner, and realized outcome.
 
 ## Target repo
 
-`contigo-backend`
+`raffa-backend`

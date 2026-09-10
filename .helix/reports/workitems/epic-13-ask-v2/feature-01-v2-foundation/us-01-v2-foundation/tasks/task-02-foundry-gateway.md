@@ -4,14 +4,14 @@ type: task
 story: us-01-v2-foundation
 wave: 13
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-02-foundry-gateway — `FoundryAiGateway` + DI swap + structured output + no-tools compliance
 
 ## Coding objective
 
-Implement `FoundryAiGateway` in `backend/src/Contigo.AiGateway/Foundry/`
+Implement `FoundryAiGateway` in `backend/src/Raffa.AiGateway/Foundry/`
 covering ADR-004's five roles behind the existing `IAiGateway`: `ocr`
 (Azure AI Document Intelligence `prebuilt-read` / `prebuilt-layout`, full
 document, page map, page count in metadata, page budget from
@@ -42,24 +42,24 @@ exercised with a fake handler in tests; no live Azure in unit tests.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| `backend/src/Contigo.AiGateway/Foundry/FoundryAiGateway.cs` (+ per-role clients, prompts folder `Prompts/`) | new |
-| `backend/src/Contigo.AiGateway/Contracts/AiAnswerRequest.cs`, `AiAnswerResult.cs` | extend (backward compatible) |
-| `backend/src/Contigo.AiGateway/Configuration/AiGatewayFoundryOptions.cs` | new (`AiGateway:Endpoint`, `ProjectName`, `DocumentIntelligenceConnection`, `AnswerTemperature`) |
-| `backend/src/Contigo.AiGateway/ServiceCollectionExtensions.cs` | endpoint swap + `LoggingAiGateway` decorator |
-| `backend/src/Contigo.AiGateway/Contigo.AiGateway.csproj` | Azure SDK packages (only here) |
-| `backend/tests/Contigo.AiGateway.Tests/Foundry/*` | fake HTTP handler tests per role; no-tools compliance; DI swap |
-| `backend/tests/Contigo.AiGateway.Tests/ServiceCollectionExtensionsTests.cs` | endpoint set → Foundry inside Logging; unset → fixture inside Logging |
-| `backend/tests/Contigo.AiGateway.Tests/SdkAllowListTests.cs` | no Azure AI SDK reference outside `Contigo.AiGateway` (reads csproj files) |
+| `backend/src/Raffa.AiGateway/Foundry/FoundryAiGateway.cs` (+ per-role clients, prompts folder `Prompts/`) | new |
+| `backend/src/Raffa.AiGateway/Contracts/AiAnswerRequest.cs`, `AiAnswerResult.cs` | extend (backward compatible) |
+| `backend/src/Raffa.AiGateway/Configuration/AiGatewayFoundryOptions.cs` | new (`AiGateway:Endpoint`, `ProjectName`, `DocumentIntelligenceConnection`, `AnswerTemperature`) |
+| `backend/src/Raffa.AiGateway/ServiceCollectionExtensions.cs` | endpoint swap + `LoggingAiGateway` decorator |
+| `backend/src/Raffa.AiGateway/Raffa.AiGateway.csproj` | Azure SDK packages (only here) |
+| `backend/tests/Raffa.AiGateway.Tests/Foundry/*` | fake HTTP handler tests per role; no-tools compliance; DI swap |
+| `backend/tests/Raffa.AiGateway.Tests/ServiceCollectionExtensionsTests.cs` | endpoint set → Foundry inside Logging; unset → fixture inside Logging |
+| `backend/tests/Raffa.AiGateway.Tests/SdkAllowListTests.cs` | no Azure AI SDK reference outside `Raffa.AiGateway` (reads csproj files) |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-004 (amended: structured output, no tools, always log-wrapped), ADR-008 (one Foundry project per env), ADR-011 (no-training endpoint, hash-only logs, managed identity), ADR-017 (OCR full document, page budget), ADR-024.
 - Gap G-FOUNDRY. The fixture stays the test / local path; do not change fixture answer behaviour (F06 replaces the chunk-concat by supplying a prompt + pack).
-- **Do not touch**: `Contigo.Chat`, `Contigo.Documents.Contracts`, `Program.cs`, `Contigo.slnx` (owned by T01 this phase), `web/`.
+- **Do not touch**: `Raffa.Chat`, `Raffa.Documents.Contracts`, `Program.cs`, `Raffa.slnx` (owned by T01 this phase), `web/`.
 
 ## Definition of done
-- [ ] `dotnet test backend/tests/Contigo.AiGateway.Tests` exit 0 — Foundry registered when endpoint set, fixture when unset, `LoggingAiGateway` is the outer type; the captured `answer` request body has no `tools` / `tool_choice` / grounding keys; classify returns a label from the fixed set
-- [ ] `dotnet test backend/Contigo.slnx` exit 0
-- [ ] SDK allow-list test green (only `Contigo.AiGateway.csproj` references `Azure.AI.*` / `Azure.Identity`)
+- [ ] `dotnet test backend/tests/Raffa.AiGateway.Tests` exit 0 — Foundry registered when endpoint set, fixture when unset, `LoggingAiGateway` is the outer type; the captured `answer` request body has no `tools` / `tool_choice` / grounding keys; classify returns a label from the fixed set
+- [ ] `dotnet test backend/Raffa.slnx` exit 0
+- [ ] SDK allow-list test green (only `Raffa.AiGateway.csproj` references `Azure.AI.*` / `Azure.Identity`)
 
 ## Tests required
 | Level | What it proves | Where |

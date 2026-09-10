@@ -1,6 +1,6 @@
-# Contigo
+# Raffa
 
-AI-native procurement / contract-intelligence platform. Contigo knows what a
+AI-native procurement / contract-intelligence platform. Raffa knows what a
 team bought, what they pay, when they need to act, and where they can save
 money.
 
@@ -8,8 +8,8 @@ V1 is a **web-first modular monolith** (API + worker + Postgres + object
 storage + queue) on Azure `dev` and `demo`. Scope is R0–R4 (ADR-001); full
 CLM, e-sign, PO/invoice, and ERP replacement are out of scope.
 
-- **Repository**: [`lucalamalfa91/contigo`](https://github.com/lucalamalfa91/contigo)
-- **Owner**: `lucalamalfa91` — a personal GitHub **user** account. Contigo is
+- **Repository**: [`lucalamalfa91/raffa`](https://github.com/lucalamalfa91/raffa)
+- **Owner**: `lucalamalfa91` — a personal GitHub **user** account. Raffa is
   not a GitHub organization (ADR-014).
 - **Visibility**: public
 - **Default branch**: `main` — trunk-based, protected (ADR-014)
@@ -28,7 +28,7 @@ those in sync when the public surface of that folder changes (see
 | `web/` | React + TypeScript SPA (Vite, MSAL PKCE) | [`web/README.md`](web/README.md) |
 | `mobile/` | React Native (Expo) — **non-gating** lane, no store release for R0–R4 | [`mobile/README.md`](mobile/README.md) |
 | `.helix/` | Helix process artefact — ADRs, work items, slices, delivery process | [`.helix/README.md`](.helix/README.md) |
-| `docs/` | Architecture diagrams and acceptance checklists (Ask Contigo V2 data flow: [`docs/architecture/ask-contigo-v2-data-flow.md`](docs/architecture/ask-contigo-v2-data-flow.md)) | — |
+| `docs/` | Architecture diagrams and acceptance checklists (Ask Raffa V2 data flow: [`docs/architecture/ask-raffa-v2-data-flow.md`](docs/architecture/ask-raffa-v2-data-flow.md)) | — |
 
 ## Stack (locked by ADR)
 
@@ -37,7 +37,7 @@ those in sync when the public surface of that folder changes (see
 | Backend | .NET 10 / ASP.NET Core modular monolith + worker (ADR-002) |
 | Data | PostgreSQL Flexible Server + pgvector, EF Core, RLS tenancy (ADR-003, ADR-009) |
 | Cloud | Azure North Europe, cheap SKUs (ADR-005, ADR-006) |
-| IaC | Reusable Terraform modules + two env roots; HCP workspaces `contigo-dev` / `contigo-demo` (ADR-007) |
+| IaC | Reusable Terraform modules + two env roots; HCP workspaces `raffa-dev` / `raffa-demo` (ADR-007) |
 | Auth | Entra ID, Authorization Code + PKCE; per-env public client + API registration (ADR-010) |
 | Web | React + TypeScript + Vite on Azure Static Web Apps; config at runtime, not build time (ADR-012) |
 | Mobile | Expo + TypeScript; `continue-on-error` in CI (ADR-013) |
@@ -50,14 +50,14 @@ those in sync when the public surface of that folder changes (see
   owned by **HCP Terraform VCS**, not by a CLI `terraform apply` from GitHub
   Actions (`.github/workflows/infra.yml` apply job is a pointer to the HCP UI).
 - **`demo`** — tagged promotion (`demo-v*`) with required reviewers on the
-  GitHub `demo` Environment (ADR-016). First apply of workspace `contigo-demo`
+  GitHub `demo` Environment (ADR-016). First apply of workspace `raffa-demo`
   is a HCP UI / VCS run, same as `dev`.
 - **Do not mix identities.** HCP Terraform uses the Azure app
-  `contigo-hcp-dev` (`ARM_*` as HCP **Environment** variables). GitHub Actions
-  deploy uses `contigo-sp-dev` / `contigo-sp-demo` via OIDC. Details:
+  `raffa-hcp-dev` (`ARM_*` as HCP **Environment** variables). GitHub Actions
+  deploy uses `raffa-sp-dev` / `raffa-sp-demo` via OIDC. Details:
   [`infra/README.md`](infra/README.md).
 - **Demo fixture data** (so the Day-1 Savings screen is not empty on a
-  fresh `contigo_demo`) is seeded by `.github/workflows/seed-demo-fixture.yml`
+  fresh `raffa_demo`) is seeded by `.github/workflows/seed-demo-fixture.yml`
   — an explicit, manually-dispatched/callable job against `dev` or `demo`,
   reusing the same per-env deploy identity above, never a side effect of an
   ordinary `dev` push. Details: [`backend/README.md`](backend/README.md)
@@ -77,7 +77,7 @@ Operators do not hand-merge at barriers. See
 ## Local verification of repo shape
 
 These scripts make repo identity and branch protection reproducible. Both
-require the GitHub CLI (`gh`) authenticated against `lucalamalfa91/contigo`.
+require the GitHub CLI (`gh`) authenticated against `lucalamalfa91/raffa`.
 
 ```bash
 # owner/repo/visibility/description/default-branch + folder layout + secret scan
@@ -94,12 +94,12 @@ does not.
 Per-domain how-to (run, test, plan, deploy) lives in that folder's README.
 Architecture decisions live under `.helix/reports/architecture/`.
 
-## Ask Contigo V2 — the pilot path and its operator jobs (epic-13, ADR-024)
+## Ask Raffa V2 — the pilot path and its operator jobs (epic-13, ADR-024)
 
-V2 makes **Ask Contigo the home of the product**: sign-in lands on `/ask`, the
+V2 makes **Ask Raffa the home of the product**: sign-in lands on `/ask`, the
 rail is two-tier, uploads happen only in Documents (non-contracts are refused
 at the door), and every answer cites one of three sources — your validated
-contracts, the market-intelligence feed, or Contigo's own capability catalog —
+contracts, the market-intelligence feed, or Raffa's own capability catalog —
 or abstains. The buyer journey it has to survive is one flow:
 
 > Sign in → **Documents** (drop one or more contracts; non-contracts are
@@ -110,7 +110,7 @@ or abstains. The buyer journey it has to survive is one flow:
 **Acceptance checklist**: [`docs/ask-v2-acceptance.md`](docs/ask-v2-acceptance.md)
 — A1–A14 as a runbook, one exact command or click-path and one observable pass
 condition per row, plus the gaps that currently shape what a row can prove.
-**Data flow**: [`docs/architecture/ask-contigo-v2-data-flow.md`](docs/architecture/ask-contigo-v2-data-flow.md).
+**Data flow**: [`docs/architecture/ask-raffa-v2-data-flow.md`](docs/architecture/ask-raffa-v2-data-flow.md).
 
 ### The two V2 operator jobs
 
@@ -135,13 +135,13 @@ promotion.
 `web/e2e/v2.spec.ts` (Playwright) walks A1, A3, A4, A8, A9, A10 and A14 against
 a deployed environment, and A2 / A5 / A6 / A7 as well when `E2E_LIVE_FOUNDRY=1`.
 Unconfigured it reports every row as skipped with the reason and exits `0`. See
-[`web/README.md`](web/README.md) "End-to-end (Ask Contigo V2 pilot path)". The
+[`web/README.md`](web/README.md) "End-to-end (Ask Raffa V2 pilot path)". The
 V1 walk, `web/e2e/day1.spec.ts`, is red against the V2 shell by design; this
 suite replaces it.
 
 The AI golden set (A13) needs no CI step of its own:
-`backend/tests/Contigo.AiEval` is a member of `Contigo.slnx`, so
-`.github/workflows/backend.yml`'s existing `dotnet test Contigo.slnx` runs it
+`backend/tests/Raffa.AiEval` is a member of `Raffa.slnx`, so
+`.github/workflows/backend.yml`'s existing `dotnet test Raffa.slnx` runs it
 and a guard intervention fails the build. See
-[`backend/README.md`](backend/README.md) "Ask Contigo V2 — operator jobs, golden
+[`backend/README.md`](backend/README.md) "Ask Raffa V2 — operator jobs, golden
 set and acceptance".

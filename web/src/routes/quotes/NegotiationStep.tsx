@@ -29,11 +29,11 @@ export interface NegotiationStepProps {
 /**
  * Negotiation step (screens.md #10 AC-4: "levers with evidence and impact; outcome form -> recorded
  * outcome ... -> Home Savings Realized updates"). The "levers with evidence" half is a named,
- * honest gap, not a divergent invention: `Contigo.Quotes.Application.Strategy
+ * honest gap, not a divergent invention: `Raffa.Quotes.Application.Strategy
  * .NegotiationStrategyService` (task E05/F03/US01/T01, negotiation-strategy) computes exactly that
  * -- opening target, acceptable range, walk-away threshold, levers, rationale -- fully unit-tested,
- * but `backend/src/Contigo.Api/Program.cs` never maps an HTTP endpoint for it (checked: no
- * `MapGet`/`MapPost` anywhere in `backend/src/Contigo.Api` references `NegotiationStrategyService`/
+ * but `backend/src/Raffa.Api/Program.cs` never maps an HTTP endpoint for it (checked: no
+ * `MapGet`/`MapPost` anywhere in `backend/src/Raffa.Api` references `NegotiationStrategyService`/
  * `NegotiationStrategyCalculator`/`QuoteNegotiationStrategy`). A backend task would need to add one
  * (e.g. `GET /api/quotes/{id}/strategy`) before this screen can show AI-recommended levers/evidence
  * for real; see `../../api/client.ts`'s own `captureNegotiationOutcome` doc comment for the same

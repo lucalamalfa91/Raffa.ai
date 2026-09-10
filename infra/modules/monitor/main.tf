@@ -3,13 +3,13 @@
 # idle-log runaway cost).
 locals {
   tags = {
-    project = "contigo"
+    project = "raffa"
     env     = var.environment
   }
 }
 
 resource "azurerm_log_analytics_workspace" "this" {
-  name                = "log-contigo-${var.environment}"
+  name                = "log-raffa-${var.environment}"
   location            = var.location
   resource_group_name = var.resource_group_name
   sku                 = "PerGB2018"

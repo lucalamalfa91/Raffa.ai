@@ -32,7 +32,7 @@ export default function KpiRow({ kpiState, onRetry }: KpiRowProps) {
         <div className="error-state" role="alert">
           <h4>Benchmark provider unreachable</h4>
           <p className="micro-meta">
-            Spend and renewal KPIs are current; savings figures are from the last successful refresh. Contigo does not show
+            Spend and renewal KPIs are current; savings figures are from the last successful refresh. Raffa does not show
             percentiles without provenance.
           </p>
           <button type="button" className="btn btn-secondary" onClick={onRetry}>

@@ -31,7 +31,7 @@ export function isOversized(file: File): boolean {
 
 /**
  * R-DOC-04's own verbatim rejection copy, keyed by the admission gate's `reason` (ADR-024 §6). The
- * backend's own `hint` field (a shorter fragment, e.g. "Contigo only keeps contracts, order forms,
+ * backend's own `hint` field (a shorter fragment, e.g. "Raffa only keeps contracts, order forms,
  * quotes and the documents around them.") is the tail of the `not_a_contract` sentence below, not a
  * substitute for it -- this app owns the full, exact requirements sentence so it is testable without
  * trusting a body a backend task authored independently.
@@ -39,16 +39,16 @@ export function isOversized(file: File): boolean {
 export function getRejectionReasonCopy(reason: RejectedUploadBody["reason"]): string {
   switch (reason) {
     case "not_a_contract":
-      return "Not added: this looks like a recipe, not a contract. Contigo only keeps contracts, order forms, quotes and the documents around them. Drop the signed agreement or the supplier's proposal.";
+      return "Not added: this looks like a recipe, not a contract. Raffa only keeps contracts, order forms, quotes and the documents around them. Drop the signed agreement or the supplier's proposal.";
     case "no_readable_text":
-      return "Not added: Contigo could not read any contract text in this file. Try a clearer scan or the original PDF.";
+      return "Not added: Raffa could not read any contract text in this file. Try a clearer scan or the original PDF.";
   }
 }
 
 /** A file this browser refused before ever calling the API (oversized). Same "Not added" family as a
  * server 422/415, kept out of `RejectedUploadBody`'s own shape since no HTTP call happened. */
 export function getOversizedCopy(fileName: string): string {
-  return `Not added: ${fileName} is larger than 50 MB. Contigo accepts files up to 50 MB.`;
+  return `Not added: ${fileName} is larger than 50 MB. Raffa accepts files up to 50 MB.`;
 }
 
 /** One rejected/refused file this session (R-DOC-04: "shown for the current session only ... never
@@ -128,7 +128,7 @@ export async function runUploadBatch(
         kind: "failed",
         key,
         fileName: file.name,
-        message: result.error ?? `Contigo could not process ${file.name}. Try again.`,
+        message: result.error ?? `Raffa could not process ${file.name}. Try again.`,
       });
     }
   }

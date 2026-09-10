@@ -8,7 +8,7 @@ Copied from `inputs/schema-apply-brief.md` for later seats. Delta only.
   `slice.current.yaml` (e05 may be live on the other artifact).
 - Mechanism to lock in ADR-021: CI applies checked-in idempotent EF SQL
   scripts to Azure Flexible Server after `az containerapp update`. No
-  `Database.MigrateAsync()` in `Contigo.Api`.
+  `Database.MigrateAsync()` in `Raffa.Api`.
 - Terraform must inject `ConnectionStrings__Savings` and
   `ConnectionStrings__Quotes` (secret `pg-cs`). HCP apply, not laptop apply.
 - No Swagger UI.

@@ -4,7 +4,7 @@ type: task
 story: us-01-seed-demo-db
 wave: 10
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-seed-fixture — Seed fixture benchmark + savings on Azure Postgres
@@ -13,8 +13,8 @@ target_repo: contigo-backend
 
 Add a repeatable, checked-in seed (dotnet tool, SQL, or CI job) that writes
 ADR-001 fixture benchmark rows and at least one savings opportunity onto
-Flexible Server `contigo_demo` after e09 schema apply. Optional same path
-for `contigo_dev`. Use Key Vault `postgres-connection`. Do not open the
+Flexible Server `raffa_demo` after e09 schema apply. Optional same path
+for `raffa_dev`. Use Key Vault `postgres-connection`. Do not open the
 laptop firewall. Do not call `Database.MigrateAsync()`. Do not generate EF
 scripts (e09). Do not build web screens (e06–e08).
 
@@ -26,7 +26,7 @@ scripts (e09). Do not build web screens (e06–e08).
 
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/ (seed project or Scripts/) | new seed |
+| workspace/raffa-backend/ (seed project or Scripts/) | new seed |
 | .github/workflows/ (optional callable) | run seed against demo/dev |
 
 ## Context the implementer needs
@@ -39,7 +39,7 @@ scripts (e09). Do not build web screens (e06–e08).
 
 ## Definition of done
 
-- [ ] After e09, running the seed against `contigo_demo` makes
+- [ ] After e09, running the seed against `raffa_demo` makes
       `GET /api/savings` (with the demo tenant header) return at least one
       fixture-backed opportunity.
 

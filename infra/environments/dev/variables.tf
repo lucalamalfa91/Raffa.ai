@@ -27,7 +27,7 @@ variable "ai_gateway_wired" {
 }
 
 # Entra object ids (not secrets) granted Cognitive Services User +
-# Cognitive Services OpenAI User on the shared aisvc-contigo account for
+# Cognitive Services OpenAI User on the shared aisvc-raffa account for
 # live probes and the Foundry portal playground. Owner carries no
 # data-plane rights by itself. Do not repeat an id in the demo root.
 variable "ai_operator_principal_ids" {

@@ -6,13 +6,13 @@
 # task wires that.
 locals {
   tags = {
-    project = "contigo"
+    project = "raffa"
     env     = var.environment
   }
 }
 
 resource "azurerm_container_app_environment" "this" {
-  name                = "cae-contigo-${var.environment}"
+  name                = "cae-raffa-${var.environment}"
   location            = var.location
   resource_group_name = var.resource_group_name
 
@@ -20,7 +20,7 @@ resource "azurerm_container_app_environment" "this" {
 }
 
 resource "azurerm_container_app" "api" {
-  name                         = "ca-contigo-${var.environment}-api"
+  name                         = "ca-raffa-${var.environment}-api"
   container_app_environment_id = azurerm_container_app_environment.this.id
   resource_group_name          = var.resource_group_name
   revision_mode                = "Single"
@@ -78,15 +78,15 @@ resource "azurerm_container_app" "api" {
         secret_name = "pg-cs"
       }
 
-      # Task E03/F03/US01/T02 (renewal-action): Contigo.Renewals's first DbContext
-      # (RenewalActionService/RenewalAction) -- Contigo.Api.Program throws at startup
+      # Task E03/F03/US01/T02 (renewal-action): Raffa.Renewals's first DbContext
+      # (RenewalActionService/RenewalAction) -- Raffa.Api.Program throws at startup
       # without this, the same fail-fast shape as the other ConnectionStrings__* above.
       env {
         name        = "ConnectionStrings__Renewals"
         secret_name = "pg-cs"
       }
 
-      # Task E09/F02/US01/T01 (schema-connstrings, ADR-021): Contigo.Api.Program already
+      # Task E09/F02/US01/T01 (schema-connstrings, ADR-021): Raffa.Api.Program already
       # reads ConnectionStrings:Savings (task E04/F02/US02/T01, savings-opportunity) and
       # ConnectionStrings:Quotes (task E05/F01/US01/T01, quote-extraction) and throws at
       # startup without them -- this module never carried the two env vars, so the live
@@ -103,8 +103,8 @@ resource "azurerm_container_app" "api" {
         secret_name = "pg-cs"
       }
 
-      # Task E13/F05/US01/T02 (conversations-api): Contigo.Chat's first DbContext
-      # (ConversationService/ChatDbContext, ADR-024 "Conversations (D5)") -- Contigo.Api.Program
+      # Task E13/F05/US01/T02 (conversations-api): Raffa.Chat's first DbContext
+      # (ConversationService/ChatDbContext, ADR-024 "Conversations (D5)") -- Raffa.Api.Program
       # now reads ConnectionStrings:Chat and throws at startup without it, the same fail-fast
       # shape as every other ConnectionStrings__* above. Same "pg-cs" secret -- Chat is a separate
       # schema on the same shared Postgres server (ADR-003), not a separate database. The worker
@@ -115,7 +115,7 @@ resource "azurerm_container_app" "api" {
       }
 
       # Task E13/F06/US01/T01 wired AddSuppliersProductsModule into the API, and
-      # Contigo.Api/Program.cs fail-fasts on ConnectionStrings:Suppliers exactly like the
+      # Raffa.Api/Program.cs fail-fasts on ConnectionStrings:Suppliers exactly like the
       # blocks above -- without this env var the container never starts. Found by task
       # E13/F11/US01/T01 while writing the V2 acceptance runbook. Same "pg-cs" secret:
       # Suppliers is a separate schema on the same shared Postgres server (ADR-003).
@@ -203,7 +203,7 @@ resource "azurerm_container_app" "api" {
 }
 
 resource "azurerm_container_app" "worker" {
-  name                         = "ca-contigo-${var.environment}-worker"
+  name                         = "ca-raffa-${var.environment}-worker"
   container_app_environment_id = azurerm_container_app_environment.this.id
   resource_group_name          = var.resource_group_name
   revision_mode                = "Single"
@@ -247,8 +247,8 @@ resource "azurerm_container_app" "worker" {
         secret_name = "pg-cs"
       }
 
-      # Task E03/F03/US01/T02 (renewal-action): Contigo.Renewals's first DbContext --
-      # Contigo.Worker.Program throws at startup without this, same as the api app above.
+      # Task E03/F03/US01/T02 (renewal-action): Raffa.Renewals's first DbContext --
+      # Raffa.Worker.Program throws at startup without this, same as the api app above.
       env {
         name        = "ConnectionStrings__Renewals"
         secret_name = "pg-cs"
@@ -257,10 +257,10 @@ resource "azurerm_container_app" "worker" {
       # Task E09/F02/US01/T01 (schema-connstrings, ADR-021): this task's scope is "API,
       # and worker if it already mounts Renewals" -- this Container App does (above), so
       # it gets the same two env vars as the api app for consistency, even though
-      # Contigo.Worker.Program does not read ConnectionStrings:Savings/Quotes yet
+      # Raffa.Worker.Program does not read ConnectionStrings:Savings/Quotes yet
       # (WorkerServiceCollectionExtensions.AddWorkerHost only takes
       # DocumentsContracts/Audit/Renewals today). A later worker task wires these in when
-      # the worker registers Contigo.Savings/Contigo.Quotes.
+      # the worker registers Raffa.Savings/Raffa.Quotes.
       env {
         name        = "ConnectionStrings__Savings"
         secret_name = "pg-cs"

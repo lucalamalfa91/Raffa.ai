@@ -3,11 +3,11 @@
 - **Status**: proposed
 - **Date**: 2026-09-01
 - **Deciders**: software-architect (pipeline / gateway role), cloud-architect (SKU / account), product-owner (V1 scope); security-architect reconciles no-training and isolation at council-close
-- **Locked citations**: AI — Microsoft Foundry only, via Contigo AI Gateway; domain modules never call a provider directly; cheapest models that still meet the tasks. Brief §8: full contract documents must be processed (not a 2-page-only path for real MSAs); OCR vs native parse was council-owned — this ADR answers it. Cost — free/cheapest SKUs. Spec §7.1 pipeline ("Native Text Extraction / OCR if required"); spec §13.3 background job "OCR and document parsing"; spec §4 upload of PDF/DOCX/XLSX.
+- **Locked citations**: AI — Microsoft Foundry only, via Raffa AI Gateway; domain modules never call a provider directly; cheapest models that still meet the tasks. Brief §8: full contract documents must be processed (not a 2-page-only path for real MSAs); OCR vs native parse was council-owned — this ADR answers it. Cost — free/cheapest SKUs. Spec §7.1 pipeline ("Native Text Extraction / OCR if required"); spec §13.3 background job "OCR and document parsing"; spec §4 upload of PDF/DOCX/XLSX.
 
 ## Context and problem statement
 
-Contigo's Day-1 path on `demo` is upload → async extract → review → Ask Contigo with citations (brief §13). Real MSAs, order forms, and quote PDFs are frequently scanned or image-only. A native PDF-text parser alone cannot process those documents, and the brief forbids a 2-page-only path for real MSAs.
+Raffa's Day-1 path on `demo` is upload → async extract → review → Ask Raffa with citations (brief §13). Real MSAs, order forms, and quote PDFs are frequently scanned or image-only. A native PDF-text parser alone cannot process those documents, and the brief forbids a 2-page-only path for real MSAs.
 
 ADR-004 previously left "OCR vs native document parse" as an open CQ-008 sub-item and assumed native parse might be enough, with Document Intelligence added later *if* it was not. That assumption would silently drop scanned contracts out of V1 and break the Day-1 promise and spec §17.1 ("100 contracts processable").
 
@@ -45,7 +45,7 @@ Exact model IDs and per-page prices are confirmed in `westeurope` at implementat
 
 ### Placement vs Foundry models
 
-OCR is not a chat/completions model. It still counts as AI I/O: it rides the same Azure AI services account and per-environment Foundry project connections (`contigo-dev` / `contigo-demo`, ADR-008), uses managed identity + Key Vault (ADR-011), and logs resource/model id, version, timestamp, and input hash (brief §8) plus **page count** so OCR spend is observable (Appendix C rule 8). Customer contract bytes must not train public/shared models (same no-training rule as Foundry chat/embed).
+OCR is not a chat/completions model. It still counts as AI I/O: it rides the same Azure AI services account and per-environment Foundry project connections (`raffa-dev` / `raffa-demo`, ADR-008), uses managed identity + Key Vault (ADR-011), and logs resource/model id, version, timestamp, and input hash (brief §8) plus **page count** so OCR spend is observable (Appendix C rule 8). Customer contract bytes must not train public/shared models (same no-training rule as Foundry chat/embed).
 
 ### Consequences
 

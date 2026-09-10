@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# Launch the WEB DELTA process only. Never points at contigo-process.yaml.
+# Launch the WEB DELTA process only. Never points at raffa-process.yaml.
 # Refuses --fresh (would wipe ADR-001…017 / epic-01…05).
 # Refuses --slice (must not copy over slice.current.yaml).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ARTIFACT="$HERE/contigo-web-process.yaml"
+ARTIFACT="$HERE/raffa-web-process.yaml"
 HELIX_BACKEND="${HELIX_BACKEND:-$HERE/../../../helix/src/backend}"
 
 CHECK=0
-O="contigo-web-design"
-I="Contigo web delta: wave 6+ from existing R0-R4 plan"
+O="raffa-web-design"
+I="Raffa web delta: wave 6+ from existing R0-R4 plan"
 ARGS=()
 
 for a in "$@"; do

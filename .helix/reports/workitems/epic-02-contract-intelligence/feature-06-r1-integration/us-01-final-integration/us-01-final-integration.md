@@ -16,7 +16,7 @@ questions".
 
 ## Acceptance criteria
 
-- [ ] AC-1 Upload → parse/OCR → classify → extract → portfolio → 360 → Ask Contigo (with citations) works end-to-end.
+- [ ] AC-1 Upload → parse/OCR → classify → extract → portfolio → 360 → Ask Raffa (with citations) works end-to-end.
 - [ ] AC-2 Low-confidence field correction preserves original extraction + history.
 - [ ] AC-3 Cross-tenant isolation holds across the whole path.
 - [ ] AC-4 At least one scanned or image-based contract extracts via Document Intelligence (full document, ADR-017).

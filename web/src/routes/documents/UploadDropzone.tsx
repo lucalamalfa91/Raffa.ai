@@ -3,7 +3,7 @@ import { ACCEPTED_EXTENSIONS } from "./uploadPipeline";
 import { SAMPLE_DOCUMENTS, type SampleDocumentKey } from "./sampleDocument";
 
 export interface UploadDropzoneProps {
-  /** `"onboarding"` (bigger box, `contigo-v2/markup.html` `docsEmpty`) vs `"list"` (compact inline
+  /** `"onboarding"` (bigger box, `raffa-v2/markup.html` `docsEmpty`) vs `"list"` (compact inline
    * bar shown above the row grid once at least one document exists, `docsList`) -- same drag/pick
    * logic, different chrome/copy density (both quoted from the V2 prototype). */
   variant: "onboarding" | "list";

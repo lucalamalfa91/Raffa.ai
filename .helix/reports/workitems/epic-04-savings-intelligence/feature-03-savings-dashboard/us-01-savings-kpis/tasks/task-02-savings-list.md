@@ -4,7 +4,7 @@ type: task
 story: us-01-savings-kpis
 wave: R3
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-02-savings-list — 02 Savings List
@@ -18,7 +18,7 @@ Savings opportunity list + tenant scoping + provenance.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `savings-list` |
+| workspace/raffa-backend/src/ | implementation for `savings-list` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-002, ADR-009.
@@ -30,7 +30,7 @@ Savings opportunity list + tenant scoping + provenance.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | savings-list behaviour | workspace/contigo-backend/tests |
+| unit | savings-list behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

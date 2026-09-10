@@ -4,7 +4,7 @@ type: task
 story: us-01-ai-gateway-classification
 wave: R1
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-02-ai-gateway-logging — 02 Ai Gateway Logging
@@ -18,7 +18,7 @@ Log model/version/prompt/timestamp/input-hash; no-training config.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `ai-gateway-logging` |
+| workspace/raffa-backend/src/ | implementation for `ai-gateway-logging` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-011, ADR-004.
@@ -30,7 +30,7 @@ Log model/version/prompt/timestamp/input-hash; no-training config.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | ai-gateway-logging behaviour | workspace/contigo-backend/tests |
+| unit | ai-gateway-logging behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

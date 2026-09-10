@@ -28,4 +28,4 @@ saving (deterministic math, no LLM for money).
 
 ## Target repo
 
-`contigo-backend`
+`raffa-backend`

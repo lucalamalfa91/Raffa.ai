@@ -22,13 +22,13 @@ sys.path.insert(0, str(REPO_ROOT / "scripts"))
 import write_web_runtime_config as wrc  # noqa: E402
 
 VALID = dict(
-    api_base_url="https://ca-contigo-dev-api.example.azurecontainerapps.io",
+    api_base_url="https://ca-raffa-dev-api.example.azurecontainerapps.io",
     oidc_authority="https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000",
     oidc_client_id="11111111-1111-1111-1111-111111111111",
-    oidc_redirect_uri="https://web.dev.contigo.example/",
+    oidc_redirect_uri="https://web.dev.raffa.example/",
     oidc_api_scopes=(
-        "api://contigo-dev-api/Contigo.Read",
-        "api://contigo-dev-api/Contigo.Write",
+        "api://raffa-dev-api/Raffa.Read",
+        "api://raffa-dev-api/Raffa.Write",
     ),
 )
 
@@ -52,10 +52,10 @@ class BuildRuntimeConfigTests(unittest.TestCase):
         config = wrc.build_runtime_config(
             **{
                 **VALID,
-                "oidc_redirect_uri": "https://web.dev.contigo.example",
+                "oidc_redirect_uri": "https://web.dev.raffa.example",
             }
         )
-        self.assertEqual(config["oidcRedirectUri"], "https://web.dev.contigo.example/")
+        self.assertEqual(config["oidcRedirectUri"], "https://web.dev.raffa.example/")
 
     def test_rejects_localhost_placeholder(self) -> None:
         with self.assertRaises(wrc.ConfigError):
@@ -72,7 +72,7 @@ class BuildRuntimeConfigTests(unittest.TestCase):
     def test_rejects_http_api(self) -> None:
         with self.assertRaises(wrc.ConfigError):
             wrc.build_runtime_config(
-                **{**VALID, "api_base_url": "http://ca-contigo-dev-api.example"}
+                **{**VALID, "api_base_url": "http://ca-raffa-dev-api.example"}
             )
 
     def test_rejects_non_guid_client_id(self) -> None:

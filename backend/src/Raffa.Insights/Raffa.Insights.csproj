@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Raffa.SharedKernel\Raffa.SharedKernel.csproj" />
+    <ProjectReference Include="..\Raffa.Benchmark\Raffa.Benchmark.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Task E13/F01/US01/T01 (v2-scaffold): this module's own AddInsightsModule(IServiceCollection)
+         composition-root wiring (ServiceCollectionExtensions.cs) — ADR-002's "each module
+         exposes an AddXxx(IServiceCollection) extension method", not yet doing anything because
+         no host takes a dependency on an Insights service yet (ADR-024: the renewal-strategy
+         pack and portfolio-criticality calculators land in later e13 tasks). Generic .NET DI
+         abstraction, not a provider SDK — does not trip
+         Raffa.ArchitectureTests.DependencyDirectionTests.Domain_module_must_not_reference_provider_sdks
+         (Raffa.AiGateway / Raffa.Benchmark / Raffa.Chat already reference the same-family
+         package for the same reason). -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
+    <!-- Task E13/F07/US01/T01 (insights-calculators): InsightsOptions binds from IConfiguration
+         inside AddInsightsModule, the same generic .NET configuration abstraction (not a provider
+         SDK) Raffa.Renewals.csproj already references for the identical
+         PriorityScoreWeightsOptions/ThresholdWindowOptions pattern — does not trip
+         Raffa.ArchitectureTests.DependencyDirectionTests.Domain_module_must_not_reference_provider_sdks. -->
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.11" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

@@ -30,4 +30,4 @@ assessment.
 
 ## Target repo
 
-`contigo-backend`
+`raffa-backend`

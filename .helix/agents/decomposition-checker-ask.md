@@ -13,13 +13,13 @@ Fail (`DECOMPOSITION_GAPS:` with the list) if any of these holds:
 - an OPEN gap row has no task that closes it (cite the row)
 - a feature of the skill's table (F01–F11) or a task of its phase plan is
   missing, or a task id is not `E13/F##/US##/T##`
-- a web task does not cite `inputs/design/prototypes/Contigo V2 Prototype.html`
-  **and** an unpacked anchor under `inputs/design/prototypes/contigo-v2/`
+- a web task does not cite `inputs/design/prototypes/Raffa V2 Prototype.html`
+  **and** an unpacked anchor under `inputs/design/prototypes/raffa-v2/`
 - two tasks in the same phase list the same file in
   `## Files to create or modify` (single writer); in particular
-  `backend/src/Contigo.Api/Program.cs`, `backend/Contigo.slnx`,
-  `backend/tests/Contigo.ArchitectureTests/DependencyDirectionTests.cs`,
-  `web/openapi/contigo-api.v1.json`, `web/src/api/client.ts`
+  `backend/src/Raffa.Api/Program.cs`, `backend/Raffa.slnx`,
+  `backend/tests/Raffa.ArchitectureTests/DependencyDirectionTests.cs`,
+  `web/openapi/raffa-api.v1.json`, `web/src/api/client.ts`
 - a task implements attachments in the chat, persists rejected documents,
   legal advice, a paid market API client, web / tool grounding on the
   answer role, or writes market rows into the tenant `embedding` table

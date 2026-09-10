@@ -3,13 +3,13 @@
 # Basic omits topics).
 locals {
   tags = {
-    project = "contigo"
+    project = "raffa"
     env     = var.environment
   }
 }
 
 resource "azurerm_servicebus_namespace" "this" {
-  name                = "sbns-contigo-${var.environment}"
+  name                = "sbns-raffa-${var.environment}"
   location            = var.location
   resource_group_name = var.resource_group_name
   sku                 = "Standard"

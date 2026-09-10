@@ -30,4 +30,4 @@ explicit tag + `demo` GitHub Environment with required reviewers for promotion.
 
 ## Target repo
 
-`contigo-infra`
+`raffa-infra`

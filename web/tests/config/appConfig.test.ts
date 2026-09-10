@@ -2,13 +2,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppConfigError, loadAppConfig, validateAppConfig } from "../../src/config/appConfig";
 
 const validConfig = {
-  apiBaseUrl: "https://api.dev.contigo.example",
+  apiBaseUrl: "https://api.dev.raffa.example",
   oidcAuthority: "https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000",
   oidcClientId: "11111111-1111-1111-1111-111111111111",
-  oidcRedirectUri: "https://web.dev.contigo.example",
+  oidcRedirectUri: "https://web.dev.raffa.example",
   oidcApiScopes: [
-    "api://11111111-1111-1111-1111-111111111111/Contigo.Read",
-    "api://11111111-1111-1111-1111-111111111111/Contigo.Write",
+    "api://11111111-1111-1111-1111-111111111111/Raffa.Read",
+    "api://11111111-1111-1111-1111-111111111111/Raffa.Write",
   ],
 };
 

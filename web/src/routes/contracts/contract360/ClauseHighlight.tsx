@@ -8,7 +8,7 @@ export interface ClauseHighlightProps {
 }
 
 /**
- * The evidence card under "Why — the clauses behind it" (`contigo-v2/markup.html` `hasHl`: a
+ * The evidence card under "Why — the clauses behind it" (`raffa-v2/markup.html` `hasHl`: a
  * paper-white, serif card headed "{{ hl.doc }} · page {{ hl.page }} · §{{ hl.sec }}" with the cited
  * wording `<mark>`ed inside its context). Shown for the selected clause -- a row click, or the
  * citation landing (`?clause=`/`?page=`, R-EVD-02) which selects it without a click and scrolls

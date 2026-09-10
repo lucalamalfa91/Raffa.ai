@@ -23,7 +23,7 @@ export interface InsightCardProps {
 /**
  * The V2 "Why it is here" pane beside the priority list (screens-v2.md #7 "insight card for the
  * selected row (facts + recommended action + rationale); actions Start negotiation / Assign; 'Open
- * contract →'"; `contigo-v2/markup.html` "RENEWALS" block, right column). Copy and structure quoted
+ * contract →'"; `raffa-v2/markup.html` "RENEWALS" block, right column). Copy and structure quoted
  * from that block: `.card-kicker` "Why it is here" → h3 "{{ rsel.supplier }} — {{ rsel.cancelDays }}
  * days to notice" → the contract line → the accent "Recommended action" kicker → the action
  * (heading face, 18px) → the rationale → either the two block buttons (`rselOpen`) or, once acted,
@@ -31,7 +31,7 @@ export interface InsightCardProps {
  * this →".
  *
  * **Facts vs AI (ADR-019).** The recommendation and its rationale are the renewal engine's own
- * deterministic output (`RenewalInsightCard.recommendations`, `backend/src/Contigo.Renewals`), not a
+ * deterministic output (`RenewalInsightCard.recommendations`, `backend/src/Raffa.Renewals`), not a
  * model's prose -- the pane names them as the recommended action, and the facts they rest on live one
  * click away on Contract 360 ("See the facts behind this →"), exactly where the prototype sends the
  * reader. The Day-1 card's six-cell fact grid (uplift, market position, potential savings -- all

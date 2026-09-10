@@ -25,4 +25,4 @@ definition of success ("a secure workspace can ingest documents") end-to-end.
 
 ## Target repo
 
-`contigo-backend` (integration) + `contigo-web` (smoke)
+`raffa-backend` (integration) + `raffa-web` (smoke)

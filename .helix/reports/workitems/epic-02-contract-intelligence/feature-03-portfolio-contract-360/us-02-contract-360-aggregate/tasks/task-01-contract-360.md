@@ -4,7 +4,7 @@ type: task
 story: us-02-contract-360-aggregate
 wave: R1
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-contract-360 — 01 Contract 360
@@ -18,7 +18,7 @@ GET /api/contracts/{id} 360 aggregate (header + tabs).
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `contract-360` |
+| workspace/raffa-backend/src/ | implementation for `contract-360` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-002.
@@ -30,7 +30,7 @@ GET /api/contracts/{id} 360 aggregate (header + tabs).
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | contract-360 behaviour | workspace/contigo-backend/tests |
+| unit | contract-360 behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

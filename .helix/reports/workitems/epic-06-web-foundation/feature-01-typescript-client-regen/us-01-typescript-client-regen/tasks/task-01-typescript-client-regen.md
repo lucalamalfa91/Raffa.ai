@@ -4,7 +4,7 @@ type: task
 story: us-01-typescript-client-regen
 wave: 6
 status: live
-target_repo: contigo-web
+target_repo: raffa-web
 ---
 
 # task-01-typescript-client-regen — Regen TS client from web/openapi
@@ -19,8 +19,8 @@ the post-E02–E05 contract.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-web/src/api/ | regenerated client types |
-| workspace/contigo-web/openapi/ | contract source (read) |
+| workspace/raffa-web/src/api/ | regenerated client types |
+| workspace/raffa-web/openapi/ | contract source (read) |
 
 ## Context the implementer needs
 - **Claude Design**: not applicable (this is a chore, not a screen).
@@ -33,7 +33,7 @@ the post-E02–E05 contract.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| build | regenerated client compiles | workspace/contigo-web |
+| build | regenerated client compiles | workspace/raffa-web |
 
 ## Wave-spec entry
 ```yaml

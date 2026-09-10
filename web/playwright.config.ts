@@ -14,12 +14,12 @@ import { defineConfig, devices } from "@playwright/test";
  * task-text-vs-ADR-014 path mismatch). See `web/README.md`'s "End-to-end
  * (Day-1 browser walk)" section for the full reasoning, including why this
  * lives at `web/e2e/` (the real, already-scaffolded product tree) and not
- * `workspace/contigo-web/e2e/` (the task text's literal path, which is not
+ * `workspace/raffa-web/e2e/` (the task text's literal path, which is not
  * where any of the ten real screens this spec drives actually live).
  *
  * There is no `localhost` fallback for `baseURL`: the parent story's own AC-2
  * forbids walking this suite against the local-dev `config.json` placeholder
- * ("UI matches ... not localhost config.json"). `CONTIGO_E2E_BASE_URL` must
+ * ("UI matches ... not localhost config.json"). `RAFFA_E2E_BASE_URL` must
  * be the real `demo` Static Web App origin; `e2e/day1.spec.ts` asserts this
  * at runtime too and skips (never silently falls back) when it, or the Entra
  * test-account env vars the real sign-in step needs, are not supplied.
@@ -35,7 +35,7 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: [["html", { open: "never", outputFolder: "playwright-report" }], ["list"]],
   use: {
-    baseURL: process.env.CONTIGO_E2E_BASE_URL,
+    baseURL: process.env.RAFFA_E2E_BASE_URL,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "retain-on-failure",

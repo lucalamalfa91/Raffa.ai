@@ -8,13 +8,13 @@ import {
 
 describe("navItems (V2 two-tier model, ADR-024 amendment; task E13/F09/US01/T01, gap G-IA-V2)", () => {
   describe("buildPrimaryNavItems", () => {
-    it("lists Ask Contigo then Documents, in that order, with no Home item", () => {
+    it("lists Ask Raffa then Documents, in that order, with no Home item", () => {
       const items = buildPrimaryNavItems(null);
-      expect(items.map((item) => item.label)).toEqual(["Ask Contigo", "Documents"]);
+      expect(items.map((item) => item.label)).toEqual(["Ask Raffa", "Documents"]);
       expect(items.map((item) => item.label)).not.toContain("Home");
     });
 
-    it("Ask Contigo always carries the constant ⌘K badge and the conversation slot flag", () => {
+    it("Ask Raffa always carries the constant ⌘K badge and the conversation slot flag", () => {
       const [ask] = buildPrimaryNavItems(null);
       expect(ask.badge).toEqual({ text: "⌘K", tone: "muted" });
       expect(ask.hasConversationSlot).toBe(true);

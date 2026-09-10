@@ -4,7 +4,7 @@ type: task
 story: us-01-correction-history
 wave: R1
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-correction-history — 01 Correction History
@@ -18,7 +18,7 @@ PATCH /api/contracts/{id} versioned correction + history.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `correction-history` |
+| workspace/raffa-backend/src/ | implementation for `correction-history` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-003, ADR-009.
@@ -30,7 +30,7 @@ PATCH /api/contracts/{id} versioned correction + history.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | correction-history behaviour | workspace/contigo-backend/tests |
+| unit | correction-history behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

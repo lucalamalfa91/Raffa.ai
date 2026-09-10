@@ -25,7 +25,7 @@ def _git(*args: str, cwd: Path) -> str:
 def main() -> int:
     root = Path.cwd()
     # Walk up to the product clone root if cwd is .helix
-    if (root / "contigo-process.yaml").exists() and (root.parent / ".git").exists():
+    if (root / "raffa-process.yaml").exists() and (root.parent / ".git").exists():
         root = root.parent
 
     try:

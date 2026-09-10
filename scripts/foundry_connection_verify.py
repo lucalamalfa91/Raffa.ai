@@ -4,7 +4,7 @@
 E10/F02/US01/T01 and by the 2026-09-09 ADR-004/ADR-008/ADR-017 amendments).
 
 Parent story `us-05-foundry-account` AC-1..AC-4 (one shared pay-as-you-go
-AI services account; two projects `contigo-dev`/`contigo-demo`; per-project
+AI services account; two projects `raffa-dev`/`raffa-demo`; per-project
 Document Intelligence connection). Task E01/F02/US05/T01 recorded that shape
 as AI_SERVICES_ACCOUNT_NAME / AI_RESOURCE_GROUP_NAME / FOUNDRY_PROJECTS in
 scripts/bootstrap_hcp_org.py and structurally asserted it is complete and

@@ -4,7 +4,7 @@ type: task
 story: us-01-terraform-module-library
 wave: R0
 status: live
-target_repo: contigo-infra
+target_repo: raffa-infra
 ---
 
 # task-01-terraform-module-library — Scaffold modules + version pins + env roots
@@ -16,8 +16,8 @@ with `network`, `identity`, `postgres`, `storage`, `servicebus`, `containerapps`
 `keyvault`, `acr`, `monitor`; a top-level `versions.tf` pinning `hashicorp/azurerm`,
 `hashicorp/azuread`, `hashicorp/random` and the Terraform core version; and two thin
 environment roots `infra/environments/dev` and `infra/environments/demo` each with
-`main.tf`, `backend.tf` (remote → HCP workspace `contigo-dev`/`contigo-demo`),
-`variables.tf`, `outputs.tf`. Every module resource must apply `project = "contigo"`
+`main.tf`, `backend.tf` (remote → HCP workspace `raffa-dev`/`raffa-demo`),
+`variables.tf`, `outputs.tf`. Every module resource must apply `project = "raffa"`
 and `env = var.environment`. No secret may appear in Terraform source (ADR-007).
 
 ## Parent story AC covered
@@ -31,14 +31,14 @@ and `env = var.environment`. No secret may appear in Terraform source (ADR-007).
 
 | Path | Change |
 |------|--------|
-| workspace/contigo-infra/versions.tf | pin providers + Terraform version |
-| workspace/contigo-infra/provider.tf | azurerm + azuread providers |
-| workspace/contigo-infra/modules/*/main.tf | one module stub each (resource skeleton) |
-| workspace/contigo-infra/modules/*/variables.tf | per-module vars incl. `environment` |
-| workspace/contigo-infra/environments/dev/main.tf | instantiate modules env=dev |
-| workspace/contigo-infra/environments/dev/backend.tf | remote → HCP `contigo-dev` |
-| workspace/contigo-infra/environments/demo/main.tf | instantiate modules env=demo |
-| workspace/contigo-infra/environments/demo/backend.tf | remote → HCP `contigo-demo` |
+| workspace/raffa-infra/versions.tf | pin providers + Terraform version |
+| workspace/raffa-infra/provider.tf | azurerm + azuread providers |
+| workspace/raffa-infra/modules/*/main.tf | one module stub each (resource skeleton) |
+| workspace/raffa-infra/modules/*/variables.tf | per-module vars incl. `environment` |
+| workspace/raffa-infra/environments/dev/main.tf | instantiate modules env=dev |
+| workspace/raffa-infra/environments/dev/backend.tf | remote → HCP `raffa-dev` |
+| workspace/raffa-infra/environments/demo/main.tf | instantiate modules env=demo |
+| workspace/raffa-infra/environments/demo/backend.tf | remote → HCP `raffa-demo` |
 
 ## Context the implementer needs
 

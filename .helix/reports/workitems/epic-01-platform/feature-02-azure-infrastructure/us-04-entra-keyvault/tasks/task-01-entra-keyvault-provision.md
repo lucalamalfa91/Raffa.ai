@@ -4,7 +4,7 @@ type: task
 story: us-04-entra-keyvault
 wave: R0
 status: live
-target_repo: contigo-infra
+target_repo: raffa-infra
 # requires: [azure_subscription]
 # requires: [hcp_terraform]
 ---
@@ -16,9 +16,9 @@ target_repo: contigo-infra
 In the `identity` and `keyvault` Terraform modules, declare four Entra ID app
 registrations per ADR-010: one public client + one API registration in `dev`, and
 the same pair in `demo` (four total). The API registration exposes scopes
-`Contigo.Read` and `Contigo.Write`; the public client is pre-authorized for them
-with the web redirect URI and the native `contigo://callback` scheme (PKCE, no
-client secret). Create `kv-contigo-dev` and `kv-contigo-demo` (ADR-011) and grant
+`Raffa.Read` and `Raffa.Write`; the public client is pre-authorized for them
+with the web redirect URI and the native `raffa://callback` scheme (PKCE, no
+client secret). Create `kv-raffa-dev` and `kv-raffa-demo` (ADR-011) and grant
 each env's API + worker managed identity `get`/`list` on its **own** env's vault
 only — no cross-env access policy.
 
@@ -32,9 +32,9 @@ only — no cross-env access policy.
 
 | Path | Change |
 |------|--------|
-| workspace/contigo-infra/modules/identity/main.tf | Entra app registrations + scopes |
-| workspace/contigo-infra/modules/identity/outputs.tf | client_id, api audience/issuer |
-| workspace/contigo-infra/modules/keyvault/main.tf | Key Vault + access policies |
+| workspace/raffa-infra/modules/identity/main.tf | Entra app registrations + scopes |
+| workspace/raffa-infra/modules/identity/outputs.tf | client_id, api audience/issuer |
+| workspace/raffa-infra/modules/keyvault/main.tf | Key Vault + access policies |
 
 ## Context the implementer needs
 

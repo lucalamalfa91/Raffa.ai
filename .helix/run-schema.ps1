@@ -1,23 +1,23 @@
-# Launch the SCHEMA-APPLY process only. Never points at contigo-process.yaml.
+# Launch the SCHEMA-APPLY process only. Never points at raffa-process.yaml.
 # Refuses --fresh and -Slice (live e05 fan-out stays on the other process).
 param(
     [switch]$Check,
-    [Alias("orchestration")][string]$o = "contigo-schema-design",
-    [Alias("input")][string]$i = "Contigo schema-apply: epic-09 / e09 from existing R0-R4 plan",
+    [Alias("orchestration")][string]$o = "raffa-schema-design",
+    [Alias("input")][string]$i = "Raffa schema-apply: epic-09 / e09 from existing R0-R4 plan",
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$Rest
 )
 
 $ErrorActionPreference = "Stop"
 $Here = $PSScriptRoot
-$Artifact = Join-Path $Here "contigo-schema-process.yaml"
+$Artifact = Join-Path $Here "raffa-schema-process.yaml"
 $envFile = Join-Path $Here ".env"
 
 if (-not (Test-Path $envFile)) {
     throw "missing .env -- copy .env.example to .env and fill values"
 }
 if (-not (Test-Path $Artifact)) {
-    throw "missing contigo-schema-process.yaml"
+    throw "missing raffa-schema-process.yaml"
 }
 
 foreach ($a in @($Rest)) {
@@ -53,12 +53,12 @@ if ([string]::IsNullOrWhiteSpace($backend)) {
 }
 
 $schemaOrchs = @(
-    "contigo-schema-design", "docs-intake-schema", "architecture-council-schema",
+    "raffa-schema-design", "docs-intake-schema", "architecture-council-schema",
     "architecture-lanes-schema", "council-close-schema", "decomposition-schema",
     "decomposition-check-schema", "decomposition-remediation-schema"
 )
 if ($schemaOrchs -notcontains $o) {
-    throw "run-schema.ps1 only launches schema orchs (got '$o'). Default is contigo-schema-design."
+    throw "run-schema.ps1 only launches schema orchs (got '$o'). Default is raffa-schema-design."
 }
 
 if ($Check) {
@@ -67,7 +67,7 @@ if ($Check) {
 }
 
 $assert = Join-Path $Here "scripts\assert_schema_plan_untouched.py"
-Write-Host "artifact: contigo-schema-process.yaml  orch: $o"
+Write-Host "artifact: raffa-schema-process.yaml  orch: $o"
 Write-Host "protect: e01-e05, wave-spec.execution.yaml, ADR-001..020, epic-01..08 (not slice.current.yaml)"
 & python $assert snapshot
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

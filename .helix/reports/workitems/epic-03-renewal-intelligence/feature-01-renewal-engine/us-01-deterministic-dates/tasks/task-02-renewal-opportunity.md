@@ -4,7 +4,7 @@ type: task
 story: us-01-deterministic-dates
 wave: R2
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-02-renewal-opportunity — 02 Renewal Opportunity
@@ -18,7 +18,7 @@ Generate renewal opportunities; abstain cannot-determine when missing.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `renewal-opportunity` |
+| workspace/raffa-backend/src/ | implementation for `renewal-opportunity` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-002.
@@ -30,7 +30,7 @@ Generate renewal opportunities; abstain cannot-determine when missing.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | renewal-opportunity behaviour | workspace/contigo-backend/tests |
+| unit | renewal-opportunity behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

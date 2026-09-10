@@ -8,7 +8,7 @@ import type { NegotiationOutcomeBody } from "../../api/client";
  *
  * There is no backend query this screen -- or Home's own, not-yet-built Savings screen
  * (epic-08/feature-02-savings-ui) -- could read the running list back from today:
- *   - `backend/src/Contigo.Api/NegotiationsEndpointExtensions.cs` maps only
+ *   - `backend/src/Raffa.Api/NegotiationsEndpointExtensions.cs` maps only
  *     `POST /api/negotiations/outcomes` -- no `GET` (list or single) anywhere.
  *   - `GET/PATCH /api/savings` (`SavingsEndpointExtensions`) is the real, generic surface a future
  *     Home task would extend `../../api/client.ts` to call for the KPI row itself; this task's own
@@ -28,7 +28,7 @@ import type { NegotiationOutcomeBody } from "../../api/client";
  * `documentStore.ts`'s own `TRACKED_DOCUMENTS_KEY`.
  */
 
-const TRACKED_OUTCOMES_KEY = "contigo.quotes.negotiationOutcomes";
+const TRACKED_OUTCOMES_KEY = "raffa.quotes.negotiationOutcomes";
 
 export type TrackedNegotiationOutcome = NegotiationOutcomeBody;
 

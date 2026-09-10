@@ -4,7 +4,7 @@ type: task
 story: us-01-document-upload
 wave: 6
 status: live
-target_repo: contigo-web
+target_repo: raffa-web
 ---
 
 # task-01-document-upload — Upload + processing pipeline UI
@@ -18,7 +18,7 @@ Implement the upload dropzone + 6-stage processing pipeline + result cards.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-web/src/routes/documents/ | upload UI |
+| workspace/raffa-web/src/routes/documents/ | upload UI |
 | inputs/design/prototypes/screens.md | screen 3 (read, cite) |
 | inputs/design/prototypes/day1-demo.html | reference (cite) |
 
@@ -32,7 +32,7 @@ Implement the upload dropzone + 6-stage processing pipeline + result cards.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | outcome cards by status | workspace/contigo-web/tests |
+| unit | outcome cards by status | workspace/raffa-web/tests |
 
 ## Wave-spec entry
 ```yaml

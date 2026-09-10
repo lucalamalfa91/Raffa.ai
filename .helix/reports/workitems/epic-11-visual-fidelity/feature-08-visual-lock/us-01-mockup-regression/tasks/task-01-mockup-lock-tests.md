@@ -4,7 +4,7 @@ type: task
 story: us-01-mockup-regression
 wave: 11
 status: live
-target_repo: contigo-web
+target_repo: raffa-web
 ---
 
 # task-01-mockup-lock-tests — Lock mockup measurements in vitest

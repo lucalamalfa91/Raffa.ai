@@ -4,7 +4,7 @@ type: task
 story: us-01-idempotent-scripts
 wave: 9
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-idempotent-scripts — Generate module SQL scripts + prove apply
@@ -17,7 +17,7 @@ Add tests modeled on `DocumentsContractsMigrationScriptTests`: each script
 applies to a bare `pgvector/pgvector:pg16` via Npgsql (no `MigrateAsync`).
 Fail CI if a script is missing or does not match a fresh generate.
 
-Do **not** call `Database.MigrateAsync()` in `Contigo.Api`. Do **not** add
+Do **not** call `Database.MigrateAsync()` in `Raffa.Api`. Do **not** add
 Swagger. Do **not** edit `slices/e01.yaml`–`e05.yaml` or
 `slice.current.yaml`.
 
@@ -29,17 +29,17 @@ Swagger. Do **not** edit `slices/e01.yaml`–`e05.yaml` or
 
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/Contigo.Identity.Workspace/Migrations/Scripts/ | new sql |
-| workspace/contigo-backend/src/Contigo.Audit/Migrations/Scripts/ | new sql |
-| workspace/contigo-backend/src/Contigo.Renewals/Migrations/Scripts/ | new sql |
-| workspace/contigo-backend/src/Contigo.Savings/Migrations/Scripts/ | new sql |
-| workspace/contigo-backend/src/Contigo.Quotes/Migrations/Scripts/ | new sql |
-| workspace/contigo-backend/tests/ | script apply + stale-check tests |
+| workspace/raffa-backend/src/Raffa.Identity.Workspace/Migrations/Scripts/ | new sql |
+| workspace/raffa-backend/src/Raffa.Audit/Migrations/Scripts/ | new sql |
+| workspace/raffa-backend/src/Raffa.Renewals/Migrations/Scripts/ | new sql |
+| workspace/raffa-backend/src/Raffa.Savings/Migrations/Scripts/ | new sql |
+| workspace/raffa-backend/src/Raffa.Quotes/Migrations/Scripts/ | new sql |
+| workspace/raffa-backend/tests/ | script apply + stale-check tests |
 
 ## Context the implementer needs
 
 - **Architecture decisions in force**: ADR-003, ADR-009, ADR-021.
-- Pattern: `backend/src/Contigo.Documents.Contracts/Migrations/Scripts/documents-contracts.sql`
+- Pattern: `backend/src/Raffa.Documents.Contracts/Migrations/Scripts/documents-contracts.sql`
   and `DocumentsContractsMigrationScriptTests`.
 
 ## Definition of done

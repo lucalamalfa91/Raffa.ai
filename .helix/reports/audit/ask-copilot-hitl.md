@@ -9,7 +9,7 @@ Confirm:
 - Ask is a **savings copilot**, not generic Q&A.
 - Market comparison uses `IBenchmarkService` (fixture now), never another tenant's PDFs.
 - No legal advice. Off-domain / greetings redirect into this portfolio.
-- Foundry stays behind `IAiGateway` in `Contigo.AiGateway` only.
+- Foundry stays behind `IAiGateway` in `Raffa.AiGateway` only.
 
 Stamp only after that review:
 

@@ -24,7 +24,7 @@
 # for an Entra ID access token.
 #
 # Relocated verbatim (not rewritten) from
-# .helix/workspace/contigo-infra/.github/actions/azure-login/action.yml
+# .helix/workspace/raffa-infra/.github/actions/azure-login/action.yml
 # (task E01/F03/US01/T01, ci-azure-auth) to the repo-root .github/ tree
 # during task E01/F03/US02/T01: ADR-014 fixes the product tree as
 # infra/, backend/, web/, mobile/, .helix/ at the worktree root --

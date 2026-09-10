@@ -5,7 +5,7 @@
 - **Owner**: delivery-manager
 - **Locked citations**:
   - Delta intake `inputs/web-integration-brief.md` §2 — "New execution slices are **web waves starting at wave / epic 6** (`e06`, `e07`, …). Do not splice UI tasks into `slices/e01.yaml`–`e05.yaml`."
-  - `reports/context/web-integration-mandate.md` §3 — append-only; `layer: web` unless thin API gap; `target_repo: contigo-web`.
+  - `reports/context/web-integration-mandate.md` §3 — append-only; `layer: web` unless thin API gap; `target_repo: raffa-web`.
   - `reports/context/web-integration-mandate.md` §7 — new DAG goes in `wave-spec.web.yaml`; new index/manifest in `INDEX-web.md` / `MANIFEST-web.yaml`.
   - ADR-016 promotion (`demo-v*`, gated `demo` environment) — unchanged; web slices promote through the existing flow.
   - `.helix` protocol — Passata 2 stays `./run.ps1 -Max -Slice e06 -o execution-fanout` on the original artifact when the live wave is idle.
@@ -46,7 +46,7 @@ chunk is too large for one overnight).
 | --- | --- | --- | --- |
 | **e06** | Design system + app shell | web | Design-system tokens/components shipped; app shell nav + auth gate + workspace switch render against `config.json` (already real); routing/route-fallback + empty/loading states defined. **Lead-off chore: regen the TS client once against the full E02–E05 OpenAPI surface.** No capability screens yet. |
 | **e07** | R0 UI — workspace, roles, upload, status, audit | web | Invite/roles (admin vs procurement), upload → document status, and audit read-back reachable in browser. |
-| **e08** | R1 UI — portfolio, filters, Contract 360, evidence, correct, Ask Contigo | web | Portfolio + filters, Contract 360 with evidence/confidence (not JSON dump), review/correction, and Ask Contigo with citations/abstain. |
+| **e08** | R1 UI — portfolio, filters, Contract 360, evidence, correct, Ask Raffa | web | Portfolio + filters, Contract 360 with evidence/confidence (not JSON dump), review/correction, and Ask Raffa with citations/abstain. |
 | **e09** | R2 UI — renewal pipeline, insight card, action | web | Renewal pipeline (threshold strip, priority table) + insight card + action reachable. |
 | **e10** | R3 UI — savings KPIs + list | web | Savings KPIs (6) + opportunities table reachable. |
 | **e11** | R4 UI — quote check + negotiation + Day-1 integration | web | Quote extract→assessment→target→negotiation→outcome reachable; **last story = `us-NN-final-integration`: one browser Day-1 walk on `demo`** (§20), not `dotnet test`. |

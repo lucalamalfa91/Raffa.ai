@@ -25,7 +25,7 @@ type FetchState =
 
 /**
  * Route `/renewals` -- Renewals, V2 (ADR-024 V2 IA amending ADR-020 screen 8; screens-v2.md #7;
- * `contigo-v2/markup.html` "RENEWALS" block, `app.jsx` `renewals` / `rsel` / `rnSummary` / `rAct`).
+ * `raffa-v2/markup.html` "RENEWALS" block, `app.jsx` `renewals` / `rsel` / `rnSummary` / `rAct`).
  * Replaces the Day-1 "Renewal pipeline" (threshold strip, seven-column table, six-fact insight card
  * with three actions) with the prototype's own shape: a header ("Renewals" + `rnSummary`), the list
  * sorted by priority, the selected row's "Why it is here" pane with Start negotiation / Assign to
@@ -66,7 +66,7 @@ export default function RenewalsRoute({ apiClient, userLabel }: RenewalsRoutePro
           // "names the failing job, never a raw stack trace").
           message:
             result.statusCode === 503 || result.statusCode === null
-              ? "Contigo's renewal engine is temporarily unavailable. Try again in a moment."
+              ? "Raffa's renewal engine is temporarily unavailable. Try again in a moment."
               : (result.error ?? "Renewals could not be loaded."),
         });
         return;

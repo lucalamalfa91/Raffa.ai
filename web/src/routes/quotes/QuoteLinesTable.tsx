@@ -6,7 +6,7 @@ export interface QuoteLinesTableProps {
 
 /**
  * The V2 lines table (screens-v2.md #9 "Supplier quote lines (Quoted · Market band · Position)";
- * `contigo-v2/markup.html` "QUOTE CHECK" block): Line (28%, bold) · Quoted (right) · P50 (right) ·
+ * `raffa-v2/markup.html` "QUOTE CHECK" block): Line (28%, bold) · Quoted (right) · P50 (right) ·
  * Position · Benchmark (18%, small tag), `font-size:13px`. Every cell is a real per-line figure
  * from `recalculateQuoteAssessment`; a line still waiting for a SKU mapping says so in its Position
  * cell instead of showing a position it does not have.
@@ -15,7 +15,7 @@ export default function QuoteLinesTable({ rows }: QuoteLinesTableProps) {
   if (rows.length === 0) {
     return (
       <p className="quote-empty-lines micro-meta" role="status">
-        No line items were extracted from this quote yet. Contigo only assesses lines it could read — nothing here is estimated.
+        No line items were extracted from this quote yet. Raffa only assesses lines it could read — nothing here is estimated.
       </p>
     );
   }

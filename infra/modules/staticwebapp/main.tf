@@ -1,6 +1,6 @@
 # modules/staticwebapp -- Azure Static Web Apps Free tier (ADR-012).
 # Named stably so .github/workflows/web.yml can compose
-# `swa-contigo-<env>` the same way backend.yml composes Container App
+# `swa-raffa-<env>` the same way backend.yml composes Container App
 # names -- no GitHub Environment variable required.
 #
 # Microsoft.Web/staticSites is not offered in North Europe. West Europe
@@ -9,13 +9,13 @@
 # therefore does NOT inherit the env-root North Europe pin (ADR-006).
 locals {
   tags = {
-    project = "contigo"
+    project = "raffa"
     env     = var.environment
   }
 }
 
 resource "azurerm_static_web_app" "this" {
-  name                = "swa-contigo-${var.environment}"
+  name                = "swa-raffa-${var.environment}"
   resource_group_name = var.resource_group_name
   location            = var.location
   sku_tier            = "Free"

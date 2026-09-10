@@ -4,7 +4,7 @@ type: task
 story: us-01-fixture-catalog
 wave: 12
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-fixture-catalog — Expand FixtureBenchmarkAdapter
@@ -28,17 +28,17 @@ catalog rows into tenant pgvector.
 
 | Path | Change |
 |------|--------|
-| `backend/src/Contigo.Benchmark/Fixtures/FixtureBenchmarkAdapter.cs` | expanded catalog |
-| `backend/tests/Contigo.Benchmark.Tests/FixtureBenchmarkAdapterTests.cs` | Allianz-class + abstain |
+| `backend/src/Raffa.Benchmark/Fixtures/FixtureBenchmarkAdapter.cs` | expanded catalog |
+| `backend/tests/Raffa.Benchmark.Tests/FixtureBenchmarkAdapterTests.cs` | Allianz-class + abstain |
 
 ## Context the implementer needs
 
 - **Architecture**: ADR-001 amendment, ADR-023. Gap G-FIXTURE-CATALOG.
-- **Do not touch**: `Contigo.AiGateway`, Chat, `web/`.
+- **Do not touch**: `Raffa.AiGateway`, Chat, `web/`.
 
 ## Definition of done
 
-- [ ] `dotnet test` on `Contigo.Benchmark.Tests` — named insurer row has
+- [ ] `dotnet test` on `Raffa.Benchmark.Tests` — named insurer row has
       P25–P75; unknown SKU abstains; provenance is fixture.
 
 ## Tests required

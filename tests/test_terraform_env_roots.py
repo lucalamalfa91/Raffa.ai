@@ -59,7 +59,7 @@ def _good_backend_tf(env: str) -> str:
     workspace = tfr.EXPECTED_WORKSPACE_BY_ENV[env]
     return f"""terraform {{
   cloud {{
-    organization = "contigo-platform"
+    organization = "raffa-platform"
 
     workspaces {{
       name = "{workspace}"
@@ -94,11 +94,11 @@ locals {{
 }}
 
 resource "azurerm_resource_group" "this" {{
-  name     = "rg-contigo-${{local.environment}}"
+  name     = "rg-raffa-${{local.environment}}"
   location = var.location
 
   tags = {{
-    project = "contigo"
+    project = "raffa"
     env     = local.environment
   }}
 }}
@@ -136,7 +136,7 @@ def _write_fixture_tree(
 class ParseCloudBackendTests(unittest.TestCase):
     def test_extracts_organization_and_workspace(self) -> None:
         parsed = tfr.parse_cloud_backend(_good_backend_tf("dev"))
-        self.assertEqual(parsed, {"organization": "contigo-platform", "workspace": "contigo-dev"})
+        self.assertEqual(parsed, {"organization": "raffa-platform", "workspace": "raffa-dev"})
 
     def test_missing_cloud_block_returns_none(self) -> None:
         parsed = tfr.parse_cloud_backend("terraform {\n}\n")
@@ -223,7 +223,7 @@ class FindResourceGroupTagsTests(unittest.TestCase):
     def test_finds_project_and_env_tags(self) -> None:
         text = _good_main_tf("demo")
         tags = tfr.find_resource_group_tags(text)
-        self.assertEqual(tags.get("project"), "contigo")
+        self.assertEqual(tags.get("project"), "raffa")
         self.assertEqual(tags.get("env"), "local.environment")
 
     def test_missing_resource_returns_empty_dict(self) -> None:
@@ -232,14 +232,14 @@ class FindResourceGroupTagsTests(unittest.TestCase):
     def test_missing_env_tag_omits_key(self) -> None:
         text = (
             'resource "azurerm_resource_group" "this" {\n'
-            '  name = "rg-contigo-dev"\n\n'
+            '  name = "rg-raffa-dev"\n\n'
             "  tags = {\n"
-            '    project = "contigo"\n'
+            '    project = "raffa"\n'
             "  }\n"
             "}\n"
         )
         tags = tfr.find_resource_group_tags(text)
-        self.assertEqual(tags.get("project"), "contigo")
+        self.assertEqual(tags.get("project"), "raffa")
         self.assertNotIn("env", tags)
 
 
@@ -332,7 +332,7 @@ class BrokenFixtureTreeTests(unittest.TestCase):
         self.assertFalse(passed, detail)
 
     def test_wrong_organization_fails_backend_isolation(self) -> None:
-        bad_backend = _good_backend_tf("dev").replace("contigo-platform", "some-other-org")
+        bad_backend = _good_backend_tf("dev").replace("raffa-platform", "some-other-org")
         infra_root, envs_root = self._tree(backend_tf_overrides={"dev": bad_backend})
         passed, detail = tfr.check_backend_isolation("dev", envs_root)
         self.assertFalse(passed, detail)

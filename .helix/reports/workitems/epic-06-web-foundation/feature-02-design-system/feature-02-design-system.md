@@ -26,4 +26,4 @@ them (ADR-019).
 
 ## Target repo
 
-`contigo-web`
+`raffa-web`

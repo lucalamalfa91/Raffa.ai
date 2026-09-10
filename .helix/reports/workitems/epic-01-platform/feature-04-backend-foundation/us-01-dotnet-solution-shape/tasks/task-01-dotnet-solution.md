@@ -4,7 +4,7 @@ type: task
 story: us-01-dotnet-solution-shape
 wave: R0
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-dotnet-solution — Scaffold solution + module projects + architecture test
@@ -12,11 +12,11 @@ target_repo: contigo-backend
 ## Coding objective
 
 Create the ASP.NET Core solution per ADR-002: one class-library project per bounded
-context — `Contigo.Identity.Workspace`, `Contigo.Documents.Contracts`,
-`Contigo.Suppliers.Products`, `Contigo.Renewals`, `Contigo.Savings`,
-`Contigo.Quotes`, `Contigo.Chat`, `Contigo.Benchmark`, `Contigo.AiGateway`,
-`Contigo.Audit` — plus `Contigo.SharedKernel`, and thin hosts `Contigo.Api` and
-`Contigo.Worker`. Domain modules reference only `SharedKernel` and the AI Gateway /
+context — `Raffa.Identity.Workspace`, `Raffa.Documents.Contracts`,
+`Raffa.Suppliers.Products`, `Raffa.Renewals`, `Raffa.Savings`,
+`Raffa.Quotes`, `Raffa.Chat`, `Raffa.Benchmark`, `Raffa.AiGateway`,
+`Raffa.Audit` — plus `Raffa.SharedKernel`, and thin hosts `Raffa.Api` and
+`Raffa.Worker`. Domain modules reference only `SharedKernel` and the AI Gateway /
 Benchmark interfaces; an architecture test (e.g. `Microsoft.CodeAnalysis` or a
 `Shouldly`+reflection test) fails the build if a domain project references a
 provider SDK or another domain project's internals.
@@ -31,9 +31,9 @@ provider SDK or another domain project's internals.
 
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/Contigo.sln | solution |
-| workspace/contigo-backend/src/*/*.csproj | one project per module + hosts |
-| workspace/contigo-backend/tests/Contigo.ArchitectureTests/*.cs | dependency-direction test |
+| workspace/raffa-backend/Raffa.sln | solution |
+| workspace/raffa-backend/src/*/*.csproj | one project per module + hosts |
+| workspace/raffa-backend/tests/Raffa.ArchitectureTests/*.cs | dependency-direction test |
 
 ## Context the implementer needs
 
@@ -48,7 +48,7 @@ provider SDK or another domain project's internals.
 
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| architecture | domain → provider/SDK or domain internals is blocked | `tests/Contigo.ArchitectureTests` |
+| architecture | domain → provider/SDK or domain internals is blocked | `tests/Raffa.ArchitectureTests` |
 
 ## Open questions blocking this task
 

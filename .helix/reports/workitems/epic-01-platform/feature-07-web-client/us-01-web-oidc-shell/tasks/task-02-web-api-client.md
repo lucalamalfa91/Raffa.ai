@@ -4,7 +4,7 @@ type: task
 story: us-01-web-oidc-shell
 wave: R0
 status: live
-target_repo: contigo-web
+target_repo: raffa-web
 ---
 
 # task-02-web-api-client — 02 Web Api Client
@@ -18,7 +18,7 @@ Generate TS API client from OpenAPI; wire /health.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-web/src/ | implementation for `web-api-client` |
+| workspace/raffa-web/src/ | implementation for `web-api-client` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-012.
@@ -30,7 +30,7 @@ Generate TS API client from OpenAPI; wire /health.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | web-api-client behaviour | workspace/contigo-web/tests |
+| unit | web-api-client behaviour | workspace/raffa-web/tests |
 
 ## Open questions blocking this task
 - none

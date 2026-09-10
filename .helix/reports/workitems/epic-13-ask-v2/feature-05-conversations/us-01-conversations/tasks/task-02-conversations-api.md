@@ -4,7 +4,7 @@ type: task
 story: us-01-conversations
 wave: 13
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-02-conversations-api — `/api/conversations` endpoints, host registration, RLS integration tests
@@ -39,30 +39,30 @@ conversation). Leave `POST /api/chat/query` untouched.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| `backend/src/Contigo.Api/ConversationsEndpointExtensions.cs` | new (list, create, get) |
-| `backend/src/Contigo.Api/Program.cs` | `AddChatModule(chatConnectionString)`, `MapConversationsEndpoints()` (phase-2 writer) |
-| `backend/src/Contigo.Api/appsettings.Development.json` | `ConnectionStrings:Chat` |
-| `backend/src/Contigo.Chat/Application/Conversations/*` | only if a query shape is missing (list for user, get with messages) |
-| `backend/tests/Contigo.Api.Tests/ConversationsEndpointTests.cs` | new |
-| `backend/tests/Contigo.IntegrationTests/ConversationsCrossTenantIsolationTests.cs` | new |
-| `backend/tests/Contigo.Api.Tests/DeployableApiTests.cs` | connection string wiring if the test asserts registered modules |
+| `backend/src/Raffa.Api/ConversationsEndpointExtensions.cs` | new (list, create, get) |
+| `backend/src/Raffa.Api/Program.cs` | `AddChatModule(chatConnectionString)`, `MapConversationsEndpoints()` (phase-2 writer) |
+| `backend/src/Raffa.Api/appsettings.Development.json` | `ConnectionStrings:Chat` |
+| `backend/src/Raffa.Chat/Application/Conversations/*` | only if a query shape is missing (list for user, get with messages) |
+| `backend/tests/Raffa.Api.Tests/ConversationsEndpointTests.cs` | new |
+| `backend/tests/Raffa.IntegrationTests/ConversationsCrossTenantIsolationTests.cs` | new |
+| `backend/tests/Raffa.Api.Tests/DeployableApiTests.cs` | connection string wiring if the test asserts registered modules |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-024 (conversations per tenant + user), ADR-009 (RLS backstop), ADR-022 / ADR-010 (identity posture), ADR-011 (messages never carry the raw pack).
 - Gap G-CONVERSATIONS. Header handling pattern: `ChatEndpointExtensions.PostChatQueryAsync` (`X-Tenant-Id` parse → 400).
-- **Do not touch**: `ChatEndpointExtensions.cs` (F06), `Contigo.Chat/Infrastructure/ServiceCollectionExtensions.cs` (F08/T01 owns it this phase), `Contigo.Market` / `Contigo.Insights` registration (F06/T01 wires them in phase 3), OpenAPI json (documented by the phase-4 web task), `web/`.
+- **Do not touch**: `ChatEndpointExtensions.cs` (F06), `Raffa.Chat/Infrastructure/ServiceCollectionExtensions.cs` (F08/T01 owns it this phase), `Raffa.Market` / `Raffa.Insights` registration (F06/T01 wires them in phase 3), OpenAPI json (documented by the phase-4 web task), `web/`.
 - Terraform already injects the other module connection strings; the `Chat` string is the same database — extend `infra/modules/containerapps` **only if** a per-module secret is required by the existing pattern (check `ConnectionStrings__Renewals` wiring in `infra/modules/containerapps/main.tf`; if every module string is injected separately, add `ConnectionStrings__Chat` the same way).
 
 ## Definition of done
-- [ ] `dotnet test backend/tests/Contigo.Api.Tests --filter ConversationsEndpointTests` exit 0 — 400 without `X-User-Id`, 201 create, list returns only the caller's, get 404 for another user
-- [ ] `dotnet test backend/tests/Contigo.IntegrationTests --filter ConversationsCrossTenantIsolationTests` exit 0 (Postgres fixture) — RLS denies tenant B
-- [ ] `dotnet test backend/Contigo.slnx` exit 0
+- [ ] `dotnet test backend/tests/Raffa.Api.Tests --filter ConversationsEndpointTests` exit 0 — 400 without `X-User-Id`, 201 create, list returns only the caller's, get 404 for another user
+- [ ] `dotnet test backend/tests/Raffa.IntegrationTests --filter ConversationsCrossTenantIsolationTests` exit 0 (Postgres fixture) — RLS denies tenant B
+- [ ] `dotnet test backend/Raffa.slnx` exit 0
 
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| API | endpoints + identity rules | `Contigo.Api.Tests/ConversationsEndpointTests.cs` |
-| integration | RLS on conversations | `Contigo.IntegrationTests/ConversationsCrossTenantIsolationTests.cs` |
+| API | endpoints + identity rules | `Raffa.Api.Tests/ConversationsEndpointTests.cs` |
+| integration | RLS on conversations | `Raffa.IntegrationTests/ConversationsCrossTenantIsolationTests.cs` |
 
 ## Open questions blocking this task
 - OQ-askv2-005 — `X-User-Id` until the API JWT (assumed)

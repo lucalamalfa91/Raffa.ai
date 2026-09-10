@@ -3,7 +3,7 @@
 # endpoint URL, names and model ids, no key -- ADR-011), so plain outputs,
 # never a Key Vault secret.
 #
-# ai_services_endpoint and model_env are the two-phase gate. Contigo.Api
+# ai_services_endpoint and model_env are the two-phase gate. Raffa.Api
 # binds IAiGateway to the Foundry client whenever AiGateway:Endpoint is
 # non-empty and to the fixture gateway otherwise, so publishing an endpoint
 # the account cannot back (commit a750746: HTTP 500 on every upload) or a
@@ -26,17 +26,17 @@ output "ai_services_account_endpoint" {
 }
 
 output "ai_services_account_id" {
-  description = "ARM id of the shared aisvc-contigo account (created or attached), or \"\"."
+  description = "ARM id of the shared aisvc-raffa account (created or attached), or \"\"."
   value       = local.ai_services_account_id
 }
 
 output "ai_resource_group_name" {
-  description = "Name of the shared AI resource group (rg-contigo-ai, tags env=shared)."
+  description = "Name of the shared AI resource group (rg-raffa-ai, tags env=shared)."
   value       = local.ai_resource_group_name
 }
 
 output "foundry_project_name" {
-  description = "This environment's Foundry project name (ADR-008: one project per environment, e.g. \"contigo-dev\"). Matches scripts/bootstrap_hcp_org.py FOUNDRY_PROJECTS[].project."
+  description = "This environment's Foundry project name (ADR-008: one project per environment, e.g. \"raffa-dev\"). Matches scripts/bootstrap_hcp_org.py FOUNDRY_PROJECTS[].project."
   value       = local.foundry_project_name
 }
 

@@ -3,7 +3,7 @@ import type { MemberStatus } from "./memberStore";
 
 /**
  * Pure helpers for the Workspace & members screen (route `/workspace/members`; ADR-024 V2 IA;
- * screens-v2.md #10; `contigo-v2/markup.html` "WORKSPACE & MEMBERS" block). No React here -- every
+ * screens-v2.md #10; `raffa-v2/markup.html` "WORKSPACE & MEMBERS" block). No React here -- every
  * rule is unit-testable without rendering (`memberViewModel.test.ts`).
  *
  * Roles are Admin vs Procurement only (ADR-018 "Roles (Day-1)"; requirements D8 / R-WEB-07). The

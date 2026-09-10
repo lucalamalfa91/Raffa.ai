@@ -70,7 +70,7 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     getQuoteAssessment: vi.fn(),
     recalculateQuoteAssessment: vi.fn(),
     captureNegotiationOutcome: vi.fn(),
-    askContigo: vi.fn(),
+    askRaffa: vi.fn(),
     // Task E08/F02/US01/T01 (savings-home): this suite never reaches Home's own fetch-outcome
     // matrix -- bare vi.fn() is enough, same convention as the other calls above.
     getSavingsKpis: vi.fn(),
@@ -230,7 +230,7 @@ function renderReview(apiClient: ApiClient, contractId = CONTRACT_ID) {
 describe("ReviewRoute", () => {
   beforeEach(() => {
     window.sessionStorage.clear();
-    window.sessionStorage.setItem("contigo.signin.currentWorkspace", JSON.stringify({ id: WORKSPACE_ID, name: "Acme Procurement" }));
+    window.sessionStorage.setItem("raffa.signin.currentWorkspace", JSON.stringify({ id: WORKSPACE_ID, name: "Acme Procurement" }));
   });
 
   it("guards on no current workspace instead of sending an undefined X-Tenant-Id", () => {
@@ -562,7 +562,7 @@ describe("ReviewRoute", () => {
         mockApiClient({
           getContract360: vi.fn().mockResolvedValue(ok(minimalContract())),
           getContractEvidence: vi.fn().mockResolvedValue(
-            evidenceOk([evidenceRow({ fieldName: "supplier", value: "Fabrikam Software GmbH", confidence: 0.52, sourcePage: 1, sourceSpan: "between Contigo Demo AG and Fabrikam Software GmbH", passage: null, highlightStart: null, highlightLength: null })]),
+            evidenceOk([evidenceRow({ fieldName: "supplier", value: "Fabrikam Software GmbH", confidence: 0.52, sourcePage: 1, sourceSpan: "between Raffa Demo AG and Fabrikam Software GmbH", passage: null, highlightStart: null, highlightLength: null })]),
           ),
           correctContract,
         }),

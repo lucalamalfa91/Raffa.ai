@@ -4,7 +4,7 @@ type: task
 story: us-01-deterministic-dates
 wave: R2
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-deterministic-dates — 01 Deterministic Dates
@@ -18,7 +18,7 @@ Compute renewal date + cancellation deadline deterministically.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `renewal-engine` |
+| workspace/raffa-backend/src/ | implementation for `renewal-engine` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-002.
@@ -30,7 +30,7 @@ Compute renewal date + cancellation deadline deterministically.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | renewal-engine behaviour | workspace/contigo-backend/tests |
+| unit | renewal-engine behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

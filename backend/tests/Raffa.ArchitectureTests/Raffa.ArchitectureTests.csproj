@@ -1,0 +1,37 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Raffa.SharedKernel\Raffa.SharedKernel.csproj" />
+    <ProjectReference Include="..\..\src\Raffa.Identity.Workspace\Raffa.Identity.Workspace.csproj" />
+    <ProjectReference Include="..\..\src\Raffa.Documents.Contracts\Raffa.Documents.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Raffa.Suppliers.Products\Raffa.Suppliers.Products.csproj" />
+    <ProjectReference Include="..\..\src\Raffa.Renewals\Raffa.Renewals.csproj" />
+    <ProjectReference Include="..\..\src\Raffa.Savings\Raffa.Savings.csproj" />
+    <ProjectReference Include="..\..\src\Raffa.Quotes\Raffa.Quotes.csproj" />
+    <ProjectReference Include="..\..\src\Raffa.Chat\Raffa.Chat.csproj" />
+    <ProjectReference Include="..\..\src\Raffa.Benchmark\Raffa.Benchmark.csproj" />
+    <ProjectReference Include="..\..\src\Raffa.AiGateway\Raffa.AiGateway.csproj" />
+    <ProjectReference Include="..\..\src\Raffa.Audit\Raffa.Audit.csproj" />
+    <ProjectReference Include="..\..\src\Raffa.Api\Raffa.Api.csproj" />
+    <ProjectReference Include="..\..\src\Raffa.Worker\Raffa.Worker.csproj" />
+  </ItemGroup>
+
+</Project>

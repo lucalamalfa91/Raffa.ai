@@ -1,5 +1,5 @@
 # Task E01/F01/US02/T01 (ADR-007: remote state per environment, HCP
-# Terraform workspaces contigo-dev / contigo-demo). HCP Terraform packages
+# Terraform workspaces raffa-dev / raffa-demo). HCP Terraform packages
 # the contents of a configuration directory and uploads it for every
 # VCS-driven or CLI-driven ("terraform plan/apply" run via a remote
 # workspace) run. Nothing that could let local state, a local backend

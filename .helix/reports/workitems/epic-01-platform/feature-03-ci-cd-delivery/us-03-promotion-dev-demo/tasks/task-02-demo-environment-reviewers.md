@@ -4,7 +4,7 @@ type: task
 story: us-03-promotion-dev-demo
 wave: R0
 status: live
-target_repo: contigo-infra
+target_repo: raffa-infra
 ---
 
 # task-02-demo-environment-reviewers — 02 Demo Environment Reviewers
@@ -18,7 +18,7 @@ Document and lock the demo GitHub Environment required reviewers.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-infra/src/ | implementation for `demo-reviewers` |
+| workspace/raffa-infra/src/ | implementation for `demo-reviewers` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-016.
@@ -30,7 +30,7 @@ Document and lock the demo GitHub Environment required reviewers.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | demo-reviewers behaviour | workspace/contigo-infra/tests |
+| unit | demo-reviewers behaviour | workspace/raffa-infra/tests |
 
 ## Open questions blocking this task
 - none

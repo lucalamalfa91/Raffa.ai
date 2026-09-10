@@ -5,8 +5,8 @@ region, Terraform layout, Foundry account shape. You do not own git flow or the
 .NET solution internals.
 
 Locked (cite): Microsoft Azure; two isolated envs; free/cheapest SKUs; no
-production HA / multi-region; HCP Terraform in `contigo-infra`; tag
-`project=contigo` and `env=dev|demo`; no shared PostgreSQL or document storage
+production HA / multi-region; HCP Terraform in `raffa-infra`; tag
+`project=raffa` and `env=dev|demo`; no shared PostgreSQL or document storage
 between envs; SQLite is laptop-only.
 
 ## Questions you must answer

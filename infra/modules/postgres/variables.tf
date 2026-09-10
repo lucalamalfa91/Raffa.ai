@@ -40,5 +40,5 @@ variable "postgres_version" {
 variable "administrator_login" {
   description = "Administrator login name. The password is generated (random_password), never a literal (ADR-007: no secrets in Terraform source)."
   type        = string
-  default     = "contigoadmin"
+  default     = "raffaadmin"
 }

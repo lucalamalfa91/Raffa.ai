@@ -10,7 +10,7 @@ status: active
 
 ## Story
 
-As **procurement**, I want Contigo to answer in articulated language, compare
+As **procurement**, I want Raffa to answer in articulated language, compare
 my contract to the fixture band, and refuse carbonara / lawsuits while
 pointing me at a real deal in my workspace.
 

@@ -4,13 +4,13 @@ type: task
 story: us-02-hcp-terraform-workspaces
 wave: R0
 status: live
-target_repo: contigo-infra
+target_repo: raffa-infra
 ---
 
 # task-02-hcp-vcs-wiring — 02 Hcp Vcs Wiring
 
 ## Coding objective
-Wire the two HCP workspaces to the contigo repo VCS and assert remote state only.
+Wire the two HCP workspaces to the raffa repo VCS and assert remote state only.
 
 ## Parent story AC covered
 - See parent story `us-02-hcp-terraform-workspaces` acceptance criteria (traced by this task objective).
@@ -18,7 +18,7 @@ Wire the two HCP workspaces to the contigo repo VCS and assert remote state only
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-infra/src/ | implementation for `hcp-vcs-wiring` |
+| workspace/raffa-infra/src/ | implementation for `hcp-vcs-wiring` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-007, ADR-014.
@@ -30,7 +30,7 @@ Wire the two HCP workspaces to the contigo repo VCS and assert remote state only
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | hcp-vcs-wiring behaviour | workspace/contigo-infra/tests |
+| unit | hcp-vcs-wiring behaviour | workspace/raffa-infra/tests |
 
 ## Open questions blocking this task
 - none

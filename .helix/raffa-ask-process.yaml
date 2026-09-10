@@ -1,0 +1,188 @@
+# =============================================================================
+# raffa-ask-process -- Helix Passata 1 for ASK RAFFA V2 only.
+# Does NOT replace raffa-process.yaml. Launch with ./run-ask.ps1
+# (never --fresh, never -Slice / execution-fanout).
+#
+# MODEL (operator decision 2026-09-08): every Passata 1 agent runs on
+# Claude Code **Opus** (provider claude-code, Pattern E harness), not DeepSeek.
+# The concrete id comes from .env ANTHROPIC_DEFAULT_OPUS_MODEL (run-ask.ps1
+# loads .env; -Max blanks the Hub token so Claude Code bills the Max login).
+# Coding agents own their tools (Read/Write/Edit/Grep/Glob/Bash) governed by
+# cwd (= this artifact folder) + permission_mode; Helix native tools are not
+# bound on this path. Turn deadline: .env HELIX_CODING_AGENT_TURN_DEADLINE_SECONDS.
+#
+# Oracle: inputs/requirements.md (HITL decisions D1–D8, 2026-09-08).
+# Design oracle: inputs/design/prototypes/Raffa V2 Prototype.html, unpacked
+# and searchable at inputs/design/prototypes/raffa-v2/ (app.jsx, markup.html,
+# styles.css, ia-v2.md, screens-v2.md). Every web task cites both.
+#
+# PASSATA 1 -- raffa-ask-design (DEFAULT)
+#   docs-intake-ask → ask-adr-gate → decomposer → checker ⇄ remediator.
+#   Writes ADR-024 (supersedes ADR-023), amendment footers on
+#   ADR-001/004/011/018/020, epic-13, wave-spec.ask.yaml, slices/e13.yaml.
+#   Every producer is VERIFY-OR-WRITE: outputs authored at HITL (2026-09-08)
+#   are kept when they carry the requirements; only gaps are filled.
+#   Never touches wave-spec.execution.yaml, e01–e11, e1011, e12, epic-12
+#   (superseded, footered), or slice.current.yaml.
+#
+# PASSATA 2 is NOT in this document. After HITL on ADR-024 + gap report:
+#   Studio → raffa-process.yaml → execution-fanout (slice.current.yaml = e13)
+#   or  ./run.ps1 -Max -Slice e13 -o execution-fanout
+# =============================================================================
+
+version: "0.1"
+runtime: maf
+output_dir: reports
+
+defaults:
+  harness:
+    memory: { scope: session }
+    governance:
+      hooks: { allow_external: false }
+      policy:
+        model_allowlist: [cc-opus]
+
+# -----------------------------------------------------------------------------
+# Models -- Claude Code Opus only. provider claude-code is lineage (not a chat
+# client): every agent below declares the coding-agent harness. The id is
+# env-driven so the operator's Claude Code Opus choice (.env) is the one used.
+# -----------------------------------------------------------------------------
+models:
+  - id: cc-opus
+    provider: claude-code
+    model: ${ANTHROPIC_DEFAULT_OPUS_MODEL}
+
+# Native tools are declared for documentation only; coding agents do not bind
+# them (they use Claude Code's own tools). Kept so the artifact stays
+# self-describing for a future chat-model fallback.
+tools:
+  - { id: read-file,    kind: function, ref: read_file }
+  - { id: write-file,   kind: function, ref: write_file }
+  - { id: shell,        kind: function, ref: bash }
+
+skills:
+  - { id: kb-contract,                 instructions_file: skills/kb-contract.md }
+  - { id: kb-contract-ask,             instructions_file: skills/kb-contract-ask.md }
+  - { id: marker-discipline,           instructions_file: skills/marker-discipline.md }
+  - { id: cc-passata1-harness,         instructions_file: skills/cc-passata1-harness.md }
+  - { id: council-protocol-ask,        instructions_file: skills/council-protocol-ask.md }
+  - { id: decompose-ask-workitems,     instructions_file: skills/decompose-ask-workitems.md }
+  - { id: wavespec-ask,                instructions_file: skills/wavespec-ask.md }
+
+agents:
+  - id: docs-ingester-ask
+    model: cc-opus
+    skills: [kb-contract, kb-contract-ask, marker-discipline, cc-passata1-harness]
+    instructions_file: agents/docs-ingester-ask.md
+    harness:
+      backend: { kind: external-coding-agent, provider: claude-code, mode: harness, transport: agent-sdk }
+      coding_agent:
+        permission_mode: acceptEdits
+        allowed_tools: [Read, Write, Edit, Grep, Glob]
+        max_turns: 40
+
+  - id: ask-auditor
+    model: cc-opus
+    skills: [kb-contract, kb-contract-ask, marker-discipline, cc-passata1-harness, council-protocol-ask]
+    instructions_file: agents/ask-auditor.md
+    harness:
+      backend: { kind: external-coding-agent, provider: claude-code, mode: harness, transport: agent-sdk }
+      coding_agent:
+        permission_mode: acceptEdits
+        allowed_tools: [Read, Write, Edit, Grep, Glob]
+        max_turns: 120
+
+  # Critic only -- read-only tools. Sole emitter of ASK_ADRS_APPROVED:.
+  - id: ask-critic
+    model: cc-opus
+    skills: [kb-contract, kb-contract-ask, marker-discipline, cc-passata1-harness, council-protocol-ask]
+    instructions_file: agents/ask-critic.md
+    harness:
+      backend: { kind: external-coding-agent, provider: claude-code, mode: harness, transport: agent-sdk }
+      coding_agent:
+        permission_mode: acceptEdits
+        allowed_tools: [Read, Grep, Glob]
+        max_turns: 60
+
+  - id: backlog-decomposer-ask
+    model: cc-opus
+    skills: [kb-contract, kb-contract-ask, marker-discipline, cc-passata1-harness, decompose-ask-workitems, wavespec-ask]
+    instructions_file: agents/backlog-decomposer-ask.md
+    harness:
+      backend: { kind: external-coding-agent, provider: claude-code, mode: harness, transport: agent-sdk }
+      coding_agent:
+        permission_mode: acceptEdits
+        allowed_tools: [Read, Write, Edit, Bash, Grep, Glob]
+        max_turns: 200
+
+  # Checker -- read-only tools (no Write/Edit/Bash).
+  - id: decomposition-checker-ask
+    model: cc-opus
+    skills: [kb-contract, kb-contract-ask, marker-discipline, cc-passata1-harness, decompose-ask-workitems, wavespec-ask]
+    instructions_file: agents/decomposition-checker-ask.md
+    harness:
+      backend: { kind: external-coding-agent, provider: claude-code, mode: harness, transport: agent-sdk }
+      coding_agent:
+        permission_mode: acceptEdits
+        allowed_tools: [Read, Grep, Glob]
+        max_turns: 80
+
+  - id: decomposition-remediator-ask
+    model: cc-opus
+    skills: [kb-contract, kb-contract-ask, marker-discipline, cc-passata1-harness, decompose-ask-workitems, wavespec-ask]
+    instructions_file: agents/decomposition-remediator-ask.md
+    harness:
+      backend: { kind: external-coding-agent, provider: claude-code, mode: harness, transport: agent-sdk }
+      coding_agent:
+        permission_mode: acceptEdits
+        allowed_tools: [Read, Write, Edit, Bash, Grep, Glob]
+        max_turns: 120
+
+orchestrations:
+  - id: docs-intake-ask
+    topology: sequential
+    participants: [docs-ingester-ask]
+
+  # Producer (ask-auditor) then critic (ask-critic). 6 table rounds x 2 = 12.
+  # Close gate: ADR-024 must exist on disk before ASK_ADRS_APPROVED: can fire.
+  - id: ask-adr-gate
+    topology: group_chat
+    participants: [ask-auditor, ask-critic]
+    selection: round_robin
+    max_rounds: 12
+    termination: on_marker
+    marker: "ASK_ADRS_APPROVED:"
+    marker_line_anchored: true
+    close_requires_glob: "reports/architecture/ADR-024*.md"
+    close_requires_marker: "ASK_ADRS_WRITTEN:"
+    limits: { max_identical_turns: 3 }
+
+  - id: decomposition-ask
+    topology: sequential
+    participants: [backlog-decomposer-ask]
+
+  - id: decomposition-check-ask
+    topology: sequential
+    participants: [decomposition-checker-ask]
+
+  - id: decomposition-remediation-ask
+    topology: sequential
+    participants: [decomposition-remediator-ask]
+
+  - id: raffa-ask-design
+    default: true
+    topology: workflow
+    participants:
+      - docs-intake-ask
+      - ask-adr-gate
+      - decomposition-ask
+      - decomposition-check-ask
+      - decomposition-remediation-ask
+    start: docs-intake-ask
+    edges:
+      - [docs-intake-ask, ask-adr-gate]
+      - [ask-adr-gate, decomposition-ask]
+      - [decomposition-ask, decomposition-check-ask]
+      - [decomposition-check-ask, decomposition-remediation-ask, needs_remediation]
+      - [decomposition-remediation-ask, decomposition-check-ask]
+    limits: { max_steps: 200000, max_iterations: 15, run_timeout_s: 14400 }

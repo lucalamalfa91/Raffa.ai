@@ -25,4 +25,4 @@ Members & roles table plus invite form with the admin/procurement gate
 
 ## Target repo
 
-`contigo-web`
+`raffa-web`

@@ -1,10 +1,10 @@
 waveId: wave-v1-epic-e13
 status: planned
-# E13 Ask Contigo V2 (documents, conversations, market feed, strategies, system-aware). Prior-wave depends_on dropped (producer-completeness).
+# E13 Ask Raffa V2 (documents, conversations, market feed, strategies, system-aware). Prior-wave depends_on dropped (producer-completeness).
 # estimated tokens: 30.4M (S/M/L mapped; not a packing cap).
 # Launch: ./run.ps1 -Max -Slice e13 -o execution-fanout
-# Design oracle: inputs/design/prototypes/Contigo V2 Prototype.html (unpacked: inputs/design/prototypes/contigo-v2/). Requirements: inputs/requirements.md.
-# Studio: contigo-process.yaml -> execution-fanout after copying this file to slice.current.yaml.
+# Design oracle: inputs/design/prototypes/Raffa V2 Prototype.html (unpacked: inputs/design/prototypes/raffa-v2/). Requirements: inputs/requirements.md.
+# Studio: raffa-process.yaml -> execution-fanout after copying this file to slice.current.yaml.
 phases:
   - id: 1
     name: phase-1

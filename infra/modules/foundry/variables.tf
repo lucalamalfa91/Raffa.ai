@@ -28,7 +28,7 @@ variable "workload_principal_id" {
 # second account, which ADR-008 forbids -- scripts/foundry_connection_verify.py
 # asserts a single owner across the env roots.
 variable "create_shared_account" {
-  description = "true in exactly one root (dev): create rg-contigo-ai and the shared aisvc-contigo Azure AI Services account. Every other root passes false."
+  description = "true in exactly one root (dev): create rg-raffa-ai and the shared aisvc-raffa Azure AI Services account. Every other root passes false."
   type        = bool
   default     = false
 }

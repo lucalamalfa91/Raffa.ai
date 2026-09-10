@@ -238,7 +238,7 @@ describe("toConfidencePercent", () => {
 
 describe("header", () => {
   it("resolveBackLink follows the origin, including Savings, and is null for anything else", () => {
-    expect(resolveBackLink("ask")).toEqual({ label: "Ask Contigo", href: "/ask" });
+    expect(resolveBackLink("ask")).toEqual({ label: "Ask Raffa", href: "/ask" });
     expect(resolveBackLink("documents")).toEqual({ label: "Documents", href: "/documents" });
     expect(resolveBackLink("portfolio")).toEqual({ label: "Portfolio", href: "/contracts" });
     expect(resolveBackLink("renewals")).toEqual({ label: "Renewals", href: "/renewals" });

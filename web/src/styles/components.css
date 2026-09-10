@@ -1,5 +1,5 @@
 /**
- * Contigo design system — component catalogue ("Modernist").
+ * Raffa design system — component catalogue ("Modernist").
  *
  * Exactly the locked catalogue from ADR-019 / design-system.md, nothing
  * added: .btn, .tag, .table, .input, .field > label, .radio + .dot, .seg,
@@ -324,10 +324,10 @@
     color-mix(in srgb, var(--color-bg) 60%, transparent),
     transparent
   );
-  animation: contigo-skeleton-pulse 1.4s ease-in-out infinite;
+  animation: raffa-skeleton-pulse 1.4s ease-in-out infinite;
 }
 
-@keyframes contigo-skeleton-pulse {
+@keyframes raffa-skeleton-pulse {
   0% {
     transform: translateX(-100%);
   }
@@ -542,7 +542,7 @@
 }
 
 /* =========================================================================
- * V2 screen chrome (ADR-024; `contigo-v2/markup.html`): every module screen
+ * V2 screen chrome (ADR-024; `raffa-v2/markup.html`): every module screen
  * opens with the same header row -- `padding:28px 32px 16px; border-bottom:
  * 2px solid var(--color-divider)` holding an h2 and a 13px neutral-600
  * summary line, optional actions flush right -- and the three "From your

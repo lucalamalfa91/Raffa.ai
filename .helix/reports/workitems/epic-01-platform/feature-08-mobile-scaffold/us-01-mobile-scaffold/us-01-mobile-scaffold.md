@@ -15,7 +15,7 @@ so that the `mobile/` folder is present without blocking delivery.
 
 ## Acceptance criteria
 
-- [ ] AC-1 Expo + TypeScript scaffold with `contigo://callback` native redirect.
+- [ ] AC-1 Expo + TypeScript scaffold with `raffa://callback` native redirect.
 - [ ] AC-2 OIDC Authorization Code + PKCE against Entra ID (no client secret).
 - [ ] AC-3 Non-blocking: failure does not block `dev`/`demo` promotion.
 

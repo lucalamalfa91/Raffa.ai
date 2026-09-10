@@ -17,8 +17,8 @@ stakeholder-facing environment never shares a store with `dev`.
 ## Acceptance criteria
 
 - [ ] AC-1 `demo` provisions the same service set as `dev` (Container Apps, Postgres+pgvector, Storage, Service Bus, Key Vault, ACR, Log Analytics).
-- [ ] AC-2 All `demo` resources tagged `project=contigo`, `env=demo`, `location=West Europe`.
-- [ ] AC-3 `demo` has its own resource group and HCP `contigo-demo` state; no shared Postgres/Storage/Service Bus with `dev`.
+- [ ] AC-2 All `demo` resources tagged `project=raffa`, `env=demo`, `location=West Europe`.
+- [ ] AC-3 `demo` has its own resource group and HCP `raffa-demo` state; no shared Postgres/Storage/Service Bus with `dev`.
 
 ## Definition of done
 

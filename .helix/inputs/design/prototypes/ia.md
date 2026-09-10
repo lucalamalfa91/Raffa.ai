@@ -1,4 +1,4 @@
-# Contigo — Information architecture (web V1)
+# Raffa — Information architecture (web V1)
 
 ## Roles on the Day-1 path
 - **Workspace Admin** — everything below + Workspace & members.
@@ -9,7 +9,7 @@
 1. Home (Savings KPIs + opportunities) — R3
 2. Portfolio — R1
 3. Renewals — R2
-4. Ask Contigo (⌘K) — R1
+4. Ask Raffa (⌘K) — R1
 5. Quote check — R4
 6. Documents (upload + processing status) — R0
 7. Review queue — R1
@@ -26,7 +26,7 @@ Global: Ask bar on every screen; user + sign out in rail footer.
 | /contracts | Portfolio (attention strip, filters, table) | Contract |
 | /contracts/:id | Contract 360 — tabs Overview · Commercials · Products · Clauses · Obligations · Risks · Documents · Benchmark · Renewal · Activity | Contract + children |
 | /contracts/:id/review | Field review / correction with evidence pane | Extraction, Correction |
-| /ask | Ask Contigo — chat, citations, abstain | Query |
+| /ask | Ask Raffa — chat, citations, abstain | Query |
 | /renewals | Pipeline: threshold strip, priority table, insight card + actions | Renewal |
 | / (home) | Savings KPIs + opportunities | SavingsOpportunity |
 | /quotes/:id | Quote check stepper: Extract → Assessment → Target → Negotiation (+ outcome) | Quote, NegotiationOutcome |

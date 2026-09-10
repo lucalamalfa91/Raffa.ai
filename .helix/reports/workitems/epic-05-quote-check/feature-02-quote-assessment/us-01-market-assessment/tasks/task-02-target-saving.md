@@ -4,7 +4,7 @@ type: task
 story: us-01-market-assessment
 wave: R4
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-02-target-saving — 02 Target Saving
@@ -18,7 +18,7 @@ Target range + potential saving (deterministic).
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `target-saving` |
+| workspace/raffa-backend/src/ | implementation for `target-saving` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-002.
@@ -30,7 +30,7 @@ Target range + potential saving (deterministic).
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | target-saving behaviour | workspace/contigo-backend/tests |
+| unit | target-saving behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

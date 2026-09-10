@@ -16,7 +16,7 @@ client secret is ever stored in GitHub or Terraform source.
 
 ## Acceptance criteria
 
-- [ ] AC-1 Two service principals `contigo-sp-dev` and `contigo-sp-demo` exist, least-privilege to their own resource group.
+- [ ] AC-1 Two service principals `raffa-sp-dev` and `raffa-sp-demo` exist, least-privilege to their own resource group.
 - [ ] AC-2 OIDC federation subject claims pinned (repo/branch/env), no client secret stored.
 - [ ] AC-3 Workflow files contain only `client-id`, `tenant-id`, `subscription-id` (no secret).
 
@@ -42,7 +42,7 @@ client secret is ever stored in GitHub or Terraform source.
 
 ## Council decisions carried into this story
 
-SPs `contigo-sp-dev`/`contigo-sp-demo`; subject claim `repo:lucalamalfa91/contigo:*` + env for `demo`; no `AZURE_CREDENTIALS`.
+SPs `raffa-sp-dev`/`raffa-sp-demo`; subject claim `repo:lucalamalfa91/raffa:*` + env for `demo`; no `AZURE_CREDENTIALS`.
 
 ## Open questions
 

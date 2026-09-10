@@ -1,17 +1,17 @@
-# Contigo Ask V2 process (epic-13 / e13 — replaces epic-12 / e12)
+# Raffa Ask V2 process (epic-13 / e13 — replaces epic-12 / e12)
 
 Separate Helix artifact from the live R0–R4 process, web-delta, schema-apply,
 demo-readiness, and visual-fidelity.
 
 | File | Role |
 |---|---|
-| `contigo-process.yaml` + `./run.ps1` / **Helix Studio** | **Live artifact. Passata 2 (the wave) runs here.** |
-| `contigo-visual-process.yaml` + `./run-visual.ps1` | Mockup CSS. Do not mix. |
-| `contigo-ask-process.yaml` + `./run-ask.ps1` | Ask V2 Passata 1 only (ADRs + work items). |
+| `raffa-process.yaml` + `./run.ps1` / **Helix Studio** | **Live artifact. Passata 2 (the wave) runs here.** |
+| `raffa-visual-process.yaml` + `./run-visual.ps1` | Mockup CSS. Do not mix. |
+| `raffa-ask-process.yaml` + `./run-ask.ps1` | Ask V2 Passata 1 only (ADRs + work items). |
 
 Oracle: `inputs/requirements.md` (HITL decisions D1–D8, 2026-09-08).
-Design oracle: `inputs/design/prototypes/Contigo V2 Prototype.html`, unpacked
-and searchable under `inputs/design/prototypes/contigo-v2/` (`app.jsx`,
+Design oracle: `inputs/design/prototypes/Raffa V2 Prototype.html`, unpacked
+and searchable under `inputs/design/prototypes/raffa-v2/` (`app.jsx`,
 `markup.html`, `styles.css`, `ia-v2.md`, `screens-v2.md`). Every web task
 cites both; the requirements win where the prototype differs (divergence
 table in `ia-v2.md`).
@@ -40,7 +40,7 @@ is declared or allow-listed. Consequences:
   (3600 s), so authoring many files in one turn no longer hits the 600 s
   default that motivated PROCESS.md D9.
 
-The live `contigo-process.yaml` (Passata 2) keeps `coding-primary` =
+The live `raffa-process.yaml` (Passata 2) keeps `coding-primary` =
 `claude-sonnet-5` for implementer / reviewer / conflict-fixer; switching the
 wave to Opus is one line (`models[coding-primary].model`) and a cost call
 the operator makes at HITL.
@@ -65,7 +65,7 @@ ADR-024, amendment footers, epic-13, `e13.yaml`) and still run `-Check`.
 ## HITL (required before the e13 wave)
 
 Review `inputs/requirements.md`, `reports/audit/ask-v2-gaps.md`,
-`reports/architecture/ADR-024-ask-contigo-v2.md`, the amendment footers on
+`reports/architecture/ADR-024-ask-raffa-v2.md`, the amendment footers on
 ADR-001/004/011/018/020, `reports/workitems/epic-13-ask-v2/`, and
 `reports/plan/slices/e13.yaml`. Then stamp the gate by hand (same format
 as `gates/readiness-gaps.hitl-ok`; `--record-hitl` only knows slice ids):
@@ -75,7 +75,7 @@ as `gates/readiness-gaps.hitl-ok`; `--record-hitl` only knows slice ids):
 slice: ask-v2
 stamped_at: $(Get-Date -AsUTC -Format s)Z
 reviewed: inputs/requirements.md, reports/audit/ask-v2-gaps.md, ADR-024, epic-13, slices/e13.yaml
-decision: accept e13 (Ask Contigo V2) as the next wave; e12 superseded
+decision: accept e13 (Ask Raffa V2) as the next wave; e12 superseded
 blockers: none
 "@ | Set-Content -Encoding ascii reports/plan/gates/ask-v2.hitl-ok
 ```
@@ -89,7 +89,7 @@ skipped: never launched).
    copied by this authoring pass; `./run.ps1 -Slice e13` re-copies it).
 2. Studio idle, no other wave running. Claude Code Max login active
    (`ANTHROPIC_API_KEY` unset — PROCESS.md D11).
-3. In Helix Studio open **`.helix/contigo-process.yaml`** (the live artifact,
+3. In Helix Studio open **`.helix/raffa-process.yaml`** (the live artifact,
    not this YAML), select orchestration **`execution-fanout`**, Run.
    It walks `slice.current.yaml` (twenty E13 tasks, five phases, three
    worktrees in parallel), merges `wave/*` into `integration` at each

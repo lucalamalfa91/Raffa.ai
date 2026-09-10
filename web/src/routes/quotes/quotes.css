@@ -1,6 +1,6 @@
 /**
  * Quote check screen, V2 (routes `/quotes`, `/quotes/:quoteId`; ADR-024 V2 IA; screens-v2.md #9;
- * `contigo-v2/markup.html` "QUOTE CHECK (optional)" block). Component classes (.screen-kicker,
+ * `raffa-v2/markup.html` "QUOTE CHECK (optional)" block). Component classes (.screen-kicker,
  * .screen-title, .screen-reroute, .table, .tag, .btn, .field, .input, .hint, .row-critical,
  * .micro-meta, .empty-state, .error-state, .skeleton, .visually-hidden) come from
  * ../../styles/components.css (ADR-019) -- this file adds only this screen's own composites, quoted

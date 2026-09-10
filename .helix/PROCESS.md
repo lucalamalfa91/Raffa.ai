@@ -1,8 +1,8 @@
-# Contigo process — phase by phase, and what Helix v0.1 cannot reproduce
+# Raffa process — phase by phase, and what Helix v0.1 cannot reproduce
 
 This document is the bridge between the mandate
 (`.claude/CREATE-PROCESS-PROMPT.md` + `docs/`) and the artifact
-(`contigo-process.yaml`). Every phase is **RIPRODOTTA** (with the Helix
+(`raffa-process.yaml`). Every phase is **RIPRODOTTA** (with the Helix
 expression) or **DICHIARATA** (v0.1 limit). A recorded divergence is a result;
 a silent one is a defect.
 
@@ -12,7 +12,7 @@ Language of this file: English (artifact). Deliberation may be Italian.
 
 ## 1. What the process is
 
-Contigo V1 is an AI-native procurement/contract-intelligence web platform. All
+Raffa V1 is an AI-native procurement/contract-intelligence web platform. All
 application and infra code is written by **Claude Code through Helix**. Passata 1
 designs and decomposes **before any application code is written**.
 
@@ -63,7 +63,7 @@ YAML constants. They are ADR output of the council.
 
 | Mandate | Helix expression | Status |
 |---|---|---|
-| Separate run target | `contigo-execution` / `execution-fanout`; not in `contigo-design` edges | **RIPRODOTTA** |
+| Separate run target | `raffa-execution` / `execution-fanout`; not in `raffa-design` edges | **RIPRODOTTA** |
 | Produce → gate → revise, not a deliberation table | `execution-loop` `workflow`: implementer → reviewer unless `HALTED:`; back-edge only on `IMPLEMENTATION_GAPS:` | **RIPRODOTTA** |
 | Pattern E Claude Code; reviewer read-only | harness `allowed_tools` | **RIPRODOTTA** |
 | `IMPLEMENTATION_APPROVED:` / `IMPLEMENTATION_GAPS:` / `HALTED:`, line-anchored; not `on_approved_or_halted` | workflow edges + `fan_out.task_failure_markers: ["HALTED:"]` (the engine has no halt-guard for a workflow instance — D2, D13) | **RIPRODOTTA** |
@@ -83,7 +83,7 @@ paths stay out of `## Files to create or modify` so same-phase tasks do
 not collide on one markdown file (D1 single-writer). Barrier merges union
 both sides' factual updates.
 
-No three-pass test pipeline (bit-flow passata 3). Contigo stops at a green
+No three-pass test pipeline (bit-flow passata 3). Raffa stops at a green
 decomposition; code is a separate pass the operator launches. Testing, if added
 later, is a **third** top-level target — not this artifact's job.
 
@@ -114,14 +114,14 @@ On the fan-out **success** path Helix fires `on_orchestration_stop`
 
 1. `scripts/open_fanout_pr.py` — push product `integration` and open a
    GitHub PR to `origin/main`. It resolves the *product* clone
-   (`lucalamalfa91/contigo`), never the leftover nested `.helix` git
+   (`lucalamalfa91/raffa`), never the leftover nested `.helix` git
    (that nest has no `origin`; r0-a exited 1 there and Studio stayed
    green).
 2. `scripts/close_wave_slice.py` — write
    `reports/execution/wave-close.md`. If any open point remains (no PR,
    HCP VCS pending, …) open a GitHub issue labelled `hitl` on the
    product remote (predefined HITL channel). Optional
-   `CONTIGO_HITL_WEBHOOK_URL` when the script is run outside the
+   `RAFFA_HITL_WEBHOOK_URL` when the script is run outside the
    stripped hook env.
 
 Neither hook merges onto local `main`. `fan_out.write_back` is **inert**
@@ -255,7 +255,7 @@ must be a response to a preceding message with 'tool_calls'* (reproduced on
 **RIPRODOTTA** on every DeepSeek model: `normalize_turns: false`,
 `tool_turn_cue: false`, `tool_call_content: ensure` (not Moonshot `strip`).
 Do not Resume a session that already 400'd — the poisoned transcript
-replays. Start a **new** run. Default orchestration is `contigo-plan-r0-r4`
+replays. Start a **new** run. Default orchestration is `raffa-plan-r0-r4`
 (no council); `software-architect` is not a participant.
 
 ---
@@ -263,7 +263,7 @@ replays. Start a **new** run. Default orchestration is `contigo-plan-r0-r4`
 ## 4. Control graph
 
 ```
-PASSATA 1 -- contigo-design (NOT default). Re-analysis: --fresh then this.
+PASSATA 1 -- raffa-design (NOT default). Re-analysis: --fresh then this.
 
   docs-intake
         |
@@ -276,8 +276,8 @@ PASSATA 1 -- contigo-design (NOT default). Re-analysis: --fresh then this.
         v
   DECOMPOSITION_OK:     TERMINAL  (no outgoing edge)
 
-PASSATA 1b -- contigo-plan-r0-r4  leftover append-R1–R4 without re-council
-PASSATA 1c -- contigo-plan-close (DEFAULT)  check ⇄ remediator → STOP
+PASSATA 1b -- raffa-plan-r0-r4  leftover append-R1–R4 without re-council
+PASSATA 1c -- raffa-plan-close (DEFAULT)  check ⇄ remediator → STOP
 
 =========== human checkpoint: review the tree, then launch passata 2 ===========
 

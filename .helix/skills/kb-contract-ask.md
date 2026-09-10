@@ -1,4 +1,4 @@
-# KB contract — Ask Contigo V2 delta (epic-13 / e13)
+# KB contract — Ask Raffa V2 delta (epic-13 / e13)
 
 Append-only. Starts at **epic-13 / e13**. epic-12 / e12 are **superseded**
 (HITL 2026-09-08, `inputs/requirements.md` §0 D4) and stay on disk with a
@@ -8,12 +8,12 @@ superseded banner.
 
 ```
 inputs/requirements.md                                    # binding requirements, HITL D1–D8
-inputs/design/prototypes/Contigo V2 Prototype.html        # bundled design export (pixel reference)
-inputs/design/prototypes/contigo-v2/app.jsx               # unpacked logic (Ask intents, renderVals)
-inputs/design/prototypes/contigo-v2/markup.html           # unpacked screens + bindings
-inputs/design/prototypes/contigo-v2/styles.css            # unpacked CSS
-inputs/design/prototypes/contigo-v2/ia-v2.md              # V2 IA, routes, cross-links, divergences
-inputs/design/prototypes/contigo-v2/screens-v2.md         # V2 screens, states, verbatim copy
+inputs/design/prototypes/Raffa V2 Prototype.html        # bundled design export (pixel reference)
+inputs/design/prototypes/raffa-v2/app.jsx               # unpacked logic (Ask intents, renderVals)
+inputs/design/prototypes/raffa-v2/markup.html           # unpacked screens + bindings
+inputs/design/prototypes/raffa-v2/styles.css            # unpacked CSS
+inputs/design/prototypes/raffa-v2/ia-v2.md              # V2 IA, routes, cross-links, divergences
+inputs/design/prototypes/raffa-v2/screens-v2.md         # V2 screens, states, verbatim copy
 inputs/design/prototypes/design-system.md                 # tokens (ADR-019)
 ```
 
@@ -49,7 +49,7 @@ reports/architecture/ADR-004-foundry-models.md              # amendment footer o
 reports/architecture/ADR-011-secrets-and-rag.md             # amendment footer only
 reports/architecture/ADR-018-web-information-architecture.md # amendment footer only
 reports/architecture/ADR-020-web-screen-inventory.md        # amendment footer only
-reports/architecture/ADR-024-ask-contigo-v2.md              # new (supersedes ADR-023)
+reports/architecture/ADR-024-ask-raffa-v2.md              # new (supersedes ADR-023)
 reports/context/ask-v2-mandate.md
 reports/audit/ask-v2-gaps.md
 reports/audit/ask-v2-hitl.md

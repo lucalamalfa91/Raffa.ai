@@ -5,7 +5,7 @@ import type { WorkspaceRole } from "./navItems";
  * return role/permission claims usable client-side to gate
  * /workspace/members (otherwise the non-admin 'request access' state must be
  * server-driven)"). No JWT bearer auth is wired into the API host yet
- * (backend/src/Contigo.Api/Program.cs has no `AddAuthentication`/
+ * (backend/src/Raffa.Api/Program.cs has no `AddAuthentication`/
  * `AddJwtBearer`) and no endpoint returns "what is my role in this
  * workspace" — see src/routes/signin/workspaceStore.ts's own doc comment on
  * the identical gap for its `roleLabel` field. So there is exactly one
@@ -27,7 +27,7 @@ import type { WorkspaceRole } from "./navItems";
  * came from (the same seam src/routes/signin/index.tsx's own header comment
  * describes for swapping its MSAL-state gate for a real `<Route>`).
  */
-const ROLE_STORAGE_KEY = "contigo.shell.workspaceRole";
+const ROLE_STORAGE_KEY = "raffa.shell.workspaceRole";
 
 function parseRole(value: string | null): WorkspaceRole | null {
   return value === "admin" || value === "procurement" ? value : null;

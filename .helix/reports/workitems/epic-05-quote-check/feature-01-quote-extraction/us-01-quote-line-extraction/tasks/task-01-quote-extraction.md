@@ -4,7 +4,7 @@ type: task
 story: us-01-quote-line-extraction
 wave: R4
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-quote-extraction — 01 Quote Extraction
@@ -18,7 +18,7 @@ POST /api/quotes upload + line-item extraction.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `quote-extraction` |
+| workspace/raffa-backend/src/ | implementation for `quote-extraction` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-002, ADR-004, ADR-003.
@@ -30,7 +30,7 @@ POST /api/quotes upload + line-item extraction.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | quote-extraction behaviour | workspace/contigo-backend/tests |
+| unit | quote-extraction behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

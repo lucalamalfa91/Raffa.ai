@@ -11,7 +11,7 @@ status: active
 ## Story
 
 As a **product owner**, I want the R3 definition of success proven end-to-end, so
-that "Contigo quantifies credible savings opportunities".
+that "Raffa quantifies credible savings opportunities".
 
 ## Acceptance criteria
 

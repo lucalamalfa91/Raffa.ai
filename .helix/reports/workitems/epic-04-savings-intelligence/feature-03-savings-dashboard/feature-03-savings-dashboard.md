@@ -27,4 +27,4 @@ opportunity list/detail/update endpoints.
 
 ## Target repo
 
-`contigo-backend`
+`raffa-backend`

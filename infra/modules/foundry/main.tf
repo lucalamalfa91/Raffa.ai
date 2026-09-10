@@ -10,10 +10,10 @@
 # makes Terraform the owner:
 #
 #   * ONE root (dev, `create_shared_account = true`) creates the shared
-#     resource group rg-contigo-ai and the account aisvc-contigo (kind
+#     resource group rg-raffa-ai and the account aisvc-raffa (kind
 #     AIServices: Azure OpenAI + Document Intelligence on one endpoint,
 #     account-native Foundry projects, no hub).
-#   * every root creates ITS OWN project (contigo-<env>), ITS OWN model
+#   * every root creates ITS OWN project (raffa-<env>), ITS OWN model
 #     deployments (named <model>-<env>) and ITS OWN role assignments; demo
 #     attaches to the account by name (`attach_shared_account = true`),
 #     never through terraform_remote_state and never by naming the other
@@ -33,16 +33,16 @@ locals {
   # Single shared account, no env suffix (ADR-008: "never a second
   # account") -- MUST stay in lockstep with scripts/bootstrap_hcp_org.py's
   # AI_SERVICES_ACCOUNT_NAME / AI_RESOURCE_GROUP_NAME.
-  ai_services_account_name = "aisvc-contigo"
-  ai_resource_group_name   = "rg-contigo-ai"
+  ai_services_account_name = "aisvc-raffa"
+  ai_resource_group_name   = "rg-raffa-ai"
 
   # Per-project isolation (ADR-008: one project per environment) -- MUST
   # stay in lockstep with scripts/bootstrap_hcp_org.py's FOUNDRY_PROJECTS.
   # The Document Intelligence "connection" is an informational value the
   # backend sends as a request header (Document Intelligence is native to
   # the account -- there is no connection resource to create).
-  foundry_project_name             = "contigo-${var.environment}"
-  document_intelligence_connection = "conn-docint-contigo-${var.environment}"
+  foundry_project_name             = "raffa-${var.environment}"
+  document_intelligence_connection = "conn-docint-raffa-${var.environment}"
 
   # ADR-017 amendment 2026-09-09: every PDF and image goes through
   # Document Intelligence Read. prebuilt-read is a built-in model on the
@@ -69,11 +69,11 @@ locals {
   )
 
   tags_shared = {
-    project = "contigo"
+    project = "raffa"
     env     = "shared"
   }
   tags = {
-    project = "contigo"
+    project = "raffa"
     env     = var.environment
   }
 
@@ -137,7 +137,7 @@ resource "azurerm_resource_group" "ai" {
 }
 
 # kind = AIServices: one account, one endpoint
-# (https://aisvc-contigo.cognitiveservices.azure.com/) that serves the
+# (https://aisvc-raffa.cognitiveservices.azure.com/) that serves the
 # Azure OpenAI data plane (openai/...) and Document Intelligence
 # (documentintelligence/...). project_management_enabled is what makes the
 # account-native Foundry projects below possible; the custom subdomain is
@@ -189,7 +189,7 @@ resource "azurerm_cognitive_account_project" "this" {
   cognitive_account_id = local.ai_services_account_id
   location             = var.location
   display_name         = local.foundry_project_name
-  description          = "Contigo ${var.environment} Foundry project (ADR-008: one project per environment)."
+  description          = "Raffa ${var.environment} Foundry project (ADR-008: one project per environment)."
 
   identity {
     type = "SystemAssigned"
@@ -208,7 +208,7 @@ resource "azurerm_cognitive_deployment" "model" {
   # Azure serializes writes on a Cognitive Services account: a deployment
   # PUT that overlaps the project PUT fails with RequestConflict
   # ("Another operation is in progress on the resource ..."), which is
-  # exactly how the first dev apply (2026-09-09 22:30) lost contigo-dev
+  # exactly how the first dev apply (2026-09-09 22:30) lost raffa-dev
   # while both deployments succeeded. Nothing here reads the project --
   # the dependency exists only to order the two writes.
   depends_on = [azurerm_cognitive_account_project.this]

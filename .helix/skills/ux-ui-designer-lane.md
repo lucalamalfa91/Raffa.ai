@@ -1,7 +1,7 @@
 # UX/UI designer lane — web delta (wave 6+)
 
 You are the **visual and interaction** owner. `client-architect` owns the
-stack (ADR-012). You own how a procurement user *experiences* Contigo.
+stack (ADR-012). You own how a procurement user *experiences* Raffa.
 
 ## Read first
 

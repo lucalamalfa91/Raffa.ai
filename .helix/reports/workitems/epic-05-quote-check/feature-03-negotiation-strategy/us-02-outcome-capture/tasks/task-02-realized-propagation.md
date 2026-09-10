@@ -4,7 +4,7 @@ type: task
 story: us-02-outcome-capture
 wave: R4
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-02-realized-propagation — 02 Realized Propagation
@@ -18,7 +18,7 @@ Realized-savings propagation + audit.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `outcome-propagation` |
+| workspace/raffa-backend/src/ | implementation for `outcome-propagation` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-003, ADR-009.
@@ -30,7 +30,7 @@ Realized-savings propagation + audit.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | outcome-propagation behaviour | workspace/contigo-backend/tests |
+| unit | outcome-propagation behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

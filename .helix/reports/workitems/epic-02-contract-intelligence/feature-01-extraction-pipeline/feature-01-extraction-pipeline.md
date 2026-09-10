@@ -31,4 +31,4 @@ schema.
 
 ## Target repo
 
-`contigo-backend`
+`raffa-backend`

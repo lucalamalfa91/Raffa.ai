@@ -2,11 +2,11 @@
 
 mode: ask-v2
 master: reports/plan/wave-spec.ask.yaml
-design_oracle: inputs/design/prototypes/Contigo V2 Prototype.html
+design_oracle: inputs/design/prototypes/Raffa V2 Prototype.html
 requirements: inputs/requirements.md
 slices:
   - id: e13
-    title: E13 Ask Contigo V2 (documents, conversations, market feed, strategies, system-aware)
+    title: E13 Ask Raffa V2 (documents, conversations, market feed, strategies, system-aware)
     tokens: 30400000
     tasks: 20
     previous: e1011

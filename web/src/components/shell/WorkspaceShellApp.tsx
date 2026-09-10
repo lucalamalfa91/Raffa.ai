@@ -35,7 +35,7 @@ export interface WorkspaceShellAppProps {
  * (Review is a *state* of Documents in V2, not a rail destination or its own screen -- the old
  * `routes/review/` rail landing has been deleted). `contracts`, `contracts/:contractId`,
  * `renewals`, `quotes`, `quotes/:quoteId` and `workspace/members` all render their V2 screens
- * (`contigo-v2/screens-v2.md` #5-#10); `userLabel` reaches Renewals and Contract 360 as the owner
+ * (`raffa-v2/screens-v2.md` #5-#10); `userLabel` reaches Renewals and Contract 360 as the owner
  * of every renewal action they post.
  */
 export function ShellRoutes({ workspaceName, role, userLabel, onSignOut, apiClient }: WorkspaceShellAppProps) {

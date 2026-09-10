@@ -296,7 +296,7 @@ describe("buildReviewFields with real evidence (GET /api/contracts/{id}/evidence
       value: "Fabrikam Software GmbH",
       confidence: 0.52,
       sourcePage: 1,
-      sourceSpan: "between Contigo Demo AG and Fabrikam Software GmbH",
+      sourceSpan: "between Raffa Demo AG and Fabrikam Software GmbH",
     });
     // contract() has no linked supplier (supplierName null) -- without evidence there would be no row.
     expect(buildReviewFields(contract(), [], new Set()).some((row) => row.name === "supplier")).toBe(false);

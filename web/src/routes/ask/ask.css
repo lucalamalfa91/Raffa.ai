@@ -1,5 +1,5 @@
 /**
- * Ask Contigo screen V2 (route `/ask`, `/ask/:conversationId`; ADR-018; screens-v2.md #2;
+ * Ask Raffa screen V2 (route `/ask`, `/ask/:conversationId`; ADR-018; screens-v2.md #2;
  * ADR-020 V2 amendment "screen 2"; task E13/F09/US01/T04, us-01-web-v2). Component classes (.input,
  * .btn, .abstain-block, .error-state, .empty-state, .micro-meta, .screen-kicker, .screen-title,
  * .hint, .skeleton, .tag, .table, .detail-pane) come from ../../styles/components.css (ADR-019
@@ -92,7 +92,7 @@
   margin-top: var(--space-2);
 }
 
-/* ---- One turn (72px role column + content, shared by You/Contigo) ------------------------- */
+/* ---- One turn (72px role column + content, shared by You/Raffa) ------------------------- */
 
 .ask-message {
   display: grid;
@@ -110,7 +110,7 @@
   color: var(--color-neutral-600);
 }
 
-.ask-message[data-role="contigo"] .ask-message-who {
+.ask-message[data-role="raffa"] .ask-message-who {
   color: var(--color-accent);
 }
 

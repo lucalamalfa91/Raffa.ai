@@ -14,7 +14,7 @@ export interface SignInScreenProps {
   interactionInFlight: boolean;
 }
 
-// Screen 1, V2 (inputs/design/prototypes/contigo-v2/markup.html, the
+// Screen 1, V2 (inputs/design/prototypes/raffa-v2/markup.html, the
 // `<!-- SIGN-IN / WORKSPACE -->` block; screens-v2.md #1): "Left: statement
 // panel (accent-100 ground with grid, three-line north star, the four
 // answers). Right: 'Continue with Microsoft Entra ID' -> redirect state ->
@@ -49,7 +49,7 @@ export function SignInStatementPanel() {
     <section className="signin-statement">
       <div className="signin-lockup">
         <span className="signin-lockup-mark" aria-hidden="true" />
-        Contigo
+        Raffa
       </div>
       <div className="signin-statement-body">
         <p className="signin-north-star">
@@ -99,13 +99,13 @@ export default function SignInScreen({ onContinue, interactionInFlight }: SignIn
       <SignInStatementPanel />
       <section className="signin-action" aria-labelledby="signin-heading">
         {/* Task E11/F02/US01/T01 (signin-1to1): the export's right column is
-            headed "Sign in" (h2), not the "Contigo" h1 the lockup already
+            headed "Sign in" (h2), not the "Raffa" h1 the lockup already
             says once per panel -- gap G-S1-RIGHT. */}
         <h2 id="signin-heading" className="screen-title">
           Sign in
         </h2>
         <p className="signin-subtitle">
-          Your organisation account. Contigo never stores a password.
+          Your organisation account. Raffa never stores a password.
         </p>
         <button
           type="button"

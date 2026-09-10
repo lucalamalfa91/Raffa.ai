@@ -6,7 +6,7 @@ First operator command:
 ./run-ask.ps1 -Check
 ```
 
-Expected: OK `docs-intake-ask` … `contigo-ask-design` (6 orchestrations).
+Expected: OK `docs-intake-ask` … `raffa-ask-design` (6 orchestrations).
 Prompt files present. Model: one `claude-code` model `cc-opus` =
 `${ANTHROPIC_DEFAULT_OPUS_MODEL}` (Claude Code Opus; `.env`); no DeepSeek
 model in the allow-list. Run the council with `./run-ask.ps1 -Max`. Protected snapshot: e01–e11, e1011, e12, five prior
@@ -19,11 +19,11 @@ runtime-validated.
 
 On disk after Passata 1 authoring (2026-09-08):
 
-- `inputs/requirements.md` (oracle) + `inputs/design/prototypes/contigo-v2/`
+- `inputs/requirements.md` (oracle) + `inputs/design/prototypes/raffa-v2/`
   (unpacked design: `app.jsx`, `markup.html`, `styles.css`, `ia-v2.md`, `screens-v2.md`)
 - `reports/context/ask-v2-mandate.md`
 - `reports/audit/ask-v2-gaps.md`, `reports/audit/ask-v2-hitl.md`
-- `reports/architecture/ADR-024-ask-contigo-v2.md`; ADR-023 superseded footer;
+- `reports/architecture/ADR-024-ask-raffa-v2.md`; ADR-023 superseded footer;
   epic-13 amendment footers on ADR-001/004/011/018/020; INDEX section
 - `reports/workitems/epic-13-ask-v2/` (11 features, 11 stories, 20 tasks);
   BACKLOG rows (epic-12 superseded, epic-13 active)
@@ -42,7 +42,7 @@ Wave-spec validity (fail-closed, five DAG checks):
 On disk after Passata 2 (the `e13` wave, 2026-09-09):
 
 The wave **has run**. Helix run `5dec6283-bd05-4779-bda4-b91b9f0408b0`,
-`execution-fanout` on `contigo-process.yaml`, 2026-09-08 19:43:33 →
+`execution-fanout` on `raffa-process.yaml`, 2026-09-08 19:43:33 →
 2026-09-09 09:30:19 UTC, five phases, 20 live tasks, `maxParallel: 3`.
 
 - Studio finished green: `completed`, `failed_task_ids: []`,
@@ -81,4 +81,4 @@ python scripts/check_slice_prereqs.py --slice e13
 ./run.ps1 -Max -Slice e13 -o execution-fanout
 ```
 
-or **Helix Studio** (`contigo-process.yaml` → `execution-fanout`).
+or **Helix Studio** (`raffa-process.yaml` → `execution-fanout`).

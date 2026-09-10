@@ -47,7 +47,7 @@ API) is **epic-01's content**, not a stop condition.
 
 Stopping after R0 while INDEX lists ADR-016 / R1–R4 jobs is a gap.
 
-- Greenfield / `--fresh` + `contigo-design`: write epic-01…epic-05.
+- Greenfield / `--fresh` + `raffa-design`: write epic-01…epic-05.
 - epic-01 exists, epic-02..05 missing: append R1–R4; do not rewrite epic-01
   unless the checker named an R0 file.
 - Target **demo** (+`dev`). No production.

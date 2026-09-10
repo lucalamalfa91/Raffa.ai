@@ -1,4 +1,4 @@
-# wave-spec — Ask Contigo V2 (`wave-spec.ask.yaml`)
+# wave-spec — Ask Raffa V2 (`wave-spec.ask.yaml`)
 
 Same grammar as `skills/wavespec-schema.md`. This master is **E13 only**
 (the previous E12 content is superseded and no longer in this file).

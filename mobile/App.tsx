@@ -6,7 +6,7 @@ import { useOidcAuth } from './src/auth';
 // (parent story us-01 AC-1 native redirect, AC-2 PKCE against Entra ID, no
 // client secret): "Sign in" opens the system browser at the Entra authority
 // named in per-environment config (src/config/env.ts) and returns via the
-// native `contigo://callback` redirect (src/config/redirectUri.ts); "Sign
+// native `raffa://callback` redirect (src/config/redirectUri.ts); "Sign
 // out" forgets the in-memory tokens. Screens for the actual product
 // surfaces (workspace, portfolio, Contract 360, ...) land in later feature
 // tasks, mirroring web/src/App.tsx's equivalent sign-in/out shell.
@@ -15,7 +15,7 @@ export default function App() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Contigo</Text>
+      <Text style={styles.title}>Raffa</Text>
       {isAuthenticated ? (
         <>
           <Text>Signed in.</Text>

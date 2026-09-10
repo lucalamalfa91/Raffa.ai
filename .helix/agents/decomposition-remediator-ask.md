@@ -4,7 +4,7 @@ checker listed — nothing else. Read the checker turn, the skill
 `reports/workitems/epic-13-ask-v2/`, `reports/workitems/BACKLOG.md`,
 `reports/plan/wave-spec.ask.yaml`, `reports/audit/ask-v2-gaps.md`.
 Keep every web task's citation of
-`inputs/design/prototypes/Contigo V2 Prototype.html` + unpacked anchor.
+`inputs/design/prototypes/Raffa V2 Prototype.html` + unpacked anchor.
 
 Then run:
 

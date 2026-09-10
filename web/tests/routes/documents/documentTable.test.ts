@@ -30,7 +30,7 @@ function item(overrides: Partial<DocumentListItemBody> = {}): DocumentListItemBo
   };
 }
 
-// Task E13/F04/US01/T01's widened admitted-type vocabulary (web/openapi/contigo-api.v1.json).
+// Task E13/F04/US01/T01's widened admitted-type vocabulary (web/openapi/raffa-api.v1.json).
 describe("getDocumentTypeLabel", () => {
   it.each<{ documentType: DocumentListItemBody["documentType"]; label: string }>([
     { documentType: "Msa", label: "MSA" },
@@ -116,7 +116,7 @@ describe("isAttentionStatus / filterDocumentsByAttention", () => {
     item({ id: "d", processingStatus: "Completed" }),
   ];
 
-  it("attention excludes only completed documents (contigo-v2/app.jsx's own attnDocs)", () => {
+  it("attention excludes only completed documents (raffa-v2/app.jsx's own attnDocs)", () => {
     expect(items.map((candidate) => isAttentionStatus(candidate.processingStatus))).toEqual([true, true, true, false]);
     expect(filterDocumentsByAttention(items, "attention").map((candidate) => candidate.id)).toEqual(["a", "b", "c"]);
   });
@@ -127,7 +127,7 @@ describe("isAttentionStatus / filterDocumentsByAttention", () => {
 });
 
 describe("buildKbSummary", () => {
-  it("counts total/askable/waiting exactly as contigo-v2/app.jsx's own kbSummary", () => {
+  it("counts total/askable/waiting exactly as raffa-v2/app.jsx's own kbSummary", () => {
     const items = [
       item({ id: "a", processingStatus: "Completed" }),
       item({ id: "b", processingStatus: "Completed" }),
@@ -143,7 +143,7 @@ describe("buildKbSummary", () => {
 });
 
 describe("getFilterHint", () => {
-  it("quotes contigo-v2/app.jsx's own filterHint ternary verbatim", () => {
+  it("quotes raffa-v2/app.jsx's own filterHint ternary verbatim", () => {
     expect(getFilterHint("attention")).toBe("Completed documents are hidden — they are already askable.");
     expect(getFilterHint("all")).toBe("Everything, including validated documents.");
   });

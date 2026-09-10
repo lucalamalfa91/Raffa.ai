@@ -1,11 +1,11 @@
-# Contigo web-delta process (wave 6+)
+# Raffa web-delta process (wave 6+)
 
 Separate Helix artifact from the live R0–R4 process.
 
 | File | Role |
 |---|---|
-| `contigo-process.yaml` + `./run.ps1` | **Do not touch while a wave is running.** Backend slices e01–e05 / `execution-fanout`. |
-| `contigo-web-process.yaml` + `./run-web.ps1` | Web delta Passata 1 only. Starts at **epic-06 / e06**. |
+| `raffa-process.yaml` + `./run.ps1` | **Do not touch while a wave is running.** Backend slices e01–e05 / `execution-fanout`. |
+| `raffa-web-process.yaml` + `./run-web.ps1` | Web delta Passata 1 only. Starts at **epic-06 / e06**. |
 
 ## Launch (after the live fan-out is idle *or* in parallel — this YAML never writes `slice.current.yaml`)
 
@@ -14,7 +14,7 @@ cd .helix
 # HITL first: export Claude Design prototypes into inputs/design/prototypes/
 ./run-web.ps1 -Check
 ./run-web.ps1
-# default -o contigo-web-design
+# default -o raffa-web-design
 ```
 
 `--fresh` is refused. So are `-Slice` / fan-out.

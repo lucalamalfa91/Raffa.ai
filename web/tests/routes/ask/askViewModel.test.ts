@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ApiClient, ConversationCitationBody, ConversationMessageBody, ConversationReplyBody } from "../../../src/api/client";
 import {
   ASK_HELLO,
-  buildContigoTurnFromReply,
+  buildRaffaTurnFromReply,
   buildErrorTurn,
   buildOffCopy,
   buildScopeLine,
@@ -42,10 +42,10 @@ function citation(overrides: Partial<ConversationCitationBody> = {}): Conversati
 }
 
 describe("toCitationCorpus", () => {
-  it("passes tenant/market/contigo through unchanged", () => {
+  it("passes tenant/market/raffa through unchanged", () => {
     expect(toCitationCorpus("tenant")).toBe("tenant");
     expect(toCitationCorpus("market")).toBe("market");
-    expect(toCitationCorpus("contigo")).toBe("contigo");
+    expect(toCitationCorpus("raffa")).toBe("raffa");
   });
 
   it("folds an unrecognised value (e.g. the real backend's internal 'calc') into 'tenant'", () => {
@@ -163,7 +163,7 @@ describe("mapConversationReplyToReply / mapConversationMessageToReply", () => {
   it("maps a stored message the same way, with an always-empty followUps (no such column on ConversationMessage)", () => {
     const message: ConversationMessageBody = {
       id: "msg-1",
-      role: "contigo",
+      role: "raffa",
       kind: "answer",
       markdown: "AWS liability is capped at USD 500,000 [1].",
       citations: [citation()],
@@ -181,13 +181,13 @@ describe("mapConversationReplyToReply / mapConversationMessageToReply", () => {
   });
 });
 
-describe("buildYouTurn / buildContigoTurnFromReply / buildContigoTurnFromMessage / buildTurnsFromConversation", () => {
+describe("buildYouTurn / buildRaffaTurnFromReply / buildRaffaTurnFromMessage / buildTurnsFromConversation", () => {
   it("builds a plain you turn", () => {
     expect(buildYouTurn("t1", "What is our AWS spend?")).toEqual({ id: "t1", role: "you", text: "What is our AWS spend?" });
   });
 
   it("keeps the original wire citations alongside the mapped reply, for later click resolution", () => {
-    const turn = buildContigoTurnFromReply("t2", {
+    const turn = buildRaffaTurnFromReply("t2", {
       conversationId: "conv-1",
       messageId: "msg-1",
       kind: "answer",
@@ -198,8 +198,8 @@ describe("buildYouTurn / buildContigoTurnFromReply / buildContigoTurnFromMessage
       followUps: [],
     });
 
-    expect(turn.role).toBe("contigo");
-    if (turn.role !== "contigo") throw new Error("expected contigo");
+    expect(turn.role).toBe("raffa");
+    if (turn.role !== "raffa") throw new Error("expected raffa");
     expect(turn.wireCitations[0].recordId).toBe("rec-1");
   });
 
@@ -212,18 +212,18 @@ describe("buildYouTurn / buildContigoTurnFromReply / buildContigoTurnFromMessage
       updatedAt: "2026-09-08T00:05:00Z",
       messages: [
         { id: "m1", role: "you", kind: "answer", markdown: "When does Salesforce expire?", citations: [], actions: [], modelId: null, promptVersion: null, inputHash: null, createdAt: "2026-09-08T00:00:00Z" },
-        { id: "m2", role: "contigo", kind: "answer", markdown: "…", citations: [], actions: [], modelId: null, promptVersion: null, inputHash: null, createdAt: "2026-09-08T00:00:05Z" },
+        { id: "m2", role: "raffa", kind: "answer", markdown: "…", citations: [], actions: [], modelId: null, promptVersion: null, inputHash: null, createdAt: "2026-09-08T00:00:05Z" },
       ],
     });
 
-    expect(turns.map((t) => t.role)).toEqual(["you", "contigo"]);
+    expect(turns.map((t) => t.role)).toEqual(["you", "raffa"]);
     expect(turns[0]).toEqual({ id: "m1", role: "you", text: "When does Salesforce expire?" });
   });
 
   it("builds a distinct error turn (never confused with an abstain)", () => {
     const turn = buildErrorTurn("t3", "network down");
-    expect(turn.role).toBe("contigo");
-    if (turn.role !== "contigo") throw new Error("expected contigo");
+    expect(turn.role).toBe("raffa");
+    if (turn.role !== "raffa") throw new Error("expected raffa");
     expect(turn.reply).toEqual({ kind: "error", reason: "network down" });
   });
 
@@ -286,17 +286,17 @@ describe("buildScopedSuggestions / suggestionsFor", () => {
     const result = suggestionsFor([
       {
         key: "ask",
-        title: "Ask Contigo",
+        title: "Ask Raffa",
         routePattern: "/ask",
         description: "…",
-        exampleQuestions: ["What can Contigo do?", "When does this contract expire?", "What liabilities do we have?"],
+        exampleQuestions: ["What can Raffa do?", "When does this contract expire?", "What liabilities do we have?"],
         roleGate: "any",
         availability: "always",
         howTo: [],
       },
     ]);
 
-    expect(result).toEqual(["What can Contigo do?", "When does this contract expire?"]);
+    expect(result).toEqual(["What can Raffa do?", "When does this contract expire?"]);
   });
 
   it("suggestionsFor falls back to the static pair when the catalog has not loaded or has no ask entry", () => {
@@ -324,8 +324,8 @@ describe("resolveCitationOpenAction (AC-3; R-EVD-02)", () => {
     expect(resolveCitationOpenAction(view, [citation()])).toEqual({ kind: "navigate", href: "/contracts/contract-1?page=12" });
   });
 
-  it("resolves a contigo feature citation to navigate, using its own href", () => {
-    const wire = citation({ corpus: "contigo", href: "/renewals", page: null, contractId: null, documentId: null });
+  it("resolves a raffa feature citation to navigate, using its own href", () => {
+    const wire = citation({ corpus: "raffa", href: "/renewals", page: null, contractId: null, documentId: null });
     const view = mapConversationCitation(wire);
     expect(resolveCitationOpenAction(view, [wire])).toEqual({ kind: "navigate", href: "/renewals" });
   });
@@ -385,7 +385,7 @@ describe("createConversationAndAsk", () => {
       getQuoteAssessment: vi.fn(),
       recalculateQuoteAssessment: vi.fn(),
       captureNegotiationOutcome: vi.fn(),
-      askContigo: vi.fn(),
+      askRaffa: vi.fn(),
       getSavingsKpis: vi.fn(),
       getSavingsOpportunities: vi.fn(),
       listConversations: vi.fn(),

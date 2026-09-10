@@ -1,6 +1,6 @@
 // Thin, hand-written HTTP glue around the generated OpenAPI types
 // (./generated/schema.ts, itself generated from
-// web/openapi/contigo-api.v1.json by web/scripts/generate-api-client.mjs).
+// web/openapi/raffa-api.v1.json by web/scripts/generate-api-client.mjs).
 // ADR-012 / api-consumption.md #1 forbid hand-written *divergent DTOs* -- the
 // response shapes below (`HealthBody`, `CreateWorkspaceBody`) are anchored to
 // the generated `paths` type, not invented here; only the fetch() plumbing is
@@ -62,7 +62,7 @@ type HealthBody =
 export interface HealthCheckResult {
   /**
    * True only for a completed HTTP request with a 2xx status (Healthy or
-   * Degraded, per the default `HealthCheckOptions` backend/src/Contigo.Api
+   * Degraded, per the default `HealthCheckOptions` backend/src/Raffa.Api
    * /Program.cs's `app.MapHealthChecks("/health")` uses).
    */
   ok: boolean;
@@ -129,7 +129,7 @@ export type UploadedDocument = UploadDocumentResponses[201]["content"]["applicat
 export type DocumentProcessingStatus = UploadedDocument["processingStatus"];
 
 // Task E13/F04/US01/T01 (documents-admission), documented ahead of that backend task landing in
-// this worktree (see web/openapi/contigo-api.v1.json's own info.description): the admission gate's
+// this worktree (see web/openapi/raffa-api.v1.json's own info.description): the admission gate's
 // structured 422 body (ADR-024 "gate before persistence"). Anchored to the generated 422 response,
 // not hand-invented -- `detectedType` already carries the widened admitted-type vocabulary (Quote,
 // Invoice, PriceList, Nda, Dpa alongside the original 6), read straight off the schema rather than
@@ -185,7 +185,7 @@ export interface GetDocumentResult {
 // server-side list that replaces `src/routes/documents/documentStore.ts`'s own `sessionStorage`
 // tracking (R-DOC-06 AC-1 "reloading the browser shows the same list as before"). Documented ahead
 // of the backend counterpart (epic-13/feature-04) landing in this worktree -- see
-// web/openapi/contigo-api.v1.json's own `listDocuments` operation description for the full
+// web/openapi/raffa-api.v1.json's own `listDocuments` operation description for the full
 // provenance. `DocumentListItemBody["documentType"]` already carries the widened admitted-type
 // vocabulary read straight off the generated schema (`AdmittedDocumentType` above is the same
 // union, read off the 422 rejection body instead -- both anchor to the one OpenAPI enum).
@@ -245,7 +245,7 @@ export interface GetDocumentPreviewResult {
 // Task E13/F09/US01/T03: `reprocessDocument`, wrapping `POST /api/documents/{id}/reprocess`
 // (Admin only, R-DOC-07). Documented ahead of the backend counterpart landing in this worktree --
 // see that operation's own OpenAPI description for why the response mirrors
-// `Contigo.Documents.Contracts.Application.Extraction.DocumentProcessingSummary`'s real fields
+// `Raffa.Documents.Contracts.Application.Extraction.DocumentProcessingSummary`'s real fields
 // rather than an invented shape.
 type ReprocessDocumentResponses = paths["/api/documents/{id}/reprocess"]["post"]["responses"];
 export type DocumentReprocessSummaryBody = ReprocessDocumentResponses[200]["content"]["application/json"];
@@ -275,11 +275,11 @@ export interface DeleteDocumentResult {
 }
 
 // Task E07/F01/US01/T01 (us-01-portfolio-list-filters, epic-07-web-contract-intelligence): `getPortfolio`,
-// wrapping `GET /api/contracts` (backend/src/Contigo.Api/PortfolioEndpointExtensions.cs). This is the first
+// wrapping `GET /api/contracts` (backend/src/Raffa.Api/PortfolioEndpointExtensions.cs). This is the first
 // web epic to reach into the set of E02-E05 backend routes this file's own header comment and
-// openapi/contigo-api.v1.json's info.description both named as deliberately not yet added.
+// openapi/raffa-api.v1.json's info.description both named as deliberately not yet added.
 //
-// `risk` is typed by the generated schema as a bare `string | null` (see openapi/contigo-api.v1.json's
+// `risk` is typed by the generated schema as a bare `string | null` (see openapi/raffa-api.v1.json's
 // `getPortfolio` operation description for exactly why -- generate-api-client.mjs#renderSchemaType drops a
 // nullable union's `null` member whenever the schema also declares `enum`, and every enum this document
 // declared before this task was non-nullable, so that combination never came up). `PortfolioRiskSeverity`
@@ -337,7 +337,7 @@ export interface GetPortfolioResult {
 
 // Task E07/F02/US01/T01 (contract-360, ADR-020 screen 5): getContract360, wrapping
 // `GET /api/contracts/{id}` -- the header + 10-tab aggregate. Second web epic to extend
-// openapi/contigo-api.v1.json beyond the R0/health set (task E07/F01/US01/T01, portfolio, was the
+// openapi/raffa-api.v1.json beyond the R0/health set (task E07/F01/US01/T01, portfolio, was the
 // first) -- see that operation's own `description` in the OpenAPI document for the full provenance
 // and for why `header.risk`/`tabs.clauses[].riskLevel` are bare nullable strings, not enums (the
 // same generator limitation `PortfolioRiskSeverity` below already works around).
@@ -365,7 +365,7 @@ export interface GetContract360Result {
 
 // Task E07/F02/US01/T01: getRenewals, wrapping `GET /api/renewals` -- the only source of the real,
 // deterministic recommendedAction/explanation text the Overview tab's recommendation block renders
-// (Contigo.Renewals is not reachable from GET /api/contracts/{id} at all; see the OpenAPI
+// (Raffa.Renewals is not reachable from GET /api/contracts/{id} at all; see the OpenAPI
 // operation's own description for why this call, not invented UI copy, is the honest source).
 type GetRenewalsResponses = paths["/api/renewals"]["get"]["responses"];
 export type RenewalsPageBody = GetRenewalsResponses[200]["content"]["application/json"];
@@ -404,7 +404,7 @@ export interface GetRenewalPriorityResult {
 // (ContractCorrectionHistoryQueryService). A field with at least one entry here has already been
 // durably corrected by a human; src/routes/contracts/review/reviewViewModel.ts#buildReviewFields
 // combines this with getContract360's current values to decide each field's review state. Third web
-// epic to extend openapi/contigo-api.v1.json beyond the R0/portfolio/contract-360 set (see that
+// epic to extend openapi/raffa-api.v1.json beyond the R0/portfolio/contract-360 set (see that
 // file's own "repeating chore" provenance paragraph).
 type GetCorrectionHistoryResponses = paths["/api/contracts/{id}/corrections"]["get"]["responses"];
 export type CorrectionHistoryPageBody = GetCorrectionHistoryResponses[200]["content"]["application/json"];
@@ -433,7 +433,7 @@ export type ContractCorrectionBody = CorrectContractResponses[200]["content"]["a
  * `PATCH /api/contracts/{id}` request body. Hand-written, not generated -- see this file's header
  * comment for why (the generator does not parse `requestBody` at all yet). `corrections` keys must
  * be one of `ContractCorrectionService.CorrectableFieldNames`
- * (backend/src/Contigo.Documents.Contracts/Application/ContractCorrectionService.cs); values are
+ * (backend/src/Raffa.Documents.Contracts/Application/ContractCorrectionService.cs); values are
  * that field's own canonical wire string (dates `yyyy-MM-dd`, booleans `"true"`/`"false"`,
  * decimals/integers via plain `toString()`), or `null` to clear an optional field.
  * `src/routes/contracts/review/reviewViewModel.ts#CORRECTABLE_FIELDS` mirrors that same field/kind
@@ -505,10 +505,10 @@ export interface ValidateDocumentResult {
 // `POST /api/renewals/{id}/action` -- the insight card's own three actions (Start negotiation /
 // Assign to me / Snooze, AC-3). `{id}` is the same `contractId` GET /api/renewals returns per row
 // (see that operation's own doc comment above for why there is no separate "renewal id"). Fourth
-// web epic to extend openapi/contigo-api.v1.json (see that file's own "repeating chore" provenance
+// web epic to extend openapi/raffa-api.v1.json (see that file's own "repeating chore" provenance
 // paragraph). Unlike every other write call in this file, a well-formed request against an
 // unknown/cross-tenant contract id still succeeds -- RenewalsEndpointExtensions' own doc comment:
-// Contigo.Renewals cannot reference Contigo.Documents.Contracts at all (ADR-002), so it structurally
+// Raffa.Renewals cannot reference Raffa.Documents.Contracts at all (ADR-002), so it structurally
 // cannot 404 -- never special-cased here the way getContract360/getRenewalPriority special-case 404.
 type PostRenewalActionResponses = paths["/api/renewals/{id}/action"]["post"]["responses"];
 export type RenewalActionBody = PostRenewalActionResponses[200]["content"]["application/json"];
@@ -540,38 +540,38 @@ export interface PostRenewalActionResult {
   error: string | null;
 }
 
-// Task E07/F04/US01/T01 (ask-contigo-ui, ADR-020 screen 7): askContigo, wrapping `POST
-// /api/chat/query` (backend/src/Contigo.Api/ChatEndpointExtensions.cs) -- the routed answer/citations
+// Task E07/F04/US01/T01 (ask-raffa-ui, ADR-020 screen 7): askRaffa, wrapping `POST
+// /api/chat/query` (backend/src/Raffa.Api/ChatEndpointExtensions.cs) -- the routed answer/citations
 // /abstain envelope behind `src/routes/ask/` (AC-1 route line, AC-2 citations, AC-3 abstain, AC-4
-// states). Fourth web epic to extend openapi/contigo-api.v1.json beyond the R0/portfolio/contract-360
-// /review set (see that file's own "repeating chore" provenance paragraph and its `askContigo`
+// states). Fourth web epic to extend openapi/raffa-api.v1.json beyond the R0/portfolio/contract-360
+// /review set (see that file's own "repeating chore" provenance paragraph and its `askRaffa`
 // operation's own description for the full Structured-vs-Semantic / abstain-reason / citation-lookup
 // gap notes). The request body is hand-written, like CreateWorkspaceRequest/CorrectContractRequest
 // above -- the generator does not parse `requestBody` at all yet.
-type AskContigoResponses = paths["/api/chat/query"]["post"]["responses"];
-export type AskContigoResponseBody = AskContigoResponses[200]["content"]["application/json"];
-export type AskContigoCitationBody = AskContigoResponseBody["citations"][number];
-export type AskContigoIntent = AskContigoResponseBody["intent"];
+type AskRaffaResponses = paths["/api/chat/query"]["post"]["responses"];
+export type AskRaffaResponseBody = AskRaffaResponses[200]["content"]["application/json"];
+export type AskRaffaCitationBody = AskRaffaResponseBody["citations"][number];
+export type AskRaffaIntent = AskRaffaResponseBody["intent"];
 
 /** `POST /api/chat/query` request body (ChatEndpointExtensions.ChatQueryRequest). Hand-written --
  * see this file's header comment for why. */
-export interface AskContigoRequest {
+export interface AskRaffaRequest {
   question: string;
 }
 
-export interface AskContigoResult {
+export interface AskRaffaResult {
   /**
    * True only on `200 OK` -- the backend operation's own OpenAPI description names this "always 200
    * once routing succeeds", so `false` here means a transport failure or a genuine `400` (blank
    * question, missing tenant header, or a retrieval/answer failure), never "the AI could not
    * determine an answer". That outcome is `ok: true` with `response.canDetermine === false` --
-   * see `AskContigoResponseBody`'s own shape (screens.md #7 "abstain" / "unknown question fallback").
+   * see `AskRaffaResponseBody`'s own shape (screens.md #7 "abstain" / "unknown question fallback").
    */
   ok: boolean;
   /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
   statusCode: number | null;
   /** The full routed answer/abstain envelope, present only when `ok` is true. */
-  response: AskContigoResponseBody | null;
+  response: AskRaffaResponseBody | null;
   /** Plain-language failure reason (400 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
   error: string | null;
 }
@@ -579,7 +579,7 @@ export interface AskContigoResult {
 // Task E08/F03/US01/T01 (quote-check-ui, ADR-018 route /quotes/:id, ADR-020 screen 10): uploadQuote,
 // wrapping `POST /api/quotes` -- the Quote Check stepper's own "Extract" step entry point.
 // Multipart, like uploadDocument above; supplier/currency/geography/purchaseDate are optional form
-// fields (see web/openapi/contigo-api.v1.json's own description on this operation for why a quote
+// fields (see web/openapi/raffa-api.v1.json's own description on this operation for why a quote
 // uploaded without them still stores/extracts normally but cannot be benchmark-matched yet).
 type UploadQuoteResponses = paths["/api/quotes"]["post"]["responses"];
 export type UploadedQuote = UploadQuoteResponses[201]["content"]["application/json"];
@@ -612,11 +612,11 @@ export type QuoteAssessmentBody = GetQuoteAssessmentResponses[200]["content"]["a
 export type QuoteLineAssessmentBody = QuoteAssessmentBody["lines"][number];
 
 /**
- * `Contigo.Quotes.Domain.MarketPosition`'s real 3-value wire set, named here (not generated) for the
+ * `Raffa.Quotes.Domain.MarketPosition`'s real 3-value wire set, named here (not generated) for the
  * same reason `PortfolioRiskSeverity` above is: web/scripts/generate-api-client.mjs#renderSchemaType
  * drops a nullable union's `null` member whenever the schema also declares `enum`, so
  * `QuoteLineAssessmentBody["position"]` is generated as a bare `string | null`. See
- * web/openapi/contigo-api.v1.json's own `getQuoteAssessment` operation description for the full
+ * web/openapi/raffa-api.v1.json's own `getQuoteAssessment` operation description for the full
  * explanation.
  */
 export type QuoteMarketPosition = "BelowMarket" | "InLine" | "AboveMarket";
@@ -651,7 +651,7 @@ type RecalculateQuoteResponses = paths["/api/quotes/{id}/assessment/recalculate"
 export type QuoteRecalculationBody = RecalculateQuoteResponses[200]["content"]["application/json"];
 export type UnmatchedQuoteLineBody = QuoteRecalculationBody["unmatchedLines"][number];
 
-/** One manual SKU-to-product mapping correction -- `Contigo.Quotes.Application.Normalization
+/** One manual SKU-to-product mapping correction -- `Raffa.Quotes.Application.Normalization
  * .SkuMappingCorrection`'s wire shape. Hand-written, like `CorrectContractRequest` above: the
  * generator does not parse `requestBody` at all yet (see this file's own header comment). */
 export interface SkuMappingCorrectionInput {
@@ -674,8 +674,8 @@ export interface RecalculateQuoteAssessmentResult {
 }
 
 // captureNegotiationOutcome, wrapping `POST /api/negotiations/outcomes` -- the Negotiation step's
-// own outcome-capture form. `NegotiationLeverTypeName` mirrors `Contigo.Quotes.Application.Strategy
-// .NegotiationLeverType`'s 7-member closed vocabulary (see web/openapi/contigo-api.v1.json's own
+// own outcome-capture form. `NegotiationLeverTypeName` mirrors `Raffa.Quotes.Application.Strategy
+// .NegotiationLeverType`'s 7-member closed vocabulary (see web/openapi/raffa-api.v1.json's own
 // operation description for why this screen has no way to fetch AI-recommended levers/evidence --
 // NegotiationStrategyService has no HTTP endpoint -- so this control lets a person pick from the
 // same fixed set the capture endpoint itself validates against, rather than free text it would
@@ -730,8 +730,8 @@ export interface CaptureNegotiationOutcomeResult {
 // Task E08/F02/US01/T01 (savings-home, ADR-020 screen 9): getSavingsKpis, wrapping
 // `GET /api/savings/kpis` -- the Home screen's 6 KPI cells (Annual spend analyzed, Savings
 // identified, Savings realized, Savings in progress, Contracts analyzed, Upcoming renewals; product
-// spec section 10.1). Fifth web epic to extend openapi/contigo-api.v1.json (see that file's own
-// "repeating chore" provenance paragraph). This operation never reaches Contigo.Benchmark directly
+// spec section 10.1). Fifth web epic to extend openapi/raffa-api.v1.json (see that file's own
+// "repeating chore" provenance paragraph). This operation never reaches Raffa.Benchmark directly
 // (it only aggregates Documents/Contracts and Savings data already at rest) -- see
 // GetSavingsKpisResult's own doc comment for what a failed call means for this screen's "benchmark
 // provider unreachable" state (screens.md #9).
@@ -897,7 +897,7 @@ export interface GetMarketRecordResult {
 export interface ApiClient {
   /**
    * Calls `GET /health` (operationId `getHealth` in
-   * web/openapi/contigo-api.v1.json). Deliberately never throws on a
+   * web/openapi/raffa-api.v1.json). Deliberately never throws on a
    * non-2xx response -- an "Unhealthy" 503 is a valid, expected answer from
    * a health probe, not a client error -- so callers (src/App.tsx) can
    * render `result.ok` directly without a try/catch. It resolves (rather
@@ -916,7 +916,7 @@ export interface ApiClient {
   /**
    * Calls `POST /api/workspaces/{tenantId}/invites` (operationId `inviteWorkspaceMember`). The
    * target tenant comes from the route, not an `X-Tenant-Id` header -- see that operation's own
-   * description in openapi/contigo-api.v1.json. Same never-throws shape as `createWorkspace`: a
+   * description in openapi/raffa-api.v1.json. Same never-throws shape as `createWorkspace`: a
    * 400 (blank email, unrecognised role, duplicate membership) is a normal, expected outcome the
    * caller renders inline. See src/routes/workspace/members/ for the only caller today.
    */
@@ -935,7 +935,7 @@ export interface ApiClient {
    *
    * The backend runs the whole parse -> classify -> extract pipeline
    * *synchronously* before responding (task E02/F06/US01/T01's own
-   * description in openapi/contigo-api.v1.json), so a resolved call already
+   * description in openapi/raffa-api.v1.json), so a resolved call already
    * carries a terminal (or near-terminal) `processingStatus` -- see
    * src/routes/documents/uploadPipeline.ts for how the UI turns that into
    * the 6-stage pipeline animation + result card. Same never-throws shape as
@@ -1087,7 +1087,7 @@ export interface ApiClient {
     request: CaptureNegotiationOutcomeRequest,
   ): Promise<CaptureNegotiationOutcomeResult>;
 
-  askContigo(tenantId: string, request: AskContigoRequest): Promise<AskContigoResult>;
+  askRaffa(tenantId: string, request: AskRaffaRequest): Promise<AskRaffaResult>;
   /**
    * Calls `GET /api/savings/kpis` (operationId `getSavingsKpis`) -- the Home screen's 6 KPI cells.
    * Same never-throws shape as every other call here: a `400` (missing/invalid tenant header) is a
@@ -1156,7 +1156,7 @@ export interface ApiClient {
  * Builds the API client from runtime config (ADR-012 "config, not code";
  * `AppConfig.apiBaseUrl`, see src/config/appConfig.ts). `baseUrl` is expected
  * to be an absolute origin with no path (e.g.
- * "https://api.dev.contigo.example"); every operation resolves its path
+ * "https://api.dev.raffa.example"); every operation resolves its path
  * against it with the platform `URL` parser rather than hand-rolled string
  * concatenation.
  */
@@ -1803,7 +1803,7 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
       return { ok: false, statusCode: response.status, validation: null, error };
     },
 
-    async askContigo(tenantId, request) {
+    async askRaffa(tenantId, request) {
       let response: Response;
       try {
         response = await fetch(new URL("/api/chat/query", baseUrl), {
@@ -1822,7 +1822,7 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
       }
 
       if (response.status === 200) {
-        const body = (await response.json()) as AskContigoResponseBody;
+        const body = (await response.json()) as AskRaffaResponseBody;
         return { ok: true, statusCode: 200, response: body, error: null };
       }
 

@@ -1,5 +1,5 @@
 /**
- * Renewals screen, V2 (route `/renewals`; ADR-024 V2 IA; screens-v2.md #7; `contigo-v2/markup.html`
+ * Renewals screen, V2 (route `/renewals`; ADR-024 V2 IA; screens-v2.md #7; `raffa-v2/markup.html`
  * "RENEWALS" block). Component classes (.screen-header, .screen-reroute, .btn, .btn-block, .tag,
  * .table, .card-kicker, .deadline-critical, .skeleton, .error-state, .hint, .micro-meta) come from
  * ../../styles/components.css (ADR-019 component catalogue) -- this file adds only this screen's own

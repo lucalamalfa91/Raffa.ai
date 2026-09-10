@@ -8,7 +8,7 @@ export interface MembersTableProps {
 }
 
 /**
- * The V2 members table (screens-v2.md #10; `contigo-v2/markup.html` "WORKSPACE & MEMBERS" block):
+ * The V2 members table (screens-v2.md #10; `raffa-v2/markup.html` "WORKSPACE & MEMBERS" block):
  * Member (primary line bold, secondary line muted) · Role (22%) · Status (16%, small tag),
  * `font-size:13px`. The prototype's primary line is a display name; the backend stores no name for
  * a member (`InviteRequest` carries email + role only), so the email is the primary line and the

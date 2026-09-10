@@ -4,7 +4,7 @@ type: task
 story: us-03-promotion-dev-demo
 wave: R0
 status: live
-target_repo: contigo-infra
+target_repo: raffa-infra
 ---
 
 # task-01-promotion-workflow — Author `demo` promotion workflow (tag + environment + reviewers)
@@ -28,7 +28,7 @@ account, or secret between environments (ADR-016, ADR-001).
 
 | Path | Change |
 |------|--------|
-| workspace/contigo-infra/.github/workflows/demo-promote.yml | tag-triggered, env-gated promotion |
+| workspace/raffa-infra/.github/workflows/demo-promote.yml | tag-triggered, env-gated promotion |
 
 ## Context the implementer needs
 

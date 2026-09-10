@@ -17,7 +17,7 @@ export interface AnswersBandProps {
 }
 
 /**
- * The three answers (`contigo-v2/markup.html` "CONTRACT 360 — three answers": *Where you can save*
+ * The three answers (`raffa-v2/markup.html` "CONTRACT 360 — three answers": *Where you can save*
  * · *When you must move* · *What to do*), the last cell carrying either the two actions
  * (`c360Open`) or, once acted, the negotiation tracker (`c360Acted`): status · owner, "target … ·
  * close by …", the four-step checklist, "Track it in Renewals →" and "Undo".

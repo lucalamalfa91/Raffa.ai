@@ -16,9 +16,9 @@ export interface MobileEnvConfig {
   oidcAuthority: string;
   oidcClientId: string;
   /**
-   * API scopes requested at sign-in (e.g. "api://<api-client-id>/Contigo.Read"),
+   * API scopes requested at sign-in (e.g. "api://<api-client-id>/Raffa.Read"),
    * mirroring `web/src/config/appConfig.ts`'s `oidcApiScopes`. ADR-010 names
-   * `Contigo.Read`/`Contigo.Write` as placeholders pending the API surface
+   * `Raffa.Read`/`Raffa.Write` as placeholders pending the API surface
    * being fixed (see reports/open-questions.md OQ-client-007), so this stays
    * config-driven rather than hard-coded — `src/auth/oidcConfig.ts` adds the
    * standard `openid`/`profile`/`offline_access` scopes on top of this list.

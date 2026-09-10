@@ -4,7 +4,7 @@ type: task
 story: us-02-embedding-search-index
 wave: R1
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-02-tenant-retrieval — 02 Tenant Retrieval
@@ -18,7 +18,7 @@ Tenant-scoped similarity search + embed via IAiGateway.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `tenant-retrieval` |
+| workspace/raffa-backend/src/ | implementation for `tenant-retrieval` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-009, ADR-004.
@@ -30,7 +30,7 @@ Tenant-scoped similarity search + embed via IAiGateway.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | tenant-retrieval behaviour | workspace/contigo-backend/tests |
+| unit | tenant-retrieval behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

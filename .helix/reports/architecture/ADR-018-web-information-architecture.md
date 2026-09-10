@@ -47,7 +47,7 @@ decomposer must turn into `layer: web` stories.
 
 **Chosen: Option 1** — a single 224px left rail that lists the Day-1 capability
 ladder in the order a procurement user meets it (Home → Portfolio → Renewals →
-Ask Contigo → Quote check → Documents → Review queue → Workspace & members),
+Ask Raffa → Quote check → Documents → Review queue → Workspace & members),
 with a global Ask bar on every screen, and exactly two role variants.
 
 The left rail maps **one nav item per §16 release surface plus the two R0/R1
@@ -96,7 +96,7 @@ Roles are a permission gate on two rail items, never a fork in the IA.
 | /contracts | Portfolio (attention strip, filters, table) | Contract |
 | /contracts/:id | Contract 360 (10 tabs) | Contract + children |
 | /contracts/:id/review | Field review / correction + evidence pane | Extraction, Correction |
-| /ask | Ask Contigo — chat, citations, abstain | Query |
+| /ask | Ask Raffa — chat, citations, abstain | Query |
 | /renewals | Pipeline: threshold strip, table, insight card | Renewal |
 | / (home) | Savings KPIs + opportunities | SavingsOpportunity |
 | /quotes/:id | Quote check stepper: Extract → Assessment → Target → Negotiation | Quote, NegotiationOutcome |
@@ -120,7 +120,7 @@ Day-1 path (spec §7.1 needs_review/failed, §20).
 
 ## Implications for the decomposition
 
-- New stories are `layer: web`, `target_repo: contigo-web`, and cite
+- New stories are `layer: web`, `target_repo: raffa-web`, and cite
   `inputs/design/prototypes/ia.md` + `day1-demo.html` for the route they build.
 - Route guards for admin-vs-procurement nav items are a thin API/claims concern
   handed to client-architect (not re-decided here).
@@ -140,7 +140,7 @@ Day-1 path (spec §7.1 needs_review/failed, §20).
 
 ## Amendment (2026-09-08, epic-12 / ADR-023)
 
-Route `/ask` remains the IA home for Ask Contigo. The screen is a **copilot
+Route `/ask` remains the IA home for Ask Raffa. The screen is a **copilot
 conversation**, not a retrieval debugger: articulated markdown, human citation
 cards (supplier / contract title, never raw `Document:<guid>`), contract
 preview, and deep links the API supplies as `{ label, href }`. Hide engineer
@@ -150,10 +150,10 @@ stay on `/ask` with a warm redirect into this portfolio. See ADR-023.
 ## Amendment (2026-09-08, epic-13 / ADR-024)
 
 The V2 IA replaces the Day-1 sitemap. Pixel and behaviour reference:
-`inputs/design/prototypes/Contigo V2 Prototype.html`, unpacked at
-`inputs/design/prototypes/contigo-v2/` (`ia-v2.md` is the canonical route
+`inputs/design/prototypes/Raffa V2 Prototype.html`, unpacked at
+`inputs/design/prototypes/raffa-v2/` (`ia-v2.md` is the canonical route
 map). Sign-in lands on **`/ask`** (`/` redirects); `/ask/:conversationId`
-resumes a chat. **Two-tier rail**: Ask Contigo (⌘K, last 5 conversations,
+resumes a chat. **Two-tier rail**: Ask Raffa (⌘K, last 5 conversations,
 "+ New chat") and Documents; "From your contracts": Portfolio, Renewals,
 Quote check, greyed until the first validated contract. **No Home item**;
 Savings lives at `/savings`, reached from actions, Renewals and Contract 360.

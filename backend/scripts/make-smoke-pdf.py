@@ -20,7 +20,7 @@ PAGE_ONE = [
     "CONTRATTO QUADRO DI FORNITURA",
     "",
     "tra Rossi Software S.r.l., con sede in Via Torino 12, 20123 Milano (il Fornitore)",
-    "e Contigo Demo S.p.A., con sede in Via Roma 8, 00184 Roma (il Cliente).",
+    "e Raffa Demo S.p.A., con sede in Via Roma 8, 00184 Roma (il Cliente).",
     "",
     "1. Oggetto. Il Fornitore concede in licenza la piattaforma Rossi Cloud Suite e",
     "   presta i servizi di supporto descritti nell'Allegato A.",
@@ -50,7 +50,7 @@ PAGE_TWO = [
     "   ogni controversia e' competente in via esclusiva il Foro di Milano.",
     "",
     "Milano, 15 dicembre 2025",
-    "Rossi Software S.r.l.                    Contigo Demo S.p.A.",
+    "Rossi Software S.r.l.                    Raffa Demo S.p.A.",
 ]
 
 

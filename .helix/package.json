@@ -1,5 +1,5 @@
 {
-  "name": "contigo-helix-mcp",
+  "name": "raffa-helix-mcp",
   "private": true,
   "description": "Local Firecrawl MCP so Helix bind stays under the 30s connect deadline (npx -y times out in Studio).",
   "dependencies": {

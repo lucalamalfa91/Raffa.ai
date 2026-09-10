@@ -45,12 +45,12 @@ export const SAMPLE_DOCUMENTS: readonly SampleDocumentDefinition[] = [
     key: "clean",
     label: "Sample MSA · clean",
     description: "Northwind Traders SA — every term stated once, plainly, with the supplier role labelled.",
-    fileName: "contigo-sample-northwind-msa.pdf",
+    fileName: "raffa-sample-northwind-msa.pdf",
     supplier: "Northwind Traders SA",
     pages: [
       [
         "MASTER SERVICES AGREEMENT",
-        'This Master Services Agreement is entered into between Contigo Demo AG ("Customer") and Northwind Traders SA ("Supplier"), effective 2026-01-01.',
+        'This Master Services Agreement is entered into between Raffa Demo AG ("Customer") and Northwind Traders SA ("Supplier"), effective 2026-01-01.',
         "1. Scope. This Agreement governs every Order Form the parties execute under it for the Supplier's cloud procurement platform and related support services.",
         "2. Fees. The annual subscription fee is EUR 48,000, invoiced yearly in advance. The total contract value for the initial term is EUR 144,000. All invoices are payable within thirty (30) days of receipt.",
       ].join("\n\n"),
@@ -65,13 +65,13 @@ export const SAMPLE_DOCUMENTS: readonly SampleDocumentDefinition[] = [
     key: "needs-review",
     label: "Sample MSA · needs review",
     description: "Fabrikam Software GmbH — unlabelled parties, two annual fees and a self-contradicting renewal clause.",
-    fileName: "contigo-sample-fabrikam-msa.pdf",
+    fileName: "raffa-sample-fabrikam-msa.pdf",
     supplier: "Fabrikam Software GmbH",
     pages: [
       [
         "MASTER SERVICES AGREEMENT",
-        "This Master Services Agreement is made between Contigo Demo AG and Fabrikam Software GmbH, effective 1 February 2026.",
-        "1. Scope. Fabrikam provides its analytics platform and support services to Contigo Demo AG under the Order Forms executed from time to time.",
+        "This Master Services Agreement is made between Raffa Demo AG and Fabrikam Software GmbH, effective 1 February 2026.",
+        "1. Scope. Fabrikam provides its analytics platform and support services to Raffa Demo AG under the Order Forms executed from time to time.",
         "2. Fees. The annual subscription fee is EUR 36,000, invoiced quarterly in arrears; Schedule 1, however, lists an annual fee of EUR 39,600 after the agreed uplift. Invoices are payable within forty-five (45) days.",
       ].join("\n\n"),
       [

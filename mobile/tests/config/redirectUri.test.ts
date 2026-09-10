@@ -2,11 +2,11 @@ import { APP_SCHEME, buildNativeRedirectUri, getNativeRedirectUri } from '../../
 
 describe('buildNativeRedirectUri', () => {
   it('joins scheme and path with "://"', () => {
-    expect(buildNativeRedirectUri('contigo', 'callback')).toBe('contigo://callback');
+    expect(buildNativeRedirectUri('raffa', 'callback')).toBe('raffa://callback');
   });
 
   it('defaults the path to "callback"', () => {
-    expect(buildNativeRedirectUri('contigo')).toBe('contigo://callback');
+    expect(buildNativeRedirectUri('raffa')).toBe('raffa://callback');
   });
 
   it('throws on an empty scheme instead of returning a malformed URI', () => {
@@ -16,10 +16,10 @@ describe('buildNativeRedirectUri', () => {
 
 describe('getNativeRedirectUri', () => {
   it('reads the scheme from app.json ("expo.scheme")', () => {
-    expect(APP_SCHEME).toBe('contigo');
+    expect(APP_SCHEME).toBe('raffa');
   });
 
-  it('produces "contigo://callback" (parent story us-01 AC-1)', () => {
-    expect(getNativeRedirectUri()).toBe('contigo://callback');
+  it('produces "raffa://callback" (parent story us-01 AC-1)', () => {
+    expect(getNativeRedirectUri()).toBe('raffa://callback');
   });
 });

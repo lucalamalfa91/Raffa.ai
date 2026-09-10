@@ -31,7 +31,7 @@ export const STANDARD_OIDC_SCOPES = ['openid', 'profile', 'offline_access'] as c
 /**
  * The full scope list requested at sign-in: the standard OIDC scopes plus
  * this environment's API scopes (`MobileEnvConfig.oidcApiScopes`, ADR-010
- * placeholder `Contigo.Read`/`Contigo.Write`-shaped values).
+ * placeholder `Raffa.Read`/`Raffa.Write`-shaped values).
  */
 export function buildOidcScopes(env: Pick<MobileEnvConfig, 'oidcApiScopes'>): string[] {
   return [...STANDARD_OIDC_SCOPES, ...env.oidcApiScopes];
@@ -43,7 +43,7 @@ export function buildOidcScopes(env: Pick<MobileEnvConfig, 'oidcApiScopes'>): st
  * also expo-auth-session's default — set explicitly here so the intent is
  * not implicit). `redirectUri` is deliberately a parameter, not computed
  * here: callers pass `getNativeRedirectUri()` (`../config/redirectUri`,
- * `contigo://callback`, parent story AC-1) so this module stays agnostic of
+ * `raffa://callback`, parent story AC-1) so this module stays agnostic of
  * how the redirect URI is derived and easy to test with any value.
  */
 export function buildAuthRequestConfig(
