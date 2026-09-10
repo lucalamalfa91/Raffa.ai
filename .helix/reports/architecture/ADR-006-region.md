@@ -58,3 +58,31 @@ The 2026-09-01 council chose West Europe. First apply on this tenant failed with
 
 - All services named in ADR-azure-skus are GA in `northeurope` (Container Apps consumption, PostgreSQL Flexible Server with `pgvector`, Service Bus Standard, Foundry model serving).
 - The primary `demo` audience is European, making `northeurope` an acceptable latency choice once West Europe is ineligible.
+
+## Amendment (2026-09-10, wave w14 — global-only resource types are not a second region)
+
+**Items served**: NW-58 (the deferred mail-transport decision recorded in the
+ADR-005 w14 footer). **No w14 task follows from this footer**; it closes a gap
+between this ADR and the deployed tree that has been open since the first
+apply. `northeurope` is unchanged and is not re-opened.
+
+**Rule.** Some Azure resource types are **global**: they take no `location`
+and instead carry a `data_location` property that pins where their data
+rests. A global-only type is **not** "a second region" in the sense
+`:55` forbids, and it cannot take the `northeurope` pin because the property
+does not exist on it. Such a type carries `data_location = "Europe"`. Every
+**regional** resource in both environments continues to pin
+`location = "North Europe"` / `northeurope`, without exception.
+
+Two cases, one already in force and never written down:
+
+| Case | Status | Evidence |
+| --- | --- | --- |
+| **Azure Static Web Apps** (`Microsoft.Web/staticSites`) | **In force since the first apply, undocumented until now.** The module states in its own comment that the type "is not offered in North Europe … This module therefore does NOT inherit the env-root North Europe pin (ADR-006)", and both environment roots repeat it. This ADR said the opposite at `:55` and carried no footer recording the exception. | `infra/modules/staticwebapp/main.tf:6-9`; `environments/dev/main.tf:64-65`; `environments/demo/main.tf:75-76` |
+| **Azure Communication Services / Email Services** | **Decided, not applied** (ADR-005 w14 footer). Global types with `data_location`; when the transport ships they carry `data_location = "Europe"`. | ADR-005 `## Amendment (2026-09-10, wave w14 …)` |
+
+**Why this is recorded rather than left to a module comment**: an accepted ADR
+that contradicts the deployed tree is a fact the system does not hold. The
+next seat to reason about region would have read `:55` and either re-litigated
+a settled deviation or blocked a correct one. Recording the rule costs one
+footer; leaving it costs a wave.

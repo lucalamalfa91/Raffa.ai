@@ -91,3 +91,50 @@ a `demo` token never works on `dev`.
   adopt OIDC only, consistent with the locked row "OIDC, SSO-ready (Entra ID)").
 - The exact scopes (`Contigo.Read`/`Contigo.Write`) are named here as placeholders; final scope names are
   adopted when the API surface (software-architect) is fixed, without changing the registration shape.
+
+## Amendment (2026-09-10, wave w14 — the token carries identity only)
+
+Serves **NW-58** forward, and binds **NW-05 / NW-08 (W15)**. The Decision outcome
+above is unchanged: per-environment public-client + API registration pairs,
+authorization-code + PKCE, four registrations, per-environment `iss`/`aud`
+validation. **No w14 task edits any of it** — w14 ships on the ADR-022 interim
+identity. This footer fixes one rule now so W15 cannot silently undo w14.
+
+**1. The token is an identity assertion, not an authorization decision.** When
+JWT bearer auth lands, the validated token establishes **who** the caller is
+(`sub`/`oid`, and the email/UPN used for matching) and nothing else. **Tenant and
+role are resolved from the database on every request.** A `tenant_id` claim or a
+`roles` claim in a token is **never** the authorization source.
+
+**2. This amends a shipped contract, and names the seam.**
+`WorkspacePrincipalAuthorization.cs` is built on the opposite premise today:
+`TenantIdClaimType = "tenant_id"` (`:35`), `TryAuthorize` reads the tenant from
+that claim (`:62-67`) and the role from `ClaimTypes.Role` (`:69-70`), and
+`GET /api/audit` consumes it (`AuditEndpointExtensions.cs:30-31`). Left alone,
+W15 would ship a **stale-authorization window** — a removed member keeps access
+until token expiry — and a **last-Admin-guard bypass**, silently undoing ADR-025
+D.5a/D.5b, whose whole claim is that revocation is immediate because nothing
+caches authorization. The remedy is one file: `:32-33` records that "whichever
+task adds it (ADR-010) is free to change this constant, since **every caller goes
+through this one place**". NW-05/NW-08 change `TryAuthorize`'s tenant/role
+resolution from claim-reading to database-reading at that single seam, keeping its
+fail-closed posture (`:42-44`).
+
+**3. The interim header is ignored, not merely overridden.** `X-User-Id`
+(ADR-022) is retired by NW-05. The retirement test is written in w14 and
+activated in W15: with a validated token present, a request carrying token `A`
+and `X-User-Id: B` acts as `A` and **never** as `B`. Precedence is not enough —
+the header must stop being read at all.
+
+**4. Scope names are no longer placeholders, and they are now a rename risk.**
+The Assumptions above call `Contigo.Read`/`Contigo.Write` placeholders. They are
+live and **hardcoded in CI**: `.github/workflows/web.yml:204-205` builds
+`api://contigo-<env>-api/Contigo.Read|Write`. Recorded because it is the
+*identity-plane* half of the `Contigo` → `Raffa` rebrand (W14-01, OQ-w14-003) and
+it fails differently from a resource name: a wrong resource name fails a deploy
+loudly, whereas a scope that no longer matches the app registration fails at
+**token acquisition, in the browser, after CI is green**. Every w14 item is about
+the signed-in identity, so the wave base must be verified with one interactive
+sign-in on deployed `dev` before acceptance. Whether the scope literal changes is
+delivery-manager's W14-A1; that it must be *checked at the identity plane* is
+this ADR's.

@@ -106,3 +106,66 @@ this option).
   council's product-owner + security-architect during V1; authority is council-owned.
 - CI→Azure authentication mechanics are decided jointly in `ADR-ci-azure-auth.md`; this ADR only
   fixes the *flow*, not the credential method.
+
+## Amendment (2026-09-10, wave w14)
+
+Item **W14-01**. Seat: delivery-manager. Everything above is unchanged and
+`Status: accepted` stands — this footer **adds** the wave-base and integration
+rules the body never covered. It relaxes no protection.
+
+**1. The wave base is a reconciliation, not a fork.** The body fixes
+"every task branch is created from `main`" (`:90`) but says nothing about the
+Helix artefact branch, which diverges from `main` *by construction*: `.helix/`
+lives in the repo and is not its own git toplevel (`:97-98`), so the process
+branch carries artefacts `main` lacks while `main` carries product commits the
+process branch lacks. **Neither side is a subset of the other**, so a wave base
+is produced by **merging** `origin/main` into the process branch at HITL, never
+by branching afresh from either. This is an operator act **before**
+`register_wave.py` and before fan-out; it is not a fan-out task.
+
+**2. `integration` is named here for the first time.** The word does not occur
+in the body, yet the delivered structure is two-level — `wave/<ID>-*` task
+branches → `integration` → one PR → `main` (`reports/execution/wave-close-e13.md:7,20`).
+That is recorded now so it is not re-derived each wave. `integration` is a
+**wave-scoped** branch: it is created for a wave, merged by one PR, and carries
+no protection of its own; `main` keeps every protection the body assigns it.
+The PR `integration → main` is the wave's single merge event.
+
+**3. A wave base is proven green before its first task (W14-A1).** The body has
+no such rule; w14 needs one because `origin/main` carries a mechanical
+`Contigo.*` → `Raffa.*` rename that crosses the **CI ↔ cloud ↔ identity**
+boundary. Before `reports/plan/gates/<w>.hitl-ok` is created the operator
+verifies, on the rebased base:
+(a) `rg -n "Contigo\." backend/src web/src` returns nothing;
+(b) `dotnet build` and `npm test` are green;
+(c) `rg -ni "contigo" .github/ infra/ scripts/ backend/scripts/` is reviewed
+line by line against live Azure / HCP / **Entra**, including **both** ADR-021
+schema arrays (`backend.yml:277-285` **and** `:309-317`, kept "in lockstep" by
+`:274-275`), the Entra scope literals `api://contigo-<env>-api/Contigo.{Read,Write}`
+(`web.yml:204-205`), and the brand-asserting checker
+`scripts/check_demo_swa_config.py` with its unit tests;
+(d) **one throwaway deploy to `dev` from the rebased base is green**, reaching
+`backend.yml`'s "Verify schema applied (ADR-021)" step;
+(e) **one interactive sign-in on deployed `dev` returns a token carrying the
+expected scope.**
+Points (d) and (e) are the load-bearing ones. A resource-name mismatch fails a
+deploy loudly at `az … show`; a **renamed Entra scope that does not match the
+app registration fails at token acquisition, in the browser, after CI is
+green** — and it is invisible to every check that stops at "the build passed".
+The identity-plane half of this risk is recorded in ADR-010's w14 footer.
+
+**4. A feature wave does not edit CI YAML beyond what its wave plan names.**
+If a task's diff touches `.github/workflows/**` and the wave plan did not name
+that file, it is a defect, not a convenience, and the final-integration task
+fails on it. For w14 the planned set is **exactly two files**: the new
+`backfill-workspace-membership.yml` and a one-line guard change in
+`seed-demo-fixture.yml` (ADR-016 w14 footer, clause 5).
+
+**5. W14-01 produces no task.** Its dependency is the HITL gate itself: no
+`depends_on` edge points at it, and `reports/plan/gates/<w>.hitl-ok` is not
+created until clause 3 passes. If clause 3 fails, the wave does not start —
+that is the whole of its enforcement.
+
+**Not decided here** (unchanged by this footer): branch protections, the
+promotion mechanism, and the CI credential method, which stay with the body,
+ADR-016 and ADR-015 respectively.

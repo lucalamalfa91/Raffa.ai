@@ -127,3 +127,68 @@ shared read-only market index. The paid third-party API stays a later
 provider behind the same seam — never a hard dependency of the first V2
 `demo`, never another tenant's contracts. This footer supersedes the
 epic-12 amendment above. See ADR-024.
+
+## Amendment (2026-09-10, wave w14)
+
+Wave w14 ("workspace is real") fixes the scope boundary of the **invitation
+lifecycle** and of the **workspace profile**. The body above is unchanged: the
+R0–R4 ladder, the §1.2 non-goal list quoted verbatim, and the benchmark
+interface + fixture-adapter rule all stand. The epic-13 footer above stays in
+force — this footer addresses a different subject and supersedes nothing.
+Items served: NW-58, NW-24, and one constraint on NW-09.
+
+**1 — The invitation lifecycle is in scope, at R0.** Token, role and expiry;
+accept; sign in; **join that workspace**; Admin removal; re-invite after
+removal. This is R0 work under spec §16 ("auth, workspace, multi-tenancy,
+**roles**") and it is the second half of the §20 Day-1 sentence "create a
+workspace and **invite Procurement users**". A wave that ships an invite an
+invitee cannot act on has not delivered §20.
+
+**2 — A real mail transport is deferred, and is *not* a §1.2 non-goal.** Spec
+§13.4 ranks "email notifications" **P1 / V1** and §16.1 ranks "Email alerts"
+**P1**; §1.2's eight non-goals do not mention email or invitations.
+`inputs/percorso-pilota-v1.md` excludes it from the pilot three times — §2
+"Non è onboarding: **email**", §5 "**Niente email nel pilota**", §7 under the
+heading "Fuori da questo pilota **anche se restano nello spec V1 pieno**".
+Deferral is therefore a **priority** ruling inside accepted scope, not a scope
+reduction: a later wave picks the transport up without re-litigating this ADR,
+and the §1.2 list is not extended by it. For w14 the delivery mechanism is a
+**copyable single-use accept link** in the Members UI, behind an
+`IInvitationMailer` seam so the transport is a later drop-in.
+
+**3 — The screen must not assert a fact the system does not hold.** A general
+acceptance rule, not a w14 preference, and it outlives the deferral in clause 2:
+the UI must not say "Invitation sent." while no mail leaves the system, and it
+must not print a workspace currency or region the system never captured (see
+clause 5). Where the fact is missing, the copy shrinks; it is never invented.
+
+**4 — An unaccepted invitation grants nothing.** `Invited` is not membership:
+before the link is opened the invitee sees no workspace. This *changes shipped
+behaviour* — the R0 task that wrote a membership row at invite time is
+superseded by this wave (see `reports/architecture/waves/w14.md`).
+
+**5 — The workspace profile is `name` + `industry` + `country`.** Industry and
+country are **closed lists** (`inputs/design/prototypes/contigo-v2/markup.html:55-56`),
+not free text. **Currency and business region are derived from `country` and
+stored; the user is never asked for them** — the prototype's create form has no
+currency control, and `CHF · eu-west` appears only as pick-row *output*
+(`markup.html:63`). No other workspace attribute is in scope for V1.
+
+**6 — A workspace currency is a display default and never overrides a
+contract's own extracted currency.** Converting or re-tagging a validated
+contract amount by workspace currency would contradict spec §2 ("AI is not the
+database"; canonical facts live in structured storage). Cross-currency
+normalisation would need an FX source and is a separate, later, council-
+justified item — it is not part of the workspace profile.
+
+**7 — The workspace-domain restriction on an invitee's address is deferred**
+to the wave that lands ADR-010 (real token claims). It is prototype helper
+text (`screens-v2.md:150`), not a spec or §20 requirement, and enforcing it in
+w14 would make w14's own acceptance unverifiable — that acceptance invites a
+second Entra account, which in practice sits on a different domain. It stays
+as helper text, not as a server-side block.
+
+Deciders: product-owner (owner of this ADR), with cloud-architect co-deciding
+clause 2 (no Azure resource, no Terraform module, no per-env secret is added by
+NW-58 in w14) and software-architect + security-architect owning the mechanism
+of clauses 1 and 4 in the separate invitation-lifecycle ADR of this wave.

@@ -60,3 +60,54 @@ full Entra-on-API retrofit.
 ## Implications for decomposition
 
 Epic-10 / slice e10 only. Do not duplicate e05, e09, or e06–e08.
+
+## Amendment (2026-09-10, wave w14 — the interim posture is narrowed, not extended)
+
+Serves **NW-14, NW-01, NW-02, NW-04, NW-58**. The Decision outcome above is
+unchanged and still in force: `demo` keeps `X-Tenant-Id` on the API and the SPA
+continues Entra PKCE until ADR-010 lands. This footer **tightens** the interim —
+it grants nothing new.
+
+**1. A client-declared role header is not an authorization source.** `X-Role` and
+`X-Workspace-Role` (`WorkspaceRoleResolver.cs:37-38`, read at `:70-83`) are
+**demoted now**. Authorization for an Admin-only action resolves from role claims
+on an authenticated principal, then from the `workspace_membership` row — and
+nothing else. Where header and membership disagree, **membership wins in both
+directions**: a header claiming `Admin` never grants, and a header claiming
+`Procurement` never revokes a real Admin's rights. This executes NW-14's own
+instruction: "Do not 'fix' this by sending a spoofable `X-Role: Admin` from the
+SPA as the product solution."
+
+**2. It costs nothing and breaks no client.** `Grep` over `web/src` for
+`X-Role|X-Workspace-Role` returns **zero matches** — the SPA sends `X-Tenant-Id`
+and `X-User-Id` only (`client.ts:49-54`). The single surviving reader is
+`GET /api/capabilities`, which shapes UI affordances and grants no data access;
+its own comment already draws this line (`CapabilitiesEndpointExtensions.cs:44-48`).
+This footer restates a convention the codebase already holds; letting the header
+drift into an authorization decision would be the regression.
+
+**3. `X-Tenant-Id` is not the tenant of a membership route.** For every route in
+this wave the tenant comes from the **route path** and the caller's membership in
+it is verified. A crafted `X-Tenant-Id` for a foreign tenant yields **404** on a
+read (acceptance N5) — RLS returns no rows, and a 403 there would be a
+tenant-existence oracle.
+
+**4. `X-User-Id` is the interim identity, trusted for one thing.** It selects
+*which membership rows to look up* and confers no role, no tenant and no scope
+(ADR-025 §A). It is read in **one** place so NW-05 (W15) retires it by editing one
+file.
+
+**5. Retirement schedule, so the interim stays interim.**
+
+| Mechanism | w14 | Removed by |
+|---|---|---|
+| `X-Role` / `X-Workspace-Role` as authorization | **demoted now** — UI shaping only | NW-31 (W15) deletes the alias and the reader |
+| `X-Tenant-Id` as the tenant of a membership route | not an input; route + membership | NW-05 (W15) |
+| `X-User-Id` as identity | one seam (ADR-025 §A) | NW-05 (W15) |
+| Fixture/demo auth of this ADR | unchanged this wave | out of w14 scope |
+
+**Recorded limitation, not a defect.** Until ADR-010 lands a caller can still
+assert another `X-User-Id`. The Admin gate resolves from the membership row rather
+than from a client-supplied role, so NW-58's N3b-8 is honest; the residual belongs
+in the epic story and is closed by NW-05. **A reviewer must not reject NW-58 for
+it.**
