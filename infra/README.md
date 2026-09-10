@@ -243,13 +243,22 @@ is a backend compatibility finding for the GPT-5.x request shape.
   attaches `registry { server, identity }` so API/worker pull without an
   admin password. Confirm the HCP VCS apply on `raffa-dev` /
   `raffa-demo` before the next `az containerapp update`, or pulls 401.
-- **Out-of-band Postgres / AcrPull objects** (database `raffa_<env>`,
-  firewall `AllowAzureServices`, live AcrPull assignment) are adopted
-  via `import {}` blocks in each env root (`environments/<env>/imports.tf`).
-  Leave them after the first successful apply; they become no-ops once
-  the addresses are in state. `modules/acr` ignores in-place changes on
-  the imported AcrPull assignment — ARM rejects `azurerm_role_assignment`
-  updates (`doesn't support update`).
+- **Postgres database / firewall rule / AcrPull role assignment are plain
+  Terraform-managed resources, not permanently adopted.**
+  `environments/<env>/imports.tf` used to carry `import {}` blocks for
+  these (out-of-band objects from before Terraform managed them), on the
+  assumption that an import block is a no-op once its address is in
+  state. Removed 2026-09-10: that assumption breaks the moment the parent
+  resource (`psql-<env>`, the ACR) is destroyed and recreated by Terraform
+  itself — the address drops out of state with its parent, the import
+  block reactivates on the next apply, and it points at an id that no
+  longer exists (`Cannot import non-existent remote object`), blocking the
+  replacement from ever completing. `modules/acr` still ignores in-place
+  changes on the AcrPull assignment — ARM rejects `azurerm_role_assignment`
+  updates (`doesn't support update`) — that part is unaffected. If a
+  genuinely pre-existing out-of-band object needs adopting again, add a
+  scoped `import {}` block for that one apply and remove it once it lands
+  in state; do not leave it checked in indefinitely.
 - **Static Web Apps region.** `Microsoft.Web/staticSites` is not offered in
   North Europe; West Europe is ineligible on this tenant. The module
   defaults to West US 2. Static assets are a global CDN; that region only
@@ -275,9 +284,11 @@ is a backend compatibility finding for the GPT-5.x request shape.
 - **First-ever Cognitive Services account in the subscription.** If the
   create fails with `ResourceKindRequireAcceptTerms`, the owner accepts the
   Responsible AI terms once (`az cognitiveservices account create ... --yes`
-  for `aisvc-raffa` in `rg-raffa-ai`) and the resources are adopted with
-  `import {}` blocks in `environments/dev/imports.tf`, like the Postgres /
-  AcrPull objects above.
+  for `aisvc-raffa` in `rg-raffa-ai`), then add a one-off, scoped
+  `import {}` block (see git history of the now-removed
+  `environments/dev/imports.tf` for the shape) to adopt it, and remove the
+  block again once it lands in state — same rule as the Postgres/AcrPull
+  gap above.
 
 ## Known gaps — Ask Raffa V2 (epic-13, ADR-024)
 
