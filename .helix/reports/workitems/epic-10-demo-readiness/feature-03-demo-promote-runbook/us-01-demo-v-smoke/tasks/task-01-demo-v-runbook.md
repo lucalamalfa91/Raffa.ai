@@ -4,7 +4,7 @@ type: task
 story: us-01-demo-v-smoke
 wave: 10
 status: live
-target_repo: contigo-infra
+target_repo: raffa-infra
 ---
 
 # task-01-demo-v-runbook — Promote runbook + SWA config smoke

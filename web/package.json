@@ -1,9 +1,9 @@
 {
-  "name": "contigo-web",
+  "name": "raffa-web",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Contigo web client - React + TypeScript + Vite SPA, OIDC Authorization Code + PKCE (ADR-012, ADR-010).",
+  "description": "Raffa web client - React + TypeScript + Vite SPA, OIDC Authorization Code + PKCE (ADR-012, ADR-010).",
   "engines": {
     "node": ">=20"
   },

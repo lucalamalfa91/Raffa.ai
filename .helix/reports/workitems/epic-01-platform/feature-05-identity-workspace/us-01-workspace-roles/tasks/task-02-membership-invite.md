@@ -4,7 +4,7 @@ type: task
 story: us-01-workspace-roles
 wave: R0
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-02-membership-invite — 02 Membership Invite
@@ -18,7 +18,7 @@ Implement workspace invite + role assignment with OIDC claims.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `workspace-membership` |
+| workspace/raffa-backend/src/ | implementation for `workspace-membership` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-010, ADR-009.
@@ -30,7 +30,7 @@ Implement workspace invite + role assignment with OIDC claims.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | workspace-membership behaviour | workspace/contigo-backend/tests |
+| unit | workspace-membership behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

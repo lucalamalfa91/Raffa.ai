@@ -1,4 +1,4 @@
-# Contigo Web Integration Mandate (delta on a completed R0–R4 backend)
+# Raffa Web Integration Mandate (delta on a completed R0–R4 backend)
 
 Source of truth: `inputs/web-integration-brief.md` (delta intake, 4 September 2026),
 `inputs/product-spec.md` (v1.0), `inputs/engineering-brief.md` (v1.2),
@@ -22,7 +22,7 @@ This file fixes the frame for every later Passata-1 seat on this pass. It is a
 | `web/` shell scaffolded | E01/F07 — OIDC shell + generated API client + `config.json` |
 | Mobile stack (scaffold only) | ADR-013 — Expo, non-gating, no store release for R0–R4 |
 | API-first contract | One generated TypeScript client from `web/openapi/`; web consumes documented HTTP contracts |
-| Source control / env model | Locked in `engineering-constraints.md` + ADR-014/015/016 — one public repo `lucalamalfa91/contigo`, `dev` + `demo`, promotion via `demo-v*` |
+| Source control / env model | Locked in `engineering-constraints.md` + ADR-014/015/016 — one public repo `lucalamalfa91/raffa`, `dev` + `demo`, promotion via `demo-v*` |
 
 **Append-only rules (forbidden on this run):**
 
@@ -41,8 +41,8 @@ This file fixes the frame for every later Passata-1 seat on this pass. It is a
 ADR-012 and `BACKLOG.md` already promise the SPA will deliver the full
 user-visible ladder as backend slices land. The E02–E05 decompositions are
 `layer: backend` (e.g. `us-01-renewal-dashboard-api`); integration stories
-mention `contigo-web (smoke)` but never author screens. So after E05 a reviewer
-on `demo` could have a working API and no portfolio, Contract 360, Ask Contigo,
+mention `raffa-web (smoke)` but never author screens. So after E05 a reviewer
+on `demo` could have a working API and no portfolio, Contract 360, Ask Raffa,
 renewals, savings, or quote-check **UI**. That fails spec §16 definitions of
 success and §20 Day-1, which are user outcomes, not HTTP status codes.
 
@@ -56,7 +56,7 @@ on `main`**, up to the same Day-1 end state, delivered through the browser.
 | Decision | Guideline |
 |---|---|
 | Planning baseline | Treat epic-01…05 and ADR-001…017 as **done**. New work is additive. |
-| Surface | **Web only.** New client work targets `web/` in the monorepo (`contigo-web`). |
+| Surface | **Web only.** New client work targets `web/` in the monorepo (`raffa-web`). |
 | Delivery topology | New execution slices are **web waves starting at wave / epic 6** (`e06.yaml`, `e07.yaml`, …). Do **not** splice UI tasks into `e01.yaml`–`e05.yaml`. |
 | Stack | ADR-012 is locked. No new frontend-framework ADR unless a **defect** in ADR-012 blocks the UX (then the drafting seat OBJECTs citing the file). |
 | API | Web consumes the existing (and E02–E05) HTTP contracts. Regen the TS client from `web/openapi/`; never hand-write divergent DTOs. If a screen needs a field the API does not expose, the story may add a **thin, named backend gap task** — the only allowed backend write, and it must not redesign modules. |
@@ -128,7 +128,7 @@ ground truth so decomposition cannot "finish" behind an API-only bar.
 > | R0 — Foundation | Auth, workspace, multi-tenancy, roles, upload, storage, DB, audit baseline | A secure workspace can ingest documents |
 > | R1 — Contract Intelligence | Extraction, schema, portfolio, Contract 360, Q&A, citations, validation | Customer can upload contracts and ask reliable questions |
 > | R2 — Renewals | Dates, cancellation deadline, alerts, dashboard, priority, recommendations | Procurement does not miss material renewal windows |
-> | R3 — Savings | Benchmark service/adapters, price comparison, savings dashboard/workflow | Contigo quantifies credible savings opportunities |
+> | R3 — Savings | Benchmark service/adapters, price comparison, savings dashboard/workflow | Raffa quantifies credible savings opportunities |
 > | R4 — Quote Check | Quote extraction, benchmark, assessment, target, negotiation strategy | A new proposal can be assessed in minutes |
 
 ### §20 — Definition of V1 done (the Day-1 screen ladder)
@@ -149,7 +149,7 @@ ground truth so decomposition cannot "finish" behind an API-only bar.
 > **After negotiation:** Record the final negotiated outcome. / Track realized
 > savings. / Use the outcome as permissioned proprietary learning data.
 >
-> **V1 customer promise** — Contigo knows what we bought, what we pay, when we
+> **V1 customer promise** — Raffa knows what we bought, what we pay, when we
 > need to act, and where we can save money.
 
 **Mandate:** every §16 row has a screen (or a named non-goal against spec §1.2),
@@ -168,7 +168,7 @@ within:
 | `reports/architecture/draft/ux-ui-designer/` | ux-ui-designer seat (new) | IA, design system, interaction, accessibility; cites `inputs/design/` |
 | `reports/architecture/draft/*-web/` | other producers' web-lane drafts | client-architect residual: routing, MSAL/config, OpenAPI regen, SWA — not visual language |
 | `reports/architecture/ADR-018-*.md` onward | council close | accept/lock the web IA + design-system ADRs |
-| `reports/workitems/epic-06-*/` onward | decomposer | web experience epics; new stories `layer: web`, `target_repo: contigo-web` |
+| `reports/workitems/epic-06-*/` onward | decomposer | web experience epics; new stories `layer: web`, `target_repo: raffa-web` |
 | `reports/plan/wave-spec.web.yaml` | decomposer | new web DAG (do not touch `wave-spec.execution.yaml`) |
 | `reports/plan/slices/e06.yaml`, `e07.yaml`, … | decomposer | web overnight waves; `e01`–`e05` untouched |
 | `reports/plan/slices/INDEX-web.md`, `MANIFEST-web.yaml` | decomposer | new web slice index/manifest |
@@ -178,7 +178,7 @@ which the decomposer may split into 07+:
 
 1. Design system + app shell (nav, auth gate, workspace switch; `config.json` already real).
 2. R0 UI — invite/roles, upload, document status, audit read-back.
-3. R1 UI — portfolio, filters, Contract 360, evidence, correct, Ask Contigo + citations.
+3. R1 UI — portfolio, filters, Contract 360, evidence, correct, Ask Raffa + citations.
 4. R2 UI — renewal pipeline, insight card, action.
 5. R3 UI — savings KPIs + list.
 6. R4 UI — quote check + negotiation + Day-1 integration smoke.

@@ -4,7 +4,7 @@ type: task
 story: us-01-quote-line-extraction
 wave: R4
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-02-quote-normalization — 02 Quote Normalization
@@ -18,7 +18,7 @@ Normalize line-item unit economics.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `quote-normalization` |
+| workspace/raffa-backend/src/ | implementation for `quote-normalization` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-002.
@@ -30,7 +30,7 @@ Normalize line-item unit economics.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | quote-normalization behaviour | workspace/contigo-backend/tests |
+| unit | quote-normalization behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

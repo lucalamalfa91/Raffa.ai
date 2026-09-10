@@ -23,7 +23,7 @@ export interface InvitePaneProps {
 }
 
 /**
- * The V2 "Invite a colleague" pane (screens-v2.md #10; `contigo-v2/markup.html` "WORKSPACE &
+ * The V2 "Invite a colleague" pane (screens-v2.md #10; `raffa-v2/markup.html` "WORKSPACE &
  * MEMBERS" block, right column): h4 → "Work email" field → two stacked radios (Procurement first,
  * each with a bold label and a muted one-line summary, `.radio` + `.dot` from the ADR-019 catalogue,
  * the native control stays in the accessibility tree) → block "Send invitation" → either the accent

@@ -43,7 +43,7 @@ function RailBadge({ badge }: { badge: NavBadge | null }) {
  * 232px left rail, V2 two-tier information architecture (ADR-024 amendment to ADR-018/ADR-020; task
  * E13/F09/US01/T01, gap G-IA-V2). Layout/measurements (232px grid column via shell.css, item
  * padding, "From your contracts" kicker) are confirmed against
- * `inputs/design/prototypes/contigo-v2/markup.html`'s own `<nav>` block, not invented; the two-tier
+ * `inputs/design/prototypes/raffa-v2/markup.html`'s own `<nav>` block, not invented; the two-tier
  * model itself (`navItems.ts`) is `app.jsx`'s `primaryNav`/`kbNav`. Icons are still omitted --
  * `lucide-react` (or an equivalent) is not a dependency of this package yet, unchanged from the
  * Day-1 rail this replaces.

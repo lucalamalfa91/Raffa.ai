@@ -53,7 +53,7 @@ describe("quoteOutcomeStore", () => {
   });
 
   it("treats malformed sessionStorage content as 'nothing recorded yet', not a throw", () => {
-    window.sessionStorage.setItem("contigo.quotes.negotiationOutcomes", "{not json");
+    window.sessionStorage.setItem("raffa.quotes.negotiationOutcomes", "{not json");
     expect(loadNegotiationOutcomes()).toEqual([]);
   });
 });

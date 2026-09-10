@@ -3,7 +3,7 @@
 - **Status**: accepted
 - **Date**: 2026-09-01
 - **Deciders**: cloud-architect (owner), delivery-manager, security-architect
-- **Locked citations**: IaC — HCP Terraform, infra code in `infra/` folder of the monorepo; Environments — `dev`+`demo` isolated; Secrets — Key Vault, no secrets in code or Terraform source; tagging `project=contigo`, `env=dev|demo`.
+- **Locked citations**: IaC — HCP Terraform, infra code in `infra/` folder of the monorepo; Environments — `dev`+`demo` isolated; Secrets — Key Vault, no secrets in code or Terraform source; tagging `project=raffa`, `env=dev|demo`.
 
 ## Context and problem statement
 
@@ -48,21 +48,21 @@ infra/
   environments/
     dev/
       main.tf         # instantiates modules with env=dev
-      backend.tf      # remote state -> HCP workspace "contigo-dev"
+      backend.tf      # remote state -> HCP workspace "raffa-dev"
       variables.tf
       outputs.tf
     demo/
       main.tf         # instantiates modules with env=demo
-      backend.tf      # remote state -> HCP workspace "contigo-demo"
+      backend.tf      # remote state -> HCP workspace "raffa-demo"
       variables.tf
       outputs.tf
   versions.tf         # provider + Terraform version pins
   provider.tf         # azurerm (and azuread) providers
 ```
 
-- **Remote state**: HCP Terraform — two workspaces, `contigo-dev` and `contigo-demo` (or a single workspace with two `backend "remote"` `key` values). State is never in git.
+- **Remote state**: HCP Terraform — two workspaces, `raffa-dev` and `raffa-demo` (or a single workspace with two `backend "remote"` `key` values). State is never in git.
 - **Providers**: `hashicorp/azurerm` (primary), `hashicorp/azuread` (identity/Entra), plus `hashicorp/random` if suffixing is needed. Provider versions pinned in `versions.tf`.
-- **Tagging**: every module applies `project = "contigo"` and `env = var.environment` (set to `dev` or `demo`) so the cost researcher can filter.
+- **Tagging**: every module applies `project = "raffa"` and `env = var.environment` (set to `dev` or `demo`) so the cost researcher can filter.
 - **No secrets**: Terraform only references Key Vault, Entra, and managed identities. It never emits a connection string, SAS token, or certificate secret into state as plaintext-visible app secret; apps use managed identity to read Key Vault at runtime.
 
 ## Pros and cons of the options
@@ -84,9 +84,9 @@ infra/
 - Every infra task targets a module in `infra/modules/` and is instantiated through `environments/{dev,demo}/main.tf`.
 - Backend config is per-environment; a task must not point `dev` and `demo` at the same HCP Terraform workspace/state key.
 - Secrets are never written into Terraform source or state as app-readable secrets; use Key Vault + managed identity (see security-architect ADR for Key Vault + RAG isolation).
-- Tagging is mandatory (`project=contigo`, `env=dev|demo`) at every resource creation.
+- Tagging is mandatory (`project=raffa`, `env=dev|demo`) at every resource creation.
 
 ## Assumptions
 
-- HCP Terraform supports two workshops/workspaces (or two backend `key` values) for the `contigo` repo.
+- HCP Terraform supports two workshops/workspaces (or two backend `key` values) for the `raffa` repo.
 - `azurerm` and `azuread` providers are used; exact provider minor versions are pinned at implementation time in the target region.

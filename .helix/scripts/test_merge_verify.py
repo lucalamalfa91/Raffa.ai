@@ -14,7 +14,7 @@ def test_skips_helix_agent_docs() -> None:
     assert merge_verify._is_excluded(".helix/scripts/merge_verify.py")
     assert merge_verify._is_excluded(".helix/skills/marker-discipline.md")
     assert merge_verify._is_excluded(".helix\\agents\\conflict-fixer.md")
-    assert not merge_verify._is_excluded("backend/src/Contigo.SharedKernel/SystemClock.cs")
+    assert not merge_verify._is_excluded("backend/src/Raffa.SharedKernel/SystemClock.cs")
     assert not merge_verify._is_excluded(".helix/reports/open-questions.md")
 
 
@@ -25,8 +25,8 @@ def test_merge_verify_exclude_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_needs_dotnet_build_only_for_backend_sources() -> None:
-    assert merge_verify.needs_dotnet_build(["backend/src/Contigo.Api/MarketEndpointExtensions.cs"])
-    assert merge_verify.needs_dotnet_build(["backend\\src\\Contigo.Market\\Contigo.Market.csproj"])
+    assert merge_verify.needs_dotnet_build(["backend/src/Raffa.Api/MarketEndpointExtensions.cs"])
+    assert merge_verify.needs_dotnet_build(["backend\\src\\Raffa.Market\\Raffa.Market.csproj"])
     assert not merge_verify.needs_dotnet_build(["backend/README.md", "web/src/app.tsx"])
     assert not merge_verify.needs_dotnet_build([".helix/reports/open-questions.md"])
     assert not merge_verify.needs_dotnet_build([])

@@ -25,4 +25,4 @@ facts/AI separation.
 
 ## Target repo
 
-`contigo-web`
+`raffa-web`

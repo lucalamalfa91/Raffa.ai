@@ -4,7 +4,7 @@ type: task
 story: us-01-contract-360
 wave: 7
 status: live
-target_repo: contigo-web
+target_repo: raffa-web
 ---
 
 # task-01-contract-360 — Contract 360 header + tabs UI
@@ -19,7 +19,7 @@ facts/AI separation.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-web/src/routes/contracts/:id/ | Contract 360 UI |
+| workspace/raffa-web/src/routes/contracts/:id/ | Contract 360 UI |
 | inputs/design/prototypes/screens.md | screen 5 (read, cite) |
 | inputs/design/prototypes/day1-demo.html | reference (cite) |
 
@@ -33,7 +33,7 @@ facts/AI separation.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | recommendation block separated from deterministic facts | workspace/contigo-web/tests |
+| unit | recommendation block separated from deterministic facts | workspace/raffa-web/tests |
 
 ## Wave-spec entry
 ```yaml

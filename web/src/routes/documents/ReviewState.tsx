@@ -22,7 +22,7 @@ export interface ReviewStateProps {
 
 /**
  * Review as a **state of Documents** (`/documents?review=:documentId`; task E13/F09/US01/T03's own
- * coding objective; `contigo-v2/ia-v2.md` route map; requirements R-WEB-05). Reuses
+ * coding objective; `raffa-v2/ia-v2.md` route map; requirements R-WEB-05). Reuses
  * `../contracts/review/{ReviewHeader,ReviewFieldList,EvidencePane}.tsx` and the shared
  * `useReviewSession` hook -- the same lifecycle the routed `/contracts/:contractId/review` screen
  * runs, so the two can never drift again on what "Mark as validated" does. It cannot reuse

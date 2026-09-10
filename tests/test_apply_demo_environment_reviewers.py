@@ -4,11 +4,11 @@ E01/F03/US03/T02).
 Covers the pure logic (build_desired_state, find_required_reviewers_rule,
 extract_required_reviewers, describe_gaps) against synthetic Environments-
 API-shaped fixtures, including one literal fixture captured live from
-`gh api repos/lucalamalfa91/contigo/environments/demo` on 2026-09-03 (see
+`gh api repos/lucalamalfa91/raffa/environments/demo` on 2026-09-03 (see
 the script's own module docstring) -- no network, no token needed.
 
 main()'s live PUT/GET orchestration (and resolve_user_id's live GET) needs a
-real `gh` auth session against the real lucalamalfa91/contigo repo, so that
+real `gh` auth session against the real lucalamalfa91/raffa repo, so that
 path is intentionally exercised live via
 `python scripts/apply_demo_environment_reviewers.py [--check-only]`, not
 from this unit-test file -- parity with tests/test_hcp_vcs_wiring.py and
@@ -31,7 +31,7 @@ import apply_demo_environment_reviewers as ader  # noqa: E402
 
 LUCA_ID = 57912352
 
-# Captured live via `gh api repos/lucalamalfa91/contigo/environments/demo`
+# Captured live via `gh api repos/lucalamalfa91/raffa/environments/demo`
 # on 2026-09-03, right after this script's own `apply_environment` first
 # created the environment -- trimmed to the fields this module reads.
 LIVE_DEMO_ENVIRONMENT_FIXTURE: dict = {

@@ -34,7 +34,7 @@ export function buildMsalConfig(appConfig: AppConfig): Configuration {
 }
 
 /**
- * The scopes requested at login. ADR-010 names `Contigo.Read`/`Contigo.Write`
+ * The scopes requested at login. ADR-010 names `Raffa.Read`/`Raffa.Write`
  * as placeholder API scopes pending the API surface being fixed; this stays
  * config-driven (`AppConfig.oidcApiScopes`) rather than hard-coding an
  * App ID URI this task cannot confirm.

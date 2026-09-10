@@ -4,7 +4,7 @@ type: task
 story: us-02-per-folder-workflows
 wave: R0
 status: live
-target_repo: contigo-infra
+target_repo: raffa-infra
 ---
 
 # task-02-path-filter-verify — 02 Path Filter Verify
@@ -18,7 +18,7 @@ Verify four workflows have correct path filters and mobile non-blocking.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-infra/src/ | implementation for `ci-path-filters` |
+| workspace/raffa-infra/src/ | implementation for `ci-path-filters` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-014.
@@ -30,7 +30,7 @@ Verify four workflows have correct path filters and mobile non-blocking.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | ci-path-filters behaviour | workspace/contigo-infra/tests |
+| unit | ci-path-filters behaviour | workspace/raffa-infra/tests |
 
 ## Open questions blocking this task
 - none

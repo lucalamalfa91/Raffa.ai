@@ -9,7 +9,7 @@ describe("CitationCard (task E13/F09/US01/T02, AC-3)", () => {
   it.each<{ corpus: CitationCorpus; badgeText: string; tagClass: string }>([
     { corpus: "tenant", badgeText: "Validated contract", tagClass: "tag-neutral" },
     { corpus: "market", badgeText: "Market · representative", tagClass: "tag-outline" },
-    { corpus: "contigo", badgeText: "Contigo", tagClass: "tag-accent" },
+    { corpus: "raffa", badgeText: "Raffa", tagClass: "tag-accent" },
   ])("renders the $corpus corpus badge", ({ corpus, badgeText, tagClass }) => {
     render(
       <CitationCard

@@ -65,13 +65,13 @@ describe("workspaceStore", () => {
     });
 
     it("treats malformed stored JSON as an empty list instead of throwing", () => {
-      window.localStorage.setItem("contigo.signin.knownWorkspaces.account-1", "{not valid json");
+      window.localStorage.setItem("raffa.signin.knownWorkspaces.account-1", "{not valid json");
 
       expect(loadKnownWorkspaces("account-1")).toEqual([]);
     });
 
     it("treats a stored non-array value as an empty list instead of throwing", () => {
-      window.localStorage.setItem("contigo.signin.knownWorkspaces.account-1", JSON.stringify({ not: "an array" }));
+      window.localStorage.setItem("raffa.signin.knownWorkspaces.account-1", JSON.stringify({ not: "an array" }));
 
       expect(loadKnownWorkspaces("account-1")).toEqual([]);
     });
@@ -96,7 +96,7 @@ describe("workspaceStore", () => {
     });
 
     it("treats malformed stored JSON as no selection instead of throwing", () => {
-      window.sessionStorage.setItem("contigo.signin.currentWorkspace", "{not valid json");
+      window.sessionStorage.setItem("raffa.signin.currentWorkspace", "{not valid json");
 
       expect(loadCurrentWorkspace()).toBeNull();
     });

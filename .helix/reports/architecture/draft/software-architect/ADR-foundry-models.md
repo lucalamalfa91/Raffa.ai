@@ -3,11 +3,11 @@
 - **Status**: proposed
 - **Date**: 2026-09-02
 - **Deciders**: software-architect (roles/selection owner) + cloud-architect (IDs/prices in region) jointly; security-architect (RAG isolation) reconciles at council-close
-- **Locked citations**: AI — Microsoft Foundry only, via Contigo AI Gateway; domain modules never call a provider directly; use cheapest Foundry models that still meet the tasks (locked-decisions.md). Brief §8: log model/version/prompt/version/timestamp/input-hash; cheapest models for classification, structured extraction, grounded Q&A with citations, embeddings. OCR in V1: ADR-017.
+- **Locked citations**: AI — Microsoft Foundry only, via Raffa AI Gateway; domain modules never call a provider directly; use cheapest Foundry models that still meet the tasks (locked-decisions.md). Brief §8: log model/version/prompt/version/timestamp/input-hash; cheapest models for classification, structured extraction, grounded Q&A with citations, embeddings. OCR in V1: ADR-017.
 
 ## Context and problem statement
 
-All model I/O flows through the AI Gateway (brief §8). The product needs five distinct *roles*: **ocr** (full-document text/layout; ADR-017), **classification** (document type), **structured extraction** (schema-constrained facts), **embedding** (semantic search/Ask Contigo RAG), and **grounded Q&A** (Ask Contigo with citations). The brief mandates the *cheapest* Foundry / Azure AI surfaces that still perform each role, and forbids customer contract content from training public/shared models. OCR is in V1 (ADR-017); it is not deferred.
+All model I/O flows through the AI Gateway (brief §8). The product needs five distinct *roles*: **ocr** (full-document text/layout; ADR-017), **classification** (document type), **structured extraction** (schema-constrained facts), **embedding** (semantic search/Ask Raffa RAG), and **grounded Q&A** (Ask Raffa with citations). The brief mandates the *cheapest* Foundry / Azure AI surfaces that still perform each role, and forbids customer contract content from training public/shared models. OCR is in V1 (ADR-017); it is not deferred.
 
 The question is which role maps to which model family, and which concrete candidate IDs are preferred such that cost stays minimal and citation/quality is met (or an explicit "cannot determine" is returned).
 

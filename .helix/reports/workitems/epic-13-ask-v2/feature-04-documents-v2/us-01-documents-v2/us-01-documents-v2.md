@@ -10,7 +10,7 @@ status: active
 
 ## Story
 
-As **procurement**, I want to drop one or more files and have Contigo keep
+As **procurement**, I want to drop one or more files and have Raffa keep
 only the contract documents (refusing a recipe or a family photo with a
 plain reason, never storing them), then see every kept document in a list
 that survives a reload, with its real processing stage, a first-page
@@ -80,9 +80,9 @@ Admitted types: `Msa`, `OrderForm`, `Sow`, `Amendment`, `RenewalLetter`,
 Configuration keys `Documents:AdmissionThreshold` (0.6),
 `Documents:MinReadableChars` (200), `Documents:MaxFileBytes` (50 MB).
 Rejection copy (web, `screens-v2.md` §3): *"Not added: this looks like a
-recipe, not a contract. Contigo only keeps contracts, order forms, quotes
+recipe, not a contract. Raffa only keeps contracts, order forms, quotes
 and the documents around them. Drop the signed agreement or the supplier's
-proposal."* API hint: *"Contigo only keeps contracts, order forms, quotes
+proposal."* API hint: *"Raffa only keeps contracts, order forms, quotes
 and the documents around them."*
 
 ## Open questions

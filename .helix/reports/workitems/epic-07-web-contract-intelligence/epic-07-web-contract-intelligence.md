@@ -12,7 +12,7 @@ status: active
 
 Deliver the R1 user-visible ladder in the browser: the portfolio list with
 filters and attention strip, the Contract 360 detail (header + 10 tabs), the
-review/correction surface with evidence pane, and the Ask Contigo chat with
+review/correction surface with evidence pane, and the Ask Raffa chat with
 citations and abstain — so a procurement user can upload contracts and ask
 reliable questions with source evidence (spec §16 R1, §20).
 
@@ -35,7 +35,7 @@ reliable questions with source evidence (spec §16 R1, §20).
 | feature-01 | portfolio-ui | 7 |
 | feature-02 | contract-360-ui | 7 |
 | feature-03 | review-correction-ui | 7 |
-| feature-04 | ask-contigo-ui | 7 |
+| feature-04 | ask-raffa-ui | 7 |
 
 ## Success looks like
 

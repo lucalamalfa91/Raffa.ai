@@ -8,7 +8,7 @@
 
 Product §16 fixes R0→R4 as the release ladder. Brief §11 fixes the **first technical slice**:
 
-> "the public `lucalamalfa91/contigo` monorepo (folder layout above) + Terraform for `dev` and `demo` + CI/CD to
+> "the public `lucalamalfa91/raffa` monorepo (folder layout above) + Terraform for `dev` and `demo` + CI/CD to
 > both + git-flow ADR, then an API that can be deployed."
 
 So the order is: **(S0 platform) → R0 Foundation → R1 Contract Intelligence → R2 Renewals →
@@ -26,9 +26,9 @@ planning estimates, not commitments, and are owned by the decomposition (backlog
 
 | Wave | Week(s) | Environment | Deliverable at exit |
 | --- | --- | --- | --- |
-| **S0 — Platform** | W1–W2 | `dev` + `demo` | Public repo `lucalamalfa91/contigo` (`infra/`, `backend/`, `web/`, `mobile/`, `.helix/`); Terraform applies both envs; CI/CD to both; git-flow ADR accepted; a deployable **empty-but-authenticating API** in both envs |
+| **S0 — Platform** | W1–W2 | `dev` + `demo` | Public repo `lucalamalfa91/raffa` (`infra/`, `backend/`, `web/`, `mobile/`, `.helix/`); Terraform applies both envs; CI/CD to both; git-flow ADR accepted; a deployable **empty-but-authenticating API** in both envs |
 | **R0 — Foundation** | W3–W5 | `dev` → `demo` (tag) | Auth/workspace/multi-tenancy/roles, upload→object storage, DB schema+migrations, queue/worker, audit baseline — "a secure workspace can ingest documents" |
-| **R1 — Contract Intelligence** | W6–W9 | `dev` → `demo` | Extraction, schema, portfolio, Contract 360, Ask Contigo with citations, validation/corrections |
+| **R1 — Contract Intelligence** | W6–W9 | `dev` → `demo` | Extraction, schema, portfolio, Contract 360, Ask Raffa with citations, validation/corrections |
 | **R2 — Renewals** | W10–W12 | `dev` → `demo` | Deterministic dates, cancellation deadline, threshold alerts, dashboard, priority, recommendations |
 | **R3 — Savings** | W13–W15 | `dev` → `demo` | Benchmark Service + fixture adapter, price comparison, savings dashboard/workflow |
 | **R4 — Quote Check** | W16–W18 | `dev` → `demo` | Quote extraction, benchmark match, market assessment, target/saving range, negotiation strategy |
@@ -48,7 +48,7 @@ this lane.
 - **R2 before/parallel-with R3**: savings uses renewal "time urgency" in priority, but R3's fixture
   benchmark does not hard-block R2's deterministic date/cancellation logic.
 - **R3 before R4**: quote-check reuses the Benchmark Service and savings range logic from R3.
-- **Foundry/Gateway**: the AI Gateway (brief §8) is required from R1 onward (OCR + extraction + Ask Contigo);
+- **Foundry/Gateway**: the AI Gateway (brief §8) is required from R1 onward (OCR + extraction + Ask Raffa);
   R0 may stand it up minimally or defer to R1 — the gateway's *empty deployable* lives in S0/R0, its
   first *model and OCR calls* land in R1. The Document Intelligence endpoint is provisioned with the
   Foundry/AI services account in R0 (ADR-008, ADR-017).

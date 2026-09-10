@@ -27,4 +27,4 @@ savings, recommended action) with supporting facts separated from recommendation
 
 ## Target repo
 
-`contigo-backend`
+`raffa-backend`

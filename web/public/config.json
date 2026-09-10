@@ -5,7 +5,7 @@
   "oidcClientId": "REPLACE_WITH_DEV_PUBLIC_CLIENT_ID",
   "oidcRedirectUri": "http://localhost:5173",
   "oidcApiScopes": [
-    "api://REPLACE_WITH_DEV_API_CLIENT_ID/Contigo.Read",
-    "api://REPLACE_WITH_DEV_API_CLIENT_ID/Contigo.Write"
+    "api://REPLACE_WITH_DEV_API_CLIENT_ID/Raffa.Read",
+    "api://REPLACE_WITH_DEV_API_CLIENT_ID/Raffa.Write"
   ]
 }

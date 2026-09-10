@@ -25,4 +25,4 @@ R1 definition of success end-to-end on `dev` (and repeatable on `demo`).
 
 ## Target repo
 
-`contigo-backend` (integration test) + `contigo-web` (smoke)
+`raffa-backend` (integration test) + `raffa-web` (smoke)

@@ -7,7 +7,7 @@ data "azurerm_client_config" "current" {}
 
 locals {
   tags = {
-    project = "contigo"
+    project = "raffa"
     env     = var.environment
   }
 }
@@ -20,7 +20,7 @@ resource "random_string" "suffix" {
 }
 
 resource "azurerm_key_vault" "this" {
-  name                       = "kv-contigo-${var.environment}-${random_string.suffix.result}"
+  name                       = "kv-raffa-${var.environment}-${random_string.suffix.result}"
   location                   = var.location
   resource_group_name        = var.resource_group_name
   tenant_id                  = data.azurerm_client_config.current.tenant_id
@@ -61,7 +61,7 @@ resource "azurerm_role_assignment" "deployer_secrets_officer" {
   principal_id         = data.azurerm_client_config.current.object_id
 }
 
-# backend.yml schema apply (ADR-021) authenticates as contigo-sp-<env>,
+# backend.yml schema apply (ADR-021) authenticates as raffa-sp-<env>,
 # not the workload identity. Same vault-only scope as workload_secrets_user.
 resource "azurerm_role_assignment" "ci_secrets_user" {
   scope                            = azurerm_key_vault.this.id

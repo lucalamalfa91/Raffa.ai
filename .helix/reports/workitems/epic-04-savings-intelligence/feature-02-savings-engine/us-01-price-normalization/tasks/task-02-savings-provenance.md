@@ -4,7 +4,7 @@ type: task
 story: us-01-price-normalization
 wave: R3
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-02-savings-provenance — 02 Savings Provenance
@@ -18,7 +18,7 @@ Propagate confidence + provenance.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `savings-provenance` |
+| workspace/raffa-backend/src/ | implementation for `savings-provenance` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-002.
@@ -30,7 +30,7 @@ Propagate confidence + provenance.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | savings-provenance behaviour | workspace/contigo-backend/tests |
+| unit | savings-provenance behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

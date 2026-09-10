@@ -4,7 +4,7 @@ type: task
 story: us-01-ci-apply
 wave: 9
 status: live
-target_repo: contigo-infra
+target_repo: raffa-infra
 ---
 
 # task-01-terraform-connstrings — Savings + Quotes on Container Apps
@@ -15,7 +15,7 @@ In `infra/modules/containerapps`, add env vars
 `ConnectionStrings__Savings` and `ConnectionStrings__Quotes` (secret
 `pg-cs`) on the API, and on the worker if it already mounts Renewals.
 Do **not** `terraform apply` from the laptop. Point the operator at HCP
-`contigo-dev` / `contigo-demo` VCS apply.
+`raffa-dev` / `raffa-demo` VCS apply.
 
 ## Parent story AC covered
 
@@ -25,7 +25,7 @@ Do **not** `terraform apply` from the laptop. Point the operator at HCP
 
 | Path | Change |
 |------|--------|
-| workspace/contigo-infra/infra/modules/containerapps/main.tf | env blocks |
+| workspace/raffa-infra/infra/modules/containerapps/main.tf | env blocks |
 
 ## Context the implementer needs
 

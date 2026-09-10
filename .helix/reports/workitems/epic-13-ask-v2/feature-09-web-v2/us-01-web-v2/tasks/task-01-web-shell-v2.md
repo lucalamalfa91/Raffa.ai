@@ -4,7 +4,7 @@ type: task
 story: us-01-web-v2
 wave: 13
 status: live
-target_repo: contigo-web
+target_repo: raffa-web
 ---
 
 # task-01-web-shell-v2 — Two-tier rail, Ask home, V2 routes, greyed modules, Ask bar → new chat
@@ -12,13 +12,13 @@ target_repo: contigo-web
 ## Coding objective
 
 Rebuild the app shell to the V2 information architecture of
-`inputs/design/prototypes/Contigo V2 Prototype.html` — search the unpacked
-`inputs/design/prototypes/contigo-v2/markup.html` for **"From your
-contracts"** and **"+ New chat"**, and `contigo-v2/app.jsx` for
+`inputs/design/prototypes/Raffa V2 Prototype.html` — search the unpacked
+`inputs/design/prototypes/raffa-v2/markup.html` for **"From your
+contracts"** and **"+ New chat"**, and `raffa-v2/app.jsx` for
 `primaryNav`, `kbNav`, `kbReady`, `kbDot`, `showNewChat`, `goWorkspace`;
-routes and roles in `contigo-v2/ia-v2.md`. Concretely: replace
+routes and roles in `raffa-v2/ia-v2.md`. Concretely: replace
 `web/src/components/shell/navItems.ts` with the two-tier model (primary:
-Ask Contigo with badge `⌘K` and a nested list slot for recent
+Ask Raffa with badge `⌘K` and a nested list slot for recent
 conversations — render an empty slot with "+ New chat" now; F09/T04 fills
 it from the API — and Documents with the "N to review" / "N docs" badge;
 secondary "From your contracts": Portfolio, Renewals, Quote check with the
@@ -38,9 +38,9 @@ contracts) fetched once by the shell and passed to the rail (a
 and CSS (e11) but `submit` must **always** navigate to `/ask` with
 `{ state: { query, newChat: true } }` so a new conversation starts
 (`app.jsx`: `go('ask')` then `ask(text,'global')`), and the placeholder
-switches to the prototype's "Ask Contigo switches on after your first
+switches to the prototype's "Ask Raffa switches on after your first
 validated contract" when `kbReady` is false. Keep the Modernist tokens
-(ADR-019); measurements from `contigo-v2/styles.css` and `markup.html`
+(ADR-019); measurements from `raffa-v2/styles.css` and `markup.html`
 (rail 224px, item padding, kicker sizes).
 
 ## Parent story AC covered
@@ -58,13 +58,13 @@ validated contract" when `kbReady` is false. Keep the Modernist tokens
 | `web/tests/components/shell/*`, `web/tests/routes/savings/*`, `web/tests/components/ask-bar/GlobalAskBar.test.tsx`, `web/tests/App.test.tsx` | updated / new tests |
 
 ## Context the implementer needs
-- **Design**: `inputs/design/prototypes/Contigo V2 Prototype.html` (bundled); unpacked anchors above; `contigo-v2/screens-v2.md` §2 (Ask home) and the rail description in `ia-v2.md`. The requirements win on divergences (`ia-v2.md` table): Procurement can upload; Savings at `/savings`.
+- **Design**: `inputs/design/prototypes/Raffa V2 Prototype.html` (bundled); unpacked anchors above; `raffa-v2/screens-v2.md` §2 (Ask home) and the rail description in `ia-v2.md`. The requirements win on divergences (`ia-v2.md` table): Procurement can upload; Savings at `/savings`.
 - **Architecture decisions in force**: ADR-024, ADR-018 / ADR-020 (amended), ADR-019 (no new tokens), ADR-012.
 - Gap G-IA-V2.
 - **Do not touch**: `web/src/routes/ask/**` (F09/T02 / T04), `web/src/routes/documents/**` (F09/T03), `web/src/api/**`, `web/openapi/**`, `routes/contracts/**`.
 
 ## Definition of done
-- [ ] `npm test` in `web/` exit 0 — rail renders two tiers in order (Ask Contigo, Documents, "From your contracts", Portfolio, Renewals, Quote check), no Home / Review queue items, greyed secondary tier with 0 validated contracts, `/` redirects to `/ask`, `/savings` renders the KPI row, Ask bar submit navigates to `/ask` with `newChat: true`
+- [ ] `npm test` in `web/` exit 0 — rail renders two tiers in order (Ask Raffa, Documents, "From your contracts", Portfolio, Renewals, Quote check), no Home / Review queue items, greyed secondary tier with 0 validated contracts, `/` redirects to `/ask`, `/savings` renders the KPI row, Ask bar submit navigates to `/ask` with `newChat: true`
 - [ ] `npm run build` in `web/` exit 0
 
 ## Tests required

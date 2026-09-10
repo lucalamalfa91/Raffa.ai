@@ -4,7 +4,7 @@ type: task
 story: us-02-dev-environment
 wave: R0
 status: live
-target_repo: contigo-infra
+target_repo: raffa-infra
 # requires: [azure_subscription]
 # requires: [hcp_terraform]
 ---
@@ -19,22 +19,22 @@ Container Apps (API and worker), PostgreSQL Flexible Server Burstable `Standard_
 with the `pgvector` extension enabled, a Storage Account (GPv2 LRS, blob + queue), a
 Service Bus Standard namespace, a Key Vault Standard, an Azure Container Registry
 (Basic), and a Log Analytics workspace with a data cap (ADR-005). Tag every resource
-`project=contigo`, `env=dev`, and pin `location = "West Europe"` (ADR-006). Remote
-state writes to HCP `contigo-dev` (ADR-007). No secret in source.
+`project=raffa`, `env=dev`, and pin `location = "West Europe"` (ADR-006). Remote
+state writes to HCP `raffa-dev` (ADR-007). No secret in source.
 
 ## Parent story AC covered
 
 - AC-1 (full `dev` service set incl. pgvector + scale-to-zero + Log Analytics cap)
 - AC-2 (tags + region)
-- AC-3 (dev resource group + HCP `contigo-dev` state)
+- AC-3 (dev resource group + HCP `raffa-dev` state)
 
 ## Files to create or modify
 
 | Path | Change |
 |------|--------|
-| workspace/contigo-infra/environments/dev/main.tf | wire module instances with env=dev |
-| workspace/contigo-infra/environments/dev/variables.tf | dev variables (location, env) |
-| workspace/contigo-infra/environments/dev/outputs.tf | dev outputs (resource ids, endpoints) |
+| workspace/raffa-infra/environments/dev/main.tf | wire module instances with env=dev |
+| workspace/raffa-infra/environments/dev/variables.tf | dev variables (location, env) |
+| workspace/raffa-infra/environments/dev/outputs.tf | dev outputs (resource ids, endpoints) |
 
 ## Context the implementer needs
 

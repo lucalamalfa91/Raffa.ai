@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-"""Wire the two HCP Terraform workspaces to contigo's VCS, then assert
+"""Wire the two HCP Terraform workspaces to raffa's VCS, then assert
 remote state only.
 
 Task E01/F01/US02/T02 (parent story `us-02-hcp-terraform-workspaces`;
 ADR-007 remote state per environment; ADR-014 trunk-based git flow, single
 `main` mainline). Task E01/F01/US02/T01's `bootstrap_hcp_org.py` already
 contains the one mutating call that can attach VCS wiring: an idempotent
-GET-then-POST/PATCH that sets `vcs-repo` on `contigo-dev`/`contigo-demo`
+GET-then-POST/PATCH that sets `vcs-repo` on `raffa-dev`/`raffa-demo`
 whenever the org has an HCP Terraform oauth-client configured. Connecting
 GitHub to HCP Terraform in the first place is an interactive, human-driven
 OAuth-authorize or GitHub-App-install step that no API token can complete
 headlessly (T01's docstring; still true live as of 2026-09-02 -- see
 `python scripts/bootstrap_hcp_org.py --check-only`, which reports zero
-oauth-clients under `contigo-platform`). Re-implementing that same
+oauth-clients under `raffa-platform`). Re-implementing that same
 POST/PATCH here would duplicate T01's HTTP plumbing for the exact same
 effect, so "wire" for this script means exactly what T01's own docstring
 names this task as the trigger for: **re-run T01's idempotent script** (so
@@ -24,7 +24,7 @@ not a gate:
   1. VCS wiring is either correct or honestly pending, never silently
      wrong. If `vcs-repo` is attached, its identifier/branch, whether
      file-triggers are scoped, and the trigger prefix must match the locked
-     repo (`lucalamalfa91/contigo`), ADR-014's single `main` mainline, and
+     repo (`lucalamalfa91/raffa`), ADR-014's single `main` mainline, and
      the `infra/` prefix (so only infra changes trigger a plan/apply, not
      every change in the monorepo). If no oauth-client exists yet, that is
      PENDING: expected, non-fatal, matches live reality. A `vcs-repo`
@@ -52,8 +52,8 @@ not a gate:
 Auth/org resolution mirrors `bootstrap_hcp_org.py` exactly (same env vars,
 same defaults) so an operator configures credentials once for both scripts:
 `TFE_TOKEN` / `HCP_TERRAFORM_TOKEN`, `TFE_ADDRESS` / `HCP_TERRAFORM_ADDRESS`,
-`CONTIGO_TFC_ORG` (default `contigo-platform`), `CONTIGO_GITHUB_OWNER` /
-`CONTIGO_GITHUB_REPO` (default `lucalamalfa91/contigo`).
+`RAFFA_TFC_ORG` (default `raffa-platform`), `RAFFA_GITHUB_OWNER` /
+`RAFFA_GITHUB_REPO` (default `lucalamalfa91/raffa`).
 
 Usage:
     python scripts/hcp_vcs_wiring.py
@@ -64,7 +64,7 @@ mutating API call of its own either (it only ever GETs) -- it just skips the
 wiring attempt and reports the live state as-is. Useful as a CI drift check
 that needs no write scope.
 
-Exit 0 only if both `contigo-dev` and `contigo-demo` are remote-state-only
+Exit 0 only if both `raffa-dev` and `raffa-demo` are remote-state-only
 (execution-mode=remote, no tracked tfstate anywhere in the repo) AND each
 workspace's VCS wiring is either correctly wired or honestly pending (never
 mismatched). Non-zero otherwise, with the gap named on stdout/stderr.
@@ -87,13 +87,13 @@ ADDRESS_ENV_PRIMARY = "TFE_ADDRESS"
 ADDRESS_ENV_ALIAS = "HCP_TERRAFORM_ADDRESS"
 DEFAULT_ADDRESS = "https://app.terraform.io"
 
-ORG_ENV = "CONTIGO_TFC_ORG"
-DEFAULT_ORG = "contigo-platform"  # see scripts/bootstrap_hcp_org.py -- "contigo" was unavailable
+ORG_ENV = "RAFFA_TFC_ORG"
+DEFAULT_ORG = "raffa-platform"  # see scripts/bootstrap_hcp_org.py -- "raffa" was unavailable
 
-GITHUB_OWNER_ENV = "CONTIGO_GITHUB_OWNER"
-GITHUB_REPO_ENV = "CONTIGO_GITHUB_REPO"
+GITHUB_OWNER_ENV = "RAFFA_GITHUB_OWNER"
+GITHUB_REPO_ENV = "RAFFA_GITHUB_REPO"
 DEFAULT_GITHUB_OWNER = "lucalamalfa91"
-DEFAULT_GITHUB_REPO = "contigo"
+DEFAULT_GITHUB_REPO = "raffa"
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BOOTSTRAP_SCRIPT = REPO_ROOT / "scripts" / "bootstrap_hcp_org.py"
@@ -101,7 +101,7 @@ BOOTSTRAP_SCRIPT = REPO_ROOT / "scripts" / "bootstrap_hcp_org.py"
 # ADR-007 workspace names; ADR-014 is the one mainline branch every
 # workspace must track; "infra/" is the module tree that must trigger a
 # plan/apply (and, symmetrically, the only tree that should).
-WORKSPACE_NAMES: tuple[str, ...] = ("contigo-dev", "contigo-demo")
+WORKSPACE_NAMES: tuple[str, ...] = ("raffa-dev", "raffa-demo")
 EXPECTED_BRANCH = "main"
 EXPECTED_TRIGGER_PREFIX = "infra/"
 
@@ -368,7 +368,7 @@ def main() -> int:
 
     if all_ok:
         print(
-            "[hcp_vcs_wiring] PASS: contigo-dev + contigo-demo are remote-state-only "
+            "[hcp_vcs_wiring] PASS: raffa-dev + raffa-demo are remote-state-only "
             "(remote execution mode, no tracked tfstate); VCS wiring is wired or honestly pending"
         )
         return 0

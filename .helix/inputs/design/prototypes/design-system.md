@@ -1,4 +1,4 @@
-# Contigo — Design system (web V1)
+# Raffa — Design system (web V1)
 
 Source of truth: **Modernist** design system (bound in Claude Design, folder `_ds/modernist-584f2982-aad7-48d1-aef0-a80897b0b5e4/`). Implement with its `styles.css` tokens; do not fork values into the SPA.
 

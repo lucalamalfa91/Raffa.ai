@@ -4,7 +4,7 @@ type: task
 story: us-01-workspace-roles
 wave: R0
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-workspace-roles — 01 Workspace Roles
@@ -18,7 +18,7 @@ Implement Workspace/User/Role/Membership with tenant_id and RLS.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `workspace-roles` |
+| workspace/raffa-backend/src/ | implementation for `workspace-roles` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-009, ADR-003.
@@ -30,7 +30,7 @@ Implement Workspace/User/Role/Membership with tenant_id and RLS.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | workspace-roles behaviour | workspace/contigo-backend/tests |
+| unit | workspace-roles behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

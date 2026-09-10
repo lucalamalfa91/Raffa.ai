@@ -18,7 +18,7 @@ Three security concerns share one root cause (secrets and the boundary between "
 
 1. **Secrets** must live in Key Vault and reach compute without ever appearing in code, client bundles,
    or Terraform source. CI must authenticate to Azure to deploy without a stored secret.
-2. **RAG must not leak cross-tenant content.** Ask Contigo (spec §8.3) shows the authorization filter
+2. **RAG must not leak cross-tenant content.** Ask Raffa (spec §8.3) shows the authorization filter
    **before** retrieval — intent detection and semantic retrieval are downstream of an authorization
    decision, so an unauthorized contract can never be embedded into LLM context.
 3. **Audit** of access and corrections is a listed enterprise control, and **customer contract content
@@ -46,10 +46,10 @@ Three security concerns share one root cause (secrets and the boundary between "
 
 ## Decision outcome
 
-**Chosen: Option 1 — one Key Vault per environment (`kv-contigo-dev`, `kv-contigo-demo`), accessed via
+**Chosen: Option 1 — one Key Vault per environment (`kv-raffa-dev`, `kv-raffa-demo`), accessed via
 Azure managed identity for the API and worker, and GitHub Actions authorized via OpenID Connect /
 workload-identity federation (subject-claim scoped to the repo + environment).** Authorization in the
-Ask Contigo path is enforced **before** retrieval: the chat endpoint resolves the caller's tenant +
+Ask Raffa path is enforced **before** retrieval: the chat endpoint resolves the caller's tenant +
 role + object permissions, and only the resulting authorized scope is passed to the semantic/vector
 retrieval, which adds a `tenant_id` filter at the database/index level. Audit records access and
 corrections; AI logs capture model/version/prompt-version/timestamp/input-hash — never raw prompt or
@@ -87,15 +87,15 @@ no-training model endpoint.
 
 ## Implications for the decomposition
 
-- Terraform (cloud-architect ADR) creates `kv-contigo-dev` and `kv-contigo-demo`, and grants the API and
+- Terraform (cloud-architect ADR) creates `kv-raffa-dev` and `kv-raffa-demo`, and grants the API and
   worker managed identities `get`/`list` on their own env's vault. No access-policy cross-env.
 - GitHub Actions (delivery-manager ADR) authenticate via OIDC/`azure/login` with `client-id`,
   `tenant-id`, `subscription-id` only (non-secret) and a subject claim pinned to the repo + environment
-  (`repo:lucalamalfa91/contigo:environment:dev|demo`). No `AZURE_CREDENTIALS` secret.
+  (`repo:lucalamalfa91/raffa:environment:dev|demo`). No `AZURE_CREDENTIALS` secret.
 - The API reads connection strings, Foundry endpoint/key, and signing config from Key Vault at startup,
   not from appsettings committed to Git (appsettings may hold only non-secret keys like the Vault URI and
   non-secret config).
-- The chat/Ask Contigo service must implement: resolve tenant/role/object authz → build authorized
+- The chat/Ask Raffa service must implement: resolve tenant/role/object authz → build authorized
   retrieval scope → run semantic/vector retrieval with a mandatory `tenant_id` filter → assemble LLM
   context. Retrieval cannot be invoked before the authz step (enforced in code, cited by §8.3/§C.4).
 - The AI Gateway (software-architect ADR) is the only component that calls Foundry; it enforces the

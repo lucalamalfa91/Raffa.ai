@@ -1,11 +1,11 @@
-# Contigo — Helix processes
+# Raffa — Helix processes
 
 Two artifacts, one engine (`helix/src/backend`; this folder is the artifact).
 
 | Artifact | When | Doc |
 |---|---|---|
-| `contigo-process.yaml` + `run.ps1` / Helix Studio | The **initial** design (docs → all ADRs → R0–R4 epics → slices) and the **live Passata 2** (`execution-fanout`) every wave runs on. | [PROCESS.md](PROCESS.md), [config.md](config.md) |
-| `contigo-next-process.yaml` + `run-next.ps1` | Every **later wave**: a raw requirements file (todo, demo feedback, bug list, new design) → normalized requirements → dynamic council (only the seats each item needs) → ADR footers / new ADRs → new epics appended to the backlog → **one wave** ready to launch. | [NEXT-PROCESS.md](NEXT-PROCESS.md) |
+| `raffa-process.yaml` + `run.ps1` / Helix Studio | The **initial** design (docs → all ADRs → R0–R4 epics → slices) and the **live Passata 2** (`execution-fanout`) every wave runs on. | [PROCESS.md](PROCESS.md), [config.md](config.md) |
+| `raffa-next-process.yaml` + `run-next.ps1` | Every **later wave**: a raw requirements file (todo, demo feedback, bug list, new design) → normalized requirements → dynamic council (only the seats each item needs) → ADR footers / new ADRs → new epics appended to the backlog → **one wave** ready to launch. | [NEXT-PROCESS.md](NEXT-PROCESS.md) |
 
 The five delta processes used between waves 6 and 13 (web, schema,
 readiness, visual, ask) were retired on 2026-09-10; their outputs (ADR-018…024,
@@ -30,7 +30,7 @@ cp .env.example .env            # once; Claude Code Opus id + Max login
 ./run-next.ps1 -Max -Wave w14 -o next-from-council   # after editing the normalized file
 ./run-next.ps1 -Max -Wave w14 -o next-plan-close     # after editing tasks
 
-# 4. the wave (Passata 2, contigo-process.yaml)
+# 4. the wave (Passata 2, raffa-process.yaml)
 ./run-next.ps1 -LaunchOnly -Wave w14                 # = check_slice_prereqs + ./run.ps1 -Max -Slice w14 -o execution-fanout
 ```
 
@@ -45,7 +45,7 @@ reviewed plan to `main` before launching the wave.
 ./run.ps1 --check
 python scripts/check_slice_prereqs.py --slice e13
 ./run.ps1 -Max -Slice e13 -o execution-fanout
-./run.ps1 --fresh -o contigo-design -i "Contigo V1: full scope from current inputs"   # full re-analysis only
+./run.ps1 --fresh -o raffa-design -i "Raffa V1: full scope from current inputs"   # full re-analysis only
 ```
 
 ---

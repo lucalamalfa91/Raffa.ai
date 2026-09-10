@@ -13,8 +13,8 @@ stay on disk with a superseded banner (HITL 2026-09-08, `inputs/requirements.md`
   R-DOC / R-CONV / R-ASK / R-CMP / R-STR / R-PORT / R-SYS / R-MKT / R-SUP /
   R-AI / R-EVD / R-WEB, API contract §6, data model §7, acceptance §10,
   decomposition §12, assumptions §13.
-- Design: `inputs/design/prototypes/Contigo V2 Prototype.html` (bundled
-  export), unpacked and searchable at `inputs/design/prototypes/contigo-v2/`
+- Design: `inputs/design/prototypes/Raffa V2 Prototype.html` (bundled
+  export), unpacked and searchable at `inputs/design/prototypes/raffa-v2/`
   (`app.jsx`, `markup.html`, `styles.css`) with the authored `ia-v2.md`
   (routes, nav, cross-links, Ask intents, divergences) and `screens-v2.md`
   (screens, states, verbatim copy). The requirements win where the prototype
@@ -24,12 +24,12 @@ stay on disk with a superseded banner (HITL 2026-09-08, `inputs/requirements.md`
 ## Scope
 
 **In.** Three sources of truth, one rule (every claim cites one of them or
-Contigo abstains; no web, no model memory): (1) validated contracts — tenant
+Raffa abstains; no web, no model memory): (1) validated contracts — tenant
 tables + tenant `embedding` (RLS); (2) market intelligence — a third-party
 feed of how companies close contracts, **mock now**, behind
 `IMarketIntelligenceProvider`, projected into benchmark rows *and* a shared
 read-only **market index** (`market_embedding`, never tenant rows); (3) the
-Contigo capability catalog. Uploads only in Documents (D1) with an
+Raffa capability catalog. Uploads only in Documents (D1) with an
 **admission gate before persistence** that rejects non-contracts and never
 stores them (D3); PDF/DOCX/XLSX + PNG/JPG via OCR, all spec §4.1 types,
 multi-file with per-file outcome (D7); Admin and Procurement upload (D8).

@@ -14,13 +14,13 @@ migration's DDL uses. That row is the authoritative "did this migration
 apply" ledger EF itself relies on; this script does not invent a second
 one -- it is exactly the "(or `__EFMigrationsHistory` rows)" check the
 parent task's own Definition of Done names as an accepted proof of "prove
-`contigo_<env>` has the app tables (or fail the job)".
+`raffa_<env>` has the app tables (or fail the job)".
 
 This script reads the *expected* migration ids straight out of the same
 checked-in files `.github/workflows/backend.yml`'s "Apply schema
 (ADR-021)" step just ran through `psql`, and compares them against the
 *actual* ids its sibling "Verify schema applied (ADR-021)" step queried
-live from `contigo_<env>`. It never opens a network connection or a
+live from `raffa_<env>`. It never opens a network connection or a
 database credential itself -- the workflow runs the live
 `psql -Atqc "SELECT migration_id FROM ..."` query and pipes the result in,
 the same "Azure/DB lookups stay in the workflow" split
@@ -29,12 +29,12 @@ the same "Azure/DB lookups stay in the workflow" split
 Usage:
     psql -Atqc 'SELECT migration_id FROM "__EFMigrationsHistory";' \\
       | python3 scripts/schema_apply_verify.py \\
-          --script backend/src/Contigo.Identity.Workspace/Migrations/Scripts/identity-workspace.sql \\
-          --script backend/src/Contigo.Documents.Contracts/Migrations/Scripts/documents-contracts.sql \\
-          --script backend/src/Contigo.Audit/Migrations/Scripts/audit.sql \\
-          --script backend/src/Contigo.Renewals/Migrations/Scripts/renewals.sql \\
-          --script backend/src/Contigo.Savings/Migrations/Scripts/savings.sql \\
-          --script backend/src/Contigo.Quotes/Migrations/Scripts/quotes.sql \\
+          --script backend/src/Raffa.Identity.Workspace/Migrations/Scripts/identity-workspace.sql \\
+          --script backend/src/Raffa.Documents.Contracts/Migrations/Scripts/documents-contracts.sql \\
+          --script backend/src/Raffa.Audit/Migrations/Scripts/audit.sql \\
+          --script backend/src/Raffa.Renewals/Migrations/Scripts/renewals.sql \\
+          --script backend/src/Raffa.Savings/Migrations/Scripts/savings.sql \\
+          --script backend/src/Raffa.Quotes/Migrations/Scripts/quotes.sql \\
           --applied-ids-file -
 
 Exit 0 with one "[PASS]"/"[FAIL]" line per --script plus a summary line if
@@ -140,7 +140,7 @@ def run(script_paths, applied_ids_text: str, out=sys.stdout, err=sys.stderr) -> 
     applied = _parse_applied_ids(applied_ids_text)
     if not applied:
         print(
-            "[schema_apply_verify] FAIL: contigo_<env>.__EFMigrationsHistory returned zero rows -- "
+            "[schema_apply_verify] FAIL: raffa_<env>.__EFMigrationsHistory returned zero rows -- "
             "the apply step did not run, or ran against the wrong database",
             file=err,
         )

@@ -12,7 +12,7 @@
 
 R0 required “DB schema+migrations” on `dev` → `demo`. The waves generated
 EF migrations and proved them in Testcontainers. Terraform created
-`psql-contigo-dev` + empty `contigo_dev`. **No task applied those
+`psql-raffa-dev` + empty `raffa_dev`. **No task applied those
 migrations to Azure.** `backend.yml` only builds images and rolls Container
 Apps. `/health` 200 does not mean tables exist.
 
@@ -20,7 +20,7 @@ E01/F04/US02/T02 already named the operator/CI artifact: a checked-in
 idempotent script (`dotnet ef migrations script --idempotent`) applied with
 `psql` against a bare server — not `MigrateAsync` inside the API host.
 
-A second gap: live `ca-contigo-dev-api` lacks `ConnectionStrings__Savings`
+A second gap: live `ca-raffa-dev-api` lacks `ConnectionStrings__Savings`
 and `ConnectionStrings__Quotes` (Terraform git has Renewals only).
 
 ## Considered options
@@ -52,10 +52,10 @@ and `ConnectionStrings__Quotes` (Terraform git has Renewals only).
   5. Savings
   6. Quotes
 
-- `Contigo.Api` / `Contigo.Worker` do **not** call `MigrateAsync()`.
+- `Raffa.Api` / `Raffa.Worker` do **not** call `MigrateAsync()`.
 - Terraform adds `ConnectionStrings__Savings` and
   `ConnectionStrings__Quotes` on the same `pg-cs` secret. HCP VCS apply
-  on `contigo-dev` / `contigo-demo`.
+  on `raffa-dev` / `raffa-demo`.
 - Scripts run as the Flexible Server administrator (provisioning). RLS
   policies stay in the scripts. The API identity keeps `app.tenant_id`
   and is not the bypass role.

@@ -66,8 +66,8 @@ WRONG_VALUE_IDENTITY_OUTPUTS_TF = (
 )
 
 GOOD_PROJECTS = (
-    {"project": "contigo-dev", "env": "dev", "document_intelligence_connection": "conn-docint-contigo-dev"},
-    {"project": "contigo-demo", "env": "demo", "document_intelligence_connection": "conn-docint-contigo-demo"},
+    {"project": "raffa-dev", "env": "dev", "document_intelligence_connection": "conn-docint-raffa-dev"},
+    {"project": "raffa-demo", "env": "demo", "document_intelligence_connection": "conn-docint-raffa-demo"},
 )
 
 # ---------------------------------------------------------------------------
@@ -173,8 +173,8 @@ GOOD_CONTAINERAPPS_VARIABLES_TF = _containerapps_variables_tf()
 
 
 def _foundry_main_tf(
-    account_name: str = "aisvc-contigo",
-    rg_name: str = "rg-contigo-ai",
+    account_name: str = "aisvc-raffa",
+    rg_name: str = "rg-raffa-ai",
     count_expr: str | None = "local.account_enabled ? 1 : 0",
     scope: str = "local.ai_services_account_id",
     principal: str = "var.workload_principal_id",
@@ -229,8 +229,8 @@ def _foundry_main_tf(
         "locals {\n"
         f'  ai_services_account_name = "{account_name}"\n'
         f'  ai_resource_group_name   = "{rg_name}"\n'
-        '  foundry_project_name             = "contigo-${var.environment}"\n'
-        '  document_intelligence_connection = "conn-docint-contigo-${var.environment}"\n'
+        '  foundry_project_name             = "raffa-${var.environment}"\n'
+        '  document_intelligence_connection = "conn-docint-raffa-${var.environment}"\n'
         f'  ocr_model_id      = "{ocr_model[0]}"\n'
         f'  ocr_model_version = "{ocr_model[1]}"\n'
         "  account_enabled = var.create_shared_account || var.attach_shared_account\n"
@@ -242,11 +242,11 @@ def _foundry_main_tf(
         "  )\n"
         f"  ai_services_endpoint = {endpoint_local}\n"
         "  tags_shared = {\n"
-        '    project = "contigo"\n'
+        '    project = "raffa"\n'
         '    env     = "shared"\n'
         "  }\n"
         "  tags = {\n"
-        '    project = "contigo"\n'
+        '    project = "raffa"\n'
         "    env     = var.environment\n"
         "  }\n"
         '  data_plane_roles = ["Cognitive Services User", "Cognitive Services OpenAI User"]\n'
@@ -489,7 +489,7 @@ class NormalizeRegionTests(unittest.TestCase):
 class BuildFoundryConnectionsTests(unittest.TestCase):
     def test_default_uses_real_bootstrap_projects(self) -> None:
         connections = fcv.build_foundry_connections()
-        self.assertEqual({c["project"] for c in connections}, {"contigo-dev", "contigo-demo"})
+        self.assertEqual({c["project"] for c in connections}, {"raffa-dev", "raffa-demo"})
         for c in connections:
             self.assertEqual(c["region"], "northeurope")
             self.assertIn(fcv.hcp.AI_SERVICES_ACCOUNT_NAME, c["connection_id"])
@@ -517,7 +517,7 @@ class CheckFoundryAccountShapeStillRecordedTests(unittest.TestCase):
     def test_currently_passes_against_the_real_module_constants(self) -> None:
         passed, detail = fcv.check_foundry_account_shape_still_recorded()
         self.assertTrue(passed, detail)
-        self.assertIn("rg-contigo-ai", detail)
+        self.assertIn("rg-raffa-ai", detail)
 
 
 class CheckRegionPinnedToWesteuropeTests(unittest.TestCase):
@@ -554,12 +554,12 @@ class CheckConnectionIdsWellFormedTests(unittest.TestCase):
         self.assertTrue(passed, detail)
 
     def test_empty_connection_name_fails(self) -> None:
-        bad = ({"project": "contigo-dev", "env": "dev", "document_intelligence_connection": "   "},)
+        bad = ({"project": "raffa-dev", "env": "dev", "document_intelligence_connection": "   "},)
         passed, detail = fcv.check_connection_ids_well_formed(bad)
         self.assertFalse(passed, detail)
 
     def test_missing_key_raises_or_fails_loudly(self) -> None:
-        bad = ({"project": "contigo-dev", "env": "dev"},)
+        bad = ({"project": "raffa-dev", "env": "dev"},)
         with self.assertRaises(KeyError):
             fcv.check_connection_ids_well_formed(bad)
 
@@ -571,8 +571,8 @@ class CheckConnectionIdsUniqueAndIsolatedTests(unittest.TestCase):
 
     def test_duplicate_connection_name_across_projects_fails(self) -> None:
         bad = (
-            {"project": "contigo-dev", "env": "dev", "document_intelligence_connection": "same-name"},
-            {"project": "contigo-demo", "env": "demo", "document_intelligence_connection": "same-name"},
+            {"project": "raffa-dev", "env": "dev", "document_intelligence_connection": "same-name"},
+            {"project": "raffa-demo", "env": "demo", "document_intelligence_connection": "same-name"},
         )
         # different project segments still make the ids unique -- this
         # documents that connection_id uniqueness comes from the project
@@ -582,16 +582,16 @@ class CheckConnectionIdsUniqueAndIsolatedTests(unittest.TestCase):
 
     def test_duplicate_env_fails(self) -> None:
         bad = (
-            {"project": "contigo-dev", "env": "dev", "document_intelligence_connection": "conn-a"},
-            {"project": "contigo-dev-2", "env": "dev", "document_intelligence_connection": "conn-b"},
+            {"project": "raffa-dev", "env": "dev", "document_intelligence_connection": "conn-a"},
+            {"project": "raffa-dev-2", "env": "dev", "document_intelligence_connection": "conn-b"},
         )
         passed, detail = fcv.check_connection_ids_unique_and_isolated(bad)
         self.assertFalse(passed, detail)
 
     def test_duplicate_project_fails(self) -> None:
         bad = (
-            {"project": "contigo-dev", "env": "dev", "document_intelligence_connection": "conn-a"},
-            {"project": "contigo-dev", "env": "demo", "document_intelligence_connection": "conn-a"},
+            {"project": "raffa-dev", "env": "dev", "document_intelligence_connection": "conn-a"},
+            {"project": "raffa-dev", "env": "demo", "document_intelligence_connection": "conn-a"},
         )
         passed, detail = fcv.check_connection_ids_unique_and_isolated(bad)
         self.assertFalse(passed, detail)
@@ -860,13 +860,13 @@ class CheckAiServicesAccountNameMatchesTerraformTests(unittest.TestCase):
 
     def test_drifted_name_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            path = _write_foundry_module_fixture(Path(tmp), _foundry_main_tf(account_name="aisvc-contigo-2"))
+            path = _write_foundry_module_fixture(Path(tmp), _foundry_main_tf(account_name="aisvc-raffa-2"))
             passed, detail = fcv.check_ai_services_account_name_matches_terraform(path)
             self.assertFalse(passed, detail)
 
     def test_drifted_resource_group_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            path = _write_foundry_module_fixture(Path(tmp), _foundry_main_tf(rg_name="rg-contigo-dev"))
+            path = _write_foundry_module_fixture(Path(tmp), _foundry_main_tf(rg_name="rg-raffa-dev"))
             passed, detail = fcv.check_ai_services_account_name_matches_terraform(path)
             self.assertFalse(passed, detail)
             self.assertIn("ai_resource_group_name", detail)
@@ -905,7 +905,7 @@ class CheckFoundryAccountResourceShapeTests(unittest.TestCase):
 
     def test_hub_resource_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            hub = 'resource "azurerm_ai_foundry" "hub" {\n  name = "hub-contigo"\n}\n'
+            hub = 'resource "azurerm_ai_foundry" "hub" {\n  name = "hub-raffa"\n}\n'
             path = _write_foundry_module_fixture(Path(tmp), _foundry_main_tf(extra=hub))
             passed, detail = fcv.check_foundry_account_resource_shape(path)
             self.assertFalse(passed, detail)
@@ -952,7 +952,7 @@ class CheckFoundryProjectAndDeploymentsShapeTests(unittest.TestCase):
             self.assertIn("ocr_model_id", detail)
 
     def test_deployment_not_ordered_after_the_project_fails(self) -> None:
-        """The first dev apply (2026-09-09) lost the contigo-dev project to a
+        """The first dev apply (2026-09-09) lost the raffa-dev project to a
         RequestConflict because Terraform ran its write concurrently with a
         model deployment write on the same account; depends_on orders them."""
         with tempfile.TemporaryDirectory() as tmp:

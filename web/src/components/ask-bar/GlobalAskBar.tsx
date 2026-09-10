@@ -19,7 +19,7 @@ export interface GlobalAskBarProps {
 }
 
 /**
- * AC-3 / `contigo-v2/markup.html` "Ask bar — one pattern on every screen": two rows (square +
+ * AC-3 / `raffa-v2/markup.html` "Ask bar — one pattern on every screen": two rows (square +
  * heading-weight input, then quiet text chips with a trailing "→") on every app screen.
  *
  * 1. **Submit always opens a new chat.** `app.jsx`'s own global-bar handler is `go('ask')` then
@@ -70,7 +70,7 @@ export default function GlobalAskBar({ kbReady, apiClient }: GlobalAskBarProps) 
           ref={inputRef}
           className="input ask-bar-input"
           placeholder={copy.placeholder}
-          aria-label="Ask Contigo"
+          aria-label="Ask Raffa"
           value={value}
           disabled={!kbReady}
           onChange={(event) => setValue(event.target.value)}

@@ -28,7 +28,7 @@ export interface DocumentStatusTableProps {
 }
 
 /**
- * The Documents V2 row grid (`contigo-v2/markup.html`'s `docRows`; screens-v2.md #3). Implemented as
+ * The Documents V2 row grid (`raffa-v2/markup.html`'s `docRows`; screens-v2.md #3). Implemented as
  * a real `<table>` (ADR-019's locked `.table` catalogue entry), not a literal port of the prototype's
  * own CSS-grid divs -- the same translation every other list screen in this app already makes
  * (Portfolio, Renewals, the field-review list). A row's primary interactive surface is the filename
@@ -159,11 +159,11 @@ export default function DocumentStatusTable({
                           {action.label}
                         </button>
                       ) : action.kind === "ask" ? (
-                        // `contigo-v2/app.jsx`'s own "Ask about it" handler both opens a new chat
+                        // `raffa-v2/app.jsx`'s own "Ask about it" handler both opens a new chat
                         // *and* pre-asks "When does {supplier} expire?" -- `state.query` is the same
                         // seed mechanism `components/ask-bar/GlobalAskBar.tsx` already establishes
                         // (`AskRoute` already reads `state.query` today, per web/README.md's own
-                        // "Ask Contigo" section), not a new, unread convention invented here.
+                        // "Ask Raffa" section), not a new, unread convention invented here.
                         <Link
                           to={`/ask?scope=${item.contractId ?? ""}`}
                           state={{ query: `When does ${item.supplierName ?? "it"} expire?`, newChat: true }}

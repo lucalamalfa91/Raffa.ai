@@ -1,6 +1,6 @@
 # Schema-apply brief — land EF migrations on Azure `dev`/`demo`
 
-Operator brief for the **schema-apply Helix delta** (`contigo-schema-process.yaml`).
+Operator brief for the **schema-apply Helix delta** (`raffa-schema-process.yaml`).
 This is not a product feature. It closes the R0 gap: Azure Flexible Server exists,
 the API is healthy, **tables were never applied**.
 
@@ -9,19 +9,19 @@ Swagger UI.
 
 ## Locked facts (do not re-litigate)
 
-- Terraform provisions `psql-contigo-<env>` + empty database `contigo_<env>` +
+- Terraform provisions `psql-raffa-<env>` + empty database `raffa_<env>` +
   `vector`. Schema is **not** Terraform (`infra/modules/postgres`).
 - E01/F04/US02/T02 already named the deployable artifact: checked-in
   **idempotent SQL** (`dotnet ef migrations script --idempotent`), applied with
   `psql -f` (or equivalent) against a bare `dev`/`demo` server. Today only
-  `Contigo.Documents.Contracts/Migrations/Scripts/documents-contracts.sql`
+  `Raffa.Documents.Contracts/Migrations/Scripts/documents-contracts.sql`
   exists.
-- `Contigo.Api` must **not** call `Database.MigrateAsync()` at startup (thin
+- `Raffa.Api` must **not** call `Database.MigrateAsync()` at startup (thin
   host, us-04 / T02).
-- Live `ca-contigo-dev-api` injects
+- Live `ca-raffa-dev-api` injects
   `IdentityWorkspace` / `DocumentsContracts` / `Audit` / `Storage` only.
   Git Terraform adds `Renewals`. **`Savings` and `Quotes` are missing.**
-  HCP workspace `contigo-dev` may be behind git.
+  HCP workspace `raffa-dev` may be behind git.
 - e05 (quotes) may be running on the **live** artifact. This delta must never
   write `wave-spec.execution.yaml`, `slices/e01.yaml`–`e05.yaml`, or
   `slice.current.yaml`.
@@ -44,7 +44,7 @@ in CI (regenerate or fail if they drift from `Migrations/`).
 
 **Terraform:** add `ConnectionStrings__Savings` and `ConnectionStrings__Quotes`
 on API (and worker if it already takes Renewals) pointing at secret `pg-cs`.
-HCP VCS apply on `contigo-dev` / `contigo-demo` — **no** laptop `terraform apply`.
+HCP VCS apply on `raffa-dev` / `raffa-demo` — **no** laptop `terraform apply`.
 
 **Apply role:** provisioning admin (Flexible Server administrator) runs the
 scripts once per deploy. RLS policies stay in the scripts. The app continues
@@ -53,7 +53,7 @@ that bypasses RLS as the API identity.
 
 ## Definition of done (slice e09)
 
-On `psql-contigo-dev` database `contigo_dev`:
+On `psql-raffa-dev` database `raffa_dev`:
 
 - App tables exist (`workspace`, `document`, `contract`, `audit_event`,
   `renewal_action`, `savings_opportunity`, `quote`, …).

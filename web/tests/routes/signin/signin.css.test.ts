@@ -38,7 +38,7 @@ describe("signin.css (E11/F02/US01/T01 -- 1:1 fill/grid/type vs day1-demo.html)"
   });
 
   it("types the V2 north star at clamp(40px, 5vw, 76px)", () => {
-    // contigo-v2/markup.html: font-size:clamp(40px,5vw,76px);line-height:.98;
+    // raffa-v2/markup.html: font-size:clamp(40px,5vw,76px);line-height:.98;
     // letter-spacing:-.03em -- the V1 export's 30/3.8vw/52px scale no longer
     // applies, the statement is three stacked lines now.
     const body = ruleBodyFor(css, ".signin-north-star");

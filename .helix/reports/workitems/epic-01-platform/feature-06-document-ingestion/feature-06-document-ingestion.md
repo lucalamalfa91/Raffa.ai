@@ -26,4 +26,4 @@ plus the append-only audit baseline capturing access and corrections from day on
 
 ## Target repo
 
-`contigo-backend`
+`raffa-backend`

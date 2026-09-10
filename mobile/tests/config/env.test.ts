@@ -1,11 +1,11 @@
 import { getMobileEnvConfig } from '../../src/config/env';
 
 const validSource = {
-  EXPO_PUBLIC_API_BASE_URL: 'https://api.dev.contigo.example',
+  EXPO_PUBLIC_API_BASE_URL: 'https://api.dev.raffa.example',
   EXPO_PUBLIC_OIDC_AUTHORITY: 'https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000/v2.0',
   EXPO_PUBLIC_OIDC_CLIENT_ID: 'dev-public-client-id',
   EXPO_PUBLIC_OIDC_API_SCOPES:
-    'api://11111111-1111-1111-1111-111111111111/Contigo.Read,api://11111111-1111-1111-1111-111111111111/Contigo.Write',
+    'api://11111111-1111-1111-1111-111111111111/Raffa.Read,api://11111111-1111-1111-1111-111111111111/Raffa.Write',
 };
 
 describe('getMobileEnvConfig', () => {
@@ -15,8 +15,8 @@ describe('getMobileEnvConfig', () => {
       oidcAuthority: validSource.EXPO_PUBLIC_OIDC_AUTHORITY,
       oidcClientId: validSource.EXPO_PUBLIC_OIDC_CLIENT_ID,
       oidcApiScopes: [
-        'api://11111111-1111-1111-1111-111111111111/Contigo.Read',
-        'api://11111111-1111-1111-1111-111111111111/Contigo.Write',
+        'api://11111111-1111-1111-1111-111111111111/Raffa.Read',
+        'api://11111111-1111-1111-1111-111111111111/Raffa.Write',
       ],
     });
   });
@@ -36,9 +36,9 @@ describe('getMobileEnvConfig', () => {
   it('trims whitespace around each comma-separated scope', () => {
     const config = getMobileEnvConfig({
       ...validSource,
-      EXPO_PUBLIC_OIDC_API_SCOPES: ' api://x/Contigo.Read , api://x/Contigo.Write ',
+      EXPO_PUBLIC_OIDC_API_SCOPES: ' api://x/Raffa.Read , api://x/Raffa.Write ',
     });
-    expect(config.oidcApiScopes).toEqual(['api://x/Contigo.Read', 'api://x/Contigo.Write']);
+    expect(config.oidcApiScopes).toEqual(['api://x/Raffa.Read', 'api://x/Raffa.Write']);
   });
 
   it('fails fast when the scopes variable is set but has no usable scope', () => {

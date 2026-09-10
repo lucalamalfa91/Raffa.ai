@@ -69,9 +69,9 @@ import { test, expect, type Locator, type Page } from "@playwright/test";
  *
  * | Variable | Meaning |
  * |---|---|
- * | `CONTIGO_E2E_BASE_URL` | The real `demo` Static Web App origin (AC-2/AC-3). |
- * | `CONTIGO_E2E_ENTRA_EMAIL` | A real test-account UPN on the `demo` Entra tenant. |
- * | `CONTIGO_E2E_ENTRA_PASSWORD` | That account's password. |
+ * | `RAFFA_E2E_BASE_URL` | The real `demo` Static Web App origin (AC-2/AC-3). |
+ * | `RAFFA_E2E_ENTRA_EMAIL` | A real test-account UPN on the `demo` Entra tenant. |
+ * | `RAFFA_E2E_ENTRA_PASSWORD` | That account's password. |
  *
  * See `web/README.md`'s "End-to-end (Day-1 browser walk)" section for how an
  * operator supplies these and how the run's own trace/video/HTML report
@@ -91,9 +91,9 @@ import { test, expect, type Locator, type Page } from "@playwright/test";
  * promotion gate already has.
  */
 
-const BASE_URL = process.env.CONTIGO_E2E_BASE_URL ?? "";
-const ENTRA_EMAIL = process.env.CONTIGO_E2E_ENTRA_EMAIL ?? "";
-const ENTRA_PASSWORD = process.env.CONTIGO_E2E_ENTRA_PASSWORD ?? "";
+const BASE_URL = process.env.RAFFA_E2E_BASE_URL ?? "";
+const ENTRA_EMAIL = process.env.RAFFA_E2E_ENTRA_EMAIL ?? "";
+const ENTRA_PASSWORD = process.env.RAFFA_E2E_ENTRA_PASSWORD ?? "";
 
 const READY_TO_RUN = BASE_URL !== "" && ENTRA_EMAIL !== "" && ENTRA_PASSWORD !== "";
 
@@ -102,7 +102,7 @@ type UploadOutcome = "needs_review" | "completed" | "failed";
 test.describe("§20 Day-1 path — browser walk on demo", () => {
   test.skip(
     !READY_TO_RUN,
-    "CONTIGO_E2E_BASE_URL / CONTIGO_E2E_ENTRA_EMAIL / CONTIGO_E2E_ENTRA_PASSWORD are not set — " +
+    "RAFFA_E2E_BASE_URL / RAFFA_E2E_ENTRA_EMAIL / RAFFA_E2E_ENTRA_PASSWORD are not set — " +
       "see web/README.md 'End-to-end (Day-1 browser walk)' for how to supply them against `demo`. " +
       "Declared and discoverable rather than silently absent, so `npx playwright test` always shows " +
       "this gate exists even before an operator wires the real credentials.",
@@ -157,7 +157,7 @@ test.describe("§20 Day-1 path — browser walk on demo", () => {
           test.info().annotations.push({
             type: "note",
             description:
-              `Upload outcome was "${uploadOutcome}", not needs_review — Contigo genuinely did not ` +
+              `Upload outcome was "${uploadOutcome}", not needs_review — Raffa genuinely did not ` +
               "require a review pass for this document (the honest, real classification result for the " +
               "sample file, never scripted). Review step correctly has nothing to do.",
           });
@@ -210,7 +210,7 @@ test.describe("§20 Day-1 path — browser walk on demo", () => {
         await tabs.getByRole("button", { name: "Overview" }).click();
       });
 
-      await test.step("Ask Contigo — citations + one abstain (AC-1 step 6)", () => askContigoBothPaths(page));
+      await test.step("Ask Raffa — citations + one abstain (AC-1 step 6)", () => askRaffaBothPaths(page));
 
       const actedOnRenewal = await test.step("Renewal pipeline: act on a renewal (AC-1 step 7)", () =>
         actOnFirstRenewal(page));
@@ -249,7 +249,7 @@ test.describe("§20 Day-1 path — browser walk on demo", () => {
  * repo owns. `input[name="loginfmt"]` / `input[name="passwd"]` / `#idSIButton9` (reused across the
  * email, password and "stay signed in" steps) have been Microsoft's stable automation hooks for
  * Entra/Azure AD sign-in for years — the standard, documented way any test suite drives this flow,
- * not a Contigo-specific guess.
+ * not a Raffa-specific guess.
  */
 async function signInWithEntra(page: Page): Promise<void> {
   await page.waitForURL(/login\.microsoftonline\.com/i, { timeout: 30_000 });
@@ -297,7 +297,7 @@ async function pickOrCreateWorkspace(page: Page): Promise<string> {
     return name;
   }
 
-  const name = `Contigo E2E ${Date.now()}`;
+  const name = `Raffa E2E ${Date.now()}`;
   await page.getByRole("button", { name: /\+ create a new workspace/i }).click();
   await page.getByLabel(/workspace name/i).fill(name);
   await page.getByRole("button", { name: /^create workspace$/i }).click();
@@ -427,13 +427,13 @@ async function submitDifferentCorrectionValue(page: Page): Promise<void> {
 }
 
 /**
- * Ask Contigo (screens.md #7). Two real questions, chosen so the "one abstain" half of AC-1 is
+ * Ask Raffa (screens.md #7). Two real questions, chosen so the "one abstain" half of AC-1 is
  * deterministic regardless of tenant content, per the backend's own real, keyword-based router
- * (`backend/src/Contigo.Chat/Application/AskContigoQueryRouter.cs`,
+ * (`backend/src/Raffa.Chat/Application/AskRaffaQueryRouter.cs`,
  * `DeterministicQueryPlanner.cs`):
  *
  * 1. A Structured-routed question ("annual spend" matches `StructuredKeywords`). Structured intent
- *    is not wired to live data by any task yet (`web/README.md` "Ask Contigo") — the real backend
+ *    is not wired to live data by any task yet (`web/README.md` "Ask Raffa") — the real backend
  *    always answers `canDetermine: false` for it, so this is a guaranteed abstain, not a hopeful one.
  * 2. A Semantic-routed suggestion chip ("unlimited liability" matches `SemanticKeywords`) — the real
  *    RAG path. A fresh, self-created workspace (this file's own header comment explains why an
@@ -442,21 +442,21 @@ async function submitDifferentCorrectionValue(page: Page): Promise<void> {
  *    citation-bearing answer is asserted and exercised (click-through to Contract 360 › Clauses)
  *    only when the real response actually carries one, never fabricated.
  */
-async function askContigoBothPaths(page: Page): Promise<void> {
+async function askRaffaBothPaths(page: Page): Promise<void> {
   await page.goto("/ask");
-  const askInput = page.getByRole("textbox", { name: "Ask Contigo a question", exact: true });
+  const askInput = page.getByRole("textbox", { name: "Ask Raffa a question", exact: true });
   const askButton = page.getByRole("button", { name: "Ask", exact: true });
-  const contigoMessages = page.locator(".ask-message[data-role='contigo']");
+  const raffaMessages = page.locator(".ask-message[data-role='raffa']");
 
   await askInput.fill("What is our total annual spend?");
   await askButton.click();
-  await expect(contigoMessages).toHaveCount(1, { timeout: 30_000 });
-  await expect(contigoMessages.last().locator(".abstain-block")).toBeVisible();
-  await expect(contigoMessages.last().locator(".abstain-block")).toContainText(/cannot determine reliably/i);
+  await expect(raffaMessages).toHaveCount(1, { timeout: 30_000 });
+  await expect(raffaMessages.last().locator(".abstain-block")).toBeVisible();
+  await expect(raffaMessages.last().locator(".abstain-block")).toContainText(/cannot determine reliably/i);
 
   await page.getByRole("button", { name: "Which contracts contain unlimited liability?" }).click();
-  await expect(contigoMessages).toHaveCount(2, { timeout: 30_000 });
-  const secondReply = contigoMessages.last();
+  await expect(raffaMessages).toHaveCount(2, { timeout: 30_000 });
+  const secondReply = raffaMessages.last();
 
   const citationChips = secondReply.locator(".ask-citation-chip");
   if ((await citationChips.count()) > 0) {
@@ -550,7 +550,7 @@ async function runQuoteCheck(page: Page): Promise<void> {
   const unmatchedRows = page.locator(".quote-map-row");
   const unmatchedCount = await unmatchedRows.count();
   for (let i = 0; i < unmatchedCount; i++) {
-    await unmatchedRows.nth(i).locator('input[id^="quote-map-sku-"]').fill("CONTIGO-E2E-SKU");
+    await unmatchedRows.nth(i).locator('input[id^="quote-map-sku-"]').fill("RAFFA-E2E-SKU");
   }
   if (unmatchedCount > 0) {
     await page.getByRole("button", { name: /apply mapping & recalculate/i }).click();

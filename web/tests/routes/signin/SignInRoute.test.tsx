@@ -27,11 +27,11 @@ vi.mock("@azure/msal-react", () => ({
 }));
 
 const appConfig: AppConfig = {
-  apiBaseUrl: "https://api.dev.contigo.example",
+  apiBaseUrl: "https://api.dev.raffa.example",
   oidcAuthority: "https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000",
   oidcClientId: "11111111-1111-1111-1111-111111111111",
-  oidcRedirectUri: "https://web.dev.contigo.example",
-  oidcApiScopes: ["api://11111111-1111-1111-1111-111111111111/Contigo.Read"],
+  oidcRedirectUri: "https://web.dev.raffa.example",
+  oidcApiScopes: ["api://11111111-1111-1111-1111-111111111111/Raffa.Read"],
 };
 
 function mockApiClient(createWorkspace: ApiClient["createWorkspace"] = vi.fn()): ApiClient {
@@ -67,7 +67,7 @@ function mockApiClient(createWorkspace: ApiClient["createWorkspace"] = vi.fn()):
     getQuoteAssessment: vi.fn(),
     recalculateQuoteAssessment: vi.fn(),
     captureNegotiationOutcome: vi.fn(),
-    askContigo: vi.fn(),
+    askRaffa: vi.fn(),
     // Task E08/F02/US01/T01 (savings-home): this suite never reaches Home's own fetch-outcome
     // matrix -- bare vi.fn() is enough, same convention as getContract360 above.
     getSavingsKpis: vi.fn(),

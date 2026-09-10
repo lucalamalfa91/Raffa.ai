@@ -3,7 +3,7 @@
 
 Slice launch (--slice) checks only what is needed to *start Helix*
 (GitHub auth/org, repos after r0-a, previous HITL). Azure and HCP are
-**per-task**: a missing CONTIGO_AZURE_SUBSCRIPTION_ID must not stop a
+**per-task**: a missing RAFFA_AZURE_SUBSCRIPTION_ID must not stop a
 GitHub-only or file-only task. Those tasks run; the task that actually
 calls az / terraform apply / HCP emits HALTED via --task.
 
@@ -68,11 +68,11 @@ def _load_dotenv(path: Path) -> None:
 
 _load_dotenv(ENV_FILE)
 DEFAULT_OWNER = (
-    os.environ.get("CONTIGO_GITHUB_OWNER")
-    or os.environ.get("CONTIGO_GITHUB_ORG")
+    os.environ.get("RAFFA_GITHUB_OWNER")
+    or os.environ.get("RAFFA_GITHUB_ORG")
     or "lucalamalfa91"
 )
-DEFAULT_REPO = os.environ.get("CONTIGO_GITHUB_REPO", "contigo")
+DEFAULT_REPO = os.environ.get("RAFFA_GITHUB_REPO", "raffa")
 DEFAULT_ORG = DEFAULT_OWNER
 REPOS = (DEFAULT_REPO,)
 
@@ -101,22 +101,22 @@ HOW = {
     "github_auth": "gh auth login  (scopes: repo, public_repo)",
     "github_org": (
         f"GitHub owner '{DEFAULT_OWNER}' must exist (user account lucalamalfa91, "
-        "not a Contigo org). Override with CONTIGO_GITHUB_OWNER."
+        "not a Raffa org). Override with RAFFA_GITHUB_OWNER."
     ),
     "github_repos": (
         f"Public repository {DEFAULT_OWNER}/{DEFAULT_REPO} must exist "
-        "(https://github.com/lucalamalfa91/contigo). "
-        "Override with CONTIGO_GITHUB_OWNER / CONTIGO_GITHUB_REPO."
+        "(https://github.com/lucalamalfa91/raffa). "
+        "Override with RAFFA_GITHUB_OWNER / RAFFA_GITHUB_REPO."
     ),
     "azure_subscription": (
-        "Create a dedicated Contigo subscription (name must contain 'contigo'), "
-        "put its GUID in .env as CONTIGO_AZURE_SUBSCRIPTION_ID, then "
+        "Create a dedicated Raffa subscription (name must contain 'raffa'), "
+        "put its GUID in .env as RAFFA_AZURE_SUBSCRIPTION_ID, then "
         "`az account set --subscription <id>`. A leftover default such as "
         "'Azure subscription 1' or a Free Trial is not accepted."
     ),
     "hcp_terraform": (
         "Create a HashiCorp Cloud org. Then `terraform login` "
-        "or set TF_TOKEN / TFE_TOKEN. Workspaces contigo-dev / contigo-demo "
+        "or set TF_TOKEN / TFE_TOKEN. Workspaces raffa-dev / raffa-demo "
         "are created by the slice; the HCP account must exist now."
     ),
     "hitl_previous": (
@@ -229,7 +229,7 @@ def _summarize_subs(subs: list[dict]) -> str:
 
 
 def check_azure_subscription() -> tuple[bool, str]:
-    pinned = (os.environ.get("CONTIGO_AZURE_SUBSCRIPTION_ID") or "").strip()
+    pinned = (os.environ.get("RAFFA_AZURE_SUBSCRIPTION_ID") or "").strip()
     err, listed = _az_json(["account", "list", "--all"])
     if listed is None:
         err, listed = _az_json(["account", "list"])
@@ -238,14 +238,14 @@ def check_azure_subscription() -> tuple[bool, str]:
 
     if not pinned:
         return False, (
-            "CONTIGO_AZURE_SUBSCRIPTION_ID is unset. Logging in is not enough: "
-            "pin the Contigo subscription GUID in .env. " + summary
+            "RAFFA_AZURE_SUBSCRIPTION_ID is unset. Logging in is not enough: "
+            "pin the Raffa subscription GUID in .env. " + summary
         )
     try:
         pinned = str(uuid.UUID(pinned))
     except ValueError:
         return False, (
-            f"CONTIGO_AZURE_SUBSCRIPTION_ID={pinned!r} is not a GUID. " + summary
+            f"RAFFA_AZURE_SUBSCRIPTION_ID={pinned!r} is not a GUID. " + summary
         )
 
     match = next((s for s in subs if str(s.get("id") or "").lower() == pinned.lower()), None)
@@ -278,20 +278,20 @@ def check_azure_subscription() -> tuple[bool, str]:
         return False, f"{name} ({pinned}) state is {state}, need Enabled. " + summary
     if GENERIC_SUB_NAME.match(name):
         return False, (
-            f"{name} ({pinned}) is a default/placeholder subscription, not Contigo. "
-            "Create a dedicated subscription whose name contains 'contigo'. " + summary
+            f"{name} ({pinned}) is a default/placeholder subscription, not Raffa. "
+            "Create a dedicated subscription whose name contains 'raffa'. " + summary
         )
-    if "contigo" not in name.lower():
+    if "raffa" not in name.lower():
         return False, (
-            f"{name} ({pinned}) name does not contain 'contigo'. "
-            "Rename it or create a Contigo-named subscription so the pin cannot "
+            f"{name} ({pinned}) name does not contain 'raffa'. "
+            "Rename it or create a Raffa-named subscription so the pin cannot "
             "silently target a leftover free/default sub. " + summary
         )
     if TRIAL_QUOTA.search(quota) or spending.lower() in {"on", "currentperiodoff"}:
         return False, (
             f"{name} ({pinned}) looks like a trial/capped offer "
             f"(quotaId={quota or '?'}, spendingLimit={spending or '?'}). "
-            "Contigo needs a pay-as-you-go (or EA/CSP) subscription in northeurope. "
+            "Raffa needs a pay-as-you-go (or EA/CSP) subscription in northeurope. "
             + summary
         )
 
@@ -302,7 +302,7 @@ def check_azure_subscription() -> tuple[bool, str]:
     if current_id.lower() != pinned.lower():
         return False, (
             f"az default is {current.get('name')} ({current_id}), not the pinned "
-            f"Contigo sub {name} ({pinned}). Run: az account set --subscription {pinned}"
+            f"Raffa sub {name} ({pinned}). Run: az account set --subscription {pinned}"
         )
     return True, f"{name} ({pinned})"
 

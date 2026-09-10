@@ -29,11 +29,11 @@ import dev_outputs_verify as dov  # noqa: E402
 
 GOOD_ROOT_MAIN_TF = (
     'resource "azurerm_resource_group" "this" {\n'
-    '  name     = "rg-contigo-dev"\n'
+    '  name     = "rg-raffa-dev"\n'
     "  location = var.location\n"
     "\n"
     "  tags = {\n"
-    '    project = "contigo"\n'
+    '    project = "raffa"\n'
     "    env     = local.environment\n"
     "  }\n"
     "}\n"
@@ -61,7 +61,7 @@ def _good_module_main_tf(module: str) -> str:
     return (
         "locals {\n"
         "  tags = {\n"
-        '    project = "contigo"\n'
+        '    project = "raffa"\n'
         "    env     = var.environment\n"
         "  }\n"
         "}\n"
@@ -120,8 +120,8 @@ class FindOutputBlocksTests(unittest.TestCase):
 
 class FindLocalsTagsTests(unittest.TestCase):
     def test_finds_project_and_env(self) -> None:
-        text = 'locals {\n  tags = {\n    project = "contigo"\n    env     = var.environment\n  }\n}\n'
-        self.assertEqual(dov.find_locals_tags(text), {"project": "contigo", "env": "var.environment"})
+        text = 'locals {\n  tags = {\n    project = "raffa"\n    env     = var.environment\n  }\n}\n'
+        self.assertEqual(dov.find_locals_tags(text), {"project": "raffa", "env": "var.environment"})
 
     def test_missing_locals_returns_empty_dict(self) -> None:
         self.assertEqual(dov.find_locals_tags("# nothing here\n"), {})
@@ -212,7 +212,7 @@ class BrokenFixtureTreeTests(unittest.TestCase):
 
     def test_root_resource_group_missing_tags_fails(self) -> None:
         bad = GOOD_ROOT_MAIN_TF.replace(
-            '\n  tags = {\n    project = "contigo"\n    env     = local.environment\n  }\n', "\n"
+            '\n  tags = {\n    project = "raffa"\n    env     = local.environment\n  }\n', "\n"
         )
         _modules_root, dev_root = self._tree(root_main_text=bad)
         passed, detail = dov.check_root_resource_group_tags(dev_root)

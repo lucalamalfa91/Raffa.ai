@@ -7,7 +7,7 @@ export interface UploadResultCardProps {
 }
 
 /**
- * The "Not added" card (*req*, R-DOC-04; `contigo-v2/screens-v2.md` #3: "Not added card per
+ * The "Not added" card (*req*, R-DOC-04; `raffa-v2/screens-v2.md` #3: "Not added card per
  * rejected file ... session-only, never counted"). V1's `UploadResultCard` rendered the single
  * outcome (needs_review/completed/failed) of the one file mid-upload at a time; V2 shows every real
  * document as its own row in `DocumentStatusTable.tsx` instead (screens-v2.md's own `docRows`), so

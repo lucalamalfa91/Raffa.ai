@@ -1,9 +1,9 @@
 # Wave close — `wave-v1-epic-e05`
 
 - **When**: 2026-09-05T19:26:26.138184+00:00
-- **Product repo**: `C:\Users\luca.la-malfa\source\repos\contigo`
-- **Origin**: `https://github.com/lucalamalfa91/contigo.git`
-- **PR**: https://github.com/lucalamalfa91/contigo/pull/30
+- **Product repo**: `C:\Users\luca.la-malfa\source\repos\raffa`
+- **Origin**: `https://github.com/lucalamalfa91/raffa.git`
+- **PR**: https://github.com/lucalamalfa91/raffa/pull/30
 - **Open points**: 0
 
 ## Commits on `integration` not on `origin/main`

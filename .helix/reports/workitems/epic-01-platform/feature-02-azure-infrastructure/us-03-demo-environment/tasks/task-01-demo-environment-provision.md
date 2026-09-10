@@ -4,7 +4,7 @@ type: task
 story: us-03-demo-environment
 wave: R0
 status: live
-target_repo: contigo-infra
+target_repo: raffa-infra
 # requires: [azure_subscription]
 # requires: [hcp_terraform]
 ---
@@ -17,24 +17,24 @@ Instantiate the same module library for the `demo` environment in `westeurope`,
 fully isolated from `dev`: its own resource group, Container Apps Environment +
 API/worker apps (consumption, min 0), PostgreSQL Flexible Server `Standard_B1ms`
 with `pgvector`, Storage Account (blob+queue), Service Bus Standard, Key Vault
-Standard, ACR Basic, Log Analytics with data cap. Tag `project=contigo`,
+Standard, ACR Basic, Log Analytics with data cap. Tag `project=raffa`,
 `env=demo`, `location=West Europe` (ADR-005, ADR-006). Remote state →
-HCP `contigo-demo` (ADR-007). Assert no shared Postgres / Storage / Service Bus
+HCP `raffa-demo` (ADR-007). Assert no shared Postgres / Storage / Service Bus
 with `dev` (ADR-016 isolation, ADR-001).
 
 ## Parent story AC covered
 
 - AC-1 (same service set)
 - AC-2 (tags + region)
-- AC-3 (isolated RG + `contigo-demo` state, no shared store)
+- AC-3 (isolated RG + `raffa-demo` state, no shared store)
 
 ## Files to create or modify
 
 | Path | Change |
 |------|--------|
-| workspace/contigo-infra/environments/demo/main.tf | wire module instances env=demo |
-| workspace/contigo-infra/environments/demo/variables.tf | demo variables |
-| workspace/contigo-infra/environments/demo/outputs.tf | demo outputs |
+| workspace/raffa-infra/environments/demo/main.tf | wire module instances env=demo |
+| workspace/raffa-infra/environments/demo/variables.tf | demo variables |
+| workspace/raffa-infra/environments/demo/outputs.tf | demo outputs |
 
 ## Context the implementer needs
 
@@ -44,7 +44,7 @@ with `dev` (ADR-016 isolation, ADR-001).
 ## Definition of done
 
 - [ ] `terraform plan` for `environments/demo` exits 0 and lists required resources.
-- [ ] Isolation check: distinct resource group + `contigo-demo` state, no shared store ids.
+- [ ] Isolation check: distinct resource group + `raffa-demo` state, no shared store ids.
 
 ## Tests required
 

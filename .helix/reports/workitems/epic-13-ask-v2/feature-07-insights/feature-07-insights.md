@@ -30,10 +30,10 @@ that also feeds `GET /api/contracts/{id}/strategy` and
 
 ## Architecture decisions in force
 
-- ADR-024 — module map (`Contigo.Insights` → `[SharedKernel, Benchmark]`), deterministic strategies
+- ADR-024 — module map (`Raffa.Insights` → `[SharedKernel, Benchmark]`), deterministic strategies
 - ADR-001 (amended) — benchmark bands from the mock feed, labelled representative
 - spec §9.2, §10.4, §12.1, Appendix C rules 6 and 10
 
 ## Target repo
 
-`contigo-backend`
+`raffa-backend`

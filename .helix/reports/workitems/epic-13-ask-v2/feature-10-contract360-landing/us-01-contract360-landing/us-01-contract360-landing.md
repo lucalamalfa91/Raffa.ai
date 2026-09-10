@@ -21,7 +21,7 @@ from a question.
 - [ ] AC-1 `/contracts/:id?clause=<clauseId>` (or `?page=<n>` for a
       page-level citation) opens Contract 360 with that clause highlighted
       and its original wording visible (evidence quote: before / **quote** /
-      after when the clause has a span); the back label reads "Ask Contigo"
+      after when the clause has a span); the back label reads "Ask Raffa"
       when arriving from a chat.
 - [ ] AC-2 Contract 360 offers **Ask about it**, navigating to
       `/ask?scope=<contractId>`; the chips shown there name the supplier
@@ -56,8 +56,8 @@ from a question.
 
 ## Council decisions carried into this story
 
-Design anchors: `contigo-v2/app.jsx` → `hl`, `citedOpened`, `back`,
-`backLabels`, `c360Chips`, `clauses[].show`; `contigo-v2/markup.html`
+Design anchors: `raffa-v2/app.jsx` → `hl`, `citedOpened`, `back`,
+`backLabels`, `c360Chips`, `clauses[].show`; `raffa-v2/markup.html`
 "{{ hl.quote }}" evidence block and "← {{ backLabel }}"; `screens-v2.md` §5.
 The full V2 answers-band / details / tracker layout is this feature's
 follow-up after acceptance (`inputs/requirements.md` R-WEB-06, P2).

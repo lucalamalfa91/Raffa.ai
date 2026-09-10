@@ -19,7 +19,7 @@ Locked topology (spec §5.1, brief §7, §10) names these boundaries. This map f
 | Renewals | Renewal (dates, cancellation deadline), RenewalAction | `/api/renewals` | Deterministic date/deadline computation in code (Appendix C rule 6). |
 | Savings | SavingsOpportunity, RealizedSavings | `/api/savings` | Consumes Benchmark Service; deterministic money math in code. |
 | Quotes | Quote, QuoteLine, Assessment, NegotiationOutcome | `/api/quotes`, `/api/negotiations/outcomes` | Line-level assessment; records negotiated outcome as proprietary learning data. |
-| Chat (Ask Contigo) | Query, QueryRoute, Answer, Citation | `/api/chat/query` | Routes structured → deterministic query, semantic/legal → RAG with citations; auth-before-retrieval. |
+| Chat (Ask Raffa) | Query, QueryRoute, Answer, Citation | `/api/chat/query` | Routes structured → deterministic query, semantic/legal → RAG with citations; auth-before-retrieval. |
 | Benchmark Service | BenchmarkQuery, BenchmarkResult, ProviderAdapter (interface) | `/api/benchmarks` | Interface + replaceable adapter; fixture adapter is enough for first `demo` (brief §3). |
 | AI Gateway | OcrRequest, ClassifyRequest, ExtractRequest, EmbedRequest, RAG/AnsweredRequest, usage log records | (internal; no public endpoints) | Only place that touches Foundry / Document Intelligence; logs model/version/prompt-version/timestamp/input-hash (brief §8) and OCR page count (ADR-017). |
 | Audit | AuditEvent (access, correction, negotiation, AI usage) | `/api/audit` | Append-only; captures access and corrections from day one (Appendix C rule 9). |

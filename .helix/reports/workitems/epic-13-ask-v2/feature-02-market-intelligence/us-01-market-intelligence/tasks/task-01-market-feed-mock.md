@@ -4,14 +4,14 @@ type: task
 story: us-01-market-intelligence
 wave: 13
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-market-feed-mock — Feed seam, mock dataset, benchmark projection, in-memory notes retrieval
 
 ## Coding objective
 
-Fill `backend/src/Contigo.Market` (scaffolded by F01/T01) with the
+Fill `backend/src/Raffa.Market` (scaffolded by F01/T01) with the
 market-intelligence seam of HITL decision D2 (`inputs/requirements.md`
 R-MKT-01, R-MKT-02, R-MKT-04): `Contracts/MarketDeal` record (provider,
 recordId, supplier, category, product, sku?, geography, currency,
@@ -36,7 +36,7 @@ returning insufficient data (no distribution) for thin or unmatched
 queries — registered with `TryAddEnumerable` in `AddMarketModule()` and
 made the active adapter by default (`BenchmarkAdapterOptions.ActiveAdapter`
 default → "market-feed" **inside** `AddMarketModule` via a post-configure,
-without editing `Contigo.Benchmark`). Projection 2 (interface only, in
+without editing `Raffa.Benchmark`). Projection 2 (interface only, in
 this task): `Retrieval/IMarketKnowledgeRetrieval`
 (`SearchAsync(query, topK, filters?)` → `MarketNote` hits: recordId,
 title, snippet, category, geography, updatedAt, provenance label, score)
@@ -55,30 +55,30 @@ mock feed · updated <yyyy-MM-dd>*.
 | Path | Change |
 |------|--------|
 | `backend/fixtures/market-intelligence.mock.json` | new dataset (≥ 60 records) |
-| `backend/src/Contigo.Market/Contracts/MarketDeal.cs`, `MarketNote.cs`, `MarketProvenance.cs` | new |
-| `backend/src/Contigo.Market/IMarketIntelligenceProvider.cs`, `Mock/MockMarketIntelligenceProvider.cs` | new |
-| `backend/src/Contigo.Market/Benchmark/MarketFeedBenchmarkAdapter.cs` | new adapter |
-| `backend/src/Contigo.Market/Retrieval/IMarketKnowledgeRetrieval.cs`, `MarketNoteComposer.cs`, `InMemoryMarketKnowledgeRetrieval.cs` | new |
-| `backend/src/Contigo.Market/ServiceCollectionExtensions.cs` | registrations, active-adapter default |
-| `backend/tests/Contigo.Market.Tests/*` | dataset shape, adapter bands / abstain, composer, in-memory retrieval, provenance |
+| `backend/src/Raffa.Market/Contracts/MarketDeal.cs`, `MarketNote.cs`, `MarketProvenance.cs` | new |
+| `backend/src/Raffa.Market/IMarketIntelligenceProvider.cs`, `Mock/MockMarketIntelligenceProvider.cs` | new |
+| `backend/src/Raffa.Market/Benchmark/MarketFeedBenchmarkAdapter.cs` | new adapter |
+| `backend/src/Raffa.Market/Retrieval/IMarketKnowledgeRetrieval.cs`, `MarketNoteComposer.cs`, `InMemoryMarketKnowledgeRetrieval.cs` | new |
+| `backend/src/Raffa.Market/ServiceCollectionExtensions.cs` | registrations, active-adapter default |
+| `backend/tests/Raffa.Market.Tests/*` | dataset shape, adapter bands / abstain, composer, in-memory retrieval, provenance |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-024 (three sources; market never tenant), ADR-001 (amended: Internal Dataset = mock feed, labelled representative), ADR-002 (Market → `[SharedKernel, AiGateway, Benchmark]`), spec §10.2–§10.4 (adapter boundary; benchmark trust).
-- Gap G-MARKET-FEED. Existing shapes to reuse: `Contigo.Benchmark/Contracts/*`, `BenchmarkAdapterRegistry` (adapters enumerated from DI, unique `Name`), `FixtureBenchmarkAdapter` (keep it registered for tests; it is no longer the active default).
-- **Do not touch**: `Contigo.Benchmark` sources, `Program.cs` (F05/T02 owns it this phase; `AddMarketModule` is wired by F06/T01), `Contigo.Chat`, `web/`.
+- Gap G-MARKET-FEED. Existing shapes to reuse: `Raffa.Benchmark/Contracts/*`, `BenchmarkAdapterRegistry` (adapters enumerated from DI, unique `Name`), `FixtureBenchmarkAdapter` (keep it registered for tests; it is no longer the active default).
+- **Do not touch**: `Raffa.Benchmark` sources, `Program.cs` (F05/T02 owns it this phase; `AddMarketModule` is wired by F06/T01), `Raffa.Chat`, `web/`.
 
 ## Definition of done
-- [ ] `dotnet test backend/tests/Contigo.Market.Tests` exit 0 — ≥ 60 records load; an Allianz-class query returns P25–P75 with provenance containing "mock"; a thin row and an unknown SKU return `HasSufficientData == false`; composer output contains the band and the uplift cap; in-memory search returns the Salesforce note for "uplift cap Salesforce"
-- [ ] `dotnet test backend/tests/Contigo.Benchmark.Tests` exit 0 (fixture adapter untouched)
-- [ ] `dotnet build backend/Contigo.slnx` exit 0
+- [ ] `dotnet test backend/tests/Raffa.Market.Tests` exit 0 — ≥ 60 records load; an Allianz-class query returns P25–P75 with provenance containing "mock"; a thin row and an unknown SKU return `HasSufficientData == false`; composer output contains the band and the uplift cap; in-memory search returns the Salesforce note for "uplift cap Salesforce"
+- [ ] `dotnet test backend/tests/Raffa.Benchmark.Tests` exit 0 (fixture adapter untouched)
+- [ ] `dotnet build backend/Raffa.slnx` exit 0
 
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | dataset, adapter, composer, retrieval, provenance | `Contigo.Market.Tests/*` |
+| unit | dataset, adapter, composer, retrieval, provenance | `Raffa.Market.Tests/*` |
 
 ## Open questions blocking this task
-- OQ-askv2-001 — record shape is Contigo's own (assumed)
+- OQ-askv2-001 — record shape is Raffa's own (assumed)
 
 ## Wave-spec entry
 ```yaml

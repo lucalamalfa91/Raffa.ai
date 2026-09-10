@@ -20,7 +20,7 @@ environment to provision for wave/epic 6+.
 | SPA static hosting, TLS, CDN, scale-to-zero | **ADR-012** (Azure Static Web Apps, free tier) | Locked |
 | SWA free tier availability in region | **ADR-012** assumption; region locked **ADR-006** `northeurope` | Locked |
 | Backend services the SPA calls | **ADR-005** (Container Apps consumption + Postgres Burstable + Storage + Service Bus Standard + Key Vault + Entra ID Free) | Locked |
-| Foundry AI services (Ask Contigo / benchmarks) | **ADR-008** (one hub, two projects, pay-as-you-go AI) | Locked |
+| Foundry AI services (Ask Raffa / benchmarks) | **ADR-008** (one hub, two projects, pay-as-you-go AI) | Locked |
 | Two environments `dev` / `demo`, isolated | Locked decision (Azure, two envs) + **ADR-007** two env Terraform roots | Locked |
 | IaC layout / env roots | **ADR-007** reusable modules + two env roots, remote state per env | Locked |
 | CI/CD deploy + promotion path | **ADR-014/015/016** (trunk-based, OIDC federation, `demo-v*` promotion) | Locked |

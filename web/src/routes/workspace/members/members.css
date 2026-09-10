@@ -1,6 +1,6 @@
 /**
  * Workspace & members screen, V2 (route `/workspace/members`; ADR-024 V2 IA; screens-v2.md #10;
- * `contigo-v2/markup.html` "WORKSPACE & MEMBERS" block). Component classes (.screen-header,
+ * `raffa-v2/markup.html` "WORKSPACE & MEMBERS" block). Component classes (.screen-header,
  * .screen-kicker, .screen-title, .table, .tag, .btn, .btn-block, .field, .input, .radio + .dot,
  * .empty-state, .visually-hidden) come from ../../../styles/components.css (ADR-019) -- this file
  * adds only this screen's own composites, quoted from the prototype's inline styles on this block:

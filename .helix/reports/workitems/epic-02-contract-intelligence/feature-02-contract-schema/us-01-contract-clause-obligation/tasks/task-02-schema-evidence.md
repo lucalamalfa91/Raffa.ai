@@ -4,7 +4,7 @@ type: task
 story: us-01-contract-clause-obligation
 wave: R1
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-02-schema-evidence — 02 Schema Evidence
@@ -18,7 +18,7 @@ Add evidence/source-span/confidence/version columns + schema test.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `contract-evidence-schema` |
+| workspace/raffa-backend/src/ | implementation for `contract-evidence-schema` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-003.
@@ -30,7 +30,7 @@ Add evidence/source-span/confidence/version columns + schema test.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | contract-evidence-schema behaviour | workspace/contigo-backend/tests |
+| unit | contract-evidence-schema behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

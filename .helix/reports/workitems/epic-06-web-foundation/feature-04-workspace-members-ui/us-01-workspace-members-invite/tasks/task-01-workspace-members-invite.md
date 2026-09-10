@@ -4,7 +4,7 @@ type: task
 story: us-01-workspace-members-invite
 wave: 6
 status: live
-target_repo: contigo-web
+target_repo: raffa-web
 ---
 
 # task-01-workspace-members-invite — Members & roles + invite UI
@@ -18,7 +18,7 @@ Implement the members table + invite form with admin/procurement gate.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-web/src/routes/workspace/members/ | members UI |
+| workspace/raffa-web/src/routes/workspace/members/ | members UI |
 | inputs/design/prototypes/ia.md | roles (cite) |
 | inputs/design/prototypes/screens.md | screen 2 (read, cite) |
 | inputs/design/prototypes/day1-demo.html | reference (cite) |
@@ -38,7 +38,7 @@ Implement the members table + invite form with admin/procurement gate.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | non-admin sees request-access, not invite | workspace/contigo-web/tests |
+| unit | non-admin sees request-access, not invite | workspace/raffa-web/tests |
 
 ## Wave-spec entry
 ```yaml

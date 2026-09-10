@@ -4,7 +4,7 @@ type: task
 story: us-02-document-status-readback
 wave: 6
 status: live
-target_repo: contigo-web
+target_repo: raffa-web
 ---
 
 # task-01-document-status-readback — Document status read-back UI
@@ -18,7 +18,7 @@ Implement the document table with status read-back and Contract 360 cross-link.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-web/src/routes/documents/ | status table |
+| workspace/raffa-web/src/routes/documents/ | status table |
 | inputs/design/prototypes/screens.md | screen 3 (read, cite) |
 | inputs/design/prototypes/day1-demo.html | reference (cite) |
 
@@ -32,7 +32,7 @@ Implement the document table with status read-back and Contract 360 cross-link.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | status→tag semantic mapping | workspace/contigo-web/tests |
+| unit | status→tag semantic mapping | workspace/raffa-web/tests |
 
 ## Wave-spec entry
 ```yaml

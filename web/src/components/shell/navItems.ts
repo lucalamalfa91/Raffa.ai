@@ -1,12 +1,12 @@
 /**
- * Contigo — two-tier rail navigation model (ADR-024 V2 IA amendment to ADR-018/ADR-020; task
+ * Raffa — two-tier rail navigation model (ADR-024 V2 IA amendment to ADR-018/ADR-020; task
  * E13/F09/US01/T01, gap G-IA-V2).
  *
  * V2 replaces the flat, eight-item Day-1 rail (Home, Portfolio, Renewals, Ask, Quote check,
  * Documents, Review queue, Workspace & members -- one `getVisibleNavItems(role)` list) with two
- * tiers, quoted from the unpacked V2 prototype (`inputs/design/prototypes/contigo-v2/`):
+ * tiers, quoted from the unpacked V2 prototype (`inputs/design/prototypes/raffa-v2/`):
  *
- *   - **Primary** (`app.jsx` `primaryNav`): Ask Contigo (badge `⌘K`, the last 5 conversations
+ *   - **Primary** (`app.jsx` `primaryNav`): Ask Raffa (badge `⌘K`, the last 5 conversations
  *     nested under it, "+ New chat") and Documents (badge `N to review` / `N docs`).
  *   - **Secondary, "From your contracts"** (`app.jsx` `kbNav`, `markup.html` "From your
  *     contracts"): Portfolio, Renewals, Quote check -- the whole row's foreground dims to
@@ -59,7 +59,7 @@ export interface PrimaryNavItem {
   label: string;
   path: string;
   badge: NavBadge | null;
-  /** Only Ask Contigo carries the nested conversations/"+ New chat" slot (RailNav.tsx). */
+  /** Only Ask Raffa carries the nested conversations/"+ New chat" slot (RailNav.tsx). */
   hasConversationSlot: boolean;
 }
 
@@ -108,7 +108,7 @@ export function getDocumentsBadge(counts: DocumentCounts): NavBadge | null {
 
 export function buildPrimaryNavItems(documentsBadge: NavBadge | null): readonly PrimaryNavItem[] {
   return [
-    { id: "ask", label: "Ask Contigo", path: "/ask", badge: ASK_BADGE, hasConversationSlot: true },
+    { id: "ask", label: "Ask Raffa", path: "/ask", badge: ASK_BADGE, hasConversationSlot: true },
     { id: "documents", label: "Documents", path: "/documents", badge: documentsBadge, hasConversationSlot: false },
   ];
 }

@@ -18,11 +18,11 @@ sound; this script is the standing, repeatable proof of the *shape* a
     "public_client") -- each environment root instantiates the module once
     (dev, demo; membership already covered by
     scripts/terraform_env_roots_scan.py), so 2 x 2 = four registrations.
-  - the "api" registration exposes exactly Contigo.Read/Contigo.Write as
+  - the "api" registration exposes exactly Raffa.Read/Raffa.Write as
     enabled, delegated ("User") scopes.
   - the "public_client" registration is PKCE-only: a single_page_application
     redirect (web, ADR-012) wired from `local.web_redirect_uri`, and a
-    public_client redirect of exactly "contigo://callback" (native,
+    public_client redirect of exactly "raffa://callback" (native,
     ADR-013) -- and neither application ever declares a `password {}`
     block (ADR-010/ADR-011: no client secret).
   - the public client declares required_resource_access for both scopes,
@@ -78,8 +78,8 @@ ENVS = ("dev", "demo")
 # scope value -> expected raw `id = <expr>` right-hand side inside its
 # oauth2_permission_scope block.
 EXPECTED_SCOPES = {
-    "Contigo.Read": "random_uuid.scope_read.result",
-    "Contigo.Write": "random_uuid.scope_write.result",
+    "Raffa.Read": "random_uuid.scope_read.result",
+    "Raffa.Write": "random_uuid.scope_write.result",
 }
 
 EXPECTED_IDENTITY_OUTPUTS = {
@@ -235,11 +235,11 @@ def check_public_client_pkce(identity_dir: Path = IDENTITY_DIR) -> tuple:
     if native_body is None:
         return False, "azuread_application.public_client has no public_client {} block (native redirect)"
     native_uris = find_attr(native_body, "redirect_uris")
-    if native_uris is None or "contigo://callback" not in native_uris:
-        return False, f'public_client{{}}.redirect_uris={native_uris!r}, expected to contain "contigo://callback"'
+    if native_uris is None or "raffa://callback" not in native_uris:
+        return False, f'public_client{{}}.redirect_uris={native_uris!r}, expected to contain "raffa://callback"'
     return True, (
         "azuread_application.public_client has single_page_application(local.web_redirect_uri) + "
-        'public_client(contigo://callback) redirects, no password {} block'
+        'public_client(raffa://callback) redirects, no password {} block'
     )
 
 

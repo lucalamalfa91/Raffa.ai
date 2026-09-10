@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Verify the Contigo product remote https://github.com/lucalamalfa91/contigo.
+"""Verify the Raffa product remote https://github.com/lucalamalfa91/raffa.
 
 Task E01/F01/US01/T01: the repo already exists under the lucalamalfa91 account
 and is **public**. This script asserts owner, name, visibility=public,
-description "Contigo platform", and default branch `main`. It does not create
+description "Raffa platform", and default branch `main`. It does not create
 a GitHub organization, does not require a four-repo org, and does not fail
 on other repos owned by the same user.
 
-Owner/repo resolve from CONTIGO_GITHUB_OWNER / CONTIGO_GITHUB_REPO
-(defaults lucalamalfa91 / contigo). CONTIGO_GITHUB_ORG is accepted as an
+Owner/repo resolve from RAFFA_GITHUB_OWNER / RAFFA_GITHUB_REPO
+(defaults lucalamalfa91 / raffa). RAFFA_GITHUB_ORG is accepted as an
 alias for the owner. Authenticates via whatever `gh` already has configured.
 
 Read-only by default. Pass --create-missing to create the single public repo
@@ -18,8 +18,8 @@ Usage:
   python scripts/verify_github_repos.py
   python scripts/verify_github_repos.py --create-missing
 
-Exit 0 only if lucalamalfa91/contigo exists, is public, default_branch=main,
-and description is Contigo platform. Exit 1 otherwise.
+Exit 0 only if lucalamalfa91/raffa exists, is public, default_branch=main,
+and description is Raffa platform. Exit 1 otherwise.
 """
 
 from __future__ import annotations
@@ -29,12 +29,12 @@ import json
 import os
 import subprocess
 
-OWNER_ENV = "CONTIGO_GITHUB_OWNER"
-ORG_ENV = "CONTIGO_GITHUB_ORG"
-REPO_ENV = "CONTIGO_GITHUB_REPO"
+OWNER_ENV = "RAFFA_GITHUB_OWNER"
+ORG_ENV = "RAFFA_GITHUB_ORG"
+REPO_ENV = "RAFFA_GITHUB_REPO"
 DEFAULT_OWNER = "lucalamalfa91"
-DEFAULT_REPO = "contigo"
-EXPECTED_DESCRIPTION = "Contigo platform"
+DEFAULT_REPO = "raffa"
+EXPECTED_DESCRIPTION = "Raffa platform"
 EXPECTED_VISIBILITY = "public"
 
 
@@ -89,7 +89,7 @@ def main() -> int:
     ap.add_argument(
         "--create-missing",
         action="store_true",
-        help="idempotently create the public lucalamalfa91/contigo repo if absent",
+        help="idempotently create the public lucalamalfa91/raffa repo if absent",
     )
     args = ap.parse_args()
 

@@ -16,7 +16,7 @@
 | `reports/architecture/ADR-010-entra-oidc.md` | Per-env public-client + API registration pair (4 total); web and mobile share the public client; PKCE only, no secret; API validates `iss`+`aud`. |
 | `reports/architecture/ADR-009-tenancy.md` | Postgres RLS on every tenant table, `tenant_id` passed by app, RLS is the non-bypassable backstop. |
 | `reports/architecture/ADR-011-secrets-and-rag.md` | Per-env Key Vault + managed identity + OIDC federation; authz-before-retrieval; input-hash logging; no-training. |
-| `workspace/contigo-infra/modules/identity/main.tf` | ADR-015 deployment SP uses OIDC federation — **no `client_secret` anywhere** in IaC. |
+| `workspace/raffa-infra/modules/identity/main.tf` | ADR-015 deployment SP uses OIDC federation — **no `client_secret` anywhere** in IaC. |
 
 ## Confirmation: no security delta
 
@@ -58,7 +58,7 @@ These are confirmations to carry into later seats, not new decisions:
   `localStorage` as a persistent refresh secret — access-token storage policy is
   non-secret and already public-client-appropriate; confirm the chosen `web/`
   token holder is a non-secret session store (in-memory or short-lived) when the
-  `contigo-web` repo mounts.
+  `raffa-web` repo mounts.
 - Any screen displaying contract evidence/citations consumes server-rendered
   authorized results only; the client must never assemble RAG context itself
   (ADR-011 authz-before-retrieval is a backend invariant).

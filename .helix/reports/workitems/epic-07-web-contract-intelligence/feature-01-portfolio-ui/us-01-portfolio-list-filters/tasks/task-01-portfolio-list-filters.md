@@ -4,7 +4,7 @@ type: task
 story: us-01-portfolio-list-filters
 wave: 7
 status: live
-target_repo: contigo-web
+target_repo: raffa-web
 ---
 
 # task-01-portfolio-list-filters — Portfolio + filters + attention strip UI
@@ -18,7 +18,7 @@ Implement the portfolio table, filters, attention strip, and states.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-web/src/routes/contracts/ | portfolio UI |
+| workspace/raffa-web/src/routes/contracts/ | portfolio UI |
 | inputs/design/prototypes/screens.md | screen 4 (read, cite) |
 | inputs/design/prototypes/day1-demo.html | reference (cite) |
 
@@ -33,7 +33,7 @@ Implement the portfolio table, filters, attention strip, and states.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | filter + attention strip click | workspace/contigo-web/tests |
+| unit | filter + attention strip click | workspace/raffa-web/tests |
 
 ## Wave-spec entry
 ```yaml

@@ -28,4 +28,4 @@ server-side.
 
 ## Target repo
 
-`contigo-backend`
+`raffa-backend`

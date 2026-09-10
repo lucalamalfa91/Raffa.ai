@@ -24,4 +24,4 @@ Home screen: 6 savings KPI cells + opportunities table.
 
 ## Target repo
 
-`contigo-web`
+`raffa-web`

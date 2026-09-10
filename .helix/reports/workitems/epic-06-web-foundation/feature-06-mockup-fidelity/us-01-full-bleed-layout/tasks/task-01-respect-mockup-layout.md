@@ -4,7 +4,7 @@ type: task
 story: us-01-full-bleed-layout
 wave: 7
 status: live
-target_repo: contigo-web
+target_repo: raffa-web
 ---
 
 # task-01-respect-mockup-layout — Full-bleed layout matching the Claude Design mockup

@@ -4,7 +4,7 @@ type: task
 story: us-01-savings-home
 wave: 8
 status: live
-target_repo: contigo-web
+target_repo: raffa-web
 ---
 
 # task-01-savings-home — Savings KPIs + opportunities UI
@@ -18,7 +18,7 @@ Implement the Home screen: 6 savings KPI cells + opportunities table.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-web/src/routes/home/ | Home UI |
+| workspace/raffa-web/src/routes/home/ | Home UI |
 | inputs/design/prototypes/screens.md | screen 9 (read, cite) |
 | inputs/design/prototypes/day1-demo.html | reference (cite) |
 
@@ -32,7 +32,7 @@ Implement the Home screen: 6 savings KPI cells + opportunities table.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | benchmark-unreachable → KPIs stale-labelled | workspace/contigo-web/tests |
+| unit | benchmark-unreachable → KPIs stale-labelled | workspace/raffa-web/tests |
 
 ## Wave-spec entry
 ```yaml

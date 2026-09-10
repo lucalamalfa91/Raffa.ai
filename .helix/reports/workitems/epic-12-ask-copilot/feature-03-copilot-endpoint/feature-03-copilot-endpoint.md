@@ -27,4 +27,4 @@ citations, actions.
 
 ## Target repo
 
-`contigo-backend`
+`raffa-backend`

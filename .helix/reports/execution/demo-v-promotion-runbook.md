@@ -43,7 +43,7 @@ verification check:
 ## Preconditions (verified live 2026-09-07/08, `gh` as `lucalamalfa91`)
 
 ```
-$ gh api repos/lucalamalfa91/contigo/environments/demo
+$ gh api repos/lucalamalfa91/raffa/environments/demo
 {
   "name": "demo",
   "protection_rules": [{
@@ -119,9 +119,9 @@ verified 2026-09-07/08):
 
 | Tag | Commit | Run | Result |
 |---|---|---|---|
-| `demo-v1` | `a4e564c` "Merge pull request #19 …fix/web-runtime-config" | [33865035471](https://github.com/lucalamalfa91/contigo/actions/runs/33865035471) | ✅ success (2026-09-04T10:49:22Z) |
-| `demo-v2` | `22c474f` "Merge pull request #20 …fix/demo-promote-deploy-if" | [33865595161](https://github.com/lucalamalfa91/contigo/actions/runs/33865595161) | ⏹ cancelled (2m49s — superseded while chasing the `promote-web`/`deploy-if` fix that landed as `demo-v3`) |
-| `demo-v3` | `2db5734` "Merge pull request #22 …fix/acr-pull-registry" | [33879692679](https://github.com/lucalamalfa91/contigo/actions/runs/33879692679) | ✅ success (2026-09-04T13:43:54Z) — **current live `demo`** |
+| `demo-v1` | `a4e564c` "Merge pull request #19 …fix/web-runtime-config" | [33865035471](https://github.com/lucalamalfa91/raffa/actions/runs/33865035471) | ✅ success (2026-09-04T10:49:22Z) |
+| `demo-v2` | `22c474f` "Merge pull request #20 …fix/demo-promote-deploy-if" | [33865595161](https://github.com/lucalamalfa91/raffa/actions/runs/33865595161) | ⏹ cancelled (2m49s — superseded while chasing the `promote-web`/`deploy-if` fix that landed as `demo-v3`) |
+| `demo-v3` | `2db5734` "Merge pull request #22 …fix/acr-pull-registry" | [33879692679](https://github.com/lucalamalfa91/raffa/actions/runs/33879692679) | ✅ success (2026-09-04T13:43:54Z) — **current live `demo`** |
 
 All three tags are confirmed ancestors of `origin/main` (`git merge-base
 --is-ancestor demo-vN origin/main`, exit 0 for each). `demo-v3`'s own job
@@ -141,13 +141,13 @@ asset; `web/public/staticwebapp.config.json` excludes it from the SPA's
 $ python scripts/check_demo_swa_config.py \
     --host mango-desert-084c2231e.6.azurestaticapps.net --environment demo
 [PASS] https://mango-desert-084c2231e.6.azurestaticapps.net/config.json config.json is a real,
-non-localhost demo config (apiBaseUrl='https://ca-contigo-demo-api.lemonsea-be9510a4.northeurope.azurecontainerapps.io',
+non-localhost demo config (apiBaseUrl='https://ca-raffa-demo-api.lemonsea-be9510a4.northeurope.azurecontainerapps.io',
 oidcClientId='85065229-1707-40b0-98ad-2b3d21db58cf')
 
 $ python scripts/check_demo_swa_config.py \
     --host mango-pond-061bc6d1e.6.azurestaticapps.net --environment dev
 [PASS] https://mango-pond-061bc6d1e.6.azurestaticapps.net/config.json config.json is a real,
-non-localhost dev config (apiBaseUrl='https://ca-contigo-dev-api.politetree-8bd9702e.northeurope.azurecontainerapps.io',
+non-localhost dev config (apiBaseUrl='https://ca-raffa-dev-api.politetree-8bd9702e.northeurope.azurecontainerapps.io',
 oidcClientId='da08e279-f6f4-4713-bee1-9dc70406e030')
 ```
 
@@ -155,7 +155,7 @@ Raw payloads (fetched live, 2026-09-07/08):
 
 | Field | `demo` | `dev` |
 |---|---|---|
-| `apiBaseUrl` | `https://ca-contigo-demo-api.lemonsea-be9510a4.northeurope.azurecontainerapps.io` | `https://ca-contigo-dev-api.politetree-8bd9702e.northeurope.azurecontainerapps.io` |
+| `apiBaseUrl` | `https://ca-raffa-demo-api.lemonsea-be9510a4.northeurope.azurecontainerapps.io` | `https://ca-raffa-dev-api.politetree-8bd9702e.northeurope.azurecontainerapps.io` |
 | `oidcClientId` | `85065229-1707-40b0-98ad-2b3d21db58cf` | `da08e279-f6f4-4713-bee1-9dc70406e030` |
 | `oidcRedirectUri` | `https://mango-desert-084c2231e.6.azurestaticapps.net/` | `https://mango-pond-061bc6d1e.6.azurestaticapps.net/` |
 
@@ -165,7 +165,7 @@ and the task's Definition of Done ("a recorded check shows demo SWA
 `config.json` is not localhost and not the `dev` API URL"): two visibly
 different hosts, two visibly different OIDC client ids, neither containing
 `localhost`, each `apiBaseUrl` carrying its own environment's
-`ca-contigo-<env>-api` segment and nothing else's.
+`ca-raffa-<env>-api` segment and nothing else's.
 
 **Negative-control proof** — the same script correctly *fails* when a
 config is checked against the wrong environment (demo's real payload,
@@ -176,8 +176,8 @@ just rubber-stamp "field is present":
 $ python scripts/check_demo_swa_config.py \
     --host mango-desert-084c2231e.6.azurestaticapps.net --environment dev
 [FAIL] https://mango-desert-084c2231e.6.azurestaticapps.net/config.json (dev):
-  - apiBaseUrl='https://ca-contigo-demo-api.lemonsea-be9510a4.northeurope.azurecontainerapps.io' points at demo's API ('ca-contigo-demo-api'), not dev's
-  - oidcApiScopes ['api://contigo-demo-api/Contigo.Read', 'api://contigo-demo-api/Contigo.Write'] reference 'contigo-demo-api' (demo), not dev
+  - apiBaseUrl='https://ca-raffa-demo-api.lemonsea-be9510a4.northeurope.azurecontainerapps.io' points at demo's API ('ca-raffa-demo-api'), not dev's
+  - oidcApiScopes ['api://raffa-demo-api/Raffa.Read', 'api://raffa-demo-api/Raffa.Write'] reference 'raffa-demo-api' (demo), not dev
 exit=1
 ```
 
@@ -209,8 +209,8 @@ silent no-op) with a specific `::error::` line for each of these — every
 one names the HCP Terraform run to check:
 
 - `<swa-name> was not found in <rg>` → the HCP VCS apply for
-  `contigo-<env>` has not created the Static Web App yet; check
-  `https://app.terraform.io/app/contigo-platform/workspaces/contigo-<env>/runs`.
+  `raffa-<env>` has not created the Static Web App yet; check
+  `https://app.terraform.io/app/raffa-platform/workspaces/raffa-<env>/runs`.
 - `could not resolve defaultHostname` / `could not resolve ingress FQDN` →
   apply is not `CURRENT` yet, or the resource exists but has no
   hostname/ingress configured.

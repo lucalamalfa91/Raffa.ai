@@ -26,4 +26,4 @@ assessment → target range → negotiation strategy.
 
 ## Target repo
 
-`contigo-backend` (integration test) + `contigo-web` (smoke)
+`raffa-backend` (integration test) + `raffa-web` (smoke)

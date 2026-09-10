@@ -9,12 +9,12 @@ and validates the JSON so a placeholder localhost config cannot ship.
 Usage:
     python scripts/write_web_runtime_config.py \\
       --out web/dist/config.json \\
-      --api-base-url https://ca-contigo-dev-api.example.azurecontainerapps.io \\
+      --api-base-url https://ca-raffa-dev-api.example.azurecontainerapps.io \\
       --oidc-authority https://login.microsoftonline.com/<tenant-id> \\
       --oidc-client-id <public-client-app-id> \\
       --oidc-redirect-uri https://<swa-host>/ \\
-      --oidc-api-scope api://contigo-dev-api/Contigo.Read \\
-      --oidc-api-scope api://contigo-dev-api/Contigo.Write
+      --oidc-api-scope api://raffa-dev-api/Raffa.Read \\
+      --oidc-api-scope api://raffa-dev-api/Raffa.Write
 """
 
 from __future__ import annotations
@@ -120,7 +120,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         dest="oidc_api_scopes",
         action="append",
         required=True,
-        help="Repeat for each API scope (e.g. api://contigo-dev-api/Contigo.Read).",
+        help="Repeat for each API scope (e.g. api://raffa-dev-api/Raffa.Read).",
     )
     return parser.parse_args(argv)
 

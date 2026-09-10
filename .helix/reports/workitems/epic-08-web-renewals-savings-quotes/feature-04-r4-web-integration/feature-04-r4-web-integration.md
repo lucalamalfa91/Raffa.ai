@@ -25,4 +25,4 @@ Single-task final integration that walks the §20 Day-1 path in the browser on
 
 ## Target repo
 
-`contigo-web`
+`raffa-web`

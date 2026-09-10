@@ -57,7 +57,7 @@ describe("signin.css -- north-star type and statement ground (AC-2, gaps G-S1-TY
   const css = readSource("../../src/routes/signin/signin.css");
 
   it("keeps the north star fluid via clamp(), not a fixed size", () => {
-    // The V2 sign-in (contigo-v2/markup.html) types its three-line statement at
+    // The V2 sign-in (raffa-v2/markup.html) types its three-line statement at
     // clamp(40px, 5vw, 76px); the V1 export's clamp(30px, 3.8vw, 52px) was for the single
     // sentence it replaced. What this guards is the property that survives both: the size
     // is fluid, never a fixed pixel value.
@@ -72,14 +72,14 @@ describe("signin.css -- north-star type and statement ground (AC-2, gaps G-S1-TY
 });
 
 describe("shell.css -- rail stays a fixed 232px beside the fluid main track (gap G-SHELL)", () => {
-  it("keeps .shell-layout's grid at 232px 1fr (contigo-v2/markup.html)", () => {
+  it("keeps .shell-layout's grid at 232px 1fr (raffa-v2/markup.html)", () => {
     const css = readSource("../../src/components/shell/shell.css");
     const body = ruleBodyFor(css, ".shell-layout");
     expect(body).toMatch(/grid-template-columns:\s*232px\s+1fr/);
   });
 });
 
-describe("ask-bar.css -- V2 two-row bar (contigo-v2/markup.html)", () => {
+describe("ask-bar.css -- V2 two-row bar (raffa-v2/markup.html)", () => {
   it("keeps the 18px heading input, 44px min-height, and a 2px text underline", () => {
     const css = readSource("../../src/components/ask-bar/ask-bar.css");
     const body = ruleBodyFor(css, ".ask-bar-input.input");

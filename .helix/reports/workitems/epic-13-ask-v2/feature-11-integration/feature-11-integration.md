@@ -13,7 +13,7 @@ status: active
 Closes the wave the way spec §20 closes V1: the V2 pilot path proven in a
 browser against `dev`, not `dotnet test`. Adds the operator jobs the
 earlier features assume — `seed-market-intelligence.yml` (idempotent
-ingestion of the mock feed into `contigo_dev` / `contigo_demo`) and
+ingestion of the mock feed into `raffa_dev` / `raffa_demo`) and
 `reprocess-tenant-documents.yml` (re-OCR / re-embed + supplier back-fill
 for existing tenant documents) — the Playwright `web/e2e/v2.spec.ts`
 walking `inputs/requirements.md` §10 A1…A10 and A14, the golden set
@@ -35,4 +35,4 @@ sweep for every public surface the wave changed.
 
 ## Target repo
 
-mixed — `contigo-backend` (workflows, scripts), `contigo-web` (e2e)
+mixed — `raffa-backend` (workflows, scripts), `raffa-web` (e2e)

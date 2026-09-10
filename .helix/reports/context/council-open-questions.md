@@ -10,7 +10,7 @@ Each item: `unanswered`.
 
 - **Status**: unanswered
 - **Source**: brief §1, §2, §2.1
-- **Question**: What git flow governs the one `contigo` repository — default branch, branch strategy, PRs, protections, tags, GitHub environments, approvals, rollbacks? The brief does not assume GitHub Flow, Git Flow, tags, or Environment approvals.
+- **Question**: What git flow governs the one `raffa` repository — default branch, branch strategy, PRs, protections, tags, GitHub environments, approvals, rollbacks? The brief does not assume GitHub Flow, Git Flow, tags, or Environment approvals.
 
 ## CQ-002 — Exact Azure services and SKUs
 

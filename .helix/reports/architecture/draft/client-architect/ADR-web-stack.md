@@ -7,7 +7,7 @@
 
 ## Context and problem statement
 
-Contigo V1 is **web-first** (brief §9). The web client must deliver the full user-visible ladder — auth, workspace/roles, document upload, portfolio, Contract 360 with evidence + confidence, review/correction, Ask Contigo with citations, then renewals, savings, and quote check as later slices land (spec §16; brief §3, §9). It is a pure API consumer: every byte of business data arrives via the ASP.NET Core backend API (brief §1 API-first). The stack is council-owned and must stay within the cost guideline while giving a small team (Claude Code via Helix) fast iteration and a single deployable `web/` folder in the monorepo.
+Raffa V1 is **web-first** (brief §9). The web client must deliver the full user-visible ladder — auth, workspace/roles, document upload, portfolio, Contract 360 with evidence + confidence, review/correction, Ask Raffa with citations, then renewals, savings, and quote check as later slices land (spec §16; brief §3, §9). It is a pure API consumer: every byte of business data arrives via the ASP.NET Core backend API (brief §1 API-first). The stack is council-owned and must stay within the cost guideline while giving a small team (Claude Code via Helix) fast iteration and a single deployable `web/` folder in the monorepo.
 
 ## Decision drivers
 

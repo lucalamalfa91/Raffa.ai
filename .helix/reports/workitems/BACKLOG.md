@@ -1,4 +1,4 @@
-# Contigo V1 — Work-item backlog
+# Raffa V1 — Work-item backlog
 
 Source of truth: `reports/architecture/INDEX.md` (17 accepted ADRs), `reports/context/product-context.md`, `reports/context/locked-decisions.md`, `inputs/product-spec.md`.
 
@@ -13,7 +13,7 @@ Target: `dev` + `demo` only. No production. R3/R4 use the fixture benchmark adap
 | R0 | epic-01 platform | Auth, workspace, multi-tenancy, roles, upload, storage, DB, audit baseline + org/repo/Terraform/CI-CD/deployable API | A secure workspace can ingest documents |
 | R1 | epic-02 Contract Intelligence | Extraction including OCR in V1 (ADR-017), schema, portfolio, Contract 360, Q&A, citations, validation | Customer can upload contracts (digital and scanned) and ask reliable questions |
 | R2 | epic-03 Renewal Intelligence | Dates, cancellation deadline, alerts, dashboard, priority, recommendations (deterministic) | Procurement does not miss material renewal windows |
-| R3 | epic-04 Savings Intelligence | Benchmark service/adapters, price comparison, savings dashboard/workflow | Contigo quantifies credible savings opportunities |
+| R3 | epic-04 Savings Intelligence | Benchmark service/adapters, price comparison, savings dashboard/workflow | Raffa quantifies credible savings opportunities |
 | R4 | epic-05 Quote Check | Quote extraction, benchmark, assessment, target, negotiation strategy | A new proposal can be assessed in minutes |
 
 Each wave ends with a single-task `us-XX-final-integration` story. R4's integration story is the customer Day-1 path on `demo` (spec §20).
@@ -34,7 +34,7 @@ Each wave ends with a single-task `us-XX-final-integration` story. R4's integrat
 | epic-10 | demo-readiness | 10 | active — decomposed (readiness residuals) |
 | epic-11 | visual-fidelity | 11 | active — decomposed (visual) |
 | epic-12 | ask-copilot | 12 | superseded by epic-13 (never launched; ADR-023 → ADR-024) |
-| epic-13 | ask-v2 | 13 | active — decomposed (Ask Contigo V2: Documents intake + admission gate, conversations, market feed, strategies, capability catalog, V2 IA) |
+| epic-13 | ask-v2 | 13 | active — decomposed (Ask Raffa V2: Documents intake + admission gate, conversations, market feed, strategies, capability catalog, V2 IA) |
 
 ## ADR → wave coverage
 
@@ -62,7 +62,7 @@ Each wave ends with a single-task `us-XX-final-integration` story. R4's integrat
 | ADR-020 | Web screen inventory | epic-06..08 (screens 1–10 ↔ §16/§20); epic-12 amendment (screen 7 rich reply) |
 | ADR-021 | Schema apply on Azure Postgres | epic-09 (idempotent SQL + CI apply + CA env vars) |
 | ADR-022 | Day-1 demo auth + fixture seed | epic-10 (seed + Foundry/OCR CA + `demo-v*` smoke) |
-| ADR-023 | Ask Contigo savings copilot | epic-12 (Foundry copilot, two corpora, rich `/ask`) |
+| ADR-023 | Ask Raffa savings copilot | epic-12 (Foundry copilot, two corpora, rich `/ask`) |
 
 ## Non-goals (excluded, ADR-001, spec §1.2)
 
@@ -70,7 +70,7 @@ Full CLM/authoring · e-signature · PO/invoice management · supplier onboardin
 
 ## Web delta (epic-06+, wave 6+)
 
-The web pass (`layer: web`, `target_repo: contigo-web`) closes the user-visible
+The web pass (`layer: web`, `target_repo: raffa-web`) closes the user-visible
 ladder that E01–E05 decomposed as backend-only. It treats E01–E05 as done and
 adds the browser surface, per ADR-018/019/020 and the Claude Design handoff at
 `inputs/design/prototypes/`.
@@ -91,14 +91,14 @@ Ask savings copilot (wave 12) decomposed. Ask DAG: `reports/plan/wave-spec.ask.y
 
 ## Demo-readiness (epic-10 / e10)
 
-Residuals only after e09 and e06–e08: fixture seed on `contigo_demo`,
+Residuals only after e09 and e06–e08: fixture seed on `raffa_demo`,
 Foundry/OCR CA wiring if live env is empty, first `demo-v*` / SWA config
 smoke. Gap matrix: `reports/audit/demo-readiness-gaps.md`. HITL required
 before fan-out (`reports/audit/demo-readiness-hitl.md`).
 
 ## Ask savings copilot (epic-12 / e12)
 
-Ask Contigo becomes the domain savings copilot (ADR-023). Foundry behind
+Ask Raffa becomes the domain savings copilot (ADR-023). Foundry behind
 `IAiGateway`, fixture market catalog, domain gate, re-embed, rich `/ask` UI.
 Gap matrix: `reports/audit/ask-copilot-gaps.md`. HITL required before fan-out
 (`reports/audit/ask-copilot-hitl.md`). Do not launch in parallel with e1011.

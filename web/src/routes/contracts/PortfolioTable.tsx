@@ -10,7 +10,7 @@ export interface PortfolioTableProps {
 }
 
 /**
- * The V2 Portfolio table (screens-v2.md #6; `contigo-v2/markup.html` "PORTFOLIO" block): Supplier ·
+ * The V2 Portfolio table (screens-v2.md #6; `raffa-v2/markup.html` "PORTFOLIO" block): Supplier ·
  * Contract · Annual spend · Ends · Give notice by (+ "· N d") [· Start · Auto · Risk when "More
  * columns" is on] · Status, `font-size:13px; font-variant-numeric:tabular-nums; table-layout:fixed;
  * min-width:760px`, a 3px left bar on the supplier cell and an accent-100 row tint for the rows whose

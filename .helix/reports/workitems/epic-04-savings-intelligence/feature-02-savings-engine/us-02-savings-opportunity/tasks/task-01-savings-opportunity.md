@@ -4,7 +4,7 @@ type: task
 story: us-02-savings-opportunity
 wave: R3
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-savings-opportunity — 01 Savings Opportunity
@@ -18,7 +18,7 @@ SavingsOpportunity entity + GET/PATCH /api/savings.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `savings-opportunity` |
+| workspace/raffa-backend/src/ | implementation for `savings-opportunity` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-002, ADR-003.
@@ -30,7 +30,7 @@ SavingsOpportunity entity + GET/PATCH /api/savings.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | savings-opportunity behaviour | workspace/contigo-backend/tests |
+| unit | savings-opportunity behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

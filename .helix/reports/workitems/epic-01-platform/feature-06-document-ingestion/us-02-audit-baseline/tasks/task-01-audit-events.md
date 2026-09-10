@@ -4,7 +4,7 @@ type: task
 story: us-02-audit-baseline
 wave: R0
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-audit-events — 01 Audit Events
@@ -18,7 +18,7 @@ Implement append-only audit abstraction every module writes to.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `audit-abstraction` |
+| workspace/raffa-backend/src/ | implementation for `audit-abstraction` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-009, ADR-003.
@@ -30,7 +30,7 @@ Implement append-only audit abstraction every module writes to.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | audit-abstraction behaviour | workspace/contigo-backend/tests |
+| unit | audit-abstraction behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

@@ -4,7 +4,7 @@ type: task
 story: us-01-mobile-scaffold
 wave: R0
 status: live
-target_repo: contigo-mobile
+target_repo: raffa-mobile
 ---
 
 # task-02-mobile-oidc — 02 Mobile Oidc
@@ -18,7 +18,7 @@ Configure OIDC PKCE vs Entra with native redirect scheme.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-mobile/src/ | implementation for `mobile-oidc` |
+| workspace/raffa-mobile/src/ | implementation for `mobile-oidc` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-013, ADR-010.
@@ -30,7 +30,7 @@ Configure OIDC PKCE vs Entra with native redirect scheme.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | mobile-oidc behaviour | workspace/contigo-mobile/tests |
+| unit | mobile-oidc behaviour | workspace/raffa-mobile/tests |
 
 ## Open questions blocking this task
 - none

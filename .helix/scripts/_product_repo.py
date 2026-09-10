@@ -1,7 +1,7 @@
-"""Resolve the Contigo *product* clone, not the nested `.helix` git.
+"""Resolve the Raffa *product* clone, not the nested `.helix` git.
 
 `ensure_artifact_git` used to `git init` inside `.helix` so Helix would not
-worktree `helix-artifacts`. After `.helix` landed inside `lucalamalfa91/contigo`,
+worktree `helix-artifacts`. After `.helix` landed inside `lucalamalfa91/raffa`,
 that nest became the hook cwd: no `origin`, a private `integration`, and
 `on_orchestration_stop` exited 1 (fail-open). Studio stayed green; no PR.
 
@@ -17,7 +17,7 @@ from pathlib import Path
 
 ARTIFACT = Path(__file__).resolve().parents[1]
 PRODUCT_MARKERS = ("infra", "backend", "web", "mobile")
-ORIGIN_NEEDLES = ("github.com/lucalamalfa91/contigo", "lucalamalfa91/contigo.git")
+ORIGIN_NEEDLES = ("github.com/lucalamalfa91/raffa", "lucalamalfa91/raffa.git")
 
 
 def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:

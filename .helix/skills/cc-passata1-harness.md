@@ -19,7 +19,7 @@ Helix native tools. What that changes:
   create files with plain filenames: the kb-contract paths are the rule.
 - **Check the cwd before anything else** when you are the first agent of a
   run or of a re-entry (intake, decomposer, checker): `Glob
-  contigo-next-process.yaml` must find the artifact in the cwd (or `pwd` in
+  raffa-next-process.yaml` must find the artifact in the cwd (or `pwd` in
   Bash must end with `.helix`). If it does not — Studio was launched with
   another working directory, e.g. `.helix/.git.nest.bak` — stop at once with
   the last line `HALTED: cwd is <path>, not the artifact folder — relaunch

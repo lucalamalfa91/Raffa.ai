@@ -1,4 +1,4 @@
-# Contigo — Web integration intake (delta on a completed R0–R4 backend)
+# Raffa — Web integration intake (delta on a completed R0–R4 backend)
 
 **Audience:** Helix docs-ingester, architecture council (including UX/UI Design), backlog decomposer  
 **Status:** Engineering + product mandate for a *follow-on* design pass  
@@ -11,7 +11,7 @@ plan the **user-visible web experience** that consumes the already-planned
 
 ---
 
-## 0. How this intake differs from the first Contigo intake
+## 0. How this intake differs from the first Raffa intake
 
 The first intake (`product-spec.md` + `engineering-brief.md` +
 `engineering-constraints.md`) asked the council to invent the platform and
@@ -54,10 +54,10 @@ ADR-012 and the backlog already say the SPA must deliver the full user-visible
 ladder as slices land (`BACKLOG.md`: ADR-012 → “epic-01 F07, **epic-02..05
 web**”). The decomposer interpreted API-first as **API-only**: E02–E05 stories
 are `layer: backend` (e.g. `us-01-renewal-dashboard-api`). Integration stories
-mention `contigo-web (smoke)` but never author screens.
+mention `raffa-web (smoke)` but never author screens.
 
 So a reviewer on `demo` after E05 can have a working API and still have no
-portfolio, Contract 360, Ask Contigo, renewals, savings, or quote-check **UI**.
+portfolio, Contract 360, Ask Raffa, renewals, savings, or quote-check **UI**.
 That fails product-spec §16 definitions of success and §20 Day-1 (those are
 user outcomes, not HTTP status codes).
 
@@ -92,9 +92,9 @@ This table **is** council-owned now:
 | Topic | Owner seat | Output |
 |---|---|---|
 | Information architecture (IA) for the Day-1 web path | **ux-ui-designer** (draft), product-owner concurs | ADR — sitemap, primary nav, roles (admin / procurement), empty/error/loading |
-| Design system for Contigo web | **ux-ui-designer** | ADR + Claude Design system (tokens, type, colour, components) |
+| Design system for Raffa web | **ux-ui-designer** | ADR + Claude Design system (tokens, type, colour, components) |
 | Screen inventory mapped 1:1 to spec §16 R0–R4 + §20 | **ux-ui-designer** + product-owner | ADR or annex — every success criterion has a screen (or a named non-goal) |
-| Evidence / confidence / citation UX patterns | **ux-ui-designer** + client-architect | How Contract 360, Ask Contigo citations, and review/correct render without looking like a raw JSON dump |
+| Evidence / confidence / citation UX patterns | **ux-ui-designer** + client-architect | How Contract 360, Ask Raffa citations, and review/correct render without looking like a raw JSON dump |
 | Web story cut (epic-06+) | product-owner + delivery-manager | Wave calendar: e06 shell/design-system, then capability UIs aligned to R0→R4 user ladder |
 | Client-architect residual | client-architect | Routing, MSAL/config, OpenAPI regen, SWA — **not** visual language |
 | Thin API gaps | software-architect | Only if a locked screen cannot be built from documented endpoints |
@@ -106,7 +106,7 @@ They are **not** a substitute for a UX/UI Design expert.
 
 ## 4. Required council seat — UX/UI Design expert
 
-The first Contigo council had six producers and no designer. That is why
+The first Raffa council had six producers and no designer. That is why
 dashboards became `*-dashboard-api`.
 
 **This pass is invalid unless a seventh producer seat exists:**
@@ -146,7 +146,7 @@ inputs/design/                    # or web/design/handoff/ if already in-repo
     day1-demo.html                # clickable Day-1 path on demo
     r0-workspace.html
     r1-contract-360.html
-    r1-ask-contigo.html
+    r1-ask-raffa.html
     r2-renewals.html
     r3-savings.html
     r4-quote-check.html
@@ -160,7 +160,7 @@ Minimum prototype coverage (one clickable path, not every edge):
 4. Portfolio list + filters
 5. Contract 360 (clauses, evidence, confidence)
 6. Review / correction
-7. Ask Contigo + citations / abstain
+7. Ask Raffa + citations / abstain
 8. Renewal pipeline + insight card + action
 9. Savings KPIs + list
 10. Quote extract → assessment → target → negotiation
@@ -232,7 +232,7 @@ The decomposer reads INDEX **plus** the new UX ADRs **plus** this brief.
 | Do not rewrite | `reports/workitems/epic-01` … `epic-05` stay. No renumber. |
 | New epic(s) | Start at **epic-06** (e.g. `epic-06-web-experience`). Further epics 07+ if the tree needs more than one overnight slice. |
 | Layer | New tasks are `layer: web` unless a thin API gap (§2). |
-| `target_repo` | `contigo-web` / folder `web/`. |
+| `target_repo` | `raffa-web` / folder `web/`. |
 | Slices | New files `reports/plan/slices/e06.yaml`, `e07.yaml`, … and MANIFEST entries. Do not edit `e01`–`e05`. |
 | Mapping | Every spec §16 row and §20 Day-1 step has at least one web story. “API exists” is not enough. |
 | Client regen | A repeating chore: regenerate TS client when backend OpenAPI grew in E02–E05. |
@@ -243,7 +243,7 @@ Suggested epic-06 cut (council may split):
 
 1. Design system + app shell (nav, auth gate, workspace switch, config.json already real).
 2. R0 UI — invite/roles, upload, document status, audit read-back.
-3. R1 UI — portfolio, filters, Contract 360, evidence, correct, Ask Contigo.
+3. R1 UI — portfolio, filters, Contract 360, evidence, correct, Ask Raffa.
 4. R2 UI — renewal pipeline, insight, action.
 5. R3 UI — savings KPIs + list.
 6. R4 UI — quote check + negotiation + Day-1 integration smoke.
@@ -264,11 +264,11 @@ Mobile is unchanged: scaffold builds, non-blocking CI, no store.
 ## 8. How to run this intake
 
 A **separate** Helix artifact owns this pass. Do **not** patch or relaunch
-`contigo-process.yaml` (that file drives the live R0–R4 fan-out).
+`raffa-process.yaml` (that file drives the live R0–R4 fan-out).
 
 | Artifact | Launcher | Target |
 |---|---|---|
-| `contigo-web-process.yaml` | `./run-web.ps1` | `contigo-web-design` (default) |
+| `raffa-web-process.yaml` | `./run-web.ps1` | `raffa-web-design` (default) |
 
 See `WEB-PROCESS.md`. `--fresh` is refused. Decomposition starts at **epic-06 /
 e06**. Claude Design HITL: fill `inputs/design/prototypes/` before the web

@@ -4,7 +4,7 @@ type: task
 story: us-01-quote-check
 wave: 8
 status: live
-target_repo: contigo-web
+target_repo: raffa-web
 ---
 
 # task-01-quote-check — Quote check stepper + negotiation + outcome UI
@@ -19,7 +19,7 @@ and outcome form.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-web/src/routes/quotes/:id/ | quote check UI |
+| workspace/raffa-web/src/routes/quotes/:id/ | quote check UI |
 | inputs/design/prototypes/screens.md | screen 10 (read, cite) |
 | inputs/design/prototypes/day1-demo.html | reference (cite) |
 
@@ -33,7 +33,7 @@ and outcome form.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | unmatched SKU blocks assessment until mapped | workspace/contigo-web/tests |
+| unit | unmatched SKU blocks assessment until mapped | workspace/raffa-web/tests |
 
 ## Wave-spec entry
 ```yaml

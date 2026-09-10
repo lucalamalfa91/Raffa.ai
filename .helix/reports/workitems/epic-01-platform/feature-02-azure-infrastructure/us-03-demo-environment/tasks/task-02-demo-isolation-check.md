@@ -4,7 +4,7 @@ type: task
 story: us-03-demo-environment
 wave: R0
 status: live
-target_repo: contigo-infra
+target_repo: raffa-infra
 ---
 
 # task-02-demo-isolation-check — 02 Demo Isolation Check
@@ -18,7 +18,7 @@ Assert demo uses distinct RG/store and no shared state with dev.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-infra/src/ | implementation for `demo-isolation-verified` |
+| workspace/raffa-infra/src/ | implementation for `demo-isolation-verified` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-005, ADR-016.
@@ -30,7 +30,7 @@ Assert demo uses distinct RG/store and no shared state with dev.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | demo-isolation-verified behaviour | workspace/contigo-infra/tests |
+| unit | demo-isolation-verified behaviour | workspace/raffa-infra/tests |
 
 ## Open questions blocking this task
 - none

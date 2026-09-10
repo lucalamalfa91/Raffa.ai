@@ -22,11 +22,11 @@ Legend: **OPEN** = e11 work. **WAVE_COVERED** = already true on live CSS.
 | ID | Prototype | `web/` today | Status |
 |----|-----------|--------------|--------|
 | G-S1-FILL | Left fill `--color-accent-100`; grid lines `--color-accent-200` **48px** | Fill **accent-200**; grid **divider 32px** | OPEN |
-| G-S1-LOCKUP | 14px accent square + "Contigo" 22px/800, top of panel | Missing | OPEN |
+| G-S1-LOCKUP | 14px accent square + "Raffa" 22px/800, top of panel | Missing | OPEN |
 | G-S1-FLOW | `justify-content: space-between` (logo / sentence / jobs) | `center` — sparse middle blob | OPEN |
 | G-S1-TYPE | North-star `clamp(30px, 3.8vw, 52px)` / 800 / lh 1.02 / tracking -0.02em | Fixed **32px** (`.screen-title`) | OPEN |
 | G-S1-JOBS | Contract / Renewal / Savings **Intelligence**; New purchase **Quote Check** | Tracking / Opportunities invented | OPEN |
-| G-S1-RIGHT | `max-width: 520px`; **h2 Sign in**; muted Entra sentence; btn padding 12px 14px; **Microsoft 4-square SVG** | h1 "Contigo"; no subtitle; naked button | OPEN |
+| G-S1-RIGHT | `max-width: 520px`; **h2 Sign in**; muted Entra sentence; btn padding 12px 14px; **Microsoft 4-square SVG** | h1 "Raffa"; no subtitle; naked button | OPEN |
 | G-S1-PAD | Panel `padding: clamp(24px, 4vw, 48px)` | `--space-8` (32px) | OPEN |
 
 ## Shell + Ask bar

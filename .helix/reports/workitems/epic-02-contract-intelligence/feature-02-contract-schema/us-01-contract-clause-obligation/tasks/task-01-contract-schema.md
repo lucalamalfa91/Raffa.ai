@@ -4,7 +4,7 @@ type: task
 story: us-01-contract-clause-obligation
 wave: R1
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-contract-schema — 01 Contract Schema
@@ -18,7 +18,7 @@ Add Contract/LineItem/Clause/Obligation/Risk/CorrectionHistory + migrations.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `contract-schema` |
+| workspace/raffa-backend/src/ | implementation for `contract-schema` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-003, ADR-009.
@@ -30,7 +30,7 @@ Add Contract/LineItem/Clause/Obligation/Risk/CorrectionHistory + migrations.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | contract-schema behaviour | workspace/contigo-backend/tests |
+| unit | contract-schema behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

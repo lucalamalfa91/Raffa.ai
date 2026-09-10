@@ -25,10 +25,10 @@ modules every later task fills in.
       grounding or browsing payload (asserted on a fake HTTP handler), and
       returns the structured JSON of `inputs/requirements.md` R-ASK-05;
       `classify` returns one label of a fixed set plus confidence.
-- [ ] AC-3 No Azure AI SDK reference exists outside `Contigo.AiGateway`.
-- [ ] AC-4 `backend/Contigo.slnx` contains `Contigo.Market`, `Contigo.Insights`,
-      their test projects, `Contigo.Suppliers.Products.Tests` and
-      `Contigo.AiEval`; `dotnet build Contigo.slnx` is green; the
+- [ ] AC-3 No Azure AI SDK reference exists outside `Raffa.AiGateway`.
+- [ ] AC-4 `backend/Raffa.slnx` contains `Raffa.Market`, `Raffa.Insights`,
+      their test projects, `Raffa.Suppliers.Products.Tests` and
+      `Raffa.AiEval`; `dotnet build Raffa.slnx` is green; the
       architecture allow-list names Market → `[SharedKernel, AiGateway,
       Benchmark]` and Insights → `[SharedKernel, Benchmark]`.
 

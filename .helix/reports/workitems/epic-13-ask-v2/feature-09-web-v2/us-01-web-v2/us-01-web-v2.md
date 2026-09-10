@@ -10,16 +10,16 @@ status: active
 
 ## Story
 
-As **procurement**, I want Contigo to open on Ask, to keep my recent chats
+As **procurement**, I want Raffa to open on Ask, to keep my recent chats
 one click away, to show me only the documents that need me, to refuse
 non-contracts with a plain "Not added" card, and to answer in readable
 prose with citation cards and buttons — exactly as
-`inputs/design/prototypes/Contigo V2 Prototype.html` shows — so that the
+`inputs/design/prototypes/Raffa V2 Prototype.html` shows — so that the
 product feels like the design I approved.
 
 ## Acceptance criteria
 
-- [ ] AC-1 `/` lands on `/ask`; the rail is two-tier (Ask Contigo with the
+- [ ] AC-1 `/` lands on `/ask`; the rail is two-tier (Ask Raffa with the
       last 5 conversations and "+ New chat", Documents with "N to review";
       "From your contracts": Portfolio, Renewals, Quote check greyed until
       the first validated contract; no Home item; Workspace & members in
@@ -27,9 +27,9 @@ product feels like the design I approved.
 - [ ] AC-2 The global Ask bar on every screen (square mark, full-width
       input, two suggestion chips from the capability catalog for the
       current screen; ⌘K / Ctrl+K focus) opens a **new chat** on Enter.
-- [ ] AC-3 Contigo turns render markdown with inline `[n]`, citation cards
+- [ ] AC-3 Raffa turns render markdown with inline `[n]`, citation cards
       (corpus badge *validated contract* / *market · representative* /
-      *Contigo*, title, page / section or record, snippet, preview or
+      *Raffa*, title, page / section or record, snippet, preview or
       placeholder) and action buttons; `redirect` / `refusal` turns use
       warm prose + one CTA; `abstain` uses the accent-left block; no route
       line, no guid anywhere.
@@ -68,7 +68,7 @@ product feels like the design I approved.
 - ADR-024 — V2 IA, prototype as pixel reference, requirements win on divergences
 - ADR-018 / ADR-020 (amended) — routes, screens, states
 - ADR-019 — Modernist tokens unchanged (`web/src/styles/tokens.css`)
-- ADR-012 — one generated TS client from `web/openapi/contigo-api.v1.json`
+- ADR-012 — one generated TS client from `web/openapi/raffa-api.v1.json`
 
 ## Tasks
 
@@ -81,13 +81,13 @@ product feels like the design I approved.
 
 ## Council decisions carried into this story
 
-Design anchors (cite in every task): `contigo-v2/app.jsx` → `primaryNav`,
+Design anchors (cite in every task): `raffa-v2/app.jsx` → `primaryNav`,
 `kbNav`, `kbReady`, `askOffReason`, `askOffCta`, `askHello`, `askScope`,
 `chipsFor`, `convs`, `newChat`, `docRows`, `stageLabels`, `filterAttn`,
-`justValidated`, `mkMsg`; `contigo-v2/markup.html` strings "From your
+`justValidated`, `mkMsg`; `raffa-v2/markup.html` strings "From your
 contracts", "+ New chat", "First your contracts. Then your questions.",
 "Nothing needs you right now.", "Ask needs at least one validated
-contract.", "Mark as validated"; `contigo-v2/screens-v2.md` §2, §3, §4;
+contract.", "Mark as validated"; `raffa-v2/screens-v2.md` §2, §3, §4;
 `styles.css` for the V2 component classes. Reply contract:
 `inputs/requirements.md` §6.
 

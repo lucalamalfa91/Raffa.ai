@@ -12,7 +12,7 @@ export interface Contract360HeaderProps {
 }
 
 /**
- * The V2 Contract 360 header (`contigo-v2/markup.html` "CONTRACT 360" block, top): the origin back
+ * The V2 Contract 360 header (`raffa-v2/markup.html` "CONTRACT 360" block, top): the origin back
  * link, the supplier kicker over the contract title, and the one-line meta "{type} · {spend} / year
  * · {docCount} documents · {status}" on the right. The two real actions -- "Ask about it" (a new
  * chat scoped to this contract, `/ask?scope=<id>`) and "Review extraction" -- stay with the header.

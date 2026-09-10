@@ -12,7 +12,7 @@ them), opens every live task's prompt file and parses its
 2. **Creation counts as writing.** A file whose Change column says ``new`` may
    not be *named anywhere* in another task file of the same phase (its prose,
    its Context, its DoD). The name looked for is the path's last two components
-   (``Contigo.Api/MarketEndpointExtensions.cs``) and, for the
+   (``Raffa.Api/MarketEndpointExtensions.cs``) and, for the
    ``<X>EndpointExtensions.cs`` convention, the ``Map<X>Endpoints`` call a sibling
    would write into ``Program.cs``. e13 phase 3: F02/T02 created
    ``MarketEndpointExtensions.cs`` and F06/T01 mapped ``MapMarketEndpoints()``;

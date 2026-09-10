@@ -44,7 +44,7 @@ GOOD_IDENTITY_OUTPUTS_TF = (
 
 GOOD_KEYVAULT_MAIN_TF = (
     'resource "azurerm_key_vault" "this" {\n'
-    '  name                       = "kv-contigo-${var.environment}"\n'
+    '  name                       = "kv-raffa-${var.environment}"\n'
     "  rbac_authorization_enabled = true\n"
     "}\n"
     "\n"
@@ -86,14 +86,14 @@ IDENTITY_BLOCK = (
 
 HEADER_BLOCK = (
     'resource "azurerm_container_app_environment" "this" {\n'
-    '  name = "cae-contigo-${var.environment}"\n'
+    '  name = "cae-raffa-${var.environment}"\n'
     "}\n"
     "\n"
 )
 
 API_APP_BLOCK = (
     'resource "azurerm_container_app" "api" {\n'
-    '  name = "ca-contigo-${var.environment}-api"\n'
+    '  name = "ca-raffa-${var.environment}-api"\n'
     "\n" + IDENTITY_BLOCK + "\n"
     "  template {\n"
     "    min_replicas = 0\n"
@@ -104,7 +104,7 @@ API_APP_BLOCK = (
 
 WORKER_APP_BLOCK = (
     'resource "azurerm_container_app" "worker" {\n'
-    '  name = "ca-contigo-${var.environment}-worker"\n'
+    '  name = "ca-raffa-${var.environment}-worker"\n'
     "\n" + IDENTITY_BLOCK + "\n"
     "  template {\n"
     "    min_replicas = 0\n"

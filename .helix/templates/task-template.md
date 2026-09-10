@@ -4,7 +4,7 @@ type: task
 story: us-NN-<slug>
 wave: R0
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 # requires: [azure_subscription]   # only if this task calls az / terraform apply
 # requires: [hcp_terraform]        # only if this task creates HCP workspaces / inits cloud backend
 ---

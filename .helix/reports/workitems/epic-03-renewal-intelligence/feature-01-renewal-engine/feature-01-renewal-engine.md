@@ -28,4 +28,4 @@ compute an explainable priority score with component breakdown.
 
 ## Target repo
 
-`contigo-backend`
+`raffa-backend`

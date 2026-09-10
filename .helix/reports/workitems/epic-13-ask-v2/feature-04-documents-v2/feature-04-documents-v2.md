@@ -36,4 +36,4 @@ Admin delete (`inputs/requirements.md` R-DOC-01…10). Absorbs e12 F04.
 
 ## Target repo
 
-`contigo-backend`
+`raffa-backend`

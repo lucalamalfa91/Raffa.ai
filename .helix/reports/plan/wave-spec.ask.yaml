@@ -1,11 +1,11 @@
 waveId: wave-v1-ask-e13
 status: planned
-# Ask Contigo V2 (ADR-024; replaces the E12 master). Does not replace wave-spec.execution.yaml.
-# Oracle: inputs/requirements.md. Design oracle: inputs/design/prototypes/Contigo V2 Prototype.html
-# (unpacked: inputs/design/prototypes/contigo-v2/). Every web task cites both.
+# Ask Raffa V2 (ADR-024; replaces the E12 master). Does not replace wave-spec.execution.yaml.
+# Oracle: inputs/requirements.md. Design oracle: inputs/design/prototypes/Raffa V2 Prototype.html
+# (unpacked: inputs/design/prototypes/raffa-v2/). Every web task cites both.
 # Phases follow skills/decompose-ask-workitems.md (single writer per file per phase).
 # estimated tokens: 30.4M (S/M/L mapped; not a packing cap).
-# Launch: Studio -> contigo-process.yaml -> execution-fanout (slice.current.yaml = e13)
+# Launch: Studio -> raffa-process.yaml -> execution-fanout (slice.current.yaml = e13)
 #         or ./run.ps1 -Max -Slice e13 -o execution-fanout  (after reports/plan/gates/ask-v2.hitl-ok)
 phases:
   - id: 1

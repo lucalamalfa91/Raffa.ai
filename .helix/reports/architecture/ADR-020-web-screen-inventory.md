@@ -60,7 +60,7 @@ the decomposer and the reviewer.
 4. **Portfolio** — R1 (columns, filters, attention strip).
 5. **Contract 360** — R1 (header + 10 tabs).
 6. **Review / correction** — R1 (confidence thresholds, evidence pane).
-7. **Ask Contigo** — R1 (chat, citations, abstain).
+7. **Ask Raffa** — R1 (chat, citations, abstain).
 8. **Renewal pipeline** — R2 (threshold strip, table, insight card + actions).
 9. **Home / Savings** — R3 (6 KPIs, opportunities table).
 10. **Quote check** — R4 (Extract → Assessment → Target → Negotiation).
@@ -125,7 +125,7 @@ benchmark-provider-unreachable with KPIs stale-labelled.
 
 ## Amendment (2026-09-08, epic-12 / ADR-023)
 
-Screen 7 (Ask Contigo) keeps the prototype chrome (ADR-019) but the **reply
+Screen 7 (Ask Raffa) keeps the prototype chrome (ADR-019) but the **reply
 body** is the savings-copilot contract in ADR-023: prose + inline `[n]` +
 citation card with first-page preview + at least one in-app action. The red
 “Cannot determine reliably” block is not the only UX for greetings or
@@ -134,8 +134,8 @@ turns still abstain (spec §10.4). See ADR-023.
 
 ## Amendment (2026-09-08, epic-13 / ADR-024)
 
-Screen inventory V2 is `inputs/design/prototypes/contigo-v2/screens-v2.md`
-(authored from `Contigo V2 Prototype.html`): 1 Sign-in → Ask, 2 Ask Contigo
+Screen inventory V2 is `inputs/design/prototypes/raffa-v2/screens-v2.md`
+(authored from `Raffa V2 Prototype.html`): 1 Sign-in → Ask, 2 Ask Raffa
 (home; off / new chat / conversation / abstain / redirect / refusal /
 resumed), 3 Documents (onboarding, multi-file, **Not added**, attention
 filter, real stages, validated hook), 4 Review as a state of Documents,

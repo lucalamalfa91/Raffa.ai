@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
 # =============================================================================
-# contigo-flow -- launch wrapper
+# raffa-flow -- launch wrapper
 # =============================================================================
 # helix loads only the FIRST .env among [helix-repo/.env, $PWD/.env]. We export
 # this artifact's .env first so secrets stay co-located and win (override=False).
 #
 #   ./run.sh --check
-#   ./run.sh -o contigo-design -i "Contigo V1 design pass"
-#   ./run.sh -o contigo-execution -i "reports/workitems/.../task-....md"
+#   ./run.sh -o raffa-design -i "Raffa V1 design pass"
+#   ./run.sh -o raffa-execution -i "reports/workitems/.../task-....md"
 #   ./run.sh --max --slice r0-a -o execution-fanout
 #     (worktrees of the local clone; on_orchestration_stop opens the GitHub PR)
-#   ./run.sh --fresh -o contigo-design -i "..."
+#   ./run.sh --fresh -o raffa-design -i "..."
 # =============================================================================
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ARTIFACT="$HERE/contigo-process.yaml"
+ARTIFACT="$HERE/raffa-process.yaml"
 HELIX_BACKEND="${HELIX_BACKEND:-$HERE/../../../helix/src/backend}"
 
 CHECK=0

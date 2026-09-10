@@ -4,16 +4,16 @@
 //
 // Why this is client-side, not server-queried: there is no backend endpoint
 // that lists the workspaces a signed-in identity belongs to.
-//   - backend/src/Contigo.Api/WorkspaceEndpointExtensions.cs maps only
+//   - backend/src/Raffa.Api/WorkspaceEndpointExtensions.cs maps only
 //     `POST /api/workspaces` (create) and `POST /api/workspaces/{tenantId}
 //     /invites` (invite) -- no `GET`.
-//   - backend/src/Contigo.Identity.Workspace/Infrastructure
+//   - backend/src/Raffa.Identity.Workspace/Infrastructure
 //     /WorkspaceProvisioningService.cs's CreateWorkspaceAsync does not create
 //     a membership for the caller: there is no caller identity at creation
 //     time (ADR-010's JWT/claims wiring is not yet in force -- "Workspace
 //     creation is the pre-authentication signup step", that service's own
 //     doc comment).
-//   - backend/src/Contigo.Identity.Workspace/Infrastructure
+//   - backend/src/Raffa.Identity.Workspace/Infrastructure
 //     /WorkspaceMembershipService.cs has InviteAsync/LinkSignInAsync but no
 //     "list workspaces for this user" query.
 // A future backend task would need to add a `GET` endpoint (e.g. keyed off
@@ -29,8 +29,8 @@
 // account's `homeAccountId` so two different Entra accounts on the same
 // browser never see each other's list.
 
-const KNOWN_WORKSPACES_KEY_PREFIX = "contigo.signin.knownWorkspaces.";
-const CURRENT_WORKSPACE_KEY = "contigo.signin.currentWorkspace";
+const KNOWN_WORKSPACES_KEY_PREFIX = "raffa.signin.knownWorkspaces.";
+const CURRENT_WORKSPACE_KEY = "raffa.signin.currentWorkspace";
 
 export interface WorkspaceSummary {
   id: string;
@@ -45,7 +45,7 @@ export interface WorkspaceSummary {
   contractCount: number;
   /**
    * Not modelled by the backend yet -- `WorkspaceTenant`
-   * (backend/src/Contigo.Identity.Workspace/Domain/WorkspaceTenant.cs)
+   * (backend/src/Raffa.Identity.Workspace/Domain/WorkspaceTenant.cs)
    * carries only `Name`/`CreatedAt`, no currency or region column. Left
    * `undefined` rather than invented; render only when present. (The
    * prototype's own fresh/sandbox workspace row omits it too -- only a

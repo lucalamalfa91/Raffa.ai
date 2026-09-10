@@ -5,7 +5,7 @@ import { daysUntil } from "./portfolioAttention";
 
 /**
  * Pure view-model for the V2 Portfolio screen (route `/contracts`; ADR-024 V2 IA; screens-v2.md #6;
- * `contigo-v2/app.jsx` `kbContracts` / `pfSummary` / `moreCols`). No React here -- every rule is
+ * `raffa-v2/app.jsx` `kbContracts` / `pfSummary` / `moreCols`). No React here -- every rule is
  * unit-testable without rendering (`portfolioViewModel.test.ts`).
  *
  * **Validated contracts only, sorted by the notice deadline.** `app.jsx`: `kbContracts =

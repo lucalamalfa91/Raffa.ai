@@ -22,7 +22,7 @@ export interface WorkspaceMemberRow {
   lastActiveAt: string | null;
 }
 
-const MEMBERS_KEY_PREFIX = "contigo.workspace.members.";
+const MEMBERS_KEY_PREFIX = "raffa.workspace.members.";
 
 function selfMemberId(workspaceId: string): string {
   return `self:${workspaceId}`;

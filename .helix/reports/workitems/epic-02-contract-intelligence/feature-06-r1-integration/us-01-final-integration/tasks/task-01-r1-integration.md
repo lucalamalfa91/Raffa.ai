@@ -4,13 +4,13 @@ type: task
 story: us-01-final-integration
 wave: R1
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-r1-integration — 01 R1 Integration
 
 ## Coding objective
-Prove R1 end-to-end: upload->extract->portfolio->360->Ask Contigo->correction.
+Prove R1 end-to-end: upload->extract->portfolio->360->Ask Raffa->correction.
 
 ## Parent story AC covered
 - See parent story `us-01-final-integration` acceptance criteria (traced by this task objective).
@@ -18,7 +18,7 @@ Prove R1 end-to-end: upload->extract->portfolio->360->Ask Contigo->correction.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `r1-integration` |
+| workspace/raffa-backend/src/ | implementation for `r1-integration` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-002, ADR-003, ADR-004, ADR-009, ADR-011, ADR-016.
@@ -30,7 +30,7 @@ Prove R1 end-to-end: upload->extract->portfolio->360->Ask Contigo->correction.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | r1-integration behaviour | workspace/contigo-backend/tests |
+| unit | r1-integration behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

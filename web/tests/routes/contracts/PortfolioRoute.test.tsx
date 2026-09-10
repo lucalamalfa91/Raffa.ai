@@ -32,7 +32,7 @@ function mockApiClient(getPortfolio: ApiClient["getPortfolio"] = vi.fn()): ApiCl
     getQuoteAssessment: vi.fn(),
     recalculateQuoteAssessment: vi.fn(),
     captureNegotiationOutcome: vi.fn(),
-    askContigo: vi.fn(),
+    askRaffa: vi.fn(),
     getSavingsKpis: vi.fn(),
     getSavingsOpportunities: vi.fn(),
     listConversations: vi.fn(),
@@ -94,7 +94,7 @@ describe("PortfolioRoute (V2, screens-v2.md #6 / markup.html PORTFOLIO block)", 
   beforeEach(() => {
     window.sessionStorage.clear();
     window.sessionStorage.setItem(
-      "contigo.signin.currentWorkspace",
+      "raffa.signin.currentWorkspace",
       JSON.stringify({ id: WORKSPACE_ID, name: "Acme Procurement" }),
     );
   });

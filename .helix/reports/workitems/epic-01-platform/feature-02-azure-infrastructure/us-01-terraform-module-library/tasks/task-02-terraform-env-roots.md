@@ -4,7 +4,7 @@ type: task
 story: us-01-terraform-module-library
 wave: R0
 status: live
-target_repo: contigo-infra
+target_repo: raffa-infra
 ---
 
 # task-02-terraform-env-roots — 02 Terraform Env Roots
@@ -18,7 +18,7 @@ Create the two env roots dev/demo with backend.tf pointing at HCP workspaces.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-infra/src/ | implementation for `terraform-env-roots` |
+| workspace/raffa-infra/src/ | implementation for `terraform-env-roots` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-007, ADR-005, ADR-006.
@@ -30,7 +30,7 @@ Create the two env roots dev/demo with backend.tf pointing at HCP workspaces.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | terraform-env-roots behaviour | workspace/contigo-infra/tests |
+| unit | terraform-env-roots behaviour | workspace/raffa-infra/tests |
 
 ## Open questions blocking this task
 - none

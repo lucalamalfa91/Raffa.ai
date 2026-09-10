@@ -1,4 +1,4 @@
-# Contigo web client
+# Raffa web client
 
 React + TypeScript + Vite SPA. OIDC Authorization Code + PKCE via MSAL, config
 injected at runtime. Honours ADR-012 (web stack), ADR-010 (Entra ID / OIDC),
@@ -24,7 +24,7 @@ and ADR-018 (information architecture / route map).
 ```bash
 npm ci                    # install (CI uses this)
 npm run dev               # Vite dev server on :5173, reads public/config.json
-npm run generate:api      # regenerate src/api/generated/schema.ts from openapi/contigo-api.v1.json
+npm run generate:api      # regenerate src/api/generated/schema.ts from openapi/raffa-api.v1.json
 npm run build             # generate:api, then tsc --noEmit type-check, then vite build -> dist/
 npm test                  # vitest run (single pass, CI mode)
 npm run preview           # serve dist/ locally
@@ -66,36 +66,36 @@ for a PKCE public client (ADR-010); the API base URL is not sensitive.
 
 | Field | Source |
 |-------|--------|
-| `apiBaseUrl` | Ingress FQDN of `ca-contigo-<env>-api` |
+| `apiBaseUrl` | Ingress FQDN of `ca-raffa-<env>-api` |
 | `oidcAuthority` | `https://login.microsoftonline.com/<AZURE_TENANT_ID>` (MSAL; no `/v2.0` suffix) |
-| `oidcClientId` | Tag `oidcPublicClientId` on `id-contigo-<env>-workload` (set by `modules/identity`) |
+| `oidcClientId` | Tag `oidcPublicClientId` on `id-raffa-<env>-workload` (set by `modules/identity`) |
 | `oidcRedirectUri` | `https://<swa defaultHostname>/` (trailing slash; matches Entra SPA redirect) |
-| `oidcApiScopes` | `api://contigo-<env>-api/Contigo.Read` and `.../Contigo.Write` (stable App ID URI) |
+| `oidcApiScopes` | `api://raffa-<env>-api/Raffa.Read` and `.../Raffa.Write` (stable App ID URI) |
 
 `scripts/write_web_runtime_config.py` validates the payload and refuses
 localhost / `REPLACE_WITH_*` placeholders. The Static Web App itself is
-`swa-contigo-<env>` in `rg-contigo-<env>`. Deploy 404s until the HCP VCS
+`swa-raffa-<env>` in `rg-raffa-<env>`. Deploy 404s until the HCP VCS
 apply that creates it (and the workload-identity tag) is CURRENT — re-run
 the web workflow after that apply.
 
 ## Screens (ADR-024 V2 route map, amending ADR-018)
 
 Task E13/F09/US01/T01 (web-shell-v2, gap G-IA-V2) moved this app from the flat Day-1 rail to the
-V2 IA: `/` now redirects to `/ask` (Ask Contigo is the home), the rail is two-tier (Ask Contigo +
+V2 IA: `/` now redirects to `/ask` (Ask Raffa is the home), the rail is two-tier (Ask Raffa +
 Documents; "From your contracts" -- Portfolio, Renewals, Quote check, greyed until the first
 validated contract), there is no Home item, and Review is a redirect into Documents rather than its
-own rail destination. Pixel/behaviour reference: `inputs/design/prototypes/Contigo V2 Prototype.html`
-(unpacked `contigo-v2/`). See "App shell, navigation, and the role guard" below for the rail itself.
+own rail destination. Pixel/behaviour reference: `inputs/design/prototypes/Raffa V2 Prototype.html`
+(unpacked `raffa-v2/`). See "App shell, navigation, and the role guard" below for the rail itself.
 
 | Route | Screen(s) | Task |
 |-------|-----------|------|
 | `/signin` | Sign-in (Entra redirect, idle/redirecting states) -> workspace picker (list + create + confirm) | E06/F03/US01/T01 |
 | `/` | Redirects to `/ask` (R-WEB-01) -- there is no standalone Home screen in V2. | E13/F09/US01/T01 |
-| `/ask` | Ask Contigo, V2 rebuild: off state below 1 validated contract (fixed headline + doc-count-dependent reason + one CTA to `/documents`); new chat (hello line, scope line naming the validated count, two capability-sourced suggestion chips, optional `?scope=<contractId>`); conversation view rendering the phase-2 reply contract (markdown, numbered citation cards, actions, follow-ups) via `ReplyBody`. Calls the real `GET/POST /api/conversations`, `POST /api/conversations/{id}/messages`, `GET /api/capabilities`, `GET /api/market/records/{id}`. See "Ask Contigo" below. | E07/F04/US01/T01; V2 rebuild E13/F09/US01/T04 |
+| `/ask` | Ask Raffa, V2 rebuild: off state below 1 validated contract (fixed headline + doc-count-dependent reason + one CTA to `/documents`); new chat (hello line, scope line naming the validated count, two capability-sourced suggestion chips, optional `?scope=<contractId>`); conversation view rendering the phase-2 reply contract (markdown, numbered citation cards, actions, follow-ups) via `ReplyBody`. Calls the real `GET/POST /api/conversations`, `POST /api/conversations/{id}/messages`, `GET /api/capabilities`, `GET /api/market/records/{id}`. See "Ask Raffa" below. | E07/F04/US01/T01; V2 rebuild E13/F09/US01/T04 |
 | `/ask/:conversationId` | Same `AskRoute` as `/ask`, resuming: `useConversation` loads the conversation (`GET /api/conversations/{id}`) and renders every past turn, oldest first, with citation cards and actions still clickable; a named "not found" state for an unknown/foreign/another-user's id. | E13/F09/US01/T01 (route only); resume wired by E13/F09/US01/T04 |
 | `/documents` | V2 rebuild (ADR-024 amendment to ADR-020 screen 3): onboarding empty state ("First your contracts. Then your questions.") -> a server-backed list (`GET /api/documents`, survives a reload) with a **Needs your attention** (default) / **All documents · N** filter, multi-file drop (up to 20 files, <=3 uploads in flight, one row per file from the moment it is picked), real per-file stage text polled every 2s, a **Not added** card for a rejected file (422/415/oversized, session-only, never counted), Admin-only Delete, and Review as a *state* of this same route (`?review=<id>`, reusing `routes/contracts/review/*` as-is). Calls the real `GET /api/documents`, `GET /api/documents/{id}/preview`, `POST /api/documents`, `POST /api/documents/{id}/reprocess`, `DELETE /api/documents/{id}`. See "Documents" below. | E06/F05/US01/T01, E06/F05/US02/T01; V2 rebuild E13/F09/US01/T03 |
 | `/contracts` | Portfolio, V2: header ("Portfolio" + "N validated contracts · CHF 4.2M annual · K notice deadlines within 45 days", or "Lights up from validated contracts"), one table sorted by notice deadline (Supplier · Contract · Annual spend · Ends · Give notice by · Status; **More columns** adds Start · Auto · Risk; rows inside the 45-day window tinted + accent bar; rows open Contract 360), and the reroute state ("Nothing to triage yet" → Upload a contract) while nothing is validated. Calls the real `GET /api/contracts` (now carrying `currency`). See "Portfolio" below. | E07/F01/US01/T01; V2 design alignment (Sept 2026) |
-| `/contracts/:id` | Contract 360, V2 **no tabs**: origin back link ("← Ask Contigo / Documents / Portfolio / Renewals / Savings", else "← Back"), supplier · title · "{type} · {spend} / year · N documents · {status}", **Ask about it** → `/ask?scope=<id>`; the **answers band** (Where you can save · When you must move · What to do, with Start negotiation / Assign to me or the negotiation tracker once acted); **Why — the clauses behind it** (clause rows; click → the original wording highlighted in a serif evidence card; `?clause=<id>`/`?page=<n>` pre-select it); **Details ▾** (key terms, documents, facts still to decide, priority score, Products/Obligations/Risks). Calls the real `GET /api/contracts/{id}`, `GET /api/renewals`, `GET /api/renewals/{contractId}/priority`, `POST /api/renewals/{id}/action`. See "Contract 360" below. | E07/F02/US01/T01; citation landing E13/F10/US01/T01; V2 layout (Sept 2026) |
+| `/contracts/:id` | Contract 360, V2 **no tabs**: origin back link ("← Ask Raffa / Documents / Portfolio / Renewals / Savings", else "← Back"), supplier · title · "{type} · {spend} / year · N documents · {status}", **Ask about it** → `/ask?scope=<id>`; the **answers band** (Where you can save · When you must move · What to do, with Start negotiation / Assign to me or the negotiation tracker once acted); **Why — the clauses behind it** (clause rows; click → the original wording highlighted in a serif evidence card; `?clause=<id>`/`?page=<n>` pre-select it); **Details ▾** (key terms, documents, facts still to decide, priority score, Products/Obligations/Risks). Calls the real `GET /api/contracts/{id}`, `GET /api/renewals`, `GET /api/renewals/{contractId}/priority`, `POST /api/renewals/{id}/action`. See "Contract 360" below. | E07/F02/US01/T01; citation landing E13/F10/US01/T01; V2 layout (Sept 2026) |
 | `/contracts/:id/review` | Review / correction: 4-column field list (critical marker, extracted value + real source line, real per-field confidence tag from the extraction evidence, Accept/Correct) + right-hand evidence pane (file · page header, the quoted passage with the span highlighted, model + confidence, correction form, real correction-history trail) + gated "Mark as validated" that really signs the document off. Calls the real `GET /api/contracts/{id}`, `GET /api/contracts/{id}/corrections`, `GET /api/contracts/{id}/evidence`, `PATCH /api/contracts/{id}`, `POST /api/documents/{id}/validate`. Shares its whole lifecycle with the Documents review state through `routes/contracts/review/useReviewSession.ts`. See "Review / correction" below. | E07/F03/US01/T01 |
 | `/renewals` | Renewals, V2: header ("Renewals" + "N contracts with validated dates · sorted by priority"), one list sorted by score (Score · Supplier · contract · Renews in · Notice in · Status) and the selected row's **Why it is here** pane (recommended action + rationale, Start negotiation / Assign to me, "See the facts behind this →"), plus loading/error states and the reroute "No renewal dates yet" while nothing is validated. Calls the real `GET /api/renewals`, `GET /api/renewals/{contractId}/priority`, `POST /api/renewals/{id}/action`. See "Renewals" below. | E08/F01/US01/T01; V2 design alignment (Sept 2026) |
 | `/quotes`, `/quotes/:id` | Quote check, V2: constant header ("Optional · new purchase" · intro sentence); landing = the dashed drop card (**Upload a quote** + "or use the sample: Databricks proposal Q-88213", optional supplier/currency/geography/date under a disclosure); loaded = the Supplier quote · Market range · Assessment band, the lines table (Line · Quoted · P50 · Position · Benchmark) and "Target and negotiation levers are one step further — shown only if you want them." revealing Target, then Negotiation (outcome capture); unmapped SKUs show the mapping block instead. Calls the real `POST /api/quotes`, `POST /api/quotes/{id}/assessment/recalculate`, `POST /api/negotiations/outcomes`. See "Quote check" below. | E08/F03/US01/T01; V2 design alignment (Sept 2026) |
@@ -164,7 +164,7 @@ what re-evaluates `App.tsx`'s check with both facts already true.
 
 - **Two-tier rail** (`src/components/shell/RailNav.tsx`, model in
   `src/components/shell/navItems.ts`) replaces the flat, eight-item Day-1 list.
-  **Primary**: Ask Contigo (badge `⌘K`, a nested conversations slot -- the
+  **Primary**: Ask Raffa (badge `⌘K`, a nested conversations slot -- the
   caller's own last 5 conversations from `GET /api/conversations`, active one
   in accent, plus "+ New chat"; `useRecentConversations` re-fetches on every
   navigation rather than once per shell mount, since a new conversation is a
@@ -212,7 +212,7 @@ what re-evaluates `App.tsx`'s check with both facts already true.
   screen.
 - **Role source is interim** (`src/components/shell/workspaceRole.ts`): no
   JWT/claims wiring exists yet (ADR-010 is not wired into
-  `backend/src/Contigo.Api/Program.cs`), so there is no server-issued "what
+  `backend/src/Raffa.Api/Program.cs`), so there is no server-issued "what
   is my role" answer today. The default is `admin` (whoever picked a
   workspace in this browser created it, and is therefore its Admin --
   the same fact `workspaceStore.ts`'s `roleLabel` already encodes). **An
@@ -234,14 +234,14 @@ what re-evaluates `App.tsx`'s check with both facts already true.
   the capability key matching the current route; the pre-existing static
   per-route copy is the fallback while the fetch is in flight, fails, or has
   no entry for the current screen -- never a blank chip row. The placeholder
-  itself still switches to "Ask Contigo switches on after your first
+  itself still switches to "Ask Raffa switches on after your first
   validated contract" while `!kbReady`, regardless of route (ADR-024 V2
   amendment) -- this bar gets the user to `/ask`, it does not answer them
   itself.
 
 **Workspace list is a client-side cache, not a server query** -- there is no
 backend endpoint that lists the workspaces a signed-in identity belongs to
-(`backend/src/Contigo.Api/WorkspaceEndpointExtensions.cs` maps only
+(`backend/src/Raffa.Api/WorkspaceEndpointExtensions.cs` maps only
 `POST /api/workspaces` create and `POST /api/workspaces/{tenantId}/invites`;
 creating a workspace does not create a membership for the caller, since
 ADR-010's claims wiring is not in force yet -- see that file's own doc
@@ -263,14 +263,14 @@ on every row this screen renders: the former because this screen never calls
 the portfolio API (a freshly-known workspace has genuinely ingested nothing
 yet), the latter because there is no server-issued role claim to read yet
 (ADR-010). `currencyRegion` is omitted entirely -- `WorkspaceTenant`
-(backend/src/Contigo.Identity.Workspace/Domain/WorkspaceTenant.cs) has no
+(backend/src/Raffa.Identity.Workspace/Domain/WorkspaceTenant.cs) has no
 such column. All three are flagged in `workspaceStore.ts`'s own doc comments
 rather than silently invented.
 
-### Documents (ADR-020 screen 3; V1 tasks E06/F05/US01/T01 + E06/F05/US02/T01; V2 rebuild task E13/F09/US01/T03, `contigo-v2/screens-v2.md` #3/#4)
+### Documents (ADR-020 screen 3; V1 tasks E06/F05/US01/T01 + E06/F05/US02/T01; V2 rebuild task E13/F09/US01/T03, `raffa-v2/screens-v2.md` #3/#4)
 
 `src/routes/documents/` implements `/documents` as three states
-(`index.tsx`'s own header comment; mirrors `contigo-v2/app.jsx`'s own
+(`index.tsx`'s own header comment; mirrors `raffa-v2/app.jsx`'s own
 `docView: 'list' | 'review'` state machine), not V1's single
 upload-then-table screen:
 
@@ -279,9 +279,9 @@ upload-then-table screen:
    (`index.tsx`'s `isEmpty`: fetch state is `"ready"` and `documents` /
    `localUploads` / `rejected` are all empty). "First your contracts. Then
    your questions." and the three-step copy (`01 · Upload` / "Drop your
-   contracts", `02 · Process` / "Contigo extracts the facts", `03 · Ask` /
-   "Ask Contigo") are quoted **verbatim from the literal prototype markup**
-   (`contigo-v2/markup.html`), not from `screens-v2.md`'s own shorthand
+   contracts", `02 · Process` / "Raffa extracts the facts", `03 · Ask` /
+   "Ask Raffa") are quoted **verbatim from the literal prototype markup**
+   (`raffa-v2/markup.html`), not from `screens-v2.md`'s own shorthand
    summary of the same block ("02 · Review") -- ADR-024 names the prototype
    itself, not a summary of it, as the pixel/copy reference.
 2. **List** (`AttentionFilter.tsx` + `DocumentStatusTable.tsx`) -- the
@@ -339,7 +339,7 @@ upload-then-table screen:
   `uploadPipeline.ts#getRejectionReasonCopy`) -- a rejected file never
   becomes a row and is never counted in the list summary; copy is keyed by
   the admission gate's own `reason`: `not_a_contract` ("this looks like a
-  recipe, not a contract...") or `no_readable_text` ("Contigo could not read
+  recipe, not a contract...") or `no_readable_text` ("Raffa could not read
   any contract text in this file...") for a `422`, the server's own message
   for a `415` (wrong format) or an oversized file rejected client-side
   before any request is sent -- all quoted verbatim from
@@ -429,9 +429,9 @@ R-WEB-05)**:
   link into a new, scoped Ask chat (`/ask?scope=<contractId>`).
 
 **Provenance -- documented ahead of its own backend counterpart.** This
-task (`target_repo: contigo-web`) added `GET /api/documents`,
+task (`target_repo: raffa-web`) added `GET /api/documents`,
 `GET /api/documents/{id}/preview`, `POST /api/documents/{id}/reprocess` and
-`DELETE /api/documents/{id}` to `openapi/contigo-api.v1.json`, plus the
+`DELETE /api/documents/{id}` to `openapi/raffa-api.v1.json`, plus the
 widened `documentType` / `detectedType` enum (the original six members plus
 `Quote` / `Invoice` / `PriceList` / `Nda` / `Dpa`) and the `413` / `415` /
 `422` admission-gate responses on `POST /api/documents` -- all authored from
@@ -457,7 +457,7 @@ never the other way around.
 shell, navigation, and the role guard" above for the full gap and its own
 named follow-up.
 
-### Portfolio (ADR-024 V2, `contigo-v2/screens-v2.md` #6; originally ADR-020 screen 4, task E07/F01/US01/T01)
+### Portfolio (ADR-024 V2, `raffa-v2/screens-v2.md` #6; originally ADR-020 screen 4, task E07/F01/US01/T01)
 
 `src/routes/contracts/` is the V2 Portfolio: one list of validated contracts sorted by the soonest
 notice deadline, the header summary the prototype's `pfSummary` builds, and the R-WEB-02 reroute
@@ -485,7 +485,7 @@ state while nothing is validated. The Day-1 filter chips and attention strip are
   Upload one to start." → `/documents`) when nothing is validated yet. The header summary reads
   "Lights up from validated contracts" in that state.
 
-### Contract 360 (ADR-024 V2 "no tabs", `contigo-v2/screens-v2.md` #5; originally ADR-020 screen 5, task E07/F02/US01/T01; citation landing task E13/F10/US01/T01)
+### Contract 360 (ADR-024 V2 "no tabs", `raffa-v2/screens-v2.md` #5; originally ADR-020 screen 5, task E07/F02/US01/T01; citation landing task E13/F10/US01/T01)
 
 `src/routes/contracts/contract360/` is the V2 Contract 360: one page -- header, answers band, "Why —
 the clauses behind it", then a "Details ▾" drawer. The Day-1 ten-tab strip is gone; every fact the
@@ -495,7 +495,7 @@ tabs held is still on the page, inside the drawer.
   state), then `GET /api/renewals` (this contract's recommendation) and `GET /api/renewals/{id}/
   priority` together, both independently optional -- either failing degrades its own answer to an
   honest "not yet", never the screen.
-- **Header** (`Contract360Header.tsx`) -- the origin back link (`resolveBackLink`: Ask Contigo /
+- **Header** (`Contract360Header.tsx`) -- the origin back link (`resolveBackLink`: Ask Raffa /
   Documents / Portfolio / Renewals / Savings from `state.from`, else a plain "← Back" that walks
   history), the supplier kicker (`resolveSupplierLabel`: the wire's `supplierName`, else the id
   fragment), the type-label title, the meta line `formatHeaderMeta` ("{type} · {spend} / year · N
@@ -549,10 +549,10 @@ task E07/F02/US01/T01 to this exact route).
   dependency. A field renders only when the contract actually has a value for it (no "—" rows).
 - **No live per-field confidence exists yet for this field set -- a real, pre-existing backend
   gap, not one this task's file scope can close.** `ExtractionEvidence`
-  (`backend/src/Contigo.Documents.Contracts/Domain/ExtractionEvidence.cs`, task E02/F01/US02/T01)
+  (`backend/src/Raffa.Documents.Contracts/Domain/ExtractionEvidence.cs`, task E02/F01/US02/T01)
   stores exactly the per-field confidence/source-span/extraction-job trail AC-2/AC-3 describe, keyed
   by the same `FieldName` scheme `CorrectionHistory` already uses -- but no endpoint in
-  `backend/src/Contigo.Api` reads it, and `Contract360QueryService` never joins it either. Until a
+  `backend/src/Raffa.Api` reads it, and `Contract360QueryService` never joins it either. Until a
   backend task adds a read endpoint (e.g. `GET /api/contracts/{id}/evidence`), every undecided field
   is conservatively treated as spec §7.3's <80% "must be reviewed" band -- never a fabricated
   percentage (Appendix C rule 10) -- so AC-4's gate is still real and testable today. The evidence
@@ -587,8 +587,8 @@ never a fabricated document name/page/quote. See `review.css.test.ts` for the CS
 (`test.css: false` means no computed style exists to assert against under jsdom, same reasoning
 `signin.css.test.ts` already documents).
 
-### Ask Contigo (ADR-020 screen 7 / ADR-024 §6, task E07/F04/US01/T01; V2 rebuild task
-E13/F09/US01/T04, us-01-web-v2 AC-1/AC-3/AC-5/AC-6, `contigo-v2/screens-v2.md` #2)
+### Ask Raffa (ADR-020 screen 7 / ADR-024 §6, task E07/F04/US01/T01; V2 rebuild task
+E13/F09/US01/T04, us-01-web-v2 AC-1/AC-3/AC-5/AC-6, `raffa-v2/screens-v2.md` #2)
 
 `src/routes/ask/` implements screen 2: one screen, four faces (off / new chat / conversation /
 resume -- `turns.length === 0` vs `> 0` and two route-derived ids inside one component, not four
@@ -611,7 +611,7 @@ per-user conversations.
   validated count (`askViewModel.ts#buildScopeLine`, "Answers only from N validated contract(s) ·
   cites or abstains", the parenthetical supplier-name list omitted honestly until a future backend
   task resolves it) plus the prototype's structured/legal trailer sentence, input placeholder "Ask
-  Contigo — spend, dates, clauses, liability…", two suggestion chips (`suggestionsFor`) from the
+  Raffa — spend, dates, clauses, liability…", two suggestion chips (`suggestionsFor`) from the
   `ask` capability's own `exampleQuestions` (`GET /api/capabilities`), falling back to a small static
   pair while the catalog has not loaded. Asking (typed, a chip, or the seed query the global Ask bar
   carries in router state, `newChat: true`) runs `createConversationAndAsk`:
@@ -632,12 +632,12 @@ per-user conversations.
   against `AskCopilotService.cs`'s own `PackItem` constructions, a documented, honest gap, not a
   guess) with `state.from: "ask"`, which Contract 360's own back-link picks up; a **market** citation
   opens `MarketRecordPanel.tsx` (`GET /api/market/records/{id}`: title, category, geography,
-  P25/P50/P75 band, provenance label, updated date); a **contigo** feature citation navigates to its
+  P25/P50/P75 band, provenance label, updated date); a **raffa** feature citation navigates to its
   own href. Follow-up chips post as a new message in the same conversation, the same `ask()` path a
   typed question uses.
 - **Resume** (`/ask/:conversationId`, R-CONV-02 AC-1) -- `useConversation.ts` loads the conversation
   (`GET /api/conversations/{id}`) and turns every stored message, oldest first, into the same turn
-  shape a live turn produces (`askViewModel.ts#buildTurnsFromConversation`); a resumed Contigo turn's
+  shape a live turn produces (`askViewModel.ts#buildTurnsFromConversation`); a resumed Raffa turn's
   `followUps` is always empty (`ConversationMessage` has no such column on the wire -- an honest
   limitation, not an oversight). A `404` (unknown id, another tenant's, or another user's -- one
   honest outcome per that operation's own OpenAPI description) renders a named "Conversation not
@@ -654,7 +654,7 @@ per-user conversations.
   full header provenance; today only `/api/conversations*` actually reads it
   (`ConversationsEndpointExtensions.TryResolveUserId`).
 
-### Renewals (ADR-024 V2, `contigo-v2/screens-v2.md` #7; originally ADR-020 screen 8, task E08/F01/US01/T01)
+### Renewals (ADR-024 V2, `raffa-v2/screens-v2.md` #7; originally ADR-020 screen 8, task E08/F01/US01/T01)
 
 `src/routes/renewals/` is the V2 Renewals screen: a header with the prototype's `rnSummary`, one list
 sorted by priority, the selected row's **Why it is here** pane, and the reroute state while nothing
@@ -682,7 +682,7 @@ gone with V2.
 - **States** -- loading, error, and the reroute "No renewal dates yet · Renewals are computed from
   validated end dates and notice periods. Upload a contract to start." → `/documents`.
 
-### Quote check (ADR-024 V2, `contigo-v2/screens-v2.md` #9; originally ADR-020 screen 10, task E08/F03/US01/T01)
+### Quote check (ADR-024 V2, `raffa-v2/screens-v2.md` #9; originally ADR-020 screen 10, task E08/F03/US01/T01)
 
 `src/routes/quotes/` is the V2 Quote check: a constant header ("Optional · new purchase" · "Quote
 check" · "Drop a supplier proposal; …"), the landing drop card, and -- once a quote is loaded -- the
@@ -717,7 +717,7 @@ gone; the same real calls remain.
   the mapping block (free-text canonical SKU / product name per line, one recalculate call) takes the
   footer's place; `mergeKnownLineDetails` keeps each line's real description once it resolves.
 
-### Savings (ADR-024 V2 "No Home item", `contigo-v2/screens-v2.md` #8; originally ADR-020 screen 9, task E08/F02/US01/T01; moved to `/savings` by task E13/F09/US01/T01)
+### Savings (ADR-024 V2 "No Home item", `raffa-v2/screens-v2.md` #8; originally ADR-020 screen 9, task E08/F02/US01/T01; moved to `/savings` by task E13/F09/US01/T01)
 
 `src/routes/savings/` is the V2 Savings screen: a header with a summary, three KPI cells, and the
 opportunities table -- reached from Ask actions, Renewals and Contract 360, not the rail. The Day-1
@@ -744,7 +744,7 @@ six-cell row and eight-column table are gone with V2.
 - **Reroute** -- "No savings opportunities yet · Opportunities appear once a renewal is actioned or a
   saving is identified from validated contracts." → **Open renewals**.
 
-### Workspace & members (ADR-024 V2, `contigo-v2/screens-v2.md` #10; originally ADR-020 screen 2, task E06/F04/US01/T01)
+### Workspace & members (ADR-024 V2, `raffa-v2/screens-v2.md` #10; originally ADR-020 screen 2, task E06/F04/US01/T01)
 
 `src/routes/workspace/members/` is the V2 Workspace & members screen: the "Setup" header
 ("Workspace & members" · "{workspace} · tenant {id}"), the tip "invite the team once the first
@@ -763,16 +763,16 @@ discovery gap, not fabricated members. The non-admin state stays on `RequireRole
 
 Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
 
-- `openapi/contigo-api.v1.json` is the single OpenAPI document this client is
+- `openapi/raffa-api.v1.json` is the single OpenAPI document this client is
   generated from (AC-3). It documents exactly the routes
-  `backend/src/Contigo.Api/Program.cs` implements today -- `GET /health` and
+  `backend/src/Raffa.Api/Program.cs` implements today -- `GET /health` and
   (task E06/F03/US01/T01) `POST /api/workspaces` -- cross-checked against
-  `backend/tests/Contigo.Api.Tests` and `backend/src/Contigo.Api
+  `backend/tests/Raffa.Api.Tests` and `backend/src/Raffa.Api
   /WorkspaceEndpointExtensions.cs` respectively.
   **Interim provenance**: the API host does not yet self-publish this document
   (no `Microsoft.AspNetCore.OpenApi`/Swashbuckle/NSwag wired into
   `Program.cs`, and adding that is backend work outside this task's
-  `target_repo: contigo-web` scope). This file must grow endpoint-by-endpoint
+  `target_repo: raffa-web` scope). This file must grow endpoint-by-endpoint
   as the backend does, and be replaced outright once the API self-publishes
   its own document. It also does **not** apply a `/v1`-style URL prefix:
   OQ-client-007 (`reports/open-questions.md`) leaves that choice open, and
@@ -825,19 +825,19 @@ Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
   stays resolvable in the accessibility tree for tests. See "Design system"
   below for the sheet, and `tests/App.test.tsx` for the coverage.
 - **Task E06/F01/US01/T01 (typescript-client-regen)** caught the contract up
-  to backend epics E02-E05: `openapi/contigo-api.v1.json` gained
+  to backend epics E02-E05: `openapi/raffa-api.v1.json` gained
   `POST /api/workspaces` (create), `POST /api/workspaces/{tenantId}/invites`
   (invite), `POST /api/documents` (upload), and `GET /api/documents/{id}`
   (read back) -- exactly epic-06-web-foundation's own R0 surface (sign-in ->
   workspace picker, members & roles, document upload/status). `Program.cs`
   now also serves many more routes from those same backend epics (portfolio,
   Contract 360 + correction history, audit, renewals, savings (+ KPIs), Ask
-  Contigo chat, quotes, negotiation outcomes) that this task deliberately did
+  Raffa chat, quotes, negotiation outcomes) that this task deliberately did
   **not** add to the contract: epic-06-web-foundation's own "Out of scope"
   list names exactly that set as "later web epics," and
   feature-01-typescript-client-regen is a documented **repeating chore** --
   whichever web epic first builds a screen against one of those endpoints
-  extends `openapi/contigo-api.v1.json` next, the same way this task extended
+  extends `openapi/raffa-api.v1.json` next, the same way this task extended
   the `/health`-only version task E01/F07/US01/T02 left behind. This also
   taught `generate-api-client.mjs` two more `renderSchemaType` cases (still
   zero dependencies): a flat `object`/`properties` schema, and an OpenAPI 3.1
@@ -857,7 +857,7 @@ Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
   JSON-string bodies) is special-cased rather than attempting to parse an
   empty body as JSON.
 - **Task E07/F01/US01/T01 (portfolio-list-filters)** extended
-  `openapi/contigo-api.v1.json` with `GET /api/contracts` (operationId
+  `openapi/raffa-api.v1.json` with `GET /api/contracts` (operationId
   `getPortfolio`) -- the repeating chore `typescript-client-regen`'s own doc
   comment named ("whichever web epic first builds a screen against one of
   those endpoints extends the contract next"). Its 200 response's `risk`
@@ -874,7 +874,7 @@ Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
   it. `client.ts`'s `getPortfolio(tenantId, query?)` mirrors the endpoint's
   full filter/paging surface even though `src/routes/contracts/index.tsx`
   itself only ever calls it unfiltered (see "Portfolio" above for why).
-- **Task E07/F02/US01/T01 (contract-360)** extended `openapi/contigo-api.v1.json` with three more
+- **Task E07/F02/US01/T01 (contract-360)** extended `openapi/raffa-api.v1.json` with three more
   operations -- `GET /api/contracts/{id}` (`getContract360`), `GET /api/renewals` (`getRenewals`),
   and `GET /api/renewals/{contractId}/priority` (`getRenewalPriority`) -- the same "repeating chore"
   `typescript-client-regen`'s own doc comment named. `header.risk` and `tabs.clauses[].riskLevel`
@@ -884,7 +884,7 @@ Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
   three new methods follow the same never-throws convention as every other call (a `404` on
   `getContract360`/`getRenewalPriority` is a normal, expected outcome the caller renders as a named
   "not found" state).
-- **Task E07/F03/US01/T01 (field-review-correction)** extended `openapi/contigo-api.v1.json` with `PATCH
+- **Task E07/F03/US01/T01 (field-review-correction)** extended `openapi/raffa-api.v1.json` with `PATCH
   /api/contracts/{id}` (`correctContract`) and `GET /api/contracts/{id}/corrections`
   (`getCorrectionHistory`) -- the third web epic to extend this document (same "repeating chore"
   provenance paragraph). Both operations were already implemented by backend task
@@ -893,7 +893,7 @@ Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
   parse `requestBody`. Both response shapes (a flat object, and an array of a flat object) use
   generator cases `getContract360`/`getPortfolio` already exercise, so no generator change was
   needed this time.
-- **Task E08/F01/US01/T01 (renewal-pipeline, ADR-020 screen 8)** extended `openapi/contigo-api.v1.json`
+- **Task E08/F01/US01/T01 (renewal-pipeline, ADR-020 screen 8)** extended `openapi/raffa-api.v1.json`
   with `POST /api/renewals/{id}/action` (`postRenewalAction`) -- the fourth web epic to extend this
   document (see "API client" provenance paragraphs above). Already implemented by backend task
   E03/F03/US01/T02; this task is the first web caller (the insight card's three actions). The 200
@@ -901,10 +901,10 @@ Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
   declared with `enum`, the same way `GET /api/renewals`'s own `status` field already is, so
   `RenewalActionStatusValue` is derived from the generated response type rather than hand-duplicated.
   Unlike every other write operation in this client, a well-formed request against an unknown or
-  cross-tenant contract id still succeeds (`Contigo.Renewals` cannot reference
-  `Contigo.Documents.Contracts` at all, ADR-002) -- `postRenewalAction` never special-cases a 404 the
+  cross-tenant contract id still succeeds (`Raffa.Renewals` cannot reference
+  `Raffa.Documents.Contracts` at all, ADR-002) -- `postRenewalAction` never special-cases a 404 the
   way `getContract360`/`getRenewalPriority`/`correctContract` do for theirs.
-- **Task E08/F02/US01/T01 (savings-home, ADR-020 screen 9)** extended `openapi/contigo-api.v1.json`
+- **Task E08/F02/US01/T01 (savings-home, ADR-020 screen 9)** extended `openapi/raffa-api.v1.json`
   with `GET /api/savings/kpis` (`getSavingsKpis`) and `GET /api/savings` (`getSavingsOpportunities`)
   -- the fifth web epic to extend this document (see "API client" provenance paragraphs above). Both
   were already implemented on the backend -- `getSavingsKpis` by task E04/F03/US01/T01
@@ -917,7 +917,7 @@ Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
   (`annualSpendAnalyzed`/`savingsIdentified`/`savingsRealized`/`savingsInProgress`) -- no generator
   change was needed this time.
 
-- **Task E13/F09/US01/T03 (web-documents-v2, ADR-024 V2 rebuild)** extended `openapi/contigo-api.v1.json`
+- **Task E13/F09/US01/T03 (web-documents-v2, ADR-024 V2 rebuild)** extended `openapi/raffa-api.v1.json`
   with `GET /api/documents` (`listDocuments`), `GET /api/documents/{id}/preview`
   (`getDocumentPreview`), `POST /api/documents/{id}/reprocess` (`reprocessDocument`) and
   `DELETE /api/documents/{id}` (`deleteDocument`) -- the sixth web epic to extend this document (see
@@ -931,7 +931,7 @@ Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
   header. `deleteDocument`'s only success shape is `204 No Content` (no body to parse at all,
   unlike `getDocument`'s already-established `404`-no-body special case).
 
-- **Task E13/F09/US01/T04 (web-ask-v2, ADR-024 §6)** extended `openapi/contigo-api.v1.json` with
+- **Task E13/F09/US01/T04 (web-ask-v2, ADR-024 §6)** extended `openapi/raffa-api.v1.json` with
   `GET/POST /api/conversations`, `GET /api/conversations/{id}`,
   `POST /api/conversations/{id}/messages` (the reply contract), `GET /api/capabilities`,
   `GET /api/market/records/{id}`, and `supplierName` on the portfolio/360/renewals/documents
@@ -955,16 +955,16 @@ web/
   e2e/
     day1.spec.ts             # task E08/F04/US01/T01 -- the §20 Day-1 browser walk, the web-pass integration gate
   openapi/
-    contigo-api.v1.json       # single OpenAPI document (interim, hand-authored -- see "API client" above)
+    raffa-api.v1.json       # single OpenAPI document (interim, hand-authored -- see "API client" above)
   scripts/
-    generate-api-client.mjs   # openapi/contigo-api.v1.json -> src/api/generated/schema.ts (npm run generate:api)
+    generate-api-client.mjs   # openapi/raffa-api.v1.json -> src/api/generated/schema.ts (npm run generate:api)
   public/
     config.json               # runtime config contract; dev-only placeholder values
     staticwebapp.config.json  # Azure SWA: SPA fallback routing
   src/
     api/
       generated/schema.ts     # AUTO-GENERATED; do not edit by hand
-      client.ts                # createApiClient(baseUrl, getUserId?) -> { getHealth(), createWorkspace({ name }), uploadDocument(tenantId, file), getDocument(tenantId, id), listDocuments(tenantId, query?), getDocumentPreviewUrl(tenantId, id), reprocessDocument(tenantId, id), deleteDocument(tenantId, id), getPortfolio(tenantId, query?), getContract360(tenantId, id), getRenewals(tenantId), getRenewalPriority(tenantId, contractId), getCorrectionHistory(tenantId, id), correctContract(tenantId, id, request), postRenewalAction(tenantId, contractId, request), askContigo(tenantId, request), uploadQuote(tenantId, file, fields?), getQuoteAssessment(tenantId, id), recalculateQuoteAssessment(tenantId, id, mappings?), captureNegotiationOutcome(tenantId, request), getSavingsKpis(tenantId), getSavingsOpportunities(tenantId), listConversations(tenantId), createConversation(tenantId, request?), getConversation(tenantId, id), postMessage(tenantId, conversationId, request), getCapabilities(), getMarketRecord(id) } -- every method also sends X-User-Id when getUserId is supplied (task E13/F09/US01/T04, OQ-askv2-005)
+      client.ts                # createApiClient(baseUrl, getUserId?) -> { getHealth(), createWorkspace({ name }), uploadDocument(tenantId, file), getDocument(tenantId, id), listDocuments(tenantId, query?), getDocumentPreviewUrl(tenantId, id), reprocessDocument(tenantId, id), deleteDocument(tenantId, id), getPortfolio(tenantId, query?), getContract360(tenantId, id), getRenewals(tenantId), getRenewalPriority(tenantId, contractId), getCorrectionHistory(tenantId, id), correctContract(tenantId, id, request), postRenewalAction(tenantId, contractId, request), askRaffa(tenantId, request), uploadQuote(tenantId, file, fields?), getQuoteAssessment(tenantId, id), recalculateQuoteAssessment(tenantId, id, mappings?), captureNegotiationOutcome(tenantId, request), getSavingsKpis(tenantId), getSavingsOpportunities(tenantId), listConversations(tenantId), createConversation(tenantId, request?), getConversation(tenantId, id), postMessage(tenantId, conversationId, request), getCapabilities(), getMarketRecord(id) } -- every method also sends X-User-Id when getUserId is supplied (task E13/F09/US01/T04, OQ-askv2-005)
     config/appConfig.ts       # fetch + validate runtime config
     auth/msalConfig.ts        # AppConfig -> MSAL Configuration (no secret, ever)
     styles/                   # design system (tokens + component catalogue); see below
@@ -1016,7 +1016,7 @@ web/
           EvidencePane.tsx        # AC-3: evidence + correction form + real correction-history trail
           reviewViewModel.ts      # pure helpers: correctable-field catalogue, decision/tag/gate computation
           review.css              # this screen's styles
-      ask/                  # task E07/F04/US01/T01 -- ADR-020 screen 7; V2 rebuild task E13/F09/US01/T04 (see "Ask Contigo" above)
+      ask/                  # task E07/F04/US01/T01 -- ADR-020 screen 7; V2 rebuild task E13/F09/US01/T04 (see "Ask Raffa" above)
         index.tsx              # AskRoute -- off/new-chat/conversation/resume states; seeds+asks the global Ask bar's router-state query once; create-then-ask, citation-click routing
         AskOffState.tsx        # off state (0 validated contracts): fixed headline, doc-count-dependent reason + one CTA to /documents
         MarketRecordPanel.tsx  # side panel for a market citation: GET /api/market/records/{id}
@@ -1125,7 +1125,7 @@ shell (AC-2), which only makes sense once `demo-v*` promotion (ADR-016) has
 actually happened (AC-3).
 
 The task's own "Files to create or modify" table names this file as
-`workspace/contigo-web/e2e/day1.spec.ts`; it lives at `web/e2e/day1.spec.ts`
+`workspace/raffa-web/e2e/day1.spec.ts`; it lives at `web/e2e/day1.spec.ts`
 instead, the same "product tree is the four domain folders at the worktree
 root, not a `workspace/<repo>/` stand-in" correction `reports/open-questions.md`
 already recorded for two earlier tasks (OQ-impl-001/002) -- there is no other
@@ -1151,9 +1151,9 @@ task F11/T01) as that replacement, not a fix to this V1 file.
 
 ```bash
 npx playwright install --with-deps chromium   # one-time browser download
-CONTIGO_E2E_BASE_URL=https://<swa-demo-host> \
-CONTIGO_E2E_ENTRA_EMAIL=<a demo-tenant test account UPN> \
-CONTIGO_E2E_ENTRA_PASSWORD=<that account's password> \
+RAFFA_E2E_BASE_URL=https://<swa-demo-host> \
+RAFFA_E2E_ENTRA_EMAIL=<a demo-tenant test account UPN> \
+RAFFA_E2E_ENTRA_PASSWORD=<that account's password> \
   npm run test:e2e
 npm run test:e2e:report   # opens the HTML report -- trace/video/screenshot on failure, "smoking recorded"
 ```
@@ -1162,7 +1162,7 @@ All three environment variables are required; the suite `test.skip()`s
 itself (not a false pass, not a silent no-op exit code) with a message
 naming exactly what is missing when any are unset -- see the spec file's own
 header comment. There is deliberately no `localhost` fallback for
-`CONTIGO_E2E_BASE_URL`: that would let a local run masquerade as the `demo`
+`RAFFA_E2E_BASE_URL`: that would let a local run masquerade as the `demo`
 gate AC-2 requires.
 
 **The test account must be exempt from interactive MFA / Conditional
@@ -1235,15 +1235,15 @@ also caught `e2e/day1.spec.ts` being picked up by Vitest's own default
 include glob and failing collection; fixed by `vite.config.ts`'s own
 `test.exclude`), `npx playwright test --list` (discovers `day1.spec.ts`), and
 `npx playwright test` itself, which correctly `test.skip()`s -- not a false
-pass, not a hang -- when the three `CONTIGO_E2E_BASE_URL` /
-`CONTIGO_E2E_ENTRA_EMAIL` / `CONTIGO_E2E_ENTRA_PASSWORD` env vars are
+pass, not a hang -- when the three `RAFFA_E2E_BASE_URL` /
+`RAFFA_E2E_ENTRA_EMAIL` / `RAFFA_E2E_ENTRA_PASSWORD` env vars are
 unset, exactly as designed. What genuinely is operator/CI-only is a real
 pass with real Entra test-account credentials against a live,
 `demo-v*`-promoted `demo` deployment -- that, and only that, is the actual
 gate this suite exists to satisfy; no local or CI session without those
 live credentials can supply it.
 
-## End-to-end (Ask Contigo V2 pilot path) -- task E13/F11/US01/T01, us-01-integration
+## End-to-end (Ask Raffa V2 pilot path) -- task E13/F11/US01/T01, us-01-integration
 
 `e2e/v2.spec.ts` (same Playwright config, `playwright.config.ts`) is the V2
 replacement for `e2e/day1.spec.ts`. It walks `inputs/requirements.md` §10's own
@@ -1263,13 +1263,13 @@ selector with it: the V2 screens are different components with different copy
 |---|---|---|
 | A14 | `/` lands on `/ask`; the rail is two-tier; the secondary tier is greyed before validation; Ask is off with the prototype copy | always |
 | A1 | a recipe PDF and an unreadable PNG dropped together are both refused (**Not added** + reason), and neither ends up in the server-backed list | always |
-| A1 | ...and an MSA dropped alongside them still reaches a terminal status | needs `CONTIGO_E2E_MSA_PATH` |
+| A1 | ...and an MSA dropped alongside them still reaches a terminal status | needs `RAFFA_E2E_MSA_PATH` |
 | A3 | `ciao` -> redirect prose, one CTA, **no** abstain block | always |
 | A4 | `Posso fare causa a Salesforce?` -> refusal + an action under `/contracts` | always |
-| A8 | `Cosa sai fare?` -> feature cards badged **Contigo**, every action an in-app route, and the first one actually navigates | always |
+| A8 | `Cosa sai fare?` -> feature cards badged **Raffa**, every action an in-app route, and the first one actually navigates | always |
 | A9 | a reply carries a human citation card and an action, and never a guid / `Document:` chip / `Structured query...` route line | always |
 | A10 | asking moves the browser to `/ask/<id>`; a reload and a second tab both resume the same turns | always |
-| A2, A5, A6, A7 | OCR'd order form; Allianz vs market; Salesforce renewal strategy; portfolio criticality in a new chat | `E2E_LIVE_FOUNDRY=1` (A2 also needs `CONTIGO_E2E_ORDER_FORM_PNG`) |
+| A2, A5, A6, A7 | OCR'd order form; Allianz vs market; Salesforce renewal strategy; portfolio criticality in a new chat | `E2E_LIVE_FOUNDRY=1` (A2 also needs `RAFFA_E2E_ORDER_FORM_PNG`) |
 
 A2 / A5 / A6 / A7 are `test.skip`ped with the reason *"requires live Foundry"* --
 OQ-askv2-009 and `inputs/requirements.md` §13 A9 ("live Foundry on `dev`/`demo`
@@ -1280,9 +1280,9 @@ CI"). A8 and A9 stay unconditional because the capability catalog is static and
 A11 (cross-tenant isolation), A12 (no tools/grounding in the Foundry request
 body) and A13 (golden set) are deliberately **not** browser assertions -- a
 browser cannot observe a request body or another tenant's rows without
-fabricating a second identity. They are proven by `Contigo.IntegrationTests`,
-`Contigo.AiGateway.Tests` and `Contigo.AiEval`, all of which run under
-`dotnet test Contigo.slnx` in `.github/workflows/backend.yml`.
+fabricating a second identity. They are proven by `Raffa.IntegrationTests`,
+`Raffa.AiGateway.Tests` and `Raffa.AiEval`, all of which run under
+`dotnet test Raffa.slnx` in `.github/workflows/backend.yml`.
 `docs/ask-v2-acceptance.md` names the real check for each.
 
 ### Running it
@@ -1291,14 +1291,14 @@ fabricating a second identity. They are proven by `Contigo.IntegrationTests`,
 npm ci
 npx playwright install --with-deps chromium   # one-time browser download
 
-CONTIGO_E2E_BASE_URL=https://<swa-dev-host> \
-CONTIGO_E2E_ENTRA_EMAIL=<a test-account UPN on that Entra tenant> \
-CONTIGO_E2E_ENTRA_PASSWORD=<that account's password> \
-CONTIGO_E2E_TENANT_ID=<the fixture-seeded workspace id> \
+RAFFA_E2E_BASE_URL=https://<swa-dev-host> \
+RAFFA_E2E_ENTRA_EMAIL=<a test-account UPN on that Entra tenant> \
+RAFFA_E2E_ENTRA_PASSWORD=<that account's password> \
+RAFFA_E2E_TENANT_ID=<the fixture-seeded workspace id> \
   npx playwright test v2.spec.ts
 
 # Add the live-Foundry rows once Foundry is wired on that environment:
-E2E_LIVE_FOUNDRY=1 CONTIGO_E2E_ORDER_FORM_PNG=/path/to/scan.png \
+E2E_LIVE_FOUNDRY=1 RAFFA_E2E_ORDER_FORM_PNG=/path/to/scan.png \
   ... npx playwright test v2.spec.ts
 
 npm run test:e2e:report   # trace / video / screenshot on failure
@@ -1306,11 +1306,11 @@ npm run test:e2e:report   # trace / video / screenshot on failure
 
 | Variable | Meaning |
 |---|---|
-| `CONTIGO_E2E_BASE_URL` | the deployed SPA origin (`dev`, or `demo` after promotion) |
-| `CONTIGO_E2E_ENTRA_EMAIL` / `_PASSWORD` | a real test account on that environment's Entra tenant, excluded from interactive MFA (the same constraint `day1.spec.ts` documents -- the spec drives the identifier/password/"stay signed in?" steps only) |
-| `CONTIGO_E2E_TENANT_ID` | the **fixture-seeded** workspace id, i.e. the tenant that has validated contracts |
-| `CONTIGO_E2E_EMPTY_TENANT_ID` | optional; a workspace known to hold zero validated contracts, for A14's greyed-rail row. Defaults to a generated uuid, which is equivalent for that assertion and is logged as such |
-| `CONTIGO_E2E_MSA_PATH`, `CONTIGO_E2E_ORDER_FORM_PNG` | optional paths to a real contract PDF / scanned order-form image |
+| `RAFFA_E2E_BASE_URL` | the deployed SPA origin (`dev`, or `demo` after promotion) |
+| `RAFFA_E2E_ENTRA_EMAIL` / `_PASSWORD` | a real test account on that environment's Entra tenant, excluded from interactive MFA (the same constraint `day1.spec.ts` documents -- the spec drives the identifier/password/"stay signed in?" steps only) |
+| `RAFFA_E2E_TENANT_ID` | the **fixture-seeded** workspace id, i.e. the tenant that has validated contracts |
+| `RAFFA_E2E_EMPTY_TENANT_ID` | optional; a workspace known to hold zero validated contracts, for A14's greyed-rail row. Defaults to a generated uuid, which is equivalent for that assertion and is logged as such |
+| `RAFFA_E2E_MSA_PATH`, `RAFFA_E2E_ORDER_FORM_PNG` | optional paths to a real contract PDF / scanned order-form image |
 | `E2E_LIVE_FOUNDRY` | `1` to run A2 / A5 / A6 / A7 |
 
 With none of them set the suite reports all 14 rows as **skipped**, with the
@@ -1324,11 +1324,11 @@ There is still no endpoint that lists the workspaces an identity belongs to
 context always lands on "No workspaces yet" and creates an **empty** workspace --
 where Ask is correctly *off* (R-ASK-10) and A1/A3-A10 cannot be observed at all.
 Rather than assert an honestly-empty screen and call that acceptance, the spec
-writes the same `contigo.signin.currentWorkspace` key the app itself writes
+writes the same `raffa.signin.currentWorkspace` key the app itself writes
 (`workspaceStore.ts`'s `CURRENT_WORKSPACE_KEY`) with the operator-supplied
 tenant id. That is the documented seam, not a mock: every `ApiClient` call then
 carries that tenant as `X-Tenant-Id` exactly as a human selecting the workspace
-in the picker would. Without `CONTIGO_E2E_TENANT_ID` the pilot-path group skips
+in the picker would. Without `RAFFA_E2E_TENANT_ID` the pilot-path group skips
 rather than walking an empty workspace.
 
 ### The upload fixtures are built in the spec, on purpose
@@ -1344,7 +1344,7 @@ and a valid 1x1 PNG in memory and feeds them through the ordinary
 assertion accepts **either** documented rejection reason and records which one
 the environment produced, because which of the two applies depends on whether
 that environment's parser reads the synthetic PDF's text; both are R-DOC-03
-refusals and neither is a claim Contigo cannot back.
+refusals and neither is a claim Raffa cannot back.
 
 ### Harness note
 

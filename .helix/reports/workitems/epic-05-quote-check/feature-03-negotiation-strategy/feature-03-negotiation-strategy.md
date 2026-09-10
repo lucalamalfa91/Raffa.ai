@@ -29,4 +29,4 @@ permissioned proprietary learning data.
 
 ## Target repo
 
-`contigo-backend`
+`raffa-backend`

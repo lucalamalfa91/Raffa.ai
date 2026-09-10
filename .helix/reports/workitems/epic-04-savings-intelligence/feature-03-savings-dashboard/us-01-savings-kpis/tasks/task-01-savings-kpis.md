@@ -4,7 +4,7 @@ type: task
 story: us-01-savings-kpis
 wave: R3
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-savings-kpis — 01 Savings Kpis
@@ -18,7 +18,7 @@ Procurement homepage KPI aggregation.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `savings-kpis` |
+| workspace/raffa-backend/src/ | implementation for `savings-kpis` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-002, ADR-009.
@@ -30,7 +30,7 @@ Procurement homepage KPI aggregation.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | savings-kpis behaviour | workspace/contigo-backend/tests |
+| unit | savings-kpis behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

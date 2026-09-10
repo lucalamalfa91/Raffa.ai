@@ -125,12 +125,12 @@ describe("DocumentStatusTable", () => {
         key: "local-1",
         file: new File(["x"], "Broken.pdf", { type: "application/pdf" }),
         phase: "failed",
-        errorMessage: "Contigo could not process Broken.pdf. Try again.",
+        errorMessage: "Raffa could not process Broken.pdf. Try again.",
       },
     ];
     renderTable({ localUploads, onRetryLocal });
 
-    expect(screen.getByText("Contigo could not process Broken.pdf. Try again.")).toBeInTheDocument();
+    expect(screen.getByText("Raffa could not process Broken.pdf. Try again.")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Retry upload" }));
 
     expect(onRetryLocal).toHaveBeenCalledWith("local-1");

@@ -11,9 +11,9 @@ status: active
 ## Slice
 
 Two independent backend foundations the rest of e13 builds on: (1) the
-V2 solution shape — new projects `Contigo.Market`, `Contigo.Insights`
-(+ tests), `Contigo.Suppliers.Products.Tests`, `Contigo.AiEval`, registered
-in `backend/Contigo.slnx` and in the architecture allow-list — so later
+V2 solution shape — new projects `Raffa.Market`, `Raffa.Insights`
+(+ tests), `Raffa.Suppliers.Products.Tests`, `Raffa.AiEval`, registered
+in `backend/Raffa.slnx` and in the architecture allow-list — so later
 phases never touch the solution file; (2) `FoundryAiGateway` for ADR-004's
 five roles, registered when `AiGateway:Endpoint` is set, fixture otherwise,
 always wrapped by `LoggingAiGateway`, with structured `classify` / `answer`
@@ -35,4 +35,4 @@ sent (`inputs/requirements.md` R-AI-01…04). Absorbs e12 F01.
 
 ## Target repo
 
-`contigo-backend`
+`raffa-backend`

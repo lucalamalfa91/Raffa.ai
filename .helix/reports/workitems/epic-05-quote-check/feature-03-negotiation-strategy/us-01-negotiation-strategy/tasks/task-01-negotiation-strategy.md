@@ -4,7 +4,7 @@ type: task
 story: us-01-negotiation-strategy
 wave: R4
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-negotiation-strategy — 01 Negotiation Strategy
@@ -18,7 +18,7 @@ Opening target/range/walk-away/levers with rationale.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `negotiation-strategy` |
+| workspace/raffa-backend/src/ | implementation for `negotiation-strategy` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-002, ADR-004.
@@ -30,7 +30,7 @@ Opening target/range/walk-away/levers with rationale.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | negotiation-strategy behaviour | workspace/contigo-backend/tests |
+| unit | negotiation-strategy behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

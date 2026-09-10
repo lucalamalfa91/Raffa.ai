@@ -4,7 +4,7 @@ type: task
 story: us-04-entra-keyvault
 wave: R0
 status: live
-target_repo: contigo-infra
+target_repo: raffa-infra
 ---
 
 # task-02-keyvault-scope-grants — 02 Keyvault Scope Grants
@@ -18,7 +18,7 @@ Grant each env API/worker managed identity only its own Key Vault.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-infra/src/ | implementation for `keyvault-scope-grants` |
+| workspace/raffa-infra/src/ | implementation for `keyvault-scope-grants` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-010, ADR-011.
@@ -30,7 +30,7 @@ Grant each env API/worker managed identity only its own Key Vault.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | keyvault-scope-grants behaviour | workspace/contigo-infra/tests |
+| unit | keyvault-scope-grants behaviour | workspace/raffa-infra/tests |
 
 ## Open questions blocking this task
 - none

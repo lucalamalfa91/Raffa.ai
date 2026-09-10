@@ -25,7 +25,7 @@ reflogs. Each branch's own diff beyond its creation point is **zero files**.
 | F04/T01 documents admission | 1 | Implementer turn killed at the 3600 s turn deadline (20:43 UTC) before any commit. Retries 2 and 3 died in seconds: the worktree could not be cleared (locked `backend/**/bin`), `git worktree add` refused it. Soft-accept then counted `main..branch` = 2 inherited docs commits as "work" → *finished*. | none |
 | F04/T02 documents V2 API | 2 | Implementer correctly `HALTED:` after 8 minutes (T01 absent). The workflow ended as a normal stop (`no_edge_matched`) → *finished*. | none (no edits) |
 | F03/T02 supplier extraction | 3 | Implementer wrote the extraction code, then `HALTED:` (F04 absent); reviewer echoed the halt → *finished*. No commit; no salvage tag. | none |
-| F06/T02 AI golden set | 4 | Attempt 1 killed at 3600 s. Attempt 2 wrote the whole golden set, never committed; reviewer closed with "No verdict on this turn" → *finished*. | `salvage/E13-F06-US01-T02/1` and `/3` (Contigo.AiEval: 3 tenant fixtures, golden JSON, harness) |
+| F06/T02 AI golden set | 4 | Attempt 1 killed at 3600 s. Attempt 2 wrote the whole golden set, never committed; reviewer closed with "No verdict on this turn" → *finished*. | `salvage/E13-F06-US01-T02/1` and `/3` (Raffa.AiEval: 3 tenant fixtures, golden JSON, harness) |
 | F11/T01 V2 integration | 5 | Killed at 3600 s before commit; retries burned on the locked worktree; soft-accept counted 30 inherited commits → *finished*. | `salvage/E13-F11-US01-T01/1` (both CI workflows, `docs/ask-v2-acceptance.md`, `web/e2e/v2.spec.ts`, README sweep, a reconciled `MarketEndpointExtensions.cs`) |
 
 Recover a tag onto a fresh branch from `integration`:
@@ -68,9 +68,9 @@ Both, and the engine defects were the ones that turned losses into lies.
    showed the retries without their cause. `helix.fanout.task_attempt_failed`
    now carries each attempt's reason.
 
-**Contigo process** (this PR):
+**Raffa process** (this PR):
 
-- `contigo-process.yaml` assumed an engine halt-guard that never existed; it
+- `raffa-process.yaml` assumed an engine halt-guard that never existed; it
   now sets `require_delivery: true` and `task_failure_markers: ["HALTED:"]`.
 - The implementer committed only at the end of the turn; it now commits WIP
   checkpoints, keeps commands under ten minutes and shuts the build server

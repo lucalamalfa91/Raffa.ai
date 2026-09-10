@@ -14,6 +14,6 @@ status: active
       `ConnectionStrings__Savings` and `ConnectionStrings__Quotes` → `pg-cs`.
 - [ ] AC-2 `backend.yml` applies the six scripts in ADR-021 order after
       container update, using Key Vault `postgres-connection`.
-- [ ] AC-3 After the job, `contigo_dev` has app tables +
+- [ ] AC-3 After the job, `raffa_dev` has app tables +
       `__EFMigrationsHistory` per module (prove via `az`/`psql` in the job
       or a follow-up check). HCP apply is confirmed, not a laptop apply.

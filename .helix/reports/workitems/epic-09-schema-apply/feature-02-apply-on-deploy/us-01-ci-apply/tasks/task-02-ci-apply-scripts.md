@@ -4,7 +4,7 @@ type: task
 story: us-01-ci-apply
 wave: 9
 status: live
-target_repo: contigo-infra
+target_repo: raffa-infra
 ---
 
 # task-02-ci-apply-scripts — Apply SQL on deploy
@@ -14,7 +14,7 @@ target_repo: contigo-infra
 After both `az containerapp update` steps in `.github/workflows/backend.yml`,
 apply the six idempotent scripts in ADR-021 order against the env Postgres
 using Key Vault `postgres-connection` (OIDC already on the job). Prove
-`contigo_<env>` has the app tables (or fail the job). Reuse on demo via
+`raffa_<env>` has the app tables (or fail the job). Reuse on demo via
 existing `workflow_call`. No Swagger. No `MigrateAsync` in the API.
 
 ## Parent story AC covered
@@ -25,8 +25,8 @@ existing `workflow_call`. No Swagger. No `MigrateAsync` in the API.
 
 | Path | Change |
 |------|--------|
-| workspace/contigo-infra/.github/workflows/backend.yml | apply step |
-| workspace/contigo-infra/scripts/ | optional apply helper |
+| workspace/raffa-infra/.github/workflows/backend.yml | apply step |
+| workspace/raffa-infra/scripts/ | optional apply helper |
 
 ## Context the implementer needs
 
@@ -36,7 +36,7 @@ existing `workflow_call`. No Swagger. No `MigrateAsync` in the API.
 ## Definition of done
 
 - [ ] A `dev` deploy run applies scripts; a named check lists expected
-      tables (or `__EFMigrationsHistory` rows) on `contigo_dev`.
+      tables (or `__EFMigrationsHistory` rows) on `raffa_dev`.
 
 ## Wave-spec entry
 

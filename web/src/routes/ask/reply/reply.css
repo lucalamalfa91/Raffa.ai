@@ -3,14 +3,14 @@
  * amendment "screen 2"; requirements.md §6; task E13/F09/US01/T02, us-01-web-v2 AC-3).
  *
  * Scoped to this reply's own internal composition only -- the surrounding 72px role-column grid
- * ("You" / "Contigo") stays `../ask.css`'s own `.ask-message` (F09/T04's file, not this task's;
+ * ("You" / "Raffa") stays `../ask.css`'s own `.ask-message` (F09/T04's file, not this task's;
  * that task mounts `ReplyBody` inside its own content column). Component classes (.btn, .tag,
  * .card, .abstain-block, .error-state, .micro-meta) come from `../../../styles/components.css`
  * (ADR-019); this file adds only this folder's own composites, the same division of labour every
  * other screen's own CSS file already establishes (e.g. `../../documents/documents.css`).
  *
  * Figures below are quoted from the compiled prototype's own Ask block where named
- * (`inputs/design/prototypes/contigo-v2/markup.html`, the `sc-for list="{{ gchat }}"` block): 14px
+ * (`inputs/design/prototypes/raffa-v2/markup.html`, the `sc-for list="{{ gchat }}"` block): 14px
  * body text, `white-space: pre-line`; the action row's `gap:8px;margin-top:12px` (`m.hasActions`).
  * The citation *chip* row's own `gap:6px;margin-top:10px` (`m.hasCites`) becomes a *card* row here
  * (task text: "citation chip row -> cards", R-WEB-04) -- sized with this file's own

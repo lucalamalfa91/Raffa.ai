@@ -17,7 +17,7 @@ import { formatDateOnly, getContractTypeLabel } from "../portfolioTableFormatter
  *
  * **Field catalogue mirrors the backend exactly, on purpose.** `CORRECTABLE_FIELDS` below is a
  * client-side copy of `ContractCorrectionService.CorrectableFieldNames` (backend/src/
- * Contigo.Documents.Contracts/Application/ContractCorrectionService.cs) -- the only field names
+ * Raffa.Documents.Contracts/Application/ContractCorrectionService.cs) -- the only field names
  * `PATCH /api/contracts/{id}` (`correctContract`) will ever accept, including `supplier` (requirements
  * R-SUP-03: "from the review UI where a user names the supplier as a correction"), which is a
  * supplier *name* the backend resolves into a link, never a guid.

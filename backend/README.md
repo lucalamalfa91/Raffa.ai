@@ -1,9 +1,9 @@
-# Contigo backend
+# Raffa backend
 
 .NET 10 modular monolith + background worker (ADR-002). One class-library
 project per bounded context, a shared kernel, and two thin hosts. Domain
 modules never reference a provider SDK or another domain's internals —
-`Contigo.ArchitectureTests` fails the build if a project reference points
+`Raffa.ArchitectureTests` fails the build if a project reference points
 the wrong way.
 
 Honours ADR-003 (Postgres + pgvector, EF Core), ADR-009 (RLS as the
@@ -13,51 +13,51 @@ non-bypassable backstop), and ADR-005 (API + worker as Container Apps).
 
 ```
 backend/
-  Contigo.slnx
+  Raffa.slnx
   Directory.Build.props          # net10.0, nullable, TreatWarningsAsErrors
   src/
-    Contigo.Api/                 # thin HTTP composition root (port 8080 in containers)
-    Contigo.Worker/              # thin worker composition root
-    Contigo.SharedKernel/        # TenantId, EntityId, Result<T>, IClock, IAuditWriter, IDocumentStorage
-    Contigo.Identity.Workspace/  # workspace, membership, roles (live)
-    Contigo.Documents.Contracts/ # upload + admission gate (task E13/F04/US01/T01), metadata, hybrid OCR pre-pass, staged extraction, portfolio list, Contract 360, contract correction + history (live)
-    Contigo.Audit/               # append-only audit events (live)
-    Contigo.AiGateway/           # IAiGateway (classify/extract/embed/answer/ocr): FixtureAiGateway + live FoundryAiGateway (Azure OpenAI-compatible + Document Intelligence, task E13/F01/US01/T02), always behind the LoggingAiGateway decorator
-    Contigo.Benchmark/           # IBenchmarkService.GetBenchmarkAsync + normalized Contracts DTOs (E04/F01/US01/T01); BenchmarkAdapterRegistry + AddBenchmarkModule (E04/F01/US01/T02); FixtureBenchmarkAdapter registered as the default IBenchmarkProviderAdapter, incl. statistical weak-comparable abstain (E04/F01/US02/T01+T02) — no host calls AddBenchmarkModule yet (R3)
-    Contigo.Suppliers.Products/  # Supplier entity, SupplierNameNormalizer, ISupplierResolver/ISupplierNameLookup impls, SuppliersDbContext + RLS (task E13/F03/US01/T01, ADR-024; live) - see "Supplier identity" below
-    Contigo.Market/              # R-MKT-01/02/03/04 mock feed + benchmark projection + in-memory notes retrieval (E13/F02/US01/T01); market_record/market_embedding pgvector index + ingestion job + DB-backed retrieval/benchmark + GET /api/market/records/{id} (E13/F02/US01/T02, mapped by E13/F06/US01/T01) - see "Market Intelligence" below
-    Contigo.Insights/            # criticality score, priced-line negotiation, strategy pack builder (E13/F07/US01/T01, ADR-024) - pure calculators fed by DTOs; InsightsEndpointExtensions mapped by task E13/F06/US01/T01 (ask-engine) - see "Insights" below
-    Contigo.Renewals/            # renewal engine + opportunity + explainable priority score + threshold scheduler + dashboard pipeline + action (R2; live) — see "Renewal Intelligence" below
-    Contigo.Savings/             # price normalization + percentile/target/savings-range calculator (R3; task E04/F02/US01/T01) + persisted, trackable SavingsOpportunity + GET/PATCH /api/savings (task E04/F02/US02/T01) — see "Savings Intelligence" below
-    Contigo.Quotes/              # quote upload + hybrid-OCR-reused, schema-constrained line-item extraction (evidence + confidence; deterministic pricing) + POST /api/quotes (R4; task E05/F01/US01/T01) + SKU/edition normalization against a per-tenant canonical mapping, unmatched-SKU flagging (task E05/F01/US02/T01) + benchmark matching/above-in-line-below market assessment + GET /api/quotes/{id}/assessment, AddBenchmarkModule now wired (task E05/F02/US01/T01) + deterministic recommended target range/potential saving on that same endpoint (task E05/F02/US01/T02) + deterministic negotiation strategy (opening target/acceptable range/walk-away threshold + seven canonical levers with rationale, NegotiationStrategyService, no HTTP endpoint yet) (task E05/F03/US01/T01) + NegotiationOutcome capture (original/target/final/deterministic saving+discount/duration/levers used) + POST /api/negotiations/outcomes, append-only/audit-tracked (task E05/F03/US02/T01) — see "Quote Check" / "Market Assessment" / "Negotiation Strategy" / "Negotiation Outcome" below
-    Contigo.Chat/                # Ask Contigo structured-vs-semantic query router (R1, task E02/F04/US01/T01) + deterministic dates/spend query handlers (task E02/F04/US01/T02) + RagAnswerService (task E02/F04/US02/T01) + AbstainGuard no-fabrication guard (task E02/F04/US02/T02); AddChatModule wired into Contigo.Api by this last task; own ChatDbContext + Conversation/ConversationMessage under RLS + ConversationService (create/list/get/append) (task E13/F05/US01/T01) — see "Ask Contigo — conversations store" below
+    Raffa.Api/                 # thin HTTP composition root (port 8080 in containers)
+    Raffa.Worker/              # thin worker composition root
+    Raffa.SharedKernel/        # TenantId, EntityId, Result<T>, IClock, IAuditWriter, IDocumentStorage
+    Raffa.Identity.Workspace/  # workspace, membership, roles (live)
+    Raffa.Documents.Contracts/ # upload + admission gate (task E13/F04/US01/T01), metadata, hybrid OCR pre-pass, staged extraction, portfolio list, Contract 360, contract correction + history (live)
+    Raffa.Audit/               # append-only audit events (live)
+    Raffa.AiGateway/           # IAiGateway (classify/extract/embed/answer/ocr): FixtureAiGateway + live FoundryAiGateway (Azure OpenAI-compatible + Document Intelligence, task E13/F01/US01/T02), always behind the LoggingAiGateway decorator
+    Raffa.Benchmark/           # IBenchmarkService.GetBenchmarkAsync + normalized Contracts DTOs (E04/F01/US01/T01); BenchmarkAdapterRegistry + AddBenchmarkModule (E04/F01/US01/T02); FixtureBenchmarkAdapter registered as the default IBenchmarkProviderAdapter, incl. statistical weak-comparable abstain (E04/F01/US02/T01+T02) — no host calls AddBenchmarkModule yet (R3)
+    Raffa.Suppliers.Products/  # Supplier entity, SupplierNameNormalizer, ISupplierResolver/ISupplierNameLookup impls, SuppliersDbContext + RLS (task E13/F03/US01/T01, ADR-024; live) - see "Supplier identity" below
+    Raffa.Market/              # R-MKT-01/02/03/04 mock feed + benchmark projection + in-memory notes retrieval (E13/F02/US01/T01); market_record/market_embedding pgvector index + ingestion job + DB-backed retrieval/benchmark + GET /api/market/records/{id} (E13/F02/US01/T02, mapped by E13/F06/US01/T01) - see "Market Intelligence" below
+    Raffa.Insights/            # criticality score, priced-line negotiation, strategy pack builder (E13/F07/US01/T01, ADR-024) - pure calculators fed by DTOs; InsightsEndpointExtensions mapped by task E13/F06/US01/T01 (ask-engine) - see "Insights" below
+    Raffa.Renewals/            # renewal engine + opportunity + explainable priority score + threshold scheduler + dashboard pipeline + action (R2; live) — see "Renewal Intelligence" below
+    Raffa.Savings/             # price normalization + percentile/target/savings-range calculator (R3; task E04/F02/US01/T01) + persisted, trackable SavingsOpportunity + GET/PATCH /api/savings (task E04/F02/US02/T01) — see "Savings Intelligence" below
+    Raffa.Quotes/              # quote upload + hybrid-OCR-reused, schema-constrained line-item extraction (evidence + confidence; deterministic pricing) + POST /api/quotes (R4; task E05/F01/US01/T01) + SKU/edition normalization against a per-tenant canonical mapping, unmatched-SKU flagging (task E05/F01/US02/T01) + benchmark matching/above-in-line-below market assessment + GET /api/quotes/{id}/assessment, AddBenchmarkModule now wired (task E05/F02/US01/T01) + deterministic recommended target range/potential saving on that same endpoint (task E05/F02/US01/T02) + deterministic negotiation strategy (opening target/acceptable range/walk-away threshold + seven canonical levers with rationale, NegotiationStrategyService, no HTTP endpoint yet) (task E05/F03/US01/T01) + NegotiationOutcome capture (original/target/final/deterministic saving+discount/duration/levers used) + POST /api/negotiations/outcomes, append-only/audit-tracked (task E05/F03/US02/T01) — see "Quote Check" / "Market Assessment" / "Negotiation Strategy" / "Negotiation Outcome" below
+    Raffa.Chat/                # Ask Raffa structured-vs-semantic query router (R1, task E02/F04/US01/T01) + deterministic dates/spend query handlers (task E02/F04/US01/T02) + RagAnswerService (task E02/F04/US02/T01) + AbstainGuard no-fabrication guard (task E02/F04/US02/T02); AddChatModule wired into Raffa.Api by this last task; own ChatDbContext + Conversation/ConversationMessage under RLS + ConversationService (create/list/get/append) (task E13/F05/US01/T01) — see "Ask Raffa — conversations store" below
   tests/                         # per-module + architecture + R0-R4 integration
 ```
 
 Hosts are composition roots only: they register modules via `AddXxxModule`
 and map HTTP / hosted services. Business logic lives in the libraries.
 
-**V2 scaffold (task E13/F01/US01/T01, ADR-024).** `Contigo.Market` and
-`Contigo.Insights` entered the solution as scaffolds — a class library, an
+**V2 scaffold (task E13/F01/US01/T01, ADR-024).** `Raffa.Market` and
+`Raffa.Insights` entered the solution as scaffolds — a class library, an
 `AddMarketModule()` / `AddInsightsModule()` stub that registered nothing, and
 a matching test project with one placeholder test — so the epic-13 tasks that
-fill them in would not also have to touch `Contigo.slnx` or the architecture
-allow-list. Both are now real: `Contigo.Market` by tasks E13/F02/US01/T01+T02
-(see "Market Intelligence" below), `Contigo.Insights` by task E13/F07/US01/T01
-(see "Insights"). `Contigo.Suppliers.Products.Tests` was that scaffold task's
+fill them in would not also have to touch `Raffa.slnx` or the architecture
+allow-list. Both are now real: `Raffa.Market` by tasks E13/F02/US01/T01+T02
+(see "Market Intelligence" below), `Raffa.Insights` by task E13/F07/US01/T01
+(see "Insights"). `Raffa.Suppliers.Products.Tests` was that scaffold task's
 third new test project and got real coverage from task E13/F03/US01/T01 (see
-"Supplier identity"). `Contigo.AiEval` (references `Contigo.Chat`,
-`Contigo.AiGateway`, `Contigo.SharedKernel` — the golden-set eval harness of
+"Supplier identity"). `Raffa.AiEval` (references `Raffa.Chat`,
+`Raffa.AiGateway`, `Raffa.SharedKernel` — the golden-set eval harness of
 story us-01-v2-foundation) is the one still-placeholder project, pending task
-E13/F06/US01/T02. `Contigo.ArchitectureTests.DependencyDirectionTests`
-allow-lists `Contigo.Market` → `[SharedKernel, AiGateway, Benchmark]` and
-`Contigo.Insights` → `[SharedKernel, Benchmark]`, and covers both in its
+E13/F06/US01/T02. `Raffa.ArchitectureTests.DependencyDirectionTests`
+allow-lists `Raffa.Market` → `[SharedKernel, AiGateway, Benchmark]` and
+`Raffa.Insights` → `[SharedKernel, Benchmark]`, and covers both in its
 domain-module direction / provider-SDK theories.
 
 *(This section previously carried three interleaved copies of the project tree
 and of this paragraph — one truncated mid-sentence — merged in by the epic-13
 wave's phase barriers. Reconciled by task E13/F04/US01/T01 against the actual
-`Contigo.slnx` and `DependencyDirectionTests` allow-list.)*
+`Raffa.slnx` and `DependencyDirectionTests` allow-list.)*
 
 ## Commands
 
@@ -66,28 +66,28 @@ Testcontainer (Docker must be running).
 
 ```bash
 cd backend
-dotnet restore Contigo.slnx
-dotnet build Contigo.slnx --configuration Release
-dotnet test Contigo.slnx --configuration Release
+dotnet restore Raffa.slnx
+dotnet build Raffa.slnx --configuration Release
+dotnet test Raffa.slnx --configuration Release
 ```
 
 Local API (https://localhost:7109, http://localhost:5029 — matches
 `web/public/config.json`):
 
 ```bash
-dotnet run --project src/Contigo.Api/Contigo.Api.csproj --launch-profile https
+dotnet run --project src/Raffa.Api/Raffa.Api.csproj --launch-profile https
 ```
 
 `appsettings.Development.json` points at `localhost:5432` database
-`contigo_dev` (user/password `contigo`) and Azurite
+`raffa_dev` (user/password `raffa`) and Azurite
 (`UseDevelopmentStorage=true`). There is no docker-compose in this repo
 yet — bring your own Postgres (with `VECTOR` enabled) and Azurite, or rely
 on Testcontainers inside `dotnet test`.
 
 EF migrations live in each module that owns a DbContext
-(`Contigo.Identity.Workspace`, `Contigo.Documents.Contracts`,
-`Contigo.Audit`, `Contigo.Renewals`, `Contigo.Savings`, `Contigo.Quotes`,
-`Contigo.Chat`, `Contigo.Suppliers.Products`). Apply them against
+(`Raffa.Identity.Workspace`, `Raffa.Documents.Contracts`,
+`Raffa.Audit`, `Raffa.Renewals`, `Raffa.Savings`, `Raffa.Quotes`,
+`Raffa.Chat`, `Raffa.Suppliers.Products`). Apply them against
 the same database the hosts use; RLS policies are added in those
 migrations, not in Terraform.
 
@@ -105,12 +105,12 @@ reasoning as `suppliers.sql`: neither `market_record` nor `market_embedding`
 carries a FK to or from any other module's tables, so `market.sql` has no
 ordering dependency on the other eight and is simply appended last), after
 both `az containerapp
-update` steps (task E09/F02/US01/T02) — `Contigo.Api` and `Contigo.Worker`
+update` steps (task E09/F02/US01/T02) — `Raffa.Api` and `Raffa.Worker`
 deliberately never call `Database.MigrateAsync()`, so a replica boot never
 mutates schema. Regenerate the script after adding or changing a
 migration; `<Module>MigrationScriptStaleCheckTests` (task E09/F01/US01/T01,
-not yet retrofitted onto `Contigo.Chat` — same pre-existing gap
-`Contigo.Documents.Contracts` also has; `Contigo.Suppliers.Products` has
+not yet retrofitted onto `Raffa.Chat` — same pre-existing gap
+`Raffa.Documents.Contracts` also has; `Raffa.Suppliers.Products` has
 its own from the start, task E13/F03/US01/T01) fails `dotnet test` if a
 script is missing or no longer matches a fresh idempotent generate, and
 `<Module>MigrationScriptTests`
@@ -119,26 +119,26 @@ applies (and re-applies) cleanly to a bare `pgvector/pgvector:pg16` server.
 `.github/workflows/backend.yml`'s CI apply step (`scripts/pg_connection_string_env.py`
 turns the Key Vault `postgres-connection` secret into `psql`'s `PG*`
 environment variables; `scripts/schema_apply_verify.py` then proves every
-migration_id all nine scripts declare landed in `contigo_<env>`'s own
+migration_id all nine scripts declare landed in `raffa_<env>`'s own
 `__EFMigrationsHistory`, failing the job by name otherwise) needs the CI
 deploy principal to hold `Key Vault Secrets User` on that environment's
 vault (`modules/keyvault` `ci_secrets_user`, applied by HCP).
 
 **Demo fixture seed (task E10/F01/US01/T01, ADR-001, ADR-022):** ADR-021's
 schema apply above creates empty tables — nothing populates the Day-1
-Savings screen on a fresh `contigo_demo`. `backend/scripts/demo-fixture-seed.sql`
+Savings screen on a fresh `raffa_demo`. `backend/scripts/demo-fixture-seed.sql`
 is the checked-in, idempotent fix: one demo `workspace` (tenant id
 `00000000-0000-0000-0000-000000000001` — hard-code this as `X-Tenant-Id`
 to exercise the seeded tenant directly), one supporting `contract` row, and
 three `savings_opportunity` rows traceable to real
-`Contigo.Benchmark.Fixtures.FixtureBenchmarkAdapter.Catalog` entries (AWS
-EC2, Zoom, Snowflake) spanning `Contigo.Savings.Application
+`Raffa.Benchmark.Fixtures.FixtureBenchmarkAdapter.Catalog` entries (AWS
+EC2, Zoom, Snowflake) spanning `Raffa.Savings.Application
 .SavingsProvenanceClassifier`'s own documented High/Medium/Low confidence
 examples for those exact fixtures — never a fabricated number (ADR-001).
 Every `INSERT` is `ON CONFLICT (id) DO NOTHING` against a fixed id, so
 re-running is safe, and every RLS-guarded table is written the same way
 the application itself writes one — `SET app.tenant_id = '<demo tenant
-id>'` before the insert (see `Contigo.SharedKernel.Tenancy
+id>'` before the insert (see `Raffa.SharedKernel.Tenancy
 .TenantRlsConnectionInterceptor`) — never a bypass role, never a disabled
 policy (AC-4). Applied with `psql` (never `Database.MigrateAsync()`) by
 `.github/workflows/seed-demo-fixture.yml` — `workflow_dispatch` for a
@@ -148,7 +148,7 @@ manual operator run, `workflow_call` for a future caller (for example a
 run against that environment; it reuses that same job's Key Vault fetch
 (`scripts/pg_connection_string_env.py`, secret `postgres-connection`) and
 the same per-env deploy service principal, so no new Azure role assignment
-is needed. `Contigo.IntegrationTests.DemoFixtureSeedEndToEndTests` (via
+is needed. `Raffa.IntegrationTests.DemoFixtureSeedEndToEndTests` (via
 `DemoFixtureSeedIntegrationFixture`) proves the checked-in script itself —
 read from disk, applied to a real Postgres+RLS Testcontainer, never
 re-typed into the test — makes `GET /api/savings` return the three seeded
@@ -166,34 +166,34 @@ that a second apply does not duplicate rows.
 | GET | `/api/documents/{id}` | metadata/status; same header; `documentType` is the widened `ContractDocumentType` (`Msa`, `OrderForm`, `Amendment`, `Sow`, `RenewalLetter`, `Quote`, `Invoice`, `PriceList`, `Nda`, `Dpa`, `Other`) — task E13/F04/US01/T01 added the last five so “the documents around a contract” keep their own kind |
 | GET | `/api/documents` | Server-side Documents list (R-DOC-06/09; task E13/F04/US01/T02); `X-Tenant-Id` header; optional `status` (exact `DocumentProcessingStatus`), `page` (default 1), `pageSize` (default 25, max 100); response `{ items, page, pageSize, totalCount }`, each item `{ id, contractId, supplierName, fileName, documentType, processingStatus, stage, pageCount, createdAt, weakFactCount }` — `stage` is one of R-DOC-09's six real names and is present **only** while `processingStatus` is `Processing`; `supplierName` is resolved through `ISupplierNameLookup` when the Suppliers module is registered, `null` otherwise (never a raw id); `weakFactCount` counts this contract's distinct extracted fields whose latest evidence is missing or below 0.6 |
 | GET | `/api/documents/{id}/preview` | First-page preview as `image/png` (R-DOC-08); `X-Tenant-Id` header; 404 when the document does not exist for this tenant **or** has no stored preview — the client never receives a blob URL, the bytes are streamed under the caller's own tenant scope (ADR-009). See “Documents V2” below for what the preview actually contains today |
-| POST | `/api/documents/{id}/reprocess` | **Admin only** (403 otherwise): re-loads the stored bytes, re-runs hybrid parse → page-aware embedding → staged extraction (R-DOC-07), writes one `document.reprocessed` audit row; response `{ documentId, contractId, documentType, processingStatus, pagesParsed, chunksIndexed }`. Role resolution: claims → `X-Role`/`X-Workspace-Role` header → `workspace_membership` looked up by `X-User-Id` — see `Contigo.Api.Infrastructure.WorkspaceRoleResolver` |
+| POST | `/api/documents/{id}/reprocess` | **Admin only** (403 otherwise): re-loads the stored bytes, re-runs hybrid parse → page-aware embedding → staged extraction (R-DOC-07), writes one `document.reprocessed` audit row; response `{ documentId, contractId, documentType, processingStatus, pagesParsed, chunksIndexed }`. Role resolution: claims → `X-Role`/`X-Workspace-Role` header → `workspace_membership` looked up by `X-User-Id` — see `Raffa.Api.Infrastructure.WorkspaceRoleResolver` |
 | DELETE | `/api/documents/{id}` | **Admin only** (403 otherwise): deletes every stored object (each version plus the preview), the retrieval chunks, the version and extraction-job rows and the document row, detaches the contract link and clears every `source_document_id` on the facts that survive; writes one `document.deleted` audit row; 204 (R-DOC-10). The contract and its extracted facts are deliberately kept |
-| POST | `/api/documents/{id}/validate` | Review sign-off (product spec §7.1 "needs review → completed", ADR-020 screen 6 "Mark as validated"): optional body `{ acceptedFields: string[] }` + `X-Tenant-Id` header (`X-User-Id` names the actor); moves a `NeedsReview` document to `Completed` and writes one `document.validated` audit row naming the accepted fields (`Contigo.Documents.Contracts.Application.DocumentValidationService`); never rewrites the extraction evidence. Not Admin-only — reviewing is the Procurement role's own job, same posture as `PATCH /api/contracts/{id}`. 404 unknown/cross-tenant document; **409** with a named reason for a document still `Uploaded`/`Processing` or `Failed`; idempotent — an already `Completed` document answers 200 with `alreadyValidated: true`. Response `{ documentId, contractId, processingStatus, validatedAt, acceptedFields, alreadyValidated }` |
-| PATCH | `/api/contracts/{id}` | `{ corrections: { <field>: <string\|null> }, reason? }` + `X-Tenant-Id` header; versioned correction (ADR-003 `ContractVersion`/`CorrectionHistory`, ADR-009 RLS) — see `Contigo.Documents.Contracts.Application.ContractCorrectionService.CorrectableFieldNames` for the accepted field list; also writes one `IAuditWriter` entry (`contract.corrected`) |
-| GET | `/api/contracts/{id}/evidence` | `X-Tenant-Id` header; the latest `ExtractionEvidence` row per field for one contract (`Contigo.Documents.Contracts.Application.ContractEvidenceQueryService`), alphabetical by `fieldName`: `{ fieldName, value, confidence, sourcePage, sourceSpan, sourceDocumentId, sourceFileName, passage, highlightStart, highlightLength, modelId, extractedAt }` — `fieldName` is the same key `PATCH /api/contracts/{id}` accepts, plus `type` for the classification verdict (no page/span); `passage` is the sentence of the indexed page text (the document's own `embedding` chunk) around the span with the span's offsets, present only when the page text still contains it. The review screen's evidence pane and per-field confidence tags read this. 404 when the contract does not exist for the tenant, `[]` when it exists but has no evidence |
-| GET | `/api/contracts/{id}/corrections` | `X-Tenant-Id` header; field-level correction history for one contract, newest first (`Contigo.Documents.Contracts.Application.ContractCorrectionHistoryQueryService`) — 404 if the contract does not exist for the tenant, `[]` if it exists but was never corrected |
+| POST | `/api/documents/{id}/validate` | Review sign-off (product spec §7.1 "needs review → completed", ADR-020 screen 6 "Mark as validated"): optional body `{ acceptedFields: string[] }` + `X-Tenant-Id` header (`X-User-Id` names the actor); moves a `NeedsReview` document to `Completed` and writes one `document.validated` audit row naming the accepted fields (`Raffa.Documents.Contracts.Application.DocumentValidationService`); never rewrites the extraction evidence. Not Admin-only — reviewing is the Procurement role's own job, same posture as `PATCH /api/contracts/{id}`. 404 unknown/cross-tenant document; **409** with a named reason for a document still `Uploaded`/`Processing` or `Failed`; idempotent — an already `Completed` document answers 200 with `alreadyValidated: true`. Response `{ documentId, contractId, processingStatus, validatedAt, acceptedFields, alreadyValidated }` |
+| PATCH | `/api/contracts/{id}` | `{ corrections: { <field>: <string\|null> }, reason? }` + `X-Tenant-Id` header; versioned correction (ADR-003 `ContractVersion`/`CorrectionHistory`, ADR-009 RLS) — see `Raffa.Documents.Contracts.Application.ContractCorrectionService.CorrectableFieldNames` for the accepted field list; also writes one `IAuditWriter` entry (`contract.corrected`) |
+| GET | `/api/contracts/{id}/evidence` | `X-Tenant-Id` header; the latest `ExtractionEvidence` row per field for one contract (`Raffa.Documents.Contracts.Application.ContractEvidenceQueryService`), alphabetical by `fieldName`: `{ fieldName, value, confidence, sourcePage, sourceSpan, sourceDocumentId, sourceFileName, passage, highlightStart, highlightLength, modelId, extractedAt }` — `fieldName` is the same key `PATCH /api/contracts/{id}` accepts, plus `type` for the classification verdict (no page/span); `passage` is the sentence of the indexed page text (the document's own `embedding` chunk) around the span with the span's offsets, present only when the page text still contains it. The review screen's evidence pane and per-field confidence tags read this. 404 when the contract does not exist for the tenant, `[]` when it exists but has no evidence |
+| GET | `/api/contracts/{id}/corrections` | `X-Tenant-Id` header; field-level correction history for one contract, newest first (`Raffa.Documents.Contracts.Application.ContractCorrectionHistoryQueryService`) — 404 if the contract does not exist for the tenant, `[]` if it exists but was never corrected |
 | GET | `/api/audit` | tenant-scoped; expects a claims principal (integration tests inject one) |
 | GET | `/api/contracts` | portfolio list; spec §8.1 columns; `X-Tenant-Id` header; optional filters `supplierId`, `status`, `risk` (Low/Medium/High/Critical), `autoRenewal`, `minAnnualSpend`, `maxAnnualSpend`, `renewalFrom`/`renewalTo` (yyyy-MM-dd) — no `category` filter yet, see `PortfolioFilter`'s doc comment; optional paging `page` (default 1), `pageSize` (default 25, max 100); response is `{ items, page, pageSize, totalCount }`, not a bare array |
-| GET | `/api/contracts/{id}` | Contract 360 aggregate; spec §8.2 header + tabs (overview, commercials, products, clauses, obligations, risks, documents, benchmark, renewal, activity); `X-Tenant-Id` header; 404 when the contract does not exist or belongs to another tenant; `benchmark`/`activity` are always empty arrays — no task has yet mapped a real contract's line items into a `Contigo.Benchmark.Contracts.BenchmarkQuery` (no supplier-name/geography field exists on `Contract` today), so this tab stays empty even though R3's own benchmark comparison is real and provable elsewhere (see "R3 demo smoke test" below); `activity` remains an R4 placeholder — see `Contract360Result`'s doc comment |
-| POST | `/api/chat/query` | Ask Contigo V2 (ADR-024 §6; task E13/F06/US01/T01, ask-engine); `{ question: string }` + `X-Tenant-Id` header + caller identity (see "Interim auth" below). Kept one release as a thin alias: creates a conversation, then delegates into the same `AskCopilotService`/`POST /api/conversations/{id}/messages` pipeline (see "Ask Contigo — conversations store" below) — the old direct `AskContigoQueryRouter` → `RagAnswerService` → `{ question, intent, canDetermine, answer, citations, message }` shape this route used to return (task E02/F04/US02/T01) no longer exists; that router is now reused *inside* `AskCopilotService` instead. Response is the ADR-024 §6 reply contract, same as the messages endpoint below |
+| GET | `/api/contracts/{id}` | Contract 360 aggregate; spec §8.2 header + tabs (overview, commercials, products, clauses, obligations, risks, documents, benchmark, renewal, activity); `X-Tenant-Id` header; 404 when the contract does not exist or belongs to another tenant; `benchmark`/`activity` are always empty arrays — no task has yet mapped a real contract's line items into a `Raffa.Benchmark.Contracts.BenchmarkQuery` (no supplier-name/geography field exists on `Contract` today), so this tab stays empty even though R3's own benchmark comparison is real and provable elsewhere (see "R3 demo smoke test" below); `activity` remains an R4 placeholder — see `Contract360Result`'s doc comment |
+| POST | `/api/chat/query` | Ask Raffa V2 (ADR-024 §6; task E13/F06/US01/T01, ask-engine); `{ question: string }` + `X-Tenant-Id` header + caller identity (see "Interim auth" below). Kept one release as a thin alias: creates a conversation, then delegates into the same `AskCopilotService`/`POST /api/conversations/{id}/messages` pipeline (see "Ask Raffa — conversations store" below) — the old direct `AskRaffaQueryRouter` → `RagAnswerService` → `{ question, intent, canDetermine, answer, citations, message }` shape this route used to return (task E02/F04/US02/T01) no longer exists; that router is now reused *inside* `AskCopilotService` instead. Response is the ADR-024 §6 reply contract, same as the messages endpoint below |
 | GET | `/api/conversations` | Caller's last N conversations, most recently updated first (spec §7; R-CONV-02; story us-01-conversations AC-2, task E13/F05/US01/T02); `X-Tenant-Id` header + caller identity (see "Interim auth" below); optional `take` (default 5, must be a positive integer); response is a bare array of `{ id, title, scopeContractId, updatedAt }`, never an `{ items, totalCount }` envelope — there is no paging concept for "my last N conversations" |
 | POST | `/api/conversations` | Creates a conversation (AC-2); `X-Tenant-Id` header + caller identity; body `{ scopeContractId? }` — a GUID naming the contract "Ask about it" (Contract 360) was opened from, or omitted for the global Ask bar (ADR-024: "The global Ask bar always opens a new chat"); 201 with the same `{ id, title, scopeContractId, updatedAt }` shape as the list row above; `title` starts as `ConversationService.DefaultTitle` ("New chat") until the first message lands |
-| GET | `/api/conversations/{id}` | The conversation plus its messages, oldest first (AC-2); `X-Tenant-Id` header + caller identity; 404 when `{id}` does not exist, belongs to another tenant, or belongs to another user of the same tenant — RLS backstops the tenant half (ADR-009), `Contigo.Chat.Application.Conversations.ConversationService` itself is the only thing enforcing the per-user half (RLS has no per-user predicate), and both read back as the identical 404, never a distinguishing 403; response `{ id, title, scopeContractId, createdAt, updatedAt, messages: [{ id, role, kind, markdown, citations, actions, modelId, promptVersion, inputHash, createdAt }] }` — `role` is `you`/`contigo`, `kind` is `answer`/`abstain`/`redirect`/`refusal` (ADR-024 §6 wire literals); `citations`/`actions` are real JSON arrays, never a JSON string nested inside JSON; never the raw retrieval pack (ADR-011) |
-| POST | `/api/conversations/{id}/messages` | Ask Contigo V2 (ADR-024 §6; task E13/F06/US01/T01, ask-engine, AC-8); `{ question: string }` + `X-Tenant-Id` header + caller identity; 400 for a missing/invalid tenant or user header, an invalid `{id}`, or a blank `question` — all before any database call (see `Contigo.Api.Tests.ConversationsEndpointTests`). Runs the full engine (`AskCopilotService`: `Gate.DomainGate` →, for `in_domain` turns, `Planning.IntentPlanner` → per-intent context pack → guarded `answer` call → `Guards.GroundingGuard`/`NumericGuard`/`RegenerateOnce`), appends both the caller's question and Contigo's reply to the conversation via `ConversationService`, then returns the same ADR-024 §6 reply contract `GET /api/conversations/{id}` echoes back for one message: `{ kind, answerMarkdown, citations: [{ n, corpus, title, subtitle, snippet, documentId?, contractId?, page?, section?, previewUrl?, href?, recordId? }], actions: [{ label, href, kind }], provenance: { sources, modelId, promptVersion, inputHash }, followUps }` plus `conversationId`/`messageId` — never engineer chrome (a `Document:` guid, a "Structured query" line) in `answerMarkdown` |
-| GET | `/api/renewals` | Renewal pipeline + insight card (spec §9.3/§10.1); `X-Tenant-Id` header; auto-renewing contracts only, most urgent first; response is `{ items, totalCount }`, each item `{ contractId, supplierId, status, renewalDate, daysUntilRenewal, annualSpend, cancellationDeadline, daysUntilCancellationDeadline, autoRenewal, action, insightCard: { facts, recommendations } }` — `insightCard.recommendations`' benchmark/savings fields (`annualUpliftPercent`, `marketPosition`, `potentialSavingsRange`) are honestly `null` until the Benchmark/Savings modules land (R3); `action`/`recommendedAction` is a deterministic urgency rule, not the full spec §9.2 Priority Score — see `Contigo.Renewals.Application.RenewalPipelineBuilder`'s own doc comment |
-| GET | `/api/renewals/{contractId}/priority` | Explainable priority-score breakdown for one contract (spec §9.2; story us-02-priority-score AC-1/AC-2, task E03/F01/US02/T02); `X-Tenant-Id` header; 404 when the contract does not exist or belongs to another tenant (same rule as `GET /api/contracts/{id}`); response is `{ contractId, totalScore, components: { spendWeight, timeUrgency, benchmarkOpportunity, priceIncreaseRisk, contractRisk } }`, each component `{ score, explanation }` — component weights are configurable, see `Contigo.Renewals.Configuration.PriorityScoreWeightsOptions` below; `priceIncreaseRisk`/`benchmarkOpportunity` use their honest no-data default (minimum / neutral respectively) since no uplift or benchmark-position data is wired to real contracts yet |
-| POST | `/api/renewals/{id}/action` | Updates owner/status/action for one renewal (spec Appendix A; story us-01-renewal-dashboard-api AC-3); `X-Tenant-Id` header; `{id}` is the same `contractId` the GET above returns per row, not a separate stored "renewal" id; body `{ owner, status, action }` — `status` is one of `NotStarted`/`InProgress`/`Completed`; upserts one row (never a second for the same contract) and writes one `IAuditWriter` entry (`renewal.action_updated`); 400 (not 404) for a missing/invalid tenant header or route id, or for an empty `owner`/`action`/unrecognized `status` — see `Contigo.Renewals.Application.RenewalActionService`'s own doc comment for the honest gap this leaves (no check that `{id}` names an existing, tenant-owned contract; `Contigo.Renewals` cannot reference `Contigo.Documents.Contracts` at all) |
-| GET | `/api/savings` | Lists the caller's tenant-scoped `SavingsOpportunity` rows, newest identified first (spec §4.3/§6; module-map.md "Savings \| SavingsOpportunity, RealizedSavings \| /api/savings"; story us-02-savings-opportunity AC-1, task E04/F02/US02/T01; story us-01-savings-kpis AC-2/AC-3, task E04/F03/US01/T02); `X-Tenant-Id` header; response `{ items, totalCount }`, each item also carrying `confidenceLevel` (`Low`/`Medium`/`High`, task E04/F03/US01/T02 — see `SavingsOpportunityResult.ConfidenceLevel`'s own doc comment); no filters yet — see `Contigo.Savings.Application.SavingsOpportunityService.ListAsync`'s own doc comment |
-| PATCH | `/api/savings/{id}` | Updates `owner`, `status` (`Identified`/`InProgress`/`Realized`) and/or `realizedAmount` on one `SavingsOpportunity` (AC-1 "updates status/owner..."; AC-3 "realized value is captured and audit-tracked", task E04/F02/US02/T02); `X-Tenant-Id` header; body `{ owner?, status?, realizedAmount? }` — a genuine partial update, any subset of the three fields; 404 when `{id}` does not name an opportunity for this tenant, 400 for every other validation failure (empty owner, unrecognized status, a negative `realizedAmount`, a `realizedAmount` combined with an explicit `status` other than `Realized`, or none of the three fields supplied); writes one `IAuditWriter` entry per successful call — `savings_opportunity.updated`, or `savings_opportunity.realized` instead when `realizedAmount` was supplied (never both). Supplying `realizedAmount` also inserts a new, append-only `Contigo.Savings.Domain.RealizedSavings` row (in the opportunity's own `currency`) and finalizes `status` as `Realized` — either because the caller's own explicit `status` already said so, or automatically when `status` was omitted (see `SavingsOpportunityService.UpdateAsync`'s own doc comment). The response's `realizedAmount` field is non-`null` only on the call that just recorded one — it is not a rolled-up read of this opportunity's full realized-value history, see `SavingsOpportunityResult.RealizedAmount`'s own doc comment; the response also carries `confidenceLevel` (task E04/F03/US01/T02 — same field the `GET` row above documents, shared `ToResponse` wire-shaping) |
-| PATCH | `/api/savings/{id}` | Updates `owner` and/or `status` (`Identified`/`InProgress`/`Realized`) on one `SavingsOpportunity` (AC-1 "updates status/owner..."); `X-Tenant-Id` header; body `{ owner?, status? }` — a genuine partial update, either or both fields; 404 when `{id}` does not name an opportunity for this tenant, 400 for every other validation failure (empty owner, unrecognized status, or neither field supplied); writes one `IAuditWriter` entry (`savings_opportunity.updated`) per successful call — setting `status` to `Realized` here does **not** yet create an audit-tracked realized-value record, see `Contigo.Savings.Domain.SavingsOpportunityStatus.Realized`'s own doc comment for the gap task E04/F02/US02/T02 (`RealizedSavings`) closes |
-| POST | `/api/quotes` | New Purchase / Quote Check (spec §4.4/§11; module-map.md "Quotes \| Quote, QuoteLine, Assessment... \| /api/quotes"; story us-01-quote-line-extraction AC-1/AC-2/AC-4, task E05/F01/US01/T01); multipart `file` + `X-Tenant-Id` header, same shape as `POST /api/documents`, plus four **optional** form fields task E05/F02/US01/T01 (market-assessment) added — `supplier`, `currency`, `geography`, `purchaseDate` (`yyyy-MM-dd`) — all absent by default and never required for the upload to succeed; nothing in this codebase auto-detects them from the document yet (spec §11.1's own "Identify supplier" workflow step has no task/UI of its own), so a quote uploaded without them simply is not matchable via `GET .../assessment` below until corrected (see `Quote`'s own doc comment; a malformed `purchaseDate` is the one new 400 this endpoint can return); synchronously reuses the epic-02 `HybridDocumentParsingService` (native text or the `ocr` gateway role — ADR-017, no 2-page cap) then runs one schema-constrained `extract` call for line items (quantity/SKU/edition/price/discount/term), persisting one `Contigo.Quotes.Domain.QuoteLine` row per item with source span/page/confidence; `unitPrice`/`extendedPrice` are derived deterministically in code when the model reports only `listPrice`/`discountPercent` (AC-3, Appendix C rule 6 — never asked of the model, see `QuoteLineJsonSchema`); immediately afterward, still the same unit of work, `Contigo.Quotes.Application.Normalization.QuoteLineNormalizationService` (task E05/F01/US01/T02, quote-normalization) sets `NormalizedAnnualUnitPrice`/`NormalizedTermMonths` when `term` matches its own small, fixed billing-cadence vocabulary (monthly/quarterly/semi-annual/annual and common synonyms; every other term deliberately leaves both `null` — spec §11.3's own "line-item normalization is unresolved" outcome, Appendix C rule 10), then `Contigo.Quotes.Application.Normalization.SkuNormalizationService` (task E05/F01/US02/T01, sku-normalization) sets `NormalizedSku`/`NormalizedEdition`/`MatchStatus`; response `{ id, fileName, mimeType, processingStatus, lineItemCount, normalizedLineItemCount, unresolvedNormalizationCount, unmatchedSkuCount, supplier, currency, geography, purchaseDate, createdAt }` — the last four echo exactly what was recorded, including a `null`; a pipeline failure still returns 201 (the upload itself succeeded) with the pre-processing counts all `0`, never an HTTP error. *(This row previously existed twice, one per sibling task's own addition, each missing the other's fields — task E05/F02/US01/T01 consolidated it into the one, accurate, combined shape above.)* |
-| GET | `/api/quotes/{id}/assessment` | Quote assessment (spec §4.4/§11.2, Appendix A "Quote assessment"; module-map.md "Quotes \| Quote, QuoteLine, Assessment... \| /api/quotes"; story us-01-market-assessment AC-1/AC-2 (both the "flag" half, task E05/F02/US01/T01, and the "recommended target range + potential saving" half, task E05/F02/US01/T02)/AC-3); `X-Tenant-Id` header; 404 when `{id}` does not name a quote for this tenant; one assessment per `Contigo.Quotes.Domain.QuoteLine` on the quote (creation order) — `{ quoteId, lines: [{ quoteLineId, status, position, unitPrice, quantity, benchmark, confidence, targetSaving, explanation }] }`. `status` is `Assessed`/`QuoteDataUnresolved`/`InsufficientBenchmarkData` (`Contigo.Quotes.Domain.MarketAssessmentStatus`); `position` (`BelowMarket`/`InLine`/`AboveMarket`) is populated only when `status` is `Assessed` — the market band is `[P25, P75]` of the matched `Contigo.Benchmark.Contracts.BenchmarkResult.Distribution`, `InLine` otherwise (see `MarketAssessmentCalculator`'s own doc comment); `benchmark`/`confidence`/`targetSaving` are `null` exactly when no Benchmark Service call was even attempted (`QuoteDataUnresolved`: the quote is missing `supplier`/`currency`/`geography`/`purchaseDate`, or the line itself has no usable product/quantity/term/price), never withheld just because the comparison itself abstained (spec §11.3's benchmark-trust rule — `InsufficientBenchmarkData` still carries real `source`/`sampleSize`/`comparisonDimensions` provenance, and a real `targetSaving` object whose `recommendedTargetLow`/`recommendedTargetHigh`/`savingsRangeLow`/`savingsRangeHigh`/`totalSavingsRangeLow`/`totalSavingsRangeHigh` are honestly `null` with a named `explanation` — see `TargetSavingCalculator`'s own doc comment) |
-| POST | `/api/quotes/{id}/assessment/recalculate` | Manual product-mapping correction + recalculate (spec Appendix A "Re-run after product mapping correction"; story us-02-sku-normalization AC-2's "...and allow manual product mapping" half, AC-3, task E05/F01/US02/T02, sku-recalculate); `X-Tenant-Id` header; body `{ mappings?: [{ sku, edition?, canonicalSku, canonicalEdition?, canonicalProductName? }] }` — `mappings` may be omitted/empty (`{}` is a valid body) for a pure "what's still unmatched" refresh with no new correction. 404 when `{id}` does not name a quote for this tenant; 400 when a supplied correction's `sku`/`canonicalSku` is blank — validated before any write. For each valid correction, upserts (never duplicates) one tenant-scoped `Contigo.Quotes.Domain.SkuProductMapping` row keyed on the normalized SKU (`Contigo.Quotes.Application.Normalization.SkuNormalizer.Normalize` — same case/whitespace rule `POST /api/quotes`'s own upload-time normalization uses), then re-runs `SkuNormalizationService.NormalizeAsync` for every line on the quote (not just the corrected one — a mapping learned here also resolves any other quote for this tenant sharing the same normalized SKU, the next time that quote is itself (re)normalized) and `MarketAssessmentService.AssessAsync`; response `{ quoteId, mappingsAppliedCount, normalization: { lineCount, matchedCount, unmatchedCount, notApplicableCount }, unmatchedLines: [{ quoteLineId, sku, normalizedSku, edition, description }], assessment: { ...same shape as GET .../assessment... } }` — `unmatchedLines` is AC-2's "Show unmatched SKUs" half made queryable over HTTP (deliberately not a field on the `GET .../assessment` response itself, see `SkuMappingService`'s own doc comment for why); writes one `IAuditWriter` entry (`quote.sku_mapping_recalculated`) per successful call, even a pure refresh. |
-| GET | `/api/savings/kpis` | Procurement-homepage KPI row (spec §4.3/§10.1; story us-01-savings-kpis AC-1, task E04/F03/US01/T01); `X-Tenant-Id` header; response `{ annualSpendAnalyzed: [{ currency, amount, contractCount }], contractsAnalyzedCount, savingsIdentified/savingsInProgress/savingsRealized: [{ currency, low, high, count, averageConfidence }], upcomingRenewalsCount }` — every money value is grouped by currency, never summed across currencies (no exchange-rate service exists anywhere in this codebase); `contractsAnalyzedCount` counts contracts whose linked document reached `DocumentProcessingStatus.Completed` (a `Contract` row can exist before that — see `Contigo.Documents.Contracts.Application.PortfolioAnalysisCalculator`'s own doc comment); `savingsRealized` reflects each opportunity's own estimated range, not yet the separate, audit-tracked `RealizedSavings` value (task E04/F02/US02/T02's own gap, see `SavingsOpportunityStatus.Realized`'s doc comment); `upcomingRenewalsCount` is the same auto-renewing-contract count `GET /api/renewals`'s own `totalCount` already reports (same 100-contract-per-tenant cap) — see `Contigo.Api.SavingsKpiEndpointExtensions`'s own comment for why it is not a second, independently-computed number |
-| GET | `/api/capabilities` | The versioned V2 capability catalog (R-SYS-01; story us-01-capability-catalog, task E13/F08/US01/T01; mapped by task E13/F06/US01/T01, ask-engine); no `X-Tenant-Id` — static, tenant-agnostic metadata, not a per-tenant read; optional `X-Role` header (resolved through `WorkspaceRoleClaimResolver`, same interim-header posture as every tenant-scoped endpoint above) hides `workspace-members` unless the caller resolves to `Admin`; see "Ask Contigo — capability catalog" below |
-| GET | `/api/insights/criticality` | Portfolio-wide criticality ranking (story insights-calculators, task E13/F07/US01/T01; mapped by task E13/F06/US01/T01); `X-Tenant-Id` header; the same `Contigo.Insights.Criticality.CriticalityScoreCalculator` output `AskCopilotService`'s own `PortfolioStrategy` intent narrates — see "Insights" below |
-| GET | `/api/contracts/{id}/strategy` | One contract's renewal-strategy pack (when you must move, where you can push, targets, next steps; task E13/F07/US01/T01; mapped by task E13/F06/US01/T01); `X-Tenant-Id` header; 404 when the contract does not exist or belongs to another tenant; the same `Contigo.Insights.Strategy.StrategyPackBuilder` output `AskCopilotService`'s own `RenewalStrategy` intent narrates — see "Insights" below |
-| GET | `/api/market/records/{id}` | One market-feed record, for the citation panel (R-EVD-02; task E13/F06/US01/T01, ask-engine); no `X-Tenant-Id` — shared, tenant-agnostic market data (ADR-024); 404 when `{id}` does not name a record in the mock feed; response `{ recordId, supplier, category, product, geography, currency, title, snippet, provenance, updatedAt, unitPriceP25, unitPriceP50, unitPriceP75, sampleSize, source, representative }` — see `Contigo.Api.MarketEndpointExtensions` |
+| GET | `/api/conversations/{id}` | The conversation plus its messages, oldest first (AC-2); `X-Tenant-Id` header + caller identity; 404 when `{id}` does not exist, belongs to another tenant, or belongs to another user of the same tenant — RLS backstops the tenant half (ADR-009), `Raffa.Chat.Application.Conversations.ConversationService` itself is the only thing enforcing the per-user half (RLS has no per-user predicate), and both read back as the identical 404, never a distinguishing 403; response `{ id, title, scopeContractId, createdAt, updatedAt, messages: [{ id, role, kind, markdown, citations, actions, modelId, promptVersion, inputHash, createdAt }] }` — `role` is `you`/`raffa`, `kind` is `answer`/`abstain`/`redirect`/`refusal` (ADR-024 §6 wire literals); `citations`/`actions` are real JSON arrays, never a JSON string nested inside JSON; never the raw retrieval pack (ADR-011) |
+| POST | `/api/conversations/{id}/messages` | Ask Raffa V2 (ADR-024 §6; task E13/F06/US01/T01, ask-engine, AC-8); `{ question: string }` + `X-Tenant-Id` header + caller identity; 400 for a missing/invalid tenant or user header, an invalid `{id}`, or a blank `question` — all before any database call (see `Raffa.Api.Tests.ConversationsEndpointTests`). Runs the full engine (`AskCopilotService`: `Gate.DomainGate` →, for `in_domain` turns, `Planning.IntentPlanner` → per-intent context pack → guarded `answer` call → `Guards.GroundingGuard`/`NumericGuard`/`RegenerateOnce`), appends both the caller's question and Raffa's reply to the conversation via `ConversationService`, then returns the same ADR-024 §6 reply contract `GET /api/conversations/{id}` echoes back for one message: `{ kind, answerMarkdown, citations: [{ n, corpus, title, subtitle, snippet, documentId?, contractId?, page?, section?, previewUrl?, href?, recordId? }], actions: [{ label, href, kind }], provenance: { sources, modelId, promptVersion, inputHash }, followUps }` plus `conversationId`/`messageId` — never engineer chrome (a `Document:` guid, a "Structured query" line) in `answerMarkdown` |
+| GET | `/api/renewals` | Renewal pipeline + insight card (spec §9.3/§10.1); `X-Tenant-Id` header; auto-renewing contracts only, most urgent first; response is `{ items, totalCount }`, each item `{ contractId, supplierId, status, renewalDate, daysUntilRenewal, annualSpend, cancellationDeadline, daysUntilCancellationDeadline, autoRenewal, action, insightCard: { facts, recommendations } }` — `insightCard.recommendations`' benchmark/savings fields (`annualUpliftPercent`, `marketPosition`, `potentialSavingsRange`) are honestly `null` until the Benchmark/Savings modules land (R3); `action`/`recommendedAction` is a deterministic urgency rule, not the full spec §9.2 Priority Score — see `Raffa.Renewals.Application.RenewalPipelineBuilder`'s own doc comment |
+| GET | `/api/renewals/{contractId}/priority` | Explainable priority-score breakdown for one contract (spec §9.2; story us-02-priority-score AC-1/AC-2, task E03/F01/US02/T02); `X-Tenant-Id` header; 404 when the contract does not exist or belongs to another tenant (same rule as `GET /api/contracts/{id}`); response is `{ contractId, totalScore, components: { spendWeight, timeUrgency, benchmarkOpportunity, priceIncreaseRisk, contractRisk } }`, each component `{ score, explanation }` — component weights are configurable, see `Raffa.Renewals.Configuration.PriorityScoreWeightsOptions` below; `priceIncreaseRisk`/`benchmarkOpportunity` use their honest no-data default (minimum / neutral respectively) since no uplift or benchmark-position data is wired to real contracts yet |
+| POST | `/api/renewals/{id}/action` | Updates owner/status/action for one renewal (spec Appendix A; story us-01-renewal-dashboard-api AC-3); `X-Tenant-Id` header; `{id}` is the same `contractId` the GET above returns per row, not a separate stored "renewal" id; body `{ owner, status, action }` — `status` is one of `NotStarted`/`InProgress`/`Completed`; upserts one row (never a second for the same contract) and writes one `IAuditWriter` entry (`renewal.action_updated`); 400 (not 404) for a missing/invalid tenant header or route id, or for an empty `owner`/`action`/unrecognized `status` — see `Raffa.Renewals.Application.RenewalActionService`'s own doc comment for the honest gap this leaves (no check that `{id}` names an existing, tenant-owned contract; `Raffa.Renewals` cannot reference `Raffa.Documents.Contracts` at all) |
+| GET | `/api/savings` | Lists the caller's tenant-scoped `SavingsOpportunity` rows, newest identified first (spec §4.3/§6; module-map.md "Savings \| SavingsOpportunity, RealizedSavings \| /api/savings"; story us-02-savings-opportunity AC-1, task E04/F02/US02/T01; story us-01-savings-kpis AC-2/AC-3, task E04/F03/US01/T02); `X-Tenant-Id` header; response `{ items, totalCount }`, each item also carrying `confidenceLevel` (`Low`/`Medium`/`High`, task E04/F03/US01/T02 — see `SavingsOpportunityResult.ConfidenceLevel`'s own doc comment); no filters yet — see `Raffa.Savings.Application.SavingsOpportunityService.ListAsync`'s own doc comment |
+| PATCH | `/api/savings/{id}` | Updates `owner`, `status` (`Identified`/`InProgress`/`Realized`) and/or `realizedAmount` on one `SavingsOpportunity` (AC-1 "updates status/owner..."; AC-3 "realized value is captured and audit-tracked", task E04/F02/US02/T02); `X-Tenant-Id` header; body `{ owner?, status?, realizedAmount? }` — a genuine partial update, any subset of the three fields; 404 when `{id}` does not name an opportunity for this tenant, 400 for every other validation failure (empty owner, unrecognized status, a negative `realizedAmount`, a `realizedAmount` combined with an explicit `status` other than `Realized`, or none of the three fields supplied); writes one `IAuditWriter` entry per successful call — `savings_opportunity.updated`, or `savings_opportunity.realized` instead when `realizedAmount` was supplied (never both). Supplying `realizedAmount` also inserts a new, append-only `Raffa.Savings.Domain.RealizedSavings` row (in the opportunity's own `currency`) and finalizes `status` as `Realized` — either because the caller's own explicit `status` already said so, or automatically when `status` was omitted (see `SavingsOpportunityService.UpdateAsync`'s own doc comment). The response's `realizedAmount` field is non-`null` only on the call that just recorded one — it is not a rolled-up read of this opportunity's full realized-value history, see `SavingsOpportunityResult.RealizedAmount`'s own doc comment; the response also carries `confidenceLevel` (task E04/F03/US01/T02 — same field the `GET` row above documents, shared `ToResponse` wire-shaping) |
+| PATCH | `/api/savings/{id}` | Updates `owner` and/or `status` (`Identified`/`InProgress`/`Realized`) on one `SavingsOpportunity` (AC-1 "updates status/owner..."); `X-Tenant-Id` header; body `{ owner?, status? }` — a genuine partial update, either or both fields; 404 when `{id}` does not name an opportunity for this tenant, 400 for every other validation failure (empty owner, unrecognized status, or neither field supplied); writes one `IAuditWriter` entry (`savings_opportunity.updated`) per successful call — setting `status` to `Realized` here does **not** yet create an audit-tracked realized-value record, see `Raffa.Savings.Domain.SavingsOpportunityStatus.Realized`'s own doc comment for the gap task E04/F02/US02/T02 (`RealizedSavings`) closes |
+| POST | `/api/quotes` | New Purchase / Quote Check (spec §4.4/§11; module-map.md "Quotes \| Quote, QuoteLine, Assessment... \| /api/quotes"; story us-01-quote-line-extraction AC-1/AC-2/AC-4, task E05/F01/US01/T01); multipart `file` + `X-Tenant-Id` header, same shape as `POST /api/documents`, plus four **optional** form fields task E05/F02/US01/T01 (market-assessment) added — `supplier`, `currency`, `geography`, `purchaseDate` (`yyyy-MM-dd`) — all absent by default and never required for the upload to succeed; nothing in this codebase auto-detects them from the document yet (spec §11.1's own "Identify supplier" workflow step has no task/UI of its own), so a quote uploaded without them simply is not matchable via `GET .../assessment` below until corrected (see `Quote`'s own doc comment; a malformed `purchaseDate` is the one new 400 this endpoint can return); synchronously reuses the epic-02 `HybridDocumentParsingService` (native text or the `ocr` gateway role — ADR-017, no 2-page cap) then runs one schema-constrained `extract` call for line items (quantity/SKU/edition/price/discount/term), persisting one `Raffa.Quotes.Domain.QuoteLine` row per item with source span/page/confidence; `unitPrice`/`extendedPrice` are derived deterministically in code when the model reports only `listPrice`/`discountPercent` (AC-3, Appendix C rule 6 — never asked of the model, see `QuoteLineJsonSchema`); immediately afterward, still the same unit of work, `Raffa.Quotes.Application.Normalization.QuoteLineNormalizationService` (task E05/F01/US01/T02, quote-normalization) sets `NormalizedAnnualUnitPrice`/`NormalizedTermMonths` when `term` matches its own small, fixed billing-cadence vocabulary (monthly/quarterly/semi-annual/annual and common synonyms; every other term deliberately leaves both `null` — spec §11.3's own "line-item normalization is unresolved" outcome, Appendix C rule 10), then `Raffa.Quotes.Application.Normalization.SkuNormalizationService` (task E05/F01/US02/T01, sku-normalization) sets `NormalizedSku`/`NormalizedEdition`/`MatchStatus`; response `{ id, fileName, mimeType, processingStatus, lineItemCount, normalizedLineItemCount, unresolvedNormalizationCount, unmatchedSkuCount, supplier, currency, geography, purchaseDate, createdAt }` — the last four echo exactly what was recorded, including a `null`; a pipeline failure still returns 201 (the upload itself succeeded) with the pre-processing counts all `0`, never an HTTP error. *(This row previously existed twice, one per sibling task's own addition, each missing the other's fields — task E05/F02/US01/T01 consolidated it into the one, accurate, combined shape above.)* |
+| GET | `/api/quotes/{id}/assessment` | Quote assessment (spec §4.4/§11.2, Appendix A "Quote assessment"; module-map.md "Quotes \| Quote, QuoteLine, Assessment... \| /api/quotes"; story us-01-market-assessment AC-1/AC-2 (both the "flag" half, task E05/F02/US01/T01, and the "recommended target range + potential saving" half, task E05/F02/US01/T02)/AC-3); `X-Tenant-Id` header; 404 when `{id}` does not name a quote for this tenant; one assessment per `Raffa.Quotes.Domain.QuoteLine` on the quote (creation order) — `{ quoteId, lines: [{ quoteLineId, status, position, unitPrice, quantity, benchmark, confidence, targetSaving, explanation }] }`. `status` is `Assessed`/`QuoteDataUnresolved`/`InsufficientBenchmarkData` (`Raffa.Quotes.Domain.MarketAssessmentStatus`); `position` (`BelowMarket`/`InLine`/`AboveMarket`) is populated only when `status` is `Assessed` — the market band is `[P25, P75]` of the matched `Raffa.Benchmark.Contracts.BenchmarkResult.Distribution`, `InLine` otherwise (see `MarketAssessmentCalculator`'s own doc comment); `benchmark`/`confidence`/`targetSaving` are `null` exactly when no Benchmark Service call was even attempted (`QuoteDataUnresolved`: the quote is missing `supplier`/`currency`/`geography`/`purchaseDate`, or the line itself has no usable product/quantity/term/price), never withheld just because the comparison itself abstained (spec §11.3's benchmark-trust rule — `InsufficientBenchmarkData` still carries real `source`/`sampleSize`/`comparisonDimensions` provenance, and a real `targetSaving` object whose `recommendedTargetLow`/`recommendedTargetHigh`/`savingsRangeLow`/`savingsRangeHigh`/`totalSavingsRangeLow`/`totalSavingsRangeHigh` are honestly `null` with a named `explanation` — see `TargetSavingCalculator`'s own doc comment) |
+| POST | `/api/quotes/{id}/assessment/recalculate` | Manual product-mapping correction + recalculate (spec Appendix A "Re-run after product mapping correction"; story us-02-sku-normalization AC-2's "...and allow manual product mapping" half, AC-3, task E05/F01/US02/T02, sku-recalculate); `X-Tenant-Id` header; body `{ mappings?: [{ sku, edition?, canonicalSku, canonicalEdition?, canonicalProductName? }] }` — `mappings` may be omitted/empty (`{}` is a valid body) for a pure "what's still unmatched" refresh with no new correction. 404 when `{id}` does not name a quote for this tenant; 400 when a supplied correction's `sku`/`canonicalSku` is blank — validated before any write. For each valid correction, upserts (never duplicates) one tenant-scoped `Raffa.Quotes.Domain.SkuProductMapping` row keyed on the normalized SKU (`Raffa.Quotes.Application.Normalization.SkuNormalizer.Normalize` — same case/whitespace rule `POST /api/quotes`'s own upload-time normalization uses), then re-runs `SkuNormalizationService.NormalizeAsync` for every line on the quote (not just the corrected one — a mapping learned here also resolves any other quote for this tenant sharing the same normalized SKU, the next time that quote is itself (re)normalized) and `MarketAssessmentService.AssessAsync`; response `{ quoteId, mappingsAppliedCount, normalization: { lineCount, matchedCount, unmatchedCount, notApplicableCount }, unmatchedLines: [{ quoteLineId, sku, normalizedSku, edition, description }], assessment: { ...same shape as GET .../assessment... } }` — `unmatchedLines` is AC-2's "Show unmatched SKUs" half made queryable over HTTP (deliberately not a field on the `GET .../assessment` response itself, see `SkuMappingService`'s own doc comment for why); writes one `IAuditWriter` entry (`quote.sku_mapping_recalculated`) per successful call, even a pure refresh. |
+| GET | `/api/savings/kpis` | Procurement-homepage KPI row (spec §4.3/§10.1; story us-01-savings-kpis AC-1, task E04/F03/US01/T01); `X-Tenant-Id` header; response `{ annualSpendAnalyzed: [{ currency, amount, contractCount }], contractsAnalyzedCount, savingsIdentified/savingsInProgress/savingsRealized: [{ currency, low, high, count, averageConfidence }], upcomingRenewalsCount }` — every money value is grouped by currency, never summed across currencies (no exchange-rate service exists anywhere in this codebase); `contractsAnalyzedCount` counts contracts whose linked document reached `DocumentProcessingStatus.Completed` (a `Contract` row can exist before that — see `Raffa.Documents.Contracts.Application.PortfolioAnalysisCalculator`'s own doc comment); `savingsRealized` reflects each opportunity's own estimated range, not yet the separate, audit-tracked `RealizedSavings` value (task E04/F02/US02/T02's own gap, see `SavingsOpportunityStatus.Realized`'s doc comment); `upcomingRenewalsCount` is the same auto-renewing-contract count `GET /api/renewals`'s own `totalCount` already reports (same 100-contract-per-tenant cap) — see `Raffa.Api.SavingsKpiEndpointExtensions`'s own comment for why it is not a second, independently-computed number |
+| GET | `/api/capabilities` | The versioned V2 capability catalog (R-SYS-01; story us-01-capability-catalog, task E13/F08/US01/T01; mapped by task E13/F06/US01/T01, ask-engine); no `X-Tenant-Id` — static, tenant-agnostic metadata, not a per-tenant read; optional `X-Role` header (resolved through `WorkspaceRoleClaimResolver`, same interim-header posture as every tenant-scoped endpoint above) hides `workspace-members` unless the caller resolves to `Admin`; see "Ask Raffa — capability catalog" below |
+| GET | `/api/insights/criticality` | Portfolio-wide criticality ranking (story insights-calculators, task E13/F07/US01/T01; mapped by task E13/F06/US01/T01); `X-Tenant-Id` header; the same `Raffa.Insights.Criticality.CriticalityScoreCalculator` output `AskCopilotService`'s own `PortfolioStrategy` intent narrates — see "Insights" below |
+| GET | `/api/contracts/{id}/strategy` | One contract's renewal-strategy pack (when you must move, where you can push, targets, next steps; task E13/F07/US01/T01; mapped by task E13/F06/US01/T01); `X-Tenant-Id` header; 404 when the contract does not exist or belongs to another tenant; the same `Raffa.Insights.Strategy.StrategyPackBuilder` output `AskCopilotService`'s own `RenewalStrategy` intent narrates — see "Insights" below |
+| GET | `/api/market/records/{id}` | One market-feed record, for the citation panel (R-EVD-02; task E13/F06/US01/T01, ask-engine); no `X-Tenant-Id` — shared, tenant-agnostic market data (ADR-024); 404 when `{id}` does not name a record in the mock feed; response `{ recordId, supplier, category, product, geography, currency, title, snippet, provenance, updatedAt, unitPriceP25, unitPriceP50, unitPriceP75, sampleSize, source, representative }` — see `Raffa.Api.MarketEndpointExtensions` |
 
 **Interim auth:** every endpoint above that takes an `X-Tenant-Id` header
 (all except `GET /api/audit`, which already expects a claims principal)
@@ -214,7 +214,7 @@ which rows a request can read/write, and is replaced by the token
 subject the same task that lands the API JWT on this host.
 
 The web client generates TypeScript types from
-`web/openapi/contigo-api.v1.json`. The API does **not** yet self-publish
+`web/openapi/raffa-api.v1.json`. The API does **not** yet self-publish
 OpenAPI; that document is hand-authored and must grow with these routes.
 
 ## Documents — admission gate (task E13/F04/US01/T01)
@@ -223,16 +223,16 @@ OpenAPI; that document is hand-authored and must grow with these routes.
 document **before** it writes a blob, a `document` row, an `embedding` or an
 extraction job (ADR-024 “gate before persistence”, `inputs/requirements.md`
 R-DOC-01/02/03). The endpoint lives in
-`Contigo.Api.DocumentsEndpointExtensions`; the decision itself is
-`Contigo.Documents.Contracts.Application.Admission.DocumentAdmissionGate`.
+`Raffa.Api.DocumentsEndpointExtensions`; the decision itself is
+`Raffa.Documents.Contracts.Application.Admission.DocumentAdmissionGate`.
 
 Order of checks, and what each one returns:
 
 | Step | Failure | Body |
 |------|---------|------|
 | tenant header, multipart shape, non-empty `file` | 400 | plain string |
-| `file.Length` ≤ `Documents:MaxFileBytes` | 413 | `Contigo accepts files up to 50 MB. This file is larger.` |
-| extension **and** magic bytes agree (`DocumentFormatSniffer`) | 415 | `Contigo reads PDF, Word, Excel and scanned images` |
+| `file.Length` ≤ `Documents:MaxFileBytes` | 413 | `Raffa accepts files up to 50 MB. This file is larger.` |
+| extension **and** magic bytes agree (`DocumentFormatSniffer`) | 415 | `Raffa reads PDF, Word, Excel and scanned images` |
 | readable text ≥ `Documents:MinReadableChars` | 422 | `{ rejected: true, detectedType, confidence: 0, reason: "no_readable_text", hint }` |
 | `classify` role returns a contract kind with confidence ≥ `Documents:AdmissionThreshold` | 422 | `{ rejected: true, detectedType, confidence, reason: "not_a_contract", hint }` |
 
@@ -274,15 +274,15 @@ With the fixture gateway (no Foundry endpoint configured, ADR-004/ADR-017)
 the gate is fully testable: a recipe PDF classifies as `Other` and is
 rejected, a document containing “MASTER SERVICES AGREEMENT” is admitted as
 `Msa`, and a PNG/JPEG whose bytes are the signature followed by UTF-8 page
-text takes the `ocr` path — see `Contigo.Api.Tests.DocumentUploadEndpointTests`
-and `Contigo.Documents.Contracts.Tests.Admission`.
+text takes the `ocr` path — see `Raffa.Api.Tests.DocumentUploadEndpointTests`
+and `Raffa.Documents.Contracts.Tests.Admission`.
 
 ## Documents V2 — list, preview, reprocess, delete (task E13/F04/US01/T02)
 
 Everything the Documents V2 screen and Ask's citation cards read
 (`inputs/requirements.md` R-DOC-06…R-DOC-10, R-EVD-01). The endpoints live in
-`Contigo.Api.DocumentsEndpointExtensions`; the work itself is in
-`Contigo.Documents.Contracts.Application` (`DocumentQueryService.ListAsync`,
+`Raffa.Api.DocumentsEndpointExtensions`; the work itself is in
+`Raffa.Documents.Contracts.Application` (`DocumentQueryService.ListAsync`,
 `DocumentReprocessService`, `DocumentDeleteService`, `Preview/*`).
 
 **Page-aware chunks.** `embedding` gained `page` and `section`
@@ -318,13 +318,13 @@ plus a 5x7 bitmap font, no native dependency):
   format and says “preview not rendered”.
 
 A true first-page raster of a PDF needs a rasteriser (pdfium/Skia), which is a
-native provider dependency and belongs in `Contigo.Api`'s infrastructure behind
+native provider dependency and belongs in `Raffa.Api`'s infrastructure behind
 the existing `IDocumentPreviewRenderer` port — registering one is the only
 change needed; the storage path, the endpoint and the stored `preview_path`
 stay as they are. Until then the card shows the placeholder, not a fake page.
 
 **Admin resolution while ADR-010 is not wired**
-(`Contigo.Api.Infrastructure.WorkspaceRoleResolver`), in order: role claims on
+(`Raffa.Api.Infrastructure.WorkspaceRoleResolver`), in order: role claims on
 an authenticated principal → an `X-Role` / `X-Workspace-Role` header (the same
 interim signal `GET /api/capabilities` reads) → the caller's
 `workspace_membership` row looked up by the `X-User-Id` header. No match means
@@ -338,12 +338,12 @@ ambient tenant is rejected by Postgres (ADR-009/ADR-011).
 
 ## Worker
 
-`Contigo.Worker` references the same application libraries as the API.
+`Raffa.Worker` references the same application libraries as the API.
 The R0 default queue is an **in-process** `InMemoryQueueConsumer` — Azure
 Service Bus exists in Terraform (`modules/servicebus`) but is not consumed
 here yet, and `QueueConsumerHostedService` still never dispatches a
 received message to a domain handler. Extraction runs synchronously inside
-`Contigo.Api`'s `POST /api/documents` today instead (`DocumentProcessingPipeline`,
+`Raffa.Api`'s `POST /api/documents` today instead (`DocumentProcessingPipeline`,
 above) — not through this Worker — a documented interim choice pending a
 real durable-queue producer/consumer pair. Benchmark / quote handlers land
 with those features; renewal threshold scheduling (task E03/F02/US01/T01)
@@ -354,7 +354,7 @@ cross-tenant contract source wired yet).
 
 ## AI Gateway
 
-`Contigo.AiGateway` is wired into DI by `Contigo.Documents.Contracts`'s own
+`Raffa.AiGateway` is wired into DI by `Raffa.Documents.Contracts`'s own
 `AddDocumentsContractsModule` (so both the API and Worker hosts get a
 working `IAiGateway` with no host-side change). `IAiGateway` is
 `FoundryAiGateway` when `AiGateway:Endpoint` is set and `FixtureAiGateway`
@@ -363,11 +363,11 @@ working `IAiGateway` with no host-side change). `IAiGateway` is
 the interface. On Azure the endpoint and the per-role deployment names are
 published by Terraform once `ai_gateway_wired = true` in
 `infra/environments/<env>` (ADR-008 amendment 2026-09-09: the shared
-`aisvc-contigo` account, the per-environment Foundry projects and the model
+`aisvc-raffa` account, the per-environment Foundry projects and the model
 deployments `gpt-5.4-nano-dev` / `text-embedding-3-small-dev` on dev,
 `gpt-5.4-demo` / `gpt-5.4-nano-demo` / `text-embedding-3-large-demo` on
 demo, OCR `prebuilt-read` — see `infra/README.md`). The fixture's `extract` role is no longer an
-empty `{}` placeholder: `Contigo.AiGateway.Fixtures.FixtureContractFactExtractor`
+empty `{}` placeholder: `Raffa.AiGateway.Fixtures.FixtureContractFactExtractor`
 reads the three scalar-fact stages (metadata, commercial terms, dates and
 renewal terms) from the page-marked text with regular expressions — every
 value quoted from the document, every `sourceSpan` the literal match, every
@@ -396,7 +396,7 @@ budget (ADR-017: fail visibly, never silently truncate) is its own
 `AiGateway:Ocr:MaxPagesPerDocument` section (default 300 — see
 `AiGatewayOcrOptions`).
 
-`Contigo.Documents.Contracts.Application.Extraction.HybridDocumentParsingService`
+`Raffa.Documents.Contracts.Application.Extraction.HybridDocumentParsingService`
 implements the hybrid OCR pre-pass (ADR-017): native text extraction
 (`NativeDocumentTextExtractor` — real `DocumentFormat.OpenXml` for
 DOCX/XLSX, a self-contained content-stream reader for PDF; no external PDF
@@ -410,28 +410,28 @@ confidence (spec §7.3) — directly on `ContractLineItem`/`Clause`/
 `Obligation`/`Risk`, or via the `ExtractionEvidence` table for `Contract`'s
 own scalar fields.
 
-`Contigo.Documents.Contracts.Application.Extraction.DocumentProcessingPipeline`
+`Raffa.Documents.Contracts.Application.Extraction.DocumentProcessingPipeline`
 (task E02/F06/US01/T01, r1-integration) is that caller: given the just-
 uploaded bytes, it runs the hybrid parse, then `IAiGateway.ClassifyAsync`
 over the resulting text (setting `Document.DocumentType` and completing
 the `Classification` job `DocumentUploadService` queues at upload), then
 `StagedExtractionService`, then indexes every parsed page into the
 `embedding` table (see `EmbeddingRetrievalService` below) — one call proves
-the whole spec §7.1 pipeline. `POST /api/documents` (`Contigo.Api.Program`)
+the whole spec §7.1 pipeline. `POST /api/documents` (`Raffa.Api.Program`)
 runs it synchronously, in the same request, right after the upload itself
 is durable — a deliberate interim choice (see `DocumentProcessingPipeline`'s
 own doc comment): nothing in this codebase dispatches the queued
-`Classification` job off a durable queue yet (`Contigo.Worker.Queue
+`Classification` job off a durable queue yet (`Raffa.Worker.Queue
 .QueueConsumerHostedService` still never dispatches a received message to a
 domain handler — see the Worker section below), so synchronous/in-request
-is the smallest honest way to make R1's "upload → ... → Ask Contigo" promise
+is the smallest honest way to make R1's "upload → ... → Ask Raffa" promise
 true on `dev`/`demo` today. A pipeline failure never turns an already-
 successful upload into an HTTP error — it is recorded on the `Document`/
 `ExtractionJob` rows and reported in the response, same as any other
 per-stage failure in this pipeline.
 
-`Contigo.Documents.Contracts.Application.EmbeddingRetrievalService`
-(us-02-embedding-search-index) is the pgvector half of Ask Contigo RAG:
+`Raffa.Documents.Contracts.Application.EmbeddingRetrievalService`
+(us-02-embedding-search-index) is the pgvector half of Ask Raffa RAG:
 `IndexChunkAsync` embeds a text chunk via `IAiGateway.EmbedAsync` and
 persists it to the `embedding` table; `SearchAsync` embeds a query the
 same way and returns the tenant's nearest chunks by cosine distance
@@ -442,13 +442,13 @@ caller is `POST /api/chat/query` (task E02/F04/US02/T01, below).
 `IndexChunkAsync`'s first production caller is `DocumentProcessingPipeline`
 (task E02/F06/US01/T01, r1-integration, above) — one `Embedding` row per
 parsed page, `SourceType="Document"`/`SourceId=<documentId>`, so a document
-is retrievable for Ask Contigo immediately after it finishes processing. A
+is retrievable for Ask Raffa immediately after it finishes processing. A
 tenant that has never uploaded anything (or whose upload is still
 processing/failed) still honestly returns "cannot determine" — there is
 simply nothing indexed for it yet, not a bug.
 
 **Task E13/F01/US01/T02 (foundry-gateway)** adds the live half of this
-module: `Contigo.AiGateway.Foundry.FoundryAiGateway` implements all five
+module: `Raffa.AiGateway.Foundry.FoundryAiGateway` implements all five
 ADR-004/ADR-017 roles — `classify`/`extract`/`embed`/`answer` over an Azure
 OpenAI-compatible chat-completions/embeddings surface, `ocr` over Azure AI
 Document Intelligence's `documentModels/{model}:analyze` long-running
@@ -463,7 +463,7 @@ ADR-011 "always log-wrapped"), which this module shipped as a class since
 task E02/F01/US01/T02 but never actually wired into DI until now.
 `IAiGateway` is therefore resolved Scoped, not Singleton, from this task
 on — `LoggingAiGateway` depends on the Scoped `IAuditWriter`
-(`Contigo.Audit`'s own registration), and every current `IAiGateway`
+(`Raffa.Audit`'s own registration), and every current `IAiGateway`
 consumer (`DocumentProcessingPipeline`, `StagedExtractionService`,
 `EmbeddingRetrievalService`, `HybridDocumentParsingService`,
 `QuoteExtractionPipeline`, `RagAnswerService`) was already Scoped, so this
@@ -478,7 +478,7 @@ body (`Foundry.Wire.ChatCompletionRequest`) has no `tools`/`tool_choice`/
 `data_sources` property at all, so ADR-024's "no tools, no grounding"
 compliance is a type-system guarantee rather than a remembered omission —
 proved on a fake `HttpMessageHandler` in
-`Contigo.AiGateway.Tests.Foundry.FoundryAnswerClientTests`, the same
+`Raffa.AiGateway.Tests.Foundry.FoundryAnswerClientTests`, the same
 fake-handler convention every `Foundry.*ClientTests` class uses so no unit
 test ever calls live Azure. `AiAnswerRequest`/`AiAnswerResult` gained
 ADR-024's structured-answer fields (`SystemPrompt`/`PackJson` on the
@@ -494,20 +494,20 @@ by `Configuration.AiGatewayFoundryOptions`): `AiGateway:Endpoint`,
 `AiGateway:ProjectName`, `AiGateway:DocumentIntelligenceConnection`
 (non-secret — see `infra/README.md`), and `AiGateway:AnswerTemperature`
 (default 0.2, ADR-024's own ceiling; a higher configured value is clamped,
-never raised). `Contigo.AiGateway.Tests.SdkAllowListTests` proves the new
+never raised). `Raffa.AiGateway.Tests.SdkAllowListTests` proves the new
 `Azure.Core`/`Azure.Identity` package references stay inside
-`Contigo.AiGateway.csproj` — no other project in the solution may
+`Raffa.AiGateway.csproj` — no other project in the solution may
 reference `Azure.AI.*`/`Azure.Identity` (AC-3).
 
 ## Benchmark Service
 
-`Contigo.Benchmark.IBenchmarkService.GetBenchmarkAsync` (task E04/F01/US01/T01)
+`Raffa.Benchmark.IBenchmarkService.GetBenchmarkAsync` (task E04/F01/US01/T01)
 is the normalized `getBenchmark` contract product spec §10.3 names — P25/P50/P75
 plus metric/currency/confidence/source/updated/comparison, so Renewals/Savings/
 Quotes never depend on a provider schema. Task E04/F01/US01/T02 adds
-`Contigo.Benchmark.BenchmarkAdapterRegistry`, the pluggable
+`Raffa.Benchmark.BenchmarkAdapterRegistry`, the pluggable
 `IBenchmarkProviderAdapter` registry behind that interface, wired into DI by
-`Contigo.Benchmark.ServiceCollectionExtensions.AddBenchmarkModule` — it
+`Raffa.Benchmark.ServiceCollectionExtensions.AddBenchmarkModule` — it
 config-selects the active adapter by name (`Benchmark:Adapter:ActiveAdapter`,
 env var form `Benchmark__Adapter__ActiveAdapter`, default `"fixture"` —
 `BenchmarkAdapterOptions`), the same "config-selected, swap without a code
@@ -519,8 +519,8 @@ registry task (parallel, neither depends on the other), so it could not
 register what it had just written — the adapter existed and was directly
 unit-testable, but unreachable through `AddBenchmarkModule()`. Task
 E04/F01/US02/T02 (fixture-confidence) closes that gap: only a concrete
-adapter may ever reference a provider SDK — `Contigo.Benchmark`'s own project
-file still carries none, and `Contigo.ArchitectureTests.DependencyDirectionTests
+adapter may ever reference a provider SDK — `Raffa.Benchmark`'s own project
+file still carries none, and `Raffa.ArchitectureTests.DependencyDirectionTests
 .Benchmark_module_must_not_reference_provider_sdks` fails the build if that
 changes without an adapter to justify it — and now that adapter is actually
 wired in. A host that calls `AddBenchmarkModule()` today gets a real,
@@ -529,7 +529,7 @@ configuration dispatches to a genuine, fixture-backed result; an unrecognized
 configured adapter name (for example a `Benchmark:Adapter:ActiveAdapter`
 naming a paid provider that has not been registered) still fails honestly
 rather than fabricating one (ADR-001).
-`Contigo.Benchmark.Fixtures.FixtureBenchmarkAdapter` (task E04/F01/US02/T01,
+`Raffa.Benchmark.Fixtures.FixtureBenchmarkAdapter` (task E04/F01/US02/T01,
 us-02-fixture-adapter) is that first `IBenchmarkService`/`IBenchmarkProviderAdapter`
 implementation — deterministic and provider-free, backed by a hand-curated,
 in-memory catalog of illustrative SaaS supplier/product comparables (never
@@ -544,7 +544,7 @@ always more than supplier name alone — plus SKU as an optional,
 confidence-boosting eighth. A fixture that clears every required dimension
 *and* carries at least `FixtureBenchmarkAdapter.MinimumViableSampleSize`
 comparables (task E04/F01/US02/T02: 10) returns P25/P50/P75 with a
-sample-size-scaled confidence score (`Contigo`'s own score, spec §10.3 —
+sample-size-scaled confidence score (`Raffa`'s own score, spec §10.3 —
 saturates at a sample size of 50); anything weaker — including a fixture that
 matches every dimension but is too statistically thin to trust (task
 E04/F01/US02/T02's own "weak-comparable abstain" objective) — returns the
@@ -561,19 +561,19 @@ exists so the caller still sees real (if insufficient) provenance.
 
 **Task E04/F04/US01/T01 (r3-integration)** closes the wiring gap this section
 used to name here ("no host calls `AddBenchmarkModule` yet"):
-`Contigo.Savings.Infrastructure.ServiceCollectionExtensions.AddSavingsModule`
+`Raffa.Savings.Infrastructure.ServiceCollectionExtensions.AddSavingsModule`
 now calls `AddBenchmarkModule` itself — the same "a module that depends on
 another module's interface registers that dependency's own DI wiring
 transitively" convention this host already uses for `AddDocumentsContractsModule`
--> `AddAiGatewayModule` (see "AI Gateway" above). `Contigo.Api` already calls
+-> `AddAiGatewayModule` (see "AI Gateway" above). `Raffa.Api` already calls
 `AddSavingsModule`, so `IBenchmarkService` is now resolvable there with no
 `Program.cs` change at all — proven end to end by
-`Contigo.IntegrationTests.R3EndToEndTests` (see "R3 demo smoke test" below).
-`Contigo.Worker` does not call `AddSavingsModule` (no worker job creates a
+`Raffa.IntegrationTests.R3EndToEndTests` (see "R3 demo smoke test" below).
+`Raffa.Worker` does not call `AddSavingsModule` (no worker job creates a
 `SavingsOpportunity` today — see "Savings Intelligence" below), so it still
 does not resolve `IBenchmarkService` either; that is the same, pre-existing
 "wiring lands with the first real caller" gap, unrelated to this task's own
-fix. `Contigo.Renewals`'s own
+fix. `Raffa.Renewals`'s own
 `RenewalPriorityInputs.BenchmarkMarketPositionPercent` (see "explainable
 priority score" below) still has no real producer wired to it — a different
 module, out of this task's own "do not touch unrelated wave artifacts" scope.
@@ -581,9 +581,9 @@ module, out of this task's own "do not touch unrelated wave artifacts" scope.
 ## Market Intelligence — mock feed, benchmark projection, in-memory notes
 
 Task E13/F02/US01/T01 (market-feed-mock, ADR-024, R-MKT-01…04) fills in the
-`Contigo.Market` scaffold with the "how companies actually close contracts"
-side of Ask Contigo V2: a checked-in mock feed behind
-`IMarketIntelligenceProvider`, projected into the existing `Contigo.Benchmark`
+`Raffa.Market` scaffold with the "how companies actually close contracts"
+side of Ask Raffa V2: a checked-in mock feed behind
+`IMarketIntelligenceProvider`, projected into the existing `Raffa.Benchmark`
 seam and into a searchable set of narrative notes — no paid third-party API
 anywhere in this task or its project (ADR-001: "never a hard dependency of
 the first V2 `demo`").
@@ -592,7 +592,7 @@ the first V2 `demo`").
 category, product, SKU, geography, currency, company-size band, term,
 annual-value band, unit price P25/P50/P75, discount/uplift-cap/notice/payment
 terms, negotiated clauses, closing period, sample size, source, updatedAt,
-licence restrictions) — Contigo's own shape; a later live third-party client
+licence restrictions) — Raffa's own shape; a later live third-party client
 (R-MKT-05) maps onto it, never the reverse (OQ-askv2-001).
 `Mock.MockMarketIntelligenceProvider` reads the checked-in
 `backend/fixtures/market-intelligence.mock.json` — **65 records** (≥ 60,
@@ -603,14 +603,14 @@ Zurich, Swiss Re), facilities, telco, logistics and professional services,
 across EU/CH/US and CHF/EUR/USD, with 9 rows deliberately carrying
 `sampleSize < 5` so the abstain path below is exercised — every record
 `source = "mock"` / `representative = true`. The JSON is **embedded** into
-`Contigo.Market.dll` (not opened from a runtime file path) so every host
+`Raffa.Market.dll` (not opened from a runtime file path) so every host
 that loads the assembly — API, Worker, this project's own tests, a future
 `seed-market-intelligence` job — reads the exact same bytes with no path
 configuration and no dependency on a backend Dockerfile `COPY` step that
 does not exist yet (see `MockMarketIntelligenceProvider`'s own doc comment).
 
 **Benchmark projection:** `Benchmark.MarketFeedBenchmarkAdapter` implements
-`Contigo.Benchmark.Adapters.IBenchmarkProviderAdapter` under the name
+`Raffa.Benchmark.Adapters.IBenchmarkProviderAdapter` under the name
 `"market-feed"`, matching on supplier + product always, plus geography /
 currency / contract term (always present on both sides) and SKU (only when
 both the query and a candidate deal name one — two deals disagreeing on SKU
@@ -620,17 +620,17 @@ a P25/P50/P75 distribution (spec §10.4 benchmark-trust rule, ADR-001);
 `BenchmarkResult.Source` is always `"market-feed (representative, mock)"`.
 `ServiceCollectionExtensions.AddMarketModule` registers this adapter into
 the same `IBenchmarkProviderAdapter` enumerable
-`Contigo.Benchmark.BenchmarkAdapterRegistry` resolves (`TryAddEnumerable` —
+`Raffa.Benchmark.BenchmarkAdapterRegistry` resolves (`TryAddEnumerable` —
 `FixtureBenchmarkAdapter` stays registered, still directly testable) **and**
 makes it `BenchmarkAdapterOptions`'s active adapter by default — without
-editing `Contigo.Benchmark` and regardless of whether a host calls
+editing `Raffa.Benchmark` and regardless of whether a host calls
 `AddBenchmarkModule()` or `AddMarketModule()` first. This does *not* use
 `IServiceCollection.PostConfigure<BenchmarkAdapterOptions>`: that only takes
 effect through the `Microsoft.Extensions.Options` `IOptions<T>` indirection,
-and `Contigo.Benchmark`'s own registration never uses it (a plain singleton
+and `Raffa.Benchmark`'s own registration never uses it (a plain singleton
 factory instead) — `PostConfigure` here would be a silent no-op. Instead
 `AddMarketModule` calls `IServiceCollection.Replace` with an otherwise
-byte-for-byte copy of `Contigo.Benchmark`'s own factory (same configuration
+byte-for-byte copy of `Raffa.Benchmark`'s own factory (same configuration
 section, same `Bind` call), which unconditionally wins the registration
 slot regardless of call order — see
 `ServiceCollectionExtensions.MakeMarketFeedTheDefaultActiveAdapter`'s own
@@ -645,11 +645,11 @@ provider at question time" is now real. `Infrastructure.MarketDbContext`
 epic-13 amendment: shared, read-only, never a tenant row) owns `market_record`
 (one row per `MarketDeal`, keyed by `RecordId`) and `market_embedding` (one
 narrative chunk per record, `vector(1536)`, same convention
-`Contigo.Documents.Contracts.Domain.Embedding` uses), plus the checked-in
+`Raffa.Documents.Contracts.Domain.Embedding` uses), plus the checked-in
 idempotent `Migrations/Scripts/market.sql` (ADR-021 — see "Deployable schema
 artifact" above for its place in the apply order); that script's own header
-documents a conditional, self-activating grant (read for `contigo_app`,
-read/write for `contigo_market_ingest`) that stays a harmless no-op until a
+documents a conditional, self-activating grant (read for `raffa_app`,
+read/write for `raffa_market_ingest`) that stays a harmless no-op until a
 later infra task actually provisions those two roles.
 
 `Ingestion.MarketIngestionService.IngestAsync` is the *only* caller of
@@ -664,8 +664,8 @@ top-k, optional category/geography filters) and `MarketFeedBenchmarkAdapter`'s
 new `(IDbContextFactory<MarketDbContext>, IClock)` constructor then read only
 this store, never the provider, so a throwing `IMarketIntelligenceProvider`
 no longer affects either projection once ingestion has run
-(`Contigo.Market.Tests.MarketModuleQuestionTimeIsolationTests`);
-`Contigo.IntegrationTests.MarketIndexIsolationTests` proves AC-3's other half
+(`Raffa.Market.Tests.MarketModuleQuestionTimeIsolationTests`);
+`Raffa.IntegrationTests.MarketIndexIsolationTests` proves AC-3's other half
 — a tenant embedding search never returns a market note, a market search
 never returns tenant chunks — against one shared Postgres database.
 `ServiceCollectionExtensions.AddMarketModule(string? marketConnectionString)`
@@ -675,15 +675,15 @@ notes, no index, no embedding call); a real `ConnectionStrings:Market`
 instead registers `MarketDbContext` and switches both the notes-retrieval and
 benchmark-adapter registrations to their DB-backed equivalents.
 
-`Contigo.Worker.Program` now calls `AddMarketModule` (the connection string
+`Raffa.Worker.Program` now calls `AddMarketModule` (the connection string
 stays optional — absent, T01's in-memory wiring stays) so its new one-shot
 operator command, `Commands.IngestMarketCommand`
-(`dotnet run --project backend/src/Contigo.Worker -- ingest-market --feed
+(`dotnet run --project backend/src/Raffa.Worker -- ingest-market --feed
 backend/fixtures/market-intelligence.mock.json`; `--feed` is an
 informational label only — the mock provider always ingests its one
 checked-in feed version, see that type's own doc comment), has something to
 call — still no scheduled/background ingestion job. `GET
-/api/market/records/{id}` (`Contigo.Api.MarketEndpointExtensions`, parent
+/api/market/records/{id}` (`Raffa.Api.MarketEndpointExtensions`, parent
 story AC-5 — one record with its provenance label and `updatedAt`) exists but
 is deliberately not yet mapped from `Program.cs` — task F06/T01 (this same
 phase) is expected to call `MapMarketEndpoints()`, the same "endpoint exists,
@@ -697,7 +697,7 @@ DB-backed retrieval, record endpoint"). Until then,
 `MarketFeedBenchmarkAdapter` calls `IMarketIntelligenceProvider.GetDealsAsync`
 directly on every query — the only data source T01 has — an explicitly
 interim shortcut T02 is expected to replace with the persisted-store read,
-with no change to `Contigo.Benchmark.IBenchmarkService` or any domain-module
+with no change to `Raffa.Benchmark.IBenchmarkService` or any domain-module
 call site.
 
 **In-memory notes retrieval (Projection 2, interface only in a later phase's
@@ -716,15 +716,15 @@ this same interface (R-MKT-03: "own table — never rows in the tenant
 `embedding` table").
 
 Task E13/F06/US01/T01 (ask-engine) is `AddMarketModule()`'s first real
-caller (`Contigo.Api.Program`), the same "wiring lands with the first real
+caller (`Raffa.Api.Program`), the same "wiring lands with the first real
 caller" sequencing this README already documents for `AddBenchmarkModule` /
 `AddChatModule` above; that task also maps `GET /api/market/records/{id}`
-(see the HTTP surface table above and `Contigo.Api.MarketEndpointExtensions`).
+(see the HTTP surface table above and `Raffa.Api.MarketEndpointExtensions`).
 
 ## Supplier identity
 
 Task E13/F03/US01/T01 (story us-01-supplier-identity, ADR-024 "Supplier
-identity") turns `Contigo.Suppliers.Products` from the bare scaffold task
+identity") turns `Raffa.Suppliers.Products` from the bare scaffold task
 E13/F01/US01/T01 left behind into this module's first real content:
 `Domain.Supplier` (tenant-scoped: `Name`, `NormalizedName`, `Aliases`
 (a Postgres `text[]`), `Category?`, `Country?`, `CreatedAt`, `UpdatedAt`)
@@ -745,36 +745,36 @@ race between two concurrent first-seen resolutions.
 
 The cross-module contract other modules get instead of referencing this
 one directly (ADR-002: Documents/Renewals/the API may not reference
-`Contigo.Suppliers.Products`) lives in
-`Contigo.SharedKernel.Suppliers`: `ISupplierResolver.ResolveAsync(TenantId,
+`Raffa.Suppliers.Products`) lives in
+`Raffa.SharedKernel.Suppliers`: `ISupplierResolver.ResolveAsync(TenantId,
 rawName, ct) → Result<SupplierRef>` and `ISupplierNameLookup.GetNamesAsync
 (TenantId, ids, ct) → IReadOnlyDictionary<EntityId, string>` (batched, so a
 list page resolves every row's supplier name in one call). Both are wired
 by `Infrastructure.ServiceCollectionExtensions.AddSuppliersProductsModule
 (string connectionString)` — a raw connection string the caller resolves
-however it names its own configuration key; `Contigo.Api.Program` (task
+however it names its own configuration key; `Raffa.Api.Program` (task
 E13/F06/US01/T01, ask-engine, its first real caller) reads it from
 `ConnectionStrings:Suppliers` (env var form `ConnectionStrings__Suppliers`)
 rather than the dots-stripped-full-module-name convention every other
 module's own connection string uses (`DocumentsContracts`,
 `IdentityWorkspace`) — a shorter key, since `SuppliersProducts` would
-otherwise be the only three-word one. `Contigo.Worker` does not call
+otherwise be the only three-word one. `Raffa.Worker` does not call
 `AddSuppliersProductsModule` — nothing in the worker needs a supplier name
 yet. Nothing in this codebase resolves a supplier name for a real contract
 during extraction yet; that is task E13/F03/US01/T02's own job (the
 `supplier` critical extraction fact, the pipeline's resolver call, and
-reprocess back-fill) — `AskCopilotService` (see "Ask Contigo — conversations
+reprocess back-fill) — `AskCopilotService` (see "Ask Raffa — conversations
 store" below) is `ISupplierNameLookup`'s first real Ask-side caller, not
 the extraction pipeline.
 
 Tenant isolation is proved in
-`Contigo.IntegrationTests.SupplierCrossTenantIsolationTests` — deliberately
-not in `Contigo.Suppliers.Products.Tests` alongside the normalizer/resolver
-unit tests, per this task's own file assignment — because `Contigo.Api`
+`Raffa.IntegrationTests.SupplierCrossTenantIsolationTests` — deliberately
+not in `Raffa.Suppliers.Products.Tests` alongside the normalizer/resolver
+unit tests, per this task's own file assignment — because `Raffa.Api`
 does not reference this module yet, so unlike the `R0`–`R4` suites in that
 same project it cannot go through `WebApplicationFactory<Program>`; it
 drives `SuppliersDbContext` directly instead, the same shape
-`Contigo.Renewals.Tests`' own per-module `*RlsCrossTenantIsolationTests`
+`Raffa.Renewals.Tests`' own per-module `*RlsCrossTenantIsolationTests`
 already use.
 
 ### Supplier extraction, linking and names in read models (task E13/F03/US01/T02)
@@ -827,7 +827,7 @@ re-typing the supplier a contract already points at changes nothing.
 **Names in read models (R-SUP-04, ADR-024).** `GET /api/contracts`,
 `GET /api/contracts/{id}` (header) and `GET /api/renewals` (row **and**
 insight card) all report `supplierName` alongside `supplierId`. The join can
-only happen in `Contigo.Api` — neither Documents/Contracts nor Renewals may
+only happen in `Raffa.Api` — neither Documents/Contracts nor Renewals may
 reference the Suppliers module — so
 `PortfolioEndpointExtensions.ResolveSupplierNamesAsync` is the single
 scope-owning helper all three go through: one batched `ISupplierNameLookup`
@@ -845,18 +845,18 @@ an id with a `null` name instead of losing both.
 | `GET /api/contracts/{id}` (`header`) | `supplierName` | `ContractsEndpointExtensions` |
 | `GET /api/renewals` (item + `insightCard.facts`) | `supplierName` | `RenewalsEndpointExtensions` |
 
-Proved by `Contigo.Documents.Contracts.Tests.StagedExtractionServiceTests`
+Proved by `Raffa.Documents.Contracts.Tests.StagedExtractionServiceTests`
 (threshold + evidence), `DocumentProcessingPipelineSupplierTests` (link,
 skip-when-weak, reprocess back-fill), `ContractCorrectionServiceTests`
 (re-resolve, previous-name history, honest refusal),
-`Contigo.Api.Tests.PortfolioEndpointTests`/`Contract360EndpointTests`/
+`Raffa.Api.Tests.PortfolioEndpointTests`/`Contract360EndpointTests`/
 `RenewalsEndpointTests` (`supplierName` on the wire) and
-`Contigo.IntegrationTests.R1EndToEndTests` (the whole chain end-to-end
+`Raffa.IntegrationTests.R1EndToEndTests` (the whole chain end-to-end
 against real Postgres + RLS, including the back-fill).
 
-## Ask Contigo — query router + deterministic queries + RAG citations
+## Ask Raffa — query router + deterministic queries + RAG citations
 
-`Contigo.Chat.Application.AskContigoQueryRouter` classifies a natural-language
+`Raffa.Chat.Application.AskRaffaQueryRouter` classifies a natural-language
 question (product spec §8.3) as `Structured` (deterministic query/filter, no
 LLM) or `Semantic` (needs RAG retrieval) — task E02/F04/US01/T01.
 `DeterministicQueryPlanner` + `DeterministicQueryHandler` (task
@@ -875,7 +875,7 @@ A structured question outside those two families (for example "total
 contract value") is reported as `Unsupported` rather than answered against
 the wrong field.
 
-`Contigo.Chat.Application.RagAnswerService` (task E02/F04/US02/T01,
+`Raffa.Chat.Application.RagAnswerService` (task E02/F04/US02/T01,
 us-02-rag-citations, AC-1/AC-2/AC-3) turns a `Semantic` decision plus
 already-retrieved, already-authorized evidence into a grounded answer with
 citations via `IAiGateway.AnswerAsync` (ADR-004 `answer` role) — citations
@@ -884,7 +884,7 @@ a fabricated answer. It also writes one `IAuditWriter` entry per successful
 call (`chat.answered` — ADR-011 "audit of access"), never the raw
 question/evidence/answer text.
 
-`Contigo.Chat.Application.AbstainGuard` (task E02/F04/US02/T02, abstain-guard)
+`Raffa.Chat.Application.AbstainGuard` (task E02/F04/US02/T02, abstain-guard)
 is the no-fabrication guard `RagAnswerService.AnswerAsync` runs on every
 gateway result before it is audited or returned: a "cannot determine" result
 passes straight through, but a "determined" result is only trusted when it
@@ -902,7 +902,7 @@ fabrication attempt without the guard silently discarding the signal — the
 free-text reason itself is deliberately not logged (ADR-011: no model
 output/content in audit rows).
 
-`Contigo.Chat` cannot reference `Contigo.Documents.Contracts` (see
+`Raffa.Chat` cannot reference `Raffa.Documents.Contracts` (see
 "Dependency direction" below), so neither `DeterministicQueryHandler` nor
 `RagAnswerService` retrieves anything itself: both operate on caller-supplied
 data (`ContractFact` / a pre-retrieved evidence list respectively) — small
@@ -914,28 +914,28 @@ row's `SourceId` only really identifies a document when `SourceType` is
 and silently relabelling one as the other would misattribute the citation.
 
 **Superseded by the V2 engine (task E13/F06/US01/T01, ask-engine):**
-`Contigo.Api.ChatEndpointExtensions` (`POST /api/chat/query`) used to be the
+`Raffa.Api.ChatEndpointExtensions` (`POST /api/chat/query`) used to be the
 composition root that closed the gap above directly — it resolved the
 tenant, called `EmbeddingRetrievalService.SearchAsync` itself, and called
 `RagAnswerService` for the `Semantic` branch only, with the `Structured`
 branch left as an honest "not wired yet" (no `ContractFact` mapping existed).
 `POST /api/chat/query` now instead delegates into `AskCopilotService`, the
 new V2 pack-composition root that reuses this router/planner/handler trio as
-one of several intents — see "Ask Contigo — conversations store" below for
-where that composition now lives; `AskContigoQueryRouter`/
+one of several intents — see "Ask Raffa — conversations store" below for
+where that composition now lives; `AskRaffaQueryRouter`/
 `DeterministicQueryPlanner`/`DeterministicQueryHandler`/`RagAnswerService`/
 `AbstainGuard` themselves are unchanged, still pure, and still directly
 unit-tested exactly as this section describes.
 
-## Ask Contigo — conversations store
+## Ask Raffa — conversations store
 
 Task E13/F05/US01/T01 (story us-01-conversations, ADR-024 "Conversations
-(D5)") gives `Contigo.Chat` its own persistence, independent of the router/
+(D5)") gives `Raffa.Chat` its own persistence, independent of the router/
 RAG pieces above: `Infrastructure.ChatDbContext` (two tables,
 `Domain.Conversations.Conversation` / `ConversationMessage`, both
 `TenantScopedEntity` — this module's own copy, not a shared reference, of
-`Contigo.Documents.Contracts.Domain.TenantScopedEntity`'s identical shape,
-since `Contigo.Chat`'s ADR-002 allow-list is exactly `[SharedKernel,
+`Raffa.Documents.Contracts.Domain.TenantScopedEntity`'s identical shape,
+since `Raffa.Chat`'s ADR-002 allow-list is exactly `[SharedKernel,
 AiGateway]`) under Postgres RLS (`FORCE ROW LEVEL SECURITY` + policy on
 `app.tenant_id`, same shape as every other module — see
 `ChatMigrationScriptTests`), and
@@ -954,26 +954,26 @@ derived from the first `you`-role message, truncated to
 chars") the moment it lands — never re-derived from a later message.
 `ConversationMessage.Role`/`Kind` are C# enums stored as strings (PascalCase
 column values, e.g. `"You"`/`"Answer"`); mapping them onto ADR-024 §6's
-lowercase wire literals (`you`/`contigo`, `answer`/`abstain`/`redirect`/
+lowercase wire literals (`you`/`raffa`, `answer`/`abstain`/`redirect`/
 `refusal`) is the HTTP layer's job, not this module's.
 
 `Infrastructure.ServiceCollectionExtensions.AddChatModule` gained an
 optional `chatConnectionString` parameter (AC-4): called with none, it
 registers exactly what it always has — the query router/RAG services
 above, no database — so nothing that already resolves them without a
-connection string breaks (`Contigo.Chat.Tests.ServiceCollectionExtensionsTests`
+connection string breaks (`Raffa.Chat.Tests.ServiceCollectionExtensionsTests`
 proves this). Called with one, it additionally registers `ChatDbContext` +
 `ConversationService`, keyed by this story's own council-decided
 `ConnectionStrings:Chat` (`ConnectionStrings__Chat` env var form, same
-`Contigo.Chat.Infrastructure.ChatDbContextFactory` design-time fallback
+`Raffa.Chat.Infrastructure.ChatDbContextFactory` design-time fallback
 shape as every other module's `<Module>DbContextFactory`).
 
 **Task E13/F05/US01/T02 (conversations-api)** is that first real caller:
-`Contigo.Api.Program` now reads `ConnectionStrings:Chat` and calls
+`Raffa.Api.Program` now reads `ConnectionStrings:Chat` and calls
 `AddChatModule(chatConnectionString)` — the same fail-fast shape (throws a
 named `InvalidOperationException` when the key is missing) as every other
 required connection string in that file — and
-`Contigo.Api.ConversationsEndpointExtensions.MapConversationsEndpoints()`
+`Raffa.Api.ConversationsEndpointExtensions.MapConversationsEndpoints()`
 maps `GET/POST /api/conversations` and `GET /api/conversations/{id}` (see
 the HTTP surface table above for the exact request/response shapes). The
 composition root resolves caller identity (token subject, else the
@@ -987,20 +987,20 @@ own to get wrong.
 
 `POST /api/conversations/{id}/messages` — deliberately left unmapped by
 T02 above until an engine existed to produce a turn worth persisting — is
-now mapped in this same file, and `POST /api/chat/query` (see "Ask Contigo
+now mapped in this same file, and `POST /api/chat/query` (see "Ask Raffa
 — query router..." above) becomes a thin alias that creates a conversation
 and delegates into the identical pipeline. Both routes share one
-composition root, `Contigo.Api.AskCopilotService` (`AskAsync`) — the pack
--composition root ADR-024 calls for: everything `Contigo.Chat`'s ADR-002
+composition root, `Raffa.Api.AskCopilotService` (`AskAsync`) — the pack
+-composition root ADR-024 calls for: everything `Raffa.Chat`'s ADR-002
 allow-list (`[SharedKernel, AiGateway]`) forbids that module from doing
 itself (querying `PortfolioQueryService`/`Contract360QueryService`,
 `EmbeddingRetrievalService.SearchAsync`, `RenewalEngine`/
 `PriorityScoreCalculator`/`CriticalityScoreCalculator` (Insights),
 `SavingsOpportunityService`, `IBenchmarkService`/`IMarketKnowledgeRetrieval`
 (Market), `ISupplierNameLookup`) happens here, then gets handed to
-`Contigo.Chat`'s own gate/planner/guards/reply pipeline:
+`Raffa.Chat`'s own gate/planner/guards/reply pipeline:
 
-1. **Gate** (`Contigo.Chat.Application.Gate.DomainGate.Classify`) — six
+1. **Gate** (`Raffa.Chat.Application.Gate.DomainGate.Classify`) — six
    labels, deterministic lexicons first (greeting, off-domain small talk,
    legal-advice, capability/how-to, then an unresolved named-supplier
    check), an `in_domain` default on ambiguity (no live classify call yet —
@@ -1012,11 +1012,11 @@ itself (querying `PortfolioQueryService`/`Contract360QueryService`,
 2. **Planner** (`Application.Planning.IntentPlanner.Plan`) — nine fixed
    intents (structured fact, clause, market compare, renewal strategy,
    portfolio strategy, savings, document status, quote route, navigate),
-   reusing `AskContigoQueryRouter`/`DeterministicQueryPlanner` for the
+   reusing `AskRaffaQueryRouter`/`DeterministicQueryPlanner` for the
    legacy structured/clause split. `AskCopilotService` composes one
    `Pack.PackItem` list per intent (tenant facts, clause chunks, market
    notes, calculator output — every item citable, tagged `tenant`/
-   `market`/`contigo`/`calc`).
+   `market`/`raffa`/`calc`).
 3. **Answer** (`Application.Answering.AnswerComposer`, persona prompt
    `Prompts/answer/v2.1.md`) calls `IAiGateway.AnswerAsync` with the pack +
    last N turns; `Fixtures.FixtureAiGateway.AnswerAsync` gives a
@@ -1047,7 +1047,7 @@ attempt and forced `Guards.RegenerateOnce`'s retry-then-downgrade path, never
 just because the reply happens to be `abstain` (an empty pack or a failed
 gateway call both also produce `kind=abstain` but leave this field `false` —
 the same field name/shape `RagAnswerService`'s older, evidence-only audit
-entry already uses; see this file's "Ask Contigo — query router" section
+entry already uses; see this file's "Ask Raffa — query router" section
 above). The context pack's token budget is
 `Pack.PackBudget`, optionally configured via `Chat:PackTokenBudget`
 (`Chat__PackTokenBudget` env var form) and registered in `Program.cs`
@@ -1055,21 +1055,21 @@ above). The context pack's token budget is
 wins; absent configuration, `PackBudget.DefaultMaxTokens` applies.
 Cross-tenant isolation over this new endpoint (parent story AC-9) is
 proven the same way as `POST /api/chat/query`'s — see
-`Contigo.IntegrationTests.AskContigoRagCrossTenantIsolationTests`.
+`Raffa.IntegrationTests.AskRaffaRagCrossTenantIsolationTests`.
 
-## Ask Contigo — capability catalog
+## Ask Raffa — capability catalog
 
 Task E13/F08/US01/T01 (story us-01-capability-catalog, ADR-024 "Capability
-catalog (R-SYS)") adds `Contigo.Chat.Application.Capabilities`: a static,
+catalog (R-SYS)") adds `Raffa.Chat.Application.Capabilities`: a static,
 versioned (`CapabilityCatalog.Version`, `"capabilities-v2.0"`) catalog of
 the ten V2 capabilities (`ask`, `documents`, `documents-attention`,
 `documents-review`, `portfolio`, `contract-360`, `renewals`, `savings`,
-`quote-check`, `workspace-members` — R-SYS-01, `contigo-v2/ia-v2.md`'s own
+`quote-check`, `workspace-members` — R-SYS-01, `raffa-v2/ia-v2.md`'s own
 route map), each a `Capability` record (key/title/route pattern/
 description/example questions/role gate/availability/how-to steps).
 `CapabilityRouting` (registered `AddScoped` by `AddChatModule` — the same
 "stateless router, still an injected instance" convention
-`AskContigoQueryRouter` above already uses) turns a planner intent
+`AskRaffaQueryRouter` above already uses) turns a planner intent
 (`CapabilityIntent` — benchmark, unknown supplier, deadline, savings,
 how-to, capability list) plus a `RoutingContext` (validated-contract count,
 caller role, known contract/quote/document id) into `CopilotAction`s built
@@ -1080,12 +1080,12 @@ prototype's own empty-state copy (`CapabilityRouting
 .ValidatedContractsEmptyStateCopy`, `markup.html` "The portfolio lights up
 from validated contracts. Upload one to start.") when the caller has zero
 validated contracts. `FeatureCitation.For(capability)` builds the R-SYS-03
-feature-card shape (`corpus: contigo`); `CapabilityCatalog.SuggestionsFor`
+feature-card shape (`corpus: raffa`); `CapabilityCatalog.SuggestionsFor`
 reproduces `app.jsx`'s per-screen `chipsFor`/`c360Chips` suggestion chips.
 
-`Contigo.Api.CapabilitiesEndpointExtensions` maps `GET /api/capabilities`
+`Raffa.Api.CapabilitiesEndpointExtensions` maps `GET /api/capabilities`
 (role-aware: an `X-Role` header, resolved through
-`Contigo.Identity.Workspace.Domain.WorkspaceRoleClaimResolver` — same
+`Raffa.Identity.Workspace.Domain.WorkspaceRoleClaimResolver` — same
 interim-header posture as every `X-Tenant-Id` endpoint below, ADR-010 not
 yet on this host — hides `workspace-members` unless the caller resolves to
 `Admin`). Task E13/F06/US01/T01 (ask-engine) is this endpoint's first-mapped
@@ -1097,7 +1097,7 @@ metadata, not a per-tenant read.
 
 ## Renewal Intelligence — deterministic renewal engine
 
-`Contigo.Renewals.Application.RenewalEngine` (task E03/F01/US01/T01,
+`Raffa.Renewals.Application.RenewalEngine` (task E03/F01/US01/T01,
 us-01-deterministic-dates) is product spec §9.1's "calculate renewal date,
 calculate cancellation deadline, calculate days remaining" made concrete:
 pure, synchronous arithmetic over a `ContractRenewalTerms` snapshot — no
@@ -1125,9 +1125,9 @@ scheduler for each active contract" shape; deciding which contracts are
 "active" (in scope to call it with) is the caller's job, not the engine's.
 
 `ContractRenewalTerms` deliberately does not reference
-`Contigo.Documents.Contracts.Domain.Contract` — ADR-002 forbids
-`Contigo.Renewals` from referencing `Contigo.Documents.Contracts` at all
-(same reason `Contigo.Chat.Application.ContractFact` is its own small DTO,
+`Raffa.Documents.Contracts.Domain.Contract` — ADR-002 forbids
+`Raffa.Renewals` from referencing `Raffa.Documents.Contracts` at all
+(same reason `Raffa.Chat.Application.ContractFact` is its own small DTO,
 not the real `Contract` entity). Two honest gaps follow, both deliberately
 out of this task's file scope:
 
@@ -1135,9 +1135,9 @@ out of this task's file scope:
    `AddRenewalsModule` exists (`Infrastructure/ServiceCollectionExtensions.cs`)
    so the remaining tasks that depend on `renewal-engine` in the wave-spec DAG
    (priority score, the cancellation-alerts threshold scheduler) can resolve
-   it from a container, but `Contigo.Api`/`Contigo.Worker`'s `Program.cs` do
+   it from a container, but `Raffa.Api`/`Raffa.Worker`'s `Program.cs` do
    not call it yet — the same "wiring lands with the first real caller"
-   sequencing `AddChatModule` followed before `Contigo.Chat` had one (see
+   sequencing `AddChatModule` followed before `Raffa.Chat` had one (see
    that section above).
 2. `Contract` has no persisted `CancellationNoticeDays` column — its "dates"
 not the real `Contract` entity). One of the two gaps this section used to
@@ -1151,24 +1151,24 @@ remains, deliberately out of that task's file scope too:
    example names `cancellation_notice_days`, not a computed date). Mapping
    a real `Contract` row onto `ContractRenewalTerms` — and giving
    extraction a real `CancellationNoticeDays` field to populate — is
-   follow-up work in `Contigo.Documents.Contracts`, a different module and
+   follow-up work in `Raffa.Documents.Contracts`, a different module and
    a different task's file scope.
 not the real `Contract` entity).
 
-`Contigo.Renewals.Application.RenewalPipelineBuilder` (task E03/F03/US01/T01,
+`Raffa.Renewals.Application.RenewalPipelineBuilder` (task E03/F03/US01/T01,
 us-01-renewal-dashboard-api) is `RenewalEngine`'s first real caller and backs
 `GET /api/renewals` (see the HTTP surface table above): it turns a batch of
 `RenewalDashboardCandidate` (another small DTO, the same dependency-direction
 shape as `ContractRenewalTerms`) into a pipeline row plus a facts/
 recommendations insight card (spec §9.3), ordered most-urgent-first by days
-until the relevant date. `Contigo.Api.RenewalsEndpointExtensions` is the
+until the relevant date. `Raffa.Api.RenewalsEndpointExtensions` is the
 composition root that maps a real, tenant-scoped `PortfolioListItem`
 (Documents/Contracts) onto `RenewalDashboardCandidate` — the one mapping
 neither module may do itself, same pattern `ChatEndpointExtensions` already
 uses for `EmbeddingSearchResult` → `AiEvidenceSnippet`. `AddRenewalsModule`
-is now called by `Contigo.Api`'s `Program.cs` — the same "wiring lands with
+is now called by `Raffa.Api`'s `Program.cs` — the same "wiring lands with
 the first real caller" sequencing `AddChatModule` followed before
-`Contigo.Chat` had one. `Contigo.Worker`'s `Program.cs` still does not call
+`Raffa.Chat` had one. `Raffa.Worker`'s `Program.cs` still does not call
 it — no worker job (the renewal-opportunity generation / cancellation-alerts
 threshold scheduler wave-spec tasks) depends on `renewal-engine` yet.
 
@@ -1185,10 +1185,10 @@ straight through as its own field, independent of `RenewalEngine`'s
 notice-day derivation — see `RenewalDashboardCandidate.CancellationDeadline`'s
 own doc comment. Giving extraction a real `CancellationNoticeDays` field (so
 `RenewalEngine.Calculate` itself can derive the deadline, the way it already
-derives `RenewalDate`) is follow-up work in `Contigo.Documents.Contracts`, a
+derives `RenewalDate`) is follow-up work in `Raffa.Documents.Contracts`, a
 different module and a different task's file scope.
 
-`Contigo.Renewals.Application.RenewalOpportunityGenerator` (task
+`Raffa.Renewals.Application.RenewalOpportunityGenerator` (task
 E03/F01/US01/T02, us-01-deterministic-dates, the wave-spec's
 `renewal-opportunity` artifact) is the next daily-scheduler step from spec
 §9.1: "create/update renewal opportunity", built directly on top of
@@ -1206,7 +1206,7 @@ score/component breakdown (us-02-priority-score), a threshold-alert flag
 (feature-02-cancellation-alerts), an owner/status/action
 (feature-03-renewal-dashboard's renewal-action task, spec Appendix A `POST
 /api/renewals/{id}/action`), and persistence — spec §9.1 says "create/update"
-(upsert semantics) but no task has given `Contigo.Renewals` a `DbContext` yet,
+(upsert semantics) but no task has given `Raffa.Renewals` a `DbContext` yet,
 so today `RenewalOpportunity` is an in-memory value, not a stored row.
 ## Renewal Intelligence — explainable, tunable priority score
 score/component breakdown (us-02-priority-score) and a threshold-alert flag
@@ -1214,9 +1214,9 @@ score/component breakdown (us-02-priority-score) and a threshold-alert flag
 this paragraph used to list here are now closed by task E03/F03/US01/T02
 (renewal-action, feature-03-renewal-dashboard): an owner/status/action —
 `POST /api/renewals/{id}/action`, spec Appendix A, see the HTTP surface
-table above — and `Contigo.Renewals`'s first `DbContext`
+table above — and `Raffa.Renewals`'s first `DbContext`
 (`RenewalsDbContext`), which backs that endpoint's
-`Contigo.Renewals.Domain.RenewalAction` row. That `DbContext` does not,
+`Raffa.Renewals.Domain.RenewalAction` row. That `DbContext` does not,
 though, give `RenewalOpportunity` itself a persisted identity: spec §9.1's
 "create/update renewal opportunity" upsert semantics land on the separate
 `RenewalAction` (owner/status/action) row, keyed by `ContractId` alone, not
@@ -1224,7 +1224,7 @@ on a stored "renewal" entity — see `RenewalAction`'s own doc comment.
 `RenewalOpportunity` remains an in-memory value, not a stored row.
 ## Renewal Intelligence — explainable priority score
 
-`Contigo.Renewals.Application.PriorityScoreCalculator` (task E03/F01/US02/T01,
+`Raffa.Renewals.Application.PriorityScoreCalculator` (task E03/F01/US02/T01,
 us-02-priority-score) is product spec §9.2's formula made concrete: `"Priority
 Score = Spend Weight + Time Urgency + Benchmark Opportunity + Price Increase
 Risk + Contract Risk"`. Same determinism convention as `RenewalEngine` (pure,
@@ -1245,9 +1245,9 @@ midpoint (`PriorityScoreCalculator.NeutralComponentScore`, 10 under the spec
 default) specifically, because parent story AC-3 names that exact rule —
 `"Benchmark-opportunity component reads the R3 benchmark only when available
 (else neutral)"`. Today that is *always* the neutral case:
-`Contigo.Benchmark.IBenchmarkService` now defines the normalized
+`Raffa.Benchmark.IBenchmarkService` now defines the normalized
 `GetBenchmarkAsync` contract (task E04/F01/US01/T01), and
-`Contigo.Benchmark.Fixtures.FixtureBenchmarkAdapter` is now registered
+`Raffa.Benchmark.Fixtures.FixtureBenchmarkAdapter` is now registered
 behind it via `AddBenchmarkModule` (task E04/F01/US02/T01, see "Benchmark
 Service" below), but nothing wires
 `RenewalPriorityInputs.BenchmarkMarketPositionPercent` to a real
@@ -1262,14 +1262,14 @@ for what it did make tunable).
 **Task E03/F01/US02/T02 (priority-explainability)** closed both gaps the
 paragraph above used to name. *Tunable*: each of the five components' own
 *maximum* contribution is now
-`Contigo.Renewals.Configuration.PriorityScoreWeightsOptions` (config section
+`Raffa.Renewals.Configuration.PriorityScoreWeightsOptions` (config section
 `Renewals:PriorityWeights`, `SpendWeightMax`/`TimeUrgencyMax`/
 `BenchmarkOpportunityMax`/`PriceIncreaseRiskMax`/`ContractRiskMax`, each
 defaulting to 20 — the untouched spec default) — `PriorityScoreCalculator` rescales every tier's
 fixed contribution proportionally (the tier's fraction of the spec-default
 20, times the configured maximum), so the tiering itself is unchanged but
 each term's weight in the sum is an operator decision, not a compile-time
-literal. *Explainable, queryable*: `Contigo.Api.RenewalsEndpointExtensions`
+literal. *Explainable, queryable*: `Raffa.Api.RenewalsEndpointExtensions`
 now maps `GET /api/renewals/{contractId}/priority` (see the HTTP surface
 table above) — `PriorityScoreCalculator`'s first real host caller, composing
 `Contract360QueryService`'s tenant-scoped contract lookup (annual spend, end
@@ -1286,12 +1286,12 @@ that options singleton, injected automatically.
 
 ### Renewal threshold scheduler
 
-`Contigo.Renewals.Application.RenewalThresholdScheduler` (task
+`Raffa.Renewals.Application.RenewalThresholdScheduler` (task
 E03/F02/US01/T01, us-01-threshold-scheduler AC-1/AC-2) is product spec
 §9.1's "daily scheduler ... emit threshold events if applicable" made
 concrete: it runs `RenewalEngine.CalculateMany` over a tenant's
 `ContractRenewalTerms`, then checks each result's `DaysUntilRenewal`/
-`DaysUntilCancellationDeadline` against `Contigo.Renewals.Configuration
+`DaysUntilCancellationDeadline` against `Raffa.Renewals.Configuration
 .ThresholdWindowOptions.DaysBeforeDeadline` (config section
 `Renewals:Thresholds`, default 365/270/180/120/90/60/30 days — AC-1,
 "configurable"). An exact day-count match raises a `RenewalApproachingEvent`
@@ -1303,7 +1303,7 @@ can raise one, both, or neither on a given run) and writes it through
 yet, and picking one is council-owned, not this task's call) — durable and
 queryable via `GET /api/audit` even before a real consumer exists.
 
-`Contigo.Worker.Scheduling.RenewalThresholdSchedulerHostedService` is this
+`Raffa.Worker.Scheduling.RenewalThresholdSchedulerHostedService` is this
 module's first real host caller: `WorkerServiceCollectionExtensions
 .AddWorkerHost` now calls `AddRenewalsModule` (closing gap 1 that used to
 be listed above) and registers this `BackgroundService`, which ticks every
@@ -1314,12 +1314,12 @@ hosted service — it depends on the Scoped `IAuditWriter`). Honest gap: its
 `IActiveRenewalContractsSource` port has no real implementation yet — the
 default `NoActiveRenewalContractsSource` always returns zero tenants.
 Enumerating every tenant's active contracts needs a cross-tenant workspace
-listing (`Contigo.Identity.Workspace`, not referenced by `Contigo.Worker`
+listing (`Raffa.Identity.Workspace`, not referenced by `Raffa.Worker`
 today) plus a per-tenant RLS-scoped contract query
-(`Contigo.Documents.Contracts`) — wiring a real adapter is follow-up
+(`Raffa.Documents.Contracts`) — wiring a real adapter is follow-up
 composition work, the same category of gap this section's remaining item
 above describes. The timer loop itself is real and proven end to end
-(`Contigo.Worker.Tests.RenewalThresholdSchedulerHostedServiceTests`); AC-3
+(`Raffa.Worker.Tests.RenewalThresholdSchedulerHostedServiceTests`); AC-3
 ("Scheduler recomputes when a contract/term is corrected") is parent story
 task-02's scope ("Alert creation + re-compute on correction"), not this
 task's.
@@ -1335,16 +1335,16 @@ no database) nor `RenewalThresholdSchedulerHostedServiceTests` (a
 syntactically-valid-but-never-dialled connection string, by design) ever
 exercised a real RLS-enforced connection on this path, so this went
 undetected until r2-integration's own real-Postgres proof
-(`Contigo.IntegrationTests.R2EndToEndTests`) surfaced it. The method now
+(`Raffa.IntegrationTests.R2EndToEndTests`) surfaced it. The method now
 opens its own scope before writing, the same convention
 `RenewalActionService.SetActionAsync` already follows.
 
 ### Renewal alerts
 
-`Contigo.Renewals.Application.RenewalAlertService` (task E03/F02/US01/T02,
+`Raffa.Renewals.Application.RenewalAlertService` (task E03/F02/US01/T02,
 the wave-spec's `renewal-alerts` artifact; parent story
 us-01-threshold-scheduler AC-2/AC-3) closes the gap the section above
-named: a persisted, de-duplicated `Contigo.Renewals.Domain.RenewalAlert` row
+named: a persisted, de-duplicated `Raffa.Renewals.Domain.RenewalAlert` row
 per raised `renewal.approaching` event, plus recompute-on-correction.
 
 - **Creation (AC-2)** — `CreateFromEventsAsync` de-duplicates every raised
@@ -1353,7 +1353,7 @@ per raised `renewal.approaching` event, plus recompute-on-correction.
   unique index on that tuple, `WHERE status = 'Active'`, is the
   database-level backstop) and persists exactly one new row per genuinely
   new match, each writing one `renewal.alert_created` `IAuditWriter` entry.
-  `Contigo.Worker.Scheduling.RenewalThresholdSchedulerHostedService` calls
+  `Raffa.Worker.Scheduling.RenewalThresholdSchedulerHostedService` calls
   this immediately after every scheduler tick's own
   `EvaluateThresholdsAsync`, in the same DI scope.
 - **Recompute (AC-3)** — `RecomputeForContractAsync` re-derives a contract's
@@ -1364,9 +1364,9 @@ per raised `renewal.approaching` event, plus recompute-on-correction.
   .EvaluateThresholdsAsync` for that one contract against the corrected
   terms so a correction landing exactly on a configured threshold today
   raises the same `renewal.approaching` event (and alert) a scheduled tick
-  would raise tomorrow. `Contigo.Api.RenewalAlertRecomputeService` — the
+  would raise tomorrow. `Raffa.Api.RenewalAlertRecomputeService` — the
   composition-root orchestrator ADR-002 requires for any code that touches
-  both `Contigo.Documents.Contracts` and `Contigo.Renewals` (mirrors
+  both `Raffa.Documents.Contracts` and `Raffa.Renewals` (mirrors
   `NegotiationOutcomePropagationService`) — calls this from `PATCH
   /api/contracts/{id}` (see `ContractsEndpointExtensions`), but only when
   the correction actually touched `endDate` or `autoRenewal` (the only two
@@ -1377,19 +1377,19 @@ per raised `renewal.approaching` event, plus recompute-on-correction.
 
 This module's second table, `renewal_alert`, and its RLS policy land in one
 migration (`AddRenewalAlert` — the same "table doesn't pre-exist, so RLS is
-not a retrofit" convention `Contigo.Quotes`'s own `AddSkuProductMapping`/
+not a retrofit" convention `Raffa.Quotes`'s own `AddSkuProductMapping`/
 `AddNegotiationOutcome` migrations already established). No HTTP read
 endpoint exists for alerts yet (no AC/task names one) — proven instead via
-`Contigo.Renewals.Tests.RenewalAlertServiceTests`/
+`Raffa.Renewals.Tests.RenewalAlertServiceTests`/
 `RenewalAlertRlsCrossTenantIsolationTests` and
-`Contigo.IntegrationTests.R2EndToEndTests`' own
+`Raffa.IntegrationTests.R2EndToEndTests`' own
 `Renewal_alerts_are_created_from_thresholds_and_recomputed_on_contract_correction`.
 
 ## R1 demo smoke test
 
 The automated proof of task E02/F06/US01/T01 (r1-integration) is
-`dotnet test` — `Contigo.IntegrationTests.R1EndToEndTests` (AC-1/AC-2/AC-4:
-upload → parse/OCR → classify → extract → portfolio → 360 → Ask Contigo
+`dotnet test` — `Raffa.IntegrationTests.R1EndToEndTests` (AC-1/AC-2/AC-4:
+upload → parse/OCR → classify → extract → portfolio → 360 → Ask Raffa
 with citations → correction, plus a scanned/image fixture through the
 `ocr` gateway role) and `R1CrossTenantIsolationTests` (AC-3, across the
 whole path). To manually smoke-test the same path against a running
@@ -1432,7 +1432,7 @@ Foundry deployments.
 ## R2 demo smoke test
 
 The automated proof of task E03/F04/US01/T01 (r2-integration) is
-`dotnet test` — `Contigo.IntegrationTests.R2EndToEndTests` (AC-1/AC-2: every
+`dotnet test` — `Raffa.IntegrationTests.R2EndToEndTests` (AC-1/AC-2: every
 active contract gets a deterministic renewal date/cancellation deadline
 where data exists, an explainable component-scored priority via `GET
 /api/renewals/{id}/priority`, a `renewal.approaching` threshold event that
@@ -1456,15 +1456,15 @@ see "Renewal alerts" above, and `R2EndToEndTests`' own
 `Renewal_alerts_are_created_from_thresholds_and_recomputed_on_contract_correction`
 for the added proof (alert creation composed with the scheduler tick, then
 `PATCH /api/contracts/{id}` resolving/re-raising alerts through the real
-`Contigo.Api.RenewalAlertRecomputeService` wiring).
+`Raffa.Api.RenewalAlertRecomputeService` wiring).
 
 ## Savings Intelligence — deterministic price normalization
 
-`Contigo.Savings.Application.PriceNormalizationCalculator` (task E04/F02/US01/T01,
+`Raffa.Savings.Application.PriceNormalizationCalculator` (task E04/F02/US01/T01,
 us-01-price-normalization, the wave-spec's `savings-normalization` artifact) is product spec
 §4.3/§10's "Normalize current unit price and compare with benchmark P25/P50/P75... Calculate
 current percentile, recommended target and savings range" made concrete: pure, synchronous
-arithmetic over a `PriceComparisonRequest` (an already-fetched `Contigo.Benchmark.Contracts
+arithmetic over a `PriceComparisonRequest` (an already-fetched `Raffa.Benchmark.Contracts
 .BenchmarkResult` plus the current total cost) — no database, no HTTP call, no LLM call (Appendix C
 rule 6) — returning a `PriceComparisonResult` with a four-way `PriceComparisonStatus`:
 
@@ -1484,7 +1484,7 @@ rule 6) — returning a `PriceComparisonResult` with a four-way `PriceComparison
   does not hold, a data-quality problem this calculator refuses to silently paper over rather than
   fail on).
 
-`PriceComparisonRequest` deliberately reuses `Contigo.Benchmark.Contracts.BenchmarkQuery` (rather
+`PriceComparisonRequest` deliberately reuses `Raffa.Benchmark.Contracts.BenchmarkQuery` (rather
 than re-declaring supplier/quantity/term/currency on a second type) for the exact query a caller
 already built to fetch the `BenchmarkResult` in the first place — so currency/quantity are
 guaranteed to be the values the benchmark lookup itself used, and term alignment (comparing a
@@ -1495,18 +1495,18 @@ echoes the original `BenchmarkResult` unchanged on every outcome, so `Confidence
 task re-declaring or guessing at task-02's (confidence + provenance propagation) own output shape.
 
 Same "benchmark data only ever arrives as an already-known value, never a live call" convention
-`Contigo.Renewals.Application.PriorityScoreCalculator` already established: this calculator's
-public API structurally cannot accept a live `Contigo.Benchmark.IBenchmarkService`, so Appendix C
+`Raffa.Renewals.Application.PriorityScoreCalculator` already established: this calculator's
+public API structurally cannot accept a live `Raffa.Benchmark.IBenchmarkService`, so Appendix C
 rule 3 ("never call a benchmark provider directly from renewal, savings or quote business logic")
 can never become an accidental provider call from this module — proven by
-`Contigo.Savings.Tests.PriceNormalizationCalculatorTests.Calculator_never_depends_on_the_live_Benchmark_Service_interface`.
+`Raffa.Savings.Tests.PriceNormalizationCalculatorTests.Calculator_never_depends_on_the_live_Benchmark_Service_interface`.
 
-`Contigo.Savings.Application.SavingsProvenanceClassifier` (task E04/F02/US01/T02, us-01-price-
+`Raffa.Savings.Application.SavingsProvenanceClassifier` (task E04/F02/US01/T02, us-01-price-
 normalization task-02, the wave-spec's `savings-provenance` artifact) closes AC-3 ("Show confidence
 + provenance on the comparison"): `PriceComparisonResult.Provenance` is a computed property — not a
 constructor argument, so task-01's own tested shape is unchanged — that derives a
-`Contigo.Savings.Application.SavingsProvenance` view from `PriceComparisonResult.Benchmark` on every
-access. It carries a `Contigo.Savings.Domain.SavingsConfidenceLevel` (`Low`/`Medium`/`High`, spec's
+`Raffa.Savings.Application.SavingsProvenance` view from `PriceComparisonResult.Benchmark` on every
+access. It carries a `Raffa.Savings.Domain.SavingsConfidenceLevel` (`Low`/`Medium`/`High`, spec's
 own UI vocabulary for "Benchmark confidence") alongside the raw `[0, 1]` confidence score,
 source/comparison-dimensions/sample-size/updated-at (all echoed unchanged from `BenchmarkResult`),
 and a deterministic one-line `Summary`. `Classify`'s thresholds (`HighConfidenceThreshold` = 0.7,
@@ -1525,13 +1525,13 @@ host/worker wiring that calls `PriceNormalizationCalculator` against real contra
 (see "Renewal Intelligence" above). `AddSavingsModule`/DI registration does not exist yet for the
 same reason: nothing calls this calculator from a host yet.
 
-**Incidental fix, task E04/F02/US01/T02:** `backend/tests/Contigo.Benchmark.Tests/ServiceCollectionExtensionsTests.cs`
+**Incidental fix, task E04/F02/US01/T02:** `backend/tests/Raffa.Benchmark.Tests/ServiceCollectionExtensionsTests.cs`
 failed to compile (a prior merge had spliced one test method's closing brace together with a second,
 differently-named test's signature line, discarding that second method's body) — fixed to restore
-`dotnet build Contigo.slnx`, since a broken build blocks every task, not just this one. The
+`dotnet build Raffa.slnx`, since a broken build blocks every task, not just this one. The
 recovered test body is verified against this module's own current source, not guessed; the
 unrecoverable second test is not reinvented. That repair surfaced a separate, still-open
-`Contigo.Benchmark` wiring gap, left exactly as found (not this task's module or file scope):
+`Raffa.Benchmark` wiring gap, left exactly as found (not this task's module or file scope):
 `AddBenchmarkModule` registers `FixtureBenchmarkAdapter` directly as `IBenchmarkService` via
 `TryAddSingleton`, but the preceding `TryAddSingleton<IBenchmarkService, BenchmarkAdapterRegistry>`
 call already claims that slot (first registration wins), and `FixtureBenchmarkAdapter` does not
@@ -1552,32 +1552,32 @@ now register.
 
 ## Savings Intelligence — trackable SavingsOpportunity
 
-`Contigo.Savings.Domain.SavingsOpportunity` (task E04/F02/US02/T01, savings-opportunity, the
+`Raffa.Savings.Domain.SavingsOpportunity` (task E04/F02/US02/T01, savings-opportunity, the
 wave-spec's `savings-opportunity` artifact; parent story us-02-savings-opportunity AC-2) is this
 module's first persisted entity — product spec §6's core data model row "SavingsOpportunity |
 supplier, contract/quote, type, current_spend, estimated savings range, confidence, status, owner"
 (module-map.md: "Savings | SavingsOpportunity, RealizedSavings | `/api/savings`") made concrete:
 `SupplierId`/`ContractId` are cross-module references by id only, deliberately no foreign key (same
-treatment `Contigo.Renewals.Domain.RenewalAction.ContractId` already gives its own cross-module
-reference — ADR-002 forbids this module from referencing `Contigo.Suppliers.Products` or
-`Contigo.Documents.Contracts` at all); `Type` is free text (no ADR/spec fixes a vocabulary);
+treatment `Raffa.Renewals.Domain.RenewalAction.ContractId` already gives its own cross-module
+reference — ADR-002 forbids this module from referencing `Raffa.Suppliers.Products` or
+`Raffa.Documents.Contracts` at all); `Type` is free text (no ADR/spec fixes a vocabulary);
 `CurrentSpend`/`EstimatedSavingsLow`/`EstimatedSavingsHigh` carry an explicit `Currency` (this
 codebase has no currency-conversion service anywhere); `Confidence` echoes
-`Contigo.Benchmark.Contracts.BenchmarkResult.Confidence` (spec §4.3 "Show benchmark confidence and
+`Raffa.Benchmark.Contracts.BenchmarkResult.Confidence` (spec §4.3 "Show benchmark confidence and
 provenance"). `Status` (`Identified` / `InProgress` / `Realized`) is read directly off spec §4.3's
 own three dashboard KPI buckets ("savings identified" / "savings in progress" / "savings realized")
 — see `SavingsOpportunityStatus`'s own doc comment for why no fourth "rejected/dismissed" state
 exists yet.
 
-`Contigo.Savings.Application.SavingsOpportunityService` backs `GET /api/savings` (list, newest
+`Raffa.Savings.Application.SavingsOpportunityService` backs `GET /api/savings` (list, newest
 identified first) and `PATCH /api/savings/{id}` (a genuine partial update of `owner`/`status`, either
 or both — see the HTTP surface table above), tenant-scoped via `ITenantContext.BeginScope` the same
-way `Contigo.Renewals.Application.RenewalActionService` is, and writes one `IAuditWriter` entry per
+way `Raffa.Renewals.Application.RenewalActionService` is, and writes one `IAuditWriter` entry per
 successful mutation (`savings_opportunity.identified` / `savings_opportunity.updated` — spec §14.1).
-Also exposes `CreateAsync` ("identify"), proven by `Contigo.Savings.Tests
+Also exposes `CreateAsync` ("identify"), proven by `Raffa.Savings.Tests
 .SavingsOpportunityServiceTests` but not yet wired to an HTTP route — this task's own AC-1 names only
 `GET`/`PATCH`, and nothing in this codebase yet maps a real `PriceComparisonResult` against a real
-contract into a `CreateSavingsOpportunityRequest`; that composition (in `Contigo.Api`, "the one
+contract into a `CreateSavingsOpportunityRequest`; that composition (in `Raffa.Api`, "the one
 project allowed to reference every module") is a follow-up, the same "wiring lands with the first
 real caller" gap the previous section names for `PriceNormalizationCalculator` itself.
 
@@ -1585,7 +1585,7 @@ real caller" gap the previous section names for `PriceNormalizationCalculator` i
 `IBenchmarkService.GetBenchmarkAsync` -> `PriceNormalizationCalculator.Compare` ->
 `SavingsOpportunityService.CreateAsync` -> `PATCH .../{id}` (owner, then a realized value) ->
 `GET /api/savings`/`GET /api/savings/kpis` — end to end against the real host and a real, migrated,
-RLS-enforced database: `Contigo.IntegrationTests.R3EndToEndTests` resolves `IBenchmarkService`/
+RLS-enforced database: `Raffa.IntegrationTests.R3EndToEndTests` resolves `IBenchmarkService`/
 `SavingsOpportunityService` directly from the host's own container (the same "no dedicated route
 exists yet, exercise the service the host resolves" convention `R2EndToEndTests` already established
 for `RenewalActionService`), since no real caller maps a contract's line items into a
@@ -1593,18 +1593,18 @@ for `RenewalActionService`), since no real caller maps a contract's line items i
 demo smoke test" below.
 
 `AddSavingsModule` (task E04/F02/US02/T01) gives this module its first `DbContext`
-(`SavingsDbContext`) and is now called by `Contigo.Api`'s `Program.cs` — RLS is wired the same
+(`SavingsDbContext`) and is now called by `Raffa.Api`'s `Program.cs` — RLS is wired the same
 `AddTenantRowLevelSecurity` migration + `TenantRlsConnectionInterceptor` mechanism every other
-tenant-scoped module uses (ADR-009), proven by `Contigo.Savings.Tests
+tenant-scoped module uses (ADR-009), proven by `Raffa.Savings.Tests
 .SavingsOpportunityRlsMigrationCheckTests`/`SavingsOpportunityRlsCrossTenantIsolationTests`.
-`Contigo.Worker` is not wired to this module yet (no worker job creates opportunities today) — the
+`Raffa.Worker` is not wired to this module yet (no worker job creates opportunities today) — the
 same "wiring lands with the first real caller" gap, not attempted by this task.
 
 **Task E04/F02/US02/T02 (realized-savings)** closes the gap the paragraph above used to name:
-`Contigo.Savings.Domain.RealizedSavings` (module-map.md's own second named entity for this module,
+`Raffa.Savings.Domain.RealizedSavings` (module-map.md's own second named entity for this module,
 "Record realized value + audit event", parent story AC-3) is this module's second tenant-scoped
 table — one append-only row per captured realized value (never a destructive overwrite, the same
-"never destructively overwrite" spirit `Contigo.Documents.Contracts.Domain.ContractVersion`/
+"never destructively overwrite" spirit `Raffa.Documents.Contracts.Domain.ContractVersion`/
 `CorrectionHistory` already apply to their own history), in the opportunity's own `Currency` (no
 per-row currency — this codebase has no currency-conversion service anywhere). `PATCH
 /api/savings/{id}`'s `realizedAmount` field (see the HTTP surface table above) is the only writer,
@@ -1615,7 +1615,7 @@ automatically when `status` was omitted — the two facts are not independent, s
 still exactly one `IAuditWriter` entry per call (`savings_opportunity.realized` takes the place of
 `savings_opportunity.updated` for that call, never both). RLS is wired the same
 `AddRealizedSavingsRowLevelSecurity` migration + `TenantRlsConnectionInterceptor` mechanism as
-every other tenant-scoped table (ADR-009) — proven by `Contigo.Savings.Tests
+every other tenant-scoped table (ADR-009) — proven by `Raffa.Savings.Tests
 .SavingsOpportunityRlsMigrationCheckTests` (dynamic per-table discovery, no test change needed) and
 the new `RealizedSavingsRlsCrossTenantIsolationTests`. Honest gap, deliberately out of this task's
 own file scope: `GET /api/savings`'s list response does not surface any opportunity's realized-value
@@ -1629,13 +1629,13 @@ first real caller" gap this section's other paragraphs already document.
 Task E04/F03/US01/T01 (savings-kpis, the wave-spec's `savings-kpis` artifact; parent story
 us-01-savings-kpis AC-1) adds `GET /api/savings/kpis` — see the HTTP surface table above for the
 response shape. Two new pure calculators do the actual arithmetic, each unit-tested independently
-of any database (same convention `Contigo.Renewals.Application.RenewalPipelineBuilder`/
+of any database (same convention `Raffa.Renewals.Application.RenewalPipelineBuilder`/
 `PriorityScoreCalculator` already establish):
 
-- `Contigo.Savings.Application.SavingsKpiCalculator` groups every tenant-scoped
+- `Raffa.Savings.Application.SavingsKpiCalculator` groups every tenant-scoped
   `SavingsOpportunity` by `Status` then `Currency` for the "Savings Identified"/"Savings In
   Progress"/"Savings Realized" thirds (`SavingsKpiQueryService` is its thin EF-backed fetch half).
-- `Contigo.Documents.Contracts.Application.PortfolioAnalysisCalculator` computes "Contracts
+- `Raffa.Documents.Contracts.Application.PortfolioAnalysisCalculator` computes "Contracts
   Analyzed"/"Annual Spend Analyzed" from every tenant-scoped `Contract`, flagged by whether any
   linked `Document` reached `DocumentProcessingStatus.Completed` — a `Contract` row alone is not
   "analyzed" (`StagedExtractionService.EnsureContractAsync` creates one as a bootstrap shell before
@@ -1644,8 +1644,8 @@ of any database (same convention `Contigo.Renewals.Application.RenewalPipelineBu
 
 Every money value in the response is grouped by currency, never summed across currencies — the
 same "no exchange-rate service anywhere in this codebase" reasoning
-`Contigo.Savings.Domain.SavingsOpportunity.Currency`'s own doc comment already gives. "Upcoming
-Renewals" adds no dependency on `Contigo.Renewals` at all: `Contigo.Api.SavingsKpiEndpointExtensions`
+`Raffa.Savings.Domain.SavingsOpportunity.Currency`'s own doc comment already gives. "Upcoming
+Renewals" adds no dependency on `Raffa.Renewals` at all: `Raffa.Api.SavingsKpiEndpointExtensions`
 reuses the exact same auto-renewing-contract query `GET /api/renewals` already runs for its own
 `totalCount`, so the homepage KPI and the renewal pipeline list can never silently disagree.
 
@@ -1665,11 +1665,11 @@ already existed from task E04/F02/US02/T01, but nothing paired that decimal with
 interpretable signal. `SavingsOpportunityResult.ConfidenceLevel` — a computed property, not a
 constructor argument, the same "cannot drift from its one source of truth" shape
 `PriceComparisonResult.Provenance` already established — applies the existing
-`Contigo.Savings.Application.SavingsProvenanceClassifier.Classify` (task E04/F02/US01/T02,
+`Raffa.Savings.Application.SavingsProvenanceClassifier.Classify` (task E04/F02/US01/T02,
 `savings-provenance`) to each opportunity's own `Confidence`, so both call sites now report the same
 `Low`/`Medium`/`High` tier a live benchmark comparison would.
 
-Deliberately does **not** attempt the fuller `Contigo.Savings.Application.SavingsProvenance` shape
+Deliberately does **not** attempt the fuller `Raffa.Savings.Application.SavingsProvenance` shape
 (source, comparison dimensions, sample size, benchmark updated-at) on `SavingsOpportunity`: those
 fields describe a specific `BenchmarkResult` comparison, and nothing in this codebase persists one
 against a `SavingsOpportunity` row today — `CreateSavingsOpportunityRequest` only ever receives the
@@ -1685,7 +1685,7 @@ document.
 ## R3 demo smoke test
 
 The automated proof of task E04/F04/US01/T01 (r3-integration) is `dotnet test` —
-`Contigo.IntegrationTests.R3EndToEndTests` (AC-1: a "matched contract" benchmark comparison reports
+`Raffa.IntegrationTests.R3EndToEndTests` (AC-1: a "matched contract" benchmark comparison reports
 current price + P25/P50/P75 + percentile/target/saving/confidence/provenance for a confident fixture
 match, and honestly abstains — still with confidence/provenance, never a bare failure — when the
 matched comparable is dimensionally strong but statistically too thin (`fixture-confidence`, task
@@ -1699,7 +1699,7 @@ E04/F01/US02/T02); AC-2: a `SavingsOpportunity` is identified from that comparis
 
 ```bash
 cd backend
-dotnet test Contigo.slnx --configuration Release --filter "FullyQualifiedName~R3"
+dotnet test Raffa.slnx --configuration Release --filter "FullyQualifiedName~R3"
 ```
 
 To manually smoke-test the parts of this path that already have a public HTTP surface, against a
@@ -1737,7 +1737,7 @@ service the host resolves" convention `R2EndToEndTests` already established for 
 
 ## Quote Check — quote upload + line-item extraction
 
-`Contigo.Quotes` (task E05/F01/US01/T01, quote-extraction; parent story
+`Raffa.Quotes` (task E05/F01/US01/T01, quote-extraction; parent story
 us-01-quote-line-extraction) is the first Quotes-module task: `POST
 /api/quotes` (see the HTTP surface table above) uploads a supplier quote
 and runs schema-constrained line-item extraction synchronously before
@@ -1745,26 +1745,26 @@ responding — the same "read the bytes once, run the pipeline inline"
 shape `POST /api/documents`/`DocumentProcessingPipeline` already
 established for contracts (task E02/F06/US01/T01).
 
-- `Contigo.Quotes.Domain.Quote`/`QuoteExtractionJob`/`QuoteLine` are this
+- `Raffa.Quotes.Domain.Quote`/`QuoteExtractionJob`/`QuoteLine` are this
   module's own entities — deliberately **not** a reference to
-  `Contigo.Documents.Contracts.Domain.Document`/`Contract`: ADR-002 forbids
-  `Contigo.Quotes` from referencing `Contigo.Documents.Contracts` at all
-  (its allowed Contigo references are exactly `[SharedKernel, Benchmark]`
+  `Raffa.Documents.Contracts.Domain.Document`/`Contract`: ADR-002 forbids
+  `Raffa.Quotes` from referencing `Raffa.Documents.Contracts` at all
+  (its allowed Raffa references are exactly `[SharedKernel, Benchmark]`
   — see "Dependency direction" below), and a quote is not a contract (spec
   §11's own Quote → Benchmark → Assessment → Negotiate → **Contract** flow
   treats "becomes a contract" as a later, explicit step).
-- `Contigo.Api.QuoteExtractionPipeline` (internal — host-composition
-  wiring, the same treatment `Contigo.Worker.Queue.QueueConsumerHostedService`
-  already gets from `Contigo.ArchitectureTests
+- `Raffa.Api.QuoteExtractionPipeline` (internal — host-composition
+  wiring, the same treatment `Raffa.Worker.Queue.QueueConsumerHostedService`
+  already gets from `Raffa.ArchitectureTests
   .DependencyDirectionTests.Host_must_not_contain_domain_types`) is the one
-  place that calls both `Contigo.AiGateway` and `Contigo.Quotes`: it reuses
-  the epic-02 `Contigo.Documents.Contracts.Application.Extraction
+  place that calls both `Raffa.AiGateway` and `Raffa.Quotes`: it reuses
+  the epic-02 `Raffa.Documents.Contracts.Application.Extraction
   .HybridDocumentParsingService` verbatim (native text extraction, or the
   `ocr` gateway role — Azure AI Document Intelligence, ADR-017 — for
   scanned/image/low-text quote PDFs; full document, no 2-page cap; AC-4),
-  then runs one `extract` call against `Contigo.Quotes.Application
+  then runs one `extract` call against `Raffa.Quotes.Application
   .Extraction.QuoteLineJsonSchema.LineItems()` and hands the raw payload to
-  `Contigo.Quotes.Application.Extraction.QuoteLineExtractionService` to
+  `Raffa.Quotes.Application.Extraction.QuoteLineExtractionService` to
   persist.
 - AC-3 ("Separate arithmetic from LLM language", Appendix C rule 6): the
   line-item schema has **no** computed-total property at all — the model
@@ -1774,13 +1774,13 @@ established for contracts (task E02/F06/US01/T01).
   the model did not report a unit price directly) and
   `QuoteLine.ExtendedPrice` (`quantity × unitPrice`) in plain C# decimal
   arithmetic — proved directly by
-  `Contigo.Quotes.Tests.QuoteLineExtractionServiceTests` and end-to-end by
-  `Contigo.IntegrationTests.QuoteEndToEndTests`.
+  `Raffa.Quotes.Tests.QuoteLineExtractionServiceTests` and end-to-end by
+  `Raffa.IntegrationTests.QuoteEndToEndTests`.
 - Every line carries the same evidence + confidence tail as every other
   extraction pipeline in this codebase (`sourceSpan`/`sourcePage`/
   `confidence`, Appendix C rule 2) directly on the `QuoteLine` row — one
   row is already one fact, the same shape
-  `Contigo.Documents.Contracts.Domain.ContractLineItem` uses (no separate
+  `Raffa.Documents.Contracts.Domain.ContractLineItem` uses (no separate
   evidence side-table).
 - Deliberately out of task-01's own scope (not silently absorbed): the
   `Quote`-level aggregate fields spec §6 also names ("supplier, dates,
@@ -1800,7 +1800,7 @@ benchmark"), right after line-item extraction inside the same
 `QuoteExtractionPipeline.ProcessAsync` unit of work — before the one
 shared `SaveChangesAsync`, so extraction and normalization persist
 together or not at all. No new AI Gateway role and no new project
-reference: `Contigo.Quotes.Application.Normalization
+reference: `Raffa.Quotes.Application.Normalization
 .QuoteLineNormalizationService.NormalizeUnitEconomics` is a second pure,
 deterministic calculator alongside task-01's own `ComputePricing` — same
 Appendix C rule 6 discipline, applied to a second pipeline stage.
@@ -1809,7 +1809,7 @@ rescaled to an annual rate) and `NormalizedTermMonths` (the recognized
 cadence length, in months, that produced it — kept as evidence, the same
 "never a consequential derived fact without a way to see why" spirit
 `SourceSpan`/`SourcePage` already give the raw extraction).
-`Contigo.Quotes.Application.Normalization.QuoteBillingCadence
+`Raffa.Quotes.Application.Normalization.QuoteBillingCadence
 .RecognizeMonths` deliberately recognizes only a small, fixed,
 unambiguous vocabulary (`monthly`/`quarterly`/`semi-annual`/`annual` and
 their common synonyms — 1/3/6/12 months respectively); a numeric
@@ -1819,7 +1819,7 @@ blank term, or any other free text `QuoteLine.Term` may legitimately hold
 comment) is left honestly unresolved (both new columns stay `null`)
 rather than guess a billing-period relationship this codebase does not
 actually know — the same restraint
-`Contigo.Savings.Application.PriceComparisonRequest`'s own doc comment
+`Raffa.Savings.Application.PriceComparisonRequest`'s own doc comment
 already documents for cross-module term alignment (Appendix C rule 10).
 A `null` `NormalizedAnnualUnitPrice` on any line **is** spec §11.3's own
 "Do not generate a savings target if line-item normalization is
@@ -1830,27 +1830,27 @@ task reads it. `POST /api/quotes`'s response gains
 `normalizedLineItemCount`/`unresolvedNormalizationCount` (see the HTTP
 surface table above) so the same outcome is visible over HTTP, not just
 in the database — proved directly by
-`Contigo.Quotes.Tests.QuoteLineNormalizationServiceTests` and, for the
+`Raffa.Quotes.Tests.QuoteLineNormalizationServiceTests` and, for the
 already-recognized-cadence common case, end-to-end by the existing
-`Contigo.IntegrationTests.QuoteEndToEndTests` fixture (`"term":"Annual"`).
+`Raffa.IntegrationTests.QuoteEndToEndTests` fixture (`"term":"Annual"`).
 
 **Task E05/F01/US02/T01 (sku-normalization)** adds story
 us-02-sku-normalization's own AC-1 ("Normalize SKU/edition to the
 canonical product mapping") and the "show unmatched SKUs" half of AC-2:
 
-- `Contigo.Quotes.Domain.SkuProductMapping` is this module's own,
+- `Raffa.Quotes.Domain.SkuProductMapping` is this module's own,
   self-contained "canonical product mapping" — a tenant-scoped
   raw-normalized-SKU → canonical-SKU/edition/product-name table, **not** a
-  reference into `Contigo.Suppliers.Products` (still an empty scaffold, and
-  ADR-002 forbids `Contigo.Quotes` from referencing it or any other domain
-  module's internals at all). `Contigo.Quotes.Application.Normalization
+  reference into `Raffa.Suppliers.Products` (still an empty scaffold, and
+  ADR-002 forbids `Raffa.Quotes` from referencing it or any other domain
+  module's internals at all). `Raffa.Quotes.Application.Normalization
   .SkuNormalizer.Normalize` is the pure, deterministic text rule (trim,
   collapse whitespace, uppercase; punctuation is left untouched on purpose
   — see that type's own doc comment) both sides of the lookup share.
   `SkuNormalizationService.NormalizeAsync` re-reads a quote's own lines from
   the database and sets each one's `NormalizedSku`/`NormalizedEdition`/
   `MatchStatus` (`NotApplicable`/`Unmatched`/`Matched` —
-  `Contigo.Quotes.Domain.SkuMatchStatus`); `Contigo.Api.QuoteExtractionPipeline`
+  `Raffa.Quotes.Domain.SkuMatchStatus`); `Raffa.Api.QuoteExtractionPipeline`
   calls it right after persisting a quote's freshly-extracted lines, so
   every upload gets a real match status, not just a later explicit
   recalculate call.
@@ -1862,11 +1862,11 @@ canonical product mapping") and the "show unmatched SKUs" half of AC-2:
   normalization is unresolved") made concrete rather than a limitation of
   this task: no benchmark/assessment step for quotes exists yet either for
   a resolved mapping to unblock.
-- Proved directly by `Contigo.Quotes.Tests.SkuNormalizationServiceTests`
+- Proved directly by `Raffa.Quotes.Tests.SkuNormalizationServiceTests`
   (pure normalization, pure per-line matching, and a real-Postgres+RLS
   persistence/re-run/cross-tenant proof). `POST /api/quotes`' response now
   also carries `unmatchedSkuCount` (see the HTTP surface table above) —
-  `Contigo.IntegrationTests.QuoteEndToEndTests` still passes unchanged with
+  `Raffa.IntegrationTests.QuoteEndToEndTests` still passes unchanged with
   it present (that test's own fixture quote has no seeded mapping, so it is
   `1`), but no test yet asserts that field's value over real HTTP
   specifically; the persistence-level proof above is this task's own
@@ -1877,7 +1877,7 @@ own AC-2 "...and allow manual product mapping" half and AC-3 "Re-run assessment
 after mapping correction" — the intended first writer of `SkuProductMapping`
 task-01's own doc comment named but never itself wrote:
 
-- `Contigo.Quotes.Application.Normalization.SkuMappingService.RecalculateAsync`
+- `Raffa.Quotes.Application.Normalization.SkuMappingService.RecalculateAsync`
   backs `POST /api/quotes/{id}/assessment/recalculate` (see the HTTP surface
   table above for the full request/response shape). For each caller-supplied
   correction it upserts one `SkuProductMapping` row (update in place when one
@@ -1905,18 +1905,18 @@ task-01's own doc comment named but never itself wrote:
   resolves every other quote for the same tenant sharing the same normalized
   SKU, the next time *that* quote is itself (re)normalized (a fresh upload,
   or its own recalculate call) — proved directly by
-  `Contigo.Quotes.Tests.SkuMappingServiceTests`
+  `Raffa.Quotes.Tests.SkuMappingServiceTests`
   `RecalculateAsync_a_mapping_learned_on_one_quote_resolves_a_different_quote_on_its_own_next_refresh`.
 - Owns its own tenant scope (`ITenantContext.BeginScope`) from day one — the
   always-404-in-production class of bug task E05/F04/US01/T01 (r4-integration)
   found and fixed for `MarketAssessmentService`/`NegotiationStrategyService`
   (see "Market Assessment" below) is not repeated here.
-- Proved directly by `Contigo.Quotes.Tests.SkuMappingServiceTests` (pure
+- Proved directly by `Raffa.Quotes.Tests.SkuMappingServiceTests` (pure
   per-correction upsert rule, and a real-Postgres+RLS persistence proof:
   create, update-in-place, validation-before-any-write, cross-tenant 404,
   cross-quote reuse, and a full correct-then-assess chain against the real
   `FixtureBenchmarkAdapter`) and end to end by
-  `Contigo.IntegrationTests.R4EndToEndTests`, which now drives this real
+  `Raffa.IntegrationTests.R4EndToEndTests`, which now drives this real
   endpoint over real HTTP for AC-2 instead of the direct-service-call
   workaround that class's own doc comment used to describe.
 
@@ -1928,7 +1928,7 @@ AC-1 "Match normalized line items to the Benchmark Service
 /api/quotes/{id}/assessment` returns the assessment with
 confidence/provenance") closes the gap this section's own task-01 paragraph
 used to name ("benchmark matching/assessment/negotiation remain future work
-no task has picked up yet") and the gap `Contigo.Quotes.Infrastructure
+no task has picked up yet") and the gap `Raffa.Quotes.Infrastructure
 .ServiceCollectionExtensions.AddQuotesModule`'s own doc comment used to name
 ("deliberately does not call `AddBenchmarkModule`... nothing this task adds
 resolves `IBenchmarkService` yet").
@@ -1936,9 +1936,9 @@ resolves `IBenchmarkService` yet").
 - **`Quote` gains its own benchmark-matching fields**: `Supplier`,
   `Currency`, `Geography`, `PurchaseDate` — spec §6's "Quote-level aggregate
   fields" that task-01 deliberately deferred. Unlike the identical-looking
-  gap `Contigo.IntegrationTests.R3IntegrationFixture`'s own doc comment left
-  open for `Contigo.Documents.Contracts.Domain.Contract` (ADR-002 forbids
-  `Contigo.Savings` from reaching into that module at all), `Contigo.Quotes`
+  gap `Raffa.IntegrationTests.R3IntegrationFixture`'s own doc comment left
+  open for `Raffa.Documents.Contracts.Domain.Contract` (ADR-002 forbids
+  `Raffa.Savings` from reaching into that module at all), `Raffa.Quotes`
   owns both `Quote` and `QuoteLine` itself — no cross-module reference is
   involved — so there was no architectural reason to leave this one open
   once a task actually needed it. All four are populated by explicit,
@@ -1948,21 +1948,21 @@ resolves `IBenchmarkService` yet").
   currency, and spec §11.1's own "Identify supplier" workflow step has no
   task/UI of its own yet. A quote uploaded without them is simply not
   matchable yet — an honest, expected state
-  (`Contigo.Quotes.Application.Assessment.MarketAssessmentQueryBuilder`
+  (`Raffa.Quotes.Application.Assessment.MarketAssessmentQueryBuilder`
   reports that per line, naming exactly which dimension is missing), not a
   validation error at upload time.
-- **`AddQuotesModule` now also calls `Contigo.Benchmark
+- **`AddQuotesModule` now also calls `Raffa.Benchmark
   .ServiceCollectionExtensions.AddBenchmarkModule`** — the same "a module
   that depends on another module's interface registers that dependency's
-  own DI wiring transitively" convention `Contigo.Savings
+  own DI wiring transitively" convention `Raffa.Savings
   .Infrastructure.ServiceCollectionExtensions.AddSavingsModule`'s own doc
   comment already established for this exact call (and explicitly
-  anticipated a future `Contigo.Quotes` caller doing the same).
-  `Contigo.Quotes.csproj`'s own `ProjectReference` to `Contigo.Benchmark`
+  anticipated a future `Raffa.Quotes` caller doing the same).
+  `Raffa.Quotes.csproj`'s own `ProjectReference` to `Raffa.Benchmark`
   pre-dated this task (an R4 scaffold anticipating this exact step) — this
   is that compile-time dependency's first runtime DI registration.
-- **`Contigo.Quotes.Application.Assessment.MarketAssessmentQueryBuilder`**
-  builds a `Contigo.Benchmark.Contracts.BenchmarkQuery` per line: `Product`
+- **`Raffa.Quotes.Application.Assessment.MarketAssessmentQueryBuilder`**
+  builds a `Raffa.Benchmark.Contracts.BenchmarkQuery` per line: `Product`
   from `QuoteLine.Description`, `Sku` from `NormalizedSku` (falling back to
   the raw `Sku`), `Quantity`/`Term` from the line, `Supplier`/`Geography`/
   `Currency`/`PurchaseDate` from the quote. Pure, honest, never fabricates a
@@ -1970,48 +1970,48 @@ resolves `IBenchmarkService` yet").
   `NormalizedAnnualUnitPrice`**: that annualized figure only exists for a
   term `QuoteBillingCadence` recognizes (a word vocabulary — "annual",
   "monthly", ...), a different, narrower vocabulary than
-  `Contigo.Benchmark.Fixtures.FixtureBenchmarkAdapter`'s own catalog `Term`
-  values ("12 months", "36 months") — mirrors `Contigo.Savings.Application
+  `Raffa.Benchmark.Fixtures.FixtureBenchmarkAdapter`'s own catalog `Term`
+  values ("12 months", "36 months") — mirrors `Raffa.Savings.Application
   .PriceComparisonRequest`'s own "term alignment is the Benchmark Service's
   own matching responsibility, no additional term-arithmetic here" doc
   comment.
-- **`Contigo.Quotes.Application.Assessment.MarketAssessmentCalculator`**
+- **`Raffa.Quotes.Application.Assessment.MarketAssessmentCalculator`**
   flags the line's price `BelowMarket`/`InLine`/`AboveMarket` against the
   matched `BenchmarkResult.Distribution`'s `[P25, P75]` band (at-or-below
   P25 is below market; at-or-above P75 is above; anything else, including
   exactly P50, is in line) — or the honest
-  `Contigo.Quotes.Domain.MarketAssessmentStatus.InsufficientBenchmarkData`
+  `Raffa.Quotes.Domain.MarketAssessmentStatus.InsufficientBenchmarkData`
   when the benchmark has no usable distribution (ADR-001), never a
   fabricated flag (Appendix C rule 10).
-- **`Contigo.Quotes.Application.Assessment.MarketAssessmentProvenanceClassifier`**
-  mirrors `Contigo.Savings.Application.SavingsProvenanceClassifier` field-
+- **`Raffa.Quotes.Application.Assessment.MarketAssessmentProvenanceClassifier`**
+  mirrors `Raffa.Savings.Application.SavingsProvenanceClassifier` field-
   for-field and threshold-for-threshold (High ≥ 0.7, Medium ≥ 0.4) —
   duplicated, not shared: ADR-002's allowed-reference set for
-  `Contigo.Quotes` is exactly `[SharedKernel, Benchmark]`.
-  `Contigo.Quotes.Application.Assessment.MarketAssessmentService.AssessAsync`
+  `Raffa.Quotes` is exactly `[SharedKernel, Benchmark]`.
+  `Raffa.Quotes.Application.Assessment.MarketAssessmentService.AssessAsync`
   is the one place in this module that actually calls
   `IBenchmarkService.GetBenchmarkAsync` — Appendix C's benchmark rule names
   the provider *adapter*, not this abstraction (`IBenchmarkService`'s own
   doc comment: "Domain modules depend on this abstraction only").
-- Proved directly by `Contigo.Quotes.Tests.MarketAssessmentCalculatorTests`/
+- Proved directly by `Raffa.Quotes.Tests.MarketAssessmentCalculatorTests`/
   `MarketAssessmentQueryBuilderTests` (pure, no database) and end to end by
-  `Contigo.Quotes.Tests.MarketAssessmentServiceTests` against a real
+  `Raffa.Quotes.Tests.MarketAssessmentServiceTests` against a real
   Postgres+RLS database and the real `FixtureBenchmarkAdapter` (never a
   stub) — one quote, three lines, demonstrating `Assessed`/
   `QuoteDataUnresolved`/`InsufficientBenchmarkData` together, the same
   "build a query by hand that matches a real fixture catalog row" convention
-  `Contigo.IntegrationTests.R3EndToEndTests` already established for the
+  `Raffa.IntegrationTests.R3EndToEndTests` already established for the
   analogous Savings comparison.
 - **Task E05/F02/US01/T02 (target-saving)** closes the gap this section's own
   task-01 paragraph used to name ("recommended target range and potential
   saving... are task-02's own, separate `target-saving` wave-spec artifact"):
-  `Contigo.Quotes.Application.Assessment.TargetSavingCalculator.Compute`
+  `Raffa.Quotes.Application.Assessment.TargetSavingCalculator.Compute`
   computes spec §11.2's "Recommended target"/"Potential saving" rows —
   `RecommendedTargetLow/High = min(P25/P50, unitPrice)` (never above the
   current price) and `SavingsRangeLow/High` (per-unit) +
   `TotalSavingsRangeLow/High` (scaled by `QuoteLine.Quantity` — the
   `CHF 80-110k`-shaped total spec §11.2's own example shows, not a per-unit
-  rate). Mirrors `Contigo.Savings.Application.PriceNormalizationCalculator`'s
+  rate). Mirrors `Raffa.Savings.Application.PriceNormalizationCalculator`'s
   own target/savings-range formula exactly — duplicated, not referenced,
   the same `[SharedKernel, Benchmark]`-only reference rule
   `MarketAssessmentProvenanceClassifier` already follows. Never fabricates: a
@@ -2026,7 +2026,7 @@ resolves `IBenchmarkService` yet").
   /api/quotes/{id}/assessment`'s response gained a `targetSaving` object per
   line (see the HTTP surface table above) alongside the existing
   `benchmark`/`confidence` objects. Proved directly by
-  `Contigo.Quotes.Tests.TargetSavingCalculatorTests` (pure, no database,
+  `Raffa.Quotes.Tests.TargetSavingCalculatorTests` (pure, no database,
   mirroring `MarketAssessmentCalculatorTests`'s own shape) and end to end by
   the same `MarketAssessmentServiceTests` fixture above — the parent story
   us-01-market-assessment Definition of Done in full ("`dotnet test` proves
@@ -2035,15 +2035,15 @@ resolves `IBenchmarkService` yet").
   Strategy" below; outcome capture (`POST /api/negotiations/outcomes`,
   feature-03's us-02) remains future work no task has picked up yet.
 - **Incidental fix, required for this task's own `dotnet build` to succeed
-  at all**: `Contigo.Api.QuoteExtractionPipeline.ProcessAsync` (touched by
+  at all**: `Raffa.Api.QuoteExtractionPipeline.ProcessAsync` (touched by
   both task E05/F01/US01/T02 and task E05/F01/US02/T01 in parallel
   wave-spec phases) had a duplicate local-variable declaration
   (`normalizationOutcome` declared twice, `CS0128`) and two stray, dangling
   duplicate lines (inside the method's own `return` statement and inside
   `QuoteProcessingSummary`'s record declaration) — each sibling task had
   appended its own new field/parameter without reconciling with the other's
-  identical-shaped addition, so the whole `Contigo.Api` project (and every
-  test depending on it — `Contigo.Api.Tests`, `Contigo.IntegrationTests`)
+  identical-shaped addition, so the whole `Raffa.Api` project (and every
+  test depending on it — `Raffa.Api.Tests`, `Raffa.IntegrationTests`)
   could not compile. Renamed the two outcomes to their own distinct names
   (`lineNormalizationOutcome`/`skuNormalizationOutcome`) and removed the
   duplicate lines; no behavioural change to either sibling task's own
@@ -2053,7 +2053,7 @@ resolves `IBenchmarkService` yet").
 - **Task E05/F04/US01/T01 (r4-integration) fixes**: `MarketAssessmentService`
   never opened its own `ITenantContext.BeginScope` — unlike every other
   tenant-scoped application service in this codebase — and neither did
-  `Contigo.Api.QuotesEndpointExtensions.GetAssessmentAsync` upstream of it.
+  `Raffa.Api.QuotesEndpointExtensions.GetAssessmentAsync` upstream of it.
   Against a real, RLS-enforced, non-superuser connection (every deployed
   environment), `GET /api/quotes/{id}/assessment` would 404 for every real
   quote, always — undetected because `MarketAssessmentServiceTests` calls
@@ -2066,7 +2066,7 @@ resolves `IBenchmarkService` yet").
   and despite this very HTTP-surface-table row documenting it since task
   E05/F02/US01/T02 — also fixed, so the wire response now matches its own
   already-published contract. Both surfaced by, and proved fixed by,
-  `Contigo.IntegrationTests.R4EndToEndTests`/`R4CrossTenantIsolationTests` —
+  `Raffa.IntegrationTests.R4EndToEndTests`/`R4CrossTenantIsolationTests` —
   see "R4 demo smoke test" below.
 
 ## Negotiation Strategy — opening target/range/walk-away + levers
@@ -2078,7 +2078,7 @@ deterministic; only language is LLM") closes the gap the "Market Assessment"
 section above used to name ("Negotiation ... remains future work no task has
 picked up yet").
 
-- **`Contigo.Quotes.Application.Strategy.NegotiationStrategyCalculator`**
+- **`Raffa.Quotes.Application.Strategy.NegotiationStrategyCalculator`**
   is a pure, synchronous calculator (no database/HTTP/LLM call) that turns
   an already-computed `LineMarketAssessment.TargetSaving` (task
   E05/F02/US01/T02) into `LineNegotiationStrategy.{OpeningTarget,
@@ -2111,14 +2111,14 @@ picked up yet").
   calculator above; the per-lever `Rationale` text is V1 deterministic
   language, the same "`Explanation` is a computed string, never a model
   call" convention `TargetSavingCalculator`/`MarketAssessmentCalculator`
-  already follow. `Contigo.ArchitectureTests.DependencyDirectionTests`'
-  allowed-reference set for `Contigo.Quotes` is exactly `[SharedKernel,
+  already follow. `Raffa.ArchitectureTests.DependencyDirectionTests`'
+  allowed-reference set for `Raffa.Quotes` is exactly `[SharedKernel,
   Benchmark]` (see "Dependency direction" below) — unchanged by this task.
   A future task wiring the `answer` role would do it the same way
-  `Contigo.Api.QuoteExtractionPipeline` already does for the `extract`
+  `Raffa.Api.QuoteExtractionPipeline` already does for the `extract`
   role: from the composition root, feeding this calculator's own facts in
   as evidence, never asking the model to invent them.
-  `Contigo.AiGateway.Fixtures.FixtureAiGateway.AnswerAsync` would today only
+  `Raffa.AiGateway.Fixtures.FixtureAiGateway.AnswerAsync` would today only
   echo those facts back verbatim (no live grounded-generation model exists
   yet), so deferring that wiring loses no real capability now. Evidence
   *citations* per lever (AC-2, Appendix C rule 2) were task-01's own,
@@ -2128,16 +2128,16 @@ picked up yet").
   AC-2 "Rationale cites explicit evidence per lever", Appendix C rule 2
   "never show a consequential... fact without source evidence and
   confidence metadata")**: `NegotiationLever` gained an `Evidence` field —
-  `IReadOnlyList<Contigo.Quotes.Application.Strategy.NegotiationLeverEvidence>`,
+  `IReadOnlyList<Raffa.Quotes.Application.Strategy.NegotiationLeverEvidence>`,
   each a `FieldName`/`Value`/`SourceSpan`/`SourcePage`/`Confidence` tuple.
-  Mirrors `Contigo.Documents.Contracts.Domain.ExtractionEvidence`'s own
+  Mirrors `Raffa.Documents.Contracts.Domain.ExtractionEvidence`'s own
   "which field, what value, from where, how confident" addressing scheme,
-  kept as its own `Contigo.Quotes`-local record rather than
-  `Contigo.AiGateway.Contracts.AiCitation`/`AiEvidenceSnippet` (those are
+  kept as its own `Raffa.Quotes`-local record rather than
+  `Raffa.AiGateway.Contracts.AiCitation`/`AiEvidenceSnippet` (those are
   document-citation-shaped — `DocumentId`/`Page`/`Section` — for RAG
-  answers over unstructured text, and `Contigo.Quotes`' own
+  answers over unstructured text, and `Raffa.Quotes`' own
   allowed-reference set, `[SharedKernel, Benchmark]`, cannot reach
-  `Contigo.AiGateway` anyway). `Volume`/`Term` cite `QuoteLine.Quantity`/
+  `Raffa.AiGateway` anyway). `Volume`/`Term` cite `QuoteLine.Quantity`/
   `Unit`/`Term` carrying this same line's own extraction `SourceSpan`/
   `SourcePage`/`Confidence` (fields the AI Gateway `extract` role
   originally proposed for the row — a `QuoteLine` row is one extraction
@@ -2153,7 +2153,7 @@ picked up yet").
   fabricate a citation for a fact that is not actually there). The cited
   `Value` always renders exactly as `Rationale` itself renders it, so the
   structured citation and the prose can never silently disagree.
-- **`Contigo.Quotes.Application.Strategy.NegotiationStrategyService`**
+- **`Raffa.Quotes.Application.Strategy.NegotiationStrategyService`**
   composes on top of `MarketAssessmentService.AssessAsync` (reused, not
   re-derived) plus one extra `QuoteLine` read (for `Term`/
   `NormalizedTermMonths`/`Unit`, which `LineMarketAssessment` does not echo)
@@ -2166,7 +2166,7 @@ picked up yet").
   /api/quotes/{id}/...` route (unlike us-01-market-assessment's AC-3), so
   none was added — `AddQuotesModule` registers the service so a future
   task/feature-04 (r4-integration) can call it. **Task E05/F04/US01/T01
-  (r4-integration) is that caller**: `Contigo.IntegrationTests.R4EndToEndTests`
+  (r4-integration) is that caller**: `Raffa.IntegrationTests.R4EndToEndTests`
   resolves this service directly from the real host's own container (the
   same "no dedicated route exists yet" convention `R2EndToEndTests`/
   `R3EndToEndTests` already established), still with no dedicated HTTP route
@@ -2175,10 +2175,10 @@ picked up yet").
   either, for the identical reason and with the identical real-HTTP
   consequence the "Market Assessment" section above now documents for
   `MarketAssessmentService`) — see this type's own doc comment.
-- Proved directly by `Contigo.Quotes.Tests.NegotiationStrategyCalculatorTests`
+- Proved directly by `Raffa.Quotes.Tests.NegotiationStrategyCalculatorTests`
   (pure, no database — range/walk-away arithmetic, all seven levers, every
   honest-abstain branch, determinism) and end to end by
-  `Contigo.Quotes.Tests.NegotiationStrategyServiceTests` against a real
+  `Raffa.Quotes.Tests.NegotiationStrategyServiceTests` against a real
   Postgres+RLS database and the real `FixtureBenchmarkAdapter`, reusing
   `MarketAssessmentServiceTests`' own Salesforce/Sales-Cloud-Enterprise
   fixture comparable (P25/P50/P75 = 1500/1800/2100 per seat/year) so both
@@ -2215,7 +2215,7 @@ flywheel).
   negotiationDurationDays, leversUsed: [<NegotiationLeverType name>, ...],
   savingsOpportunityId? }` (`savingsOpportunityId` added by task
   E05/F03/US02/T02, outcome-propagation — see the dedicated bullet below).
-  404 (`Contigo.Quotes.Application.Outcome.NegotiationOutcomeService
+  404 (`Raffa.Quotes.Application.Outcome.NegotiationOutcomeService
   .QuoteNotFoundError`) when `quoteId` does not name a quote for this
   tenant; 400 for every validation failure (non-positive
   `originalQuoteTotal`/`finalPrice`, a negative `targetPrice`, a negative
@@ -2229,7 +2229,7 @@ flywheel).
   `savingsPropagationError` is set only when it is `false` — never a
   distinct HTTP status for a propagation failure (see the propagation
   bullet below).
-- **`Contigo.Quotes.Application.Outcome.NegotiationOutcomeCalculator`** is a
+- **`Raffa.Quotes.Application.Outcome.NegotiationOutcomeCalculator`** is a
   pure, synchronous calculator (no database/HTTP/LLM call, Appendix C rule
   6) — `realizedSaving = originalQuoteTotal - finalPrice`,
   `discountPercent = realizedSaving / originalQuoteTotal * 100`. Never
@@ -2254,11 +2254,11 @@ flywheel).
 - **"Versioned" (AC-3) means append-only, never a `PATCH`/update** — spec
   Appendix A names only `POST` for this resource.
   `NegotiationOutcomeService.CaptureAsync` only ever `Add`s a new
-  `Contigo.Quotes.Domain.NegotiationOutcome` row; a second capture for the
+  `Raffa.Quotes.Domain.NegotiationOutcome` row; a second capture for the
   same `quoteId` (a renegotiation, or a correction to an earlier capture)
   is simply another row, ordered by `capturedAt` — the same "never
   destructively overwrite" convention (Appendix C rule 5)
-  `Contigo.Savings.Domain.RealizedSavings` already establishes for the
+  `Raffa.Savings.Domain.RealizedSavings` already establishes for the
   identical App C #5/#9 pairing on a sibling "capture a final,
   consequential figure" entity.
 - **Audit-tracked (AC-3)**: writes one `IAuditWriter` entry
@@ -2268,12 +2268,12 @@ flywheel).
 - **Realized-savings propagation (task E05/F03/US02/T02,
   outcome-propagation; parent story AC-2 "Realized savings surface on the
   savings dashboard (cross-wave)")**: when the caller supplies
-  `savingsOpportunityId`, `Contigo.Api.NegotiationsEndpointExtensions`
-  also calls `Contigo.Api.NegotiationOutcomePropagationService
+  `savingsOpportunityId`, `Raffa.Api.NegotiationsEndpointExtensions`
+  also calls `Raffa.Api.NegotiationOutcomePropagationService
   .PropagateAsync` right after the capture itself is already durable,
   still in the same request. That type is `internal`, host-composition-
-  root-only wiring (ADR-002: `Contigo.Quotes` and `Contigo.Savings` cannot
-  see each other; only `Contigo.Api` may reference both — the same
+  root-only wiring (ADR-002: `Raffa.Quotes` and `Raffa.Savings` cannot
+  see each other; only `Raffa.Api` may reference both — the same
   treatment `QuoteExtractionPipeline` already gets, see "Dependency
   direction" below), and it reuses the exact same, already-audited write
   path a human `PATCH /api/savings/{id}` call already uses
@@ -2302,21 +2302,21 @@ flywheel).
   savings dashboard" (AC-2) today means the opportunity's own `status` and
   realized-value row are real and queryable, not yet that every KPI number
   reflects them.
-- Proved directly by `Contigo.Quotes.Tests.NegotiationOutcomeCalculatorTests`
+- Proved directly by `Raffa.Quotes.Tests.NegotiationOutcomeCalculatorTests`
   (pure, no database — the spec §12.2 worked example, the negative-saving
   honesty case, determinism) and end to end by
-  `Contigo.Quotes.Tests.NegotiationOutcomeServiceTests` against a real
+  `Raffa.Quotes.Tests.NegotiationOutcomeServiceTests` against a real
   Postgres+RLS database (persistence, the audit entry, the "second capture
   does not overwrite the first" append-only proof, quote-not-found/
   cross-tenant/every validation failure, and — task E05/F03/US02/T02 —
   that a caller-supplied `savingsOpportunityId` persists unvalidated) plus
-  `Contigo.Api.Tests.NegotiationsEndpointTests` for the host-level
+  `Raffa.Api.Tests.NegotiationsEndpointTests` for the host-level
   tenant-header guard clause. Realized-savings propagation itself (task
   E05/F03/US02/T02) is proved end to end by
-  `Contigo.IntegrationTests.NegotiationOutcomePropagationEndToEndTests`
-  against the real, composed `Contigo.Api` host and a real, migrated
-  Postgres+RLS database spanning both `Contigo.Quotes` and
-  `Contigo.Savings` — a real `SavingsOpportunity` realized (`status`,
+  `Raffa.IntegrationTests.NegotiationOutcomePropagationEndToEndTests`
+  against the real, composed `Raffa.Api` host and a real, migrated
+  Postgres+RLS database spanning both `Raffa.Quotes` and
+  `Raffa.Savings` — a real `SavingsOpportunity` realized (`status`,
   the `RealizedSavings` row, the `negotiation_outcome.propagated` audit
   entry, and all three response fields) and an unknown
   `savingsOpportunityId` (the outcome still persists and the call still
@@ -2326,7 +2326,7 @@ flywheel).
 ## Insights — criticality score, priced-line negotiation, strategy pack
 
 Task E13/F07/US01/T01 (insights-calculators; ADR-024; parent story
-us-01-insights) fills in `Contigo.Insights` (scaffolded by
+us-01-insights) fills in `Raffa.Insights` (scaffolded by
 E13/F01/US01/T01) with three pure calculators, fed by DTOs only — the
 same determinism convention (Appendix C rule 6) every calculator in this
 backend already follows:
@@ -2336,7 +2336,7 @@ backend already follows:
   score: five weighted components (renewal urgency, risk severity, spend
   weight, savings potential, open critical facts), each its own `Score`/
   `Weight`/`Explanation`, summing to the total (AC-1). Weights are
-  `Contigo.Insights.InsightsOptions` (config section
+  `Raffa.Insights.InsightsOptions` (config section
   `Insights:Criticality`, council default 0.30/0.20/0.20/0.20/0.10,
   validated to sum to 1.0 at construction). A contract whose tracked
   critical facts (recorded risks + priced lines with a unit price) are
@@ -2344,8 +2344,8 @@ backend already follows:
   its own component explanation and its score is raised, not hidden
   (AC-2).
 - `Negotiation.PricedLineNegotiationCalculator.Compute` — generalizes
-  `Contigo.Quotes.Application.Strategy.NegotiationStrategyCalculator` from
-  a quote line to any `Contigo.Benchmark.Contracts.PricedLine` (a contract
+  `Raffa.Quotes.Application.Strategy.NegotiationStrategyCalculator` from
+  a quote line to any `Raffa.Benchmark.Contracts.PricedLine` (a contract
   line item included), producing the same opening target/acceptable
   range/walk-away threshold plus the same seven canonical levers (AC-3).
   Unlike the Quotes calculator, levers are never empty: a priced line with
@@ -2359,36 +2359,36 @@ backend already follows:
   can push** (levers across every priced line) → **Targets** (opening/
   range/walk-away per priced line, "insufficient market data" when no
   band exists) → **Next steps** (the four tracker steps verbatim from
-  `contigo-v2/app.jsx`'s own `stepDefs`, mirroring the Contract 360
+  `raffa-v2/app.jsx`'s own `stepDefs`, mirroring the Contract 360
   tracker) — plus `openWeakFacts` and a citation key for every number
   (`fact:<contractId>:<field>` / `market:<recordId>` / `calc:<name>`,
-  `Contigo.Insights.Contracts.InsightsCitationKeys`).
+  `Raffa.Insights.Contracts.InsightsCitationKeys`).
 
 **Where the shared `PricedLine` input lives, and why**: R-STR-02
 generalizes `NegotiationStrategyCalculator` to a shared priced-line input.
-`Contigo.Insights`' own allow-list is `[SharedKernel, Benchmark]` — the
-same one `Contigo.Quotes` already has — so neither module can reference
-the other (`Contigo.ArchitectureTests.DependencyDirectionTests`); the one
-project both already see is `Contigo.Benchmark`. `PricedLine` therefore
-lives at `Contigo.Benchmark.Contracts.PricedLine`, next to
+`Raffa.Insights`' own allow-list is `[SharedKernel, Benchmark]` — the
+same one `Raffa.Quotes` already has — so neither module can reference
+the other (`Raffa.ArchitectureTests.DependencyDirectionTests`); the one
+project both already see is `Raffa.Benchmark`. `PricedLine` therefore
+lives at `Raffa.Benchmark.Contracts.PricedLine`, next to
 `BenchmarkDistribution` — the only new file this task adds to
-`Contigo.Benchmark`. The opening-target/walk-away-threshold "step an
+`Raffa.Benchmark`. The opening-target/walk-away-threshold "step an
 already-known range" arithmetic both calculators must reproduce
 bit-for-bit also lives there, as
-`Contigo.Benchmark.Contracts.PricedLineNegotiationMath.StepRange` — the
+`Raffa.Benchmark.Contracts.PricedLineNegotiationMath.StepRange` — the
 smallest possible shared surface: `NegotiationStrategyCalculator.Compute`
 now calls it too (its own public signature, levers and abstain conditions
 are otherwise unchanged — every existing
-`Contigo.Quotes.Tests.NegotiationStrategyCalculatorTests` assertion still
+`Raffa.Quotes.Tests.NegotiationStrategyCalculatorTests` assertion still
 holds, decimal arithmetic being exact). The earlier "raw distribution ->
 recommended range" step stays each calculator's own independent
 arithmetic (`PricedLineNegotiationCalculator` mirrors, rather than calls,
-`Contigo.Quotes.Application.Assessment.TargetSavingCalculator`'s formula)
+`Raffa.Quotes.Application.Assessment.TargetSavingCalculator`'s formula)
 because `NegotiationStrategyCalculator.Compute`'s own signature still
 takes a pre-computed `LineTargetSaving`, not a raw
 `BenchmarkDistribution`, and no task has changed that.
 
-`Contigo.Api.InsightsEndpointExtensions` composes `GET
+`Raffa.Api.InsightsEndpointExtensions` composes `GET
 /api/insights/criticality` and `GET /api/contracts/{id}/strategy` from
 `PortfolioQueryService`/`Contract360QueryService` (Documents/Contracts),
 `RenewalEngine`/`PriorityScoreCalculator` (Renewals) and
@@ -2397,8 +2397,8 @@ reference every module. Task E13/F06/US01/T01 (ask-engine) maps both routes
 in `Program.cs` (see the HTTP surface table above); every
 composition/mapping method on that class is also `public static` so it can
 be (and is) unit-tested directly with hand-built fakes from
-`Contigo.Insights.Tests` — no database, no `WebApplicationFactory` — which
-is why that test project also references `Contigo.Api` (a test-project
+`Raffa.Insights.Tests` — no database, no `WebApplicationFactory` — which
+is why that test project also references `Raffa.Api` (a test-project
 reference is not constrained by `DependencyDirectionTests`, which only
 inspects `src/` projects). `AskCopilotService`'s own `PortfolioStrategy`/
 `RenewalStrategy` intents narrate the identical `CriticalityScoreCalculator`/
@@ -2413,7 +2413,7 @@ real supplier name (Suppliers/Products) and geography onto the contract.
 ## R4 demo smoke test
 
 The automated proof of task E05/F04/US01/T01 (r4-integration) is `dotnet test` —
-`Contigo.IntegrationTests.R4EndToEndTests` (AC-1 "Upload quote -> line items -> benchmark match ->
+`Raffa.IntegrationTests.R4EndToEndTests` (AC-1 "Upload quote -> line items -> benchmark match ->
 market assessment -> target range -> negotiation strategy", AC-2 "User can correct SKU matching
 before accepting assessment", AC-3 "Record final outcome -> realized savings tracked" — the whole
 Quote Check Day-1 chain, driven against one real, uploaded quote through the real host, for the
@@ -2425,7 +2425,7 @@ path across two tenants through the real host" value-add `R1CrossTenantIsolation
 
 ```bash
 cd backend
-dotnet test Contigo.slnx --configuration Release --filter "FullyQualifiedName~R4"
+dotnet test Raffa.slnx --configuration Release --filter "FullyQualifiedName~R4"
 ```
 
 Running this test end to end (rather than each Quote Check task's own narrower, per-segment test)
@@ -2472,11 +2472,11 @@ R2.
 
 `.github/workflows/backend.yml` (path-filtered to `backend/**`):
 
-1. `dotnet restore / build / test` on `Contigo.slnx` (required status check).
+1. `dotnet restore / build / test` on `Raffa.slnx` (required status check).
 2. On merge to `main` (or `workflow_call` for demo): Azure login via OIDC
-   (`contigo-sp-<env>`), `az acr build` of
-   `src/Contigo.Api/Dockerfile` and `src/Contigo.Worker/Dockerfile`, then
-   `az containerapp update` of `ca-contigo-<env>-api` / `-worker`.
+   (`raffa-sp-<env>`), `az acr build` of
+   `src/Raffa.Api/Dockerfile` and `src/Raffa.Worker/Dockerfile`, then
+   `az containerapp update` of `ca-raffa-<env>-api` / `-worker`.
 
 Images are tagged with `github.sha`. Container Apps listen on **8080**
 (`ASPNETCORE_URLS=http://+:8080`). Deployed connection strings are
@@ -2486,30 +2486,30 @@ committed.
 
 Image pull uses this environment's workload identity (`AcrPull` on
 `modules/acr`, `registry {}` on `modules/containerapps`). Confirm the
-HCP VCS apply on `contigo-<env>` before the first `az containerapp update`
+HCP VCS apply on `raffa-<env>` before the first `az containerapp update`
 to that registry, or the revision fails with ACR `UNAUTHORIZED`.
 
 ## Dependency direction (ADR-002)
 
-Allowed Contigo project references (enforced by
-`tests/Contigo.ArchitectureTests`):
+Allowed Raffa project references (enforced by
+`tests/Raffa.ArchitectureTests`):
 
 | Module | May reference |
 |--------|----------------|
 | Domain modules | `SharedKernel` only, plus `AiGateway` (Documents, Chat, Market) or `Benchmark` (Renewals, Savings, Quotes, Insights); `Market` is the one module allowed both `AiGateway` and `Benchmark` |
 | `AiGateway` / `Benchmark` implementations | provider SDKs — when they exist; domain modules see the interface only |
-| `Contigo.Api` / `Contigo.Worker` | all modules (composition roots). Azure Blob SDK is host-only |
+| `Raffa.Api` / `Raffa.Worker` | all modules (composition roots). Azure Blob SDK is host-only |
 
 Do not add a domain → domain or domain → Azure SDK project/package
 reference to make a task compile. Put the adapter in the host or behind
 the gateway/service project. When two domain modules with no shared
-reference need the identical shared input/arithmetic (`Contigo.Quotes` and
-`Contigo.Insights` both need a priced-line negotiation calculation, task
+reference need the identical shared input/arithmetic (`Raffa.Quotes` and
+`Raffa.Insights` both need a priced-line negotiation calculation, task
 E13/F07/US01/T01), put the shared DTO/arithmetic in a module both already
 allow-list — see "Insights" above for the worked example
-(`Contigo.Benchmark.Contracts.PricedLine` / `PricedLineNegotiationMath`).
+(`Raffa.Benchmark.Contracts.PricedLine` / `PricedLineNegotiationMath`).
 
-## Ask Contigo V2 — operator jobs, golden set and acceptance (task E13/F11/US01/T01)
+## Ask Raffa V2 — operator jobs, golden set and acceptance (task E13/F11/US01/T01)
 
 Everything a new engineer needs to run the V2 flows end to end against a
 deployed environment. The screen-by-screen acceptance list lives in
@@ -2535,7 +2535,7 @@ resource-group resolution and `postgres-connection` Key Vault fetch as
 gate it exactly like a deploy.
 
 It runs this host's own one-shot operator command
-(`Contigo.Worker/Commands/IngestMarketCommand.cs`) on the runner, against that
+(`Raffa.Worker/Commands/IngestMarketCommand.cs`) on the runner, against that
 environment's database:
 
 ```bash
@@ -2543,12 +2543,12 @@ ConnectionStrings__DocumentsContracts=<npgsql> \
 ConnectionStrings__Audit=<npgsql> \
 ConnectionStrings__Renewals=<npgsql> \
 ConnectionStrings__Market=<npgsql> \
-  dotnet run --project backend/src/Contigo.Worker -- \
+  dotnet run --project backend/src/Raffa.Worker -- \
     ingest-market --feed backend/fixtures/market-intelligence.mock.json
 # Ingested feed 'mock-2026.09.0': 65 inserted, 0 updated, 0 unchanged.
 ```
 
-The first three connection strings are what `Contigo.Worker/Program.cs`
+The first three connection strings are what `Raffa.Worker/Program.cs`
 fail-fasts on when it builds the host; only the fourth is what the command
 itself needs. All four are the same database (ADR-003: separate schemas, one
 server). `--feed` is an informational label — the mock provider reads its
@@ -2577,7 +2577,7 @@ the market notes with Foundry instead.
 **It calls the API, not a `backend/scripts/` helper**, and this is deliberate.
 The parent story allowed either; the API wins because (a) the API host is
 reachable from a GitHub runner — `web.yml` already resolves that same
-`ca-contigo-<env>-api` ingress FQDN and bakes it into the SPA's `config.json`,
+`ca-raffa-<env>-api` ingress FQDN and bakes it into the SPA's `config.json`,
 so the "API host is not reachable from CI" branch simply does not apply, and
 (b) `POST /api/documents/{id}/reprocess` *is* the R-DOC-07 seam: it re-runs the
 real `DocumentProcessingPipeline` (load → hybrid parse/OCR → page-aware
@@ -2622,11 +2622,11 @@ neither is a declared parameter of the operation. A `403` is surfaced as a named
 error, never a silent skip. Both headers disappear with `X-Tenant-Id` when
 ADR-010's API JWT lands.
 
-### AI golden set (`Contigo.AiEval`) — how it runs and how to filter it
+### AI golden set (`Raffa.AiEval`) — how it runs and how to filter it
 
-`backend/tests/Contigo.AiEval/Contigo.AiEval.csproj` is a member of
-`Contigo.slnx`, so **`.github/workflows/backend.yml` already runs it** through
-its existing `dotnet test Contigo.slnx` step. There is no `--filter` step in
+`backend/tests/Raffa.AiEval/Raffa.AiEval.csproj` is a member of
+`Raffa.slnx`, so **`.github/workflows/backend.yml` already runs it** through
+its existing `dotnet test Raffa.slnx` step. There is no `--filter` step in
 CI and none is wanted: a numeric-guard intervention or a kind mismatch fails
 the `build + test` job like any other test failure, which is the required
 status check on `main` (ADR-014).
@@ -2635,20 +2635,20 @@ Locally, the filters an engineer actually needs:
 
 ```bash
 # The whole solution, golden set included — what CI runs.
-cd backend && dotnet test Contigo.slnx --configuration Release
+cd backend && dotnet test Raffa.slnx --configuration Release
 
 # Only the golden set, by project (works whatever traits the suite carries).
-dotnet test backend/tests/Contigo.AiEval/Contigo.AiEval.csproj
+dotnet test backend/tests/Raffa.AiEval/Raffa.AiEval.csproj
 
 # Only the golden set, by trait, from the solution — the suite marks its cases
 # [Trait("Category","AiEval")] (task E13/F06/US01/T02).
-dotnet test backend/Contigo.slnx --filter "Category=AiEval"
+dotnet test backend/Raffa.slnx --filter "Category=AiEval"
 
 # Everything except the golden set — the fast inner loop.
-dotnet test backend/Contigo.slnx --filter "Category!=AiEval"
+dotnet test backend/Raffa.slnx --filter "Category!=AiEval"
 
 # By fully-qualified name, if the trait is not there yet.
-dotnet test backend/Contigo.slnx --filter "FullyQualifiedName~Contigo.AiEval"
+dotnet test backend/Raffa.slnx --filter "FullyQualifiedName~Raffa.AiEval"
 ```
 
 The set runs against the **fixture** gateway so it is reproducible and free;
@@ -2657,7 +2657,7 @@ the on-demand Foundry run is manual (`AiEval__UseFoundry=true` with
 
 ### Known gap that blocks the first V2 promotion
 
-`Contigo.Api/Program.cs` fail-fasts on `ConnectionStrings:Suppliers` (task
+`Raffa.Api/Program.cs` fail-fasts on `ConnectionStrings:Suppliers` (task
 E13/F06/US01/T01 wired `AddSuppliersProductsModule`), but
 `infra/modules/containerapps/main.tf` injects `IdentityWorkspace`,
 `DocumentsContracts`, `Audit`, `Renewals`, `Savings`, `Quotes`, `Chat` and
@@ -2666,12 +2666,12 @@ block is added (same `pg-cs` secret as its neighbours). Recorded in
 `infra/README.md` and in `docs/ask-v2-acceptance.md`'s "Known gaps" table; it is
 an `infra/` change, outside this task's file scope.
 
-## Ask Contigo — AI evaluation set (golden set, task E13/F06/US01/T02)
+## Ask Raffa — AI evaluation set (golden set, task E13/F06/US01/T02)
 
-`tests/Contigo.AiEval` is the golden set `inputs/requirements.md` R-EVD-03
+`tests/Raffa.AiEval` is the golden set `inputs/requirements.md` R-EVD-03
 and spec §15.3 call for: **70 questions** (Italian and English) across
 **three tenant fixtures**, each running the whole V2 Ask engine end to end
-over HTTP — `POST /api/chat/query` → `Contigo.Api.AskCopilotService` →
+over HTTP — `POST /api/chat/query` → `Raffa.Api.AskCopilotService` →
 domain gate → intent planner → context pack → persona prompt → both guards
 → the §6 reply — and each asserting the reply's `kind`, its citation
 corpora, the calculator/pack numbers **verbatim**, the absence of engineer
@@ -2679,14 +2679,14 @@ chrome, and that every action href resolves to a real capability-catalog
 route.
 
 ```bash
-# The whole set (this is also what `dotnet test Contigo.slnx` runs).
-dotnet test backend/tests/Contigo.AiEval
+# The whole set (this is also what `dotnet test Raffa.slnx` runs).
+dotnet test backend/tests/Raffa.AiEval
 
 # Just the eval, from a full-solution run.
-dotnet test backend/Contigo.slnx --filter "Category=AiEval"
+dotnet test backend/Raffa.slnx --filter "Category=AiEval"
 
 # One question, by its golden-case id.
-dotnet test backend/tests/Contigo.AiEval \
+dotnet test backend/tests/Raffa.AiEval \
   --filter "DisplayName~seeded-structured_fact-120-days-en"
 ```
 
@@ -2701,7 +2701,7 @@ path is the shipped host, unchanged. Market data comes from the real
 checked-in mock feed (`backend/fixtures/market-intelligence.mock.json`),
 so the market numbers in the expectations are the ones a demo would show.
 
-**The cases are data.** They live in `tests/Contigo.AiEval/golden/*.json`,
+**The cases are data.** They live in `tests/Raffa.AiEval/golden/*.json`,
 one file per tenant fixture, and are extended by editing JSON — no C#:
 
 | Fixture | What it holds | What it is for |
@@ -2721,7 +2721,7 @@ and that the report was written.
 
 ### Reading the report
 
-Every run writes `tests/Contigo.AiEval/reports/last-run.md` (git-ignored
+Every run writes `tests/Raffa.AiEval/reports/last-run.md` (git-ignored
 via `backend/.gitignore`, regenerated each time, written **before** the
 first assertion so it exists even when the suite is red). Read it top to
 bottom:
@@ -2769,12 +2769,12 @@ not listed there — so nobody can quietly widen what the set forgives.
 # (DefaultAzureCredential picks the CLI token up); deployment names = the
 # ModelId values Terraform publishes for that environment.
 AiEval__UseFoundry=true \
-AiGateway__Endpoint=https://aisvc-contigo.cognitiveservices.azure.com/ \
+AiGateway__Endpoint=https://aisvc-raffa.cognitiveservices.azure.com/ \
 AiGateway__Models__Classify__ModelId=gpt-5.4-nano-dev \
 AiGateway__Models__Extract__ModelId=gpt-5.4-nano-dev \
 AiGateway__Models__Answer__ModelId=gpt-5.4-nano-dev \
 AiGateway__Models__Embed__ModelId=text-embedding-3-small-dev \
-dotnet test backend/tests/Contigo.AiEval
+dotnet test backend/tests/Raffa.AiEval
 ```
 
 With `AiEval__UseFoundry=true` the harness leaves the host's own

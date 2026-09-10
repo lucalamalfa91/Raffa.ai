@@ -5,7 +5,7 @@ import type { TrackedRenewalAction } from "./renewalActionStore";
 
 /**
  * Pure view-model helpers for the V2 Renewals screen (route `/renewals`; ADR-024 V2 IA amending
- * ADR-020 screen 8; screens-v2.md #7; `contigo-v2/markup.html` "RENEWALS" block, `app.jsx`
+ * ADR-020 screen 8; screens-v2.md #7; `raffa-v2/markup.html` "RENEWALS" block, `app.jsx`
  * `renewals` / `rsel` / `rnSummary` / `rAct`). No React here -- every rule is unit-testable without
  * rendering (`renewalPipelineViewModel.test.ts`).
  *

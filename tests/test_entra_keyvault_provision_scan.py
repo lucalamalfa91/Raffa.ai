@@ -37,7 +37,7 @@ HEADER_BLOCK = (
     "\n"
     "locals {\n"
     "  tags = {\n"
-    '    project = "contigo"\n'
+    '    project = "raffa"\n'
     "    env     = var.environment\n"
     "  }\n"
     "\n"
@@ -45,7 +45,7 @@ HEADER_BLOCK = (
     "}\n"
     "\n"
     'resource "azurerm_user_assigned_identity" "workload" {\n'
-    '  name                = "id-contigo-${var.environment}-workload"\n'
+    '  name                = "id-raffa-${var.environment}-workload"\n'
     "  location            = var.location\n"
     "  resource_group_name = var.resource_group_name\n"
     "\n"
@@ -60,36 +60,36 @@ HEADER_BLOCK = (
 READ_SCOPE_BLOCK = (
     "    oauth2_permission_scope {\n"
     "      id                         = random_uuid.scope_read.result\n"
-    '      value                      = "Contigo.Read"\n'
+    '      value                      = "Raffa.Read"\n'
     '      type                       = "User"\n'
     "      enabled                    = true\n"
-    '      admin_consent_description  = "Allow the app to read the signed-in user\'s Contigo data."\n'
-    '      admin_consent_display_name = "Read Contigo data"\n'
+    '      admin_consent_description  = "Allow the app to read the signed-in user\'s Raffa data."\n'
+    '      admin_consent_display_name = "Read Raffa data"\n'
     "    }\n"
 )
 
 WRITE_SCOPE_BLOCK = (
     "    oauth2_permission_scope {\n"
     "      id                         = random_uuid.scope_write.result\n"
-    '      value                      = "Contigo.Write"\n'
+    '      value                      = "Raffa.Write"\n'
     '      type                       = "User"\n'
     "      enabled                    = true\n"
-    '      admin_consent_description  = "Allow the app to write the signed-in user\'s Contigo data."\n'
-    '      admin_consent_display_name = "Write Contigo data"\n'
+    '      admin_consent_description  = "Allow the app to write the signed-in user\'s Raffa data."\n'
+    '      admin_consent_display_name = "Write Raffa data"\n'
     "    }\n"
 )
 
 API_APPLICATION_BLOCK = (
     'resource "azuread_application" "api" {\n'
-    '  display_name     = "contigo-${var.environment}-api"\n'
+    '  display_name     = "raffa-${var.environment}-api"\n'
     '  sign_in_audience = "AzureADMyOrg"\n'
-    '  identifier_uris  = ["api://contigo-${var.environment}-api"]\n'
+    '  identifier_uris  = ["api://raffa-${var.environment}-api"]\n'
     "\n"
     "  api {\n"
     "    requested_access_token_version = 2\n"
     "\n" + READ_SCOPE_BLOCK + "\n" + WRITE_SCOPE_BLOCK + "  }\n"
     "\n"
-    '  tags = ["project:contigo", "env:${var.environment}"]\n'
+    '  tags = ["project:raffa", "env:${var.environment}"]\n'
     "}\n"
     "\n"
     'resource "azuread_service_principal" "api" {\n'
@@ -99,19 +99,19 @@ API_APPLICATION_BLOCK = (
 )
 
 SPA_BLOCK = "  single_page_application {\n    redirect_uris = [local.web_redirect_uri]\n  }\n"
-NATIVE_PUBLIC_CLIENT_BLOCK = '  public_client {\n    redirect_uris = ["contigo://callback"]\n  }\n'
+NATIVE_PUBLIC_CLIENT_BLOCK = '  public_client {\n    redirect_uris = ["raffa://callback"]\n  }\n'
 
 REQUIRED_RESOURCE_ACCESS_BLOCK = (
     "  required_resource_access {\n"
     "    resource_app_id = azuread_application.api.client_id\n"
     "\n"
     "    resource_access {\n"
-    '      id   = azuread_application.api.oauth2_permission_scope_ids["Contigo.Read"]\n'
+    '      id   = azuread_application.api.oauth2_permission_scope_ids["Raffa.Read"]\n'
     '      type = "Scope"\n'
     "    }\n"
     "\n"
     "    resource_access {\n"
-    '      id   = azuread_application.api.oauth2_permission_scope_ids["Contigo.Write"]\n'
+    '      id   = azuread_application.api.oauth2_permission_scope_ids["Raffa.Write"]\n'
     '      type = "Scope"\n'
     "    }\n"
     "  }\n"
@@ -119,10 +119,10 @@ REQUIRED_RESOURCE_ACCESS_BLOCK = (
 
 PUBLIC_CLIENT_APPLICATION_BLOCK = (
     'resource "azuread_application" "public_client" {\n'
-    '  display_name     = "contigo-${var.environment}-public-client"\n'
+    '  display_name     = "raffa-${var.environment}-public-client"\n'
     '  sign_in_audience = "AzureADMyOrg"\n'
     "\n" + SPA_BLOCK + "\n" + NATIVE_PUBLIC_CLIENT_BLOCK + "\n" + REQUIRED_RESOURCE_ACCESS_BLOCK + "\n"
-    '  tags = ["project:contigo", "env:${var.environment}"]\n'
+    '  tags = ["project:raffa", "env:${var.environment}"]\n'
     "}\n"
     "\n"
     'resource "azuread_service_principal" "public_client" {\n'
@@ -137,8 +137,8 @@ PRE_AUTHORIZED_BLOCK = (
     "  authorized_client_id = azuread_application.public_client.client_id\n"
     "\n"
     "  permission_ids = [\n"
-    '    azuread_application.api.oauth2_permission_scope_ids["Contigo.Read"],\n'
-    '    azuread_application.api.oauth2_permission_scope_ids["Contigo.Write"],\n'
+    '    azuread_application.api.oauth2_permission_scope_ids["Raffa.Read"],\n'
+    '    azuread_application.api.oauth2_permission_scope_ids["Raffa.Write"],\n'
     "  ]\n"
     "}\n"
 )
@@ -150,7 +150,7 @@ GOOD_KEYVAULT_MAIN_TF = (
     "\n"
     "locals {\n"
     "  tags = {\n"
-    '    project = "contigo"\n'
+    '    project = "raffa"\n'
     "    env     = var.environment\n"
     "  }\n"
     "}\n"
@@ -161,7 +161,7 @@ GOOD_KEYVAULT_MAIN_TF = (
     "}\n"
     "\n"
     'resource "azurerm_key_vault" "this" {\n'
-    '  name                       = "kv-contigo-${var.environment}-${random_string.suffix.result}"\n'
+    '  name                       = "kv-raffa-${var.environment}-${random_string.suffix.result}"\n'
     "  location                   = var.location\n"
     "  resource_group_name        = var.resource_group_name\n"
     "  tenant_id                  = data.azurerm_client_config.current.tenant_id\n"
@@ -315,33 +315,33 @@ class BrokenFixtureTreeTests(unittest.TestCase):
         self.assertFalse(passed, detail)
 
     def test_missing_scope_fails(self) -> None:
-        bad = GOOD_IDENTITY_MAIN_TF.replace('value                      = "Contigo.Write"', 'value                      = "Contigo.Delete"')
+        bad = GOOD_IDENTITY_MAIN_TF.replace('value                      = "Raffa.Write"', 'value                      = "Raffa.Delete"')
         identity_dir, *_ = self._tree(identity_main=bad)
         passed, detail = eks.check_api_scopes(identity_dir)
         self.assertFalse(passed, detail)
-        self.assertIn("Contigo.Write", detail)
+        self.assertIn("Raffa.Write", detail)
 
     def test_scope_wrong_type_fails(self) -> None:
         bad = GOOD_IDENTITY_MAIN_TF.replace(READ_SCOPE_BLOCK, READ_SCOPE_BLOCK.replace('"User"', '"Admin"', 1))
         identity_dir, *_ = self._tree(identity_main=bad)
         passed, detail = eks.check_api_scopes(identity_dir)
         self.assertFalse(passed, detail)
-        self.assertIn("Contigo.Read", detail)
+        self.assertIn("Raffa.Read", detail)
 
     def test_scope_not_enabled_fails(self) -> None:
         bad = GOOD_IDENTITY_MAIN_TF.replace(WRITE_SCOPE_BLOCK, WRITE_SCOPE_BLOCK.replace("enabled                    = true", "enabled                    = false"))
         identity_dir, *_ = self._tree(identity_main=bad)
         passed, detail = eks.check_api_scopes(identity_dir)
         self.assertFalse(passed, detail)
-        self.assertIn("Contigo.Write", detail)
+        self.assertIn("Raffa.Write", detail)
 
     def test_api_password_block_fails(self) -> None:
         bad = GOOD_IDENTITY_MAIN_TF.replace(
             API_APPLICATION_BLOCK,
             API_APPLICATION_BLOCK.replace(
-                '  tags = ["project:contigo", "env:${var.environment}"]\n}\n',
+                '  tags = ["project:raffa", "env:${var.environment}"]\n}\n',
                 '  password {\n    display_name = "oops"\n  }\n\n'
-                '  tags = ["project:contigo", "env:${var.environment}"]\n}\n',
+                '  tags = ["project:raffa", "env:${var.environment}"]\n}\n',
                 1,
             ),
         )
@@ -359,7 +359,7 @@ class BrokenFixtureTreeTests(unittest.TestCase):
     def test_public_client_wrong_native_uri_fails(self) -> None:
         bad = GOOD_IDENTITY_MAIN_TF.replace(
             NATIVE_PUBLIC_CLIENT_BLOCK,
-            NATIVE_PUBLIC_CLIENT_BLOCK.replace("contigo://callback", "https://example.com/callback"),
+            NATIVE_PUBLIC_CLIENT_BLOCK.replace("raffa://callback", "https://example.com/callback"),
         )
         identity_dir, *_ = self._tree(identity_main=bad)
         passed, detail = eks.check_public_client_pkce(identity_dir)
@@ -369,9 +369,9 @@ class BrokenFixtureTreeTests(unittest.TestCase):
         bad = GOOD_IDENTITY_MAIN_TF.replace(
             PUBLIC_CLIENT_APPLICATION_BLOCK,
             PUBLIC_CLIENT_APPLICATION_BLOCK.replace(
-                '  tags = ["project:contigo", "env:${var.environment}"]\n}\n',
+                '  tags = ["project:raffa", "env:${var.environment}"]\n}\n',
                 '  password {\n    display_name = "oops"\n  }\n\n'
-                '  tags = ["project:contigo", "env:${var.environment}"]\n}\n',
+                '  tags = ["project:raffa", "env:${var.environment}"]\n}\n',
                 1,
             ),
         )
@@ -396,12 +396,12 @@ class BrokenFixtureTreeTests(unittest.TestCase):
 
     def test_pre_authorization_missing_permission_fails(self) -> None:
         bad = GOOD_IDENTITY_MAIN_TF.replace(
-            '    azuread_application.api.oauth2_permission_scope_ids["Contigo.Write"],\n', ""
+            '    azuread_application.api.oauth2_permission_scope_ids["Raffa.Write"],\n', ""
         )
         identity_dir, *_ = self._tree(identity_main=bad)
         passed, detail = eks.check_pre_authorization(identity_dir)
         self.assertFalse(passed, detail)
-        self.assertIn("Contigo.Write", detail)
+        self.assertIn("Raffa.Write", detail)
 
     def test_pre_authorization_wrong_application_id_fails(self) -> None:
         bad = GOOD_IDENTITY_MAIN_TF.replace(

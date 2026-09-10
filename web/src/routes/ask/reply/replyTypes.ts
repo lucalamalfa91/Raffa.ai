@@ -1,9 +1,9 @@
 /**
  * Reply contract — presentation-level types for the V2 rich reply (route `/ask`, ADR-024;
- * ADR-020 V2 amendment "screen 2 Ask Contigo"; requirements.md §6 "kind decides the layout";
+ * ADR-020 V2 amendment "screen 2 Ask Raffa"; requirements.md §6 "kind decides the layout";
  * R-WEB-04; task E13/F09/US01/T02, us-01-web-v2 AC-3).
  *
- * Deliberately **not** generated from `web/openapi/contigo-api.v1.json` /
+ * Deliberately **not** generated from `web/openapi/raffa-api.v1.json` /
  * `web/src/api/generated/schema.ts` (out of this task's own "Files to create or modify" -- the
  * OpenAPI contract does not carry the V2 conversations/messages shape yet, only the V1
  * `POST /api/chat/query` reply `../askViewModel.ts` already consumes). `ReplyBody` /
@@ -23,7 +23,7 @@
 /** `citations[].corpus` (requirements.md §6): which of the three sources (ADR-024 §2) a citation
  * came from. Drives `CitationCard`'s badge (`getCorpusBadge` below) -- text, not colour alone,
  * still carries the meaning (ADR-019 accessibility baseline). */
-export type CitationCorpus = "tenant" | "market" | "contigo";
+export type CitationCorpus = "tenant" | "market" | "raffa";
 
 /**
  * One entry of `citations[]` (requirements.md §6 JSON example), narrowed to exactly the fields
@@ -118,7 +118,7 @@ export interface ErrorReply {
 export type Reply = AnswerReply | RedirectReply | AbstainReply | ErrorReply;
 
 /** `CitationCard`'s corpus badge (task text: "*validated contract* / *market · representative* /
- * *Contigo*"), reusing the app-wide `{ variant, label }` shape `../../../styles/semantics.ts`
+ * *Raffa*"), reusing the app-wide `{ variant, label }` shape `../../../styles/semantics.ts`
  * already establishes for every other semantic tag -- kept local to this module rather than added
  * to that shared file, which is outside this task's own "Files to create or modify" (ADR-019 owns
  * that file's locked confidence/status/risk catalogue; corpus is a new, reply-only mapping, not
@@ -135,7 +135,7 @@ export function getCorpusBadge(corpus: CitationCorpus): CorpusBadge {
       return { variant: "neutral", label: "Validated contract" };
     case "market":
       return { variant: "outline", label: "Market · representative" };
-    case "contigo":
-      return { variant: "accent", label: "Contigo" };
+    case "raffa":
+      return { variant: "accent", label: "Raffa" };
   }
 }

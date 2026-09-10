@@ -12,7 +12,7 @@ status: active
 
 Implement `FoundryAiGateway` for ADR-004 roles. Register it when
 `AiGateway:Endpoint` is set; otherwise keep the fixture. Always wrap
-`LoggingAiGateway`. Azure SDKs stay in `Contigo.AiGateway`.
+`LoggingAiGateway`. Azure SDKs stay in `Raffa.AiGateway`.
 
 ## User stories
 
@@ -26,4 +26,4 @@ Implement `FoundryAiGateway` for ADR-004 roles. Register it when
 
 ## Target repo
 
-`contigo-backend`
+`raffa-backend`

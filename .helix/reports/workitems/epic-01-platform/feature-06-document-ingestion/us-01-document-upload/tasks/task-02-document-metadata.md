@@ -4,7 +4,7 @@ type: task
 story: us-01-document-upload
 wave: R0
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-02-document-metadata — 02 Document Metadata
@@ -18,7 +18,7 @@ Persist document metadata/status; GET /api/documents/{id}.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `document-metadata` |
+| workspace/raffa-backend/src/ | implementation for `document-metadata` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-003.
@@ -30,7 +30,7 @@ Persist document metadata/status; GET /api/documents/{id}.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | document-metadata behaviour | workspace/contigo-backend/tests |
+| unit | document-metadata behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

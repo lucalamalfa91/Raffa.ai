@@ -18,7 +18,7 @@
 // (see web.yml "Write per-environment config.json" and web/README.md
 // "Runtime config injection").
 export interface AppConfig {
-  /** Origin the SPA calls for every API request, e.g. "https://api.dev.contigo.example". */
+  /** Origin the SPA calls for every API request, e.g. "https://api.dev.raffa.example". */
   apiBaseUrl: string;
   /** OIDC authority (issuer) this environment's Entra tenant/app registration trusts (ADR-010). */
   oidcAuthority: string;
@@ -27,7 +27,7 @@ export interface AppConfig {
   /** Redirect URI registered on the public client for this environment's web origin. */
   oidcRedirectUri: string;
   /**
-   * API scopes requested at login (e.g. "api://<api-client-id>/Contigo.Read").
+   * API scopes requested at login (e.g. "api://<api-client-id>/Raffa.Read").
    * Placeholder names until the API surface fixes them (ADR-010 "Assumptions");
    * kept config-driven here so this task does not invent the final value.
    */

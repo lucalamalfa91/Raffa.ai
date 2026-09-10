@@ -4,7 +4,7 @@ type: task
 story: us-02-relational-store
 wave: R0
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-02-migrations-apply — 02 Migrations Apply
@@ -18,7 +18,7 @@ Apply initial EF Core migrations; prove pgvector vector column usable.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `postgres-migrations` |
+| workspace/raffa-backend/src/ | implementation for `postgres-migrations` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-003.
@@ -30,7 +30,7 @@ Apply initial EF Core migrations; prove pgvector vector column usable.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | postgres-migrations behaviour | workspace/contigo-backend/tests |
+| unit | postgres-migrations behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

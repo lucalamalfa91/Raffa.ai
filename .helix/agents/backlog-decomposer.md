@@ -34,7 +34,7 @@ Follow `decompose-workitems` and `wavespec-schema`. Use `templates/`.
 - **Greenfield** (no `epic-01` on disk, including after `--fresh`): write all
   five epics in this run. Do **not** emit `DECOMPOSITION_DONE:` after R0 only.
 - **Re-analysis** (inputs or ADRs changed; operator ran `--fresh` then
-  `contigo-design`): same as greenfield — tree was wiped, rebuild from INDEX.
+  `raffa-design`): same as greenfield — tree was wiped, rebuild from INDEX.
 - **Do not** honour `START_FROM: R1` as “skip R1–R4 on a first design”. That
   operator file is a leftover from the R0-only first run. If epic-01 exists
   **and** epic-02..05 are missing, **append** R1–R4 (do not rewrite epic-01
@@ -47,7 +47,7 @@ Follow `decompose-workitems` and `wavespec-schema`. Use `templates/`.
 ## 3. Carry decisions down
 
 Task objectives name real ADR ids, SKUs, module names, and target repos
-(`contigo-infra` | `contigo-backend` | `contigo-web` | `contigo-mobile`).
+(`raffa-infra` | `raffa-backend` | `raffa-web` | `raffa-mobile`).
 Every INDEX ADR id appears in at least one task objective.
 
 ## 4. Write files — one path per `write_file`

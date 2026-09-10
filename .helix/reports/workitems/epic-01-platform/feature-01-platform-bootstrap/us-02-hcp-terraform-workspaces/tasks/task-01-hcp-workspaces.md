@@ -4,7 +4,7 @@ type: task
 story: us-02-hcp-terraform-workspaces
 wave: R0
 status: live
-target_repo: contigo-infra
+target_repo: raffa-infra
 # requires: [github_org]
 # requires: [hcp_terraform]
 ---
@@ -13,23 +13,23 @@ target_repo: contigo-infra
 
 ## Coding objective
 
-Bootstrap the HCP Terraform organization for `contigo` and create two workspaces
-`contigo-dev` and `contigo-demo` (ADR-007: remote state per environment). Wire the
-workspaces to the `contigo` GitHub repo's VCS connection so a change under `infra/`
+Bootstrap the HCP Terraform organization for `raffa` and create two workspaces
+`raffa-dev` and `raffa-demo` (ADR-007: remote state per environment). Wire the
+workspaces to the `raffa` GitHub repo's VCS connection so a change under `infra/`
 triggers the right workspace plan/apply. Verify state lives only in HCP, never in
 git. Use `scripts/bootstrap_hcp_org.py` (or the HCP API) for reproducibility.
 
 ## Parent story AC covered
 
 - AC-1 (HCP org exists)
-- AC-2 (`contigo-dev` + `contigo-demo` workspaces, independent state)
+- AC-2 (`raffa-dev` + `raffa-demo` workspaces, independent state)
 - AC-3 (no state in git)
 
 ## Files to create or modify
 
 | Path | Change |
 |------|--------|
-| workspace/contigo-infra/.terraformignore | exclude local state/backends |
+| workspace/raffa-infra/.terraformignore | exclude local state/backends |
 | scripts/bootstrap_hcp_org.py | create/assert workspaces |
 
 ## Context the implementer needs
@@ -39,7 +39,7 @@ git. Use `scripts/bootstrap_hcp_org.py` (or the HCP API) for reproducibility.
 
 ## Definition of done
 
-- [ ] `python scripts/bootstrap_hcp_org.py` exits 0 and prints both `contigo-dev` and `contigo-demo` workspaces.
+- [ ] `python scripts/bootstrap_hcp_org.py` exits 0 and prints both `raffa-dev` and `raffa-demo` workspaces.
 
 ## Tests required
 

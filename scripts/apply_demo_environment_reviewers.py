@@ -21,18 +21,18 @@ workflow YAML. This script is that REST-API call.
 Required reviewers, per OQ-DM-002 / this story's "Council decisions carried
 into this story": product-owner + security-architect. Both council seats
 resolve, today, to the same single real GitHub account with write access to
-`lucalamalfa91/contigo`: `lucalamalfa91`. This is not a scope-reduction of
+`lucalamalfa91/raffa`: `lucalamalfa91`. This is not a scope-reduction of
 OQ-DM-002 -- it is the same fact already established (and accepted) for
 this exact repo by `apply_github_branch_protection.py`'s own docstring:
-"Contigo's main has exactly one account (lucalamalfa91) with write access
+"Raffa's main has exactly one account (lucalamalfa91) with write access
 and no standing second reviewer." GitHub Environment reviewers must be a
 real user or team `id`, not a role label, and GitHub Teams exist only
-inside Organizations -- `lucalamalfa91/contigo` is a personal-account repo,
+inside Organizations -- `lucalamalfa91/raffa` is a personal-account repo,
 so a Team reviewer is not constructible here either. The environment is
 therefore locked to the one account that actually holds each of those two
 seats today; adding a second, distinct reviewer is a later task for the day
 a second real account is granted either seat (tracked by OQ-DM-002, not
-redecided here). `CONTIGO_DEMO_ENVIRONMENT_REVIEWERS` (below) is the seam
+redecided here). `RAFFA_DEMO_ENVIRONMENT_REVIEWERS` (below) is the seam
 for that day -- it takes a comma-separated list of GitHub logins, not a
 hardcoded single account.
 
@@ -55,8 +55,8 @@ Idempotent: the PUT always sends the full desired state, so re-running is
 safe and converges rather than layering on prior runs (same contract as
 `apply_github_branch_protection.py`).
 
-Verified live against `lucalamalfa91/contigo` on 2026-09-03 (`gh api
-repos/lucalamalfa91/contigo/environments/demo`, before this script
+Verified live against `lucalamalfa91/raffa` on 2026-09-03 (`gh api
+repos/lucalamalfa91/raffa/environments/demo`, before this script
 existed): GitHub's GET response nests each reviewer's id under
 `protection_rules[].reviewers[].reviewer.id` (a different shape from the
 PUT body's flat `reviewers[].id`), and `prevent_self_review` lives on the
@@ -80,11 +80,11 @@ PUT body's flat `reviewers[].id`), and `prevent_self_review` lives on the
 `extract_required_reviewers`/`describe_gaps` below are written against this
 verified shape, not the general docs example.
 
-Owner/repo resolve from CONTIGO_GITHUB_OWNER / CONTIGO_GITHUB_REPO
-(defaults lucalamalfa91 / contigo); CONTIGO_GITHUB_ORG is accepted as an
+Owner/repo resolve from RAFFA_GITHUB_OWNER / RAFFA_GITHUB_REPO
+(defaults lucalamalfa91 / raffa); RAFFA_GITHUB_ORG is accepted as an
 alias for the owner -- same env vars, same defaults, as every other
 scripts/*.py in this repo that talks to GitHub. Reviewer logins resolve
-from CONTIGO_DEMO_ENVIRONMENT_REVIEWERS (comma-separated GitHub logins,
+from RAFFA_DEMO_ENVIRONMENT_REVIEWERS (comma-separated GitHub logins,
 default "lucalamalfa91"). Authenticates via whatever `gh` already has
 configured -- this script never handles a token itself, so there is
 nothing here to leak.
@@ -110,12 +110,12 @@ import os
 import subprocess
 import sys
 
-OWNER_ENV = "CONTIGO_GITHUB_OWNER"
-ORG_ENV = "CONTIGO_GITHUB_ORG"
-REPO_ENV = "CONTIGO_GITHUB_REPO"
-REVIEWERS_ENV = "CONTIGO_DEMO_ENVIRONMENT_REVIEWERS"
+OWNER_ENV = "RAFFA_GITHUB_OWNER"
+ORG_ENV = "RAFFA_GITHUB_ORG"
+REPO_ENV = "RAFFA_GITHUB_REPO"
+REVIEWERS_ENV = "RAFFA_DEMO_ENVIRONMENT_REVIEWERS"
 DEFAULT_OWNER = "lucalamalfa91"
-DEFAULT_REPO = "contigo"
+DEFAULT_REPO = "raffa"
 # OQ-DM-002: product-owner + security-architect both resolve, today, to this
 # one real account -- see module docstring.
 DEFAULT_REVIEWER_LOGINS: tuple[str, ...] = ("lucalamalfa91",)

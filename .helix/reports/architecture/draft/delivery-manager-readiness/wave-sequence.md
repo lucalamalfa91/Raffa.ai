@@ -1,6 +1,6 @@
 # Wave sequence (delivery-manager-readiness)
 
-Do **not** launch fan-out from `contigo-readiness-process.yaml`.
+Do **not** launch fan-out from `raffa-readiness-process.yaml`.
 
 ```
 e05 HITL  →  e09 (schema)  →  e06–e08 (web)  →  e10 (residuals)  →  demo-v*

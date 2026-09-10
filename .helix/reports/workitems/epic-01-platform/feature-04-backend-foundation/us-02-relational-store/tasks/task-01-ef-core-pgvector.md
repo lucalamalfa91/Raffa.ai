@@ -4,7 +4,7 @@ type: task
 story: us-02-relational-store
 wave: R0
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-ef-core-pgvector — Wire EF Core/npgsql + pgvector + initial migrations
@@ -29,8 +29,8 @@ results are persisted by domain code, never LLM-computed truth (App C #1, #6).
 
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/Contigo.Documents.Contracts/Infrastructure/*.cs | DbContext + entity config |
-| workspace/contigo-backend/src/Contigo.Documents.Contracts/Migrations/*.cs | initial migration |
+| workspace/raffa-backend/src/Raffa.Documents.Contracts/Infrastructure/*.cs | DbContext + entity config |
+| workspace/raffa-backend/src/Raffa.Documents.Contracts/Migrations/*.cs | initial migration |
 
 ## Context the implementer needs
 

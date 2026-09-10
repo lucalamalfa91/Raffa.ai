@@ -63,15 +63,15 @@ jobs:
 
       - name: dotnet restore
         working-directory: backend
-        run: dotnet restore Contigo.slnx
+        run: dotnet restore Raffa.slnx
 
       - name: dotnet build
         working-directory: backend
-        run: dotnet build Contigo.slnx --configuration Release --no-restore
+        run: dotnet build Raffa.slnx --configuration Release --no-restore
 
       - name: dotnet test
         working-directory: backend
-        run: dotnet test Contigo.slnx --configuration Release --no-build
+        run: dotnet test Raffa.slnx --configuration Release --no-build
 
   # Deploys on merge to main (AC-2) or when reused by the demo promotion
   # workflow. Rebuilds+pushes both container images then rolls each
@@ -94,8 +94,8 @@ jobs:
 
       # OIDC auth step (ADR-015): azure/login with only the non-secret
       # client-id/tenant-id/subscription-id of this environment's
-      # least-privilege deploy service principal (contigo-sp-dev /
-      # contigo-sp-demo, task E01/F03/US01/T01). No client secret, no
+      # least-privilege deploy service principal (raffa-sp-dev /
+      # raffa-sp-demo, task E01/F03/US01/T01). No client secret, no
       # AZURE_CREDENTIALS. vars.* resolve from this job's `environment:`,
       # so dev and demo each read their own service principal's identity.
       - name: Azure login (OIDC)
@@ -111,7 +111,7 @@ jobs:
       - name: Resolve ACR for this environment
         run: |
           set -euo pipefail
-          RG="rg-contigo-${TARGET_ENVIRONMENT}"
+          RG="rg-raffa-${TARGET_ENVIRONMENT}"
           ACR_NAME=$(az acr list --resource-group "$RG" --query "[0].name" -o tsv)
           ACR_LOGIN_SERVER=$(az acr list --resource-group "$RG" --query "[0].loginServer" -o tsv)
           if [ -z "$ACR_NAME" ]; then
@@ -131,16 +131,16 @@ jobs:
         run: |
           az acr build \
             --registry "$ACR_NAME" \
-            --image "contigo-api:${{ github.sha }}" \
-            --file backend/src/Contigo.Api/Dockerfile \
+            --image "raffa-api:${{ github.sha }}" \
+            --file backend/src/Raffa.Api/Dockerfile \
             backend
 
       - name: Build + push Worker image (az acr build)
         run: |
           az acr build \
             --registry "$ACR_NAME" \
-            --image "contigo-worker:${{ github.sha }}" \
-            --file backend/src/Contigo.Worker/Dockerfile \
+            --image "raffa-worker:${{ github.sha }}" \
+            --file backend/src/Raffa.Worker/Dockerfile \
             backend
 
       # Container Apps pull from this env's ACR with the workload identity
@@ -155,15 +155,15 @@ jobs:
       - name: Attach ACR pull identity to Container Apps
         run: |
           set -euo pipefail
-          UAI_NAME="id-contigo-${TARGET_ENVIRONMENT}-workload"
+          UAI_NAME="id-raffa-${TARGET_ENVIRONMENT}-workload"
           UAI_ID=$(az identity show --name "$UAI_NAME" --resource-group "$RESOURCE_GROUP" --query id -o tsv)
-          HCP_RUNS="https://app.terraform.io/app/contigo-platform/workspaces/contigo-${TARGET_ENVIRONMENT}/runs"
+          HCP_RUNS="https://app.terraform.io/app/raffa-platform/workspaces/raffa-${TARGET_ENVIRONMENT}/runs"
           if [[ -z "$UAI_ID" ]]; then
             echo "::error::could not resolve $UAI_NAME in $RESOURCE_GROUP. Confirm the HCP VCS apply at $HCP_RUNS, then re-run this job."
             exit 1
           fi
           for APP in api worker; do
-            APP_NAME="ca-contigo-${TARGET_ENVIRONMENT}-${APP}"
+            APP_NAME="ca-raffa-${TARGET_ENVIRONMENT}-${APP}"
             EXISTING_IDENTITY=$(az containerapp show \
               --name "$APP_NAME" \
               --resource-group "$RESOURCE_GROUP" \
@@ -191,28 +191,28 @@ jobs:
           done
 
       # Container App names are fixed by infra/modules/containerapps
-      # ("ca-contigo-<env>-api" / "-worker"); no random suffix, safe to
+      # ("ca-raffa-<env>-api" / "-worker"); no random suffix, safe to
       # compose here from TARGET_ENVIRONMENT.
       - name: Deploy API Container App revision
         run: |
           az containerapp update \
-            --name "ca-contigo-${TARGET_ENVIRONMENT}-api" \
+            --name "ca-raffa-${TARGET_ENVIRONMENT}-api" \
             --resource-group "$RESOURCE_GROUP" \
-            --image "$ACR_LOGIN_SERVER/contigo-api:${{ github.sha }}"
+            --image "$ACR_LOGIN_SERVER/raffa-api:${{ github.sha }}"
 
       - name: Deploy Worker Container App revision
         run: |
           az containerapp update \
-            --name "ca-contigo-${TARGET_ENVIRONMENT}-worker" \
+            --name "ca-raffa-${TARGET_ENVIRONMENT}-worker" \
             --resource-group "$RESOURCE_GROUP" \
-            --image "$ACR_LOGIN_SERVER/contigo-worker:${{ github.sha }}"
+            --image "$ACR_LOGIN_SERVER/raffa-worker:${{ github.sha }}"
 
       # ADR-021: schema apply on deploy, after both Container Apps above are
       # already running the new image. Each module that owns a DbContext
       # checks in a `dotnet ef migrations script --idempotent` output (task
       # E09/F01/US01/T01, backend/src/<Module>/Migrations/Scripts/*.sql);
       # this job applies all six here, in ADR-021's fixed order.
-      # Contigo.Api/Contigo.Worker deliberately never call
+      # Raffa.Api/Raffa.Worker deliberately never call
       # Database.MigrateAsync() (ADR-021 "Decision outcome"), so a replica
       # boot never mutates schema -- CI is the only apply path, for both
       # dev (this trigger) and demo (the same job, reused via
@@ -226,7 +226,7 @@ jobs:
           fi
 
       # Key Vault name carries a random suffix (modules/keyvault:
-      # kv-contigo-<env>-<6 chars>), same reason ACR's name is resolved
+      # kv-raffa-<env>-<6 chars>), same reason ACR's name is resolved
       # above instead of composed as a literal. The secret itself is
       # Npgsql-format (Host=...;Database=...;Username=...;Password=...;Ssl
       # Mode=Require) -- scripts/pg_connection_string_env.py is the one,
@@ -237,7 +237,7 @@ jobs:
       - name: Fetch Postgres connection string (ADR-021)
         run: |
           set -euo pipefail
-          HCP_RUNS="https://app.terraform.io/app/contigo-platform/workspaces/contigo-${TARGET_ENVIRONMENT}/runs"
+          HCP_RUNS="https://app.terraform.io/app/raffa-platform/workspaces/raffa-${TARGET_ENVIRONMENT}/runs"
           KV_NAME=$(az keyvault list --resource-group "$RESOURCE_GROUP" --query "[0].name" -o tsv)
           if [ -z "$KV_NAME" ]; then
             echo "::error::no Key Vault found in resource group $RESOURCE_GROUP. Confirm the HCP VCS apply at $HCP_RUNS, then re-run this job."
@@ -248,7 +248,7 @@ jobs:
           KV_STATUS=$?
           set -e
           if [ $KV_STATUS -ne 0 ] || [ -z "$RAW_CONN" ]; then
-            echo "::error::could not read secret 'postgres-connection' from $KV_NAME. Either the HCP VCS apply at $HCP_RUNS has not created it yet, or this environment's CI deploy principal (contigo-sp-${TARGET_ENVIRONMENT}) is missing the 'Key Vault Secrets User' role on $KV_NAME -- Contributor on the resource group does not include Key Vault data-plane access once rbac_authorization_enabled=true (infra/modules/keyvault/main.tf grants that role to the workload identity only, not the CI principal; see infra/README.md Known gaps). Azure CLI said: $(tail -c 500 /tmp/kv_secret_show.err | tr '\n' ' ')"
+            echo "::error::could not read secret 'postgres-connection' from $KV_NAME. Either the HCP VCS apply at $HCP_RUNS has not created it yet, or this environment's CI deploy principal (raffa-sp-${TARGET_ENVIRONMENT}) is missing the 'Key Vault Secrets User' role on $KV_NAME -- Contributor on the resource group does not include Key Vault data-plane access once rbac_authorization_enabled=true (infra/modules/keyvault/main.tf grants that role to the workload identity only, not the CI principal; see infra/README.md Known gaps). Azure CLI said: $(tail -c 500 /tmp/kv_secret_show.err | tr '\n' ' ')"
             exit 1
           fi
           echo "::add-mask::$RAW_CONN"
@@ -274,15 +274,15 @@ jobs:
           # Fixed order (ADR-021 "Decision outcome"). Keep this array in
           # lockstep with the identical one in "Verify schema applied" below.
           SCRIPTS=(
-            "backend/src/Contigo.Identity.Workspace/Migrations/Scripts/identity-workspace.sql"
-            "backend/src/Contigo.Documents.Contracts/Migrations/Scripts/documents-contracts.sql"
-            "backend/src/Contigo.Audit/Migrations/Scripts/audit.sql"
-            "backend/src/Contigo.Renewals/Migrations/Scripts/renewals.sql"
-            "backend/src/Contigo.Savings/Migrations/Scripts/savings.sql"
-            "backend/src/Contigo.Quotes/Migrations/Scripts/quotes.sql"
-            "backend/src/Contigo.Chat/Migrations/Scripts/chat.sql"
-            "backend/src/Contigo.Suppliers.Products/Migrations/Scripts/suppliers.sql"
-            "backend/src/Contigo.Market/Migrations/Scripts/market.sql"
+            "backend/src/Raffa.Identity.Workspace/Migrations/Scripts/identity-workspace.sql"
+            "backend/src/Raffa.Documents.Contracts/Migrations/Scripts/documents-contracts.sql"
+            "backend/src/Raffa.Audit/Migrations/Scripts/audit.sql"
+            "backend/src/Raffa.Renewals/Migrations/Scripts/renewals.sql"
+            "backend/src/Raffa.Savings/Migrations/Scripts/savings.sql"
+            "backend/src/Raffa.Quotes/Migrations/Scripts/quotes.sql"
+            "backend/src/Raffa.Chat/Migrations/Scripts/chat.sql"
+            "backend/src/Raffa.Suppliers.Products/Migrations/Scripts/suppliers.sql"
+            "backend/src/Raffa.Market/Migrations/Scripts/market.sql"
           )
           for script in "${SCRIPTS[@]}"; do
             if [ ! -f "$script" ]; then
@@ -294,7 +294,7 @@ jobs:
             echo "::endgroup::"
           done
 
-      # "Prove contigo_<env> has the app tables (or fail the job)" (this
+      # "Prove raffa_<env> has the app tables (or fail the job)" (this
       # task's own coding objective): the table listing is the named,
       # human-readable check the Definition of Done asks for; the
       # migration_id comparison below is the strict pass/fail gate
@@ -306,17 +306,17 @@ jobs:
         run: |
           set -euo pipefail
           SCRIPTS=(
-            "backend/src/Contigo.Identity.Workspace/Migrations/Scripts/identity-workspace.sql"
-            "backend/src/Contigo.Documents.Contracts/Migrations/Scripts/documents-contracts.sql"
-            "backend/src/Contigo.Audit/Migrations/Scripts/audit.sql"
-            "backend/src/Contigo.Renewals/Migrations/Scripts/renewals.sql"
-            "backend/src/Contigo.Savings/Migrations/Scripts/savings.sql"
-            "backend/src/Contigo.Quotes/Migrations/Scripts/quotes.sql"
-            "backend/src/Contigo.Chat/Migrations/Scripts/chat.sql"
-            "backend/src/Contigo.Suppliers.Products/Migrations/Scripts/suppliers.sql"
-            "backend/src/Contigo.Market/Migrations/Scripts/market.sql"
+            "backend/src/Raffa.Identity.Workspace/Migrations/Scripts/identity-workspace.sql"
+            "backend/src/Raffa.Documents.Contracts/Migrations/Scripts/documents-contracts.sql"
+            "backend/src/Raffa.Audit/Migrations/Scripts/audit.sql"
+            "backend/src/Raffa.Renewals/Migrations/Scripts/renewals.sql"
+            "backend/src/Raffa.Savings/Migrations/Scripts/savings.sql"
+            "backend/src/Raffa.Quotes/Migrations/Scripts/quotes.sql"
+            "backend/src/Raffa.Chat/Migrations/Scripts/chat.sql"
+            "backend/src/Raffa.Suppliers.Products/Migrations/Scripts/suppliers.sql"
+            "backend/src/Raffa.Market/Migrations/Scripts/market.sql"
           )
-          echo "::group::tables in contigo_${TARGET_ENVIRONMENT}"
+          echo "::group::tables in raffa_${TARGET_ENVIRONMENT}"
           psql -Atqc "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name;"
           echo "::endgroup::"
           SCRIPT_ARGS=()

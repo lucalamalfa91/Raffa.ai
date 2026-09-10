@@ -4,7 +4,7 @@ type: task
 story: us-02-priority-score
 wave: R2
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-priority-score — 01 Priority Score
@@ -18,7 +18,7 @@ Priority score + component breakdown.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `renewal-priority` |
+| workspace/raffa-backend/src/ | implementation for `renewal-priority` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-002, ADR-003.
@@ -30,7 +30,7 @@ Priority score + component breakdown.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | renewal-priority behaviour | workspace/contigo-backend/tests |
+| unit | renewal-priority behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

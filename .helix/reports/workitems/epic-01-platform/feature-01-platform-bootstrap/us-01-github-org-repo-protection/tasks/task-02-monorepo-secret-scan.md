@@ -4,7 +4,7 @@ type: task
 story: us-01-github-org-repo-protection
 wave: R0
 status: live
-target_repo: contigo-infra
+target_repo: raffa-infra
 ---
 
 # task-02-monorepo-secret-scan — 02 Monorepo Secret Scan
@@ -18,7 +18,7 @@ Scan for committed secrets and verify five-folder layout + no-secret state.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-infra/src/ | implementation for `repo-secret-scan` |
+| workspace/raffa-infra/src/ | implementation for `repo-secret-scan` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-014.
@@ -30,7 +30,7 @@ Scan for committed secrets and verify five-folder layout + no-secret state.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | repo-secret-scan behaviour | workspace/contigo-infra/tests |
+| unit | repo-secret-scan behaviour | workspace/raffa-infra/tests |
 
 ## Open questions blocking this task
 - none

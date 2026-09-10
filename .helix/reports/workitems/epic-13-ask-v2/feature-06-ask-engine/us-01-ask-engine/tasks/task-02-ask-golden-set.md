@@ -4,25 +4,25 @@ type: task
 story: us-01-ask-engine
 wave: 13
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
-# task-02-ask-golden-set — AI golden set on the fixture gateway (`Contigo.AiEval`)
+# task-02-ask-golden-set — AI golden set on the fixture gateway (`Raffa.AiEval`)
 
 ## Coding objective
 
-Fill `backend/tests/Contigo.AiEval` (scaffolded by F01/T01) with the
+Fill `backend/tests/Raffa.AiEval` (scaffolded by F01/T01) with the
 evaluation set of `inputs/requirements.md` R-EVD-03 and spec §15.3: a
-data-driven xunit suite over `backend/tests/Contigo.AiEval/golden/*.json`
+data-driven xunit suite over `backend/tests/Raffa.AiEval/golden/*.json`
 — ≥ 40 questions (Italian and English) × 3 tenant fixtures (an empty
 workspace; a seeded workspace with Salesforce / Microsoft / AWS / DocuSign
-validated contracts mirroring `inputs/design/prototypes/contigo-v2/app.jsx`
+validated contracts mirroring `inputs/design/prototypes/raffa-v2/app.jsx`
 `CONTRACTS`; a workspace with one document still in `needs_review`) —
 each case with the expected reply `kind`, the expected citation corpora,
 the expected numbers (dates, amounts, percentages that must appear
 verbatim), forbidden substrings (`Document:`, guids, "Structured query",
 "not wired") and, where relevant, the expected action hrefs. Cases cover
-the prototype intents (`contigo-v2/ia-v2.md` "Ask intents": expire /
+the prototype intents (`raffa-v2/ia-v2.md` "Ask intents": expire /
 notice / liability / 120 days / askable / top / saving / benchmark /
 capabilities / unknown supplier / legal fees) plus the V2 additions
 (greeting, carbonara, legal, Allianz vs market, renewal strategy,
@@ -33,11 +33,11 @@ and asserts: kinds match, numbers equal the calculator outputs, zero
 `NumericGuard` / `GroundingGuard` interventions across the set, no
 forbidden substring, every action href resolves to a catalog route. Add a
 `--filter Category=AiEval` step to `.github/workflows/backend.yml`? — no:
-`dotnet test Contigo.slnx` already runs it; instead mark the suite with
+`dotnet test Raffa.slnx` already runs it; instead mark the suite with
 `[Trait("Category","AiEval")]` and document the manual Foundry run
 (`AiEval__UseFoundry=true` env switch reading `AiGateway:Endpoint`) in
 `backend/README.md`. Emit a markdown report
-(`backend/tests/Contigo.AiEval/reports/last-run.md`, git-ignored) with
+(`backend/tests/Raffa.AiEval/reports/last-run.md`, git-ignored) with
 per-case verdicts to help HITL on `demo`.
 
 ## Parent story AC covered
@@ -46,9 +46,9 @@ per-case verdicts to help HITL on `demo`.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| `backend/tests/Contigo.AiEval/golden/*.json`, `GoldenCase.cs`, `GoldenSetTests.cs`, `TenantFixtures/*`, `AiEvalOptions.cs` | new |
-| `backend/tests/Contigo.AiEval/Contigo.AiEval.csproj` | references (Api, Chat, Insights, Market, Documents, AiGateway) as needed for the composition root |
-| `backend/.gitignore` (or root) | ignore `tests/Contigo.AiEval/reports/` |
+| `backend/tests/Raffa.AiEval/golden/*.json`, `GoldenCase.cs`, `GoldenSetTests.cs`, `TenantFixtures/*`, `AiEvalOptions.cs` | new |
+| `backend/tests/Raffa.AiEval/Raffa.AiEval.csproj` | references (Api, Chat, Insights, Market, Documents, AiGateway) as needed for the composition root |
+| `backend/.gitignore` (or root) | ignore `tests/Raffa.AiEval/reports/` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-024 (guards; 0 interventions on the golden set), ADR-004 (fixture gateway proves the paths), spec §15.3.
@@ -56,14 +56,14 @@ per-case verdicts to help HITL on `demo`.
 - **Do not touch**: any `src/` file (if the pipeline needs a change, HALT and name it), `web/`, workflows.
 
 ## Definition of done
-- [ ] `dotnet test backend/tests/Contigo.AiEval` exit 0 — ≥ 40 cases pass; report written
-- [ ] `dotnet test backend/Contigo.slnx` exit 0
+- [ ] `dotnet test backend/tests/Raffa.AiEval` exit 0 — ≥ 40 cases pass; report written
+- [ ] `dotnet test backend/Raffa.slnx` exit 0
 - [ ] `backend/README.md` documents the manual Foundry run switch
 
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| AI eval | kinds, numbers, citations, no chrome, 0 guard interventions | `Contigo.AiEval/GoldenSetTests.cs` |
+| AI eval | kinds, numbers, citations, no chrome, 0 guard interventions | `Raffa.AiEval/GoldenSetTests.cs` |
 
 ## Open questions blocking this task
 - OQ-askv2-006 — Italian and English cases (assumed)

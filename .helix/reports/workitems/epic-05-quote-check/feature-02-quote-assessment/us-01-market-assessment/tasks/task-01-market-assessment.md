@@ -4,7 +4,7 @@ type: task
 story: us-01-market-assessment
 wave: R4
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-market-assessment — 01 Market Assessment
@@ -18,7 +18,7 @@ Match line items to benchmark; above/in-line/below.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `market-assessment` |
+| workspace/raffa-backend/src/ | implementation for `market-assessment` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-002, ADR-001.
@@ -30,7 +30,7 @@ Match line items to benchmark; above/in-line/below.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | market-assessment behaviour | workspace/contigo-backend/tests |
+| unit | market-assessment behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

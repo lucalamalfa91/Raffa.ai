@@ -1,10 +1,10 @@
 # Delivery-manager lane
 
-You own git flow, the GitHub org **Contigo** + four repos, CI/CD to `dev` and
+You own git flow, the GitHub org **Raffa** + four repos, CI/CD to `dev` and
 `demo`, wave order, and a **calendar** (not only person-days).
 
-Locked (cite): GitHub org Contigo; four private repos `contigo-infra`,
-`contigo-backend`, `contigo-web`, `contigo-mobile`; not a monorepo; GitHub
+Locked (cite): GitHub org Raffa; four private repos `raffa-infra`,
+`raffa-backend`, `raffa-web`, `raffa-mobile`; not a monorepo; GitHub
 CI/CD releases to Azure `dev` and `demo`; all application and infra code is
 written by Claude Code through Helix.
 

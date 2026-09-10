@@ -1,5 +1,5 @@
 /**
- * Contigo design system — semantic mappings (AC-2: "encoded, not colour-only").
+ * Raffa design system — semantic mappings (AC-2: "encoded, not colour-only").
  *
  * Ports the locked semantic mapping table into a single, typed, testable
  * source of truth, so every screen that renders a confidence/status/risk/
@@ -56,7 +56,7 @@ export type DocumentStatus = "completed" | "ready" | "needs_review" | "failed" |
  * neutral (task E13/F09/US01/T03, web-documents-v2: a document row is visible from the moment it
  * is picked, R-DOC-01 AC-1 -- V1 never rendered a `processing` row in a status tag at all, since its
  * synchronous upload pipeline only ever wrote a table row once a document reached a terminal status;
- * see `contigo-v2/app.jsx`'s own `docRows` map, `processing:{tag:'tag-neutral',...}`).
+ * see `raffa-v2/app.jsx`'s own `docRows` map, `processing:{tag:'tag-neutral',...}`).
  */
 export function getStatusTag(status: DocumentStatus): SemanticTag {
   switch (status) {

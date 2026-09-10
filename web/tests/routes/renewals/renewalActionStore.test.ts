@@ -62,13 +62,13 @@ describe("renewalActionStore (us-01-renewal-pipeline AC-3: session-scoped renewa
   });
 
   it("treats malformed sessionStorage content as an empty list rather than throwing", () => {
-    window.sessionStorage.setItem("contigo.renewals.actions", "not json");
+    window.sessionStorage.setItem("raffa.renewals.actions", "not json");
 
     expect(loadTrackedRenewalActions()).toEqual([]);
   });
 
   it("treats a non-array JSON payload under the key as an empty list", () => {
-    window.sessionStorage.setItem("contigo.renewals.actions", JSON.stringify({ not: "an array" }));
+    window.sessionStorage.setItem("raffa.renewals.actions", JSON.stringify({ not: "an array" }));
 
     expect(loadTrackedRenewalActions()).toEqual([]);
   });

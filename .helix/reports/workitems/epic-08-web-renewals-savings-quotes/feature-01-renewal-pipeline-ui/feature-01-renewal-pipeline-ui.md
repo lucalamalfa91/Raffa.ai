@@ -24,4 +24,4 @@ Renewal threshold strip, priority table, insight card + actions.
 
 ## Target repo
 
-`contigo-web`
+`raffa-web`

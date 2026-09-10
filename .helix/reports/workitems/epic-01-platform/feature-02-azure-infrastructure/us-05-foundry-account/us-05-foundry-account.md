@@ -11,16 +11,16 @@ status: active
 ## Story
 
 As a **cloud engineer**, I want one shared Azure AI Services account with two
-account-native Foundry projects (`contigo-dev`, `contigo-demo`) and per-environment
+account-native Foundry projects (`raffa-dev`, `raffa-demo`) and per-environment
 model deployments, so that `dev`/`demo` model content is logically isolated
 without double billing.
 
 ## Acceptance criteria
 
-- [ ] AC-1 A single Azure AI Services account `aisvc-contigo` (kind `AIServices`, `project_management_enabled`, keys disabled) exists in `rg-contigo-ai`; no hub (ADR-008 amendment 2026-09-09 superseded the hub).
-- [ ] AC-2 Two Foundry projects `contigo-dev` and `contigo-demo` are created by Terraform as sub-resources of that account; model deployments are per environment (`<model>-<env>`, pinned versions).
+- [ ] AC-1 A single Azure AI Services account `aisvc-raffa` (kind `AIServices`, `project_management_enabled`, keys disabled) exists in `rg-raffa-ai`; no hub (ADR-008 amendment 2026-09-09 superseded the hub).
+- [ ] AC-2 Two Foundry projects `raffa-dev` and `raffa-demo` are created by Terraform as sub-resources of that account; model deployments are per environment (`<model>-<env>`, pinned versions).
 - [ ] AC-3 A single pay-as-you-go Azure AI services account backs both (no second subscription).
-- [ ] AC-4 Document Intelligence (`prebuilt-read`) is native to that account and bound as the `ocr` role; `conn-docint-contigo-<env>` is an informational value (ADR-017 amendment 2026-09-09).
+- [ ] AC-4 Document Intelligence (`prebuilt-read`) is native to that account and bound as the `ocr` role; `conn-docint-raffa-<env>` is an informational value (ADR-017 amendment 2026-09-09).
 
 ## Definition of done
 
@@ -48,7 +48,7 @@ without double billing.
 
 ## Council decisions carried into this story
 
-One hub, projects `contigo-dev`/`contigo-demo`, single PAYG Azure AI services account including Document Intelligence S0 for V1 OCR (ADR-017). Chat/embed model IDs confirmed later (ADR-004 / CQ-008).
+One hub, projects `raffa-dev`/`raffa-demo`, single PAYG Azure AI services account including Document Intelligence S0 for V1 OCR (ADR-017). Chat/embed model IDs confirmed later (ADR-004 / CQ-008).
 
 ## Open questions
 

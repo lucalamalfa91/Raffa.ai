@@ -4,7 +4,7 @@ type: task
 story: us-01-copilot-endpoint
 wave: 12
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-copilot-endpoint — Domain gate, context pack, chat JSON
@@ -33,7 +33,7 @@ API JSON (names may match existing types if you extend them):
 Actions are in-app routes only (`/contracts/:id`, `/renewals`, `/`,
 `/quotes/...`). Do not invent hrefs the router does not have.
 
-Chat must not reference the Documents project; mapping stays in `Contigo.Api`.
+Chat must not reference the Documents project; mapping stays in `Raffa.Api`.
 Do not write market rows into pgvector.
 
 ## Parent story AC covered
@@ -44,10 +44,10 @@ Do not write market rows into pgvector.
 
 | Path | Change |
 |------|--------|
-| `backend/src/Contigo.Api/ChatEndpointExtensions.cs` | remove not-wired; new response shape |
-| `backend/src/Contigo.Chat/` | domain gate, context pack, persona prompt |
-| `backend/tests/Contigo.Chat.Tests/` | ciao / carbonara / legal / Allianz band |
-| `backend/tests/Contigo.IntegrationTests/` | tenant isolation still holds |
+| `backend/src/Raffa.Api/ChatEndpointExtensions.cs` | remove not-wired; new response shape |
+| `backend/src/Raffa.Chat/` | domain gate, context pack, persona prompt |
+| `backend/tests/Raffa.Chat.Tests/` | ciao / carbonara / legal / Allianz band |
+| `backend/tests/Raffa.IntegrationTests/` | tenant isolation still holds |
 
 ## Context the implementer needs
 
@@ -66,7 +66,7 @@ Do not write market rows into pgvector.
 
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | domain gate + not-wired gone | `Contigo.Chat.Tests` / API tests |
+| unit | domain gate + not-wired gone | `Raffa.Chat.Tests` / API tests |
 | unit | calculator numbers unchanged in the pack | Chat or Quotes tests |
 | integration | RLS / no cross-tenant evidence | existing Ask isolation tests |
 

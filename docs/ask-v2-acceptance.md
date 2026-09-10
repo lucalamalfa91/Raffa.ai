@@ -1,4 +1,4 @@
-# Ask Contigo V2 — acceptance runbook (A1–A14)
+# Ask Raffa V2 — acceptance runbook (A1–A14)
 
 Operator checklist for `inputs/requirements.md` §10 ("Acceptance on `demo`,
 observable") and ADR-024. One row per acceptance item, each with **the exact
@@ -8,10 +8,10 @@ is "check that it looks right".
 | | |
 |---|---|
 | Owner | task E13/F11/US01/T01 (`v2-integration`), story `us-01-integration` AC-5 |
-| Oracles | `inputs/requirements.md` §5, §6, §10 · ADR-024 · `inputs/design/prototypes/Contigo V2 Prototype.html` (unpacked `contigo-v2/ia-v2.md`, `screens-v2.md`) |
-| API contract | `web/openapi/contigo-api.v1.json` — **every route below is quoted from it**; the two exceptions are named in [Known gaps](#known-gaps-that-shape-acceptance-today) |
+| Oracles | `inputs/requirements.md` §5, §6, §10 · ADR-024 · `inputs/design/prototypes/Raffa V2 Prototype.html` (unpacked `raffa-v2/ia-v2.md`, `screens-v2.md`) |
+| API contract | `web/openapi/raffa-api.v1.json` — **every route below is quoted from it**; the two exceptions are named in [Known gaps](#known-gaps-that-shape-acceptance-today) |
 | Screens | `web/README.md` "Screens (ADR-024 V2 route map)" |
-| Automated cover | `web/e2e/v2.spec.ts` (A1, A3, A4, A8, A9, A10, A14 always; A2/A5/A6/A7 under `E2E_LIVE_FOUNDRY=1`), `backend/tests/Contigo.AiEval` (A13), `Contigo.IntegrationTests` (A11), `Contigo.AiGateway.Tests` (A12) |
+| Automated cover | `web/e2e/v2.spec.ts` (A1, A3, A4, A8, A9, A10, A14 always; A2/A5/A6/A7 under `E2E_LIVE_FOUNDRY=1`), `backend/tests/Raffa.AiEval` (A13), `Raffa.IntegrationTests` (A11), `Raffa.AiGateway.Tests` (A12) |
 
 Run this against `dev` first (that is what the wave's Definition of Done asks
 for), then again against `demo` after a `demo-v*` promotion. The steps are
@@ -44,14 +44,14 @@ with `%PDF`, and reports the contracts that still have no supplier.
 ```bash
 # 1. API origin — the same value web.yml bakes into the SPA's config.json.
 ENV=dev                      # or: demo
-RG="rg-contigo-${ENV}"
-API=$(az resource show --resource-group "$RG" --name "ca-contigo-${ENV}-api" \
+RG="rg-raffa-${ENV}"
+API=$(az resource show --resource-group "$RG" --name "ca-raffa-${ENV}-api" \
         --resource-type Microsoft.App/containerApps \
         --query "properties.configuration.ingress.fqdn" -o tsv)
 API="https://${API}"
 
 # 2. SPA origin — where you click.
-WEB=$(az resource show --resource-group "$RG" --name "swa-contigo-${ENV}" \
+WEB=$(az resource show --resource-group "$RG" --name "swa-raffa-${ENV}" \
         --resource-type Microsoft.Web/staticSites \
         --query "properties.defaultHostname" -o tsv)
 WEB="https://${WEB}"
@@ -59,7 +59,7 @@ WEB="https://${WEB}"
 # 3. Tenant — the workspace id the SPA sends as X-Tenant-Id. The ADR-022
 #    demo fixture tenant is 00000000-0000-0000-0000-000000000001.
 TENANT=00000000-0000-0000-0000-000000000001
-USER=acceptance@contigo.test          # X-User-Id, non-authoritative (ADR-022)
+USER=acceptance@raffa.test          # X-User-Id, non-authoritative (ADR-022)
 
 curl -sS "$API/health" | jq .
 ```
@@ -101,7 +101,7 @@ dropzone) → select all three files at once.
 
 1. Two `Not added` cards appear, one per refused file, each with its own
    reason sentence — `"Not added: this looks like a recipe, not a contract…"`
-   for the recipe, `"Not added: Contigo could not read any contract text in
+   for the recipe, `"Not added: Raffa could not read any contract text in
    this file…"` for the photo.
 2. A third row appears for the MSA and reaches **Needs review** or
    **Completed** (never stays on a spinner). A refused file never hides it
@@ -118,7 +118,7 @@ curl -sS -o /tmp/rejected.json -w '%{http_code}\n' -X POST "$API/api/documents" 
   -H "X-Tenant-Id: $TENANT" -F "file=@carbonara.pdf;type=application/pdf"
 jq . /tmp/rejected.json
 # => 422 and {"rejected":true,"detectedType":"Other","confidence":…,
-#             "reason":"not_a_contract","hint":"Contigo only keeps contracts, …"}
+#             "reason":"not_a_contract","hint":"Raffa only keeps contracts, …"}
 
 # 422 with the *other* reason for an unreadable image.
 curl -sS -o /tmp/photo.json -w '%{http_code}\n' -X POST "$API/api/documents" \
@@ -151,7 +151,7 @@ psql -Atqc "SET app.tenant_id = '$TENANT';
 
 **Automated:** `web/e2e/v2.spec.ts` → *"A1 — a recipe and an unreadable image
 are refused together, and nothing is stored"* (always) and *"A1 — the MSA
-dropped alongside them still lands"* (needs `CONTIGO_E2E_MSA_PATH`: no real
+dropped alongside them still lands"* (needs `RAFFA_E2E_MSA_PATH`: no real
 contract PDF is checked into this repo).
 
 ---
@@ -162,7 +162,7 @@ contract PDF is checked into this repo).
 > Documents. (R-DOC-02 AC-2, ADR-017, R-SUP-04)
 
 **Requires live Foundry** (`AiGateway__Endpoint` is published by Terraform on
-`ca-contigo-<env>-api` where `infra/environments/<env>/variables.tf` sets
+`ca-raffa-<env>-api` where `infra/environments/<env>/variables.tf` sets
 `ai_gateway_wired = true`, see `infra/README.md`). On a fixture-gateway
 environment the scan is refused with `no_readable_text`, which is the honest
 fixture behaviour, not a defect —
@@ -181,7 +181,7 @@ curl -sS "$API/api/documents?pageSize=100" -H "X-Tenant-Id: $TENANT" \
 ```
 
 **Automated:** `v2.spec.ts` → *"A2 …"*, gated on `E2E_LIVE_FOUNDRY=1` **and**
-`CONTIGO_E2E_ORDER_FORM_PNG` (a synthetic image has no text to OCR).
+`RAFFA_E2E_ORDER_FORM_PNG` (a synthetic image has no text to OCR).
 
 ---
 
@@ -344,8 +344,8 @@ chat, `Come faccio a rivedere i campi deboli?`.
 
 **Pass when:**
 
-- The reply lists Contigo's modules, each with a citation card badged
-  **Contigo** (a *feature* card, not a tenant chunk).
+- The reply lists Raffa's modules, each with a citation card badged
+  **Raffa** (a *feature* card, not a tenant chunk).
 - Every action href is an **in-app route** (`/documents`, `/renewals`,
   `/savings`, `/quotes`, `/contracts/…`) — never an absolute URL, never a
   model-authored link (R-ASK-06 guard 3).
@@ -414,7 +414,7 @@ private window) signed in as the **same** user, on the same workspace.
 
 **Pass when:** every past turn renders oldest-first, with the same citation
 cards and clickable actions; the rail lists the conversation under **Ask
-Contigo**. Signed in as a *different* user of the same workspace, the same URL
+Raffa**. Signed in as a *different* user of the same workspace, the same URL
 shows *"Conversation not found — This conversation does not exist, or is not
 yours."* (R-CONV-01 AC-1).
 
@@ -428,7 +428,7 @@ curl -sS "$API/api/conversations/$CONV" \
 
 # Another user, same tenant, same id => 404 (never another member's chat).
 curl -sS -o /dev/null -w '%{http_code}\n' "$API/api/conversations/$CONV" \
-  -H "X-Tenant-Id: $TENANT" -H "X-User-Id: someone.else@contigo.test"   # => 404
+  -H "X-Tenant-Id: $TENANT" -H "X-User-Id: someone.else@raffa.test"   # => 404
 ```
 
 **Automated:** `v2.spec.ts` → *"A10 …"* (reload plus a second tab).
@@ -445,7 +445,7 @@ fabricating an identity. Two proofs:
 
 ```bash
 # 1. The automated one, and the authoritative one:
-dotnet test backend/Contigo.slnx --filter "FullyQualifiedName~Contigo.IntegrationTests"
+dotnet test backend/Raffa.slnx --filter "FullyQualifiedName~Raffa.IntegrationTests"
 
 # 2. On the live environment: a guessed id under the wrong tenant is a 404,
 #    not another tenant's row.
@@ -473,7 +473,7 @@ psql -Atqc "SELECT count(*) FROM information_schema.columns
 
 ```bash
 # The request-shape compliance test (the fake HTTP handler asserts the body).
-dotnet test backend/Contigo.slnx --filter "FullyQualifiedName~Contigo.AiGateway.Tests"
+dotnet test backend/Raffa.slnx --filter "FullyQualifiedName~Raffa.AiGateway.Tests"
 
 # The AI log, live: LoggingAiGateway writes one audit row per model call with
 # resource_type 'ai_call' (model, version, prompt version, input hash — never
@@ -499,31 +499,31 @@ gateway so it is reproducible.
 
 ```bash
 # In CI: no extra step exists or is needed. `.github/workflows/backend.yml`'s
-# "dotnet test" job runs `dotnet test Contigo.slnx`, and
-# `backend/tests/Contigo.AiEval/Contigo.AiEval.csproj` is a member of that
+# "dotnet test" job runs `dotnet test Raffa.slnx`, and
+# `backend/tests/Raffa.AiEval/Raffa.AiEval.csproj` is a member of that
 # solution — a guard intervention fails the build there.
-cd backend && dotnet test Contigo.slnx --configuration Release
+cd backend && dotnet test Raffa.slnx --configuration Release
 
 # Locally, only the golden set (project-scoped; works whatever traits the
 # suite carries):
-dotnet test backend/tests/Contigo.AiEval/Contigo.AiEval.csproj
+dotnet test backend/tests/Raffa.AiEval/Raffa.AiEval.csproj
 
 # Or, from the solution, by trait — the golden set marks its cases
 # [Trait("Category","AiEval")] (task E13/F06/US01/T02):
-dotnet test backend/Contigo.slnx --filter "Category=AiEval"
+dotnet test backend/Raffa.slnx --filter "Category=AiEval"
 
 # Everything *except* the golden set (a fast inner loop):
-dotnet test backend/Contigo.slnx --filter "Category!=AiEval"
+dotnet test backend/Raffa.slnx --filter "Category!=AiEval"
 
 # The on-demand Foundry run (manual, never CI — it costs tokens):
 AiEval__UseFoundry=true AiGateway__Endpoint=<foundry endpoint> \
-  dotnet test backend/tests/Contigo.AiEval/Contigo.AiEval.csproj
+  dotnet test backend/tests/Raffa.AiEval/Raffa.AiEval.csproj
 ```
 
 **Pass when:** the suite is green — ≥ 40 cases, expected `kind` per case, 0
 `NumericGuard` / `GroundingGuard` interventions, no forbidden substring, every
 action href resolving to a catalog route. The per-case verdict report is
-written to `backend/tests/Contigo.AiEval/reports/last-run.md` (git-ignored).
+written to `backend/tests/Raffa.AiEval/reports/last-run.md` (git-ignored).
 
 ---
 
@@ -537,7 +537,7 @@ written to `backend/tests/Contigo.AiEval/reports/last-run.md` (git-ignored).
 
 1. The browser ends on `$WEB/ask` — there is no Home screen and no **Home**
    rail item.
-2. The rail reads, top to bottom: **Ask Contigo** (⌘K badge, last 5
+2. The rail reads, top to bottom: **Ask Raffa** (⌘K badge, last 5
    conversations nested, **+ New chat**), **Documents** ("N to review" badge),
    the section kicker **From your contracts**, then **Portfolio**,
    **Renewals**, **Quote check**; **Workspace & members** in the footer for an
@@ -565,14 +565,14 @@ cd web
 npm ci
 npx playwright install --with-deps chromium      # one-time
 
-CONTIGO_E2E_BASE_URL="$WEB" \
-CONTIGO_E2E_ENTRA_EMAIL=<test account UPN> \
-CONTIGO_E2E_ENTRA_PASSWORD=<that account's password> \
-CONTIGO_E2E_TENANT_ID="$TENANT" \
+RAFFA_E2E_BASE_URL="$WEB" \
+RAFFA_E2E_ENTRA_EMAIL=<test account UPN> \
+RAFFA_E2E_ENTRA_PASSWORD=<that account's password> \
+RAFFA_E2E_TENANT_ID="$TENANT" \
   npx playwright test v2.spec.ts
 
 # Add the live-Foundry rows (A2, A5, A6, A7) once Foundry is wired:
-E2E_LIVE_FOUNDRY=1 CONTIGO_E2E_ORDER_FORM_PNG=/path/to/scan.png … \
+E2E_LIVE_FOUNDRY=1 RAFFA_E2E_ORDER_FORM_PNG=/path/to/scan.png … \
   npx playwright test v2.spec.ts
 
 npx playwright show-report                       # trace / video / screenshot on failure
@@ -593,9 +593,9 @@ document; each one changes what a given row can honestly prove.
 
 | # | Gap | Effect on acceptance |
 |---|---|---|
-| 1 | **`ConnectionStrings__Suppliers` is not injected into the API Container App.** `backend/src/Contigo.Api/Program.cs` fail-fasts on it; `infra/modules/containerapps/main.tf` sets `IdentityWorkspace`, `DocumentsContracts`, `Audit`, `Renewals`, `Savings`, `Quotes`, `Chat`, `Storage` — not `Suppliers`. | The deployed API does not boot. **Blocks every row.** Fix in `infra/modules/containerapps/main.tf` (same `pg-cs` secret as its neighbours) before the first V2 promotion. |
+| 1 | **`ConnectionStrings__Suppliers` is not injected into the API Container App.** `backend/src/Raffa.Api/Program.cs` fail-fasts on it; `infra/modules/containerapps/main.tf` sets `IdentityWorkspace`, `DocumentsContracts`, `Audit`, `Renewals`, `Savings`, `Quotes`, `Chat`, `Storage` — not `Suppliers`. | The deployed API does not boot. **Blocks every row.** Fix in `infra/modules/containerapps/main.tf` (same `pg-cs` secret as its neighbours) before the first V2 promotion. |
 | 2 | **The API composes `AddMarketModule()` without a connection string.** The market module then keeps its in-memory mock projection, so the API never reads the `market_record` / `market_embedding` rows `seed-market-intelligence.yml` writes. | A5's numbers come from the in-process mock, not from the seeded corpus. The seed job is still the right pre-step (it is what R-MKT-03 specifies and what the live provider will feed), but "the API reads the seeded corpus" is not yet true. |
-| 3 | **Foundry is wired per environment by `ai_gateway_wired`** (ADR-008 amendment 2026-09-09: the shared `aisvc-contigo` account, the per-environment projects and the model deployments are Terraform-managed; `infra/README.md` "AI Gateway / Foundry + Document Intelligence"). | Where the flag is still `false` A2 and A5–A7 cannot be walked. `reprocess-tenant-documents.yml` detects the absent endpoint and downgrades its OCR-placeholder check to a warning; `v2.spec.ts` skips those rows with a named reason. |
-| 4 | **`POST /api/conversations` and `POST /api/conversations/{id}/messages` have no `requestBody` in `web/openapi/contigo-api.v1.json`.** The real bodies are `{"scopeContractId": "<uuid>"}` (optional) and `{"question": "…"}` — verified against `Contigo.Api.ConversationsEndpointExtensions` and `web/src/api/client.ts`. | The `curl` commands above are correct; the OpenAPI is incomplete. Owned by the task that owns that file, not by this runbook. |
+| 3 | **Foundry is wired per environment by `ai_gateway_wired`** (ADR-008 amendment 2026-09-09: the shared `aisvc-raffa` account, the per-environment projects and the model deployments are Terraform-managed; `infra/README.md` "AI Gateway / Foundry + Document Intelligence"). | Where the flag is still `false` A2 and A5–A7 cannot be walked. `reprocess-tenant-documents.yml` detects the absent endpoint and downgrades its OCR-placeholder check to a warning; `v2.spec.ts` skips those rows with a named reason. |
+| 4 | **`POST /api/conversations` and `POST /api/conversations/{id}/messages` have no `requestBody` in `web/openapi/raffa-api.v1.json`.** The real bodies are `{"scopeContractId": "<uuid>"}` (optional) and `{"question": "…"}` — verified against `Raffa.Api.ConversationsEndpointExtensions` and `web/src/api/client.ts`. | The `curl` commands above are correct; the OpenAPI is incomplete. Owned by the task that owns that file, not by this runbook. |
 | 5 | **The role signal for the Admin-gated document endpoints is not a declared parameter.** `X-Role` is what `GET /api/capabilities` parses; `X-Workspace-Role` is what the OpenAPI's `deleteDocument` / `reprocessDocument` descriptions name. | `reprocess-tenant-documents.yml` sends **both**. When testing `DELETE`/`reprocess` by hand, send both too — and expect both to disappear when ADR-010's API JWT lands. |
-| 6 | **`GET /api/audit` needs an authenticated `ClaimsPrincipal`** (`Contigo.Api.AuditEndpointExtensions` authorizes a real Workspace Admin identity), which the ADR-022 header posture does not provide — and it is the one mapped route with no entry in `web/openapi/contigo-api.v1.json`. | Audit checks in A1, A9 and A12 are SQL against `audit_event`, not API calls. It is the only `/api/...` path in this document that does not resolve to a documented operation; every other one does. |
+| 6 | **`GET /api/audit` needs an authenticated `ClaimsPrincipal`** (`Raffa.Api.AuditEndpointExtensions` authorizes a real Workspace Admin identity), which the ADR-022 header posture does not provide — and it is the one mapped route with no entry in `web/openapi/raffa-api.v1.json`. | Audit checks in A1, A9 and A12 are SQL against `audit_event`, not API calls. It is the only `/api/...` path in this document that does not resolve to a documented operation; every other one does. |

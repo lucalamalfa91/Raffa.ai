@@ -6,7 +6,7 @@ const DEFAULT_CALLBACK_PATH = 'callback';
  * The native app scheme registered in app.json ("expo.scheme"). This is the
  * same scheme Entra ID's public-client registration must allow as a native
  * reply URL (ADR-010: "the redirect URI for the native client is the
- * platform's declared scheme (e.g. `contigo://callback`), registered on the
+ * platform's declared scheme (e.g. `raffa://callback`), registered on the
  * public client registration").
  *
  * app.json stays the single source of truth; this constant is read from it
@@ -28,8 +28,8 @@ export function buildNativeRedirectUri(scheme: string, path: string = DEFAULT_CA
 }
 
 /**
- * The Contigo mobile app's OIDC native redirect URI (parent story us-01
- * AC-1: Expo + TypeScript scaffold with `contigo://callback` native
+ * The Raffa mobile app's OIDC native redirect URI (parent story us-01
+ * AC-1: Expo + TypeScript scaffold with `raffa://callback` native
  * redirect).
  */
 export function getNativeRedirectUri(): string {

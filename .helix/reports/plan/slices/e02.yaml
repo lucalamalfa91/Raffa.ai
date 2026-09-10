@@ -39,16 +39,16 @@ phases:
   - id: 8
     name: phase-8
     tasks:
-      - {id: E02/F04/US01/T01, prompt: reports/workitems/epic-02-contract-intelligence/feature-04-ask-contigo-citations/us-01-query-router/tasks/task-01-query-router.md, produces: [query-router], depends_on: [contract-schema], effort: M, layer: backend, status: live}
+      - {id: E02/F04/US01/T01, prompt: reports/workitems/epic-02-contract-intelligence/feature-04-ask-raffa-citations/us-01-query-router/tasks/task-01-query-router.md, produces: [query-router], depends_on: [contract-schema], effort: M, layer: backend, status: live}
   - id: 9
     name: phase-9
     tasks:
-      - {id: E02/F04/US01/T02, prompt: reports/workitems/epic-02-contract-intelligence/feature-04-ask-contigo-citations/us-01-query-router/tasks/task-02-deterministic-queries.md, produces: [deterministic-queries], depends_on: [query-router], effort: M, layer: backend, status: live}
-      - {id: E02/F04/US02/T01, prompt: reports/workitems/epic-02-contract-intelligence/feature-04-ask-contigo-citations/us-02-rag-citations/tasks/task-01-rag-citations.md, produces: [rag-citations], depends_on: [tenant-retrieval, ai-gateway-roles], effort: L, layer: backend, status: live}
+      - {id: E02/F04/US01/T02, prompt: reports/workitems/epic-02-contract-intelligence/feature-04-ask-raffa-citations/us-01-query-router/tasks/task-02-deterministic-queries.md, produces: [deterministic-queries], depends_on: [query-router], effort: M, layer: backend, status: live}
+      - {id: E02/F04/US02/T01, prompt: reports/workitems/epic-02-contract-intelligence/feature-04-ask-raffa-citations/us-02-rag-citations/tasks/task-01-rag-citations.md, produces: [rag-citations], depends_on: [tenant-retrieval, ai-gateway-roles], effort: L, layer: backend, status: live}
   - id: 10
     name: phase-10
     tasks:
-      - {id: E02/F04/US02/T02, prompt: reports/workitems/epic-02-contract-intelligence/feature-04-ask-contigo-citations/us-02-rag-citations/tasks/task-02-abstain-guard.md, produces: [abstain-guard], depends_on: [rag-citations], effort: M, layer: backend, status: live}
+      - {id: E02/F04/US02/T02, prompt: reports/workitems/epic-02-contract-intelligence/feature-04-ask-raffa-citations/us-02-rag-citations/tasks/task-02-abstain-guard.md, produces: [abstain-guard], depends_on: [rag-citations], effort: M, layer: backend, status: live}
   - id: 11
     name: phase-11
     tasks:

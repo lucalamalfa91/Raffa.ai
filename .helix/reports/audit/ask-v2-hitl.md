@@ -1,12 +1,12 @@
-# HITL — Ask Contigo V2 (epic-13 / e13)
+# HITL — Ask Raffa V2 (epic-13 / e13)
 
 Operator: review, in this order,
 
 1. `inputs/requirements.md` (§0 decisions D1–D8, §5 requirements, §10 acceptance);
-2. `inputs/design/prototypes/contigo-v2/ia-v2.md` (V2 routes, nav, divergences
-   from `Contigo V2 Prototype.html`) and `screens-v2.md`;
+2. `inputs/design/prototypes/raffa-v2/ia-v2.md` (V2 routes, nav, divergences
+   from `Raffa V2 Prototype.html`) and `screens-v2.md`;
 3. `reports/audit/ask-v2-gaps.md` (every OPEN row → an e13 task);
-4. `reports/architecture/ADR-024-ask-contigo-v2.md`, the superseded footer
+4. `reports/architecture/ADR-024-ask-raffa-v2.md`, the superseded footer
    on ADR-023, the epic-13 amendment footers on ADR-001/004/011/018/020;
 5. `reports/workitems/epic-13-ask-v2/` (11 features, 20 tasks) and
    `reports/plan/slices/e13.yaml` (five phases);
@@ -33,14 +33,14 @@ by hand in the same format as `gates/readiness-gaps.hitl-ok`
 slice: ask-v2
 stamped_at: $(Get-Date -AsUTC -Format s)Z
 reviewed: inputs/requirements.md, reports/audit/ask-v2-gaps.md, ADR-024, epic-13, slices/e13.yaml
-decision: accept e13 (Ask Contigo V2) as the next wave; e12 superseded
+decision: accept e13 (Ask Raffa V2) as the next wave; e12 superseded
 blockers: none
 "@ | Set-Content -Encoding ascii reports/plan/gates/ask-v2.hitl-ok
 ```
 
 Then launch the wave from **Helix Studio**: Studio idle, Claude Code Max
 login active (`ANTHROPIC_API_KEY` unset), `reports/plan/slice.current.yaml`
-= `slices/e13.yaml` (already copied), open `.helix/contigo-process.yaml`,
+= `slices/e13.yaml` (already copied), open `.helix/raffa-process.yaml`,
 select `execution-fanout`, Run. Or:
 
 ```

@@ -4,7 +4,7 @@ type: task
 story: us-01-portfolio-list-filters
 wave: R1
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-portfolio-list — 01 Portfolio List
@@ -18,7 +18,7 @@ GET /api/contracts spec 8.1 columns + server-side tenant filter.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `portfolio-list` |
+| workspace/raffa-backend/src/ | implementation for `portfolio-list` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-002, ADR-009.
@@ -30,7 +30,7 @@ GET /api/contracts spec 8.1 columns + server-side tenant filter.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | portfolio-list behaviour | workspace/contigo-backend/tests |
+| unit | portfolio-list behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

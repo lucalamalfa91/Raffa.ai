@@ -1,4 +1,4 @@
-# Product-owner scope notes — Contigo V1
+# Product-owner scope notes — Raffa V1
 
 Author: product-owner (independent lane). Source of truth: `inputs/product-spec.md`
 (§1, §1.1, §1.2, §3, §4, §16, §17, §20) and `inputs/engineering-brief.md` (§3, §11,
@@ -15,7 +15,7 @@ decide platform (SKU/region/git flow/stack), which other seats own per the locke
 | 4. New Purchase / Quote Check | Assess a supplier proposal before signature, in minutes. |
 
 All four jobs are in V1 scope. They are delivered across R0–R4 (see the ADR), but
-the Day-1 path (workspace, upload, extract, review, Ask Contigo) must work on `demo`
+the Day-1 path (workspace, upload, extract, review, Ask Raffa) must work on `demo`
 first per brief §13.
 
 ## 2. Personas and roles (spec §3.1)
@@ -49,11 +49,11 @@ DB) is out of scope. Only `dev` + `demo` exist.
 | **R0 — Foundation** | Auth, workspace, multi-tenancy, roles, upload, storage, DB, audit baseline | A secure workspace can ingest documents |
 | **R1 — Contract Intelligence** | Extraction **including OCR in V1** (ADR-017), schema, portfolio, Contract 360, Q&A, citations, validation | Customer can upload contracts (digital and scanned) and ask reliable questions |
 | **R2 — Renewals** | Dates, cancellation deadline, alerts, dashboard, priority, recommendations | Procurement does not miss material renewal windows |
-| **R3 — Savings** | Benchmark service/adapters, price comparison, savings dashboard/workflow | Contigo quantifies credible savings opportunities |
+| **R3 — Savings** | Benchmark service/adapters, price comparison, savings dashboard/workflow | Raffa quantifies credible savings opportunities |
 | **R4 — Quote Check** | Quote extraction, benchmark, assessment, target, negotiation strategy | A new proposal can be assessed in minutes |
 
 Ordering note (brief §11): the **first technical slice is platform** — public
-`lucalamalfa91/contigo` monorepo + Terraform `dev`/`demo` + CI/CD + git-flow ADR, then a deployable API.
+`lucalamalfa91/raffa` monorepo + Terraform `dev`/`demo` + CI/CD + git-flow ADR, then a deployable API.
 Product waves R0–R4 then build on that. R3/R4 must **not** depend on a paid external
 benchmark API for the first `demo` (see ADR-scope-r0-r4.md).
 
@@ -69,7 +69,7 @@ benchmark API for the first `demo` (see ADR-scope-r0-r4.md).
 - **After negotiation:** record outcome, track realized savings, use outcome as
   permissioned learning data.
 
-North Star (spec title): *"Contigo knows what we bought, what we pay, when we need to
+North Star (spec title): *"Raffa knows what we bought, what we pay, when we need to
 act, and where we can save money."*
 
 ## 6. Acceptance hooks (spec §17, §Appendix C) for later stories
@@ -96,7 +96,7 @@ Appendix C rules every story must honor (short list):
 9. Capture negotiation outcomes and corrections from day one.
 10. If data quality is insufficient, return uncertainty, not fabricated precision.
 
-Final test (Appendix C): *"Does this help Contigo build its own procurement intelligence
+Final test (Appendix C): *"Does this help Raffa build its own procurement intelligence
 layer, or are we simply building a UI around somebody else's API?"*
 
 ## 7. Boundaries this seat does NOT own

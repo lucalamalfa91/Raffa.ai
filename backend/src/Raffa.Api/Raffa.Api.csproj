@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Raffa.SharedKernel\Raffa.SharedKernel.csproj" />
+    <ProjectReference Include="..\Raffa.Identity.Workspace\Raffa.Identity.Workspace.csproj" />
+    <ProjectReference Include="..\Raffa.Documents.Contracts\Raffa.Documents.Contracts.csproj" />
+    <ProjectReference Include="..\Raffa.Suppliers.Products\Raffa.Suppliers.Products.csproj" />
+    <ProjectReference Include="..\Raffa.Renewals\Raffa.Renewals.csproj" />
+    <ProjectReference Include="..\Raffa.Savings\Raffa.Savings.csproj" />
+    <ProjectReference Include="..\Raffa.Quotes\Raffa.Quotes.csproj" />
+    <ProjectReference Include="..\Raffa.Chat\Raffa.Chat.csproj" />
+    <ProjectReference Include="..\Raffa.Benchmark\Raffa.Benchmark.csproj" />
+    <ProjectReference Include="..\Raffa.AiGateway\Raffa.AiGateway.csproj" />
+    <ProjectReference Include="..\Raffa.Audit\Raffa.Audit.csproj" />
+    <!-- Task E13/F07/US01/T01 (insights-calculators): InsightsEndpointExtensions.cs composes
+         Raffa.Insights' calculators/DTOs (CriticalityScoreCalculator, StrategyPackBuilder,
+         Contracts/*) — new, unmapped (Program.cs does not call MapInsightsEndpoints/
+         AddInsightsModule this task; F06/T01 maps it in phase 3). -->
+    <ProjectReference Include="..\Raffa.Insights\Raffa.Insights.csproj" />
+    <!-- Task E13/F02/US01/T02 (market-index): MarketEndpointExtensions.cs (GET
+         /api/market/records/{id}) composes Raffa.Market.Retrieval.MarketRecordQueryService —
+         new, unmapped (Program.cs does not call MapMarketEndpoints/AddMarketModule this task;
+         F06/T01 maps it in this same phase — see that file's own doc comment). -->
+    <!-- Task E13/F06/US01/T01 (ask-engine): AskCopilotService composes Raffa.Market's own
+         IMarketKnowledgeRetrieval (market notes) alongside Raffa.Benchmark's IBenchmarkService
+         (already transitively registered via AddSavingsModule/AddQuotesModule) — the market
+         -intelligence feed side of the three-source context pack (ADR-024). -->
+    <ProjectReference Include="..\Raffa.Market\Raffa.Market.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Only the host may reference a cloud storage SDK directly (ADR-002); domain modules see
+         only Raffa.SharedKernel.Storage.IDocumentStorage. -->
+    <PackageReference Include="Azure.Storage.Blobs" Version="12.26.0" />
+  </ItemGroup>
+
+</Project>

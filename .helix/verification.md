@@ -3,17 +3,17 @@
 Command (from this machine, `${VAR}` stubbed — unset is a hard bind error):
 
 ```text
-python contigo-flow/.helix/scripts/validate-artifact.py \
-  contigo-flow/.helix/contigo-process.yaml \
+python raffa-flow/.helix/scripts/validate-artifact.py \
+  raffa-flow/.helix/raffa-process.yaml \
   --helix-backend C:/Users/luca.la-malfa/source/repos/helix/src/backend \
   --stub-env
 ```
 
-Verbatim output (2026-09-01, after cost-hub / ceo-briefing / contigo-cost-briefing
+Verbatim output (2026-09-01, after cost-hub / ceo-briefing / raffa-cost-briefing
 were removed; passata 1 is terminal on `DECOMPOSITION_OK:`):
 
 ```text
-OK ['docs-intake', 'lane-product-owner', 'lane-software-architect', 'lane-cloud-architect', 'lane-security-architect', 'lane-client-architect', 'lane-delivery-manager', 'architecture-lanes', 'council-close', 'architecture-council', 'decomposition', 'decomposition-check', 'decomposition-remediation', 'contigo-design', 'contigo-plan-r0-r4', 'contigo-plan-close', 'execution-loop', 'contigo-execution', 'execution-fanout']
+OK ['docs-intake', 'lane-product-owner', 'lane-software-architect', 'lane-cloud-architect', 'lane-security-architect', 'lane-client-architect', 'lane-delivery-manager', 'architecture-lanes', 'council-close', 'architecture-council', 'decomposition', 'decomposition-check', 'decomposition-remediation', 'raffa-design', 'raffa-plan-r0-r4', 'raffa-plan-close', 'execution-loop', 'raffa-execution', 'execution-fanout']
 advisory ADR-0103: SKIPPED (missing module agent_framework: non-blocking advisories)
 prompt files: all present
 ```

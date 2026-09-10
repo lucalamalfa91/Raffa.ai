@@ -4,21 +4,21 @@ type: task
 story: us-01-web-v2
 wave: 13
 status: live
-target_repo: contigo-web
+target_repo: raffa-web
 ---
 
 # task-03-web-documents-v2 — Multi-file, Not added, attention filter, real stages, review state; OpenAPI + client regen (documents)
 
 ## Coding objective
 
-Rebuild `/documents` to screen 3 of `inputs/design/prototypes/contigo-v2/screens-v2.md`
-from `inputs/design/prototypes/Contigo V2 Prototype.html` — search the
-unpacked `contigo-v2/markup.html` for **"First your contracts. Then your
+Rebuild `/documents` to screen 3 of `inputs/design/prototypes/raffa-v2/screens-v2.md`
+from `inputs/design/prototypes/Raffa V2 Prototype.html` — search the
+unpacked `raffa-v2/markup.html` for **"First your contracts. Then your
 questions."**, **"Nothing needs you right now."**, **"All documents ·"**,
-**"is now askable."** and `contigo-v2/app.jsx` for `docsEmpty`, `docRows`,
+**"is now askable."** and `raffa-v2/app.jsx` for `docsEmpty`, `docRows`,
 `stageLabels`, `filterAttn` / `filterAll`, `filterHint`, `kbSummary`,
 `justValidated`, `askValidated`, `pickFiles` / `startUpload`. First,
-document the phase-2 endpoints in `web/openapi/contigo-api.v1.json`
+document the phase-2 endpoints in `web/openapi/raffa-api.v1.json`
 exactly as `inputs/requirements.md` §6 and the backend tests define them
 (`GET /api/documents`, `GET /api/documents/{id}/preview`,
 `POST /api/documents/{id}/reprocess`, `DELETE /api/documents/{id}`, the
@@ -34,9 +34,9 @@ files, uploads run with ≤ 3 in flight); one row per file from the moment
 it is picked; per-file outcome cards: completed / needs_review / failed
 (existing copy) and the new **Not added** card for 422 with the reason
 mapped to the requirements copy ("Not added: this looks like a recipe,
-not a contract. Contigo only keeps contracts, order forms, quotes and the
+not a contract. Raffa only keeps contracts, order forms, quotes and the
 documents around them. Drop the signed agreement or the supplier's
-proposal." / for `no_readable_text`: "Not added: Contigo could not read
+proposal." / for `no_readable_text`: "Not added: Raffa could not read
 any contract text in this file. Try a clearer scan or the original PDF.")
 and for 415 the format message — rejected files are session-only, never
 counted in the summary; a Quote outcome card offers "Open Quote check" →
@@ -62,7 +62,7 @@ row; Procurement does not.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| `web/openapi/contigo-api.v1.json` | documents V2 endpoints + responses + enum (phase-3 writer) |
+| `web/openapi/raffa-api.v1.json` | documents V2 endpoints + responses + enum (phase-3 writer) |
 | `web/src/api/generated/schema.ts`, `web/src/api/client.ts` | regenerate + new methods (phase-3 writer) |
 | `web/src/routes/documents/index.tsx`, `UploadDropzone.tsx`, `UploadResultCard.tsx`, `DocumentStatusTable.tsx`, `ProcessingPipeline.tsx`, `documentTable.ts`, `uploadPipeline.ts`, `documents.css` | V2 behaviour + copy |
 | `web/src/routes/documents/OnboardingEmptyState.tsx`, `AttentionFilter.tsx`, `ReviewState.tsx`, `useDocumentsList.ts` | new |
@@ -70,7 +70,7 @@ row; Procurement does not.
 | `web/tests/routes/documents/*`, `web/tests/api/client.test.ts` | updated / new tests |
 
 ## Context the implementer needs
-- **Design**: `inputs/design/prototypes/Contigo V2 Prototype.html`; unpacked anchors above; `contigo-v2/styles.css`; `contigo-v2/screens-v2.md` §3 and §4; requirements R-DOC-01/04/05/06/09, R-WEB-05, R-WEB-07 (`inputs/requirements.md`). Divergence: Procurement can upload (D8).
+- **Design**: `inputs/design/prototypes/Raffa V2 Prototype.html`; unpacked anchors above; `raffa-v2/styles.css`; `raffa-v2/screens-v2.md` §3 and §4; requirements R-DOC-01/04/05/06/09, R-WEB-05, R-WEB-07 (`inputs/requirements.md`). Divergence: Procurement can upload (D8).
 - **Architecture decisions in force**: ADR-024, ADR-018 / ADR-020 (amended), ADR-019 (tokens), ADR-012 (one generated client).
 - Gaps G-DOCS-V2-UI, G-ADMISSION (web side), G-DOC-API (web side).
 - **Do not touch**: `web/src/routes/ask/**`, `components/shell/**`, `routes/contracts/contract360/**` (F10/T01 this phase), `routes/contracts/review/*` internals (reuse as-is).

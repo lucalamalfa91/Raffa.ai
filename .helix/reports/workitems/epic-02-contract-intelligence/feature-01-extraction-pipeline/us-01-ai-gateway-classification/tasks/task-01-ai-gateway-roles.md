@@ -4,7 +4,7 @@ type: task
 story: us-01-ai-gateway-classification
 wave: R1
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-ai-gateway-roles — 01 Ai Gateway Roles
@@ -18,7 +18,7 @@ Implement IAiGateway classify/extract/embed/answer + config-selected IDs.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `ai-gateway-roles` |
+| workspace/raffa-backend/src/ | implementation for `ai-gateway-roles` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-004, ADR-011.
@@ -30,7 +30,7 @@ Implement IAiGateway classify/extract/embed/answer + config-selected IDs.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | ai-gateway-roles behaviour | workspace/contigo-backend/tests |
+| unit | ai-gateway-roles behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

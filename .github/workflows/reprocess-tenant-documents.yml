@@ -17,7 +17,7 @@ name: reprocess-tenant-documents
 # `backend/scripts/` Python helper when the API is not the right tool"). This
 # workflow calls the **API**, because:
 #
-#   1. The API host is reachable from a GitHub runner. `ca-contigo-<env>-api`
+#   1. The API host is reachable from a GitHub runner. `ca-raffa-<env>-api`
 #      has public ingress -- `.github/workflows/web.yml` already resolves that
 #      exact FQDN with `az resource show` and bakes it into the SPA's
 #      `config.json` as `apiBaseUrl`. There is no private-link / VNet gate to
@@ -39,9 +39,9 @@ name: reprocess-tenant-documents
 #
 # Reprocess is Admin-only (R-DOC-07 / R-DOC-10) and no host authentication is
 # wired yet, so the caller's role is carried as a header. Two spellings are in
-# flight in this codebase -- `X-Role` (`Contigo.Api.CapabilitiesEndpointExtensions`,
+# flight in this codebase -- `X-Role` (`Raffa.Api.CapabilitiesEndpointExtensions`,
 # parsed by `WorkspaceRoleClaimResolver`) and `X-Workspace-Role` (the documented
-# posture for the admin-gated document endpoints, `web/openapi/contigo-api.v1.json`
+# posture for the admin-gated document endpoints, `web/openapi/raffa-api.v1.json`
 # `deleteDocument`/`reprocessDocument`) -- and neither is a declared parameter
 # of the operation yet. This workflow sends **both**, with the same value; a
 # 403 is surfaced as a named error rather than a silent skip. When ADR-010's
@@ -51,7 +51,7 @@ on:
     inputs:
       target_environment:
         description: >-
-          GitHub Environment (and Postgres database, contigo_<env>) whose
+          GitHub Environment (and Postgres database, raffa_<env>) whose
           tenant is reprocessed.
         required: true
         type: choice
@@ -132,7 +132,7 @@ jobs:
         run: az extension add --name containerapp --upgrade -y
 
       - name: Resolve resource group
-        run: echo "RESOURCE_GROUP=rg-contigo-${TARGET_ENVIRONMENT}" >> "$GITHUB_ENV"
+        run: echo "RESOURCE_GROUP=rg-raffa-${TARGET_ENVIRONMENT}" >> "$GITHUB_ENV"
 
       # Same two-step resolution web.yml uses for the SPA's apiBaseUrl (az
       # resource show keeps the ARM shape; az containerapp show flattens some
@@ -140,8 +140,8 @@ jobs:
       - name: Resolve API base URL
         run: |
           set -euo pipefail
-          API_NAME="ca-contigo-${TARGET_ENVIRONMENT}-api"
-          HCP_RUNS="https://app.terraform.io/app/contigo-platform/workspaces/contigo-${TARGET_ENVIRONMENT}/runs"
+          API_NAME="ca-raffa-${TARGET_ENVIRONMENT}-api"
+          HCP_RUNS="https://app.terraform.io/app/raffa-platform/workspaces/raffa-${TARGET_ENVIRONMENT}/runs"
           API_FQDN=$(az resource show --resource-group "$RESOURCE_GROUP" --name "$API_NAME" \
             --resource-type Microsoft.App/containerApps \
             --query "properties.configuration.ingress.fqdn || properties.latestRevisionFqdn" -o tsv | tr -d '\r')
@@ -164,7 +164,7 @@ jobs:
       - name: Detect the AI gateway this environment runs
         run: |
           set -euo pipefail
-          API_NAME="ca-contigo-${TARGET_ENVIRONMENT}-api"
+          API_NAME="ca-raffa-${TARGET_ENVIRONMENT}-api"
           ENDPOINT=$(az containerapp show --name "$API_NAME" --resource-group "$RESOURCE_GROUP" \
             --query "properties.template.containers[0].env[?name=='AiGateway__Endpoint'].value | [0]" -o tsv 2>/dev/null | tr -d '\r' || true)
           if [ -n "$ENDPOINT" ] && [ "$ENDPOINT" != "None" ]; then
@@ -186,7 +186,7 @@ jobs:
           fi
           echo "API healthy."
 
-      # GET /api/documents (R-DOC-06, web/openapi/contigo-api.v1.json
+      # GET /api/documents (R-DOC-06, web/openapi/raffa-api.v1.json
       # `listDocuments`): tenant-scoped, paged, newest-first, `pageSize` capped
       # at 100 by the same convention GET /api/contracts documents. No `status`
       # filter -- R-DOC-07's operator job re-processes *every* document of the
@@ -229,12 +229,12 @@ jobs:
           cat /tmp/document-index.tsv
           echo "::endgroup::"
           if [ "$TOTAL_DOCS" -eq 0 ]; then
-            echo "::warning::tenant ${TENANT_ID} has no documents in contigo_${TARGET_ENVIRONMENT} -- nothing to reprocess. Check the tenant id."
+            echo "::warning::tenant ${TENANT_ID} has no documents in raffa_${TARGET_ENVIRONMENT} -- nothing to reprocess. Check the tenant id."
           fi
           echo "Found $TOTAL_DOCS document(s)."
 
       # POST /api/documents/{id}/reprocess per document (R-DOC-07,
-      # web/openapi/contigo-api.v1.json `reprocessDocument`): 200 with
+      # web/openapi/raffa-api.v1.json `reprocessDocument`): 200 with
       # {documentId, contractId, documentType, processingStatus, pagesParsed,
       # chunksIndexed}, 403 if the caller is not Admin, 404 if the id is not
       # this tenant's. One document's failure never hides the others
@@ -302,7 +302,7 @@ jobs:
       - name: Fetch Postgres connection string (ADR-021)
         run: |
           set -euo pipefail
-          HCP_RUNS="https://app.terraform.io/app/contigo-platform/workspaces/contigo-${TARGET_ENVIRONMENT}/runs"
+          HCP_RUNS="https://app.terraform.io/app/raffa-platform/workspaces/raffa-${TARGET_ENVIRONMENT}/runs"
           KV_NAME=$(az keyvault list --resource-group "$RESOURCE_GROUP" --query "[0].name" -o tsv)
           if [ -z "$KV_NAME" ]; then
             echo "::error::no Key Vault found in resource group $RESOURCE_GROUP. Confirm the HCP VCS apply at $HCP_RUNS, then re-run this job."
@@ -313,7 +313,7 @@ jobs:
           KV_STATUS=$?
           set -e
           if [ $KV_STATUS -ne 0 ] || [ -z "$RAW_CONN" ]; then
-            echo "::error::could not read secret 'postgres-connection' from $KV_NAME. Either the HCP VCS apply at $HCP_RUNS has not created it yet, or this environment's CI deploy principal (contigo-sp-${TARGET_ENVIRONMENT}) is missing the 'Key Vault Secrets User' role on $KV_NAME. Azure CLI said: $(tail -c 500 /tmp/kv_secret_show.err | tr '\n' ' ')"
+            echo "::error::could not read secret 'postgres-connection' from $KV_NAME. Either the HCP VCS apply at $HCP_RUNS has not created it yet, or this environment's CI deploy principal (raffa-sp-${TARGET_ENVIRONMENT}) is missing the 'Key Vault Secrets User' role on $KV_NAME. Azure CLI said: $(tail -c 500 /tmp/kv_secret_show.err | tr '\n' ' ')"
             exit 1
           fi
           echo "::add-mask::$RAW_CONN"
@@ -394,7 +394,7 @@ jobs:
             echo
             echo "| | |"
             echo "|---|---|"
-            echo "| Environment | \`${TARGET_ENVIRONMENT}\` (\`contigo_${TARGET_ENVIRONMENT}\`) |"
+            echo "| Environment | \`${TARGET_ENVIRONMENT}\` (\`raffa_${TARGET_ENVIRONMENT}\`) |"
             echo "| Tenant | \`${TENANT_ID}\` |"
             echo "| API | ${API_BASE_URL} |"
             echo "| Documents reprocessed | ${DOCUMENT_COUNT} |"

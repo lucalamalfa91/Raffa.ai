@@ -20,7 +20,7 @@ output "fqdn" {
 }
 
 output "database_name" {
-  description = "Application database name (contigo_<env>), created on this server."
+  description = "Application database name (raffa_<env>), created on this server."
   value       = azurerm_postgresql_flexible_server_database.app.name
 }
 

@@ -1,6 +1,6 @@
-# Contigo — model, tool, and MCP catalogue
+# Raffa — model, tool, and MCP catalogue
 
-Bindings live in `contigo-process.yaml`. This file is the rationale.
+Bindings live in `raffa-process.yaml`. This file is the rationale.
 
 ---
 

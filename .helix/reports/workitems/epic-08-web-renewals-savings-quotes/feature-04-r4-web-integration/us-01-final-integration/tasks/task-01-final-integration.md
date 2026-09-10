@@ -4,7 +4,7 @@ type: task
 story: us-01-final-integration
 wave: 8
 status: live
-target_repo: contigo-web
+target_repo: raffa-web
 ---
 
 # task-01-final-integration — Browser Day-1 walk on demo
@@ -19,7 +19,7 @@ prototype, recording the web-pass integration gate.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-web/e2e/day1.spec.ts | end-to-end Day-1 smoke |
+| workspace/raffa-web/e2e/day1.spec.ts | end-to-end Day-1 smoke |
 | inputs/design/prototypes/day1-demo.html | reference (cite) |
 | inputs/design/prototypes/ia.md | Day-1 path (cite) |
 
@@ -33,7 +33,7 @@ prototype, recording the web-pass integration gate.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| e2e | full §20 Day-1 flow in browser | workspace/contigo-web/e2e |
+| e2e | full §20 Day-1 flow in browser | workspace/raffa-web/e2e |
 
 ## Wave-spec entry
 ```yaml

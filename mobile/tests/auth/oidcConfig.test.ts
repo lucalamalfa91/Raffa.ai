@@ -8,16 +8,16 @@ import {
 import type { MobileEnvConfig } from '../../src/config/env';
 
 const env: MobileEnvConfig = {
-  apiBaseUrl: 'https://api.dev.contigo.example',
+  apiBaseUrl: 'https://api.dev.raffa.example',
   oidcAuthority: 'https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000/v2.0',
   oidcClientId: '11111111-1111-1111-1111-111111111111',
   oidcApiScopes: [
-    'api://11111111-1111-1111-1111-111111111111/Contigo.Read',
-    'api://11111111-1111-1111-1111-111111111111/Contigo.Write',
+    'api://11111111-1111-1111-1111-111111111111/Raffa.Read',
+    'api://11111111-1111-1111-1111-111111111111/Raffa.Write',
   ],
 };
 
-const redirectUri = 'contigo://callback';
+const redirectUri = 'raffa://callback';
 
 describe('buildOidcScopes', () => {
   it('prepends the standard OIDC scopes to the per-environment API scopes', () => {
@@ -53,8 +53,8 @@ describe('buildAuthRequestConfig', () => {
     expect(config.codeChallengeMethod).toBe(CodeChallengeMethod.S256);
   });
 
-  it('uses the native contigo:// redirect scheme when passed one (AC-1)', () => {
-    expect(buildAuthRequestConfig(env, 'contigo://callback').redirectUri).toBe('contigo://callback');
+  it('uses the native raffa:// redirect scheme when passed one (AC-1)', () => {
+    expect(buildAuthRequestConfig(env, 'raffa://callback').redirectUri).toBe('raffa://callback');
   });
 
   it('never carries a client secret (public client / PKCE only, AC-2)', () => {

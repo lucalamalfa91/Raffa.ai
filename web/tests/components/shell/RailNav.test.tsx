@@ -36,7 +36,7 @@ function mockApiClient(listConversations: ApiClient["listConversations"] = vi.fn
     getQuoteAssessment: vi.fn(),
     recalculateQuoteAssessment: vi.fn(),
     captureNegotiationOutcome: vi.fn(),
-    askContigo: vi.fn(),
+    askRaffa: vi.fn(),
     getSavingsKpis: vi.fn(),
     getSavingsOpportunities: vi.fn(),
     listConversations,
@@ -98,16 +98,16 @@ describe("RailNav (V2 two-tier rail, ADR-024 amendment; task E13/F09/US01/T01, g
     // (loadCurrentWorkspace()) -- every test needs one set, even the pre-existing ones above that
     // never assert on conversations, the same "shell-level hook needs a real workspace" reasoning
     // useValidatedContractCount already established for AppShell.tsx.
-    window.sessionStorage.setItem("contigo.signin.currentWorkspace", JSON.stringify({ id: WORKSPACE_ID, name: "Acme Procurement" }));
+    window.sessionStorage.setItem("raffa.signin.currentWorkspace", JSON.stringify({ id: WORKSPACE_ID, name: "Acme Procurement" }));
   });
 
-  it("renders the workspace name and the two tiers in order: Ask Contigo, Documents, then 'From your contracts' / Portfolio, Renewals, Quote check", () => {
+  it("renders the workspace name and the two tiers in order: Ask Raffa, Documents, then 'From your contracts' / Portfolio, Renewals, Quote check", () => {
     const { container } = renderRail();
 
     expect(screen.getByText("Acme Procurement")).toBeInTheDocument();
 
     const labels = Array.from(container.querySelectorAll(".shell-rail-item-label")).map((node) => node.textContent);
-    expect(labels).toEqual(["Ask Contigo", "Documents", "Portfolio", "Renewals", "Quote check"]);
+    expect(labels).toEqual(["Ask Raffa", "Documents", "Portfolio", "Renewals", "Quote check"]);
   });
 
   it("has no Home or Review queue item anywhere in the rail (V2 removes both)", () => {
@@ -117,10 +117,10 @@ describe("RailNav (V2 two-tier rail, ADR-024 amendment; task E13/F09/US01/T01, g
     expect(screen.queryByText("Review queue")).not.toBeInTheDocument();
   });
 
-  it("Ask Contigo carries the ⌘K badge and an empty conversation slot with '+ New chat'", () => {
+  it("Ask Raffa carries the ⌘K badge and an empty conversation slot with '+ New chat'", () => {
     renderRail();
 
-    const askLink = screen.getByText("Ask Contigo").closest("a")!;
+    const askLink = screen.getByText("Ask Raffa").closest("a")!;
     expect(askLink).toHaveTextContent("⌘K");
 
     const newChat = screen.getByRole("link", { name: "+ New chat" });

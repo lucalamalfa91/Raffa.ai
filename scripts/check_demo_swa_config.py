@@ -18,17 +18,17 @@ never needs a credential -- the caller (an operator, or the optional
 `.github/workflows/demo-config-check.yml` workflow_dispatch job) supplies
 the already-known Static Web App hostname, e.g. copied from the `web.yml`
 deploy job's own "Project deployed to https://<host>" log line, or from
-`az staticwebapp show --name swa-contigo-<env> --resource-group
-rg-contigo-<env> --query defaultHostname`.
+`az staticwebapp show --name swa-raffa-<env> --resource-group
+rg-raffa-<env> --query defaultHostname`.
 
 Verified live against the real `demo` and `dev` Static Web Apps on
 2026-09-07/08 (see `.helix/reports/execution/demo-v-promotion-runbook.md`
 for the recorded output this script's checks are modelled on):
 
     demo: https://mango-desert-084c2231e.6.azurestaticapps.net/config.json
-      apiBaseUrl -> https://ca-contigo-demo-api.lemonsea-be9510a4.northeurope.azurecontainerapps.io
+      apiBaseUrl -> https://ca-raffa-demo-api.lemonsea-be9510a4.northeurope.azurecontainerapps.io
     dev:  https://mango-pond-061bc6d1e.6.azurestaticapps.net/config.json
-      apiBaseUrl -> https://ca-contigo-dev-api.politetree-8bd9702e.northeurope.azurecontainerapps.io
+      apiBaseUrl -> https://ca-raffa-dev-api.politetree-8bd9702e.northeurope.azurecontainerapps.io
 
 Usage:
     python scripts/check_demo_swa_config.py --host mango-desert-084c2231e.6.azurestaticapps.net --environment demo
@@ -102,8 +102,8 @@ def evaluate_config(config: object, environment: str) -> list[str]:
     other_env = other_environment(environment)
     api_base_url = config["apiBaseUrl"]
     api_base_url_lower = api_base_url.lower()
-    this_marker = f"ca-contigo-{environment}-api"
-    other_marker = f"ca-contigo-{other_env}-api"
+    this_marker = f"ca-raffa-{environment}-api"
+    other_marker = f"ca-raffa-{other_env}-api"
 
     for needle in FORBIDDEN_API_SUBSTRINGS:
         if needle in api_base_url_lower:
@@ -124,8 +124,8 @@ def evaluate_config(config: object, environment: str) -> list[str]:
     if not isinstance(scopes, list) or not scopes or not all(isinstance(s, str) and s.strip() for s in scopes):
         gaps.append("oidcApiScopes must be a non-empty list of non-empty strings")
     else:
-        scope_marker = f"contigo-{environment}-api"
-        other_scope_marker = f"contigo-{other_env}-api"
+        scope_marker = f"raffa-{environment}-api"
+        other_scope_marker = f"raffa-{other_env}-api"
         if any(other_scope_marker in s for s in scopes):
             gaps.append(f"oidcApiScopes {scopes!r} reference {other_scope_marker!r} ({other_env}), not {environment}")
         elif not any(scope_marker in s for s in scopes):

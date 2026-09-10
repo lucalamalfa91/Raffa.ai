@@ -166,7 +166,7 @@ named filter/clause on an existing endpoint.
   already returns 4xx on invalid invite; the client maps it to the error state —
   client-architect residual, not software-architect). The **currency/region/
   contract-count** list cells are the separate GAP-5.
-- **Ask Contigo citations (doc + page/section) + abstain + route line** — covered
+- **Ask Raffa citations (doc + page/section) + abstain + route line** — covered
   by rag-citations AC-2 (citations or "cannot determine") + query-router AC-1/AC-2.
 - **Renewal threshold strip (0–30 … 270–365 d counts)** — not a gap: `GET
   /api/renewals` returns the pipeline rows, and the client can group rows into

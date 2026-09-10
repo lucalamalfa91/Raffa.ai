@@ -8,7 +8,7 @@ status: active
 # epic-09-schema-apply — Land EF schema on Azure Postgres
 
 Closes the R0 gap: migrations exist and are tested; they were never applied
-to `psql-contigo-dev` / `contigo_dev`. ADR-021.
+to `psql-raffa-dev` / `raffa_dev`. ADR-021.
 
 ## Features
 

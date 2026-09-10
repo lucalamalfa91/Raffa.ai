@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.11" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Raffa.SharedKernel\Raffa.SharedKernel.csproj" />
+    <ProjectReference Include="..\Raffa.Documents.Contracts\Raffa.Documents.Contracts.csproj" />
+    <ProjectReference Include="..\Raffa.Renewals\Raffa.Renewals.csproj" />
+    <ProjectReference Include="..\Raffa.Savings\Raffa.Savings.csproj" />
+    <ProjectReference Include="..\Raffa.Quotes\Raffa.Quotes.csproj" />
+    <ProjectReference Include="..\Raffa.AiGateway\Raffa.AiGateway.csproj" />
+    <ProjectReference Include="..\Raffa.Benchmark\Raffa.Benchmark.csproj" />
+    <ProjectReference Include="..\Raffa.Audit\Raffa.Audit.csproj" />
+    <!-- Task E13/F02/US01/T02 (market-index): Commands/IngestMarketCommand.cs (the `ingest-market`
+         operator command) calls Raffa.Market.Ingestion.MarketIngestionService; Program.cs calls
+         Raffa.Market.ServiceCollectionExtensions.AddMarketModule. -->
+    <ProjectReference Include="..\Raffa.Market\Raffa.Market.csproj" />
+  </ItemGroup>
+</Project>

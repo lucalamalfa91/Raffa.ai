@@ -1,10 +1,10 @@
 import { test, expect, type BrowserContext, type Locator, type Page } from "@playwright/test";
 
 /**
- * Ask Contigo **V2 pilot path** — browser walk on `dev` (task E13/F11/US01/T01,
+ * Ask Raffa **V2 pilot path** — browser walk on `dev` (task E13/F11/US01/T01,
  * us-01-integration AC-3; `inputs/requirements.md` §10 acceptance A1–A14;
  * ADR-024 "Implications for the decomposition" → `web/e2e/v2.spec.ts`;
- * `inputs/design/prototypes/contigo-v2/ia-v2.md` "Pilot path").
+ * `inputs/design/prototypes/raffa-v2/ia-v2.md` "Pilot path").
  *
  * This file is the declared replacement for `e2e/day1.spec.ts`, which walks the
  * V1 information architecture and is red since task E13/F09/US01/T01 moved the
@@ -17,8 +17,8 @@ import { test, expect, type BrowserContext, type Locator, type Page } from "@pla
  *
  * | Row | Covered by | Gate |
  * |---|---|---|
- * | A1 | "a recipe and an unreadable image are refused" (+ "…and the MSA still lands") | always (the MSA half needs `CONTIGO_E2E_MSA_PATH`) |
- * | A2 | "a scanned order form is OCR'd, admitted and shows its supplier" | `E2E_LIVE_FOUNDRY=1` + `CONTIGO_E2E_ORDER_FORM_PNG` |
+ * | A1 | "a recipe and an unreadable image are refused" (+ "…and the MSA still lands") | always (the MSA half needs `RAFFA_E2E_MSA_PATH`) |
+ * | A2 | "a scanned order form is OCR'd, admitted and shows its supplier" | `E2E_LIVE_FOUNDRY=1` + `RAFFA_E2E_ORDER_FORM_PNG` |
  * | A3 | "ciao → warm decline, never an abstain block" | always |
  * | A4 | "posso fare causa a Salesforce? → refusal + commercial analogue" | always |
  * | A5 | "is my Allianz contract above market?" | `E2E_LIVE_FOUNDRY=1` |
@@ -40,9 +40,9 @@ import { test, expect, type BrowserContext, type Locator, type Page } from "@pla
  *
  * A11 (cross-tenant isolation), A12 (no tools / grounding in the Foundry
  * request body) and A13 (golden set) are deliberately **not** browser
- * assertions: they are proven by `Contigo.IntegrationTests`,
- * `Contigo.AiGateway.Tests` and `Contigo.AiEval` respectively, all of which run
- * under `dotnet test Contigo.slnx` in `.github/workflows/backend.yml`. A
+ * assertions: they are proven by `Raffa.IntegrationTests`,
+ * `Raffa.AiGateway.Tests` and `Raffa.AiEval` respectively, all of which run
+ * under `dotnet test Raffa.slnx` in `.github/workflows/backend.yml`. A
  * browser cannot observe a request body or another tenant's rows without
  * fabricating a second identity; `docs/ask-v2-acceptance.md` names the real
  * check for each.
@@ -51,13 +51,13 @@ import { test, expect, type BrowserContext, type Locator, type Page } from "@pla
  *
  * | Variable | Meaning |
  * |---|---|
- * | `CONTIGO_E2E_BASE_URL` | The `dev` Static Web App origin (also used for `demo`). |
- * | `CONTIGO_E2E_ENTRA_EMAIL` | A test-account UPN on that environment's Entra tenant. |
- * | `CONTIGO_E2E_ENTRA_PASSWORD` | That account's password. |
- * | `CONTIGO_E2E_TENANT_ID` | The **fixture-seeded** workspace id (the tenant with validated contracts). Without it the pilot-path suite skips rather than walking an empty, self-created workspace and calling that a pass. |
- * | `CONTIGO_E2E_MSA_PATH` | Optional: a real contract PDF on disk, for A1's "the MSA still lands" half. |
- * | `CONTIGO_E2E_ORDER_FORM_PNG` | Optional: a real scanned order-form PNG, for A2. |
- * | `CONTIGO_E2E_EMPTY_TENANT_ID` | Optional: a workspace id known to hold **zero** validated contracts, for A14's greyed-rail assertion. Defaults to a random uuid, which is equivalent for that assertion (an unknown tenant has no contracts) and is annotated as such. |
+ * | `RAFFA_E2E_BASE_URL` | The `dev` Static Web App origin (also used for `demo`). |
+ * | `RAFFA_E2E_ENTRA_EMAIL` | A test-account UPN on that environment's Entra tenant. |
+ * | `RAFFA_E2E_ENTRA_PASSWORD` | That account's password. |
+ * | `RAFFA_E2E_TENANT_ID` | The **fixture-seeded** workspace id (the tenant with validated contracts). Without it the pilot-path suite skips rather than walking an empty, self-created workspace and calling that a pass. |
+ * | `RAFFA_E2E_MSA_PATH` | Optional: a real contract PDF on disk, for A1's "the MSA still lands" half. |
+ * | `RAFFA_E2E_ORDER_FORM_PNG` | Optional: a real scanned order-form PNG, for A2. |
+ * | `RAFFA_E2E_EMPTY_TENANT_ID` | Optional: a workspace id known to hold **zero** validated contracts, for A14's greyed-rail assertion. Defaults to a random uuid, which is equivalent for that assertion (an unknown tenant has no contracts) and is annotated as such. |
  * | `E2E_LIVE_FOUNDRY` | `1` to run A2 / A5 / A6 / A7. |
  *
  * Sign-in is the real Entra PKCE redirect (ADR-022 keeps it for V2): there is
@@ -73,7 +73,7 @@ import { test, expect, type BrowserContext, type Locator, type Page } from "@pla
  * empty workspace — a workspace with no validated contracts, where Ask is
  * correctly **off** and A1/A3–A10 cannot be observed at all. Rather than assert
  * an honestly-empty screen and call it acceptance, this suite writes the same
- * `contigo.signin.currentWorkspace` key the app itself writes (`workspaceStore.ts`
+ * `raffa.signin.currentWorkspace` key the app itself writes (`workspaceStore.ts`
  * `CURRENT_WORKSPACE_KEY`) with the operator-supplied fixture tenant id — the
  * documented seam, not a mock: every API call then carries that tenant as
  * `X-Tenant-Id` exactly as a human click would.
@@ -89,23 +89,23 @@ import { test, expect, type BrowserContext, type Locator, type Page } from "@pla
  * a Helix implementer session can perform.
  */
 
-const BASE_URL = process.env.CONTIGO_E2E_BASE_URL ?? "";
-const ENTRA_EMAIL = process.env.CONTIGO_E2E_ENTRA_EMAIL ?? "";
-const ENTRA_PASSWORD = process.env.CONTIGO_E2E_ENTRA_PASSWORD ?? "";
-const FIXTURE_TENANT_ID = process.env.CONTIGO_E2E_TENANT_ID ?? "";
-const EMPTY_TENANT_ID = process.env.CONTIGO_E2E_EMPTY_TENANT_ID ?? "";
-const MSA_PATH = process.env.CONTIGO_E2E_MSA_PATH ?? "";
-const ORDER_FORM_PNG_PATH = process.env.CONTIGO_E2E_ORDER_FORM_PNG ?? "";
+const BASE_URL = process.env.RAFFA_E2E_BASE_URL ?? "";
+const ENTRA_EMAIL = process.env.RAFFA_E2E_ENTRA_EMAIL ?? "";
+const ENTRA_PASSWORD = process.env.RAFFA_E2E_ENTRA_PASSWORD ?? "";
+const FIXTURE_TENANT_ID = process.env.RAFFA_E2E_TENANT_ID ?? "";
+const EMPTY_TENANT_ID = process.env.RAFFA_E2E_EMPTY_TENANT_ID ?? "";
+const MSA_PATH = process.env.RAFFA_E2E_MSA_PATH ?? "";
+const ORDER_FORM_PNG_PATH = process.env.RAFFA_E2E_ORDER_FORM_PNG ?? "";
 const LIVE_FOUNDRY = process.env.E2E_LIVE_FOUNDRY === "1";
 
 const SIGN_IN_READY = BASE_URL !== "" && ENTRA_EMAIL !== "" && ENTRA_PASSWORD !== "";
 
 const MISSING_SIGN_IN_ENV =
-  "CONTIGO_E2E_BASE_URL / CONTIGO_E2E_ENTRA_EMAIL / CONTIGO_E2E_ENTRA_PASSWORD are not set — " +
-  "see web/README.md 'End-to-end (Ask Contigo V2 pilot path)' for how to supply them against `dev`.";
+  "RAFFA_E2E_BASE_URL / RAFFA_E2E_ENTRA_EMAIL / RAFFA_E2E_ENTRA_PASSWORD are not set — " +
+  "see web/README.md 'End-to-end (Ask Raffa V2 pilot path)' for how to supply them against `dev`.";
 
 const MISSING_TENANT_ENV =
-  "CONTIGO_E2E_TENANT_ID is not set — the V2 pilot path needs the fixture-seeded workspace " +
+  "RAFFA_E2E_TENANT_ID is not set — the V2 pilot path needs the fixture-seeded workspace " +
   "(the one with validated contracts). A self-created, empty workspace turns Ask off by design " +
   "(R-ASK-10), so walking it would prove nothing. Seed one with " +
   "`.github/workflows/seed-demo-fixture.yml` + `.github/workflows/reprocess-tenant-documents.yml` " +
@@ -116,7 +116,7 @@ const LIVE_FOUNDRY_REASON =
   "when the target environment has AiGateway__Endpoint wired.";
 
 /** `src/routes/signin/workspaceStore.ts` → `CURRENT_WORKSPACE_KEY`. */
-const CURRENT_WORKSPACE_KEY = "contigo.signin.currentWorkspace";
+const CURRENT_WORKSPACE_KEY = "raffa.signin.currentWorkspace";
 
 /** Engineer chrome that `inputs/requirements.md` R-ASK-08 / A9 forbid in any rendered reply. */
 const FORBIDDEN_REPLY_CHROME = [
@@ -275,9 +275,9 @@ function rail(page: Page): Locator {
   return page.getByRole("navigation", { name: "Primary" });
 }
 
-/** The newest Contigo turn's reply body (`ReplyBody.tsx` → `.reply-body[data-reply-kind]`). */
+/** The newest Raffa turn's reply body (`ReplyBody.tsx` → `.reply-body[data-reply-kind]`). */
 function latestReply(page: Page): Locator {
-  return page.locator('.ask-message[data-role="contigo"] .reply-body').last();
+  return page.locator('.ask-message[data-role="raffa"] .reply-body').last();
 }
 
 /**
@@ -287,17 +287,17 @@ function latestReply(page: Page): Locator {
  * when it differs.
  */
 async function ask(page: Page, question: string): Promise<{ reply: Locator; kind: string }> {
-  const input = page.getByRole("textbox", { name: "Ask Contigo a question", exact: true });
+  const input = page.getByRole("textbox", { name: "Ask Raffa a question", exact: true });
   await input.waitFor({ state: "visible", timeout: 30_000 });
   await input.fill(question);
 
-  const before = await page.locator('.ask-message[data-role="contigo"] .reply-body').count();
+  const before = await page.locator('.ask-message[data-role="raffa"] .reply-body').count();
   await page.getByRole("button", { name: "Ask", exact: true }).click();
 
   await expect
-    .poll(async () => page.locator('.ask-message[data-role="contigo"] .reply-body').count(), {
+    .poll(async () => page.locator('.ask-message[data-role="raffa"] .reply-body').count(), {
       timeout: 120_000,
-      message: `Contigo never answered "${question}"`,
+      message: `Raffa never answered "${question}"`,
     })
     .toBeGreaterThan(before);
 
@@ -351,8 +351,8 @@ test.describe("A14 — Ask is home and the rail is two-tier", () => {
     await useWorkspace(page, tenantId, "V2 acceptance — empty workspace");
     console.log(
       EMPTY_TENANT_ID !== ""
-        ? `[A14] empty workspace: CONTIGO_E2E_EMPTY_TENANT_ID=${tenantId}`
-        : `[A14] empty workspace: generated tenant ${tenantId} (set CONTIGO_E2E_EMPTY_TENANT_ID to pin a real one)`,
+        ? `[A14] empty workspace: RAFFA_E2E_EMPTY_TENANT_ID=${tenantId}`
+        : `[A14] empty workspace: generated tenant ${tenantId} (set RAFFA_E2E_EMPTY_TENANT_ID to pin a real one)`,
     );
   });
 
@@ -370,7 +370,7 @@ test.describe("A14 — Ask is home and the rail is two-tier", () => {
   test("the rail is two-tier, in the prototype's order (R-WEB-02)", async () => {
     await page.goto("/ask");
     const labels = rail(page).locator(".shell-rail-item-label");
-    await expect(labels).toHaveText(["Ask Contigo", "Documents", "Portfolio", "Renewals", "Quote check"]);
+    await expect(labels).toHaveText(["Ask Raffa", "Documents", "Portfolio", "Renewals", "Quote check"]);
     await expect(rail(page).locator(".shell-rail-section-kicker")).toHaveText("From your contracts");
     await expect(rail(page).getByRole("link", { name: "+ New chat" })).toBeVisible();
   });
@@ -411,7 +411,7 @@ test.describe("V2 pilot path on the fixture-seeded workspace", () => {
     // one reason — say so once, here.
     await expect(
       page.getByRole("heading", { name: "Ask needs at least one validated contract." }),
-      `CONTIGO_E2E_TENANT_ID=${FIXTURE_TENANT_ID} has no validated contract — run ` +
+      `RAFFA_E2E_TENANT_ID=${FIXTURE_TENANT_ID} has no validated contract — run ` +
         "`.github/workflows/reprocess-tenant-documents.yml` and validate one document first.",
     ).toHaveCount(0);
   });
@@ -448,7 +448,7 @@ test.describe("V2 pilot path on the fixture-seeded workspace", () => {
       // Either documented reason is a pass — which one depends on whether this
       // environment's parser reads the recipe's text (`not_a_contract`) or not
       // (`no_readable_text`). Both are R-DOC-03 refusals; neither is a claim
-      // Contigo cannot back.
+      // Raffa cannot back.
       expect(message).toMatch(/^Not added: /);
       expect(message.length, "R-DOC-04: the refusal says why, warmly and specifically").toBeGreaterThan(40);
     }
@@ -465,7 +465,7 @@ test.describe("V2 pilot path on the fixture-seeded workspace", () => {
     test.skip(
       MSA_PATH === "",
       "no real contract PDF is checked into this repo (see src/routes/documents/sampleDocument.ts) — " +
-        "set CONTIGO_E2E_MSA_PATH to a signed MSA to walk the admitted half of A1. The refusal half " +
+        "set RAFFA_E2E_MSA_PATH to a signed MSA to walk the admitted half of A1. The refusal half " +
         "above runs unconditionally.",
     );
     test.setTimeout(240_000);
@@ -501,7 +501,7 @@ test.describe("V2 pilot path on the fixture-seeded workspace", () => {
     test.skip(!LIVE_FOUNDRY, LIVE_FOUNDRY_REASON);
     test.skip(
       ORDER_FORM_PNG_PATH === "",
-      "set CONTIGO_E2E_ORDER_FORM_PNG to a real scanned order-form image — a synthetic PNG has no " +
+      "set RAFFA_E2E_ORDER_FORM_PNG to a real scanned order-form image — a synthetic PNG has no " +
         "contract text to OCR, and asserting on one would prove nothing about ADR-017.",
     );
     test.setTimeout(300_000);
@@ -630,9 +630,9 @@ test.describe("V2 pilot path on the fixture-seeded workspace", () => {
     const { reply, kind } = await ask(page, "Cosa sai fare?");
     expect(kind, "R-ASK-02: a capability question is answered from the catalog").toBe("answer");
 
-    // R-SYS-03: a capability answer cites *feature* cards (`corpus: contigo` →
-    // `getCorpusBadge` label "Contigo", class `tag-accent`).
-    const featureCards = reply.locator(".citation-card").filter({ hasText: "Contigo" });
+    // R-SYS-03: a capability answer cites *feature* cards (`corpus: raffa` →
+    // `getCorpusBadge` label "Raffa", class `tag-accent`).
+    const featureCards = reply.locator(".citation-card").filter({ hasText: "Raffa" });
     await expect(featureCards.first(), "A8: feature cards, not tenant chunks").toBeVisible();
 
     const hrefs = await reply.locator(".reply-actions a").evaluateAll((nodes) =>
@@ -702,7 +702,7 @@ test.describe("V2 pilot path on the fixture-seeded workspace", () => {
 
     await page.reload();
 
-    // The user's own turn and Contigo's reply both come back from the server
+    // The user's own turn and Raffa's reply both come back from the server
     // (R-CONV-02 AC-1), and the actions are still clickable.
     await expect(page.locator('.ask-message[data-role="you"]').last()).toContainText(question, {
       timeout: 60_000,
@@ -724,7 +724,7 @@ test.describe("V2 pilot path on the fixture-seeded workspace", () => {
       await expect(second.locator('.ask-message[data-role="you"]').last()).toContainText(question, {
         timeout: 60_000,
       });
-      await expect(second.locator(".ask-message[data-role='contigo'] .reply-body").last()).toBeVisible();
+      await expect(second.locator(".ask-message[data-role='raffa'] .reply-body").last()).toBeVisible();
     } finally {
       await second.close();
     }

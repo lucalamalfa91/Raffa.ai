@@ -10,7 +10,7 @@ export interface UploadQuoteFormProps {
 const ACCEPTED_TYPES = ".pdf,.docx,.xlsx";
 
 /**
- * The V2 Quote check landing (screens-v2.md #9 "Empty: … + Upload a quote"; `contigo-v2/markup.html`
+ * The V2 Quote check landing (screens-v2.md #9 "Empty: … + Upload a quote"; `raffa-v2/markup.html`
  * "QUOTE CHECK" block `noQuote`): one dashed card with the primary "Upload a quote" button and "or use
  * the sample: Databricks proposal Q-88213". A dropped or picked file uploads straight away -- there is
  * no separate submit step. The upload-time metadata the benchmark match needs (supplier · currency ·

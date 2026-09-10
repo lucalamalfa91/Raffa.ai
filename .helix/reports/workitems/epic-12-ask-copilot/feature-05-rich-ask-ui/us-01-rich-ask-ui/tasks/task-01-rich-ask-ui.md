@@ -4,7 +4,7 @@ type: task
 story: us-01-rich-ask-ui
 wave: 12
 status: live
-target_repo: contigo-web
+target_repo: raffa-web
 ---
 
 # task-01-rich-ask-ui — Markdown, citation cards, preview, actions

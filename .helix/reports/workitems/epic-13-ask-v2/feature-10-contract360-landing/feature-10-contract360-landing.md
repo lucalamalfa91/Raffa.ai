@@ -34,4 +34,4 @@ R-WEB-06); V2 acceptance requires only the landing and the scoped chat
 
 ## Target repo
 
-`contigo-web`
+`raffa-web`

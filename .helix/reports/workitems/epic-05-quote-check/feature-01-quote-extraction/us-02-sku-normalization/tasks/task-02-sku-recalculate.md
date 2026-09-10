@@ -4,7 +4,7 @@ type: task
 story: us-02-sku-normalization
 wave: R4
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-02-sku-recalculate — 02 Sku Recalculate
@@ -18,7 +18,7 @@ Manual product mapping + recalculate trigger.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `sku-recalculate` |
+| workspace/raffa-backend/src/ | implementation for `sku-recalculate` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-002.
@@ -31,7 +31,7 @@ Manual product mapping + recalculate trigger.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | sku-recalculate behaviour | workspace/contigo-backend/tests |
+| unit | sku-recalculate behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

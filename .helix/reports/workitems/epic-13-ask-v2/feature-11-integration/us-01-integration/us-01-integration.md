@@ -30,7 +30,7 @@ of green unit tests.
       `inputs/requirements.md` §10 A1, A3, A4, A8, A9, A10, A14 against `dev`
       with the fixture-seeded workspace (and A2, A5–A7 when live Foundry is
       available, skipped with a named reason otherwise).
-- [ ] AC-4 The golden set (`Contigo.AiEval`) runs in `backend.yml` on the
+- [ ] AC-4 The golden set (`Raffa.AiEval`) runs in `backend.yml` on the
       fixture gateway and fails the build on any numeric-guard intervention
       or kind mismatch.
 - [ ] AC-5 `docs/ask-v2-acceptance.md` lists A1–A14 with the exact

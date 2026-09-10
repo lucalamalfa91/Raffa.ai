@@ -4,7 +4,7 @@ type: task
 story: us-03-tenant-rls
 wave: R0
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-tenant-rls — Add RLS + tenant claim + migration check
@@ -30,9 +30,9 @@ jobs must carry `tenant_id` from the queue message and set the same claim.
 
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/Contigo.SharedKernel/Tenancy/*.cs | tenant-aware connection interceptor |
-| workspace/contigo-backend/src/*/Infrastructure/*rls*.cs | per-table RLS policy SQL |
-| workspace/contigo-backend/tests/Contigo.Tenancy/*.cs | cross-tenant isolation test |
+| workspace/raffa-backend/src/Raffa.SharedKernel/Tenancy/*.cs | tenant-aware connection interceptor |
+| workspace/raffa-backend/src/*/Infrastructure/*rls*.cs | per-table RLS policy SQL |
+| workspace/raffa-backend/tests/Raffa.Tenancy/*.cs | cross-tenant isolation test |
 
 ## Context the implementer needs
 
@@ -47,7 +47,7 @@ jobs must carry `tenant_id` from the queue message and set the same claim.
 
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| integration | tenant A cannot read tenant B rows | `tests/Contigo.Tenancy` |
+| integration | tenant A cannot read tenant B rows | `tests/Raffa.Tenancy` |
 
 ## Open questions blocking this task
 

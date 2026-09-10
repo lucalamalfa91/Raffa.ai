@@ -27,4 +27,4 @@ correction history for the data flywheel.
 
 ## Target repo
 
-`contigo-backend`
+`raffa-backend`

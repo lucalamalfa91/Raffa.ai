@@ -38,7 +38,7 @@ GOOD_POSTGRES_MAIN_TF = '''resource "random_password" "administrator" {
 }
 
 resource "azurerm_postgresql_flexible_server" "this" {
-  name                = "psql-contigo-${var.environment}"
+  name                = "psql-raffa-${var.environment}"
   location            = var.location
   resource_group_name = var.resource_group_name
 }
@@ -49,14 +49,14 @@ GOOD_STORAGE_MAIN_TF = '''resource "random_string" "suffix" {
 }
 
 resource "azurerm_storage_account" "this" {
-  name                = "stcontigo${var.environment}${random_string.suffix.result}"
+  name                = "straffa${var.environment}${random_string.suffix.result}"
   location            = var.location
   resource_group_name = var.resource_group_name
 }
 '''
 
 GOOD_SERVICEBUS_MAIN_TF = '''resource "azurerm_servicebus_namespace" "this" {
-  name                = "sbns-contigo-${var.environment}"
+  name                = "sbns-raffa-${var.environment}"
   location            = var.location
   resource_group_name = var.resource_group_name
 }
@@ -100,7 +100,7 @@ def _good_main_tf(
     literal `"<env>"` (demo's real shape); pass "var.environment" for dev's
     real shape (paired with a variables.tf `environment` default)."""
     expr = environment_expr if environment_expr is not None else f'"{env}"'
-    rg_name = rg_name_template if rg_name_template is not None else "rg-contigo-${local.environment}"
+    rg_name = rg_name_template if rg_name_template is not None else "rg-raffa-${local.environment}"
     overrides = module_field_overrides or {}
     module_blocks = "".join(_module_block(m, **overrides.get(m, {})) for m in modules)
     return f'''locals {{
@@ -112,14 +112,14 @@ resource "azurerm_resource_group" "this" {{
   location = var.location
 
   tags = {{
-    project = "contigo"
+    project = "raffa"
     env     = local.environment
   }}
 }}
 {module_blocks}'''
 
 
-def _good_backend_tf(workspace: str, organization: str = "contigo-platform") -> str:
+def _good_backend_tf(workspace: str, organization: str = "raffa-platform") -> str:
     return f'''terraform {{
   cloud {{
     organization = "{organization}"
@@ -187,14 +187,14 @@ def _build_tree(
         infra_root,
         "dev",
         main_tf=dev_main_tf if dev_main_tf is not None else _good_main_tf("dev", environment_expr="var.environment"),
-        backend_tf=dev_backend_tf if dev_backend_tf is not None else _good_backend_tf("contigo-dev"),
+        backend_tf=dev_backend_tf if dev_backend_tf is not None else _good_backend_tf("raffa-dev"),
         variables_tf=dev_variables_tf if dev_variables_tf is not None else _good_variables_tf(environment_default="dev"),
     )
     _write_env_root(
         infra_root,
         "demo",
         main_tf=demo_main_tf if demo_main_tf is not None else _good_main_tf("demo"),
-        backend_tf=demo_backend_tf if demo_backend_tf is not None else _good_backend_tf("contigo-demo"),
+        backend_tf=demo_backend_tf if demo_backend_tf is not None else _good_backend_tf("raffa-demo"),
         variables_tf=demo_variables_tf if demo_variables_tf is not None else _good_variables_tf(),
     )
     modules = dict(GOOD_MODULE_MAIN_TF_BY_NAME)
@@ -210,9 +210,9 @@ def _build_tree(
 
 class StripLineCommentsTests(unittest.TestCase):
     def test_drops_hash_and_slash_comments_keeps_code(self) -> None:
-        text = '# a comment mentioning rg-contigo-dev\ncode = "kept"\n// another\nmore = 1\n'
+        text = '# a comment mentioning rg-raffa-dev\ncode = "kept"\n// another\nmore = 1\n'
         stripped = dis._strip_line_comments(text)
-        self.assertNotIn("rg-contigo-dev", stripped)
+        self.assertNotIn("rg-raffa-dev", stripped)
         self.assertIn('code = "kept"', stripped)
         self.assertIn("more = 1", stripped)
 
@@ -284,7 +284,7 @@ class ParseBackendWorkspaceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             envs, _modules = _build_tree(Path(tmp))
             parsed = dis.parse_backend_workspace("dev", envs)
-            self.assertEqual(parsed, {"organization": "contigo-platform", "workspace": "contigo-dev"})
+            self.assertEqual(parsed, {"organization": "raffa-platform", "workspace": "raffa-dev"})
 
     def test_missing_backend_file_returns_none_pair(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -299,7 +299,7 @@ class DatastoreNameTemplateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             _envs, modules = _build_tree(Path(tmp))
             template = dis.datastore_name_template("postgres", "azurerm_postgresql_flexible_server", modules)
-            self.assertEqual(template, "psql-contigo-${var.environment}")
+            self.assertEqual(template, "psql-raffa-${var.environment}")
 
     def test_missing_module_file_returns_none(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -354,26 +354,26 @@ class BrokenFixtureTreeTests(unittest.TestCase):
     def test_shared_resource_group_name_fails_distinct_rg(self) -> None:
         # demo's resource group resource hardcodes dev's own concrete name,
         # even though demo's `locals.environment` still correctly says "demo".
-        envs, _modules = self._tree(demo_main_tf=_good_main_tf("demo", rg_name_template="rg-contigo-dev"))
+        envs, _modules = self._tree(demo_main_tf=_good_main_tf("demo", rg_name_template="rg-raffa-dev"))
         passed, detail = dis.check_distinct_resource_groups(envs)
         self.assertFalse(passed, detail)
         self.assertIn("same name", detail)
 
     def test_shared_workspace_fails_distinct_remote_state(self) -> None:
-        envs, _modules = self._tree(demo_backend_tf=_good_backend_tf("contigo-dev"))
+        envs, _modules = self._tree(demo_backend_tf=_good_backend_tf("raffa-dev"))
         passed, detail = dis.check_distinct_remote_state(envs)
         self.assertFalse(passed, detail)
         self.assertIn("same", detail)
 
     def test_different_organization_fails_distinct_remote_state(self) -> None:
-        envs, _modules = self._tree(demo_backend_tf=_good_backend_tf("contigo-demo", organization="some-other-org"))
+        envs, _modules = self._tree(demo_backend_tf=_good_backend_tf("raffa-demo", organization="some-other-org"))
         passed, detail = dis.check_distinct_remote_state(envs)
         self.assertFalse(passed, detail)
         self.assertIn("organization", detail)
 
     def test_module_hardcoded_resource_group_fails_own_scope(self) -> None:
         bad_demo_main = _good_main_tf(
-            "demo", module_field_overrides={"postgres": {"resource_group_name_expr": '"rg-contigo-dev"'}}
+            "demo", module_field_overrides={"postgres": {"resource_group_name_expr": '"rg-raffa-dev"'}}
         )
         envs, _modules = self._tree(demo_main_tf=bad_demo_main)
         passed, detail = dis.check_module_own_scope("demo", "postgres", envs)
@@ -401,7 +401,7 @@ class BrokenFixtureTreeTests(unittest.TestCase):
         envs, modules = self._tree(
             module_overrides={
                 "postgres": GOOD_POSTGRES_MAIN_TF.replace(
-                    '"psql-contigo-${var.environment}"', '"psql-contigo-shared"'
+                    '"psql-raffa-${var.environment}"', '"psql-raffa-shared"'
                 ),
             }
         )
@@ -432,18 +432,18 @@ class BrokenFixtureTreeTests(unittest.TestCase):
     def test_hardcoded_other_env_resource_group_fails_cross_environment_coupling(self) -> None:
         # A live (non-comment) reference to dev's resource group name inside
         # demo's own root -- e.g. a leftover local nobody meant to keep.
-        bad_demo_main = _good_main_tf("demo") + '\nlocals {\n  leftover_note = "rg-contigo-dev"\n}\n'
+        bad_demo_main = _good_main_tf("demo") + '\nlocals {\n  leftover_note = "rg-raffa-dev"\n}\n'
         envs, _modules = self._tree(demo_main_tf=bad_demo_main)
         passed, detail = dis.check_no_cross_environment_coupling("demo", envs)
         self.assertFalse(passed, detail)
-        self.assertIn("rg-contigo-dev", detail)
+        self.assertIn("rg-raffa-dev", detail)
 
     def test_comment_only_mention_of_other_env_does_not_fail_coupling_check(self) -> None:
         # Regression guard, mirroring the real repo's shape: demo/main.tf's
-        # own header comments say "rg-contigo-dev" as prose. That must not
+        # own header comments say "rg-raffa-dev" as prose. That must not
         # be flagged -- only a live reference would be.
         commented_demo_main = (
-            "# see dev's own rg-contigo-dev for comparison\n" + _good_main_tf("demo")
+            "# see dev's own rg-raffa-dev for comparison\n" + _good_main_tf("demo")
         )
         envs, _modules = self._tree(demo_main_tf=commented_demo_main)
         passed, detail = dis.check_no_cross_environment_coupling("demo", envs)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create HCP Terraform org contigo-platform if missing. Never prints tokens."""
+"""Create HCP Terraform org raffa-platform if missing. Never prints tokens."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ import urllib.request
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parents[1]
-ORG = os.environ.get("CONTIGO_TFC_ORG", "contigo-platform")
+ORG = os.environ.get("RAFFA_TFC_ORG", "raffa-platform")
 API = "https://app.terraform.io/api/v2"
 
 

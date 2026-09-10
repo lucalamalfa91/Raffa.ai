@@ -7,14 +7,14 @@ name: seed-demo-fixture
 # benchmark + savings rows is an explicit operator (or a future caller
 # workflow, via `workflow_call`) action against a specific environment,
 # never a side effect of an ordinary `backend.yml` deploy -- story
-# us-01-seed-demo-db AC-2 ("the same job can target `contigo_dev`
+# us-01-seed-demo-db AC-2 ("the same job can target `raffa_dev`
 # optionally"), not "seeds every dev push automatically".
 on:
   workflow_dispatch:
     inputs:
       target_environment:
         description: >-
-          GitHub Environment (and Postgres database, contigo_<env>) to
+          GitHub Environment (and Postgres database, raffa_<env>) to
           seed.
         required: true
         type: choice
@@ -70,7 +70,7 @@ jobs:
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: Resolve resource group
-        run: echo "RESOURCE_GROUP=rg-contigo-${TARGET_ENVIRONMENT}" >> "$GITHUB_ENV"
+        run: echo "RESOURCE_GROUP=rg-raffa-${TARGET_ENVIRONMENT}" >> "$GITHUB_ENV"
 
       - name: Install postgresql-client
         run: |
@@ -86,7 +86,7 @@ jobs:
       - name: Fetch Postgres connection string (ADR-021)
         run: |
           set -euo pipefail
-          HCP_RUNS="https://app.terraform.io/app/contigo-platform/workspaces/contigo-${TARGET_ENVIRONMENT}/runs"
+          HCP_RUNS="https://app.terraform.io/app/raffa-platform/workspaces/raffa-${TARGET_ENVIRONMENT}/runs"
           KV_NAME=$(az keyvault list --resource-group "$RESOURCE_GROUP" --query "[0].name" -o tsv)
           if [ -z "$KV_NAME" ]; then
             echo "::error::no Key Vault found in resource group $RESOURCE_GROUP. Confirm the HCP VCS apply at $HCP_RUNS, then re-run this job."
@@ -97,7 +97,7 @@ jobs:
           KV_STATUS=$?
           set -e
           if [ $KV_STATUS -ne 0 ] || [ -z "$RAW_CONN" ]; then
-            echo "::error::could not read secret 'postgres-connection' from $KV_NAME. Either the HCP VCS apply at $HCP_RUNS has not created it yet, or this environment's CI deploy principal (contigo-sp-${TARGET_ENVIRONMENT}) is missing the 'Key Vault Secrets User' role on $KV_NAME. Azure CLI said: $(tail -c 500 /tmp/kv_secret_show.err | tr '\n' ' ')"
+            echo "::error::could not read secret 'postgres-connection' from $KV_NAME. Either the HCP VCS apply at $HCP_RUNS has not created it yet, or this environment's CI deploy principal (raffa-sp-${TARGET_ENVIRONMENT}) is missing the 'Key Vault Secrets User' role on $KV_NAME. Azure CLI said: $(tail -c 500 /tmp/kv_secret_show.err | tr '\n' ' ')"
             exit 1
           fi
           echo "::add-mask::$RAW_CONN"
@@ -125,7 +125,7 @@ jobs:
           set -euo pipefail
           PRESENT=$(psql -Atqc "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('workspace','contract','savings_opportunity');")
           if [ "$PRESENT" -lt 3 ]; then
-            echo "::error::contigo_${TARGET_ENVIRONMENT} is missing workspace/contract/savings_opportunity -- run backend.yml's schema-apply (ADR-021) against this environment before seeding."
+            echo "::error::raffa_${TARGET_ENVIRONMENT} is missing workspace/contract/savings_opportunity -- run backend.yml's schema-apply (ADR-021) against this environment before seeding."
             exit 1
           fi
 
@@ -146,4 +146,4 @@ jobs:
             echo "::error::demo-fixture-seed.sql applied but savings_opportunity has no rows for the demo tenant (00000000-0000-0000-0000-000000000001)"
             exit 1
           fi
-          echo "Seed OK: $COUNT savings_opportunity row(s) for demo tenant 00000000-0000-0000-0000-000000000001 in contigo_${TARGET_ENVIRONMENT}."
+          echo "Seed OK: $COUNT savings_opportunity row(s) for demo tenant 00000000-0000-0000-0000-000000000001 in raffa_${TARGET_ENVIRONMENT}."

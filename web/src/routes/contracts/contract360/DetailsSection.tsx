@@ -23,7 +23,7 @@ export interface DetailsSectionProps {
 }
 
 /**
- * "Details ▾" (`contigo-v2/markup.html` "CONTRACT 360" block, bottom; screens-v2.md #5 "Details ▾
+ * "Details ▾" (`raffa-v2/markup.html` "CONTRACT 360" block, bottom; screens-v2.md #5 "Details ▾
  * ('All terms, documents and open facts ▾'): key terms table, documents in family, facts still to
  * decide"). Closed by default; open, it holds what the Day-1 tabs used to hold: key terms, the
  * documents, the facts still to decide (with "Review all →"), the explainable priority score, and

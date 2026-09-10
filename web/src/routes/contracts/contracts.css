@@ -1,5 +1,5 @@
 /**
- * Portfolio screen, V2 (route `/contracts`; ADR-024 V2 IA; screens-v2.md #6; `contigo-v2/markup.html`
+ * Portfolio screen, V2 (route `/contracts`; ADR-024 V2 IA; screens-v2.md #6; `raffa-v2/markup.html`
  * "PORTFOLIO" block). Component classes (.screen-header, .screen-reroute, .btn, .tag, .table,
  * .row-critical, .deadline-critical, .skeleton, .empty-state, .error-state, .micro-meta) come from
  * ../../styles/components.css (ADR-019 component catalogue) -- this file adds only this screen's own

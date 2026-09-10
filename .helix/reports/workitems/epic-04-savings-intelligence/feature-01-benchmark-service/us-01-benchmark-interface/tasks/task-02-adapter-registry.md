@@ -4,7 +4,7 @@ type: task
 story: us-01-benchmark-interface
 wave: R3
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-02-adapter-registry — 02 Adapter Registry
@@ -18,7 +18,7 @@ Adapter registry; no provider SDK in domain code.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `benchmark-registry` |
+| workspace/raffa-backend/src/ | implementation for `benchmark-registry` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-001.
@@ -30,7 +30,7 @@ Adapter registry; no provider SDK in domain code.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | benchmark-registry behaviour | workspace/contigo-backend/tests |
+| unit | benchmark-registry behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

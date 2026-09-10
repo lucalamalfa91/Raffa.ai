@@ -7,7 +7,7 @@ Do not grep a symbol to find its users.
 
 You run as Claude Code in the per-task worktree.
 
-## Helix harness (Contigo) — skip before you fail
+## Helix harness (Raffa) — skip before you fail
 
 `CLAUDE_PLUGIN_ROOT` is unset. Helix Bash PATH has `python` and `gh`, not
 `npm`/`node`. The POSIX file `…/agentic-file-index/scripts/afi` runs `npm`

@@ -1,4 +1,4 @@
-# Contigo V1 — Product Context
+# Raffa V1 — Product Context
 
 Source of truth: `inputs/product-spec.md` (v1.0, 25 August 2026), `inputs/engineering-brief.md` (v1.2, 1 September 2026), `inputs/engineering-constraints.md`. Section numbers below cite `product-spec.md` unless stated.
 
@@ -11,7 +11,7 @@ Source of truth: `inputs/product-spec.md` (v1.0, 25 August 2026), `inputs/engine
 | 3. Savings Intelligence | Compare current prices with market benchmarks and quantify opportunities. | Measurable savings |
 | 4. New Purchase / Quote Check | Assess a supplier proposal before signature. | Negotiate before spend is locked |
 
-North Star (spec title page): *"Contigo knows what we bought, what we pay, when we need to act, and where we can save money."*
+North Star (spec title page): *"Raffa knows what we bought, what we pay, when we need to act, and where we can save money."*
 
 V1 mission (spec §1): *"Give Procurement a trusted view of contracts, renewals, pricing position and savings opportunities — and make a new supplier quote assessable in minutes."*
 
@@ -61,10 +61,10 @@ Database guideline (engineering-brief §5): SQLite acceptable on a developer lap
 | R0 — Foundation | Auth, workspace, multi-tenancy, roles, upload, storage, DB, audit baseline | A secure workspace can ingest documents |
 | R1 — Contract Intelligence | Extraction including OCR in V1 (ADR-017), schema, portfolio, Contract 360, Q&A, citations, validation | Customer can upload contracts (digital and scanned) and ask reliable questions |
 | R2 — Renewals | Dates, cancellation deadline, alerts, dashboard, priority, recommendations | Procurement does not miss material renewal windows |
-| R3 — Savings | Benchmark service/adapters, price comparison, savings dashboard/workflow | Contigo quantifies credible savings opportunities |
+| R3 — Savings | Benchmark service/adapters, price comparison, savings dashboard/workflow | Raffa quantifies credible savings opportunities |
 | R4 — Quote Check | Quote extraction, benchmark, assessment, target, negotiation strategy | A new proposal can be assessed in minutes |
 
-Engineering-brief §11 ordering note: first technical slice is the platform (public `lucalamalfa91/contigo` monorepo folder layout + Terraform for `dev`/`demo` + CI/CD to both + git-flow ADR, then a deployable API). R3/R4 must not depend on a paid external benchmark API for the first `demo`.
+Engineering-brief §11 ordering note: first technical slice is the platform (public `lucalamalfa91/raffa` monorepo folder layout + Terraform for `dev`/`demo` + CI/CD to both + git-flow ADR, then a deployable API). R3/R4 must not depend on a paid external benchmark API for the first `demo`.
 
 ## 5. Day-1 promise (spec §20)
 
@@ -75,9 +75,9 @@ Deliverables on Day 1 and after (paraphrased from spec §20):
 - **During a new purchase:** upload a supplier quote; receive a line-level market assessment; receive a recommended target range and potential savings; receive an explainable negotiation strategy.
 - **After negotiation:** record the final negotiated outcome; track realized savings; use the outcome as permissioned proprietary learning data.
 
-> **V1 customer promise:** Contigo knows what we bought, what we pay, when we need to act, and where we can save money.
+> **V1 customer promise:** Raffa knows what we bought, what we pay, when we need to act, and where we can save money.
 
-Engineering-brief §13 ("Done when") requires: `dev` + `demo` in Azure isolated from Terraform; GitHub releases to both via council git flow; backend API + worker in both; product Day-1 path works on `demo` (workspace, upload, extract, review) with Foundry including Ask Contigo with citations or an explicit "cannot determine"; the public repository `lucalamalfa91/contigo` exists with `infra/`, `backend/`, `web/`, `mobile/`, `.helix/`; cost stays on free/cheap SKUs.
+Engineering-brief §13 ("Done when") requires: `dev` + `demo` in Azure isolated from Terraform; GitHub releases to both via council git flow; backend API + worker in both; product Day-1 path works on `demo` (workspace, upload, extract, review) with Foundry including Ask Raffa with citations or an explicit "cannot determine"; the public repository `lucalamalfa91/raffa` exists with `infra/`, `backend/`, `web/`, `mobile/`, `.helix/`; cost stays on free/cheap SKUs.
 
 ## 6. Appendix C — Developer decision rules (spec §C, short list)
 
@@ -92,7 +92,7 @@ Engineering-brief §13 ("Done when") requires: `dev` + `demo` in Azure isolated 
 9. Capture negotiation outcomes and corrections from day one.
 10. If data quality is insufficient, return uncertainty instead of fabricated precision.
 
-Final engineering test (spec §C): *"For every architectural decision ask: Does this help Contigo build its own procurement intelligence layer, or are we simply building a UI around somebody else's API?"*
+Final engineering test (spec §C): *"For every architectural decision ask: Does this help Raffa build its own procurement intelligence layer, or are we simply building a UI around somebody else's API?"*
 
 ## 7. Cross-cutting constraints carried in from the brief and constraints file
 

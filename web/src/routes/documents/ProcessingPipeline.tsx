@@ -8,7 +8,7 @@ export interface ProcessingPipelineProps {
 }
 
 /**
- * Inline per-row progress bar, status-cell half of the processing treatment (`contigo-v2/markup.html`
+ * Inline per-row progress bar, status-cell half of the processing treatment (`raffa-v2/markup.html`
  * row template: a bare 4px bar directly under the status tag, `width:{{ d.pct }}`; the stage *label*
  * sits separately, right-aligned in the row's own "next step" cell -- see
  * `DocumentStatusTable.tsx`, which renders that half directly rather than through this component).

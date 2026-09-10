@@ -94,7 +94,7 @@ function mockApiClient(): ApiClient {
     captureNegotiationOutcome: vi.fn(),
     // No test in this suite navigates to /ask with a typed question -- bare vi.fn() is enough; see
     // tests/routes/ask/*.test.tsx for that screen's own fetch-outcome coverage.
-    askContigo: vi.fn(),
+    askRaffa: vi.fn(),
     // Task E08/F02/US01/T01 (savings-home; moved to /savings by E13/F09/US01/T01): SavingsRoute
     // (like PortfolioRoute/Contract360Route/RenewalsRoute above) calls both of these unconditionally
     // on mount, so an unconfigured vi.fn() would throw the moment its effect calls .then() on it --
@@ -151,9 +151,9 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
     window.sessionStorage.clear();
   });
 
-  it("redirects / to /ask and renders the rail alongside the real Ask Contigo screen (R-WEB-01)", async () => {
+  it("redirects / to /ask and renders the rail alongside the real Ask Raffa screen (R-WEB-01)", async () => {
     window.sessionStorage.setItem(
-      "contigo.signin.currentWorkspace",
+      "raffa.signin.currentWorkspace",
       JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
     );
 
@@ -175,7 +175,7 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
     // guards on it being set, so this generic cross-screen assertion needs one current, same as the
     // dedicated /documents test further down.
     window.sessionStorage.setItem(
-      "contigo.signin.currentWorkspace",
+      "raffa.signin.currentWorkspace",
       JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
     );
 
@@ -195,7 +195,7 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
 
   it("renders the real members + invite screen for an Admin at /workspace/members", () => {
     window.sessionStorage.setItem(
-      "contigo.signin.currentWorkspace",
+      "raffa.signin.currentWorkspace",
       JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
     );
 
@@ -208,7 +208,7 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
 
   it("redirects an unknown path to Ask (via / -- there is no Home to fall back to in V2)", async () => {
     window.sessionStorage.setItem(
-      "contigo.signin.currentWorkspace",
+      "raffa.signin.currentWorkspace",
       JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
     );
 
@@ -222,7 +222,7 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
 
   it("/review redirects to /documents?filter=attention (Review is a state of Documents in V2, not a rail destination)", async () => {
     window.sessionStorage.setItem(
-      "contigo.signin.currentWorkspace",
+      "raffa.signin.currentWorkspace",
       JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
     );
 
@@ -233,7 +233,7 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
 
   it("renders the real Documents screen instead of a scaffold placeholder (task E06/F05/US01/T01)", async () => {
     window.sessionStorage.setItem(
-      "contigo.signin.currentWorkspace",
+      "raffa.signin.currentWorkspace",
       JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
     );
 
@@ -257,7 +257,7 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
 
   it("renders the real Portfolio screen instead of a scaffold placeholder (task E07/F01/US01/T01)", () => {
     window.sessionStorage.setItem(
-      "contigo.signin.currentWorkspace",
+      "raffa.signin.currentWorkspace",
       JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
     );
 
@@ -269,7 +269,7 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
 
   it("renders the real Contract 360 screen instead of a scaffold placeholder (task E07/F02/US01/T01)", async () => {
     window.sessionStorage.setItem(
-      "contigo.signin.currentWorkspace",
+      "raffa.signin.currentWorkspace",
       JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
     );
 
@@ -285,7 +285,7 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
 
   it("renders the real Renewals screen instead of a scaffold placeholder (task E08/F01/US01/T01)", async () => {
     window.sessionStorage.setItem(
-      "contigo.signin.currentWorkspace",
+      "raffa.signin.currentWorkspace",
       JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
     );
 
@@ -301,7 +301,7 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
 
   it("renders the real Savings screen at /savings, moved from / (task E13/F09/US01/T01, gap G-IA-V2)", async () => {
     window.sessionStorage.setItem(
-      "contigo.signin.currentWorkspace",
+      "raffa.signin.currentWorkspace",
       JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
     );
 

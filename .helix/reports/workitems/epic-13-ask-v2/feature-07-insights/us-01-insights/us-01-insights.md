@@ -11,7 +11,7 @@ status: active
 ## Story
 
 As **procurement**, I want the criticality ranking of my portfolio, the
-negotiation targets for a contract and the strategy steps Contigo proposes
+negotiation targets for a contract and the strategy steps Raffa proposes
 to be computed the same way every time and explained component by
 component, so that Ask, Contract 360 and Renewals show the same numbers
 and I can defend them in a negotiation.
@@ -50,12 +50,12 @@ and I can defend them in a negotiation.
 
 | Depends on | Why |
 |------------|-----|
-| us-01-v2-foundation | `Contigo.Insights` project exists (T01) |
+| us-01-v2-foundation | `Raffa.Insights` project exists (T01) |
 
 ## Architecture decisions in force
 
-- ADR-024 — deterministic strategies; `Contigo.Insights` → `[SharedKernel, Benchmark]`
-- ADR-002 — Insights takes DTOs, never `Contract` / `Renewal` entities; composition in `Contigo.Api`
+- ADR-024 — deterministic strategies; `Raffa.Insights` → `[SharedKernel, Benchmark]`
+- ADR-002 — Insights takes DTOs, never `Contract` / `Renewal` entities; composition in `Raffa.Api`
 - ADR-001 (amended) — bands from the mock feed, labelled representative
 - spec §9.2, §10.4, §12.1; Appendix C rules 6 and 10
 
@@ -75,7 +75,7 @@ Benchmark?)` shared by quotes and contracts. Strategy sections in this
 order: When you must move → Where you can push → Targets → Next steps
 (four steps mirroring the Contract 360 tracker: Notify · Request revised
 pricing and licence mix · Counter with the market benchmark · Sign, or send
-non-renewal notice — `contigo-v2/app.jsx` `stepDefs`).
+non-renewal notice — `raffa-v2/app.jsx` `stepDefs`).
 
 ## Open questions
 

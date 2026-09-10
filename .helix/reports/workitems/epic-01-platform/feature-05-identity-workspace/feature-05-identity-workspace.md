@@ -26,4 +26,4 @@ backstop from feature-04.
 
 ## Target repo
 
-`contigo-backend`
+`raffa-backend`

@@ -43,7 +43,7 @@ export interface OidcAuthState {
 /**
  * Drives the Authorization Code + PKCE flow against the Entra ID authority
  * named in per-environment config, redirecting to the native
- * `contigo://callback` scheme (parent story us-01 AC-1/AC-2).
+ * `raffa://callback` scheme (parent story us-01 AC-1/AC-2).
  *
  * `env` defaults to `getMobileEnvConfig()` (real `EXPO_PUBLIC_*` build-time
  * config) but can be injected, matching this codebase's existing

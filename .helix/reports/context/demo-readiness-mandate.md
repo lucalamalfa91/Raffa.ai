@@ -14,7 +14,7 @@ Copied from `inputs/demo-readiness-brief.md` for later seats. Delta only.
   - Savings/Quotes CA connection strings + HCP apply → **e09 F02**
   - web screens / TS client / shell → **e06–e08**
   - quote extraction API → **e05**
-- e10 candidates: fixture seed on `contigo_demo`, Foundry/OCR CA wiring if
+- e10 candidates: fixture seed on `raffa_demo`, Foundry/OCR CA wiring if
   live inventory is empty, `demo-v*` / SWA config smoke.
 - Day-1 auth: propose ADR-022 (`X-Tenant-Id` acceptable until ADR-010 is on
   the API host). Not a BLOCKER unless the operator overrides at HITL.

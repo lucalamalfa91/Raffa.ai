@@ -61,10 +61,10 @@ function emptyCatalog(): Awaited<ReturnType<ApiClient["getCapabilities"]>> {
       capabilities: [
         {
           key: "ask",
-          title: "Ask Contigo",
+          title: "Ask Raffa",
           routePattern: "/ask",
           description: "…",
-          exampleQuestions: ["What can Contigo do?", "When does this contract expire?"],
+          exampleQuestions: ["What can Raffa do?", "When does this contract expire?"],
           roleGate: "any",
           availability: "always",
           howTo: [],
@@ -133,7 +133,7 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     getQuoteAssessment: vi.fn(),
     recalculateQuoteAssessment: vi.fn(),
     captureNegotiationOutcome: vi.fn(),
-    askContigo: vi.fn(),
+    askRaffa: vi.fn(),
     getSavingsKpis: vi.fn(),
     getSavingsOpportunities: vi.fn(),
     listConversations: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, conversations: [], error: null }),
@@ -190,7 +190,7 @@ function renderAsk(apiClient: ApiClient, initialEntry: { pathname: string; state
 describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
   beforeEach(() => {
     window.sessionStorage.clear();
-    window.sessionStorage.setItem("contigo.signin.currentWorkspace", JSON.stringify({ id: WORKSPACE_ID, name: "Acme Procurement" }));
+    window.sessionStorage.setItem("raffa.signin.currentWorkspace", JSON.stringify({ id: WORKSPACE_ID, name: "Acme Procurement" }));
   });
 
   it("guards on no current workspace instead of sending an undefined X-Tenant-Id", () => {
@@ -232,7 +232,7 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
 
       expect(await screen.findByText("What do you want to know?")).toBeInTheDocument();
       expect(screen.getByText(/answers only from 1 validated contract/i)).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "What can Contigo do?" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "What can Raffa do?" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "When does this contract expire?" })).toBeInTheDocument();
     });
 
@@ -241,7 +241,7 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
       const postMessage = vi.fn().mockResolvedValue(postedReply());
       renderAsk(mockApiClient({ createConversation, postMessage }));
 
-      const input = await screen.findByRole("textbox", { name: /ask contigo a question/i });
+      const input = await screen.findByRole("textbox", { name: /ask raffa a question/i });
       await userEvent.type(input, "What liability do we have with AWS?{Enter}");
 
       expect(createConversation).toHaveBeenCalledWith(WORKSPACE_ID, {});
@@ -255,9 +255,9 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
       const postMessage = vi.fn().mockResolvedValue(postedReply());
       renderAsk(mockApiClient({ createConversation, postMessage }));
 
-      await userEvent.click(await screen.findByRole("button", { name: "What can Contigo do?" }));
+      await userEvent.click(await screen.findByRole("button", { name: "What can Raffa do?" }));
 
-      await waitFor(() => expect(postMessage).toHaveBeenCalledWith(WORKSPACE_ID, CONVERSATION_ID, { question: "What can Contigo do?" }));
+      await waitFor(() => expect(postMessage).toHaveBeenCalledWith(WORKSPACE_ID, CONVERSATION_ID, { question: "What can Raffa do?" }));
     });
 
     it("seeds and asks the query carried in router state from the global Ask bar, exactly once", async () => {
@@ -274,7 +274,7 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
       const postMessage = vi.fn().mockResolvedValue(postedReply());
       renderAsk(mockApiClient({ createConversation, postMessage }), "/ask?scope=contract-1");
 
-      const input = await screen.findByRole("textbox", { name: /ask contigo a question/i });
+      const input = await screen.findByRole("textbox", { name: /ask raffa a question/i });
       await userEvent.type(input, "When must we give notice?{Enter}");
 
       await waitFor(() => expect(createConversation).toHaveBeenCalledWith(WORKSPACE_ID, { scopeContractId: "contract-1" }));
@@ -287,7 +287,7 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
       });
       renderAsk(mockApiClient({ createConversation: vi.fn().mockResolvedValue(createdConversation()), postMessage: vi.fn().mockReturnValue(pending) }));
 
-      const input = await screen.findByRole("textbox", { name: /ask contigo a question/i });
+      const input = await screen.findByRole("textbox", { name: /ask raffa a question/i });
       await userEvent.type(input, "What liability do we have with AWS?{Enter}");
 
       expect(await screen.findByText(/authorising scope/i)).toBeInTheDocument();
@@ -304,7 +304,7 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
         mockApiClient({ createConversation: vi.fn().mockResolvedValue(createdConversation()), postMessage: vi.fn().mockResolvedValue(postedReply()) }),
       );
 
-      await userEvent.type(await screen.findByRole("textbox", { name: /ask contigo a question/i }), "…{Enter}");
+      await userEvent.type(await screen.findByRole("textbox", { name: /ask raffa a question/i }), "…{Enter}");
 
       expect(await screen.findByText("15 January 2027")).toBeInTheDocument();
       expect(screen.getByText("Validated contract")).toBeInTheDocument();
@@ -319,7 +319,7 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
         mockApiClient({ createConversation: vi.fn().mockResolvedValue(createdConversation()), postMessage: vi.fn().mockResolvedValue(postedReply()) }),
       );
 
-      await userEvent.type(await screen.findByRole("textbox", { name: /ask contigo a question/i }), "…{Enter}");
+      await userEvent.type(await screen.findByRole("textbox", { name: /ask raffa a question/i }), "…{Enter}");
       await screen.findByText("Salesforce · MSA 2024");
 
       // Scoped to the chat log itself: `PathProbe` (this suite's own routing harness) legitimately
@@ -344,7 +344,7 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
         mockApiClient({ createConversation: vi.fn().mockResolvedValue(createdConversation()), postMessage: vi.fn().mockResolvedValue(postedReply(redirectReply)) }),
       );
 
-      await userEvent.type(await screen.findByRole("textbox", { name: /ask contigo a question/i }), "ciao{Enter}");
+      await userEvent.type(await screen.findByRole("textbox", { name: /ask raffa a question/i }), "ciao{Enter}");
 
       expect(await screen.findByText(/ask never accepts attachments here/i)).toBeInTheDocument();
       expect(screen.getByRole("link", { name: "Upload in Documents" })).toHaveAttribute("href", "/documents");
@@ -364,7 +364,7 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
         mockApiClient({ createConversation: vi.fn().mockResolvedValue(createdConversation()), postMessage: vi.fn().mockResolvedValue(postedReply(abstainReply)) }),
       );
 
-      await userEvent.type(await screen.findByRole("textbox", { name: /ask contigo a question/i }), "…{Enter}");
+      await userEvent.type(await screen.findByRole("textbox", { name: /ask raffa a question/i }), "…{Enter}");
 
       expect(await screen.findByText(/cannot determine reliably/i)).toBeInTheDocument();
       expect(screen.getByText(/nothing in the validated contracts supports a reliable answer/i)).toBeInTheDocument();
@@ -378,7 +378,7 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
         .mockResolvedValueOnce(postedReply(answerReply({ answerMarkdown: "Second answer.", followUps: [] })));
       renderAsk(mockApiClient({ createConversation: vi.fn().mockResolvedValue(createdConversation()), postMessage }));
 
-      await userEvent.type(await screen.findByRole("textbox", { name: /ask contigo a question/i }), "…{Enter}");
+      await userEvent.type(await screen.findByRole("textbox", { name: /ask raffa a question/i }), "…{Enter}");
       await screen.findByText("Salesforce · MSA 2024");
 
       await userEvent.click(screen.getByRole("button", { name: /Where can I push on the renewal\?/ }));
@@ -395,7 +395,7 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
         mockApiClient({ createConversation: vi.fn().mockResolvedValue(createdConversation()), postMessage: vi.fn().mockResolvedValue(postedReply()) }),
       );
 
-      await userEvent.type(await screen.findByRole("textbox", { name: /ask contigo a question/i }), "…{Enter}");
+      await userEvent.type(await screen.findByRole("textbox", { name: /ask raffa a question/i }), "…{Enter}");
       const card = await screen.findByText("Salesforce · MSA 2024");
       await userEvent.click(card.closest("button")!);
 
@@ -445,7 +445,7 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
         }),
       );
 
-      await userEvent.type(await screen.findByRole("textbox", { name: /ask contigo a question/i }), "…{Enter}");
+      await userEvent.type(await screen.findByRole("textbox", { name: /ask raffa a question/i }), "…{Enter}");
       const card = await screen.findByText("Sales Cloud Enterprise · CH");
       await userEvent.click(card.closest("button")!);
 
@@ -481,7 +481,7 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
             },
             {
               id: "m2",
-              role: "contigo",
+              role: "raffa",
               kind: "answer",
               markdown: "Salesforce ends on **15 January 2027** [1].",
               citations: answerReply().citations,

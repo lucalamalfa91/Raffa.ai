@@ -4,7 +4,7 @@ type: task
 story: us-01-document-upload
 wave: R0
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-document-upload — 01 Document Upload
@@ -18,7 +18,7 @@ Implement POST /api/documents to tenant-scoped blob + processing job.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `document-upload` |
+| workspace/raffa-backend/src/ | implementation for `document-upload` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-009, ADR-011.
@@ -30,7 +30,7 @@ Implement POST /api/documents to tenant-scoped blob + processing job.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | document-upload behaviour | workspace/contigo-backend/tests |
+| unit | document-upload behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

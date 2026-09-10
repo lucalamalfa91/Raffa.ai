@@ -2,7 +2,7 @@
 """Keep fan-out pointed at the product clone when `.helix` lives inside it.
 
 Historically this script `git init`'d `.helix` so Helix would not worktree
-`helix-artifacts`. After `.helix` was committed into `lucalamalfa91/contigo`,
+`helix-artifacts`. After `.helix` was committed into `lucalamalfa91/raffa`,
 that nest hid `origin` from `open_fanout_pr.py` (r0-a: hook exit 1, Studio green).
 
 Now: if the parent directory is already the product clone, do **not** nest.
@@ -48,7 +48,7 @@ def _parent_is_product(parent: Path) -> bool:
         capture_output=True,
     )
     origin = (proc.stdout or "").strip().lower().replace("\\", "/")
-    if "lucalamalfa91/contigo" in origin:
+    if "lucalamalfa91/raffa" in origin:
         return True
     return all((parent / name).exists() for name in ("infra", "backend", "web", "mobile"))
 

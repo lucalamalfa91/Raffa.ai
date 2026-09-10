@@ -13,7 +13,7 @@ export interface WhyClausesProps {
 }
 
 /**
- * "Why — the clauses behind it" (`contigo-v2/markup.html` "CONTRACT 360" block, middle; screens-v2.md
+ * "Why — the clauses behind it" (`raffa-v2/markup.html` "CONTRACT 360" block, middle; screens-v2.md
  * #5 "2–3 clauses (type · normalized · page § · risk · confidence), click → original wording
  * highlighted"). Each clause is a native `<button>` row -- type · normalised value · "p.N · §span ·
  * risk tag · confidence" -- and the selected one opens the evidence card below the list.

@@ -1,6 +1,6 @@
 /**
  * App shell layout — the 232px rail + main column composite from
- * `contigo-v2/markup.html` (`grid-template-columns:232px 1fr`). ADR-019
+ * `raffa-v2/markup.html` (`grid-template-columns:232px 1fr`). ADR-019
  * leaves the shell out of its locked component catalogue ("the global Ask
  * bar, the app shell ... belong to the app-shell/screen tasks that consume
  * this sheet"). Consumes the shared tokens (src/styles/tokens.css) — no new
@@ -47,7 +47,7 @@
   padding: var(--space-2) 0 6px;
 }
 
-/* ---- Primary tier: Ask Contigo, Documents (`app.jsx` primaryNav) ---------- */
+/* ---- Primary tier: Ask Raffa, Documents (`app.jsx` primaryNav) ---------- */
 
 .shell-rail-primary-item {
   display: flex;
@@ -85,7 +85,7 @@
   color: var(--color-accent-700);
 }
 
-/* ---- Ask Contigo's nested slot: recent conversations + "+ New chat" ------- */
+/* ---- Ask Raffa's nested slot: recent conversations + "+ New chat" ------- */
 
 .shell-rail-conversations {
   display: flex;
@@ -253,7 +253,7 @@
   flex-direction: column;
 }
 
-/* Screens own their padding (`contigo-v2/markup.html`: headers `28px 32px 16px`,
+/* Screens own their padding (`raffa-v2/markup.html`: headers `28px 32px 16px`,
    bands flush to the right edge). A fallback pads bare empty/error states that
    render as the only child of this slot. */
 .shell-content {

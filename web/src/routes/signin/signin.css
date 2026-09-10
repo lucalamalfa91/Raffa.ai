@@ -85,7 +85,7 @@
 }
 
 /* V2 north star: three lines, the middle one in accent, stacked and tightly
-   tracked -- `contigo-v2/markup.html` (font-size clamp(40px,5vw,76px),
+   tracked -- `raffa-v2/markup.html` (font-size clamp(40px,5vw,76px),
    line-height .98, letter-spacing -.03em). */
 .signin-north-star {
   display: flex;
@@ -184,10 +184,10 @@
   border: 2px solid color-mix(in srgb, currentColor 30%, transparent);
   border-top-color: currentColor;
   border-radius: 50%;
-  animation: contigo-signin-spin 0.7s linear infinite;
+  animation: raffa-signin-spin 0.7s linear infinite;
 }
 
-@keyframes contigo-signin-spin {
+@keyframes raffa-signin-spin {
   to {
     transform: rotate(360deg);
   }

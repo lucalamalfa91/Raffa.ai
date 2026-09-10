@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Verify the Contigo product remote: identity, folder layout, no secrets.
+"""Verify the Raffa product remote: identity, folder layout, no secrets.
 
 Task E01/F01/US01/T01 (parent story AC-1, AC-2, AC-4). The product remote
-already exists at https://github.com/lucalamalfa91/contigo under the
+already exists at https://github.com/lucalamalfa91/raffa under the
 **lucalamalfa91 user account** (not a GitHub organization) and is the single
 public monorepo (ADR-014) -- not four separate remotes. This script turns
 that shape into a checkable fact instead of a one-off console read:
@@ -23,8 +23,8 @@ that shape into a checkable fact instead of a one-off console read:
 Read-only end to end: no mutating GitHub API call, no write to the working
 tree, no git push.
 
-Owner/repo resolve from CONTIGO_GITHUB_OWNER / CONTIGO_GITHUB_REPO
-(defaults lucalamalfa91 / contigo). CONTIGO_GITHUB_ORG is accepted as an
+Owner/repo resolve from RAFFA_GITHUB_OWNER / RAFFA_GITHUB_REPO
+(defaults lucalamalfa91 / raffa). RAFFA_GITHUB_ORG is accepted as an
 alias for the owner -- kept for parity with the equivalent process-side
 check in .helix/scripts/verify_github_repos.py. Authenticates via whatever
 `gh` already has configured; this script never handles a token itself.
@@ -45,12 +45,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-OWNER_ENV = "CONTIGO_GITHUB_OWNER"
-ORG_ENV = "CONTIGO_GITHUB_ORG"
-REPO_ENV = "CONTIGO_GITHUB_REPO"
+OWNER_ENV = "RAFFA_GITHUB_OWNER"
+ORG_ENV = "RAFFA_GITHUB_ORG"
+REPO_ENV = "RAFFA_GITHUB_REPO"
 DEFAULT_OWNER = "lucalamalfa91"
-DEFAULT_REPO = "contigo"
-EXPECTED_DESCRIPTION = "Contigo platform"
+DEFAULT_REPO = "raffa"
+EXPECTED_DESCRIPTION = "Raffa platform"
 EXPECTED_DEFAULT_BRANCH = "main"
 
 DOMAIN_FOLDERS = ("infra", "backend", "web", "mobile", ".helix")
@@ -132,7 +132,7 @@ def check_repo_identity(owner: str, repo: str) -> tuple[bool, str]:
     if (data.get("owner") or {}).get("type") == "Organization":
         problems.append(
             "owner is a GitHub Organization; AC-1 requires the lucalamalfa91 "
-            "user account, not a Contigo org"
+            "user account, not a Raffa org"
         )
     if bool(data.get("private")):
         problems.append("repo is private; AC-2 requires public")

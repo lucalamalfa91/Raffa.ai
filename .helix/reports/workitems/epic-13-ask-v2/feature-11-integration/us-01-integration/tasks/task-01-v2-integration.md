@@ -4,7 +4,7 @@ type: task
 story: us-01-integration
 wave: 13
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-v2-integration — CI jobs, golden set in CI, e2e V2 path, acceptance checklist, README sweep
@@ -37,7 +37,7 @@ citation card and an action; no guid / route line), A10 (reload
 tier greyed before validation); A2 / A5 / A6 / A7 marked `test.skip` with
 the reason "requires live Foundry" unless `E2E_LIVE_FOUNDRY=1`.
 (4) Confirm the golden set runs in `backend.yml` through `dotnet test
-Contigo.slnx` (no extra step) and fails the build on a guard
+Raffa.slnx` (no extra step) and fails the build on a guard
 intervention; add the `AiEval` trait filter documentation. (5)
 `docs/ask-v2-acceptance.md` (new root `docs/` folder): A1–A14 with the
 exact questions (Italian and English), expected kinds, screens to check,
@@ -61,18 +61,18 @@ change.
 | `web/e2e/v2.spec.ts`, `web/playwright.config.ts` | new spec; live-Foundry env switch |
 | `docs/ask-v2-acceptance.md` | new |
 | `.github/workflows/backend.yml` | only if the AiEval run needs a change (phase-5 writer) |
-| `backend/src/Contigo.Api/Program.cs` | only if a mapping is still missing (phase-5 writer) |
+| `backend/src/Raffa.Api/Program.cs` | only if a mapping is still missing (phase-5 writer) |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-024 (acceptance A1–A14), ADR-014 / 015 / 016 (CI, OIDC, promotion), ADR-021 / 022 (schema by CI; explicit seed jobs), ADR-011 (deploy identity, no secrets in workflows).
-- **Design**: `inputs/design/prototypes/Contigo V2 Prototype.html` and `contigo-v2/ia-v2.md` "Pilot path" — the e2e follows it act by act; `contigo-v2/screens-v2.md` for the copy the e2e asserts.
+- **Design**: `inputs/design/prototypes/Raffa V2 Prototype.html` and `raffa-v2/ia-v2.md` "Pilot path" — the e2e follows it act by act; `raffa-v2/screens-v2.md` for the copy the e2e asserts.
 - Gap G-INTEGRATION. Templates: `.github/workflows/seed-demo-fixture.yml`, `web/e2e/day1.spec.ts`, `reports/execution/demo-v-promotion-runbook.md`.
 - **Do not touch**: application source under `backend/src` or `web/src` (if something is broken, HALT and name the task that owns it).
 
 ## Definition of done
 - [ ] `python -m pytest tests/test_reprocess_tenant.py` exit 0 (if the helper exists); `actionlint` or `python scripts/ci_path_filters_verify.py` exit 0 on the new workflows
 - [ ] `npx playwright test web/e2e/v2.spec.ts` exit 0 against `dev` (skipped cases listed with reasons)
-- [ ] `dotnet test backend/Contigo.slnx` exit 0 (golden set included)
+- [ ] `dotnet test backend/Raffa.slnx` exit 0 (golden set included)
 - [ ] `docs/ask-v2-acceptance.md` lists A1–A14; every README named above updated in the same commit
 
 ## Tests required

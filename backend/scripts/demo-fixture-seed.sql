@@ -3,23 +3,23 @@
 -- ADR-001 (R3/R4 gated on the Benchmark Service fixture adapter, never a
 -- paid API for the first `demo`), ADR-009 (RLS is the non-bypassable
 -- backstop -- this script sets the same `app.tenant_id` session claim
--- `Contigo.SharedKernel.Tenancy.TenantRlsConnectionInterceptor` sets at
+-- `Raffa.SharedKernel.Tenancy.TenantRlsConnectionInterceptor` sets at
 -- runtime, it never disables or bypasses a policy), ADR-021 (schema is
 -- already applied by `.github/workflows/backend.yml`'s CI apply step --
 -- this script only INSERTs, it never CREATEs/ALTERs a table and never
 -- calls `Database.MigrateAsync()`), ADR-022 (Day-1 `demo` renders savings
 -- opportunities from a seeded fixture, not a live extract).
 --
--- `Contigo.Benchmark.Fixtures.FixtureBenchmarkAdapter` (the ADR-001
+-- `Raffa.Benchmark.Fixtures.FixtureBenchmarkAdapter` (the ADR-001
 -- fixture adapter) is in-process and has nothing of its own to persist --
 -- it is a hand-curated, in-memory catalog, not a database table. What the
 -- Day-1 Savings UI actually reads is `GET /api/savings`, backed by the
--- `savings_opportunity` table (`Contigo.Savings.Application
+-- `savings_opportunity` table (`Raffa.Savings.Application
 -- .SavingsOpportunityService.ListAsync`). This script is that missing
 -- persistence step: three `savings_opportunity` rows whose supplier/
 -- product/currency and confidence score are traceable back to three real
 -- `FixtureBenchmarkAdapter.Catalog` rows (AWS EC2, Zoom, Snowflake) and to
--- `Contigo.Savings.Application.SavingsProvenanceClassifier`'s own
+-- `Raffa.Savings.Application.SavingsProvenanceClassifier`'s own
 -- documented High/Medium/Low examples for those exact fixtures -- not
 -- arbitrary numbers -- plus one supporting `workspace` (the demo tenant)
 -- and one supporting `contract` row so `contract_id`/`tenant_id` point at
@@ -54,13 +54,13 @@ SET app.tenant_id = '00000000-0000-0000-0000-000000000001';
 
 BEGIN;
 
--- The demo tenant itself. `Contigo.Identity.Workspace.Domain.WorkspaceTenant`'s
+-- The demo tenant itself. `Raffa.Identity.Workspace.Domain.WorkspaceTenant`'s
 -- own invariant: `id` always equals `tenant_id` (see that type's doc
 -- comment -- "in V1 a workspace *is* a tenant").
 INSERT INTO workspace (id, name, created_at, tenant_id)
 VALUES (
     '00000000-0000-0000-0000-000000000001',
-    'Contigo Demo',
+    'Raffa Demo',
     now(),
     '00000000-0000-0000-0000-000000000001'
 )
@@ -70,7 +70,7 @@ ON CONFLICT (id) DO NOTHING;
 -- supporting contract row if required by FKs"). Not actually required --
 -- `savings_opportunity.contract_id` is a cross-module reference by id
 -- only, deliberately with no foreign key (ADR-002; see
--- `Contigo.Savings.Domain.SavingsOpportunity`'s own doc comment) -- but a
+-- `Raffa.Savings.Domain.SavingsOpportunity`'s own doc comment) -- but a
 -- real row here means opportunity #1 below points at something genuine
 -- instead of a dangling id.
 INSERT INTO contract (

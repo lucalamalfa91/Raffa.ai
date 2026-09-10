@@ -4,7 +4,7 @@ type: task
 story: us-02-navigation-shell
 wave: 6
 status: live
-target_repo: contigo-web
+target_repo: raffa-web
 ---
 
 # task-01-navigation-shell — Left-rail shell + role guards + global Ask
@@ -19,8 +19,8 @@ Ask bar scaffold.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-web/src/components/shell/ | rail + guards |
-| workspace/contigo-web/src/components/ask-bar/ | global Ask |
+| workspace/raffa-web/src/components/shell/ | rail + guards |
+| workspace/raffa-web/src/components/ask-bar/ | global Ask |
 | inputs/design/prototypes/ia.md | route map + roles (cite) |
 | inputs/design/prototypes/day1-demo.html | shell reference (cite) |
 
@@ -34,7 +34,7 @@ Ask bar scaffold.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | role guard hides admin item for Procurement | workspace/contigo-web/tests |
+| unit | role guard hides admin item for Procurement | workspace/raffa-web/tests |
 
 ## Wave-spec entry
 ```yaml

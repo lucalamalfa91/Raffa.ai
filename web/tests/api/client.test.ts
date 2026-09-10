@@ -14,18 +14,18 @@ describe("createApiClient().getHealth", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response("Healthy", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.contigo.example").getHealth();
+    await createApiClient("https://api.dev.raffa.example").getHealth();
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toBe("https://api.dev.contigo.example/health");
+    expect(String(url)).toBe("https://api.dev.raffa.example/health");
     expect(init).toEqual({ cache: "no-store" });
   });
 
   it("reports ok:true with the response body on 200 Healthy", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("Healthy", { status: 200 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getHealth();
+    const result = await createApiClient("https://api.dev.raffa.example").getHealth();
 
     expect(result).toEqual({ ok: true, statusCode: 200, body: "Healthy" });
   });
@@ -33,7 +33,7 @@ describe("createApiClient().getHealth", () => {
   it("reports ok:true on 200 Degraded (still a 2xx, per Program.cs's default HealthCheckOptions)", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("Degraded", { status: 200 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getHealth();
+    const result = await createApiClient("https://api.dev.raffa.example").getHealth();
 
     expect(result).toEqual({ ok: true, statusCode: 200, body: "Degraded" });
   });
@@ -41,7 +41,7 @@ describe("createApiClient().getHealth", () => {
   it("reports ok:false with the response body on 503 Unhealthy, without throwing", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("Unhealthy", { status: 503 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getHealth();
+    const result = await createApiClient("https://api.dev.raffa.example").getHealth();
 
     expect(result).toEqual({ ok: false, statusCode: 503, body: "Unhealthy" });
   });
@@ -49,11 +49,11 @@ describe("createApiClient().getHealth", () => {
   it("resolves (does not throw) with statusCode null and a descriptive body when the network request fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getHealth();
+    const result = await createApiClient("https://api.dev.raffa.example").getHealth();
 
     expect(result.ok).toBe(false);
     expect(result.statusCode).toBeNull();
-    expect(result.body).toContain("https://api.dev.contigo.example/health");
+    expect(result.body).toContain("https://api.dev.raffa.example/health");
     expect(result.body).toContain("network down");
   });
 });
@@ -71,11 +71,11 @@ describe("createApiClient().createWorkspace (task E06/F03/US01/T01)", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.contigo.example").createWorkspace({ name: "Acme" });
+    await createApiClient("https://api.dev.raffa.example").createWorkspace({ name: "Acme" });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toBe("https://api.dev.contigo.example/api/workspaces");
+    expect(String(url)).toBe("https://api.dev.raffa.example/api/workspaces");
     expect(init).toEqual({
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -88,7 +88,7 @@ describe("createApiClient().createWorkspace (task E06/F03/US01/T01)", () => {
     const workspace = { id: "w-1", name: "Acme", createdAt: "2026-09-06T08:00:00Z" };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(workspace), { status: 201 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").createWorkspace({ name: "Acme" });
+    const result = await createApiClient("https://api.dev.raffa.example").createWorkspace({ name: "Acme" });
 
     expect(result).toEqual({ ok: true, statusCode: 201, workspace, error: null });
   });
@@ -99,7 +99,7 @@ describe("createApiClient().createWorkspace (task E06/F03/US01/T01)", () => {
       vi.fn().mockResolvedValue(new Response(JSON.stringify("A workspace 'name' is required."), { status: 400 })),
     );
 
-    const result = await createApiClient("https://api.dev.contigo.example").createWorkspace({ name: "" });
+    const result = await createApiClient("https://api.dev.raffa.example").createWorkspace({ name: "" });
 
     expect(result).toEqual({
       ok: false,
@@ -112,7 +112,7 @@ describe("createApiClient().createWorkspace (task E06/F03/US01/T01)", () => {
   it("falls back to a status-based message when a non-2xx body is not JSON", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("Bad Gateway", { status: 502, statusText: "Bad Gateway" })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").createWorkspace({ name: "Acme" });
+    const result = await createApiClient("https://api.dev.raffa.example").createWorkspace({ name: "Acme" });
 
     expect(result.ok).toBe(false);
     expect(result.statusCode).toBe(502);
@@ -123,12 +123,12 @@ describe("createApiClient().createWorkspace (task E06/F03/US01/T01)", () => {
   it("resolves (does not throw) with statusCode null when the network request fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
 
-    const result = await createApiClient("https://api.dev.contigo.example").createWorkspace({ name: "Acme" });
+    const result = await createApiClient("https://api.dev.raffa.example").createWorkspace({ name: "Acme" });
 
     expect(result.ok).toBe(false);
     expect(result.statusCode).toBeNull();
     expect(result.workspace).toBeNull();
-    expect(result.error).toContain("https://api.dev.contigo.example/api/workspaces");
+    expect(result.error).toContain("https://api.dev.raffa.example/api/workspaces");
     expect(result.error).toContain("network down");
   });
 });
@@ -151,11 +151,11 @@ describe("createApiClient().uploadDocument (task E06/F05/US01/T01)", () => {
     vi.stubGlobal("fetch", fetchMock);
     const file = pdfFile();
 
-    await createApiClient("https://api.dev.contigo.example").uploadDocument("tenant-1", file);
+    await createApiClient("https://api.dev.raffa.example").uploadDocument("tenant-1", file);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toBe("https://api.dev.contigo.example/api/documents");
+    expect(String(url)).toBe("https://api.dev.raffa.example/api/documents");
     expect(init.method).toBe("POST");
     expect(init.headers).toEqual({ "X-Tenant-Id": "tenant-1" });
     expect(init.cache).toBe("no-store");
@@ -176,7 +176,7 @@ describe("createApiClient().uploadDocument (task E06/F05/US01/T01)", () => {
     };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(document), { status: 201 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").uploadDocument("tenant-1", pdfFile());
+    const result = await createApiClient("https://api.dev.raffa.example").uploadDocument("tenant-1", pdfFile());
 
     expect(result).toEqual({ ok: true, statusCode: 201, document, rejection: null, error: null });
   });
@@ -189,7 +189,7 @@ describe("createApiClient().uploadDocument (task E06/F05/US01/T01)", () => {
       ),
     );
 
-    const result = await createApiClient("https://api.dev.contigo.example").uploadDocument("bad-tenant", pdfFile());
+    const result = await createApiClient("https://api.dev.raffa.example").uploadDocument("bad-tenant", pdfFile());
 
     expect(result).toEqual({
       ok: false,
@@ -203,7 +203,7 @@ describe("createApiClient().uploadDocument (task E06/F05/US01/T01)", () => {
   it("falls back to a status-based message when a non-2xx body is not JSON", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("Bad Gateway", { status: 502, statusText: "Bad Gateway" })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").uploadDocument("tenant-1", pdfFile());
+    const result = await createApiClient("https://api.dev.raffa.example").uploadDocument("tenant-1", pdfFile());
 
     expect(result.ok).toBe(false);
     expect(result.statusCode).toBe(502);
@@ -214,12 +214,12 @@ describe("createApiClient().uploadDocument (task E06/F05/US01/T01)", () => {
   it("resolves (does not throw) with statusCode null when the network request fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
 
-    const result = await createApiClient("https://api.dev.contigo.example").uploadDocument("tenant-1", pdfFile());
+    const result = await createApiClient("https://api.dev.raffa.example").uploadDocument("tenant-1", pdfFile());
 
     expect(result.ok).toBe(false);
     expect(result.statusCode).toBeNull();
     expect(result.document).toBeNull();
-    expect(result.error).toContain("https://api.dev.contigo.example/api/documents");
+    expect(result.error).toContain("https://api.dev.raffa.example/api/documents");
     expect(result.error).toContain("network down");
   });
 });
@@ -243,18 +243,18 @@ describe("createApiClient().getDocument (task E06/F05/US02/T01)", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(document), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.contigo.example").getDocument("tenant-1", "doc-1");
+    await createApiClient("https://api.dev.raffa.example").getDocument("tenant-1", "doc-1");
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toBe("https://api.dev.contigo.example/api/documents/doc-1");
+    expect(String(url)).toBe("https://api.dev.raffa.example/api/documents/doc-1");
     expect(init).toEqual({ headers: { "X-Tenant-Id": "tenant-1" }, cache: "no-store" });
   });
 
   it("reports ok:true with the document (including documentType) on 200", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(document), { status: 200 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getDocument("tenant-1", "doc-1");
+    const result = await createApiClient("https://api.dev.raffa.example").getDocument("tenant-1", "doc-1");
 
     expect(result).toEqual({ ok: true, statusCode: 200, document, error: null });
   });
@@ -262,7 +262,7 @@ describe("createApiClient().getDocument (task E06/F05/US02/T01)", () => {
   it("reports ok:false with a named error (no response body to parse) on 404", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getDocument("tenant-1", "missing-doc");
+    const result = await createApiClient("https://api.dev.raffa.example").getDocument("tenant-1", "missing-doc");
 
     expect(result.ok).toBe(false);
     expect(result.statusCode).toBe(404);
@@ -278,7 +278,7 @@ describe("createApiClient().getDocument (task E06/F05/US02/T01)", () => {
       ),
     );
 
-    const result = await createApiClient("https://api.dev.contigo.example").getDocument("bad-tenant", "doc-1");
+    const result = await createApiClient("https://api.dev.raffa.example").getDocument("bad-tenant", "doc-1");
 
     expect(result).toEqual({
       ok: false,
@@ -291,7 +291,7 @@ describe("createApiClient().getDocument (task E06/F05/US02/T01)", () => {
   it("falls back to a status-based message when a non-2xx body is not JSON", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("Bad Gateway", { status: 502, statusText: "Bad Gateway" })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getDocument("tenant-1", "doc-1");
+    const result = await createApiClient("https://api.dev.raffa.example").getDocument("tenant-1", "doc-1");
 
     expect(result.ok).toBe(false);
     expect(result.statusCode).toBe(502);
@@ -302,12 +302,12 @@ describe("createApiClient().getDocument (task E06/F05/US02/T01)", () => {
   it("resolves (does not throw) with statusCode null when the network request fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getDocument("tenant-1", "doc-1");
+    const result = await createApiClient("https://api.dev.raffa.example").getDocument("tenant-1", "doc-1");
 
     expect(result.ok).toBe(false);
     expect(result.statusCode).toBeNull();
     expect(result.document).toBeNull();
-    expect(result.error).toContain("https://api.dev.contigo.example/api/documents/doc-1");
+    expect(result.error).toContain("https://api.dev.raffa.example/api/documents/doc-1");
     expect(result.error).toContain("network down");
   });
 });
@@ -321,7 +321,7 @@ describe("createApiClient().uploadDocument -- 413/415/422 (task E13/F04/US01/T01
     const rejectionBody = { rejected: true, detectedType: "Other", confidence: 0.93, reason: "not_a_contract", hint: "..." };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(rejectionBody), { status: 422 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").uploadDocument("tenant-1", pdfFile());
+    const result = await createApiClient("https://api.dev.raffa.example").uploadDocument("tenant-1", pdfFile());
 
     expect(result).toEqual({ ok: false, statusCode: 422, document: null, rejection: rejectionBody, error: null });
   });
@@ -329,34 +329,34 @@ describe("createApiClient().uploadDocument -- 413/415/422 (task E13/F04/US01/T01
   it("reports a plain-string 413 (oversized) on `error`, leaving `rejection` null", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(new Response(JSON.stringify("Contigo accepts files up to 50 MB. This file is larger."), { status: 413 })),
+      vi.fn().mockResolvedValue(new Response(JSON.stringify("Raffa accepts files up to 50 MB. This file is larger."), { status: 413 })),
     );
 
-    const result = await createApiClient("https://api.dev.contigo.example").uploadDocument("tenant-1", pdfFile());
+    const result = await createApiClient("https://api.dev.raffa.example").uploadDocument("tenant-1", pdfFile());
 
     expect(result).toEqual({
       ok: false,
       statusCode: 413,
       document: null,
       rejection: null,
-      error: "Contigo accepts files up to 50 MB. This file is larger.",
+      error: "Raffa accepts files up to 50 MB. This file is larger.",
     });
   });
 
   it("reports a plain-string 415 (format) on `error`, leaving `rejection` null", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(new Response(JSON.stringify("Contigo reads PDF, Word, Excel and scanned images"), { status: 415 })),
+      vi.fn().mockResolvedValue(new Response(JSON.stringify("Raffa reads PDF, Word, Excel and scanned images"), { status: 415 })),
     );
 
-    const result = await createApiClient("https://api.dev.contigo.example").uploadDocument("tenant-1", pdfFile());
+    const result = await createApiClient("https://api.dev.raffa.example").uploadDocument("tenant-1", pdfFile());
 
     expect(result).toEqual({
       ok: false,
       statusCode: 415,
       document: null,
       rejection: null,
-      error: "Contigo reads PDF, Word, Excel and scanned images",
+      error: "Raffa reads PDF, Word, Excel and scanned images",
     });
   });
 
@@ -371,7 +371,7 @@ describe("createApiClient().uploadDocument -- 413/415/422 (task E13/F04/US01/T01
     };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(document), { status: 201 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").uploadDocument("tenant-1", pdfFile());
+    const result = await createApiClient("https://api.dev.raffa.example").uploadDocument("tenant-1", pdfFile());
 
     expect(result).toEqual({ ok: true, statusCode: 201, document, rejection: null, error: null });
   });
@@ -406,11 +406,11 @@ describe("createApiClient().listDocuments (task E13/F09/US01/T03, documented ahe
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(documentListPage), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.contigo.example").listDocuments("tenant-1");
+    await createApiClient("https://api.dev.raffa.example").listDocuments("tenant-1");
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toBe("https://api.dev.contigo.example/api/documents");
+    expect(String(url)).toBe("https://api.dev.raffa.example/api/documents");
     expect(init).toEqual({ headers: { "X-Tenant-Id": "tenant-1" }, cache: "no-store" });
   });
 
@@ -418,7 +418,7 @@ describe("createApiClient().listDocuments (task E13/F09/US01/T03, documented ahe
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(documentListPage), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.contigo.example").listDocuments("tenant-1", {
+    await createApiClient("https://api.dev.raffa.example").listDocuments("tenant-1", {
       status: "NeedsReview",
       page: 2,
       pageSize: 50,
@@ -434,7 +434,7 @@ describe("createApiClient().listDocuments (task E13/F09/US01/T03, documented ahe
   it("reports ok:true with the page on 200", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(documentListPage), { status: 200 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").listDocuments("tenant-1");
+    const result = await createApiClient("https://api.dev.raffa.example").listDocuments("tenant-1");
 
     expect(result).toEqual({ ok: true, statusCode: 200, page: documentListPage, error: null });
   });
@@ -442,7 +442,7 @@ describe("createApiClient().listDocuments (task E13/F09/US01/T03, documented ahe
   it("resolves (does not throw) with statusCode null when the network request fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
 
-    const result = await createApiClient("https://api.dev.contigo.example").listDocuments("tenant-1");
+    const result = await createApiClient("https://api.dev.raffa.example").listDocuments("tenant-1");
 
     expect(result.ok).toBe(false);
     expect(result.statusCode).toBeNull();
@@ -464,11 +464,11 @@ describe("createApiClient().getDocumentPreviewUrl (task E13/F09/US01/T03, docume
     const createObjectURL = vi.fn().mockReturnValue("blob:mock-url");
     vi.stubGlobal("URL", Object.assign(URL, { createObjectURL }));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getDocumentPreviewUrl("tenant-1", "doc-1");
+    const result = await createApiClient("https://api.dev.raffa.example").getDocumentPreviewUrl("tenant-1", "doc-1");
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toBe("https://api.dev.contigo.example/api/documents/doc-1/preview");
+    expect(String(url)).toBe("https://api.dev.raffa.example/api/documents/doc-1/preview");
     expect(init).toEqual({ headers: { "X-Tenant-Id": "tenant-1" }, cache: "no-store" });
     expect(result).toEqual({ ok: true, statusCode: 200, objectUrl: "blob:mock-url", error: null });
   });
@@ -476,7 +476,7 @@ describe("createApiClient().getDocumentPreviewUrl (task E13/F09/US01/T03, docume
   it("reports a named 404 without attempting to parse an empty body", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getDocumentPreviewUrl("tenant-1", "missing-doc");
+    const result = await createApiClient("https://api.dev.raffa.example").getDocumentPreviewUrl("tenant-1", "missing-doc");
 
     expect(result).toEqual({ ok: false, statusCode: 404, objectUrl: null, error: "No document found for id missing-doc." });
   });
@@ -484,7 +484,7 @@ describe("createApiClient().getDocumentPreviewUrl (task E13/F09/US01/T03, docume
   it("resolves (does not throw) with statusCode null when the network request fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getDocumentPreviewUrl("tenant-1", "doc-1");
+    const result = await createApiClient("https://api.dev.raffa.example").getDocumentPreviewUrl("tenant-1", "doc-1");
 
     expect(result.ok).toBe(false);
     expect(result.statusCode).toBeNull();
@@ -511,18 +511,18 @@ describe("createApiClient().reprocessDocument (task E13/F09/US01/T03, documented
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(summary), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.contigo.example").reprocessDocument("tenant-1", "doc-1");
+    await createApiClient("https://api.dev.raffa.example").reprocessDocument("tenant-1", "doc-1");
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toBe("https://api.dev.contigo.example/api/documents/doc-1/reprocess");
+    expect(String(url)).toBe("https://api.dev.raffa.example/api/documents/doc-1/reprocess");
     expect(init).toEqual({ method: "POST", headers: { "X-Tenant-Id": "tenant-1" }, cache: "no-store" });
   });
 
   it("reports ok:true with the summary on 200", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(summary), { status: 200 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").reprocessDocument("tenant-1", "doc-1");
+    const result = await createApiClient("https://api.dev.raffa.example").reprocessDocument("tenant-1", "doc-1");
 
     expect(result).toEqual({ ok: true, statusCode: 200, summary, error: null });
   });
@@ -530,7 +530,7 @@ describe("createApiClient().reprocessDocument (task E13/F09/US01/T03, documented
   it("reports a named 403 when the caller is not Admin", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 403 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").reprocessDocument("tenant-1", "doc-1");
+    const result = await createApiClient("https://api.dev.raffa.example").reprocessDocument("tenant-1", "doc-1");
 
     expect(result).toEqual({ ok: false, statusCode: 403, summary: null, error: "Only a Workspace Admin can reprocess a document." });
   });
@@ -538,7 +538,7 @@ describe("createApiClient().reprocessDocument (task E13/F09/US01/T03, documented
   it("reports a named 404 without attempting to parse an empty body", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").reprocessDocument("tenant-1", "missing-doc");
+    const result = await createApiClient("https://api.dev.raffa.example").reprocessDocument("tenant-1", "missing-doc");
 
     expect(result).toEqual({ ok: false, statusCode: 404, summary: null, error: "No document found for id missing-doc." });
   });
@@ -546,7 +546,7 @@ describe("createApiClient().reprocessDocument (task E13/F09/US01/T03, documented
   it("resolves (does not throw) with statusCode null when the network request fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
 
-    const result = await createApiClient("https://api.dev.contigo.example").reprocessDocument("tenant-1", "doc-1");
+    const result = await createApiClient("https://api.dev.raffa.example").reprocessDocument("tenant-1", "doc-1");
 
     expect(result.ok).toBe(false);
     expect(result.statusCode).toBeNull();
@@ -563,18 +563,18 @@ describe("createApiClient().deleteDocument (task E13/F09/US01/T03, documented ah
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.contigo.example").deleteDocument("tenant-1", "doc-1");
+    await createApiClient("https://api.dev.raffa.example").deleteDocument("tenant-1", "doc-1");
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toBe("https://api.dev.contigo.example/api/documents/doc-1");
+    expect(String(url)).toBe("https://api.dev.raffa.example/api/documents/doc-1");
     expect(init).toEqual({ method: "DELETE", headers: { "X-Tenant-Id": "tenant-1" }, cache: "no-store" });
   });
 
   it("reports ok:true on 204", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").deleteDocument("tenant-1", "doc-1");
+    const result = await createApiClient("https://api.dev.raffa.example").deleteDocument("tenant-1", "doc-1");
 
     expect(result).toEqual({ ok: true, statusCode: 204, error: null });
   });
@@ -582,7 +582,7 @@ describe("createApiClient().deleteDocument (task E13/F09/US01/T03, documented ah
   it("reports a named 403 when the caller is not Admin (R-DOC-10: Procurement gets 403)", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 403 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").deleteDocument("tenant-1", "doc-1");
+    const result = await createApiClient("https://api.dev.raffa.example").deleteDocument("tenant-1", "doc-1");
 
     expect(result).toEqual({ ok: false, statusCode: 403, error: "Only a Workspace Admin can delete a document." });
   });
@@ -590,7 +590,7 @@ describe("createApiClient().deleteDocument (task E13/F09/US01/T03, documented ah
   it("reports a named 404 without attempting to parse an empty body", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").deleteDocument("tenant-1", "missing-doc");
+    const result = await createApiClient("https://api.dev.raffa.example").deleteDocument("tenant-1", "missing-doc");
 
     expect(result).toEqual({ ok: false, statusCode: 404, error: "No document found for id missing-doc." });
   });
@@ -598,7 +598,7 @@ describe("createApiClient().deleteDocument (task E13/F09/US01/T03, documented ah
   it("resolves (does not throw) with statusCode null when the network request fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
 
-    const result = await createApiClient("https://api.dev.contigo.example").deleteDocument("tenant-1", "doc-1");
+    const result = await createApiClient("https://api.dev.raffa.example").deleteDocument("tenant-1", "doc-1");
 
     expect(result.ok).toBe(false);
     expect(result.statusCode).toBeNull();
@@ -636,11 +636,11 @@ describe("createApiClient().getPortfolio (task E07/F01/US01/T01)", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(portfolioPage), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.contigo.example").getPortfolio("tenant-1");
+    await createApiClient("https://api.dev.raffa.example").getPortfolio("tenant-1");
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toBe("https://api.dev.contigo.example/api/contracts");
+    expect(String(url)).toBe("https://api.dev.raffa.example/api/contracts");
     expect(init).toEqual({ headers: { "X-Tenant-Id": "tenant-1" }, cache: "no-store" });
   });
 
@@ -648,7 +648,7 @@ describe("createApiClient().getPortfolio (task E07/F01/US01/T01)", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(portfolioPage), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.contigo.example").getPortfolio("tenant-1", {
+    await createApiClient("https://api.dev.raffa.example").getPortfolio("tenant-1", {
       supplierId: "supplier-1",
       status: "active",
       risk: "High",
@@ -678,7 +678,7 @@ describe("createApiClient().getPortfolio (task E07/F01/US01/T01)", () => {
   it("reports ok:true with the portfolio page on 200", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(portfolioPage), { status: 200 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getPortfolio("tenant-1");
+    const result = await createApiClient("https://api.dev.raffa.example").getPortfolio("tenant-1");
 
     expect(result).toEqual({ ok: true, statusCode: 200, portfolio: portfolioPage, error: null });
   });
@@ -689,7 +689,7 @@ describe("createApiClient().getPortfolio (task E07/F01/US01/T01)", () => {
       vi.fn().mockResolvedValue(new Response(JSON.stringify("'risk' must be one of Low, Medium, High, Critical."), { status: 400 })),
     );
 
-    const result = await createApiClient("https://api.dev.contigo.example").getPortfolio("tenant-1");
+    const result = await createApiClient("https://api.dev.raffa.example").getPortfolio("tenant-1");
 
     expect(result).toEqual({
       ok: false,
@@ -702,7 +702,7 @@ describe("createApiClient().getPortfolio (task E07/F01/US01/T01)", () => {
   it("reports ok:false with a status-based message on a 503 (AC-4 error state), without throwing", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("Service Unavailable", { status: 503, statusText: "Service Unavailable" })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getPortfolio("tenant-1");
+    const result = await createApiClient("https://api.dev.raffa.example").getPortfolio("tenant-1");
 
     expect(result.ok).toBe(false);
     expect(result.statusCode).toBe(503);
@@ -713,12 +713,12 @@ describe("createApiClient().getPortfolio (task E07/F01/US01/T01)", () => {
   it("resolves (does not throw) with statusCode null when the network request fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getPortfolio("tenant-1");
+    const result = await createApiClient("https://api.dev.raffa.example").getPortfolio("tenant-1");
 
     expect(result.ok).toBe(false);
     expect(result.statusCode).toBeNull();
     expect(result.portfolio).toBeNull();
-    expect(result.error).toContain("https://api.dev.contigo.example/api/contracts");
+    expect(result.error).toContain("https://api.dev.raffa.example/api/contracts");
     expect(result.error).toContain("network down");
   });
 });
@@ -781,18 +781,18 @@ describe("createApiClient().getContract360 (task E07/F02/US01/T01)", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(contract360Body), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.contigo.example").getContract360("tenant-1", "contract-1");
+    await createApiClient("https://api.dev.raffa.example").getContract360("tenant-1", "contract-1");
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toBe("https://api.dev.contigo.example/api/contracts/contract-1");
+    expect(String(url)).toBe("https://api.dev.raffa.example/api/contracts/contract-1");
     expect(init).toEqual({ headers: { "X-Tenant-Id": "tenant-1" }, cache: "no-store" });
   });
 
   it("reports ok:true with the full aggregate on 200", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(contract360Body), { status: 200 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getContract360("tenant-1", "contract-1");
+    const result = await createApiClient("https://api.dev.raffa.example").getContract360("tenant-1", "contract-1");
 
     expect(result).toEqual({ ok: true, statusCode: 200, contract: contract360Body, error: null });
   });
@@ -800,7 +800,7 @@ describe("createApiClient().getContract360 (task E07/F02/US01/T01)", () => {
   it("reports a named 404 (no such contract for this tenant) without attempting to parse an empty body", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getContract360("tenant-1", "missing-contract");
+    const result = await createApiClient("https://api.dev.raffa.example").getContract360("tenant-1", "missing-contract");
 
     expect(result).toEqual({ ok: false, statusCode: 404, contract: null, error: "No contract found for id missing-contract." });
   });
@@ -808,7 +808,7 @@ describe("createApiClient().getContract360 (task E07/F02/US01/T01)", () => {
   it("resolves (does not throw) with statusCode null when the network request fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getContract360("tenant-1", "contract-1");
+    const result = await createApiClient("https://api.dev.raffa.example").getContract360("tenant-1", "contract-1");
 
     expect(result.ok).toBe(false);
     expect(result.statusCode).toBeNull();
@@ -861,18 +861,18 @@ describe("createApiClient().getRenewals (task E07/F02/US01/T01)", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(renewalsPage), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.contigo.example").getRenewals("tenant-1");
+    await createApiClient("https://api.dev.raffa.example").getRenewals("tenant-1");
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toBe("https://api.dev.contigo.example/api/renewals");
+    expect(String(url)).toBe("https://api.dev.raffa.example/api/renewals");
     expect(init).toEqual({ headers: { "X-Tenant-Id": "tenant-1" }, cache: "no-store" });
   });
 
   it("reports ok:true with the pipeline page on 200", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(renewalsPage), { status: 200 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getRenewals("tenant-1");
+    const result = await createApiClient("https://api.dev.raffa.example").getRenewals("tenant-1");
 
     expect(result).toEqual({ ok: true, statusCode: 200, renewals: renewalsPage, error: null });
   });
@@ -880,7 +880,7 @@ describe("createApiClient().getRenewals (task E07/F02/US01/T01)", () => {
   it("resolves (does not throw) with statusCode null when the network request fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getRenewals("tenant-1");
+    const result = await createApiClient("https://api.dev.raffa.example").getRenewals("tenant-1");
 
     expect(result.ok).toBe(false);
     expect(result.statusCode).toBeNull();
@@ -910,18 +910,18 @@ describe("createApiClient().getRenewalPriority (task E07/F02/US01/T01)", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(priorityBody), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.contigo.example").getRenewalPriority("tenant-1", "contract-1");
+    await createApiClient("https://api.dev.raffa.example").getRenewalPriority("tenant-1", "contract-1");
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toBe("https://api.dev.contigo.example/api/renewals/contract-1/priority");
+    expect(String(url)).toBe("https://api.dev.raffa.example/api/renewals/contract-1/priority");
     expect(init).toEqual({ headers: { "X-Tenant-Id": "tenant-1" }, cache: "no-store" });
   });
 
   it("reports ok:true with the score breakdown on 200", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(priorityBody), { status: 200 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getRenewalPriority("tenant-1", "contract-1");
+    const result = await createApiClient("https://api.dev.raffa.example").getRenewalPriority("tenant-1", "contract-1");
 
     expect(result).toEqual({ ok: true, statusCode: 200, priority: priorityBody, error: null });
   });
@@ -929,7 +929,7 @@ describe("createApiClient().getRenewalPriority (task E07/F02/US01/T01)", () => {
   it("reports a named 404 without attempting to parse an empty body", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getRenewalPriority("tenant-1", "missing-contract");
+    const result = await createApiClient("https://api.dev.raffa.example").getRenewalPriority("tenant-1", "missing-contract");
 
     expect(result).toEqual({ ok: false, statusCode: 404, priority: null, error: "No contract found for id missing-contract." });
   });
@@ -937,7 +937,7 @@ describe("createApiClient().getRenewalPriority (task E07/F02/US01/T01)", () => {
   it("resolves (does not throw) with statusCode null when the network request fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getRenewalPriority("tenant-1", "contract-1");
+    const result = await createApiClient("https://api.dev.raffa.example").getRenewalPriority("tenant-1", "contract-1");
 
     expect(result.ok).toBe(false);
     expect(result.statusCode).toBeNull();
@@ -966,18 +966,18 @@ describe("createApiClient().getCorrectionHistory (task E07/F03/US01/T01)", () =>
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(historyBody), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.contigo.example").getCorrectionHistory("tenant-1", "contract-1");
+    await createApiClient("https://api.dev.raffa.example").getCorrectionHistory("tenant-1", "contract-1");
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toBe("https://api.dev.contigo.example/api/contracts/contract-1/corrections");
+    expect(String(url)).toBe("https://api.dev.raffa.example/api/contracts/contract-1/corrections");
     expect(init).toEqual({ headers: { "X-Tenant-Id": "tenant-1" }, cache: "no-store" });
   });
 
   it("reports ok:true with the newest-first history on 200 (possibly empty)", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(historyBody), { status: 200 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getCorrectionHistory("tenant-1", "contract-1");
+    const result = await createApiClient("https://api.dev.raffa.example").getCorrectionHistory("tenant-1", "contract-1");
 
     expect(result).toEqual({ ok: true, statusCode: 200, history: historyBody, error: null });
   });
@@ -985,7 +985,7 @@ describe("createApiClient().getCorrectionHistory (task E07/F03/US01/T01)", () =>
   it("reports a named 404 without attempting to parse an empty body", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getCorrectionHistory("tenant-1", "missing-contract");
+    const result = await createApiClient("https://api.dev.raffa.example").getCorrectionHistory("tenant-1", "missing-contract");
 
     expect(result).toEqual({ ok: false, statusCode: 404, history: null, error: "No contract found for id missing-contract." });
   });
@@ -993,7 +993,7 @@ describe("createApiClient().getCorrectionHistory (task E07/F03/US01/T01)", () =>
   it("resolves (does not throw) with statusCode null when the network request fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getCorrectionHistory("tenant-1", "contract-1");
+    const result = await createApiClient("https://api.dev.raffa.example").getCorrectionHistory("tenant-1", "contract-1");
 
     expect(result.ok).toBe(false);
     expect(result.statusCode).toBeNull();
@@ -1018,14 +1018,14 @@ describe("createApiClient().correctContract (task E07/F03/US01/T01)", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(correctionBody), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.contigo.example").correctContract("tenant-1", "contract-1", {
+    await createApiClient("https://api.dev.raffa.example").correctContract("tenant-1", "contract-1", {
       corrections: { annualSpend: "520000" },
       reason: "Corrected from the signed order form.",
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toBe("https://api.dev.contigo.example/api/contracts/contract-1");
+    expect(String(url)).toBe("https://api.dev.raffa.example/api/contracts/contract-1");
     expect(init).toEqual({
       method: "PATCH",
       headers: { "Content-Type": "application/json", "X-Tenant-Id": "tenant-1" },
@@ -1037,7 +1037,7 @@ describe("createApiClient().correctContract (task E07/F03/US01/T01)", () => {
   it("reports ok:true with the resulting version/correctedFields on 200", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(correctionBody), { status: 200 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").correctContract("tenant-1", "contract-1", {
+    const result = await createApiClient("https://api.dev.raffa.example").correctContract("tenant-1", "contract-1", {
       corrections: { annualSpend: "520000" },
     });
 
@@ -1054,7 +1054,7 @@ describe("createApiClient().correctContract (task E07/F03/US01/T01)", () => {
         ),
     );
 
-    const result = await createApiClient("https://api.dev.contigo.example").correctContract("tenant-1", "contract-1", {
+    const result = await createApiClient("https://api.dev.raffa.example").correctContract("tenant-1", "contract-1", {
       corrections: { annualSpend: "500000" },
     });
 
@@ -1069,7 +1069,7 @@ describe("createApiClient().correctContract (task E07/F03/US01/T01)", () => {
   it("reports a named 404 without attempting to parse an empty body", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").correctContract("tenant-1", "missing-contract", {
+    const result = await createApiClient("https://api.dev.raffa.example").correctContract("tenant-1", "missing-contract", {
       corrections: { annualSpend: "520000" },
     });
 
@@ -1079,7 +1079,7 @@ describe("createApiClient().correctContract (task E07/F03/US01/T01)", () => {
   it("resolves (does not throw) with statusCode null when the network request fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
 
-    const result = await createApiClient("https://api.dev.contigo.example").correctContract("tenant-1", "contract-1", {
+    const result = await createApiClient("https://api.dev.raffa.example").correctContract("tenant-1", "contract-1", {
       corrections: { annualSpend: "520000" },
     });
 
@@ -1090,7 +1090,7 @@ describe("createApiClient().correctContract (task E07/F03/US01/T01)", () => {
   });
 });
 
-describe("createApiClient().askContigo (task E07/F04/US01/T01)", () => {
+describe("createApiClient().askRaffa (task E07/F04/US01/T01)", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
@@ -1108,13 +1108,13 @@ describe("createApiClient().askContigo (task E07/F04/US01/T01)", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(answeredBody), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.contigo.example").askContigo("tenant-1", {
+    await createApiClient("https://api.dev.raffa.example").askRaffa("tenant-1", {
       question: "What liability do we have with AWS?",
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toBe("https://api.dev.contigo.example/api/chat/query");
+    expect(String(url)).toBe("https://api.dev.raffa.example/api/chat/query");
     expect(init).toEqual({
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Tenant-Id": "tenant-1" },
@@ -1126,7 +1126,7 @@ describe("createApiClient().askContigo (task E07/F04/US01/T01)", () => {
   it("reports ok:true with the full routed envelope on 200 (a determined, cited answer)", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(answeredBody), { status: 200 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").askContigo("tenant-1", {
+    const result = await createApiClient("https://api.dev.raffa.example").askRaffa("tenant-1", {
       question: "What liability do we have with AWS?",
     });
 
@@ -1144,7 +1144,7 @@ describe("createApiClient().askContigo (task E07/F04/US01/T01)", () => {
     };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(abstainBody), { status: 200 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").askContigo("tenant-1", {
+    const result = await createApiClient("https://api.dev.raffa.example").askRaffa("tenant-1", {
       question: "What is our total liability exposure across all contracts?",
     });
 
@@ -1157,7 +1157,7 @@ describe("createApiClient().askContigo (task E07/F04/US01/T01)", () => {
       vi.fn().mockResolvedValue(new Response(JSON.stringify("A non-empty 'question' is required."), { status: 400 })),
     );
 
-    const result = await createApiClient("https://api.dev.contigo.example").askContigo("tenant-1", { question: "   " });
+    const result = await createApiClient("https://api.dev.raffa.example").askRaffa("tenant-1", { question: "   " });
 
     expect(result).toEqual({ ok: false, statusCode: 400, response: null, error: "A non-empty 'question' is required." });
   });
@@ -1165,7 +1165,7 @@ describe("createApiClient().askContigo (task E07/F04/US01/T01)", () => {
   it("resolves (does not throw) with statusCode null when the network request fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
 
-    const result = await createApiClient("https://api.dev.contigo.example").askContigo("tenant-1", {
+    const result = await createApiClient("https://api.dev.raffa.example").askRaffa("tenant-1", {
       question: "What liability do we have with AWS?",
     });
 
@@ -1193,7 +1193,7 @@ describe("createApiClient().postRenewalAction (task E08/F01/US01/T01)", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(actionBody), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.contigo.example").postRenewalAction("tenant-1", "contract-1", {
+    await createApiClient("https://api.dev.raffa.example").postRenewalAction("tenant-1", "contract-1", {
       owner: "user@example.test",
       status: "InProgress",
       action: "In negotiation",
@@ -1201,7 +1201,7 @@ describe("createApiClient().postRenewalAction (task E08/F01/US01/T01)", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toBe("https://api.dev.contigo.example/api/renewals/contract-1/action");
+    expect(String(url)).toBe("https://api.dev.raffa.example/api/renewals/contract-1/action");
     expect(init).toEqual({
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Tenant-Id": "tenant-1" },
@@ -1213,7 +1213,7 @@ describe("createApiClient().postRenewalAction (task E08/F01/US01/T01)", () => {
   it("reports ok:true with the upserted row on 200", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(actionBody), { status: 200 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").postRenewalAction("tenant-1", "contract-1", {
+    const result = await createApiClient("https://api.dev.raffa.example").postRenewalAction("tenant-1", "contract-1", {
       owner: "user@example.test",
       status: "InProgress",
       action: "In negotiation",
@@ -1228,7 +1228,7 @@ describe("createApiClient().postRenewalAction (task E08/F01/US01/T01)", () => {
       vi.fn().mockResolvedValue(new Response(JSON.stringify("'owner' is required."), { status: 400 })),
     );
 
-    const result = await createApiClient("https://api.dev.contigo.example").postRenewalAction("tenant-1", "contract-1", {
+    const result = await createApiClient("https://api.dev.raffa.example").postRenewalAction("tenant-1", "contract-1", {
       owner: "",
       status: "InProgress",
       action: "In negotiation",
@@ -1245,7 +1245,7 @@ describe("createApiClient().postRenewalAction (task E08/F01/US01/T01)", () => {
   it("falls back to a status-based message when a non-2xx body is not JSON", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("Bad Gateway", { status: 502, statusText: "Bad Gateway" })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").postRenewalAction("tenant-1", "contract-1", {
+    const result = await createApiClient("https://api.dev.raffa.example").postRenewalAction("tenant-1", "contract-1", {
       owner: "user@example.test",
       status: "InProgress",
       action: "In negotiation",
@@ -1260,7 +1260,7 @@ describe("createApiClient().postRenewalAction (task E08/F01/US01/T01)", () => {
   it("resolves (does not throw) with statusCode null when the network request fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
 
-    const result = await createApiClient("https://api.dev.contigo.example").postRenewalAction("tenant-1", "contract-1", {
+    const result = await createApiClient("https://api.dev.raffa.example").postRenewalAction("tenant-1", "contract-1", {
       owner: "user@example.test",
       status: "InProgress",
       action: "In negotiation",
@@ -1269,7 +1269,7 @@ describe("createApiClient().postRenewalAction (task E08/F01/US01/T01)", () => {
     expect(result.ok).toBe(false);
     expect(result.statusCode).toBeNull();
     expect(result.action).toBeNull();
-    expect(result.error).toContain("https://api.dev.contigo.example/api/renewals/contract-1/action");
+    expect(result.error).toContain("https://api.dev.raffa.example/api/renewals/contract-1/action");
     expect(result.error).toContain("network down");
   });
 });
@@ -1303,14 +1303,14 @@ describe("createApiClient().uploadQuote (task E08/F03/US01/T01)", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(uploadedQuote), { status: 201 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.contigo.example").uploadQuote("tenant-1", quoteFile(), {
+    await createApiClient("https://api.dev.raffa.example").uploadQuote("tenant-1", quoteFile(), {
       supplier: "Databricks",
       currency: "CHF",
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toBe("https://api.dev.contigo.example/api/quotes");
+    expect(String(url)).toBe("https://api.dev.raffa.example/api/quotes");
     expect(init.method).toBe("POST");
     expect(init.headers).toEqual({ "X-Tenant-Id": "tenant-1" });
     expect(init.cache).toBe("no-store");
@@ -1324,7 +1324,7 @@ describe("createApiClient().uploadQuote (task E08/F03/US01/T01)", () => {
   it("reports ok:true with the stored (and synchronously extracted) quote on 201", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(uploadedQuote), { status: 201 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").uploadQuote("tenant-1", quoteFile());
+    const result = await createApiClient("https://api.dev.raffa.example").uploadQuote("tenant-1", quoteFile());
 
     expect(result).toEqual({ ok: true, statusCode: 201, quote: uploadedQuote, error: null });
   });
@@ -1332,7 +1332,7 @@ describe("createApiClient().uploadQuote (task E08/F03/US01/T01)", () => {
   it("reports ok:false with the parsed JSON string error on 400", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify("A non-empty 'file' form field is required."), { status: 400 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").uploadQuote("tenant-1", quoteFile());
+    const result = await createApiClient("https://api.dev.raffa.example").uploadQuote("tenant-1", quoteFile());
 
     expect(result).toEqual({ ok: false, statusCode: 400, quote: null, error: "A non-empty 'file' form field is required." });
   });
@@ -1340,7 +1340,7 @@ describe("createApiClient().uploadQuote (task E08/F03/US01/T01)", () => {
   it("resolves (does not throw) with statusCode null when the network request fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
 
-    const result = await createApiClient("https://api.dev.contigo.example").uploadQuote("tenant-1", quoteFile());
+    const result = await createApiClient("https://api.dev.raffa.example").uploadQuote("tenant-1", quoteFile());
 
     expect(result.ok).toBe(false);
     expect(result.statusCode).toBeNull();
@@ -1359,18 +1359,18 @@ describe("createApiClient().getQuoteAssessment (task E08/F03/US01/T01)", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(assessmentBody), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.contigo.example").getQuoteAssessment("tenant-1", "quote-1");
+    await createApiClient("https://api.dev.raffa.example").getQuoteAssessment("tenant-1", "quote-1");
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toBe("https://api.dev.contigo.example/api/quotes/quote-1/assessment");
+    expect(String(url)).toBe("https://api.dev.raffa.example/api/quotes/quote-1/assessment");
     expect(init).toEqual({ headers: { "X-Tenant-Id": "tenant-1" }, cache: "no-store" });
   });
 
   it("reports ok:true with the assessment on 200", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(assessmentBody), { status: 200 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getQuoteAssessment("tenant-1", "quote-1");
+    const result = await createApiClient("https://api.dev.raffa.example").getQuoteAssessment("tenant-1", "quote-1");
 
     expect(result).toEqual({ ok: true, statusCode: 200, assessment: assessmentBody, error: null });
   });
@@ -1378,7 +1378,7 @@ describe("createApiClient().getQuoteAssessment (task E08/F03/US01/T01)", () => {
   it("reads the real 404 response body (Results.NotFound(result.Error)), unlike getContract360's own bare, empty-body 404", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify("Quote not found."), { status: 404 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getQuoteAssessment("tenant-1", "missing-quote");
+    const result = await createApiClient("https://api.dev.raffa.example").getQuoteAssessment("tenant-1", "missing-quote");
 
     expect(result).toEqual({ ok: false, statusCode: 404, assessment: null, error: "Quote not found." });
   });
@@ -1386,7 +1386,7 @@ describe("createApiClient().getQuoteAssessment (task E08/F03/US01/T01)", () => {
   it("resolves (does not throw) with statusCode null when the network request fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getQuoteAssessment("tenant-1", "quote-1");
+    const result = await createApiClient("https://api.dev.raffa.example").getQuoteAssessment("tenant-1", "quote-1");
 
     expect(result.ok).toBe(false);
     expect(result.statusCode).toBeNull();
@@ -1411,11 +1411,11 @@ describe("createApiClient().recalculateQuoteAssessment (task E08/F03/US01/T01)",
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(recalculationBody), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.contigo.example").recalculateQuoteAssessment("tenant-1", "quote-1");
+    await createApiClient("https://api.dev.raffa.example").recalculateQuoteAssessment("tenant-1", "quote-1");
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toBe("https://api.dev.contigo.example/api/quotes/quote-1/assessment/recalculate");
+    expect(String(url)).toBe("https://api.dev.raffa.example/api/quotes/quote-1/assessment/recalculate");
     expect(init).toEqual({
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Tenant-Id": "tenant-1" },
@@ -1428,7 +1428,7 @@ describe("createApiClient().recalculateQuoteAssessment (task E08/F03/US01/T01)",
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(recalculationBody), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.contigo.example").recalculateQuoteAssessment("tenant-1", "quote-1", [
+    await createApiClient("https://api.dev.raffa.example").recalculateQuoteAssessment("tenant-1", "quote-1", [
       { sku: "ENT-SUP-CUSTOM", canonicalSku: "ENT-SUP-STD" },
     ]);
 
@@ -1439,7 +1439,7 @@ describe("createApiClient().recalculateQuoteAssessment (task E08/F03/US01/T01)",
   it("reports ok:true with the recalculation on 200", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(recalculationBody), { status: 200 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").recalculateQuoteAssessment("tenant-1", "quote-1");
+    const result = await createApiClient("https://api.dev.raffa.example").recalculateQuoteAssessment("tenant-1", "quote-1");
 
     expect(result).toEqual({ ok: true, statusCode: 200, recalculation: recalculationBody, error: null });
   });
@@ -1447,7 +1447,7 @@ describe("createApiClient().recalculateQuoteAssessment (task E08/F03/US01/T01)",
   it("reads the real 404 response body (SkuMappingService.QuoteNotFoundError)", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify("Quote not found."), { status: 404 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").recalculateQuoteAssessment("tenant-1", "missing-quote");
+    const result = await createApiClient("https://api.dev.raffa.example").recalculateQuoteAssessment("tenant-1", "missing-quote");
 
     expect(result).toEqual({ ok: false, statusCode: 404, recalculation: null, error: "Quote not found." });
   });
@@ -1458,7 +1458,7 @@ describe("createApiClient().recalculateQuoteAssessment (task E08/F03/US01/T01)",
       vi.fn().mockResolvedValue(new Response(JSON.stringify("'sku' is required for every manual product-mapping correction."), { status: 400 })),
     );
 
-    const result = await createApiClient("https://api.dev.contigo.example").recalculateQuoteAssessment("tenant-1", "quote-1", [
+    const result = await createApiClient("https://api.dev.raffa.example").recalculateQuoteAssessment("tenant-1", "quote-1", [
       { sku: "", canonicalSku: "x" },
     ]);
 
@@ -1469,7 +1469,7 @@ describe("createApiClient().recalculateQuoteAssessment (task E08/F03/US01/T01)",
   it("resolves (does not throw) with statusCode null when the network request fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
 
-    const result = await createApiClient("https://api.dev.contigo.example").recalculateQuoteAssessment("tenant-1", "quote-1");
+    const result = await createApiClient("https://api.dev.raffa.example").recalculateQuoteAssessment("tenant-1", "quote-1");
 
     expect(result.ok).toBe(false);
     expect(result.statusCode).toBeNull();
@@ -1511,11 +1511,11 @@ describe("createApiClient().captureNegotiationOutcome (task E08/F03/US01/T01)", 
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(outcomeBody), { status: 201 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.contigo.example").captureNegotiationOutcome("tenant-1", request);
+    await createApiClient("https://api.dev.raffa.example").captureNegotiationOutcome("tenant-1", request);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toBe("https://api.dev.contigo.example/api/negotiations/outcomes");
+    expect(String(url)).toBe("https://api.dev.raffa.example/api/negotiations/outcomes");
     expect(init).toEqual({
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Tenant-Id": "tenant-1" },
@@ -1527,7 +1527,7 @@ describe("createApiClient().captureNegotiationOutcome (task E08/F03/US01/T01)", 
   it("reports ok:true with the server-computed outcome (realizedSaving/discountPercent) on 201", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(outcomeBody), { status: 201 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").captureNegotiationOutcome("tenant-1", request);
+    const result = await createApiClient("https://api.dev.raffa.example").captureNegotiationOutcome("tenant-1", request);
 
     expect(result).toEqual({ ok: true, statusCode: 201, outcome: outcomeBody, error: null });
   });
@@ -1535,7 +1535,7 @@ describe("createApiClient().captureNegotiationOutcome (task E08/F03/US01/T01)", 
   it("reads the real 404 response body (NegotiationOutcomeService.QuoteNotFoundError)", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify("Quote not found."), { status: 404 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").captureNegotiationOutcome("tenant-1", request);
+    const result = await createApiClient("https://api.dev.raffa.example").captureNegotiationOutcome("tenant-1", request);
 
     expect(result).toEqual({ ok: false, statusCode: 404, outcome: null, error: "Quote not found." });
   });
@@ -1553,7 +1553,7 @@ describe("createApiClient().captureNegotiationOutcome (task E08/F03/US01/T01)", 
         ),
     );
 
-    const result = await createApiClient("https://api.dev.contigo.example").captureNegotiationOutcome("tenant-1", request);
+    const result = await createApiClient("https://api.dev.raffa.example").captureNegotiationOutcome("tenant-1", request);
 
     expect(result.ok).toBe(false);
     expect(result.error).toContain("leversUsed");
@@ -1562,7 +1562,7 @@ describe("createApiClient().captureNegotiationOutcome (task E08/F03/US01/T01)", 
   it("resolves (does not throw) with statusCode null when the network request fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
 
-    const result = await createApiClient("https://api.dev.contigo.example").captureNegotiationOutcome("tenant-1", request);
+    const result = await createApiClient("https://api.dev.raffa.example").captureNegotiationOutcome("tenant-1", request);
 
     expect(result.ok).toBe(false);
     expect(result.statusCode).toBeNull();
@@ -1588,18 +1588,18 @@ describe("createApiClient().getSavingsKpis (task E08/F02/US01/T01)", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(kpiSummary), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.contigo.example").getSavingsKpis("tenant-1");
+    await createApiClient("https://api.dev.raffa.example").getSavingsKpis("tenant-1");
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toBe("https://api.dev.contigo.example/api/savings/kpis");
+    expect(String(url)).toBe("https://api.dev.raffa.example/api/savings/kpis");
     expect(init).toEqual({ headers: { "X-Tenant-Id": "tenant-1" }, cache: "no-store" });
   });
 
   it("reports ok:true with the KPI summary on 200", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(kpiSummary), { status: 200 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getSavingsKpis("tenant-1");
+    const result = await createApiClient("https://api.dev.raffa.example").getSavingsKpis("tenant-1");
 
     expect(result).toEqual({ ok: true, statusCode: 200, kpis: kpiSummary, error: null });
   });
@@ -1610,7 +1610,7 @@ describe("createApiClient().getSavingsKpis (task E08/F02/US01/T01)", () => {
       vi.fn().mockResolvedValue(new Response(JSON.stringify("A valid 'X-Tenant-Id' header (a GUID) is required."), { status: 400 })),
     );
 
-    const result = await createApiClient("https://api.dev.contigo.example").getSavingsKpis("tenant-1");
+    const result = await createApiClient("https://api.dev.raffa.example").getSavingsKpis("tenant-1");
 
     expect(result).toEqual({
       ok: false,
@@ -1623,7 +1623,7 @@ describe("createApiClient().getSavingsKpis (task E08/F02/US01/T01)", () => {
   it("resolves (does not throw) with statusCode null when the network request fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getSavingsKpis("tenant-1");
+    const result = await createApiClient("https://api.dev.raffa.example").getSavingsKpis("tenant-1");
 
     expect(result.ok).toBe(false);
     expect(result.statusCode).toBeNull();
@@ -1664,18 +1664,18 @@ describe("createApiClient().getSavingsOpportunities (task E08/F02/US01/T01)", ()
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(opportunitiesPage), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.contigo.example").getSavingsOpportunities("tenant-1");
+    await createApiClient("https://api.dev.raffa.example").getSavingsOpportunities("tenant-1");
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toBe("https://api.dev.contigo.example/api/savings");
+    expect(String(url)).toBe("https://api.dev.raffa.example/api/savings");
     expect(init).toEqual({ headers: { "X-Tenant-Id": "tenant-1" }, cache: "no-store" });
   });
 
   it("reports ok:true with the opportunity list on 200", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(opportunitiesPage), { status: 200 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getSavingsOpportunities("tenant-1");
+    const result = await createApiClient("https://api.dev.raffa.example").getSavingsOpportunities("tenant-1");
 
     expect(result).toEqual({ ok: true, statusCode: 200, opportunities: opportunitiesPage, error: null });
   });
@@ -1686,7 +1686,7 @@ describe("createApiClient().getSavingsOpportunities (task E08/F02/US01/T01)", ()
       vi.fn().mockResolvedValue(new Response(JSON.stringify("A valid 'X-Tenant-Id' header (a GUID) is required."), { status: 400 })),
     );
 
-    const result = await createApiClient("https://api.dev.contigo.example").getSavingsOpportunities("tenant-1");
+    const result = await createApiClient("https://api.dev.raffa.example").getSavingsOpportunities("tenant-1");
 
     expect(result).toEqual({
       ok: false,
@@ -1699,7 +1699,7 @@ describe("createApiClient().getSavingsOpportunities (task E08/F02/US01/T01)", ()
   it("resolves (does not throw) with statusCode null when the network request fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getSavingsOpportunities("tenant-1");
+    const result = await createApiClient("https://api.dev.raffa.example").getSavingsOpportunities("tenant-1");
 
     expect(result.ok).toBe(false);
     expect(result.statusCode).toBeNull();
@@ -1719,14 +1719,14 @@ describe("createApiClient().inviteWorkspaceMember (task E06/F04/US01/T01)", () =
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.contigo.example").inviteWorkspaceMember("tenant-1", {
+    await createApiClient("https://api.dev.raffa.example").inviteWorkspaceMember("tenant-1", {
       email: "buyer@acme.example",
       role: "Procurement",
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toBe("https://api.dev.contigo.example/api/workspaces/tenant-1/invites");
+    expect(String(url)).toBe("https://api.dev.raffa.example/api/workspaces/tenant-1/invites");
     expect(init).toEqual({
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1739,7 +1739,7 @@ describe("createApiClient().inviteWorkspaceMember (task E06/F04/US01/T01)", () =
     const member = { id: "m-1", email: "buyer@acme.example", role: "Procurement" as const };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(member), { status: 201 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").inviteWorkspaceMember("tenant-1", {
+    const result = await createApiClient("https://api.dev.raffa.example").inviteWorkspaceMember("tenant-1", {
       email: "buyer@acme.example",
       role: "Procurement",
     });
@@ -1753,7 +1753,7 @@ describe("createApiClient().inviteWorkspaceMember (task E06/F04/US01/T01)", () =
       vi.fn().mockResolvedValue(new Response(JSON.stringify("An 'email' is required."), { status: 400 })),
     );
 
-    const result = await createApiClient("https://api.dev.contigo.example").inviteWorkspaceMember("tenant-1", {
+    const result = await createApiClient("https://api.dev.raffa.example").inviteWorkspaceMember("tenant-1", {
       email: "",
       role: "Procurement",
     });
@@ -1769,7 +1769,7 @@ describe("createApiClient().inviteWorkspaceMember (task E06/F04/US01/T01)", () =
   it("resolves (does not throw) with statusCode null when the network request fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
 
-    const result = await createApiClient("https://api.dev.contigo.example").inviteWorkspaceMember("tenant-1", {
+    const result = await createApiClient("https://api.dev.raffa.example").inviteWorkspaceMember("tenant-1", {
       email: "buyer@acme.example",
       role: "Procurement",
     });
@@ -1777,7 +1777,7 @@ describe("createApiClient().inviteWorkspaceMember (task E06/F04/US01/T01)", () =
     expect(result.ok).toBe(false);
     expect(result.statusCode).toBeNull();
     expect(result.member).toBeNull();
-    expect(result.error).toContain("https://api.dev.contigo.example/api/workspaces/tenant-1/invites");
+    expect(result.error).toContain("https://api.dev.raffa.example/api/workspaces/tenant-1/invites");
     expect(result.error).toContain("network down");
   });
 });
@@ -1800,18 +1800,18 @@ describe("createApiClient().listConversations (task E13/F09/US01/T04)", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(conversations), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.contigo.example").listConversations("tenant-1");
+    await createApiClient("https://api.dev.raffa.example").listConversations("tenant-1");
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toBe("https://api.dev.contigo.example/api/conversations");
+    expect(String(url)).toBe("https://api.dev.raffa.example/api/conversations");
     expect(init).toEqual({ headers: { "X-Tenant-Id": "tenant-1" }, cache: "no-store" });
   });
 
   it("reports ok:true with the caller's own conversations, most-recently-updated first, on 200", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(conversations), { status: 200 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").listConversations("tenant-1");
+    const result = await createApiClient("https://api.dev.raffa.example").listConversations("tenant-1");
 
     expect(result).toEqual({ ok: true, statusCode: 200, conversations, error: null });
   });
@@ -1822,7 +1822,7 @@ describe("createApiClient().listConversations (task E13/F09/US01/T04)", () => {
       vi.fn().mockResolvedValue(new Response(JSON.stringify("A valid 'X-Tenant-Id' header (a GUID) is required."), { status: 400 })),
     );
 
-    const result = await createApiClient("https://api.dev.contigo.example").listConversations("tenant-1");
+    const result = await createApiClient("https://api.dev.raffa.example").listConversations("tenant-1");
 
     expect(result).toEqual({
       ok: false,
@@ -1835,7 +1835,7 @@ describe("createApiClient().listConversations (task E13/F09/US01/T04)", () => {
   it("resolves (does not throw) with statusCode null when the network request fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
 
-    const result = await createApiClient("https://api.dev.contigo.example").listConversations("tenant-1");
+    const result = await createApiClient("https://api.dev.raffa.example").listConversations("tenant-1");
 
     expect(result.ok).toBe(false);
     expect(result.statusCode).toBeNull();
@@ -1855,11 +1855,11 @@ describe("createApiClient().createConversation (task E13/F09/US01/T04)", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(conversation), { status: 201 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.contigo.example").createConversation("tenant-1");
+    await createApiClient("https://api.dev.raffa.example").createConversation("tenant-1");
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toBe("https://api.dev.contigo.example/api/conversations");
+    expect(String(url)).toBe("https://api.dev.raffa.example/api/conversations");
     expect(init).toEqual({
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Tenant-Id": "tenant-1" },
@@ -1874,7 +1874,7 @@ describe("createApiClient().createConversation (task E13/F09/US01/T04)", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.contigo.example").createConversation("tenant-1", { scopeContractId: "contract-1" });
+    await createApiClient("https://api.dev.raffa.example").createConversation("tenant-1", { scopeContractId: "contract-1" });
 
     const [, init] = fetchMock.mock.calls[0];
     expect(init.body).toBe(JSON.stringify({ scopeContractId: "contract-1" }));
@@ -1883,7 +1883,7 @@ describe("createApiClient().createConversation (task E13/F09/US01/T04)", () => {
   it("reports ok:true with the created conversation on 201", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(conversation), { status: 201 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").createConversation("tenant-1");
+    const result = await createApiClient("https://api.dev.raffa.example").createConversation("tenant-1");
 
     expect(result).toEqual({ ok: true, statusCode: 201, conversation, error: null });
   });
@@ -1894,7 +1894,7 @@ describe("createApiClient().createConversation (task E13/F09/US01/T04)", () => {
       vi.fn().mockResolvedValue(new Response(JSON.stringify("No contract found for scopeContractId."), { status: 400 })),
     );
 
-    const result = await createApiClient("https://api.dev.contigo.example").createConversation("tenant-1", { scopeContractId: "missing" });
+    const result = await createApiClient("https://api.dev.raffa.example").createConversation("tenant-1", { scopeContractId: "missing" });
 
     expect(result).toEqual({
       ok: false,
@@ -1907,7 +1907,7 @@ describe("createApiClient().createConversation (task E13/F09/US01/T04)", () => {
   it("resolves (does not throw) with statusCode null when the network request fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
 
-    const result = await createApiClient("https://api.dev.contigo.example").createConversation("tenant-1");
+    const result = await createApiClient("https://api.dev.raffa.example").createConversation("tenant-1");
 
     expect(result.ok).toBe(false);
     expect(result.statusCode).toBeNull();
@@ -1934,18 +1934,18 @@ describe("createApiClient().getConversation (task E13/F09/US01/T04)", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(conversationDetail), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.contigo.example").getConversation("tenant-1", "conv-1");
+    await createApiClient("https://api.dev.raffa.example").getConversation("tenant-1", "conv-1");
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toBe("https://api.dev.contigo.example/api/conversations/conv-1");
+    expect(String(url)).toBe("https://api.dev.raffa.example/api/conversations/conv-1");
     expect(init).toEqual({ headers: { "X-Tenant-Id": "tenant-1" }, cache: "no-store" });
   });
 
   it("reports ok:true with the conversation and its messages, oldest first, on 200", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(conversationDetail), { status: 200 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getConversation("tenant-1", "conv-1");
+    const result = await createApiClient("https://api.dev.raffa.example").getConversation("tenant-1", "conv-1");
 
     expect(result).toEqual({ ok: true, statusCode: 200, conversation: conversationDetail, error: null });
   });
@@ -1953,7 +1953,7 @@ describe("createApiClient().getConversation (task E13/F09/US01/T04)", () => {
   it("reports a named 404 (unknown id, another tenant's, or another user's -- one honest outcome) without attempting to parse an empty body", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getConversation("tenant-1", "missing-conv");
+    const result = await createApiClient("https://api.dev.raffa.example").getConversation("tenant-1", "missing-conv");
 
     expect(result).toEqual({ ok: false, statusCode: 404, conversation: null, error: "No conversation found for id missing-conv." });
   });
@@ -1961,7 +1961,7 @@ describe("createApiClient().getConversation (task E13/F09/US01/T04)", () => {
   it("resolves (does not throw) with statusCode null when the network request fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getConversation("tenant-1", "conv-1");
+    const result = await createApiClient("https://api.dev.raffa.example").getConversation("tenant-1", "conv-1");
 
     expect(result.ok).toBe(false);
     expect(result.statusCode).toBeNull();
@@ -1990,11 +1990,11 @@ describe("createApiClient().postMessage (task E13/F09/US01/T04)", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(reply), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.contigo.example").postMessage("tenant-1", "conv-1", { question: "When does Salesforce expire?" });
+    await createApiClient("https://api.dev.raffa.example").postMessage("tenant-1", "conv-1", { question: "When does Salesforce expire?" });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toBe("https://api.dev.contigo.example/api/conversations/conv-1/messages");
+    expect(String(url)).toBe("https://api.dev.raffa.example/api/conversations/conv-1/messages");
     expect(init).toEqual({
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Tenant-Id": "tenant-1" },
@@ -2007,7 +2007,7 @@ describe("createApiClient().postMessage (task E13/F09/US01/T04)", () => {
     const abstainReply = { ...reply, kind: "abstain", answerMarkdown: "Nothing in the validated contracts supports a reliable answer." };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(abstainReply), { status: 200 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").postMessage("tenant-1", "conv-1", { question: "…" });
+    const result = await createApiClient("https://api.dev.raffa.example").postMessage("tenant-1", "conv-1", { question: "…" });
 
     expect(result).toEqual({ ok: true, statusCode: 200, reply: abstainReply, error: null });
   });
@@ -2015,7 +2015,7 @@ describe("createApiClient().postMessage (task E13/F09/US01/T04)", () => {
   it("reports a named 404 (unknown conversation) without attempting to parse an empty body", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").postMessage("tenant-1", "missing-conv", { question: "…" });
+    const result = await createApiClient("https://api.dev.raffa.example").postMessage("tenant-1", "missing-conv", { question: "…" });
 
     expect(result).toEqual({ ok: false, statusCode: 404, reply: null, error: "No conversation found for id missing-conv." });
   });
@@ -2026,7 +2026,7 @@ describe("createApiClient().postMessage (task E13/F09/US01/T04)", () => {
       vi.fn().mockResolvedValue(new Response(JSON.stringify("A non-empty 'question' is required."), { status: 400 })),
     );
 
-    const result = await createApiClient("https://api.dev.contigo.example").postMessage("tenant-1", "conv-1", { question: "   " });
+    const result = await createApiClient("https://api.dev.raffa.example").postMessage("tenant-1", "conv-1", { question: "   " });
 
     expect(result).toEqual({ ok: false, statusCode: 400, reply: null, error: "A non-empty 'question' is required." });
   });
@@ -2034,7 +2034,7 @@ describe("createApiClient().postMessage (task E13/F09/US01/T04)", () => {
   it("resolves (does not throw) with statusCode null when the network request fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
 
-    const result = await createApiClient("https://api.dev.contigo.example").postMessage("tenant-1", "conv-1", { question: "…" });
+    const result = await createApiClient("https://api.dev.raffa.example").postMessage("tenant-1", "conv-1", { question: "…" });
 
     expect(result.ok).toBe(false);
     expect(result.statusCode).toBeNull();
@@ -2053,10 +2053,10 @@ describe("createApiClient().getCapabilities (task E13/F09/US01/T04)", () => {
     capabilities: [
       {
         key: "ask",
-        title: "Ask Contigo",
+        title: "Ask Raffa",
         routePattern: "/ask",
         description: "Ask about dates, spend, notice periods and clauses.",
-        exampleQuestions: ["What can Contigo do?", "When does this contract expire?"],
+        exampleQuestions: ["What can Raffa do?", "When does this contract expire?"],
         roleGate: "any",
         availability: "always",
         howTo: [],
@@ -2068,18 +2068,18 @@ describe("createApiClient().getCapabilities (task E13/F09/US01/T04)", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(catalog), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.contigo.example").getCapabilities();
+    await createApiClient("https://api.dev.raffa.example").getCapabilities();
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toBe("https://api.dev.contigo.example/api/capabilities");
+    expect(String(url)).toBe("https://api.dev.raffa.example/api/capabilities");
     expect(init).toEqual({ cache: "no-store" });
   });
 
   it("reports ok:true with the full, role-filtered catalog on 200", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(catalog), { status: 200 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getCapabilities();
+    const result = await createApiClient("https://api.dev.raffa.example").getCapabilities();
 
     expect(result).toEqual({ ok: true, statusCode: 200, catalog, error: null });
   });
@@ -2087,7 +2087,7 @@ describe("createApiClient().getCapabilities (task E13/F09/US01/T04)", () => {
   it("reports a status-based message on a non-2xx (CapabilitiesEndpointExtensions has no documented failure branch to parse)", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("Service Unavailable", { status: 503, statusText: "Service Unavailable" })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getCapabilities();
+    const result = await createApiClient("https://api.dev.raffa.example").getCapabilities();
 
     expect(result.ok).toBe(false);
     expect(result.statusCode).toBe(503);
@@ -2098,7 +2098,7 @@ describe("createApiClient().getCapabilities (task E13/F09/US01/T04)", () => {
   it("resolves (does not throw) with statusCode null when the network request fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getCapabilities();
+    const result = await createApiClient("https://api.dev.raffa.example").getCapabilities();
 
     expect(result.ok).toBe(false);
     expect(result.statusCode).toBeNull();
@@ -2126,18 +2126,18 @@ describe("createApiClient().getMarketRecord (task E13/F09/US01/T04)", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(record), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.contigo.example").getMarketRecord("rec-1");
+    await createApiClient("https://api.dev.raffa.example").getMarketRecord("rec-1");
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toBe("https://api.dev.contigo.example/api/market/records/rec-1");
+    expect(String(url)).toBe("https://api.dev.raffa.example/api/market/records/rec-1");
     expect(init).toEqual({ cache: "no-store" });
   });
 
   it("reports ok:true with the record on 200", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(record), { status: 200 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getMarketRecord("rec-1");
+    const result = await createApiClient("https://api.dev.raffa.example").getMarketRecord("rec-1");
 
     expect(result).toEqual({ ok: true, statusCode: 200, record, error: null });
   });
@@ -2145,7 +2145,7 @@ describe("createApiClient().getMarketRecord (task E13/F09/US01/T04)", () => {
   it("reports a named 404 without attempting to parse an empty body", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getMarketRecord("missing-rec");
+    const result = await createApiClient("https://api.dev.raffa.example").getMarketRecord("missing-rec");
 
     expect(result).toEqual({ ok: false, statusCode: 404, record: null, error: "No market record found for id missing-rec." });
   });
@@ -2153,7 +2153,7 @@ describe("createApiClient().getMarketRecord (task E13/F09/US01/T04)", () => {
   it("resolves (does not throw) with statusCode null when the network request fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getMarketRecord("rec-1");
+    const result = await createApiClient("https://api.dev.raffa.example").getMarketRecord("rec-1");
 
     expect(result.ok).toBe(false);
     expect(result.statusCode).toBeNull();
@@ -2171,7 +2171,7 @@ describe("createApiClient() X-User-Id header (task E13/F09/US01/T04, OQ-askv2-00
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify([]), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.contigo.example", () => "buyer@acme.example").listConversations("tenant-1");
+    await createApiClient("https://api.dev.raffa.example", () => "buyer@acme.example").listConversations("tenant-1");
 
     const [, init] = fetchMock.mock.calls[0];
     expect(init.headers).toEqual({ "X-Tenant-Id": "tenant-1", "X-User-Id": "buyer@acme.example" });
@@ -2181,7 +2181,7 @@ describe("createApiClient() X-User-Id header (task E13/F09/US01/T04, OQ-askv2-00
     const fetchMock = vi.fn().mockResolvedValue(new Response("Healthy", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.contigo.example", () => "buyer@acme.example").getHealth();
+    await createApiClient("https://api.dev.raffa.example", () => "buyer@acme.example").getHealth();
 
     const [, init] = fetchMock.mock.calls[0];
     expect(init).toEqual({ headers: { "X-User-Id": "buyer@acme.example" }, cache: "no-store" });
@@ -2191,7 +2191,7 @@ describe("createApiClient() X-User-Id header (task E13/F09/US01/T04, OQ-askv2-00
     const fetchMock = vi.fn().mockResolvedValue(new Response("Healthy", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.contigo.example").getHealth();
+    await createApiClient("https://api.dev.raffa.example").getHealth();
 
     const [, init] = fetchMock.mock.calls[0];
     expect(init).toEqual({ cache: "no-store" });
@@ -2201,7 +2201,7 @@ describe("createApiClient() X-User-Id header (task E13/F09/US01/T04, OQ-askv2-00
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify([]), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.contigo.example", () => null).listConversations("tenant-1");
+    await createApiClient("https://api.dev.raffa.example", () => null).listConversations("tenant-1");
 
     const [, init] = fetchMock.mock.calls[0];
     expect(init.headers).toEqual({ "X-Tenant-Id": "tenant-1" });
@@ -2211,7 +2211,7 @@ describe("createApiClient() X-User-Id header (task E13/F09/US01/T04, OQ-askv2-00
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify([]), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.contigo.example", () => "   ").listConversations("tenant-1");
+    await createApiClient("https://api.dev.raffa.example", () => "   ").listConversations("tenant-1");
 
     const [, init] = fetchMock.mock.calls[0];
     expect(init.headers).toEqual({ "X-Tenant-Id": "tenant-1" });
@@ -2244,18 +2244,18 @@ describe("createApiClient().getContractEvidence (review evidence pane, GET /api/
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(evidence), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.contigo.example").getContractEvidence("tenant-1", "contract-1");
+    await createApiClient("https://api.dev.raffa.example").getContractEvidence("tenant-1", "contract-1");
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toBe("https://api.dev.contigo.example/api/contracts/contract-1/evidence");
+    expect(String(url)).toBe("https://api.dev.raffa.example/api/contracts/contract-1/evidence");
     expect(init).toEqual({ headers: { "X-Tenant-Id": "tenant-1" }, cache: "no-store" });
   });
 
   it("reports ok:true with the evidence rows on 200 (an empty array is still ok)", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(evidence), { status: 200 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getContractEvidence("tenant-1", "contract-1");
+    const result = await createApiClient("https://api.dev.raffa.example").getContractEvidence("tenant-1", "contract-1");
 
     expect(result).toEqual({ ok: true, statusCode: 200, evidence, error: null });
   });
@@ -2263,7 +2263,7 @@ describe("createApiClient().getContractEvidence (review evidence pane, GET /api/
   it("reports a named 404 without attempting to parse an empty body", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getContractEvidence("tenant-1", "missing");
+    const result = await createApiClient("https://api.dev.raffa.example").getContractEvidence("tenant-1", "missing");
 
     expect(result).toEqual({ ok: false, statusCode: 404, evidence: null, error: "No contract found for id missing." });
   });
@@ -2271,7 +2271,7 @@ describe("createApiClient().getContractEvidence (review evidence pane, GET /api/
   it("resolves (does not throw) with statusCode null when the network request fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
 
-    const result = await createApiClient("https://api.dev.contigo.example").getContractEvidence("tenant-1", "contract-1");
+    const result = await createApiClient("https://api.dev.raffa.example").getContractEvidence("tenant-1", "contract-1");
 
     expect(result.ok).toBe(false);
     expect(result.statusCode).toBeNull();
@@ -2297,13 +2297,13 @@ describe("createApiClient().validateDocument (review sign-off, POST /api/documen
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(validation), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.contigo.example").validateDocument("tenant-1", "doc-1", {
+    await createApiClient("https://api.dev.raffa.example").validateDocument("tenant-1", "doc-1", {
       acceptedFields: ["currency", "autoRenewal"],
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toBe("https://api.dev.contigo.example/api/documents/doc-1/validate");
+    expect(String(url)).toBe("https://api.dev.raffa.example/api/documents/doc-1/validate");
     expect(init).toEqual({
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Tenant-Id": "tenant-1" },
@@ -2315,7 +2315,7 @@ describe("createApiClient().validateDocument (review sign-off, POST /api/documen
   it("reports ok:true with the validation summary on 200", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(validation), { status: 200 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").validateDocument("tenant-1", "doc-1", { acceptedFields: [] });
+    const result = await createApiClient("https://api.dev.raffa.example").validateDocument("tenant-1", "doc-1", { acceptedFields: [] });
 
     expect(result).toEqual({ ok: true, statusCode: 200, validation, error: null });
   });
@@ -2324,7 +2324,7 @@ describe("createApiClient().validateDocument (review sign-off, POST /api/documen
     const reason = "This document is still being processed; wait for extraction to finish before validating it.";
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(reason), { status: 409 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").validateDocument("tenant-1", "doc-1", { acceptedFields: [] });
+    const result = await createApiClient("https://api.dev.raffa.example").validateDocument("tenant-1", "doc-1", { acceptedFields: [] });
 
     expect(result).toEqual({ ok: false, statusCode: 409, validation: null, error: reason });
   });
@@ -2332,7 +2332,7 @@ describe("createApiClient().validateDocument (review sign-off, POST /api/documen
   it("reports a named 404 without attempting to parse an empty body", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
 
-    const result = await createApiClient("https://api.dev.contigo.example").validateDocument("tenant-1", "missing-doc", { acceptedFields: [] });
+    const result = await createApiClient("https://api.dev.raffa.example").validateDocument("tenant-1", "missing-doc", { acceptedFields: [] });
 
     expect(result).toEqual({ ok: false, statusCode: 404, validation: null, error: "No document found for id missing-doc." });
   });
@@ -2340,7 +2340,7 @@ describe("createApiClient().validateDocument (review sign-off, POST /api/documen
   it("resolves (does not throw) with statusCode null when the network request fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
 
-    const result = await createApiClient("https://api.dev.contigo.example").validateDocument("tenant-1", "doc-1", { acceptedFields: [] });
+    const result = await createApiClient("https://api.dev.raffa.example").validateDocument("tenant-1", "doc-1", { acceptedFields: [] });
 
     expect(result.ok).toBe(false);
     expect(result.statusCode).toBeNull();

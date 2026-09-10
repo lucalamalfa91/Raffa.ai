@@ -82,7 +82,7 @@ export function useDocumentsList(apiClient: ApiClient): UseDocumentsListResult {
         setFetchState("error");
         setErrorMessage(
           result.statusCode === 503 || result.statusCode === null
-            ? "Contigo's document service is temporarily unavailable. Try again in a moment."
+            ? "Raffa's document service is temporarily unavailable. Try again in a moment."
             : (result.error ?? "The document list could not be loaded."),
         );
         return;
@@ -193,7 +193,7 @@ export function useDocumentsList(apiClient: ApiClient): UseDocumentsListResult {
       void apiClient.reprocessDocument(workspace.id, documentId).then((result) => {
         if (!mountedRef.current) return;
         if (!result.ok) {
-          setRetryError(result.error ?? "Contigo could not reprocess this document.");
+          setRetryError(result.error ?? "Raffa could not reprocess this document.");
           return;
         }
         load();

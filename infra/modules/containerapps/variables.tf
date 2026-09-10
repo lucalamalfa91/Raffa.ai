@@ -83,7 +83,7 @@ variable "memory" {
 # AI Gateway connection info from this environment's modules/foundry
 # instance (an endpoint URL and two names -- no key, ADR-011). No live
 # IAiGateway implementation binds these yet -- only Fixtures/FixtureAiGateway.cs
-# is registered today (see Contigo.AiGateway.ServiceCollectionExtensions'
+# is registered today (see Raffa.AiGateway.ServiceCollectionExtensions'
 # own doc comment) -- adding the env vars ahead of that implementation is
 # the same "infra lands before the consuming code" sequencing this
 # module's own ConnectionStrings__Savings / __Quotes env vars already used

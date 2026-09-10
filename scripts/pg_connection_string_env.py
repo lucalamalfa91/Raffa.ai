@@ -98,14 +98,14 @@ def _run_self_test() -> int:
     # deliberately under 8 chars so it can never look like a real secret to
     # scripts/repo_secret_scan.py's `Password=<8+ chars>` heuristic).
     sample = (
-        "Host=psql-contigo-dev.postgres.database.azure.com;"
-        "Database=contigo_dev;Username=contigoadmin;Password=a=b!;"
+        "Host=psql-raffa-dev.postgres.database.azure.com;"
+        "Database=raffa_dev;Username=raffaadmin;Password=a=b!;"
         "Ssl Mode=Require"
     )
     fields = parse_npgsql_connection_string(sample)
-    assert fields["host"] == "psql-contigo-dev.postgres.database.azure.com", fields
-    assert fields["database"] == "contigo_dev", fields
-    assert fields["username"] == "contigoadmin", fields
+    assert fields["host"] == "psql-raffa-dev.postgres.database.azure.com", fields
+    assert fields["database"] == "raffa_dev", fields
+    assert fields["username"] == "raffaadmin", fields
     # Only the FIRST '=' in the segment is the key/value separator, so '='
     # inside the password itself must survive intact.
     assert fields["password"] == "a=b!", fields
@@ -114,17 +114,17 @@ def _run_self_test() -> int:
 
     env = to_psql_env(fields)
     assert env == {
-        "PGHOST": "psql-contigo-dev.postgres.database.azure.com",
+        "PGHOST": "psql-raffa-dev.postgres.database.azure.com",
         "PGPORT": "5432",
-        "PGDATABASE": "contigo_dev",
-        "PGUSER": "contigoadmin",
+        "PGDATABASE": "raffa_dev",
+        "PGUSER": "raffaadmin",
         "PGPASSWORD": "a=b!",
         "PGSSLMODE": "require",
     }, env
     print("[PASS] to_psql_env: Host/Database/Username/Password/Ssl Mode -> PG*; PGPORT defaults to 5432")
 
     exports = format_exports(env)
-    assert "export PGHOST=psql-contigo-dev.postgres.database.azure.com" in exports
+    assert "export PGHOST=psql-raffa-dev.postgres.database.azure.com" in exports
     assert f"export PGPASSWORD={shlex.quote(env['PGPASSWORD'])}" in exports
     print("[PASS] format_exports: every value is shell-quoted (shlex.quote)")
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stand-alone secret scan + five-folder layout check for lucalamalfa91/contigo.
+"""Stand-alone secret scan + five-folder layout check for lucalamalfa91/raffa.
 
 Task E01/F01/US01/T02 (parent story `us-01-github-org-repo-protection`,
 AC-2 folder layout + AC-4 no committed secrets). This is split out of

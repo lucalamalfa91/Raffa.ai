@@ -4,7 +4,7 @@ type: task
 story: us-02-per-folder-workflows
 wave: R0
 status: live
-target_repo: contigo-infra
+target_repo: raffa-infra
 ---
 
 # task-01-per-folder-workflows — Author per-folder workflows + `dev` triggers + non-blocking mobile
@@ -29,10 +29,10 @@ the `dev` environment.
 
 | Path | Change |
 |------|--------|
-| workspace/contigo-infra/.github/workflows/infra.yml | infra plan/apply to `dev` |
-| workspace/contigo-infra/.github/workflows/backend.yml | backend build/deploy `dev` |
-| workspace/contigo-infra/.github/workflows/web.yml | web build/deploy `dev` |
-| workspace/contigo-infra/.github/workflows/mobile.yml | mobile build (non-blocking) |
+| workspace/raffa-infra/.github/workflows/infra.yml | infra plan/apply to `dev` |
+| workspace/raffa-infra/.github/workflows/backend.yml | backend build/deploy `dev` |
+| workspace/raffa-infra/.github/workflows/web.yml | web build/deploy `dev` |
+| workspace/raffa-infra/.github/workflows/mobile.yml | mobile build (non-blocking) |
 
 ## Context the implementer needs
 

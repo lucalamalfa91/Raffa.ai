@@ -1,4 +1,4 @@
-# Contigo — visual fidelity (mockup vs `dev`)
+# Raffa — visual fidelity (mockup vs `dev`)
 
 Operator complaint (2026-09-07): live `dev` SWA looks nothing like the Claude
 Design mockup. E06/F06 removed the `40rem` cap and stopped there. Tokens exist;

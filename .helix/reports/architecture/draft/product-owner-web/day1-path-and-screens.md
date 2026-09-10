@@ -19,7 +19,7 @@ procurement-user outcomes ("upload and ask", "does not miss renewal windows",
 "a new proposal can be assessed in minutes"). An API endpoint is *not* a
 delivered screen. This pass exists because E02–E05 decomposed `layer: backend`;
 after E05 a reviewer on `demo` could have a complete API and zero portfolio,
-Contract 360, Ask Contigo, renewals, savings, or quote-check UI.
+Contract 360, Ask Raffa, renewals, savings, or quote-check UI.
 
 **Success for this pass (product-owner owned):** a procurement user on Azure
 `demo`, after the last web slice is promoted (`demo-v*`, ADR-016), completes
@@ -38,7 +38,7 @@ concur with that annex and cite it — I do not re-author the pixels.
 | §16 release | Definition of success | Screen(s) | Prototype ref |
 |---|---|---|---|
 | R0 — Foundation | Secure workspace ingests documents | Sign-in → workspace · Members & roles · Upload → document status · audit read-back | screens §1, §2, §3 |
-| R1 — Contract Intelligence | Upload, ask reliable questions | Portfolio · Contract 360 · Review/correct · Ask Contigo + citations | screens §4–§7 |
+| R1 — Contract Intelligence | Upload, ask reliable questions | Portfolio · Contract 360 · Review/correct · Ask Raffa + citations | screens §4–§7 |
 | R2 — Renewals | Don't miss material renewal windows | Renewal pipeline · insight card · action | screens §8 |
 | R3 — Savings | Quantify credible savings | Home (Savings KPIs + opportunities) | screens §9 |
 | R4 — Quote Check | Proposal assessed in minutes | Quote check stepper (Extract → Assessment → Target → Negotiation) + outcome | screens §10 |
@@ -59,7 +59,7 @@ As product owner I confirm it satisfies the letter of §20, step by step:
 |---|---|---|
 | Create a workspace and invite Procurement users | Sign-in → workspace · Members & roles | 1–2 |
 | Upload a portfolio of contracts; classify/extract/structure | Upload → document status (processing → needs_review → ready) | 3 |
-| Ask reliable questions with source evidence | Ask Contigo + numbered citations (+ one abstain) | after review |
+| Ask reliable questions with source evidence | Ask Raffa + numbered citations (+ one abstain) | after review |
 | See renewal and cancellation deadlines | Portfolio attention strip · Contract 360 · Renewal pipeline | mid-path |
 | See relevant contract/commercial risks | Contract 360 › Risks · Overview "Top risks" | mid-path |
 | See market benchmarks where available | Contract 360 › Benchmark · Quote check assessment | mid–late |
@@ -99,7 +99,7 @@ Day-1 integration-smoke story (not be implicit).
 |---|---|---|
 | e06 | Design system + app shell (nav rail, auth gate, workspace switch, global Ask bar; `config.json` already real) | shell supports all rows |
 | e07 | R0 UI — invite/roles, upload, document status, audit read-back | R0; §20 steps 1–3 |
-| e08 | R1 UI — portfolio + filters, Contract 360 (10 tabs), review/correct, Ask Contigo + citations/abstain | R1; §20 "ask with evidence", risks |
+| e08 | R1 UI — portfolio + filters, Contract 360 (10 tabs), review/correct, Ask Raffa + citations/abstain | R1; §20 "ask with evidence", risks |
 | e09 | R2 UI — renewal pipeline, insight card, action | R2; §20 "don't miss windows" |
 | e10 | R3 UI — savings KPIs + opportunities list | R3; §20 "prioritized savings" |
 | e11 | R4 UI — quote check stepper + negotiation + outcome → Savings Realized **+ `us-final-integration` (browser Day-1 on `demo`)** | R4; §20 remainder |

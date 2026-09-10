@@ -12,7 +12,7 @@ status: active
 
 HITL decision D5: conversations live server-side, per user and per
 workspace, resumable from any device. `Conversation` /
-`ConversationMessage` in `Contigo.Chat` with their own DbContext, RLS
+`ConversationMessage` in `Raffa.Chat` with their own DbContext, RLS
 policy and `chat.sql`; messages keep role, markdown, citations, actions,
 kind and AI metadata (never the raw pack). API: list the caller's recent
 conversations, create (optionally scoped to a contract), get with
@@ -33,4 +33,4 @@ store (`inputs/requirements.md` R-CONV-01…03, §6).
 
 ## Target repo
 
-`contigo-backend`
+`raffa-backend`

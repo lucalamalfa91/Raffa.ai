@@ -4,7 +4,7 @@ type: task
 story: us-04-deployable-api
 wave: R0
 status: live
-target_repo: contigo-backend
+target_repo: raffa-backend
 ---
 
 # task-01-deployable-api — 01 Deployable Api
@@ -18,7 +18,7 @@ Create the thin API host composing modules with /health + Dockerfile.
 ## Files to create or modify
 | Path | Change |
 |------|--------|
-| workspace/contigo-backend/src/ | implementation for `deployable-api` |
+| workspace/raffa-backend/src/ | implementation for `deployable-api` |
 
 ## Context the implementer needs
 - **Architecture decisions in force**: ADR-002.
@@ -30,7 +30,7 @@ Create the thin API host composing modules with /health + Dockerfile.
 ## Tests required
 | Level | What it proves | Where |
 |-------|----------------|-------|
-| unit | deployable-api behaviour | workspace/contigo-backend/tests |
+| unit | deployable-api behaviour | workspace/raffa-backend/tests |
 
 ## Open questions blocking this task
 - none

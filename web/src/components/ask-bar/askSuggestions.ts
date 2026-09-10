@@ -1,11 +1,11 @@
 import type { CapabilityBody } from "../../api/client";
 
 /**
- * Global Ask bar copy, quoted from `contigo-v2/app.jsx`:
+ * Global Ask bar copy, quoted from `raffa-v2/app.jsx`:
  *
  *   askPlaceholder: kbReady
- *     ? 'Ask Contigo — spend, dates, clauses, liability…'
- *     : 'Ask Contigo switches on after your first validated contract'
+ *     ? 'Ask Raffa — spend, dates, clauses, liability…'
+ *     : 'Ask Raffa switches on after your first validated contract'
  *   chipsFor: { documents, portfolio, renewals, home, quote, ask, workspace }
  *   c360Chips: 'When must we give notice to '+cur.supplier+'?' …
  *   askChips: kbReady ? askChips : []
@@ -22,10 +22,10 @@ export interface AskBarCopy {
 }
 
 /** `app.jsx` `askPlaceholder` while `kbReady`. */
-const READY_PLACEHOLDER = "Ask Contigo — spend, dates, clauses, liability…";
+const READY_PLACEHOLDER = "Ask Raffa — spend, dates, clauses, liability…";
 
 /** `app.jsx` `askPlaceholder` while `kbOff`. */
-const KB_OFF_PLACEHOLDER = "Ask Contigo switches on after your first validated contract";
+const KB_OFF_PLACEHOLDER = "Ask Raffa switches on after your first validated contract";
 
 type AskBarScreen = "documents" | "portfolio" | "renewals" | "home" | "quote" | "ask" | "workspace" | "c360";
 

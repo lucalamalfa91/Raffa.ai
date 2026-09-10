@@ -1,0 +1,38 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Raffa.SharedKernel\Raffa.SharedKernel.csproj" />
+    <ProjectReference Include="..\Raffa.Benchmark\Raffa.Benchmark.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Task E04/F02/US02/T01 (savings-opportunity): this module's own
+         AddSavingsModule(IServiceCollection, string) composition-root wiring
+         (Infrastructure/ServiceCollectionExtensions.cs) — ADR-002's "each module exposes an
+         AddXxx(IServiceCollection) extension method". Same generic .NET hosting abstraction (not
+         a provider SDK) Raffa.Renewals.csproj/Raffa.Chat.csproj already reference for the
+         identical reason — does not trip
+         Raffa.ArchitectureTests.DependencyDirectionTests.Domain_module_must_not_reference_provider_sdks. -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
+    <!-- Task E04/F02/US02/T01 (savings-opportunity): this module's first DbContext
+         (SavingsDbContext) — same three packages Raffa.Renewals.csproj/Raffa.Audit.csproj
+         already reference for the identical reason (Npgsql provider + snake_case naming
+         convention + `dotnet ef` design-time tooling). Not a "provider SDK" for
+         Raffa.ArchitectureTests.DependencyDirectionTests
+         .Domain_module_must_not_reference_provider_sdks' purposes (that rule forbids Azure/AI/
+         cloud SDKs, not the relational-store ORM every module already uses). -->
+    <PackageReference Include="EFCore.NamingConventions" Version="10.0.1" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.4">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

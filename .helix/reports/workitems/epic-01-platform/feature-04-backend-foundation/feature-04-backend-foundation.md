@@ -29,4 +29,4 @@ RLS tenant isolation, and produce a deployable API + worker that runs on `dev`/`
 
 ## Target repo
 
-`contigo-backend`
+`raffa-backend`

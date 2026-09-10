@@ -1,17 +1,17 @@
-# ADR-014 — Git flow on the single Contigo monorepo
+# ADR-014 — Git flow on the single Raffa monorepo
 
 - **Status**: accepted
 - **Date**: 2026-09-01
 - **Deciders**: delivery-manager (with reconciliation by council-close; CI→Azure auth is joint with cloud-architect + security-architect; promotion mechanics joint with the same)
 - **Locked citations**:
-  - Source control — "GitHub account **lucalamalfa91**. **One public** repository [`contigo`](https://github.com/lucalamalfa91/contigo) (see §2). Not four remotes."
+  - Source control — "GitHub account **lucalamalfa91**. **One public** repository [`raffa`](https://github.com/lucalamalfa91/raffa) (see §2). Not four remotes."
   - Delivery — "GitHub CI/CD releases to Azure `dev` and Azure `demo`."
   - Environments — two from day one, isolated, "No production yet."
   - Code authoring — "Claude Code via Helix, for infra, backend, web, and mobile."
 
 ## Context and problem statement
 
-The engineering brief (v1.2) locks **one public** monorepo (`lucalamalfa91/contigo`) with
+The engineering brief (v1.2) locks **one public** monorepo (`lucalamalfa91/raffa`) with
 domain folders `infra/`, `backend/`, `web/`, `mobile/` plus `.helix/` — explicitly **not**
 four remotes and not a `workspace/<repo>/` stand-in. Brief §2.1 states the git flow is
 *guidelines only*: "Do not assume a default branch, GitHub Flow, Git Flow, tags, or
@@ -100,7 +100,7 @@ this option).
 ## Assumptions
 
 - (open-question OQ-DM-001) GitHub Environments with required reviewers are available on the
-  `lucalamalfa91/contigo` public-repo plan; if not, promotion falls back to a protected tag + a PR
+  `lucalamalfa91/raffa` public-repo plan; if not, promotion falls back to a protected tag + a PR
   to a `demo/*` pointer, still a manual, explicit step. Recorded in `reports/open-questions.md`.
 - (open-question OQ-DM-002) "Team of reviewers" for the `demo` approval gate resolves to the
   council's product-owner + security-architect during V1; authority is council-owned.

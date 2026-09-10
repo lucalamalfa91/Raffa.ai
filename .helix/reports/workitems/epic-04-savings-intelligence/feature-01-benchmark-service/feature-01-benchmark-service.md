@@ -28,4 +28,4 @@ fixture adapter used for the first `demo`.
 
 ## Target repo
 
-`contigo-backend`
+`raffa-backend`

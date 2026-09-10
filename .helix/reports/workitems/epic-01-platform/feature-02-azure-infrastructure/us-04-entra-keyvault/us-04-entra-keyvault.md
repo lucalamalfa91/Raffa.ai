@@ -17,8 +17,8 @@ so that OIDC auth and secrets are isolated per env with no secrets in source.
 ## Acceptance criteria
 
 - [ ] AC-1 `dev` has one public-client registration and one API registration; `demo` has the same pair (four total).
-- [ ] AC-2 API registration exposes scopes (e.g. `Contigo.Read`, `Contigo.Write`); public client uses PKCE (no client secret).
-- [ ] AC-3 `kv-contigo-dev` and `kv-contigo-demo` exist; API/worker managed identities granted `get`/`list` on their own env's vault only.
+- [ ] AC-2 API registration exposes scopes (e.g. `Raffa.Read`, `Raffa.Write`); public client uses PKCE (no client secret).
+- [ ] AC-3 `kv-raffa-dev` and `kv-raffa-demo` exist; API/worker managed identities granted `get`/`list` on their own env's vault only.
 
 ## Definition of done
 
@@ -42,7 +42,7 @@ so that OIDC auth and secrets are isolated per env with no secrets in source.
 
 ## Council decisions carried into this story
 
-Four registrations total (public client + API, per env); OIDC Auth Code + PKCE; scopes `Contigo.Read`/`Contigo.Write`; Key Vaults `kv-contigo-dev`/`kv-contigo-demo`.
+Four registrations total (public client + API, per env); OIDC Auth Code + PKCE; scopes `Raffa.Read`/`Raffa.Write`; Key Vaults `kv-raffa-dev`/`kv-raffa-demo`.
 
 ## Open questions
 

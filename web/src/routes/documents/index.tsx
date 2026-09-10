@@ -23,8 +23,8 @@ interface JustValidated {
 }
 
 /**
- * Route `/documents` (ADR-018/ADR-024; `contigo-v2/screens-v2.md` #3 and #4; task E13/F09/US01/T03).
- * V2 rebuild of `contigo-v2/app.jsx`'s own state machine (`docView: 'list' | 'review'`,
+ * Route `/documents` (ADR-018/ADR-024; `raffa-v2/screens-v2.md` #3 and #4; task E13/F09/US01/T03).
+ * V2 rebuild of `raffa-v2/app.jsx`'s own state machine (`docView: 'list' | 'review'`,
  * `docFilter`, `justValidated`) -- three states, not V1's single upload-pipeline screen:
  *
  *   1. **Onboarding empty** (`OnboardingEmptyState.tsx`) -- this tenant has no tracked document at
@@ -112,7 +112,7 @@ export default function DocumentsRoute({ apiClient }: DocumentsRouteProps) {
   }
 
   const handleFilesSelected = (files: File[]) => {
-    // A fresh batch supersedes the previous validated hook -- `contigo-v2/app.jsx`'s own
+    // A fresh batch supersedes the previous validated hook -- `raffa-v2/app.jsx`'s own
     // `justValidated` is a single slot, replaced (not accumulated) by the next relevant event.
     setJustValidated(null);
     list.uploadFiles(files);
@@ -222,7 +222,7 @@ export default function DocumentsRoute({ apiClient }: DocumentsRouteProps) {
       />
 
       <p className="micro-meta documents-legend">
-        uploaded → processing → needs review → completed. Only <strong>completed</strong> documents feed Ask Contigo,
+        uploaded → processing → needs review → completed. Only <strong>completed</strong> documents feed Ask Raffa,
         Portfolio and Renewals.
       </p>
       </div>
