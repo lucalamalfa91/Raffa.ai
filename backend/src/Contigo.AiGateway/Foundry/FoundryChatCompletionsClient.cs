@@ -1,61 +1,117 @@
 using System.Text.Json;
+using Contigo.AiGateway.Configuration;
+using Contigo.AiGateway.Contracts;
 using Contigo.AiGateway.Foundry.Wire;
 using Contigo.SharedKernel;
 
 namespace Contigo.AiGateway.Foundry;
 
-/// <summary>
-/// Shared chat-completions caller behind `classify`/`extract`/`answer` (all three are, on the
-/// wire, one system message + one user message + a JSON-schema <c>response_format</c> against an
-/// Azure OpenAI-compatible deployment — only the prompt/schema/temperature differ per role). Each
-/// per-role client (<see cref="FoundryClassifyClient"/>, <see cref="FoundryExtractClient"/>,
-/// <see cref="FoundryAnswerClient"/>) owns its own prompt/schema/temperature and result parsing;
-/// this type owns only the one HTTP shape all three share, so that shape (and the "no tools/
-/// tool_choice/data_sources field exists on the request type" compliance guarantee —
-/// <see cref="Wire.ChatCompletionRequest"/>'s own doc comment) is implemented exactly once.
-/// </summary>
-public sealed class FoundryChatCompletionsClient(FoundryHttpJsonClient httpJsonClient)
-{
-    /// <summary>Stable Azure OpenAI data-plane GA api-version (date-versioned, per Azure's own
-    /// REST versioning convention).</summary>
-    private const string ApiVersion = "2024-06-01";
+/// <summary>What one structured chat completion produced: the JSON content plus the provider's
+/// own bookkeeping.</summary>
+/// <param name="Content">The assistant message content — JSON matching the requested schema.</param>
+/// <param name="FinishReason">Azure's <c>finish_reason</c> (<c>stop</c> on the happy path).</param>
+/// <param name="Usage">Token usage, when reported.</param>
+public sealed record ChatCompletionOutcome(string Content, string? FinishReason, AiTokenUsage? Usage);
 
-    public async Task<Result<string>> CompleteAsync(
-        string deploymentId,
+/// <summary>
+/// The one chat-completions call shape every chat role (<c>classify</c>, <c>extract</c>,
+/// <c>answer</c>) shares: system + user message, <c>response_format: json_schema</c> with
+/// <c>strict: true</c>, and the role's configuration-driven knobs — <c>max_completion_tokens</c>,
+/// an optional <c>temperature</c> (clamped to <see cref="MaxTemperature"/>, ADR-024) and an optional
+/// <c>reasoning_effort</c> — each omitted from the JSON when unset, because the GPT-5.x family
+/// rejects parameters it does not support rather than ignoring them. Route per
+/// <see cref="FoundryOpenAiRoutes"/>. A completion that stopped at the token cap, a content-filter
+/// stop or a model refusal is an explicit failure here, never "not valid JSON" three layers up.
+/// </summary>
+public sealed class FoundryChatCompletionsClient(
+    FoundryHttpJsonClient httpJsonClient, AiGatewayFoundryOptions foundryOptions)
+{
+    /// <summary>ADR-024: "temperature &lt;= 0.2" — a ceiling applied whenever a temperature is sent.</summary>
+    public const double MaxTemperature = 0.2;
+
+    private static readonly string[] AllowedReasoningEfforts = ["none", "minimal", "low", "medium", "high"];
+
+    public async Task<Result<ChatCompletionOutcome>> CompleteAsync(
+        string role,
+        AiModelSelection model,
         string systemPrompt,
         string userPrompt,
-        double temperature,
         string schemaName,
         JsonElement jsonSchema,
         CancellationToken cancellationToken)
     {
+        string? reasoningEffort = null;
+        if (!string.IsNullOrWhiteSpace(model.ReasoningEffort))
+        {
+            reasoningEffort = model.ReasoningEffort.Trim().ToLowerInvariant();
+            if (!AllowedReasoningEfforts.Contains(reasoningEffort, StringComparer.Ordinal))
+            {
+                return Result<ChatCompletionOutcome>.Failure(
+                    $"AiGateway:Models:{role}:ReasoningEffort '{model.ReasoningEffort}' is not one of " +
+                    $"{string.Join("/", AllowedReasoningEfforts)}.");
+            }
+        }
+
+        var route = FoundryOpenAiRoutes.ChatCompletions(foundryOptions, model.ModelId);
+
         var request = new ChatCompletionRequest(
+            Model: route.ModelInBody ? model.ModelId : null,
             Messages:
             [
                 new ChatMessage("system", systemPrompt),
                 new ChatMessage("user", userPrompt),
             ],
-            Temperature: temperature,
             ResponseFormat: new ChatResponseFormat(
-                "json_schema", new ChatJsonSchema(schemaName, Strict: true, jsonSchema)));
-
-        var relativeUrl =
-            $"openai/deployments/{Uri.EscapeDataString(deploymentId)}/chat/completions?api-version={ApiVersion}";
+                "json_schema", new ChatJsonSchema(schemaName, Strict: true, jsonSchema)),
+            MaxCompletionTokens: model.MaxCompletionTokens,
+            Temperature: model.Temperature is { } temperature ? Math.Clamp(temperature, 0, MaxTemperature) : null,
+            ReasoningEffort: reasoningEffort);
 
         var result = await httpJsonClient
-            .PostAsync<ChatCompletionRequest, ChatCompletionResponse>(relativeUrl, request, cancellationToken)
+            .PostAsync<ChatCompletionRequest, ChatCompletionResponse>(route.RelativeUrl, request, cancellationToken)
             .ConfigureAwait(false);
 
         if (result.IsFailure)
         {
-            return Result<string>.Failure(result.Error);
+            return Result<ChatCompletionOutcome>.Failure(result.Error);
         }
 
-        var content = result.Value.Choices is { Count: > 0 } choices ? choices[0].Message?.Content : null;
+        var choice = result.Value.Choices is { Count: > 0 } choices ? choices[0] : null;
+        var usage = result.Value.Usage is { } u ? new AiTokenUsage(u.PromptTokens, u.CompletionTokens) : null;
 
-        return string.IsNullOrWhiteSpace(content)
-            ? Result<string>.Failure(
-                $"Foundry chat completion for deployment '{deploymentId}' returned no message content.")
-            : Result<string>.Success(content);
+        if (choice is null)
+        {
+            return Result<ChatCompletionOutcome>.Failure(
+                $"Foundry chat completion for deployment '{model.ModelId}' returned no choices.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(choice.Message?.Refusal))
+        {
+            return Result<ChatCompletionOutcome>.Failure(
+                $"Foundry chat completion for deployment '{model.ModelId}' was refused by the model: {choice.Message.Refusal}");
+        }
+
+        if (string.Equals(choice.FinishReason, "length", StringComparison.OrdinalIgnoreCase))
+        {
+            return Result<ChatCompletionOutcome>.Failure(
+                $"Foundry chat completion for deployment '{model.ModelId}' stopped at max_completion_tokens " +
+                $"({model.MaxCompletionTokens?.ToString() ?? "deployment default"}) before the JSON was complete; " +
+                $"raise AiGateway:Models:{role}:MaxCompletionTokens or shorten the input.");
+        }
+
+        if (string.Equals(choice.FinishReason, "content_filter", StringComparison.OrdinalIgnoreCase))
+        {
+            return Result<ChatCompletionOutcome>.Failure(
+                $"Foundry chat completion for deployment '{model.ModelId}' was stopped by the content filter.");
+        }
+
+        var content = choice.Message?.Content;
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return Result<ChatCompletionOutcome>.Failure(
+                $"Foundry chat completion for deployment '{model.ModelId}' returned no message content.");
+        }
+
+        return Result<ChatCompletionOutcome>.Success(new ChatCompletionOutcome(content, choice.FinishReason, usage));
     }
 }

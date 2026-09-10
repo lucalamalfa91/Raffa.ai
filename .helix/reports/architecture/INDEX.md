@@ -88,3 +88,16 @@ an **epic-13 amendment footer** (superseding their epic-12 footers).
 | ADR | Topic | Seat | One-line decision |
 | --- | --- | --- | --- |
 | ADR-024 | Ask Contigo V2 | product-owner + software-architect + security-architect + ux-ui-designer | Documents-only intake with an admission gate before persistence (non-contracts refused, never stored); server-side conversations under RLS; three sources of truth (validated contracts, market-intelligence feed with its own index — mock now, API later —, capability catalog); structured no-tools `answer` role with grounding + numeric guards; deterministic strategies (contract vs market, renewal strategy, portfolio criticality); V2 IA with `inputs/design/prototypes/Contigo V2 Prototype.html` (unpacked `contigo-v2/`) as the pixel reference. |
+
+## Live Foundry (appended 2026-09-09)
+
+ADR-001…024 keep their original Decision. ADR-004, ADR-005, ADR-008 and
+ADR-017 gain an **amendment footer** dated 2026-09-09: the shared Azure AI
+Services account `aisvc-contigo` (kind `AIServices`, account-native Foundry
+projects, no hub), its per-environment projects, model deployments and RBAC
+are created by Terraform (`infra/modules/foundry`; owned by the `dev` root,
+attached by `demo`; two-phase wiring behind `ai_gateway_wired`); confirmed
+per-environment model ids (dev: gpt-5.4-nano + text-embedding-3-small; demo:
+gpt-5.4 / gpt-5.4-nano + text-embedding-3-large at 1536 dimensions); OCR is
+Document Intelligence `prebuilt-read` for every PDF and image with the page
+map from `pages[].spans`, native parsing only for DOCX/XLSX. No new ADR.

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Contigo.AiGateway.Foundry;
 using Contigo.Quotes.Application.Extraction;
 
 namespace Contigo.Quotes.Tests;
@@ -73,14 +74,26 @@ public sealed class QuoteLineJsonSchemaTests
         }
     }
 
+    /// <summary>Azure structured outputs in strict mode reject `minimum`/`maximum`, open objects
+    /// and partial `required` lists; <see cref="StrictJsonSchemaValidator"/> is the same check the
+    /// Foundry extract client runs before sending, so a drift here fails in CI rather than on dev.
+    /// The 0..1 confidence contract therefore lives in the property's description.</summary>
     [Fact]
-    public void Confidence_is_bounded_zero_to_one()
+    public void Schema_is_strict_mode_compliant_with_every_item_field_required()
     {
-        var itemProperties = GetItemProperties();
-        var confidence = itemProperties.GetProperty("confidence");
+        var verdict = StrictJsonSchemaValidator.Validate(QuoteLineJsonSchema.LineItems());
+        Assert.True(verdict.IsSuccess, verdict.IsFailure ? verdict.Error : null);
 
-        Assert.Equal(0, confidence.GetProperty("minimum").GetInt32());
-        Assert.Equal(1, confidence.GetProperty("maximum").GetInt32());
+        var required = GetItemSchema().GetProperty("required").EnumerateArray()
+            .Select(e => e.GetString()!)
+            .OrderBy(f => f, StringComparer.Ordinal)
+            .ToList();
+        Assert.Equal(ExpectedItemFields.OrderBy(f => f, StringComparer.Ordinal).ToList(), required);
+
+        var confidence = GetItemProperties().GetProperty("confidence");
+        Assert.False(confidence.TryGetProperty("minimum", out _));
+        Assert.False(confidence.TryGetProperty("maximum", out _));
+        Assert.Contains("0 to 1", confidence.GetProperty("description").GetString(), StringComparison.Ordinal);
     }
 
     private static JsonElement GetItemSchema()

@@ -19,8 +19,10 @@ namespace Contigo.Documents.Contracts.Tests.Admission;
 /// "classified once" hand-off (<c>inputs/requirements.md</c> R-DOC-03 AC-1/AC-2/AC-3/AC-6).
 /// Runs against the real <see cref="HybridDocumentParsingService"/> +
 /// <see cref="NativeDocumentTextExtractor"/> and the real <see cref="FixtureAiGateway"/> — the
-/// same components the API host wires — so "recipe → Other → rejected" and "MASTER SERVICES
-/// AGREEMENT → Msa → admitted" are proven on the production path, not on a stub of it.
+/// same components the API host wires (every PDF goes through the `ocr` role — here the fixture's
+/// own scanner, on a live deployment Document Intelligence Read) — so "recipe → Other → rejected"
+/// and "MASTER SERVICES AGREEMENT → Msa → admitted" are proven on the production path, not on a
+/// stub of it.
 /// </summary>
 public sealed class DocumentAdmissionGateTests
 {
@@ -65,6 +67,9 @@ public sealed class DocumentAdmissionGateTests
         Assert.Equal(ContractDocumentType.Msa, decision.Classification!.DocumentType);
         Assert.False(string.IsNullOrWhiteSpace(decision.Classification.Metadata.ModelId));
         Assert.Equal(1, harness.Gateway.ClassifyCalls);
+        // Every PDF is read by the `ocr` role (ADR-017 amendment 2026-09-09); the fixture's scanner
+        // pairs this hand-built page with its text stream.
+        Assert.Equal(1, harness.Gateway.OcrCalls);
         Assert.Empty(harness.Audit.Entries);
     }
 
@@ -105,8 +110,8 @@ public sealed class DocumentAdmissionGateTests
     public async Task Too_little_readable_text_is_rejected_without_calling_the_classify_role()
     {
         var harness = Harness.WithFixtureGateway();
-        // Enough per-page text for the native extractor to trust the page (>= 40 chars), far
-        // below the 200-character admission floor.
+        // Real page text the fixture OCR scanner pairs with its page, far below the
+        // 200-character admission floor.
         var bytes = BuildPdf("A short note that is not really a document at all.");
 
         var decision = await harness.Gate.EvaluateAsync(Tenant, Actor, "note.pdf", "application/pdf", bytes);
@@ -251,7 +256,7 @@ public sealed class DocumentAdmissionGateTests
     {
         var harness = Harness.WithScriptedGateway(new ScriptedAiGateway(
             classify: _ => Result<AiClassificationResult>.Failure("classify role unavailable"),
-            ocr: _ => throw new InvalidOperationException("native PDF text never reaches OCR")));
+            ocr: ScanPdfLikeTheFixture));
 
         var decision = await harness.Gate.EvaluateAsync(
             Tenant, Actor, "msa.pdf", "application/pdf", BuildPdf(MsaText));
@@ -267,7 +272,10 @@ public sealed class DocumentAdmissionGateTests
         // A Foundry deployment whose managed identity cannot get a token throws out of the client
         // rather than returning Result.Failure -- on the deployed dev environment that turned every
         // upload into an opaque HTTP 500. The gate must answer with a decision, not an exception.
-        var harness = Harness.WithScriptedGateway(new ThrowingAiGateway());
+        // The `ocr` role (reached first for a PDF) is scripted to work so the throw lands on classify.
+        var harness = Harness.WithScriptedGateway(new ScriptedAiGateway(
+            classify: _ => throw new InvalidOperationException("ManagedIdentityCredential authentication failed: no token endpoint."),
+            ocr: ScanPdfLikeTheFixture));
 
         var decision = await harness.Gate.EvaluateAsync(
             Tenant, Actor, "msa.pdf", "application/pdf", BuildPdf(MsaText));
@@ -292,6 +300,28 @@ public sealed class DocumentAdmissionGateTests
     }
 
     [Fact]
+    public async Task A_provider_still_failing_after_retries_is_reported_as_retryable_not_as_a_bad_upload()
+    {
+        // FoundryRetryPolicy gives up with AiGatewayErrors.UnavailablePrefix once its retries are
+        // spent; the gate maps that Result.Failure to the same 503-bound prefix a thrown credential
+        // error gets, so the endpoint answers "try again" instead of a 400 that blames the file.
+        var harness = Harness.WithScriptedGateway(new ScriptedAiGateway(
+            classify: _ => Result<AiClassificationResult>.Failure(
+                $"{AiGatewayErrors.UnavailablePrefix} 'https://aisvc-contigo.cognitiveservices.azure.com/openai/v1/chat/completions' " +
+                "still failing after 3 retries (last outcome: HTTP 429 TooManyRequests)."),
+            ocr: ScanPdfLikeTheFixture));
+
+        var decision = await harness.Gate.EvaluateAsync(
+            Tenant, Actor, "msa.pdf", "application/pdf", BuildPdf(MsaText));
+
+        Assert.Equal(AdmissionOutcome.Failed, decision.Outcome);
+        Assert.StartsWith(DocumentAdmissionGate.GatewayUnavailablePrefix, decision.Error);
+        Assert.Contains("classify", decision.Error);
+        Assert.Contains("429", decision.Error);
+        Assert.Empty(harness.Audit.Entries);
+    }
+
+    [Fact]
     public void Readable_chars_ignore_whitespace_and_blank_pages()
     {
         var pages = new List<DocumentPageText>
@@ -307,7 +337,7 @@ public sealed class DocumentAdmissionGateTests
     }
 
     /// <summary>The same hand-built PDF shape <c>R1ExtractionFixtures.BuildBornDigitalPdfBytes</c> and
-    /// <c>NativeDocumentTextExtractorTests</c> use — one page object, one text-bearing content stream.</summary>
+    /// <c>FixturePdfTextScannerTests</c> use — one page object, one text-bearing content stream.</summary>
     private static byte[] BuildPdf(string text)
     {
         var pdf =
@@ -320,6 +350,19 @@ public sealed class DocumentAdmissionGateTests
             "endobj\n" +
             "%%EOF\n";
         return Encoding.Latin1.GetBytes(pdf);
+    }
+
+    /// <summary>What <see cref="FixtureAiGateway"/>'s `ocr` role does with a PDF: read the hand-built
+    /// page/stream pairs through <see cref="FixturePdfTextScanner"/>. The scripted gateways use it so
+    /// their classify-side scripts still run on the document's real text.</summary>
+    private static Result<AiOcrResult> ScanPdfLikeTheFixture(AiOcrRequest request)
+    {
+        var pages = FixturePdfTextScanner.TryExtractPages(request.Content.Span)
+            ?? throw new InvalidOperationException("The test PDF could not be paired by the fixture scanner.");
+
+        return Result<AiOcrResult>.Success(new AiOcrResult(
+            pages.Select((text, index) => new AiOcrPage(index + 1, text)).ToList(),
+            new AiCallMetadata("scripted-ocr", "1", "p1", Now, "hash")));
     }
 
     /// <summary>A fixture "scanned image": JPEG signature + UTF-8 page text, the format
@@ -342,7 +385,7 @@ public sealed class DocumentAdmissionGateTests
                 new ScriptedAiGateway(
                     classify: _ => Result<AiClassificationResult>.Success(new AiClassificationResult(
                         type, confidence, new AiCallMetadata("scripted-classify", "1", "p1", Now, "hash"))),
-                    ocr: _ => throw new InvalidOperationException("native PDF text never reaches OCR")),
+                    ocr: ScanPdfLikeTheFixture),
                 options);
 
         public static Harness WithScriptedGateway(IAiGateway gateway, DocumentAdmissionOptions? options = null) =>

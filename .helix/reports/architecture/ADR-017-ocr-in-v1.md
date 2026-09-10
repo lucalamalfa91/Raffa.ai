@@ -83,3 +83,30 @@ OCR is not a chat/completions model. It still counts as AI I/O: it rides the sam
 - Azure AI Document Intelligence Read and Layout (`prebuilt-read`, `prebuilt-layout`) are available in `northeurope` on the same AI services account as Foundry (ADR-006, ADR-008). Confirm ID/price at implementation time.
 - S0 / pay-per-page is the cheapest SKU that can process a 100-contract Day-1 portfolio; F0 free-tier page caps are insufficient for `demo` and are not the V1 SKU.
 - Native libraries for PDF/DOCX/XLSX text exist for the ASP.NET worker and are good enough for born-digital files; OCR is the backstop, not a replacement for those formats.
+
+## Amendment (2026-09-09, Read for every PDF and image; page map from spans)
+
+The hybrid rule is narrowed. The worker sends **every PDF and every image
+upload (PNG/JPG) to Azure AI Document Intelligence `prebuilt-read`**
+(api-version 2024-11-30) on the shared account; native text extraction is
+used **only for DOCX and XLSX** (OpenXml). Reasons: the interim "native" PDF
+path was a hand-written content-stream scanner (no PDF library) that could
+not read real supplier PDFs (CID fonts, hex strings, object streams) and
+routed them to a fixture OCR that produced no text; Read returns a digital
+PDF's embedded text at the same per-page price with a uniform page map; one
+path is cheaper to prove than two. The last Assumption above ("native
+libraries ... good enough for born-digital files") is withdrawn for PDF.
+
+The page map is derived from the analyze result's `pages[].spans` over the
+concatenated `content` (`stringIndexType=utf16CodeUnit`), so `source.page`
+keeps resolving; the response carries no page delimiter of its own.
+`prebuilt-layout` stays available on the account and is not called in V1;
+the Gateway-role table's requirement reads "full-document text + page map"
+(layout/tables deferred). The `ocr` role binds `AiGateway:Models:Ocr` =
+`prebuilt-read` / `2024-11-30` from Terraform (`modules/foundry` output
+`model_env`) like the other four roles. The per-document page budget
+(`AiGateway:Ocr:MaxPagesPerDocument`) and page-count logging are unchanged.
+The account and the per-environment projects are Terraform-managed
+(ADR-008 amendment, same date); the "per-project connection" is an
+informational header value, not a resource. The fixture gateway keeps a copy
+of the retired scanner so CI stays provider-free.

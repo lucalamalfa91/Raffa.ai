@@ -68,6 +68,11 @@ public sealed class FixtureAiGateway(
     private static readonly byte[] PngSignature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
     private static readonly byte[] JpegSignature = [0xFF, 0xD8, 0xFF];
 
+    /// <summary><c>%PDF-</c>: a PDF is read by <see cref="FixturePdfTextScanner"/> (ADR-017 amendment
+    /// 2026-09-09: in production every PDF goes through Document Intelligence, so the fixture must
+    /// read the repo's hand-built test PDFs itself to stay provider-free).</summary>
+    private static readonly byte[] PdfSignature = [0x25, 0x50, 0x44, 0x46, 0x2D];
+
     private static readonly (AiDocumentType Type, string Keyword)[] ClassificationKeywords =
     [
         (AiDocumentType.Msa, "MASTER SERVICES AGREEMENT"),
@@ -390,6 +395,20 @@ public sealed class FixtureAiGateway(
         // signature followed by UTF-8 page text (form-feed separated) — the signature is stripped
         // here and the remainder decoded exactly as before. A real photo (binary after the
         // signature) still fails strict UTF-8 decoding and gets the honest placeholder below.
+        if (content.StartsWith(PdfSignature))
+        {
+            // A born-digital PDF (the shape every hand-built test fixture in this repo has): the
+            // scanner pairs each page with its text-bearing content stream; anything it cannot
+            // pair (a scanned PDF, object streams, CID fonts) gets the honest placeholder below.
+            var pdfPages = FixturePdfTextScanner.TryExtractPages(content);
+            if (pdfPages is not null)
+            {
+                return pdfPages.Select((text, index) => new AiOcrPage(index + 1, text)).ToList();
+            }
+
+            return [new AiOcrPage(1, string.Format(CultureInfo.InvariantCulture, BinaryContentPlaceholder, content.Length))];
+        }
+
         var payload = content;
         if (payload.StartsWith(PngSignature))
         {

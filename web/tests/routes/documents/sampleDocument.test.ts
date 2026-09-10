@@ -6,9 +6,10 @@ import {
   SAMPLE_DOCUMENTS,
 } from "../../../src/routes/documents/sampleDocument";
 
-/** Mirrors NativeDocumentTextExtractor's own lightweight scan: count `/Type /Page` objects, pair them
- * with the `BT ... ET` streams in file order, join each stream's literal strings with spaces. */
-function extractPagesLikeTheBackend(pdf: string): string[] {
+/** Mirrors the fixture gateway's own lightweight scanner (`FixturePdfTextScanner`): count
+ * `/Type /Page` objects, pair them with the `BT ... ET` streams in file order, join each stream's
+ * literal strings with spaces. */
+function extractPageTexts(pdf: string): string[] {
   const pageCount = (pdf.match(/(?<![A-Za-z])\/Type\s*\/Page(?![A-Za-z])/g) ?? []).length;
   const streams = [...pdf.matchAll(/BT([\s\S]*?)ET/g)].map((match) =>
     [...match[1].matchAll(/\((?<text>(?:[^()\\]|\\.)*)\)/g)]
@@ -28,7 +29,7 @@ describe("SAMPLE_DOCUMENTS", () => {
 
   it("every sample is a readable, classifiable contract: 'MASTER SERVICES AGREEMENT' and well over the 200 readable characters the admission gate requires", () => {
     for (const sample of SAMPLE_DOCUMENTS) {
-      const pages = extractPagesLikeTheBackend(buildSamplePdf(sample.pages));
+      const pages = extractPageTexts(buildSamplePdf(sample.pages));
       expect(pages).toHaveLength(sample.pages.length);
       expect(pages[0]).toContain("MASTER SERVICES AGREEMENT");
       expect(pages.join(" ").replace(/\s/g, "").length).toBeGreaterThan(200);
@@ -62,15 +63,30 @@ describe("buildSamplePdf", () => {
 
     expect(pdf.startsWith("%PDF-1.4")).toBe(true);
     expect(pdf).toContain("/Count 2");
-    const pages = extractPagesLikeTheBackend(pdf);
+    const pages = extractPageTexts(pdf);
     expect(pages).toEqual(["First page (with parentheses) and a back\\slash.", "Second page."]);
   });
 
-  it("stays within Latin-1 so the backend's byte-for-byte decode never corrupts the text", () => {
+  it("is a structurally valid PDF: every xref entry points at its object and startxref points at the xref table", () => {
+    const pdf = buildSamplePdf(["Page one.", "Page two."]);
+
+    const startXref = Number(/startxref\n(\d+)\n%%EOF/.exec(pdf)![1]);
+    expect(pdf.slice(startXref, startXref + 4)).toBe("xref");
+
+    const entries = [...pdf.matchAll(/^(\d{10}) 00000 n \r?$/gm)].map((match) => Number(match[1]));
+    const objectCount = Number(/xref\n0 (\d+)\n/.exec(pdf)![1]) - 1;
+    expect(entries).toHaveLength(objectCount);
+    entries.forEach((offset, index) => {
+      expect(pdf.slice(offset, offset + `${index + 1} 0 obj`.length)).toBe(`${index + 1} 0 obj`);
+    });
+    expect(pdf).toContain(`/Size ${objectCount + 1}`);
+  });
+
+  it("stays within ASCII so byte offsets equal character offsets once the file is UTF-8 encoded", () => {
     for (const sample of SAMPLE_DOCUMENTS) {
       const pdf = buildSamplePdf(sample.pages);
       for (const char of pdf) {
-        expect(char.charCodeAt(0)).toBeLessThan(256);
+        expect(char.charCodeAt(0)).toBeLessThan(128);
       }
     }
   });

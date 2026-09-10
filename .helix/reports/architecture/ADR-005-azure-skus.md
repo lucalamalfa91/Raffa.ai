@@ -83,3 +83,21 @@ Contigo V1 must run two isolated Azure environments (`dev` and `demo`) that sati
 - Container Apps consumption is available in the target region (see ADR-region) and supports min-instances=0 for both apps.
 - PostgreSQL Flexible Server Burstable supports the `pgvector` extension and RLS at no premium.
 - Service Bus Standard topics are needed for extraction events; Basic (queues only) is the fallback if topics are not required in the initial slice.
+
+## Amendment (2026-09-09, AI services rows)
+
+Rows added to "Concrete services and SKUs"; the OCR row above is subsumed.
+All are created by Terraform (`infra/modules/foundry`, ADR-008 amendment of
+the same date).
+
+| Concern | Service | SKU / tier | Notes |
+| --- | --- | --- | --- |
+| AI account (shared) | Azure AI Services, kind `AIServices` | **S0, pay-as-you-go**, no idle charge | ONE account `aisvc-contigo` in its own `rg-contigo-ai` (tags `env=shared`) -- the single deliberate exception to "one of everything per env", per ADR-008. Keys disabled; Entra-only auth. |
+| Foundry projects | `Microsoft.CognitiveServices/accounts/projects` | no charge | `contigo-dev`, `contigo-demo` (account-native, no hub). |
+| Chat / extraction models | Model deployments on the account | **DataZoneStandard** (EU) or **GlobalStandard**, per-1K-token, capacity in K TPM per deployment | dev: gpt-5.4-nano; demo: gpt-5.4 + gpt-5.4-nano. Provisioned SKUs rejected (fixed cost). |
+| Embeddings | Model deployments | **GlobalStandard**, per-1K-token | dev: text-embedding-3-small; demo: text-embedding-3-large (dimensions forced to 1536). |
+| OCR | Document Intelligence on the same account | **S0 pay-per-page**, `prebuilt-read` | No deployment resource; billed per page on the shared account. |
+
+Shared-vs-isolated note, second line: the AI account is shared by decision
+(ADR-008); isolation is per project, per-environment deployment names and
+per-environment RBAC principals.

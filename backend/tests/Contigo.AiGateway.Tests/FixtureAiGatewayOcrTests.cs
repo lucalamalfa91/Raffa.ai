@@ -94,6 +94,51 @@ public class FixtureAiGatewayOcrTests
     }
 
     [Fact]
+    public async Task Ocr_reads_a_born_digital_pdf_through_the_fixture_scanner()
+    {
+        var gateway = CreateGateway();
+        var pdf =
+            "%PDF-1.4\n" +
+            "1 0 obj << /Type /Page >> endobj\n" +
+            "2 0 obj << /Length 80 >>\n" +
+            "stream\n" +
+            "BT (MASTER SERVICES AGREEMENT between Acme Corp and Contoso Ltd.) Tj ET\n" +
+            "endstream\n" +
+            "endobj\n" +
+            "3 0 obj << /Type /Page >> endobj\n" +
+            "4 0 obj << /Length 40 >>\n" +
+            "stream\n" +
+            "BT (Governing law: Italy.) Tj ET\n" +
+            "endstream\n" +
+            "endobj\n" +
+            "%%EOF\n";
+
+        var result = await gateway.OcrAsync(
+            new AiOcrRequest("contract.pdf", "application/pdf", Encoding.Latin1.GetBytes(pdf)));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, result.Value.Pages.Count);
+        Assert.Equal("MASTER SERVICES AGREEMENT between Acme Corp and Contoso Ltd.", result.Value.Pages[0].Text);
+        Assert.Equal(2, result.Value.Pages[1].PageNumber);
+        Assert.Equal("Governing law: Italy.", result.Value.Pages[1].Text);
+    }
+
+    [Fact]
+    public async Task Ocr_returns_the_placeholder_for_a_pdf_the_scanner_cannot_pair()
+    {
+        var gateway = CreateGateway();
+        // A "scanned" PDF: one page object, no text-showing operator anywhere.
+        var pdf = "%PDF-1.4\n1 0 obj << /Type /Page >> endobj\n2 0 obj << /Length 8 >>\nstream\n/Im0 Do\nendstream\nendobj\n%%EOF\n";
+
+        var result = await gateway.OcrAsync(
+            new AiOcrRequest("scanned.pdf", "application/pdf", Encoding.Latin1.GetBytes(pdf)));
+
+        Assert.True(result.IsSuccess);
+        var page = Assert.Single(result.Value.Pages);
+        Assert.Contains("fixture-ocr", page.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Ocr_fails_visibly_when_the_page_budget_is_exceeded_instead_of_truncating()
     {
         var gateway = CreateGateway(new AiGatewayOcrOptions { MaxPagesPerDocument = 2 });

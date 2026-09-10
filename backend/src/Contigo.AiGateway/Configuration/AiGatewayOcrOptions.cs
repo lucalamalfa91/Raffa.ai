@@ -33,4 +33,19 @@ public sealed class AiGatewayOcrOptions
     /// <see cref="AiGatewayModelOptions"/>'s own property-initializer pattern).
     /// </summary>
     public int MaxPagesPerDocument { get; init; } = 300;
+
+    /// <summary>
+    /// Total time <see cref="Foundry.FoundryOcrClient"/> waits for a Document Intelligence analysis
+    /// to reach a terminal status. Read on a multi-page scan routinely takes tens of seconds; the
+    /// budget must fit inside the synchronous upload request (Container Apps ingress ~240 s) together
+    /// with classification and extraction.
+    /// </summary>
+    public int PollTimeoutSeconds { get; init; } = 120;
+
+    /// <summary>First poll interval when the service sends no <c>Retry-After</c>; doubles per poll
+    /// up to <see cref="MaxPollIntervalMilliseconds"/>.</summary>
+    public int InitialPollIntervalMilliseconds { get; init; } = 1_000;
+
+    /// <summary>Ceiling on the poll interval.</summary>
+    public int MaxPollIntervalMilliseconds { get; init; } = 5_000;
 }

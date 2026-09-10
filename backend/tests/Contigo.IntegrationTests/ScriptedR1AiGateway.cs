@@ -12,7 +12,7 @@ namespace Contigo.IntegrationTests;
 /// <c>Contigo.AiGateway.Fixtures.FixtureAiGateway.ExtractAsync</c> always returns an empty <c>{}</c>
 /// placeholder — see that method's own doc comment). <see cref="ClassifyAsync"/> (keyword
 /// classification), <see cref="EmbedAsync"/>/<see cref="AnswerAsync"/> (deterministic RAG) and
-/// <see cref="OcrAsync"/> (form-feed page split) are all already meaningful on the real
+/// <see cref="OcrAsync"/> (fixture page split, PDFs through <c>FixturePdfTextScanner</c>) are all already meaningful on the real
 /// <c>FixtureAiGateway</c> — this type delegates those four straight through to
 /// <paramref name="inner"/> (composition, the same shape
 /// <c>Contigo.AiGateway.Logging.LoggingAiGateway</c> already uses to wrap a real gateway) and only

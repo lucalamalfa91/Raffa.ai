@@ -161,6 +161,50 @@ public class LoggingAiGatewayTests
     }
 
     [Fact]
+    public async Task Token_usage_is_logged_when_the_provider_reports_it()
+    {
+        var auditWriter = new RecordingAuditWriter();
+        var tenantContext = new TenantContext();
+        var gateway = new LoggingAiGateway(
+            new UsageReportingGateway(), auditWriter, tenantContext, new AiGatewayComplianceOptions());
+
+        using (tenantContext.BeginScope(TenantId.New()))
+        {
+            var result = await gateway.ClassifyAsync(new AiClassificationRequest("MASTER SERVICES AGREEMENT text"));
+            Assert.True(result.IsSuccess);
+        }
+
+        var entry = Assert.Single(auditWriter.Written);
+        var detail = entry.Detail ?? throw new InvalidOperationException("expected Detail to be set");
+        Assert.Contains("gpt-5.4-nano-dev", detail, StringComparison.Ordinal);
+        Assert.Contains("promptTokens=120", detail, StringComparison.Ordinal);
+        Assert.Contains("completionTokens=9", detail, StringComparison.Ordinal);
+    }
+
+    /// <summary>An inner gateway that reports token usage the way the live Foundry clients do.</summary>
+    private sealed class UsageReportingGateway : IAiGateway
+    {
+        public Task<Result<AiClassificationResult>> ClassifyAsync(
+            AiClassificationRequest request, CancellationToken cancellationToken = default) =>
+            Task.FromResult(Result<AiClassificationResult>.Success(new AiClassificationResult(
+                AiDocumentType.Msa,
+                0.9,
+                new AiCallMetadata("gpt-5.4-nano-dev", "2026-03-17", "foundry-classify-v2", Now, "hash", new AiTokenUsage(120, 9)))));
+
+        public Task<Result<AiExtractionResult>> ExtractAsync(
+            AiExtractionRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<Result<AiEmbeddingResult>> EmbedAsync(
+            AiEmbeddingRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<Result<AiAnswerResult>> AnswerAsync(
+            AiAnswerRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<Result<AiOcrResult>> OcrAsync(
+            AiOcrRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
+
+    [Fact]
     public async Task Failed_call_does_not_write_an_audit_entry()
     {
         var (gateway, auditWriter, tenantContext) = CreateGateway();

@@ -77,7 +77,7 @@ public static class ServiceCollectionExtensions
 
         // Task E13/F01/US01/T02 (foundry-gateway): AiGatewayFoundryOptions binds the *root*
         // "AiGateway" section (Endpoint/ProjectName/DocumentIntelligenceConnection/
-        // AnswerTemperature) — see that type's own doc comment for why it is a sibling of, not
+        // OpenAiApiVersion/ClassifyMaxInputChars) — see that type's own doc comment for why it is a sibling of, not
         // nested under, AiGatewayModelOptions/AiGatewayOcrOptions. AiGatewayComplianceOptions was
         // already a type this module shipped (LoggingAiGateway's own no-training guard) but was
         // never actually bound/registered here — LoggingAiGateway was never constructed via DI
@@ -99,6 +99,19 @@ public static class ServiceCollectionExtensions
                 .Bind(options);
             return options;
         });
+
+        // Retry/timeout policy for every Foundry HTTP call (AiGateway:Resilience), same
+        // bind-with-defaults pattern as the options above.
+        services.TryAddSingleton(sp =>
+        {
+            var options = new AiGatewayResilienceOptions();
+            sp.GetRequiredService<IConfiguration>()
+                .GetSection(AiGatewayResilienceOptions.SectionName)
+                .Bind(options);
+            return options;
+        });
+
+        services.TryAddSingleton(sp => new FoundryRetryPolicy(sp.GetRequiredService<AiGatewayResilienceOptions>()));
 
         // Fixture path (unchanged): still registered so a FixtureAiGateway singleton exists to
         // wrap whenever AiGateway:Endpoint is unset (local dev, CI, every existing fixture test).
@@ -133,7 +146,21 @@ public static class ServiceCollectionExtensions
                 ? foundryOptions.Endpoint
                 : foundryOptions.Endpoint + "/";
 
-            return new HttpClient { BaseAddress = new Uri(baseAddress) };
+            // One process-lifetime client per host: a pooled-connection lifetime keeps DNS/connection
+            // rotation working for a singleton, and the request timeout is the resilience option
+            // (a frontier model answering a long extraction stage outlives the framework's 100 s).
+            var resilience = sp.GetRequiredService<AiGatewayResilienceOptions>();
+            var handler = new SocketsHttpHandler
+            {
+                PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+                AutomaticDecompression = System.Net.DecompressionMethods.All,
+            };
+
+            return new HttpClient(handler)
+            {
+                BaseAddress = new Uri(baseAddress),
+                Timeout = TimeSpan.FromSeconds(Math.Max(1, resilience.RequestTimeoutSeconds)),
+            };
         });
 
         services.TryAddSingleton<FoundryHttpJsonClient>();

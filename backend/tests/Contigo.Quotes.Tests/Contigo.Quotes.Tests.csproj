@@ -25,6 +25,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Contigo.AiGateway\Contigo.AiGateway.csproj" />
     <ProjectReference Include="..\..\src\Contigo.Quotes\Contigo.Quotes.csproj" />
     <ProjectReference Include="..\..\src\Contigo.Benchmark\Contigo.Benchmark.csproj" />
   </ItemGroup>

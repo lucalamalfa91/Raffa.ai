@@ -15,7 +15,7 @@ namespace Contigo.AiGateway.Configuration;
 /// properties each options type actually declares, so the nested <c>Models</c>/<c>Ocr</c>/
 /// <c>Compliance</c> subsections are silently ignored here, the same way this type's own
 /// <see cref="Endpoint"/>/<see cref="ProjectName"/>/<see cref="DocumentIntelligenceConnection"/>/
-/// <see cref="AnswerTemperature"/> properties are ignored by those siblings' own <c>Bind</c> calls.
+/// <see cref="OpenAiApiVersion"/>/<see cref="ClassifyMaxInputChars"/> properties are ignored by those siblings' own <c>Bind</c> calls.
 ///
 /// <see cref="Endpoint"/> unset/blank is how <see cref="ServiceCollectionExtensions
 /// .AddAiGatewayModule"/> decides to register <see cref="Fixtures.FixtureAiGateway"/> instead of
@@ -58,11 +58,21 @@ public sealed class AiGatewayFoundryOptions
     public string? DocumentIntelligenceConnection { get; init; }
 
     /// <summary>
-    /// Ceiling on the `answer` role's sampling temperature (ADR-024: "temperature &lt;= 0.2").
-    /// <see cref="Foundry.FoundryAnswerClient"/> clamps to <see langword="this"/> value defensively
-    /// — <c>Math.Min(AnswerTemperature, 0.2)</c> — so a misconfigured value above the ADR ceiling
-    /// can never raise the actual request's temperature above what the ADR fixes; it can only
-    /// lower it. Default 0.2, the ADR's own ceiling.
+    /// Azure OpenAI data-plane surface for chat/embeddings. <see langword="null"/>/blank (the
+    /// default) selects the GA <c>openai/v1/*</c> route (deployment name in the request body, no
+    /// <c>api-version</c>) — the surface that supports structured outputs,
+    /// <c>max_completion_tokens</c> and <c>reasoning_effort</c>. A date-based value (for example
+    /// <c>2024-10-21</c>) selects the classic <c>openai/deployments/{deployment}/...?api-version=</c>
+    /// route as a fallback; anything older than <c>2024-08-01</c> is rejected at first use because
+    /// it cannot carry <c>response_format: json_schema</c> (see
+    /// <see cref="Foundry.FoundryOpenAiRoutes"/>).
     /// </summary>
-    public double AnswerTemperature { get; init; } = 0.2;
+    public string? OpenAiApiVersion { get; init; }
+
+    /// <summary>
+    /// How much of a document (characters, from the start) the `classify` role reads. Classification
+    /// needs a representative prefix, not the whole contract (<see cref="Contracts.AiClassificationRequest"/>'s
+    /// own doc comment), so a 300-page upload does not spend 300 pages of tokens to learn it is an MSA.
+    /// </summary>
+    public int ClassifyMaxInputChars { get; init; } = 40_000;
 }

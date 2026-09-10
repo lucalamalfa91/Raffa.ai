@@ -1,52 +1,64 @@
 using System.Net.Http.Headers;
-using System.Net.Http.Json;
 using System.Text.Json;
 using Contigo.AiGateway.Configuration;
+using Contigo.AiGateway.Foundry.Wire;
 using Contigo.SharedKernel;
 
 namespace Contigo.AiGateway.Foundry;
 
 /// <summary>
-/// Shared low-level POST-JSON-get-JSON caller for the two Foundry roles that fit a plain
-/// request/response shape (chat completions via <see cref="FoundryChatCompletionsClient"/>,
-/// embeddings via <see cref="FoundryEmbedClient"/>). <see cref="FoundryOcrClient"/> does not use
-/// this type — Document Intelligence's long-running-operation contract (202 + a polled
-/// <c>Operation-Location</c>) needs raw <see cref="HttpResponseMessage"/>/header access this
-/// type's "parse the JSON body or fail" contract deliberately does not expose.
-///
-/// Authenticates every call via <see cref="FoundryTokenProvider"/> (Microsoft Entra ID / managed
-/// identity — task E13/F01/US01/T02: "auth via DefaultAzureCredential..., never a key"), never an
-/// API key header. Never throws on a non-success response — every failure becomes a
-/// <see cref="Result{T}.Failure"/>, this codebase's own convention for expected failures.
+/// The one JSON-over-HTTP primitive every Azure OpenAI role client shares: serialize the request
+/// once, send it through <see cref="FoundryRetryPolicy"/> with a fresh bearer token per attempt
+/// (<see cref="FoundryTokenProvider"/>, managed identity — never a key, ADR-011), turn a
+/// non-success status into a readable <see cref="Result{T}"/> failure (the Azure error envelope's
+/// <c>code: message</c>, so <c>content_filter</c> or <c>invalid_json_schema</c> is visible in the
+/// stage's error detail), and deserialize the success body. Hand-serialized
+/// <see cref="System.Text.Json"/> over a bare <see cref="HttpClient"/> on purpose: no provider SDK
+/// in this project beyond <c>Azure.Identity</c>, so the wire shape is exactly what the tests assert.
 /// </summary>
 public sealed class FoundryHttpJsonClient(
-    HttpClient httpClient, FoundryTokenProvider tokenProvider, AiGatewayFoundryOptions foundryOptions)
+    HttpClient httpClient,
+    FoundryTokenProvider tokenProvider,
+    AiGatewayFoundryOptions foundryOptions,
+    FoundryRetryPolicy? retryPolicy = null)
 {
+    private static readonly MediaTypeHeaderValue JsonContentType = new("application/json") { CharSet = "utf-8" };
+
+    private readonly FoundryRetryPolicy _retryPolicy = retryPolicy ?? new FoundryRetryPolicy(new AiGatewayResilienceOptions());
+
     public async Task<Result<TResponse>> PostAsync<TRequest, TResponse>(
         string relativeUrl, TRequest body, CancellationToken cancellationToken)
         where TRequest : notnull
     {
-        using var request = new HttpRequestMessage(HttpMethod.Post, relativeUrl)
-        {
-            Content = JsonContent.Create(body, options: FoundryJsonOptions.Web),
-        };
+        var payload = JsonSerializer.SerializeToUtf8Bytes(body, FoundryJsonOptions.Web);
 
-        var token = await tokenProvider.GetTokenAsync(cancellationToken).ConfigureAwait(false);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        var sent = await _retryPolicy.SendAsync(
+                httpClient,
+                async token =>
+                {
+                    var request = new HttpRequestMessage(HttpMethod.Post, relativeUrl)
+                    {
+                        Content = new ByteArrayContent(payload) { Headers = { ContentType = JsonContentType } },
+                    };
+                    await AttachAuthAsync(request, token).ConfigureAwait(false);
+                    return request;
+                },
+                cancellationToken)
+            .ConfigureAwait(false);
 
-        if (!string.IsNullOrWhiteSpace(foundryOptions.ProjectName))
+        if (sent.IsFailure)
         {
-            request.Headers.TryAddWithoutValidation("x-ms-foundry-project", foundryOptions.ProjectName);
+            return Result<TResponse>.Failure(sent.Error);
         }
 
-        using var response = await httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        using var response = sent.Value;
         var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
 
         if (!response.IsSuccessStatusCode)
         {
             return Result<TResponse>.Failure(
                 $"Foundry request to '{relativeUrl}' failed with {(int)response.StatusCode} " +
-                $"{response.StatusCode}: {responseText}");
+                $"{response.StatusCode}: {AzureErrorEnvelope.Describe(responseText)}");
         }
 
         TResponse? parsed;
@@ -66,5 +78,18 @@ public sealed class FoundryHttpJsonClient(
         }
 
         return Result<TResponse>.Success(parsed);
+    }
+
+    private async Task AttachAuthAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        var token = await tokenProvider.GetTokenAsync(cancellationToken).ConfigureAwait(false);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        if (!string.IsNullOrWhiteSpace(foundryOptions.ProjectName))
+        {
+            // Informational per-project attribution (AiGatewayFoundryOptions.ProjectName's own doc
+            // comment) — not a documented REST contract, ignored by the service, harmless.
+            request.Headers.TryAddWithoutValidation("x-ms-foundry-project", foundryOptions.ProjectName);
+        }
     }
 }

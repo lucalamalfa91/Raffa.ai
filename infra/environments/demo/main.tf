@@ -147,21 +147,45 @@ module "containerapps" {
   ai_gateway_endpoint                         = module.foundry.ai_services_endpoint
   ai_gateway_project_name                     = module.foundry.foundry_project_name
   ai_gateway_document_intelligence_connection = module.foundry.document_intelligence_connection
+  ai_gateway_model_env                        = module.foundry.model_env
 }
 
-# Task E10/F02/US01/T01 (foundry-ocr-ca, ADR-008/ADR-011/ADR-017): this
-# root's OWN identity module instance only -- never dev's -- so the grant
-# never crosses envs (same rule module.keyvault and module.acr already
-# follow). var.foundry_ai_services_resource_id is empty until an operator
-# completes the ADR-008 Azure Portal step and sets this root's HCP
-# Terraform workspace variable of the same name; see modules/foundry's own
-# variables.tf for why an empty value is a safe, non-blocking default.
+# ADR-008 amendment 2026-09-09: demo NEVER creates the shared account (the
+# dev root owns rg-contigo-ai / aisvc-contigo); it attaches by name inside
+# modules/foundry once var.ai_account_attached is true and creates only its
+# own project, deployments and grants. This root's OWN identity module
+# instance only -- never dev's. ADR-004 amendment 2026-09-09: demo is
+# deliberately frontier (gpt-5.4 for extraction and answers, gpt-5.4-nano
+# for classification, text-embedding-3-large -- the backend forces
+# dimensions = 1536 so the pgvector column width never changes). Every
+# SKU/version below was verified in northeurope for this subscription on
+# 2026-09-09.
 module "foundry" {
   source = "../../modules/foundry"
 
-  environment             = local.environment
-  workload_principal_id   = module.identity.workload_principal_id
-  ai_services_resource_id = var.foundry_ai_services_resource_id
+  environment           = local.environment
+  location              = var.location
+  workload_principal_id = module.identity.workload_principal_id
+
+  create_shared_account = false
+  attach_shared_account = var.ai_account_attached
+  publish_endpoint      = var.ai_gateway_wired
+
+  ai_operator_principal_ids = var.ai_operator_principal_ids
+  extra_gateway_env         = var.ai_gateway_extra_env
+
+  model_deployments = {
+    "gpt-5.4"                = { model_version = "2026-03-05", sku_name = "DataZoneStandard", capacity = 200 }
+    "gpt-5.4-nano"           = { model_version = "2026-03-17", sku_name = "DataZoneStandard", capacity = 200 }
+    "text-embedding-3-large" = { model_version = "1", sku_name = "GlobalStandard", capacity = 100 }
+  }
+
+  model_roles = {
+    classify = "gpt-5.4-nano"
+    extract  = "gpt-5.4"
+    answer   = "gpt-5.4"
+    embed    = "text-embedding-3-large"
+  }
 }
 
 # ADR-005: Key Vault Standard tier (no Premium/HSM), RBAC-authorized;

@@ -105,3 +105,14 @@ variable "ai_gateway_document_intelligence_connection" {
   description = "This environment's Document Intelligence connection name (modules/foundry document_intelligence_connection output)."
   type        = string
 }
+
+# ADR-004 amendment 2026-09-09: the per-role model ids/versions the backend
+# binds as AiGateway:Models:<Role>:ModelId / :ModelVersion, produced by
+# modules/foundry from its deployment resources (model_env output) and
+# published as one env block per entry. An empty map emits no env block at
+# all, so a fixture-gateway environment never carries a model id it does
+# not call. Non-secret (deployment names and version strings).
+variable "ai_gateway_model_env" {
+  description = "AiGateway__Models__<Role>__ModelId / __ModelVersion (and extra AiGateway__* knobs) env vars for both Container Apps (modules/foundry model_env output). Empty map = no env block emitted."
+  type        = map(string)
+}
