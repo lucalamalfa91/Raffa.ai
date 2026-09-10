@@ -53,9 +53,8 @@ export default function DetailsSection({ contract, priority, open, onToggle }: D
               <h6>Key terms</h6>
               {keyTerms.map((row) => (
                 <div key={row.key} className="contract360-detail-row">
-                  <div>
-                    <span className="contract360-detail-label">{row.term}</span> <strong>{row.value}</strong>
-                  </div>
+                  <span className="contract360-detail-label">{row.term}</span>
+                  <strong className="contract360-detail-value">{row.value}</strong>
                   {row.source !== null && <span className="contract360-detail-side">{row.source}</span>}
                 </div>
               ))}
@@ -68,9 +67,8 @@ export default function DetailsSection({ contract, priority, open, onToggle }: D
               ) : (
                 documents.map((row) => (
                   <div key={row.documentId} className="contract360-detail-row">
-                    <div>
-                      <span className="contract360-detail-label">{row.type}</span> {row.fileName}
-                    </div>
+                    <span className="contract360-detail-label">{row.type}</span>
+                    <span className="contract360-detail-value">{row.fileName}</span>
                     <span className={`tag tag-${row.status.variant} contract360-detail-tag`}>{row.status.label}</span>
                   </div>
                 ))
@@ -87,16 +85,15 @@ export default function DetailsSection({ contract, priority, open, onToggle }: D
               ) : (
                 attention.map((term) => (
                   <div key={term.key} className="contract360-detail-row">
-                    <div>
-                      <span className="contract360-detail-label">{term.term}</span> <strong>{term.value}</strong>
-                    </div>
+                    <span className="contract360-detail-label">{term.term}</span>
+                    <strong className="contract360-detail-value">{term.value}</strong>
                     <span className={`tag tag-${term.tag.variant} contract360-detail-tag`}>{term.tag.label}</span>
                   </div>
                 ))
               )}
             </div>
 
-            <div>
+            <div className="contract360-details-span">
               <div className="contract360-detail-heading-row">
                 <h6>Priority score</h6>
                 <span className="contract360-detail-side">{formatPriorityFact(priority)}</span>
@@ -106,9 +103,8 @@ export default function DetailsSection({ contract, priority, open, onToggle }: D
               ) : (
                 priorityRows.map((row) => (
                   <div key={row.key} className="contract360-detail-row" title={row.explanation}>
-                    <div>
-                      <span className="contract360-detail-label">{row.label}</span> <strong>{Math.round(row.score)}</strong>
-                    </div>
+                    <span className="contract360-detail-label">{row.label}</span>
+                    <strong className="contract360-detail-value">{Math.round(row.score)}</strong>
                     <span className="contract360-detail-side contract360-detail-explanation">{row.explanation}</span>
                   </div>
                 ))

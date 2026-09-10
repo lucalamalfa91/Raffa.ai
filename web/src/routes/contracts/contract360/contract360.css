@@ -3,22 +3,21 @@
  * `contigo-v2/markup.html` "CONTRACT 360 — three answers, then proof, then details"). Component
  * classes (.screen-kicker, .screen-title, .tag, .table, .btn, .hint, .deadline-critical, .skeleton,
  * .empty-state, .error-state, .micro-meta) come from ../../../styles/components.css (ADR-019) -- this
- * file adds only this screen's own composites, quoted from the prototype's inline styles:
+ * file adds only this screen's own composites.
  *
- *   back link: `padding:0;font-size:12px;margin-bottom:8px`
- *   header row: `display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap` · meta `font-size:12px;color:neutral-600`
- *   answers: `display:flex;flex-wrap:wrap;border-top:2px solid var(--color-text);border-bottom:2px solid var(--color-text)`
- *     cell: `flex:1 1 240px;padding:20px 24px;border-right:1px solid divider` · label 11px uppercase · value heading 800 clamp(26px,2.4vw,34px) · detail 13px neutral-700
- *     act cell: `flex:1 1 320px;background:var(--color-accent-100)` · label accent-700 · action heading 800 clamp(22px,2vw,28px)
- *     tracker: `border-top:2px solid var(--color-accent);padding-top:12px` · step rows `grid-template-columns:16px 1fr auto;border-bottom:1px solid accent-200` · 12px box with 2px text border
- *   why: rows `grid-template-columns:minmax(120px,.7fr) minmax(0,2fr) auto;gap:16px;border-bottom:1px solid divider;padding:12px 8px 12px 0` · selected bg accent-100
- *     evidence: `background:#fff;border:1px solid divider;padding:20px;font-family:Georgia,serif;font-size:12.5px;line-height:1.6;color:#222;max-width:720px` · citation 10px uppercase #888 · mark accent-200
- *   details: toggle `padding:0 4px;font-size:12px` · grid `repeat(auto-fit,minmax(300px,1fr));gap:32px;border-top:2px solid divider;padding-top:18px` · rows `grid-template-columns:1fr auto;padding:8px 0;border-bottom:1px solid divider;font-size:13px`
+ * Prototype measurements (padding 22/26/28 × 32, answers band flush right, 2px rules, accent act
+ * cell, serif evidence card) stay. Layout tracks diverge on purpose: the prototype assumes short
+ * sample figures (`CHF 40k`, `12 Oct`) in a 960px column with `white-space: nowrap`. Real contracts
+ * ship long honest-gap sentences and clause types; those must use the full main pane and wrap at
+ * word boundaries on every viewport.
  */
 
 .contract360-screen {
+  --c360-gutter: clamp(16px, 3vw, 32px);
   display: flex;
   flex-direction: column;
+  width: 100%;
+  min-width: 0;
 }
 
 /* ---- Header ------------------------------------------------------------------ */
@@ -34,7 +33,7 @@
 .contract360-header {
   display: flex;
   flex-direction: column;
-  padding: 22px 32px 0;
+  padding: 22px var(--c360-gutter) 0;
 }
 
 .contract360-header-row {
@@ -60,7 +59,6 @@
   margin: 0;
   font-size: 12px;
   color: var(--color-neutral-600);
-  white-space: nowrap;
 }
 
 .contract360-header-actions {
@@ -73,15 +71,17 @@
 /* ---- Answers band -------------------------------------------------------------- */
 
 .contract360-answers {
-  display: flex;
-  flex-wrap: wrap;
-  margin: 22px 0 0 32px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(16rem, 1.2fr);
+  width: 100%;
+  margin: 22px 0 0;
+  padding-inline-start: var(--c360-gutter);
+  box-sizing: border-box;
   border-top: 2px solid var(--color-text);
   border-bottom: 2px solid var(--color-text);
 }
 
 .contract360-answer {
-  flex: 1 1 240px;
   min-width: 0;
   padding: 20px 24px;
   border-right: 1px solid var(--color-divider);
@@ -92,10 +92,9 @@
 }
 
 .contract360-answer-act {
-  flex: 1 1 320px;
   border-right: 0;
   background: var(--color-accent-100);
-  padding: 20px 32px 20px 24px;
+  padding: 20px var(--c360-gutter) 20px 24px;
 }
 
 .contract360-answer-label {
@@ -110,30 +109,38 @@
   color: var(--color-accent-700);
 }
 
-.contract360-answer-value {
-  margin: 8px 0 6px;
-  font-family: var(--font-heading);
-  font-weight: var(--weight-heading);
-  font-size: clamp(26px, 2.4vw, 34px);
-  line-height: 1.05;
-  letter-spacing: -0.02em;
-  white-space: nowrap;
-}
-
+.contract360-answer-value,
 .contract360-answer-action {
   margin: 8px 0 6px;
   font-family: var(--font-heading);
   font-weight: var(--weight-heading);
-  font-size: clamp(22px, 2vw, 28px);
-  line-height: 1.1;
+  line-height: 1.15;
   letter-spacing: -0.02em;
+  overflow-wrap: break-word;
   text-wrap: pretty;
+}
+
+.contract360-answer-value {
+  font-size: clamp(1.5rem, 2.2vw, 2.125rem);
+  line-height: 1.05;
+}
+
+.contract360-answer-action {
+  font-size: clamp(1.25rem, 1.8vw, 1.75rem);
+}
+
+.contract360-answer-value.is-prose,
+.contract360-answer-action.is-prose {
+  font-size: clamp(1.05rem, 1.4vw, 1.25rem);
+  line-height: 1.35;
+  letter-spacing: -0.01em;
 }
 
 .contract360-answer-detail {
   margin: 0;
   font-size: 13px;
   color: var(--color-neutral-700);
+  overflow-wrap: break-word;
   text-wrap: pretty;
 }
 
@@ -180,7 +187,7 @@
 
 .contract360-step {
   display: grid;
-  grid-template-columns: 16px 1fr auto;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
   gap: 10px;
   align-items: baseline;
   width: 100%;
@@ -192,6 +199,10 @@
   color: inherit;
   font-size: 13px;
   cursor: pointer;
+}
+
+.contract360-step-label {
+  overflow-wrap: break-word;
 }
 
 .contract360-step-box {
@@ -238,8 +249,10 @@
 /* ---- Why — the clauses behind it ----------------------------------------------- */
 
 .contract360-why {
-  max-width: 960px;
-  padding: 26px 32px 0;
+  width: 100%;
+  min-width: 0;
+  padding: 26px var(--c360-gutter) 0;
+  box-sizing: border-box;
 }
 
 .contract360-why-head {
@@ -247,6 +260,7 @@
   justify-content: space-between;
   align-items: baseline;
   gap: 16px;
+  flex-wrap: wrap;
   margin-bottom: 6px;
 }
 
@@ -273,8 +287,8 @@
 
 .contract360-clause {
   display: grid;
-  grid-template-columns: minmax(120px, 0.7fr) minmax(0, 2fr) auto;
-  gap: 16px;
+  grid-template-columns: minmax(10rem, 16rem) minmax(0, 1fr) minmax(9rem, 18rem);
+  gap: 16px 24px;
   align-items: baseline;
   width: 100%;
   padding: 12px 8px 12px 0;
@@ -297,16 +311,27 @@
 
 .contract360-clause-type {
   font-weight: var(--weight-body-strong);
+  overflow-wrap: break-word;
 }
 
 .contract360-clause-normalized {
+  min-width: 0;
+  overflow-wrap: break-word;
   text-wrap: pretty;
 }
 
 .contract360-clause-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: 6px 8px;
   font-size: 11px;
   color: var(--color-neutral-600);
-  white-space: nowrap;
+}
+
+.contract360-clause-source {
+  overflow-wrap: break-word;
 }
 
 .contract360-clause-tag {
@@ -316,7 +341,8 @@
 
 /* The evidence card: paper-white and serif on purpose -- it is the document's own wording, not UI. */
 .contract360-evidence {
-  max-width: 720px;
+  width: 100%;
+  max-width: 52rem;
   margin-top: 16px;
   padding: 20px;
   background: #fff;
@@ -325,6 +351,7 @@
   font-family: Georgia, "Times New Roman", serif;
   font-size: 12.5px;
   line-height: 1.6;
+  box-sizing: border-box;
 }
 
 .contract360-evidence-citation {
@@ -350,8 +377,10 @@
 /* ---- Details ▾ ----------------------------------------------------------------- */
 
 .contract360-details {
-  max-width: 960px;
-  padding: 28px 32px 40px;
+  width: 100%;
+  min-width: 0;
+  padding: 28px var(--c360-gutter) 40px;
+  box-sizing: border-box;
 }
 
 .contract360-details-toggle {
@@ -361,11 +390,15 @@
 
 .contract360-details-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 32px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 32px 48px;
   margin-top: 16px;
   padding-top: 18px;
   border-top: 2px solid var(--color-divider);
+}
+
+.contract360-details-span {
+  grid-column: 1 / -1;
 }
 
 .contract360-details-grid h6 {
@@ -377,6 +410,7 @@
   justify-content: space-between;
   align-items: baseline;
   gap: 12px;
+  flex-wrap: wrap;
   margin-top: 22px;
 }
 
@@ -390,8 +424,8 @@
 
 .contract360-detail-row {
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 12px;
+  grid-template-columns: minmax(7rem, 13rem) minmax(0, 1fr) auto;
+  gap: 8px 16px;
   align-items: baseline;
   padding: 8px 0;
   border-bottom: 1px solid var(--color-divider);
@@ -400,17 +434,33 @@
 
 .contract360-detail-label {
   color: var(--color-neutral-600);
+  overflow-wrap: break-word;
+}
+
+.contract360-detail-value {
+  min-width: 0;
+  overflow-wrap: break-word;
+  font-weight: inherit;
+}
+
+.contract360-detail-row > strong.contract360-detail-value {
+  font-weight: var(--weight-body-strong);
+}
+
+.contract360-detail-side,
+.contract360-detail-tag {
+  justify-self: end;
 }
 
 .contract360-detail-side {
   font-size: 11px;
   color: var(--color-neutral-600);
-  white-space: nowrap;
+  text-align: right;
+  overflow-wrap: break-word;
 }
 
 .contract360-detail-explanation {
-  max-width: 220px;
-  white-space: normal;
+  max-width: 28rem;
   text-align: right;
 }
 
@@ -433,6 +483,8 @@
 
 .contract360-facts {
   margin-top: 28px;
+  min-width: 0;
+  overflow-x: auto;
 }
 
 .contract360-facts h6 {
@@ -441,6 +493,12 @@
 
 .contract360-facts-table {
   font-size: 13px;
+  min-width: 40rem;
+}
+
+.contract360-facts-table th,
+.contract360-facts-table td {
+  overflow-wrap: break-word;
 }
 
 /* ---- Loading skeleton ------------------------------------------------------------ */
@@ -449,11 +507,28 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  padding: 22px 32px;
+  padding: 22px var(--c360-gutter);
 }
 
 .contract360-skeleton-row {
   height: 32px;
+}
+
+/* Tablet: two facts, then the action band full-width; clauses stay three tracks until 800. */
+
+@media (max-width: 1100px) {
+  .contract360-answers {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .contract360-answer-act {
+    grid-column: 1 / -1;
+    padding: 20px var(--c360-gutter);
+  }
+
+  .contract360-answer:nth-child(2) {
+    border-right: 0;
+  }
 }
 
 @media (max-width: 900px) {
@@ -461,18 +536,34 @@
     align-items: flex-start;
   }
 
-  .contract360-header-meta {
-    white-space: normal;
+  .contract360-details-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 28px;
   }
 
+  .contract360-clause {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+
+  .contract360-clause-meta {
+    justify-content: flex-start;
+  }
+
+  .contract360-detail-explanation {
+    max-width: none;
+  }
+}
+
+@media (max-width: 720px) {
   .contract360-answers {
-    margin: 22px 16px 0;
+    grid-template-columns: minmax(0, 1fr);
+    padding-inline: var(--c360-gutter);
   }
 
   .contract360-answer,
   .contract360-answer:first-child,
   .contract360-answer-act {
-    flex-basis: 100%;
     padding: 16px 0;
     border-right: 0;
     border-bottom: 1px solid var(--color-divider);
@@ -480,19 +571,27 @@
 
   .contract360-answer-act {
     padding: 16px;
+    margin-inline: calc(var(--c360-gutter) * -1);
     border-bottom: 0;
   }
 
-  .contract360-answer-value {
-    white-space: normal;
+  .contract360-detail-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "label side"
+      "value value";
   }
 
-  .contract360-clause {
-    grid-template-columns: 1fr;
-    gap: 4px;
+  .contract360-detail-label {
+    grid-area: label;
   }
 
-  .contract360-clause-meta {
-    white-space: normal;
+  .contract360-detail-value {
+    grid-area: value;
+  }
+
+  .contract360-detail-side,
+  .contract360-detail-tag {
+    grid-area: side;
   }
 }

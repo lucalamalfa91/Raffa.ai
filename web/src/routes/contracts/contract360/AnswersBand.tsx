@@ -26,6 +26,12 @@ export interface AnswersBandProps {
  * the only recommendation text on the screen -- and it never shares a cell with the dated facts to
  * its left.
  */
+
+/** Short figures stay display-size; long honest-gap / API sentences drop to readable prose. */
+function answerDisplayClass(base: string, text: string, extra = ""): string {
+  return `${base}${text.length > 28 ? " is-prose" : ""}${extra}`;
+}
+
 export default function AnswersBand({
   answers,
   tracked,
@@ -43,13 +49,15 @@ export default function AnswersBand({
     <section className="contract360-answers" aria-label="Answers">
       <div className="contract360-answer">
         <p className="contract360-answer-label">Where you can save</p>
-        <p className="contract360-answer-value">{save.estimate}</p>
+        <p className={answerDisplayClass("contract360-answer-value", save.estimate)}>{save.estimate}</p>
         <p className="contract360-answer-detail">{save.lever}</p>
       </div>
 
       <div className="contract360-answer">
         <p className="contract360-answer-label">When you must move</p>
-        <p className={`contract360-answer-value${move.isUrgent ? " deadline-critical" : ""}`}>{move.deadline}</p>
+        <p className={answerDisplayClass("contract360-answer-value", move.deadline, move.isUrgent ? " deadline-critical" : "")}>
+          {move.deadline}
+        </p>
         <p className="contract360-answer-detail">
           {move.cancelDays !== null && move.cancelDays >= 0 ? (
             <>
@@ -64,7 +72,7 @@ export default function AnswersBand({
 
       <div className="contract360-answer contract360-answer-act">
         <p className="contract360-answer-label contract360-answer-label-accent">What to do</p>
-        <p className="contract360-answer-action">{act.statement}</p>
+        <p className={answerDisplayClass("contract360-answer-action", act.statement)}>{act.statement}</p>
         <p className="contract360-answer-detail">{act.rationale}</p>
 
         {tracked === null ? (
