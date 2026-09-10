@@ -1,4 +1,4 @@
-# Raffa
+# Raffa.ai
 
 AI-native procurement / contract-intelligence platform. Raffa knows what a
 team bought, what they pay, when they need to act, and where they can save
