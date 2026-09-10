@@ -61,3 +61,20 @@ transcript the gates read.
 Every factual claim must be backed by a file you read, a command you ran with
 its exit code, or a path you listed. "The file was written" without a `list_dir`
 or `ls` in the same phase is not delivery.
+
+## Next-wave process (`contigo-next-process.yaml`) — additional rows
+
+| Marker | Only this role |
+|---|---|
+| `CONTEXT_READY:` | next-intake (the same token the docs-ingester uses) |
+| `LANE_SKIPPED:` | a council seat whose lane is not involved in the wave |
+| `VOTE: PASS` | an uninvolved seat at the table (a vote line, not a control marker) |
+| `COUNCIL_FILES_WRITTEN:` + `COUNCIL_APPROVED:` | next-council-gate (last two lines, that order) |
+| `DECOMPOSITION_DONE:` | next-decomposer |
+| `DECOMPOSITION_OK:` / `DECOMPOSITION_GAPS:` | next-checker |
+| `REMEDIATION_DONE:` | next-remediator |
+
+Uninvolved seats must still speak (round robin gives them the turn): one
+short turn that names the wave, the table round and a seat-specific reason,
+then `VOTE: PASS`. Never copy another seat's PASS line verbatim — the engine's
+stuck-loop detector compares consecutive turns across participants.

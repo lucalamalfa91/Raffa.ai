@@ -1,0 +1,450 @@
+# =============================================================================
+# contigo-next-process -- Helix Passata 1 for EVERY wave after the initial
+# build: stakeholder tests, customer demos, feedback, bug lists, new ideas.
+# Starts from the code on this checkout, the accepted ADRs and the backlog;
+# never removes earlier work (ADRs get footers, epics are appended, old
+# slices stay). NEXT-PROCESS.md is the phase-by-phase brief.
+#
+#   inputs/next/<file>.md (+ inputs/design/**, ../<code>, ADRs, BACKLOG, MANIFEST)
+#     -> next-intake-phase    reports/context/waves/<w>-requirements.md (+ decision skeleton)
+#     -> next-council         7 independent lanes (concurrent) then the table (group_chat 8)
+#                             ADR-*.md new / footers, INDEX.md, reports/architecture/waves/<w>.md
+#     -> next-decomposition   reports/workitems/epic-NN-*/** (append-only), BACKLOG.md,
+#                             reports/plan/slices/<w>.yaml, MANIFEST row, reports/audit/<w>-hitl.md
+#     -> next-check <-> next-remediation      DECOMPOSITION_OK: is TERMINAL
+#
+# PASSATA 1 ONLY. This document declares no fan_out. The wave it plans runs on
+# contigo-process.yaml `execution-fanout`, launched by the operator after HITL:
+#   ./run-next.ps1 -LaunchOnly -Wave <w>            (check_slice_prereqs.py + execution-fanout)
+#   ./run.ps1 -Max -Slice <w> -o execution-fanout   (the same, by hand)
+# Launcher for this document: ./run-next.ps1 -Max -Todo inputs/next/<file>.md
+# (-Check = parse + refs + prompt files; -o next-from-council | next-plan-close
+# re-enter after a HITL edit). It refuses --fresh and -Slice: the process is
+# append-only on the live plan (scripts/assert_next_plan_untouched.py).
+# Run parameters travel in reports/plan/next-run.json + the -i input string
+# (Helix has no per-run variables -- NEXT-PROCESS.md D-N3).
+#
+# MODEL (operator decision 2026-09-08): every agent runs on Claude Code Opus
+# through the external-coding-agent harness (Pattern E). provider claude-code
+# is lineage only (coding_agent/binding.py reads models[].model and nothing
+# else); the id comes from .env ANTHROPIC_DEFAULT_OPUS_MODEL and -Max blanks
+# the Hub token so Claude Code bills the Max login. cwd = this folder (no
+# workspace_dir; product code is read at ../). Coding agents own their tools,
+# governed by permission_mode + allowed_tools + disallowed_tools; Helix native
+# tools are NOT bound on this path, so no tools[] block is declared -- a
+# tools[] nobody references would only describe a chat-model fallback this
+# document does not have. Turn deadline: .env HELIX_CODING_AGENT_TURN_*.
+#
+# MARKERS (line-anchored, last line of the turn -- skills/marker-discipline.md):
+#   CONTEXT_READY: | HALTED:                 next-intake     (CONTEXT_READY: read by the edge)
+#   LANE_DRAFTS_WRITTEN: | LANE_SKIPPED:     seats, lane     (informational)
+#   VOTE: APPROVE | PASS | OBJECT | ...      seats, table    (a vote line, not control)
+#   COUNCIL_FILES_WRITTEN: + COUNCIL_APPROVED:   next-council-gate ONLY (terminator + close gate)
+#   DECOMPOSITION_DONE: | HALTED:            next-decomposer (DECOMPOSITION_DONE: read by the edge)
+#   DECOMPOSITION_OK: | DECOMPOSITION_GAPS:  next-checker    (GAPS routes to the remediator)
+#   REMEDIATION_DONE:                        next-remediator (informational)
+#
+# KNOWN ADVISORY at -Check: validate_references warns that the 8 group_chat
+# participants' model omits context_window_tokens. On the coding-agent path
+# nothing reads it (the Claude Code SDK manages its own context; Helix
+# compaction is a chat-client feature), so a value here would be a number
+# invented to silence a warning. Left undeclared on purpose.
+# =============================================================================
+
+version: "0.1"
+runtime: maf
+output_dir: reports
+
+defaults:
+  harness:
+    memory: { scope: session }
+    governance:
+      # No command hooks in this document: the external-command gate stays
+      # closed. Enforced (validate.py _check_hooks_external_gate).
+      hooks: { allow_external: false }
+      # Fail-closed model guard (governance/policy_gate.py). See the
+      # Verification section of NEXT-PROCESS.md for its reach on the
+      # coding-agent bind path.
+      policy:
+        model_allowlist: [cc-opus]
+
+# -----------------------------------------------------------------------------
+# Models -- one lineage-only id. Unset ${VAR} is a hard bind error
+# (run-next.ps1 throws before helix run when it is blank).
+# -----------------------------------------------------------------------------
+models:
+  - id: cc-opus
+    provider: claude-code
+    model: ${ANTHROPIC_DEFAULT_OPUS_MODEL}
+
+# -----------------------------------------------------------------------------
+# Skills -- instructions only on the coding-agent path (folded after the
+# prompt, in declaration order). The five *-lane skills are the initial
+# council's lanes: their locked rules still bind, their greenfield questions
+# are answered by the ADRs (each seat prompt says so).
+# -----------------------------------------------------------------------------
+skills:
+  - { id: kb-contract-next,         instructions_file: skills/kb-contract-next.md }
+  - { id: cc-passata1-harness,      instructions_file: skills/cc-passata1-harness.md }
+  - { id: marker-discipline,        instructions_file: skills/marker-discipline.md }
+  - { id: next-seats,               instructions_file: skills/next-seats.md }
+  - { id: council-protocol-next,    instructions_file: skills/council-protocol-next.md }
+  - { id: decompose-next-workitems, instructions_file: skills/decompose-next-workitems.md }
+  - { id: wavespec-next,            instructions_file: skills/wavespec-next.md }
+  - { id: architect-lane,           instructions_file: skills/architect-lane.md }
+  - { id: cloud-architect-lane,     instructions_file: skills/cloud-architect-lane.md }
+  - { id: security-architect-lane,  instructions_file: skills/security-architect-lane.md }
+  - { id: client-architect-lane,    instructions_file: skills/client-architect-lane.md }
+  - { id: delivery-lane,            instructions_file: skills/delivery-lane.md }
+
+# -----------------------------------------------------------------------------
+# Agents -- all Claude Code Opus, harness.backend external-coding-agent.
+# allowed_tools = auto-approved tools; under permission_mode acceptEdits the
+# SDK ALSO auto-accepts Write/Edit, so a read-only role additionally lists
+# them in disallowed_tools (wired: binding.py -> ClaudeAgentSdkConfig ->
+# ClaudeAgentOptions.disallowed_tools). Seats deny Bash the same way.
+# -----------------------------------------------------------------------------
+agents:
+
+  # Producer of the process oracle. Bash = read-only git on ../, sha256 of the
+  # raw file, `python scripts/register_wave.py --next-id`. Writes only under
+  # reports/context/waves/, reports/architecture/waves/, reports/open-questions.md.
+  - id: next-intake
+    model: cc-opus
+    skills: [kb-contract-next, cc-passata1-harness, marker-discipline, next-seats]
+    instructions_file: agents/next-intake.md
+    harness:
+      backend: { kind: external-coding-agent, provider: claude-code, mode: harness, transport: agent-sdk }
+      coding_agent:
+        permission_mode: acceptEdits
+        allowed_tools: [Read, Write, Edit, Grep, Glob, Bash]
+        max_turns: 150
+
+  # --- the seven seats (lane + table). No Bash: they read code with
+  # Read/Grep/Glob and write ADR footers, INDEX rows and draft files. ---------
+  - id: next-product-owner
+    model: cc-opus
+    skills: [kb-contract-next, cc-passata1-harness, marker-discipline, council-protocol-next, next-seats]
+    instructions_file: agents/next-product-owner.md
+    harness:
+      backend: { kind: external-coding-agent, provider: claude-code, mode: harness, transport: agent-sdk }
+      coding_agent:
+        permission_mode: acceptEdits
+        allowed_tools: [Read, Write, Edit, Grep, Glob]
+        disallowed_tools: [Bash]
+        max_turns: 80
+
+  - id: next-software-architect
+    model: cc-opus
+    skills: [kb-contract-next, cc-passata1-harness, marker-discipline, council-protocol-next, next-seats, architect-lane]
+    instructions_file: agents/next-software-architect.md
+    harness:
+      backend: { kind: external-coding-agent, provider: claude-code, mode: harness, transport: agent-sdk }
+      coding_agent:
+        permission_mode: acceptEdits
+        allowed_tools: [Read, Write, Edit, Grep, Glob]
+        disallowed_tools: [Bash]
+        max_turns: 80
+
+  - id: next-cloud-architect
+    model: cc-opus
+    skills: [kb-contract-next, cc-passata1-harness, marker-discipline, council-protocol-next, next-seats, cloud-architect-lane]
+    instructions_file: agents/next-cloud-architect.md
+    harness:
+      backend: { kind: external-coding-agent, provider: claude-code, mode: harness, transport: agent-sdk }
+      coding_agent:
+        permission_mode: acceptEdits
+        allowed_tools: [Read, Write, Edit, Grep, Glob]
+        disallowed_tools: [Bash]
+        max_turns: 80
+
+  - id: next-security-architect
+    model: cc-opus
+    skills: [kb-contract-next, cc-passata1-harness, marker-discipline, council-protocol-next, next-seats, security-architect-lane]
+    instructions_file: agents/next-security-architect.md
+    harness:
+      backend: { kind: external-coding-agent, provider: claude-code, mode: harness, transport: agent-sdk }
+      coding_agent:
+        permission_mode: acceptEdits
+        allowed_tools: [Read, Write, Edit, Grep, Glob]
+        disallowed_tools: [Bash]
+        max_turns: 80
+
+  - id: next-client-architect
+    model: cc-opus
+    skills: [kb-contract-next, cc-passata1-harness, marker-discipline, council-protocol-next, next-seats, client-architect-lane]
+    instructions_file: agents/next-client-architect.md
+    harness:
+      backend: { kind: external-coding-agent, provider: claude-code, mode: harness, transport: agent-sdk }
+      coding_agent:
+        permission_mode: acceptEdits
+        allowed_tools: [Read, Write, Edit, Grep, Glob]
+        disallowed_tools: [Bash]
+        max_turns: 80
+
+  - id: next-ux-ui-designer
+    model: cc-opus
+    skills: [kb-contract-next, cc-passata1-harness, marker-discipline, council-protocol-next, next-seats]
+    instructions_file: agents/next-ux-ui-designer.md
+    harness:
+      backend: { kind: external-coding-agent, provider: claude-code, mode: harness, transport: agent-sdk }
+      coding_agent:
+        permission_mode: acceptEdits
+        allowed_tools: [Read, Write, Edit, Grep, Glob]
+        disallowed_tools: [Bash]
+        max_turns: 80
+
+  - id: next-delivery-manager
+    model: cc-opus
+    skills: [kb-contract-next, cc-passata1-harness, marker-discipline, council-protocol-next, next-seats, delivery-lane]
+    instructions_file: agents/next-delivery-manager.md
+    harness:
+      backend: { kind: external-coding-agent, provider: claude-code, mode: harness, transport: agent-sdk }
+      coding_agent:
+        permission_mode: acceptEdits
+        allowed_tools: [Read, Write, Edit, Grep, Glob]
+        disallowed_tools: [Bash]
+        max_turns: 80
+
+  # Critic only. Sole emitter of COUNCIL_FILES_WRITTEN: + COUNCIL_APPROVED:.
+  # Read-only is enforced by disallowed_tools, not only by the prompt.
+  - id: next-council-gate
+    model: cc-opus
+    skills: [kb-contract-next, cc-passata1-harness, marker-discipline, council-protocol-next, next-seats]
+    instructions_file: agents/next-council-gate.md
+    harness:
+      backend: { kind: external-coding-agent, provider: claude-code, mode: harness, transport: agent-sdk }
+      coding_agent:
+        permission_mode: acceptEdits
+        allowed_tools: [Read, Grep, Glob]
+        disallowed_tools: [Write, Edit, MultiEdit, NotebookEdit, Bash]
+        max_turns: 40
+
+  # Pattern E producer of the whole new-epic tree + the wave file. Bash =
+  # `python scripts/register_wave.py --wave <w>` + check_single_writer.py.
+  - id: next-decomposer
+    model: cc-opus
+    skills: [kb-contract-next, cc-passata1-harness, marker-discipline, decompose-next-workitems, wavespec-next]
+    instructions_file: agents/next-decomposer.md
+    harness:
+      backend: { kind: external-coding-agent, provider: claude-code, mode: harness, transport: agent-sdk }
+      coding_agent:
+        permission_mode: acceptEdits
+        allowed_tools: [Read, Write, Edit, Bash, Grep, Glob]
+        max_turns: 250
+
+  # Read-only checker WITH Bash (NEXT-PROCESS.md D-N5): register_wave.py
+  # --check, check_single_writer.py, assert_next_plan_untouched.py verify.
+  # Write/Edit are denied by the harness; a write through Bash (>, sed -i,
+  # tee) cannot be denied by Helix and is forbidden by the prompt only.
+  - id: next-checker
+    model: cc-opus
+    skills: [kb-contract-next, cc-passata1-harness, marker-discipline, decompose-next-workitems, wavespec-next]
+    instructions_file: agents/next-checker.md
+    harness:
+      backend: { kind: external-coding-agent, provider: claude-code, mode: harness, transport: agent-sdk }
+      coding_agent:
+        permission_mode: acceptEdits
+        allowed_tools: [Read, Grep, Glob, Bash]
+        disallowed_tools: [Write, Edit, MultiEdit, NotebookEdit]
+        max_turns: 80
+
+  - id: next-remediator
+    model: cc-opus
+    skills: [kb-contract-next, cc-passata1-harness, marker-discipline, decompose-next-workitems, wavespec-next]
+    instructions_file: agents/next-remediator.md
+    harness:
+      backend: { kind: external-coding-agent, provider: claude-code, mode: harness, transport: agent-sdk }
+      coding_agent:
+        permission_mode: acceptEdits
+        allowed_tools: [Read, Write, Edit, Bash, Grep, Glob]
+        max_turns: 150
+
+# -----------------------------------------------------------------------------
+# Orchestrations
+# -----------------------------------------------------------------------------
+orchestrations:
+
+  # --- intake ----------------------------------------------------------------
+  - id: next-intake-phase
+    topology: sequential
+    participants: [next-intake]
+
+  # --- dynamic council: independent lanes, then the table --------------------
+  # One sequential per seat, run concurrently so no one has read the others.
+  # An uninvolved seat emits LANE_SKIPPED: at once (skills/next-seats.md).
+  - id: next-lane-product-owner
+    topology: sequential
+    participants: [next-product-owner]
+
+  - id: next-lane-software-architect
+    topology: sequential
+    participants: [next-software-architect]
+
+  - id: next-lane-cloud-architect
+    topology: sequential
+    participants: [next-cloud-architect]
+
+  - id: next-lane-security-architect
+    topology: sequential
+    participants: [next-security-architect]
+
+  - id: next-lane-client-architect
+    topology: sequential
+    participants: [next-client-architect]
+
+  - id: next-lane-ux-ui-designer
+    topology: sequential
+    participants: [next-ux-ui-designer]
+
+  - id: next-lane-delivery-manager
+    topology: sequential
+    participants: [next-delivery-manager]
+
+  - id: next-lanes
+    topology: concurrent
+    aggregator: concat
+    participants:
+      - next-lane-product-owner
+      - next-lane-software-architect
+      - next-lane-cloud-architect
+      - next-lane-security-architect
+      - next-lane-client-architect
+      - next-lane-ux-ui-designer
+      - next-lane-delivery-manager
+
+  # The table. Helix cannot drop a participant from a running group_chat, so
+  # all eight are declared; uninvolved seats answer one line + VOTE: PASS
+  # (NEXT-PROCESS.md D-N1). The gate speaks eighth: an empty wave (7 PASS +
+  # gate on the skeleton) closes inside the first round.
+  - id: next-council-close
+    topology: group_chat
+    participants:
+      - next-product-owner
+      - next-software-architect
+      - next-cloud-architect
+      - next-security-architect
+      - next-client-architect
+      - next-ux-ui-designer
+      - next-delivery-manager
+      - next-council-gate
+    selection: round_robin
+    # 3 table rounds x 8 participants = 24 turns (max_rounds is a raw turn cap).
+    max_rounds: 24
+    # Marker triad: on_marker + the literal + line-anchored (registry.py on_marker:
+    # truthy -> ^COUNCIL_APPROVED: MULTILINE; falsy would be a substring match
+    # anywhere in a turn). The literal lives in agents/next-council-gate.md only.
+    termination: on_marker
+    marker: "COUNCIL_APPROVED:"
+    marker_line_anchored: true
+    # Consensus is not delivery (marker_guard.py): on_marker may not fire until
+    # (a) the glob matches >= 1 file with mtime >= run start and (b) the gate
+    # has emitted COUNCIL_FILES_WRITTEN:. Non-recursive glob (`**` is refused),
+    # resolved against the output anchor = this folder (get_output_dir(),
+    # working_dir defaults to the artifact dir). The intake's skeleton already
+    # makes (a) true in a full run, so (b) is the real close (D-N2).
+    # NO reset_globs here: earlier waves' decision records share the folder.
+    close_requires_glob: "reports/architecture/waves/*.md"
+    close_requires_marker: "COUNCIL_FILES_WRITTEN:"
+    # ONE fingerprint list shared by all 8 executors (builders.py group_chat ->
+    # HelixGroupChatAgentExecutor(turn_fingerprints=<same list>)); the window
+    # is the last N turns ACROSS participants (SequenceMatcher ratio >= 0.85 on
+    # the first 400 chars). A quiet table is mostly PASS turns, so 3 would trip
+    # on the first round; 9 > one full round of 8, and the gate's turn (a
+    # votes table) breaks any run of PASS lines.
+    limits: { max_identical_turns: 9 }
+
+  - id: next-council
+    topology: sequential
+    participants: [next-lanes, next-council-close]
+
+  # --- decomposition + Pattern F gate loop -----------------------------------
+  - id: next-decomposition
+    topology: sequential
+    participants: [next-decomposer]
+
+  - id: next-check
+    topology: sequential
+    participants: [next-checker]
+
+  - id: next-remediation
+    topology: sequential
+    participants: [next-remediator]
+
+  # ===========================================================================
+  # DEFAULT -- the whole Passata 1 for one wave. DECOMPOSITION_OK: has no
+  # outgoing edge: the workflow ends, the operator reviews (HITL) and launches
+  # execution-fanout by hand (or run-next.ps1 -Launch).
+  # Edge text = the nested sequential's finalized assistant text
+  # (registry._edge_msg_text_with_source -> text_from_agent_response), the
+  # same extraction contigo-process.yaml's needs_remediation edge runs on.
+  # FAIL-CLOSED edges (coordinator decision 2026-09-10, on the engineer's
+  # proposal): the intake -> council edge fires only on CONTEXT_READY: and the
+  # decomposition -> check edge only on DECOMPOSITION_DONE: (registry.py
+  # on_marker: whole-token, line-anchored). A HALTED: last line, a silent
+  # error_max_turns cut-off (reported as success by the SDK client) or a turn
+  # with no marker matches no edge: the workflow ENDS there instead of
+  # spending Opus turns on a phase whose input is missing. run-next.ps1 then
+  # reports the missing wave file. on_marker_absent HALTED: (the pattern of
+  # contigo-process.yaml execution-loop) was the fail-open alternative.
+  # ===========================================================================
+  - id: next-design
+    default: true
+    topology: workflow
+    participants:
+      - next-intake-phase
+      - next-council
+      - next-decomposition
+      - next-check
+      - next-remediation
+    start: next-intake-phase
+    edges:
+      - { from: next-intake-phase, to: next-council, condition: on_marker, marker: "CONTEXT_READY:" }
+      - [next-council, next-decomposition]
+      - { from: next-decomposition, to: next-check, condition: on_marker, marker: "DECOMPOSITION_DONE:" }
+      # needs_remediation = DECOMPOSITION_GAPS: leading a line (registry.py, ADR-0037 F7).
+      - [next-check, next-remediation, needs_remediation]
+      - [next-remediation, next-check]
+      # decomposition_complete (DECOMPOSITION_OK:): no edge. Passata 1 is terminal here.
+    # max_steps counts streamed chunks (MaxStepsExceeded), not turns: one Opus
+    # council + a full decomposition stream a lot. max_iterations bounds the
+    # check <-> remediation LAPS (ADR-0120, le=25); the MAF superstep ceiling is
+    # derived from it (builders.py: depth x max_iterations + 1). run_timeout_s
+    # = 6 h wall clock for intake + council + decomposition + the loop.
+    limits: { max_steps: 300000, max_iterations: 15, run_timeout_s: 21600 }
+
+  # Re-entry after the operator edited reports/context/waves/<w>-requirements.md
+  # by hand: skips the intake. close_requires_glob needs
+  # reports/architecture/waves/<w>.md written in THIS run (mtime >= run start,
+  # D-N2): run-next.ps1 touches that file before every next-from-council /
+  # next-council run, so an EMPTY wave (no seat rewrites the record) still
+  # closes instead of failing with closed_without_required_artifact.
+  - id: next-from-council
+    topology: workflow
+    participants:
+      - next-council
+      - next-decomposition
+      - next-check
+      - next-remediation
+    start: next-council
+    edges:
+      - [next-council, next-decomposition]
+      - { from: next-decomposition, to: next-check, condition: on_marker, marker: "DECOMPOSITION_DONE:" }
+      - [next-check, next-remediation, needs_remediation]
+      - [next-remediation, next-check]
+      # DECOMPOSITION_OK: no edge -- terminal.
+    limits: { max_steps: 300000, max_iterations: 15, run_timeout_s: 21600 }
+
+  # Re-entry after the operator edited a task / the wave file: checker <->
+  # remediator only. Does not re-run the decomposer or the council.
+  - id: next-plan-close
+    topology: workflow
+    participants:
+      - next-check
+      - next-remediation
+    start: next-check
+    edges:
+      - [next-check, next-remediation, needs_remediation]
+      - [next-remediation, next-check]
+      # DECOMPOSITION_OK: no edge -- terminal.
+    limits: { max_steps: 300000, max_iterations: 15, run_timeout_s: 14400 }

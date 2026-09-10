@@ -92,3 +92,31 @@ chat agents (PROCESS.md D9), not a coding harness.
 | `afi` | implementer, reviewer | call-graph before edit / blast radius at review |
 | `readme-hygiene` | implementer, reviewer, conflict-fixer | keep `infra/` `backend/` `web/` `mobile/` and root `README.md` current with public surface; standing scope, not a per-task Files row (PROCESS.md §2.4) |
 
+---
+
+## 6. Next-wave process (`contigo-next-process.yaml`)
+
+One model, `cc-opus` (`provider: claude-code`, `model:
+${ANTHROPIC_DEFAULT_OPUS_MODEL}`, lineage only), and one harness path: every
+agent is a Claude Code coding agent (`harness.backend: external-coding-agent
+/ claude-code`, `permission_mode: acceptEdits`), cwd `.helix`. Native tools
+are not bound; `governance.policy.model_allowlist: [cc-opus]` is fail-closed;
+no hooks, `allow_external: false`.
+
+| Agent | `allowed_tools` | Why |
+|---|---|---|
+| `next-intake` | Read, Write, Edit, Grep, Glob, Bash | writes the normalized requirements; Bash = read-only git, sha256, `register_wave.py --next-id` |
+| seven seats (`next-product-owner` … `next-delivery-manager`) | Read, Write, Edit, Grep, Glob | lane drafts, ADR footers / new ADRs, INDEX rows, decision rows |
+| `next-council-gate` | Read, Grep, Glob | critic; sole emitter of `COUNCIL_FILES_WRITTEN:` + `COUNCIL_APPROVED:` |
+| `next-decomposer`, `next-remediator` | Read, Write, Edit, Bash, Grep, Glob | work items + wave file; Bash = `register_wave.py`, `check_single_writer.py` |
+| `next-checker` | Read, Grep, Glob, Bash | read-only; Bash = the three verification scripts (D-N5) |
+
+Skills: `kb-contract-next`, `cc-passata1-harness`, `marker-discipline`,
+`next-seats`, `council-protocol-next`, `decompose-next-workitems`,
+`wavespec-next`, plus the original lane skills (`architect-lane`,
+`cloud-architect-lane`, `security-architect-lane`, `client-architect-lane`,
+`delivery-lane`) for the locked rules they carry.
+
+Scripts: `register_wave.py` (validate + MANIFEST + INDEX-next),
+`assert_next_plan_untouched.py` (append-only protection),
+`check_single_writer.py`, `check_slice_prereqs.py` (accepts `w##` ids).

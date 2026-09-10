@@ -1,64 +1,70 @@
-# Contigo — Helix design then execution process
+# Contigo — Helix processes
 
-Passata 1 designs from inputs: **all ADRs**, then **R0–R4 decomposition**,
-then slices. **No application code** until you launch passata 2 by hand.
-The engine lives in `helix/src/backend`; this folder is the artifact.
+Two artifacts, one engine (`helix/src/backend`; this folder is the artifact).
 
-Phase-by-phase mapping: **[PROCESS.md](PROCESS.md)**. Catalogue: **[config.md](config.md)**.
+| Artifact | When | Doc |
+|---|---|---|
+| `contigo-process.yaml` + `run.ps1` / Helix Studio | The **initial** design (docs → all ADRs → R0–R4 epics → slices) and the **live Passata 2** (`execution-fanout`) every wave runs on. | [PROCESS.md](PROCESS.md), [config.md](config.md) |
+| `contigo-next-process.yaml` + `run-next.ps1` | Every **later wave**: a raw requirements file (todo, demo feedback, bug list, new design) → normalized requirements → dynamic council (only the seats each item needs) → ADR footers / new ADRs → new epics appended to the backlog → **one wave** ready to launch. | [NEXT-PROCESS.md](NEXT-PROCESS.md) |
+
+The five delta processes used between waves 6 and 13 (web, schema,
+readiness, visual, ask) were retired on 2026-09-10; their outputs (ADR-018…024,
+epic-06…13, slices e06…e13) stay under `reports/` and are the baseline the
+next-wave process builds on.
 
 ---
 
-## Quick start
+## Quick start — a new round of feedback
 
-```bash
-cd contigo-flow/.helix
-cp .env.example .env
-./run.ps1 --check
+```powershell
+cd .helix
+cp .env.example .env            # once; Claude Code Opus id + Max login
+./run-next.ps1 -Check           # artifact parses, refs resolve, prompt files exist
 
-# Pre-flight (fail-closed): operator prerequisites + the same-phase
-# single-writer check of the slice's task files.
-python scripts/check_slice_prereqs.py --slice r0-a
+# 1. drop the raw requirements: inputs/next/YYYY-MM-DD-<topic>.md  (see inputs/next/README.md)
+# 2. Passata 1 → wave w<N>
+./run-next.ps1 -Max -Todo inputs/next/2026-09-10-next-waves-todo.md
 
-# Passata 2 — one slice wave (not the 103-task YAML).
-# Worktrees of the local clone. Green wave → on_orchestration_stop
-# opens a GitHub PR integration → origin/main. A task counts as delivered
-# only with committed work on wave/<task> (require_delivery); the
-# wave-close report audits every task and lists salvage/* tags.
-./run.ps1 -Max -Slice r0-a -o execution-fanout
-# list: reports/plan/slices/INDEX.md
+# 3. review reports/context/waves/w14-requirements.md, reports/architecture/waves/w14.md,
+#    reports/audit/w14-hitl.md, reports/plan/slices/w14.yaml — edit, re-run partially if needed
+./run-next.ps1 -Max -Wave w14 -o next-from-council   # after editing the normalized file
+./run-next.ps1 -Max -Wave w14 -o next-plan-close     # after editing tasks
 
-# Re-analysis ONLY if inputs or ADRs change. Wipes design outputs, then:
-# docs → every council ADR → five epics (not R0-only) → cut slices. STOPS.
-./run.ps1 --fresh -o contigo-design -i "Contigo V1: full scope from current inputs"
+# 4. the wave (Passata 2, contigo-process.yaml)
+./run-next.ps1 -LaunchOnly -Wave w14                 # = check_slice_prereqs + ./run.ps1 -Max -Slice w14 -o execution-fanout
 ```
 
-`contigo-plan-close` is still `default: true` in the YAML (Studio Run without
-`-o`). Do **not** use that for coding. Coding is always `-Slice` +
-`execution-fanout`. The launcher inits the local clone as a git toplevel
-(worktrees). The PR is the fan-out `on_orchestration_stop` hook, not a
-launcher step.
+`-Launch` chains steps 2 and 4 in one command. Studio green ≠ PR opened:
+read `reports/execution/wave-close.md`.
 
-Never Resume a session that failed with DeepSeek 400 on `role: tool`.
+## Quick start — the initial process (kept as is)
+
+```powershell
+./run.ps1 --check
+python scripts/check_slice_prereqs.py --slice e13
+./run.ps1 -Max -Slice e13 -o execution-fanout
+./run.ps1 --fresh -o contigo-design -i "Contigo V1: full scope from current inputs"   # full re-analysis only
+```
 
 ---
 
-## What to review after passata 1
+## What to review after a next-wave run
 
 | File | Why |
 |---|---|
-| `reports/architecture/INDEX.md` + `ADR-*.md` | council decisions |
-| `reports/plan/wave-spec.execution.yaml` | full DAG (checker only) |
-| `reports/plan/slices/INDEX.md` | what passata 2 actually launches |
-| `reports/open-questions.md` | assumptions in force |
+| `reports/context/waves/<w>-requirements.md` | every item: status today (evidence), seats, acceptance, selection |
+| `reports/architecture/waves/<w>.md` + `INDEX.md` + ADR footers | what the council decided, per item |
+| `reports/audit/<w>-hitl.md` | phases, single-writer table, queued tasks, superseded items, launch |
+| `reports/plan/slices/<w>.yaml` | the wave the fan-out will walk |
+| `reports/plan/slices/INDEX-next.md` | all next-wave slices, previous chain |
 
----
+## Rules that never change
 
-## Why two commands, not one
-
-1. **A `fan_out` cannot nest inside a workflow.** Execution is a separate target.
-2. **`governance.hitl` is inert.** The checkpoint is you launching passata 2,
-   then the GitHub PR opened on `on_orchestration_stop`.
-3. **The master wave-spec mixes R1–R4.** Passata 2 runs one **slice**
-   file (`slice.current.yaml`), copied by `-Slice`.
-
----
+- Passata 1 writes no application code and never commits; the operator
+  commits the reviewed plan.
+- The backlog is append-only; a new requirement cancels an item only with
+  an explicit "cancels / replaces" and a superseded banner.
+- Never commit on `integration` while a wave runs; never resume a poisoned
+  session; restart the Studio backend after `.env` changes.
+- Passata 1 and 2 bill the Claude Code **Max** login (`-Max`), not the
+  Console API.
