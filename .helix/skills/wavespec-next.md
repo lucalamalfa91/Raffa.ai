@@ -12,7 +12,7 @@ touch `wave-spec.*.yaml` or another `slices/<id>.yaml`.
 waveId: wave-next-w14
 status: planned
 # title: W14 — workspace membership, API JWT, no session as source of truth
-# source: inputs/next/2026-09-10-next-waves-todo.md
+# source: inputs/next/next-waves-todo.md
 # requirements: reports/context/waves/w14-requirements.md
 # Launch: ./run.ps1 -Max -Slice w14 -o execution-fanout
 phases:

@@ -4,10 +4,11 @@
 # runs on contigo-process.yaml (execution-fanout), chained here by -Launch.
 #
 #   ./run-next.ps1 -Check
-#   ./run-next.ps1 -Max -Todo inputs/next/2026-09-10-next-waves-todo.md
+#   ./run-next.ps1 -Max -Todo inputs/next/next-waves-todo.md
 #   ./run-next.ps1 -Max -Wave w14 -MaxTasks 12 -Focus "only the Ask items"
-#   ./run-next.ps1 -Max -Wave w14 -o next-from-council      # re-run after editing the normalized file
-#   ./run-next.ps1 -Max -Wave w14 -o next-plan-close        # checker <-> remediator only
+#   ./run-next.ps1 -Max -Wave w14 -o next-from-council        # re-run after editing the normalized file
+#   ./run-next.ps1 -Max -Wave w14 -o next-from-decomposition  # council closed on disk: decomposer + checker <-> remediator
+#   ./run-next.ps1 -Max -Wave w14 -o next-plan-close          # checker <-> remediator only
 #   ./run-next.ps1 -LaunchOnly -Wave w14                    # HITL done: prereqs + execution-fanout
 #
 # Refuses --fresh and -Slice. Never writes slice.current.yaml itself.
@@ -80,7 +81,7 @@ elseif (-not [string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KEY)) {
     throw "ANTHROPIC_API_KEY is set. Passata 1 on Claude Code Opus bills the Max login, not Console API. Unset it or pass -Max."
 }
 
-$allowed = @("next-design", "next-from-council", "next-plan-close", "next-intake-phase", "next-council", "next-decomposition", "next-check")
+$allowed = @("next-design", "next-from-council", "next-from-decomposition", "next-plan-close", "next-intake-phase", "next-council", "next-decomposition", "next-check")
 if ($allowed -notcontains $o) { throw "run-next.ps1 only launches next-wave orchestrations ($($allowed -join ', ')); got '$o'" }
 
 Set-Location $Here

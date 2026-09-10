@@ -13,7 +13,7 @@ Read it, never edit it. Passata 1 writes **no application code**.
 `reports/plan/next-run.json` is written by `run-next.ps1` before the run:
 
 ```json
-{"wave": "w14", "todo": "inputs/next/2026-09-10-next-waves-todo.md",
+{"wave": "w14", "todo": "inputs/next/next-waves-todo.md",
  "max_tasks": 20, "max_phases": 5, "focus": "", "previous": "e13",
  "started_at": "2026-09-10T16:00:00Z"}
 ```

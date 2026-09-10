@@ -9,6 +9,9 @@ Skills in force: `kb-contract-next`, `cc-passata1-harness`,
 
 ## 0. Parameters
 
+First, the cwd guard of `cc-passata1-harness` (`Glob contigo-next-process.yaml`
+must hit; otherwise `HALTED: cwd is <path>, not the artifact folder — …`).
+
 Resolve `wave`, `todo`, `max_tasks`, `max_phases`, `focus`, `previous` as
 `kb-contract-next` says (`reports/plan/next-run.json` → the workflow input
 string → defaults). Print the resolved values at the top of your turn.

@@ -17,6 +17,16 @@ Helix native tools. What that changes:
   absolute or `../` paths; **never edit it** — Passata 1 writes no
   application code. Ignore the harness "WORKSPACE" note when it tells you to
   create files with plain filenames: the kb-contract paths are the rule.
+- **Check the cwd before anything else** when you are the first agent of a
+  run or of a re-entry (intake, decomposer, checker): `Glob
+  contigo-next-process.yaml` must find the artifact in the cwd (or `pwd` in
+  Bash must end with `.helix`). If it does not — Studio was launched with
+  another working directory, e.g. `.helix/.git.nest.bak` — stop at once with
+  the last line `HALTED: cwd is <path>, not the artifact folder — relaunch
+  with the working directory = .helix (Studio: pick the folder, or leave it
+  unset) or via run-next.ps1`. The engine anchors its close gates and file
+  checks to that cwd: writing to the right place with absolute paths does
+  not save the run (run f3018639, 2026-09-10, lost its council on this).
 - **No git writes.** Do not `add`, `commit`, `stage`, `branch`, `checkout`,
   `push`. Read-only git on the product clone is allowed and expected
   (`git -C .. log`, `diff`, `rev-parse`, `show`) when your role has `Bash`.

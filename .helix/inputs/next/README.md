@@ -30,7 +30,7 @@ takes the newest file by name when `-Todo` is not given.
 
 Anything else (grouping proposals, order, "do not touch" lists) is read and
 respected. The first round of this process used
-`2026-09-10-next-waves-todo.md` (the post-e13 inventory).
+`next-waves-todo.md` (the post-e13 inventory).
 
 ## Launch
 

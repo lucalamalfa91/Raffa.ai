@@ -18,8 +18,14 @@
 #   ./run-next.ps1 -LaunchOnly -Wave <w>            (check_slice_prereqs.py + execution-fanout)
 #   ./run.ps1 -Max -Slice <w> -o execution-fanout   (the same, by hand)
 # Launcher for this document: ./run-next.ps1 -Max -Todo inputs/next/<file>.md
-# (-Check = parse + refs + prompt files; -o next-from-council | next-plan-close
-# re-enter after a HITL edit). It refuses --fresh and -Slice: the process is
+# (-Check = parse + refs + prompt files; -o next-from-council |
+# next-from-decomposition | next-plan-close re-enter after a HITL edit or a
+# run that failed outside the plan).
+# STUDIO: leave the working directory unset (= this folder) or pick .helix.
+# The engine anchors close gates and file checks to the working directory:
+# run f3018639 (2026-09-10) ran with .helix/.git.nest.bak, the council wrote
+# every file into .helix by absolute path, and the close gate still failed
+# with closed_without_required_artifact (NEXT-PROCESS.md D-N11). It refuses --fresh and -Slice: the process is
 # append-only on the live plan (scripts/assert_next_plan_untouched.py).
 # Run parameters travel in reports/plan/next-run.json + the -i input string
 # (Helix has no per-run variables -- NEXT-PROCESS.md D-N3).
@@ -434,6 +440,26 @@ orchestrations:
       - [next-remediation, next-check]
       # DECOMPOSITION_OK: no edge -- terminal.
     limits: { max_steps: 300000, max_iterations: 15, run_timeout_s: 21600 }
+
+  # Re-entry when the council closed ON DISK (record filled, gate approved in
+  # the transcript) but the run ended for a reason outside the plan -- run
+  # f3018639: Studio working directory != .helix, close-gate glob evaluated
+  # elsewhere. Decomposer -> checker <-> remediator. The decomposer halts if
+  # reports/architecture/waves/<w>.md still has a pending row for an involved
+  # seat, so an unfinished council cannot slip through here.
+  - id: next-from-decomposition
+    topology: workflow
+    participants:
+      - next-decomposition
+      - next-check
+      - next-remediation
+    start: next-decomposition
+    edges:
+      - { from: next-decomposition, to: next-check, condition: on_marker, marker: "DECOMPOSITION_DONE:" }
+      - [next-check, next-remediation, needs_remediation]
+      - [next-remediation, next-check]
+      # DECOMPOSITION_OK: no edge -- terminal.
+    limits: { max_steps: 300000, max_iterations: 15, run_timeout_s: 18000 }
 
   # Re-entry after the operator edited a task / the wave file: checker <->
   # remediator only. Does not re-run the decomposer or the council.

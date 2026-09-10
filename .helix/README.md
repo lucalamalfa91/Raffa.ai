@@ -23,7 +23,7 @@ cp .env.example .env            # once; Claude Code Opus id + Max login
 
 # 1. drop the raw requirements: inputs/next/YYYY-MM-DD-<topic>.md  (see inputs/next/README.md)
 # 2. Passata 1 → wave w<N>
-./run-next.ps1 -Max -Todo inputs/next/2026-09-10-next-waves-todo.md
+./run-next.ps1 -Max -Todo inputs/next/next-waves-todo.md
 
 # 3. review reports/context/waves/w14-requirements.md, reports/architecture/waves/w14.md,
 #    reports/audit/w14-hitl.md, reports/plan/slices/w14.yaml — edit, re-run partially if needed
@@ -35,7 +35,9 @@ cp .env.example .env            # once; Claude Code Opus id + Max login
 ```
 
 `-Launch` chains steps 2 and 4 in one command. Studio green ≠ PR opened:
-read `reports/execution/wave-close.md`.
+read `reports/execution/wave-close.md`. From Helix Studio, leave the working
+directory unset or pick `.helix` itself (NEXT-PROCESS.md D-N11), and merge the
+reviewed plan to `main` before launching the wave.
 
 ## Quick start — the initial process (kept as is)
 

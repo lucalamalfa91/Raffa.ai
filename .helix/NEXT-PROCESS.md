@@ -119,8 +119,9 @@ next-design (DEFAULT, workflow)
   verify (assert_next_plan_untouched.py) ; print review files + launch command
   [-Launch] → check_slice_prereqs.py --slice w14 → ./run.ps1 -Max -Slice w14 -o execution-fanout
 
-next-from-council : start at next-council (the operator edited <w>-requirements.md by hand)
-next-plan-close   : next-check ⇄ next-remediation only
+next-from-council       : start at next-council (the operator edited <w>-requirements.md by hand)
+next-from-decomposition : start at next-decomposition (the council closed on disk; the run failed outside the plan)
+next-plan-close         : next-check ⇄ next-remediation only
 next-intake-phase : normalize only, then review
 ```
 
@@ -174,6 +175,17 @@ Markers (line-anchored, last line): `CONTEXT_READY:` / `HALTED:` (intake),
 - **D-N8 — Existing epics are never rewritten**, so a bug in an old feature
   produces a task in a **new** epic that `extends:` the old one (operator
   decision 2026-09-10). Cancelled items get a status banner only.
+- **D-N11 — The working directory is the engine's anchor.** Helix binds
+  the OUTPUT anchor (`transcript_session.set_output_dir`) to the run's
+  working directory (`launch.py`: the explicit override, else the artifact
+  folder). Close gates (`marker_guard._check_glob`) and native file tools
+  resolve against it, while a Claude Code agent can still write anywhere
+  with absolute paths. A Studio run with a working directory other than
+  `.helix` therefore produces a complete plan on disk and a failed run.
+  Mitigations: `run-next.ps1` never overrides it; the intake, decomposer and
+  checker halt at once when the cwd is not the artifact folder
+  (`cc-passata1-harness`); `next-from-decomposition` re-enters after a
+  council that closed on disk.
 - **D-N10 — Fail-closed phase edges.** `next-intake-phase → next-council`
   fires only on `CONTEXT_READY:` and `next-decomposition → next-check` only
   on `DECOMPOSITION_DONE:` (`on_marker`, whole-token, line-anchored). A
@@ -192,7 +204,7 @@ Markers (line-anchored, last line): `CONTEXT_READY:` / `HALTED:` (intake),
 ```powershell
 cd .helix
 ./run-next.ps1 -Check                                        # parse + refs + prompt files
-./run-next.ps1 -Max -Todo inputs/next/2026-09-10-next-waves-todo.md   # first round → w14
+./run-next.ps1 -Max -Todo inputs/next/next-waves-todo.md   # first round → w14
 ```
 
 Then review, in this order: `reports/context/waves/w14-requirements.md`
@@ -204,6 +216,8 @@ Edit what you disagree with:
 - items / seats / priorities → edit the normalized file, then
   `./run-next.ps1 -Max -Wave w14 -o next-from-council`;
 - a task → edit the task md, then `./run-next.ps1 -Max -Wave w14 -o next-plan-close`;
+- the council closed on disk (record filled, gate approved in the transcript)
+  but the run failed for another reason → `./run-next.ps1 -Max -Wave w14 -o next-from-decomposition`;
 - drop a task from this wave → set its frontmatter `status: queued` and
   remove its line from `slices/w14.yaml`, then `python scripts/register_wave.py --wave w14`.
 
@@ -223,6 +237,24 @@ the same MANIFEST row. A changed raw file regenerates the normalized file
 Operator rules that still apply: never commit on `integration` while a
 wave runs; restart the Studio backend after `.env` changes; Passata 1 on
 the Max login (`-Max`), never the Console API.
+
+**From Helix Studio**: open `contigo-next-process.yaml`, pick the
+orchestration, and either leave the working directory unset ("This run will
+use the artifact folder") or pick `.helix` itself. Studio remembers the last
+picked folder per session; a stale pick (run `f3018639` ran in
+`.helix/.git.nest.bak`) makes the engine evaluate `close_requires_glob` and
+the fan-out anchors outside the artifact, and the council fails with
+`closed_without_required_artifact` after all its files were written. Pass
+the run parameters in the input box (`wave=w14 todo=inputs/next/<file>.md
+max_tasks=20 max_phases=5`) — Studio does not write `next-run.json`, so the
+protect snapshot is not taken and the checker reports "no snapshot" as a
+warning. The launcher is the safer path.
+
+**Before the wave (Passata 2)**: the fan-out forks worktrees from the
+**local** `main` and reads the task prompts from `.helix/reports/workitems/`
+inside them, so the reviewed plan (epics, wave file, ADR footers) must be
+merged to `main` and the local `main` updated before
+`./run-next.ps1 -LaunchOnly -Wave <w>`.
 
 ---
 
