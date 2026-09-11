@@ -73,13 +73,13 @@ public sealed class WorkspaceProvisioningServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Creates_a_workspace_with_its_full_default_role_catalog()
+    public async Task Creates_a_workspace_with_its_full_default_role_catalog_and_the_creators_admin_membership()
     {
         var tenantContext = new TenantContext();
         await using var db = CreateAppContext(tenantContext);
         var service = new WorkspaceProvisioningService(db, tenantContext, new FixedClock());
 
-        var result = await service.CreateWorkspaceAsync("Acme Procurement");
+        var result = await service.CreateWorkspaceAsync("Acme Procurement", "founder@acme.example");
 
         Assert.True(result.IsSuccess);
         var workspace = result.Value;
@@ -102,6 +102,19 @@ public sealed class WorkspaceProvisioningServiceTests : IAsyncLifetime
         {
             Assert.Contains(roles, r => r.Name == roleName);
         }
+
+        // Task E14/F02/US01/T01 (ADR-025 Rule D.2b / ADR-009 w14 footer clause 6): the creator's
+        // own Admin membership lands in the same scope/SaveChangesAsync as the workspace and its
+        // role catalog -- four writes proven by one read each.
+        var user = await readDb.WorkspaceUsers.SingleAsync(u => u.TenantId == workspace.TenantId);
+        Assert.Equal("founder@acme.example", user.Email);
+        Assert.Null(user.ExternalSubjectId);
+
+        var membership = await readDb.WorkspaceMemberships.SingleAsync(m => m.TenantId == workspace.TenantId);
+        Assert.Equal(user.Id, membership.WorkspaceUserId);
+
+        var adminRole = roles.Single(r => r.Name == WorkspaceRoleName.Admin);
+        Assert.Equal(adminRole.Id, membership.WorkspaceRoleId);
     }
 
     [Fact]
@@ -111,7 +124,38 @@ public sealed class WorkspaceProvisioningServiceTests : IAsyncLifetime
         await using var db = CreateAppContext(tenantContext);
         var service = new WorkspaceProvisioningService(db, tenantContext, new FixedClock());
 
-        var result = await service.CreateWorkspaceAsync("   ");
+        var result = await service.CreateWorkspaceAsync("   ", "founder@acme.example");
+
+        Assert.True(result.IsFailure);
+    }
+
+    [Fact]
+    public async Task Blank_caller_identity_fails_before_any_write()
+    {
+        // ADR-025 Rule D.2a: absent identity is a 401 at the endpoint; a caller that reaches the
+        // service with a blank identity anyway (e.g. a future non-HTTP caller) still fails cleanly
+        // -- ADR-009 w14 footer clause 6's "a partial bootstrap must not be reachable by a failure
+        // path either" holds because this check runs before BeginScope/SaveChangesAsync.
+        var tenantContext = new TenantContext();
+        await using var db = CreateAppContext(tenantContext);
+        var service = new WorkspaceProvisioningService(db, tenantContext, new FixedClock());
+
+        var result = await service.CreateWorkspaceAsync("Acme Procurement", "   ");
+
+        Assert.True(result.IsFailure);
+    }
+
+    [Fact]
+    public async Task An_unparseable_caller_identity_fails_before_any_write()
+    {
+        // WorkspaceMembershipFactory.CreateInvitedUser's own validation (reused, not duplicated):
+        // ADR-025 §B "identity presented but malformed" is this Result<T> failure path, exactly
+        // like a blank name always has been.
+        var tenantContext = new TenantContext();
+        await using var db = CreateAppContext(tenantContext);
+        var service = new WorkspaceProvisioningService(db, tenantContext, new FixedClock());
+
+        var result = await service.CreateWorkspaceAsync("Acme Procurement", "not-an-email");
 
         Assert.True(result.IsFailure);
     }
@@ -123,16 +167,19 @@ public sealed class WorkspaceProvisioningServiceTests : IAsyncLifetime
         await using var db = CreateAppContext(tenantContext);
         var service = new WorkspaceProvisioningService(db, tenantContext, new FixedClock());
 
-        var result = await service.CreateWorkspaceAsync("Acme Procurement");
+        var result = await service.CreateWorkspaceAsync("Acme Procurement", "founder@acme.example");
         Assert.True(result.IsSuccess);
 
-        // AC-2 (r0-integration): tenant A's workspace/roles exist (created above, over the same
-        // tables) but RLS makes them invisible on a connection scoped to an unrelated tenant.
+        // AC-2 (r0-integration) / AC-4 (wave w14): tenant A's workspace/roles/creator membership
+        // exist (created above, over the same tables) but RLS makes them invisible on a connection
+        // scoped to an unrelated tenant.
         var otherTenant = TenantId.New();
         using var _ = tenantContext.BeginScope(otherTenant);
         await using var readDb = CreateAppContext(tenantContext);
 
         Assert.Empty(await readDb.Workspaces.ToListAsync());
         Assert.Empty(await readDb.WorkspaceRoles.ToListAsync());
+        Assert.Empty(await readDb.WorkspaceUsers.ToListAsync());
+        Assert.Empty(await readDb.WorkspaceMemberships.ToListAsync());
     }
 }
