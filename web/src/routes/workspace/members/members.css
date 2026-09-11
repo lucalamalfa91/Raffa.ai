@@ -35,10 +35,20 @@
   align-items: start;
 }
 
+/* Procurement's read-only variant (ADR-020 §10.7): no invite pane, so the grid collapses to one
+   column instead of leaving a 340px gap where it used to sit. */
+.members-body-readonly {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .members-table-column {
   min-width: 0;
   padding: 24px 32px;
   border-right: 2px solid var(--color-divider);
+}
+
+.members-body-readonly .members-table-column {
+  border-right: 0;
 }
 
 .members-table {
@@ -51,6 +61,74 @@
 
 .members-table .members-col-status {
   width: 16%;
+}
+
+.members-table .members-col-actions {
+  width: 22%;
+}
+
+/* Loading (ADR-018 `:112-119`): same shape as `../../contracts/contracts.css`'s own
+   `.portfolio-skeleton`/`.portfolio-skeleton-row` -- one convention for every list surface. */
+.members-table-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: 24px 32px;
+}
+
+.members-table-skeleton-row {
+  height: 32px;
+}
+
+.members-actions-cell {
+  vertical-align: top;
+}
+
+.members-action-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 260px;
+}
+
+.members-action-question {
+  font-weight: var(--weight-body-strong);
+  margin: 0;
+}
+
+.members-action-consequence {
+  font-size: 12px;
+  color: var(--color-neutral-600);
+  margin: 0;
+}
+
+.members-action-buttons {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: 4px;
+}
+
+.members-action-disabled {
+  max-width: 220px;
+}
+
+.members-action-error {
+  margin: 16px 32px 0;
+}
+
+.members-readonly-note {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 2px solid var(--color-divider);
+  max-width: 480px;
+}
+
+.members-readonly-note h4 {
+  margin-bottom: 6px;
+}
+
+.members-readonly-note .btn {
+  margin-top: 10px;
 }
 
 .members-member-primary {
@@ -125,8 +203,35 @@
   color: var(--color-accent-700);
 }
 
+.members-invite-warning {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--color-neutral-600);
+}
+
 .members-invite-sent {
   margin: 10px 0 0;
+  font-size: 12px;
+}
+
+.members-invite-ready {
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+
+.members-invite-ready p {
+  margin: 0 0 4px;
+}
+
+.members-invite-link-row {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: 8px;
+}
+
+.members-invite-link-input {
+  flex: 1;
+  min-width: 0;
   font-size: 12px;
 }
 
