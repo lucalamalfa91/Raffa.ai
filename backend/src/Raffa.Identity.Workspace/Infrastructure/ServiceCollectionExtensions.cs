@@ -19,6 +19,14 @@ namespace Raffa.Identity.Workspace.Infrastructure;
 /// forward-looking reason. Task E01/F09/US01/T01 (r0-integration) adds
 /// <see cref="WorkspaceProvisioningService"/> (the "create workspace" half) and is the first task
 /// to actually call this method from a host (<c>Raffa.Api.Program</c>).
+///
+/// Task E14/F03/US01/T01 (wave w14 "workspace is real") adds <see cref="WorkspaceDirectoryService"/>
+/// (the <c>GET /api/workspaces</c> discovery half, ADR-026 §D1) and, with it, the first DI
+/// registration of <see cref="ICallerIdentityContext"/> anywhere in the solution: phase-1 task
+/// E14/F01/US01/T01 added the type itself (<c>Raffa.SharedKernel.Tenancy.CallerIdentityContext</c>)
+/// and wired <see cref="TenantRlsConnectionInterceptor"/> to *consume* one when supplied, but wired
+/// no DbContext to actually supply it — this module's own <c>workspace_user</c> table is the only
+/// one in the product the `identity_self` policy widens, so this is that first real caller.
 /// </summary>
 public static class ServiceCollectionExtensions
 {
@@ -28,14 +36,21 @@ public static class ServiceCollectionExtensions
         // TryAdd: any module (or the host) may call this defensively; only the first
         // registration wins, and every module shares the same ambient tenant claim (ADR-009).
         services.TryAddSingleton<ITenantContext, TenantContext>();
+        // Same TryAdd convention, same sharing rationale, for the sibling ambient identity claim
+        // (ADR-009 w14 footer clause 1 / ADR-025 §F.2) — see this type's own doc comment.
+        services.TryAddSingleton<ICallerIdentityContext, CallerIdentityContext>();
         services.TryAddSingleton<IClock>(SystemClock.Instance);
 
         services.AddDbContext<IdentityWorkspaceDbContext>(
             (sp, options) => IdentityWorkspaceDbContextOptions.Configure(
-                options, connectionString, sp.GetRequiredService<ITenantContext>()));
+                options,
+                connectionString,
+                sp.GetRequiredService<ITenantContext>(),
+                sp.GetRequiredService<ICallerIdentityContext>()));
 
         services.TryAddScoped<WorkspaceMembershipService>();
         services.TryAddScoped<WorkspaceProvisioningService>();
+        services.TryAddScoped<WorkspaceDirectoryService>();
 
         return services;
     }

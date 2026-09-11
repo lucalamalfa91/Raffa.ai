@@ -20,11 +20,23 @@ public static class IdentityWorkspaceDbContextOptions
     /// (ADR-009: `SET`/`RESET app.tenant_id` per connection) is only wired in when it is supplied.
     /// The runtime DI path (<see cref="ServiceCollectionExtensions"/>) always supplies one so the
     /// RLS backstop is live on every request/job path.
+    ///
+    /// <paramref name="callerIdentityContext"/> (task E14/F03/US01/T01, wave w14; ADR-025 §F.2):
+    /// this module's <c>workspace_user</c> table is the one table in the whole product with a
+    /// second, identity-keyed RLS policy (`identity_self`, migration
+    /// `AddWorkspaceUserIdentitySelfReadPolicy`) — <see cref="WorkspaceDirectoryService"/>'s
+    /// discovery read is what needs `app.identity_subject` actually set on this DbContext's own
+    /// connections, so this is the one <c>*DbContextOptions.Configure</c> call site across every
+    /// module that supplies a non-null value — <see cref="TenantRlsConnectionInterceptor"/>'s own
+    /// doc comment names this exact clause ("only a caller that actually needs the identity claim
+    /// supplies one"). Omitted (the default), a connection through this DbContext never carries an
+    /// identity claim, exactly as before this task.
     /// </summary>
     public static void Configure(
         DbContextOptionsBuilder builder,
         string connectionString,
-        ITenantContext? tenantContext = null)
+        ITenantContext? tenantContext = null,
+        ICallerIdentityContext? callerIdentityContext = null)
     {
         builder
             .UseNpgsql(connectionString)
@@ -34,7 +46,7 @@ public static class IdentityWorkspaceDbContextOptions
 
         if (tenantContext is not null)
         {
-            builder.AddInterceptors(new TenantRlsConnectionInterceptor(tenantContext));
+            builder.AddInterceptors(new TenantRlsConnectionInterceptor(tenantContext, callerIdentityContext));
         }
     }
 }
