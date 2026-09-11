@@ -366,6 +366,8 @@ describe("createConversationAndAsk", () => {
       getHealth: vi.fn(),
       createWorkspace: vi.fn(),
       inviteWorkspaceMember: vi.fn(),
+      listWorkspaces: vi.fn(),
+      getWorkspaceMembers: vi.fn(),
       uploadDocument: vi.fn(),
       getDocument: vi.fn(),
       listDocuments: vi.fn(),

@@ -23,6 +23,8 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     getHealth: vi.fn(),
     createWorkspace: vi.fn(),
     inviteWorkspaceMember: vi.fn(),
+    listWorkspaces: vi.fn(),
+    getWorkspaceMembers: vi.fn(),
     uploadDocument: vi.fn(),
     getDocument: vi.fn(),
     // Task E13/F09/US01/T03 (web-documents-v2): this suite does not exercise Documents -- bare

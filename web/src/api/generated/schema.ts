@@ -19,16 +19,50 @@ export interface operations {
       };
     };
   };
+  listWorkspaces: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { workspaces: ({ id: string; name: string; createdAt: string; role: string; contractCount: number; country?: string | null; currency?: string | null })[] };
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+    };
+  };
   createWorkspace: {
     responses: {
       201: {
         content: {
-          "application/json": { id: string; name: string; createdAt: string };
+          "application/json": { id: string; name: string; createdAt: string; role: string };
         };
       };
       400: {
         content: {
           "application/json": string;
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+    };
+  };
+  getWorkspaceMembers: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { members: ({ id: string; email: string; name?: string | null; role: string; status: string })[] };
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
         };
       };
     };
@@ -547,7 +581,11 @@ export interface paths {
     get: operations["getHealth"];
   };
   "/api/workspaces": {
+    get: operations["listWorkspaces"];
     post: operations["createWorkspace"];
+  };
+  "/api/workspaces/{tenantId}/members": {
+    get: operations["getWorkspaceMembers"];
   };
   "/api/workspaces/{tenantId}/invites": {
     post: operations["inviteWorkspaceMember"];
