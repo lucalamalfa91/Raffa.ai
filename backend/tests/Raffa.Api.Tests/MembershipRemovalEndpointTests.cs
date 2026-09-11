@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Raffa.Api.Tests.TestSupport;
+using Raffa.Documents.Contracts.Application;
 using Raffa.Identity.Workspace.Infrastructure;
 using Raffa.SharedKernel;
 using Microsoft.AspNetCore.Hosting;
@@ -67,12 +68,14 @@ public sealed class MembershipRemovalEndpointFixture : WebApplicationFactory<Pro
 }
 
 /// <summary>
-/// T7 (a/c) and T8 (task E15/F01/US01/T01, wave w14; ADR-025 Rule D.5a-d, §H) over the real HTTP
-/// pipeline, plus the `DELETE /api/workspaces/{tenantId}/members/{membershipId}` endpoint's own
-/// guard shape. <b>T7(b)/T7(d) are recorded, not proven here</b> — see
+/// T7 (a/c), T7(b), and T8 (task E15/F01/US01/T01, wave w14; ADR-025 Rule D.5a-d, §H) over the
+/// real HTTP pipeline, plus the `DELETE /api/workspaces/{tenantId}/members/{membershipId}`
+/// endpoint's own guard shape. <b>T7(b) is authored below and <c>Skip</c>ped with a named
+/// reason</b> — the same "write it now, skip it with a named reason, never a silent gap"
+/// discipline ADR-025 §H already applies to T14 — see
 /// <see cref="GapReasons.MembershipVerifiedReadsNotYetWired"/>'s own doc comment for why a
 /// meaningful, non-vacuous proof of "document read/write → 404" needs a membership check this
-/// wave never adds to <c>DocumentsEndpointExtensions</c>'s plain read path, and
+/// wave never adds to <c>DocumentsEndpointExtensions</c>'s plain read/write paths, and
 /// <see cref="RemovedMemberRetrievalTests"/> for the identical gap on the Ask path (T7(d)).
 /// </summary>
 public sealed class MembershipRemovalEndpointTests : IClassFixture<MembershipRemovalEndpointFixture>
@@ -198,6 +201,63 @@ public sealed class MembershipRemovalEndpointTests : IClassFixture<MembershipRem
 
         var acceptResponse = await AcceptInvitationAsync(client, staleToken, "removed@stalelink.example");
         Assert.Equal(HttpStatusCode.NotFound, acceptResponse.StatusCode);
+    }
+
+    /// <summary>
+    /// T7(b): "a removed member's document read/write → 404" (ADR-025 Rule D.5b/D.5e). Authored
+    /// now and <c>Skip</c>ped with a named reason rather than either weakened to something vacuous
+    /// or silently dropped — see <see cref="GapReasons.MembershipVerifiedReadsNotYetWired"/> for
+    /// the full reasoning (today neither <c>DocumentsEndpointExtensions.GetDocumentAsync</c> nor
+    /// its sibling plain-path handler <c>ValidateDocumentAsync</c> consults
+    /// <c>workspace_membership</c> at all, so both would answer exactly as if the caller were
+    /// still a member). The document is seeded directly through <see cref="DocumentUploadService"/>
+    /// in a DI scope — the same "bypass the full pipeline, prove the property" shortcut
+    /// <see cref="RemovedMemberRetrievalTests"/> takes for T7(d) — rather than the real multipart
+    /// admission gate, which is this test's own concern to seed, not to re-prove. Seeding a real
+    /// document (not a random, never-existent id) matters: a nonexistent-document 404 would pass
+    /// today for the wrong reason and prove nothing about membership.
+    /// </summary>
+    [Fact(Skip = GapReasons.MembershipVerifiedReadsNotYetWired)]
+    public async Task T7b_a_removed_members_document_read_and_write_calls_both_404()
+    {
+        var client = _fixture.CreateClient();
+        var tenantId = await CreateWorkspaceAsync(client, "Removed Document Access Co", "admin@removeddocaccess.example");
+        var removedMembershipId = await InviteAndAcceptAsync(client, tenantId, "admin@removeddocaccess.example", "removed@removeddocaccess.example", "Procurement");
+
+        Guid documentId;
+        using (var scope = _fixture.Services.CreateScope())
+        {
+            var uploadService = scope.ServiceProvider.GetRequiredService<DocumentUploadService>();
+            using var content = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(
+                "The liability cap under this agreement is CHF 1,000,000."));
+            var uploadResult = await uploadService.UploadAsync(
+                new TenantId(tenantId), "sample.pdf", "application/pdf", content, CancellationToken.None);
+            Assert.True(uploadResult.IsSuccess);
+            documentId = uploadResult.Value.DocumentId.Value;
+        }
+
+        var removeResponse = await RemoveMemberAsync(client, tenantId, removedMembershipId, "admin@removeddocaccess.example");
+        Assert.Equal(HttpStatusCode.NoContent, removeResponse.StatusCode);
+
+        // Read: GET /api/documents/{id} -- DocumentsEndpointExtensions.GetDocumentAsync today
+        // resolves only the X-Tenant-Id header, never the caller's own membership.
+        using var readRequest = new HttpRequestMessage(HttpMethod.Get, $"/api/documents/{documentId}");
+        readRequest.Headers.Add("X-Tenant-Id", tenantId.ToString());
+        readRequest.Headers.Add("X-User-Id", "removed@removeddocaccess.example");
+        var readResponse = await client.SendAsync(readRequest);
+        Assert.Equal(HttpStatusCode.NotFound, readResponse.StatusCode);
+
+        // Write: POST /api/documents/{id}/validate -- the plain (non-Admin-gated) write path,
+        // structurally identical to the read path above (tenant header + RLS only, no membership
+        // check); an empty body is valid ("every flagged field was corrected instead").
+        using var writeRequest = new HttpRequestMessage(HttpMethod.Post, $"/api/documents/{documentId}/validate")
+        {
+            Content = JsonContent.Create(new { }),
+        };
+        writeRequest.Headers.Add("X-Tenant-Id", tenantId.ToString());
+        writeRequest.Headers.Add("X-User-Id", "removed@removeddocaccess.example");
+        var writeResponse = await client.SendAsync(writeRequest);
+        Assert.Equal(HttpStatusCode.NotFound, writeResponse.StatusCode);
     }
 
     // ----- T8: re-invite after removal -----
