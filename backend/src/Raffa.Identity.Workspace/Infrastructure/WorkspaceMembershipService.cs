@@ -568,6 +568,8 @@ public sealed class InviteOutcome
 
     public bool IsSuccess => Status == MembershipOperationStatus.Success;
 
+    public bool IsFailure => !IsSuccess;
+
     public WorkspaceInvitation? Invitation { get; }
 
     public string? Error { get; }
@@ -597,6 +599,8 @@ public sealed class AcceptOutcome
 
     public bool IsSuccess => Status == MembershipOperationStatus.Success;
 
+    public bool IsFailure => !IsSuccess;
+
     public WorkspaceUser? User { get; }
 
     public WorkspaceMembership? Membership { get; }
@@ -624,6 +628,8 @@ public sealed class RemoveOutcome
     public MembershipOperationStatus Status { get; }
 
     public bool IsSuccess => Status == MembershipOperationStatus.Success;
+
+    public bool IsFailure => !IsSuccess;
 
     public string? Error { get; }
 
