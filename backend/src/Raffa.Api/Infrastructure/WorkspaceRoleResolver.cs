@@ -8,35 +8,44 @@ using Microsoft.EntityFrameworkCore;
 namespace Raffa.Api.Infrastructure;
 
 /// <summary>
-/// Task E13/F04/US01/T02 (documents-v2-api): resolves the caller's workspace role for a tenant, so
-/// the Admin-only surfaces (<c>POST /api/documents/{id}/reprocess</c>,
-/// <c>DELETE /api/documents/{id}</c> — R-DOC-07/R-DOC-10) can answer 403 for everyone else.
+/// Task E13/F04/US01/T02 (documents-v2-api), narrowed by task E14/F02/US02/T01 (wave w14 "workspace
+/// is real"; ADR-022 w14 footer clause 1; ADR-025 §E "a client-declared role is never an
+/// authorization source"): resolves the caller's workspace role for a tenant, so the Admin-only
+/// surfaces (<c>POST /api/documents/{id}/reprocess</c>, <c>DELETE /api/documents/{id}</c> —
+/// R-DOC-07/R-DOC-10) can answer 403 for everyone else.
 ///
 /// <para>
-/// Three sources, in order of how much they can be trusted:
+/// Two sources, in order of how much they can be trusted, and <b>nothing else</b>:
 /// <list type="number">
 /// <item><b>Claims.</b> An authenticated principal's role claims, through the same
 /// <see cref="WorkspaceRoleClaimResolver"/> <c>GET /api/audit</c> already uses. This is the ADR-010
-/// end state, and the only source that will survive the interim posture below.</item>
-/// <item><b>A role header</b> — <c>X-Role</c> (what <c>GET /api/capabilities</c> already reads) or
-/// its <c>X-Workspace-Role</c> alias. Non-authoritative, exactly like <c>X-Tenant-Id</c>: it says
-/// which role the caller claims, and is only as trustworthy as the network in front of this API.
-/// </item>
-/// <item><b>The membership table.</b> When no claim and no header is present but the request does
-/// carry <c>X-User-Id</c> (ADR-022: the MSAL account username; the web sends it on every call), the
-/// caller's role is read from <c>workspace_membership</c> for this tenant. This is the branch that
-/// makes the web's Admin-only buttons work today without inventing a new client header, and it is
-/// the least spoofable of the two interim ones: it is a real row a workspace admin created, not a
-/// self-declared string.</item>
+/// end state, and the only source that survives past this wave.</item>
+/// <item><b>The membership table.</b> The identity <see cref="ICallerIdentity"/> resolves for the
+/// current request (ADR-025 §A2: trusted for one thing only — which membership rows to look up, no
+/// role, no tenant, no scope of its own) is matched against <c>workspace_membership</c> for this
+/// tenant. This is the branch that makes the web's Admin-only buttons work today, and it is the
+/// least spoofable of the two: it is a real row a workspace admin created, not a self-declared
+/// string.</item>
 /// </list>
-/// A caller matching none of the three has no role, and every Admin-only endpoint answers 403.
+/// A caller matching neither source has no role, and every Admin-only endpoint answers 403.
+/// </para>
+///
+/// <para>
+/// <b>The header is demoted, not removed (ADR-022 w14 footer clause 1; ADR-025 §E).</b> Before this
+/// wave, a third branch sat between the two above and read an <c>X-Role</c>/<c>X-Workspace-Role</c>
+/// header — a client-declared role, trusted exactly like <c>X-Tenant-Id</c>. That branch is deleted:
+/// where a header and a real membership row disagree, membership now wins in <b>both</b> directions
+/// — a header claiming <c>Admin</c> never grants, and one claiming <c>Procurement</c> never revokes
+/// a real Admin's rights (ADR-025 Rule E2). The two header-name constants below remain only as the
+/// historical shape of that interim signal; see the doc comment on the method that still parses
+/// them for why it is never invoked from here again.
 /// </para>
 /// </summary>
-internal sealed class WorkspaceRoleResolver(IdentityWorkspaceDbContext dbContext, ITenantContext tenantContext)
+internal sealed class WorkspaceRoleResolver(
+    IdentityWorkspaceDbContext dbContext, ITenantContext tenantContext, ICallerIdentity callerIdentity)
 {
     public const string RoleHeaderName = "X-Role";
     public const string WorkspaceRoleHeaderName = "X-Workspace-Role";
-    public const string UserIdHeaderName = "X-User-Id";
 
     /// <summary>
     /// The caller's role for <paramref name="tenantId"/>, or <see langword="null"/> when none can
@@ -54,12 +63,10 @@ internal sealed class WorkspaceRoleResolver(IdentityWorkspaceDbContext dbContext
             return claimRole;
         }
 
-        if (TryResolveHeaderRole(httpContext.Request, out var headerRole))
-        {
-            return headerRole;
-        }
-
-        return await ResolveMembershipRoleAsync(httpContext.Request, tenantId, cancellationToken).ConfigureAwait(false);
+        // ADR-022 w14 footer clause 1 / ADR-025 §E: the header branch that used to sit here between
+        // claims and membership is deleted, not narrowed -- a client-declared role is never an
+        // authorization source. Membership is the only remaining fallback.
+        return await ResolveMembershipRoleAsync(tenantId, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Convenience for the endpoints: "is this caller a Workspace Admin of this tenant?"</summary>
@@ -67,6 +74,16 @@ internal sealed class WorkspaceRoleResolver(IdentityWorkspaceDbContext dbContext
         HttpContext httpContext, TenantId tenantId, CancellationToken cancellationToken = default) =>
         await ResolveAsync(httpContext, tenantId, cancellationToken).ConfigureAwait(false) == WorkspaceRoleName.Admin;
 
+    /// <summary>
+    /// The interim <c>X-Role</c>/<c>X-Workspace-Role</c> header parse (ADR-022 w14 footer clause 1;
+    /// ADR-025 §E). <b>Demoted, not removed.</b> <see cref="ResolveAsync"/> no longer calls this —
+    /// the only thing a header can still shape anywhere in this host is non-authoritative UI
+    /// affordance on <c>GET /api/capabilities</c>, which parses the same two header names
+    /// independently through <see cref="WorkspaceRoleClaimResolver"/> directly rather than through
+    /// this method (<c>CapabilitiesEndpointExtensions.cs</c> is untouched by this task — its own doc
+    /// comment already draws this exact line). This method must never again be reached from an
+    /// authorization decision.
+    /// </summary>
     private static bool TryResolveHeaderRole(HttpRequest request, out WorkspaceRoleName role)
     {
         foreach (var headerName in new[] { RoleHeaderName, WorkspaceRoleHeaderName })
@@ -83,15 +100,14 @@ internal sealed class WorkspaceRoleResolver(IdentityWorkspaceDbContext dbContext
     }
 
     private async Task<WorkspaceRoleName?> ResolveMembershipRoleAsync(
-        HttpRequest request, TenantId tenantId, CancellationToken cancellationToken)
+        TenantId tenantId, CancellationToken cancellationToken)
     {
-        if (!request.Headers.TryGetValue(UserIdHeaderName, out var values))
-        {
-            return null;
-        }
-
-        var userId = values.ToString().Trim();
-        if (string.IsNullOrEmpty(userId))
+        // ADR-025 §A2 / Rule A1: the one identity seam, instead of reading X-User-Id off
+        // HttpRequest.Headers directly. Trusted for one thing only -- which membership rows to look
+        // up; it confers no role, no tenant and no scope of its own. W15 (NW-05) retires the header
+        // by rewriting ICallerIdentity's own implementation, so this call site is unaffected.
+        var identity = callerIdentity.Resolve();
+        if (identity is null)
         {
             return null;
         }
@@ -108,7 +124,7 @@ internal sealed class WorkspaceRoleResolver(IdentityWorkspaceDbContext dbContext
             where user.TenantId == tenantId
                 && membership.TenantId == tenantId
                 && role.TenantId == tenantId
-                && (user.Email == userId || user.ExternalSubjectId == userId)
+                && (user.Email == identity || user.ExternalSubjectId == identity)
             select role.Name)
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
