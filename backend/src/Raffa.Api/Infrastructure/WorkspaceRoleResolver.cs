@@ -32,8 +32,9 @@ namespace Raffa.Api.Infrastructure;
 ///
 /// <para>
 /// <b>The header is demoted, not removed (ADR-022 w14 footer clause 1; ADR-025 §E).</b> Before this
-/// wave, a third branch sat between the two above and read an <c>X-Role</c>/<c>X-Workspace-Role</c>
-/// header — a client-declared role, trusted exactly like <c>X-Tenant-Id</c>. That branch is deleted:
+/// wave, a third branch sat between the two above and read the two interim role-header names
+/// declared just below — a client-declared role, trusted exactly like <c>X-Tenant-Id</c>. That
+/// branch is deleted:
 /// where a header and a real membership row disagree, membership now wins in <b>both</b> directions
 /// — a header claiming <c>Admin</c> never grants, and one claiming <c>Procurement</c> never revokes
 /// a real Admin's rights (ADR-025 Rule E2). The two header-name constants below remain only as the
@@ -75,8 +76,9 @@ internal sealed class WorkspaceRoleResolver(
         await ResolveAsync(httpContext, tenantId, cancellationToken).ConfigureAwait(false) == WorkspaceRoleName.Admin;
 
     /// <summary>
-    /// The interim <c>X-Role</c>/<c>X-Workspace-Role</c> header parse (ADR-022 w14 footer clause 1;
-    /// ADR-025 §E). <b>Demoted, not removed.</b> <see cref="ResolveAsync"/> no longer calls this —
+    /// The interim role-header parse (<see cref="RoleHeaderName"/> / <see cref="WorkspaceRoleHeaderName"/>;
+    /// ADR-022 w14 footer clause 1; ADR-025 §E). <b>Demoted, not removed.</b>
+    /// <see cref="ResolveAsync"/> no longer calls this —
     /// the only thing a header can still shape anywhere in this host is non-authoritative UI
     /// affordance on <c>GET /api/capabilities</c>, which parses the same two header names
     /// independently through <see cref="WorkspaceRoleClaimResolver"/> directly rather than through
