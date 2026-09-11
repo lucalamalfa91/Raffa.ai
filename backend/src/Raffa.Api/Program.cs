@@ -42,11 +42,12 @@ var documentsContractsConnectionString = builder.Configuration.GetConnectionStri
 
 builder.Services.AddDocumentsContractsModule(documentsContractsConnectionString);
 
-// Task E13/F04/US01/T02 (documents-v2-api): resolves the caller's workspace role for the
-// Admin-only document endpoints (reprocess, delete). Lives in the host because it reads the
-// Identity/Workspace membership table AND the request's own claims/headers -- see
-// Raffa.Api.Infrastructure.WorkspaceRoleResolver for the three-source order and why the
-// interim header/membership branches exist while ADR-010 is not wired.
+// Task E13/F04/US01/T02 (documents-v2-api), narrowed by task E14/F02/US02/T01 (wave w14, ADR-022
+// w14 footer / ADR-025 §E): resolves the caller's workspace role for the Admin-only document
+// endpoints (reprocess, delete). Lives in the host because it reads the Identity/Workspace
+// membership table AND the request's own claims -- see Raffa.Api.Infrastructure.WorkspaceRoleResolver
+// for the two-source order (claims, then membership) and why a client-declared X-Role/
+// X-Workspace-Role header is no longer one of them.
 builder.Services.AddScoped<WorkspaceRoleResolver>();
 
 // Task E14/F02/US01/T01 (wave w14 "workspace is real", ADR-025 §A1): the one identity seam every
