@@ -683,10 +683,14 @@ export interface paths {
   };
   "/api/workspaces/{tenantId}/members": {
     get: operations["getWorkspaceMembers"];
+  };
+  "/api/workspaces/{tenantId}/members/{membershipId}": {
     delete: operations["removeMember"];
   };
   "/api/workspaces/{tenantId}/invites": {
     post: operations["inviteWorkspaceMember"];
+  };
+  "/api/workspaces/{tenantId}/invites/{id}": {
     delete: operations["revokeInvitation"];
   };
   "/api/invites": {

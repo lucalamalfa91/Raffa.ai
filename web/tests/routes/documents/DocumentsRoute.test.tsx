@@ -24,6 +24,10 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     inviteWorkspaceMember: vi.fn(),
     listWorkspaces: vi.fn(),
     getWorkspaceMembers: vi.fn(),
+    revokeInvitation: vi.fn(),
+    removeMember: vi.fn(),
+    getInvitation: vi.fn(),
+    acceptInvitation: vi.fn(),
     uploadDocument: vi.fn(),
     getDocument: vi.fn(),
     // Task E13/F09/US01/T04 (web-ask-v2): this suite never reaches conversations/capabilities/

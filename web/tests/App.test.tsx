@@ -34,6 +34,12 @@ function mockApiClient(result: Promise<HealthCheckResult> | HealthCheckResult): 
     inviteWorkspaceMember: vi.fn(),
     listWorkspaces: vi.fn(),
     getWorkspaceMembers: vi.fn(),
+    // Task E15/F01/US01/T01 (wave w14, invitation lifecycle): plain stubs, same isolation
+    // convention as the rest of this mock -- this suite exercises none of them.
+    revokeInvitation: vi.fn(),
+    removeMember: vi.fn(),
+    getInvitation: vi.fn(),
+    acceptInvitation: vi.fn(),
     // Task E06/F05/US01/T01 (document-upload): exercised by
     // tests/routes/documents/*.test.tsx; a plain stub here so App's own
     // rendering stays isolated (same convention getHealth/createWorkspace
