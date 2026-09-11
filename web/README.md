@@ -204,14 +204,18 @@ from `markup.html`.
   structural guarantee independent of this component's own render order; the two rules are
   deliberately redundant ("C10a survives a refactor of this ordering, C10b survives a change to
   MSAL's own default").
-- **MSAL here is redirect-only** with one configured `redirectUri` (`msalConfig.ts`; `loginRedirect`
-  at `routes/signin/index.tsx`), so a signed-out invitee who signs in loses this page (and the
-  token) to the round-trip -- "sign in, then open the invitation link again" is the guaranteed flow,
-  not a fallback, and the "no token" state's own copy says exactly that, framed as a normal outcome,
-  never "this invitation is invalid" (which would send a user back to their Admin for a replacement
-  they do not need -- invitations are single-use, so that "fix" costs a real one). `loginPopup`
-  (not the app-wide `loginRedirect`) makes the signed-in-in-another-tab case single-click where the
-  browser allows it, because this page is never unloaded and memory survives either way.
+- **`/signin`'s own CTA is redirect-only** (`msalConfig.ts`; `loginRedirect` at
+  `routes/signin/index.tsx`), so a signed-out invitee who signs in from *there* loses this page (and
+  the token) to the round-trip -- "sign in, then open the invitation link again" is the guaranteed
+  flow, not a fallback, and the "no token" state's own copy says exactly that, framed as a normal
+  outcome, never "this invitation is invalid" (which would send a user back to their Admin for a
+  replacement they do not need -- invitations are single-use, so that "fix" costs a real one).
+  **This screen's own Entra CTA calls `loginPopup` instead** (ADR-012 w14 footer clause 6) -- the one
+  path on which the invitee never leaves the accept screen, so sign-in is single-click where the
+  browser allows it, because the page is never unloaded and the in-memory token survives the
+  round-trip. If the popup is blocked, closed, or otherwise fails to complete, `handleContinueWithEntra`
+  falls back to the same "no token" state a reload lands on -- one state either way, deliberately:
+  "the popup-blocked and reload cases share one state, so it ships regardless."
 - **After a successful accept**, the screen re-resolves the workspace list and enters it --
   membership is proven by the next `GET /api/workspaces`, never trusted from the accept response
   body, which is a hint only (the same "hint, not a trust" posture `workspaceStore.ts`'s session key

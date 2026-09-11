@@ -13,7 +13,7 @@ import AcceptInvitationRoute from "./index";
  */
 
 const navigateMock = vi.fn();
-const loginRedirectMock = vi.fn();
+const loginPopupMock = vi.fn();
 const logoutRedirectMock = vi.fn();
 let msalAccounts: Array<{ username: string; homeAccountId: string }> = [];
 
@@ -24,7 +24,7 @@ vi.mock("react-router-dom", async (importOriginal) => {
 
 vi.mock("@azure/msal-react", () => ({
   useMsal: () => ({
-    instance: { loginRedirect: loginRedirectMock, logoutRedirect: logoutRedirectMock },
+    instance: { loginPopup: loginPopupMock, logoutRedirect: logoutRedirectMock },
     accounts: msalAccounts,
   }),
 }));
@@ -56,7 +56,7 @@ function renderAccept(apiClient: ApiClient) {
 beforeEach(() => {
   msalAccounts = [];
   navigateMock.mockClear();
-  loginRedirectMock.mockClear();
+  loginPopupMock.mockReset().mockResolvedValue({});
   logoutRedirectMock.mockClear();
   window.sessionStorage.clear();
   window.localStorage.clear();
@@ -115,8 +115,57 @@ describe("AcceptInvitationRoute", () => {
     const cta = screen.getByRole("button", { name: /continue with microsoft entra id/i });
     expect(screen.queryByRole("button", { name: /^join acme procurement$/i })).not.toBeInTheDocument();
 
+    // ADR-012 w14 footer clause 6: this screen's own CTA is `loginPopup`, never the app-wide
+    // `loginRedirect` -- the whole point is that this page is never unloaded, so the in-memory token
+    // (already spent fetching the offer above) survives the sign-in round-trip.
     await userEvent.click(cta);
-    expect(loginRedirectMock).toHaveBeenCalledTimes(1);
+    expect(loginPopupMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("ADR-012 w14 footer clause 6 -- a blocked/closed popup falls back to state 5, the same state a reload lands on", async () => {
+    setHash(`#${TOKEN}`);
+    msalAccounts = [];
+    loginPopupMock.mockRejectedValue(new Error("user_cancelled"));
+    renderAccept(
+      apiClientWith({
+        getInvitation: vi.fn().mockResolvedValue({
+          ok: true,
+          statusCode: 200,
+          invitation: { workspaceName: "Acme Procurement", role: "Procurement", expiresAt: "2026-12-01T00:00:00Z" },
+          error: null,
+        }),
+      }),
+    );
+
+    const cta = await screen.findByRole("button", { name: /continue with microsoft entra id/i });
+    await userEvent.click(cta);
+
+    expect(await screen.findByRole("heading", { name: /open your invitation link again/i })).toBeInTheDocument();
+    // State 5 carries no CTA (ADR-020's screen-11 table, row 5) -- a dead end by design, not a retry.
+    expect(screen.queryByRole("button", { name: /continue with microsoft entra id/i })).not.toBeInTheDocument();
+  });
+
+  it("a successful popup does not fall back to state 5 -- `useMsal()`'s own accounts update is what drives the CTA to Join", async () => {
+    setHash(`#${TOKEN}`);
+    msalAccounts = [];
+    loginPopupMock.mockResolvedValue({ account: { username: "user@example.test", homeAccountId: "home-1" } });
+    renderAccept(
+      apiClientWith({
+        getInvitation: vi.fn().mockResolvedValue({
+          ok: true,
+          statusCode: 200,
+          invitation: { workspaceName: "Acme Procurement", role: "Procurement", expiresAt: "2026-12-01T00:00:00Z" },
+          error: null,
+        }),
+      }),
+    );
+
+    const cta = await screen.findByRole("button", { name: /continue with microsoft entra id/i });
+    await userEvent.click(cta);
+
+    await waitFor(() => expect(loginPopupMock).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("heading", { name: /open your invitation link again/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /join acme procurement/i })).toBeInTheDocument();
   });
 
   it("state 3/4 -- valid, signed in: clicking Join calls acceptInvitation and disables the CTA meanwhile", async () => {

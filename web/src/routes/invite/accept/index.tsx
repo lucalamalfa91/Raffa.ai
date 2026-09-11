@@ -34,12 +34,25 @@ export interface AcceptInvitationRouteProps {
  * are needed because they fail differently -- C10a survives a refactor of *this* ordering, C10b
  * survives a change to MSAL's own default.
  *
- * **Guaranteed flow, by design.** MSAL here is redirect-only with one configured `redirectUri`
- * (`msalConfig.ts`; `loginRedirect` at `routes/signin/index.tsx`), so a signed-out invitee who signs
- * in loses this page (and the token) to the redirect round-trip -- "sign in, then open the invitation
+ * **Guaranteed flow, by design -- with one optimisation.** `/signin`'s own CTA
+ * (`routes/signin/index.tsx`) is redirect-only, so a signed-out invitee who signs in from *there*
+ * loses this page (and the token) to the redirect round-trip -- "sign in, then open the invitation
  * link again" is the guaranteed path, not a fallback. `WorkspacePickerScreen.tsx`'s empty-list state
  * carries the pointer back for exactly that reload/redirect landing (ADR-012 w14 footer clause 3,
  * corrected copy in ADR-020's own second w14 footer).
+ *
+ * **This screen's own Entra CTA is the one path that can beat the guarantee.** ADR-012 w14 footer
+ * clause 6 sanctions `loginPopup` *here, and only here* -- "the one path on which the invitee never
+ * leaves the accept screen" (the same footer's second amendment, point 4) -- because this page is
+ * never unloaded and the in-memory token survives a popup round-trip: single-click where the browser
+ * allows it. `handleContinueWithEntra` below calls `loginPopup`, not `loginRedirect`. On success this
+ * component does nothing further: `useMsal()`'s `accounts` (destructured above, already the reactive
+ * source `App.tsx`'s own top-level gate relies on) updates via MSAL's event system once the popup
+ * resolves, which alone turns the CTA into state 3's "Join" button -- no navigation, no local state
+ * change. If the popup is blocked, closed, or rejects for any other reason, the handler falls back to
+ * state 5 ("Open your invitation link again") -- **the same state a reload lands on, on purpose**:
+ * "the popup-blocked and reload cases share one state, so it ships regardless" (ADR-012 w14 footer
+ * clause 6). That state's copy already covers this without a dedicated eleventh state.
  */
 function readAndClearInvitationToken(): string | null {
   const { hash } = window.location;
@@ -157,7 +170,16 @@ export default function AcceptInvitationRoute({ apiClient, appConfig }: AcceptIn
   }, [apiClient, navigate, state, token]);
 
   const handleContinueWithEntra = () => {
-    void instance.loginRedirect(buildLoginRequest(appConfig));
+    // ADR-012 w14 footer clause 6: `loginPopup`, not the app-wide `loginRedirect` -- the request
+    // shape is identical (`{ scopes }`, `buildLoginRequest`'s only field), and structurally satisfies
+    // `PopupRequest` as well as `RedirectRequest`. A rejection (blocked popup, closed by the user, or
+    // any other failure) falls back to state 5, deliberately the same state a reload lands on --
+    // "the popup-blocked and reload cases share one state, so it ships regardless". Success needs no
+    // handling here: see the component header comment for why `useMsal()`'s `accounts` alone drives
+    // the CTA from "Continue with Microsoft Entra ID" to "Join".
+    instance.loginPopup(buildLoginRequest(appConfig)).catch(() => {
+      setState({ phase: "no-token" });
+    });
   };
 
   const handleSignOutAndSwitch = () => {
