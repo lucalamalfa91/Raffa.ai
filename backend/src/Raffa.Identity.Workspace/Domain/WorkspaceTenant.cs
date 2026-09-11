@@ -26,4 +26,32 @@ public sealed class WorkspaceTenant : TenantScopedEntity
     public required string Name { get; set; }
 
     public required DateTimeOffset CreatedAt { get; set; }
+
+    /// <summary>
+    /// Closed-list free text entered on the create form (NW-24; ADR-003 w14 amendment footer
+    /// clause 1; story us-01-identity-scoped-rls AC-5). Nullable, deliberately: existing rows
+    /// predate this column, and a NOT NULL column on a populated table would need a default that
+    /// is a fabricated business fact -- the trap this avoids is documented at
+    /// `QuoteLineConfiguration.cs:45-49` (EF backfilling a new NOT NULL enum-as-string with `""`
+    /// the converter then cannot parse), with the nullable precedent at `quotes.sql:163,170`. A
+    /// missing value renders as absent, never as an invented one.
+    /// </summary>
+    public string? Industry { get; set; }
+
+    /// <summary>
+    /// ISO 3166-1 alpha-2, closed list at the UI (NW-24; ADR-003 w14 footer clause 1). Nullable for
+    /// the same reason as <see cref="Industry"/> (`quotes.sql:195` precedent). Drives
+    /// <see cref="Currency"/>'s derivation -- a later task's job, not this one's.
+    /// </summary>
+    public string? Country { get; set; }
+
+    /// <summary>
+    /// ISO 4217 alpha-3. Derived from <see cref="Country"/> and stored, never typed by a user
+    /// (ADR-001 w14 footer; ADR-003 w14 footer clause 1) -- a display default that never overrides
+    /// a contract's own extracted currency (converting a validated fact would breach product spec
+    /// §2's "AI is not the database"). Nullable for the same reason as <see cref="Industry"/>
+    /// (`quotes.sql:202` precedent); the derivation itself is a later task's job (ADR-003 w14
+    /// footer names E14/F03/US01/T01).
+    /// </summary>
+    public string? Currency { get; set; }
 }
