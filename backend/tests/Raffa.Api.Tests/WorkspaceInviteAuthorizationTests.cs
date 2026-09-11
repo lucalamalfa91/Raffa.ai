@@ -23,6 +23,15 @@ namespace Raffa.Api.Tests;
 /// class proves the fix end to end, over the real HTTP pipeline and a real (in-memory) membership
 /// table, not just the guard logic in isolation: 401 (no identity) -&gt; 404 (non-member, never
 /// 403 — a tenant-existence oracle) -&gt; 403 (member, wrong role) -&gt; 201 (Admin).
+///
+/// <para>
+/// Also carries ADR-025 §H's T2(a) — "every task in this wave must carry" — a caller who sends a
+/// static <c>X-Role</c>/<c>X-Workspace-Role: Admin</c> header must never be treated as Admin here:
+/// the guard reads <c>workspace_membership</c> only, never a header or a claim (see
+/// <c>WorkspaceInvitesEndpointExtensions.ResolveMembershipRoleAsync</c>'s own doc comment for why it
+/// does not call <c>WorkspaceRoleResolver.ResolveAsync</c>, whose header branch would otherwise run
+/// first).
+/// </para>
 /// </summary>
 public sealed class WorkspaceInviteAuthorizationTests : IClassFixture<WebApplicationFactory<Program>>
 {
@@ -142,6 +151,53 @@ public sealed class WorkspaceInviteAuthorizationTests : IClassFixture<WebApplica
         var response = await client.SendAsync(request);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Spoofed_admin_role_header_from_a_non_member_still_gets_404_never_201()
+    {
+        var factory = WithInMemoryIdentity();
+        var client = factory.CreateClient();
+        var tenantId = Guid.NewGuid();
+
+        // ADR-025 §H T2(a) (non-negotiable): "stranger@acme.example" holds no membership row
+        // anywhere. A self-declared X-Role/X-Workspace-Role header must not buy Admin — the guard
+        // must still answer 404 (never 403, a tenant-existence oracle; never 201).
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/workspaces/{tenantId}/invites")
+        {
+            Content = JsonContent.Create(new { email = "new.hire@acme.example", role = "Procurement" }),
+        };
+        request.Headers.Add("X-User-Id", "stranger@acme.example");
+        request.Headers.Add("X-Role", "Admin");
+        request.Headers.Add("X-Workspace-Role", "Admin");
+
+        var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Spoofed_admin_role_header_from_a_real_procurement_member_still_gets_403_never_201()
+    {
+        var factory = WithInMemoryIdentity();
+        var client = factory.CreateClient();
+        var tenantId = Guid.NewGuid();
+        await SeedMembershipAsync(factory, tenantId, "buyer@acme.example", WorkspaceRoleName.Procurement);
+
+        // ADR-025 §H T2(a) (non-negotiable): "buyer@acme.example" is a real member, but Procurement,
+        // not Admin. A self-declared X-Role/X-Workspace-Role header must not override the caller's
+        // own live membership row — the guard must still answer 403, never 201.
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/workspaces/{tenantId}/invites")
+        {
+            Content = JsonContent.Create(new { email = "new.hire@acme.example", role = "Procurement" }),
+        };
+        request.Headers.Add("X-User-Id", "buyer@acme.example");
+        request.Headers.Add("X-Role", "Admin");
+        request.Headers.Add("X-Workspace-Role", "Admin");
+
+        var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
     // ----- helpers -----
