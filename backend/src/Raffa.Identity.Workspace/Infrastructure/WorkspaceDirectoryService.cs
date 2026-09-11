@@ -38,9 +38,11 @@ public sealed class WorkspaceDirectoryService(
     /// <summary>
     /// Discovery cap (ADR-025 Rule F.1f, ADR-009 w14 footer clause 4): memberships per identity are
     /// 1–2 at pilot scale, so a request needing more than this is either a data anomaly or a
-    /// caller-controlled-identity DoS shape — either way, bounded, not unbounded.
+    /// caller-controlled-identity DoS shape — either way, bounded, not unbounded. Public so
+    /// <c>WorkspaceDirectoryServiceTests</c> asserts against this one definition rather than a
+    /// duplicated magic number that could silently drift from it.
     /// </summary>
-    internal const int MaxCandidates = 50;
+    public const int MaxCandidates = 50;
 
     /// <summary>
     /// Two-phase workspace discovery for <paramref name="identity"/> (ADR-026 §D1):
