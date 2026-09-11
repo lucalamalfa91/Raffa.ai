@@ -201,6 +201,15 @@ public sealed class InvitationLifecycleEndpointTests : IClassFixture<InvitationL
         var tenant = new TenantId(tenantId);
         using var _ = scope.ServiceProvider.GetRequiredService<Raffa.SharedKernel.Tenancy.ITenantContext>().BeginScope(tenant);
         Assert.Empty(await db.WorkspaceMemberships.Where(m => m.TenantId == tenant).ToListAsync());
+
+        // ADR-025 §G: a mismatched accept is one of the nine named audit actions -- the security-
+        // relevant event of someone attempting to accept an invitation that was not theirs must not
+        // go unaudited. The invited address may appear in Detail (a different channel than the 403
+        // body Rule D.3b guards), attributed to the impostor identity that actually made the call.
+        Assert.Contains(_fixture.AuditWriter.Entries, entry =>
+            entry.Action == "workspace.invitation.rejected"
+            && entry.Actor == "impostor@mismatch.example"
+            && entry.Detail == "email=real@mismatch.example");
     }
 
     [Fact]

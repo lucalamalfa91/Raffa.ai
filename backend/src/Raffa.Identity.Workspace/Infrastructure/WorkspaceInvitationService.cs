@@ -196,7 +196,17 @@ public sealed class WorkspaceInvitationService(
 
         if (!string.Equals(invitation.Email, signedInIdentity, StringComparison.OrdinalIgnoreCase))
         {
-            // Rule D.3b: never echo the invited address.
+            // Rule D.3b: never echo the invited address in the HTTP response below. The audit
+            // Detail is a different channel -- coding objective #8's own "Detail may carry the
+            // invited email and the role" allowance -- and .rejected is one of the nine named
+            // actions (ADR-025 §G): a mismatched accept is the security-relevant event of someone
+            // attempting to accept an invitation that was not theirs, and it must not go unaudited.
+            await auditWriter.WriteAsync(
+                new AuditEntry(
+                    tenantId, signedInIdentity, "workspace.invitation.rejected", "WorkspaceInvitation",
+                    invitation.Id.Value.ToString(), clock.UtcNow, $"email={invitation.Email}"),
+                cancellationToken).ConfigureAwait(false);
+
             return InvitationAcceptResult.Failure(
                 MembershipOperationStatus.Forbidden, "the signed-in identity does not match the invited address.");
         }

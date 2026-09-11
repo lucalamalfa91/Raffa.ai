@@ -22,10 +22,16 @@ public sealed class NullInvitationMailer(ILogger<NullInvitationMailer> logger) :
         string acceptUrl,
         CancellationToken cancellationToken = default)
     {
+        // AC-10 / Rule C10: the token -- and therefore acceptUrl, which embeds it verbatim after
+        // AcceptRoutePrefix -- appears in no audit row and no log sink, this one included. The
+        // parameter stays part of the signature (every IInvitationMailer implementation needs it to
+        // actually deliver the link) but is deliberately never interpolated here; the 201 response
+        // body is the link's only channel, and the Members UI renders it as a copyable value.
         logger.LogInformation(
             "Invitation mail not sent (no transport configured in w14, OQ-w14-002): " +
-            "{Email} invited to workspace '{WorkspaceName}' as {Role}. Accept link: {AcceptUrl}",
-            email, workspaceName, role, acceptUrl);
+            "{Email} invited to workspace '{WorkspaceName}' as {Role}. The accept link was not " +
+            "logged (AC-10) -- it is only in the caller's 201 response.",
+            email, workspaceName, role);
 
         return Task.FromResult(false);
     }
