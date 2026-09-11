@@ -4,22 +4,20 @@ import userEvent from "@testing-library/user-event";
 import { InteractionStatus } from "@azure/msal-browser";
 import SignInRoute from "../../../src/routes/signin";
 import type { AppConfig } from "../../../src/config/appConfig";
-import type { ApiClient, CreateWorkspaceResult } from "../../../src/api/client";
+import type { ApiClient, WorkspaceSummaryBody } from "../../../src/api/client";
+import type { WorkspacePickerState } from "../../../src/routes/signin/WorkspacePickerScreen";
 
-// SignInRoute (src/routes/signin/index.tsx) is the composition root for
-// screen 1 (ADR-018 route `/signin`): it owns the MSAL useMsal() branch
-// between SignInScreen and WorkspacePickerScreen. Mocking useMsal isolates
-// that branch/wiring; MSAL's own redirect/PKCE plumbing is exercised by the
-// library's own test suite (same convention tests/App.test.tsx already used
-// for task E01/F07/US01/T02).
+// SignInRoute (src/routes/signin/index.tsx) is screen 1's thin composition root (ADR-018 route
+// `/signin`): it owns only the MSAL useMsal() branch between SignInScreen and WorkspacePickerScreen.
 //
-// This suite is the task's named "e2e | sign-in -> workspace list" proof
-// (task-01-signin-workspace-picker.md "Tests required"): no browser-e2e tool
-// (Playwright/Cypress/...) exists anywhere in this repo yet, so -- following
-// the same precedent tests/App.test.tsx already set for AC-1's OIDC flow --
-// this drives the full flow (unauthenticated -> click Continue -> signed in
-// -> create a workspace -> workspace list) through Testing Library + jsdom,
-// the closest available proof to "works in the browser" in this harness.
+// Task E14/F03/US02/T01 (wave w14 "workspace is real") moved the actual workspace resolution -- the
+// async apiClient.listWorkspaces() call, and the empty/one/many-with-hint decision -- up into
+// App.tsx's own AuthenticatedGate. This route now renders whichever outcome that gate's `picker`
+// prop carries; it no longer fetches, creates, or lists anything itself. This suite proves the
+// wiring (picker === null -> SignInScreen; picker !== null -> WorkspacePickerScreen, with
+// state/onRetry/onEnter passed through unchanged) -- not the resolution logic itself (see
+// WorkspacePickerScreen.test.tsx for the resolution-order/segment-contract coverage, and
+// tests/App.test.tsx for the end-to-end gate this route is one leaf of).
 const useMsalMock = vi.fn();
 
 vi.mock("@azure/msal-react", () => ({
@@ -34,10 +32,10 @@ const appConfig: AppConfig = {
   oidcApiScopes: ["api://11111111-1111-1111-1111-111111111111/Raffa.Read"],
 };
 
-function mockApiClient(createWorkspace: ApiClient["createWorkspace"] = vi.fn()): ApiClient {
+function mockApiClient(): ApiClient {
   return {
     getHealth: vi.fn(),
-    createWorkspace,
+    createWorkspace: vi.fn(),
     inviteWorkspaceMember: vi.fn(),
     listWorkspaces: vi.fn(),
     getWorkspaceMembers: vi.fn(),
@@ -47,39 +45,26 @@ function mockApiClient(createWorkspace: ApiClient["createWorkspace"] = vi.fn()):
     acceptInvitation: vi.fn(),
     uploadDocument: vi.fn(),
     getDocument: vi.fn(),
-    // Task E13/F09/US01/T03 (web-documents-v2): this suite does not exercise Documents -- bare
-    // vi.fn() is enough, same convention as getPortfolio below.
     listDocuments: vi.fn(),
     getDocumentPreviewUrl: vi.fn(),
     reprocessDocument: vi.fn(),
     deleteDocument: vi.fn(),
     getPortfolio: vi.fn(),
-    // Task E07/F02/US01/T01 (contract-360): this suite never reaches Contract 360 -- bare vi.fn().
     getContract360: vi.fn(),
     getRenewals: vi.fn(),
     getRenewalPriority: vi.fn(),
-    // Task E07/F03/US01/T01 (field-review-correction): this suite never reaches the Review screen --
-    // bare vi.fn() is enough, same convention as getContract360 above.
     getCorrectionHistory: vi.fn(),
     correctContract: vi.fn(),
     getContractEvidence: vi.fn(),
     validateDocument: vi.fn(),
-    // Task E08/F01/US01/T01 (renewal-pipeline): this suite never reaches the Renewals screen --
-    // bare vi.fn() is enough, same convention as getContract360 above.
     postRenewalAction: vi.fn(),
-    // Task E08/F03/US01/T01 (quote-check-ui): this suite never reaches the Quote Check screen --
-    // bare vi.fn() is enough, same convention as getCorrectionHistory above.
     uploadQuote: vi.fn(),
     getQuoteAssessment: vi.fn(),
     recalculateQuoteAssessment: vi.fn(),
     captureNegotiationOutcome: vi.fn(),
     askRaffa: vi.fn(),
-    // Task E08/F02/US01/T01 (savings-home): this suite never reaches Home's own fetch-outcome
-    // matrix -- bare vi.fn() is enough, same convention as getContract360 above.
     getSavingsKpis: vi.fn(),
     getSavingsOpportunities: vi.fn(),
-    // Task E13/F09/US01/T04 (web-ask-v2): this suite never reaches conversations/capabilities/
-    // market -- bare vi.fn() is enough, same convention as getContract360 above.
     listConversations: vi.fn(),
     createConversation: vi.fn(),
     getConversation: vi.fn(),
@@ -89,7 +74,15 @@ function mockApiClient(createWorkspace: ApiClient["createWorkspace"] = vi.fn()):
   };
 }
 
-describe("SignInRoute (sign-in -> workspace list)", () => {
+const acme: WorkspaceSummaryBody = {
+  id: "w-1",
+  name: "Acme Procurement",
+  createdAt: "2026-09-06T08:00:00Z",
+  role: "Admin",
+  contractCount: 0,
+};
+
+describe("SignInRoute (composition root: SignInScreen <-> WorkspacePickerScreen)", () => {
   beforeEach(() => {
     window.localStorage.clear();
     window.sessionStorage.clear();
@@ -103,65 +96,69 @@ describe("SignInRoute (sign-in -> workspace list)", () => {
       inProgress: InteractionStatus.None,
     });
 
-    render(<SignInRoute appConfig={appConfig} apiClient={mockApiClient()} />);
+    render(<SignInRoute appConfig={appConfig} apiClient={mockApiClient()} picker={null} />);
     await userEvent.click(screen.getByRole("button", { name: /continue with microsoft entra id/i }));
 
     expect(loginRedirect).toHaveBeenCalledWith(expect.objectContaining({ scopes: appConfig.oidcApiScopes }));
   });
 
-  it("walks sign-in -> create workspace -> workspace list end to end", async () => {
-    useMsalMock.mockReturnValue({
-      instance: { loginRedirect: vi.fn(), logoutRedirect: vi.fn() },
-      accounts: [],
-      inProgress: InteractionStatus.None,
-    });
-    const created: CreateWorkspaceResult = {
-      ok: true,
-      statusCode: 201,
-      workspace: { id: "w-1", name: "Acme Procurement", createdAt: "2026-09-06T08:00:00Z", role: "Admin" },
-      error: null,
-    };
-    const apiClient = mockApiClient(vi.fn().mockResolvedValue(created));
-
-    const { rerender } = render(<SignInRoute appConfig={appConfig} apiClient={apiClient} />);
-
-    // Stage 1: idle, unauthenticated.
-    expect(screen.getByRole("button", { name: /continue with microsoft entra id/i })).toBeInTheDocument();
-
-    // Stage 2: MSAL is processing the redirect response (return leg) --
-    // still no account yet, but the CTA reflects "in flight".
+  it("reflects MSAL's own in-flight redirect state (the return leg) on the idle CTA", () => {
     useMsalMock.mockReturnValue({
       instance: { loginRedirect: vi.fn(), logoutRedirect: vi.fn() },
       accounts: [],
       inProgress: InteractionStatus.HandleRedirect,
     });
-    rerender(<SignInRoute appConfig={appConfig} apiClient={apiClient} />);
-    expect(screen.getByRole("button", { name: /redirecting to login\.microsoftonline\.com/i })).toBeDisabled();
 
-    // Stage 3: signed in -- the workspace picker takes over.
+    render(<SignInRoute appConfig={appConfig} apiClient={mockApiClient()} picker={null} />);
+
+    expect(screen.getByRole("button", { name: /redirecting to login\.microsoftonline\.com/i })).toBeDisabled();
+  });
+
+  it("shows the sign-in screen (not the picker) whenever picker is null, even with an account -- App.tsx's gate has not resolved yet", () => {
     useMsalMock.mockReturnValue({
       instance: { loginRedirect: vi.fn(), logoutRedirect: vi.fn() },
       accounts: [{ username: "user@example.test", homeAccountId: "home-1" }],
       inProgress: InteractionStatus.None,
     });
-    rerender(<SignInRoute appConfig={appConfig} apiClient={apiClient} />);
+
+    render(<SignInRoute appConfig={appConfig} apiClient={mockApiClient()} picker={null} />);
+
+    expect(screen.getByRole("button", { name: /continue with microsoft entra id/i })).toBeInTheDocument();
+  });
+
+  it("renders the workspace picker, wired to the picker prop's state/onEnter, once an account and a picker are both present", async () => {
+    useMsalMock.mockReturnValue({
+      instance: { loginRedirect: vi.fn(), logoutRedirect: vi.fn() },
+      accounts: [{ username: "user@example.test", homeAccountId: "home-1" }],
+      inProgress: InteractionStatus.None,
+    });
+    const onEnter = vi.fn();
+    const state: WorkspacePickerState = { phase: "pick", workspaces: [acme] };
+
+    render(
+      <SignInRoute appConfig={appConfig} apiClient={mockApiClient()} picker={{ state, onRetry: vi.fn(), onEnter }} />,
+    );
 
     expect(screen.getByRole("heading", { name: /choose a workspace/i })).toBeInTheDocument();
-    expect(screen.getByText(/no workspaces yet/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /acme procurement/i }));
+    expect(onEnter).toHaveBeenCalledWith(acme);
+  });
 
-    // Stage 4: create a workspace -> it becomes the (only) entry in the list
-    // and the user lands in it.
-    await userEvent.click(screen.getByRole("button", { name: /\+ create a new workspace/i }));
-    await userEvent.type(screen.getByLabelText(/workspace name/i), "Acme Procurement");
-    await userEvent.click(screen.getByRole("button", { name: /^create workspace$/i }));
+  it("surfaces the error state's Retry through the picker prop's onRetry", async () => {
+    useMsalMock.mockReturnValue({
+      instance: { loginRedirect: vi.fn(), logoutRedirect: vi.fn() },
+      accounts: [{ username: "user@example.test", homeAccountId: "home-1" }],
+      inProgress: InteractionStatus.None,
+    });
+    const onRetry = vi.fn();
+    const state: WorkspacePickerState = { phase: "error", message: "The workspace list is unavailable." };
 
-    expect(await screen.findByRole("heading", { name: /you.re in acme procurement/i })).toBeInTheDocument();
+    render(
+      <SignInRoute appConfig={appConfig} apiClient={mockApiClient()} picker={{ state, onRetry, onEnter: vi.fn() }} />,
+    );
 
-    // Stage 5: switching workspace surfaces it in the (now non-empty) list --
-    // this is the literal "workspace list" the test proves.
-    await userEvent.click(screen.getByRole("button", { name: /switch workspace/i }));
-    expect(screen.getByRole("button", { name: /acme procurement/i })).toBeInTheDocument();
-    expect(screen.queryByText(/no workspaces yet/i)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /retry/i }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
   it("signs out from the workspace picker", async () => {
@@ -171,8 +168,15 @@ describe("SignInRoute (sign-in -> workspace list)", () => {
       accounts: [{ username: "user@example.test", homeAccountId: "home-1" }],
       inProgress: InteractionStatus.None,
     });
+    const state: WorkspacePickerState = { phase: "empty" };
 
-    render(<SignInRoute appConfig={appConfig} apiClient={mockApiClient()} />);
+    render(
+      <SignInRoute
+        appConfig={appConfig}
+        apiClient={mockApiClient()}
+        picker={{ state, onRetry: vi.fn(), onEnter: vi.fn() }}
+      />,
+    );
     await userEvent.click(screen.getByRole("button", { name: /sign out/i }));
 
     expect(logoutRedirect).toHaveBeenCalledTimes(1);
