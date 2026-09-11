@@ -41,15 +41,47 @@
 --   savings opportunity #1  : 00000000-0000-0000-0000-000000000011  (AWS EC2, High confidence)
 --   savings opportunity #2  : 00000000-0000-0000-0000-000000000012  (Zoom, Medium confidence)
 --   savings opportunity #3  : 00000000-0000-0000-0000-000000000013  (Snowflake, Low confidence)
+--   admin workspace_user    : 00000000-0000-0000-0000-000000000003  (task E14/F05/US01/T01)
+--   admin membership        : 00000000-0000-0000-0000-000000000004  (task E14/F05/US01/T01)
+--   Admin workspace_role    : 00000000-0000-0000-0000-000000000005  (task E14/F05/US01/T01 -- only
+--                                                                     inserted if this tenant has none)
 --
 -- An operator/tester exercises the seeded tenant with:
 --   curl $API/api/savings -H "X-Tenant-Id: 00000000-0000-0000-0000-000000000001"
 --
 -- AC-4 ("Seed does not disable RLS for the API identity"): this script
--- never touches a role, a GRANT, or a policy -- it only sets the same
+-- never touches a role, a privilege grant, or a policy -- it only sets the same
 -- per-session `app.tenant_id` claim the application itself sets, so every
 -- INSERT below satisfies each table's own `tenant_isolation` policy
 -- `WITH CHECK` clause the ordinary way, not by bypassing it.
+--
+-- Admin membership for the fixture tenant (task E14/F05/US01/T01,
+-- membership-seed-and-backfill; ADR-022 fixture tenant; ADR-025 §2.3 /
+-- ADR-026 implication 9 -- there is no "claim this workspace" endpoint and
+-- `CreateWorkspaceAsync` never records a creator, so no tenant can be
+-- attributed retroactively by code). Once `GET /api/workspaces` lists by
+-- membership (NW-01), this SQL-only tenant is the one workspace no
+-- `POST /api/workspaces` call will ever touch, so it can never pick up an
+-- Admin membership from the ordinary create-workspace path -- these three
+-- rows are that missing grant, added the same way every other row in this
+-- file is added: a fixed, documented id and `ON CONFLICT (id) DO NOTHING`.
+-- ADR-016's w14 footer: seeds and backfills are data-plane acts and are
+-- never promoted -- this script runs again, unmodified, against `demo`
+-- itself; the row is never copied from `dev`. A real (non-`dev`/`demo`)
+-- tenant's Admin membership is backfilled by
+-- `.github/workflows/backfill-workspace-membership.yml`, never by this file.
+--
+-- OQ-w14-dec-001: which email this membership binds to is an operator
+-- decision, not a value this checked-in, version-controlled script may
+-- hardcode. `demo_admin_email` below is an optional `psql` variable; its
+-- fallback is a documented, inert placeholder that grants nobody real
+-- access. The operator sets the `DEMO_ADMIN_EMAIL` GitHub Environment
+-- variable (read by `.github/workflows/seed-demo-fixture.yml`) once per
+-- environment before the first post-w14 seed.
+\if :{?demo_admin_email}
+\else
+\set demo_admin_email 'demo-admin@raffa.invalid'
+\endif
 SET app.tenant_id = '00000000-0000-0000-0000-000000000001';
 
 BEGIN;
@@ -143,6 +175,54 @@ VALUES (
     95000.00, 'USD', 8000.00, 21000.00, 0.36, 'Identified',
     NULL, now(), now(), '00000000-0000-0000-0000-000000000001'
 )
+ON CONFLICT (id) DO NOTHING;
+
+-- The fixture tenant predates the workspace_role catalogue
+-- (`WorkspaceFactory.CreateWorkspaceWithDefaultRoles` never ran for it -- it
+-- was inserted directly into `workspace` above, not through
+-- `WorkspaceProvisioningService.CreateWorkspaceAsync`), so it may hold zero
+-- `workspace_role` rows. Insert the Admin role under its own documented
+-- fixed id -- never invented, never `gen_random_uuid()`. Idempotent the same
+-- way as every other row here: the id is fixed and unique to this script, so
+-- a second run only ever conflicts on that same id.
+INSERT INTO workspace_role (id, name, created_at, tenant_id)
+VALUES (
+    '00000000-0000-0000-0000-000000000005',
+    'Admin',
+    now(),
+    '00000000-0000-0000-0000-000000000001'
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- The Admin workspace_user for the fixture tenant. `external_subject_id`
+-- stays NULL -- exactly the "invited but never signed in" shape
+-- `WorkspaceMembershipFactory.CreateInvitedUser` already produces for every
+-- other invited user in this codebase; ADR-010's OIDC linking (W15) is what
+-- would ever set it.
+INSERT INTO workspace_user (id, email, display_name, external_subject_id, created_at, tenant_id)
+VALUES (
+    '00000000-0000-0000-0000-000000000003',
+    lower(:'demo_admin_email'),
+    'Demo Admin',
+    NULL,
+    now(),
+    '00000000-0000-0000-0000-000000000001'
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- The Admin role id is looked up by name inside this same transaction --
+-- never assumed to be the `...0005` fallback above, in case this
+-- environment already carries that role under a different id.
+INSERT INTO workspace_membership (id, workspace_user_id, workspace_role_id, created_at, tenant_id)
+SELECT
+    '00000000-0000-0000-0000-000000000004',
+    '00000000-0000-0000-0000-000000000003',
+    workspace_role.id,
+    now(),
+    '00000000-0000-0000-0000-000000000001'
+FROM workspace_role
+WHERE workspace_role.tenant_id = '00000000-0000-0000-0000-000000000001'
+  AND workspace_role.name = 'Admin'
 ON CONFLICT (id) DO NOTHING;
 
 COMMIT;

@@ -120,19 +120,39 @@ jobs:
       # Honest failure instead of a confusing "relation does not exist" mid-
       # script if e09's schema apply has not run against this environment
       # yet (ADR-021's own apply order: schema, then this seed).
+      #
+      # `workspace_membership` joins the guard in task E14/F05/US01/T01
+      # (membership-seed-and-backfill): demo-fixture-seed.sql now also
+      # inserts an Admin workspace_membership row (ADR-025/ADR-026), so a
+      # `demo`/`dev` schema that predates w14 must fail here, honestly,
+      # rather than mid-script on that new INSERT.
       - name: Confirm e09 schema is present (ADR-021)
         run: |
           set -euo pipefail
-          PRESENT=$(psql -Atqc "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('workspace','contract','savings_opportunity');")
-          if [ "$PRESENT" -lt 3 ]; then
-            echo "::error::raffa_${TARGET_ENVIRONMENT} is missing workspace/contract/savings_opportunity -- run backend.yml's schema-apply (ADR-021) against this environment before seeding."
+          PRESENT=$(psql -Atqc "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('workspace','contract','savings_opportunity','workspace_membership');")
+          if [ "$PRESENT" -lt 4 ]; then
+            echo "::error::raffa_${TARGET_ENVIRONMENT} is missing workspace/contract/savings_opportunity/workspace_membership -- run backend.yml's schema-apply (ADR-021, including the w14 identity-workspace.sql membership tables) against this environment before seeding."
             exit 1
           fi
 
+      # `demo_admin_email` (OQ-w14-dec-001, task E14/F05/US01/T01): passed
+      # only when the operator has set the `DEMO_ADMIN_EMAIL` GitHub
+      # Environment variable for this environment -- otherwise omitted
+      # entirely so the script's own `\if :{?demo_admin_email}` fallback
+      # (the inert `demo-admin@raffa.invalid` placeholder) holds. Never pass
+      # an empty value: an explicitly-set-but-empty psql variable would
+      # still count as "defined" to `:{?demo_admin_email}` and skip that
+      # fallback.
       - name: Seed fixture benchmark + savings data (ADR-001, ADR-022)
+        env:
+          DEMO_ADMIN_EMAIL: ${{ vars.DEMO_ADMIN_EMAIL }}
         run: |
           set -euo pipefail
-          psql -v ON_ERROR_STOP=1 -f backend/scripts/demo-fixture-seed.sql
+          SEED_ARGS=(-v ON_ERROR_STOP=1)
+          if [ -n "${DEMO_ADMIN_EMAIL}" ]; then
+            SEED_ARGS+=(-v "demo_admin_email=${DEMO_ADMIN_EMAIL}")
+          fi
+          psql "${SEED_ARGS[@]}" -f backend/scripts/demo-fixture-seed.sql
 
       # "Prove the seed landed" (parent story us-01-seed-demo-db's own
       # Definition of done: "GET /api/savings ... returns at least one
