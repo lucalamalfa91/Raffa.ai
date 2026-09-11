@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Raffa.Identity.Workspace.Infrastructure;
@@ -11,9 +12,11 @@ using Raffa.Identity.Workspace.Infrastructure;
 namespace Raffa.Identity.Workspace.Migrations
 {
     [DbContext(typeof(IdentityWorkspaceDbContext))]
-    partial class IdentityWorkspaceDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260911084444_AddWorkspaceInvitation")]
+    partial class AddWorkspaceInvitation
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
