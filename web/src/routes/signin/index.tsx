@@ -1,31 +1,39 @@
 import { useMsal } from "@azure/msal-react";
 import { InteractionStatus } from "@azure/msal-browser";
 import type { AppConfig } from "../../config/appConfig";
-import type { ApiClient } from "../../api/client";
+import type { ApiClient, WorkspaceSummaryBody } from "../../api/client";
 import { buildLoginRequest } from "../../auth/msalConfig";
 import SignInScreen from "./SignInScreen";
-import WorkspacePickerScreen from "./WorkspacePickerScreen";
+import WorkspacePickerScreen, { type WorkspacePickerState } from "./WorkspacePickerScreen";
 import "./signin.css";
 
 export interface SignInRouteProps {
   appConfig: AppConfig;
   apiClient: ApiClient;
+  /**
+   * Task E14/F03/US02/T01 (wave w14): non-`null` exactly when `App.tsx` has an account but has not
+   * (yet, or ever, on this attempt) resolved a definite workspace to enter -- the async counterpart
+   * of the old, purely-synchronous `!account || !workspace` gate. `App.tsx` owns the one
+   * `apiClient.listWorkspaces()` call this resolution is built on and the session hint it revalidates
+   * against; this route only renders whatever that resolution decided.
+   */
+  picker: {
+    state: WorkspacePickerState;
+    onRetry: () => void;
+    onEnter: (workspace: WorkspaceSummaryBody) => void;
+  } | null;
 }
 
 /**
- * ADR-018 route `/signin`: Entra sign-in -> workspace picker, with the
- * redirect state in between (story us-01-signin-workspace-picker, AC-1/AC-2).
+ * ADR-018 route `/signin`: Entra sign-in -> workspace picker (story
+ * us-02-signin-resolves-from-server).
  *
- * No client-side router is wired into this app yet (web/package.json has no
- * `react-router-dom`) -- introducing one is E06/F03/US02/T01's
- * ("navigation-shell") job, since it also owns the admin/procurement route
- * guards a real router enables (ADR-018 "roles are a permission gate, not an
- * IA fork"). This component is gated on MSAL auth state instead, the same
- * mechanism src/App.tsx used for its own pre-this-task inline sign-in/out
- * shell (see git history / task E01/F07/US01/T02) -- swapping that gate for
- * a `<Route path="/signin">` later does not change either screen underneath.
+ * No client-side router path is dedicated to this screen (`App.tsx`'s gate renders it directly,
+ * independent of the actual URL) -- unchanged from every task before this one; the `BrowserRouter`
+ * this wave hoists into `App.tsx` exists for `/invite/accept`'s public branch, not to give this
+ * screen a route of its own.
  */
-export default function SignInRoute({ appConfig, apiClient }: SignInRouteProps) {
+export default function SignInRoute({ appConfig, apiClient, picker }: SignInRouteProps) {
   const { instance, accounts, inProgress } = useMsal();
   const account = accounts[0];
   const interactionInFlight = inProgress !== InteractionStatus.None;
@@ -38,16 +46,18 @@ export default function SignInRoute({ appConfig, apiClient }: SignInRouteProps) 
     void instance.logoutRedirect();
   };
 
-  if (!account) {
+  if (!account || !picker) {
     return <SignInScreen onContinue={handleContinue} interactionInFlight={interactionInFlight} />;
   }
 
   return (
     <WorkspacePickerScreen
       apiClient={apiClient}
-      accountKey={account.homeAccountId}
       accountLabel={account.username}
       onSignOut={handleSignOut}
+      state={picker.state}
+      onRetry={picker.onRetry}
+      onEnter={picker.onEnter}
     />
   );
 }

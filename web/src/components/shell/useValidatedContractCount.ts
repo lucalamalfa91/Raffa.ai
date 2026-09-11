@@ -1,28 +1,35 @@
 import { useEffect, useState } from "react";
-import type { ApiClient, PortfolioListItem } from "../../api/client";
-import { isValidatedContractStatus } from "../../routes/contracts/contractStatus";
+import type { ApiClient } from "../../api/client";
 import { loadCurrentWorkspace } from "../../routes/signin/workspaceStore";
 
 /**
  * `kbReady` / the secondary rail tier's count badge (ADR-024 V2 IA amendment; task E13/F09/US01/T01,
- * gap G-IA-V2). `app.jsx`: `kbReady=completedCids.length>0` (the prototype's own "at least one
- * document reached `completed`" gate) -- there is no dedicated "validated contracts" endpoint or
- * count field anywhere in this backend yet, so this hook reuses the one real, already-shipped
- * signal that approximates it: `GET /api/contracts` (`apiClient.getPortfolio`, already wired by
- * epic-07/feature-01-portfolio-ui). A contract only exists there once classification/extraction has
- * produced a `Contract` row at all, so "validated" here means "past every transient/blocking status
- * `GET /api/contracts` can report today" -- see `isValidatedContractStatus` below. `Contract.Status`
- * is free text (`../../routes/contracts/portfolioAttention.ts`'s own header comment has the full
- * provenance); this mirrors that file's own case-insensitive normalisation rather than re-deriving a
- * different rule for the same field, but is intentionally re-implemented here (not imported) since
- * `routes/contracts/**` is this task's own "do not touch" boundary (F09/T01's task text) and the two
- * screens are independent, separately-evolving features -- the same "duplicated, not imported"
- * precedent `../../routes/contracts/portfolioTableFormatters.ts`'s own `CONTRACT_TYPE_LABEL` comment
- * already sets for this exact situation.
+ * gap G-IA-V2).
+ *
+ * Task E14/F03/US02/T01 (wave w14 "workspace is real"; ADR-012/ADR-026 w14 footers): this hook used
+ * to approximate "validated" with `GET /api/contracts` (`apiClient.getPortfolio`) counted
+ * client-side against `isValidatedContractStatus` -- a heuristic its own comment admitted was capped
+ * at a page size and therefore undercounted any tenant past that ceiling. `GET /api/workspaces`
+ * (ADR-026 §D1) now carries the real definition as a field, `contractCount` -- "a contract is
+ * validated iff at least one linked document is `Completed`", computed server-side with a real
+ * `CountAsync`, not materialised and measured client-side -- so this hook reads *that* instead. The
+ * client-side predicate stops being a count definition here and is not duplicated: see
+ * `routes/contracts/contractStatus.ts`'s own updated header comment for why it survives only as a
+ * row-level display/filter helper elsewhere, and this hook's own promise to `AppShell.tsx`
+ * (`../../routes/ask/index.tsx`, `RailNav.tsx`'s secondary badges) that a screen never has to
+ * re-derive this number a different way -- **the two must never both produce a number.**
+ *
+ * `apiClient.listWorkspaces()` is a second, independent request from the one `App.tsx`'s own
+ * resolution already made -- this hook has no access to that earlier result, only to the same
+ * `apiClient` and the same revalidating endpoint every other caller of it uses -- but it is exactly
+ * as cheap and exactly as authoritative: **revalidation is the mechanism**, not a compromise, the
+ * same principle `workspaceStore.ts`'s own header comment states for the session hint this hook
+ * still reads to know *which* row is this caller's current one. That hint is never trusted for its
+ * own sake here either -- it only selects a row out of a response this hook fetched itself.
  */
 export interface ValidatedContractCountState {
-  /** Number of validated contracts on the tenant's first page (capped at `MAX_PAGE_SIZE` below --
-   * see that constant's own comment). `0` before the first fetch resolves or on a failed fetch --
+  /** The server's own count for the current workspace (`WorkspaceSummaryBody.contractCount`).
+   * `0` before the first fetch resolves, on a failed fetch, or while no workspace is current --
    * "no evidence, no claim": a badge/greyed state never assumes readiness it has not confirmed. */
   count: number;
   /** `count > 0` -- ADR-024's `kbReady` ("From your contracts" tier lights up after the first
@@ -32,22 +39,14 @@ export interface ValidatedContractCountState {
 
 const INITIAL_STATE: ValidatedContractCountState = { count: 0, kbReady: false };
 
-/** Same ceiling `../../routes/contracts/index.tsx`'s own "fetch-once, filter client-side" header
- * comment already uses for its own whole-portfolio read (`PortfolioPageRequest.MaxPageSize`) -- a
- * tenant with more validated contracts than this undercounts here exactly as that screen's own
- * attention-strip counts would, a known, shared limitation, not a new one this hook introduces. */
-const MAX_PAGE_SIZE = 100;
-
-function countValidated(items: readonly PortfolioListItem[]): number {
-  return items.filter((item) => isValidatedContractStatus(item.status)).length;
-}
-
 /**
  * Fetched once by the shell (`AppShell.tsx`), then passed down to `RailNav`/`GlobalAskBar` as plain
  * props -- this hook does not re-poll on navigation (matching this task's own text, "fetched once by
  * the shell"); a contract that becomes validated mid-session only updates the rail on the next full
  * shell mount, the same interim every other session-scoped read in this app already accepts
- * (`documentStore.ts`, `workspaceStore.ts`).
+ * (`documentStore.ts`, `workspaceStore.ts`). `routes/ask/index.tsx` calls this same hook a second
+ * time, independently -- both call sites end up reading the identical server field, so the picker
+ * and the rail (and Ask) cannot disagree about what "validated" means (N8's "rail matches").
  */
 export function useValidatedContractCount(apiClient: ApiClient): ValidatedContractCountState {
   const [state, setState] = useState<ValidatedContractCountState>(INITIAL_STATE);
@@ -57,13 +56,14 @@ export function useValidatedContractCount(apiClient: ApiClient): ValidatedContra
     if (!workspace) return;
     let cancelled = false;
 
-    void apiClient.getPortfolio(workspace.id, { pageSize: MAX_PAGE_SIZE }).then((result) => {
+    void apiClient.listWorkspaces().then((result) => {
       if (cancelled) return;
-      if (!result.ok || !result.portfolio) {
+      if (!result.ok || !result.workspaces) {
         setState(INITIAL_STATE);
         return;
       }
-      const count = countValidated(result.portfolio.items);
+      const row = result.workspaces.find((candidate) => candidate.id === workspace.id);
+      const count = row?.contractCount ?? 0;
       setState({ count, kbReady: count > 0 });
     });
 

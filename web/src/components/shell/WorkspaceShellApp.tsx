@@ -1,6 +1,5 @@
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
 import AppShell from "./AppShell";
-import RequireRole from "./RequireRole";
 import type { WorkspaceRole } from "./navItems";
 import type { ApiClient } from "../../api/client";
 import DocumentsRoute from "../../routes/documents";
@@ -14,6 +13,14 @@ import SavingsRoute from "../../routes/savings";
 import MembersRoute from "../../routes/workspace/members";
 
 export interface WorkspaceShellAppProps {
+  /**
+   * Task E14/F03/US02/T01 (wave w14 "workspace is real"): the id half of the one workspace
+   * `App.tsx`'s resolution already settled on -- threaded down so a route that needs the tenant id
+   * (today: `workspace/members`) reads it as a prop instead of re-deriving it from the session hint
+   * `routes/signin/workspaceStore.ts` now demotes to a revalidated-once-per-mount value, not a
+   * per-screen source of truth.
+   */
+  workspaceId: string;
   workspaceName: string;
   role: WorkspaceRole;
   userLabel: string;
@@ -37,13 +44,32 @@ export interface WorkspaceShellAppProps {
  * `renewals`, `quotes`, `quotes/:quoteId` and `workspace/members` all render their V2 screens
  * (`raffa-v2/screens-v2.md` #5-#10); `userLabel` reaches Renewals and Contract 360 as the owner
  * of every renewal action they post.
+ *
+ * Task E14/F03/US02/T01 (wave w14): `workspace/members` no longer wraps itself in `RequireRole` --
+ * the server role, not a client-side gate, decides what that screen renders for a non-Admin caller
+ * now that NW-04 ships a real roster endpoint (ADR-018 w14 design footer: "Procurement sees the
+ * roster, read-only", buildable for the first time this wave). `RequireRole.tsx` is untouched by
+ * this task; removing its wrap here is the whole of this task's half of that change.
+ *
+ * **Interface contract with `E15/F02/US01/T01`** (which owns `routes/workspace/members/**` and
+ * nothing else): `membersRouteProps` below spreads `workspaceId` and `role` onto `MembersRoute` in
+ * addition to its already-declared `apiClient`/`userLabel`. Spread rather than written as direct
+ * JSX attributes on purpose -- a same-phase sibling branch is what actually widens
+ * `MembersRouteProps` to declare them; spreading a separately-typed object is the one shape that
+ * type-checks against *either* the pre-merge or the post-merge signature (TypeScript's excess-
+ * property check only fires on a fresh literal assigned straight into a narrower target, not on a
+ * named variable spread into one), so this task's own build stays green before that merge and the
+ * two extra props start being consumed, unchanged, the moment it lands.
  */
-export function ShellRoutes({ workspaceName, role, userLabel, onSignOut, apiClient }: WorkspaceShellAppProps) {
+export function ShellRoutes({ workspaceId, workspaceName, role, userLabel, onSignOut, apiClient }: WorkspaceShellAppProps) {
+  const membersRouteProps = { apiClient, userLabel, workspaceId, role };
+
   return (
     <Routes>
       <Route
         element={
           <AppShell
+            workspaceId={workspaceId}
             workspaceName={workspaceName}
             role={role}
             userLabel={userLabel}
@@ -62,26 +88,25 @@ export function ShellRoutes({ workspaceName, role, userLabel, onSignOut, apiClie
         <Route path="renewals" element={<RenewalsRoute apiClient={apiClient} userLabel={userLabel} />} />
         <Route path="quotes" element={<QuoteCheckRoute apiClient={apiClient} />} />
         <Route path="quotes/:quoteId" element={<QuoteCheckRoute apiClient={apiClient} />} />
-        <Route path="documents" element={<DocumentsRoute apiClient={apiClient} />} />
+        <Route path="documents" element={<DocumentsRoute apiClient={apiClient} role={role} />} />
         <Route path="review" element={<Navigate to="/documents?filter=attention" replace />} />
-        <Route
-          path="workspace/members"
-          element={
-            <RequireRole role={role} allow="admin">
-              <MembersRoute apiClient={apiClient} userLabel={userLabel} />
-            </RequireRole>
-          }
-        />
+        <Route path="workspace/members" element={<MembersRoute {...membersRouteProps} />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
   );
 }
 
+/**
+ * Task E14/F03/US02/T01 (wave w14): `BrowserRouter` no longer mounts here. Every route used to
+ * live only once `App.tsx`'s own `account && workspace` gate passed, so a `BrowserRouter` at this
+ * level was the only router the signed-in app ever had. `/invite/accept` (ADR-018 w14 footer) is
+ * reachable signed out and with no workspace -- a state this component never renders for at all --
+ * so the router had to move up to `App.tsx`, which now mounts one `BrowserRouter` spanning both
+ * branches. `ShellRoutes` was already exported separately as a testing seam; that seam is what made
+ * this a supported change rather than a rewrite, and it is also why this component is now a thin,
+ * router-free wrapper rather than deleted outright -- `App.tsx` still imports it by this name.
+ */
 export default function WorkspaceShellApp(props: WorkspaceShellAppProps) {
-  return (
-    <BrowserRouter>
-      <ShellRoutes {...props} />
-    </BrowserRouter>
-  );
+  return <ShellRoutes {...props} />;
 }
