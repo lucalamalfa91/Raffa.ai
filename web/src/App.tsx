@@ -167,7 +167,7 @@ function AuthenticatedGate({ account, instance, appConfig, apiClient }: Authenti
 // above them at all, and `/invite/accept` (reachable signed out and with no
 // workspace, ADR-018 w14 footer) could not be added to that inner
 // `<Routes>`. One router now spans the whole app: a public branch for
-// `/invite/accept`, rendered outside the shell entirely, and `/*` falling
+// `/invite/accept`, rendered outside the shell entirely, and every other path falling
 // through to `AuthenticatedGate` above -- the same account/workspace gate
 // this component always ran, now able to coexist with a route the gate
 // itself must never see. `ShellRoutes` stays exported separately
