@@ -49,6 +49,16 @@ builder.Services.AddDocumentsContractsModule(documentsContractsConnectionString)
 // interim header/membership branches exist while ADR-010 is not wired.
 builder.Services.AddScoped<WorkspaceRoleResolver>();
 
+// Task E14/F02/US01/T01 (wave w14 "workspace is real", ADR-025 §A1): the one identity seam every
+// endpoint added or changed in this wave consumes instead of reading HttpRequest.Headers directly
+// -- W15 (NW-05) retires the interim X-User-Id header by editing only
+// Raffa.Api.Infrastructure.HeaderCallerIdentity, at this same registration. IHttpContextAccessor is
+// not otherwise registered by this host: ICallerIdentity.Resolve() takes no HttpContext parameter,
+// so it can be injected into a handler the same way WorkspaceProvisioningService/
+// WorkspaceMembershipService already are, not bound from the route.
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ICallerIdentity, HeaderCallerIdentity>();
+
 // Object storage (ADR-005 "Object storage" row, ADR-011): the Azure Blob Storage adapter is
 // wired here, in the host, and only here — domain modules see IDocumentStorage, never the Azure
 // SDK (ADR-002). Container name is fixed by Terraform (infra/modules/storage/main.tf).

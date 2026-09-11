@@ -160,8 +160,8 @@ that a second apply does not duplicate rows.
 | Method | Path | Notes |
 |--------|------|-------|
 | GET | `/health` | ASP.NET health checks |
-| POST | `/api/workspaces` | create workspace |
-| POST | `/api/workspaces/{tenantId}/invites` | invite; roles Admin / Procurement / Legal / Finance / ReadOnly |
+| POST | `/api/workspaces` | Create workspace (task E14/F02/US01/T01, wave w14; ADR-025 §D.2). Requires the caller identity `Raffa.Api.Infrastructure.ICallerIdentity` resolves from `X-User-Id` — absent is **401**, not 400 (creating a tenant is no longer the anonymous pre-auth signup step it used to be: it now writes an identity-keyed grant). The creator becomes this tenant's Admin *by virtue of creating it*, so 201 carries `{ id, name, createdAt, role: "Admin" }` — a `role` field in the request body is never read, let alone honoured |
+| POST | `/api/workspaces/{tenantId}/invites` | Invite; roles Admin / Procurement / Legal / Finance / ReadOnly. Guarded (task E14/F02/US01/T01, ADR-025 §D.1a — closed the wave's highest-priority security gap: this route previously had no authorization at all): caller identity required (else **401**), a live `workspace_membership` for that identity in the **route** tenant (else **404**, never 403 — a 403 on a tenant the caller does not belong to is a tenant-existence oracle), and that membership's role must be Admin (else **403**); an Admin may invite another Admin. The tenant is always the route value — `X-Tenant-Id` is not an input to this endpoint |
 | POST | `/api/documents` | multipart `file` + `X-Tenant-Id` header (optional `X-User-Id` names the actor of a rejection audit row). Task E13/F04/US01/T01 (documents-admission, ADR-024 “gate before persistence”) reordered this endpoint: size → **413**, format by extension *and* magic bytes → **415**, admission gate (parse/OCR → readable-text floor → `classify`) → **422** `{ rejected, detectedType, confidence, reason, hint }` with **nothing persisted** and one `document.rejected` audit row; only an admitted document is stored and then processed. Still runs `DocumentProcessingPipeline` (staged extraction → RAG indexing) synchronously before responding (task E02/F06/US01/T01, r1-integration) — reusing the gate's own parse and classification, so the `classify` role is called once per upload — and the response `processingStatus`/`contractId` reflect that run's outcome, not just the initial “Uploaded” write. See “Documents — admission gate” below |
 | GET | `/api/documents/{id}` | metadata/status; same header; `documentType` is the widened `ContractDocumentType` (`Msa`, `OrderForm`, `Amendment`, `Sow`, `RenewalLetter`, `Quote`, `Invoice`, `PriceList`, `Nda`, `Dpa`, `Other`) — task E13/F04/US01/T01 added the last five so “the documents around a contract” keep their own kind |
 | GET | `/api/documents` | Server-side Documents list (R-DOC-06/09; task E13/F04/US01/T02); `X-Tenant-Id` header; optional `status` (exact `DocumentProcessingStatus`), `page` (default 1), `pageSize` (default 25, max 100); response `{ items, page, pageSize, totalCount }`, each item `{ id, contractId, supplierName, fileName, documentType, processingStatus, stage, pageCount, createdAt, weakFactCount }` — `stage` is one of R-DOC-09's six real names and is present **only** while `processingStatus` is `Processing`; `supplierName` is resolved through `ISupplierNameLookup` when the Suppliers module is registered, `null` otherwise (never a raw id); `weakFactCount` counts this contract's distinct extracted fields whose latest evidence is missing or below 0.6 |
@@ -1398,7 +1398,7 @@ whole path). To manually smoke-test the same path against a running
 ```bash
 API=https://<api-host>
 TENANT=$(curl -s -X POST "$API/api/workspaces" -H 'Content-Type: application/json' \
-  -d '{"name":"Smoke Test Co"}' | jq -r .id)
+  -H 'X-User-Id: smoke-test@acme.example' -d '{"name":"Smoke Test Co"}' | jq -r .id)
 
 # 201 only for an admitted contract-related document: a non-contract PDF
 # gets 422 (reason not_a_contract | no_readable_text), an unsupported or
@@ -1708,7 +1708,7 @@ running `dev`/`demo` deployment:
 ```bash
 API=https://<api-host>
 TENANT=$(curl -s -X POST "$API/api/workspaces" -H 'Content-Type: application/json' \
-  -d '{"name":"Smoke Test Co"}' | jq -r .id)
+  -H 'X-User-Id: smoke-test@acme.example' -d '{"name":"Smoke Test Co"}' | jq -r .id)
 
 # A fresh tenant honestly starts at all-zero KPIs — no fabricated baseline.
 curl -s "$API/api/savings/kpis" -H "X-Tenant-Id: $TENANT" | jq .
@@ -2442,7 +2442,7 @@ To manually smoke-test the same path against a running `dev`/`demo` deployment:
 ```bash
 API=https://<api-host>
 TENANT=$(curl -s -X POST "$API/api/workspaces" -H 'Content-Type: application/json' \
-  -d '{"name":"Smoke Test Co"}' | jq -r .id)
+  -H 'X-User-Id: smoke-test@acme.example' -d '{"name":"Smoke Test Co"}' | jq -r .id)
 
 QUOTE=$(curl -s -X POST "$API/api/quotes" -H "X-Tenant-Id: $TENANT" \
   -F "file=@quote.pdf;type=application/pdf" \
