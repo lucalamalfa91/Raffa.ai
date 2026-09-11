@@ -153,7 +153,46 @@ is needed. `Raffa.IntegrationTests.DemoFixtureSeedEndToEndTests` (via
 read from disk, applied to a real Postgres+RLS Testcontainer, never
 re-typed into the test — makes `GET /api/savings` return the three seeded
 opportunities for the demo tenant and nothing for any other tenant, and
-that a second apply does not duplicate rows.
+that a second apply does not duplicate rows. The workflow's schema guard
+also requires `workspace_membership` to exist (task E14/F05/US01/T01), so
+seeding a `demo`/`dev` whose schema predates w14 fails honestly at that
+guard instead of obscurely mid-script.
+
+**Admin membership for the fixture tenant, and the backfill for everything
+else (task E14/F05/US01/T01, ADR-025, ADR-026, w14):** once
+`GET /api/workspaces` lists by membership (NW-01), the ADR-022 fixture
+tenant above — seeded by SQL, never by `POST /api/workspaces` — can never
+pick up a membership row from the ordinary create-workspace path.
+`demo-fixture-seed.sql` now also inserts one Admin `workspace_user` (fixed
+id `...0003`) and `workspace_membership` (`...0004`) for that tenant, and
+the Admin `workspace_role` itself (`...0005`) if the tenant does not
+already have one — same fixed-id / `ON CONFLICT (id) DO NOTHING`
+convention as every other row in the file. The email is an optional `psql`
+variable, `demo_admin_email`, falling back to the inert placeholder
+`demo-admin@raffa.invalid`; set the `DEMO_ADMIN_EMAIL` GitHub Environment
+variable for `dev`/`demo` before the first post-w14 seed to bind it to a
+real address instead (`seed-demo-fixture.yml` passes it through only when
+that variable is set — an unset variable leaves the script's own fallback
+in force, never an empty psql variable).
+
+Every **other** workspace already created on `dev` (or any future
+environment) needs the same grant, and cannot get it from this file — a
+real tenant has no fixed id. `.github/workflows/backfill-workspace-membership.yml`
+is the operator path: `workflow_dispatch` (or `workflow_call`) with a
+`target_environment` choice and a required `pairs` input, newline-separated
+`<workspace id>,<admin email>`. Gated by the same GitHub Environment
+approval a deploy already requires; reuses the same OIDC login and
+`postgres-connection` secret (no new identity, no new Key Vault secret,
+ADR-015/ADR-016 w14 footer — seeds and backfills are data-plane acts and
+are never promoted, so this job is run again, unmodified, per environment,
+never copied from `dev`). Per pair, one transaction scoped by
+`SET app.tenant_id`, `gen_random_uuid()` for the new rows (no fixed id is
+available for a real tenant), and a closing verification that fails the
+job — not just prints — if any supplied pair still has no live Admin
+membership afterwards. There is deliberately no "claim this workspace" API
+endpoint (ADR-025 §2.3 / ADR-026): `CreateWorkspaceAsync` never recorded a
+creator, so pairs come from the operator at HITL, not from a caller-trusted
+request.
 
 ## HTTP surface today
 
