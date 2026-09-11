@@ -17,8 +17,9 @@ namespace Raffa.Api;
 /// <para>
 /// Verify, then scope, then read (ADR-009 w14 footer clause 7): <see cref="IsLiveMemberAsync"/>
 /// opens its own narrow tenant scope to confirm the caller holds a live <c>workspace_membership</c>
-/// in the <b>route</b> tenant — never <c>X-Tenant-Id</c> (ADR-022 w14 footer clause 3; the ADR-026
-/// §D3 amendment corrects the header line to match) — and that scope closes before
+/// in the <b>route</b> tenant — never the client-declared tenant header ADR-022's w14 footer
+/// demoted (clause 3; the ADR-026 §D3 amendment corrects that ADR's own header line to match) —
+/// and that scope closes before
 /// <see cref="WorkspaceMembershipService.ListMembersAsync"/> opens a second one to build the
 /// roster. This deliberately duplicates the shape of
 /// <see cref="WorkspaceInvitesEndpointExtensions.ResolveMembershipRoleAsync"/> rather than calling
@@ -62,7 +63,8 @@ public static class WorkspaceMembersEndpointExtensions
         }
 
         // ADR-022 w14 footer clause 3 / the ADR-026 §D3 amendment: the tenant is always the route
-        // value -- X-Tenant-Id is never read on this endpoint, let alone consulted.
+        // value -- the client-declared tenant header is never read on this endpoint, let alone
+        // consulted (rg for it over this file returns nothing, by design).
         var routeTenantId = new TenantId(tenantGuid);
 
         // Verify, then scope, then read (ADR-009 w14 footer clause 7): confirm a live membership
