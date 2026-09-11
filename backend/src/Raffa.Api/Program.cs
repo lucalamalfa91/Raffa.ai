@@ -345,6 +345,14 @@ app.MapQuotesEndpoints();
 // capture.
 app.MapNegotiationsEndpoints();
 
+// Task E15/F01/US01/T01 (wave w14, ADR-026 implication 5 "Program.cs needs exactly one edit in
+// this wave"): `GET /api/invites` and `POST /api/invites/accept` — the two token-header routes
+// that are not parameterised on {token} (ADR-025 Rule C9). See InvitationsEndpointExtensions.
+// MapWorkspaceEndpoints() above (already registered, :225-236 in the wave-base checkout) stays
+// untouched — the invite/revoke and members/remove routes it composes are that file's own and
+// WorkspaceMembersEndpointExtensions' own additions, not a second Program.cs edit.
+app.MapInvitationEndpoints();
+
 app.Run();
 
 // Exposes the top-level-statement entry point to WebApplicationFactory<Program> in the
