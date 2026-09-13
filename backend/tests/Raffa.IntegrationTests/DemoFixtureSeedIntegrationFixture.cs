@@ -132,12 +132,44 @@ public sealed class DemoFixtureSeedIntegrationFixture : WebApplicationFactory<Pr
 
     private async Task ApplySeedScriptAsync()
     {
-        var script = await File.ReadAllTextAsync(SeedScriptPath());
+        var script = PreprocessForNpgsql(await File.ReadAllTextAsync(SeedScriptPath()));
 
         await using var connection = new NpgsqlConnection(_superuserConnectionString);
         await connection.OpenAsync();
         await using var command = new NpgsqlCommand(script, connection);
         await command.ExecuteNonQueryAsync();
+    }
+
+    /// <summary>
+    /// Task E14/F05/US01/T01 (wave w14, OQ-w14-dec-001) added a <c>psql</c>-only conditional to
+    /// the checked-in script (<c>\if :{?demo_admin_email} \else \set demo_admin_email '...'
+    /// \endif</c>) so the real <c>.github/workflows/seed-demo-fixture.yml</c> — which runs it
+    /// through a real <c>psql</c> client — can honour an operator-set <c>DEMO_ADMIN_EMAIL</c>. A
+    /// <c>psql</c> meta-command and <c>:'var'</c> interpolation are client-side, not SQL; Npgsql
+    /// sends the raw text to the server, which fails on the leading backslash. This fixture never
+    /// sets an external variable — there is no operator here — so it always takes the same
+    /// <c>\else</c> branch the real workflow takes before <c>DEMO_ADMIN_EMAIL</c> is configured:
+    /// substitute the documented fallback and drop the four meta-command lines. Fails loudly
+    /// rather than guessing if the script's own shape ever moves out from under this.
+    /// </summary>
+    private static string PreprocessForNpgsql(string script)
+    {
+        const string block =
+            "\\if :{?demo_admin_email}\n" +
+            "\\else\n" +
+            "\\set demo_admin_email 'demo-admin@raffa.invalid'\n" +
+            "\\endif\n";
+        var normalized = script.Replace("\r\n", "\n", StringComparison.Ordinal);
+        if (!normalized.Contains(block, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "demo-fixture-seed.sql's psql \\if/\\else/\\set/\\endif block changed shape -- "
+                + "update DemoFixtureSeedIntegrationFixture.PreprocessForNpgsql to match.");
+        }
+
+        return normalized
+            .Replace(block, string.Empty, StringComparison.Ordinal)
+            .Replace(":'demo_admin_email'", "'demo-admin@raffa.invalid'", StringComparison.Ordinal);
     }
 
     /// <summary>Walks from this source file
