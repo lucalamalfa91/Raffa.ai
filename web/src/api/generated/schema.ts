@@ -67,16 +67,113 @@ export interface operations {
       };
     };
   };
+  removeMember: {
+    responses: {
+      204: {
+        content: {
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      403: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+      409: {
+        content: {
+          "application/json": string;
+        };
+      };
+    };
+  };
   inviteWorkspaceMember: {
     responses: {
       201: {
         content: {
-          "application/json": { id: string; email: string; role: "Admin" | "Procurement" | "Legal" | "Finance" | "ReadOnly" };
+          "application/json": { id: string; email: string; role: "Admin" | "Procurement" | "Legal" | "Finance" | "ReadOnly"; expiresAt: string; acceptUrl: string; mailDelivered: boolean };
         };
       };
       400: {
         content: {
           "application/json": string;
+        };
+      };
+      409: {
+        content: {
+          "application/json": string;
+        };
+      };
+    };
+  };
+  revokeInvitation: {
+    responses: {
+      204: {
+        content: {
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      403: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  getInvitation: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { workspaceName: string; role: string; expiresAt: string };
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+      410: {
+        content: {
+        };
+      };
+    };
+  };
+  acceptInvitation: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { workspaceId: string; workspaceName: string; role: string };
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      403: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+      409: {
+        content: {
+          "application/json": string;
+        };
+      };
+      410: {
+        content: {
         };
       };
     };
@@ -587,8 +684,20 @@ export interface paths {
   "/api/workspaces/{tenantId}/members": {
     get: operations["getWorkspaceMembers"];
   };
+  "/api/workspaces/{tenantId}/members/{membershipId}": {
+    delete: operations["removeMember"];
+  };
   "/api/workspaces/{tenantId}/invites": {
     post: operations["inviteWorkspaceMember"];
+  };
+  "/api/workspaces/{tenantId}/invites/{id}": {
+    delete: operations["revokeInvitation"];
+  };
+  "/api/invites": {
+    get: operations["getInvitation"];
+  };
+  "/api/invites/accept": {
+    post: operations["acceptInvitation"];
   };
   "/api/documents": {
     get: operations["listDocuments"];

@@ -1,3 +1,4 @@
+using Raffa.Identity.Workspace.Application;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Tenancy;
 using Microsoft.EntityFrameworkCore;
@@ -51,6 +52,13 @@ public static class ServiceCollectionExtensions
         services.TryAddScoped<WorkspaceMembershipService>();
         services.TryAddScoped<WorkspaceProvisioningService>();
         services.TryAddScoped<WorkspaceDirectoryService>();
+
+        // Task E15/F01/US01/T01 (wave w14, ADR-025 §C/§D, ADR-026 §D6): the invitation token
+        // lifecycle and its mailer seam. NullInvitationMailer is the only IInvitationMailer this
+        // wave registers (OQ-w14-002 -- no transport ships in w14); a future transport is a second
+        // TryAddScoped call in a later task, never a change to this method's own shape.
+        services.TryAddScoped<WorkspaceInvitationService>();
+        services.TryAddScoped<IInvitationMailer, NullInvitationMailer>();
 
         return services;
     }

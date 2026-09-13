@@ -947,6 +947,34 @@ Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
   (`CapabilitiesEndpointExtensions` has no failure branch), so its own error path is a status-based
   message only, never an attempted JSON parse, unlike every write/tenant-scoped read above it.
 
+- **Task E15/F01/US01/T01 (invitation-lifecycle-api, wave w14; ADR-025/ADR-026)** extended
+  `openapi/raffa-api.v1.json` with `DELETE /api/workspaces/{tenantId}/invites/{id}`
+  (`revokeInvitation`), `DELETE /api/workspaces/{tenantId}/members/{membershipId}`
+  (`removeMember`), `GET /api/invites` (`getInvitation`) and `POST /api/invites/accept`
+  (`acceptInvitation`) -- the eighth web epic to extend this document (see "API client"
+  provenance paragraphs above). The last two carry no `tenantId` of any kind (route or
+  header) -- unlike `getCapabilities`/`getMarketRecord` above, which are tenant-agnostic
+  because the underlying data is shared, these are genuinely tenant-scoped: the invitation
+  token alone lets the backend resolve which tenant server-side, so the caller never supplies
+  one, sending it instead as the `X-Invitation-Token` header carrying the fragment
+  `inviteWorkspaceMember`'s own `acceptUrl` returns after `/invite/accept#` (ADR-025 Rule C9 --
+  a query string would land in access logs, `Referer` headers and browser history).
+  `getInvitation`/`acceptInvitation` are hand-written against the generated `responses` type
+  only, not anchored to a generated request shape the way the write bodies above are:
+  `generate-api-client.mjs` does not parse an operation's `parameters` any more than it parses
+  `requestBody` -- the same documented generator limitation, now shown to cover headers too,
+  not just bodies. `revokeInvitation`/`removeMember` follow the existing never-throws
+  convention (401/403/404/409 are normal, expected outcomes the caller renders inline, not
+  exceptions).
+  **`inviteWorkspaceMember`'s 201 body also changed shape** -- it is now an offer, not a
+  grant: no membership is written by that call any more (see
+  `WorkspaceInvitationService.IssueAsync`, backend), and `InvitedMemberBody` gained
+  `expiresAt`/`acceptUrl`/`mailDelivered` straight off the regenerated schema, no
+  hand-written change needed for the response shape itself. See "Workspace & members" above
+  for the screen this powers; no caller under `src/routes/` yet exercises revoke, remove,
+  `getInvitation`, or `acceptInvitation` -- the roster's own revoke/remove controls and an
+  `/invite/accept` landing page are still open UI work.
+
 ## Directory layout
 
 ```

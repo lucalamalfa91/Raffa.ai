@@ -1,4 +1,5 @@
 using Raffa.Api.Infrastructure;
+using Raffa.Identity.Workspace.Domain;
 using Raffa.Identity.Workspace.Infrastructure;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Tenancy;
@@ -32,12 +33,23 @@ namespace Raffa.Api;
 /// holds — ADR-025 Rule D.4a grants read to <b>any</b> live member, so existence is the whole
 /// question — so it is simpler: one <c>AnyAsync</c>, not a role-precedence join.
 /// </para>
+///
+/// <para>
+/// <b>Task E15/F01/US01/T01 (phase 3, wave w14; ADR-025 Rule D.5a-c, §H T7/T9)</b> adds
+/// `DELETE /api/workspaces/{tenantId}/members/{membershipId}` — <see cref="RemoveMemberAsync"/> —
+/// Admin only, with the last-Admin guard (<see cref="Domain.WorkspaceMembershipRemoval.CanRemove"/>).
+/// Its own guard duplicates <see cref="WorkspaceInvitesEndpointExtensions.ResolveMembershipRoleAsync"/>'s
+/// shape locally (<see cref="ResolveMembershipRoleAsync"/> below) rather than sharing it across
+/// files, the same "one named method per file" convention <see cref="IsLiveMemberAsync"/> already
+/// established for the read guard above.
+/// </para>
 /// </summary>
 public static class WorkspaceMembersEndpointExtensions
 {
     public static IEndpointRouteBuilder MapWorkspaceMemberEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapGet("/api/workspaces/{tenantId}/members", ListMembersAsync);
+        endpoints.MapDelete("/api/workspaces/{tenantId}/members/{membershipId}", RemoveMemberAsync);
         return endpoints;
     }
 
@@ -129,5 +141,99 @@ public static class WorkspaceMembersEndpointExtensions
             select membership.Id)
             .AnyAsync(cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// `DELETE /api/workspaces/{tenantId}/members/{membershipId}` (ADR-025 Rule D.5a-c): identity
+    /// (401) → membership (404, never 403 — a tenant-existence oracle) → Admin (403) → the
+    /// last-Admin guard (409) → 204. The removed identity's next request in this tenant sees the
+    /// effect immediately (Rule D.5b: "nothing caches authorization") — this handler itself does
+    /// nothing to make that true, it is simply what every other tenant-scoped read in this host
+    /// already does (read role/membership from the database on every request).
+    /// </summary>
+    private static async Task<IResult> RemoveMemberAsync(
+        string tenantId,
+        string membershipId,
+        ICallerIdentity callerIdentity,
+        IdentityWorkspaceDbContext dbContext,
+        ITenantContext tenantContext,
+        WorkspaceMembershipService membershipService,
+        CancellationToken cancellationToken)
+    {
+        var identity = callerIdentity.Resolve();
+        if (identity is null)
+        {
+            return Results.Unauthorized();
+        }
+
+        if (!Guid.TryParse(tenantId, out var tenantGuid))
+        {
+            return Results.BadRequest("The tenant id in the route must be a GUID.");
+        }
+
+        if (!Guid.TryParse(membershipId, out var membershipGuid))
+        {
+            return Results.BadRequest("The membership id in the route must be a GUID.");
+        }
+
+        var routeTenantId = new TenantId(tenantGuid);
+
+        var callerRole = await ResolveMembershipRoleAsync(
+                dbContext, tenantContext, routeTenantId, identity, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (callerRole is null)
+        {
+            return Results.NotFound();
+        }
+
+        if (callerRole != WorkspaceRoleName.Admin)
+        {
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
+        }
+
+        var result = await membershipService
+            .RemoveMemberAsync(routeTenantId, new EntityId(membershipGuid), identity, cancellationToken)
+            .ConfigureAwait(false);
+
+        return result.Status switch
+        {
+            MembershipOperationStatus.Success => Results.NoContent(),
+            MembershipOperationStatus.Conflict => Results.Conflict(result.Error),
+            _ => Results.NotFound(),
+        };
+    }
+
+    /// <summary>
+    /// The removal guard's membership-only role lookup — identical shape to
+    /// <see cref="WorkspaceInvitesEndpointExtensions.ResolveMembershipRoleAsync"/> (see that
+    /// method's own doc comment for why this does not call <c>WorkspaceRoleResolver.ResolveAsync</c>),
+    /// duplicated locally rather than shared across files, the same convention
+    /// <see cref="IsLiveMemberAsync"/> above already established for this file's own read guard.
+    /// </summary>
+    private static async Task<WorkspaceRoleName?> ResolveMembershipRoleAsync(
+        IdentityWorkspaceDbContext dbContext,
+        ITenantContext tenantContext,
+        TenantId tenantId,
+        string callerIdentity,
+        CancellationToken cancellationToken)
+    {
+        using var tenantScope = tenantContext.BeginScope(tenantId);
+
+        var roleNames = await (
+            from user in dbContext.WorkspaceUsers
+            join membership in dbContext.WorkspaceMemberships on user.Id equals membership.WorkspaceUserId
+            join role in dbContext.WorkspaceRoles on membership.WorkspaceRoleId equals role.Id
+            where user.TenantId == tenantId
+                && membership.TenantId == tenantId
+                && role.TenantId == tenantId
+                && (user.Email == callerIdentity || user.ExternalSubjectId == callerIdentity)
+            select role.Name)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return WorkspaceRoleClaimResolver.TryResolve(roleNames.Select(name => name.ToString()), out var resolved)
+            ? resolved
+            : null;
     }
 }

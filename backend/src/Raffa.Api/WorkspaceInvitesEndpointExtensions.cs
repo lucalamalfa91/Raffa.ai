@@ -48,12 +48,23 @@ namespace Raffa.Api;
 /// grant" redesign (the pending `workspace_invitation` table) is phase 3's `E15/F01/US01/T01`. This
 /// task's whole job is the guard in front of the existing write, not a new invite lifecycle.
 /// </para>
+///
+/// <para>
+/// <b>Task E15/F01/US01/T01 (phase 3, wave w14; ADR-025 §D.1/§D.5, ADR-026 §D5)</b> is the
+/// redesign the paragraph above named as still pending: <see cref="InviteAsync"/> now delegates the
+/// write to <see cref="WorkspaceInvitationService.IssueAsync"/> (token mint/hash, no membership —
+/// see that type's own doc comment), and this file gains
+/// <see cref="RevokeInvitationAsync"/> (`DELETE /api/workspaces/{tenantId}/invites/{id}`, Admin
+/// only, ADR-025 Rule D.5). The guard above — 401 → 404 → 403 — is unchanged; only what happens
+/// once it passes is new.
+/// </para>
 /// </summary>
 public static class WorkspaceInvitesEndpointExtensions
 {
     public static IEndpointRouteBuilder MapWorkspaceInviteEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapPost("/api/workspaces/{tenantId}/invites", InviteAsync);
+        endpoints.MapDelete("/api/workspaces/{tenantId}/invites/{id}", RevokeInvitationAsync);
         return endpoints;
     }
 
@@ -63,7 +74,7 @@ public static class WorkspaceInvitesEndpointExtensions
         ICallerIdentity callerIdentity,
         IdentityWorkspaceDbContext dbContext,
         ITenantContext tenantContext,
-        WorkspaceMembershipService membershipService,
+        WorkspaceInvitationService invitationService,
         CancellationToken cancellationToken)
     {
         // ADR-025 Rule D.1a, step 1: no identity presented -> 401.
@@ -114,22 +125,88 @@ public static class WorkspaceInvitesEndpointExtensions
 
         // ADR-025 Rule D.1b: role comes from the body unconstrained beyond the catalog check above
         // — an Admin may invite another Admin. Only reaching this line was gated.
-        var result = await membershipService
-            .InviteAsync(routeTenantId, request.Email, role, cancellationToken)
+        var issueResult = await invitationService
+            .IssueAsync(routeTenantId, request.Email, role, identity, cancellationToken)
             .ConfigureAwait(false);
 
-        if (result.IsFailure)
+        // ADR-025 §D.1d / implication 9: a live grant or offer already exists for this email is a
+        // 409 (Conflict), never a 400 -- the request is well-formed, it conflicts with existing
+        // state. Every other failure (malformed email, unseeded role) stays the pre-existing 400.
+        return issueResult.Status switch
         {
-            return Results.BadRequest(result.Error);
+            MembershipOperationStatus.Success => Results.Created(
+                $"/api/workspaces/{tenantId}/invites/{issueResult.Invitation!.Id.Value}",
+                new
+                {
+                    id = issueResult.Invitation.Id.Value,
+                    email = issueResult.Invitation.Email,
+                    role = role.ToString(),
+                    expiresAt = issueResult.Invitation.ExpiresAt,
+                    // ADR-025 Rule C9: site-relative, and a fragment -- never a path/query string,
+                    // never resolved to an absolute URL here (that is the mailer's own job, when one
+                    // exists).
+                    acceptUrl = issueResult.AcceptUrl,
+                    mailDelivered = issueResult.MailDelivered,
+                }),
+            MembershipOperationStatus.Conflict => Results.Conflict(issueResult.Error),
+            _ => Results.BadRequest(issueResult.Error),
+        };
+    }
+
+    /// <summary>
+    /// `DELETE /api/workspaces/{tenantId}/invites/{id}` (task E15/F01/US01/T01, wave w14; ADR-025
+    /// Rule D.5, AC-11): revokes a still-live invitation — 204, and the link stops working
+    /// immediately (nothing caches it; the very next pre-accept/accept re-reads
+    /// <see cref="Domain.WorkspaceInvitation.RevokedAt"/>). Same identity → membership → Admin guard
+    /// as <see cref="InviteAsync"/>, reusing this file's own <see cref="ResolveMembershipRoleAsync"/>
+    /// rather than a new copy.
+    /// </summary>
+    private static async Task<IResult> RevokeInvitationAsync(
+        string tenantId,
+        string id,
+        ICallerIdentity callerIdentity,
+        IdentityWorkspaceDbContext dbContext,
+        ITenantContext tenantContext,
+        WorkspaceInvitationService invitationService,
+        CancellationToken cancellationToken)
+    {
+        var identity = callerIdentity.Resolve();
+        if (identity is null)
+        {
+            return Results.Unauthorized();
         }
 
-        var membership = result.Value;
-        return Results.Created($"/api/workspaces/{tenantId}/invites/{membership.Id.Value}", new
+        if (!Guid.TryParse(tenantId, out var tenantGuid))
         {
-            id = membership.Id.Value,
-            email = request.Email,
-            role = role.ToString(),
-        });
+            return Results.BadRequest("The tenant id in the route must be a GUID.");
+        }
+
+        if (!Guid.TryParse(id, out var invitationGuid))
+        {
+            return Results.BadRequest("The invitation id in the route must be a GUID.");
+        }
+
+        var routeTenantId = new TenantId(tenantGuid);
+
+        var callerRole = await ResolveMembershipRoleAsync(
+                dbContext, tenantContext, routeTenantId, identity, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (callerRole is null)
+        {
+            return Results.NotFound();
+        }
+
+        if (callerRole != WorkspaceRoleName.Admin)
+        {
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
+        }
+
+        var status = await invitationService
+            .RevokeAsync(routeTenantId, new EntityId(invitationGuid), identity, cancellationToken)
+            .ConfigureAwait(false);
+
+        return status == MembershipOperationStatus.Success ? Results.NoContent() : Results.NotFound();
     }
 
     /// <summary>

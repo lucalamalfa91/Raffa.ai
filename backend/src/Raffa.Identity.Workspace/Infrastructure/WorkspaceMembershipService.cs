@@ -2,6 +2,7 @@ using Raffa.Identity.Workspace.Domain;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Tenancy;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace Raffa.Identity.Workspace.Infrastructure;
 
@@ -9,10 +10,20 @@ namespace Raffa.Identity.Workspace.Infrastructure;
 /// Application service for task E01/F05/US01/T02 (story us-01-workspace-roles AC-3; ADR-010;
 /// produces the `workspace-membership` artifact): composes the pure decision logic in
 /// <c>Domain</c> — <see cref="WorkspaceRoleClaimResolver"/>, <see cref="WorkspaceMembershipFactory"/>,
-/// <see cref="WorkspaceSignIn"/> — with the EF Core reads and writes those decisions need. Not yet
-/// called by a host (no `/api/workspaces` endpoint exists — AC-2 — see
-/// <see cref="ServiceCollectionExtensions"/>); registered defensively so whichever future task adds
-/// that endpoint only has to inject this type.
+/// <see cref="WorkspaceSignIn"/>, <see cref="WorkspaceMembershipRemoval"/> — with the EF Core reads
+/// and writes those decisions need.
+///
+/// <para>
+/// Task E15/F01/US01/T01 (wave w14, ADR-025 §D.1/§D.3/§D.5, ADR-026 implication 3) redesigns the
+/// invite half: <see cref="InviteAsync"/> now writes <see cref="WorkspaceUser"/> (if absent) and a
+/// <see cref="WorkspaceInvitation"/> row — <b>never a membership</b>. The membership is written only
+/// at <see cref="AcceptInvitationAsync"/>, and <see cref="RemoveMemberAsync"/> is the new removal
+/// half (ADR-025 Rule D.5a-c). The token itself — minting, hashing, verifying, the pre-accept read —
+/// is <see cref="WorkspaceInvitationService"/>'s job, one layer up; this service stays the single
+/// writer of <see cref="WorkspaceUser"/>/<see cref="WorkspaceMembership"/>/<see cref="WorkspaceInvitation"/>
+/// rows, the same separation <see cref="WorkspaceProvisioningService"/> (create) already keeps from
+/// this type (invite/accept/remove).
+/// </para>
 ///
 /// Every public method opens its own <see cref="ITenantContext.BeginScope"/> for the tenant it is
 /// given, rather than trusting the caller to have already entered one: ADR-009's RLS backstop
@@ -23,64 +34,96 @@ namespace Raffa.Identity.Workspace.Infrastructure;
 /// within an already-scoped request for the *same* tenant is harmless.
 /// </summary>
 public sealed class WorkspaceMembershipService(
-    IdentityWorkspaceDbContext db, ITenantContext tenantContext, IClock clock)
+    IdentityWorkspaceDbContext db, ITenantContext tenantContext, IClock clock, IAuditWriter auditWriter)
 {
     /// <summary>
     /// Invites <paramref name="email"/> into <paramref name="tenantId"/> with the role resolved
     /// from <paramref name="roleClaimValues"/> (AC-3: "Role assignment resolves from OIDC
     /// claims"). See <see cref="WorkspaceRoleClaimResolver"/> for the accepted claim shapes.
     /// </summary>
-    public Task<Result<WorkspaceMembership>> InviteFromOidcClaimsAsync(
+    public Task<InviteOutcome> InviteFromOidcClaimsAsync(
         TenantId tenantId,
         string email,
         IEnumerable<string> roleClaimValues,
+        string invitedBy,
+        string tokenHash,
+        DateTimeOffset expiresAt,
         CancellationToken cancellationToken = default)
     {
         if (!WorkspaceRoleClaimResolver.TryResolve(roleClaimValues, out var role))
         {
-            return Task.FromResult(Result<WorkspaceMembership>.Failure(
+            return Task.FromResult(InviteOutcome.Failure(
+                MembershipOperationStatus.ValidationFailed,
                 "no recognized workspace role (Admin/Procurement/Legal/Finance/Read-only) in the " +
                 $"supplied OIDC claims: [{string.Join(", ", roleClaimValues)}]."));
         }
 
-        return InviteAsync(tenantId, email, role, cancellationToken);
+        return InviteAsync(tenantId, email, role, invitedBy, tokenHash, expiresAt, cancellationToken);
     }
 
     /// <summary>
     /// Invites <paramref name="email"/> into <paramref name="tenantId"/> with an explicit
-    /// <paramref name="role"/>. Idempotent: an email not seen before in this tenant gets a new
-    /// <see cref="WorkspaceUser"/> row (not yet signed in); an email already invited/linked in
-    /// this tenant is reused, so a second invite with a *different* role adds a second membership
-    /// instead of erroring, while a repeat of the *same* role fails cleanly (no duplicate row).
+    /// <paramref name="role"/> (ADR-025 Rule D.1d). Idempotent: an email not seen before in this
+    /// tenant gets a new <see cref="WorkspaceUser"/> row (not yet signed in); an email already
+    /// invited/linked in this tenant is reused. Writes <b>no membership</b> — that happens only at
+    /// <see cref="AcceptInvitationAsync"/> — so the caller (<see cref="WorkspaceInvitationService.IssueAsync"/>)
+    /// supplies the already-minted <paramref name="tokenHash"/>/<paramref name="expiresAt"/> for the
+    /// <see cref="WorkspaceInvitation"/> row this method writes alongside the user.
+    ///
+    /// <para>
+    /// Rejects (as <see cref="MembershipOperationStatus.Conflict"/>, ADR-025 §D.1d /
+    /// implication 9) when <paramref name="email"/> already holds a <b>live</b> membership at
+    /// <paramref name="role"/>, or already has <b>any</b> live (unaccepted, unrevoked) invitation in
+    /// this tenant — the partial unique index <c>(tenant_id, lower(email)) WHERE accepted_at IS NULL
+    /// AND revoked_at IS NULL</c> (ADR-026 §D4) allows at most one of the latter regardless of role,
+    /// so a second, concurrent invite that slips past this pre-check still hits that index; the
+    /// resulting <see cref="DbUpdateException"/> is caught and translated to the identical
+    /// <see cref="MembershipOperationStatus.Conflict"/>, never a 500. A <b>removed</b> person (no
+    /// live membership, and their prior invitation revoked in the same transaction as the removal —
+    /// <see cref="RemoveMemberAsync"/>) passes both checks and can be re-invited at the same role
+    /// (AC-8).
+    /// </para>
     /// </summary>
-    public async Task<Result<WorkspaceMembership>> InviteAsync(
+    public async Task<InviteOutcome> InviteAsync(
         TenantId tenantId,
         string email,
         WorkspaceRoleName role,
+        string invitedBy,
+        string tokenHash,
+        DateTimeOffset expiresAt,
         CancellationToken cancellationToken = default)
     {
         using var _ = tenantContext.BeginScope(tenantId);
         var now = clock.UtcNow;
+
+        // Normalised once, here — the one production write path that creates a WorkspaceUser row
+        // from an Admin-typed request body (WorkspaceProvisioningService's own creator path is
+        // already lower-cased upstream by HeaderCallerIdentity; this path is not). Keeps this row
+        // and the WorkspaceInvitation row this method also writes in the exact same casing, which
+        // is what WorkspaceMembershipService.ListMembersAsync's own exact-equality join on Email
+        // depends on, and matches ADR-026 §D4's own "stored lower-cased" column note.
+        var normalizedEmail = email?.Trim().ToLowerInvariant() ?? string.Empty;
 
         var roleRow = await db.WorkspaceRoles
             .SingleOrDefaultAsync(r => r.TenantId == tenantId && r.Name == role, cancellationToken)
             .ConfigureAwait(false);
         if (roleRow is null)
         {
-            return Result<WorkspaceMembership>.Failure(
+            return InviteOutcome.Failure(
+                MembershipOperationStatus.ValidationFailed,
                 $"workspace {tenantId} has no seeded '{role}' role; every workspace is expected " +
                 "to be created via WorkspaceFactory.CreateWorkspaceWithDefaultRoles.");
         }
 
         var user = await db.WorkspaceUsers
-            .SingleOrDefaultAsync(u => u.TenantId == tenantId && u.Email == email, cancellationToken)
+            .SingleOrDefaultAsync(u => u.TenantId == tenantId && u.Email == normalizedEmail, cancellationToken)
             .ConfigureAwait(false);
         if (user is null)
         {
-            var createResult = WorkspaceMembershipFactory.CreateInvitedUser(tenantId, email, now);
+            var createResult = WorkspaceMembershipFactory.CreateInvitedUser(tenantId, normalizedEmail, now);
             if (createResult.IsFailure)
             {
-                return Result<WorkspaceMembership>.Failure(createResult.Error);
+                return InviteOutcome.Failure(MembershipOperationStatus.ValidationFailed, createResult.Error);
             }
 
             user = createResult.Value;
@@ -92,28 +135,70 @@ public sealed class WorkspaceMembershipService(
             .ConfigureAwait(false);
         if (alreadyMember)
         {
-            return Result<WorkspaceMembership>.Failure($"{email} already holds the {role} role in this workspace.");
+            return InviteOutcome.Failure(
+                MembershipOperationStatus.Conflict, $"{normalizedEmail} already holds the {role} role in this workspace.");
         }
 
-        var membershipResult = WorkspaceMembershipFactory.CreateMembership(user, roleRow, now);
-        if (membershipResult.IsFailure)
+        var alreadyInvited = await db.WorkspaceInvitations
+            .AnyAsync(
+                i => i.TenantId == tenantId && i.Email == normalizedEmail && i.AcceptedAt == null && i.RevokedAt == null,
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (alreadyInvited)
         {
-            return membershipResult;
+            return InviteOutcome.Failure(
+                MembershipOperationStatus.Conflict, $"{normalizedEmail} already has a pending invitation to this workspace.");
         }
 
-        db.WorkspaceMemberships.Add(membershipResult.Value);
-        await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        var invitation = new WorkspaceInvitation
+        {
+            TenantId = tenantId,
+            // user.Email, not normalizedEmail: when `user` already existed (a prior invite/sign-in),
+            // its own stored casing is the value ListMembersAsync's exact-equality join must match —
+            // see this method's own "normalised once" comment above for why the two can never
+            // disagree for a user this method itself just created, and this covers the pre-existing
+            // case too.
+            Email = user.Email,
+            WorkspaceRoleId = roleRow.Id,
+            TokenHash = tokenHash,
+            InvitedBy = invitedBy,
+            CreatedAt = now,
+            ExpiresAt = expiresAt,
+        };
+        db.WorkspaceInvitations.Add(invitation);
 
-        return membershipResult;
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (DbUpdateException exception) when (IsUniqueViolation(exception))
+        {
+            // ADR-025 implication 9 / task coding objective point 2: the partial unique index is the
+            // real backstop for the two AnyAsync pre-checks above (a second, concurrent invite for
+            // the same email can slip past both reads before either write commits) — translate the
+            // violation to the identical clean Conflict, never let it surface as a 500.
+            return InviteOutcome.Failure(
+                MembershipOperationStatus.Conflict, $"{normalizedEmail} already has a pending invitation to this workspace.");
+        }
+
+        await auditWriter.WriteAsync(
+            new AuditEntry(
+                tenantId, invitedBy, "workspace.invitation.issued", "WorkspaceInvitation",
+                invitation.Id.Value.ToString(), now, $"email={normalizedEmail}; role={role}"),
+            cancellationToken).ConfigureAwait(false);
+
+        return InviteOutcome.Success(invitation);
     }
 
     /// <summary>
     /// Links a first sign-in (<see cref="WorkspaceUser.LinkExternalSubject"/>) or resolves a
     /// repeat one. See <see cref="WorkspaceSignIn.ResolveSignedInUser"/> for the decision itself.
     /// Does not (re-)assign a role: role assignment happens at invite time
-    /// (<see cref="InviteAsync"/>/<see cref="InviteFromOidcClaimsAsync"/>); continuously
-    /// re-syncing role claims on every sign-in is a deliberately separate concern left to a future
-    /// task rather than guessed at here.
+    /// (<see cref="InviteAsync"/>/<see cref="InviteFromOidcClaimsAsync"/>) or at
+    /// <see cref="AcceptInvitationAsync"/>; continuously re-syncing role claims on every sign-in is
+    /// a deliberately separate concern left to a future task rather than guessed at here.
+    /// <see cref="AcceptInvitationAsync"/> is this method's first real production caller
+    /// (task E15/F01/US01/T01) — every prior caller was a test.
     /// </summary>
     public async Task<Result<WorkspaceUser>> LinkSignInAsync(
         TenantId tenantId,
@@ -145,6 +230,194 @@ public sealed class WorkspaceMembershipService(
     }
 
     /// <summary>
+    /// The accept-time grant (task E15/F01/US01/T01, wave w14; ADR-025 Rule D.3c): binds the
+    /// accepting identity's external subject onto the <see cref="WorkspaceUser"/> row the invite
+    /// already wrote (via the unchanged <see cref="LinkSignInAsync"/>), inserts the membership at
+    /// the invited role, and stamps <paramref name="invitation"/>'s <see cref="WorkspaceInvitation.AcceptedAt"/>
+    /// — all in <b>one database transaction</b>, so partial acceptance is unreachable. The caller
+    /// (<see cref="WorkspaceInvitationService.AcceptAsync"/>) has already entered
+    /// <see cref="ITenantContext.BeginScope"/> for <paramref name="tenantId"/>, matched the token
+    /// hash (ADR-025 Rule C5) and verified the email match (Rule D.3b); this method assumes all
+    /// three already hold and re-validates only what a database round-trip legitimately can — the
+    /// unique-membership-index race (Rule D.3d).
+    ///
+    /// <para>
+    /// An explicit <see cref="Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction"/> is
+    /// required (not merely one call to <see cref="DbContext.SaveChangesAsync"/>, EF Core's usual
+    /// implicit-transaction shape) because <see cref="LinkSignInAsync"/> — deliberately
+    /// <b>unchanged</b> — already calls <c>SaveChangesAsync</c> itself; without an outer transaction
+    /// wrapping both calls, a failure after the link commits but before the membership insert would
+    /// leave the subject bound with no membership, silently reachable on retry as if nothing had
+    /// happened yet.
+    /// </para>
+    /// </summary>
+    public async Task<AcceptOutcome> AcceptInvitationAsync(
+        TenantId tenantId,
+        WorkspaceInvitation invitation,
+        string signedInIdentity,
+        CancellationToken cancellationToken = default)
+    {
+        var roleRow = await db.WorkspaceRoles
+            .SingleOrDefaultAsync(r => r.TenantId == tenantId && r.Id == invitation.WorkspaceRoleId, cancellationToken)
+            .ConfigureAwait(false);
+        if (roleRow is null)
+        {
+            return AcceptOutcome.Failure(MembershipOperationStatus.NotFound, "the invited role no longer exists.");
+        }
+
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+        var linkResult = await LinkSignInAsync(tenantId, signedInIdentity, invitation.Email, cancellationToken)
+            .ConfigureAwait(false);
+        if (linkResult.IsFailure)
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return AcceptOutcome.Failure(MembershipOperationStatus.ValidationFailed, linkResult.Error);
+        }
+
+        var user = linkResult.Value;
+        var now = clock.UtcNow;
+        var membershipResult = WorkspaceMembershipFactory.CreateMembership(user, roleRow, now);
+        if (membershipResult.IsFailure)
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return AcceptOutcome.Failure(MembershipOperationStatus.ValidationFailed, membershipResult.Error);
+        }
+
+        db.WorkspaceMemberships.Add(membershipResult.Value);
+        invitation.AcceptedAt = now;
+
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (DbUpdateException exception) when (IsUniqueViolation(exception))
+        {
+            // Rule D.3d: two concurrent accepts race this same insert against
+            // ix_workspace_membership_workspace_user_id_workspace_role_id (identity-workspace.sql:90)
+            // — already schema-enforced; this is the translation to a clean 409, never a 500.
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return AcceptOutcome.Failure(MembershipOperationStatus.Conflict, "this invitation has already been accepted.");
+        }
+
+        await auditWriter.WriteAsync(
+            new AuditEntry(
+                tenantId, signedInIdentity, "workspace.membership.granted", "WorkspaceMembership",
+                membershipResult.Value.Id.Value.ToString(), now, $"role={roleRow.Name}"),
+            cancellationToken).ConfigureAwait(false);
+        await auditWriter.WriteAsync(
+            new AuditEntry(
+                tenantId, signedInIdentity, "workspace.invitation.accepted", "WorkspaceInvitation",
+                invitation.Id.Value.ToString(), now),
+            cancellationToken).ConfigureAwait(false);
+
+        return AcceptOutcome.Success(user, membershipResult.Value, roleRow.Name);
+    }
+
+    /// <summary>
+    /// Removal (task E15/F01/US01/T01, wave w14; ADR-025 Rule D.5a-c, §H T7/T9): deletes
+    /// <paramref name="membershipId"/> — never the user, ADR-025 Rule D.5b, the FK is
+    /// <c>ON DELETE CASCADE</c> from user to membership
+    /// (<c>WorkspaceMembershipConfiguration.cs:30-33</c>), so deleting the user here would cascade —
+    /// and revokes <paramref name="membershipId"/>'s own user's live invitations in the <b>same</b>
+    /// <see cref="DbContext.SaveChangesAsync"/> call (one implicit transaction; no explicit one is
+    /// needed here, unlike <see cref="AcceptInvitationAsync"/>, because every write below is a
+    /// tracked-entity change flushed by a single <c>SaveChangesAsync</c>, not two independent calls).
+    /// Without that same-transaction revoke, a still-valid link would re-admit the removed person
+    /// with no new invite (breaking AC-8's own "re-adding needs a new invite").
+    ///
+    /// <para>
+    /// The last-Admin guard (Rule D.5a) is <see cref="WorkspaceMembershipRemoval.CanRemove"/> — a
+    /// pure function over the target's role and a live count this method queries; this method's own
+    /// job is just supplying those two facts and translating a refusal to
+    /// <see cref="MembershipOperationStatus.Conflict"/> (409, "well-formed and authorized, but
+    /// violates a tenant invariant", ADR-025 §B).
+    /// </para>
+    /// </summary>
+    public async Task<RemoveOutcome> RemoveMemberAsync(
+        TenantId tenantId, EntityId membershipId, string removedBy, CancellationToken cancellationToken = default)
+    {
+        using var _ = tenantContext.BeginScope(tenantId);
+        var now = clock.UtcNow;
+
+        var membership = await db.WorkspaceMemberships
+            .SingleOrDefaultAsync(m => m.TenantId == tenantId && m.Id == membershipId, cancellationToken)
+            .ConfigureAwait(false);
+        if (membership is null)
+        {
+            return RemoveOutcome.Failure(MembershipOperationStatus.NotFound);
+        }
+
+        var role = await db.WorkspaceRoles
+            .SingleOrDefaultAsync(r => r.TenantId == tenantId && r.Id == membership.WorkspaceRoleId, cancellationToken)
+            .ConfigureAwait(false);
+        if (role is null)
+        {
+            return RemoveOutcome.Failure(MembershipOperationStatus.NotFound);
+        }
+
+        if (role.Name == WorkspaceRoleName.Admin)
+        {
+            var liveAdminMembershipCount = await (
+                from candidateMembership in db.WorkspaceMemberships
+                join candidateRole in db.WorkspaceRoles on candidateMembership.WorkspaceRoleId equals candidateRole.Id
+                where candidateMembership.TenantId == tenantId
+                    && candidateRole.TenantId == tenantId
+                    && candidateRole.Name == WorkspaceRoleName.Admin
+                select candidateMembership.Id)
+                .CountAsync(cancellationToken)
+                .ConfigureAwait(false);
+
+            if (!WorkspaceMembershipRemoval.CanRemove(role.Name, liveAdminMembershipCount))
+            {
+                return RemoveOutcome.Failure(
+                    MembershipOperationStatus.Conflict,
+                    "cannot remove the last Admin of this workspace; at least one must remain.");
+            }
+        }
+
+        var user = await db.WorkspaceUsers
+            .SingleOrDefaultAsync(u => u.TenantId == tenantId && u.Id == membership.WorkspaceUserId, cancellationToken)
+            .ConfigureAwait(false);
+
+        db.WorkspaceMemberships.Remove(membership);
+
+        // Rule D.5c: revoke that email's unaccepted, unrevoked invitations in this tenant, in the
+        // same SaveChangesAsync as the membership removal above.
+        var staleInvitations = user is null
+            ? []
+            : await db.WorkspaceInvitations
+                .Where(i => i.TenantId == tenantId && i.Email == user.Email && i.AcceptedAt == null && i.RevokedAt == null)
+                .ToListAsync(cancellationToken)
+                .ConfigureAwait(false);
+
+        foreach (var invitation in staleInvitations)
+        {
+            invitation.RevokedAt = now;
+        }
+
+        await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        await auditWriter.WriteAsync(
+            new AuditEntry(
+                tenantId, removedBy, "workspace.membership.removed", "WorkspaceMembership",
+                membershipId.Value.ToString(), now, $"role={role.Name}"),
+            cancellationToken).ConfigureAwait(false);
+
+        foreach (var invitation in staleInvitations)
+        {
+            await auditWriter.WriteAsync(
+                new AuditEntry(
+                    tenantId, removedBy, "workspace.invitation.revoked", "WorkspaceInvitation",
+                    invitation.Id.Value.ToString(), now, "revoked by member removal"),
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        return RemoveOutcome.Success();
+    }
+
+    /// <summary>
     /// The roster (task E14/F04/US01/T01, story us-01-members-api; ADR-026 §D3, ADR-025 §D.4): a
     /// live <see cref="WorkspaceMembership"/> renders <see cref="WorkspaceMemberStatus.Active"/>;
     /// no membership plus a live (unaccepted, unrevoked, unexpired) <see cref="WorkspaceInvitation"/>
@@ -160,10 +433,8 @@ public sealed class WorkspaceMembershipService(
     /// for its own highest-role pick.
     ///
     /// <para>
-    /// Correct for both this phase's <see cref="InviteAsync"/> (still writes a live membership at
-    /// invite time) and the phase-3 redesign (writes only <see cref="WorkspaceInvitation"/> until
-    /// accept): this method reads both tables and derives, and does not care which write path
-    /// produced either row.
+    /// Correct both before and after task E15/F01/US01/T01's redesign: this method reads both
+    /// tables and derives, and does not care which write path produced either row.
     /// </para>
     /// </summary>
     public async Task<IReadOnlyList<WorkspaceMemberRecord>> ListMembersAsync(
@@ -250,6 +521,122 @@ public sealed class WorkspaceMembershipService(
             .OrderBy(member => member.Email, StringComparer.Ordinal)
             .ToList();
     }
+
+    /// <summary>
+    /// <see langword="true"/> when <paramref name="exception"/> wraps a Postgres unique-violation
+    /// (SQLSTATE 23505) — the shared translation-to-409 backstop <see cref="InviteAsync"/> and
+    /// <see cref="AcceptInvitationAsync"/> both need (ADR-025 §D.1d / Rule D.3d: "the task asserts
+    /// this rather than re-implementing it, and must translate the violation to 409, not 500"). The
+    /// EF Core InMemory provider (used by some of this solution's own host-level tests) never
+    /// throws this shape at all, since it does not enforce unique indexes the way Postgres does —
+    /// harmless here, since those tests never exercise the race this guards.
+    /// </summary>
+    private static bool IsUniqueViolation(DbUpdateException exception) =>
+        exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation };
+}
+
+/// <summary>
+/// Shared outcome status for the write operations <see cref="WorkspaceMembershipService"/> and
+/// <see cref="WorkspaceInvitationService"/> perform on behalf of the invitation lifecycle endpoints
+/// (ADR-025 §B): the endpoint maps each status to its own HTTP code, the same "small reason type,
+/// no behavior" shape <see cref="Domain.WorkspaceAuthorizationFailure"/> already establishes
+/// alongside <see cref="Domain.WorkspacePrincipalAuthorization.TryAuthorize"/>.
+/// </summary>
+public enum MembershipOperationStatus
+{
+    Success,
+    ValidationFailed,
+    Conflict,
+    NotFound,
+    Forbidden,
+    Expired,
+}
+
+/// <summary>Outcome of <see cref="WorkspaceMembershipService.InviteAsync"/> — see
+/// <see cref="MembershipOperationStatus"/>'s own doc comment for why this is not a bare
+/// <see cref="Result{T}"/>.</summary>
+public sealed class InviteOutcome
+{
+    private InviteOutcome(MembershipOperationStatus status, WorkspaceInvitation? invitation, string? error)
+    {
+        Status = status;
+        Invitation = invitation;
+        Error = error;
+    }
+
+    public MembershipOperationStatus Status { get; }
+
+    public bool IsSuccess => Status == MembershipOperationStatus.Success;
+
+    public bool IsFailure => !IsSuccess;
+
+    public WorkspaceInvitation? Invitation { get; }
+
+    public string? Error { get; }
+
+    public static InviteOutcome Success(WorkspaceInvitation invitation) =>
+        new(MembershipOperationStatus.Success, invitation, null);
+
+    public static InviteOutcome Failure(MembershipOperationStatus status, string? error) =>
+        new(status, null, error);
+}
+
+/// <summary>Outcome of <see cref="WorkspaceMembershipService.AcceptInvitationAsync"/>.</summary>
+public sealed class AcceptOutcome
+{
+    private AcceptOutcome(
+        MembershipOperationStatus status, WorkspaceUser? user, WorkspaceMembership? membership,
+        WorkspaceRoleName? role, string? error)
+    {
+        Status = status;
+        User = user;
+        Membership = membership;
+        Role = role;
+        Error = error;
+    }
+
+    public MembershipOperationStatus Status { get; }
+
+    public bool IsSuccess => Status == MembershipOperationStatus.Success;
+
+    public bool IsFailure => !IsSuccess;
+
+    public WorkspaceUser? User { get; }
+
+    public WorkspaceMembership? Membership { get; }
+
+    public WorkspaceRoleName? Role { get; }
+
+    public string? Error { get; }
+
+    public static AcceptOutcome Success(WorkspaceUser user, WorkspaceMembership membership, WorkspaceRoleName role) =>
+        new(MembershipOperationStatus.Success, user, membership, role, null);
+
+    public static AcceptOutcome Failure(MembershipOperationStatus status, string? error) =>
+        new(status, null, null, null, error);
+}
+
+/// <summary>Outcome of <see cref="WorkspaceMembershipService.RemoveMemberAsync"/>.</summary>
+public sealed class RemoveOutcome
+{
+    private RemoveOutcome(MembershipOperationStatus status, string? error)
+    {
+        Status = status;
+        Error = error;
+    }
+
+    public MembershipOperationStatus Status { get; }
+
+    public bool IsSuccess => Status == MembershipOperationStatus.Success;
+
+    public bool IsFailure => !IsSuccess;
+
+    public string? Error { get; }
+
+    public static RemoveOutcome Success() => new(MembershipOperationStatus.Success, null);
+
+    public static RemoveOutcome Failure(MembershipOperationStatus status, string? error = null) =>
+        new(status, error);
 }
 
 /// <summary>One roster row (ADR-026 §D3): the wire shape is built from this at the host boundary
