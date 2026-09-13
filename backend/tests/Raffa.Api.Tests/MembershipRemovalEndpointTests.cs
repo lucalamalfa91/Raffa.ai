@@ -391,7 +391,7 @@ public sealed class MembershipRemovalEndpointTests : IClassFixture<MembershipRem
         // InternalServerError" in a CI log (same helper as R1DocumentsV2EndToEndTests.AssertStatusAsync).
         Assert.True(
             response.StatusCode == HttpStatusCode.OK,
-            $"HTTP {(int)response.StatusCode}: {body[..Math.Min(2000, body.Length)]}");
+            $"HTTP {(int)response.StatusCode}: {body[..Math.Min(12000, body.Length)]}");
         return body;
     }
 

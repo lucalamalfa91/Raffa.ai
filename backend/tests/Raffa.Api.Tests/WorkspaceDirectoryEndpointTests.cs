@@ -154,7 +154,7 @@ public sealed class WorkspaceDirectoryEndpointTests : IClassFixture<WorkspaceDir
         var body = await response.Content.ReadAsStringAsync();
         Assert.True(
             response.StatusCode == expected,
-            $"HTTP {(int)response.StatusCode}: {body[..Math.Min(2000, body.Length)]}");
+            $"HTTP {(int)response.StatusCode}: {body[..Math.Min(12000, body.Length)]}");
     }
 
     private static async Task<HttpResponseMessage> InviteAsync(
