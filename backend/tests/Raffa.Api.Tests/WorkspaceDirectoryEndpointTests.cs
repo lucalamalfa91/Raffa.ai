@@ -305,6 +305,16 @@ public sealed class WorkspaceDirectoryEndpointTests : IClassFixture<WorkspaceDir
         var inviteResponse = await InviteAsync(client, tenantId, "admin@acme.example", "member@acme.example", "Procurement");
         Assert.Equal(HttpStatusCode.Created, inviteResponse.StatusCode);
 
+        // 2026-09-13 (E15/F01/US01/T01, phase 3): invite alone writes no membership -- accept
+        // does. GET /api/workspaces lists live memberships only, so this test's own title
+        // ("sees their own real role") requires the accept step it was missing.
+        using var inviteBody = JsonDocument.Parse(await inviteResponse.Content.ReadAsStringAsync());
+        var token = inviteBody.RootElement.GetProperty("acceptUrl").GetString()!["/invite/accept#".Length..];
+        using var acceptRequest = new HttpRequestMessage(HttpMethod.Post, "/api/invites/accept");
+        acceptRequest.Headers.Add("X-Invitation-Token", token);
+        acceptRequest.Headers.Add("X-User-Id", "member@acme.example");
+        Assert.Equal(HttpStatusCode.OK, (await client.SendAsync(acceptRequest)).StatusCode);
+
         var response = await GetWorkspacesAsync(client, "member@acme.example");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 

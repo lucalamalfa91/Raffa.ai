@@ -196,11 +196,17 @@ public sealed class InvitationLifecycleEndpointTests : IClassFixture<InvitationL
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
 
+        // 2026-09-13 (E14/F02/US01/T01, phase 1): the workspace creator becomes Admin at
+        // creation, so a fresh tenant is never membership-empty -- the point this test proves
+        // is that the impostor's rejected accept wrote no membership for THEM, not that the
+        // tenant has zero memberships overall.
         using var scope = _fixture.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<IdentityWorkspaceDbContext>();
         var tenant = new TenantId(tenantId);
         using var _ = scope.ServiceProvider.GetRequiredService<Raffa.SharedKernel.Tenancy.ITenantContext>().BeginScope(tenant);
-        Assert.Empty(await db.WorkspaceMemberships.Where(m => m.TenantId == tenant).ToListAsync());
+        Assert.False(await db.WorkspaceMemberships.AnyAsync(m =>
+            m.TenantId == tenant
+            && db.WorkspaceUsers.Any(u => u.Id == m.WorkspaceUserId && u.Email == "impostor@mismatch.example")));
 
         // ADR-025 §G: a mismatched accept is one of the nine named audit actions -- the security-
         // relevant event of someone attempting to accept an invitation that was not theirs must not

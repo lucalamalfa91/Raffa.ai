@@ -358,7 +358,9 @@ public sealed class MembershipRemovalEndpointTests : IClassFixture<MembershipRem
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         var member = body.RootElement.GetProperty("members").EnumerateArray()
             .Single(m => string.Equals(m.GetProperty("email").GetString(), memberEmail, StringComparison.OrdinalIgnoreCase));
-        return member.GetProperty("id").GetGuid();
+        // 2026-09-13: `id` is WorkspaceUser's own id (stable across Active/Invited, ADR-026 SS D3),
+        // never an action id -- DELETE .../members/{membershipId} needs `membershipId` specifically.
+        return member.GetProperty("membershipId").GetGuid();
     }
 
     private static Task<Guid> GetOwnMembershipIdAsync(HttpClient client, Guid tenantId, string userId) =>
