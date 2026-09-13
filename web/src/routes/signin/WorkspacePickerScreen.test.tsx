@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import type { ApiClient, WorkspaceSummaryBody } from "../../api/client";
 import WorkspacePickerScreen, {
   buildWorkspaceRowMeta,
+  formatWorkspaceCountry,
   resolveWorkspaceSelection,
   type WorkspacePickerState,
 } from "./WorkspacePickerScreen";
@@ -82,13 +83,15 @@ describe("buildWorkspaceRowMeta", () => {
   });
 
   it("joins up to three segments with the count first, currency second, country name third", () => {
-    expect(buildWorkspaceRowMeta(row({ contractCount: 2, currency: "CHF", country: "Switzerland" }))).toBe(
+    // The server stores and returns the ISO 3166-1 alpha-2 code (ADR-003 w14 footer clause 2);
+    // the row shows the name the create form's select showed for it.
+    expect(buildWorkspaceRowMeta(row({ contractCount: 2, currency: "CHF", country: "CH" }))).toBe(
       "2 validated contracts · CHF · Switzerland",
     );
   });
 
   it("drops a null currency segment without leaving a gap, a dash, or a placeholder", () => {
-    expect(buildWorkspaceRowMeta(row({ contractCount: 2, currency: null, country: "Switzerland" }))).toBe(
+    expect(buildWorkspaceRowMeta(row({ contractCount: 2, currency: null, country: "CH" }))).toBe(
       "2 validated contracts · Switzerland",
     );
   });
@@ -100,9 +103,20 @@ describe("buildWorkspaceRowMeta", () => {
   });
 
   it("renders the business country name, never a cloud-region slug", () => {
-    const meta = buildWorkspaceRowMeta(row({ contractCount: 1, currency: "CHF", country: "Switzerland" }));
+    const meta = buildWorkspaceRowMeta(row({ contractCount: 1, currency: "CHF", country: "CH" }));
     expect(meta).toContain("Switzerland");
     expect(meta).not.toContain("eu-west");
+  });
+
+  it("maps every one of the four stored codes to its name, case-insensitively, and never invents a name for a code outside them", () => {
+    expect(formatWorkspaceCountry("CH")).toBe("Switzerland");
+    expect(formatWorkspaceCountry("IT")).toBe("Italy");
+    expect(formatWorkspaceCountry("DE")).toBe("Germany");
+    expect(formatWorkspaceCountry("AT")).toBe("Austria");
+    expect(formatWorkspaceCountry("ch")).toBe("Switzerland");
+    // The column is a free varchar(2): a code nothing writes today renders as the server holds
+    // it, never dropped and never mapped to a neighbour.
+    expect(formatWorkspaceCountry("FR")).toBe("FR");
   });
 });
 
@@ -165,8 +179,8 @@ describe("WorkspacePickerScreen states", () => {
   });
 
   it("pick -> renders every row's segment meta and the server's own role tag, pass-through included", () => {
-    const admin = row({ id: "w-1", name: "Admin Co", contractCount: 0, role: "Admin", currency: "CHF", country: "Switzerland" });
-    const legal = row({ id: "w-2", name: "Legal Co", contractCount: 1, role: "Legal", currency: "EUR", country: "Italy" });
+    const admin = row({ id: "w-1", name: "Admin Co", contractCount: 0, role: "Admin", currency: "CHF", country: "CH" });
+    const legal = row({ id: "w-2", name: "Legal Co", contractCount: 1, role: "Legal", currency: "EUR", country: "IT" });
     renderScreen({ phase: "pick", workspaces: [admin, legal] });
 
     expect(screen.getByRole("heading", { name: /choose a workspace/i })).toBeInTheDocument();
@@ -194,5 +208,52 @@ describe("WorkspacePickerScreen states", () => {
 
     await userEvent.click(screen.getByText("Second Co"));
     expect(onEnter).toHaveBeenCalledWith(only);
+  });
+});
+
+/**
+ * The create form's wire contract (ADR-003 w14 footer clause 2; `WorkspaceProvisioningService`):
+ * the select shows the four country **names** and submits the ISO 3166-1 alpha-2 **code**. The
+ * first `dev` walk of W14-A2 (2026-09-13) submitted the label and got 400 "'Switzerland' is not a
+ * supported workspace country. Expected one of: AT, CH, DE, IT." -- this is the regression test
+ * for that exact defect.
+ */
+describe("CreateWorkspaceForm", () => {
+  it("shows the country names, submits the ISO code, and echoes the currency derived from it", async () => {
+    const createWorkspace = vi.fn().mockResolvedValue({
+      ok: true,
+      statusCode: 201,
+      workspace: { id: "w-new", name: "LUCA TEST SRL", createdAt: "2026-09-13T17:00:00Z", role: "Admin" },
+      error: null,
+    });
+    const onEnter = vi.fn();
+    render(
+      <WorkspacePickerScreen
+        apiClient={{ createWorkspace } as unknown as ApiClient}
+        accountLabel="user@example.test"
+        onSignOut={vi.fn()}
+        state={{ phase: "empty" }}
+        onRetry={vi.fn()}
+        onEnter={onEnter}
+      />,
+    );
+
+    // The default (Switzerland, the export's first option) already derives CHF before anything is typed.
+    const country = screen.getByLabelText(/^country$/i);
+    expect(screen.getByRole("option", { name: "Switzerland" })).toHaveValue("CH");
+    expect(screen.getByText("Amounts are shown in CHF.")).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText(/^company$/i), "LUCA TEST SRL");
+    await userEvent.selectOptions(country, "Italy");
+    expect(screen.getByText("Amounts are shown in EUR.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /create workspace/i }));
+
+    // The code, never the label, is what crosses the wire.
+    expect(createWorkspace).toHaveBeenCalledWith({ name: "LUCA TEST SRL", industry: "Food & beverage", country: "IT" });
+    // ...and the row handed to the shell carries the same code the server would return, plus the
+    // derived currency, so the picker renders "· EUR · Italy" for it exactly as for a server row.
+    expect(onEnter).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "w-new", name: "LUCA TEST SRL", role: "Admin", contractCount: 0, country: "IT", currency: "EUR" }),
+    );
   });
 });

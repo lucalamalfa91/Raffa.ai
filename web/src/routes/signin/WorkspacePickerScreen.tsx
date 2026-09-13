@@ -105,21 +105,50 @@ const INDUSTRY_OPTIONS = [
   "Other",
 ] as const;
 
-/** `markup.html:56`, verbatim. Exactly these four -- the currency derivation below is total over
- * this list by construction (a `Record` keyed on the same literal union), so there is no "unknown
- * country" branch to write and none to test. */
-const COUNTRY_OPTIONS = ["Switzerland", "Italy", "Germany", "Austria"] as const;
-type CountryOption = (typeof COUNTRY_OPTIONS)[number];
+/** `markup.html:56`, verbatim and in the export's own order. The **label** is the country's name;
+ * the **value** the form submits is the ISO 3166-1 alpha-2 code the API validates and stores
+ * (`WorkspaceProvisioningService.CurrencyByCountry`: exactly `AT`/`CH`/`DE`/`IT`, ADR-003 w14
+ * footer clause 2). Submitting the label instead answered 400 "'Switzerland' is not a supported
+ * workspace country" on the first `dev` walk of W14-A2 (2026-09-13) -- the create form and the
+ * API had each been proven against their own reading of the contract. Exactly these four: the
+ * currency and name derivations below are total over this list by construction (`Record`s keyed
+ * on the same literal union), so there is no "unknown country" branch to write and none to test. */
+const COUNTRY_OPTIONS = [
+  { code: "CH", name: "Switzerland" },
+  { code: "IT", name: "Italy" },
+  { code: "DE", name: "Germany" },
+  { code: "AT", name: "Austria" },
+] as const;
+type CountryCode = (typeof COUNTRY_OPTIONS)[number]["code"];
 
 /** The display echo of the derivation the server performs when it stores a workspace's currency
- * (ADR-003 w14 footer). Never sent on the wire -- the request carries `country` only; this map
- * exists so the form can show "Amounts are shown in {currency}." *before* the workspace exists. */
-const COUNTRY_CURRENCY: Record<CountryOption, string> = {
-  Switzerland: "CHF",
-  Italy: "EUR",
-  Germany: "EUR",
-  Austria: "EUR",
+ * (ADR-003 w14 footer; `WorkspaceProvisioningService.CurrencyByCountry`, mirrored key for key).
+ * Never sent on the wire -- the request carries `country` only; this map exists so the form can
+ * show "Amounts are shown in {currency}." *before* the workspace exists. */
+const COUNTRY_CURRENCY: Record<CountryCode, string> = {
+  CH: "CHF",
+  IT: "EUR",
+  DE: "EUR",
+  AT: "EUR",
 };
+
+/** Code -> the same display name the select shows, for the pick row's third segment. */
+const COUNTRY_NAME: Record<CountryCode, string> = {
+  CH: "Switzerland",
+  IT: "Italy",
+  DE: "Germany",
+  AT: "Austria",
+};
+
+/**
+ * The business country **name** for a stored code (the server stores and returns `CH`, never
+ * "Switzerland"). A code outside the four -- nothing writes one today, but the column is a free
+ * `varchar(2)` -- renders as the server holds it rather than being dropped or invented.
+ */
+export function formatWorkspaceCountry(country: string): string {
+  const code = country.trim().toUpperCase();
+  return Object.hasOwn(COUNTRY_NAME, code) ? COUNTRY_NAME[code as CountryCode] : country;
+}
 
 function formatValidatedContractsSegment(count: number): string {
   if (count === 0) return "No validated contracts yet";
@@ -134,18 +163,18 @@ function isPresentSegment(value: string | null | undefined): value is string {
 /**
  * The pick-row meta line: up to three segments joined by " · ", a missing one dropped rather than
  * rendered as a gap, a dash or a placeholder (AC-5). Segment 1 (the validated-contract count) is
- * never null; segments 2/3 (currency, the business country name) come straight off the server row
- * -- `WorkspaceSummaryBody.currency`/`.country` -- with no client-side lookup, because the server
- * already stores/returns the exact display string the create form submitted. Segment 3 is
- * deliberately the country's own name (e.g. "Switzerland"), never the V2 export's `eu-west`
- * cloud-region slug -- printing a region slug under "Contracts uploaded here never leave it." would
- * read as a data-residency promise this product has not made.
+ * never null; segment 2 (currency) comes straight off the server row (`WorkspaceSummaryBody.currency`,
+ * already the ISO 4217 display string); segment 3 is the business country **name** looked up from
+ * the ISO 3166-1 alpha-2 code the server stores and returns in `.country` (`CH`, never
+ * "Switzerland" -- `formatWorkspaceCountry`). Deliberately the country's own name, never the V2
+ * export's `eu-west` cloud-region slug -- printing a region slug under "Contracts uploaded here
+ * never leave it." would read as a data-residency promise this product has not made.
  */
 export function buildWorkspaceRowMeta(workspace: WorkspaceSummaryBody): string {
   return [
     formatValidatedContractsSegment(workspace.contractCount),
     isPresentSegment(workspace.currency) ? workspace.currency : null,
-    isPresentSegment(workspace.country) ? workspace.country : null,
+    isPresentSegment(workspace.country) ? formatWorkspaceCountry(workspace.country) : null,
   ]
     .filter(isPresentSegment)
     .join(" · ");
@@ -167,7 +196,7 @@ interface CreateWorkspaceFormProps {
 function CreateWorkspaceForm({ apiClient, onCreated, onCancel }: CreateWorkspaceFormProps) {
   const [name, setName] = useState("");
   const [industry, setIndustry] = useState<string>(INDUSTRY_OPTIONS[0]);
-  const [country, setCountry] = useState<CountryOption>(COUNTRY_OPTIONS[0]);
+  const [country, setCountry] = useState<CountryCode>(COUNTRY_OPTIONS[0].code);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -244,12 +273,12 @@ function CreateWorkspaceForm({ apiClient, onCreated, onCancel }: CreateWorkspace
           id="signin-workspace-country"
           className="input"
           value={country}
-          onChange={(event) => setCountry(event.target.value as CountryOption)}
+          onChange={(event) => setCountry(event.target.value as CountryCode)}
           disabled={creating}
         >
           {COUNTRY_OPTIONS.map((option) => (
-            <option key={option} value={option}>
-              {option}
+            <option key={option.code} value={option.code}>
+              {option.name}
             </option>
           ))}
         </select>
