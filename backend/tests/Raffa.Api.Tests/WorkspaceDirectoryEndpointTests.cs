@@ -145,6 +145,18 @@ public sealed class WorkspaceDirectoryEndpointTests : IClassFixture<WorkspaceDir
         return body.RootElement.GetProperty("id").GetGuid();
     }
 
+    /// <summary>Asserts a status, quoting the server's own error text when it differs -- an
+    /// unhandled exception is far cheaper to diagnose from the assertion message than from a bare
+    /// "Expected Created, actual InternalServerError" in a CI log (same helper as
+    /// R1DocumentsV2EndToEndTests.AssertStatusAsync).</summary>
+    private static async Task AssertStatusAsync(HttpStatusCode expected, HttpResponseMessage response)
+    {
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.True(
+            response.StatusCode == expected,
+            $"HTTP {(int)response.StatusCode}: {body[..Math.Min(2000, body.Length)]}");
+    }
+
     private static async Task<HttpResponseMessage> InviteAsync(
         HttpClient client, Guid tenantId, string adminUserId, string email, string role)
     {
@@ -303,7 +315,7 @@ public sealed class WorkspaceDirectoryEndpointTests : IClassFixture<WorkspaceDir
         var tenantId = await CreateWorkspaceAsync(client, "Shared Workspace", "admin@acme.example");
 
         var inviteResponse = await InviteAsync(client, tenantId, "admin@acme.example", "member@acme.example", "Procurement");
-        Assert.Equal(HttpStatusCode.Created, inviteResponse.StatusCode);
+        await AssertStatusAsync(HttpStatusCode.Created, inviteResponse);
 
         // 2026-09-13 (E15/F01/US01/T01, phase 3): invite alone writes no membership -- accept
         // does. GET /api/workspaces lists live memberships only, so this test's own title

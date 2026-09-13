@@ -385,8 +385,14 @@ public sealed class MembershipRemovalEndpointTests : IClassFixture<MembershipRem
         using var request = new HttpRequestMessage(HttpMethod.Get, "/api/workspaces");
         request.Headers.Add("X-User-Id", userId);
         var response = await client.SendAsync(request);
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        return await response.Content.ReadAsStringAsync();
+        var body = await response.Content.ReadAsStringAsync();
+        // Quotes the server's own error text on a mismatch -- an unhandled exception is far
+        // cheaper to diagnose from the assertion message than from a bare "Expected OK, actual
+        // InternalServerError" in a CI log (same helper as R1DocumentsV2EndToEndTests.AssertStatusAsync).
+        Assert.True(
+            response.StatusCode == HttpStatusCode.OK,
+            $"HTTP {(int)response.StatusCode}: {body[..Math.Min(2000, body.Length)]}");
+        return body;
     }
 
     private static string ExtractToken(string acceptUrl) => acceptUrl["/invite/accept#".Length..];
