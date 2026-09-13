@@ -184,8 +184,17 @@ public sealed class R1DocumentsV2EndToEndTests : IClassFixture<R1IntegrationFixt
     {
         using var scope = _fixture.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<IdentityWorkspaceDbContext>();
+        var tenantContext = scope.ServiceProvider.GetRequiredService<ITenantContext>();
 
         var tenant = new TenantId(tenantId);
+        // R1IntegrationFixture's DbContext runs over the unprivileged app role (RLS on): a write
+        // with no app.tenant_id set is rejected with 42501, the same guard every other seed helper
+        // in this project (e.g. ValidatedContractCountTests.SeedDocumentAsync) already opens a
+        // scope for -- DocumentsV2EndpointTests's own SeedMembershipAsync (Raffa.Api.Tests), the
+        // pattern this was first copied from, runs over a different, unscoped host and does not
+        // need this.
+        using var tenantScope = tenantContext.BeginScope(tenant);
+
         var user = new WorkspaceUser { TenantId = tenant, Email = email, CreatedAt = DateTimeOffset.UtcNow };
         var role = new WorkspaceRole { TenantId = tenant, Name = roleName, CreatedAt = DateTimeOffset.UtcNow };
         db.WorkspaceUsers.Add(user);
