@@ -182,6 +182,19 @@ Markers (line-anchored, last line): `CONTEXT_READY:` / `HALTED:` (intake),
   resolve against it, while a Claude Code agent can still write anywhere
   with absolute paths. A Studio run with a working directory other than
   `.helix` therefore produces a complete plan on disk and a failed run.
+- **D-N12 — Queue discipline is a rule of the intake, not of the engine.**
+  Nothing in Helix orders successive runs: each run selects its own §5 and
+  the rest is prose. The w14 intake queued the raw file's "no longer
+  deferred" NW-27 / NW-61 four waves out and demoted one of them, which the
+  stakeholder rejected on the first `dev` walk (2026-09-13). Since w15
+  `agents/next-intake.md` §2 binds the intake: the previous file's
+  `queued — <this wave>` items are the carry-over and enter §5 first; a
+  `must` / "no longer deferred" item is never queued beyond the next wave nor
+  demoted without a written reason; overflow becomes the **head** of the next
+  wave; §5 restates the full remaining schedule every run. Every scheduled
+  wave is then executed in order by chaining `./run-next.ps1 -Max` runs
+  (w15 → w16 → w17 → w18), each followed by the `dev` deploy and the
+  acceptance walk — the loop below.
   Mitigations: `run-next.ps1` never overrides it; the intake, decomposer and
   checker halt at once when the cwd is not the artifact folder
   (`cc-passata1-harness`); `next-from-decomposition` re-enters after a
@@ -226,7 +239,10 @@ scripts/check_slice_prereqs.py --slice w14` + `./run.ps1 -Max -Slice w14 -o
 execution-fanout`). The wave opens the PR `integration → main`
 (`open_fanout_pr.py`) and writes `reports/execution/wave-close.md`. Merge,
 let CI deploy `dev`, test, write the next raw file under `inputs/next/`,
-repeat: `./run-next.ps1 -Max` (newest file, next id `w15`).
+repeat: `./run-next.ps1 -Max` (newest file, next id `w15`) — and keep
+repeating until every wave the previous intake queued has run, in order
+(`w15` → `w16` → `w17` → `w18`; D-N12). A raw file for a later wave may be
+as short as "execute the queue" plus whatever the `dev` walk surfaced.
 
 Re-running the same wave id converges: the intake keeps a normalized file
 whose `source_sha256` matches, seats keep footers already present, the
