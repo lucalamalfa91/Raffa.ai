@@ -76,6 +76,18 @@ Use `templates/next-requirements-template.md` exactly (frontmatter, §1–§7).
   decomposer applies the cap on tasks). §6 superseded: only explicit cancels.
   §7 open questions: also append them to `reports/open-questions.md` (read
   full, append, write full) with an assumption in force.
+- **Queue discipline (binding since w15; stakeholder ruling 2026-09-13).** The
+  previous requirements file's `queued — <this wave>` items are the carry-over
+  and enter §5 **first**. An item the raw file marks `must` or "no longer
+  deferred" is **never** queued beyond the next wave and never demoted below
+  the raw file's priority — if it truly cannot fit, write a one-line reason in
+  §5 next to it. An item that does not fit the budget becomes the **head** of
+  the next wave's queue, never its tail. §5 restates the **full remaining
+  schedule** (every later wave's queue, verbatim from the previous file plus
+  this run's overflow) so nothing is dropped between runs; every scheduled
+  wave is executed, in order. (The w14 intake queued NW-27 / NW-61 to W18 and
+  demoted NW-27 to `should` against the input's own "no longer deferred" —
+  the defect this rule exists to prevent.)
 - An item in §5 "In wave" must be closable in this product: no paid market
   API on `demo`, no mobile beyond the scaffold, nothing in ADR-001 §1.2
   non-goals. Those go to "Out" with the reason.
