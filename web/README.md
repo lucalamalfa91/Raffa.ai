@@ -1491,3 +1491,67 @@ Authored against the currently-committed V2 source of every screen it drives
 set (14 skipped, exit `0`, no sign-in attempted). A real green run needs a
 deployed environment, a fixture-seeded tenant and Entra test credentials -- an
 operator/CI action, the same shape ADR-016's promotion gate already has.
+
+## End-to-end (workspace invitation, N3b) -- task E14/F06/US01/T01, us-01-final-integration
+
+`e2e/invite.spec.ts` (same `playwright.config.ts`) is wave w14's two-account walk of
+NW-58's acceptance row **N3b**: an Admin invites an address, a **second browser
+context** opens the copyable accept link, signs in through the accept screen's own
+popup CTA and joins, lands in *that* workspace, then the Admin removes them and the
+removed account's next load loses access -- with the link they used now rendering
+"This invitation is no longer valid." The prose runbook for the whole wave, with the
+API and SQL checks a browser cannot make (N1, N2, N3, N3b, N4, N5, N8, N9, W14-A1,
+W14-A2), is [`../docs/waves/w14-acceptance.md`](../docs/waves/w14-acceptance.md).
+
+The same task added one line to `e2e/day1.spec.ts`'s "Invite a Procurement user"
+step -- `await page.reload()` between the click and its assertions -- which is the
+whole of **N3** (a reload-surviving roster; before it both assertions passed on this
+browser's own `sessionStorage` echo). Nothing else in that file changed: it is still
+the V1 walk and still red at its last step (see "Known regression" above), so N3's
+verdict is that step's line in the report, not the file's exit code.
+
+### What runs and what skips
+
+| Row | Test | Gate |
+|---|---|---|
+| N3b-1/2 | the Admin invites the second account; the pane renders `Invitation ready for ...` with a copyable `/invite/accept#...` link and never the word "sent" (`mailDelivered` is `false` by construction, ADR-026 §D6); the roster row is `Invited` | `RAFFA_E2E_SECOND_ENTRA_EMAIL` / `_PASSWORD` |
+| N3b-3/4 | a fresh context opens the link: **Join {workspace}**, no token in the address bar, no invited address on screen; **Continue with Microsoft Entra ID** opens the `loginPopup`, the CTA becomes **Join**, and the invitee lands in *that* workspace, never on a create form | same |
+| N3b-5 | the Admin's reloaded roster shows the member `Active`; a sole Admin's own **Remove** is disabled with a hint (asserted only when this Admin is the sole one, annotated otherwise) | same |
+| N3b-6/7/8 | **Remove** -> inline **Yes, remove** -> the row is gone; the invitee's next load no longer offers that workspace; the used link renders "This invitation is no longer valid." | same |
+
+Without the second account the whole group `test.skip`s with the named reason
+*"requires a second Entra account on the pilot tenant"* -- the operator prerequisite
+`reports/audit/w14-hitl.md` records. It need **not** share the Admin's email domain:
+after w14 the cross-domain invite check is a non-blocking warning (ADR-001 w14
+footer; `memberViewModel.ts#inviteDomainWarning`), never a block.
+
+### Running it
+
+```bash
+npm ci
+npx playwright install --with-deps chromium   # one-time browser download
+
+RAFFA_E2E_BASE_URL=https://<swa-dev-host> \
+RAFFA_E2E_ENTRA_EMAIL=<the Admin test account UPN -- it must already own a workspace> \
+RAFFA_E2E_ENTRA_PASSWORD=<that account's password> \
+RAFFA_E2E_SECOND_ENTRA_EMAIL=<the invitee test account UPN> \
+RAFFA_E2E_SECOND_ENTRA_PASSWORD=<its password> \
+  npx playwright test invite.spec.ts
+
+npm run test:e2e:report   # trace / video / screenshot on failure
+```
+
+| Variable | Meaning |
+|---|---|
+| `RAFFA_E2E_BASE_URL` | the deployed SPA origin (`dev`) |
+| `RAFFA_E2E_ENTRA_EMAIL` / `_PASSWORD` | the **Admin**: a real test account excluded from interactive MFA, already holding an Admin membership in at least one workspace (N1/N2 precede this row) |
+| `RAFFA_E2E_SECOND_ENTRA_EMAIL` / `_PASSWORD` | the **invitee**: a second account on the same Entra tenant, also MFA-excluded, holding **no** membership in the Admin's workspace when the run starts |
+
+### Harness note
+
+Authored against the currently-committed source of every screen it drives
+(`routes/workspace/members/**`, `routes/invite/accept/index.tsx`,
+`routes/signin/WorkspacePickerScreen.tsx`; cited inline). Verified here with
+`npx playwright test --list` and `npx playwright test invite.spec.ts` with no
+environment set (skipped with the reason, exit `0`, no sign-in attempted). A real
+green run needs the deployed environment and the two accounts -- an operator act.
