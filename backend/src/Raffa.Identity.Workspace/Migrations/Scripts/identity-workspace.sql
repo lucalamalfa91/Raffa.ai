@@ -190,3 +190,132 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260911084211_AddWorkspaceUserIdentitySelfReadPolicy') THEN
+    CREATE POLICY identity_self ON "workspace_user"
+        FOR SELECT
+        USING (
+            nullif(current_setting('app.identity_subject', true), '') IS NOT NULL
+            AND (
+                lower(email) = lower(nullif(current_setting('app.identity_subject', true), ''))
+                OR external_subject_id = nullif(current_setting('app.identity_subject', true), '')
+            )
+        );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260911084211_AddWorkspaceUserIdentitySelfReadPolicy') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20260911084211_AddWorkspaceUserIdentitySelfReadPolicy', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260911084315_AddWorkspaceProfileColumns') THEN
+    ALTER TABLE workspace ADD country character varying(2);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260911084315_AddWorkspaceProfileColumns') THEN
+    ALTER TABLE workspace ADD currency character varying(3);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260911084315_AddWorkspaceProfileColumns') THEN
+    ALTER TABLE workspace ADD industry character varying(120);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260911084315_AddWorkspaceProfileColumns') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20260911084315_AddWorkspaceProfileColumns', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260911084444_AddWorkspaceInvitation') THEN
+    CREATE TABLE workspace_invitation (
+        id uuid NOT NULL,
+        email character varying(320) NOT NULL,
+        workspace_role_id uuid NOT NULL,
+        token_hash character varying(128) NOT NULL,
+        invited_by character varying(320) NOT NULL,
+        created_at timestamp with time zone NOT NULL,
+        expires_at timestamp with time zone NOT NULL,
+        accepted_at timestamp with time zone,
+        revoked_at timestamp with time zone,
+        tenant_id uuid NOT NULL,
+        CONSTRAINT pk_workspace_invitation PRIMARY KEY (id),
+        CONSTRAINT fk_workspace_invitation_workspace_role_workspace_role_id FOREIGN KEY (workspace_role_id) REFERENCES workspace_role (id) ON DELETE RESTRICT
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260911084444_AddWorkspaceInvitation') THEN
+    CREATE INDEX ix_workspace_invitation_tenant_id ON workspace_invitation (tenant_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260911084444_AddWorkspaceInvitation') THEN
+    CREATE UNIQUE INDEX ix_workspace_invitation_tenant_id_token_hash ON workspace_invitation (tenant_id, token_hash);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260911084444_AddWorkspaceInvitation') THEN
+    CREATE INDEX ix_workspace_invitation_workspace_role_id ON workspace_invitation (workspace_role_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260911084444_AddWorkspaceInvitation') THEN
+    CREATE UNIQUE INDEX ix_workspace_invitation_tenant_id_email ON "workspace_invitation" (tenant_id, lower(email))
+        WHERE accepted_at IS NULL AND revoked_at IS NULL;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260911084444_AddWorkspaceInvitation') THEN
+    ALTER TABLE "workspace_invitation" ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE "workspace_invitation" FORCE ROW LEVEL SECURITY;
+    CREATE POLICY tenant_isolation ON "workspace_invitation"
+        USING (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid)
+        WITH CHECK (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260911084444_AddWorkspaceInvitation') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20260911084444_AddWorkspaceInvitation', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+

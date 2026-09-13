@@ -18,6 +18,7 @@ public sealed class IdentityWorkspaceDbContext(DbContextOptions<IdentityWorkspac
     public DbSet<WorkspaceUser> WorkspaceUsers => Set<WorkspaceUser>();
     public DbSet<WorkspaceRole> WorkspaceRoles => Set<WorkspaceRole>();
     public DbSet<WorkspaceMembership> WorkspaceMemberships => Set<WorkspaceMembership>();
+    public DbSet<WorkspaceInvitation> WorkspaceInvitations => Set<WorkspaceInvitation>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -25,6 +26,7 @@ public sealed class IdentityWorkspaceDbContext(DbContextOptions<IdentityWorkspac
         modelBuilder.ApplyConfiguration(new WorkspaceUserConfiguration());
         modelBuilder.ApplyConfiguration(new WorkspaceRoleConfiguration());
         modelBuilder.ApplyConfiguration(new WorkspaceMembershipConfiguration());
+        modelBuilder.ApplyConfiguration(new WorkspaceInvitationConfiguration());
 
         base.OnModelCreating(modelBuilder);
     }
