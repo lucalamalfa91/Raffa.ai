@@ -228,34 +228,16 @@ jobs:
           while IFS=$'\t' read -r WORKSPACE_ID EMAIL; do
             [ -n "$WORKSPACE_ID" ] || continue
             echo "::group::${WORKSPACE_ID}"
-            psql -v ON_ERROR_STOP=1 -v admin_email="$EMAIL" <<SQL
-SET app.tenant_id = '${WORKSPACE_ID}';
-
-BEGIN;
-
--- Case-insensitive existence check: an app-created workspace_user is never
--- lower-cased, so a prior invite/sign-in under different casing is reused
--- rather than duplicated. A genuinely new person is inserted with the
--- (already lower-cased) supplied address.
-INSERT INTO workspace_user (id, email, display_name, external_subject_id, created_at, tenant_id)
-SELECT gen_random_uuid(), :'admin_email', NULL, NULL, now(), '${WORKSPACE_ID}'::uuid
-WHERE NOT EXISTS (
-    SELECT 1 FROM workspace_user
-    WHERE tenant_id = '${WORKSPACE_ID}'::uuid
-      AND lower(email) = lower(:'admin_email')
-)
-ON CONFLICT (tenant_id, email) DO NOTHING;
-
-INSERT INTO workspace_membership (id, workspace_user_id, workspace_role_id, created_at, tenant_id)
-SELECT gen_random_uuid(), wu.id, wr.id, now(), '${WORKSPACE_ID}'::uuid
-FROM workspace_user wu
-JOIN workspace_role wr ON wr.tenant_id = wu.tenant_id AND wr.name = 'Admin'
-WHERE wu.tenant_id = '${WORKSPACE_ID}'::uuid
-  AND lower(wu.email) = lower(:'admin_email')
-ON CONFLICT (workspace_user_id, workspace_role_id) DO NOTHING;
-
-COMMIT;
-SQL
+            # 2026-09-13: this used to be an inline `psql <<SQL ... SQL` heredoc here. A `psql`
+            # heredoc's closing delimiter must sit at column 0 (no leading whitespace), which is
+            # less indented than this YAML block scalar's own established indentation -- so every
+            # push silently failed to register this workflow at all (YAML parse error, zero jobs
+            # scheduled, see backend/scripts/backfill-workspace-membership.sql's own header for the
+            # detail). The SQL now lives in that checked-in file, same shape demo-fixture-seed.sql
+            # already established, invoked with workspace_id also passed as a `-v` variable (safer
+            # than the shell interpolation the heredoc version used).
+            psql -v ON_ERROR_STOP=1 -v workspace_id="$WORKSPACE_ID" -v admin_email="$EMAIL" \
+              -f backend/scripts/backfill-workspace-membership.sql
             # Audit fact (ADR-025 §G: workspace.membership.backfilled, actor
             # "operator"). Deliberately no email here -- ADR-025 §G's own
             # table carries no email column for this action, and this is the

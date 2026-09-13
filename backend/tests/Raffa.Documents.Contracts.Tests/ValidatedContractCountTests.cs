@@ -163,16 +163,22 @@ public sealed class ValidatedContractCountTests : IAsyncLifetime
     [Fact]
     public async Task A_completed_document_with_no_linked_contract_row_does_not_count()
     {
+        // 2026-09-13: the original version of this test pointed a document at a fabricated
+        // contract id that was never seeded, to prove an "orphan" reference does not count. That
+        // state cannot occur in a real database: `document.contract_id` carries a real FK
+        // (`fk_document_contract_contract_id`, migration 20260902205243_Initial), so Postgres
+        // itself rejects the insert (23503) before this test's own assertion ever runs. The
+        // reachable, equivalent case is `ContractId` genuinely absent (nullable, no contract
+        // linked yet) -- `CountValidatedContractsAsync`'s own `d.ContractId.HasValue` guard is
+        // what this test actually proves; a document that is never matched to any contract must
+        // still not count, whether that is because no row exists at all (this case) or, since the
+        // query drives from `Contracts` and joins outward, because no contract id was ever set.
         var tenantId = TenantId.New();
         var tenantContext = new TenantContext();
 
-        // A document pointing at a contract id with no Contract row at all (never seeded here) —
-        // the same "must currently exist in Contracts" guard GetAnalysisSummaryAsync's own
-        // contracts-table join already enforces, so an orphaned reference is never counted.
-        var orphanContractId = EntityId.New();
         await SeedDocumentAsync(
             tenantContext,
-            NewDocument(tenantId, orphanContractId, DocumentProcessingStatus.Completed, "orphan.pdf"));
+            NewDocument(tenantId, contractId: null, DocumentProcessingStatus.Completed, "unlinked.pdf"));
 
         await using var db = CreateAppContext(tenantContext);
         var service = new PortfolioQueryService(db, tenantContext, new PortfolioAnalysisCalculator());

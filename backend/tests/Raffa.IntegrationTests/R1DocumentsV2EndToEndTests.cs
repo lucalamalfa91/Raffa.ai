@@ -1,6 +1,8 @@
 using System.Net;
 using System.Text.Json;
 using Raffa.Documents.Contracts.Infrastructure;
+using Raffa.Identity.Workspace.Domain;
+using Raffa.Identity.Workspace.Infrastructure;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Tenancy;
 using Microsoft.EntityFrameworkCore;
@@ -67,12 +69,21 @@ public sealed class R1DocumentsV2EndToEndTests : IClassFixture<R1IntegrationFixt
             (await R1EndToEndTests.GetAsync(client, $"/api/documents/{documentId}/preview", Guid.NewGuid())).StatusCode);
 
         // R-DOC-10: Procurement cannot delete; Admin can, and the row and its objects go.
+        // 2026-09-13 (wave w14, E14/F02/US02/T01 deleted the X-Role branch -- ADR-025 SS E, ADR-022
+        // w14 footer clause 1): role now comes only from a real workspace_membership row, keyed on
+        // X-User-Id (ICallerIdentity). Same seed + header pattern already proven in
+        // Raffa.Api.Tests.DocumentsV2EndpointTests -- see that file's own SeedMembershipAsync.
+        const string adminEmail = "admin@acme.example";
+        const string procurementEmail = "buyer@acme.example";
+        await SeedMembershipAsync(tenantId, adminEmail, WorkspaceRoleName.Admin);
+        await SeedMembershipAsync(tenantId, procurementEmail, WorkspaceRoleName.Procurement);
+
         Assert.Equal(
             HttpStatusCode.Forbidden,
-            (await SendAsync(client, HttpMethod.Delete, $"/api/documents/{documentId}", tenantId, "Procurement")).StatusCode);
+            (await SendAsync(client, HttpMethod.Delete, $"/api/documents/{documentId}", tenantId, procurementEmail)).StatusCode);
         await AssertStatusAsync(
             HttpStatusCode.NoContent,
-            await SendAsync(client, HttpMethod.Delete, $"/api/documents/{documentId}", tenantId, "Admin"));
+            await SendAsync(client, HttpMethod.Delete, $"/api/documents/{documentId}", tenantId, adminEmail));
 
         Assert.Equal(
             HttpStatusCode.NotFound,
@@ -121,7 +132,11 @@ public sealed class R1DocumentsV2EndToEndTests : IClassFixture<R1IntegrationFixt
             await dbContext.SaveChangesAsync();
         }
 
-        var response = await SendAsync(client, HttpMethod.Post, $"/api/documents/{documentId}/reprocess", tenantId, "Admin");
+        // 2026-09-13 (wave w14): same membership-based auth as the delete test above.
+        const string adminEmail = "admin@acme.example";
+        await SeedMembershipAsync(tenantId, adminEmail, WorkspaceRoleName.Admin);
+
+        var response = await SendAsync(client, HttpMethod.Post, $"/api/documents/{documentId}/reprocess", tenantId, adminEmail);
         await AssertStatusAsync(HttpStatusCode.OK, response);
         var summary = await R1EndToEndTests.ParseAsync(response);
         Assert.Equal(2, summary.GetProperty("pagesParsed").GetInt32());
@@ -161,12 +176,50 @@ public sealed class R1DocumentsV2EndToEndTests : IClassFixture<R1IntegrationFixt
             $"HTTP {(int)response.StatusCode}: {body[..Math.Min(2000, body.Length)]}");
     }
 
+    /// <summary>Seeds a real <c>workspace_membership</c> row -- the only role source
+    /// <see cref="Raffa.Api.Infrastructure.WorkspaceRoleResolver"/> reads since wave w14
+    /// (E14/F02/US02/T01). Same shape as <c>Raffa.Api.Tests.DocumentsV2EndpointTests</c>'s own
+    /// <c>SeedMembershipAsync</c>.</summary>
+    private async Task SeedMembershipAsync(Guid tenantId, string email, WorkspaceRoleName roleName)
+    {
+        using var scope = _fixture.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<IdentityWorkspaceDbContext>();
+        var tenantContext = scope.ServiceProvider.GetRequiredService<ITenantContext>();
+
+        var tenant = new TenantId(tenantId);
+        // R1IntegrationFixture's DbContext runs over the unprivileged app role (RLS on): a write
+        // with no app.tenant_id set is rejected with 42501, the same guard every other seed helper
+        // in this project (e.g. ValidatedContractCountTests.SeedDocumentAsync) already opens a
+        // scope for -- DocumentsV2EndpointTests's own SeedMembershipAsync (Raffa.Api.Tests), the
+        // pattern this was first copied from, runs over a different, unscoped host and does not
+        // need this.
+        using var tenantScope = tenantContext.BeginScope(tenant);
+
+        var user = new WorkspaceUser { TenantId = tenant, Email = email, CreatedAt = DateTimeOffset.UtcNow };
+        var role = new WorkspaceRole { TenantId = tenant, Name = roleName, CreatedAt = DateTimeOffset.UtcNow };
+        db.WorkspaceUsers.Add(user);
+        db.WorkspaceRoles.Add(role);
+        db.WorkspaceMemberships.Add(new WorkspaceMembership
+        {
+            TenantId = tenant,
+            WorkspaceUserId = user.Id,
+            WorkspaceRoleId = role.Id,
+            CreatedAt = DateTimeOffset.UtcNow,
+        });
+
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>X-User-Id is the only identity source <see cref="ICallerIdentity"/> reads
+    /// (ADR-025 SS A2); <paramref name="userId"/> must already hold the real
+    /// <c>workspace_membership</c> row a caller <see cref="SeedMembershipAsync"/> wrote, or every
+    /// Admin-only endpoint answers 403 with no role resolved at all.</summary>
     private static async Task<HttpResponseMessage> SendAsync(
-        HttpClient client, HttpMethod method, string url, Guid tenantId, string role)
+        HttpClient client, HttpMethod method, string url, Guid tenantId, string userId)
     {
         using var request = new HttpRequestMessage(method, url);
         request.Headers.Add("X-Tenant-Id", tenantId.ToString());
-        request.Headers.Add("X-Role", role);
+        request.Headers.Add("X-User-Id", userId);
         return await client.SendAsync(request);
     }
 }

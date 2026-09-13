@@ -448,7 +448,7 @@ public sealed class WorkspaceMembershipService(
             join user in db.WorkspaceUsers on membership.WorkspaceUserId equals user.Id
             join role in db.WorkspaceRoles on membership.WorkspaceRoleId equals role.Id
             where membership.TenantId == tenantId && user.TenantId == tenantId && role.TenantId == tenantId
-            select new MembershipRosterRow(user.Id, user.Email, user.DisplayName, role.Name))
+            select new MembershipRosterRow(user.Id, membership.Id, user.Email, user.DisplayName, role.Name))
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
@@ -463,7 +463,7 @@ public sealed class WorkspaceMembershipService(
             join role in db.WorkspaceRoles on invitation.WorkspaceRoleId equals role.Id
             where invitation.TenantId == tenantId && user.TenantId == tenantId && role.TenantId == tenantId
             select new InvitationRosterRow(
-                user.Id, invitation.Email, user.DisplayName, role.Name,
+                user.Id, invitation.Id, invitation.Email, user.DisplayName, role.Name,
                 invitation.AcceptedAt, invitation.RevokedAt, invitation.ExpiresAt))
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
@@ -497,8 +497,14 @@ public sealed class WorkspaceMembershipService(
                 WorkspaceRoleClaimResolver.TryResolve(
                     group.Select(row => row.RoleName.ToString()), out var highestRole);
                 var first = group.First();
+                // The exposed membership id must belong to the SAME row the resolved role came
+                // from: a person holding two memberships (e.g. Admin + Procurement) must not have
+                // an arbitrary one's id displayed under the highest-role label, or DELETE would
+                // remove the wrong membership.
+                var highestRoleRow = group.FirstOrDefault(row => row.RoleName == highestRole) ?? first;
                 return new WorkspaceMemberRecord(
-                    first.UserId, first.Email, first.DisplayName, highestRole, WorkspaceMemberStatus.Active);
+                    first.UserId, first.Email, first.DisplayName, highestRole, WorkspaceMemberStatus.Active,
+                    MembershipId: highestRoleRow.MembershipId, InvitationId: null);
             })
             .ToList();
 
@@ -514,7 +520,8 @@ public sealed class WorkspaceMembershipService(
             // speaks for them.
             .Where(row => !activeEmails.Contains(row.Email))
             .Select(row => new WorkspaceMemberRecord(
-                row.UserId, row.Email, row.DisplayName, row.RoleName, WorkspaceMemberStatus.Invited));
+                row.UserId, row.Email, row.DisplayName, row.RoleName, WorkspaceMemberStatus.Invited,
+                MembershipId: null, InvitationId: row.InvitationId));
 
         return active
             .Concat(invited)
@@ -643,9 +650,19 @@ public sealed class RemoveOutcome
 /// (<see cref="Raffa.Api.WorkspaceMembersEndpointExtensions"/>), never returned as-is — <see cref="Id"/>
 /// is <see cref="WorkspaceUser"/>'s own id, stable across the Active/Invited transition an accept
 /// performs, since both branches join back to the same user row (never the membership or
-/// invitation row's own id, which would change on removal/re-invite).</summary>
+/// invitation row's own id, which would change on removal/re-invite).
+///
+/// <para>
+/// <see cref="MembershipId"/> (set only when <see cref="Status"/> is
+/// <see cref="WorkspaceMemberStatus.Active"/>) and <see cref="InvitationId"/> (set only when
+/// <see cref="WorkspaceMemberStatus.Invited"/>) are the action ids the client actually needs:
+/// <c>DELETE /members/{membershipId}</c> and <c>revoke /invitations/{invitationId}</c> each take a
+/// different row's own id, never <see cref="Id"/> (E15/F02/US01/T01's halt — <see cref="Id"/> alone
+/// cannot address either action).
+/// </para></summary>
 public sealed record WorkspaceMemberRecord(
-    EntityId Id, string Email, string? Name, WorkspaceRoleName Role, WorkspaceMemberStatus Status);
+    EntityId Id, string Email, string? Name, WorkspaceRoleName Role, WorkspaceMemberStatus Status,
+    EntityId? MembershipId, EntityId? InvitationId);
 
 /// <summary>ADR-026 §D3: derived, never stored — see <see cref="WorkspaceMembershipService.ComposeRoster"/>.</summary>
 public enum WorkspaceMemberStatus
@@ -658,7 +675,7 @@ public enum WorkspaceMemberStatus
 /// <see cref="WorkspaceUser"/> and <see cref="WorkspaceRole"/>, as <see cref="WorkspaceMembershipService.ListMembersAsync"/>
 /// materializes it before <see cref="WorkspaceMembershipService.ComposeRoster"/> collapses one
 /// person's several memberships to their highest role.</summary>
-public sealed record MembershipRosterRow(EntityId UserId, string Email, string? DisplayName, WorkspaceRoleName RoleName);
+public sealed record MembershipRosterRow(EntityId UserId, EntityId MembershipId, string Email, string? DisplayName, WorkspaceRoleName RoleName);
 
 /// <summary>A flat, already-tenant-scoped <see cref="WorkspaceInvitation"/> row, joined the same
 /// way as <see cref="MembershipRosterRow"/>, carrying the three columns
@@ -666,6 +683,7 @@ public sealed record MembershipRosterRow(EntityId UserId, string Email, string? 
 /// (<see cref="AcceptedAt"/>/<see cref="RevokedAt"/> null, <see cref="ExpiresAt"/> in the future).</summary>
 public sealed record InvitationRosterRow(
     EntityId UserId,
+    EntityId InvitationId,
     string Email,
     string? DisplayName,
     WorkspaceRoleName RoleName,

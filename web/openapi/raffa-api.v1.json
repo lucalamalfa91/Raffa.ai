@@ -222,7 +222,7 @@
       "get": {
         "operationId": "getWorkspaceMembers",
         "summary": "The roster of a workspace: live members plus pending invitations.",
-        "description": "Documents the ADR-026 section D3 contract (verbatim, per its own w14 footer clause 1) for the E14/F04/US01/T01 handler in backend/src/Raffa.Api/WorkspaceMembersEndpointExtensions.cs -- a same-phase sibling task's file; this task (E14/F03/US01/T01) only documents the contract and writes the client method. Only X-User-Id is sent, never X-Tenant-Id: the route's {tenantId} already carries the tenant and the caller's membership in it is verified (ADR-026's own w14 footer supersedes its earlier D3 header line -- two accepted ADRs cannot carry opposite instructions for one operation, and ADR-022's w14 footer is the general rule). The roster is live workspace_membership rows union live (unaccepted, unrevoked, unexpired) workspace_invitation rows -- never a scan of workspace_user, so a removed member never reappears. status is derived, never stored: Active for a live membership, Invited for a live invitation with no membership yet. name maps to the existing nullable WorkspaceUser.DisplayName, emitted only when a real stored value exists -- never derived from the email address. role and status are plain strings, never enums (ADR-026 Amendment #3 -- the same generator/schema reasoning as listWorkspaces' own role field).",
+        "description": "Documents the ADR-026 section D3 contract (verbatim, per its own w14 footer clause 1) for the E14/F04/US01/T01 handler in backend/src/Raffa.Api/WorkspaceMembersEndpointExtensions.cs -- a same-phase sibling task's file; this task (E14/F03/US01/T01) only documents the contract and writes the client method. Only X-User-Id is sent, never X-Tenant-Id: the route's {tenantId} already carries the tenant and the caller's membership in it is verified (ADR-026's own w14 footer supersedes its earlier D3 header line -- two accepted ADRs cannot carry opposite instructions for one operation, and ADR-022's w14 footer is the general rule). The roster is live workspace_membership rows union live (unaccepted, unrevoked, unexpired) workspace_invitation rows -- never a scan of workspace_user, so a removed member never reappears. status is derived, never stored: Active for a live membership, Invited for a live invitation with no membership yet. name maps to the existing nullable WorkspaceUser.DisplayName, emitted only when a real stored value exists -- never derived from the email address. role and status are plain strings, never enums (ADR-026 Amendment #3 -- the same generator/schema reasoning as listWorkspaces' own role field). 2026-09-11 fix (the gap E15/F02/US01/T01 halted on): membershipId and invitationId are the action ids -- exactly one is present per row, matching status (Active -> membershipId, the id DELETE /api/workspaces/{tenantId}/members/{membershipId} takes; Invited -> invitationId, the id DELETE /api/workspaces/{tenantId}/invites/{id} takes). id alone (WorkspaceUser's, stable across the Active/Invited transition) cannot address either action.",
         "parameters": [
           {
             "name": "tenantId",
@@ -286,6 +286,22 @@
                           "status": {
                             "type": "string",
                             "description": "\"Active\" (a live membership) or \"Invited\" (a live invitation, no membership yet) -- derived, never stored (ADR-026 section D3)."
+                          },
+                          "membershipId": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "format": "uuid",
+                            "description": "Set only when status is \"Active\" -- the id DELETE /api/workspaces/{tenantId}/members/{membershipId} takes. Never id (WorkspaceUser's own id)."
+                          },
+                          "invitationId": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "format": "uuid",
+                            "description": "Set only when status is \"Invited\" -- the id DELETE /api/workspaces/{tenantId}/invites/{id} takes."
                           }
                         }
                       }

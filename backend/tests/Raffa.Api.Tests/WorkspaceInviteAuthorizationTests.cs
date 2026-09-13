@@ -101,14 +101,18 @@ public sealed class WorkspaceInviteAuthorizationTests : IClassFixture<WebApplica
         Assert.Equal("Admin", body.RootElement.GetProperty("role").GetString());
         Assert.Equal("second.admin@acme.example", body.RootElement.GetProperty("email").GetString());
 
+        // 2026-09-13 (E15/F01/US01/T01, phase 3): invite alone no longer writes a
+        // membership -- only accept does (ADR-025 Rule D.3). The response-body assertions
+        // above already prove the invite itself; the DB-level proof is the live invitation
+        // row, not a membership this call no longer creates.
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<IdentityWorkspaceDbContext>();
         var tenant = new TenantId(tenantId);
-        var invitedUser = await db.WorkspaceUsers.SingleAsync(
-            u => u.TenantId == tenant && u.Email == "second.admin@acme.example");
-        Assert.NotEmpty(await db.WorkspaceMemberships
-            .Where(m => m.TenantId == tenant && m.WorkspaceUserId == invitedUser.Id)
-            .ToListAsync());
+        Assert.True(await db.WorkspaceInvitations.AnyAsync(
+            i => i.TenantId == tenant
+                && i.Email == "second.admin@acme.example"
+                && i.AcceptedAt == null
+                && i.RevokedAt == null));
     }
 
     [Fact]
