@@ -2,8 +2,9 @@
  * Workspace & members screen, V2 (route `/workspace/members`; ADR-024 V2 IA; screens-v2.md #10;
  * `raffa-v2/markup.html` "WORKSPACE & MEMBERS" block). Component classes (.screen-header,
  * .screen-kicker, .screen-title, .table, .tag, .btn, .btn-block, .field, .input, .radio + .dot,
- * .empty-state, .visually-hidden) come from ../../../styles/components.css (ADR-019) -- this file
- * adds only this screen's own composites, quoted from the prototype's inline styles on this block:
+ * .empty-state, .error-state, .skeleton, .hint, .micro-meta, .visually-hidden) come from
+ * ../../../styles/components.css (ADR-019) -- this file adds only this screen's own composites,
+ * quoted from the prototype's inline styles on this block:
  *
  *   <div style="margin:20px 32px 0;border-left:2px solid var(--color-accent);background:var(--color-accent-100);padding:10px 16px;font-size:13px;max-width:720px">Tip: …</div>
  *   <div style="display:grid;grid-template-columns:minmax(0,1fr) 340px;flex:1">
@@ -12,7 +13,13 @@
  *     <div style="padding:24px"> <h4 style="margin-bottom:14px">Invite a colleague</h4> <div class="field" style="margin-bottom:12px">
  *       <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px"> <label class="radio" style="align-items:flex-start">
  *       <button class="btn btn-primary btn-block" style="margin:0">Send invitation</button>
- *       <p style="font-size:12px;color:var(--color-accent-700);margin-top:10px">Use an @… address.</p> <p style="font-size:12px;margin-top:10px">Invitation sent.</p>
+ *       <p style="font-size:12px;color:var(--color-accent-700);margin-top:10px">Use an @… address.</p>
+ *
+ * Task E15/F02/US01/T01 (wave w14) adds: the loading skeleton and error+Retry list-surface states
+ * (ADR-018 `:112-119`), the fourth `Actions` column and its inline two-step confirm (ADR-020 w14
+ * design footer, screen 10), the non-blocking domain warning (AC-5), and the copyable-link outcome
+ * (N3b-1) -- none of it in the export, which has no roster fetch, no destructive affordance and no
+ * link-only outcome to style.
  */
 
 .members-screen {
@@ -41,6 +48,16 @@
   border-right: 2px solid var(--color-divider);
 }
 
+.members-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.members-skeleton-row {
+  height: 32px;
+}
+
 .members-table {
   font-size: 13px;
 }
@@ -51,6 +68,10 @@
 
 .members-table .members-col-status {
   width: 16%;
+}
+
+.members-table .members-col-actions {
+  width: 20%;
 }
 
 .members-member-primary {
@@ -67,6 +88,34 @@
   font-size: 10px;
 }
 
+.members-actions-cell {
+  vertical-align: top;
+}
+
+.members-action-disabled {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+
+.members-action-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-width: 260px;
+}
+
+.members-action-question {
+  font-weight: var(--weight-body-strong);
+  margin: 0;
+}
+
+.members-action-buttons {
+  display: flex;
+  gap: var(--space-2);
+}
+
 .members-invite-pane {
   padding: 24px;
 }
@@ -77,6 +126,10 @@
 
 .members-invite-field {
   margin-bottom: 12px;
+}
+
+.members-domain-warning {
+  margin-top: var(--space-1);
 }
 
 .invite-role-fieldset {
@@ -125,8 +178,24 @@
   color: var(--color-accent-700);
 }
 
-.members-invite-sent {
+.members-invite-outcome {
   margin: 10px 0 0;
+  font-size: 12px;
+}
+
+.members-invite-link {
+  margin-top: 10px;
+}
+
+.members-invite-link-row {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: 8px;
+}
+
+.members-invite-link-field {
+  flex: 1;
+  min-width: 0;
   font-size: 12px;
 }
 

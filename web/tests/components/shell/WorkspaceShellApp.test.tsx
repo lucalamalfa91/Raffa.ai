@@ -33,7 +33,11 @@ function mockApiClient(): ApiClient {
     // AppShell's own effect calls .then() on it, same "resolved default required" reasoning as
     // getPortfolio's own comment below.
     listWorkspaces: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, workspaces: [], error: null }),
-    getWorkspaceMembers: vi.fn(),
+    // Task E15/F02/US01/T01 (wave w14): MembersRoute now reads this unconditionally on mount (it
+    // replaced the sessionStorage-backed memberStore this suite used to rely on implicitly) -- same
+    // "resolved default required" reasoning as listWorkspaces/listDocuments above, or the effect's
+    // own .then() throws on the unconfigured vi.fn()'s undefined return.
+    getWorkspaceMembers: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, members: [], error: null }),
     revokeInvitation: vi.fn(),
     removeMember: vi.fn(),
     getInvitation: vi.fn(),
@@ -201,7 +205,7 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
     expect(screen.getByRole("search")).toBeInTheDocument();
   });
 
-  it("no longer gates /workspace/members behind RequireRole for Procurement (task E14/F03/US02/T01 removes that wrap so a Procurement member reaches the screen; E15/F02/US01/T01, same phase, owns the read-only variant this pre-merge MembersRoute does not implement yet, so it renders identically to Admin until that sibling lands)", () => {
+  it("no longer gates /workspace/members behind RequireRole for Procurement (task E14/F03/US02/T01 removes that wrap so a Procurement member reaches the screen; E15/F02/US01/T01, same phase, renders it read-only for that role -- this suite only proves the route is reachable, not the read-only content itself, which tests/routes/workspace/members/* covers)", () => {
     window.sessionStorage.setItem(
       "raffa.signin.currentWorkspace",
       JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
@@ -209,8 +213,12 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
 
     renderShell("procurement", "/workspace/members");
 
+    // The real route heading rendering at all is the proof: the old RequireRole gate replaced this
+    // entire subtree with its own "empty-state" div (no "Workspace & members" heading in sight). The
+    // read-only Procurement pane the real route renders instead (RequestAccessPane, index.tsx) reuses
+    // the same "You don't manage this workspace" prototype copy as that old gate for a different,
+    // legitimate reason -- content this suite deliberately does not assert on (see the test title).
     expect(screen.getByRole("heading", { name: "Workspace & members" })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: /you don.t manage this workspace/i })).not.toBeInTheDocument();
   });
 
   it("renders the real members + invite screen for an Admin at /workspace/members", () => {
