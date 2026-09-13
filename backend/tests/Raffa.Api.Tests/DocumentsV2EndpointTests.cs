@@ -22,10 +22,16 @@ namespace Raffa.Api.Tests;
 /// are assertions about behaviour, not about mocks.
 ///
 /// <para>
-/// Role resolution here uses the <c>X-Role</c> header branch of
-/// <see cref="Raffa.Api.Infrastructure.WorkspaceRoleResolver"/> — the membership-table branch
-/// needs a real Identity/Workspace database and is covered by the integration suite, not by this
-/// in-memory host.
+/// Task E14/F02/US02/T01 (wave w14, ADR-022 w14 footer / ADR-025 §E) deleted the
+/// <c>X-Role</c>/<c>X-Workspace-Role</c> header branch of
+/// <see cref="Raffa.Api.Infrastructure.WorkspaceRoleResolver"/>: a client-declared role is never an
+/// authorization source. The Admin-only assertions below now seed a real
+/// <c>workspace_membership</c> row in this same in-memory host (the InMemory
+/// <see cref="Raffa.Identity.Workspace.Infrastructure.IdentityWorkspaceDbContext"/>
+/// <see cref="TestSupport.InMemoryAskEngineFactory"/> already wires up) rather than relying on a
+/// header that no longer grants anything — see
+/// <c>Raffa.Api.Tests.DocumentAdminActionsAuthorizationTests</c> for this same story's own
+/// dedicated N9 proof, including the creator's real bootstrap-written membership.
 /// </para>
 /// </summary>
 public sealed class DocumentsV2EndpointTests : IClassFixture<WebApplicationFactory<Program>>
@@ -146,7 +152,9 @@ public sealed class DocumentsV2EndpointTests : IClassFixture<WebApplicationFacto
         var tenantId = Guid.NewGuid();
         var documentId = await UploadAsync(client, tenantId, "msa.pdf");
 
-        // Procurement (and a caller with no role at all) get 403 — R-DOC-07.
+        // Procurement (and a caller with no role at all) get 403 — R-DOC-07. A spoofed X-Role
+        // header is no longer an authorization source (ADR-025 §E), so it proves nothing here; both
+        // callers simply hold no real membership row in this tenant.
         await AssertStatusAsync(
             HttpStatusCode.Forbidden,
             await SendAsync(client, HttpMethod.Post, $"/api/documents/{documentId}/reprocess", tenantId.ToString(), "Procurement"));
@@ -154,8 +162,12 @@ public sealed class DocumentsV2EndpointTests : IClassFixture<WebApplicationFacto
             HttpStatusCode.Forbidden,
             (await SendAsync(client, HttpMethod.Post, $"/api/documents/{documentId}/reprocess", tenantId.ToString())).StatusCode);
 
+        // A real membership row is what the Admin case now proves (task E14/F02/US02/T01) — the
+        // (now-inert) X-Role header is dropped rather than kept as decoration.
+        const string adminEmail = "admin@acme.example";
+        await SeedMembershipAsync(host, tenantId, adminEmail, WorkspaceRoleName.Admin);
         var response = await SendAsync(
-            client, HttpMethod.Post, $"/api/documents/{documentId}/reprocess", tenantId.ToString(), "Admin");
+            client, HttpMethod.Post, $"/api/documents/{documentId}/reprocess", tenantId.ToString(), role: null, userId: adminEmail);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
@@ -170,7 +182,7 @@ public sealed class DocumentsV2EndpointTests : IClassFixture<WebApplicationFacto
         // An unknown document is a 404 for an Admin, never a 403.
         Assert.Equal(
             HttpStatusCode.NotFound,
-            (await SendAsync(client, HttpMethod.Post, $"/api/documents/{Guid.NewGuid()}/reprocess", tenantId.ToString(), "Admin")).StatusCode);
+            (await SendAsync(client, HttpMethod.Post, $"/api/documents/{Guid.NewGuid()}/reprocess", tenantId.ToString(), role: null, userId: adminEmail)).StatusCode);
     }
 
     [Fact]
@@ -281,13 +293,18 @@ public sealed class DocumentsV2EndpointTests : IClassFixture<WebApplicationFacto
         var tenantId = Guid.NewGuid();
         var documentId = await UploadAsync(client, tenantId, "msa.pdf");
 
+        // A spoofed X-Role header proves nothing after task E14/F02/US02/T01 (ADR-025 §E) -- this
+        // caller simply holds no real membership row in this tenant.
         Assert.Equal(
             HttpStatusCode.Forbidden,
             (await SendAsync(client, HttpMethod.Delete, $"/api/documents/{documentId}", tenantId.ToString(), "Procurement")).StatusCode);
         Assert.Empty(host.Storage.Deleted);
 
+        // A real membership row is what the Admin case now proves.
+        const string adminEmail = "admin@acme.example";
+        await SeedMembershipAsync(host, tenantId, adminEmail, WorkspaceRoleName.Admin);
         var response = await SendAsync(
-            client, HttpMethod.Delete, $"/api/documents/{documentId}", tenantId.ToString(), "Admin");
+            client, HttpMethod.Delete, $"/api/documents/{documentId}", tenantId.ToString(), role: null, userId: adminEmail);
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
 
         Assert.Contains(host.Storage.Deleted, path => path.EndsWith("msa.pdf", StringComparison.Ordinal));
@@ -304,7 +321,7 @@ public sealed class DocumentsV2EndpointTests : IClassFixture<WebApplicationFacto
 
         Assert.Equal(
             HttpStatusCode.NotFound,
-            (await SendAsync(client, HttpMethod.Delete, $"/api/documents/{documentId}", tenantId.ToString(), "Admin")).StatusCode);
+            (await SendAsync(client, HttpMethod.Delete, $"/api/documents/{documentId}", tenantId.ToString(), role: null, userId: adminEmail)).StatusCode);
     }
 
     [Fact]
@@ -350,8 +367,15 @@ public sealed class DocumentsV2EndpointTests : IClassFixture<WebApplicationFacto
         var tenantId = Guid.NewGuid();
         var documentId = await UploadAsync(client, tenantId, "msa.pdf");
 
+        // A *real* Admin membership in a different tenant -- proving tenant scoping on the delete
+        // path itself, independent of the Admin gate (a spoofed header would no longer reach this
+        // far at all after task E14/F02/US02/T01, ADR-025 §E).
+        var foreignTenantId = Guid.NewGuid();
+        const string foreignAdminEmail = "foreign-admin@contoso.example";
+        await SeedMembershipAsync(host, foreignTenantId, foreignAdminEmail, WorkspaceRoleName.Admin);
+
         var response = await SendAsync(
-            client, HttpMethod.Delete, $"/api/documents/{documentId}", Guid.NewGuid().ToString(), "Admin");
+            client, HttpMethod.Delete, $"/api/documents/{documentId}", foreignTenantId.ToString(), role: null, userId: foreignAdminEmail);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         Assert.Empty(host.Storage.Deleted);
