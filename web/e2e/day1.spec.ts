@@ -154,6 +154,7 @@ test.describe("§20 Day-1 path — browser walk on demo", () => {
 
         await page.getByLabel("Email").fill(inviteEmail);
         await page.getByRole("button", { name: /send invitation/i }).click();
+        await page.reload();
         await expect(page.getByText(inviteEmail)).toBeVisible();
         await expect(page.getByText("Invited")).toBeVisible();
       });
