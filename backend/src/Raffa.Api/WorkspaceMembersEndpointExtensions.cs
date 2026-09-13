@@ -110,6 +110,12 @@ public static class WorkspaceMembersEndpointExtensions
                 // the generator loses `null` on a nullable enum.
                 role = member.Role.ToString(),
                 status = member.Status.ToString(),
+                // 2026-09-11 fix (E15/F02/US01/T01's halt): the action ids -- exactly one is set,
+                // matching `status` (Active -> membershipId, Invited -> invitationId). DELETE
+                // .../members/{membershipId} and the invitation revoke each need their own id,
+                // never `id` (WorkspaceUser's, stable across the transition, not an action target).
+                membershipId = member.MembershipId?.Value,
+                invitationId = member.InvitationId?.Value,
             }),
         });
     }

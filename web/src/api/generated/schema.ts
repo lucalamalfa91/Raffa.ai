@@ -54,7 +54,7 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": { members: ({ id: string; email: string; name?: string | null; role: string; status: string })[] };
+          "application/json": { members: ({ id: string; email: string; name?: string | null; role: string; status: string; membershipId?: string | null; invitationId?: string | null })[] };
         };
       };
       401: {

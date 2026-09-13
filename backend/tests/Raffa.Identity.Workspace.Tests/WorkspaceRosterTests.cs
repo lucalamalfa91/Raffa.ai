@@ -102,6 +102,38 @@ public sealed class WorkspaceRosterTests
     }
 
     [Fact]
+    public void Two_memberships_expose_the_membership_id_of_the_row_the_displayed_role_came_from()
+    {
+        // 2026-09-11 (E15/F02/US01/T01's halt): DELETE /members/{membershipId} takes ONE row's id.
+        // A person holding both an Admin and a Procurement membership is displayed at Admin
+        // (the test above) -- MembershipId must be the Admin row's own id, never an arbitrary pick
+        // (e.g. "whichever query returned first"), or removing "the Admin membership shown here"
+        // would silently delete the Procurement one instead and leave the person an Admin.
+        var userId = EntityId.New();
+        var procurement = MembershipRow(userId, "buyer@acme.example", null, WorkspaceRoleName.Procurement);
+        var admin = MembershipRow(userId, "buyer@acme.example", null, WorkspaceRoleName.Admin);
+
+        var roster = WorkspaceMembershipService.ComposeRoster([procurement, admin], [], Now);
+
+        var member = Assert.Single(roster);
+        Assert.Equal(admin.MembershipId, member.MembershipId);
+        Assert.NotEqual(procurement.MembershipId, member.MembershipId);
+        Assert.Null(member.InvitationId);
+    }
+
+    [Fact]
+    public void An_invited_row_exposes_the_invitation_id_and_no_membership_id()
+    {
+        var invite = InvitationRow("new.hire@acme.example", WorkspaceRoleName.Procurement, expiresAt: Now.AddDays(7));
+
+        var roster = WorkspaceMembershipService.ComposeRoster([], [invite], Now);
+
+        var member = Assert.Single(roster);
+        Assert.Equal(invite.InvitationId, member.InvitationId);
+        Assert.Null(member.MembershipId);
+    }
+
+    [Fact]
     public void Precedence_is_not_simply_admin_first_it_is_the_full_ordering()
     {
         // Neither role is Admin -- proves this reuses WorkspaceRoleClaimResolver's own precedence
@@ -164,7 +196,11 @@ public sealed class WorkspaceRosterTests
 
     private static MembershipRosterRow MembershipRow(
         EntityId userId, string email, string? displayName, WorkspaceRoleName role) =>
-        new(userId, email, displayName, role);
+        MembershipRow(userId, EntityId.New(), email, displayName, role);
+
+    private static MembershipRosterRow MembershipRow(
+        EntityId userId, EntityId membershipId, string email, string? displayName, WorkspaceRoleName role) =>
+        new(userId, membershipId, email, displayName, role);
 
     private static InvitationRosterRow InvitationRow(
         string email,
@@ -173,5 +209,5 @@ public sealed class WorkspaceRosterTests
         DateTimeOffset? acceptedAt = null,
         DateTimeOffset? revokedAt = null,
         string? displayName = null) =>
-        new(EntityId.New(), email, displayName, role, acceptedAt, revokedAt, expiresAt);
+        new(EntityId.New(), EntityId.New(), email, displayName, role, acceptedAt, revokedAt, expiresAt);
 }
