@@ -1,0 +1,37 @@
+waveId: wave-next-w14
+status: planned
+# title: W14 — workspace is real: membership, discovery, roster, role, profile, invitation lifecycle
+# source: inputs/next/next-waves-todo.md
+# requirements: reports/context/waves/w14-requirements.md
+# decisions: reports/architecture/waves/w14.md (approved; ADR-025 + ADR-026 new, 14 footers)
+# caps: 20 tasks / 5 phases (reports/plan/next-run.json) -> 11 live tasks / 5 phases
+# W14-01 has no task: the merge + green-base proof is an operator act at HITL, enforced by reports/plan/gates/w14.hitl-ok
+# Launch: ./run.ps1 -Max -Slice w14 -o execution-fanout
+phases:
+  - id: 1
+    name: phase-1
+    tasks:
+      - {id: E14/F01/US01/T01, prompt: reports/workitems/epic-14-workspace-identity/feature-01-tenant-rls-and-schema/us-01-identity-scoped-rls/tasks/task-01-rls-identity-guc.md, produces: [rls-identity-guc], depends_on: [], effort: M, layer: backend, status: live}
+      - {id: E14/F01/US01/T02, prompt: reports/workitems/epic-14-workspace-identity/feature-01-tenant-rls-and-schema/us-01-identity-scoped-rls/tasks/task-02-workspace-schema.md, produces: [workspace-schema], depends_on: [], effort: M, layer: backend, status: live}
+      - {id: E14/F02/US01/T01, prompt: reports/workitems/epic-14-workspace-identity/feature-02-workspace-bootstrap-and-admin-authority/us-01-creator-is-workspace-admin/tasks/task-01-creator-membership-and-invite-guard.md, produces: [workspace-bootstrap], depends_on: [], effort: L, layer: backend, status: live}
+      - {id: E14/F05/US01/T01, prompt: reports/workitems/epic-14-workspace-identity/feature-05-membership-operations/us-01-membership-seed-and-backfill/tasks/task-01-membership-seed-and-backfill.md, produces: [membership-seed-and-backfill], depends_on: [], effort: M, layer: backend, status: live}
+  - id: 2
+    name: phase-2
+    tasks:
+      - {id: E14/F03/US01/T01, prompt: reports/workitems/epic-14-workspace-identity/feature-03-workspace-directory/us-01-workspace-list-api/tasks/task-01-workspaces-directory-api.md, produces: [workspaces-directory-api], depends_on: [rls-identity-guc, workspace-schema, workspace-bootstrap], effort: L, layer: backend, status: live}
+      - {id: E14/F04/US01/T01, prompt: reports/workitems/epic-14-workspace-identity/feature-04-workspace-roster/us-01-members-api/tasks/task-01-workspace-members-api.md, produces: [workspace-roster-api], depends_on: [workspace-schema, workspace-bootstrap], effort: M, layer: backend, status: live}
+      - {id: E14/F02/US02/T01, prompt: reports/workitems/epic-14-workspace-identity/feature-02-workspace-bootstrap-and-admin-authority/us-02-admin-role-from-membership/tasks/task-01-admin-role-from-membership.md, produces: [admin-role-from-membership], depends_on: [workspace-bootstrap], effort: M, layer: backend, status: live}
+  - id: 3
+    name: phase-3
+    tasks:
+      - {id: E15/F01/US01/T01, prompt: reports/workitems/epic-15-workspace-invitations/feature-01-invitation-lifecycle/us-01-invite-accept-remove/tasks/task-01-invitation-lifecycle-api.md, produces: [invitation-lifecycle-api], depends_on: [workspace-schema, workspaces-directory-api, workspace-roster-api], effort: L, layer: backend, status: live}
+  - id: 4
+    name: phase-4
+    tasks:
+      - {id: E14/F03/US02/T01, prompt: reports/workitems/epic-14-workspace-identity/feature-03-workspace-directory/us-02-signin-resolves-from-server/tasks/task-01-web-workspace-resolution.md, produces: [web-workspace-resolution], depends_on: [workspaces-directory-api, admin-role-from-membership, invitation-lifecycle-api], effort: L, layer: frontend, status: live}
+      - {id: E15/F02/US01/T01, prompt: reports/workitems/epic-15-workspace-invitations/feature-02-invitation-web/us-01-members-and-invite-ui/tasks/task-01-web-members-and-invites.md, produces: [web-members-and-invites], depends_on: [workspace-roster-api, invitation-lifecycle-api], effort: L, layer: frontend, status: live}
+  - id: 5
+    name: phase-5
+    tasks:
+      - {id: E14/F06/US01/T01, prompt: reports/workitems/epic-14-workspace-identity/feature-06-w14-integration/us-01-final-integration/tasks/task-01-w14-integration.md, produces: [w14-integration], depends_on: [membership-seed-and-backfill, web-workspace-resolution, web-members-and-invites], effort: L, layer: backend, status: live}
+forks: []

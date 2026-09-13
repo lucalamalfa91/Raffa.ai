@@ -13,10 +13,13 @@ and ADR-018 (information architecture / route map).
   is structural, not just convention (AC-1).
 - **Generated OpenAPI client** (`src/api/`) — the only way `src/` talks to the
   backend API; see "API client" below (AC-3).
-- **`react-router-dom`** (task E06/F03/US02/T01) — client-side routing for the
-  signed-in app shell (`src/components/shell/`). `/signin` itself stays gated
-  on MSAL auth state, not a router route (see "Screens" below) — the router
-  only covers the authenticated-and-workspace-selected app.
+- **`react-router-dom`** (task E06/F03/US02/T01; `BrowserRouter` hoisted to
+  `App.tsx` by task E14/F03/US02/T01, wave w14) — one router now spans the
+  whole app: a public branch for `/invite/accept` (reachable signed out and
+  with no workspace) and a `/*` fallthrough to the account/workspace gate,
+  which mounts the signed-in shell (`src/components/shell/`) once both
+  resolve. `/signin` itself still stays gated on MSAL auth state, not a
+  router route of its own (see "Screens" below).
 - **Vitest + Testing Library** — unit tests under `tests/`, mirroring `src/`.
 
 ## Commands
@@ -89,7 +92,8 @@ own rail destination. Pixel/behaviour reference: `inputs/design/prototypes/Raffa
 
 | Route | Screen(s) | Task |
 |-------|-----------|------|
-| `/signin` | Sign-in (Entra redirect, idle/redirecting states) -> workspace picker (list + create + confirm) | E06/F03/US01/T01 |
+| `/signin` | Sign-in (Entra redirect, idle/redirecting states) -> workspace picker, server-driven (skeleton, error + Retry, list, create) | E06/F03/US01/T01; server-backed by E14/F03/US02/T01 |
+| `/invite/accept` | Public, reachable signed out and with no workspace, rendered outside `AppShell`. Ten states (no token / checking / offer with Join or the Entra CTA / joining / wrong account / expired-or-revoked sharing one first sentence / already joined / lookup unavailable + Retry); reads the token from the URL fragment on mount, holds it in memory for that one mount, clears the address bar before first paint, sends it only in `X-Invitation-Token`. See "Invitation accept" below. | E14/F03/US02/T01 |
 | `/` | Redirects to `/ask` (R-WEB-01) -- there is no standalone Home screen in V2. | E13/F09/US01/T01 |
 | `/ask` | Ask Raffa, V2 rebuild: off state below 1 validated contract (fixed headline + doc-count-dependent reason + one CTA to `/documents`); new chat (hello line, scope line naming the validated count, two capability-sourced suggestion chips, optional `?scope=<contractId>`); conversation view rendering the phase-2 reply contract (markdown, numbered citation cards, actions, follow-ups) via `ReplyBody`. Calls the real `GET/POST /api/conversations`, `POST /api/conversations/{id}/messages`, `GET /api/capabilities`, `GET /api/market/records/{id}`. See "Ask Raffa" below. | E07/F04/US01/T01; V2 rebuild E13/F09/US01/T04 |
 | `/ask/:conversationId` | Same `AskRoute` as `/ask`, resuming: `useConversation` loads the conversation (`GET /api/conversations/{id}`) and renders every past turn, oldest first, with citation cards and actions still clickable; a named "not found" state for an unknown/foreign/another-user's id. | E13/F09/US01/T01 (route only); resume wired by E13/F09/US01/T04 |
@@ -101,7 +105,7 @@ own rail destination. Pixel/behaviour reference: `inputs/design/prototypes/Raffa
 | `/quotes`, `/quotes/:id` | Quote check, V2: constant header ("Optional · new purchase" · intro sentence); landing = the dashed drop card (**Upload a quote** + "or use the sample: Databricks proposal Q-88213", optional supplier/currency/geography/date under a disclosure); loaded = the Supplier quote · Market range · Assessment band, the lines table (Line · Quoted · P50 · Position · Benchmark) and "Target and negotiation levers are one step further — shown only if you want them." revealing Target, then Negotiation (outcome capture); unmapped SKUs show the mapping block instead. Calls the real `POST /api/quotes`, `POST /api/quotes/{id}/assessment/recalculate`, `POST /api/negotiations/outcomes`. See "Quote check" below. | E08/F03/US01/T01; V2 design alignment (Sept 2026) |
 | `/savings` | Savings, V2 (not a rail item -- reached from Ask actions, Renewals and Contract 360): header + summary, three KPI cells (Contracts analyzed · Upcoming renewals · Savings identified, each with a meta line), the opportunities table (Supplier · Action · Estimate · Status; rows open Contract 360), a stale-labelled KPI degrade when the benchmark provider is unreachable, and the reroute "No savings opportunities yet" → Renewals. Calls the real `GET /api/savings/kpis`, `GET /api/savings`, plus `GET /api/contracts` for supplier names. See "Savings" below. | E08/F02/US01/T01; moved by E13/F09/US01/T01; V2 design alignment (Sept 2026) |
 | `/review` | Redirects to `/documents?filter=attention` -- Review is a *state* of Documents in V2, not its own rail destination or screen. The old `src/routes/review/` rail landing (V1 review queue) has been deleted. | E13/F09/US01/T01 |
-| `/workspace/members` | Workspace & members, V2: "Setup" header ("{workspace} · tenant {id}"), the "invite the team once the first contract is validated" tip while nothing is validated, the Member/Role/Status table and the **Invite a colleague** pane (Work email, Procurement / Workspace Admin radios with D8 permission summaries, Send invitation, "Invitation sent."). Calls the real `POST /api/workspaces/{tenantId}/invites`. Non-admin visits stay on the shell's request-access gate. See "Workspace & members" below. | E06/F04/US01/T01; V2 design alignment (Sept 2026) |
+| `/workspace/members` | Workspace & members, V2: "Setup" header ("{workspace} · tenant {id}"), the "invite the team once the first contract is validated" tip while nothing is validated, the Member/Role/Status table and the **Invite a colleague** pane (Work email, Procurement / Workspace Admin radios with D8 permission summaries, Send invitation, "Invitation sent."). Calls the real `POST /api/workspaces/{tenantId}/invites`. No longer gated behind the shell's request-access state for a non-Admin visit as of task E14/F03/US02/T01 (wave w14) -- the server role decides what renders there now; see "Role guard" and "Workspace & members" below. | E06/F04/US01/T01; V2 design alignment (Sept 2026); role guard removed by E14/F03/US02/T01 |
 
 ### Layout -- full-bleed, matching the prototype's own canvas (ADR-018/019/020, task E06/F06/US01/T01)
 
@@ -121,9 +125,14 @@ in `index.css`; each screen owns its own full-bleed layout instead:
   container (`display:grid;grid-template-columns:1fr 1fr`) once nothing above
   it caps the width. `WorkspacePickerScreen.tsx` reuses that exact same
   canvas (`SignInStatementPanel` + `.signin-action`) for all of its own
-  states (list, create, "you're in `<workspace>`") instead of the old
+  states (skeleton, error + Retry, list, create) instead of the old
   standalone, centered `.workspace-picker` card -- the prototype never treats
-  the workspace list as a separate screen, only a state of screen 1.
+  the workspace list as a separate screen, only a state of screen 1. Task
+  E14/F03/US02/T01 (wave w14) removed the screen's former "You're in
+  `<workspace>`" interstitial (Continue / Switch workspace / Sign out)
+  entirely -- nothing resembling it exists in the V2 export, and every path
+  (auto-entered, hint-matched, manually picked, freshly created) now lands
+  straight in the shell.
 - **App shell** (`src/components/shell/shell.css`) -- `.shell-main` now
   explicitly declares `max-width: none` so it fills the shell grid's `1fr`
   track (224px rail + fluid main) rather than floating as a narrow column
@@ -150,15 +159,67 @@ shipped mockup screen) keeps a narrow, centered column.
 
 `src/routes/signin/` (`SignInRoute`, the folder's default export) is still
 gated on MSAL auth state (`useMsal().accounts`) rather than a URL route --
-that has not changed. What task E06/F03/US02/T01 added is `src/App.tsx`'s
-*second* decision, evaluated after that: signed in **and** a workspace
-already picked this session (`workspaceStore.ts`'s `loadCurrentWorkspace()`)
-mounts `src/components/shell/WorkspaceShellApp.tsx` (its own `<BrowserRouter>`
-+ route table) instead of `SignInRoute`. `WorkspacePickerScreen.tsx`'s
-"Continue to `<workspace>` →" control (added by the same task) is a plain
-hard navigation (`<a href="/">`), not a client-side link, since no router is
-mounted yet at that point in the tree -- the resulting fresh page load is
-what re-evaluates `App.tsx`'s check with both facts already true.
+that has not changed. What task E06/F03/US02/T01 added, and task
+E14/F03/US02/T01 (wave w14) made asynchronous, is `src/App.tsx`'s own
+`AuthenticatedGate`: **three** states now, not two -- *resolving* (a neutral
+placeholder, never `SignInRoute`'s own chrome, so a returning user with one
+workspace never sees a picker flash before auto-entering it); *no account*
+-> `SignInRoute`; *account + resolved* -> `WorkspaceShellApp.tsx`, once one
+`apiClient.listWorkspaces()` call and the resolution order (empty -> create;
+exactly one -> enter; ≥2 with the session hint in the list -> enter it; ≥2
+otherwise -> picker, hint discarded) settle on a definite workspace.
+`BrowserRouter` itself lives in `App.tsx`, not `WorkspaceShellApp.tsx` (see
+"Stack" above) -- a signed-out or not-yet-a-member invitee still needs a
+router mounted above them for `/invite/accept`, which no earlier gate can
+satisfy. There is no more a "Continue to `<workspace>`" hard-navigation
+control anywhere in this flow (see "Layout" above): every resolution outcome
+lands straight in the shell through the one router already mounted.
+
+### Invitation accept (ADR-020 screen 11's own w14 footer; ADR-025 Rules C9/C10; task E14/F03/US02/T01)
+
+`src/routes/invite/accept/index.tsx` (`AcceptInvitationRoute`) is `/invite/accept` -- the one public
+route this wave adds: reachable signed out and with no workspace, rendered outside `AppShell`
+entirely (an invitee is not yet a member of anything the rail could list). Nothing resembling this
+screen exists in the V2 export; every state below is ADR-020's own w14 footer, not a pixel quoted
+from `markup.html`.
+
+- **Ten states**: no token; checking (skeleton rows); offer (workspace name + offered role, and
+  nothing else -- adding a contract count here would leak tenant data to anyone holding the URL)
+  with a real Join button when signed in or the Entra CTA when not; joining; wrong account (cannot
+  echo the invited address -- the 403's own reason is non-echoing); expired-or-revoked, sharing one
+  first sentence on purpose so the screen never tells a probing visitor which case they hit; already
+  accepted (with its own "Go to `<workspace>`" control); lookup unavailable (a 503 gets ADR-018's
+  error + Retry treatment, which the terminal informational states above do not).
+- **Rule C9** (ADR-025 §C): the token travels in the URL *fragment*
+  (`/invite/accept#<token>`), never a path segment or query string -- a query string would land in
+  the Static Web Apps platform's own access log, every third-party asset's `Referer` header, and
+  browser history.
+- **Rules C10/C10a/C10b**: the token is read once, on mount, held in memory for that one mount only,
+  and never written to `sessionStorage`/`localStorage`/anywhere else.
+  `readAndClearInvitationToken` runs inside a lazy `useState` initializer specifically so the
+  address bar is already clear *before this component's first render* -- strictly before any
+  control that could start authentication (the Entra CTA) ever paints (Rule C10b).
+  `auth/msalConfig.ts`'s `handleRedirectPromiseOptions` (`navigateToLoginRequestUrl: false`, wired
+  through `main.tsx` -- see that file's own header comment for why it moved there) is Rule C10a, a
+  structural guarantee independent of this component's own render order; the two rules are
+  deliberately redundant ("C10a survives a refactor of this ordering, C10b survives a change to
+  MSAL's own default").
+- **`/signin`'s own CTA is redirect-only** (`msalConfig.ts`; `loginRedirect` at
+  `routes/signin/index.tsx`), so a signed-out invitee who signs in from *there* loses this page (and
+  the token) to the round-trip -- "sign in, then open the invitation link again" is the guaranteed
+  flow, not a fallback, and the "no token" state's own copy says exactly that, framed as a normal
+  outcome, never "this invitation is invalid" (which would send a user back to their Admin for a
+  replacement they do not need -- invitations are single-use, so that "fix" costs a real one).
+  **This screen's own Entra CTA calls `loginPopup` instead** (ADR-012 w14 footer clause 6) -- the one
+  path on which the invitee never leaves the accept screen, so sign-in is single-click where the
+  browser allows it, because the page is never unloaded and the in-memory token survives the
+  round-trip. If the popup is blocked, closed, or otherwise fails to complete, `handleContinueWithEntra`
+  falls back to the same "no token" state a reload lands on -- one state either way, deliberately:
+  "the popup-blocked and reload cases share one state, so it ships regardless."
+- **After a successful accept**, the screen re-resolves the workspace list and enters it --
+  membership is proven by the next `GET /api/workspaces`, never trusted from the accept response
+  body, which is a hint only (the same "hint, not a trust" posture `workspaceStore.ts`'s session key
+  already takes).
 
 ### App shell, navigation, and the role guard (ADR-024 V2 amendment to ADR-018/ADR-019; task E13/F09/US01/T01, gap G-IA-V2; originally task E06/F03/US02/T01)
 
@@ -204,23 +265,35 @@ what re-evaluates `App.tsx`'s check with both facts already true.
   for the full provenance and the `requirements.md` R-CMP-03 citation). A
   contract that becomes validated mid-session only updates the rail on the
   next full shell mount (fetched once, not polled).
-- **Role guard (AC-2)** -- "Workspace & members" is the one admin-only
-  surface, now a footer link (`navItems.ts#canManageMembers`, unit-tested)
-  rather than a row in the flat list; `src/components/shell/RequireRole.tsx`
-  is the same guard at the route level (defense in depth for a direct URL
-  visit), which renders ADR-018's "request access" state instead of the real
-  screen.
-- **Role source is interim** (`src/components/shell/workspaceRole.ts`): no
-  JWT/claims wiring exists yet (ADR-010 is not wired into
-  `backend/src/Raffa.Api/Program.cs`), so there is no server-issued "what
-  is my role" answer today. The default is `admin` (whoever picked a
-  workspace in this browser created it, and is therefore its Admin --
-  the same fact `workspaceStore.ts`'s `roleLabel` already encodes). **An
-  operator/demo-runner can see the Procurement-gated state by visiting the
-  app with `?role=procurement` once** (e.g. `https://<swa-host>/?role=procurement`);
-  the override is session-scoped (`sessionStorage`) and two-valued only --
-  it is not, and must never be read as, a real authorization claim. Once
-  ADR-010's claim wiring lands, only this one function changes.
+- **Role guard (AC-2)** -- "Workspace & members" is a footer link
+  (`navItems.ts#canManageMembers`, unit-tested), not a row in the flat list.
+  `src/components/shell/RequireRole.tsx` used to wrap the `workspace/members`
+  route as a route-level guard (defense in depth for a direct URL visit),
+  rendering ADR-018's "request access" state for a non-Admin instead of the
+  real screen -- task E14/F03/US02/T01 (wave w14) removed that wrap, because
+  the server role, not a client-side gate, now decides what a non-Admin
+  caller sees there (`GET /api/workspaces/{tenantId}/members` makes a real,
+  Procurement-visible read-only roster buildable for the first time this
+  wave; that variant itself lands in `E15/F02/US01/T01`, same phase).
+  `RequireRole.tsx` is untouched and, as of this wave, has no caller left
+  anywhere in this app -- it is not deleted only because
+  `routes/workspace/members/**` (its one former call site) is that sibling
+  task's own file scope, not this one's.
+- **Role source is a server fact** (`src/components/shell/workspaceRole.ts`,
+  task E14/F03/US02/T01, wave w14; ADR-012/ADR-025 w14 footers): `GET
+  /api/workspaces`'s row carries `role` (`WorkspaceSummaryBody.role`), and
+  `parseWorkspaceRole(wire)` parses it -- there is no more a `?role=` query
+  override or a `sessionStorage`-mirrored default (both halves of the
+  deleted `resolveWorkspaceRole()`, which defaulted unrecognised roles to
+  `"admin"`, are gone; git history has the old function for reference). The
+  wire vocabulary is wider than the nav's own two-role model (the backend
+  also accepts `Legal` / `Finance` / `ReadOnly`, `memberViewModel.ts:9-11`),
+  so `parseWorkspaceRole` maps any role this nav does not model to the
+  **least-privileged** modelled role and never to `"admin"` -- carrying the
+  old default forward would re-introduce the exact bug it fixed for
+  Procurement while reintroducing it for every unmodelled role. The role
+  still only decides which affordances *render*; the API's own `403` is the
+  authority.
 - **Global Ask bar (AC-3)** -- `src/components/ask-bar/GlobalAskBar.tsx`
   renders on every routed screen (mounted once, above `<Outlet/>`, in
   `AppShell.tsx`). Enter (or a suggestion chip) always opens a **new chat**:
@@ -239,33 +312,39 @@ what re-evaluates `App.tsx`'s check with both facts already true.
   amendment) -- this bar gets the user to `/ask`, it does not answer them
   itself.
 
-**Workspace list is a client-side cache, not a server query** -- there is no
-backend endpoint that lists the workspaces a signed-in identity belongs to
-(`backend/src/Raffa.Api/WorkspaceEndpointExtensions.cs` maps only
-`POST /api/workspaces` create and `POST /api/workspaces/{tenantId}/invites`;
-creating a workspace does not create a membership for the caller, since
-ADR-010's claims wiring is not in force yet -- see that file's own doc
-comment). `src/routes/signin/workspaceStore.ts` documents this gap in full
-(including exactly which backend types a future `GET` endpoint would touch)
-and is the interim: it remembers, per signed-in account
-(`localStorage`, keyed by MSAL `homeAccountId`), every workspace *this
-browser* has actually created via the real `POST /api/workspaces` call --
-never fabricated data, just not discoverable from another browser/device
-until a backend list endpoint exists. The selected/current workspace is
-`sessionStorage`-scoped (`workspaceStore.ts`'s `selectCurrentWorkspace`/
-`loadCurrentWorkspace`) so a later screen (the nav shell, portfolio, ...) can
-read which tenant to send as the `X-Tenant-Id` header every other backend
-endpoint requires today -- no screen outside this task's scope consumes it
-yet.
+**Workspace list is a server query, not a client-side cache** (task
+E14/F03/US02/T01, wave w14; ADR-026 §D1) -- `GET /api/workspaces` now
+answers from the caller's own real membership, and `App.tsx`'s
+`AuthenticatedGate` calls it on mount and whenever the account changes.
+Three things that used to live in `src/routes/signin/workspaceStore.ts` died
+together when that endpoint landed: the per-account `localStorage` array of
+"workspaces this browser has created" (never the same question as
+"workspaces this identity belongs to", and unanswerable from a fresh browser
+or another device); `contractCount` frozen at `0` on every row (this screen
+never called the portfolio API); and `roleLabel` frozen at the string
+literal `"Workspace Admin"` (there was no server-issued role claim to read
+yet). All three are now real, server-held fields on
+`WorkspaceSummaryBody` (`src/api/client.ts`) -- see "Ask Raffa"'s sibling
+hook `useValidatedContractCount.ts` for `contractCount`'s other consumer,
+and "Role source is a server fact" above for `role`. `currencyRegion` is
+still omitted; `currency` is the server's own derivation from the create
+form's `country` field (ADR-003 w14 footer), echoed live under Country
+during creation, never client-computed once a workspace exists.
 
-`contractCount` is always `0` and `roleLabel` is always `"Workspace Admin"`
-on every row this screen renders: the former because this screen never calls
-the portfolio API (a freshly-known workspace has genuinely ingested nothing
-yet), the latter because there is no server-issued role claim to read yet
-(ADR-010). `currencyRegion` is omitted entirely -- `WorkspaceTenant`
-(backend/src/Raffa.Identity.Workspace/Domain/WorkspaceTenant.cs) has no
-such column. All three are flagged in `workspaceStore.ts`'s own doc comments
-rather than silently invented.
+What survives in `workspaceStore.ts` is only the **session hint**:
+`raffa.signin.currentWorkspace` (`sessionStorage`, not `localStorage` --
+switching tabs or reopening the browser should not silently resume a
+previous tenant without revalidating it), read by `loadCurrentWorkspace()`
+and written by `selectCurrentWorkspace()`. Nothing trusts that value on its
+own any more -- `resolveWorkspaceSelection`
+(`src/routes/signin/WorkspacePickerScreen.tsx`) checks it against the fresh
+`GET /api/workspaces` response on every mount (**`hint ∉ list ⇒ discard the
+hint`**, no endpoint, no polling, no cache invalidation of its own:
+revalidation against that same GET *is* the mechanism) before entering the
+row it names. The resolution order, exactly: empty list -> create form;
+exactly one row -> enter it, no picker; ≥2 rows with the hint present in the
+list -> enter that row; ≥2 rows with the hint absent or not found -> picker,
+hint discarded.
 
 ### Documents (ADR-020 screen 3; V1 tasks E06/F05/US01/T01 + E06/F05/US02/T01; V2 rebuild task E13/F09/US01/T03, `raffa-v2/screens-v2.md` #3/#4)
 
@@ -757,7 +836,10 @@ triages renewals" / "Also deletes documents and manages members", block **Send i
 "Invitation sent." or the accent error "Use an @{domain} address."). Invite is a real
 `POST /api/workspaces/{tenantId}/invites`; there is still no list-members GET, so the table seeds the
 current Admin locally and appends each successful invite in `sessionStorage` (`memberStore.ts`) --
-discovery gap, not fabricated members. The non-admin state stays on `RequireRole`.
+discovery gap, not fabricated members. This route no longer wraps itself in `RequireRole` as of
+task E14/F03/US02/T01 (wave w14) -- see "Role guard" above -- so a Procurement caller reaches this
+same component today; the read-only variant for that caller (`E15/F02/US01/T01`, same phase) is
+not yet reflected in this paragraph.
 
 ## API client (ADR-012 "one generated TypeScript client, no hand-written divergent DTOs")
 
@@ -947,6 +1029,35 @@ Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
   (`CapabilitiesEndpointExtensions` has no failure branch), so its own error path is a status-based
   message only, never an attempted JSON parse, unlike every write/tenant-scoped read above it.
 
+- **Task E15/F01/US01/T01 (invitation-lifecycle-api, wave w14; ADR-025/ADR-026)** extended
+  `openapi/raffa-api.v1.json` with `DELETE /api/workspaces/{tenantId}/invites/{id}`
+  (`revokeInvitation`), `DELETE /api/workspaces/{tenantId}/members/{membershipId}`
+  (`removeMember`), `GET /api/invites` (`getInvitation`) and `POST /api/invites/accept`
+  (`acceptInvitation`) -- the eighth web epic to extend this document (see "API client"
+  provenance paragraphs above). The last two carry no `tenantId` of any kind (route or
+  header) -- unlike `getCapabilities`/`getMarketRecord` above, which are tenant-agnostic
+  because the underlying data is shared, these are genuinely tenant-scoped: the invitation
+  token alone lets the backend resolve which tenant server-side, so the caller never supplies
+  one, sending it instead as the `X-Invitation-Token` header carrying the fragment
+  `inviteWorkspaceMember`'s own `acceptUrl` returns after `/invite/accept#` (ADR-025 Rule C9 --
+  a query string would land in access logs, `Referer` headers and browser history).
+  `getInvitation`/`acceptInvitation` are hand-written against the generated `responses` type
+  only, not anchored to a generated request shape the way the write bodies above are:
+  `generate-api-client.mjs` does not parse an operation's `parameters` any more than it parses
+  `requestBody` -- the same documented generator limitation, now shown to cover headers too,
+  not just bodies. `revokeInvitation`/`removeMember` follow the existing never-throws
+  convention (401/403/404/409 are normal, expected outcomes the caller renders inline, not
+  exceptions).
+  **`inviteWorkspaceMember`'s 201 body also changed shape** -- it is now an offer, not a
+  grant: no membership is written by that call any more (see
+  `WorkspaceInvitationService.IssueAsync`, backend), and `InvitedMemberBody` gained
+  `expiresAt`/`acceptUrl`/`mailDelivered` straight off the regenerated schema, no
+  hand-written change needed for the response shape itself. See "Workspace & members" above
+  for the screen this powers. Task E14/F03/US02/T01 (wave w14) added the `/invite/accept`
+  landing page (see "Invitation accept" above), the first caller of `getInvitation` and
+  `acceptInvitation`; the roster's own revoke/remove controls (`revokeInvitation`,
+  `removeMember`) are still open UI work -- no caller under `src/routes/` exercises either yet.
+
 ## Directory layout
 
 ```
@@ -970,11 +1081,14 @@ web/
     styles/                   # design system (tokens + component catalogue); see below
     routes/
       signin/               # ADR-018 `/signin`; gated on MSAL auth state, not a URL route (see "Screens" above)
-        index.tsx             # SignInRoute -- no account: SignInScreen; signed in: WorkspacePickerScreen
+        index.tsx             # SignInRoute -- picker prop null: SignInScreen; picker set (App.tsx's AuthenticatedGate resolved): WorkspacePickerScreen
         SignInScreen.tsx      # idle / redirecting states around instance.loginRedirect(); also exports SignInStatementPanel (shared left-column canvas, task E06/F06/US01/T01)
-        WorkspacePickerScreen.tsx # list (workspaceStore cache) + create via POST /api/workspaces + "Continue" into the shell -- renders SignInStatementPanel + .signin-action, the same full-bleed canvas as SignInScreen (task E06/F06/US01/T01), not a standalone card
-        workspaceStore.ts     # per-account localStorage cache + sessionStorage "current workspace"; documents the missing list/membership backend gap
+        WorkspacePickerScreen.tsx # server list via apiClient.listWorkspaces() (resolveWorkspaceSelection is the resolution-order rule) + create via POST /api/workspaces -- skeleton/error+Retry/list/create states, no "Continue" interstitial (task E14/F03/US02/T01)
+        workspaceStore.ts     # sessionStorage "current workspace" session hint only, revalidated against the server list on every mount (task E14/F03/US02/T01)
         signin.css            # this route's styles -- see "Layout" above
+      invite/accept/        # ADR-018/ADR-020/ADR-025 w14 footers -- see "Invitation accept" above (task E14/F03/US02/T01)
+        index.tsx              # AcceptInvitationRoute -- the public /invite/accept route, ten states, fragment token read once into memory
+        accept.css              # this screen's styles
       documents/            # V1 tasks E06/F05/US01/T01 + E06/F05/US02/T01; V2 rebuild task E13/F09/US01/T03 -- ADR-020 screen 3 (see "Documents" above)
         index.tsx             # DocumentsRoute -- onboarding-empty / list / review-as-state switch; wires useDocumentsList + apiClient.deleteDocument
         useDocumentsList.ts   # GET /api/documents fetch + 2s poll while non-terminal, attention/all filter state, upload/retry/delete orchestration
@@ -1052,19 +1166,20 @@ web/
     components/
       shell/                  # task E06/F03/US02/T01 -- app shell, router, role guard; V2 two-tier rail by E13/F09/US01/T01 (see "App shell" above)
         navItems.ts             # V2 two-tier model: buildPrimaryNavItems/buildSecondaryNavItems, badge builders, canManageMembers(role) role guard (AC-1/AC-2)
-        useValidatedContractCount.ts # kbReady / validated-contract count, fetched once via apiClient.getPortfolio
-        workspaceRole.ts        # interim client-side role resolution (?role= override; see "App shell" above)
+        useValidatedContractCount.ts # kbReady / validated-contract count, fetched once via apiClient.listWorkspaces() (task E14/F03/US02/T01; was the capped getPortfolio(pageSize: 100) count)
+        workspaceRole.ts        # parseWorkspaceRole(wire): the server role, mapped to least privilege for anything unmodelled, never "admin" (task E14/F03/US02/T01; see "Role source is a server fact" above)
         RailNav.tsx              # 224px left rail, two tiers + footer
-        RequireRole.tsx          # route-level guard; ADR-018 "request access" state
+        RequireRole.tsx          # route-level "request access" guard; currently no caller anywhere in this app (see "Role guard" above)
         ScaffoldScreen.tsx       # generic placeholder for routes later epics build for real
-        AppShell.tsx             # rail + global Ask bar + <Outlet/>; fetches kbReady once via useValidatedContractCount
-        WorkspaceShellApp.tsx    # <BrowserRouter> + V2 route table (ShellRoutes is the router-free export tests use)
+        AppShell.tsx             # rail + global Ask bar + <Outlet/>; fetches kbReady once via useValidatedContractCount; passes workspaceId down through shellContext.ts
+        WorkspaceShellApp.tsx    # V2 route table (BrowserRouter itself lives in App.tsx as of task E14/F03/US02/T01; ShellRoutes is the router-free export tests use)
+        shellContext.ts          # useOutletContext typing for the router outlet (workspaceId/kbReady/validatedContractCount)
         shell.css                # rail/shell layout
       ask-bar/                # task E06/F03/US02/T01 -- global Ask bar scaffold (AC-3); V2 new-chat state + off placeholder by E13/F09/US01/T01; capability-sourced chips by E13/F09/US01/T04
         GlobalAskBar.tsx         # the bar itself: input, chips, Enter -> /ask with { query, newChat: true }, Cmd/Ctrl+K focus, fetches GET /api/capabilities once
         askSuggestions.ts        # getAskBarCopy: static per-route fallback copy + kbReady off-copy, overridden by the capability catalog's own exampleQuestions once it resolves for the current route
         ask-bar.css
-    App.tsx                   # composition root: /health effect; SignInRoute, or (signed in + workspace picked) WorkspaceShellApp
+    App.tsx                   # composition root: BrowserRouter (public /invite/accept + the account/workspace gate), /health effect, AuthenticatedGate's three states (task E14/F03/US02/T01)
     main.tsx                  # boot: load config -> construct MSAL + API client -> render
     index.css                 # global entry; imports styles/index.css
   tests/                      # mirrors src/; vitest + Testing Library
@@ -1182,16 +1297,22 @@ spec's own header comment has the full citations -- in short:
    but there is still no list-members endpoint, so the table is this-browser's Admin row plus
    invites sent from this session (`memberStore.ts`) -- not a fabricated roster, and not a
    workspace-wide directory.
-2. **A fresh, self-created workspace cannot discover the ADR-022
-   fixture-seeded tenant** (the workspace picker is a per-browser
-   `localStorage` cache, `workspaceStore.ts`'s own documented gap) --
-   Ask-citation, renewal-pipeline and savings-opportunity steps assert
-   whichever real, already-tested state (populated or honestly empty)
-   actually renders for the workspace this run creates, and name the gap
+2. **The workspace picker is server-driven now, not a per-browser cache**
+   (task E14/F03/US02/T01, wave w14; ADR-026 §D1) -- this used to be the
+   opposite (a fresh Playwright context could never discover the ADR-022
+   fixture-seeded tenant at all, only create its own empty one). `GET
+   /api/workspaces` now answers from the caller's own real membership, so
+   whether a run lands on an existing (possibly fixture) tenant or must
+   create one depends on whether the signed-in identity holds a real
+   membership row -- for `demo`, on whether `RAFFA_E2E_ENTRA_EMAIL` is the
+   account `backend/scripts/demo-fixture-seed.sql`'s Admin membership was
+   backfilled onto (OQ-w14-dec-001). Ask-citation, renewal-pipeline and
+   savings-opportunity steps still assert whichever real, already-tested
+   state (populated or honestly empty) actually renders, and name the gap
    inline via `test.info().annotations` rather than asserting a fabricated
-   populated state. A reused Playwright `storageState` pointed at a
-   pre-seeded fixture workspace exercises the fuller, populated path
-   instead -- the same `pickOrCreateWorkspace` code path handles both.
+   populated state -- `pickOrCreateWorkspace` now also covers the third
+   outcome NW-01 introduces: exactly one real membership skips the picker
+   entirely (AC-2's "no picker").
 3. **A recorded quote outcome does not update the Savings figures**
    (`NegotiationOutcomePropagationService` never runs for it -- see
    `src/routes/quotes/NegotiationStep.tsx`'s own header comment). The final

@@ -42,12 +42,23 @@ var documentsContractsConnectionString = builder.Configuration.GetConnectionStri
 
 builder.Services.AddDocumentsContractsModule(documentsContractsConnectionString);
 
-// Task E13/F04/US01/T02 (documents-v2-api): resolves the caller's workspace role for the
-// Admin-only document endpoints (reprocess, delete). Lives in the host because it reads the
-// Identity/Workspace membership table AND the request's own claims/headers -- see
-// Raffa.Api.Infrastructure.WorkspaceRoleResolver for the three-source order and why the
-// interim header/membership branches exist while ADR-010 is not wired.
+// Task E13/F04/US01/T02 (documents-v2-api), narrowed by task E14/F02/US02/T01 (wave w14, ADR-022
+// w14 footer / ADR-025 §E): resolves the caller's workspace role for the Admin-only document
+// endpoints (reprocess, delete). Lives in the host because it reads the Identity/Workspace
+// membership table AND the request's own claims -- see Raffa.Api.Infrastructure.WorkspaceRoleResolver
+// for the two-source order (claims, then membership) and why a client-declared X-Role/
+// X-Workspace-Role header is no longer one of them.
 builder.Services.AddScoped<WorkspaceRoleResolver>();
+
+// Task E14/F02/US01/T01 (wave w14 "workspace is real", ADR-025 §A1): the one identity seam every
+// endpoint added or changed in this wave consumes instead of reading HttpRequest.Headers directly
+// -- W15 (NW-05) retires the interim X-User-Id header by editing only
+// Raffa.Api.Infrastructure.HeaderCallerIdentity, at this same registration. IHttpContextAccessor is
+// not otherwise registered by this host: ICallerIdentity.Resolve() takes no HttpContext parameter,
+// so it can be injected into a handler the same way WorkspaceProvisioningService/
+// WorkspaceMembershipService already are, not bound from the route.
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ICallerIdentity, HeaderCallerIdentity>();
 
 // Object storage (ADR-005 "Object storage" row, ADR-011): the Azure Blob Storage adapter is
 // wired here, in the host, and only here — domain modules see IDocumentStorage, never the Azure
@@ -333,6 +344,14 @@ app.MapQuotesEndpoints();
 // uses. See NegotiationOutcomePropagationService for why this never fails an already-durable
 // capture.
 app.MapNegotiationsEndpoints();
+
+// Task E15/F01/US01/T01 (wave w14, ADR-026 implication 5 "Program.cs needs exactly one edit in
+// this wave"): `GET /api/invites` and `POST /api/invites/accept` — the two token-header routes
+// that are not parameterised on {token} (ADR-025 Rule C9). See InvitationsEndpointExtensions.
+// MapWorkspaceEndpoints() above (already registered, :225-236 in the wave-base checkout) stays
+// untouched — the invite/revoke and members/remove routes it composes are that file's own and
+// WorkspaceMembersEndpointExtensions' own additions, not a second Program.cs edit.
+app.MapInvitationEndpoints();
 
 app.Run();
 

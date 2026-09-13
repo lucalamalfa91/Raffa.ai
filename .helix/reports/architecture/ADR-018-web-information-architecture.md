@@ -162,3 +162,138 @@ bar always opens a new chat. Roles: Admin and Procurement upload; only Admin
 deletes and manages members. Divergences from the prototype follow
 `inputs/requirements.md` and are listed in `ia-v2.md`. This footer
 supersedes the epic-12 amendment above. See ADR-024.
+
+## Amendment (2026-09-10, wave w14 — one public route joins the V2 map)
+
+Serves **NW-58**, and resolves the `## Assumptions` claim above for **NW-14**.
+This footer **adds one route to the V2 IA** recorded in the epic-13 footer and
+**does not supersede it**: the two-tier rail, `/ask` as the landing route,
+Review-as-a-state-of-Documents and the Admin/Procurement split all stand
+unchanged. Written by client-architect under `:125-126` ("Route guards …
+handed to client-architect (not re-decided here)"); the copy for every state
+named below is ADR-020's and the ux-ui-designer's.
+
+**1. The route map gains one row, and it is the first public one.**
+
+| Route | Screen | Primary object |
+|---|---|---|
+| /invite/accept | Invitation accept — offer, sign-in prompt, outcome | Invitation |
+
+It is **reachable signed out and with no workspace**, rendered **outside
+`AppShell`** (no rail, no global Ask bar — an invitee is not yet a member of
+anything the rail could list), and it carries the token in the URL
+**fragment** (`/invite/accept#<token>`, ADR-025 Rule C9), never a query
+string. `ia-v2.md`'s route map does not contain it (verified `:44-56`) and the
+map above is headed "locked", which is precisely why this is an amendment
+rather than an interpretation.
+
+**2. It forces one structural change to the shell.** Every route today lives
+*inside* `WorkspaceShellApp`, and `BrowserRouter` is mounted only once
+`account && workspace` are both true (`App.tsx:91,108`;
+`WorkspaceShellApp.tsx:81-87`) — so in the invitee's state **no router
+exists**, and the accept route cannot simply be added to `ShellRoutes`.
+`BrowserRouter` therefore **moves up into `App.tsx`**, with a public branch
+for `/invite/accept` and `*` falling through to the existing
+account/workspace gate. `ShellRoutes` is already exported separately
+(`WorkspaceShellApp.tsx:41`) as a testing seam, so this is a supported change,
+not a rewrite. Two consequences for the decomposer: it shares its twenty lines
+with NW-03's new async "resolving" state, so **those two edits are one task or
+strictly sequenced**; and it falsifies `WorkspacePickerScreen.tsx:117-123`'s
+comment ("no router is mounted anywhere above this component"), which
+justifies a hard `<a href="/">` at `:124` — the hoisting task updates that
+comment or converts the anchor.
+
+**3. The `## Assumptions` claim above is resolved, not reversed.** It assumed
+Entra would return role/permission claims usable client-side to gate
+`/workspace/members`, "**otherwise the non-admin 'request access' state must
+be server-driven**". ADR-010's claims are not wired and NW-05 is queued to
+W15, so **the stated alternative is the one in force**: the role is
+server-driven, arriving as a field on `GET /api/workspaces` (ADR-026 §D1).
+`RequireRole` (`WorkspaceShellApp.tsx:67-74`) and `canManageMembers` keep
+their exact shape — only the provenance of the value changes. `:107-108`'s
+Procurement "read-only" state on member management becomes **buildable for the
+first time** this wave, because NW-04 ships the roster endpoint whose absence
+is why `RequireRole.tsx:20-26` generalised that copy.
+
+**4. States on the new route** (all per `:112-119`, copy owned by UX): the
+offer (workspace name, offered role, expiry — and **no tenant data beyond
+that**, ADR-026 §D5); a sign-in prompt for a signed-out invitee; accepting;
+and four distinct failures — expired / already used / revoked, wrong signed-in
+account (ADR-025's email match, whose message must never echo the invited
+address), and **"you are signed in — open your invitation link again"**, which
+is a normal outcome of a redirect sign-in or a reload, not an error in the
+invitation.
+
+**5. `/workspace/members` gains two destructive affordances, not one.** An
+`Invited` row is **revoked** (`DELETE …/invites/{id}`) and an `Active` row is
+**removed** (`DELETE …/members/{membershipId}`) — different endpoints,
+different confirmation copy, and the last Admin cannot be removed (409, a
+disabled control with a visible reason per ADR-019). The screen re-reads the
+roster after either; there is no optimistic local removal, because the
+last-Admin guard is a server rule and the server's answer is the one that
+renders.
+
+## Amendment (2026-09-10, wave w14 — design: the Procurement roster state, and where the states contract now binds)
+
+Serves **NW-58** and **NW-24**. Written by ux-ui-designer, owner of this ADR
+(`INDEX.md:51`). It **adds to the client-architect's w14 footer immediately
+above and supersedes nothing**: that footer owns the route, the router hoist and
+the guard; this one owns the IA-level *states* those changes create. The route
+row is not restated here. Copy for every state named below lives in ADR-020's
+w14 footer.
+
+**1. `:107-108`'s "read-only" reading is the one in force, and the export
+contradicts it.** The Roles section already grants **Procurement** "all routes
+except member management (sees a 'request access' / **read-only** state on that
+surface)", and `ia-v2.md:13-15` agrees ("Members screen is read-only with
+'request access'"). The V2 export does something different: `markup.html:403`
+**hides the table outright** — the entire grid at `:386-401` sits inside
+`<sc-if isAdmin>` (`:384`) — leaving a non-Admin only an explanation block. This
+is therefore **not a divergence from the prototype but a contradiction inside
+the design oracle**, and this footer records which side is in force: **the ADR
+and the IA doc win**. Procurement sees the roster, read-only — no `Actions`
+column, no invite pane — with the explanation block beneath it.
+
+This becomes buildable for the first time this wave, and the code says so:
+`RequireRole.tsx:20-26` records that the prototype's "Admins: Marta Keller,
+Jonas Frei" sentence was **deliberately generalised** because "this app has no
+backend 'list members' endpoint yet". NW-04 is that endpoint. What changes as a
+result is what `RequireRole` gates on this route, which `:125-126` hands to
+**client-architect** ("route guards … not re-decided here") — the states and the
+copy are this seat's, the guard is theirs, and if they keep a hard guard the
+copy still applies to the block that remains.
+
+**2. `Request access` must not ship as a dead control.** It is inert today — a
+`<button>` with no handler (`RequireRole.tsx:41`) — and no endpoint exists to
+give it. With NW-04 the workspace's real Admin addresses become knowable, so it
+renders as `<a class="btn btn-secondary" href="mailto:…">` to those addresses
+with the subject prefilled, which is real, honest and needs no backend. (Both
+roles are inside the same tenant and the roster above already shows those
+addresses, so nothing is exposed that the screen does not already show.) If the
+table prefers to drop the button the block still reads correctly without it —
+**a dead button is the one option that is not available.**
+
+**3. Where `## Empty / error / loading (IA-level contract)` now binds.** w14
+creates the SPA's first three server-backed read surfaces outside the document
+path, and `:112-119` binds each of them: the **workspace list** on screen 1
+(the product's first network read — today `WorkspacePickerScreen` has no fetch
+at all), the **members roster**, and the **invitation accept** screen. Two
+clarifications this wave forces, both recorded so a task does not have to guess:
+
+- On screen 1 the **create form is the empty state**; there is no separate "you
+  have no workspaces" screen. A failed read renders the error state and
+  **never a cached list** (ADR-012 w14).
+- On the accept route, **"open your invitation link again" is a normal
+  outcome, not an error state**. It follows from the token living in memory for
+  one mount, so it is expected after any redirect sign-in or reload, and it must
+  not be dressed in the error treatment or worded as an invalid invitation.
+
+**4. One unrecorded divergence on screen 1, named rather than left in the
+code.** `WorkspacePickerScreen.tsx:100-137` renders an interstitial ("You're in
+{name}" → Continue / Switch workspace / Sign out) that exists nowhere in the V2
+export, where `app.jsx:139` goes straight to Ask and `screens-v2.md:21` lists
+screen 1's states as idle · signing · create · pick. It sits exactly where
+NW-03's "one membership → enter it" rule operates. **The routing decision is
+client-architect's**; this footer records that the divergence exists and ADR-020
+records the real state set either way, so it stops being an undocumented
+behaviour that the next reader mistakes for the design.

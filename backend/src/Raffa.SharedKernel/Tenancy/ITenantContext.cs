@@ -25,3 +25,34 @@ public interface ITenantContext
     /// </summary>
     IDisposable BeginScope(TenantId tenantId);
 }
+
+/// <summary>
+/// Ambient accessor for the identity of the caller executing the current request/worker job
+/// (ADR-009 w14 footer clause 1, ADR-025 §A/§F.2). Deliberately a sibling of
+/// <see cref="ITenantContext"/>, not a member of it: tenant answers "which tenant's rows may this
+/// connection see" (<see cref="ITenantContext.Current"/>), identity answers "who is calling" --
+/// and <c>GET /api/workspaces</c> (NW-01) needs the second with the first deliberately absent, to
+/// discover which tenants the caller belongs to before any tenant scope exists. Either context may
+/// be active without the other. The data-access layer's connection interceptor
+/// (<see cref="TenantRlsConnectionInterceptor"/>) reads <see cref="Current"/> to establish the
+/// per-connection `app.identity_subject` claim that the `identity_self` Postgres Row-Level
+/// Security policy (`identity-workspace.sql`) enforces against.
+/// </summary>
+public interface ICallerIdentityContext
+{
+    /// <summary>
+    /// The caller identity for the code currently executing, already trimmed and lower-cased (the
+    /// `identity_self` policy compares `lower(email)`), or <see langword="null"/> when no identity
+    /// scope is active. <see langword="null"/> means the `app.identity_subject` GUC is left unset
+    /// on the connection -- fail closed, never an empty string standing in for absence.
+    /// </summary>
+    string? Current { get; }
+
+    /// <summary>
+    /// Enters an identity scope for the remainder of the current async call chain. Dispose the
+    /// returned handle when the request/job completes to restore the previous value. Independent
+    /// of <see cref="ITenantContext.BeginScope"/> -- entering one does not require, and has no
+    /// effect on, the other.
+    /// </summary>
+    IDisposable BeginIdentityScope(string identity);
+}

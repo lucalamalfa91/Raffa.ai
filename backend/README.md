@@ -153,15 +153,59 @@ is needed. `Raffa.IntegrationTests.DemoFixtureSeedEndToEndTests` (via
 read from disk, applied to a real Postgres+RLS Testcontainer, never
 re-typed into the test — makes `GET /api/savings` return the three seeded
 opportunities for the demo tenant and nothing for any other tenant, and
-that a second apply does not duplicate rows.
+that a second apply does not duplicate rows. The workflow's schema guard
+also requires `workspace_membership` to exist (task E14/F05/US01/T01), so
+seeding a `demo`/`dev` whose schema predates w14 fails honestly at that
+guard instead of obscurely mid-script.
+
+**Admin membership for the fixture tenant, and the backfill for everything
+else (task E14/F05/US01/T01, ADR-025, ADR-026, w14):** once
+`GET /api/workspaces` lists by membership (NW-01), the ADR-022 fixture
+tenant above — seeded by SQL, never by `POST /api/workspaces` — can never
+pick up a membership row from the ordinary create-workspace path.
+`demo-fixture-seed.sql` now also inserts one Admin `workspace_user` (fixed
+id `...0003`) and `workspace_membership` (`...0004`) for that tenant, and
+the Admin `workspace_role` itself (`...0005`) if the tenant does not
+already have one — same fixed-id / `ON CONFLICT (id) DO NOTHING`
+convention as every other row in the file. The email is an optional `psql`
+variable, `demo_admin_email`, falling back to the inert placeholder
+`demo-admin@raffa.invalid`; set the `DEMO_ADMIN_EMAIL` GitHub Environment
+variable for `dev`/`demo` before the first post-w14 seed to bind it to a
+real address instead (`seed-demo-fixture.yml` passes it through only when
+that variable is set — an unset variable leaves the script's own fallback
+in force, never an empty psql variable).
+
+Every **other** workspace already created on `dev` (or any future
+environment) needs the same grant, and cannot get it from this file — a
+real tenant has no fixed id. `.github/workflows/backfill-workspace-membership.yml`
+is the operator path: `workflow_dispatch` (or `workflow_call`) with a
+`target_environment` choice and a required `pairs` input, newline-separated
+`<workspace id>,<admin email>`. Gated by the same GitHub Environment
+approval a deploy already requires; reuses the same OIDC login and
+`postgres-connection` secret (no new identity, no new Key Vault secret,
+ADR-015/ADR-016 w14 footer — seeds and backfills are data-plane acts and
+are never promoted, so this job is run again, unmodified, per environment,
+never copied from `dev`). Per pair, one transaction scoped by
+`SET app.tenant_id`, `gen_random_uuid()` for the new rows (no fixed id is
+available for a real tenant), and a closing verification that fails the
+job — not just prints — if any supplied pair still has no live Admin
+membership afterwards. There is deliberately no "claim this workspace" API
+endpoint (ADR-025 §2.3 / ADR-026): `CreateWorkspaceAsync` never recorded a
+creator, so pairs come from the operator at HITL, not from a caller-trusted
+request.
 
 ## HTTP surface today
 
 | Method | Path | Notes |
 |--------|------|-------|
 | GET | `/health` | ASP.NET health checks |
-| POST | `/api/workspaces` | create workspace |
-| POST | `/api/workspaces/{tenantId}/invites` | invite; roles Admin / Procurement / Legal / Finance / ReadOnly |
+| POST | `/api/workspaces` | Create workspace (task E14/F02/US01/T01, wave w14; ADR-025 §D.2). Requires the caller identity `Raffa.Api.Infrastructure.ICallerIdentity` resolves from `X-User-Id` — absent is **401**, not 400 (creating a tenant is no longer the anonymous pre-auth signup step it used to be: it now writes an identity-keyed grant). The creator becomes this tenant's Admin *by virtue of creating it*, so 201 carries `{ id, name, createdAt, role: "Admin" }` — a `role` field in the request body is never read, let alone honoured |
+| POST | `/api/workspaces/{tenantId}/invites` | Invite; roles Admin / Procurement / Legal / Finance / ReadOnly. Guarded (task E14/F02/US01/T01, ADR-025 §D.1a — closed the wave's highest-priority security gap: this route previously had no authorization at all): caller identity required (else **401**), a live `workspace_membership` for that identity in the **route** tenant (else **404**, never 403 — a 403 on a tenant the caller does not belong to is a tenant-existence oracle), and that membership's role must be Admin (else **403**); an Admin may invite another Admin. The tenant is always the route value — `X-Tenant-Id` is not an input to this endpoint. **Response changed by task E15/F01/US01/T01 (wave w14; ADR-025 §C/§D.1, ADR-026 §D5):** this is now an offer, not a grant — the handler writes a `workspace_user` row (none existed yet) plus one `workspace_invitation` row, **never** a `workspace_membership`; the membership is written only at `POST /api/invites/accept` below. `201 { id, email, role, expiresAt, acceptUrl, mailDelivered }` — `acceptUrl` is site-relative (`/invite/accept#<token>`; an absolute URL is forbidden this wave, Rule C9), `mailDelivered` is `IInvitationMailer.TrySendAsync`'s own `bool` result (always `false` this wave — `NullInvitationMailer`, OQ-w14-002 deferred; the Members UI shows the copyable `acceptUrl` instead of claiming a mail was sent). **409** when the email already holds that role or already has a live (unaccepted, unrevoked) invitation in this workspace — the partial unique index on `(tenant_id, lower(email)) WHERE accepted_at IS NULL AND revoked_at IS NULL`, translated to a clean conflict, never a 500; a removed person (see `DELETE .../members/{membershipId}` below) is not blocked by this |
+| DELETE | `/api/workspaces/{tenantId}/invites/{id}` | Revoke a still-pending invitation, Admin only (task E15/F01/US01/T01, wave w14; ADR-025 §D.5, AC-11). Same identity → membership → Admin guard as the POST above (401 → 404 non-member → 403 non-Admin). Stamps `revoked_at`; the accept link stops working on the very next request — nothing caches it. **204**; idempotently **404** for an unknown id or one already accepted/revoked (no distinction disclosed either way) |
+| GET | `/api/invites` | Pre-accept: read what an invitation offers, without accepting it (task E15/F01/US01/T01, wave w14; ADR-025 Rule D.3e/C4/C5, ADR-026 §D5). **Not** parameterised on `{token}` — the token travels in the `X-Invitation-Token` header, never a path or query string (a query string lands in access logs, `Referer` headers and browser history, Rule C9). The token's tenant-id prefix is `Guid.TryParseExact`d **before** any tenant scope is entered (Rule C4); once scoped, the hash match is the first statement — nothing else is read until it succeeds, or this becomes a workspace-name oracle for any guessed tenant id. `200 { workspaceName, role, expiresAt }` and **nothing else, ever** — not the invited email (echoing it turns a leaked link into an address-discovery tool), no roster, no counts. **410** expired (safe only because reaching this branch already proves possession of the 256-bit secret); **404** unknown/revoked/accepted/malformed — one indistinguishable answer for every "not yours" case |
+| POST | `/api/invites/accept` | Accept an invitation: bind the signed-in identity and grant the membership (task E15/F01/US01/T01, wave w14; ADR-025 Rule D.3a-d, ADR-026 §D5). Same `X-Invitation-Token` header as the GET above, plus `X-User-Id` (absent/blank → **401** — there would otherwise be no subject to bind). The signed-in identity's email must match the invited address case-insensitively, or **403** with a reason that never echoes the invited address, and no membership row written. On success, one transaction: binds the accepting identity's external subject onto the `workspace_user` row the invite already wrote (`WorkspaceSignIn.LinkSignInAsync`, unchanged), inserts the membership at the invited role, stamps `accepted_at`. `200 { workspaceId, workspaceName, role }`. A second accept by the same identity is **409** (idempotency signal); two concurrent accepts still produce exactly one membership row and one 409, never a 500 — the unique index `ix_workspace_membership_workspace_user_id_workspace_role_id` already enforces the row, this only translates the violation. **410** expired |
+| GET | `/api/workspaces/{tenantId}/members` | The roster (task E14/F04/US01/T01, wave w14, story us-01-members-api; ADR-026 §D3, ADR-025 §D.4). Verify, then scope, then read (ADR-009 w14 footer clause 7): caller identity required (else **401**), a live `workspace_membership` for that identity in the **route** tenant (else **404**, never 403 — a tenant-existence oracle, never an empty 200 — also an oracle); once verified, **any** live member may read regardless of role (Read ≠ write — only an Admin may invite/revoke/remove). The tenant is always the route value; same posture as the invite route above, `X-Tenant-Id` is never read. Response `{ members: [ { id, email, name?, role, status } ] }` — the roster is **live memberships ∪ live invitations**, never a scan of `workspace_user` (a removed member keeps that row for audit continuity and, because their `ExternalSubjectId` stays bound, would otherwise render `Active` — the defect ADR-026 §D3 exists to prevent); `status` is `Active` or `Invited`, derived, never stored — an accepted/revoked/expired invitation renders nothing; `name` maps to the stored `WorkspaceUser.DisplayName` and is `null` unless one is on file, never derived from the email; a person holding two memberships appears once, at the highest role (`WorkspaceRoleClaimResolver`'s own precedence, no second ordering); `role`/`status` are non-nullable strings, never an OpenAPI enum (role names are per-tenant rows the schema does not close over) |
+| DELETE | `/api/workspaces/{tenantId}/members/{membershipId}` | Remove a member from a workspace, Admin only, with the last-Admin guard (task E15/F01/US01/T01, wave w14; ADR-025 Rule D.5a-c, AC-7/AC-9). Same identity → membership → Admin guard as the roster/invite routes above (401 → 404 non-member → 403 non-Admin); then **409** when the target membership is the tenant's sole live Admin — `WorkspaceMembershipRemoval.CanRemove`, a pure domain function provable without a database ("at least one live Admin per tenant, always"), refuses even removing yourself if you are that last Admin. Deletes the `workspace_membership` row only, never `workspace_user` (audit continuity — the FK is `ON DELETE CASCADE` from user to membership, so deleting the user would cascade), and revokes that email's live invitations in the same transaction (without that, a still-valid link would re-admit them, making AC-8's "re-adding needs a new invite" false). Immediate — nothing caches authorization, role and membership are read from the database on every request, so the removed identity's very next request in this tenant already reflects it. **204** |
 | POST | `/api/documents` | multipart `file` + `X-Tenant-Id` header (optional `X-User-Id` names the actor of a rejection audit row). Task E13/F04/US01/T01 (documents-admission, ADR-024 “gate before persistence”) reordered this endpoint: size → **413**, format by extension *and* magic bytes → **415**, admission gate (parse/OCR → readable-text floor → `classify`) → **422** `{ rejected, detectedType, confidence, reason, hint }` with **nothing persisted** and one `document.rejected` audit row; only an admitted document is stored and then processed. Still runs `DocumentProcessingPipeline` (staged extraction → RAG indexing) synchronously before responding (task E02/F06/US01/T01, r1-integration) — reusing the gate's own parse and classification, so the `classify` role is called once per upload — and the response `processingStatus`/`contractId` reflect that run's outcome, not just the initial “Uploaded” write. See “Documents — admission gate” below |
 | GET | `/api/documents/{id}` | metadata/status; same header; `documentType` is the widened `ContractDocumentType` (`Msa`, `OrderForm`, `Amendment`, `Sow`, `RenewalLetter`, `Quote`, `Invoice`, `PriceList`, `Nda`, `Dpa`, `Other`) — task E13/F04/US01/T01 added the last five so “the documents around a contract” keep their own kind |
 | GET | `/api/documents` | Server-side Documents list (R-DOC-06/09; task E13/F04/US01/T02); `X-Tenant-Id` header; optional `status` (exact `DocumentProcessingStatus`), `page` (default 1), `pageSize` (default 25, max 100); response `{ items, page, pageSize, totalCount }`, each item `{ id, contractId, supplierName, fileName, documentType, processingStatus, stage, pageCount, createdAt, weakFactCount }` — `stage` is one of R-DOC-09's six real names and is present **only** while `processingStatus` is `Processing`; `supplierName` is resolved through `ISupplierNameLookup` when the Suppliers module is registered, `null` otherwise (never a raw id); `weakFactCount` counts this contract's distinct extracted fields whose latest evidence is missing or below 0.6 |
@@ -1398,7 +1442,7 @@ whole path). To manually smoke-test the same path against a running
 ```bash
 API=https://<api-host>
 TENANT=$(curl -s -X POST "$API/api/workspaces" -H 'Content-Type: application/json' \
-  -d '{"name":"Smoke Test Co"}' | jq -r .id)
+  -H 'X-User-Id: smoke-test@acme.example' -d '{"name":"Smoke Test Co"}' | jq -r .id)
 
 # 201 only for an admitted contract-related document: a non-contract PDF
 # gets 422 (reason not_a_contract | no_readable_text), an unsupported or
@@ -1708,7 +1752,7 @@ running `dev`/`demo` deployment:
 ```bash
 API=https://<api-host>
 TENANT=$(curl -s -X POST "$API/api/workspaces" -H 'Content-Type: application/json' \
-  -d '{"name":"Smoke Test Co"}' | jq -r .id)
+  -H 'X-User-Id: smoke-test@acme.example' -d '{"name":"Smoke Test Co"}' | jq -r .id)
 
 # A fresh tenant honestly starts at all-zero KPIs — no fabricated baseline.
 curl -s "$API/api/savings/kpis" -H "X-Tenant-Id: $TENANT" | jq .
@@ -2442,7 +2486,7 @@ To manually smoke-test the same path against a running `dev`/`demo` deployment:
 ```bash
 API=https://<api-host>
 TENANT=$(curl -s -X POST "$API/api/workspaces" -H 'Content-Type: application/json' \
-  -d '{"name":"Smoke Test Co"}' | jq -r .id)
+  -H 'X-User-Id: smoke-test@acme.example' -d '{"name":"Smoke Test Co"}' | jq -r .id)
 
 QUOTE=$(curl -s -X POST "$API/api/quotes" -H "X-Tenant-Id: $TENANT" \
   -F "file=@quote.pdf;type=application/pdf" \

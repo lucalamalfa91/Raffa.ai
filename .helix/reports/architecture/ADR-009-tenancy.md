@@ -91,3 +91,78 @@ dual requirement (app **and** DB) at the cheapest SKU that supports RLS, without
 - The chosen relational store (PostgreSQL + pgvector, software-architect's ADR) supports `FORCE ROW
   LEVEL SECURITY` on the cheapest managed SKU that meets product constraints (embedded in the
   software-architect SKU choice; if the SKU does not, this ADR forces a SKU that does).
+
+## Amendment (2026-09-10, wave w14 — discovery, scope discipline, bootstrap)
+
+Serves **NW-01, NW-02, NW-04, NW-58**. The Decision outcome above is unchanged:
+RLS on every tenant table, application scoping primary, RLS the non-bypassable
+backstop, **no `BYPASSRLS` in the application path**. This footer records what
+w14 adds. Detail lives in **ADR-025**; where the two touch one mechanism,
+ADR-025 governs.
+
+**1. One new policy, and only one.** `GET /api/workspaces` must answer "which
+tenants do I belong to" for a caller who has no tenant claim yet — and with the
+claim unset every existing policy denies every row (fail closed,
+`TenantRlsConnectionInterceptor.cs:53-57,66-70`). The answer is **one
+identity-keyed policy on `workspace_user`, `FOR SELECT` only, permissive**,
+keyed on a new GUC `app.identity_subject` and guarded by
+`nullif(current_setting(...),'') IS NOT NULL` so an absent claim widens nothing.
+`workspace`, `workspace_role` and `workspace_membership` keep exactly one policy
+each, unchanged. A cross-tenant directory table, per-table identity policies and
+a `BYPASSRLS` role were all considered and **rejected** (ADR-025 §F.1).
+
+**2. Membership is the grant, not user existence.** A candidate tenant enters the
+discovery result **only** when a live `workspace_membership` row is confirmed in
+that tenant's own scoped read. `workspace_user` rows outlive membership by design
+(audit continuity, and sign-in needs them), so a `workspace_user`-driven list
+would show a removed member the tenant they were removed from.
+
+**3. The identity GUC is parameter-bound, never interpolated.** Set it with
+`SELECT set_config('app.identity_subject', @identity, false)` — a regular
+statement that accepts bind parameters — and `RESET` it on connection close.
+**Do not copy `BuildSetCommandText`** (`TenantRlsConnectionInterceptor.cs:103-107`):
+it inlines the tenant and justifies that *solely* because `TenantId` wraps a Guid,
+whereas an identity subject is caller-controlled text. Its own comment notes that
+`SET` cannot take bind parameters — which is why the remedy is a different
+statement form, not a parameter added to `SET`. A negative test with `'`, `;` and
+`--` is mandatory.
+
+**4. Two named exceptions to "one scope per request", and only two.**
+`ITenantContext.cs:23-24` states the expectation; w14 departs from it twice, and
+both are bounded:
+- **Discovery** may enter one scope per candidate tenant — sequentially, never
+  nested, each on its own connection, confined to one named service method, capped
+  at 50 candidates.
+- **Invitation accept** may enter a scope from a **caller-supplied** tenant id
+  with no membership check — the only place in the product that does — bounded by
+  a `Guid.TryParseExact` parse before scope entry (a failure is 404, never a scope)
+  and by the rule that the token-hash match is the **first** statement inside the
+  scope, so a miss discloses nothing.
+
+**Any other endpoint entering a second scope, or entering a scope from
+caller-supplied input, is a defect and not a precedent.**
+
+**5. A scope change takes effect only on a connection opened after it.** The claim
+is established in `ConnectionOpened` (`:22-35`), so a nested scope on an
+already-open connection keeps running under the **first** tenant's claim — a
+cross-tenant read RLS cannot catch, because the claim it enforces is the stale
+one. Any path reading tenant A then tenant B must let the connection close
+between them. This is general and outlives w14.
+
+**6. Bootstrap.** `workspace` + the role catalog + `workspace_user` +
+`workspace_membership`(Admin) are written in **one** scope and **one**
+`SaveChangesAsync` under the new tenant's own claim — the workspace row is the
+first row of its own tenant. A partial bootstrap must not be reachable by a
+failure path. This path stays strictly one-scope-per-request.
+
+**7. Verify, then scope, then read.** For any route carrying a tenant id, the
+caller's membership is verified **before** the scope is entered. "Scope and see
+what comes back" turns an authorization question into an empty-result question
+and yields 200-with-nothing where the answer must be **404** (a 403 on a tenant
+you do not belong to is a tenant-existence oracle).
+
+**8. New tenant table.** `workspace_invitation` is ordinary: `tenant_id` not null
+and indexed, `ENABLE` + `FORCE ROW LEVEL SECURITY`, a `tenant_isolation` policy
+with both `USING` and `WITH CHECK`, shipped **in the same migration as the table**.
+It gets no identity policy. Cross-module reads (the validated-contract count) run
+under that tenant's own claim — never a cross-tenant aggregate.

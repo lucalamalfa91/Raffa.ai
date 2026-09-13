@@ -57,3 +57,78 @@ Every table carrying business data MUST have a `tenant_id` column and a Postgres
 - Exact SKU/tier (burstable compute size, storage, backup retention) is owned by cloud-architect; the store is a Flexible Server, not Single Server (Single Server is being retired).
 - `pgvector` is available on the chosen Postgres version/region (confirmed at implementation time).
 - EF Core Core version aligns with the .NET LTS chosen in ADR-dotnet-solution.
+
+## Amendment (2026-09-10, wave w14)
+
+Written by software-architect (owner of this ADR) at the w14 council table.
+Serves **NW-24** (workspace profile) and records the schema deltas of
+**NW-01/NW-02/NW-04/NW-58**. The Decision outcome above is unchanged:
+PostgreSQL Flexible Server + pgvector via EF Core/npgsql, RLS tenancy, one
+system of record. Nothing here relaxes the rule at line 53 that database
+changes MUST be expressed as EF Core migrations with no hand-edited DDL drift
+— this amendment tightens how that rule is discharged.
+
+**1. Three columns are added to `workspace` (NW-24).**
+
+| Column | Type | Null | Note |
+|---|---|---|---|
+| `industry` | varchar(120) | yes | closed list at the UI, stored as text |
+| `country` | varchar(2) | yes | ISO 3166-1 alpha-2, closed list |
+| `currency` | varchar(3) | yes | ISO 4217 alpha-3, **derived from `country`, never typed** |
+
+**All three are nullable, deliberately.** Existing `workspace` rows predate
+the columns, and a NOT NULL column on a populated table requires a default
+that would be a fabricated business fact. The nullable precedent is
+`quotes.sql:163,170,195,202`; the trap being avoided is documented at
+`QuoteLineConfiguration.cs:45-49`, where EF backfills a new NOT NULL
+enum-as-string with `""` that the converter then cannot parse. The API renders
+a missing value as **absent**, never as an invented `"CHF"`.
+
+Per the product-owner's w14 ruling (ADR-001 w14 footer, clauses 5–6) the
+create form asks `name` + `industry` + `country` only; `currency` and the
+business region are **derived from country and stored**, never entered. A
+stored workspace `currency` is a **display default that never overrides a
+contract's own extracted currency** — converting a validated fact would breach
+spec §2 ("AI is not the database") and is forbidden here as a data rule, not
+only as a UI rule.
+
+"Region" in the prototype's `"CHF · eu-west"` is a **business** region string
+and has no relationship to ADR-006's Azure region; `northeurope` is untouched.
+
+**2. One new table, `workspace_invitation`, in `Raffa.Identity.Workspace`.**
+Ordinary tenant-scoped table: `tenant_id` column, `ENABLE` + `FORCE ROW LEVEL
+SECURITY` and its `tenant_isolation` policy shipped **in the same migration as
+the table**. Shape, indexes and rationale are in **ADR-026 §D4**; the
+authorization, token strength and audit rows are in **ADR-025**. This ADR
+records only that the store gains one table and that it obeys the
+policy-per-tenant-table rule at line 53 with no exception.
+
+**3. `workspace_user` gains a second, `SELECT`-only RLS policy.** The
+`identity_self` policy (owner: security-architect; text in the ADR-009 w14
+footer, consumed by ADR-026 §D1) is the single widening in this wave. It adds
+**no column and no table**, leaves `WITH CHECK` untouched everywhere, and is
+confined to one table. Recorded here because it changes what a reader of the
+schema will see, not because this ADR decides it.
+
+**4. Migration mechanics the decomposition must honour.** Three migrations
+(`AddWorkspaceUserIdentitySelfReadPolicy`, `AddWorkspaceProfileColumns`,
+`AddWorkspaceInvitation`) regenerate one file,
+`Migrations/Scripts/identity-workspace.sql`. That file is byte-compared
+against an in-process regeneration by
+`IdentityWorkspaceMigrationScriptStaleCheckTests`, so it must **never** be
+hand-edited, and two tasks regenerating it concurrently will conflict — the
+decomposer orders them. Regenerate with `dotnet ef migrations script
+--idempotent` from `backend/src/Raffa.Identity.Workspace`. The script is
+already listed in both CI arrays (`.github/workflows/backend.yml:276-286` and
+`:308-318`), so appended migrations need no workflow edit (ADR-021 unchanged).
+
+**5. A known cost, recorded rather than discovered.** The `identity_self`
+predicate compares `lower(email)` and therefore cannot use the existing
+`ix_workspace_user_tenant_id_email` index (plain `email`,
+`identity-workspace.sql:118`), so workspace discovery is a sequential scan of
+`workspace_user`. At pilot scale that is tens of rows. If the table grows the
+remedy is an expression index on `lower(email)` — not a change to the policy
+or to this ADR. Identities are normalised to lower-case on write
+(`WorkspaceMembershipFactory.CreateInvitedUser`, which already trims, `:30`);
+`citext` is rejected as a column-type change under a live unique index for no
+benefit once writes are normalised.

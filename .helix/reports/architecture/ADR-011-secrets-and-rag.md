@@ -142,3 +142,51 @@ under the same RLS policy, keyed by tenant + user. Off-domain turns retrieve
 from neither corpus. Documents are classified **before** persistence;
 rejected files are never stored (audit hash only). This footer supersedes
 the epic-12 amendment above. See ADR-024.
+
+## Amendment (2026-09-10, wave w14 — no new secret, and authz-before-retrieval strengthened)
+
+Serves **NW-58, NW-01, NW-04**. The Decision outcome above is unchanged: one Key
+Vault per environment reached by managed identity, no secrets in source, bundle
+or Terraform, authorization **before** retrieval, audit of access and
+corrections, no training on customer content. This footer records three w14
+consequences and adds no new principle.
+
+**1. The invitation token needs no Key Vault entry — deliberately.** The intake
+assumed "a signed, single-use, expiring token (secret in Key Vault, ADR-011)".
+ADR-025 §C chooses a **256-bit CSPRNG token stored only as a SHA-256 hash**
+instead. A signed token would buy stateless verification this design cannot use —
+single use, revocation and expiry all require the invitation row to exist anyway
+— while costing a vault secret, an environment variable, a per-environment
+rotation story, and the property that **rotating the key invalidates every
+outstanding invitation**. The `:95-97` slot for "signing config" is simply not
+used: a narrowing, not a contradiction. **w14 therefore adds no Key Vault secret,
+no environment variable and no Terraform change**, which is the condition
+cloud-architect's zero-delta confirmation rests on (ADR-005 w14 footer).
+
+**2. If a mail transport lands later**, its credential is a per-environment Key
+Vault secret reached by **managed identity** — Option 1 above, unchanged — never
+in source, Terraform or a client bundle, and plumbed by delivery-manager before
+the feature ships (ADR-016). The transport is deferred by ADR-001's w14 footer;
+this rule binds whichever wave lands it.
+
+**3. Authz-before-retrieval gets stronger, not weaker.** The `:98-100` chain
+(resolve tenant/role/object authz → build authorized retrieval scope → retrieve
+with a mandatory `tenant_id` filter) is unchanged in shape, but the **first** step
+changes substance: the tenant used for retrieval becomes a *verified membership
+row* rather than a client-asserted `X-Tenant-Id`. A removed member's Ask calls for
+that tenant therefore retrieve nothing on the **next request**, with no cache and
+no token to invalidate. "Removed from the workspace but Ask still answers about
+its contracts" is exactly the failure this ADR exists to prevent, and it now has
+its own test (ADR-025 T7d).
+
+**4. Nine new audit actions, no schema change.** `workspace.created`,
+`workspace.membership.granted|removed|backfilled`,
+`workspace.invitation.issued|accepted|rejected|revoked`, `workspace.list.truncated`
+(ADR-025 §G). `AuditEvent` is already append-only and DB-enforced, tenant-scoped,
+and `ResourceId` is deliberately a plain string. **Never written to an audit row
+or any log sink**: the invitation token, its hash, any raw `Authorization` or
+`X-User-Id` header dump, any contract or business datum. `Detail` may carry the
+invited email and the offered role — membership facts inside that tenant, visible
+to its members anyway — and nothing else. Because every one of these endpoints
+requires a presented identity, the `"unattributed"` actor literal cannot occur on
+any of them.

@@ -16,12 +16,15 @@
 // workspace"): added createWorkspace(), the first write call this client
 // makes. The request body type is hand-written (`CreateWorkspaceRequest`),
 // not generated: web/scripts/generate-api-client.mjs does not parse
-// `requestBody` at all yet (only `responses`), and the shape is a single
-// required string field -- not worth extending the generator for until a
-// second operation needs a typed request body too. See
-// web/src/routes/signin/workspaceStore.ts for why there is no matching
-// listWorkspaces()/getWorkspaces() call here: no such backend endpoint
-// exists yet.
+// `requestBody` at all (only `responses`).
+//
+// Task E14/F03/US01/T01 (wave w14 "workspace is real", ADR-026 section D1):
+// added listWorkspaces() -- the call this file's own comment used to say had
+// no backend endpoint yet -- and getWorkspaceMembers(tenantId) (ADR-026
+// section D3). createWorkspace()'s request type also gained optional
+// `industry`/`country` (NW-24); the 201 response's `role` property was
+// already generated (E14/F02/US01/T01 added it to the backend/OpenAPI
+// contract in an earlier wave-w14 task).
 //
 // Task E13/F09/US01/T04 (web-ask-v2, OQ-askv2-005/R-CONV-03/ADR-022): every call this client makes
 // now carries an `X-User-Id` header, resolved lazily via the `getUserId` callback below -- never
@@ -75,9 +78,11 @@ export interface HealthCheckResult {
 type CreateWorkspaceResponses = paths["/api/workspaces"]["post"]["responses"];
 type CreateWorkspaceBody = CreateWorkspaceResponses[201]["content"]["application/json"];
 
-/** `POST /api/workspaces` request body (backend/.../WorkspaceEndpointExtensions.cs's `CreateWorkspaceRequest`). Hand-written -- see this file's header comment for why. */
+/** `POST /api/workspaces` request body (backend/.../WorkspaceEndpointExtensions.cs's `CreateWorkspaceRequest`). Hand-written -- see this file's header comment for why. `industry`/`country` added by task E14/F03/US01/T01 (NW-24) -- `currency` is derived server-side and is never part of the request. */
 export interface CreateWorkspaceRequest {
   name: string;
+  industry?: string;
+  country?: string;
 }
 
 export interface CreateWorkspaceResult {
@@ -91,11 +96,57 @@ export interface CreateWorkspaceResult {
   error: string | null;
 }
 
+// Task E14/F03/US01/T01 (wave w14 "workspace is real", ADR-026 section D1): `listWorkspaces()`, the
+// identity-keyed workspace directory. `WorkspaceSummaryBody` is anchored to the generated
+// `paths["/api/workspaces"]["get"]` 200 body -- not hand-invented, the same discipline
+// `CreateWorkspaceBody` above follows.
+type ListWorkspacesResponses = paths["/api/workspaces"]["get"]["responses"];
+export type WorkspaceSummaryBody =
+  ListWorkspacesResponses[200]["content"]["application/json"]["workspaces"][number];
+
+export interface ListWorkspacesResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** Every workspace the caller holds a live membership in, oldest first -- an empty array is a
+   * valid, non-error outcome (a caller who belongs to nothing), present only when `ok` is true. */
+  workspaces: WorkspaceSummaryBody[] | null;
+  /** Plain-language failure reason (401/network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
+// Task E14/F03/US01/T01 (wave w14, ADR-026 section D3): `getWorkspaceMembers(tenantId)`. The
+// backend handler is a same-phase sibling task's file (WorkspaceMembersEndpointExtensions.cs,
+// E14/F04/US01/T01); this client method and the OpenAPI contract it is anchored to are this task's
+// own job.
+type GetWorkspaceMembersResponses = paths["/api/workspaces/{tenantId}/members"]["get"]["responses"];
+export type WorkspaceMemberBody =
+  GetWorkspaceMembersResponses[200]["content"]["application/json"]["members"][number];
+
+export interface GetWorkspaceMembersResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** The roster (live members plus pending invitations), present only when `ok` is true. */
+  members: WorkspaceMemberBody[] | null;
+  /** Plain-language failure reason (401/404/network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
 // Task E06/F04/US01/T01 (workspace-members-invite): `inviteWorkspaceMember`, wrapping
 // `POST /api/workspaces/{tenantId}/invites`. The 201 body is anchored to the generated
 // `paths["/api/workspaces/{tenantId}/invites"]["post"]` type -- not invented. There is still no
 // `GET /api/workspaces/{id}/members` (see src/routes/signin/workspaceStore.ts); the members table
 // therefore seeds the current Admin locally and appends each successful invite from this call.
+//
+// Task E15/F01/US01/T01 (wave w14, invitation lifecycle; ADR-025 section C/D.1, ADR-026 section D5):
+// the 201 body changed shape -- this is now an offer, not a grant. No membership is written by this
+// call any more (see WorkspaceInvitationService.IssueAsync, backend); `InvitedMemberBody` gained
+// `expiresAt`/`acceptUrl`/`mailDelivered` straight off the regenerated schema, no hand-written change
+// needed here (see this file's header comment on why response shapes are type-anchored, not
+// hand-declared). `acceptUrl` is the one input getInvitation/acceptInvitation below need.
 type InviteWorkspaceMemberResponses = paths["/api/workspaces/{tenantId}/invites"]["post"]["responses"];
 export type InvitedMemberBody = InviteWorkspaceMemberResponses[201]["content"]["application/json"];
 export type InviteWorkspaceRole = InvitedMemberBody["role"];
@@ -111,9 +162,82 @@ export interface InviteWorkspaceMemberResult {
   ok: boolean;
   /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
   statusCode: number | null;
-  /** The created membership, present only when `ok` is true. */
+  /** The issued invitation -- an offer, not a grant, see this method's own doc comment on the
+   * ApiClient interface -- present only when `ok` is true. */
   member: InvitedMemberBody | null;
-  /** Plain-language failure reason (400 validation message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  /** Plain-language failure reason (400 validation message, 409 duplicate invite/role, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
+// Task E15/F01/US01/T01 (wave w14, invitation lifecycle; ADR-025 section D.5, AC-11):
+// `revokeInvitation`, wrapping `DELETE /api/workspaces/{tenantId}/invites/{id}` -- Admin only, same
+// identity -> membership -> Admin guard as inviteWorkspaceMember above. `id` is
+// `InvitedMemberBody["id"]` (the invitation's own id, returned by inviteWorkspaceMember's 201 body --
+// never a membership id).
+export interface RevokeInvitationResult {
+  /** True only on `204 No Content`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** Plain-language failure reason (401/403 not-admin/404 unknown or already accepted-or-revoked/network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
+// `removeMember`, wrapping `DELETE /api/workspaces/{tenantId}/members/{membershipId}` -- Admin only,
+// with the last-Admin guard (409, `WorkspaceMembershipRemoval.CanRemove`). `membershipId` is
+// `WorkspaceMemberBody["id"]` for a roster row whose `status` is `"Active"` -- an `"Invited"` row has
+// no membership yet to remove; `revokeInvitation` above is that case's own call.
+export interface RemoveMemberResult {
+  /** True only on `204 No Content`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** Plain-language failure reason (401/403 not-admin/404 unknown member/409 last-Admin guard/network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
+// `getInvitation`, wrapping `GET /api/invites` (pre-accept) -- the one call in this file keyed by an
+// invitation token instead of a tenantId/workspace route. `token` is the fragment
+// `inviteWorkspaceMember`'s own `acceptUrl` carries after `/invite/accept#`. This method sends it as
+// the `X-Invitation-Token` header, never a path or query string (ADR-025 Rule C9 -- a query string
+// lands in access logs, `Referer` headers and browser history). Hand-written, not anchored to a
+// generated request shape the way the write bodies above are: generate-api-client.mjs does not parse
+// an operation's `parameters` at all (only `responses`), and the real input here is a header, not a
+// body -- see this file's header comment for the same generator limitation.
+type GetInvitationResponses = paths["/api/invites"]["get"]["responses"];
+export type InvitationPreviewBody = GetInvitationResponses[200]["content"]["application/json"];
+
+export interface GetInvitationResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** Workspace name, offered role and expiry -- never the invited email (Rule D.3e, so a leaked link
+   * cannot become an address-discovery tool) -- present only when `ok` is true. */
+  invitation: InvitationPreviewBody | null;
+  /** Plain-language failure reason ("expired"/"not found or already used"/network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
+// `acceptInvitation`, wrapping `POST /api/invites/accept`. Same token-in-header discipline as
+// `getInvitation` above, plus the caller's own `X-User-Id` -- this operation requires it (401 if
+// absent/blank), unlike every other call in this file where sending it is merely convention-uniform
+// (see this file's header comment). No request body: the signed-in identity plus the token are the
+// whole input; the invited email is matched server-side, case-insensitively, and never echoed back on
+// a mismatch (Rule D.3b) -- the backend's own 403 carries no body at all, so this method's `error`
+// string for that case is client-authored, not server-echoed.
+type AcceptInvitationResponses = paths["/api/invites/accept"]["post"]["responses"];
+export type AcceptedInvitationBody = AcceptInvitationResponses[200]["content"]["application/json"];
+
+export interface AcceptInvitationResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** The now-granted workspace id/name/role, present only when `ok` is true. */
+  acceptance: AcceptedInvitationBody | null;
+  /** Plain-language failure reason (401/403 email mismatch/404 unknown-or-revoked/409 already
+   * accepted/410 expired/network-failure cause), present only when `ok` is false. */
   error: string | null;
 }
 
@@ -925,6 +1049,53 @@ export interface ApiClient {
     request: InviteWorkspaceMemberRequest,
   ): Promise<InviteWorkspaceMemberResult>;
   /**
+   * Calls `GET /api/workspaces` (operationId `listWorkspaces`) -- the identity-keyed workspace
+   * directory (task E14/F03/US01/T01, wave w14; ADR-026 section D1). No tenant header of any kind,
+   * ever: the response is derived exclusively from the caller's own `X-User-Id`. Same never-throws
+   * shape as `createWorkspace`: an empty array (a caller who belongs to nothing) and a `401` (no
+   * identity) are both normal, expected outcomes the caller renders inline, never an exception.
+   */
+  listWorkspaces(): Promise<ListWorkspacesResult>;
+  /**
+   * Calls `GET /api/workspaces/{tenantId}/members` (operationId `getWorkspaceMembers`) -- the
+   * roster of live members plus pending invitations (task E14/F03/US01/T01, wave w14; ADR-026
+   * section D3). The tenant comes from the route; only `X-User-Id` is sent, never `X-Tenant-Id`
+   * (ADR-026's own w14 footer -- a second, unvalidated tenant input on an authorization-bearing
+   * route is exactly the ambiguity that footer removes). A non-member gets `404`, never `403` and
+   * never an empty `200` (ADR-025 Rule D.4b).
+   */
+  getWorkspaceMembers(tenantId: string): Promise<GetWorkspaceMembersResult>;
+  /**
+   * Calls `DELETE /api/workspaces/{tenantId}/invites/{id}` (operationId `revokeInvitation`, task
+   * E15/F01/US01/T01, wave w14; ADR-025 §D.5) -- Admin only. `id` is the invitation id
+   * `inviteWorkspaceMember`'s own 201 body returned. Same never-throws shape as `createWorkspace`:
+   * 401/403/404 are normal, expected outcomes the caller renders inline, not exceptions.
+   */
+  revokeInvitation(tenantId: string, id: string): Promise<RevokeInvitationResult>;
+  /**
+   * Calls `DELETE /api/workspaces/{tenantId}/members/{membershipId}` (operationId `removeMember`,
+   * task E15/F01/US01/T01, wave w14; ADR-025 Rule D.5a-c) -- Admin only, with the last-Admin guard.
+   * `membershipId` is a roster row's own `id` (`WorkspaceMemberBody`) whose `status` is `"Active"` --
+   * an `"Invited"` row has no membership yet, see `revokeInvitation` above for that case. Same
+   * never-throws shape: a 409 (the sole remaining Admin) is a normal, expected outcome the caller
+   * renders inline.
+   */
+  removeMember(tenantId: string, membershipId: string): Promise<RemoveMemberResult>;
+  /**
+   * Calls `GET /api/invites` (operationId `getInvitation`, task E15/F01/US01/T01, wave w14; ADR-025
+   * Rule D.3e/C4/C5) -- pre-accept. `token` is the fragment after `/invite/accept#` in an
+   * `inviteWorkspaceMember` `acceptUrl`. Same never-throws shape: an expired (410) or
+   * unknown/malformed (404) token is a normal, expected outcome the caller renders inline.
+   */
+  getInvitation(token: string): Promise<GetInvitationResult>;
+  /**
+   * Calls `POST /api/invites/accept` (operationId `acceptInvitation`, task E15/F01/US01/T01, wave
+   * w14; ADR-025 Rule D.3a-d) -- binds the signed-in identity (`X-User-Id`, required -- absent is
+   * 401) and grants the membership. Same never-throws shape: a 403 email mismatch, 404, 409
+   * already-accepted or 410 expired are all normal, expected outcomes the caller renders inline.
+   */
+  acceptInvitation(token: string): Promise<AcceptInvitationResult>;
+  /**
    * Calls `POST /api/documents` (operationId `uploadDocument`) as
    * `multipart/form-data` with a single `file` field -- the exact shape
    * `DocumentUploadEndpointTests.cs` (backend) enforces. `tenantId` is sent
@@ -1260,6 +1431,287 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
       }
 
       return { ok: false, statusCode: response.status, member: null, error };
+    },
+
+    async listWorkspaces() {
+      let response: Response;
+      try {
+        // No X-Tenant-Id, ever -- see this method's own doc comment on the ApiClient interface.
+        const headers = userIdHeaders(getUserId);
+        response = await fetch(new URL("/api/workspaces", baseUrl), {
+          ...(Object.keys(headers).length > 0 ? { headers } : {}),
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          workspaces: null,
+          error: `Unable to reach ${baseUrl}/api/workspaces. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const body = (await response.json()) as { workspaces: WorkspaceSummaryBody[] };
+        return { ok: true, statusCode: 200, workspaces: body.workspaces, error: null };
+      }
+
+      if (response.status === 401) {
+        return { ok: false, statusCode: 401, workspaces: null, error: "Sign-in required." };
+      }
+
+      return {
+        ok: false,
+        statusCode: response.status,
+        workspaces: null,
+        error: `Request failed with HTTP ${response.status} ${response.statusText}.`,
+      };
+    },
+
+    async getWorkspaceMembers(tenantId) {
+      let response: Response;
+      try {
+        // Only X-User-Id -- see this method's own doc comment on the ApiClient interface for why
+        // X-Tenant-Id is never sent here even though the sibling invite call on this same route
+        // prefix is also tenant-scoped by its path.
+        const headers = userIdHeaders(getUserId);
+        response = await fetch(
+          new URL(`/api/workspaces/${encodeURIComponent(tenantId)}/members`, baseUrl),
+          {
+            ...(Object.keys(headers).length > 0 ? { headers } : {}),
+            cache: "no-store",
+          },
+        );
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          members: null,
+          error: `Unable to reach ${baseUrl}/api/workspaces/${tenantId}/members. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const body = (await response.json()) as { members: WorkspaceMemberBody[] };
+        return { ok: true, statusCode: 200, members: body.members, error: null };
+      }
+
+      if (response.status === 404) {
+        return { ok: false, statusCode: 404, members: null, error: `No workspace found for id ${tenantId}.` };
+      }
+
+      if (response.status === 401) {
+        return { ok: false, statusCode: 401, members: null, error: "Sign-in required." };
+      }
+
+      return {
+        ok: false,
+        statusCode: response.status,
+        members: null,
+        error: `Request failed with HTTP ${response.status} ${response.statusText}.`,
+      };
+    },
+
+    async revokeInvitation(tenantId, id) {
+      let response: Response;
+      try {
+        response = await fetch(
+          new URL(`/api/workspaces/${encodeURIComponent(tenantId)}/invites/${encodeURIComponent(id)}`, baseUrl),
+          {
+            method: "DELETE",
+            headers: userIdHeaders(getUserId),
+            cache: "no-store",
+          },
+        );
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          error: `Unable to reach ${baseUrl}/api/workspaces/${tenantId}/invites/${id}. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 204) {
+        return { ok: true, statusCode: 204, error: null };
+      }
+
+      if (response.status === 401) {
+        return { ok: false, statusCode: 401, error: "Sign-in required." };
+      }
+
+      if (response.status === 403) {
+        return { ok: false, statusCode: 403, error: "Only a Workspace Admin can revoke an invitation." };
+      }
+
+      if (response.status === 404) {
+        return { ok: false, statusCode: 404, error: `No pending invitation found for id ${id}.` };
+      }
+
+      return {
+        ok: false,
+        statusCode: response.status,
+        error: `Request failed with HTTP ${response.status} ${response.statusText}.`,
+      };
+    },
+
+    async removeMember(tenantId, membershipId) {
+      let response: Response;
+      try {
+        response = await fetch(
+          new URL(
+            `/api/workspaces/${encodeURIComponent(tenantId)}/members/${encodeURIComponent(membershipId)}`,
+            baseUrl,
+          ),
+          {
+            method: "DELETE",
+            headers: userIdHeaders(getUserId),
+            cache: "no-store",
+          },
+        );
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          error: `Unable to reach ${baseUrl}/api/workspaces/${tenantId}/members/${membershipId}. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 204) {
+        return { ok: true, statusCode: 204, error: null };
+      }
+
+      if (response.status === 401) {
+        return { ok: false, statusCode: 401, error: "Sign-in required." };
+      }
+
+      if (response.status === 403) {
+        return { ok: false, statusCode: 403, error: "Only a Workspace Admin can remove a member." };
+      }
+
+      if (response.status === 404) {
+        return { ok: false, statusCode: 404, error: `No member found for id ${membershipId}.` };
+      }
+
+      if (response.status === 409) {
+        // The target is the tenant's sole live Admin (WorkspaceMembershipRemoval.CanRemove) --
+        // Results.Conflict(string) (WorkspaceMembersEndpointExtensions.cs), a bare JSON string, same
+        // shape as createWorkspace's own 400 body.
+        let error: string;
+        try {
+          const errorBody: unknown = await response.json();
+          error = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+        } catch {
+          error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+        }
+        return { ok: false, statusCode: 409, error };
+      }
+
+      return {
+        ok: false,
+        statusCode: response.status,
+        error: `Request failed with HTTP ${response.status} ${response.statusText}.`,
+      };
+    },
+
+    async getInvitation(token) {
+      let response: Response;
+      try {
+        response = await fetch(new URL("/api/invites", baseUrl), {
+          headers: { "X-Invitation-Token": token, ...userIdHeaders(getUserId) },
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          invitation: null,
+          error: `Unable to reach ${baseUrl}/api/invites. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const invitation = (await response.json()) as InvitationPreviewBody;
+        return { ok: true, statusCode: 200, invitation, error: null };
+      }
+
+      if (response.status === 410) {
+        return { ok: false, statusCode: 410, invitation: null, error: "This invitation has expired." };
+      }
+
+      if (response.status === 404) {
+        return { ok: false, statusCode: 404, invitation: null, error: "This invitation link is not valid." };
+      }
+
+      return {
+        ok: false,
+        statusCode: response.status,
+        invitation: null,
+        error: `Request failed with HTTP ${response.status} ${response.statusText}.`,
+      };
+    },
+
+    async acceptInvitation(token) {
+      let response: Response;
+      try {
+        response = await fetch(new URL("/api/invites/accept", baseUrl), {
+          method: "POST",
+          headers: { "X-Invitation-Token": token, ...userIdHeaders(getUserId) },
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          acceptance: null,
+          error: `Unable to reach ${baseUrl}/api/invites/accept. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const acceptance = (await response.json()) as AcceptedInvitationBody;
+        return { ok: true, statusCode: 200, acceptance, error: null };
+      }
+
+      if (response.status === 401) {
+        return { ok: false, statusCode: 401, acceptance: null, error: "Sign-in required." };
+      }
+
+      if (response.status === 403) {
+        return {
+          ok: false,
+          statusCode: 403,
+          acceptance: null,
+          error: "This invitation was sent to a different email address than the one you signed in with.",
+        };
+      }
+
+      if (response.status === 404) {
+        return { ok: false, statusCode: 404, acceptance: null, error: "This invitation link is not valid." };
+      }
+
+      if (response.status === 410) {
+        return { ok: false, statusCode: 410, acceptance: null, error: "This invitation has expired." };
+      }
+
+      if (response.status === 409) {
+        // Already accepted (idempotency signal) or a concurrent-accept race, translated server-side --
+        // Results.Conflict(string), same bare JSON string shape as createWorkspace's own 400 body.
+        let error: string;
+        try {
+          const errorBody: unknown = await response.json();
+          error = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+        } catch {
+          error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+        }
+        return { ok: false, statusCode: 409, acceptance: null, error };
+      }
+
+      return {
+        ok: false,
+        statusCode: response.status,
+        acceptance: null,
+        error: `Request failed with HTTP ${response.status} ${response.statusText}.`,
+      };
     },
 
     async uploadDocument(tenantId, file) {

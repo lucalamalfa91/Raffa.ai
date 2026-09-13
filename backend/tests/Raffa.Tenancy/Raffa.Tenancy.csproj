@@ -22,6 +22,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Raffa.Documents.Contracts\Raffa.Documents.Contracts.csproj" />
+    <!-- Task E14/F01/US01/T02: WorkspaceUserIdentitySelfPolicyTests / WorkspaceInvitationRlsTests
+         prove Raffa.Identity.Workspace's own RLS migrations from this cross-module project. -->
+    <ProjectReference Include="..\..\src\Raffa.Identity.Workspace\Raffa.Identity.Workspace.csproj" />
   </ItemGroup>
 
 </Project>

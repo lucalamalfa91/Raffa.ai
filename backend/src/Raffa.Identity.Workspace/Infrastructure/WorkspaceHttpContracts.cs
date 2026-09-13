@@ -2,7 +2,8 @@ namespace Raffa.Identity.Workspace.Infrastructure;
 
 /// <summary>
 /// Request body for `POST /api/workspaces` (task E01/F09/US01/T01, r0-integration AC-1 "create
-/// workspace" step). A public HTTP JSON contract — deliberately living next to
+/// workspace" step; <see cref="Industry"/>/<see cref="Country"/> added by task E14/F03/US01/T01,
+/// wave w14, NW-24). A public HTTP JSON contract — deliberately living next to
 /// <see cref="WorkspaceProvisioningService"/> rather than in <c>Raffa.Api</c>, the same reason
 /// <c>Raffa.Audit.Infrastructure.AuditQueryService</c>'s own <c>AuditEventRecord</c> lives next
 /// to its service instead of in the host: <c>Raffa.ArchitectureTests.DependencyDirectionTests
@@ -10,7 +11,7 @@ namespace Raffa.Identity.Workspace.Infrastructure;
 /// assemblies, so a request/response shape that lived there as a public type would be flagged as
 /// business logic leaking into a host that must stay a thin composition root.
 /// </summary>
-public sealed record CreateWorkspaceRequest(string Name);
+public sealed record CreateWorkspaceRequest(string Name, string? Industry = null, string? Country = null);
 
 /// <summary>
 /// Request body for `POST /api/workspaces/{tenantId}/invites` (r0-integration AC-1 "invite"

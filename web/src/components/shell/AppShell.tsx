@@ -7,6 +7,12 @@ import type { ApiClient } from "../../api/client";
 import "./shell.css";
 
 export interface AppShellProps {
+  /**
+   * Task E14/F03/US02/T01 (wave w14 "workspace is real"): the one resolved workspace's id, passed
+   * through to the router outlet (`shellContext.ts`) so a routed screen never has to re-derive it
+   * from the session hint. This shell does not call an endpoint with it itself.
+   */
+  workspaceId: string;
   workspaceName: string;
   role: WorkspaceRole;
   userLabel: string;
@@ -24,8 +30,13 @@ export interface AppShellProps {
  * The composite ADR-018/ADR-024 names: 232px rail + global Ask bar + routed content. AC-3 ("Global
  * Ask bar on every app screen") is why GlobalAskBar lives here, above `<Outlet/>`, rather than
  * inside each screen -- every route rendered through WorkspaceShellApp.tsx gets it automatically.
+ *
+ * Task E14/F03/US02/T01 (wave w14): `useValidatedContractCount` now answers from NW-01's server
+ * field instead of a client-side portfolio scan (see that hook's own header comment) -- this
+ * component's own call site is unchanged, because the one resolved workspace it renders for is
+ * exactly what makes that field meaningful.
  */
-export default function AppShell({ workspaceName, role, userLabel, onSignOut, apiClient }: AppShellProps) {
+export default function AppShell({ workspaceId, workspaceName, role, userLabel, onSignOut, apiClient }: AppShellProps) {
   const { count, kbReady } = useValidatedContractCount(apiClient);
 
   return (
@@ -45,7 +56,7 @@ export default function AppShell({ workspaceName, role, userLabel, onSignOut, ap
           {/* Shared with every screen through the router outlet (shellContext.ts): the same kbReady /
               validated-count verdict the rail and the Ask bar already render, so a screen never has to
               re-fetch the portfolio for a second opinion. */}
-          <Outlet context={{ kbReady, validatedContractCount: count }} />
+          <Outlet context={{ workspaceId, kbReady, validatedContractCount: count }} />
         </div>
       </main>
     </div>

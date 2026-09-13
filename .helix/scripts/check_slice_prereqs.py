@@ -369,7 +369,7 @@ def slice_id_from_current() -> str:
         raise SystemExit(
             "ERROR: slice.current.yaml is unset — launch with -Slice <id>"
         )
-    epic = re.search(r"(e\d+)$", wave_id)
+    epic = re.search(r"([ew]\d+)$", wave_id)  # e01..e13 epics, w14+ next-wave slices
     if epic:
         return epic.group(1)
     nightly = re.search(r"(r\d+-[a-z]+)$", wave_id)

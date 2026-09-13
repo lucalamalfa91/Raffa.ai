@@ -4,7 +4,7 @@ import { PublicClientApplication } from "@azure/msal-browser";
 import { MsalProvider } from "@azure/msal-react";
 import App from "./App";
 import { AppConfigError, loadAppConfig } from "./config/appConfig";
-import { buildMsalConfig } from "./auth/msalConfig";
+import { buildMsalConfig, handleRedirectPromiseOptions } from "./auth/msalConfig";
 import { createApiClient } from "./api/client";
 import "./index.css";
 
@@ -15,11 +15,17 @@ if (!rootElement) {
 const root = createRoot(rootElement);
 
 // Config must resolve before MSAL can be constructed (ADR-012: client id,
-// authority and redirect URI are runtime config, not source). MsalProvider
-// (@azure/msal-react) owns calling `instance.initialize()` and
-// `instance.handleRedirectPromise()` itself once mounted -- this bootstrap
-// only needs to hand it an already-configured, un-initialized
-// PublicClientApplication.
+// authority and redirect URI are runtime config, not source).
+//
+// Task E14/F03/US02/T01 (wave w14; ADR-025 Rule C10a): this bootstrap now calls
+// `instance.initialize()` + `instance.handleRedirectPromise(handleRedirectPromiseOptions)` itself,
+// once, before `<MsalProvider>` ever mounts -- see `auth/msalConfig.ts`'s own header comment on
+// `handleRedirectPromiseOptions` for why (the installed `@azure/msal-browser` major version has no
+// config-level equivalent of this flag any more, and `MsalProvider` calls `handleRedirectPromise()`
+// bare, with no options, and no prop to inject any). `MsalProvider`'s own later `initialize()` /
+// `handleRedirectPromise()` calls are not a second, conflicting round-trip: `initialize()` is
+// idempotent, and MSAL caches the redirect-promise result internally, so that second bare call
+// resolves to the same, already-computed outcome instead of re-running with the library default.
 async function bootstrap() {
   let appConfig;
   try {
@@ -43,6 +49,12 @@ async function bootstrap() {
   }
 
   const msalInstance = new PublicClientApplication(buildMsalConfig(appConfig));
+  await msalInstance.initialize();
+  // Errors here surface through the LOGIN_FAILURE event MsalProvider/useMsal consumers already
+  // listen for (the same posture MsalProvider's own internal call takes, per its source) -- this
+  // bootstrap only needs the *options* to be applied, not the redirect result itself.
+  await msalInstance.handleRedirectPromise(handleRedirectPromiseOptions).catch(() => undefined);
+
   // Task E01/F07/US01/T02: the generated-type-backed API client (src/api/client.ts),
   // built from the same runtime config as MSAL (ADR-012 "config, not code") --
   // never a hard-coded origin.

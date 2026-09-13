@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import type { ApiClient } from "../../api/client";
 import { loadCurrentWorkspace } from "../signin/workspaceStore";
-import { resolveWorkspaceRole } from "../../components/shell/workspaceRole";
+import type { WorkspaceRole } from "../../components/shell/navItems";
 import { useDocumentsList } from "./useDocumentsList";
 import OnboardingEmptyState from "./OnboardingEmptyState";
 import AttentionFilter from "./AttentionFilter";
@@ -15,6 +15,13 @@ import "./documents.css";
 
 export interface DocumentsRouteProps {
   apiClient: ApiClient;
+  /**
+   * Task E14/F03/US02/T01 (wave w14 "workspace is real"): threaded through from
+   * `WorkspaceShellApp.tsx`'s `ShellRoutes` instead of this route calling the now-deleted
+   * `resolveWorkspaceRole()` itself -- the role is a server fact (`GET /api/workspaces`'s row) from
+   * this wave on, and `ShellRoutes` already has it in scope for every other route that needs it.
+   */
+  role: WorkspaceRole;
 }
 
 interface JustValidated {
@@ -41,11 +48,10 @@ interface JustValidated {
  * unfiltered view; the default (`"attention"`, R-DOC-06) already matches that redirect's own value,
  * so this is a no-op for that specific link and only matters for a hypothetical `?filter=all` one.
  */
-export default function DocumentsRoute({ apiClient }: DocumentsRouteProps) {
+export default function DocumentsRoute({ apiClient, role }: DocumentsRouteProps) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const workspace = loadCurrentWorkspace();
-  const role = resolveWorkspaceRole();
   const list = useDocumentsList(apiClient);
   const [justValidated, setJustValidated] = useState<JustValidated | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);

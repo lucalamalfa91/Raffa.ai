@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import DocumentsRoute from "../../../src/routes/documents";
+import type { WorkspaceRole } from "../../../src/components/shell/navItems";
 import type {
   ApiClient,
   Contract360Body,
@@ -22,6 +23,12 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     getHealth: vi.fn(),
     createWorkspace: vi.fn(),
     inviteWorkspaceMember: vi.fn(),
+    listWorkspaces: vi.fn(),
+    getWorkspaceMembers: vi.fn(),
+    revokeInvitation: vi.fn(),
+    removeMember: vi.fn(),
+    getInvitation: vi.fn(),
+    acceptInvitation: vi.fn(),
     uploadDocument: vi.fn(),
     getDocument: vi.fn(),
     // Task E13/F09/US01/T04 (web-ask-v2): this suite never reaches conversations/capabilities/
@@ -118,11 +125,15 @@ function pdfFile(name = "Acme_MSA.pdf") {
   return new File(["%PDF-1.4"], name, { type: "application/pdf" });
 }
 
-function renderDocuments(apiClient: ApiClient, initialPath = "/documents") {
+function renderDocuments(apiClient: ApiClient, initialPath = "/documents", role: WorkspaceRole = "admin") {
   return render(
     <MemoryRouter initialEntries={[initialPath]}>
       <Routes>
-        <Route path="/documents" element={<DocumentsRoute apiClient={apiClient} />} />
+        {/* Task E14/F03/US02/T01 (wave w14): role is now threaded through from WorkspaceShellApp's
+            ShellRoutes as a prop, instead of this route calling the deleted resolveWorkspaceRole()
+            itself -- "admin" by default keeps every pre-existing assertion in this suite unchanged;
+            "hides Delete for Procurement" below overrides it. */}
+        <Route path="/documents" element={<DocumentsRoute apiClient={apiClient} role={role} />} />
         <Route path="/contracts/:contractId" element={<div>CONTRACT_360_SCREEN</div>} />
         <Route path="/ask" element={<div>ASK_SCREEN</div>} />
         <Route path="/quotes" element={<div>QUOTE_CHECK_SCREEN</div>} />
@@ -444,10 +455,16 @@ describe("DocumentsRoute (task E13/F09/US01/T03, web-documents-v2)", () => {
   });
 
   it("hides Delete for Procurement", async () => {
-    window.sessionStorage.setItem("raffa.shell.workspaceRole", "procurement");
-    // See "shows Delete for Admin only" above for why this is NeedsReview, not the docItem() default.
+    // Task E14/F03/US02/T01 (wave w14): role arrives as a prop now (the server's own
+    // GET /api/workspaces row, parsed by parseWorkspaceRole), not a sessionStorage mirror this
+    // route reads itself -- see "shows Delete for Admin only" above for why this is NeedsReview,
+    // not the docItem() default.
     const items = [docItem({ processingStatus: "NeedsReview" })];
-    renderDocuments(mockApiClient({ listDocuments: vi.fn().mockResolvedValue(listOk(items)) }));
+    renderDocuments(
+      mockApiClient({ listDocuments: vi.fn().mockResolvedValue(listOk(items)) }),
+      "/documents",
+      "procurement",
+    );
 
     await screen.findByText("Salesforce_MSA.pdf");
     expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();

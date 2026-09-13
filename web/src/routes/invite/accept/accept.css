@@ -1,0 +1,29 @@
+/**
+ * Screen 11 -- `/invite/accept` (task E14/F03/US02/T01, wave w14; ADR-020 screen-11 footer). No
+ * pixel reference exists for this screen anywhere in the V2 export ("nothing resembling this screen
+ * exists"), so this file adds only layout composition from the locked catalogue's own primitives
+ * (`.card`, `.btn`, `.screen-title`, `.screen-kicker`, `.micro-meta`, `.error-state`, `.skeleton`) --
+ * no new token, no new component (ADR-019).
+ */
+
+.invite-accept-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+  background: var(--color-bg);
+}
+
+.invite-accept-card {
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.invite-accept-skeleton-row {
+  height: 14px;
+  margin-bottom: var(--space-3);
+}

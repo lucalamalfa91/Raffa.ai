@@ -32,6 +32,21 @@ function mockApiClient(result: Promise<HealthCheckResult> | HealthCheckResult): 
     getHealth: vi.fn().mockReturnValue(Promise.resolve(result)),
     createWorkspace: vi.fn(),
     inviteWorkspaceMember: vi.fn(),
+    // Task E14/F03/US02/T01 (wave w14 "workspace is real"): App.tsx's own account/workspace gate
+    // calls this unconditionally the moment an account exists (its async resolution), and
+    // useValidatedContractCount.ts (below) calls it again independently -- an unconfigured vi.fn()
+    // (undefined, not a Promise) would throw the moment either .then() runs, the same "resolved
+    // default required" reasoning this file's own getPortfolio/listDocuments comments already give.
+    // Empty is the safe default (resolves to the create-form empty state, never a crash); tests that
+    // need the shell to mount override this per-test.
+    listWorkspaces: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, workspaces: [], error: null }),
+    getWorkspaceMembers: vi.fn(),
+    // Task E15/F01/US01/T01 (wave w14, invitation lifecycle): plain stubs, same isolation
+    // convention as the rest of this mock -- this suite exercises none of them.
+    revokeInvitation: vi.fn(),
+    removeMember: vi.fn(),
+    getInvitation: vi.fn(),
+    acceptInvitation: vi.fn(),
     // Task E06/F05/US01/T01 (document-upload): exercised by
     // tests/routes/documents/*.test.tsx; a plain stub here so App's own
     // rendering stays isolated (same convention getHealth/createWorkspace
@@ -160,7 +175,7 @@ describe("App", () => {
       expect(mains[0]).toHaveClass("signin-screen");
     });
 
-    it("shows the workspace picker when authenticated", () => {
+    it("shows the workspace picker's create form when authenticated with no workspace (AC-2 'empty -> create form')", async () => {
       useMsalMock.mockReturnValue({
         instance: { loginRedirect: vi.fn(), logoutRedirect: vi.fn() },
         accounts: [{ username: "user@example.test", homeAccountId: "home-1" }],
@@ -169,42 +184,83 @@ describe("App", () => {
 
       render(<App appConfig={appConfig} apiClient={healthyClient()} />);
 
-      expect(screen.getByRole("heading", { name: /choose a workspace/i })).toBeInTheDocument();
+      // Task E14/F03/US02/T01 (wave w14): resolution is now async (one apiClient.listWorkspaces()
+      // call), so this no longer renders synchronously -- see AuthenticatedGate's own "resolving"
+      // placeholder in src/App.tsx. An empty list is the create-form empty state now (ADR-020 1.5),
+      // not a separate "No workspaces yet" screen to click through first.
+      expect(await screen.findByRole("heading", { name: /create your workspace/i })).toBeInTheDocument();
       expect(screen.getByText(/user@example\.test/)).toBeInTheDocument();
+    });
+
+    it("shows the picker's workspace list once the caller has more than one real membership (AC-2 '>=2 -> picker')", async () => {
+      useMsalMock.mockReturnValue({
+        instance: { loginRedirect: vi.fn(), logoutRedirect: vi.fn() },
+        accounts: [{ username: "user@example.test", homeAccountId: "home-1" }],
+        inProgress: InteractionStatus.None,
+      });
+      const apiClient = healthyClient();
+      (apiClient.listWorkspaces as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: true,
+        statusCode: 200,
+        workspaces: [
+          { id: "w-1", name: "Acme Procurement", createdAt: "2026-01-01T00:00:00Z", role: "Admin", contractCount: 0 },
+          { id: "w-2", name: "Second Co", createdAt: "2026-01-02T00:00:00Z", role: "Procurement", contractCount: 3 },
+        ],
+        error: null,
+      });
+
+      render(<App appConfig={appConfig} apiClient={apiClient} />);
+
+      expect(await screen.findByRole("heading", { name: /choose a workspace/i })).toBeInTheDocument();
+      expect(screen.getByText("Acme Procurement")).toBeInTheDocument();
+      expect(screen.getByText("Second Co")).toBeInTheDocument();
     });
   });
 
-  describe("mounts the workspace shell once signed in and a workspace is selected (task E06/F03/US02/T01)", () => {
-    it("renders the rail nav instead of the workspace picker once a workspace is already current", () => {
+  describe("mounts the workspace shell once signed in and a workspace resolves (task E06/F03/US02/T01, wave w14 async resolution)", () => {
+    /**
+     * Task E14/F03/US02/T01 (wave w14): the workspace is a server fact now
+     * (`GET /api/workspaces`), not a blindly-trusted `sessionStorage` read --
+     * every test below configures `listWorkspaces()` to return exactly one
+     * row, which is what AC-2's "exactly one row -> enter it, no picker"
+     * auto-enters on with no session hint needed at all.
+     */
+    function oneWorkspaceClient() {
+      const apiClient = healthyClient();
+      (apiClient.listWorkspaces as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: true,
+        statusCode: 200,
+        workspaces: [
+          { id: "w-1", name: "Acme Procurement", createdAt: "2026-01-01T00:00:00Z", role: "Admin", contractCount: 0 },
+        ],
+        error: null,
+      });
+      return apiClient;
+    }
+
+    it("renders the rail nav instead of the workspace picker once resolution finds exactly one membership", async () => {
       useMsalMock.mockReturnValue({
         instance: { loginRedirect: vi.fn(), logoutRedirect: vi.fn() },
         accounts: [{ username: "user@example.test", homeAccountId: "home-1" }],
         inProgress: InteractionStatus.None,
       });
-      window.sessionStorage.setItem(
-        "raffa.signin.currentWorkspace",
-        JSON.stringify({ id: "w-1", name: "Acme Procurement" }),
-      );
 
-      render(<App appConfig={appConfig} apiClient={healthyClient()} />);
+      render(<App appConfig={appConfig} apiClient={oneWorkspaceClient()} />);
 
-      expect(screen.getByText("Acme Procurement")).toBeInTheDocument();
+      expect(await screen.findByText("Acme Procurement")).toBeInTheDocument();
       expect(screen.getByText("Portfolio")).toBeInTheDocument();
       expect(screen.queryByRole("heading", { name: /choose a workspace/i })).not.toBeInTheDocument();
     });
 
-    it("does not double-wrap the app shell's own <main> either (AppShell.tsx already owns `.shell-main`)", () => {
+    it("does not double-wrap the app shell's own <main> either (AppShell.tsx already owns `.shell-main`)", async () => {
       useMsalMock.mockReturnValue({
         instance: { loginRedirect: vi.fn(), logoutRedirect: vi.fn() },
         accounts: [{ username: "user@example.test", homeAccountId: "home-1" }],
         inProgress: InteractionStatus.None,
       });
-      window.sessionStorage.setItem(
-        "raffa.signin.currentWorkspace",
-        JSON.stringify({ id: "w-1", name: "Acme Procurement" }),
-      );
 
-      const { container } = render(<App appConfig={appConfig} apiClient={healthyClient()} />);
+      const { container } = render(<App appConfig={appConfig} apiClient={oneWorkspaceClient()} />);
+      await screen.findByText("Acme Procurement");
 
       const mains = container.querySelectorAll("main");
       expect(mains).toHaveLength(1);
@@ -217,14 +273,11 @@ describe("App", () => {
         accounts: [{ username: "user@example.test", homeAccountId: "home-1" }],
         inProgress: InteractionStatus.None,
       });
-      window.sessionStorage.setItem(
-        "raffa.signin.currentWorkspace",
-        JSON.stringify({ id: "w-1", name: "Acme Procurement" }),
-      );
 
-      render(<App appConfig={appConfig} apiClient={healthyClient()} />);
+      render(<App appConfig={appConfig} apiClient={oneWorkspaceClient()} />);
 
       expect(await screen.findByText(/API: reachable \(Healthy\)/)).toBeInTheDocument();
+      expect(await screen.findByText("Acme Procurement")).toBeInTheDocument();
     });
   });
 

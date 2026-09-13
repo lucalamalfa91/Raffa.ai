@@ -62,6 +62,15 @@ those in sync when the public surface of that folder changes (see
   reusing the same per-env deploy identity above, never a side effect of an
   ordinary `dev` push. Details: [`backend/README.md`](backend/README.md)
   "Demo fixture seed".
+- **Workspace Admin membership** — once `GET /api/workspaces` lists by
+  membership (w14), every workspace needs a live Admin `workspace_membership`
+  row or its creator's picker returns empty. The seed above now grants one to
+  the ADR-022 fixture tenant; every other, already-existing workspace is
+  granted one by `.github/workflows/backfill-workspace-membership.yml`
+  (`target_environment` + a `pairs` input of `<workspace id>,<admin email>`),
+  the same explicit, operator-dispatched, non-promoted shape as the seed.
+  Details: [`backend/README.md`](backend/README.md) "Admin membership for the
+  fixture tenant, and the backfill for everything else".
 
 ## Branching and protection
 

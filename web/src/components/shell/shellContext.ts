@@ -9,6 +9,17 @@ import { useOutletContext } from "react-router-dom";
  * portfolio for a second, possibly different, verdict.
  */
 export interface ShellOutletContext {
+  /**
+   * Task E14/F03/US02/T01 (wave w14): the id of the one workspace `App.tsx`'s resolution already
+   * settled on, so a routed screen that needs the tenant id can read it from here instead of
+   * re-deriving it from `routes/signin/workspaceStore.ts`'s session hint on every screen.
+   * `AppShell.tsx` always supplies it; optional here (not `string`) only so a caller that builds
+   * this context by hand -- today, `E15/F02/US01/T01`'s own `MembersRoute.test.tsx`, a same-phase
+   * sibling this task's file scope forbids touching -- keeps type-checking against a literal that
+   * predates this field, the same "widen, don't break a sibling's pre-existing literal" posture
+   * `WorkspaceShellApp.tsx`'s own `membersRouteProps` comment documents for the identical seam.
+   */
+  workspaceId?: string;
   kbReady: boolean;
   validatedContractCount: number;
 }

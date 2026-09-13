@@ -51,10 +51,94 @@
       }
     },
     "/api/workspaces": {
+      "get": {
+        "operationId": "listWorkspaces",
+        "summary": "List the workspaces the caller belongs to.",
+        "description": "Maps to the new ListWorkspacesAsync handler in backend/src/Raffa.Api/WorkspaceEndpointExtensions.cs (task E14/F03/US01/T01, wave w14 'workspace is real'; ADR-026 section D1, ADR-025 sections F.1/F.3), backed by the new WorkspaceDirectoryService.ListForIdentityAsync (backend/src/Raffa.Identity.Workspace/Infrastructure/WorkspaceDirectoryService.cs) joined in the host with PortfolioQueryService.CountValidatedContractsAsync (backend/src/Raffa.Documents.Contracts/Application/PortfolioQueryService.cs). Takes no tenant header of any kind, ever (acceptance N5) -- the response is derived exclusively from the caller identity's own live workspace_membership rows. Empty list is 200 + [], never 404; ordered by createdAt ascending, stable. contractCount is the validated-contract count (at least one linked document reaching ProcessingStatus.Completed -- the same definition already served as contractsAnalyzedCount on GET /api/savings/kpis, ADR-026 section D2); country/currency are the workspace's own profile columns (NW-24, ADR-003 w14 footer), absent when never set, never a fabricated default. role is a plain string, never an enum (ADR-026 Amendment #3 -- workspace_role.name is a per-tenant row, not a closed set the client can validate against); there is deliberately no roleLabel property -- the picker derives its own tag from role.",
+        "parameters": [
+          {
+            "name": "X-User-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The caller's interim identity (ADR-022, ADR-025 section A). Absent or blank -> 401. Confers no role, no tenant and no scope -- only which workspace_user rows to discover."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Every workspace the caller holds a live workspace_membership in, oldest first. A caller who belongs to nothing gets 200 with an empty array, never 404.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "workspaces"
+                  ],
+                  "properties": {
+                    "workspaces": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "name",
+                          "createdAt",
+                          "role",
+                          "contractCount"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "role": {
+                            "type": "string",
+                            "description": "The caller's own highest role in this workspace. A plain string, never an enum -- see this operation's own description."
+                          },
+                          "contractCount": {
+                            "type": "integer",
+                            "description": "Validated contracts only (>= 1 linked document Completed) -- the same fact contractsAnalyzedCount already serves elsewhere."
+                          },
+                          "country": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "ISO 3166-1 alpha-2, or null when never set (NW-24)."
+                          },
+                          "currency": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "ISO 4217 alpha-3, derived from country and stored -- or null when country was never set. Never a fabricated default."
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity presented (X-User-Id absent or blank) -- ADR-025 section B."
+          }
+        }
+      },
       "post": {
         "operationId": "createWorkspace",
         "summary": "Create a new workspace (tenant).",
-        "description": "Maps 1:1 to CreateWorkspaceAsync in backend/src/Raffa.Api/WorkspaceEndpointExtensions.cs (task E01/F09/US01/T01, r0-integration), backed by WorkspaceProvisioningService.CreateWorkspaceAsync (backend/src/Raffa.Identity.Workspace/Infrastructure/WorkspaceProvisioningService.cs). The pre-authentication signup step -- nobody has a tenant claim yet, by definition -- so (unlike every other operation below) this one takes no X-Tenant-Id header. Task E06/F03/US01/T01 (us-01-signin-workspace-picker, AC-1 'Create a new workspace') is the first web caller of this already-implemented backend endpoint.\n\nInterim, pre-authentication endpoint: ADR-010's JWT/claims wiring is not yet in force (see that endpoint file's own doc comment), so there is no caller identity to attach as the new workspace's first member -- creating a workspace does not create a membership for the caller (WorkspaceProvisioningService only inserts the WorkspaceTenant + its seeded WorkspaceRole catalog, never a WorkspaceMembership row). No `GET` (list-workspaces-for-caller) endpoint exists yet anywhere in backend/src/Raffa.Api -- web/src/routes/signin/workspaceStore.ts documents the client-side interim this drives and exactly which backend types would need a list query added.",
+        "description": "Maps 1:1 to CreateWorkspaceAsync in backend/src/Raffa.Api/WorkspaceEndpointExtensions.cs (task E01/F09/US01/T01, r0-integration). Task E14/F02/US01/T01 (wave w14) made a presented identity required (X-User-Id via the ICallerIdentity seam; absent or blank -> 401, ADR-025 section B) and made the creator that identity's own Admin membership, unconditionally -- a role property does not exist on this request body and is never honoured (ADR-025 Rule D.2b). Task E14/F03/US01/T01 (wave w14) adds industry/country to the body (NW-24): currency is derived from country and stored, never typed; country must be one of CH/IT/DE/AT (ISO 3166-1 alpha-2, ADR-003 w14 footer) or omitted entirely; an unsupported country is a 400 through the existing Result<T> failure path, never a raw Postgres length error; a value never supplied is stored and returned absent, never an invented 'CHF'. The 201 body's own role property (added by E14/F02/US01/T01) lets the SPA enter the new workspace without a second call. GET /api/workspaces (also added by task E14/F03/US01/T01) is the list-workspaces-for-caller endpoint this description used to say did not exist yet.",
         "requestBody": {
           "required": true,
           "content": {
@@ -68,6 +152,14 @@
                   "name": {
                     "type": "string",
                     "description": "Workspace display name. WorkspaceProvisioningService.CreateWorkspaceAsync trims it and fails (400) if blank."
+                  },
+                  "industry": {
+                    "type": "string",
+                    "description": "Optional free text (NW-24; a closed list at the UI, not re-validated server-side beyond a 120-character bound). Trimmed; blank is stored as absent."
+                  },
+                  "country": {
+                    "type": "string",
+                    "description": "Optional ISO 3166-1 alpha-2, one of CH/IT/DE/AT (ADR-003 w14 footer). Anything else -> 400. Drives the derived, stored currency (CH -> CHF, IT/DE/AT -> EUR)."
                   }
                 }
               }
@@ -76,7 +168,7 @@
         },
         "responses": {
           "201": {
-            "description": "Workspace created.",
+            "description": "Workspace created; the caller is its Admin.",
             "content": {
               "application/json": {
                 "schema": {
@@ -84,7 +176,8 @@
                   "required": [
                     "id",
                     "name",
-                    "createdAt"
+                    "createdAt",
+                    "role"
                   ],
                   "properties": {
                     "id": {
@@ -99,6 +192,10 @@
                       "type": "string",
                       "format": "date-time",
                       "description": "WorkspaceTenant.CreatedAt (DateTimeOffset), System.Text.Json's default ISO-8601 rendering."
+                    },
+                    "role": {
+                      "type": "string",
+                      "description": "Always \"Admin\" -- the creator's own role, unconditionally (ADR-025 Rule D.2b). A plain string, never an enum (ADR-026 Amendment #3)."
                     }
                   }
                 }
@@ -106,7 +203,149 @@
             }
           },
           "400": {
-            "description": "Blank name, or another validation failure surfaced via WorkspaceProvisioningService.CreateWorkspaceAsync's Result<T>.Error (a plain string, serialized as a JSON string body by Results.BadRequest).",
+            "description": "Blank name, an unsupported country, or another validation failure surfaced via WorkspaceProvisioningService.CreateWorkspaceAsync's Result<T>.Error (a plain string, serialized as a JSON string body by Results.BadRequest).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity presented (X-User-Id absent or blank) -- ADR-025 section B."
+          }
+        }
+      }
+    },
+    "/api/workspaces/{tenantId}/members": {
+      "get": {
+        "operationId": "getWorkspaceMembers",
+        "summary": "The roster of a workspace: live members plus pending invitations.",
+        "description": "Documents the ADR-026 section D3 contract (verbatim, per its own w14 footer clause 1) for the E14/F04/US01/T01 handler in backend/src/Raffa.Api/WorkspaceMembersEndpointExtensions.cs -- a same-phase sibling task's file; this task (E14/F03/US01/T01) only documents the contract and writes the client method. Only X-User-Id is sent, never X-Tenant-Id: the route's {tenantId} already carries the tenant and the caller's membership in it is verified (ADR-026's own w14 footer supersedes its earlier D3 header line -- two accepted ADRs cannot carry opposite instructions for one operation, and ADR-022's w14 footer is the general rule). The roster is live workspace_membership rows union live (unaccepted, unrevoked, unexpired) workspace_invitation rows -- never a scan of workspace_user, so a removed member never reappears. status is derived, never stored: Active for a live membership, Invited for a live invitation with no membership yet. name maps to the existing nullable WorkspaceUser.DisplayName, emitted only when a real stored value exists -- never derived from the email address. role and status are plain strings, never enums (ADR-026 Amendment #3 -- the same generator/schema reasoning as listWorkspaces' own role field).",
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Workspace tenant id (WorkspaceTenant.TenantId)."
+          },
+          {
+            "name": "X-User-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The caller's interim identity (ADR-022, ADR-025 section A). Absent or blank -> 401. The route already carries the tenant -- this is not X-Tenant-Id and no such header is accepted here."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Any live member of the tenant may read the roster (ADR-025 Rule D.4a) -- Procurement included, read-only.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "members"
+                  ],
+                  "properties": {
+                    "members": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "email",
+                          "role",
+                          "status"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "email": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "WorkspaceUser.DisplayName, or null -- never derived from email."
+                          },
+                          "role": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string",
+                            "description": "\"Active\" (a live membership) or \"Invited\" (a live invitation, no membership yet) -- derived, never stored (ADR-026 section D3)."
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity presented (X-User-Id absent or blank) -- ADR-025 section B."
+          },
+          "404": {
+            "description": "Caller is not a live member of this tenant (ADR-025 Rule D.4b -- never 403 for a non-member, and never an empty 200)."
+          }
+        }
+      }
+    },
+    "/api/workspaces/{tenantId}/members/{membershipId}": {
+      "delete": {
+        "operationId": "removeMember",
+        "summary": "Remove a member from a workspace (Admin only), with the last-Admin guard.",
+        "description": "Task E15/F01/US01/T01 (wave w14; ADR-025 Rule D.5a-c, AC-7/AC-9). Deletes the workspace_membership row (never the workspace_user row -- audit continuity) and revokes that person's unaccepted invitations in this tenant in the same transaction (AC-8's own 're-adding needs a new invite' would otherwise be false). Immediate: nothing caches authorization, so the removed identity's very next request in this tenant already reflects it. The last-Admin guard is a pure domain function (WorkspaceMembershipRemoval.CanRemove) -- removing the sole Admin (including removing yourself) is refused with 409, never a 500 or a silent no-op.",
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Workspace tenant id (WorkspaceTenant.TenantId)."
+          },
+          {
+            "name": "membershipId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "WorkspaceMembership.Id, as returned by getWorkspaceMembers' own roster rows (member.id)."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed."
+          },
+          "401": {
+            "description": "No identity presented (X-User-Id absent or blank) -- ADR-025 §B."
+          },
+          "403": {
+            "description": "Caller is a live member of this tenant, but not Admin."
+          },
+          "404": {
+            "description": "Caller is not a live member of this tenant (never 403 for a non-member, ADR-025 Rule B1); or the membership id does not exist in this tenant."
+          },
+          "409": {
+            "description": "The target membership is the tenant's sole live Admin -- at least one must always remain (ADR-025 Rule D.5a). Applies whether the caller is removing themselves or another Admin.",
             "content": {
               "application/json": {
                 "schema": {
@@ -166,7 +405,7 @@
         },
         "responses": {
           "201": {
-            "description": "Membership created.",
+            "description": "An invitation was issued (task E15/F01/US01/T01, wave w14; ADR-025 §D.1, ADR-026 §D5). This is an offer, not a grant: no workspace_membership row is written until the invitee calls POST /api/invites/accept. acceptUrl is site-relative (/invite/accept#<token>, ADR-025 Rule C9) and the token appears in this response exactly once -- it is never persisted client-side and never resent. mailDelivered is a server fact (ADR-026 §D6): false in w14 by construction (NullInvitationMailer, OQ-w14-002), so the UI must not claim a mail was sent.",
             "content": {
               "application/json": {
                 "schema": {
@@ -174,7 +413,8 @@
                   "properties": {
                     "id": {
                       "type": "string",
-                      "format": "uuid"
+                      "format": "uuid",
+                      "description": "The invitation's own id -- also the {id} DELETE /api/workspaces/{tenantId}/invites/{id} (revoke) takes."
                     },
                     "email": {
                       "type": "string"
@@ -188,19 +428,35 @@
                         "Finance",
                         "ReadOnly"
                       ]
+                    },
+                    "expiresAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "7 days from issue, absolute (ADR-025 Rule C7)."
+                    },
+                    "acceptUrl": {
+                      "type": "string",
+                      "description": "Site-relative /invite/accept#<token> -- a URL fragment, never a path or query string (ADR-025 Rule C9)."
+                    },
+                    "mailDelivered": {
+                      "type": "boolean",
+                      "description": "Whether IInvitationMailer actually sent it. Always false in w14 (no transport, OQ-w14-002) -- the UI shows the copyable acceptUrl instead of claiming a mail was sent."
                     }
                   },
                   "required": [
                     "id",
                     "email",
-                    "role"
+                    "role",
+                    "expiresAt",
+                    "acceptUrl",
+                    "mailDelivered"
                   ]
                 }
               }
             }
           },
           "400": {
-            "description": "Missing/invalid route tenantId, blank email, unrecognized role, or WorkspaceMembershipService.InviteAsync's Result.Error.",
+            "description": "Missing/invalid route tenantId, blank email, unrecognized role, or a validation failure surfaced via WorkspaceMembershipService.InviteAsync's own outcome.",
             "content": {
               "application/json": {
                 "schema": {
@@ -208,6 +464,192 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "This email already holds that role, or already has a live (unaccepted, unrevoked) invitation in this workspace -- at most one may exist per email at a time regardless of role (ADR-026 §D4's partial unique index). A removed person (no live membership, and their prior invitation revoked by the removal itself) is not blocked by this -- see DELETE /api/workspaces/{tenantId}/members/{membershipId}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspaces/{tenantId}/invites/{id}": {
+      "delete": {
+        "operationId": "revokeInvitation",
+        "summary": "Revoke a still-pending invitation (Admin only).",
+        "description": "Task E15/F01/US01/T01 (wave w14; ADR-025 Rule D.5, AC-11). Stamps revoked_at; the accept link stops working on the very next request -- nothing caches it. Same identity -> membership -> Admin guard as POST .../invites (401 -> 404 non-member -> 403 non-Admin -> 204).",
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Workspace tenant id (WorkspaceTenant.TenantId)."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "WorkspaceInvitation.Id, as returned by inviteWorkspaceMember's own 201 body."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Revoked."
+          },
+          "401": {
+            "description": "No identity presented (X-User-Id absent or blank) -- ADR-025 §B."
+          },
+          "403": {
+            "description": "Caller is a live member of this tenant, but not Admin."
+          },
+          "404": {
+            "description": "Caller is not a live member of this tenant (never 403 for a non-member, ADR-025 Rule B1); or the invitation id does not exist, or is already accepted/revoked, in this tenant."
+          }
+        }
+      }
+    },
+    "/api/invites": {
+      "get": {
+        "operationId": "getInvitation",
+        "summary": "Pre-accept: read what an invitation offers, without accepting it.",
+        "description": "Task E15/F01/US01/T01 (wave w14; ADR-025 Rule D.3e/C4/C5, ADR-026 §D5). Not parameterised on {token} -- the token travels in the X-Invitation-Token header, never a path or query string (ADR-025 Rule C9: a query string lands in access logs, Referer headers and browser history). Returns workspace name, offered role and expiry, and nothing else, ever -- not the invited email (echoing it turns a leaked link into an address-discovery tool), no roster, no counts. A token holder is not yet a member.",
+        "parameters": [
+          {
+            "name": "X-Invitation-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "{tenantId:N}.{secret} (ADR-025 §C). Absent/blank/malformed -> 404, with no tenant scope ever entered (Rule C4)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A live (unaccepted, unrevoked, unexpired) invitation matched the token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "workspaceName",
+                    "role",
+                    "expiresAt"
+                  ],
+                  "properties": {
+                    "workspaceName": {
+                      "type": "string"
+                    },
+                    "role": {
+                      "type": "string",
+                      "description": "The role this invitation offers. A plain string, never an enum (ADR-026 Amendment #3)."
+                    },
+                    "expiresAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Token absent, malformed, unknown, revoked, or already accepted -- one indistinguishable answer for every 'not yours' case (ADR-025 §B)."
+          },
+          "410": {
+            "description": "The token is well-formed and matches a real invitation, but it has expired (ADR-025 §B) -- the one disclosure worth making, safe only because reaching this branch already proves possession of the 256-bit secret."
+          }
+        }
+      }
+    },
+    "/api/invites/accept": {
+      "post": {
+        "operationId": "acceptInvitation",
+        "summary": "Accept an invitation: bind the signed-in identity and grant the membership.",
+        "description": "Task E15/F01/US01/T01 (wave w14; ADR-025 Rule D.3a-d, ADR-026 §D5). Not parameterised on {token} -- same X-Invitation-Token header as getInvitation (ADR-025 Rule C9). Requires a presented identity (X-User-Id; absent -> 401 -- there would otherwise be no subject to bind). On success, in one transaction: binds the accepting identity's external subject onto the workspace_user row the invite already wrote, inserts the membership at the invited role, and stamps accepted_at. The signed-in identity's email must match the invited address case-insensitively, or 403 with a reason that never echoes the invited address (Rule D.3b). A second accept by the same identity is 409 (idempotency signal); by two concurrent callers, exactly one membership row and one 409, never a 500 (the unique index ix_workspace_membership_workspace_user_id_workspace_role_id already enforces the row -- this only translates the violation).",
+        "parameters": [
+          {
+            "name": "X-Invitation-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "{tenantId:N}.{secret} (ADR-025 §C). Absent/blank/malformed -> 404, with no tenant scope ever entered (Rule C4)."
+          },
+          {
+            "name": "X-User-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The caller's interim identity (ADR-022, ADR-025 §A). Absent or blank -> 401."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Accepted: the caller now holds a live membership at the invited role.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "workspaceId",
+                    "workspaceName",
+                    "role"
+                  ],
+                  "properties": {
+                    "workspaceId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "workspaceName": {
+                      "type": "string"
+                    },
+                    "role": {
+                      "type": "string",
+                      "description": "The invited role, now granted. A plain string, never an enum (ADR-026 Amendment #3)."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity presented (X-User-Id absent or blank) -- ADR-025 §B."
+          },
+          "403": {
+            "description": "The signed-in identity's email does not match the invited address. The reason never echoes the invited address (Rule D.3b)."
+          },
+          "404": {
+            "description": "Token absent, malformed, unknown, or revoked; or already accepted by a different identity -- one indistinguishable answer for every 'not yours' case (ADR-025 §B)."
+          },
+          "409": {
+            "description": "Already accepted by this same identity (idempotency signal), or two concurrent accepts raced the same unique index -- translated here, never a 500.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The token is well-formed and matches a real invitation, but it has expired."
           }
         }
       }

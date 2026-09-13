@@ -15,10 +15,12 @@ import type {
 const WORKSPACE_ID = "11111111-1111-1111-1111-111111111111";
 const CONVERSATION_ID = "22222222-2222-2222-2222-222222222222";
 
-function emptyPortfolio(): GetPortfolioResult {
-  return { ok: true, statusCode: 200, portfolio: { items: [], page: 1, pageSize: 100, totalCount: 0 }, error: null };
-}
-
+// Task E14/F03/US02/T01 (wave w14): AskRoute never calls apiClient.getPortfolio at all (confirmed
+// against src/routes/ask/index.tsx) -- useValidatedContractCount reads listWorkspaces() instead (see
+// validatedWorkspace() below), and no other code path in this screen reaches Portfolio. This mock
+// value is kept resolved (not deleted outright) only so mockApiClient's own getPortfolio stub stays
+// harmless if something is ever wired to it; there is deliberately no off/empty variant to keep in
+// step, since nothing here reads it.
 function validatedPortfolio(): GetPortfolioResult {
   return {
     ok: true,
@@ -104,11 +106,35 @@ function answerReply(overrides: Partial<ConversationReplyBody> = {}): Conversati
   };
 }
 
+/**
+ * Task E14/F03/US02/T01 (wave w14): useValidatedContractCount now reads listWorkspaces() instead of
+ * counting getPortfolio() client-side (see that hook's own header comment) -- this is the one row
+ * this whole suite's default "on, 1 validated contract" expectation (the scope-line assertion below)
+ * now comes from; the three "off state" tests further down override it to a 0-contractCount row
+ * instead of overriding getPortfolio, which AskRoute itself never calls (getPortfolio's own base
+ * default below is genuinely unused dead weight from before this task -- left resolved rather than
+ * bare so it stays harmless if something ever does call it).
+ */
+function validatedWorkspace(contractCount = 1) {
+  return {
+    ok: true,
+    statusCode: 200,
+    workspaces: [{ id: WORKSPACE_ID, name: "Acme Procurement", createdAt: "2026-01-01T00:00:00Z", role: "Admin", contractCount }],
+    error: null,
+  };
+}
+
 function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
   return {
     getHealth: vi.fn(),
     createWorkspace: vi.fn(),
     inviteWorkspaceMember: vi.fn(),
+    listWorkspaces: vi.fn().mockResolvedValue(validatedWorkspace()),
+    getWorkspaceMembers: vi.fn(),
+    revokeInvitation: vi.fn(),
+    removeMember: vi.fn(),
+    getInvitation: vi.fn(),
+    acceptInvitation: vi.fn(),
     uploadDocument: vi.fn(),
     getDocument: vi.fn(),
     listDocuments: vi.fn().mockResolvedValue(emptyDocuments()),
@@ -202,7 +228,7 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
 
   describe("AC-1/R-ASK-10: off state (0 validated contracts, from the shell hook)", () => {
     it("shows the fixed headline, the 'upload first' reason, and 'Upload a contract' when no document exists at all", async () => {
-      renderAsk(mockApiClient({ getPortfolio: vi.fn().mockResolvedValue(emptyPortfolio()), listDocuments: vi.fn().mockResolvedValue(emptyDocuments()) }));
+      renderAsk(mockApiClient({ listWorkspaces: vi.fn().mockResolvedValue(validatedWorkspace(0)), listDocuments: vi.fn().mockResolvedValue(emptyDocuments()) }));
 
       expect(await screen.findByText("Ask needs at least one validated contract.")).toBeInTheDocument();
       expect(screen.getByText(/upload a contract first/i)).toBeInTheDocument();
@@ -211,7 +237,7 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
 
     it("shows the 'still processing' reason and 'Go to Documents' when a document exists but none is validated", async () => {
       const listDocuments = vi.fn().mockResolvedValue({ ok: true, statusCode: 200, page: { items: [], page: 1, pageSize: 1, totalCount: 1 }, error: null });
-      renderAsk(mockApiClient({ getPortfolio: vi.fn().mockResolvedValue(emptyPortfolio()), listDocuments }));
+      renderAsk(mockApiClient({ listWorkspaces: vi.fn().mockResolvedValue(validatedWorkspace(0)), listDocuments }));
 
       expect(await screen.findByText(/still processing or waiting for review/i)).toBeInTheDocument();
       expect(screen.getByRole("link", { name: "Go to Documents" })).toHaveAttribute("href", "/documents");
@@ -219,7 +245,7 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
 
     it("never calls createConversation/postMessage while off", async () => {
       const createConversation = vi.fn();
-      renderAsk(mockApiClient({ getPortfolio: vi.fn().mockResolvedValue(emptyPortfolio()), createConversation }));
+      renderAsk(mockApiClient({ listWorkspaces: vi.fn().mockResolvedValue(validatedWorkspace(0)), createConversation }));
 
       await screen.findByText("Ask needs at least one validated contract.");
       expect(createConversation).not.toHaveBeenCalled();

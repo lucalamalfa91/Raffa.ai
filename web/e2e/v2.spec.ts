@@ -67,16 +67,22 @@ import { test, expect, type BrowserContext, type Locator, type Page } from "@pla
  *
  * ## Why the workspace is pinned through `sessionStorage`
  *
- * There is still no endpoint that lists the workspaces an identity belongs to
- * (`src/routes/signin/workspaceStore.ts`'s own documented gap), so a stock
- * browser context always lands on "No workspaces yet" and would create an
- * empty workspace — a workspace with no validated contracts, where Ask is
- * correctly **off** and A1/A3–A10 cannot be observed at all. Rather than assert
- * an honestly-empty screen and call it acceptance, this suite writes the same
- * `raffa.signin.currentWorkspace` key the app itself writes (`workspaceStore.ts`
- * `CURRENT_WORKSPACE_KEY`) with the operator-supplied fixture tenant id — the
- * documented seam, not a mock: every API call then carries that tenant as
- * `X-Tenant-Id` exactly as a human click would.
+ * Task E14/F03/US01/T01 (wave w14, ADR-026 §D1) shipped `GET /api/workspaces`, and `src/App.tsx`'s
+ * `AuthenticatedGate` now resolves a signed-in caller's workspace from it on every mount — a stock
+ * browser context with no real membership anywhere lands on the create form (an empty list), not
+ * "No workspaces yet". The seam this suite uses **survives**, but its contract changed: resolution
+ * is revalidated against that server list every time (`resolveWorkspaceSelection`,
+ * `src/routes/signin/WorkspacePickerScreen.tsx`) — **`hint ∉ list ⇒ discard the hint`** — so writing
+ * the same `raffa.signin.currentWorkspace` key the app itself writes (`workspaceStore.ts`
+ * `CURRENT_WORKSPACE_KEY`) with the operator-supplied fixture tenant id only lands this run in that
+ * tenant when the e2e account is **already a member of it**. Creating that membership is not this
+ * suite's job: `membership-seed-and-backfill` (`E14/F05/US01/T01`) is a phase-1 prerequisite of the
+ * whole w14 wave for exactly this reason. If it is missing, the hint is silently discarded (by
+ * design — never an error) and this run lands on the picker or the create form instead of the
+ * fixture tenant, which is this suite's own signal for what to fix, not a bug in this file. Once
+ * membership is real, writing the hint directly is still the fastest way to select a specific
+ * tenant deterministically — the documented seam, not a mock: every API call then carries that
+ * tenant as `X-Tenant-Id` exactly as a human's click through the picker would.
  *
  * ## Honesty note
  *

@@ -18,11 +18,26 @@ import type { ApiClient } from "../../../src/api/client";
 // not a Promise) would throw the moment that effect calls .then() on it --
 // see tests/routes/contracts/*.test.tsx for that screen's own fetch-outcome
 // coverage.
+const WORKSPACE_ID = "11111111-1111-1111-1111-111111111111";
+
 function mockApiClient(): ApiClient {
   return {
     getHealth: vi.fn(),
     createWorkspace: vi.fn(),
     inviteWorkspaceMember: vi.fn(),
+    // Task E14/F03/US02/T01 (wave w14): useValidatedContractCount now reads this instead of
+    // getPortfolio below (see that hook's own header comment) -- every test in this suite already
+    // expects the 0-validated-contracts state (getPortfolio's own resolved default was an empty
+    // page), so an empty workspace list -- "no row matches the session hint" -- reproduces the
+    // identical kbReady=false/count=0 outcome. An unconfigured vi.fn() would throw the moment
+    // AppShell's own effect calls .then() on it, same "resolved default required" reasoning as
+    // getPortfolio's own comment below.
+    listWorkspaces: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, workspaces: [], error: null }),
+    getWorkspaceMembers: vi.fn(),
+    revokeInvitation: vi.fn(),
+    removeMember: vi.fn(),
+    getInvitation: vi.fn(),
+    acceptInvitation: vi.fn(),
     uploadDocument: vi.fn(),
     getDocument: vi.fn(),
     // Task E13/F09/US01/T03 (web-documents-v2): DocumentsRoute (like PortfolioRoute below) calls
@@ -136,6 +151,7 @@ function renderShell(role: WorkspaceRole, initialPath = "/") {
   return render(
     <MemoryRouter initialEntries={[initialPath]}>
       <ShellRoutes
+        workspaceId={WORKSPACE_ID}
         workspaceName="Acme Procurement"
         role={role}
         userLabel="user@example.test"
@@ -185,12 +201,16 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
     expect(screen.getByRole("search")).toBeInTheDocument();
   });
 
-  it("gates /workspace/members behind the request-access state for Procurement", () => {
+  it("no longer gates /workspace/members behind RequireRole for Procurement (task E14/F03/US02/T01 removes that wrap so a Procurement member reaches the screen; E15/F02/US01/T01, same phase, owns the read-only variant this pre-merge MembersRoute does not implement yet, so it renders identically to Admin until that sibling lands)", () => {
+    window.sessionStorage.setItem(
+      "raffa.signin.currentWorkspace",
+      JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
+    );
+
     renderShell("procurement", "/workspace/members");
 
-    expect(screen.getByRole("heading", { name: /you don.t manage this workspace/i })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Workspace & members" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /send invitation/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Workspace & members" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /you don.t manage this workspace/i })).not.toBeInTheDocument();
   });
 
   it("renders the real members + invite screen for an Admin at /workspace/members", () => {

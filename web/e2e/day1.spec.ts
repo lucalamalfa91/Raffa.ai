@@ -30,18 +30,24 @@ import { test, expect, type Locator, type Page } from "@playwright/test";
  *    but there is still no list-members endpoint, so the table is this-browser's
  *    Admin row plus invites sent from this session. This spec drives the real
  *    invite form.
- * 2. **A freshly created workspace cannot reach fixture-seeded content.**
- *    `src/routes/signin/workspaceStore.ts`'s own header comment: there is no
- *    backend endpoint that lists the workspaces a signed-in identity belongs
- *    to, so the picker is a per-browser `localStorage` cache. A stock
- *    Playwright browser context (no reused `storageState`) therefore always
- *    starts from "No workspaces yet" and must create its own workspace — it
- *    has no way to discover the ADR-022 fixture-seeded tenant, whatever its
- *    id is. Screens whose populated state depends on tenant content this
- *    fresh workspace's own upload cannot manufacture (real Ask citations, a
- *    non-empty renewals pipeline) are walked either way, asserting whichever
- *    real, already-tested state (populated or honestly empty) actually
- *    renders — never a fabricated one.
+ * 2. **The workspace picker is now server-driven, not a per-browser cache**
+ *    (task E14/F03/US02/T01, wave w14 "workspace is real"; ADR-026 §D1). This
+ *    premise used to be the opposite: `src/routes/signin/workspaceStore.ts`'s
+ *    old header comment recorded that there was no backend endpoint listing
+ *    the workspaces a signed-in identity belongs to, so a stock Playwright
+ *    context (no reused `storageState`) always started from "No workspaces
+ *    yet" and had no way to discover the ADR-022 fixture-seeded tenant. That
+ *    is false after this task: `GET /api/workspaces` answers from the
+ *    caller's own real membership, so whether this run lands on an existing
+ *    (possibly fixture) tenant or must create one now depends on whether the
+ *    signed-in identity holds a real `workspace_membership` row — for `demo`,
+ *    on whether `RAFFA_E2E_ENTRA_EMAIL` is the account
+ *    `backend/scripts/demo-fixture-seed.sql`'s Admin membership was backfilled
+ *    onto (OQ-w14-dec-001). Both outcomes are legitimate and this file still
+ *    asserts whichever one actually renders, never a fabricated one — see
+ *    `pickOrCreateWorkspace` below, which now also covers the third
+ *    outcome NW-01 introduces: exactly one real membership skips the picker
+ *    entirely and lands straight in the shell (AC-2's "no picker").
  * 3. **Recording a quote outcome does not update Home's "Savings realized"
  *    KPI.** `src/routes/quotes/NegotiationStep.tsx`'s own header comment:
  *    `NegotiationOutcomePropagationService` never runs for an outcome this
@@ -126,10 +132,15 @@ test.describe("§20 Day-1 path — browser walk on demo", () => {
       });
 
       const workspaceName = await test.step(
-        "Workspace: pick an existing one or create one (ia.md 'sign in → pick workspace')",
+        "Workspace: resolve from the server -- pick, create, or auto-enter (N2; ia.md 'sign in → pick workspace')",
         () => pickOrCreateWorkspace(page),
       );
       await expect(page.locator(".shell-rail-workspace-name")).toHaveText(workspaceName, { timeout: 30_000 });
+
+      await test.step(
+        "N4 — reload with the session hint cleared, MSAL account intact -> no picker (AC-2)",
+        () => assertHintlessReloadResolves(page, workspaceName),
+      );
 
       await test.step("Invite a Procurement user (AC-1 step 2)", async () => {
         await page.goto("/workspace/members");
@@ -179,6 +190,11 @@ test.describe("§20 Day-1 path — browser walk on demo", () => {
         await expect(page).toHaveURL(/\/contracts\/[^/]+$/, { timeout: 15_000 });
         contractId = contractIdFromUrl(page.url());
       });
+
+      await test.step(
+        "N8 — the picker's contract-count meta matches the rail's badge (AC-4)",
+        () => assertPickerMetaMatchesRailBadge(page, workspaceName, contractId),
+      );
 
       if (!contractId) {
         await test.step("Portfolio fallback — find any existing contract for the remaining Contract-360-scoped steps", async () => {
@@ -278,31 +294,164 @@ async function signInWithEntra(page: Page): Promise<void> {
 }
 
 /**
- * WorkspacePickerScreen.tsx: "No workspaces yet" (a fresh browser — see this file's own header
- * comment for why a stock Playwright context always starts here) or "Choose a workspace" (a real,
- * previously-created list, e.g. a reused `storageState`). Either branch ends the same way: a real
- * workspace, "Continue to &lt;name&gt; →" clicked. Returns the workspace name for the caller's own
- * post-navigation assertion.
+ * `WorkspacePickerScreen.tsx`, rebuilt on `GET /api/workspaces` (task E14/F03/US02/T01, wave w14;
+ * ADR-026 §D1). Three real outcomes now, not two, and this helper covers all three (N2's own
+ * assertion — "no create step forced" — lives here rather than in a separate step, because it is
+ * the same moment):
+ *
+ *   1. **Auto-entered** — the signed-in identity has exactly one real membership, or the session
+ *      hint matched one, so the picker never mounts at all and the shell is already showing
+ *      (AC-2 "exactly one row → enter it, no picker").
+ *   2. **Pick** — ≥2 real memberships: click the first row (no "Continue to <name> →" interstitial
+ *      to click any more — that control, and the comment that justified it, are deleted by this
+ *      task along with the `BrowserRouter` hoist that falsified the comment).
+ *   3. **Create** — zero real memberships: the create form *is* the empty state now (no separate
+ *      "No workspaces yet" screen to click through first), fields are Company · Industry · Country
+ *      (`markup.html:52-57`), and the label is "Company" — the old "Workspace name" selector is
+ *      gone with it.
+ *
+ * Whichever branch fires, entering now updates the shell in place (no `<a href="/">` navigation to
+ * wait on) — this helper waits on `.shell-rail-workspace-name` itself, the one signal common to
+ * every branch, rather than a control that only exists on two of the three.
  */
 async function pickOrCreateWorkspace(page: Page): Promise<string> {
-  const chooseHeading = page.getByRole("heading", { name: /choose a workspace/i });
-  const noWorkspacesHeading = page.getByRole("heading", { name: /no workspaces yet/i });
-  await expect(chooseHeading.or(noWorkspacesHeading)).toBeVisible({ timeout: 30_000 });
+  const createHeading = page.getByRole("heading", { name: /create your workspace/i });
+  const workspaceRow = page.locator(".workspace-row").first();
+  const railName = page.locator(".shell-rail-workspace-name");
 
-  const existingRow = page.locator(".workspace-row").first();
-  if ((await existingRow.count()) > 0) {
-    const name = (await existingRow.locator(".workspace-row-name").innerText()).trim();
-    await existingRow.click();
-    await page.getByRole("link", { name: new RegExp(`^Continue to ${escapeRegExp(name)}`, "i") }).click();
+  await expect(createHeading.or(workspaceRow).or(railName)).toBeVisible({ timeout: 30_000 });
+
+  // N2: a fresh browser context has no `localStorage` cache to seed a create step from -- the one
+  // assertion that cache could never pass. If the signed-in identity holds any real membership at
+  // all (a row to pick, or one already entered), this run must not have been forced through
+  // "Create your workspace" to get here.
+  if ((await workspaceRow.count()) > 0 || (await railName.count()) > 0) {
+    await expect(createHeading, "N2: a real membership must never be masked by a forced create step").toHaveCount(0);
+  } else {
+    test.info().annotations.push({
+      type: "note",
+      description:
+        "This run's signed-in identity holds no real workspace membership yet, so \"Create your " +
+        "workspace\" is the correct, honest empty state (ADR-020 1.5) -- not evidence the picker is " +
+        "still localStorage-driven. N2's own assertion is meaningfully exercised once this account " +
+        "holds ≥1 real membership.",
+    });
+  }
+
+  if ((await railName.count()) > 0) {
+    return (await railName.innerText()).trim();
+  }
+
+  if ((await workspaceRow.count()) > 0) {
+    const name = (await workspaceRow.locator(".workspace-row-name").innerText()).trim();
+    await workspaceRow.click();
+    await expect(railName).toHaveText(name, { timeout: 30_000 });
     return name;
   }
 
   const name = `Raffa E2E ${Date.now()}`;
-  await page.getByRole("button", { name: /\+ create a new workspace/i }).click();
-  await page.getByLabel(/workspace name/i).fill(name);
+  await page.getByLabel(/^company$/i).fill(name);
   await page.getByRole("button", { name: /^create workspace$/i }).click();
-  await page.getByRole("link", { name: new RegExp(`^Continue to ${escapeRegExp(name)}`, "i") }).click();
+  await expect(railName).toHaveText(name, { timeout: 30_000 });
   return name;
+}
+
+/**
+ * N4 (AC-2). Clears only this app's own session hint (`raffa.signin.currentWorkspace`) — never
+ * MSAL's own cache keys, which is what "MSAL account intact" means and what keeps this a same-user
+ * reload rather than a sign-out. Resolution no longer needs that hint at all once the caller has a
+ * real membership: `GET /api/workspaces` on the very next mount finds the identical row on its own.
+ * Robust to an account that has accumulated more than one real membership across repeated runs of
+ * this suite (an honest, if noisier, precondition this file does not control) — the "no picker" half
+ * is asserted only when it is actually reachable, and the account is re-pointed at the same
+ * workspace by name either way so the rest of the walk continues on it.
+ */
+async function assertHintlessReloadResolves(page: Page, workspaceName: string): Promise<void> {
+  await page.evaluate(() => window.sessionStorage.removeItem("raffa.signin.currentWorkspace"));
+  await page.reload();
+
+  const railName = page.locator(".shell-rail-workspace-name");
+  const pickerHeading = page.getByRole("heading", { name: /choose a workspace/i });
+  await expect(railName.or(pickerHeading)).toBeVisible({ timeout: 30_000 });
+
+  if ((await railName.count()) > 0) {
+    await expect(railName, "N4: the shell mounted with no picker at all").toHaveText(workspaceName, {
+      timeout: 30_000,
+    });
+    await expect(page, "N4: the shell mounts on /ask").toHaveURL(/\/ask$/);
+    return;
+  }
+
+  test.info().annotations.push({
+    type: "note",
+    description:
+      `N4's "no picker" half needs this account to hold exactly one real workspace membership; it ` +
+      `currently holds more than one, so the picker legitimately reappeared once the hint was ` +
+      `cleared. Re-selecting "${workspaceName}" by name so the rest of this walk continues on it.`,
+  });
+  await page.locator(".workspace-row", { hasText: workspaceName }).first().click();
+  await expect(railName).toHaveText(workspaceName, { timeout: 30_000 });
+}
+
+/**
+ * N8 (AC-4). "One number, five surfaces" (ADR-020 1.6) proven at two of them: the picker's own row
+ * meta and the rail's secondary-tier badge must read the identical count, because both now trace to
+ * the same `WorkspaceSummaryBody.contractCount` field (ADR-026 §D2) rather than two independently
+ * computed ones. The picker's zero-form changed with this same task (AC-5: splitting the export's
+ * one pre-joined `currencyRegion` string into real segments) from the literal text "0 contracts" to
+ * "No validated contracts yet" — the negative assertion below targets that current zero copy, not
+ * the story's own shorthand `/^0 contracts/`, which this build's copy no longer contains either way.
+ */
+async function assertPickerMetaMatchesRailBadge(
+  page: Page,
+  workspaceName: string,
+  contractId: string | null,
+): Promise<void> {
+  if (!contractId) {
+    test.info().annotations.push({
+      type: "note",
+      description:
+        "This run produced no validated contract (the upload outcome was \"failed\", or review " +
+        "never reached \"Mark as validated\") -- the picker's own zero form is the correct, honest " +
+        "state here, not evidence N8's rule is broken. N8 is meaningfully exercised once a contract " +
+        "actually validates.",
+    });
+    return;
+  }
+
+  const railBadgeText = (
+    await page
+      .locator(".shell-rail-secondary-item", { hasText: "Portfolio" })
+      .locator(".shell-rail-badge")
+      .innerText()
+  ).trim();
+
+  await page.goto("/");
+  const pickerRow = page.locator(".workspace-row", { hasText: workspaceName });
+  const railName = page.locator(".shell-rail-workspace-name");
+  await expect(pickerRow.or(railName)).toBeVisible({ timeout: 30_000 });
+
+  if ((await pickerRow.count()) === 0) {
+    test.info().annotations.push({
+      type: "note",
+      description:
+        "This account holds exactly one workspace, so resolution auto-entered it and the picker " +
+        "row N8 inspects never mounted. Both the picker and the rail read the identical server " +
+        `field regardless (this workspace's rail badge already reads "${railBadgeText}"), so they ` +
+        "cannot disagree by construction here; N8's own picker-row comparison is exercised once " +
+        "this account holds ≥2 real memberships.",
+    });
+    return;
+  }
+
+  const meta = pickerRow.locator(".workspace-row-meta");
+  await expect(meta, "N8: the picker's zero copy must not still be showing after a real validation").not.toHaveText(
+    /^No validated contracts yet/,
+  );
+  await expect(meta, "N8: the picker and the rail must show the identical count").toContainText(railBadgeText);
+
+  await pickerRow.click();
+  await expect(railName).toHaveText(workspaceName, { timeout: 30_000 });
 }
 
 /**
@@ -579,8 +728,4 @@ async function runQuoteCheck(page: Page): Promise<void> {
 
   await expect(page.getByText("Negotiation outcome")).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText(/realized saving/i)).toBeVisible();
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

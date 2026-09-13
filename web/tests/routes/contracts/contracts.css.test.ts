@@ -9,7 +9,12 @@ import { describe, expect, it } from "vitest";
  * files in this repo use -- these are the values a reviewer would otherwise measure by eye.
  */
 function readCss(relativePath: string): string {
-  return readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), "utf-8");
+  // Task E14/F03/US02/T01 (wave w14): normalized to LF regardless of how this file was checked out
+  // (e.g. Windows `core.autocrlf`) -- the multi-selector assertion below embeds a literal `\n`
+  // between ".portfolio-col-auto," and its continuation selector line, which a `\r\n` checkout of
+  // contracts.css would otherwise never match (the stray `\r` sits between the comma and the
+  // newline), independent of anything this task changed in that file.
+  return readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), "utf-8").replace(/\r\n/g, "\n");
 }
 
 /** The declaration block of the first rule whose selector list equals `selector` exactly. */

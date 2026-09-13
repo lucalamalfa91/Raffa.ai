@@ -32,15 +32,29 @@ public sealed class R0EndToEndTests : IClassFixture<R0IntegrationFixture>
     {
         var client = _fixture.CreateClient();
 
-        // 1. Create workspace (AC-1 "create workspace").
-        var createWorkspaceResponse = await client.PostAsJsonAsync(
-            "/api/workspaces", new { name = "Acme Procurement" });
+        // 1. Create workspace (AC-1 "create workspace"). Task E14/F02/US01/T01 (wave w14, ADR-025
+        // §D.2a): the endpoint now requires a presented identity -- the creator becomes this
+        // tenant's Admin by virtue of creating it (Rule D.2b), which is also why step 2 below
+        // invites a *different* address than the creator's own.
+        using var createWorkspaceRequest = new HttpRequestMessage(HttpMethod.Post, "/api/workspaces")
+        {
+            Content = JsonContent.Create(new { name = "Acme Procurement" }),
+        };
+        createWorkspaceRequest.Headers.Add("X-User-Id", "admin@acme.example");
+        var createWorkspaceResponse = await client.SendAsync(createWorkspaceRequest);
         Assert.Equal(HttpStatusCode.Created, createWorkspaceResponse.StatusCode);
         var tenantId = await ReadGuidPropertyAsync(createWorkspaceResponse, "id");
 
-        // 2. Invite an Admin (AC-1 "invite").
-        var inviteResponse = await client.PostAsJsonAsync(
-            $"/api/workspaces/{tenantId}/invites", new { email = "admin@acme.example", role = "Admin" });
+        // 2. Invite an Admin (AC-1 "invite"). The creator (admin@acme.example) is already this
+        // tenant's Admin from step 1, so it is the caller entitled to invite (ADR-025 §D.1a); the
+        // invited address must differ from the creator's own or InviteAsync's own "already holds
+        // the role" guard would refuse it.
+        using var inviteRequest = new HttpRequestMessage(HttpMethod.Post, $"/api/workspaces/{tenantId}/invites")
+        {
+            Content = JsonContent.Create(new { email = "teammate@acme.example", role = "Admin" }),
+        };
+        inviteRequest.Headers.Add("X-User-Id", "admin@acme.example");
+        var inviteResponse = await client.SendAsync(inviteRequest);
         Assert.Equal(HttpStatusCode.Created, inviteResponse.StatusCode);
 
         // 3. Upload a document (AC-1 "upload document"; ADR-009/ADR-011 tenant-scoped storage).

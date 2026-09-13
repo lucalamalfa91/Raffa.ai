@@ -18,6 +18,12 @@
          so both resolve to one shared Microsoft.EntityFrameworkCore version. -->
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.4" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <!-- Task E14/F03/US01/T01 (wave w14): WorkspaceDirectoryEndpointTests' T1a needs a real,
+         RLS-enforcing Postgres (the identity_self policy has no InMemory-provider equivalent —
+         dropping the identity scope must make RLS itself deny every row, which only a real
+         Postgres connection can prove), the same package/version every *RlsCrossTenantIsolationTests
+         class across this solution already depends on. -->
+    <PackageReference Include="Testcontainers.PostgreSql" Version="4.14.0" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
   </ItemGroup>
