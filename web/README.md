@@ -101,7 +101,7 @@ own rail destination. Pixel/behaviour reference: `inputs/design/prototypes/Raffa
 | `/quotes`, `/quotes/:id` | Quote check, V2: constant header ("Optional · new purchase" · intro sentence); landing = the dashed drop card (**Upload a quote** + "or use the sample: Databricks proposal Q-88213", optional supplier/currency/geography/date under a disclosure); loaded = the Supplier quote · Market range · Assessment band, the lines table (Line · Quoted · P50 · Position · Benchmark) and "Target and negotiation levers are one step further — shown only if you want them." revealing Target, then Negotiation (outcome capture); unmapped SKUs show the mapping block instead. Calls the real `POST /api/quotes`, `POST /api/quotes/{id}/assessment/recalculate`, `POST /api/negotiations/outcomes`. See "Quote check" below. | E08/F03/US01/T01; V2 design alignment (Sept 2026) |
 | `/savings` | Savings, V2 (not a rail item -- reached from Ask actions, Renewals and Contract 360): header + summary, three KPI cells (Contracts analyzed · Upcoming renewals · Savings identified, each with a meta line), the opportunities table (Supplier · Action · Estimate · Status; rows open Contract 360), a stale-labelled KPI degrade when the benchmark provider is unreachable, and the reroute "No savings opportunities yet" → Renewals. Calls the real `GET /api/savings/kpis`, `GET /api/savings`, plus `GET /api/contracts` for supplier names. See "Savings" below. | E08/F02/US01/T01; moved by E13/F09/US01/T01; V2 design alignment (Sept 2026) |
 | `/review` | Redirects to `/documents?filter=attention` -- Review is a *state* of Documents in V2, not its own rail destination or screen. The old `src/routes/review/` rail landing (V1 review queue) has been deleted. | E13/F09/US01/T01 |
-| `/workspace/members` | Workspace & members, V2: "Setup" header ("{workspace} · tenant {id}"), the "invite the team once the first contract is validated" tip while nothing is validated, the Member/Role/Status table and the **Invite a colleague** pane (Work email, Procurement / Workspace Admin radios with D8 permission summaries, Send invitation, "Invitation sent."). Calls the real `POST /api/workspaces/{tenantId}/invites`. Non-admin visits stay on the shell's request-access gate. See "Workspace & members" below. | E06/F04/US01/T01; V2 design alignment (Sept 2026) |
+| `/workspace/members` | Workspace & members, V2: "Setup" header (tenant meta line), the "invite the team once the first contract is validated" tip while nothing is validated, a server-read Member/Role/Status/Actions table (skeleton while loading, error + Retry, never a stale roster) and the **Invite a colleague** pane rendering the server's own `mailDelivered` fact ("Invitation sent to {email}." or a copyable single-use link with its expiry). Admin-only `Actions` column: revoke an `Invited` row, remove an `Active` one, both confirmed inline in the row, the last Admin's Remove disabled with a `.hint`. A Procurement visit sees the same roster read-only, with a real `mailto:` **Request access** instead of the invite pane. Calls the real `GET /api/workspaces/{tenantId}/members`, `POST .../invites`, `DELETE .../invites/{id}` and `DELETE .../members/{membershipId}`. See "Workspace & members" below. | E06/F04/US01/T01; server-backed roster + invitation lifecycle E15/F02/US01/T01 (wave w14) |
 
 ### Layout -- full-bleed, matching the prototype's own canvas (ADR-018/019/020, task E06/F06/US01/T01)
 
@@ -744,20 +744,38 @@ six-cell row and eight-column table are gone with V2.
 - **Reroute** -- "No savings opportunities yet · Opportunities appear once a renewal is actioned or a
   saving is identified from validated contracts." → **Open renewals**.
 
-### Workspace & members (ADR-024 V2, `raffa-v2/screens-v2.md` #10; originally ADR-020 screen 2, task E06/F04/US01/T01)
+### Workspace & members (ADR-024 V2, `raffa-v2/screens-v2.md` #10; ADR-020 w14 design footer screen 10; task E15/F02/US01/T01, wave w14)
 
-`src/routes/workspace/members/` is the V2 Workspace & members screen: the "Setup" header
-("Workspace & members" · "{workspace} · tenant {id}"), the tip "invite the team once the first
-contract is validated — there is nothing for them to ask before that." while the shell reports no
-validated contract (`components/shell/shellContext.ts#useShellContext`), the Member / Role / Status
-table (`MembersTable.tsx`; the signed-in row says "You"; no display name is derived from the email),
-and the **Invite a colleague** pane (`InvitePane.tsx`: "Work email" with a `name@{domain}`
-placeholder, Procurement first then Workspace Admin with the D8 summaries "Asks, uploads, reviews,
-triages renewals" / "Also deletes documents and manages members", block **Send invitation**, then
-"Invitation sent." or the accent error "Use an @{domain} address."). Invite is a real
-`POST /api/workspaces/{tenantId}/invites`; there is still no list-members GET, so the table seeds the
-current Admin locally and appends each successful invite in `sessionStorage` (`memberStore.ts`) --
-discovery gap, not fabricated members. The non-admin state stays on `RequireRole`.
+`src/routes/workspace/members/` is the V2 Workspace & members screen: the "Setup" header (tenant
+meta line, the workspace name when the shell also threads one), the tip "invite the team once the
+first contract is validated — there is nothing for them to ask before that." while the shell reports
+no validated contract (`components/shell/shellContext.ts#useShellContext`), and a **server-read**
+roster (`GET /api/workspaces/{tenantId}/members`, re-read after every invite/revoke/remove -- never
+an optimistic local guess): a loading skeleton, an error state with Retry that never falls back to a
+stale roster, and the Member / Role / Status table (`MembersTable.tsx`; the signed-in row says "You";
+no display name is derived from the email; `Active` / `Invited` / `Expired` tags).
+
+An Admin also gets a fourth `Actions` column and the **Invite a colleague** pane (`InvitePane.tsx`):
+"Work email" with a `name@{domain}` placeholder and a *non-blocking* cross-domain warning (format
+errors still block; the domain check is a typo guard, never a safeguard -- the server has no domain
+rule), Procurement first then Workspace Admin with the D8 summaries "Asks, uploads, reviews, triages
+renewals" / "Also deletes documents and manages members", block **Send invitation**, then the
+server's own `mailDelivered` fact in exactly two strings: "Invitation sent to {email}." or
+"Invitation ready for {email}." with a copyable single-use link (`new URL(acceptUrl,
+window.location.origin)`), its expiry and a **Copy link** button -- the client never infers delivery
+from a 201. `Actions` lets an Admin **revoke** an `Invited` row (`DELETE .../invites/{id}`) or
+**remove** an `Active` one (`DELETE .../members/{membershipId}`), each confirmed **inline in the
+row** (never a dialog) with its own consequence copy -- revoke never claims a grant that never
+existed; remove says the person loses access -- and the sole remaining Admin's Remove renders
+`disabled` with a `.hint` rather than a click that could 409.
+
+A Procurement visit renders the same roster **read-only** (no `Actions` column, no invite pane) with
+a real `mailto:` **Request access** to the workspace's own live Admin addresses, resolving the
+apparent conflict between the export (hides the table for non-admins) and ADR-018/`ia-v2.md`
+(read-only) in favour of the latter now that a real roster exists to show. The deleted
+`memberViewModel.ts`-adjacent per-browser echo module used to seed the current Admin locally and
+remember each invite in this browser's own storage for the running tab -- a discovery gap masquerading
+as a roster; every row on screen is now a fact the server actually holds.
 
 ## API client (ADR-012 "one generated TypeScript client, no hand-written divergent DTOs")
 
@@ -971,9 +989,10 @@ Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
   `WorkspaceInvitationService.IssueAsync`, backend), and `InvitedMemberBody` gained
   `expiresAt`/`acceptUrl`/`mailDelivered` straight off the regenerated schema, no
   hand-written change needed for the response shape itself. See "Workspace & members" above
-  for the screen this powers; no caller under `src/routes/` yet exercises revoke, remove,
-  `getInvitation`, or `acceptInvitation` -- the roster's own revoke/remove controls and an
-  `/invite/accept` landing page are still open UI work.
+  for the screen this powers: task E15/F02/US01/T01 (wave w14) wires `getWorkspaceMembers`,
+  `revokeInvitation` and `removeMember` into that screen's roster, revoke and remove controls.
+  `getInvitation` and `acceptInvitation` remain uncalled under `src/routes/` -- the
+  `/invite/accept` landing page is still open UI work (the phase-4 sibling `E14/F03/US02/T01`).
 
 ## Directory layout
 
