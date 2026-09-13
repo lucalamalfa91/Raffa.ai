@@ -86,7 +86,18 @@ public sealed class R0CrossTenantIsolationTests : IClassFixture<R0IntegrationFix
 
     private static async Task<Guid> CreateWorkspaceAsync(HttpClient client, string name)
     {
-        var response = await client.PostAsJsonAsync("/api/workspaces", new { name });
+        // Task E14/F02/US01/T01 (wave w14, ADR-025 §D.2a): POST /api/workspaces now requires a
+        // presented identity -- each call here is a distinct creator, matching two genuinely
+        // different tenants created by two different people (AC-4: creating a tenant grants no
+        // read of any existing tenant).
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/workspaces")
+        {
+            Content = JsonContent.Create(new { name }),
+        };
+        var identity = $"creator-{name.Replace(" ", "-", StringComparison.Ordinal).ToLowerInvariant()}@acme.example";
+        request.Headers.Add("X-User-Id", identity);
+
+        var response = await client.SendAsync(request);
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         return await R0EndToEndTests.ReadGuidPropertyAsync(response, "id");
     }
