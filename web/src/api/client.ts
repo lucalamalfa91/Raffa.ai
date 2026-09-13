@@ -16,12 +16,15 @@
 // workspace"): added createWorkspace(), the first write call this client
 // makes. The request body type is hand-written (`CreateWorkspaceRequest`),
 // not generated: web/scripts/generate-api-client.mjs does not parse
-// `requestBody` at all yet (only `responses`), and the shape is a single
-// required string field -- not worth extending the generator for until a
-// second operation needs a typed request body too. See
-// web/src/routes/signin/workspaceStore.ts for why there is no matching
-// listWorkspaces()/getWorkspaces() call here: no such backend endpoint
-// exists yet.
+// `requestBody` at all (only `responses`).
+//
+// Task E14/F03/US01/T01 (wave w14 "workspace is real", ADR-026 section D1):
+// added listWorkspaces() -- the call this file's own comment used to say had
+// no backend endpoint yet -- and getWorkspaceMembers(tenantId) (ADR-026
+// section D3). createWorkspace()'s request type also gained optional
+// `industry`/`country` (NW-24); the 201 response's `role` property was
+// already generated (E14/F02/US01/T01 added it to the backend/OpenAPI
+// contract in an earlier wave-w14 task).
 //
 // Task E13/F09/US01/T04 (web-ask-v2, OQ-askv2-005/R-CONV-03/ADR-022): every call this client makes
 // now carries an `X-User-Id` header, resolved lazily via the `getUserId` callback below -- never
@@ -75,9 +78,11 @@ export interface HealthCheckResult {
 type CreateWorkspaceResponses = paths["/api/workspaces"]["post"]["responses"];
 type CreateWorkspaceBody = CreateWorkspaceResponses[201]["content"]["application/json"];
 
-/** `POST /api/workspaces` request body (backend/.../WorkspaceEndpointExtensions.cs's `CreateWorkspaceRequest`). Hand-written -- see this file's header comment for why. */
+/** `POST /api/workspaces` request body (backend/.../WorkspaceEndpointExtensions.cs's `CreateWorkspaceRequest`). Hand-written -- see this file's header comment for why. `industry`/`country` added by task E14/F03/US01/T01 (NW-24) -- `currency` is derived server-side and is never part of the request. */
 export interface CreateWorkspaceRequest {
   name: string;
+  industry?: string;
+  country?: string;
 }
 
 export interface CreateWorkspaceResult {
@@ -88,6 +93,45 @@ export interface CreateWorkspaceResult {
   /** The created workspace, present only when `ok` is true. */
   workspace: CreateWorkspaceBody | null;
   /** Plain-language failure reason (400 validation message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
+// Task E14/F03/US01/T01 (wave w14 "workspace is real", ADR-026 section D1): `listWorkspaces()`, the
+// identity-keyed workspace directory. `WorkspaceSummaryBody` is anchored to the generated
+// `paths["/api/workspaces"]["get"]` 200 body -- not hand-invented, the same discipline
+// `CreateWorkspaceBody` above follows.
+type ListWorkspacesResponses = paths["/api/workspaces"]["get"]["responses"];
+export type WorkspaceSummaryBody =
+  ListWorkspacesResponses[200]["content"]["application/json"]["workspaces"][number];
+
+export interface ListWorkspacesResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** Every workspace the caller holds a live membership in, oldest first -- an empty array is a
+   * valid, non-error outcome (a caller who belongs to nothing), present only when `ok` is true. */
+  workspaces: WorkspaceSummaryBody[] | null;
+  /** Plain-language failure reason (401/network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
+// Task E14/F03/US01/T01 (wave w14, ADR-026 section D3): `getWorkspaceMembers(tenantId)`. The
+// backend handler is a same-phase sibling task's file (WorkspaceMembersEndpointExtensions.cs,
+// E14/F04/US01/T01); this client method and the OpenAPI contract it is anchored to are this task's
+// own job.
+type GetWorkspaceMembersResponses = paths["/api/workspaces/{tenantId}/members"]["get"]["responses"];
+export type WorkspaceMemberBody =
+  GetWorkspaceMembersResponses[200]["content"]["application/json"]["members"][number];
+
+export interface GetWorkspaceMembersResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** The roster (live members plus pending invitations), present only when `ok` is true. */
+  members: WorkspaceMemberBody[] | null;
+  /** Plain-language failure reason (401/404/network-failure cause), present only when `ok` is false. */
   error: string | null;
 }
 
@@ -925,6 +969,23 @@ export interface ApiClient {
     request: InviteWorkspaceMemberRequest,
   ): Promise<InviteWorkspaceMemberResult>;
   /**
+   * Calls `GET /api/workspaces` (operationId `listWorkspaces`) -- the identity-keyed workspace
+   * directory (task E14/F03/US01/T01, wave w14; ADR-026 section D1). No tenant header of any kind,
+   * ever: the response is derived exclusively from the caller's own `X-User-Id`. Same never-throws
+   * shape as `createWorkspace`: an empty array (a caller who belongs to nothing) and a `401` (no
+   * identity) are both normal, expected outcomes the caller renders inline, never an exception.
+   */
+  listWorkspaces(): Promise<ListWorkspacesResult>;
+  /**
+   * Calls `GET /api/workspaces/{tenantId}/members` (operationId `getWorkspaceMembers`) -- the
+   * roster of live members plus pending invitations (task E14/F03/US01/T01, wave w14; ADR-026
+   * section D3). The tenant comes from the route; only `X-User-Id` is sent, never `X-Tenant-Id`
+   * (ADR-026's own w14 footer -- a second, unvalidated tenant input on an authorization-bearing
+   * route is exactly the ambiguity that footer removes). A non-member gets `404`, never `403` and
+   * never an empty `200` (ADR-025 Rule D.4b).
+   */
+  getWorkspaceMembers(tenantId: string): Promise<GetWorkspaceMembersResult>;
+  /**
    * Calls `POST /api/documents` (operationId `uploadDocument`) as
    * `multipart/form-data` with a single `file` field -- the exact shape
    * `DocumentUploadEndpointTests.cs` (backend) enforces. `tenantId` is sent
@@ -1260,6 +1321,85 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
       }
 
       return { ok: false, statusCode: response.status, member: null, error };
+    },
+
+    async listWorkspaces() {
+      let response: Response;
+      try {
+        // No X-Tenant-Id, ever -- see this method's own doc comment on the ApiClient interface.
+        const headers = userIdHeaders(getUserId);
+        response = await fetch(new URL("/api/workspaces", baseUrl), {
+          ...(Object.keys(headers).length > 0 ? { headers } : {}),
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          workspaces: null,
+          error: `Unable to reach ${baseUrl}/api/workspaces. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const body = (await response.json()) as { workspaces: WorkspaceSummaryBody[] };
+        return { ok: true, statusCode: 200, workspaces: body.workspaces, error: null };
+      }
+
+      if (response.status === 401) {
+        return { ok: false, statusCode: 401, workspaces: null, error: "Sign-in required." };
+      }
+
+      return {
+        ok: false,
+        statusCode: response.status,
+        workspaces: null,
+        error: `Request failed with HTTP ${response.status} ${response.statusText}.`,
+      };
+    },
+
+    async getWorkspaceMembers(tenantId) {
+      let response: Response;
+      try {
+        // Only X-User-Id -- see this method's own doc comment on the ApiClient interface for why
+        // X-Tenant-Id is never sent here even though the sibling invite call on this same route
+        // prefix is also tenant-scoped by its path.
+        const headers = userIdHeaders(getUserId);
+        response = await fetch(
+          new URL(`/api/workspaces/${encodeURIComponent(tenantId)}/members`, baseUrl),
+          {
+            ...(Object.keys(headers).length > 0 ? { headers } : {}),
+            cache: "no-store",
+          },
+        );
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          members: null,
+          error: `Unable to reach ${baseUrl}/api/workspaces/${tenantId}/members. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const body = (await response.json()) as { members: WorkspaceMemberBody[] };
+        return { ok: true, statusCode: 200, members: body.members, error: null };
+      }
+
+      if (response.status === 404) {
+        return { ok: false, statusCode: 404, members: null, error: `No workspace found for id ${tenantId}.` };
+      }
+
+      if (response.status === 401) {
+        return { ok: false, statusCode: 401, members: null, error: "Sign-in required." };
+      }
+
+      return {
+        ok: false,
+        statusCode: response.status,
+        members: null,
+        error: `Request failed with HTTP ${response.status} ${response.statusText}.`,
+      };
     },
 
     async uploadDocument(tenantId, file) {

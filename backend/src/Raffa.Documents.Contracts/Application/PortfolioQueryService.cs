@@ -204,4 +204,46 @@ public sealed class PortfolioQueryService(
 
         return analysisCalculator.Summarize(snapshots);
     }
+
+    /// <summary>
+    /// Backs `contractCount` on `GET /api/workspaces` (task E14/F03/US01/T01, wave w14 NW-09;
+    /// ADR-026 §D2). The exact same "validated" definition <see cref="GetAnalysisSummaryAsync"/>
+    /// already established — a contract is validated iff at least one linked
+    /// <see cref="Domain.Document"/> reached <see cref="Domain.DocumentProcessingStatus.Completed"/>
+    /// (<see cref="Domain.Contract.Status"/> can never define it: a bootstrapped-but-unprocessed
+    /// contract's <c>Status</c> is the literal <c>"processing"</c>,
+    /// <c>Extraction.StagedExtractionService.EnsureContractAsync</c>) — so this equals
+    /// <see cref="PortfolioAnalysisSummary.ContractsAnalyzedCount"/> for the same tenant, the same
+    /// fact <c>SavingsKpiEndpointExtensions.cs:93</c> already serves as <c>contractsAnalyzedCount</c>.
+    /// No new definition is invented.
+    ///
+    /// <para>
+    /// Unlike <see cref="GetAnalysisSummaryAsync"/> (which materialises both tables to also compute
+    /// "Annual Spend Analyzed" per currency), this is a real SQL <c>CountAsync</c> — a correlated
+    /// <c>EXISTS</c> subquery translated as one round trip, never <c>ToListAsync().Count</c> — over
+    /// distinct contract ids: a contract counts once regardless of how many of its linked documents
+    /// completed. There is no <c>CountAsync</c> over <see cref="Domain.Contract"/> anywhere else in
+    /// this file today (<c>:153,183-200</c> both materialise); this is the first one and does not
+    /// copy that materialising pattern.
+    /// </para>
+    /// </summary>
+    public async Task<int> CountValidatedContractsAsync(TenantId tenantId, CancellationToken cancellationToken = default)
+    {
+        // Entry point: open this call's own tenant scope, same convention as every other public
+        // method on this type (see the type doc comment) — required before the query below, since
+        // the RLS connection interceptor reads ITenantContext.Current only when the connection
+        // opens, which EF Core does lazily on first use.
+        using var _ = tenantContext.BeginScope(tenantId);
+
+        return await dbContext.Contracts
+            .AsNoTracking()
+            .Where(c => c.TenantId == tenantId
+                && dbContext.Documents.Any(d =>
+                    d.TenantId == tenantId
+                    && d.ContractId.HasValue
+                    && d.ContractId.Value == c.Id
+                    && d.ProcessingStatus == DocumentProcessingStatus.Completed))
+            .CountAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
 }

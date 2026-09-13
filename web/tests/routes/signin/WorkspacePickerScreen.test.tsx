@@ -9,6 +9,8 @@ function mockApiClient(createWorkspace: ApiClient["createWorkspace"] = vi.fn()):
     getHealth: vi.fn(),
     createWorkspace,
     inviteWorkspaceMember: vi.fn(),
+    listWorkspaces: vi.fn(),
+    getWorkspaceMembers: vi.fn(),
     uploadDocument: vi.fn(),
     getDocument: vi.fn(),
     // Task E13/F09/US01/T03 (web-documents-v2): this suite does not exercise Documents -- bare
@@ -116,7 +118,7 @@ describe("WorkspacePickerScreen", () => {
     const created: CreateWorkspaceResult = {
       ok: true,
       statusCode: 201,
-      workspace: { id: "w-1", name: "Acme Procurement", createdAt: "2026-09-06T08:00:00Z" },
+      workspace: { id: "w-1", name: "Acme Procurement", createdAt: "2026-09-06T08:00:00Z", role: "Admin" },
       error: null,
     };
     const createWorkspace = vi.fn().mockResolvedValue(created);

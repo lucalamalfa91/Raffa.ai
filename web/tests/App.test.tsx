@@ -32,6 +32,8 @@ function mockApiClient(result: Promise<HealthCheckResult> | HealthCheckResult): 
     getHealth: vi.fn().mockReturnValue(Promise.resolve(result)),
     createWorkspace: vi.fn(),
     inviteWorkspaceMember: vi.fn(),
+    listWorkspaces: vi.fn(),
+    getWorkspaceMembers: vi.fn(),
     // Task E06/F05/US01/T01 (document-upload): exercised by
     // tests/routes/documents/*.test.tsx; a plain stub here so App's own
     // rendering stays isolated (same convention getHealth/createWorkspace
