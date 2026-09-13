@@ -1,0 +1,292 @@
+name: backfill-workspace-membership
+
+# Task E14/F05/US01/T01 (membership-seed-and-backfill). Closes the
+# delivery-manager half of NW-01/NW-02/NW-03: once `GET /api/workspaces`
+# lists by membership, every workspace already created on `dev` (and any
+# future environment) needs an Admin `workspace_membership` row, or its
+# creator's picker returns `[]` the moment this wave promotes. ADR-025 §2.3
+# / ADR-026 implication 9 refuse a "claim this workspace" endpoint as a
+# tenant-takeover primitive -- `CreateWorkspaceAsync` never recorded a
+# creator, so no tenant can be attributed retroactively by code. This
+# workflow is the operator mechanism instead: a human supplies
+# `(workspace id, admin email)` pairs at dispatch time, gated by the same
+# GitHub Environment approval a deploy already requires.
+#
+# Modelled line-for-line on seed-demo-fixture.yml: the same typed
+# `target_environment` choice + `workflow_call`, the same `environment:`
+# gate, the same OIDC login, the same Key Vault Postgres fetch, the same
+# schema precondition-guard shape. ADR-015: no new identity and no new
+# federated credential -- this reuses the existing per-env deploy service
+# principal's Key Vault Secrets User role, exactly like seed-demo-fixture.yml
+# already does. ADR-016 w14 footer: seeds and backfills are data-plane acts
+# and are never promoted -- this job is run again, unmodified, against each
+# environment; a `demo` membership row is never copied from `dev` (`demo`
+# itself needs no backfill -- the ADR-022 fixture tenant is covered by
+# demo-fixture-seed.sql). ADR-009: RLS stays on throughout -- this job only
+# ever sets `app.tenant_id`, never a role, GRANT or policy.
+on:
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: >-
+          GitHub Environment (and Postgres database, raffa_<env>) to
+          backfill.
+        required: true
+        type: choice
+        options: [dev, demo]
+        default: dev
+      pairs:
+        description: >-
+          Newline-separated "<workspace id>,<admin email>" pairs to grant an
+          Admin membership to, one pair per line, e.g.:
+          11111111-1111-1111-1111-111111111111,admin@example.com
+          22222222-2222-2222-2222-222222222222,other-admin@example.com
+        required: true
+        type: string
+  # A future promotion/bootstrap workflow can call this after schema apply
+  # without duplicating the OIDC login / Key Vault fetch below, exactly like
+  # seed-demo-fixture.yml's own workflow_call.
+  workflow_call:
+    inputs:
+      target_environment:
+        description: 'GitHub Environment (and Postgres database) to backfill: "dev" or "demo".'
+        required: false
+        type: string
+        default: dev
+      pairs:
+        description: 'Newline-separated "<workspace id>,<admin email>" pairs.'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backfill-workspace-membership-${{ inputs.target_environment }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
+  PAIRS_INPUT: ${{ inputs.pairs }}
+  # Audit actor for the workspace.membership.backfilled fact this run logs
+  # (ADR-025 §G: actor "operator (D.2e)") -- the human who dispatched this
+  # run, not a synthetic identity.
+  BACKFILL_ACTOR: ${{ github.actor }}
+
+jobs:
+  backfill:
+    name: backfill membership (${{ inputs.target_environment }})
+    runs-on: ubuntu-latest
+    # Same GitHub Environment backend.yml's own deploy job uses -- `demo`'s
+    # required reviewers (ADR-014/ADR-016) gate this exactly like a deploy,
+    # so granting Admin access is never a silent, unapproved action. (In
+    # practice `dev` is this wave's only real target -- OQ-w14-sa-01 -- but
+    # `demo` stays a valid choice for a future environment that needs it.)
+    environment: ${{ inputs.target_environment }}
+    permissions:
+      id-token: write # required so GitHub issues the OIDC token azure/login exchanges
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      # OIDC auth (ADR-015): the same per-env least-privilege deploy service
+      # principal seed-demo-fixture.yml already uses -- already holds "Key
+      # Vault Secrets User" on this env's vault, so no new Azure role
+      # assignment, identity or federated credential is needed here.
+      - name: Azure login (OIDC)
+        uses: ./.github/actions/azure-login
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resolve resource group
+        run: echo "RESOURCE_GROUP=rg-raffa-${TARGET_ENVIRONMENT}" >> "$GITHUB_ENV"
+
+      - name: Install postgresql-client
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends postgresql-client
+          fi
+
+      # Identical fetch to seed-demo-fixture.yml's own -- same secret, same
+      # translation script, same masking.
+      - name: Fetch Postgres connection string (ADR-021)
+        run: |
+          set -euo pipefail
+          HCP_RUNS="https://app.terraform.io/app/raffa-platform/workspaces/raffa-${TARGET_ENVIRONMENT}/runs"
+          KV_NAME=$(az keyvault list --resource-group "$RESOURCE_GROUP" --query "[0].name" -o tsv)
+          if [ -z "$KV_NAME" ]; then
+            echo "::error::no Key Vault found in resource group $RESOURCE_GROUP. Confirm the HCP VCS apply at $HCP_RUNS, then re-run this job."
+            exit 1
+          fi
+          set +e
+          RAW_CONN=$(az keyvault secret show --vault-name "$KV_NAME" --name postgres-connection --query value -o tsv 2>/tmp/kv_secret_show.err)
+          KV_STATUS=$?
+          set -e
+          if [ $KV_STATUS -ne 0 ] || [ -z "$RAW_CONN" ]; then
+            echo "::error::could not read secret 'postgres-connection' from $KV_NAME. Either the HCP VCS apply at $HCP_RUNS has not created it yet, or this environment's CI deploy principal (raffa-sp-${TARGET_ENVIRONMENT}) is missing the 'Key Vault Secrets User' role on $KV_NAME. Azure CLI said: $(tail -c 500 /tmp/kv_secret_show.err | tr '\n' ' ')"
+            exit 1
+          fi
+          echo "::add-mask::$RAW_CONN"
+          PG_EXPORTS=$(printf '%s' "$RAW_CONN" | python3 scripts/pg_connection_string_env.py)
+          eval "$PG_EXPORTS"
+          echo "::add-mask::$PGPASSWORD"
+          if [ -z "${PGHOST:-}" ] || [ -z "${PGPASSWORD:-}" ]; then
+            echo "::error::scripts/pg_connection_string_env.py produced an incomplete environment from the postgres-connection secret"
+            exit 1
+          fi
+          {
+            echo "PGHOST=$PGHOST"
+            echo "PGPORT=$PGPORT"
+            echo "PGDATABASE=$PGDATABASE"
+            echo "PGUSER=$PGUSER"
+            echo "PGPASSWORD=$PGPASSWORD"
+            echo "PGSSLMODE=$PGSSLMODE"
+          } >> "$GITHUB_ENV"
+
+      # Honest failure instead of a confusing "relation does not exist" mid-
+      # script, exactly like seed-demo-fixture.yml's own guard. This job
+      # additionally requires workspace_role: unlike the fixture seed, it
+      # looks the Admin role up by name per tenant rather than carrying a
+      # fixed fallback id (every real workspace already has a full role
+      # catalog -- WorkspaceFactory.CreateWorkspaceWithDefaultRoles).
+      - name: Confirm w14 schema is present (ADR-021)
+        run: |
+          set -euo pipefail
+          PRESENT=$(psql -Atqc "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('workspace','workspace_user','workspace_membership','workspace_role');")
+          if [ "$PRESENT" -lt 4 ]; then
+            echo "::error::raffa_${TARGET_ENVIRONMENT} is missing workspace/workspace_user/workspace_membership/workspace_role -- run backend.yml's schema-apply (ADR-021, the w14 identity-workspace.sql membership tables) against this environment before backfilling."
+            exit 1
+          fi
+
+      # Parse + validate every pair before touching the database -- a
+      # malformed line fails the whole run, never silently skips one tenant
+      # while granting the rest (same "no half-migrated tenant" posture
+      # reprocess-tenant-documents.yml uses for its own per-item loop).
+      # Emails are folded to lowercase here (and compared case-insensitively
+      # in SQL below): WorkspaceMembershipFactory.CreateInvitedUser does not
+      # lower-case on invite, so an existing app-created row can carry mixed
+      # case, and a plain case-sensitive ON CONFLICT would not catch that --
+      # it would silently create a second workspace_user row for the same
+      # person instead of reusing theirs.
+      - name: Parse and validate pairs
+        run: |
+          set -euo pipefail
+          : > /tmp/pairs.tsv
+          LINE_NO=0
+          while IFS= read -r LINE || [ -n "$LINE" ]; do
+            LINE_NO=$((LINE_NO + 1))
+            TRIMMED=$(printf '%s' "$LINE" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+            [ -n "$TRIMMED" ] || continue
+            WORKSPACE_ID=$(printf '%s' "$TRIMMED" | cut -d',' -f1 | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+            EMAIL=$(printf '%s' "$TRIMMED" | cut -d',' -f2- | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+            if ! printf '%s' "$WORKSPACE_ID" | grep -Eiq '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'; then
+              echo "::error::pairs line $LINE_NO: '$WORKSPACE_ID' is not a UUID. Format is <workspace id>,<admin email>."
+              exit 1
+            fi
+            if [ -z "$EMAIL" ] || ! printf '%s' "$EMAIL" | grep -Eq '^[^,@[:space:]]+@[^,@[:space:]]+$'; then
+              echo "::error::pairs line $LINE_NO: email is missing or not plausible. Format is <workspace id>,<admin email>."
+              exit 1
+            fi
+            if [ "${#EMAIL}" -gt 320 ]; then
+              echo "::error::pairs line $LINE_NO: email is ${#EMAIL} characters, exceeds the 320-character column limit."
+              exit 1
+            fi
+            LOWER_EMAIL=$(printf '%s' "$EMAIL" | tr '[:upper:]' '[:lower:]')
+            printf '%s\t%s\n' "$WORKSPACE_ID" "$LOWER_EMAIL" >> /tmp/pairs.tsv
+          done <<< "$PAIRS_INPUT"
+          PAIR_COUNT=$(wc -l < /tmp/pairs.tsv)
+          if [ "$PAIR_COUNT" -lt 1 ]; then
+            echo "::error::pairs input produced zero valid (workspace id, admin email) pairs."
+            exit 1
+          fi
+          echo "PAIR_COUNT=$PAIR_COUNT" >> "$GITHUB_ENV"
+          echo "::group::parsed pairs ($PAIR_COUNT)"
+          cat /tmp/pairs.tsv
+          echo "::endgroup::"
+
+      # One transaction per workspace, scoped by SET app.tenant_id -- the
+      # same per-session claim TenantRlsConnectionInterceptor sets at
+      # runtime and demo-fixture-seed.sql already uses. RLS stays on: never
+      # a role, GRANT or policy touched, only ordinary INSERTs that satisfy
+      # each table's own tenant_isolation WITH CHECK. No fixed id is
+      # available for a backfilled row (these are real tenants, not
+      # fixtures), so workspace_user/workspace_membership both take
+      # gen_random_uuid() -- never a hand-picked id. The Admin role id is
+      # looked up by name per tenant, never assumed. workspace_id was
+      # already validated as a UUID above, so it is safe to interpolate
+      # directly (same convention as reprocess-tenant-documents.yml's own
+      # TENANT_ID); the email is passed as a psql variable (never spliced
+      # into the SQL text) so a quote character in an address can never
+      # break out of the query.
+      - name: Backfill Admin membership (ADR-025, ADR-026)
+        run: |
+          set -euo pipefail
+          while IFS=$'\t' read -r WORKSPACE_ID EMAIL; do
+            [ -n "$WORKSPACE_ID" ] || continue
+            echo "::group::${WORKSPACE_ID}"
+            psql -v ON_ERROR_STOP=1 -v admin_email="$EMAIL" <<SQL
+SET app.tenant_id = '${WORKSPACE_ID}';
+
+BEGIN;
+
+-- Case-insensitive existence check: an app-created workspace_user is never
+-- lower-cased, so a prior invite/sign-in under different casing is reused
+-- rather than duplicated. A genuinely new person is inserted with the
+-- (already lower-cased) supplied address.
+INSERT INTO workspace_user (id, email, display_name, external_subject_id, created_at, tenant_id)
+SELECT gen_random_uuid(), :'admin_email', NULL, NULL, now(), '${WORKSPACE_ID}'::uuid
+WHERE NOT EXISTS (
+    SELECT 1 FROM workspace_user
+    WHERE tenant_id = '${WORKSPACE_ID}'::uuid
+      AND lower(email) = lower(:'admin_email')
+)
+ON CONFLICT (tenant_id, email) DO NOTHING;
+
+INSERT INTO workspace_membership (id, workspace_user_id, workspace_role_id, created_at, tenant_id)
+SELECT gen_random_uuid(), wu.id, wr.id, now(), '${WORKSPACE_ID}'::uuid
+FROM workspace_user wu
+JOIN workspace_role wr ON wr.tenant_id = wu.tenant_id AND wr.name = 'Admin'
+WHERE wu.tenant_id = '${WORKSPACE_ID}'::uuid
+  AND lower(wu.email) = lower(:'admin_email')
+ON CONFLICT (workspace_user_id, workspace_role_id) DO NOTHING;
+
+COMMIT;
+SQL
+            # Audit fact (ADR-025 §G: workspace.membership.backfilled, actor
+            # "operator"). Deliberately no email here -- ADR-025 §G's own
+            # table carries no email column for this action, and this is the
+            # one line this workflow designates as the audited record; the
+            # email itself is never written to any sink beyond this run's
+            # own transient parse output and the SQL parameter above.
+            echo "workspace.membership.backfilled actor=${BACKFILL_ACTOR} tenant_id=${WORKSPACE_ID} role=Admin"
+            echo "::endgroup::"
+          done < /tmp/pairs.tsv
+
+      # Closing verification that fails if zero rather than merely printing
+      # (mirrors seed-demo-fixture.yml's own "Verify seed landed" step): a
+      # backfill that silently inserted and matched nothing is the failure
+      # mode worth catching. One pair's gap never hides another's -- every
+      # pair is checked before the job fails.
+      - name: Verify every pair now has a live Admin membership
+        run: |
+          set -euo pipefail
+          MISSING=0
+          while IFS=$'\t' read -r WORKSPACE_ID EMAIL; do
+            [ -n "$WORKSPACE_ID" ] || continue
+            COUNT=$(psql -Atqc "SET app.tenant_id = '${WORKSPACE_ID}'; SELECT count(*) FROM workspace_membership m JOIN workspace_user wu ON wu.id = m.workspace_user_id JOIN workspace_role wr ON wr.id = m.workspace_role_id WHERE m.tenant_id = '${WORKSPACE_ID}'::uuid AND lower(wu.email) = lower(:'admin_email') AND wr.name = 'Admin';" -v admin_email="$EMAIL")
+            if [ "$COUNT" -lt 1 ]; then
+              echo "::error::workspace ${WORKSPACE_ID} has no live Admin membership after this run -- inserted and matched zero rows for this pair."
+              MISSING=$((MISSING + 1))
+            else
+              echo "OK: ${WORKSPACE_ID} has a live Admin membership."
+            fi
+          done < /tmp/pairs.tsv
+          if [ "$MISSING" -gt 0 ]; then
+            echo "::error::${MISSING} of ${PAIR_COUNT} pair(s) have no live Admin membership -- see errors above. A backfill that silently does nothing is the failure mode this check exists to catch."
+            exit 1
+          fi
+          echo "Verified: all ${PAIR_COUNT} pair(s) now have a live Admin membership in raffa_${TARGET_ENVIRONMENT}."
