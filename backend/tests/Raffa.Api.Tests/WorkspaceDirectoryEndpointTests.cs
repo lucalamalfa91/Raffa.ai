@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Raffa.Api.Tests.TestSupport;
 using Raffa.Documents.Contracts.Domain;
 using Raffa.Documents.Contracts.Infrastructure;
 using Raffa.Identity.Workspace.Infrastructure;
@@ -8,6 +9,7 @@ using Raffa.SharedKernel;
 using Raffa.SharedKernel.Tenancy;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
@@ -33,8 +35,11 @@ namespace Raffa.Api.Tests;
 /// are overridden to point at this fixture's own Testcontainer — every other required connection
 /// string (`Storage`/`Audit`/`Renewals`/`Savings`/`Chat`/`Suppliers`/`Quotes`) falls back to
 /// <c>appsettings.Development.json</c>'s static, never-dialled default, the same convention
-/// <c>SavingsKpiEndpointTests</c> already relies on: none of this class's tests ever reach a
-/// route that queries those modules.
+/// <c>SavingsKpiEndpointTests</c> already relies on. That premise holds for every route these
+/// tests reach <em>except</em> the audit write behind invite/accept
+/// (<c>A_non_admin_invited_member_sees_their_own_real_role</c>), which is why
+/// <see cref="ConfigureWebHost"/> swaps <c>IAuditWriter</c> for the recording fake rather than
+/// letting that one path dial the never-dialled default and 500.
 /// </summary>
 public sealed class WorkspaceDirectoryEndpointFixture : WebApplicationFactory<Program>, IAsyncLifetime
 {
@@ -95,6 +100,14 @@ public sealed class WorkspaceDirectoryEndpointFixture : WebApplicationFactory<Pr
     {
         builder.UseSetting("ConnectionStrings:IdentityWorkspace", _appConnectionString);
         builder.UseSetting("ConnectionStrings:DocumentsContracts", _appConnectionString);
+        // A_non_admin_invited_member_sees_their_own_real_role invites and accepts, and both of those
+        // write real audit rows (`workspace.invitation.issued`, `workspace.membership.granted`) through
+        // IAuditWriter -> AuditDbContext. This fixture never puts the Audit schema on its container, so
+        // without this swap the host dials `ConnectionStrings:Audit`'s never-dialled default
+        // (127.0.0.1:5432 -- "Connection refused" on a CI runner) and the invite 500s: the failure that
+        // kept `main` red after wave w14. Same RecordingAuditWriter swap MembershipRemovalEndpointFixture
+        // and InvitationLifecycleEndpointFixture already use for the same reason.
+        builder.ConfigureTestServices(services => services.AddSingleton<IAuditWriter>(new RecordingAuditWriter()));
     }
 }
 
