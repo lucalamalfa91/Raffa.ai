@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Raffa.Api.Tests.TestSupport;
 using Raffa.Documents.Contracts.Application;
+using Raffa.Documents.Contracts.Infrastructure;
 using Raffa.Identity.Workspace.Infrastructure;
 using Raffa.SharedKernel;
 using Microsoft.AspNetCore.Hosting;
@@ -19,7 +20,10 @@ namespace Raffa.Api.Tests;
 /// Dedicated real-Postgres host fixture for <see cref="MembershipRemovalEndpointTests"/> (task
 /// E15/F01/US01/T01, wave w14) — same rationale and shape as
 /// <see cref="InvitationLifecycleEndpointFixture"/> (real unique-index enforcement; a swapped-in
-/// <see cref="RecordingAuditWriter"/> since removal/re-invite both write real audit rows).
+/// <see cref="RecordingAuditWriter"/> since removal/re-invite both write real audit rows), plus
+/// the Documents/Contracts schema on the same instance: T7a reads <c>GET /api/workspaces</c>,
+/// whose host handler joins a validated-contract count per workspace (ADR-026 §D2) — see the
+/// comment inside <see cref="InitializeAsync"/>.
 /// </summary>
 public sealed class MembershipRemovalEndpointFixture : WebApplicationFactory<Program>, IAsyncLifetime
 {
@@ -42,7 +46,23 @@ public sealed class MembershipRemovalEndpointFixture : WebApplicationFactory<Pro
         await using (var db = new IdentityWorkspaceDbContext(identityOptions.Options))
         {
             await db.Database.MigrateAsync();
+        }
 
+        // T7a's `GET /api/workspaces` joins PortfolioQueryService.CountValidatedContractsAsync onto
+        // every listed workspace (WorkspaceEndpointExtensions.ListWorkspacesAsync, ADR-026 §D2) --
+        // a DocumentsContractsDbContext query, so that module must live on this same instance too,
+        // or the host resolves its connection string from the ambient configuration and dials
+        // 127.0.0.1:5432, where nothing listens on a CI runner ("Connection refused", a 500 that
+        // kept `main` red after wave w14). Same two-module shape WorkspaceDirectoryEndpointFixture
+        // already uses; PortfolioQueryService is a sealed class, so it cannot be swapped for a fake.
+        var documentsOptions = new DbContextOptionsBuilder<DocumentsContractsDbContext>();
+        DocumentsContractsDbContextOptions.Configure(documentsOptions, superuserConnectionString);
+        await using (var db = new DocumentsContractsDbContext(documentsOptions.Options))
+        {
+            await db.Database.MigrateAsync();
+
+            // Granted after both modules' tables exist, so one role covers every table regardless
+            // of which module's migration created it.
             await db.Database.ExecuteSqlRawAsync(
                 $"""
                 CREATE ROLE {AppRoleName} LOGIN PASSWORD '{AppRolePassword}' NOSUPERUSER NOBYPASSRLS;
@@ -63,6 +83,7 @@ public sealed class MembershipRemovalEndpointFixture : WebApplicationFactory<Pro
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseSetting("ConnectionStrings:IdentityWorkspace", _appConnectionString);
+        builder.UseSetting("ConnectionStrings:DocumentsContracts", _appConnectionString);
         builder.ConfigureTestServices(services => services.AddSingleton<IAuditWriter>(AuditWriter));
     }
 }
@@ -391,7 +412,7 @@ public sealed class MembershipRemovalEndpointTests : IClassFixture<MembershipRem
         // InternalServerError" in a CI log (same helper as R1DocumentsV2EndToEndTests.AssertStatusAsync).
         Assert.True(
             response.StatusCode == HttpStatusCode.OK,
-            $"HTTP {(int)response.StatusCode}: {body[..Math.Min(2000, body.Length)]}");
+            $"HTTP {(int)response.StatusCode}: {body[..Math.Min(12000, body.Length)]}");
         return body;
     }
 
