@@ -347,6 +347,12 @@ public sealed class R1EndToEndTests : IClassFixture<R1IntegrationFixture>
 
         using var scope = fixture.Services.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<DocumentsContractsDbContext>();
+        // The DbContext is tenant-scoped: without an ambient TenantId every row is filtered out and
+        // SingleAsync throws "Sequence contains no elements". Same BeginScope shape every other
+        // out-of-request read in this project already uses.
+        var tenantContext = scope.ServiceProvider.GetRequiredService<ITenantContext>();
+        using var tenantScope = tenantContext.BeginScope(new TenantId(tenantId));
+
         var document = await dbContext.Documents.AsNoTracking()
             .SingleAsync(d => d.Id == new EntityId(documentId));
         Assert.NotNull(document.ContractId);

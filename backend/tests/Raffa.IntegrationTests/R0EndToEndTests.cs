@@ -82,6 +82,12 @@ public sealed class R0EndToEndTests : IClassFixture<R0IntegrationFixture>
         var getResponse = await client.SendAsync(getRequest);
         Assert.Equal(HttpStatusCode.OK, getResponse.StatusCode);
 
+        // Fix 2026-09-14 (ADR-027 §D1): the upload returns at the store; the pipeline, and with it
+        // the first-page preview asserted below, runs on the Worker. Play the Worker here -- before
+        // w15 the preview existed by the time the 201 came back, which is why this assertion went
+        // red on `main` with "Sequence contains no matching element".
+        Assert.Equal(1, await _fixture.DrainExtractionQueueAsync());
+
         // Task E13/F04/US01/T02: an upload now stores two objects under the tenant prefix - the
         // document itself and its rendered first-page preview (R-DOC-08) - so this reads the
         // document blob by name rather than assuming a single save.

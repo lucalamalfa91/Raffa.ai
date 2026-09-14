@@ -1,5 +1,6 @@
 using Raffa.Audit.Infrastructure;
 using Raffa.Chat.Infrastructure;
+using Raffa.Documents.Contracts.Application.Extraction;
 using Raffa.Documents.Contracts.Infrastructure;
 using Raffa.Identity.Workspace.Infrastructure;
 using Raffa.SharedKernel.Storage;
@@ -171,6 +172,13 @@ public sealed class R0IntegrationFixture : WebApplicationFactory<Program>, IAsyn
             // documents itself to be — this is test-host-only wiring.
             services.AddSingleton<IStartupFilter, TestPrincipalStartupFilter>();
 
+            // Fix 2026-09-14 (ADR-027 §D1-D3): since wave w15 the upload returns at the store and
+            // the pipeline -- including the first-page preview -- runs on the Worker. This host is
+            // the API alone, so a test that asserts on anything processing produces plays the
+            // Worker itself through DrainExtractionQueueAsync below. ExtractionRequestedHandler is
+            // otherwise registered only by the Worker's AddExtractionQueueConsumer.
+            services.AddScoped<ExtractionRequestedHandler>();
+
             // Fix 2026-09-14: wave w15's NW-05 retired the X-User-Id-reading ICallerIdentity for
             // TokenCallerIdentity (the bearer token's `oid`), and this project's hosts never got
             // the bridge Raffa.Api.Tests' shared factory did -- so every request this fixture's
@@ -183,5 +191,25 @@ public sealed class R0IntegrationFixture : WebApplicationFactory<Program>, IAsyn
                 .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, TestIdentityAuthenticationHandler>(
                     TestIdentityAuthenticationHandler.SchemeName, _ => { });
         });
+    }
+
+    /// <summary>
+    /// Plays the Worker for this host (fix 2026-09-14) -- see
+    /// <see cref="R1IntegrationFixture.DrainExtractionQueueAsync"/>, which this mirrors exactly.
+    /// Returns how many queued messages were handled.
+    /// </summary>
+    public async Task<int> DrainExtractionQueueAsync()
+    {
+        var queue = Services.GetRequiredService<InMemoryExtractionQueue>();
+        var handled = 0;
+        while (queue.Reader.TryRead(out var message))
+        {
+            using var scope = Services.CreateScope();
+            var handler = scope.ServiceProvider.GetRequiredService<ExtractionRequestedHandler>();
+            await handler.HandleAsync(message).ConfigureAwait(false);
+            handled++;
+        }
+
+        return handled;
     }
 }
