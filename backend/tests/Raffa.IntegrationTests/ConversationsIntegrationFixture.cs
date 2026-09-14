@@ -3,7 +3,9 @@ using Raffa.Chat.Infrastructure;
 using Raffa.Identity.Workspace.Infrastructure;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using Testcontainers.PostgreSql;
 
@@ -102,6 +104,17 @@ public sealed class ConversationsIntegrationFixture : WebApplicationFactory<Prog
     {
         builder.UseSetting("ConnectionStrings:Chat", _appConnectionString);
         builder.UseSetting("ConnectionStrings:IdentityWorkspace", _appConnectionString);
+
+        builder.ConfigureTestServices(services =>
+        {
+            // NW-05 (2026-09-14): the X-User-Id -> oid bridge every conversation route now needs, and
+            // the implicit tenant Admin for caller-less requests -- see TestIdentityAuthenticationHandler
+            // and ImplicitTenantAdminStartupFilter.
+            services.AddAuthentication(TestIdentityAuthenticationHandler.SchemeName)
+                .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, TestIdentityAuthenticationHandler>(
+                    TestIdentityAuthenticationHandler.SchemeName, _ => { });
+            services.AddSingleton<IStartupFilter, ImplicitTenantAdminStartupFilter>();
+        });
         builder.UseSetting("ConnectionStrings:Audit", _appConnectionString);
     }
 }
