@@ -49,7 +49,7 @@ public sealed class R1EndToEndTests : IClassFixture<R1IntegrationFixture>
         //    extract"; a PDF is read by the `ocr` role, here the fixture gateway's scanner — see
         //    R1ExtractionFixtures.BuildBornDigitalPdfBytes's own doc comment).
         var (documentId, contractId) = await UploadAndProcessAsync(
-            client, tenantId, R1ExtractionFixtures.BuildBornDigitalPdfBytes(),
+            _fixture, client, tenantId, R1ExtractionFixtures.BuildBornDigitalPdfBytes(),
             R1ExtractionFixtures.BornDigitalFileName, R1ExtractionFixtures.BornDigitalMimeType);
 
         // 2. GET /api/documents/{id}: classification and the document->contract link really
@@ -209,7 +209,7 @@ public sealed class R1EndToEndTests : IClassFixture<R1IntegrationFixture>
         //    Intelligence), not native parsing, and still extracts end-to-end.
         var ocrCallsBefore = _fixture.AiGateway.OcrCallCount;
         var (scannedDocumentId, scannedContractId) = await UploadAndProcessAsync(
-            client, tenantId, R1ExtractionFixtures.BuildScannedImageOcrBytes(),
+            _fixture, client, tenantId, R1ExtractionFixtures.BuildScannedImageOcrBytes(),
             R1ExtractionFixtures.ScannedFileName, R1ExtractionFixtures.ScannedMimeType);
         Assert.True(
             _fixture.AiGateway.OcrCallCount > ocrCallsBefore,
@@ -259,7 +259,7 @@ public sealed class R1EndToEndTests : IClassFixture<R1IntegrationFixture>
         var tenantId = Guid.NewGuid();
 
         var (documentId, contractId) = await UploadAndProcessAsync(
-            client, tenantId, R1ExtractionFixtures.BuildBornDigitalPdfBytes(),
+            _fixture, client, tenantId, R1ExtractionFixtures.BuildBornDigitalPdfBytes(),
             R1ExtractionFixtures.BornDigitalFileName, R1ExtractionFixtures.BornDigitalMimeType);
 
         // Rewind to "before supplier identity existed".
@@ -308,9 +308,13 @@ public sealed class R1EndToEndTests : IClassFixture<R1IntegrationFixture>
     }
 
     /// <summary>
-    /// Uploads <paramref name="bytes"/> through the real `POST /api/documents` endpoint (which now
-    /// also runs <see cref="Raffa.Documents.Contracts.Application.Extraction.DocumentProcessingPipeline"/>
-    /// synchronously — task E02/F06/US01/T01) and returns the resulting document/contract ids.
+    /// Uploads <paramref name="bytes"/> through the real `POST /api/documents` endpoint, then plays
+    /// the Worker (<see cref="R1IntegrationFixture.DrainExtractionQueueAsync"/>) and returns the
+    /// resulting document/contract ids. Since wave w15 (ADR-027 §D1) the upload returns at the
+    /// store — 201, <c>processingStatus: "Uploaded"</c>, <c>contractId: null</c> — and
+    /// <see cref="Raffa.Documents.Contracts.Application.Extraction.DocumentProcessingPipeline"/>
+    /// runs on the Worker, so the contract id has to be read after the drain instead of off the
+    /// 201 (task E02/F06/US01/T01 is what used to make that response carry it).
     /// <see cref="ByteArrayContent.Headers"/>' <see cref="MediaTypeHeaderValue"/> is set explicitly:
     /// without it, ASP.NET Core's multipart parser reports an empty
     /// <c>IFormFile.ContentType</c>, <c>DocumentUploadService.UploadAsync</c> would default it to
@@ -318,7 +322,8 @@ public sealed class R1EndToEndTests : IClassFixture<R1IntegrationFixture>
     /// depends on would silently take the wrong path.
     /// </summary>
     internal static async Task<(Guid DocumentId, Guid ContractId)> UploadAndProcessAsync(
-        HttpClient client, Guid tenantId, byte[] bytes, string fileName, string mimeType)
+        R1IntegrationFixture fixture, HttpClient client, Guid tenantId, byte[] bytes, string fileName,
+        string mimeType)
     {
         var fileContent = new ByteArrayContent(bytes);
         fileContent.Headers.ContentType = new MediaTypeHeaderValue(mimeType);
@@ -333,11 +338,20 @@ public sealed class R1EndToEndTests : IClassFixture<R1IntegrationFixture>
         var body = await ParseAsync(response);
         var documentId = body.GetProperty("id").GetGuid();
 
-        Assert.Equal(
-            JsonValueKind.String, body.GetProperty("contractId").ValueKind);
-        var contractId = body.GetProperty("contractId").GetGuid();
+        // ADR-027 §D1: nothing is linked yet at the store. Asserting a contract id here is the
+        // pre-w15 synchronous contract, and is exactly what turned this helper red on `main`
+        // ("Expected: String, Actual: Null") and kept the w15 API image from ever deploying.
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("contractId").ValueKind);
 
-        return (documentId, contractId);
+        Assert.Equal(1, await fixture.DrainExtractionQueueAsync());
+
+        using var scope = fixture.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<DocumentsContractsDbContext>();
+        var document = await dbContext.Documents.AsNoTracking()
+            .SingleAsync(d => d.Id == new EntityId(documentId));
+        Assert.NotNull(document.ContractId);
+
+        return (documentId, document.ContractId!.Value.Value);
     }
 
     internal static async Task<HttpResponseMessage> GetAsync(HttpClient client, string url, Guid tenantId)

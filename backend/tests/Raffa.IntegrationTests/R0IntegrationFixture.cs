@@ -170,6 +170,18 @@ public sealed class R0IntegrationFixture : WebApplicationFactory<Program>, IAsyn
             // composition in Program.cs stays exactly as ADR-010-deferred as it already
             // documents itself to be — this is test-host-only wiring.
             services.AddSingleton<IStartupFilter, TestPrincipalStartupFilter>();
+
+            // Fix 2026-09-14: wave w15's NW-05 retired the X-User-Id-reading ICallerIdentity for
+            // TokenCallerIdentity (the bearer token's `oid`), and this project's hosts never got
+            // the bridge Raffa.Api.Tests' shared factory did -- so every request this fixture's
+            // tests send arrived anonymous and answered 401. See TestIdentityAuthenticationHandler
+            // for why a test scheme (not a faked ICallerIdentity) is the right substitute, and why
+            // it also carries TestPrincipalStartupFilter's tenant/role claims. AuthenticationSchemeOptions
+            // is fully qualified rather than imported: `using Microsoft.AspNetCore.Authentication`
+            // makes SystemClock ambiguous against Raffa.SharedKernel.SystemClock in this project.
+            services.AddAuthentication(TestIdentityAuthenticationHandler.SchemeName)
+                .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, TestIdentityAuthenticationHandler>(
+                    TestIdentityAuthenticationHandler.SchemeName, _ => { });
         });
     }
 }

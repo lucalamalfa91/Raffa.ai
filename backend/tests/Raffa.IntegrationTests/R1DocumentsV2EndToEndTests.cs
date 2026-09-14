@@ -37,7 +37,7 @@ public sealed class R1DocumentsV2EndToEndTests : IClassFixture<R1IntegrationFixt
         var tenantId = Guid.NewGuid();
 
         var (documentId, contractId) = await R1EndToEndTests.UploadAndProcessAsync(
-            client, tenantId, R1ExtractionFixtures.BuildBornDigitalPdfBytes(),
+            _fixture, client, tenantId, R1ExtractionFixtures.BuildBornDigitalPdfBytes(),
             R1ExtractionFixtures.BornDigitalFileName, R1ExtractionFixtures.BornDigitalMimeType);
 
         // R-DOC-06: the list is server-side, tenant-scoped, and carries the V2 columns.
@@ -109,7 +109,7 @@ public sealed class R1DocumentsV2EndToEndTests : IClassFixture<R1IntegrationFixt
         var tenantId = Guid.NewGuid();
 
         var (documentId, _) = await R1EndToEndTests.UploadAndProcessAsync(
-            client, tenantId, R1ExtractionFixtures.BuildScannedImageOcrBytes(),
+            _fixture, client, tenantId, R1ExtractionFixtures.BuildScannedImageOcrBytes(),
             R1ExtractionFixtures.ScannedFileName, R1ExtractionFixtures.ScannedMimeType);
 
         // Put the index back into the state a pre-V2 document is in: raw PDF soup, no page.

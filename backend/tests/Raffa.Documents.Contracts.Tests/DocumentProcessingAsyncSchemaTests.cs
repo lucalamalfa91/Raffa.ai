@@ -147,11 +147,18 @@ public sealed class DocumentProcessingAsyncSchemaTests : IAsyncLifetime
              WHERE table_name = 'document' AND column_name = 'processing_status'
             """,
             connection);
-        await using var reader = await command.ExecuteReaderAsync();
-        Assert.True(await reader.ReadAsync());
-        Assert.Equal(30, reader.GetInt32(0));
-        Assert.Equal("NO", reader.GetString(1));
-        Assert.True(await reader.IsDBNullAsync(2), "processing_status must keep no column default.");
+        // Fix 2026-09-14: a `using` BLOCK, not `await using var`. Npgsql allows one active command
+        // per connection (no MARS), and a method-scoped `await using var reader` stays open until
+        // the method returns -- so the constraint-count query below ran while this reader still
+        // held the connector and threw NpgsqlOperationInProgressException ("A command is already in
+        // progress"), which is how this test failed on `main` from the commit that introduced it.
+        await using (var reader = await command.ExecuteReaderAsync())
+        {
+            Assert.True(await reader.ReadAsync());
+            Assert.Equal(30, reader.GetInt32(0));
+            Assert.Equal("NO", reader.GetString(1));
+            Assert.True(await reader.IsDBNullAsync(2), "processing_status must keep no column default.");
+        }
 
         await using var checkConstraints = new NpgsqlCommand(
             """

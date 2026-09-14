@@ -3,6 +3,7 @@ using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Fixtures;
 using Raffa.Audit.Infrastructure;
 using Raffa.Chat.Infrastructure;
+using Raffa.Documents.Contracts.Application.Extraction;
 using Raffa.Documents.Contracts.Infrastructure;
 using Raffa.Identity.Workspace.Infrastructure;
 using Raffa.SharedKernel;
@@ -182,6 +183,49 @@ public sealed class R1IntegrationFixture : WebApplicationFactory<Program>, IAsyn
             // AddSingleton override after the host's own registration" shape
             // R0IntegrationFixture already uses for IDocumentStorage above.
             services.AddSingleton<IAiGateway>(AiGateway);
+
+            // Fix 2026-09-14 (ADR-027 §D1-D3): since wave w15 the upload returns at the store and
+            // the content gate + pipeline run on the Worker. This host is the API alone, so a test
+            // that needs a *processed* document plays the Worker itself through
+            // DrainExtractionQueueAsync below. ExtractionRequestedHandler is otherwise registered
+            // only by the Worker's AddExtractionQueueConsumer, never by the API host.
+            services.AddScoped<ExtractionRequestedHandler>();
+
+            // Fix 2026-09-14: wave w15's NW-05 retired the X-User-Id-reading ICallerIdentity for
+            // TokenCallerIdentity (the bearer token's `oid`), and this project's hosts never got
+            // the bridge Raffa.Api.Tests' shared factory did -- so every request this fixture's
+            // tests send arrived anonymous and answered 401. See TestIdentityAuthenticationHandler
+            // for why a test scheme (not a faked ICallerIdentity) is the right substitute, and why
+            // it also carries TestPrincipalStartupFilter's tenant/role claims. AuthenticationSchemeOptions
+            // is fully qualified rather than imported: `using Microsoft.AspNetCore.Authentication`
+            // makes SystemClock ambiguous against Raffa.SharedKernel.SystemClock in this project.
+            services.AddAuthentication(TestIdentityAuthenticationHandler.SchemeName)
+                .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, TestIdentityAuthenticationHandler>(
+                    TestIdentityAuthenticationHandler.SchemeName, _ => { });
         });
+    }
+
+    /// <summary>
+    /// Plays the Worker for this host (fix 2026-09-14, mirroring
+    /// <c>Raffa.Api.Tests.TestSupport.InMemoryAskEngineFactory.DrainExtractionQueueAsync</c>):
+    /// takes every <see cref="ExtractionRequested"/> the upload path published to the in-process
+    /// queue and runs the real <see cref="ExtractionRequestedHandler"/> on it -- content gate, then
+    /// pipeline -- in its own DI scope, in order. Called right after an upload's 201 and before any
+    /// assertion on what processing produces. Messages are consumed from the channel, so a second
+    /// drain is a no-op. Returns how many messages were handled.
+    /// </summary>
+    public async Task<int> DrainExtractionQueueAsync()
+    {
+        var queue = Services.GetRequiredService<InMemoryExtractionQueue>();
+        var handled = 0;
+        while (queue.Reader.TryRead(out var message))
+        {
+            using var scope = Services.CreateScope();
+            var handler = scope.ServiceProvider.GetRequiredService<ExtractionRequestedHandler>();
+            await handler.HandleAsync(message).ConfigureAwait(false);
+            handled++;
+        }
+
+        return handled;
     }
 }

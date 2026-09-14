@@ -273,7 +273,7 @@
       "id": "GAP-ASK-ITALIAN-STRUCTURED-BLIND",
       "observedKind": "abstain",
       "observedMarkdownContains": [
-        "Nothing in the 4 validated contract(s) supports a reliable answer"
+        "Nothing in your validated contracts supports a reliable answer"
       ],
       "note": "The prototype's intent table lists 'expire / scad / end' and '120 / days / giorni / renew / rinnov / scadono' as one structured row, and OQ-askv2-006 requires the answer to follow the question's language. AskRaffaQueryRouter's keyword lists are English-only ('renew', 'expir', 'spend', ...), so an Italian dates/spend question falls through to the semantic branch, retrieves nothing, and abstains. The abstain is honest, but the question was answerable."
     },
@@ -296,7 +296,7 @@
       "id": "GAP-ASK-ITALIAN-STRUCTURED-BLIND",
       "observedKind": "abstain",
       "observedMarkdownContains": [
-        "Nothing in the 4 validated contract(s) supports a reliable answer"
+        "Nothing in your validated contracts supports a reliable answer"
       ],
       "note": "Same English-only keyword lists: 'rinnovano' / 'prossimi 120 giorni' matches neither the structured keyword list nor the 'next N days' pattern, so the renewal-window calculator is never reached."
     },
@@ -310,7 +310,7 @@
     "question": "What liability do we have with AWS?",
     "expectedKind": "abstain",
     "expectedMarkdownContains": [
-      "Nothing in the 4 validated contract(s) supports a reliable answer"
+      "Nothing in your validated contracts supports a reliable answer"
     ],
     "expectNoCitations": true,
     "notes": "Spec §8.3's own clause example. The fixture indexes no clause chunks, so the only honest outcome is the abstain — proving the engine never fabricates a liability cap when retrieval comes back empty (Appendix C rule 10)."
@@ -323,7 +323,7 @@
     "question": "which contracts contain unlimited liability?",
     "expectedKind": "abstain",
     "expectedMarkdownContains": [
-      "Nothing in the 4 validated contract(s)"
+      "Nothing in your validated contracts supports a reliable answer"
     ],
     "expectNoCitations": true,
     "notes": "The second spec §8.3 clause example. Also proves the clause branch is reached at all: it is the only intent that calls the embedding gateway."
@@ -336,7 +336,7 @@
     "question": "Qual e il massimale di responsabilita nel contratto Microsoft?",
     "expectedKind": "abstain",
     "expectedMarkdownContains": [
-      "Nothing in the 4 validated contract(s)"
+      "Nothing in your validated contracts supports a reliable answer"
     ],
     "expectNoCitations": true,
     "notes": "Italian clause vocabulary. It abstains for the same (correct) reason as its English twin — an empty clause index — so this case is a language check, not a gap."
@@ -691,7 +691,7 @@
     "question": "how much did we pay in legal fees last year?",
     "expectedKind": "abstain",
     "expectedMarkdownContains": [
-      "Nothing in the 4 validated contract(s)"
+      "Nothing in your validated contracts supports a reliable answer"
     ],
     "expectNoCitations": true,
     "expectNoGatewayCall": true,
@@ -714,7 +714,7 @@
     "question": "how much did we spend on office catering?",
     "expectedKind": "abstain",
     "expectedMarkdownContains": [
-      "Nothing in the 4 validated contract(s)"
+      "Nothing in your validated contracts supports a reliable answer"
     ],
     "expectNoCitations": true,
     "knownGap": {

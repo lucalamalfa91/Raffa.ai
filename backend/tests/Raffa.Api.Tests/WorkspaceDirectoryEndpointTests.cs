@@ -7,6 +7,7 @@ using Raffa.Documents.Contracts.Infrastructure;
 using Raffa.Identity.Workspace.Infrastructure;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Tenancy;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -107,7 +108,17 @@ public sealed class WorkspaceDirectoryEndpointFixture : WebApplicationFactory<Pr
         // (127.0.0.1:5432 -- "Connection refused" on a CI runner) and the invite 500s: the failure that
         // kept `main` red after wave w14. Same RecordingAuditWriter swap MembershipRemovalEndpointFixture
         // and InvitationLifecycleEndpointFixture already use for the same reason.
-        builder.ConfigureTestServices(services => services.AddSingleton<IAuditWriter>(new RecordingAuditWriter()));
+        // Fix 2026-09-14: same X-User-Id -> `oid` bridge InvitationLifecycleEndpointFixture
+        // registers, and for the same reason -- a dedicated-host fixture never sees the one
+        // TestSupport.InMemoryAskEngineFactory installs, so after NW-05 every request here
+        // authenticated nobody and answered 401.
+        builder.ConfigureTestServices(services =>
+        {
+            services.AddSingleton<IAuditWriter>(new RecordingAuditWriter());
+            services.AddAuthentication(TestUserIdAuthenticationHandler.SchemeName)
+                .AddScheme<AuthenticationSchemeOptions, TestUserIdAuthenticationHandler>(
+                    TestUserIdAuthenticationHandler.SchemeName, _ => { });
+        });
     }
 }
 
