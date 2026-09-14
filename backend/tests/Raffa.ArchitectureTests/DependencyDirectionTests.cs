@@ -72,12 +72,18 @@ public class DependencyDirectionTests
         ["Raffa.Insights"]             = ["Raffa.SharedKernel", "Raffa.Benchmark"],
     };
 
-    /// <summary>Provider SDK prefixes that domain modules must never reference directly.</summary>
+    /// <summary>Provider SDK prefixes that domain modules must never reference directly. Task
+    /// E17/F01/US01/T01 (ADR-002 w15 footer clause 4, ADR-025 §J.1d): <c>Microsoft.Graph</c> joins
+    /// the list -- nothing here matched it before, so a domain module could have taken a direct
+    /// directory-write dependency with no test objecting. The adapter lives in the host
+    /// (<c>Raffa.Api/Infrastructure/GraphGuestProvisioner</c>), which this domain-module scan never
+    /// reaches; <c>Raffa.AiGateway.Tests.SdkAllowListTests</c> is the guard that does.</summary>
     internal static readonly string[] ForbiddenSdkPrefixes =
     [
         "Azure.",
         "Microsoft.Azure.",
         "Microsoft.AI.",
+        "Microsoft.Graph",
         "OpenAI",
         "Google.Cloud.",
         "Amazon.",

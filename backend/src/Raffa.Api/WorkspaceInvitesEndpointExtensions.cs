@@ -1,4 +1,5 @@
 using Raffa.Api.Infrastructure;
+using Raffa.Identity.Workspace.Application;
 using Raffa.Identity.Workspace.Domain;
 using Raffa.Identity.Workspace.Infrastructure;
 using Raffa.SharedKernel;
@@ -129,9 +130,15 @@ public static class WorkspaceInvitesEndpointExtensions
             .IssueAsync(routeTenantId, request.Email, role, identity, cancellationToken)
             .ConfigureAwait(false);
 
-        // ADR-025 §D.1d / implication 9: a live grant or offer already exists for this email is a
-        // 409 (Conflict), never a 400 -- the request is well-formed, it conflicts with existing
-        // state. Every other failure (malformed email, unseeded role) stays the pre-existing 400.
+        // ADR-025 §D.1d / implication 9: a live MEMBERSHIP at this role (or the per-tenant cap, or two
+        // concurrent invites racing the unique index) is a 409 (Conflict), never a 400 -- the request
+        // is well-formed, it conflicts with existing state. A live INVITATION is no longer a 409: it
+        // is replaced in one transaction (ADR-025 §J.2b, ADR-026 w15 footer §9). Task E17/F01/US01/T01
+        // (ADR-026 w15 footer §1/§3/§8): the 201 carries `deliveryOutcome` (sent | mail_failed |
+        // no_transport, `sent` iff `mailDelivered`) and `identityProvisioned`; a directory that would
+        // not provision the guest is a 502 whose body carries `failureReason` from the closed set
+        // (consent_missing | provisioning_failed | directory_unavailable) -- and no invitation exists.
+        // Every other failure (malformed email, unseeded role) stays the pre-existing 400.
         return issueResult.Status switch
         {
             MembershipOperationStatus.Success => Results.Created(
@@ -142,12 +149,17 @@ public static class WorkspaceInvitesEndpointExtensions
                     email = issueResult.Invitation.Email,
                     role = role.ToString(),
                     expiresAt = issueResult.Invitation.ExpiresAt,
-                    // ADR-025 Rule C9: site-relative, and a fragment -- never a path/query string,
-                    // never resolved to an absolute URL here (that is the mailer's own job, when one
-                    // exists).
+                    // ADR-025 Rule C9 / ADR-026 w15 footer §4: a fragment, never a path/query
+                    // string; absolute ({Invitations__AcceptUrlBase}/invite/accept#...) when a base
+                    // is configured, the w14 site-relative form otherwise.
                     acceptUrl = issueResult.AcceptUrl,
+                    deliveryOutcome = issueResult.DeliveryOutcome.ToWireValue(),
                     mailDelivered = issueResult.MailDelivered,
+                    identityProvisioned = issueResult.IdentityProvisioned,
                 }),
+            MembershipOperationStatus.ProvisioningFailed => Results.Json(
+                new { failureReason = issueResult.ProvisioningFailureReason!.Value.ToWireValue() },
+                statusCode: StatusCodes.Status502BadGateway),
             MembershipOperationStatus.Conflict => Results.Conflict(issueResult.Error),
             _ => Results.BadRequest(issueResult.Error),
         };

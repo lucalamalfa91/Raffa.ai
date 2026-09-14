@@ -54,11 +54,16 @@ public static class ServiceCollectionExtensions
         services.TryAddScoped<WorkspaceDirectoryService>();
 
         // Task E15/F01/US01/T01 (wave w14, ADR-025 §C/§D, ADR-026 §D6): the invitation token
-        // lifecycle and its mailer seam. NullInvitationMailer is the only IInvitationMailer this
-        // wave registers (OQ-w14-002 -- no transport ships in w14); a future transport is a second
-        // TryAddScoped call in a later task, never a change to this method's own shape.
+        // lifecycle and its mailer seam. Task E17/F01/US01/T01 (wave w15, NW-67/NW-68; ADR-026 w15
+        // footer §2/§5): the guest-provisioning seam beside it, and the policy the host binds.
+        // Every one of these is TryAdd, and TryAdd means the FIRST registration wins -- so the host
+        // registers the real mailer (AcsInvitationMailer), the Graph provisioner and its bound
+        // InvitationOptions BEFORE calling this method, and the Null defaults below only apply where
+        // the host registered nothing: no transport, no directory write, a site-relative link.
         services.TryAddScoped<WorkspaceInvitationService>();
         services.TryAddScoped<IInvitationMailer, NullInvitationMailer>();
+        services.TryAddScoped<IGuestProvisioner, NullGuestProvisioner>();
+        services.TryAddSingleton<InvitationOptions>();
 
         return services;
     }

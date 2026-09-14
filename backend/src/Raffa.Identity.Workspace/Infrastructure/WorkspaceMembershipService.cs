@@ -91,7 +91,8 @@ public sealed class WorkspaceMembershipService(
         string invitedBy,
         string tokenHash,
         DateTimeOffset expiresAt,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? externalSubjectId = null)
     {
         using var _ = tenantContext.BeginScope(tenantId);
         var now = clock.UtcNow;
@@ -130,25 +131,37 @@ public sealed class WorkspaceMembershipService(
             db.WorkspaceUsers.Add(user);
         }
 
+        // ADR-025 §J.3b (task E17/F01/US01/T01): the guest's directory object id -- the `oid` that
+        // person's token will carry -- is bound at invite time, so the accept matches on it exactly
+        // and the mangled #EXT# UPN never enters an authorization decision. A row already bound to a
+        // subject keeps it: LinkExternalSubject's own rule that an invited email is never silently
+        // reassigned to another identity holds here too.
+        if (!string.IsNullOrWhiteSpace(externalSubjectId) && string.IsNullOrEmpty(user.ExternalSubjectId))
+        {
+            user.ExternalSubjectId = externalSubjectId;
+        }
+
         var alreadyMember = await db.WorkspaceMemberships
             .AnyAsync(m => m.WorkspaceUserId == user.Id && m.WorkspaceRoleId == roleRow.Id, cancellationToken)
             .ConfigureAwait(false);
         if (alreadyMember)
         {
+            // Unchanged by re-issue-by-replacement (ADR-026 w15 footer §9): a live MEMBERSHIP is not a
+            // re-issue case, and replacement must never become a way to re-grant a held role.
             return InviteOutcome.Failure(
                 MembershipOperationStatus.Conflict, $"{normalizedEmail} already holds the {role} role in this workspace.");
         }
 
-        var alreadyInvited = await db.WorkspaceInvitations
-            .AnyAsync(
+        // ADR-025 §J.2b / ADR-026 w15 footer §9: a still-live invitation for this address is REPLACED
+        // -- revoked and re-issued in one transaction, so two live tokens never coexist for one
+        // address and the link the Admin already shared stops working (the pane says so first).
+        // The revoke is flushed before the insert: D4's partial unique index is checked per
+        // statement, so the new row may only land once the old one has left the live set.
+        var liveInvitation = await db.WorkspaceInvitations
+            .SingleOrDefaultAsync(
                 i => i.TenantId == tenantId && i.Email == normalizedEmail && i.AcceptedAt == null && i.RevokedAt == null,
                 cancellationToken)
             .ConfigureAwait(false);
-        if (alreadyInvited)
-        {
-            return InviteOutcome.Failure(
-                MembershipOperationStatus.Conflict, $"{normalizedEmail} already has a pending invitation to this workspace.");
-        }
 
         var invitation = new WorkspaceInvitation
         {
@@ -165,20 +178,35 @@ public sealed class WorkspaceMembershipService(
             CreatedAt = now,
             ExpiresAt = expiresAt,
         };
-        db.WorkspaceInvitations.Add(invitation);
 
         try
         {
-            await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            if (liveInvitation is not null)
+            {
+                await ReplaceLiveInvitationAsync(liveInvitation, invitation, now, cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                db.WorkspaceInvitations.Add(invitation);
+                await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            }
         }
         catch (DbUpdateException exception) when (IsUniqueViolation(exception))
         {
-            // ADR-025 implication 9 / task coding objective point 2: the partial unique index is the
-            // real backstop for the two AnyAsync pre-checks above (a second, concurrent invite for
-            // the same email can slip past both reads before either write commits) — translate the
-            // violation to the identical clean Conflict, never let it surface as a 500.
+            // ADR-025 implication 9 / ADR-026 w15 footer §9: the partial unique index is the real
+            // backstop for two CONCURRENT invites for the same address (both read "no live
+            // invitation", both insert) -- translate the violation to a clean Conflict, never a 500.
             return InviteOutcome.Failure(
                 MembershipOperationStatus.Conflict, $"{normalizedEmail} already has a pending invitation to this workspace.");
+        }
+
+        if (liveInvitation is not null)
+        {
+            await auditWriter.WriteAsync(
+                new AuditEntry(
+                    tenantId, invitedBy, "workspace.invitation.revoked", "WorkspaceInvitation",
+                    liveInvitation.Id.Value.ToString(), now, $"replaced-by={invitation.Id.Value}"),
+                cancellationToken).ConfigureAwait(false);
         }
 
         await auditWriter.WriteAsync(
@@ -188,6 +216,35 @@ public sealed class WorkspaceMembershipService(
             cancellationToken).ConfigureAwait(false);
 
         return InviteOutcome.Success(invitation);
+    }
+
+    /// <summary>
+    /// Revoke-then-issue as one unit (ADR-025 §J.2b): on a relational provider an explicit
+    /// transaction wraps two flushes (the UPDATE that takes the old row out of the live set, then
+    /// the INSERT), because the partial unique index is evaluated per statement and a single batch
+    /// gives no ordering guarantee between the two; the InMemory provider used by the API's own
+    /// in-process hosts has neither transactions nor the index, so one flush is exact there.
+    /// </summary>
+    private async Task ReplaceLiveInvitationAsync(
+        WorkspaceInvitation liveInvitation, WorkspaceInvitation replacement, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        liveInvitation.RevokedAt = now;
+
+        // The InMemory provider answers IsRelational() with its relational shim in place, and then
+        // throws on BeginTransaction -- so it is recognised by name: no transaction, no index, one flush.
+        var isInMemoryProvider = db.Database.ProviderName?.EndsWith(".InMemory", StringComparison.Ordinal) == true;
+        if (isInMemoryProvider || !db.Database.IsRelational())
+        {
+            db.WorkspaceInvitations.Add(replacement);
+            await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        db.WorkspaceInvitations.Add(replacement);
+        await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -557,6 +614,11 @@ public enum MembershipOperationStatus
     NotFound,
     Forbidden,
     Expired,
+
+    /// <summary>Task E17/F01/US01/T01 (ADR-026 w15 footer §3): the company directory did not
+    /// provision a guest, so the invitation was aborted -- no row, no token, no mail -- and the
+    /// endpoint answers 502 with a reason from the closed set.</summary>
+    ProvisioningFailed,
 }
 
 /// <summary>Outcome of <see cref="WorkspaceMembershipService.InviteAsync"/> — see

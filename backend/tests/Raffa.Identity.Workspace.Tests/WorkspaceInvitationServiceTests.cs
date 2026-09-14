@@ -44,7 +44,11 @@ public sealed class WorkspaceInvitationServiceTests : IAsyncLifetime
         IdentityWorkspaceDbContext db, IClock clock, IInvitationMailer mailer, IAuditWriter? auditWriter = null)
     {
         var membershipService = new WorkspaceMembershipService(db, _tenantContext, clock, auditWriter ?? new NoOpAuditWriter());
-        return new WorkspaceInvitationService(db, _tenantContext, clock, auditWriter ?? new NoOpAuditWriter(), mailer, membershipService);
+        // The module's own defaults (task E17/F01/US01/T01): no directory write, a site-relative
+        // link -- exactly the w14 shape every test below was written against.
+        return new WorkspaceInvitationService(
+            db, _tenantContext, clock, auditWriter ?? new NoOpAuditWriter(), mailer, membershipService,
+            new NullGuestProvisioner(), new InvitationOptions());
     }
 
     private async Task<TenantId> SeedWorkspaceAsync(IClock clock)
