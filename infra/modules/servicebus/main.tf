@@ -72,6 +72,17 @@ resource "azurerm_role_assignment" "workload_servicebus_sender" {
   role_definition_name             = "Azure Service Bus Data Sender"
   principal_id                     = var.workload_principal_id
   skip_service_principal_aad_check = true
+
+  # Matches modules/acr's own documented gotcha: ARM rejects in-place
+  # updates to a role assignment ("doesn't support update"), so a later
+  # apply that touches nothing meaningful here must not attempt one.
+  lifecycle {
+    ignore_changes = [
+      skip_service_principal_aad_check,
+      principal_type,
+      name,
+    ]
+  }
 }
 
 resource "azurerm_role_assignment" "workload_servicebus_receiver" {
@@ -79,4 +90,12 @@ resource "azurerm_role_assignment" "workload_servicebus_receiver" {
   role_definition_name             = "Azure Service Bus Data Receiver"
   principal_id                     = var.workload_principal_id
   skip_service_principal_aad_check = true
+
+  lifecycle {
+    ignore_changes = [
+      skip_service_principal_aad_check,
+      principal_type,
+      name,
+    ]
+  }
 }
