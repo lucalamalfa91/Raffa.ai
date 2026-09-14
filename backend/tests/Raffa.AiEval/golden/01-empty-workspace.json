@@ -120,7 +120,7 @@
     "language": "en",
     "question": "which contracts are most critical?",
     "expectedKind": "abstain",
-    "expectedMarkdownContains": ["Nothing in the 0 validated contract(s) supports a reliable answer"],
+    "expectedMarkdownContains": ["Nothing in your validated contracts supports a reliable answer"],
     "expectedActionHrefs": ["/documents"],
     "expectNoCitations": true,
     "notes": "R-PORT-02 AC-2: an empty portfolio gets the upload invite, never a fabricated ranking. The abstain copy is the prototype's own."
@@ -132,7 +132,7 @@
     "language": "it",
     "question": "Dove possiamo risparmiare?",
     "expectedKind": "abstain",
-    "expectedMarkdownContains": ["Nothing in the 0 validated contract(s) supports a reliable answer"],
+    "expectedMarkdownContains": ["Nothing in your validated contracts supports a reliable answer"],
     "expectedActionHrefs": ["/documents"],
     "expectNoCitations": true,
     "notes": "R-PORT-02's own worked question in Italian — the savings lexicon is bilingual in the planner, so this reaches the portfolio-wide branch and abstains honestly."
@@ -144,7 +144,7 @@
     "language": "en",
     "question": "What liability do we have?",
     "expectedKind": "abstain",
-    "expectedMarkdownContains": ["Nothing in the 0 validated contract(s) supports a reliable answer"],
+    "expectedMarkdownContains": ["Nothing in your validated contracts supports a reliable answer"],
     "expectNoCitations": true,
     "notes": "Clause retrieval over an empty index returns nothing, and R-ASK-07 requires the honest 'cannot determine' rather than an invented clause."
   },
@@ -189,7 +189,7 @@
     "language": "en",
     "question": "Which contracts renew in the next 120 days?",
     "expectedKind": "abstain",
-    "expectedMarkdownContains": ["Nothing in the 0 validated contract(s) supports a reliable answer"],
+    "expectedMarkdownContains": ["Nothing in your validated contracts supports a reliable answer"],
     "knownGap": {
       "id": "GAP-ASK-EMPTY-PORTFOLIO-ANSWERS",
       "observedKind": "answer",

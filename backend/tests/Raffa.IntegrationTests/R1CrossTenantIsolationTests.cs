@@ -29,7 +29,7 @@ public sealed class R1CrossTenantIsolationTests : IClassFixture<R1IntegrationFix
         var tenantB = Guid.NewGuid();
 
         var (_, contractId) = await R1EndToEndTests.UploadAndProcessAsync(
-            client, tenantA, R1ExtractionFixtures.BuildBornDigitalPdfBytes(),
+            _fixture, client, tenantA, R1ExtractionFixtures.BuildBornDigitalPdfBytes(),
             R1ExtractionFixtures.BornDigitalFileName, R1ExtractionFixtures.BornDigitalMimeType);
 
         // Portfolio: tenant B's own list never includes tenant A's contract.

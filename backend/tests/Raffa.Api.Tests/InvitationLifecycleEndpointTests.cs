@@ -4,6 +4,7 @@ using System.Text.Json;
 using Raffa.Api.Tests.TestSupport;
 using Raffa.Identity.Workspace.Infrastructure;
 using Raffa.SharedKernel;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -76,7 +77,22 @@ public sealed class InvitationLifecycleEndpointFixture : WebApplicationFactory<P
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseSetting("ConnectionStrings:IdentityWorkspace", _appConnectionString);
-        builder.ConfigureTestServices(services => services.AddSingleton<IAuditWriter>(AuditWriter));
+        // Fix 2026-09-14: this fixture builds its own host and therefore never went through
+        // TestSupport.InMemoryAskEngineFactory, which is where wave w15 (task E17/F01/US01/T01)
+        // registered the X-User-Id -> `oid` bridge after NW-05 (E18/F01/US01/T01) retired the
+        // header-reading ICallerIdentity for TokenCallerIdentity. Every request this class sends
+        // therefore arrived anonymous and every assertion got 401 instead of the real guard's
+        // answer -- red on `main`, so the API image was never deployed. Registering the same test
+        // scheme here proves the same assertions through the real ICallerIdentity seam, exactly as
+        // the in-memory suites already do. Program.cs's own JwtBearer registration is untouched and
+        // never runs in these tests.
+        builder.ConfigureTestServices(services =>
+        {
+            services.AddSingleton<IAuditWriter>(AuditWriter);
+            services.AddAuthentication(TestUserIdAuthenticationHandler.SchemeName)
+                .AddScheme<AuthenticationSchemeOptions, TestUserIdAuthenticationHandler>(
+                    TestUserIdAuthenticationHandler.SchemeName, _ => { });
+        });
     }
 }
 

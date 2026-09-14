@@ -103,7 +103,7 @@
     "language": "en",
     "question": "What liability do we have with Salesforce?",
     "expectedKind": "abstain",
-    "expectedMarkdownContains": ["Nothing in the 1 validated contract(s) supports a reliable answer"],
+    "expectedMarkdownContains": ["Nothing in your validated contracts supports a reliable answer"],
     "expectNoCitations": true,
     "notes": "Clause retrieval with nothing indexed: the honest abstain, and its wording counts this tenant's own contracts (1), never another fixture's."
   },
