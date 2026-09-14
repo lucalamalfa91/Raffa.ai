@@ -39,11 +39,11 @@ namespace Raffa.Api.Tests;
 /// ever need.
 /// </para>
 /// </summary>
-public sealed class RemovedMemberRetrievalTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class RemovedMemberRetrievalTests : IClassFixture<RaffaApiFactory>
 {
     private readonly WebApplicationFactory<Program> _baseFactory;
 
-    public RemovedMemberRetrievalTests(WebApplicationFactory<Program> factory)
+    public RemovedMemberRetrievalTests(RaffaApiFactory factory)
     {
         _baseFactory = factory;
     }

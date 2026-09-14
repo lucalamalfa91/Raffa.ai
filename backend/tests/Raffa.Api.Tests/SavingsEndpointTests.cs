@@ -1,3 +1,4 @@
+using Raffa.Api.Tests.TestSupport;
 using System.Net;
 using Microsoft.AspNetCore.Mvc.Testing;
 
@@ -15,11 +16,11 @@ namespace Raffa.Api.Tests;
 /// <c>Raffa.Savings.Tests.SavingsOpportunityServiceTests</c> — per this task's own "Tests
 /// required" level (unit, no database).
 /// </summary>
-public sealed class SavingsEndpointTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class SavingsEndpointTests : IClassFixture<RaffaApiFactory>
 {
     private readonly WebApplicationFactory<Program> _factory;
 
-    public SavingsEndpointTests(WebApplicationFactory<Program> factory)
+    public SavingsEndpointTests(RaffaApiFactory factory)
     {
         _factory = factory.WithWebHostBuilder(builder =>
         {

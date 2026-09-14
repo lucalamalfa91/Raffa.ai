@@ -1,3 +1,4 @@
+using Raffa.Api.Infrastructure;
 using Raffa.Chat.Application.Conversations;
 
 namespace Raffa.Api;
@@ -45,17 +46,25 @@ public static class ChatEndpointExtensions
         HttpRequest httpRequest,
         ConversationService conversationService,
         AskCopilotService askCopilotService,
+        ICallerContext callerContext,
         CancellationToken cancellationToken)
     {
-        if (!ConversationsEndpointExtensions.TryResolveTenant(httpRequest, out var tenantId, out var tenantError))
+        // NW-05 (ADR-010 w15 footer; ADR-022 w15 footer clause 2): identity first, then the tenant
+        // header as an authorized selector, then membership -- 401 / 400 / 404 in that order, all
+        // owned by ICallerContext (acceptance A15-8). The scope it hands back is the tenant scope
+        // this handler runs in; disposing it here is the same lifetime the old BeginScope had.
+        var caller = await callerContext.ResolveTenantAsync(httpRequest, cancellationToken);
+        if (caller.Failure is not null)
         {
-            return Results.BadRequest(tenantError);
+            return caller.Failure;
         }
 
-        if (!ConversationsEndpointExtensions.TryResolveUserId(httpRequest, out var userId, out var userError))
-        {
-            return Results.BadRequest(userError);
-        }
+        using var callerTenantScope = caller.Scope;
+        var tenantId = caller.TenantId;
+
+        // NW-05: the per-user key is the validated identity ICallerContext just verified the membership for.
+
+        var userId = caller.Identity!;
 
         if (string.IsNullOrWhiteSpace(request?.Question))
         {

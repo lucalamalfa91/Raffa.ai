@@ -35,7 +35,7 @@ namespace Raffa.Api.Tests;
 /// document is listed, never counted in <c>counts.all</c>, never askable (ADR-027 §D6/§D7).
 /// </para>
 /// </summary>
-public sealed class DocumentUploadEndpointTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class DocumentUploadEndpointTests : IClassFixture<RaffaApiFactory>
 {
     private const string MsaText =
         "MASTER SERVICES AGREEMENT between Acme Corp and Contoso Ltd, effective 2026-01-01. " +
@@ -57,7 +57,7 @@ public sealed class DocumentUploadEndpointTests : IClassFixture<WebApplicationFa
 
     private readonly WebApplicationFactory<Program> _baseFactory;
 
-    public DocumentUploadEndpointTests(WebApplicationFactory<Program> factory)
+    public DocumentUploadEndpointTests(RaffaApiFactory factory)
     {
         _baseFactory = factory;
     }
@@ -416,6 +416,7 @@ public sealed class DocumentUploadEndpointTests : IClassFixture<WebApplicationFa
                         builder.UseSetting(key, value);
                     }
                 })
+                .WithPresentedCallersAsMembers()
                 .WithInMemoryAskEngine(gateway, new FixedClock(Now), storage, audit);
 
             return new Host { Factory = factory, Gateway = gateway, Storage = storage, Audit = audit };

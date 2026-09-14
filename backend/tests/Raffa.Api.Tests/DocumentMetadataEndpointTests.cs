@@ -1,3 +1,4 @@
+using Raffa.Api.Tests.TestSupport;
 using System.Net;
 using Microsoft.AspNetCore.Mvc.Testing;
 
@@ -10,11 +11,11 @@ namespace Raffa.Api.Tests;
 /// just a placeholder" purpose. Only exercises branches that return before any database call is
 /// made, so — like <see cref="DocumentUploadEndpointTests"/> — this needs no running Postgres.
 /// </summary>
-public sealed class DocumentMetadataEndpointTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class DocumentMetadataEndpointTests : IClassFixture<RaffaApiFactory>
 {
     private readonly WebApplicationFactory<Program> _factory;
 
-    public DocumentMetadataEndpointTests(WebApplicationFactory<Program> factory)
+    public DocumentMetadataEndpointTests(RaffaApiFactory factory)
     {
         _factory = factory.WithWebHostBuilder(builder =>
         {

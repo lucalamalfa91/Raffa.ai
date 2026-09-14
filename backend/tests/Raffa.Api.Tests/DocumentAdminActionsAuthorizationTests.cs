@@ -33,7 +33,7 @@ namespace Raffa.Api.Tests;
 /// still grants on invite").
 /// </para>
 /// </summary>
-public sealed class DocumentAdminActionsAuthorizationTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class DocumentAdminActionsAuthorizationTests : IClassFixture<RaffaApiFactory>
 {
     private const string MsaText =
         "MASTER SERVICES AGREEMENT between Acme Corp and Contoso Ltd, effective 2026-01-01. " +
@@ -45,7 +45,7 @@ public sealed class DocumentAdminActionsAuthorizationTests : IClassFixture<WebAp
 
     private readonly WebApplicationFactory<Program> _baseFactory;
 
-    public DocumentAdminActionsAuthorizationTests(WebApplicationFactory<Program> factory)
+    public DocumentAdminActionsAuthorizationTests(RaffaApiFactory factory)
     {
         _baseFactory = factory;
     }

@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Raffa.Identity.Workspace.Domain;
 using Raffa.Documents.Contracts.Application.Extraction;
 using Raffa.Documents.Contracts.Infrastructure;
 using Raffa.SharedKernel;
@@ -120,7 +121,7 @@ public sealed class R1EndToEndTests : IClassFixture<R1IntegrationFixture>
         //    `Document:{id}` — still traceable back to this document by substring, same convention
         //    `AskRaffaRagCrossTenantIsolationTests` already uses for the identical new shape.
         var chatResponse = await PostAsync(
-            client, "/api/chat/query", tenantId, "alice@example.com",
+            _fixture, client, "/api/chat/query", tenantId, "alice@example.com",
             new { question = "What does the master services agreement cover?" });
         Assert.Equal(HttpStatusCode.OK, chatResponse.StatusCode);
         var chatBody = await ParseAsync(chatResponse);
@@ -382,8 +383,13 @@ public sealed class R1EndToEndTests : IClassFixture<R1IntegrationFixture>
     /// <see cref="PostAsync(HttpClient, string, Guid, object)"/> overload above never needed one.
     /// </summary>
     internal static async Task<HttpResponseMessage> PostAsync(
-        HttpClient client, string url, Guid tenantId, string userId, object body)
+        R1IntegrationFixture fixture, HttpClient client, string url, Guid tenantId, string userId, object body)
     {
+        // NW-05 (2026-09-14): a presented caller now has to be a member of the tenant it names, or
+        // ICallerContext answers 404 before the handler runs -- so the test grants that membership
+        // first, exactly the way the invite flow would have.
+        await ImplicitTenantAdminStartupFilter.EnsureMembershipAsync(fixture.Services, new TenantId(tenantId), userId, WorkspaceRoleName.Admin);
+
         using var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = JsonContent.Create(body) };
         request.Headers.Add("X-Tenant-Id", tenantId.ToString());
         request.Headers.Add("X-User-Id", userId);

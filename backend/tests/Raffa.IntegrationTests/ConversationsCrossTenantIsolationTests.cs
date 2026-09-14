@@ -1,3 +1,5 @@
+using Raffa.Identity.Workspace.Domain;
+using Raffa.SharedKernel;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -76,6 +78,8 @@ public sealed class ConversationsCrossTenantIsolationTests : IClassFixture<Conve
 
         // AC-1: user 2, same tenant as the owner, gets 404 -- RLS has no per-user predicate, so
         // this is ConversationService's own application-level filter being proven, not RLS.
+        // NW-05: userTwo is a real member, so the 404 below is the per-user conversation guard, not the gate.
+        await ImplicitTenantAdminStartupFilter.EnsureMembershipAsync(_fixture.Services, new TenantId(tenantId), userTwo, WorkspaceRoleName.Admin);
         using var getAsUserTwo = new HttpRequestMessage(HttpMethod.Get, $"/api/conversations/{conversationId}");
         getAsUserTwo.Headers.Add("X-Tenant-Id", tenantId.ToString());
         getAsUserTwo.Headers.Add("X-User-Id", userTwo);
@@ -119,8 +123,13 @@ public sealed class ConversationsCrossTenantIsolationTests : IClassFixture<Conve
         Assert.Equal(tenantAConversationId, item.GetProperty("id").GetGuid());
     }
 
-    private static async Task<Guid> CreateConversationAsync(HttpClient client, Guid tenantId, string userId)
+    private async Task<Guid> CreateConversationAsync(HttpClient client, Guid tenantId, string userId)
     {
+        // NW-05 (2026-09-14): a presented caller now has to be a member of the tenant it names, or
+        // ICallerContext answers 404 before the handler runs -- so the test grants that membership
+        // first, exactly the way the invite flow would have.
+        await ImplicitTenantAdminStartupFilter.EnsureMembershipAsync(_fixture.Services, new TenantId(tenantId), userId, WorkspaceRoleName.Admin);
+
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/conversations")
         {
             Content = JsonContent.Create(new { }),

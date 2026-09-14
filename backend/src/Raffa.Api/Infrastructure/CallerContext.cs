@@ -75,22 +75,28 @@ internal interface ICallerContext
 /// </summary>
 internal readonly struct CallerTenantResult
 {
-    private CallerTenantResult(TenantId tenantId, IDisposable? scope, IResult? failure)
+    private CallerTenantResult(TenantId tenantId, string? identity, IDisposable? scope, IResult? failure)
     {
         TenantId = tenantId;
+        Identity = identity;
         Scope = scope;
         Failure = failure;
     }
 
     public TenantId TenantId { get; }
 
+    /// <summary>The validated caller identity (the token's <c>oid</c>) the membership was verified
+    /// for -- the audit actor and the per-user key every handler used to read off <c>X-User-Id</c>.
+    /// Non-null whenever <see cref="Failure"/> is null.</summary>
+    public string? Identity { get; }
+
     public IDisposable? Scope { get; }
 
     public IResult? Failure { get; }
 
-    public static CallerTenantResult Success(TenantId tenantId, IDisposable scope) => new(tenantId, scope, failure: null);
+    public static CallerTenantResult Success(TenantId tenantId, string identity, IDisposable scope) => new(tenantId, identity, scope, failure: null);
 
-    public static CallerTenantResult Fail(IResult failure) => new(default, scope: null, failure);
+    public static CallerTenantResult Fail(IResult failure) => new(default, identity: null, scope: null, failure);
 }
 
 internal sealed class CallerContext(
@@ -145,7 +151,7 @@ internal sealed class CallerContext(
                 return CallerTenantResult.Fail(Results.NotFound());
             }
 
-            return CallerTenantResult.Success(tenantId, scope);
+            return CallerTenantResult.Success(tenantId, identity, scope);
         }
         catch
         {

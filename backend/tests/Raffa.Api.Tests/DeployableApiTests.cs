@@ -1,4 +1,5 @@
 using System.Net;
+using Raffa.Api.Tests.TestSupport;
 using Raffa.Chat.Application.Conversations;
 using Raffa.Chat.Infrastructure;
 using Raffa.Documents.Contracts.Infrastructure;
@@ -14,11 +15,11 @@ namespace Raffa.Api.Tests;
 /// Documents/Contracts module into its DI container — not just left the "module registration
 /// will go here" placeholder from the solution scaffold (E01/F04/US01/T01).
 /// </summary>
-public sealed class DeployableApiTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class DeployableApiTests : IClassFixture<RaffaApiFactory>
 {
     private readonly WebApplicationFactory<Program> _factory;
 
-    public DeployableApiTests(WebApplicationFactory<Program> factory)
+    public DeployableApiTests(RaffaApiFactory factory)
     {
         // A syntactically valid Npgsql connection string satisfies Program.cs's startup check
         // and UseNpgsql()'s eager parsing. Nothing below opens a real connection, so no running

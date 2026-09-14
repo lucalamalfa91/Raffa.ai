@@ -201,9 +201,15 @@ public sealed class R1DocumentsV2EndToEndTests : IClassFixture<R1IntegrationFixt
         using var tenantScope = tenantContext.BeginScope(tenant);
 
         var user = new WorkspaceUser { TenantId = tenant, Email = email, CreatedAt = DateTimeOffset.UtcNow };
-        var role = new WorkspaceRole { TenantId = tenant, Name = roleName, CreatedAt = DateTimeOffset.UtcNow };
+        // NW-05 (2026-09-14): the implicit tenant Admin the fixture grants to caller-less requests may
+        // already have created this role -- ix_workspace_role_tenant_id_name is unique, so reuse it.
+        var role = await db.WorkspaceRoles.SingleOrDefaultAsync(r => r.TenantId == tenant && r.Name == roleName)
+            ?? new WorkspaceRole { TenantId = tenant, Name = roleName, CreatedAt = DateTimeOffset.UtcNow };
         db.WorkspaceUsers.Add(user);
-        db.WorkspaceRoles.Add(role);
+        if (db.Entry(role).State == EntityState.Detached)
+        {
+            db.WorkspaceRoles.Add(role);
+        }
         db.WorkspaceMemberships.Add(new WorkspaceMembership
         {
             TenantId = tenant,

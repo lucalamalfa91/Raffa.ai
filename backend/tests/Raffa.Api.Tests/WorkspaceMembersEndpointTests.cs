@@ -27,13 +27,13 @@ namespace Raffa.Api.Tests;
 /// without a database in <c>Raffa.Identity.Workspace.Tests.WorkspaceRosterTests</c>
 /// (<see cref="WorkspaceMembershipService.ComposeRoster"/>).
 /// </summary>
-public sealed class WorkspaceMembersEndpointTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class WorkspaceMembersEndpointTests : IClassFixture<RaffaApiFactory>
 {
     private static readonly DateTimeOffset Now = new(2026, 9, 11, 9, 0, 0, TimeSpan.Zero);
 
     private readonly WebApplicationFactory<Program> _baseFactory;
 
-    public WorkspaceMembersEndpointTests(WebApplicationFactory<Program> factory)
+    public WorkspaceMembersEndpointTests(RaffaApiFactory factory)
     {
         _baseFactory = factory;
     }
@@ -41,7 +41,12 @@ public sealed class WorkspaceMembersEndpointTests : IClassFixture<WebApplication
     [Fact]
     public async Task No_identity_returns_401()
     {
-        var factory = WithInMemoryIdentity();
+        // NW-05 (2026-09-14): the shared test host runs a caller-less request as an implicit Admin so
+        // the pre-NW-05 endpoint tests keep their meaning; THIS test is about no identity at all, so
+        // it builds a host without that filter.
+        using var bare = new RaffaApiFactory { ImplicitTenantAdmin = false };
+        var factory = bare.WithInMemoryAskEngine(new RecordingAiGateway(
+            new FixtureAiGateway(new AiGatewayModelOptions(), SystemClock.Instance, new AiGatewayOcrOptions())));
         var client = factory.CreateClient();
         var tenantId = Guid.NewGuid();
 

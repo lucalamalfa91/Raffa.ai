@@ -63,7 +63,7 @@ public sealed class ExtractionRequestedHandler(
 
     private static readonly string ClaimedBy = Environment.MachineName;
 
-    public async Task HandleAsync(ExtractionRequested message, CancellationToken cancellationToken = default)
+    public async Task<ExtractionHandleOutcome> HandleAsync(ExtractionRequested message, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(message);
 
@@ -79,7 +79,16 @@ public sealed class ExtractionRequestedHandler(
             logger.LogInformation(
                 "Extraction job {JobId} for document {DocumentId} was not claimable (duplicate delivery, already claimed, or no longer queued); nothing to do",
                 jobId.Value, documentId.Value);
-            return;
+
+            // ADR-027 §C6 (fix 2026-09-14): a lost claim is two different things. The row EXISTS and
+            // someone else holds or finished it -- a duplicate delivery, complete it. The row does NOT
+            // exist -- the upload's commit was slower than its publish, so this delivery arrived before
+            // the row became visible; completing it would strand the document at Uploaded on a POST
+            // that returned 201. The consumer settles that case by DeliveryCount.
+            var rowExists = await dbContext.ExtractionJobs
+                .AnyAsync(j => j.TenantId == tenantId && j.Id == jobId, cancellationToken)
+                .ConfigureAwait(false);
+            return rowExists ? ExtractionHandleOutcome.ClaimLost : ExtractionHandleOutcome.JobNotFound;
         }
 
         var job = await dbContext.ExtractionJobs
@@ -94,7 +103,7 @@ public sealed class ExtractionRequestedHandler(
             // The document was deleted between the upload and this delivery (R-DOC-10 removes the
             // job rows with it). Nothing to process and nothing to record.
             logger.LogInformation("Document {DocumentId} or job {JobId} no longer exists; skipping", documentId.Value, jobId.Value);
-            return;
+            return ExtractionHandleOutcome.JobNotFound;
         }
 
         document.ProcessingStatus = DocumentProcessingStatus.Processing;
@@ -105,7 +114,7 @@ public sealed class ExtractionRequestedHandler(
         {
             await FailTerminalAsync(document, job, "The stored bytes could not be read back from object storage.", cancellationToken)
                 .ConfigureAwait(false);
-            return;
+            return ExtractionHandleOutcome.Handled;
         }
 
         var decision = await admissionGate
@@ -117,16 +126,16 @@ public sealed class ExtractionRequestedHandler(
             case AdmissionOutcome.Failed when decision.Error?.StartsWith(
                 DocumentAdmissionGate.GatewayUnavailablePrefix, StringComparison.Ordinal) == true:
                 await ReleaseOrFailAsync(document, job, decision.Error, cancellationToken).ConfigureAwait(false);
-                return;
+                return ExtractionHandleOutcome.Handled;
 
             case AdmissionOutcome.Failed:
                 await FailTerminalAsync(document, job, decision.Error ?? "The document could not be read.", cancellationToken)
                     .ConfigureAwait(false);
-                return;
+                return ExtractionHandleOutcome.Handled;
 
             case AdmissionOutcome.Rejected:
                 await RejectAsync(document, job, decision, cancellationToken).ConfigureAwait(false);
-                return;
+                return ExtractionHandleOutcome.Handled;
         }
 
         var result = await processingPipeline
@@ -148,6 +157,8 @@ public sealed class ExtractionRequestedHandler(
             logger.LogWarning(
                 "Pipeline reported a failure for document {DocumentId}: {Error}", documentId.Value, result.Error);
         }
+
+        return ExtractionHandleOutcome.Handled;
     }
 
     private async Task RejectAsync(
@@ -222,4 +233,15 @@ public sealed class ExtractionRequestedHandler(
             document.Id.Value, job.AttemptCount, MaxAttempts, error);
         throw new ExtractionTransientException(error);
     }
+}
+
+/// <summary>ADR-027 §C6 (fix 2026-09-14): what a delivery meant, so the transport can settle it.
+/// <see cref="Handled"/> and <see cref="ClaimLost"/> are both "complete the message"; only
+/// <see cref="JobNotFound"/> -- no row at all inside the message's own tenant scope -- is settled by
+/// delivery count (abandon below two, dead-letter <c>job-not-found</c> from two).</summary>
+public enum ExtractionHandleOutcome
+{
+    Handled,
+    ClaimLost,
+    JobNotFound,
 }

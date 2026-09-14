@@ -1,8 +1,11 @@
 using Raffa.Audit.Infrastructure;
 using Raffa.Chat.Infrastructure;
+using Raffa.Identity.Workspace.Infrastructure;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using Testcontainers.PostgreSql;
 
@@ -42,6 +45,16 @@ public sealed class ConversationsIntegrationFixture : WebApplicationFactory<Prog
     {
         await _postgres.StartAsync();
         var superuserConnectionString = _postgres.GetConnectionString();
+
+        // NW-05 (2026-09-14): every conversation route now verifies the caller's membership in
+        // IdentityWorkspaceDbContext before it runs, so this container carries the identity schema
+        // too -- without it the host dials appsettings' never-there default (127.0.0.1:5432).
+        var identityOptions = new DbContextOptionsBuilder<IdentityWorkspaceDbContext>();
+        IdentityWorkspaceDbContextOptions.Configure(identityOptions, superuserConnectionString);
+        await using (var db = new IdentityWorkspaceDbContext(identityOptions.Options))
+        {
+            await db.Database.MigrateAsync();
+        }
 
         var chatOptions = new DbContextOptionsBuilder<ChatDbContext>();
         ChatDbContextOptions.Configure(chatOptions, superuserConnectionString);
@@ -90,6 +103,18 @@ public sealed class ConversationsIntegrationFixture : WebApplicationFactory<Prog
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseSetting("ConnectionStrings:Chat", _appConnectionString);
+        builder.UseSetting("ConnectionStrings:IdentityWorkspace", _appConnectionString);
+
+        builder.ConfigureTestServices(services =>
+        {
+            // NW-05 (2026-09-14): the X-User-Id -> oid bridge every conversation route now needs, and
+            // the implicit tenant Admin for caller-less requests -- see TestIdentityAuthenticationHandler
+            // and ImplicitTenantAdminStartupFilter.
+            services.AddAuthentication(TestIdentityAuthenticationHandler.SchemeName)
+                .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, TestIdentityAuthenticationHandler>(
+                    TestIdentityAuthenticationHandler.SchemeName, _ => { });
+            services.AddSingleton<IStartupFilter, ImplicitTenantAdminStartupFilter>();
+        });
         builder.UseSetting("ConnectionStrings:Audit", _appConnectionString);
     }
 }

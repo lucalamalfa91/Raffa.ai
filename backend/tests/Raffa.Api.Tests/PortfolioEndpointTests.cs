@@ -33,11 +33,11 @@ namespace Raffa.Api.Tests;
 /// reach a success path without a Testcontainer.
 /// </para>
 /// </summary>
-public sealed class PortfolioEndpointTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class PortfolioEndpointTests : IClassFixture<RaffaApiFactory>
 {
     private readonly WebApplicationFactory<Program> _factory;
 
-    public PortfolioEndpointTests(WebApplicationFactory<Program> factory)
+    public PortfolioEndpointTests(RaffaApiFactory factory)
     {
         _factory = factory.WithWebHostBuilder(builder =>
         {

@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Security.Claims;
 using System.Text.Json;
+using Raffa.Api.Infrastructure;
 using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Conversations;
 using Raffa.Chat.Application.Reply;
@@ -67,7 +68,6 @@ namespace Raffa.Api;
 /// </summary>
 public static class ConversationsEndpointExtensions
 {
-    private const string UserIdHeaderName = "X-User-Id";
 
     /// <summary>R-ASK-05 "the pack + last N turns" — how many of the conversation's own prior
     /// messages <see cref="AskAndAppendAsync"/> feeds <c>AskCopilotService.AskAsync</c> as history.
@@ -90,17 +90,25 @@ public static class ConversationsEndpointExtensions
     /// Response is a bare array, not a `{ items, totalCount }` envelope — there is no paging
     /// concept for "my last N conversations".</summary>
     private static async Task<IResult> GetConversationsAsync(
+        ICallerContext callerContext,
         HttpRequest request, ConversationService conversationService, CancellationToken cancellationToken)
     {
-        if (!TryResolveTenant(request, out var tenantId, out var tenantError))
+        // NW-05 (ADR-010 w15 footer; ADR-022 w15 footer clause 2): identity first, then the tenant
+        // header as an authorized selector, then membership -- 401 / 400 / 404 in that order, all
+        // owned by ICallerContext (acceptance A15-8). The scope it hands back is the tenant scope
+        // this handler runs in; disposing it here is the same lifetime the old BeginScope had.
+        var caller = await callerContext.ResolveTenantAsync(request, cancellationToken);
+        if (caller.Failure is not null)
         {
-            return Results.BadRequest(tenantError);
+            return caller.Failure;
         }
 
-        if (!TryResolveUserId(request, out var userId, out var userError))
-        {
-            return Results.BadRequest(userError);
-        }
+        using var callerTenantScope = caller.Scope;
+        var tenantId = caller.TenantId;
+
+        // NW-05: the per-user key is the validated identity ICallerContext just verified the membership for.
+
+        var userId = caller.Identity!;
 
         if (!TryParseTake(request.Query, out var take, out var takeError))
         {
@@ -124,17 +132,25 @@ public static class ConversationsEndpointExtensions
         CreateConversationRequest? request,
         HttpRequest httpRequest,
         ConversationService conversationService,
+        ICallerContext callerContext,
         CancellationToken cancellationToken)
     {
-        if (!TryResolveTenant(httpRequest, out var tenantId, out var tenantError))
+        // NW-05 (ADR-010 w15 footer; ADR-022 w15 footer clause 2): identity first, then the tenant
+        // header as an authorized selector, then membership -- 401 / 400 / 404 in that order, all
+        // owned by ICallerContext (acceptance A15-8). The scope it hands back is the tenant scope
+        // this handler runs in; disposing it here is the same lifetime the old BeginScope had.
+        var caller = await callerContext.ResolveTenantAsync(httpRequest, cancellationToken);
+        if (caller.Failure is not null)
         {
-            return Results.BadRequest(tenantError);
+            return caller.Failure;
         }
 
-        if (!TryResolveUserId(httpRequest, out var userId, out var userError))
-        {
-            return Results.BadRequest(userError);
-        }
+        using var callerTenantScope = caller.Scope;
+        var tenantId = caller.TenantId;
+
+        // NW-05: the per-user key is the validated identity ICallerContext just verified the membership for.
+
+        var userId = caller.Identity!;
 
         EntityId? scopeContractId = null;
         var scopeContractIdText = request?.ScopeContractId;
@@ -162,17 +178,25 @@ public static class ConversationsEndpointExtensions
         string id,
         HttpRequest request,
         ConversationService conversationService,
+        ICallerContext callerContext,
         CancellationToken cancellationToken)
     {
-        if (!TryResolveTenant(request, out var tenantId, out var tenantError))
+        // NW-05 (ADR-010 w15 footer; ADR-022 w15 footer clause 2): identity first, then the tenant
+        // header as an authorized selector, then membership -- 401 / 400 / 404 in that order, all
+        // owned by ICallerContext (acceptance A15-8). The scope it hands back is the tenant scope
+        // this handler runs in; disposing it here is the same lifetime the old BeginScope had.
+        var caller = await callerContext.ResolveTenantAsync(request, cancellationToken);
+        if (caller.Failure is not null)
         {
-            return Results.BadRequest(tenantError);
+            return caller.Failure;
         }
 
-        if (!TryResolveUserId(request, out var userId, out var userError))
-        {
-            return Results.BadRequest(userError);
-        }
+        using var callerTenantScope = caller.Scope;
+        var tenantId = caller.TenantId;
+
+        // NW-05: the per-user key is the validated identity ICallerContext just verified the membership for.
+
+        var userId = caller.Identity!;
 
         if (!Guid.TryParse(id, out var conversationGuid))
         {
@@ -203,17 +227,25 @@ public static class ConversationsEndpointExtensions
         HttpRequest httpRequest,
         ConversationService conversationService,
         Raffa.Api.AskCopilotService askCopilotService,
+        ICallerContext callerContext,
         CancellationToken cancellationToken)
     {
-        if (!TryResolveTenant(httpRequest, out var tenantId, out var tenantError))
+        // NW-05 (ADR-010 w15 footer; ADR-022 w15 footer clause 2): identity first, then the tenant
+        // header as an authorized selector, then membership -- 401 / 400 / 404 in that order, all
+        // owned by ICallerContext (acceptance A15-8). The scope it hands back is the tenant scope
+        // this handler runs in; disposing it here is the same lifetime the old BeginScope had.
+        var caller = await callerContext.ResolveTenantAsync(httpRequest, cancellationToken);
+        if (caller.Failure is not null)
         {
-            return Results.BadRequest(tenantError);
+            return caller.Failure;
         }
 
-        if (!TryResolveUserId(httpRequest, out var userId, out var userError))
-        {
-            return Results.BadRequest(userError);
-        }
+        using var callerTenantScope = caller.Scope;
+        var tenantId = caller.TenantId;
+
+        // NW-05: the per-user key is the validated identity ICallerContext just verified the membership for.
+
+        var userId = caller.Identity!;
 
         if (!Guid.TryParse(id, out var conversationGuid))
         {
@@ -351,53 +383,6 @@ public static class ConversationsEndpointExtensions
         ReplyKind.Refusal => ConversationMessageKind.Refusal,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown ReplyKind."),
     };
-
-    internal static bool TryResolveTenant(HttpRequest request, out TenantId tenantId, out string error)
-    {
-        tenantId = default;
-        error = string.Empty;
-
-        if (!request.Headers.TryGetValue("X-Tenant-Id", out var tenantHeaderValues)
-            || !Guid.TryParse(tenantHeaderValues.ToString(), out var tenantGuid))
-        {
-            error = "A valid 'X-Tenant-Id' header (a GUID) is required.";
-            return false;
-        }
-
-        tenantId = new TenantId(tenantGuid);
-        return true;
-    }
-
-    /// <summary>See the type doc comment's "Caller identity" section.</summary>
-    internal static bool TryResolveUserId(HttpRequest request, out string userId, out string error)
-    {
-        userId = string.Empty;
-        error = string.Empty;
-
-        var principal = request.HttpContext.User;
-        if (principal.Identity is { IsAuthenticated: true })
-        {
-            var subject = principal.FindFirst(ClaimTypes.NameIdentifier)?.Value
-                ?? principal.FindFirst("sub")?.Value;
-            if (!string.IsNullOrWhiteSpace(subject))
-            {
-                userId = subject;
-                return true;
-            }
-        }
-
-        if (request.Headers.TryGetValue(UserIdHeaderName, out var userIdValues)
-            && !string.IsNullOrWhiteSpace(userIdValues.ToString()))
-        {
-            userId = userIdValues.ToString();
-            return true;
-        }
-
-        error = $"A valid '{UserIdHeaderName}' header is required (non-authoritative until the " +
-                "API JWT lands — ADR-022/OQ-askv2-005).";
-        return false;
-    }
-
     /// <summary>Same "reject, don't clamp" convention as
     /// <c>PortfolioEndpointExtensions.TryParsePage</c>.</summary>
     private static bool TryParseTake(IQueryCollection query, out int take, out string error)

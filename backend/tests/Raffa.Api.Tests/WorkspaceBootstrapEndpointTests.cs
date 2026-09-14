@@ -27,11 +27,11 @@ namespace Raffa.Api.Tests;
 /// <see cref="IdentityWorkspaceDbContext"/> swap <see cref="InMemoryAskEngineFactory"/> already
 /// wires up for this exact table (see that helper's own doc comment).
 /// </summary>
-public sealed class WorkspaceBootstrapEndpointTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class WorkspaceBootstrapEndpointTests : IClassFixture<RaffaApiFactory>
 {
     private readonly WebApplicationFactory<Program> _baseFactory;
 
-    public WorkspaceBootstrapEndpointTests(WebApplicationFactory<Program> factory)
+    public WorkspaceBootstrapEndpointTests(RaffaApiFactory factory)
     {
         _baseFactory = factory;
     }
@@ -39,7 +39,12 @@ public sealed class WorkspaceBootstrapEndpointTests : IClassFixture<WebApplicati
     [Fact]
     public async Task Missing_identity_returns_401_and_writes_nothing()
     {
-        var factory = WithInMemoryIdentity();
+        // NW-05 (2026-09-14): the shared test host runs a caller-less request as an implicit Admin so
+        // the pre-NW-05 endpoint tests keep their meaning; THIS test is about no identity at all, so
+        // it builds a host without that filter.
+        using var bare = new RaffaApiFactory { ImplicitTenantAdmin = false };
+        var factory = bare.WithInMemoryAskEngine(new RecordingAiGateway(
+            new FixtureAiGateway(new AiGatewayModelOptions(), SystemClock.Instance, new AiGatewayOcrOptions())));
         var client = factory.CreateClient();
 
         var response = await client.PostAsJsonAsync("/api/workspaces", new { name = "Acme Procurement" });

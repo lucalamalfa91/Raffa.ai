@@ -38,13 +38,13 @@ namespace Raffa.Api.Tests;
 /// exists — ADR-024 replaced it with the reply contract every other `kind`-bearing endpoint in this
 /// host now returns.
 /// </summary>
-public sealed class ChatEndpointTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class ChatEndpointTests : IClassFixture<RaffaApiFactory>
 {
     private readonly WebApplicationFactory<Program> _factory;
 
-    public ChatEndpointTests(WebApplicationFactory<Program> factory)
+    public ChatEndpointTests(RaffaApiFactory factory)
     {
-        _factory = factory.WithWebHostBuilder(builder =>
+        _factory = factory.WithPresentedCallersAsMembers().WithWebHostBuilder(builder =>
         {
             builder.UseSetting(
                 "ConnectionStrings:DocumentsContracts",
@@ -79,9 +79,13 @@ public sealed class ChatEndpointTests : IClassFixture<WebApplicationFactory<Prog
     }
 
     [Fact]
-    public async Task Missing_user_header_returns_400()
+    public async Task Missing_user_header_is_401_no_identity_no_service()
     {
-        var client = _factory.CreateClient();
+        // Fix 2026-09-14 (NW-05): the caller's identity comes from the validated token, never from a
+        // header, so "no X-User-Id" is now "no identity" -- 401 from ICallerContext before the tenant
+        // header is even read. Proven on a host without the implicit tenant Admin.
+        using var factory = new RaffaApiFactory { ImplicitTenantAdmin = false };
+        var client = factory.CreateClient();
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/chat/query")
         {
             Content = JsonContent.Create(new { question = "What liability do we have with AWS?" }),
@@ -90,7 +94,7 @@ public sealed class ChatEndpointTests : IClassFixture<WebApplicationFactory<Prog
 
         var response = await client.SendAsync(request);
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     [Theory]

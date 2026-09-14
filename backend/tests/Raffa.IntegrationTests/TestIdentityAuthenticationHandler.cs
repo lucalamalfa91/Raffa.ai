@@ -53,6 +53,14 @@ public sealed class TestIdentityAuthenticationHandler(
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
+        // ADR-025 Rule A3 (T14): when a validated token principal is already on the request -- put
+        // there by a filter that simulates the bearer token -- the header is ignored outright, not
+        // merely out-ranked: NoResult leaves that principal in place untouched.
+        if (Context.User?.Identity is { IsAuthenticated: true })
+        {
+            return Task.FromResult(AuthenticateResult.NoResult());
+        }
+
         var claims = new List<Claim>();
 
         // No trim, no case change: TokenCallerIdentity.Resolve() applies neither (an `oid` is an

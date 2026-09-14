@@ -29,11 +29,11 @@ namespace Raffa.Api.Tests;
 /// <see cref="PortfolioEndpointTests.WithSupplierNames"/>.
 /// </para>
 /// </summary>
-public sealed class RenewalsEndpointTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class RenewalsEndpointTests : IClassFixture<RaffaApiFactory>
 {
     private readonly WebApplicationFactory<Program> _factory;
 
-    public RenewalsEndpointTests(WebApplicationFactory<Program> factory)
+    public RenewalsEndpointTests(RaffaApiFactory factory)
     {
         _factory = factory.WithWebHostBuilder(builder =>
         {

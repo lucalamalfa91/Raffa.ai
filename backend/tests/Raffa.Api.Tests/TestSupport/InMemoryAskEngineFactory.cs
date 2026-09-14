@@ -9,6 +9,7 @@ using Raffa.Identity.Workspace.Infrastructure;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Storage;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
@@ -60,7 +61,7 @@ internal static class InMemoryAskEngineFactory
     // TryAdd/Add ambiguity to worry about) — overrides the InMemory provider's own default
     // IModelCustomizer with InMemoryModelCustomizer's "strip Embedding.Vector" version (see that
     // type's own doc comment).
-    private static readonly IServiceProvider InMemoryProviderServices = new ServiceCollection()
+    internal static readonly IServiceProvider InMemoryProviderServices = new ServiceCollection()
         .AddEntityFrameworkInMemoryDatabase()
         .AddSingleton<IModelCustomizer, InMemoryModelCustomizer>()
         .BuildServiceProvider();
@@ -127,24 +128,9 @@ internal static class InMemoryAskEngineFactory
                 .UseInMemoryDatabase(identityDbName)
                 .UseInternalServiceProvider(InMemoryProviderServices));
 
-            // Task E17/F01/US01/T01 (wave w15): NW-05 (E18/F01/US01/T01) replaced the interim
-            // X-User-Id-reading ICallerIdentity implementation with TokenCallerIdentity, which
-            // trusts only a validated bearer token's `oid` claim (Program.cs's own
-            // AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(...)) — but
-            // did not update this shared test factory, so every X-User-Id-sending test in this
-            // project (most of them, predating NW-05) silently started authenticating nobody and
-            // getting 401 everywhere a real guard used to answer 404/403/2xx. Minting a real,
-            // signed Entra token in a unit test is not possible, so this is the standard ASP.NET
-            // Core test substitute: register a second scheme that reads the same X-User-Id header
-            // these tests already send and turns it into the authenticated `oid` claim
-            // TokenCallerIdentity reads, then make it the default scheme for this host only —
-            // Program.cs's own JwtBearer registration is untouched and never runs in these tests.
-            // Every existing X-User-Id-driven assertion in this project is therefore proven again
-            // exactly as before, through the real (not faked) ICallerIdentity/WorkspaceRoleResolver
-            // seam, with no change to any test body.
-            services.AddAuthentication(TestUserIdAuthenticationHandler.SchemeName)
-                .AddScheme<AuthenticationSchemeOptions, TestUserIdAuthenticationHandler>(
-                    TestUserIdAuthenticationHandler.SchemeName, _ => { });
+            // Fix 2026-09-14: the X-User-Id -> `oid` bridge and the implicit tenant Admin both moved to
+            // RaffaApiFactory.ConfigureWebHost, which every host in this project derives from, so they are
+            // no longer registered here (registering the scheme twice throws at startup).
 
             services.AddSingleton<IAiGateway>(aiGateway);
             services.AddSingleton(auditWriter ?? new NoOpAuditWriter());
@@ -244,6 +230,14 @@ internal sealed class TestUserIdAuthenticationHandler(
         // comment records that as deliberate for an opaque, case-sensitive `oid`), so this bridge
         // does not either — a header value only whitespace is treated exactly like a missing one,
         // the same "IsNullOrWhiteSpace -> unauthenticated" rule TokenCallerIdentity itself applies.
+        // ADR-025 Rule A3 (T14): when a validated token principal is already on the request -- put
+        // there by a filter that simulates the bearer token -- the header is ignored outright, not
+        // merely out-ranked: NoResult leaves that principal in place untouched.
+        if (Context.User?.Identity is { IsAuthenticated: true })
+        {
+            return Task.FromResult(AuthenticateResult.NoResult());
+        }
+
         if (!Request.Headers.TryGetValue("X-User-Id", out var values) ||
             string.IsNullOrWhiteSpace(values.ToString()))
         {

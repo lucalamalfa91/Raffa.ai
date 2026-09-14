@@ -206,6 +206,13 @@ public sealed class DemoFixtureSeedIntegrationFixture : WebApplicationFactory<Pr
 
         builder.ConfigureTestServices(services =>
         {
+            // Fix 2026-09-14 (NW-05): the X-User-Id -> `oid` bridge, see TestIdentityAuthenticationHandler.
+            services.AddAuthentication(TestIdentityAuthenticationHandler.SchemeName)
+                .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, TestIdentityAuthenticationHandler>(
+                    TestIdentityAuthenticationHandler.SchemeName, _ => { });
+            // Fix 2026-09-14 (NW-05 on the data plane): a request naming a tenant but no caller runs as
+            // that tenant's implicit Admin -- see ImplicitTenantAdminStartupFilter.
+            services.AddSingleton<IStartupFilter, ImplicitTenantAdminStartupFilter>();
             services.AddSingleton<IDocumentStorage>(DocumentStorage);
         });
     }

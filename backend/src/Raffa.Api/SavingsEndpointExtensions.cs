@@ -1,3 +1,4 @@
+using Raffa.Api.Infrastructure;
 using Raffa.Savings.Application;
 using Raffa.SharedKernel;
 
@@ -50,13 +51,21 @@ public static class SavingsEndpointExtensions
     private static async Task<IResult> GetSavingsOpportunitiesAsync(
         HttpRequest request,
         SavingsOpportunityService savingsOpportunityService,
+        ICallerContext callerContext,
         CancellationToken cancellationToken)
     {
-        if (!request.Headers.TryGetValue("X-Tenant-Id", out var tenantHeaderValues)
-            || !Guid.TryParse(tenantHeaderValues.ToString(), out var tenantGuid))
+        // NW-05 (ADR-010 w15 footer; ADR-022 w15 footer clause 2): identity first, then the tenant
+        // header as an authorized selector, then membership -- 401 / 400 / 404 in that order, all
+        // owned by ICallerContext (acceptance A15-8). The scope it hands back is the tenant scope
+        // this handler runs in; disposing it here is the same lifetime the old BeginScope had.
+        var caller = await callerContext.ResolveTenantAsync(request, cancellationToken);
+        if (caller.Failure is not null)
         {
-            return Results.BadRequest("A valid 'X-Tenant-Id' header (a GUID) is required.");
+            return caller.Failure;
         }
+
+        using var callerTenantScope = caller.Scope;
+        var tenantGuid = caller.TenantId.Value;
 
         var tenantId = new TenantId(tenantGuid);
 
@@ -88,13 +97,21 @@ public static class SavingsEndpointExtensions
         SavingsOpportunityPatchRequest request,
         HttpRequest httpRequest,
         SavingsOpportunityService savingsOpportunityService,
+        ICallerContext callerContext,
         CancellationToken cancellationToken)
     {
-        if (!httpRequest.Headers.TryGetValue("X-Tenant-Id", out var tenantHeaderValues)
-            || !Guid.TryParse(tenantHeaderValues.ToString(), out var tenantGuid))
+        // NW-05 (ADR-010 w15 footer; ADR-022 w15 footer clause 2): identity first, then the tenant
+        // header as an authorized selector, then membership -- 401 / 400 / 404 in that order, all
+        // owned by ICallerContext (acceptance A15-8). The scope it hands back is the tenant scope
+        // this handler runs in; disposing it here is the same lifetime the old BeginScope had.
+        var caller = await callerContext.ResolveTenantAsync(httpRequest, cancellationToken);
+        if (caller.Failure is not null)
         {
-            return Results.BadRequest("A valid 'X-Tenant-Id' header (a GUID) is required.");
+            return caller.Failure;
         }
+
+        using var callerTenantScope = caller.Scope;
+        var tenantGuid = caller.TenantId.Value;
 
         if (!Guid.TryParse(id, out var opportunityGuid))
         {

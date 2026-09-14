@@ -1,3 +1,4 @@
+using Raffa.Api.Tests.TestSupport;
 using System.Net;
 using Microsoft.AspNetCore.Mvc.Testing;
 
@@ -15,11 +16,11 @@ namespace Raffa.Api.Tests;
 /// connection string this host now checks at startup already is) is enough to satisfy
 /// <c>Program.cs</c>'s fail-fast startup check.
 /// </summary>
-public sealed class QuotesEndpointTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class QuotesEndpointTests : IClassFixture<RaffaApiFactory>
 {
     private readonly WebApplicationFactory<Program> _factory;
 
-    public QuotesEndpointTests(WebApplicationFactory<Program> factory)
+    public QuotesEndpointTests(RaffaApiFactory factory)
     {
         _factory = factory;
     }
