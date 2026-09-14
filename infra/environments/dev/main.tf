@@ -155,12 +155,12 @@ module "containerapps" {
   # ADR-005 w15 footer §2: pinned explicitly (equals the module default)
   # so both ceilings are visible at the env root, matching this root's own
   # sku_name = "B_Standard_B1ms" precedent above.
-  api_max_replicas    = 3
   # Fix 2026-09-14, first real twenty-file batch: ~100 s per document, so the ceiling on
   # documents in flight is what the user feels. 5 replicas x ServiceBus__MaxConcurrentCalls 4
   # = 20 in flight for a twenty-file drop; a replica exists only while the queue is
   # non-empty, so this is a burst ceiling, not a fixed cost. demo stays at 3 until its own
   # promotion. min_replicas stays 0 (ADR-005 w15 footer S2).
+  api_max_replicas    = 3
   worker_max_replicas = 5
   # Task E16/F01/US01/T01 (NW-68): this root's OWN module.communication and
   # module.keyvault instances only -- never demo's.
