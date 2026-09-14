@@ -729,9 +729,9 @@ per-user conversations.
   query…"`, `ROUTE_LINE_BY_INTENT`, and a raw `Document:<guid>`/`Clause:<guid>` chip are gone with
   the V1 screen this task deleted -- the "thinking" copy (`THINKING_COPY`) is the one line kept
   verbatim.
-- **`X-User-Id` on every call** (`client.ts`, OQ-askv2-005/ADR-022) -- see "API client" below for the
-  full header provenance; today only `/api/conversations*` actually reads it
-  (`ConversationsEndpointExtensions.TryResolveUserId`).
+- **`Authorization: Bearer <token>` on every call** (`client.ts`, task E18/F01/US02/T01, NW-05;
+  ADR-012 w15 footer clause 1) -- see "API client" below for the full header provenance; the interim
+  `X-User-Id` header this bullet used to name is deleted, not conditional.
 
 ### Renewals (ADR-024 V2, `raffa-v2/screens-v2.md` #7; originally ADR-020 screen 8, task E08/F01/US01/T01)
 
@@ -1033,16 +1033,40 @@ Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
   `POST /api/conversations/{id}/messages` (the reply contract), `GET /api/capabilities`,
   `GET /api/market/records/{id}`, and `supplierName` on the portfolio/360/renewals/documents
   responses -- the seventh web epic to extend this document (see "API client" provenance paragraphs
-  above), and the first to add a header every method in this file now sends when supplied:
+  above), and the first to add a header every method in this file sent when supplied: the interim
   `X-User-Id` (`userIdHeaders`, OQ-askv2-005/ADR-022), resolved lazily via a `getUserId` callback
-  `main.tsx` supplies once MSAL resolves an account, mirroring `X-Tenant-Id`'s own
-  resolved-per-request shape -- an absent/blank id omits the header key entirely (never a blank
-  `X-User-Id: ""`), so every pre-existing call site/test keeps its exact `toEqual` headers check
-  passing unchanged. `getCapabilities`/`getMarketRecord` are the first genuinely tenant-agnostic
-  reads in this file (no `X-Tenant-Id` at all -- the catalog and the market index are both
-  static/shared, not per-tenant); `getCapabilities` also has no documented non-2xx body
-  (`CapabilitiesEndpointExtensions` has no failure branch), so its own error path is a status-based
-  message only, never an attempted JSON parse, unlike every write/tenant-scoped read above it.
+  `main.tsx` supplied once MSAL resolved an account, mirroring `X-Tenant-Id`'s own
+  resolved-per-request shape. **Deleted whole by task E18/F01/US02/T01 below**, not left as a
+  fallback. `getCapabilities`/`getMarketRecord` are the first genuinely tenant-agnostic reads in this
+  file (no `X-Tenant-Id` at all -- the catalog and the market index are both static/shared, not
+  per-tenant); `getCapabilities` also has no documented non-2xx body (`CapabilitiesEndpointExtensions`
+  has no failure branch), so its own error path is a status-based message only, never an attempted
+  JSON parse, unlike every write/tenant-scoped read above it.
+
+- **Task E18/F01/US02/T01 (wave w15, NW-05; ADR-012 w15 footer clause 1, ADR-010 w14 footer clause
+  3)** made the SPA send the token it already asks Entra for. `createApiClient`'s identity parameter
+  is now an **async token accessor** (`GetAccessToken`, `client.ts`), and **one** internal helper
+  (`authHeaders`) attaches `Authorization: Bearer <token>` to every request -- the 37 inline spreads
+  of the old synchronous `userIdHeaders(getUserId)` (one per method, the same 37-call-site count the
+  ADR names) collapse to that one choke point, verified this wave by a vitest case that enumerates
+  the whole `ApiClient` surface and asserts every method attaches the header
+  (`tests/api/client.test.ts`). The interim `X-User-Id` header, its `userIdHeaders` helper, the
+  synchronous `GetUserId` accessor, and `main.tsx`'s closure over
+  `getAllAccounts()[0]?.username` are all **deleted**, not made conditional. Acquisition
+  (`auth/msalConfig.ts#acquireApiAccessToken`) is `acquireTokenSilent({ scopes:
+  appConfig.oidcApiScopes, account })`, falling back to `acquireTokenPopup` only on
+  `InteractionRequiredAuthError` -- **never** `acquireTokenRedirect`, because a redirect unloads the
+  page and on `/invite/accept` would destroy the in-memory invitation token. A `401` after a
+  successful silent acquisition is treated as a server rejection, not a stale token: it is surfaced
+  exactly as before (no call site retries), never triggering a second acquisition. The access token is
+  never stored -- read from MSAL's own cache per request, never copied into React state, a module
+  variable, or either Web Storage -- and the SPA still reads no `roles` claim from it: `role` keeps
+  coming from the `GET /api/workspaces` row (`components/shell/workspaceRole.ts`'s least-privilege
+  parse, unchanged). `X-Tenant-Id` is unaffected: it continues to be sent as a selector alongside the
+  new `Authorization` header, and the `raffa.signin.currentWorkspace` hint's four-way resolution order
+  survives unchanged (OQ-w15-ca-03). No OpenAPI/contract edit and no CI change -- the generator parses
+  only `responses`, so headers stay hand-written by construction, and `buildLoginRequest` already
+  requested `appConfig.oidcApiScopes` before this task.
 
 - **Task E15/F01/US01/T01 (invitation-lifecycle-api, wave w14; ADR-025/ADR-026)** extended
   `openapi/raffa-api.v1.json` with `DELETE /api/workspaces/{tenantId}/invites/{id}`
@@ -1091,9 +1115,9 @@ web/
   src/
     api/
       generated/schema.ts     # AUTO-GENERATED; do not edit by hand
-      client.ts                # createApiClient(baseUrl, getUserId?) -> { getHealth(), createWorkspace({ name }), uploadDocument(tenantId, file), getDocument(tenantId, id), listDocuments(tenantId, query?), getDocumentPreviewUrl(tenantId, id), reprocessDocument(tenantId, id), deleteDocument(tenantId, id), getPortfolio(tenantId, query?), getContract360(tenantId, id), getRenewals(tenantId), getRenewalPriority(tenantId, contractId), getCorrectionHistory(tenantId, id), correctContract(tenantId, id, request), postRenewalAction(tenantId, contractId, request), askRaffa(tenantId, request), uploadQuote(tenantId, file, fields?), getQuoteAssessment(tenantId, id), recalculateQuoteAssessment(tenantId, id, mappings?), captureNegotiationOutcome(tenantId, request), getSavingsKpis(tenantId), getSavingsOpportunities(tenantId), listConversations(tenantId), createConversation(tenantId, request?), getConversation(tenantId, id), postMessage(tenantId, conversationId, request), getCapabilities(), getMarketRecord(id) } -- every method also sends X-User-Id when getUserId is supplied (task E13/F09/US01/T04, OQ-askv2-005)
+      client.ts                # createApiClient(baseUrl, getAccessToken?) -> { getHealth(), createWorkspace({ name }), uploadDocument(tenantId, file), getDocument(tenantId, id), listDocuments(tenantId, query?), getDocumentPreviewUrl(tenantId, id), reprocessDocument(tenantId, id), deleteDocument(tenantId, id), getPortfolio(tenantId, query?), getContract360(tenantId, id), getRenewals(tenantId), getRenewalPriority(tenantId, contractId), getCorrectionHistory(tenantId, id), correctContract(tenantId, id, request), postRenewalAction(tenantId, contractId, request), askRaffa(tenantId, request), uploadQuote(tenantId, file, fields?), getQuoteAssessment(tenantId, id), recalculateQuoteAssessment(tenantId, id, mappings?), captureNegotiationOutcome(tenantId, request), getSavingsKpis(tenantId), getSavingsOpportunities(tenantId), listConversations(tenantId), createConversation(tenantId, request?), getConversation(tenantId, id), postMessage(tenantId, conversationId, request), getCapabilities(), getMarketRecord(id) } -- every method attaches `Authorization: Bearer <token>` when getAccessToken resolves one (task E18/F01/US02/T01, NW-05), through the one `authHeaders` choke point
     config/appConfig.ts       # fetch + validate runtime config
-    auth/msalConfig.ts        # AppConfig -> MSAL Configuration (no secret, ever)
+    auth/msalConfig.ts        # AppConfig -> MSAL Configuration (no secret, ever); acquireApiAccessToken(instance, appConfig) -- acquireTokenSilent, falling back to acquireTokenPopup (task E18/F01/US02/T01)
     styles/                   # design system (tokens + component catalogue); see below
     routes/
       signin/               # ADR-018 `/signin`; gated on MSAL auth state, not a URL route (see "Screens" above)

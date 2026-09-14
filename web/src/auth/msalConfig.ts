@@ -9,8 +9,10 @@
 // bundle") requires structurally, not just by convention.
 import {
   BrowserCacheLocation,
+  InteractionRequiredAuthError,
   type Configuration,
   type HandleRedirectPromiseOptions,
+  type IPublicClientApplication,
   type RedirectRequest,
 } from "@azure/msal-browser";
 import type { AppConfig } from "../config/appConfig";
@@ -81,4 +83,53 @@ export function buildLoginRequest(appConfig: AppConfig): RedirectRequest {
   return {
     scopes: appConfig.oidcApiScopes,
   };
+}
+
+/**
+ * Task E18/F01/US02/T01 (wave w15, NW-05; ADR-012 w15 footer clause 1, ADR-010 w14 footer clause 3):
+ * the one place this app acquires an API access token. `src/api/client.ts`'s single `Authorization`
+ * choke point calls this on every request (wrapped as a `GetAccessToken` closure -- see
+ * `src/main.tsx`'s own call site); it has no other caller.
+ *
+ * `acquireTokenSilent` first, `acquireTokenPopup` only on `InteractionRequiredAuthError` -- **never**
+ * a page-navigating, redirect-based acquisition call. A redirect unloads the page, and on
+ * `/invite/accept` that would destroy the in-memory invitation token the first w14 footer's clause 6
+ * protects; per-request identity may not do that on any route. `scopes` is the same
+ * `appConfig.oidcApiScopes` `buildLoginRequest` above already asks for at sign-in, so acquisition
+ * here is ordinarily a cache read, not a new consent.
+ *
+ * Total, not partial: this never throws or rejects. No signed-in account, a silent failure that is
+ * not `InteractionRequiredAuthError`, or a blocked/closed/failed popup all resolve `null` -- the
+ * request that called it then goes out with no `Authorization` header and gets the server's own
+ * honest 401 (the same "Sign-in required" surface every `ApiClient` method already renders), rather
+ * than a silent retry loop or a redirect nothing here may start.
+ */
+export async function acquireApiAccessToken(
+  instance: IPublicClientApplication,
+  appConfig: AppConfig,
+): Promise<string | null> {
+  // getActiveAccount() is null until something calls setActiveAccount, which nothing in this app
+  // does (single-account usage throughout) -- fall back to the first cached account, the same
+  // account main.tsx/App.tsx already treat as "the" signed-in one.
+  const account = instance.getActiveAccount() ?? instance.getAllAccounts()[0];
+  if (!account) return null;
+
+  const scopes = appConfig.oidcApiScopes;
+
+  try {
+    const result = await instance.acquireTokenSilent({ scopes, account });
+    return result.accessToken;
+  } catch (error) {
+    if (!(error instanceof InteractionRequiredAuthError)) return null;
+  }
+
+  try {
+    const result = await instance.acquireTokenPopup({ scopes, account });
+    return result.accessToken;
+  } catch {
+    // Popup blocked, closed, or otherwise failed -- never a redirect from inside a request. The
+    // caller proceeds with no Authorization header; see this function's own doc comment for why
+    // that is the honest outcome, not a gap.
+    return null;
+  }
 }
