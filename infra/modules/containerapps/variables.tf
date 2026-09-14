@@ -116,3 +116,93 @@ variable "ai_gateway_model_env" {
   description = "AiGateway__Models__<Role>__ModelId / __ModelVersion (and extra AiGateway__* knobs) env vars for both Container Apps (modules/foundry model_env output). Empty map = no env block emitted."
   type        = map(string)
 }
+
+# Task E16/F01/US01/T01 (NW-27, ADR-007 w15 footer §2): the
+# servicebus -> containerapps edge. Every value is a module output, never
+# a root literal (ADR-005 w15 footer §2: "no plan-time unknown is
+# introduced" -- fqdn is composed from the namespace's own literal name,
+# not a post-apply attribute, so the reviewer sees the real string in the
+# plan instead of "(known after apply)").
+variable "servicebus_namespace_name" {
+  description = "Name of this environment's Service Bus namespace (modules/servicebus name output). Used only as the KEDA custom_scale_rule's \"namespace\" metadata key -- application code reads the FQDN below instead."
+  type        = string
+}
+
+variable "servicebus_fqdn" {
+  description = "Fully qualified domain name of this environment's Service Bus namespace (modules/servicebus fqdn output). Published as ServiceBus__FullyQualifiedNamespace on both apps (optional binding)."
+  type        = string
+}
+
+variable "servicebus_topic_name" {
+  description = "Name of the extraction-events topic (modules/servicebus topic_name output). Published as ServiceBus__TopicName on both apps and as the KEDA scale rule's topicName metadata."
+  type        = string
+}
+
+variable "servicebus_subscription_name" {
+  description = "Name of the document-processing subscription (modules/servicebus subscription_name output). Published as ServiceBus__SubscriptionName on the worker only, and as the KEDA scale rule's subscriptionName metadata."
+  type        = string
+}
+
+# ADR-005 w15 footer §2: default 3, up from 1 -- not cosmetic (A15-1 drops
+# fifteen files in flight). Scale-out on consumption is paid only while
+# used.
+variable "api_max_replicas" {
+  description = "Maximum API replicas (ADR-005 w15 footer §2)."
+  type        = number
+  default     = 3
+}
+
+variable "worker_max_replicas" {
+  description = "Maximum worker replicas (ADR-005 w15 footer §2). min_replicas stays 0 -- raising that floor to 1 is rejected outright as a new fixed monthly cost line."
+  type        = number
+  default     = 3
+}
+
+# ADR-011 w15 footer §1 -- the wave's one new Key Vault secret, API app
+# only (the worker neither issues nor sends invitations).
+variable "acs_connection_secret_id" {
+  description = "Versionless Key Vault secret ID for acs-connection (modules/keyvault acs_connection_secret_versionless_id). Container Apps resolve it via the workload identity, exactly like postgres_connection_secret_id / storage_connection_secret_id above."
+  type        = string
+}
+
+variable "acs_sender_address" {
+  description = "This environment's invitation-mail sender address (modules/communication sender_address output) -- never hand-composed by this module (ADR-005 w15 footer §3)."
+  type        = string
+}
+
+# ADR-010 w15 footer / ADR-005 w15 footer §4 -- four non-secret env vars,
+# API app only. ClientId and Audience are deliberately both published: at
+# requested_access_token_version = 2 the `aud` claim IS the client id,
+# while the SPA requests scopes against the identifier URI.
+variable "azuread_authority" {
+  description = "OIDC v2 issuer URL (modules/identity issuer output). Published as AzureAd__Authority."
+  type        = string
+}
+
+variable "azuread_tenant_id" {
+  description = "Entra directory (tenant) GUID (modules/identity tenant_id output). Published as AzureAd__TenantId and, when guest provisioning is enabled, Invitations__GuestProvisioning__TenantId."
+  type        = string
+}
+
+variable "azuread_client_id" {
+  description = "API application (client) id (modules/identity api_client_id output) -- the default aud claim on this environment's v2 access tokens. Published as AzureAd__ClientId. Never swap with azuread_audience (ADR-010 w15 footer S15-2)."
+  type        = string
+}
+
+variable "azuread_audience" {
+  description = "API application's identifier URI (modules/identity api_identifier_uri output) -- the alternate resource identifier a client requests a token for, never the audience a v2 token itself carries. Published as AzureAd__Audience. Never swap with azuread_client_id (ADR-010 w15 footer S15-2)."
+  type        = string
+}
+
+# ADR-005 w15 footer §5 rule 3 / ADR-016 w15 footer clause 15 -- product
+# switches, not provisioning gates. A working connection string / a
+# granted permission behind either flag false is harmless.
+variable "invitation_mail_enabled" {
+  description = "Publishes Invitations__Mail__Enabled = \"true\"|\"false\" on the API app (dev: true; demo: false until its own post-promotion acceptance -- infra/environments/{dev,demo}/variables.tf)."
+  type        = bool
+}
+
+variable "guest_provisioning_enabled" {
+  description = "Publishes Invitations__GuestProvisioning__Enabled = \"true\"|\"false\" on the API app. Mirrors modules/identity's own count-gated flag of the same name -- both must be wired from the same environment-root variable."
+  type        = bool
+}
