@@ -97,9 +97,14 @@ public sealed class WorkspaceBootstrapEndpointTests : IClassFixture<WebApplicati
             Content = new StringContent(
                 """{"name":"Acme Procurement","role":"Procurement"}""", Encoding.UTF8, "application/json"),
         };
-        // Mixed case and padded deliberately: proves ICallerIdentity trims and lower-cases
-        // (ADR-025 §A1), not just documents it.
-        request.Headers.Add("X-User-Id", "  Founder@Acme.Example  ");
+        // Task E17/F01/US01/T01 (wave w15): no longer mixed-case/padded. NW-05
+        // (E18/F01/US01/T01) replaced the header-reading ICallerIdentity this comment used to
+        // describe with TokenCallerIdentity, whose own doc comment records the change as
+        // deliberate: an Entra `oid` is "opaque, case-sensitive... lower-casing it here would
+        // silently stop matching every row already bound at invite time" (ADR-010 w15 footer
+        // §2.1). Trim/lower-case defence belonged to a header a human or the SPA could type;
+        // it does not belong to a validated token claim, so this test no longer exercises it.
+        request.Headers.Add("X-User-Id", "founder@acme.example");
 
         var response = await client.SendAsync(request);
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);

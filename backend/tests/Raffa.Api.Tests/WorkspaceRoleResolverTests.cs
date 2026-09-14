@@ -10,24 +10,22 @@ using Microsoft.EntityFrameworkCore;
 namespace Raffa.Api.Tests;
 
 /// <summary>
-/// Unit-level proof for task E14/F02/US02/T01 (wave w14, story us-02-admin-role-from-membership;
-/// ADR-022 w14 footer clause 1; ADR-025 §E "a client-declared role is never an authorization
-/// source"): <see cref="WorkspaceRoleResolver.ResolveAsync"/>'s order is claims then
-/// <c>workspace_membership</c>, and nothing else — deleting the header branch means a header can no
-/// longer grant a role a real membership row does not hold, and cannot revoke one a real membership
-/// row does hold (Rule E2, "membership wins in both directions"). <see cref="DocumentAdminActionsAuthorizationTests"/>
-/// carries the same proof over the real HTTP surface (N9); this class exercises the resolver
-/// directly.
+/// Unit-level proof for <see cref="WorkspaceRoleResolver.ResolveAsync"/>'s current (post-NW-06,
+/// wave w15; ADR-010 w15 footer §3/S15-13; ADR-025 §I) shape: <c>workspace_membership</c> is the
+/// <b>only</b> source of a workspace role — no claims branch, no header branch. Rewritten by task
+/// E17/F01/US01/T01: the wave base carried this class still constructing the deleted
+/// <c>Raffa.Api.Infrastructure.HeaderCallerIdentity</c> (a build break — that type no longer
+/// exists) and asserting the precedence NW-06's own doc comment calls "a deletion, not a
+/// tidy-up" (an authenticated claim resolving ahead of membership). Both are gone in this
+/// rewrite; the four cases below instead pin the shape NW-06 actually shipped.
 ///
 /// <para>
-/// Constructs <see cref="WorkspaceRoleResolver"/> itself against an EF Core InMemory
-/// <see cref="IdentityWorkspaceDbContext"/> and the real <see cref="HeaderCallerIdentity"/> (wired to
+/// Constructs <see cref="WorkspaceRoleResolver"/> against an EF Core InMemory
+/// <see cref="IdentityWorkspaceDbContext"/> and the real <see cref="TokenCallerIdentity"/> (wired to
 /// the same <see cref="HttpContext"/> under test, exactly like the production DI graph wires it) —
-/// no fake stand-in for the identity seam, so the spoofed-header scenarios below exercise the actual
-/// header-reading code the SPA's requests go through. This requires
-/// <c>Raffa.Api/AssemblyInfo.cs</c>'s <c>InternalsVisibleTo("Raffa.Api.Tests")</c> grant, added by
-/// this same task, the same shape <c>Raffa.Worker/AssemblyInfo.cs</c> already uses for
-/// <c>Raffa.Worker.Tests</c>.
+/// no fake stand-in for the identity seam, the same discipline the original file established.
+/// <c>Raffa.Api/AssemblyInfo.cs</c>'s <c>InternalsVisibleTo("Raffa.Api.Tests")</c> grant (unchanged
+/// by this task) is what makes both internal types reachable here.
 /// </para>
 /// </summary>
 public sealed class WorkspaceRoleResolverTests
@@ -35,14 +33,15 @@ public sealed class WorkspaceRoleResolverTests
     private static readonly DateTimeOffset Now = new(2026, 9, 11, 9, 0, 0, TimeSpan.Zero);
 
     [Fact]
-    public async Task T2a_a_procurement_member_sending_a_spoofed_admin_header_resolves_to_procurement()
+    public async Task A_real_membership_resolves_and_stray_role_headers_change_nothing()
     {
+        // ADR-025 §E/§I: WorkspaceRoleResolver reads no X-Role/X-Workspace-Role header at all any
+        // more -- proven by setting both to a lie ("Admin") on a caller who is really Procurement.
         var tenantId = new TenantId(Guid.NewGuid());
-        const string email = "buyer@acme.example";
+        const string subject = "buyer-oid-123";
         using var db = CreateDb();
-        await SeedMembershipAsync(db, tenantId, email, WorkspaceRoleName.Procurement);
-        var resolver = CreateResolver(db, out var httpContext);
-        httpContext.Request.Headers["X-User-Id"] = email;
+        await SeedMembershipAsync(db, tenantId, subject, WorkspaceRoleName.Procurement);
+        var resolver = CreateResolver(db, subject, out var httpContext);
         httpContext.Request.Headers["X-Role"] = "Admin";
         httpContext.Request.Headers["X-Workspace-Role"] = "Admin";
 
@@ -52,33 +51,11 @@ public sealed class WorkspaceRoleResolverTests
     }
 
     [Fact]
-    public async Task A_header_claiming_procurement_does_not_revoke_a_real_admin()
+    public async Task A_validated_identity_with_no_membership_anywhere_resolves_to_no_role()
     {
         var tenantId = new TenantId(Guid.NewGuid());
-        const string email = "admin@acme.example";
         using var db = CreateDb();
-        await SeedMembershipAsync(db, tenantId, email, WorkspaceRoleName.Admin);
-        var resolver = CreateResolver(db, out var httpContext);
-        httpContext.Request.Headers["X-User-Id"] = email;
-        httpContext.Request.Headers["X-Role"] = "Procurement";
-        httpContext.Request.Headers["X-Workspace-Role"] = "Procurement";
-
-        var role = await resolver.ResolveAsync(httpContext, tenantId);
-
-        Assert.Equal(WorkspaceRoleName.Admin, role);
-    }
-
-    [Fact]
-    public async Task A_spoofed_admin_header_with_no_membership_anywhere_resolves_to_no_role()
-    {
-        // ADR-025 §E "nothing else": a well-formed identity with no live membership row in this
-        // tenant must not have the header manufacture a role for it either.
-        var tenantId = new TenantId(Guid.NewGuid());
-        using var db = CreateDb();
-        var resolver = CreateResolver(db, out var httpContext);
-        httpContext.Request.Headers["X-User-Id"] = "stranger@acme.example";
-        httpContext.Request.Headers["X-Role"] = "Admin";
-        httpContext.Request.Headers["X-Workspace-Role"] = "Admin";
+        var resolver = CreateResolver(db, "stranger-oid-999", out var httpContext);
 
         var role = await resolver.ResolveAsync(httpContext, tenantId);
 
@@ -86,20 +63,40 @@ public sealed class WorkspaceRoleResolverTests
     }
 
     [Fact]
-    public async Task An_authenticated_role_claim_still_resolves_ahead_of_membership()
+    public async Task No_identity_at_all_resolves_to_no_role()
     {
-        // Claims stay the first, ADR-010 end-state source -- untouched by this deletion. No
-        // X-User-Id/membership row exists at all here, so this only passes if the claim branch
-        // still runs first.
         var tenantId = new TenantId(Guid.NewGuid());
         using var db = CreateDb();
-        var resolver = CreateResolver(db, out var httpContext);
-        httpContext.User = new ClaimsPrincipal(new ClaimsIdentity(
-            [new Claim(ClaimTypes.Role, "Procurement")], authenticationType: "Test"));
+        var resolver = CreateResolver(db, subject: null, out var httpContext);
 
         var role = await resolver.ResolveAsync(httpContext, tenantId);
 
-        Assert.Equal(WorkspaceRoleName.Procurement, role);
+        Assert.Null(role);
+    }
+
+    [Fact]
+    public async Task A_role_and_tenant_claim_on_the_token_grant_nothing_without_a_real_membership_row()
+    {
+        // ADR-010 w15 footer §3/S15-13, ADR-025 §I ("a tenant_id or roles claim is never the
+        // authorization source"): NW-06 deleted the claims branch entirely, so a token carrying
+        // roles/tenant_id claims -- exactly the shape a real Entra app-role assignment produces --
+        // must not resolve to that role absent a live workspace_membership row.
+        var tenantId = new TenantId(Guid.NewGuid());
+        using var db = CreateDb();
+        var httpContext = new DefaultHttpContext();
+        httpContext.User = new ClaimsPrincipal(new ClaimsIdentity(
+            [
+                new Claim("oid", "claims-only-oid"),
+                new Claim(ClaimTypes.Role, "Admin"),
+                new Claim("tenant_id", tenantId.Value.ToString()),
+            ],
+            authenticationType: "Test"));
+        var accessor = new HttpContextAccessor { HttpContext = httpContext };
+        var resolver = new WorkspaceRoleResolver(db, new TenantContext(), new TokenCallerIdentity(accessor));
+
+        var role = await resolver.ResolveAsync(httpContext, tenantId);
+
+        Assert.Null(role);
     }
 
     // ----- helpers -----
@@ -112,21 +109,37 @@ public sealed class WorkspaceRoleResolverTests
         return new IdentityWorkspaceDbContext(options);
     }
 
-    private static WorkspaceRoleResolver CreateResolver(IdentityWorkspaceDbContext db, out HttpContext httpContext)
+    /// <summary><paramref name="subject"/> becomes the token's validated <c>oid</c> claim
+    /// (<see cref="TokenCallerIdentity"/>'s own source, via <c>GetObjectId()</c>) — a
+    /// <see langword="null"/> subject leaves <paramref name="httpContext"/> with its default,
+    /// unauthenticated principal, matching "no bearer token presented".</summary>
+    private static WorkspaceRoleResolver CreateResolver(
+        IdentityWorkspaceDbContext db, string? subject, out HttpContext httpContext)
     {
         httpContext = new DefaultHttpContext();
+        if (subject is not null)
+        {
+            httpContext.User = new ClaimsPrincipal(new ClaimsIdentity(
+                [new Claim("oid", subject)], authenticationType: "Test"));
+        }
+
         var accessor = new HttpContextAccessor { HttpContext = httpContext };
         return new WorkspaceRoleResolver(db, new TenantContext(), new TokenCallerIdentity(accessor));
     }
 
-    /// <summary>Seeds the membership row directly through the DbContext -- the same "not through
-    /// WorkspaceMembershipService.InviteAsync" fixture shape this task's own sibling integration
-    /// test uses, since InviteAsync's live-grant-at-invite-time behaviour is phase-3 (E15/F01/US01/T01)
-    /// territory, not this resolver's concern.</summary>
+    /// <summary>Seeds the membership row directly through the DbContext, keyed on
+    /// <see cref="WorkspaceUser.ExternalSubjectId"/> (the token <c>oid</c> this resolver now
+    /// matches, ADR-010 w15 footer §2.1) rather than email.</summary>
     private static async Task SeedMembershipAsync(
-        IdentityWorkspaceDbContext db, TenantId tenantId, string email, WorkspaceRoleName roleName)
+        IdentityWorkspaceDbContext db, TenantId tenantId, string externalSubjectId, WorkspaceRoleName roleName)
     {
-        var user = new WorkspaceUser { TenantId = tenantId, Email = email, CreatedAt = Now };
+        var user = new WorkspaceUser
+        {
+            TenantId = tenantId,
+            Email = $"{externalSubjectId}@acme.example",
+            ExternalSubjectId = externalSubjectId,
+            CreatedAt = Now,
+        };
         var role = new WorkspaceRole { TenantId = tenantId, Name = roleName, CreatedAt = Now };
         db.WorkspaceUsers.Add(user);
         db.WorkspaceRoles.Add(role);

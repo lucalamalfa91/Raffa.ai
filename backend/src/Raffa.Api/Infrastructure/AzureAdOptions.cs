@@ -16,8 +16,21 @@ namespace Raffa.Api.Infrastructure;
 /// <c>ValidateAudience</c> rejects every token the same way. Both failures surface as a <b>401</b>
 /// at the point of use — the API still <b>boots</b>.
 /// </para>
+/// <para>
+/// Task E17/F01/US01/T01 (wave w15, NW-67/NW-68) narrows this from <c>public</c> to
+/// <c>internal</c> — its only consumer is <c>Program.cs</c> in this same assembly (verified: zero
+/// references outside <c>Raffa.Api</c>) — because
+/// <c>Raffa.ArchitectureTests.DependencyDirectionTests.Host_must_not_contain_domain_types</c>
+/// flags any <c>public</c> type in a host assembly whose name does not contain
+/// "Program"/"Startup"/"Extensions" as business logic leaking into a host. That test was already
+/// red on this wave's base checkout before this task (a pre-existing gap left by the task that
+/// added this type, E18/F01/US01/T01) — fixed here because this task's own Definition of Done
+/// requires <c>Raffa.ArchitectureTests</c> green, and this task adds the same class of new
+/// internal-only host types (<see cref="GraphGuestProvisioner"/>) that the fix's own reasoning
+/// must already hold for.
+/// </para>
 /// </summary>
-public sealed class AzureAdOptions
+internal sealed class AzureAdOptions
 {
     public const string SectionName = "AzureAd";
 
