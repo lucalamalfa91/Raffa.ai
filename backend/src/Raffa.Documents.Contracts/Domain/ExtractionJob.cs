@@ -20,4 +20,30 @@ public sealed class ExtractionJob : TenantScopedEntity
     public DateTimeOffset? StartedAt { get; set; }
     public DateTimeOffset? CompletedAt { get; set; }
     public string? ErrorDetail { get; set; }
+
+    /// <summary>
+    /// Task E16/F02/US01/T01 (async-processing-schema, ADR-027 §D3): how many times a worker has
+    /// claimed this job, incremented atomically by the conditional-<c>UPDATE</c> claim
+    /// (<see cref="Infrastructure.ExtractionJobClaimStore"/>) — never by a plain EF
+    /// <c>SaveChanges</c>. Defaulted to 0 at the database, so every pre-existing row backfills
+    /// safely and the previous API image, which never reads or writes this column, keeps working
+    /// unchanged (AC-2). Compared against the application's <c>MaxAttempts</c> so the database,
+    /// not the dead-letter queue, owns the terminal state (ADR-027 §D3 round-3 footer §C7).
+    /// </summary>
+    public int AttemptCount { get; set; }
+
+    /// <summary>
+    /// When a worker last claimed this job (ADR-027 §D3). Null until the first claim; us-02's
+    /// handler uses it, alongside a lease window, to decide whether a stale claim may be
+    /// reclaimed. Nullable so a never-claimed <see cref="ExtractionJobStatus.Queued"/> row needs
+    /// no sentinel value.
+    /// </summary>
+    public DateTimeOffset? ClaimedAt { get; set; }
+
+    /// <summary>
+    /// Which worker instance last claimed this job (ADR-027 §D3) — an operator-facing identifier
+    /// (host/replica name), never a tenant-supplied value. Nullable for the same reason as
+    /// <see cref="ClaimedAt"/>.
+    /// </summary>
+    public string? ClaimedBy { get; set; }
 }

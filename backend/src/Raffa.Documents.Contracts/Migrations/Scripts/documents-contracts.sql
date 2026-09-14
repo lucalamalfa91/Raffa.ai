@@ -851,3 +851,56 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260914010142_AddExtractionJobClaimAndDocumentRejection') THEN
+    ALTER TABLE extraction_job ADD attempt_count integer NOT NULL DEFAULT 0;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260914010142_AddExtractionJobClaimAndDocumentRejection') THEN
+    ALTER TABLE extraction_job ADD claimed_at timestamp with time zone;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260914010142_AddExtractionJobClaimAndDocumentRejection') THEN
+    ALTER TABLE extraction_job ADD claimed_by character varying(200);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260914010142_AddExtractionJobClaimAndDocumentRejection') THEN
+    ALTER TABLE document ADD rejection_confidence double precision;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260914010142_AddExtractionJobClaimAndDocumentRejection') THEN
+    ALTER TABLE document ADD rejection_detected_type character varying(50);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260914010142_AddExtractionJobClaimAndDocumentRejection') THEN
+    ALTER TABLE document ADD rejection_reason character varying(30);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260914010142_AddExtractionJobClaimAndDocumentRejection') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20260914010142_AddExtractionJobClaimAndDocumentRejection', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+
