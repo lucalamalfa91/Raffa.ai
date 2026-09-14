@@ -206,6 +206,10 @@ public sealed class AskRaffaRagCrossTenantIsolationTests : IClassFixture<R0Integ
             });
         }).CreateClient();
 
+        // NW-05 (2026-09-14): a presented caller must be a member of the tenant it names, or the gate
+        // answers 404 before the guard ever runs.
+        await ImplicitTenantAdminStartupFilter.EnsureMembershipAsync(_fixture.Services, tenantId, "dave@guard-test.example", WorkspaceRoleName.Admin);
+
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/chat/query")
         {
             Content = JsonContent.Create(new { question = "what notice period do we have on file" }),

@@ -46,16 +46,18 @@ public sealed class ImplicitTenantAdminStartupFilter : IStartupFilter
             // missing or malformed tenant header reaches ICallerContext's 400, as it did before NW-05);
             // the membership is only granted when the request actually names a tenant. A request that
             // presents a caller -- even a blank one -- is never touched.
+            // Integration hosts: a request that names a tenant but presents no caller runs as that
+            // tenant's implicit Admin. A request with no tenant header is left alone -- R0's
+            // "unauthenticated caller cannot read the audit trail" must stay a genuinely anonymous
+            // request (401), and no integration test relies on the 400 for a missing tenant header.
             var headers = context.Request.Headers;
-            if (!headers.ContainsKey(UserHeaderName))
+            if (!headers.ContainsKey(UserHeaderName)
+                && headers.TryGetValue(TenantHeaderName, out var tenantValues)
+                && Guid.TryParse(tenantValues.ToString(), out var tenantGuid))
             {
                 headers[UserHeaderName] = Email;
-                if (headers.TryGetValue(TenantHeaderName, out var tenantValues)
-                    && Guid.TryParse(tenantValues.ToString(), out var tenantGuid))
-                {
-                    await EnsureMembershipAsync(context.RequestServices, new TenantId(tenantGuid), Email, WorkspaceRoleName.Admin, context.RequestAborted)
-                        .ConfigureAwait(false);
-                }
+                await EnsureMembershipAsync(context.RequestServices, new TenantId(tenantGuid), Email, WorkspaceRoleName.Admin, context.RequestAborted)
+                    .ConfigureAwait(false);
             }
 
             await nextMiddleware().ConfigureAwait(false);
