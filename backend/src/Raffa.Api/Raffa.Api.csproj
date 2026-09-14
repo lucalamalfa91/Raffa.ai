@@ -29,9 +29,32 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Only the host may reference a cloud storage SDK directly (ADR-002); domain modules see
-         only Raffa.SharedKernel.Storage.IDocumentStorage. -->
+    <!-- Only the host may reference a cloud storage/transport SDK directly (ADR-002); domain
+         modules see only the seam (Raffa.SharedKernel.Storage.IDocumentStorage;
+         Raffa.Identity.Workspace.Application.IInvitationMailer). Task E17/F01/US01/T01 (wave w15,
+         NW-68; ADR-005 w15 footer §3, ADR-011 w15 footer §1, ADR-026 w15 footer §7 item 3):
+         AcsInvitationMailer lives here, not in Raffa.Identity.Workspace, for the identical reason
+         AzureBlobDocumentStorage does — DependencyDirectionTests.Domain_module_must_not_reference_provider_sdks
+         forbids any "Azure."-prefixed package on that module by name; NullInvitationMailer (the
+         module's own provider-SDK-free default) is unaffected. Authenticates with a Key
+         Vault-sourced connection string for w15 (ADR-011 w15 footer §1b: the managed-identity/
+         TokenCredential form is a recorded later amendment, not a redesign). -->
+    <PackageReference Include="Azure.Communication.Email" Version="1.1.0" />
     <PackageReference Include="Azure.Storage.Blobs" Version="12.26.0" />
+    <!-- Task E17/F01/US01/T01 (wave w15, NW-67; ADR-025 §J.1a, ADR-026 w15 footer §2): the
+         existing per-environment workload managed identity now also authenticates
+         GraphGuestProvisioner's single Graph call site via DefaultAzureCredential — same package,
+         same credential shape Raffa.AiGateway already uses for Foundry, pinned to the identical
+         version so the two do not diverge. SdkAllowListTests permits Azure.Identity here (and in
+         Raffa.AiGateway, and in Raffa.Worker for NW-27's Service Bus RBAC); Azure.AI.* stays
+         Raffa.AiGateway-only. -->
+    <PackageReference Include="Azure.Identity" Version="1.17.1" />
+    <!-- Task E17/F01/US01/T01 (wave w15, NW-67; ADR-025 §J.1, ADR-026 w15 footer §2): the one and
+         only Microsoft.Graph call site in the solution (GraphGuestProvisioner) — a provider SDK,
+         so ADR-002 confines it to a host, never a domain module. SdkAllowListTests permits it in
+         Raffa.Api only; DependencyDirectionTests.ForbiddenSdkPrefixes additionally forbids it in
+         every ADR-002 domain module. -->
+    <PackageReference Include="Microsoft.Graph" Version="6.6.0" />
     <!-- Task E18/F01/US01/T01 (wave w15, NW-05; ADR-010): JWT bearer validation itself
          (AddAuthentication/AddJwtBearer, JwtBearerOptions, TokenValidationParameters) is part of
          the Microsoft.AspNetCore.App shared framework Microsoft.NET.Sdk.Web already references,
