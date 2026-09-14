@@ -236,6 +236,8 @@ internal sealed class TestUserIdAuthenticationHandler(
 {
     public const string SchemeName = "TestUserId";
 
+    public const string UserEmailHeaderName = "X-User-Email";
+
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         // No trim, no case change: TokenCallerIdentity.Resolve() applies neither (its own doc
@@ -251,7 +253,26 @@ internal sealed class TestUserIdAuthenticationHandler(
         // "oid": the exact claim type Microsoft.Identity.Web's ClaimsPrincipal.GetObjectId()
         // resolves (TokenCallerIdentity.Resolve()'s own source) — never ClaimTypes.NameIdentifier
         // or another URI form, which GetObjectId() does not recognize.
-        var identity = new ClaimsIdentity([new Claim("oid", values.ToString())], authenticationType: SchemeName);
+        var claims = new List<Claim> { new("oid", values.ToString()) };
+
+        // Fix 2026-09-14: a real access token also carries an `email` claim (TokenCallerIdentity
+        // .ResolveEmail()'s source; requested as an optional claim by infra/modules/identity), and
+        // POST /api/workspaces now needs it for the creator's Email column since the subject
+        // became an `oid`. An explicit X-User-Email header wins so a test can model the real
+        // shape (GUID subject, separate address); otherwise an X-User-Id that already is an address
+        // doubles as the email, which keeps every pre-existing X-User-Id-only test exactly as it
+        // was. Neither header, no claim -- the "token without email" branch stays testable.
+        if (Request.Headers.TryGetValue(UserEmailHeaderName, out var emailValues) &&
+            !string.IsNullOrWhiteSpace(emailValues.ToString()))
+        {
+            claims.Add(new Claim("email", emailValues.ToString()));
+        }
+        else if (values.ToString().Contains('@'))
+        {
+            claims.Add(new Claim("email", values.ToString()));
+        }
+
+        var identity = new ClaimsIdentity(claims, authenticationType: SchemeName);
         var ticket = new AuthenticationTicket(new ClaimsPrincipal(identity), SchemeName);
         return Task.FromResult(AuthenticateResult.Success(ticket));
     }

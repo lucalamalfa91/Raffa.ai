@@ -126,8 +126,26 @@ public static class WorkspaceEndpointExtensions
             return Results.Unauthorized();
         }
 
+
+        // Fix 2026-09-14 (NW-05, ADR-010 w15 footer §2.1): Resolve() returns the token's `oid`
+        // since w15, but the creator row's Email column needs a real address -- passing the `oid`
+        // made every real sign-in fail with "'<guid>' is not a valid email address to invite." and
+        // left `dev` unable to create a workspace at all. The address comes from the token's own
+        // `email` claim (requested as an optional claim on the access token by
+        // infra/modules/identity), never from `preferred_username`/`upn`, which is the mangled
+        // #EXT# value for a B2B guest. The `oid` still goes down as the creator's
+        // ExternalSubjectId, which is what every later membership lookup matches on.
+        var email = callerIdentity.ResolveEmail();
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return Results.BadRequest(
+                "Your sign-in token carries no email address, so a workspace cannot be created for it. " +
+                "Sign out and sign in again; if that does not help, the API app registration is " +
+                "missing its optional `email` claim.");
+        }
+
         var result = await provisioningService
-            .CreateWorkspaceAsync(request.Name, identity, request.Industry, request.Country, cancellationToken)
+            .CreateWorkspaceAsync(request.Name, email, request.Industry, request.Country, callerObjectId: identity, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
 
         if (result.IsFailure)

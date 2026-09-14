@@ -87,9 +87,10 @@ public sealed class WorkspaceProvisioningService(
     /// </summary>
     public async Task<Result<WorkspaceTenant>> CreateWorkspaceAsync(
         string name,
-        string callerIdentity,
+        string callerEmail,
         string? industry = null,
         string? country = null,
+        string? callerObjectId = null,
         CancellationToken cancellationToken = default)
     {
         var trimmedName = name?.Trim() ?? string.Empty;
@@ -98,7 +99,7 @@ public sealed class WorkspaceProvisioningService(
             return Result<WorkspaceTenant>.Failure("A workspace 'name' is required.");
         }
 
-        var trimmedIdentity = callerIdentity?.Trim() ?? string.Empty;
+        var trimmedIdentity = callerEmail?.Trim() ?? string.Empty;
         if (trimmedIdentity.Length == 0)
         {
             return Result<WorkspaceTenant>.Failure("A caller identity is required to create a workspace.");
@@ -145,6 +146,17 @@ public sealed class WorkspaceProvisioningService(
         {
             return Result<WorkspaceTenant>.Failure(creatorResult.Error);
         }
+
+
+        // Fix 2026-09-14 (NW-05, ADR-010 w15 footer §2.1): the creator signs in with a token whose
+        // subject is an Entra `oid`, not an address, so the row is keyed by BOTH -- the address for
+        // the roster to display and for an invitation to match, the `oid` for every membership
+        // lookup that runs afterwards. CallerContext, WorkspaceRoleResolver and the members/invites
+        // guards all compare the caller's identity against `Email OR ExternalSubjectId`, so a
+        // creator row carrying only an email would leave the creator unable to reach the very
+        // workspace they just created (404 on every tenant-scoped route).
+        creatorResult.Value.ExternalSubjectId =
+            string.IsNullOrWhiteSpace(callerObjectId) ? null : callerObjectId.Trim();
 
         var membershipResult = WorkspaceMembershipFactory.CreateMembership(creatorResult.Value, adminRole, now);
         if (membershipResult.IsFailure)
