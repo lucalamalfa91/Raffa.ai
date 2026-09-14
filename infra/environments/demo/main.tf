@@ -94,6 +94,9 @@ module "identity" {
   # Task E16/F01/US01/T01 (NW-67): demo stays false until its own
   # post-promotion acceptance (ADR-016 w15 footer clause 14).
   guest_provisioning_enabled = var.guest_provisioning_enabled
+  # Fix 2026-09-14: same as dev -- the grant is out-of-band, Terraform
+  # never owns it, so demo's later flip cannot repeat the dev failure.
+  guest_role_assignment_managed = var.guest_role_assignment_managed
 }
 
 # ADR-005: PostgreSQL Flexible Server, Burstable "B_Standard_B1ms" (module

@@ -53,3 +53,17 @@ variable "guest_provisioning_enabled" {
   type        = bool
   default     = false
 }
+
+# Fix 2026-09-14: false for the same reason as dev -- the Graph
+# User.Invite.All grant is written OUT-OF-BAND by a Global Administrator,
+# never by this apply, because the identity running the HCP apply is not a
+# directory administrator (on dev it returned `Authorization_RequestDenied`
+# and failed the whole run, Service Bus and ACS included). demo also keeps
+# guest_provisioning_enabled false this wave, so the resource is gated
+# twice over; this var is what stops demo's own post-promotion flip from
+# reproducing the dev failure.
+variable "guest_role_assignment_managed" {
+  description = "Whether Terraform manages the Graph User.Invite.All app-role assignment (modules/identity). demo: false -- the same apply identity, the same out-of-band grant."
+  type        = bool
+  default     = false
+}

@@ -59,3 +59,20 @@ variable "guest_provisioning_enabled" {
   type        = bool
   default     = true
 }
+
+# Fix 2026-09-14, first real dev apply: false because the Graph
+# User.Invite.All grant on id-raffa-dev-workload is written OUT-OF-BAND by
+# a Global Administrator, not by this apply. The HCP apply identity is not
+# a directory administrator -- it returned `Authorization_RequestDenied`
+# and took Service Bus and ACS down with it. This var only decides who
+# writes the grant; guest_provisioning_enabled above still publishes
+# Invitations__GuestProvisioning__Enabled to the API app, so the product
+# feature is on. Flip to true only if the apply identity is ever granted
+# AppRoleAssignment.ReadWrite.All + Application.Read.All, and then import
+# the existing assignment in the same change (never let Terraform create a
+# second one).
+variable "guest_role_assignment_managed" {
+  description = "Whether Terraform manages the Graph User.Invite.All app-role assignment (modules/identity). dev: false -- a Global Administrator holds that grant out-of-band."
+  type        = bool
+  default     = false
+}

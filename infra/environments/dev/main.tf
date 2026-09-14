@@ -76,6 +76,10 @@ module "identity" {
   # contingent on the apply identity's Graph rights (ADR-015 w15 footer);
   # count-gated inside the module so a missing right degrades, not blocks.
   guest_provisioning_enabled = var.guest_provisioning_enabled
+  # Fix 2026-09-14: the grant itself is written out-of-band by a Global
+  # Administrator (this apply identity is not one), so Terraform publishes
+  # the product flag above but does not own the app-role assignment.
+  guest_role_assignment_managed = var.guest_role_assignment_managed
 }
 
 module "postgres" {

@@ -261,16 +261,29 @@ secret, `acs-connection` (handle `acs-cs`, API app only). The sender
 address is always the module's own `sender_address` output, never
 hand-composed.
 
-**Guest provisioning (NW-67).** `modules/identity` gains a
-`count`-gated `azuread_app_role_assignment` granting the workload identity
-the Microsoft Graph **application** permission `User.Invite.All`, gated by
-`var.guest_provisioning_enabled` (default `false`). **The apply identity —
-not the GitHub OIDC deploy identity above — needs its own one-time Graph
-grant** (`AppRoleAssignment.ReadWrite.All` + `Application.Read.All`, or
-preferably a Global Administrator performing the single assignment
-out-of-band before the first apply) before this flag can safely flip to
-`true`; until then it stays `false` and the rest of this PR's apply still
-succeeds (ADR-015 w15 footer).
+**Guest provisioning (NW-67).** `modules/identity` carries a `count`-gated
+`azuread_app_role_assignment` granting the workload identity the Microsoft
+Graph **application** permission `User.Invite.All`. **The apply identity —
+not the GitHub OIDC deploy identity above — is not a directory
+administrator**, so it cannot write that assignment: the first real `dev`
+apply returned `Authorization_RequestDenied` and failed the whole run with
+it, Service Bus and ACS included. Two variables therefore gate two
+different decisions (split apart 2026-09-14):
+
+- `var.guest_provisioning_enabled` — the **product** decision. Publishes
+  `Invitations__GuestProvisioning__Enabled` to the API app. `true` on
+  `dev`, `false` on `demo` until its own post-promotion acceptance.
+- `var.guest_role_assignment_managed` — the **apply-plane** decision: does
+  Terraform own the grant. **`false` on both roots**, because a Global
+  Administrator writes it out-of-band — the path this README already
+  called "preferably". The resource exists only when both are `true`.
+
+The out-of-band grant is a single Graph call (`docs/waves/w15-acceptance.md`
+§0.3), it is idempotent, and it lives outside Terraform state, so there is
+nothing to import afterwards. Granting the apply identity
+`AppRoleAssignment.ReadWrite.All` instead would let an automation principal
+grant itself any Graph permission — that is why this stays out-of-band and
+not a widened CI role (ADR-015 w15 footer).
 
 **JWT config (NW-05).** Four non-secret env vars on the API app only —
 `AzureAd__Authority`, `AzureAd__TenantId`, `AzureAd__ClientId`,
@@ -281,9 +294,10 @@ identifier URI).
 
 **Per-environment flags**, mirroring `ai_gateway_wired`'s own shape
 (`infra/environments/{dev,demo}/variables.tf`): `invitation_mail_enabled`
-and `guest_provisioning_enabled` are both `true` on `dev` from this apply
-and `false` on `demo` until its own post-promotion acceptance flips them
-in a one-line PR.
+and `guest_provisioning_enabled` are both `true` on `dev` and `false` on
+`demo` until its own post-promotion acceptance flips them in a one-line PR.
+`guest_role_assignment_managed` is `false` on **both** — it tracks who
+holds the directory right, not which environment wants the feature.
 
 ## Known gaps
 
@@ -339,18 +353,35 @@ in a one-line PR.
   block again once it lands in state — same rule as the Postgres/AcrPull
   gap above.
 - **The apply identity's Graph permission is a manual, out-of-band step,
-  not a Terraform resource.** `var.guest_provisioning_enabled` (default
-  `false`) gates one `count`-gated `azuread_app_role_assignment` in
-  `modules/identity`; while the identity running the HCP apply lacks the
-  directory right to write it, the flag must stay `false` and this whole
-  apply still succeeds (NW-67 degrades, nothing else is blocked). Before
-  flipping it, confirm the apply identity's Graph rights at the plan —
-  either the assignment already exists out-of-band (`count = 0` in the
-  plan) or the apply identity itself holds
-  `AppRoleAssignment.ReadWrite.All` + `Application.Read.All` and the plan
+  not a Terraform resource.** Confirmed the hard way on the first real
+  `dev` apply (2026-09-14): the HCP apply identity holds no directory
+  right, the `azuread_app_role_assignment` returned
+  `Authorization_RequestDenied`, and because that resource was gated on the
+  *product* flag alone it failed the entire run — Service Bus, ACS and the
+  Container Apps env vars with it. `var.guest_role_assignment_managed`
+  (default `true` in the module, **`false` in both roots**) now separates
+  "Terraform owns the grant" from "this environment wants guest
+  provisioning", so a missing directory right degrades NW-67 as intended
+  instead of blocking everything else. Keep it `false`: a Global
+  Administrator writes the grant once, out-of-band, and it is idempotent.
+  Flip it to `true` only if the apply identity is ever given
+  `AppRoleAssignment.ReadWrite.All` + `Application.Read.All` — and then
+  `import` the existing assignment in the same change, and confirm the plan
   shows exactly **one** `azuread_app_role_assignment` (never a second, and
   never one whose principal is the apply identity itself) — ADR-015 /
   ADR-011 w15 footers.
+- **`Microsoft.Communication` must be registered on the subscription before
+  `modules/communication` can apply.** It is not in the `azurerm` provider's
+  default registration set, and an unregistered namespace fails the apply
+  with `MissingSubscriptionRegistration` (409) on both the Communication
+  Service and the Email Service. Registered on subscription
+  `47fb604b-…` on 2026-09-14 with
+  `az provider register --namespace Microsoft.Communication`; it is a
+  subscription-level, one-time act that needs the
+  `Microsoft.Resources/…/register/action` right, so it is deliberately not
+  in Terraform (the apply identity would need that right on every run, and
+  a failed registration would then break every resource rather than three).
+  Any new subscription hosting this stack needs the same one-liner first.
 - **`azuread_application.api` must plan as `~`, never `-/+`.** The
   `optional_claims` block this wave adds is a mutable property; a plan
   showing replacement instead of an in-place update means something else
