@@ -87,55 +87,77 @@ public sealed class ExtractionRequestedHandler(
         // delivery uses, and runs it first. The prioritised job's own message arrives later, loses the
         // claim to a row that exists, and is completed (C6). Work is conserved: nothing is done
         // twice, the FIFO resumes right after, the reordering is the whole effect.
-        var prioritised = await dbContext.ExtractionJobs
-            .AsNoTracking()
-            .Where(j => j.TenantId == tenantId
-                && j.Stage == ExtractionStage.Classification
-                && j.Status == ExtractionJobStatus.Queued
-                && j.ClaimedAt == null
-                && j.PrioritisedAt != null
-                && j.Id != jobId)
-            .OrderBy(j => j.PrioritisedAt)
-            .ThenBy(j => j.QueuedAt)
-            .Take(MaxPrioritisedPerDelivery)
-            .Select(j => new { j.Id, j.DocumentId })
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
-
-        foreach (var prioritisedJob in prioritised)
+        //
+        // ADR-027 w15 footer C12, fix 2026-09-14 (post-deploy): this whole block is best-effort, the
+        // same posture the web side already takes toward the priority call it fires ("an optimisation,
+        // never a promise the screen has to keep") -- extended here to the Worker side, which the
+        // original footer left unguarded. A message's own job must NEVER fail because the queue-jump
+        // lookup itself failed (a transient query error, a timeout, anything not yet named): every
+        // delivery, prioritised or not, runs `dbContext.ExtractionJobs...` once here, so a single bad
+        // query would have stalled the *entire tenant's* queue at `Uploaded` forever, exactly the
+        // silent-stranding failure ADR-027 §C6 exists to bound -- caused this time by the optimisation
+        // meant to help, not by the pipeline itself.
+        try
         {
-            try
+            var prioritised = await dbContext.ExtractionJobs
+                .AsNoTracking()
+                .Where(j => j.TenantId == tenantId
+                    && j.Stage == ExtractionStage.Classification
+                    && j.Status == ExtractionJobStatus.Queued
+                    && j.ClaimedAt == null
+                    && j.PrioritisedAt != null
+                    && j.Id != jobId)
+                .OrderBy(j => j.PrioritisedAt)
+                .ThenBy(j => j.QueuedAt)
+                .Take(MaxPrioritisedPerDelivery)
+                .Select(j => new { j.Id, j.DocumentId })
+                .ToListAsync(cancellationToken)
+                .ConfigureAwait(false);
+
+            foreach (var prioritisedJob in prioritised)
             {
-                var outcome = await ProcessOneAsync(tenantId, prioritisedJob.DocumentId, prioritisedJob.Id, cancellationToken)
-                    .ConfigureAwait(false);
-                logger.LogInformation(
-                    "Prioritised job {PrioritisedJobId} handled ahead of job {JobId}: {Outcome}",
-                    prioritisedJob.Id.Value, jobId.Value, outcome);
+                try
+                {
+                    var outcome = await ProcessOneAsync(tenantId, prioritisedJob.DocumentId, prioritisedJob.Id, cancellationToken)
+                        .ConfigureAwait(false);
+                    logger.LogInformation(
+                        "Prioritised job {PrioritisedJobId} handled ahead of job {JobId}: {Outcome}",
+                        prioritisedJob.Id.Value, jobId.Value, outcome);
+                }
+                catch (ExtractionTransientException exception)
+                {
+                    // ReleaseOrFailAsync already put the row back to queued/unclaimed (still prioritised),
+                    // so the next delivery in this tenant, or its own message, retries it. This delivery's
+                    // own message must not pay for it: no abandon, no delivery count burnt.
+                    logger.LogWarning(
+                        "Prioritised job {PrioritisedJobId} released after a transient failure; continuing with job {JobId}: {Error}",
+                        prioritisedJob.Id.Value, jobId.Value, exception.Message);
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    // The claim stays held and the row stays Processing for an operator to see -- the same
+                    // honest posture the consumer documents for an unexpected crash on a delivery's own job.
+                    logger.LogError(
+                        exception, "Prioritised job {PrioritisedJobId} failed unexpectedly; continuing with job {JobId}",
+                        prioritisedJob.Id.Value, jobId.Value);
+                }
+                finally
+                {
+                    // Every step below re-queries by id, and the gate, the pipeline and the claim store share
+                    // this one scoped DbContext: nothing a half-written prioritised job left tracked may leak
+                    // into the own job's SaveChanges.
+                    dbContext.ChangeTracker.Clear();
+                }
             }
-            catch (ExtractionTransientException exception)
-            {
-                // ReleaseOrFailAsync already put the row back to queued/unclaimed (still prioritised),
-                // so the next delivery in this tenant, or its own message, retries it. This delivery's
-                // own message must not pay for it: no abandon, no delivery count burnt.
-                logger.LogWarning(
-                    "Prioritised job {PrioritisedJobId} released after a transient failure; continuing with job {JobId}: {Error}",
-                    prioritisedJob.Id.Value, jobId.Value, exception.Message);
-            }
-            catch (Exception exception) when (exception is not OperationCanceledException)
-            {
-                // The claim stays held and the row stays Processing for an operator to see -- the same
-                // honest posture the consumer documents for an unexpected crash on a delivery's own job.
-                logger.LogError(
-                    exception, "Prioritised job {PrioritisedJobId} failed unexpectedly; continuing with job {JobId}",
-                    prioritisedJob.Id.Value, jobId.Value);
-            }
-            finally
-            {
-                // Every step below re-queries by id, and the gate, the pipeline and the claim store share
-                // this one scoped DbContext: nothing a half-written prioritised job left tracked may leak
-                // into the own job's SaveChanges.
-                dbContext.ChangeTracker.Clear();
-            }
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // The lookup itself failed -- nothing was claimed, nothing was processed, nothing to roll
+            // back. Log it and fall straight through to the delivery's own job below: a broken
+            // optimisation must degrade to "no queue-jump this delivery", never to "no processing at
+            // all". `ChangeTracker.Clear()` is safe even though nothing here tracked anything.
+            logger.LogError(exception, "Prioritised-job lookup failed for job {JobId}; continuing without a queue-jump", jobId.Value);
+            dbContext.ChangeTracker.Clear();
         }
 
         // The delivery's own job, with the semantics it always had: an exception here reaches the
