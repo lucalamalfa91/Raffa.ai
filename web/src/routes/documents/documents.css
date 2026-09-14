@@ -219,37 +219,20 @@
   margin: 0 0 var(--space-2);
 }
 
-/* ---- "Not added" card (UploadResultCard.tsx, R-DOC-04) ------------------ */
+/* ---- Updates paused (DocumentStatusTable.tsx, ADR-020 w15 §8) ----------- */
+/* A list-level notice below the grid: the shipped `.hint` + `.btn-secondary` pair laid side by
+   side. No new component, no token (ADR-019 w15 round-3 clause 5). */
 
-.upload-result-card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-3) 0;
-  border-bottom: 1px solid var(--color-divider);
-}
-
-.upload-result-header {
+.documents-updates-paused {
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-3) 0;
 }
 
-.upload-result-filename {
-  font-weight: var(--weight-body-strong);
-  overflow-wrap: anywhere;
-}
-
-.upload-result-dismiss {
-  margin-left: auto;
-  font-size: 12px;
-  padding: 2px 6px;
-}
-
-.upload-result-message {
+.documents-updates-paused .hint {
   margin: 0;
-  font-size: 13px;
-  color: var(--color-neutral-700);
 }
 
 /* ---- Row grid (DocumentStatusTable.tsx) --------------------------------- */

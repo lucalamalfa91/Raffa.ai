@@ -37,9 +37,9 @@ interface JustValidated {
  *   1. **Onboarding empty** (`OnboardingEmptyState.tsx`) -- this tenant has no tracked document at
  *      all (not even an in-flight/rejected one this session).
  *   2. **List** (`AttentionFilter.tsx` + `DocumentStatusTable.tsx`) -- the default once anything
- *      exists; server-backed (`useDocumentsList.ts`, `GET /api/documents`, R-DOC-06), not
- *      `sessionStorage` (see `documentStore.ts`'s own updated header comment for the one remaining
- *      reader of that module, `components/shell/RailNav.tsx`, out of this task's file scope).
+ *      exists; server-backed (`useDocumentsList.ts`, `GET /api/documents`, R-DOC-06). Every number
+ *      on it is the server's own `counts` (ADR-027 §D7; task E16/F03/US01/T01, wave w15) -- the
+ *      `sessionStorage` tracker the rail used to read is deleted (ADR-012 w15 §6).
  *   3. **Review, a state of Documents** (`?review=<documentId>`, `ReviewState.tsx`) -- rendered in
  *      place of the list, never a separate route.
  *
@@ -142,13 +142,13 @@ export default function DocumentsRoute({ apiClient, role }: DocumentsRouteProps)
     });
   };
 
+  // Onboarding empty is a server fact plus this session's own in-flight rows: nothing Raffa.ai
+  // keeps (`counts.all`), nothing it refused (`counts.rejected` -- a refusal is a row now, ADR-020
+  // w15 §1), and nothing picked in this browser yet. Never the fetched page's length.
   const isEmpty =
-    list.fetchState === "ready" &&
-    list.documents.length === 0 &&
-    list.localUploads.length === 0 &&
-    list.rejected.length === 0;
+    list.fetchState === "ready" && list.counts.all === 0 && list.counts.rejected === 0 && list.localUploads.length === 0;
 
-  if (list.fetchState === "loading" && list.documents.length === 0) {
+  if (list.fetchState === "loading") {
     return (
       <div className="documents-screen" role="status" aria-live="polite">
         <p className="micro-meta">Loading documents…</p>
@@ -159,7 +159,10 @@ export default function DocumentsRoute({ apiClient, role }: DocumentsRouteProps)
     );
   }
 
-  if (list.fetchState === "error" && list.documents.length === 0) {
+  // A load that fails after a good load -- or after this session's own drop -- keeps the rows on
+  // screen (they are what the server last said, and the optimistic row must not vanish, ADR-012
+  // w15 §5); only a tenant with nothing at all to show gets the error state in place of the list.
+  if (list.fetchState === "error" && list.counts.all === 0 && list.counts.rejected === 0 && list.localUploads.length === 0) {
     return (
       <div className="error-state" role="alert">
         <h4>Documents unavailable</h4>
@@ -180,7 +183,7 @@ export default function DocumentsRoute({ apiClient, role }: DocumentsRouteProps)
       <header className="screen-header">
         <div>
           <h2 className="screen-title">Documents</h2>
-          <p className="screen-header-summary">{buildKbSummary(list.documents)}</p>
+          <p className="screen-header-summary">{buildKbSummary(list.counts)}</p>
         </div>
       </header>
 
@@ -202,6 +205,11 @@ export default function DocumentsRoute({ apiClient, role }: DocumentsRouteProps)
       )}
 
       <div className="documents-list-main">
+      {list.fetchState === "error" && list.errorMessage !== null && (
+        <p className="hint" role="alert">
+          {list.errorMessage}
+        </p>
+      )}
       {deleteError !== null && (
         <p className="hint" role="alert">
           {deleteError}
@@ -213,18 +221,18 @@ export default function DocumentsRoute({ apiClient, role }: DocumentsRouteProps)
         </p>
       )}
 
-      <AttentionFilter value={list.filter} onChange={list.setFilter} attentionCount={list.attentionCount} allCount={list.allCount} />
+      <AttentionFilter value={list.filter} onChange={list.setFilter} counts={list.counts} />
 
       <DocumentStatusTable
         documents={list.filteredDocuments}
         filter={list.filter}
         localUploads={list.localUploads}
-        rejected={list.rejected}
-        onDismissRejected={list.dismissRejected}
         onRetryLocal={list.retryLocalUpload}
         onRetryServer={list.retryServerDocument}
         onDelete={handleDelete}
         isAdmin={role === "admin"}
+        updatesPaused={list.updatesPaused}
+        onResumeUpdates={list.resumeUpdates}
       />
 
       <p className="micro-meta documents-legend">

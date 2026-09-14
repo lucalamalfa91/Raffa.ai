@@ -166,9 +166,19 @@ export interface GetWorkspaceMembersResult {
 // `expiresAt`/`acceptUrl`/`mailDelivered` straight off the regenerated schema, no hand-written change
 // needed here (see this file's header comment on why response shapes are type-anchored, not
 // hand-declared). `acceptUrl` is the one input getInvitation/acceptInvitation below need.
+//
+// Task E17/F02/US01/T01 (wave w15, NW-69; ADR-026 w15 footer §1/§3/§8, ADR-012 w15 §13.2): the 201
+// gained `deliveryOutcome` (a literal union -- the one discriminant the pane branches on, never a
+// client inference from `mailDelivered` or a status code) and `identityProvisioned`; a guest-
+// provisioning failure is a DECLARED 502 whose `failureReason` is typed straight off the generated
+// `[502]` response below, exactly as `InvitedMemberBody` is anchored to `[201]` -- an undeclared
+// 502 would have left the pane string-matching server prose through `error`.
 type InviteWorkspaceMemberResponses = paths["/api/workspaces/{tenantId}/invites"]["post"]["responses"];
 export type InvitedMemberBody = InviteWorkspaceMemberResponses[201]["content"]["application/json"];
 export type InviteWorkspaceRole = InvitedMemberBody["role"];
+export type InviteDeliveryOutcome = InvitedMemberBody["deliveryOutcome"];
+export type InviteFailureBody = InviteWorkspaceMemberResponses[502]["content"]["application/json"];
+export type InviteFailureReason = InviteFailureBody["failureReason"];
 
 /** `POST /api/workspaces/{tenantId}/invites` request body. Hand-written -- see this file's header comment for why (the generator does not parse `requestBody`). */
 export interface InviteWorkspaceMemberRequest {
@@ -184,7 +194,15 @@ export interface InviteWorkspaceMemberResult {
   /** The issued invitation -- an offer, not a grant, see this method's own doc comment on the
    * ApiClient interface -- present only when `ok` is true. */
   member: InvitedMemberBody | null;
-  /** Plain-language failure reason (400 validation message, 409 duplicate invite/role, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  /**
+   * The 502's machine-readable reason (task E17/F02/US01/T01): the company directory would not
+   * provision a guest, so NO invitation was created. Present only on a real 502 with a parseable
+   * body -- `error` stays `null` in that case; the pane picks its copy from this value's closed set
+   * (`memberViewModel.ts#inviteFailureCopy`) and keeps a catch-all for anything outside it, because
+   * a literal union describes the contract, not the wire.
+   */
+  failureReason: InviteFailureReason | null;
+  /** Plain-language failure reason (400 validation message, 409 held role / cap / concurrent invite, HTTP status text, or network-failure cause), present only when `ok` is false and this was not a structured 502. */
   error: string | null;
 }
 
@@ -285,15 +303,16 @@ export interface UploadDocumentResult {
   ok: boolean;
   /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
   statusCode: number | null;
-  /** The stored document (already processed -- see `ApiClient.uploadDocument`'s own doc comment), present only when `ok` is true. */
+  /** The stored, queued document (`processingStatus: "Uploaded"`, `contractId: null` -- see `ApiClient.uploadDocument`'s own doc comment), present only when `ok` is true. */
   document: UploadedDocument | null;
   /**
-   * The admission gate's own structured rejection, present only on a real `422` (task
-   * E13/F04/US01/T01) -- `error` below stays `null` in that case; a 413/415/generic 400/5xx keeps
-   * using `error` (a plain string) with `rejection: null`, the same split `getQuoteAssessment`'s own
-   * "real body vs bare empty 404" distinction already establishes for a different status pair.
-   * `src/routes/documents/uploadPipeline.ts#getRejectionCopy` maps `reason` onto the requirements'
-   * own longer "Not added" sentence -- this field is never rendered from `hint` directly.
+   * The admission gate's structured rejection, present only on a `422` (task E13/F04/US01/T01) --
+   * `error` below stays `null` in that case; a 413/415/generic 400/5xx keeps using `error` (a plain
+   * string) with `rejection: null`. Since task E16/F02/US03/T01 (ADR-027 §D6) the content gate runs
+   * on the Worker and the upload endpoint no longer emits a 422 at all -- the refusal is a
+   * `Rejected` row with a `rejectionReason` on `listDocuments`, mapped by
+   * `src/routes/documents/uploadPipeline.ts#getRejectionReasonCopy`. The field stays typed off the
+   * still-declared 422 so this shape keeps compiling; it is always `null` on the wire now.
    */
   rejection: RejectedUploadBody | null;
   /** Plain-language failure reason (400/413/415 message, HTTP status text, or network-failure cause), present only when `ok` is false and this was not a structured 422. */
@@ -307,8 +326,8 @@ export interface UploadDocumentResult {
 // yet ... belongs to whichever future task builds ... the document table /
 // status read-back" -- that task is this one. `ReadBackDocument` carries
 // `documentType`, which `UploadedDocument` (the POST response) does not --
-// see src/routes/documents/documentStore.ts for why the document table
-// re-fetches this instead of only trusting the upload response.
+// since wave w15 the 201 carries no verdict at all (the Worker classifies
+// afterwards), so the list/read-back is the only source of the type.
 type GetDocumentResponses = paths["/api/documents/{id}"]["get"]["responses"];
 export type ReadBackDocument = GetDocumentResponses[200]["content"]["application/json"];
 export type DocumentType = ReadBackDocument["documentType"];
@@ -325,8 +344,8 @@ export interface GetDocumentResult {
 }
 
 // Task E13/F09/US01/T03 (web-documents-v2): `listDocuments`, wrapping `GET /api/documents` -- the
-// server-side list that replaces `src/routes/documents/documentStore.ts`'s own `sessionStorage`
-// tracking (R-DOC-06 AC-1 "reloading the browser shows the same list as before"). Documented ahead
+// server-side list that replaced the web's own `sessionStorage` tracking (deleted outright in wave
+// w15, task E16/F03/US01/T01) (R-DOC-06 AC-1 "reloading the browser shows the same list as before"). Documented ahead
 // of the backend counterpart (epic-13/feature-04) landing in this worktree -- see
 // web/openapi/raffa-api.v1.json's own `listDocuments` operation description for the full
 // provenance. `DocumentListItemBody["documentType"]` already carries the widened admitted-type
@@ -386,20 +405,22 @@ export interface GetDocumentPreviewResult {
 }
 
 // Task E13/F09/US01/T03: `reprocessDocument`, wrapping `POST /api/documents/{id}/reprocess`
-// (Admin only, R-DOC-07). Documented ahead of the backend counterpart landing in this worktree --
-// see that operation's own OpenAPI description for why the response mirrors
-// `Raffa.Documents.Contracts.Application.Extraction.DocumentProcessingSummary`'s real fields
-// rather than an invented shape.
+// (Admin only, R-DOC-07). Task E16/F02/US03/T01 (wave w15, ADR-027 §D1) turned the call into a
+// re-enqueue: the backend drops the old chunks, puts the document back to `Uploaded`, queues a fresh
+// classification job for the Worker and answers `202 Accepted` with the job id -- the re-parse and
+// re-embed happen afterwards, exactly like a first upload, and the caller polls `listDocuments` /
+// `getDocument` for the terminal status. There is no summary to render any more; the old
+// `pagesParsed`/`chunksIndexed` numbers were the synchronous pipeline's, which no longer runs here.
 type ReprocessDocumentResponses = paths["/api/documents/{id}/reprocess"]["post"]["responses"];
-export type DocumentReprocessSummaryBody = ReprocessDocumentResponses[200]["content"]["application/json"];
+export type DocumentReprocessQueuedBody = ReprocessDocumentResponses[202]["content"]["application/json"];
 
 export interface ReprocessDocumentResult {
-  /** True only on `200 OK`. */
+  /** True only on `202 Accepted`. */
   ok: boolean;
   /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
   statusCode: number | null;
-  /** The reprocess summary, present only when `ok` is true. */
-  summary: DocumentReprocessSummaryBody | null;
+  /** The queued job receipt (`documentId`, `extractionJobId`, `processingStatus: "Uploaded"`), present only when `ok` is true. */
+  queued: DocumentReprocessQueuedBody | null;
   /** Plain-language failure reason (403 not-admin, 404, or network-failure), present only when `ok` is false. */
   error: string | null;
 }
@@ -1125,16 +1146,18 @@ export interface ApiClient {
    * src/routes/signin/workspaceStore.ts's own doc comment, which names this
    * exact call as the reason it keeps the current workspace id available.
    *
-   * The backend runs the whole parse -> classify -> extract pipeline
-   * *synchronously* before responding (task E02/F06/US01/T01's own
-   * description in openapi/raffa-api.v1.json), so a resolved call already
-   * carries a terminal (or near-terminal) `processingStatus` -- see
-   * src/routes/documents/uploadPipeline.ts for how the UI turns that into
-   * the 6-stage pipeline animation + result card. Same never-throws shape as
-   * `createWorkspace`: a 400 (bad file/tenant) is a normal, expected outcome
-   * the caller renders inline, not an exception.
+   * Since task E16/F02/US03/T01 (wave w15, ADR-027 §D1) the request returns the
+   * moment the bytes are stored: the 201 carries `processingStatus: "Uploaded"`
+   * and a null `contractId`, and the Worker runs the content gate and the
+   * parse -> classify -> extract pipeline afterwards -- poll `listDocuments` /
+   * `getDocument` for the terminal status (`src/routes/documents/useDocumentsList.ts`).
+   * `options.signal` is the caller's abort signal (ADR-012 w15 §5: one
+   * client-owned upload deadline, `uploadPipeline.ts#UPLOAD_DEADLINE_MS`); an
+   * abort resolves like any other transport failure (`statusCode: null`).
+   * Same never-throws shape as `createWorkspace`: a 400 (bad file/tenant) is
+   * a normal, expected outcome the caller renders inline, not an exception.
    */
-  uploadDocument(tenantId: string, file: File): Promise<UploadDocumentResult>;
+  uploadDocument(tenantId: string, file: File, options?: { signal?: AbortSignal }): Promise<UploadDocumentResult>;
   /**
    * Calls `GET /api/documents/{id}` (operationId `getDocument`) -- the
    * OpenAPI document's own description is "Read back one document's
@@ -1148,8 +1171,8 @@ export interface ApiClient {
   getDocument(tenantId: string, id: string): Promise<GetDocumentResult>;
   /**
    * Calls `GET /api/documents` (operationId `listDocuments`) -- the server-side list behind
-   * `src/routes/documents/` (R-DOC-06), replacing `documentStore.ts`'s own `sessionStorage`
-   * tracking. Same never-throws shape as every other call here. `query` is optional and, when
+   * `src/routes/documents/` (R-DOC-06) and, since wave w15, the tenant-wide `counts` the rail badge
+   * and every "not ready yet" surface read. Same never-throws shape as every other call here. `query` is optional and, when
    * omitted, fetches the tenant's whole list unfiltered -- see `ListDocumentsQuery`'s own doc
    * comment for why the attention/all toggle is not this parameter.
    */
@@ -1438,13 +1461,29 @@ export function createApiClient(
           ok: false,
           statusCode: null,
           member: null,
+          failureReason: null,
           error: `Unable to reach ${baseUrl}/api/workspaces/${tenantId}/invites. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
         };
       }
 
       if (response.status === 201) {
         const member = (await response.json()) as InvitedMemberBody;
-        return { ok: true, statusCode: 201, member, error: null };
+        return { ok: true, statusCode: 201, member, failureReason: null, error: null };
+      }
+
+      // Task E17/F02/US01/T01: the declared 502 -- the directory would not provision the guest and
+      // no invitation exists. Read into `failureReason`, never into `error` prose. A 502 from a
+      // proxy in front of the API carries no such body and falls through to the generic branch.
+      if (response.status === 502) {
+        try {
+          const failure = (await response.json()) as Partial<InviteFailureBody> | null;
+          if (failure && typeof failure.failureReason === "string") {
+            return { ok: false, statusCode: 502, member: null, failureReason: failure.failureReason, error: null };
+          }
+        } catch {
+          // Not the API's own body -- handled as a plain failure below.
+        }
+        return { ok: false, statusCode: 502, member: null, failureReason: null, error: `Request failed with HTTP 502 ${response.statusText}.` };
       }
 
       let error: string;
@@ -1455,7 +1494,7 @@ export function createApiClient(
         error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
       }
 
-      return { ok: false, statusCode: response.status, member: null, error };
+      return { ok: false, statusCode: response.status, member: null, failureReason: null, error };
     },
 
     async listWorkspaces() {
@@ -1739,7 +1778,7 @@ export function createApiClient(
       };
     },
 
-    async uploadDocument(tenantId, file) {
+    async uploadDocument(tenantId, file, options = {}) {
       const formData = new FormData();
       // `file` is already a `File` (extends `Blob` with its own `.name`), so
       // FormData uses that name automatically -- no third `filename` arg
@@ -1753,6 +1792,7 @@ export function createApiClient(
           headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           body: formData,
           cache: "no-store",
+          signal: options.signal,
         });
       } catch (cause) {
         return {
@@ -1912,28 +1952,29 @@ export function createApiClient(
         return {
           ok: false,
           statusCode: null,
-          summary: null,
+          queued: null,
           error: `Unable to reach ${baseUrl}/api/documents/${id}/reprocess. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
         };
       }
 
-      if (response.status === 200) {
-        const summary = (await response.json()) as DocumentReprocessSummaryBody;
-        return { ok: true, statusCode: 200, summary, error: null };
+      // 202, not 200 (ADR-027 §D1): the work is queued for the Worker, not done in the request.
+      if (response.status === 202) {
+        const queued = (await response.json()) as DocumentReprocessQueuedBody;
+        return { ok: true, statusCode: 202, queued, error: null };
       }
 
       if (response.status === 403) {
-        return { ok: false, statusCode: 403, summary: null, error: "Only a Workspace Admin can reprocess a document." };
+        return { ok: false, statusCode: 403, queued: null, error: "Only a Workspace Admin can reprocess a document." };
       }
 
       if (response.status === 404) {
-        return { ok: false, statusCode: 404, summary: null, error: `No document found for id ${id}.` };
+        return { ok: false, statusCode: 404, queued: null, error: `No document found for id ${id}.` };
       }
 
       return {
         ok: false,
         statusCode: response.status,
-        summary: null,
+        queued: null,
         error: `Request failed with HTTP ${response.status} ${response.statusText}.`,
       };
     },

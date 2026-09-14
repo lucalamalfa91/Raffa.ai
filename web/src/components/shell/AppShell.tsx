@@ -2,6 +2,7 @@ import { Outlet } from "react-router-dom";
 import RailNav from "./RailNav";
 import GlobalAskBar from "../ask-bar/GlobalAskBar";
 import { useValidatedContractCount } from "./useValidatedContractCount";
+import { useDocumentCounts } from "./useDocumentCounts";
 import type { WorkspaceRole } from "./navItems";
 import type { ApiClient } from "../../api/client";
 import "./shell.css";
@@ -38,6 +39,9 @@ export interface AppShellProps {
  */
 export default function AppShell({ workspaceId, workspaceName, role, userLabel, onSignOut, apiClient }: AppShellProps) {
   const { count, kbReady } = useValidatedContractCount(apiClient);
+  // Task E16/F03/US01/T01 (wave w15, NW-10): the rail's Documents badge reads the server's own
+  // `counts`, fetched once here beside the validated-contract count and handed down the same way.
+  const documentCounts = useDocumentCounts(apiClient);
 
   return (
     <div className="shell-layout">
@@ -48,15 +52,16 @@ export default function AppShell({ workspaceId, workspaceName, role, userLabel, 
         onSignOut={onSignOut}
         kbReady={kbReady}
         validatedContractCount={count}
+        documentCounts={documentCounts}
         apiClient={apiClient}
       />
       <main className="shell-main">
         <GlobalAskBar kbReady={kbReady} apiClient={apiClient} />
         <div className="shell-content">
           {/* Shared with every screen through the router outlet (shellContext.ts): the same kbReady /
-              validated-count verdict the rail and the Ask bar already render, so a screen never has to
-              re-fetch the portfolio for a second opinion. */}
-          <Outlet context={{ workspaceId, kbReady, validatedContractCount: count }} />
+              validated-count verdict the rail and the Ask bar already render, plus the same document
+              counts the rail badge shows, so a screen never has to re-fetch for a second opinion. */}
+          <Outlet context={{ workspaceId, kbReady, validatedContractCount: count, documentCounts }} />
         </div>
       </main>
     </div>

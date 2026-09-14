@@ -9,8 +9,8 @@ import {
   type NavBadge,
   type WorkspaceRole,
 } from "./navItems";
-import { loadTrackedDocuments } from "../../routes/documents/documentStore";
 import { useRecentConversations } from "../../routes/ask/useRecentConversations";
+import type { DocumentCountsBody } from "./useDocumentCounts";
 
 export interface RailNavProps {
   workspaceName: string;
@@ -20,6 +20,10 @@ export interface RailNavProps {
    * component never calls that API itself. */
   kbReady: boolean;
   validatedContractCount: number;
+  /** `useDocumentCounts`'s result (task E16/F03/US01/T01, NW-10): the server's tenant-wide
+   * `counts`, fetched once by `AppShell.tsx` the same way; `null` until known, which renders as no
+   * badge at all. Replaces the `sessionStorage` tracker nothing had written since E13/F09/US01/T03. */
+  documentCounts: DocumentCountsBody | null;
   onSignOut: () => void;
   /**
    * Task E13/F09/US01/T04 (web-ask-v2, gap G-CONVERSATIONS): threaded through so this component can
@@ -54,25 +58,18 @@ export default function RailNav({
   userLabel,
   kbReady,
   validatedContractCount,
+  documentCounts,
   onSignOut,
   apiClient,
 }: RailNavProps) {
-  // Session-local read, not React state -- re-evaluated on every render, the same "read-only
-  // consumer" shape `../../routes/renewals/renewalActionStore.ts`'s own consumer
-  // (`../../routes/savings/index.tsx`) already establishes: there is nothing to keep in sync beyond
-  // re-reading it, and this component re-renders on every nested navigation (`WorkspaceShellApp.tsx`'s
-  // `<Routes>` re-renders the whole matched branch, including this layout route, on each location
-  // change). There is still no `GET /api/documents` collection endpoint (gap G-DOC-API) -- see
-  // `navItems.ts#DocumentCounts`'s own doc comment for the full provenance.
-  const trackedDocuments = loadTrackedDocuments();
   // Task E13/F09/US01/T04 (gap G-CONVERSATIONS): last 5 conversations + which one (if any) is
   // active -- see that hook's own doc comment for why this re-fetches on navigation rather than
   // once per shell mount.
   const { conversations, activeConversationId } = useRecentConversations(apiClient);
-  const documentsBadge = getDocumentsBadge({
-    total: trackedDocuments.length,
-    needsReview: trackedDocuments.filter((doc) => doc.processingStatus === "NeedsReview").length,
-  });
+  // Task E16/F03/US01/T01 (ADR-012 w15 §6): the badge reads the server's `counts` -- `all` for
+  // "N docs" (what Raffa.ai keeps, never a refused file), `needsReview` for "N to review" -- and
+  // stays absent until the shell has confirmed a number (`getDocumentsBadge`'s honest-absence rule).
+  const documentsBadge = documentCounts ? getDocumentsBadge({ total: documentCounts.all, needsReview: documentCounts.needsReview }) : null;
 
   const primaryItems = buildPrimaryNavItems(documentsBadge);
   const secondaryItems = buildSecondaryNavItems({ kbReady, validatedContractCount });

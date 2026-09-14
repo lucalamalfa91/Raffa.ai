@@ -281,6 +281,16 @@ function rail(page: Page): Locator {
   return page.getByRole("navigation", { name: "Primary" });
 }
 
+/** The number on a Documents chip ("All documents · 15" -> 15), or 0 when the chip is absent --
+ * the "Not added" chip renders only while the server counts a refused file (ADR-020 w15 §1.5). */
+async function readChipCount(page: Page, chip: RegExp): Promise<number> {
+  const button = page.getByRole("button", { name: chip });
+  if ((await button.count()) === 0) return 0;
+  const text = (await button.first().innerText()).trim();
+  const match = text.match(/·\s*(\d+)\s*$/);
+  return match ? Number(match[1]) : 0;
+}
+
 /** The newest Raffa turn's reply body (`ReplyBody.tsx` → `.reply-body[data-reply-kind]`). */
 function latestReply(page: Page): Locator {
   return page.locator('.ask-message[data-role="raffa"] .reply-body').last();
@@ -428,43 +438,48 @@ test.describe("V2 pilot path on the fixture-seeded workspace", () => {
 
   // -- A1 ------------------------------------------------------------------
 
-  test("A1 — a recipe and an unreadable image are refused together, and nothing is stored", async () => {
+  test("A1 — a recipe and an unreadable image are refused together, as rows, and are never counted", async () => {
     test.setTimeout(180_000);
 
     await page.goto("/documents");
+    const allBefore = await readChipCount(page, /^All documents ·/);
     await page.getByLabel("Choose contract files from your computer").setInputFiles([
       { name: "carbonara.pdf", mimeType: "application/pdf", buffer: CARBONARA_PDF },
       { name: "nonna.png", mimeType: "image/png", buffer: UNREADABLE_PNG },
     ]);
 
-    // `UploadResultCard.tsx` renders one `.upload-result-card` per *rejected*
-    // file, with the literal badge "Not added" and the reason in
-    // `.upload-result-message` (R-DOC-04).
-    const cards = page.locator(".upload-result-card");
-    await expect(cards, "R-DOC-03: both files are refused by the admission gate").toHaveCount(2, {
-      timeout: 120_000,
-    });
-    await expect(cards.locator(".tag")).toHaveText(["Not added", "Not added"]);
+    // Wave w15 (ADR-027 §D1/§D6, ADR-020 w15 §1): the upload returns at the store and the
+    // content gate runs on the Worker, so each refusal arrives later as a server row in
+    // `Rejected` -- reachable through the third chip, "Not added · K", which renders only while
+    // the server counts a refused file (R-DOC-03/R-DOC-04).
+    const notAddedChip = page.getByRole("button", { name: /^Not added · \d+$/ });
+    await expect(notAddedChip, "R-DOC-03: both files are refused by the admission gate").toBeVisible({ timeout: 120_000 });
+    await expect.poll(async () => readChipCount(page, /^Not added ·/), { timeout: 120_000 }).toBeGreaterThanOrEqual(2);
+    await notAddedChip.click();
 
+    const grid = page.locator(".document-status-table");
     for (const fileName of ["carbonara.pdf", "nonna.png"]) {
-      const card = cards.filter({ hasText: fileName });
-      await expect(card).toHaveCount(1);
-      const message = (await card.locator(".upload-result-message").innerText()).trim();
+      const row = grid.locator("tbody tr").filter({ hasText: fileName });
+      await expect(row).toHaveCount(1, { timeout: 120_000 });
+      await expect(row.locator(".tag")).toHaveText("Not added");
+      const message = (await row.locator(".hint").innerText()).trim();
       test.info().annotations.push({ type: "rejection", description: `${fileName}: ${message}` });
       // Either documented reason is a pass — which one depends on whether this
       // environment's parser reads the recipe's text (`not_a_contract`) or not
       // (`no_readable_text`). Both are R-DOC-03 refusals; neither is a claim
-      // Raffa cannot back.
-      expect(message).toMatch(/^Not added: /);
+      // Raffa.ai cannot back. The "Not added: " lead-in is the tag's job now.
+      expect(message).not.toMatch(/^Not added: /);
       expect(message.length, "R-DOC-04: the refusal says why, warmly and specifically").toBeGreaterThan(40);
+      // No next step and no dismiss on a refused row (ADR-020 w15 §1.4).
+      await expect(row.getByRole("button", { name: /retry|review|ask|dismiss/i })).toHaveCount(0);
     }
 
-    // R-DOC-04/R-DOC-06: rejected files are session-only and are never counted
-    // as documents — they must not appear in the server-backed list.
+    // ADR-018 w15 clause 2: refused files are never counted -- "All documents" is unchanged and
+    // its list does not carry them.
+    expect(await readChipCount(page, /^All documents ·/)).toBe(allBefore);
     await page.getByRole("button", { name: /^All documents ·/ }).click();
-    await expect(page.locator(".document-status-table")).toBeVisible();
-    await expect(page.locator(".document-status-table").getByText("carbonara.pdf")).toHaveCount(0);
-    await expect(page.locator(".document-status-table").getByText("nonna.png")).toHaveCount(0);
+    await expect(grid.getByText("carbonara.pdf")).toHaveCount(0);
+    await expect(grid.getByText("nonna.png")).toHaveCount(0);
   });
 
   test("A1 — the MSA dropped alongside them still lands", async () => {
@@ -485,8 +500,9 @@ test.describe("V2 pilot path on the fixture-seeded workspace", () => {
       MSA_PATH,
     ]);
 
-    // R-DOC-01 AC-2: a rejected file never hides the outcome of the others.
-    await expect(page.locator(".upload-result-card")).toHaveCount(2, { timeout: 120_000 });
+    // R-DOC-01 AC-2: a rejected file never hides the outcome of the others -- the refusals become
+    // `Rejected` rows under the third chip (A1 above) while the MSA lands in the default list.
+    await expect(page.getByRole("button", { name: /^Not added · \d+$/ })).toBeVisible({ timeout: 120_000 });
     await expect
       .poll(async () => page.locator(".document-status-table tbody tr").count(), { timeout: 180_000 })
       .toBeGreaterThan(before);
@@ -516,12 +532,12 @@ test.describe("V2 pilot path on the fixture-seeded workspace", () => {
     const before = await page.locator(".document-status-table tbody tr").count();
     await page.getByLabel("Choose contract files from your computer").setInputFiles([ORDER_FORM_PNG_PATH]);
 
-    await expect(page.locator(".upload-result-card"), "an admitted scan produces no Not added card").toHaveCount(0, {
-      timeout: 30_000,
-    });
+    const notAddedBefore = await readChipCount(page, /^Not added ·/);
     await expect
       .poll(async () => page.locator(".document-status-table tbody tr").count(), { timeout: 240_000 })
       .toBeGreaterThan(before);
+    // An admitted scan never becomes a refused row (the third chip's count does not move).
+    expect(await readChipCount(page, /^Not added ·/), "an admitted scan produces no Not added row").toBe(notAddedBefore);
 
     // R-SUP-04: the supplier column shows a name, never a guid.
     await page.getByRole("button", { name: /^All documents ·/ }).click();

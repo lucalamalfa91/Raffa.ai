@@ -58,8 +58,8 @@ public sealed class DocumentAdminActionsAuthorizationTests : IClassFixture<WebAp
         const string creatorEmail = "founder@acme.example";
 
         var tenantId = await CreateWorkspaceAsync(client, "Acme Procurement", creatorEmail);
-        var deleteTarget = await UploadAsync(client, tenantId, "to-delete.pdf");
-        var reprocessTarget = await UploadAsync(client, tenantId, "to-reprocess.pdf");
+        var deleteTarget = await UploadAsync(host, tenantId, "to-delete.pdf");
+        var reprocessTarget = await UploadAsync(host, tenantId, "to-reprocess.pdf");
 
         var deleteResponse = await SendAsync(
             client, HttpMethod.Delete, $"/api/documents/{deleteTarget}", tenantId, creatorEmail);
@@ -68,7 +68,8 @@ public sealed class DocumentAdminActionsAuthorizationTests : IClassFixture<WebAp
 
         var reprocessResponse = await SendAsync(
             client, HttpMethod.Post, $"/api/documents/{reprocessTarget}/reprocess", tenantId, creatorEmail);
-        await AssertStatusAsync(HttpStatusCode.OK, reprocessResponse);
+        // 202 since task E16/F02/US03/T01: the re-run is queued for the Worker, not run inline.
+        await AssertStatusAsync(HttpStatusCode.Accepted, reprocessResponse);
         Assert.Contains(host.Audit.Entries, e => e.Action == "document.reprocessed");
     }
 
@@ -84,8 +85,8 @@ public sealed class DocumentAdminActionsAuthorizationTests : IClassFixture<WebAp
         // Fixture built straight through the DbContext -- see this class's own doc comment for why
         // InviteAsync is the wrong seam for this fixture.
         await SeedMembershipAsync(host, tenantId, procurementEmail, WorkspaceRoleName.Procurement);
-        var deleteTarget = await UploadAsync(client, tenantId, "delete-attempt.pdf");
-        var reprocessTarget = await UploadAsync(client, tenantId, "reprocess-attempt.pdf");
+        var deleteTarget = await UploadAsync(host, tenantId, "delete-attempt.pdf");
+        var reprocessTarget = await UploadAsync(host, tenantId, "reprocess-attempt.pdf");
 
         // No role header at all.
         await AssertStatusAsync(
@@ -144,8 +145,13 @@ public sealed class DocumentAdminActionsAuthorizationTests : IClassFixture<WebAp
         return body.RootElement.GetProperty("id").GetGuid();
     }
 
-    private static async Task<Guid> UploadAsync(HttpClient client, Guid tenantId, string fileName)
+    /// <summary>Uploads and then plays the Worker (task E16/F02/US03/T01): the 201 returns at the
+    /// store, so the document is processed here through <see cref="InMemoryAskEngineFactory.DrainExtractionQueueAsync"/>
+    /// before the Admin actions are exercised against it — delete must find a preview blob to
+    /// remove, reprocess must find a classified document to re-queue.</summary>
+    private static async Task<Guid> UploadAsync(Host host, Guid tenantId, string fileName)
     {
+        var client = host.Factory.CreateClient();
         var file = new ByteArrayContent(BuildPdf(MsaText));
         file.Headers.ContentType = new MediaTypeHeaderValue("application/pdf");
         using var content = new MultipartFormDataContent { { file, "file", fileName } };
@@ -156,7 +162,10 @@ public sealed class DocumentAdminActionsAuthorizationTests : IClassFixture<WebAp
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
 
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        return body.RootElement.GetProperty("id").GetGuid();
+        var documentId = body.RootElement.GetProperty("id").GetGuid();
+
+        Assert.Equal(1, await host.Factory.DrainExtractionQueueAsync());
+        return documentId;
     }
 
     private static async Task<HttpResponseMessage> SendAsync(

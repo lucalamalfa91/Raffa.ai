@@ -1,5 +1,8 @@
+using Raffa.Messaging;
 // Raffa API Host — thin composition root (ADR-002).
 // Wires all modules via DI; contains no business logic.
+using Azure.Communication.Email;
+using Azure.Identity;
 using Raffa.Api;
 using Raffa.Api.Infrastructure;
 using Raffa.Audit.Infrastructure;
@@ -7,7 +10,9 @@ using Raffa.Chat.Infrastructure;
 using Raffa.Documents.Contracts.Application;
 using Raffa.Documents.Contracts.Application.Extraction;
 using Raffa.Documents.Contracts.Infrastructure;
+using Raffa.Identity.Workspace.Application;
 using Raffa.Identity.Workspace.Infrastructure;
+using Microsoft.Graph;
 using Raffa.Insights;
 using Raffa.Market;
 using Raffa.Quotes.Infrastructure;
@@ -34,6 +39,35 @@ var identityWorkspaceConnectionString = builder.Configuration.GetConnectionStrin
     ?? throw new InvalidOperationException(
         "Missing required configuration 'ConnectionStrings:IdentityWorkspace' " +
         "(set env var ConnectionStrings__IdentityWorkspace in deployed environments).");
+
+// Task E17/F01/US01/T01 (wave w15, NW-67/NW-68; ADR-026 w15 footer §5, ADR-025 §J.6b): the real
+// invitation transport and the Graph guest provisioner, registered BEFORE AddIdentityWorkspaceModule
+// because that module's own defaults (NullInvitationMailer, NullGuestProvisioner, a site-relative
+// link) are TryAdd -- first registration wins. Bound in the host's own GetSection(...).Get<T>()
+// shape (never IOptions<T>); every key is optional at bind time so a dev box still boots, and the
+// one combination that must never run -- mail enabled with no usable https accept base, sender or
+// connection string -- fails closed at startup (ValidateOrThrow), never falls back to mailing a
+// fragment with no origin.
+var invitationHostOptions = builder.Configuration.GetSection(InvitationHostOptions.SectionName).Get<InvitationHostOptions>()
+    ?? new InvitationHostOptions();
+invitationHostOptions.ValidateOrThrow();
+builder.Services.AddSingleton(invitationHostOptions);
+builder.Services.AddSingleton(new InvitationOptions { AcceptUrlBase = invitationHostOptions.AcceptUrlBase });
+
+if (invitationHostOptions.Mail.Enabled)
+{
+    builder.Services.AddSingleton(new EmailClient(invitationHostOptions.Mail.ConnectionString));
+    builder.Services.AddScoped<IInvitationMailer, AcsInvitationMailer>();
+}
+
+if (invitationHostOptions.GuestProvisioning.Enabled)
+{
+    // The one and only Microsoft Graph call site (ADR-025 §J.1c.1), as the workload managed
+    // identity DefaultAzureCredential resolves through AZURE_CLIENT_ID -- the same chain the
+    // Service Bus publisher and the blob adapter use.
+    builder.Services.AddSingleton(_ => new GraphServiceClient(new DefaultAzureCredential(), GraphGuestProvisioner.Scopes));
+    builder.Services.AddScoped<IGuestProvisioner, GraphGuestProvisioner>();
+}
 
 builder.Services.AddIdentityWorkspaceModule(identityWorkspaceConnectionString);
 
@@ -138,6 +172,11 @@ var storageConnectionString = builder.Configuration.GetConnectionString("Storage
         "(set env var ConnectionStrings__Storage in deployed environments).");
 
 builder.Services.AddAzureBlobDocumentStorage(storageConnectionString);
+// ADR-027 §D2 (task E16/F02/US03/T01): the upload publishes its ExtractionRequested pointer
+// before committing; this picks Service Bus when ServiceBus:FullyQualifiedNamespace is set
+// (every deployed environment, via infra/modules/containerapps) and the in-process channel
+// otherwise (tests). Same selector the Worker uses, so the two can never disagree.
+builder.Services.AddExtractionQueuePublisher(builder.Configuration);
 
 // Audit module (task E01/F06/US02/T02, GET /api/audit). Fails fast with a named error rather
 // than silently falling back when the config is missing (same "fail loud, not silent"

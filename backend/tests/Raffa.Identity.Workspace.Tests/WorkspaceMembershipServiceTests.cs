@@ -104,8 +104,15 @@ public sealed class WorkspaceMembershipServiceTests : IAsyncLifetime
             i => i.Email == "new.hire@acme.example" && i.AcceptedAt == null && i.RevokedAt == null));
     }
 
+    /// <summary>
+    /// Task E17/F01/US01/T01 (wave w15; ADR-025 §J.2b, ADR-026 w15 footer §9): re-issue is by
+    /// REPLACEMENT -- the live invitation is revoked and the new one issued in one transaction, so
+    /// two live tokens never coexist for one address (ADR-026 §D4's partial unique index is
+    /// satisfied by revoking first, not by widening its predicate) and the link the Admin already
+    /// shared stops working. This replaces the w14 test that expected a 409 here.
+    /// </summary>
     [Fact]
-    public async Task Re_inviting_the_same_email_and_role_conflicts_instead_of_duplicating()
+    public async Task Re_inviting_the_same_email_replaces_the_live_invitation_in_one_transaction()
     {
         var tenantId = await SeedWorkspaceAsync();
         var service = CreateService(CreateContext(), _tenantContext);
@@ -116,27 +123,28 @@ public sealed class WorkspaceMembershipServiceTests : IAsyncLifetime
 
         var second = await service.InviteAsync(
             tenantId, "dup@acme.example", WorkspaceRoleName.Finance, "admin@acme.example", NextTokenHash(), ExpiresAt);
-        Assert.True(second.IsFailure);
-        Assert.Equal(MembershipOperationStatus.Conflict, second.Status);
+        Assert.True(second.IsSuccess);
+        Assert.NotEqual(first.Invitation!.Id, second.Invitation!.Id);
 
         using var _ = _tenantContext.BeginScope(tenantId);
         await using var readDb = CreateContext();
         var invitations = await readDb.WorkspaceInvitations.Where(i => i.Email == "dup@acme.example").ToListAsync();
-        Assert.Single(invitations);
+        Assert.Equal(2, invitations.Count);
+        var live = Assert.Single(invitations, i => i.AcceptedAt == null && i.RevokedAt == null);
+        Assert.Equal(second.Invitation.Id, live.Id);
+        Assert.NotNull(invitations.Single(i => i.Id == first.Invitation.Id).RevokedAt);
     }
 
     /// <summary>
     /// ADR-026 §D4's partial unique index is keyed on <c>(tenant_id, lower(email))</c> alone, not
     /// role -- at most one *live* invitation may exist per email, regardless of which role it
-    /// offers. This replaces the pre-w14 premise ("a second invite at a different role adds a
-    /// second membership"), which no longer holds now that invite never writes a membership at
-    /// all: two still-pending invitations for one email would violate that index the moment the
-    /// second one is accepted, so the conflict is correctly surfaced at issue time instead
-    /// (see <see cref="Multi_role_membership_is_still_possible_once_the_first_invitation_is_accepted"/>
-    /// for the shape that *does* still work).
+    /// offers. Since wave w15 a second invite at a different role therefore REPLACES the live one
+    /// (the offered role moves with it), rather than conflicting; the multi-role shape is reached
+    /// only through acceptance (see
+    /// <see cref="Multi_role_membership_is_still_possible_once_the_first_invitation_is_accepted"/>).
     /// </summary>
     [Fact]
-    public async Task Inviting_the_same_email_at_a_different_role_conflicts_while_the_first_invitation_is_still_live()
+    public async Task Inviting_the_same_email_at_a_different_role_replaces_the_live_invitation_and_its_offered_role()
     {
         var tenantId = await SeedWorkspaceAsync();
         var service = CreateService(CreateContext(), _tenantContext);
@@ -148,8 +156,14 @@ public sealed class WorkspaceMembershipServiceTests : IAsyncLifetime
         var second = await service.InviteAsync(
             tenantId, "multi@acme.example", WorkspaceRoleName.Finance, "admin@acme.example", NextTokenHash(), ExpiresAt);
 
-        Assert.True(second.IsFailure);
-        Assert.Equal(MembershipOperationStatus.Conflict, second.Status);
+        Assert.True(second.IsSuccess);
+        Assert.Equal(WorkspaceRoleName.Finance, (await ReadRoleAsync(tenantId, second.Invitation!)).Name);
+
+        using var _ = _tenantContext.BeginScope(tenantId);
+        await using var readDb = CreateContext();
+        Assert.Single(await readDb.WorkspaceInvitations
+            .Where(i => i.Email == "multi@acme.example" && i.AcceptedAt == null && i.RevokedAt == null)
+            .ToListAsync());
     }
 
     /// <summary>

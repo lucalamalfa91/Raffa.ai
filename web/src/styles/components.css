@@ -594,6 +594,16 @@
   margin-bottom: var(--space-4);
 }
 
+/* The block's actions row: its one primary CTA, plus -- while a "not ready yet" wait has stopped
+   checking (ADR-020 w15 §8.3) -- a secondary "Check again" beside it. Layout only: the block's own
+   shape, not a new component (ADR-019 w15 round-3 clause 5). */
+.screen-reroute-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
 /* Visually hidden but present for assistive tech (ADR-019 accessibility baseline) -- e.g. a fieldset legend
    whose meaning the visible radio labels already carry, or a file input driven by a visible button. */
 .visually-hidden {

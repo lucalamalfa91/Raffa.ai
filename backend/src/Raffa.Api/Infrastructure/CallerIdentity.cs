@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.Identity.Web;
 
 namespace Raffa.Api.Infrastructure;
@@ -25,6 +26,17 @@ internal interface ICallerIdentity
     /// <b>401</b> (ADR-025 §B), never 400: absence of identity is an authentication failure.
     /// </summary>
     string? Resolve();
+
+    /// <summary>
+    /// The token's own <c>email</c> claim, or <see langword="null"/> when the token carries none.
+    /// Task E17/F01/US01/T01 (ADR-010 w15 footer §2.1/§2.3): a <b>binding aid, never the standing
+    /// key</b> — read by the invitation accept alone, as the second step of its resolution order
+    /// (the <c>oid</c> bound at invite → this claim → refuse), so that a guest whose <c>oid</c> was
+    /// not bound at invite time can still be matched to the invited address without anyone parsing
+    /// the mangled <c>#EXT#</c> UPN. Terraform requests the claim on the API's access tokens
+    /// (<c>optional_claims</c>, S15-9); its absence degrades to a 403 and a re-invite, never a grant.
+    /// </summary>
+    string? ResolveEmail();
 }
 
 /// <summary>
@@ -67,5 +79,20 @@ internal sealed class TokenCallerIdentity(IHttpContextAccessor httpContextAccess
 
         var objectId = user.GetObjectId();
         return string.IsNullOrWhiteSpace(objectId) ? null : objectId;
+    }
+
+    public string? ResolveEmail()
+    {
+        var user = httpContextAccessor.HttpContext?.User;
+        if (user is null || user.Identity is not { IsAuthenticated: true })
+        {
+            return null;
+        }
+
+        // The bare `email` claim (JwtBearer's inbound mapping is switched off in Program.cs, so
+        // the token's own claim name survives) and its mapped URI form, in that order -- never
+        // `preferred_username`/`upn`, which is the mangled #EXT# value for a B2B guest (S15-8).
+        var email = user.FindFirst("email")?.Value ?? user.FindFirst(ClaimTypes.Email)?.Value;
+        return string.IsNullOrWhiteSpace(email) ? null : email.Trim();
     }
 }

@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import DocumentStatusTable from "../../../src/routes/documents/DocumentStatusTable";
 import type { DocumentListItemBody } from "../../../src/api/client";
-import type { LocalUploadEntry, RejectedFileOutcome } from "../../../src/routes/documents/uploadPipeline";
+import type { LocalUploadEntry } from "../../../src/routes/documents/uploadPipeline";
 
 function item(overrides: Partial<DocumentListItemBody> = {}): DocumentListItemBody {
   return {
@@ -19,6 +19,7 @@ function item(overrides: Partial<DocumentListItemBody> = {}): DocumentListItemBo
     pageCount: 12,
     createdAt: "2026-09-06T08:05:00Z",
     weakFactCount: 0,
+    rejectionReason: null,
     ...overrides,
   };
 }
@@ -30,8 +31,6 @@ function renderTable(props: Partial<ComponentProps<typeof DocumentStatusTable>> 
         documents={[]}
         filter="attention"
         localUploads={[]}
-        rejected={[]}
-        onDismissRejected={vi.fn()}
         onRetryLocal={vi.fn()}
         onRetryServer={vi.fn()}
         onDelete={vi.fn()}
@@ -99,6 +98,17 @@ describe("DocumentStatusTable", () => {
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 
+  // ADR-020 w15 §1.6 (task E16/F03/US01/T01): a stored server row waiting for a Worker reads
+  // "Queued…", never "Uploading…" -- the bytes are already durable; the local pre-201 row keeps
+  // "Uploading…" (ADR-012 w15 §13.7), and the stage bar stays at 0% for a null stage.
+  it("reads 'Queued…' for a server row at Uploaded with no stage yet", () => {
+    renderTable({ documents: [item({ processingStatus: "Uploaded", stage: null, contractId: null })] });
+
+    expect(screen.getByText("Queued…")).toBeInTheDocument();
+    expect(screen.queryByText("Uploading…")).not.toBeInTheDocument();
+    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "0");
+  });
+
   it("offers Retry upload for a server-known failed row, calling onRetryServer with its id", async () => {
     const onRetryServer = vi.fn();
     renderTable({ documents: [item({ id: "doc-9", processingStatus: "Failed" })], onRetryServer });
@@ -125,25 +135,98 @@ describe("DocumentStatusTable", () => {
         key: "local-1",
         file: new File(["x"], "Broken.pdf", { type: "application/pdf" }),
         phase: "failed",
-        errorMessage: "Raffa could not process Broken.pdf. Try again.",
+        errorMessage: "Raffa.ai could not process Broken.pdf. Try again.",
       },
     ];
     renderTable({ localUploads, onRetryLocal });
 
-    expect(screen.getByText("Raffa could not process Broken.pdf. Try again.")).toBeInTheDocument();
+    expect(screen.getByText("Raffa.ai could not process Broken.pdf. Try again.")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Retry upload" }));
 
     expect(onRetryLocal).toHaveBeenCalledWith("local-1");
   });
 
-  it("renders every rejected file as a dismissible 'Not added' card, separate from the row grid", async () => {
-    const onDismissRejected = vi.fn();
-    const rejected: RejectedFileOutcome[] = [{ key: "r-1", fileName: "recipe.pdf", message: "Not added: this looks like a recipe..." }];
-    renderTable({ rejected, onDismissRejected });
+  // ADR-020 w15 §6 / ADR-019 w15 clause 4: a refusal that never reached the server (oversize,
+  // 413, 415) is a *local row* reading "Not added" -- the third branch of the local-entry mapping
+  // the compiler never asks for -- with its designed sentence as the hint, no next step, no stage
+  // bar, no "Uploading…", and no dismiss.
+  it("renders a local refusal as a 'Not added' row with its sentence and nothing to do next", () => {
+    const localUploads: LocalUploadEntry[] = [
+      {
+        key: "local-1",
+        file: new File(["x"], "huge.pdf", { type: "application/pdf" }),
+        phase: "rejected",
+        errorMessage: "This file is larger than 50 MB, the most Raffa.ai accepts.",
+      },
+    ];
+    renderTable({ localUploads, isAdmin: true });
 
-    expect(screen.getByText("Not added: this looks like a recipe...")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /dismiss/i }));
-    expect(onDismissRejected).toHaveBeenCalledWith("r-1");
+    const row = screen.getAllByRole("row")[1];
+    expect(within(row).getByText("huge.pdf")).toBeInTheDocument();
+    expect(within(row).getByText("Not added")).toHaveClass("tag", "tag-outline");
+    expect(within(row).getByText("This file is larger than 50 MB, the most Raffa.ai accepts.")).toBeInTheDocument();
+    expect(within(row).queryByText("Uploading…")).not.toBeInTheDocument();
+    expect(within(row).queryByText("Processing")).not.toBeInTheDocument();
+    expect(within(row).queryByRole("progressbar")).not.toBeInTheDocument();
+    expect(within(row).queryByRole("button")).not.toBeInTheDocument();
+  });
+
+  // ADR-020 w15 §1.2-§1.4 / §7: the server's `Rejected` row -- the same "Not added" tag, the
+  // requirements sentence selected by the reason *code*, an empty action cell, and the Admin's
+  // existing Delete as the only way to clear it.
+  it("renders a server Rejected row as 'Not added' with the reason's own sentence and no next step, still deletable by Admin", () => {
+    renderTable({
+      documents: [item({ id: "doc-7", fileName: "carbonara.pdf", processingStatus: "Rejected", contractId: null, rejectionReason: "not_a_contract" })],
+      filter: "rejected",
+      isAdmin: true,
+    });
+
+    const row = screen.getAllByRole("row")[1];
+    expect(within(row).getByText("carbonara.pdf")).toBeInTheDocument();
+    expect(within(row).queryByRole("link")).not.toBeInTheDocument();
+    expect(within(row).getByText("Not added")).toHaveClass("tag", "tag-outline");
+    expect(within(row).getByText(/This looks like a recipe, not a contract\./)).toBeInTheDocument();
+    expect(within(row).getByText(/This looks like a recipe/).textContent).not.toMatch(/^Not added:/);
+    expect(within(row).queryByText(/Retry|Review|Ask about it|Open Quote check/)).not.toBeInTheDocument();
+    expect(within(row).getByRole("button", { name: "Delete" })).toBeInTheDocument();
+  });
+
+  it("stays silent -- tag, no hint -- for a Rejected row whose reason code this app does not know", () => {
+    renderTable({ documents: [item({ processingStatus: "Rejected", contractId: null, rejectionReason: null })], filter: "rejected" });
+
+    const row = screen.getAllByRole("row")[1];
+    expect(within(row).getByText("Not added")).toBeInTheDocument();
+    expect(row.querySelector(".hint")).toBeNull();
+  });
+
+  it("does not render local rows under the 'Not added' chip, which reads the server bucket alone", () => {
+    const localUploads: LocalUploadEntry[] = [
+      { key: "local-1", file: new File(["x"], "New.pdf", { type: "application/pdf" }), phase: "uploading" },
+    ];
+    renderTable({ localUploads, filter: "rejected", documents: [item({ processingStatus: "Rejected", contractId: null })] });
+
+    expect(screen.queryByText("New.pdf")).not.toBeInTheDocument();
+    expect(screen.getByText("Salesforce_MSA.pdf")).toBeInTheDocument();
+  });
+
+  // ADR-020 w15 §8: a list-level notice, never a row state -- rows and tags are untouched, and
+  // the one control resumes the poll.
+  it("renders the stopped-updates notice below the grid with 'Check again', leaving every row as it was", async () => {
+    const onResumeUpdates = vi.fn();
+    renderTable({ documents: [item({ processingStatus: "Uploaded", stage: null, contractId: null })], updatesPaused: true, onResumeUpdates });
+
+    expect(screen.getByText("Nothing has changed for five minutes, so this page stopped checking for updates.")).toHaveClass("hint");
+    expect(screen.getByText("Queued…")).toBeInTheDocument();
+    expect(screen.getByText("Processing")).toHaveClass("tag");
+    await userEvent.click(screen.getByRole("button", { name: "Check again" }));
+    expect(onResumeUpdates).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders no notice while updates are running", () => {
+    renderTable({ documents: [item({ processingStatus: "Uploaded", stage: null, contractId: null })] });
+
+    expect(screen.queryByText(/stopped checking for updates/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Check again" })).not.toBeInTheDocument();
   });
 
   it("shows 'Nothing needs you right now.' only when the attention filter is truly empty", () => {

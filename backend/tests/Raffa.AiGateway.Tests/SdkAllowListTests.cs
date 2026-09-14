@@ -13,19 +13,35 @@ namespace Raffa.AiGateway.Tests;
 /// Narrower than <c>Raffa.ArchitectureTests.DependencyDirectionTests
 /// .Domain_module_must_not_reference_provider_sdks</c> (that test's own <c>ForbiddenSdkPrefixes</c>
 /// blocks the broad <c>"Azure."</c> prefix, but only across the fixed ADR-002 domain-module list —
-/// it does not, and should not, forbid <c>Raffa.Api</c>'s legitimate <c>Azure.Storage.Blobs</c>
-/// reference for ADR-005 object storage). This test is scoped to exactly the two SDK-family
-/// prefixes this task's own Foundry auth needs (<c>Azure.AI.*</c>, <c>Azure.Identity</c>), checked
-/// across every project in the solution, hosts and tests included.
+/// it does not, and should not, forbid <c>Raffa.Api</c>'s legitimate storage/transport references
+/// for ADR-005). This test is checked across every project in the solution, hosts and tests
+/// included, and is therefore the one guard that reaches a <b>host</b> adapter.
+///
+/// <para>
+/// Task E17/F01/US01/T01 (wave w15; ADR-025 §J.1d, ADR-026 w15 footer §2/§10): the allow-list is a
+/// <b>package-scoped (prefix → allowed projects) map</b>, never a wider project skip. Widening the
+/// old single <c>AllowedProjectName</c> — the one-word edit a task reaches for — would have made
+/// <c>Azure.AI.*</c> legal in <c>Raffa.Api</c>, silently un-guarding the Foundry boundary ADR-004/
+/// ADR-017 rest on. So: <c>Azure.AI.*</c> stays <c>Raffa.AiGateway</c>-only; <c>Azure.Identity</c>
+/// (DefaultAzureCredential) is additionally permitted in <c>Raffa.Api</c> (the Graph guest
+/// provisioner, ADR-025 §J.1a) and <c>Raffa.Worker</c> (the Service Bus consumer's managed-identity
+/// auth, ADR-027 §D10) and, since the Service Bus transport lives in its own project,
+/// <c>Raffa.Messaging</c>; <c>Microsoft.Graph</c> — the directory-write capability — is legal in
+/// <c>Raffa.Api</c> and nowhere else, so a second call site is a build failure (ADR-025 §J.1c.1).
+/// </para>
 /// </summary>
 public class SdkAllowListTests
 {
-    private static readonly string[] ForbiddenPrefixes = ["Azure.AI.", "Azure.Identity"];
-
-    private const string AllowedProjectName = "Raffa.AiGateway";
+    /// <summary>Prefix → the only projects allowed to reference a package with that prefix.</summary>
+    private static readonly IReadOnlyDictionary<string, string[]> AllowedProjectsByPrefix = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Azure.AI."] = ["Raffa.AiGateway"],
+        ["Azure.Identity"] = ["Raffa.AiGateway", "Raffa.Api", "Raffa.Worker", "Raffa.Messaging"],
+        ["Microsoft.Graph"] = ["Raffa.Api"],
+    };
 
     [Fact]
-    public void No_project_other_than_Raffa_AiGateway_references_an_Azure_AI_SDK_or_Azure_Identity()
+    public void Provider_sdks_are_referenced_only_by_the_projects_the_allow_list_names()
     {
         var solutionRoot = FindSolutionRoot();
         var csprojFiles = Directory.GetFiles(solutionRoot, "*.csproj", SearchOption.AllDirectories);
@@ -37,26 +53,38 @@ public class SdkAllowListTests
         foreach (var csprojFile in csprojFiles)
         {
             var projectName = Path.GetFileNameWithoutExtension(csprojFile);
-            if (string.Equals(projectName, AllowedProjectName, StringComparison.Ordinal))
-            {
-                continue;
-            }
 
-            var forbidden = GetPackageReferenceNames(csprojFile)
-                .Where(pkg => ForbiddenPrefixes.Any(prefix => pkg.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
-                .ToList();
-
-            if (forbidden.Count > 0)
+            foreach (var package in GetPackageReferenceNames(csprojFile))
             {
-                violations.Add($"{projectName}: [{string.Join(", ", forbidden)}]");
+                foreach (var (prefix, allowedProjects) in AllowedProjectsByPrefix)
+                {
+                    if (package.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                        && !allowedProjects.Contains(projectName, StringComparer.Ordinal))
+                    {
+                        violations.Add($"{projectName}: {package}");
+                    }
+                }
             }
         }
 
         Assert.True(
             violations.Count == 0,
-            "[AC-3 / task E13/F01/US01/T02] Projects outside Raffa.AiGateway reference an Azure " +
-            $"AI SDK or Azure.Identity directly: {string.Join("; ", violations)}. Domain code and " +
-            "hosts must call Raffa.AiGateway.IAiGateway instead of a provider SDK.");
+            "[AC-3 / task E13/F01/US01/T02; ADR-025 §J.1d] Projects reference a provider SDK the allow-list " +
+            $"does not grant them: {string.Join("; ", violations)}. Azure.AI.* is Raffa.AiGateway's alone " +
+            "(domain code and hosts call Raffa.AiGateway.IAiGateway instead), Azure.Identity is confined to " +
+            "the hosts that authenticate as the workload identity, and Microsoft.Graph to Raffa.Api's one " +
+            "GraphGuestProvisioner call site.");
+    }
+
+    [Fact]
+    public void Azure_AI_stays_illegal_in_Raffa_Api_even_though_Azure_Identity_is_allowed_there()
+    {
+        // The non-vacuity check for the map's whole point: the two prefixes share a project only
+        // where the map says so. If a later edit collapses the map back into one project skip, this
+        // is the assertion that notices.
+        Assert.DoesNotContain("Raffa.Api", AllowedProjectsByPrefix["Azure.AI."]);
+        Assert.Contains("Raffa.Api", AllowedProjectsByPrefix["Azure.Identity"]);
+        Assert.Equal(["Raffa.Api"], AllowedProjectsByPrefix["Microsoft.Graph"]);
     }
 
     [Fact]
@@ -71,9 +99,20 @@ public class SdkAllowListTests
 
         // A sanity check that this allow-list test is not vacuously true — Raffa.AiGateway is
         // supposed to be the one place DefaultAzureCredential (task's own "auth via
-        // DefaultAzureCredential..., never a key") is reachable from.
+        // DefaultAzureCredential..., never a key") is reachable from for Foundry.
         Assert.Contains(
             packageReferences, pkg => pkg.StartsWith("Azure.Identity", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Raffa_Api_is_the_one_Microsoft_Graph_call_site()
+    {
+        var solutionRoot = FindSolutionRoot();
+        var csprojFile = Path.Combine(solutionRoot, "src", "Raffa.Api", "Raffa.Api.csproj");
+
+        Assert.True(File.Exists(csprojFile), $"Project file not found: {csprojFile}");
+        Assert.Contains(
+            GetPackageReferenceNames(csprojFile), pkg => pkg.StartsWith("Microsoft.Graph", StringComparison.OrdinalIgnoreCase));
     }
 
     private static List<string> GetPackageReferenceNames(string csprojPath)

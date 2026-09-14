@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Raffa.Messaging: the Azure Service Bus adapters behind the extraction queue port
+    (task E16/F02/US03/T01 with the transport E16/F02/US02/T01 declared and did not
+    deliver; ADR-027 D2/D3, ADR-002 w15 footer). Two adapters and one registration:
+
+      IExtractionQueuePublisher  -> ServiceBusExtractionQueuePublisher   (the API publishes)
+      subscription consumer      -> ServiceBusExtractionConsumerHostedService (the Worker drains)
+      AddExtractionQueuePublisher / AddExtractionQueueConsumer choose Service Bus when
+      ServiceBus:FullyQualifiedNamespace is configured, the in-process channel otherwise.
+
+    Authentication is DefaultAzureCredential against the namespace FQDN: the Container Apps
+    user-assigned identity (AZURE_CLIENT_ID) holds "Azure Service Bus Data Sender" on the API
+    and "Azure Service Bus Data Receiver" on the Worker (infra/modules/servicebus,
+    E16/F01/US01/T01). No connection string, no shared access key, no secret in Key Vault:
+    the dependency map (ADR-002 w15 footer) allows Azure.Identity here for exactly this reason.
+
+    Raffa.Documents.Contracts stays free of the Azure SDK: it owns the port, the message and
+    the handler; this project owns the wire.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Raffa.Messaging</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Raffa.SharedKernel\Raffa.SharedKernel.csproj" />
+    <ProjectReference Include="..\Raffa.Documents.Contracts\Raffa.Documents.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Azure.Identity" Version="1.17.1" />
+    <PackageReference Include="Azure.Messaging.ServiceBus" Version="7.18.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.11" />
+  </ItemGroup>
+
+</Project>

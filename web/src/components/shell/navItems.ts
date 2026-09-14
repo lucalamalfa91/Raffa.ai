@@ -22,7 +22,7 @@
  *
  * This module stays pure -- no React, no I/O, unit-testable without rendering (`navItems.test.ts`).
  * The badge/greyed *values* below are computed from data the caller (RailNav.tsx) already has (a
- * `useValidatedContractCount` result, a `loadTrackedDocuments()` read) -- this file only decides the
+ * `useValidatedContractCount` result, a `useDocumentCounts` result) -- this file only decides the
  * resulting label/tone/greyed flag, it never fetches anything itself.
  */
 
@@ -82,19 +82,18 @@ const ASK_BADGE: NavBadge = { text: "⌘K", tone: "muted" };
 const QUOTE_CHECK_BADGE: NavBadge = { text: "optional", tone: "muted" };
 
 export interface DocumentCounts {
-  /** Count used for the Documents rail badge. `GET /api/documents` exists
-   * (R-DOC-06); the list screen reads it via `useDocumentsList`. The rail
-   * still calls `documentStore.ts#loadTrackedDocuments()` (sessionStorage,
-   * no longer written) -- `inputs/next-waves-todo.md` NW-10. */
+  /** The server's `counts.all` (`GET /api/documents`, ADR-027 §D7): every document Raffa.ai keeps,
+   * tenant-wide -- a refused file is never in it. Task E16/F03/US01/T01 (NW-10) replaced the
+   * `sessionStorage` tracker this badge used to read with `useDocumentCounts`. */
   total: number;
-  /** `processingStatus === "NeedsReview"` count within `total`. */
+  /** The server's `counts.needsReview` (§C5): `NeedsReview` alone, inside `total`. */
   needsReview: number;
 }
 
 /**
  * Documents badge (`app.jsx`: `needReview?needReview+' to review':(docs.length?docs.length+'
- * docs':'')`). `null` (no badge at all) when this browser has not tracked any document yet -- an
- * honest absence, never a fabricated "0 docs".
+ * docs':'')`). `null` (no badge at all) when the tenant holds no document -- an honest absence,
+ * never a fabricated "0 docs"; the caller passes nothing at all while the count is still unknown.
  */
 export function getDocumentsBadge(counts: DocumentCounts): NavBadge | null {
   if (counts.needsReview > 0) {

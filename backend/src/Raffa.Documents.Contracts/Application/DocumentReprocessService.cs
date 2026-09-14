@@ -37,7 +37,7 @@ namespace Raffa.Documents.Contracts.Application;
 public sealed class DocumentReprocessService(
     DocumentsContractsDbContext dbContext,
     IDocumentStorage storage,
-    DocumentProcessingPipeline processingPipeline,
+    IExtractionQueuePublisher extractionQueuePublisher,
     EmbeddingRetrievalService embeddingRetrievalService,
     ITenantContext tenantContext,
     IAuditWriter auditWriter,
@@ -46,80 +46,98 @@ public sealed class DocumentReprocessService(
     /// <summary>Same discriminator <see cref="DocumentProcessingPipeline"/> indexes under.</summary>
     private const string DocumentSourceType = "Document";
 
-    /// <summary>Audit action for a completed re-run (R-DOC-07).</summary>
+    /// <summary>Audit action for a re-run that was queued (R-DOC-07; queued, not completed, since
+    /// task E16/F02/US03/T01 — completion is the Worker's, and the pipeline's own rows record it).</summary>
     public const string ReprocessedAuditAction = "document.reprocessed";
 
     /// <summary>
-    /// Returns the pipeline's own summary for the re-run, a failure when the document has no
-    /// readable bytes any more, or <see langword="null"/> when no such document exists for this
-    /// tenant (the endpoint turns that into a 404).
+    /// Queues the re-run and returns at once (task E16/F02/US03/T01, ADR-027 §D1): the parse,
+    /// classify and re-embed that used to run inline here (<c>:58-116</c> before this wave) are now
+    /// the Worker's, reached through the same <see cref="ExtractionRequested"/> pointer a first
+    /// upload publishes. Returns the queued job's id, a failure when the stored bytes are no longer
+    /// readable (the Worker would only discover it later; the operator learns it now), or
+    /// <see langword="null"/> when no such document exists for this tenant (the endpoint's 404).
     /// </summary>
     /// <param name="actor">Who asked for the re-run, for the audit row.</param>
-    public async Task<Result<DocumentProcessingSummary>?> ReprocessAsync(
+    public async Task<Result<DocumentReprocessQueued>?> ReprocessAsync(
         TenantId tenantId, EntityId documentId, string actor, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(actor);
 
-        Document? document;
-        using (tenantContext.BeginScope(tenantId))
-        {
-            document = await dbContext.Documents
-                .AsNoTracking()
-                .SingleOrDefaultAsync(d => d.TenantId == tenantId && d.Id == documentId, cancellationToken)
-                .ConfigureAwait(false);
-        }
+        using var tenantScope = tenantContext.BeginScope(tenantId);
+
+        var document = await dbContext.Documents
+            .SingleOrDefaultAsync(d => d.TenantId == tenantId && d.Id == documentId, cancellationToken)
+            .ConfigureAwait(false);
 
         if (document is null)
         {
             return null;
         }
 
+        // A Rejected row has no blob any more (the Worker deleted it, ADR-027 §D6) and nothing a
+        // re-run could change; R-DOC-07's "Retry upload" for it is a new upload, which the screen
+        // offers. Failing here rather than queueing a job that would fail on LoadAsync keeps the
+        // answer in the request the operator is looking at.
+        if (document.ProcessingStatus == DocumentProcessingStatus.Rejected)
+        {
+            return Result<DocumentReprocessQueued>.Failure(
+                "This document was refused by the content gate; upload it again rather than reprocessing it.");
+        }
+
         var bytes = await storage.LoadAsync(tenantId, document.StoragePath, cancellationToken).ConfigureAwait(false);
         if (bytes is null || bytes.Length == 0)
         {
-            return Result<DocumentProcessingSummary>.Failure(
+            return Result<DocumentReprocessQueued>.Failure(
                 $"The stored bytes for document {documentId} could not be read back from object storage.");
         }
 
-        // Replace, never merge: see the type doc comment (R-DOC-07 AC-1).
+        // Replace, never merge (R-DOC-07 AC-1): the stale chunks go now, in this request, so Ask
+        // never cites the old unreadable text while the Worker is re-indexing. The window between
+        // this delete and the Worker's re-index is a document with no chunks — honest ("still
+        // processing", which the status below says) rather than wrong.
         await embeddingRetrievalService
             .RemoveChunksAsync(tenantId, DocumentSourceType, documentId, cancellationToken)
             .ConfigureAwait(false);
 
-        // Requeue the classification job so the pipeline's own classify step has a row to advance,
-        // exactly as it does on a first upload — a reprocess is a re-run of the same pipeline, not
-        // a second, differently-shaped one.
-        await RequeueClassificationJobAsync(tenantId, documentId, document.CreatedAt, cancellationToken)
+        var job = await RequeueClassificationJobAsync(tenantId, documentId, document.CreatedAt, cancellationToken)
             .ConfigureAwait(false);
+        document.ProcessingStatus = DocumentProcessingStatus.Uploaded;
 
-        var result = await processingPipeline
-            .ProcessAsync(tenantId, documentId, document.FileName, document.MimeType, bytes, cancellationToken)
-            .ConfigureAwait(false);
+        // Publish before commit, exactly as DocumentUploadService does: a publish failure fails the
+        // request with nothing changed; a commit failure leaves a pointer the Worker's claim answers
+        // with zero rows.
+        await extractionQueuePublisher.PublishAsync(
+            new ExtractionRequested(
+                tenantId.Value, documentId.Value, job.Id.Value, ExtractionRequested.CurrentSchemaVersion),
+            cancellationToken).ConfigureAwait(false);
 
-        if (result.IsSuccess)
-        {
-            using var tenantScope = tenantContext.BeginScope(tenantId);
-            await auditWriter.WriteAsync(
-                new AuditEntry(
-                    tenantId,
-                    actor,
-                    ReprocessedAuditAction,
-                    "document",
-                    documentId.Value.ToString(),
-                    clock.UtcNow,
-                    $"pagesParsed={result.Value.PagesParsed}; chunksIndexed={result.Value.ChunksIndexed}; " +
-                    $"documentType={result.Value.DocumentType}"),
-                cancellationToken).ConfigureAwait(false);
-        }
+        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
-        return result;
+        await auditWriter.WriteAsync(
+            new AuditEntry(
+                tenantId,
+                actor,
+                ReprocessedAuditAction,
+                "document",
+                documentId.Value.ToString(),
+                clock.UtcNow,
+                $"queued; extractionJobId={job.Id.Value}; attempt={job.AttemptCount + 1}"),
+            cancellationToken).ConfigureAwait(false);
+
+        return Result<DocumentReprocessQueued>.Success(new DocumentReprocessQueued(documentId, job.Id));
     }
 
-    private async Task RequeueClassificationJobAsync(
+    /// <summary>
+    /// Puts the classification job back into the exact state a fresh claim requires: Queued,
+    /// unclaimed, no timestamps. <c>ClaimedAt</c>/<c>ClaimedBy</c> must be cleared — the claim's
+    /// compare-and-swap is <c>claimed_at IS NULL</c>, so a job left claimed from its first run would
+    /// refuse the re-run's delivery for ever. <c>AttemptCount</c> is deliberately kept: it is the
+    /// bound on redeliveries across the document's whole life, not per request.
+    /// </summary>
+    private async Task<ExtractionJob> RequeueClassificationJobAsync(
         TenantId tenantId, EntityId documentId, DateTimeOffset fallbackQueuedAt, CancellationToken cancellationToken)
     {
-        using var tenantScope = tenantContext.BeginScope(tenantId);
-
         var classificationJob = await dbContext.ExtractionJobs
             .Where(j => j.TenantId == tenantId
                 && j.DocumentId == documentId
@@ -130,23 +148,30 @@ public sealed class DocumentReprocessService(
 
         if (classificationJob is null)
         {
-            dbContext.ExtractionJobs.Add(new ExtractionJob
+            classificationJob = new ExtractionJob
             {
                 TenantId = tenantId,
                 DocumentId = documentId,
                 Stage = ExtractionStage.Classification,
                 Status = ExtractionJobStatus.Queued,
                 QueuedAt = fallbackQueuedAt,
-            });
+            };
+            dbContext.ExtractionJobs.Add(classificationJob);
         }
         else
         {
             classificationJob.Status = ExtractionJobStatus.Queued;
+            classificationJob.QueuedAt = clock.UtcNow;
             classificationJob.StartedAt = null;
             classificationJob.CompletedAt = null;
             classificationJob.ErrorDetail = null;
+            classificationJob.ClaimedAt = null;
+            classificationJob.ClaimedBy = null;
         }
 
-        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        return classificationJob;
     }
 }
+
+/// <summary>The reprocess endpoint's 202 body: which document, and which job the Worker will claim.</summary>
+public sealed record DocumentReprocessQueued(EntityId DocumentId, EntityId ExtractionJobId);
