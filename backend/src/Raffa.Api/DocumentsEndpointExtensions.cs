@@ -78,7 +78,6 @@ namespace Raffa.Api;
 public static class DocumentsEndpointExtensions
 {
     private const string TenantHeaderName = "X-Tenant-Id";
-    private const string UserIdHeaderName = "X-User-Id";
     private const string UnattributedActor = "unattributed";
     private const string FileFieldName = "file";
 
@@ -119,13 +118,22 @@ public static class DocumentsEndpointExtensions
         DocumentValidationRequest? body,
         HttpContext httpContext,
         DocumentValidationService validationService,
+        ICallerContext callerContext,
         CancellationToken cancellationToken)
     {
         var request = httpContext.Request;
-        if (!TryResolveTenant(request, out var tenantId))
+        // NW-05 (ADR-010 w15 footer; ADR-022 w15 footer clause 2): identity first, then the tenant
+        // header as an authorized selector, then membership -- 401 / 400 / 404 in that order, all
+        // owned by ICallerContext (acceptance A15-8). The scope it hands back is the tenant scope
+        // this handler runs in; disposing it here is the same lifetime the old BeginScope had.
+        var caller = await callerContext.ResolveTenantAsync(request, cancellationToken);
+        if (caller.Failure is not null)
         {
-            return Results.BadRequest("A valid 'X-Tenant-Id' header (a GUID) is required.");
+            return caller.Failure;
         }
+
+        using var callerTenantScope = caller.Scope;
+        var tenantId = caller.TenantId;
 
         if (!Guid.TryParse(id, out var documentGuid))
         {
@@ -136,7 +144,7 @@ public static class DocumentsEndpointExtensions
             tenantId,
             new EntityId(documentGuid),
             body?.AcceptedFields ?? [],
-            ResolveActor(request),
+            caller.Identity!,
             cancellationToken);
 
         if (result is null)
@@ -165,12 +173,21 @@ public static class DocumentsEndpointExtensions
         HttpRequest request,
         DocumentAdmissionOptions admissionOptions,
         DocumentUploadService uploadService,
+        ICallerContext callerContext,
         CancellationToken cancellationToken)
     {
-        if (!TryResolveTenant(request, out var tenantId))
+        // NW-05 (ADR-010 w15 footer; ADR-022 w15 footer clause 2): identity first, then the tenant
+        // header as an authorized selector, then membership -- 401 / 400 / 404 in that order, all
+        // owned by ICallerContext (acceptance A15-8). The scope it hands back is the tenant scope
+        // this handler runs in; disposing it here is the same lifetime the old BeginScope had.
+        var caller = await callerContext.ResolveTenantAsync(request, cancellationToken);
+        if (caller.Failure is not null)
         {
-            return Results.BadRequest("A valid 'X-Tenant-Id' header (a GUID) is required.");
+            return caller.Failure;
         }
+
+        using var callerTenantScope = caller.Scope;
+        var tenantId = caller.TenantId;
 
         if (!request.HasFormContentType)
         {
@@ -282,12 +299,21 @@ public static class DocumentsEndpointExtensions
         string id,
         HttpRequest request,
         DocumentQueryService queryService,
+        ICallerContext callerContext,
         CancellationToken cancellationToken)
     {
-        if (!TryResolveTenant(request, out var tenantId))
+        // NW-05 (ADR-010 w15 footer; ADR-022 w15 footer clause 2): identity first, then the tenant
+        // header as an authorized selector, then membership -- 401 / 400 / 404 in that order, all
+        // owned by ICallerContext (acceptance A15-8). The scope it hands back is the tenant scope
+        // this handler runs in; disposing it here is the same lifetime the old BeginScope had.
+        var caller = await callerContext.ResolveTenantAsync(request, cancellationToken);
+        if (caller.Failure is not null)
         {
-            return Results.BadRequest("A valid 'X-Tenant-Id' header (a GUID) is required.");
+            return caller.Failure;
         }
+
+        using var callerTenantScope = caller.Scope;
+        var tenantId = caller.TenantId;
 
         if (!Guid.TryParse(id, out var documentGuid))
         {
@@ -325,12 +351,21 @@ public static class DocumentsEndpointExtensions
     private static async Task<IResult> ListDocumentsAsync(
         HttpRequest request,
         DocumentQueryService queryService,
+        ICallerContext callerContext,
         CancellationToken cancellationToken)
     {
-        if (!TryResolveTenant(request, out var tenantId))
+        // NW-05 (ADR-010 w15 footer; ADR-022 w15 footer clause 2): identity first, then the tenant
+        // header as an authorized selector, then membership -- 401 / 400 / 404 in that order, all
+        // owned by ICallerContext (acceptance A15-8). The scope it hands back is the tenant scope
+        // this handler runs in; disposing it here is the same lifetime the old BeginScope had.
+        var caller = await callerContext.ResolveTenantAsync(request, cancellationToken);
+        if (caller.Failure is not null)
         {
-            return Results.BadRequest("A valid 'X-Tenant-Id' header (a GUID) is required.");
+            return caller.Failure;
         }
+
+        using var callerTenantScope = caller.Scope;
+        var tenantId = caller.TenantId;
 
         DocumentProcessingStatus? status = null;
         if (request.Query.TryGetValue("status", out var statusValues) && !string.IsNullOrWhiteSpace(statusValues))
@@ -409,12 +444,21 @@ public static class DocumentsEndpointExtensions
         string id,
         HttpRequest request,
         DocumentPreviewService previewService,
+        ICallerContext callerContext,
         CancellationToken cancellationToken)
     {
-        if (!TryResolveTenant(request, out var tenantId))
+        // NW-05 (ADR-010 w15 footer; ADR-022 w15 footer clause 2): identity first, then the tenant
+        // header as an authorized selector, then membership -- 401 / 400 / 404 in that order, all
+        // owned by ICallerContext (acceptance A15-8). The scope it hands back is the tenant scope
+        // this handler runs in; disposing it here is the same lifetime the old BeginScope had.
+        var caller = await callerContext.ResolveTenantAsync(request, cancellationToken);
+        if (caller.Failure is not null)
         {
-            return Results.BadRequest("A valid 'X-Tenant-Id' header (a GUID) is required.");
+            return caller.Failure;
         }
+
+        using var callerTenantScope = caller.Scope;
+        var tenantId = caller.TenantId;
 
         if (!Guid.TryParse(id, out var documentGuid))
         {
@@ -437,13 +481,22 @@ public static class DocumentsEndpointExtensions
         HttpContext httpContext,
         DocumentReprocessService reprocessService,
         WorkspaceRoleResolver roleResolver,
+        ICallerContext callerContext,
         CancellationToken cancellationToken)
     {
         var request = httpContext.Request;
-        if (!TryResolveTenant(request, out var tenantId))
+        // NW-05 (ADR-010 w15 footer; ADR-022 w15 footer clause 2): identity first, then the tenant
+        // header as an authorized selector, then membership -- 401 / 400 / 404 in that order, all
+        // owned by ICallerContext (acceptance A15-8). The scope it hands back is the tenant scope
+        // this handler runs in; disposing it here is the same lifetime the old BeginScope had.
+        var caller = await callerContext.ResolveTenantAsync(request, cancellationToken);
+        if (caller.Failure is not null)
         {
-            return Results.BadRequest("A valid 'X-Tenant-Id' header (a GUID) is required.");
+            return caller.Failure;
         }
+
+        using var callerTenantScope = caller.Scope;
+        var tenantId = caller.TenantId;
 
         if (!Guid.TryParse(id, out var documentGuid))
         {
@@ -456,7 +509,7 @@ public static class DocumentsEndpointExtensions
         }
 
         var result = await reprocessService.ReprocessAsync(
-            tenantId, new EntityId(documentGuid), ResolveActor(request), cancellationToken);
+            tenantId, new EntityId(documentGuid), caller.Identity!, cancellationToken);
         if (result is null)
         {
             return Results.NotFound();
@@ -492,13 +545,22 @@ public static class DocumentsEndpointExtensions
         HttpContext httpContext,
         DocumentDeleteService deleteService,
         WorkspaceRoleResolver roleResolver,
+        ICallerContext callerContext,
         CancellationToken cancellationToken)
     {
         var request = httpContext.Request;
-        if (!TryResolveTenant(request, out var tenantId))
+        // NW-05 (ADR-010 w15 footer; ADR-022 w15 footer clause 2): identity first, then the tenant
+        // header as an authorized selector, then membership -- 401 / 400 / 404 in that order, all
+        // owned by ICallerContext (acceptance A15-8). The scope it hands back is the tenant scope
+        // this handler runs in; disposing it here is the same lifetime the old BeginScope had.
+        var caller = await callerContext.ResolveTenantAsync(request, cancellationToken);
+        if (caller.Failure is not null)
         {
-            return Results.BadRequest("A valid 'X-Tenant-Id' header (a GUID) is required.");
+            return caller.Failure;
         }
+
+        using var callerTenantScope = caller.Scope;
+        var tenantId = caller.TenantId;
 
         if (!Guid.TryParse(id, out var documentGuid))
         {
@@ -511,7 +573,7 @@ public static class DocumentsEndpointExtensions
         }
 
         var result = await deleteService.DeleteAsync(
-            tenantId, new EntityId(documentGuid), ResolveActor(request), cancellationToken);
+            tenantId, new EntityId(documentGuid), caller.Identity!, cancellationToken);
         if (result is null)
         {
             return Results.NotFound();
@@ -552,23 +614,4 @@ public static class DocumentsEndpointExtensions
         Results.Json(
             $"Raffa accepts files up to {options.MaxFileBytes / (1024 * 1024)} MB. This file is larger.",
             statusCode: StatusCodes.Status413PayloadTooLarge);
-
-    private static bool TryResolveTenant(HttpRequest request, out TenantId tenantId)
-    {
-        if (request.Headers.TryGetValue(TenantHeaderName, out var values)
-            && Guid.TryParse(values.ToString(), out var tenantGuid))
-        {
-            tenantId = new TenantId(tenantGuid);
-            return true;
-        }
-
-        tenantId = default;
-        return false;
-    }
-
-    private static string ResolveActor(HttpRequest request) =>
-        request.Headers.TryGetValue(UserIdHeaderName, out var values)
-        && !string.IsNullOrWhiteSpace(values.ToString())
-            ? values.ToString().Trim()
-            : UnattributedActor;
 }

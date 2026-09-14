@@ -62,7 +62,7 @@ public sealed class R1CrossTenantIsolationTests : IClassFixture<R1IntegrationFix
         // case) and made `POST /api/chat/query` resolve caller identity — see
         // R1EndToEndTests.PostAsync's own doc comment on the X-User-Id overload this now needs.
         var chatAsB = await R1EndToEndTests.PostAsync(
-            client, "/api/chat/query", tenantB, "bob@tenant-b.example",
+            _fixture, client, "/api/chat/query", tenantB, "bob@tenant-b.example",
             new { question = "What does the master services agreement cover?" });
         Assert.Equal(HttpStatusCode.OK, chatAsB.StatusCode);
         var chatBodyB = await R1EndToEndTests.ParseAsync(chatAsB);
@@ -82,7 +82,7 @@ public sealed class R1CrossTenantIsolationTests : IClassFixture<R1IntegrationFix
         Assert.Equal(HttpStatusCode.OK, contract360AsA.StatusCode);
 
         var chatAsA = await R1EndToEndTests.PostAsync(
-            client, "/api/chat/query", tenantA, "alice@tenant-a.example",
+            _fixture, client, "/api/chat/query", tenantA, "alice@tenant-a.example",
             new { question = "What does the master services agreement cover?" });
         var chatBodyA = await R1EndToEndTests.ParseAsync(chatAsA);
         Assert.Equal("answer", chatBodyA.GetProperty("kind").GetString());

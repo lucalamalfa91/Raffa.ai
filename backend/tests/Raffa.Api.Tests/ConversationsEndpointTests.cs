@@ -32,13 +32,13 @@ namespace Raffa.Api.Tests;
 /// <see cref="ChatEndpointTests"/>' own review-pass additions prove its alias.
 /// </para>
 /// </summary>
-public sealed class ConversationsEndpointTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class ConversationsEndpointTests : IClassFixture<RaffaApiFactory>
 {
     private readonly WebApplicationFactory<Program> _factory;
 
-    public ConversationsEndpointTests(WebApplicationFactory<Program> factory)
+    public ConversationsEndpointTests(RaffaApiFactory factory)
     {
-        _factory = factory.WithWebHostBuilder(builder =>
+        _factory = factory.WithPresentedCallersAsMembers().WithWebHostBuilder(builder =>
         {
             builder.UseSetting(
                 "ConnectionStrings:Chat",
@@ -70,28 +70,36 @@ public sealed class ConversationsEndpointTests : IClassFixture<WebApplicationFac
     }
 
     [Fact]
-    public async Task List_missing_user_header_returns_400()
+    public async Task List_missing_user_header_is_401_no_identity_no_service()
     {
-        var client = _factory.CreateClient();
+        // Fix 2026-09-14 (NW-05): the caller's identity comes from the validated token, never from a
+        // header, so "no X-User-Id" is now "no identity" -- 401 from ICallerContext before the tenant
+        // header is even read. Proven on a host without the implicit tenant Admin.
+        using var factory = new RaffaApiFactory { ImplicitTenantAdmin = false };
+        var client = factory.CreateClient();
         using var request = new HttpRequestMessage(HttpMethod.Get, "/api/conversations");
         request.Headers.Add("X-Tenant-Id", Guid.NewGuid().ToString());
 
         var response = await client.SendAsync(request);
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     [Fact]
-    public async Task List_blank_user_header_returns_400()
+    public async Task List_blank_user_header_is_401_no_identity_no_service()
     {
-        var client = _factory.CreateClient();
+        // Fix 2026-09-14 (NW-05): the caller's identity comes from the validated token, never from a
+        // header, so "no X-User-Id" is now "no identity" -- 401 from ICallerContext before the tenant
+        // header is even read. Proven on a host without the implicit tenant Admin.
+        using var factory = new RaffaApiFactory { ImplicitTenantAdmin = false };
+        var client = factory.CreateClient();
         using var request = new HttpRequestMessage(HttpMethod.Get, "/api/conversations");
         request.Headers.Add("X-Tenant-Id", Guid.NewGuid().ToString());
         request.Headers.Add("X-User-Id", "   ");
 
         var response = await client.SendAsync(request);
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     [Fact]
@@ -118,9 +126,13 @@ public sealed class ConversationsEndpointTests : IClassFixture<WebApplicationFac
     }
 
     [Fact]
-    public async Task Create_missing_user_header_returns_400()
+    public async Task Create_missing_user_header_is_401_no_identity_no_service()
     {
-        var client = _factory.CreateClient();
+        // Fix 2026-09-14 (NW-05): the caller's identity comes from the validated token, never from a
+        // header, so "no X-User-Id" is now "no identity" -- 401 from ICallerContext before the tenant
+        // header is even read. Proven on a host without the implicit tenant Admin.
+        using var factory = new RaffaApiFactory { ImplicitTenantAdmin = false };
+        var client = factory.CreateClient();
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/conversations")
         {
             Content = JsonContent.Create(new { }),
@@ -129,7 +141,7 @@ public sealed class ConversationsEndpointTests : IClassFixture<WebApplicationFac
 
         var response = await client.SendAsync(request);
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     [Fact]
@@ -159,15 +171,19 @@ public sealed class ConversationsEndpointTests : IClassFixture<WebApplicationFac
     }
 
     [Fact]
-    public async Task Get_missing_user_header_returns_400()
+    public async Task Get_missing_user_header_is_401_no_identity_no_service()
     {
-        var client = _factory.CreateClient();
+        // Fix 2026-09-14 (NW-05): the caller's identity comes from the validated token, never from a
+        // header, so "no X-User-Id" is now "no identity" -- 401 from ICallerContext before the tenant
+        // header is even read. Proven on a host without the implicit tenant Admin.
+        using var factory = new RaffaApiFactory { ImplicitTenantAdmin = false };
+        var client = factory.CreateClient();
         using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/conversations/{Guid.NewGuid()}");
         request.Headers.Add("X-Tenant-Id", Guid.NewGuid().ToString());
 
         var response = await client.SendAsync(request);
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     [Fact]
@@ -204,9 +220,13 @@ public sealed class ConversationsEndpointTests : IClassFixture<WebApplicationFac
     }
 
     [Fact]
-    public async Task Post_message_missing_user_header_returns_400()
+    public async Task Post_message_missing_user_header_is_401_no_identity_no_service()
     {
-        var client = _factory.CreateClient();
+        // Fix 2026-09-14 (NW-05): the caller's identity comes from the validated token, never from a
+        // header, so "no X-User-Id" is now "no identity" -- 401 from ICallerContext before the tenant
+        // header is even read. Proven on a host without the implicit tenant Admin.
+        using var factory = new RaffaApiFactory { ImplicitTenantAdmin = false };
+        var client = factory.CreateClient();
         using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/conversations/{Guid.NewGuid()}/messages")
         {
             Content = JsonContent.Create(new { question = "When does Salesforce expire?" }),
@@ -215,7 +235,7 @@ public sealed class ConversationsEndpointTests : IClassFixture<WebApplicationFac
 
         var response = await client.SendAsync(request);
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     [Fact]

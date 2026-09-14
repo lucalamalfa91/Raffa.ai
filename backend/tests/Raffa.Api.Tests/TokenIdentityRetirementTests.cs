@@ -32,16 +32,16 @@ namespace Raffa.Api.Tests;
 /// with it.
 /// </para>
 /// </summary>
-public sealed class TokenIdentityRetirementTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class TokenIdentityRetirementTests : IClassFixture<RaffaApiFactory>
 {
     private readonly WebApplicationFactory<Program> _baseFactory;
 
-    public TokenIdentityRetirementTests(WebApplicationFactory<Program> factory)
+    public TokenIdentityRetirementTests(RaffaApiFactory factory)
     {
         _baseFactory = factory;
     }
 
-    [Fact(Skip = "activated by NW-05/NW-08 in W15")]
+    [Fact] // activated 2026-09-14: NW-05 landed (TokenCallerIdentity) and is now applied on every route
     public async Task T14_a_validated_token_ignores_x_user_id_entirely_never_merely_overriding_it()
     {
         var factory = WithInMemoryIdentityAndTestToken();
@@ -63,7 +63,7 @@ public sealed class TokenIdentityRetirementTests : IClassFixture<WebApplicationF
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
     }
 
-    [Fact(Skip = "activated by NW-05/NW-08 in W15")]
+    [Fact] // activated 2026-09-14: NW-05 landed (TokenCallerIdentity) and is now applied on every route
     public async Task T14_a_token_carrying_role_and_tenant_claims_grants_neither()
     {
         var factory = WithInMemoryIdentityAndTestToken();
@@ -105,6 +105,11 @@ public sealed class TokenIdentityRetirementTests : IClassFixture<WebApplicationF
         var now = new DateTimeOffset(2026, 9, 11, 9, 0, 0, TimeSpan.Zero);
         var user = new Raffa.Identity.Workspace.Domain.WorkspaceUser { TenantId = tenant, Email = email, CreatedAt = now };
         var role = new Raffa.Identity.Workspace.Domain.WorkspaceRole { TenantId = tenant, Name = roleName, CreatedAt = now };
+        // 2026-09-14: the invite path now needs the workspace row (its name goes into the mail and the
+        // guest invitation) and the role being granted to exist -- the same seed
+        // WorkspaceInviteOutcomeTests uses.
+        db.Workspaces.Add(new Raffa.Identity.Workspace.Domain.WorkspaceTenant { TenantId = tenant, Name = "Acme Procurement", CreatedAt = now });
+        db.WorkspaceRoles.Add(new Raffa.Identity.Workspace.Domain.WorkspaceRole { TenantId = tenant, Name = Raffa.Identity.Workspace.Domain.WorkspaceRoleName.Procurement, CreatedAt = now });
         db.WorkspaceUsers.Add(user);
         db.WorkspaceRoles.Add(role);
         db.WorkspaceMemberships.Add(new Raffa.Identity.Workspace.Domain.WorkspaceMembership
@@ -144,7 +149,13 @@ public sealed class TokenIdentityRetirementTests : IClassFixture<WebApplicationF
             {
                 if (context.Request.Headers.TryGetValue(TokenSubjectHeaderName, out var subjectValues))
                 {
-                    var claims = new List<Claim> { new(ClaimTypes.NameIdentifier, subjectValues.ToString()) };
+                    var claims = new List<Claim>
+                    {
+                        new(ClaimTypes.NameIdentifier, subjectValues.ToString()),
+                        // 2026-09-14: TokenCallerIdentity resolves the subject from `oid` (ADR-010 w15 footer
+                        // �2.1), so the simulated token carries it too -- the same value, as a real token would.
+                        new("oid", subjectValues.ToString()),
+                    };
 
                     if (context.Request.Headers.TryGetValue(TokenRoleHeaderName, out var roleValues))
                     {

@@ -19,14 +19,14 @@ namespace Raffa.Api.Tests;
 /// accident. These two model the real token shape: a GUID subject and a separate <c>email</c>
 /// claim (<see cref="TestUserIdAuthenticationHandler.UserEmailHeaderName"/>).
 /// </summary>
-public sealed class WorkspaceCreatorTokenSubjectTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class WorkspaceCreatorTokenSubjectTests : IClassFixture<RaffaApiFactory>
 {
     private const string Subject = "ab5b6f66-1bd6-44e3-8ea0-2ceff69b62a6";
     private const string Email = "founder@acme.example";
 
     private readonly WebApplicationFactory<Program> _baseFactory;
 
-    public WorkspaceCreatorTokenSubjectTests(WebApplicationFactory<Program> factory)
+    public WorkspaceCreatorTokenSubjectTests(RaffaApiFactory factory)
     {
         _baseFactory = factory;
     }

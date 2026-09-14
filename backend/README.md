@@ -239,23 +239,31 @@ request.
 | GET | `/api/contracts/{id}/strategy` | One contract's renewal-strategy pack (when you must move, where you can push, targets, next steps; task E13/F07/US01/T01; mapped by task E13/F06/US01/T01); `X-Tenant-Id` header; 404 when the contract does not exist or belongs to another tenant; the same `Raffa.Insights.Strategy.StrategyPackBuilder` output `AskCopilotService`'s own `RenewalStrategy` intent narrates — see "Insights" below |
 | GET | `/api/market/records/{id}` | One market-feed record, for the citation panel (R-EVD-02; task E13/F06/US01/T01, ask-engine); no `X-Tenant-Id` — shared, tenant-agnostic market data (ADR-024); 404 when `{id}` does not name a record in the mock feed; response `{ recordId, supplier, category, product, geography, currency, title, snippet, provenance, updatedAt, unitPriceP25, unitPriceP50, unitPriceP75, sampleSize, source, representative }` — see `Raffa.Api.MarketEndpointExtensions` |
 
-**Interim auth:** every endpoint above that takes an `X-Tenant-Id` header
-(all except `GET /api/audit`, which already expects a claims principal)
-takes the tenant from that header, not from a validated JWT. ADR-010
-(Entra ID / OIDC on the API) is not wired in the host yet. Do not treat
-the header as the long-term contract.
+**Authentication (NW-05, task E18/F01/US01/T01 — applied to every route on 2026-09-14):** the
+caller is the validated **bearer token**, nothing else. `Program.cs` wires `AddJwtBearer` against
+the `AzureAd__*` keys (issuer, audience = the API client id, lifetime, signing key all validated,
+clock skew two minutes); `Raffa.Api.Infrastructure.TokenCallerIdentity` reads the token's `oid`
+as the identity and its `email` claim as a binding aid. The interim `X-User-Id` header is **no
+longer read anywhere** in this host.
 
-`GET/POST /api/conversations` and `GET /api/conversations/{id}` (task
-E13/F05/US01/T02) additionally resolve a **caller identity**, not just a
-tenant: the token subject of an already-authenticated principal when one
-is present (the ADR-010 end state), otherwise the required `X-User-Id`
-header (ADR-022 posture, OQ-askv2-005's assumption in force — the MSAL
-account username) — missing both is a 400. Since this host wires no
-`AddAuthentication`/`AddJwtBearer` yet, every real caller takes the
-header branch today. Same caveat as the tenant header: `X-User-Id` is
-**never validated** against a real identity provider — it only scopes
-which rows a request can read/write, and is replaced by the token
-subject the same task that lands the API JWT on this host.
+Every tenant-scoped endpoint above goes through one seam,
+`Raffa.Api.Infrastructure.ICallerContext`, in this order: no validated identity → **401** before the
+tenant header is even looked at; `X-Tenant-Id` missing or not a GUID → **400**; a well-formed tenant
+the caller holds no live `workspace_membership` in → **404**, never 403 (a 403 there would be a
+tenant-existence oracle, ADR-025 Rule B1); otherwise the tenant scope is entered and the handler
+runs. `X-Tenant-Id` is therefore an *authorized selector* — a caller may belong to several
+workspaces, so the token alone names no tenant — never a source of trust. The routes that carry
+`{tenantId}` in their path (workspace members/invites) verify the same membership against the
+route value and ignore the header. `GET /api/workspaces` takes no tenant input and lists what the
+identity belongs to; `POST /api/workspaces` needs an identity and the token's `email` claim
+(the creator row is keyed by both the address and the `oid`).
+
+The audit actor and the per-user key of conversations are that same validated identity
+(`CallerTenantResult.Identity`). Until 2026-09-14 the data-plane routes still resolved the tenant
+from the header alone with no identity at all — `GET /api/documents` answered 200 to an
+unauthenticated request that merely supplied a tenant GUID; `TokenGateDataPlaneTests` now pins
+the 401/404/400 order on every route family, and the two `TokenIdentityRetirementTests` that had
+been skipped since w14 are active.
 
 The web client generates TypeScript types from
 `web/openapi/raffa-api.v1.json`. The API does **not** yet self-publish

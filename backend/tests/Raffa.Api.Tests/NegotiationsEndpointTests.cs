@@ -1,3 +1,4 @@
+using Raffa.Api.Tests.TestSupport;
 using System.Net;
 using Microsoft.AspNetCore.Mvc.Testing;
 
@@ -18,11 +19,11 @@ namespace Raffa.Api.Tests;
 /// Testcontainers level instead — <c>Raffa.Quotes.Tests.NegotiationOutcomeServiceTests</c> — per
 /// this task's own "Tests required" level (unit, no database).
 /// </summary>
-public sealed class NegotiationsEndpointTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class NegotiationsEndpointTests : IClassFixture<RaffaApiFactory>
 {
     private readonly WebApplicationFactory<Program> _factory;
 
-    public NegotiationsEndpointTests(WebApplicationFactory<Program> factory)
+    public NegotiationsEndpointTests(RaffaApiFactory factory)
     {
         _factory = factory;
     }

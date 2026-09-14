@@ -20,13 +20,13 @@ namespace Raffa.Api.Tests;
 /// <see cref="InMemoryAskEngineFactory.SeedContractAsync"/> shape
 /// <see cref="Contract360EndpointTests"/> already uses — and reads the wire.
 /// </summary>
-public sealed class ContractReadinessTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class ContractReadinessTests : IClassFixture<RaffaApiFactory>
 {
     private static readonly DateTimeOffset Now = new(2026, 9, 14, 9, 0, 0, TimeSpan.Zero);
 
     private readonly WebApplicationFactory<Program> _factory;
 
-    public ContractReadinessTests(WebApplicationFactory<Program> factory)
+    public ContractReadinessTests(RaffaApiFactory factory)
     {
         _factory = PortfolioEndpointTests.WithSupplierNames(
             factory.WithWebHostBuilder(builder =>

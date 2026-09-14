@@ -26,11 +26,11 @@ namespace Raffa.Api.Tests;
 /// harness the sibling portfolio/renewals assertions use.
 /// </para>
 /// </summary>
-public sealed class Contract360EndpointTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class Contract360EndpointTests : IClassFixture<RaffaApiFactory>
 {
     private readonly WebApplicationFactory<Program> _factory;
 
-    public Contract360EndpointTests(WebApplicationFactory<Program> factory)
+    public Contract360EndpointTests(RaffaApiFactory factory)
     {
         _factory = factory.WithWebHostBuilder(builder =>
         {

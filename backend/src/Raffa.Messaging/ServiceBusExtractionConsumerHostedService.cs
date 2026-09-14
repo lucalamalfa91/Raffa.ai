@@ -97,8 +97,32 @@ public sealed class ServiceBusExtractionConsumerHostedService(
         {
             using var scope = scopeFactory.CreateScope();
             var handler = scope.ServiceProvider.GetRequiredService<ExtractionRequestedHandler>();
-            await handler.HandleAsync(message, args.CancellationToken).ConfigureAwait(false);
-            await args.CompleteMessageAsync(args.Message, args.CancellationToken).ConfigureAwait(false);
+            var outcome = await handler.HandleAsync(message, args.CancellationToken).ConfigureAwait(false);
+            switch (ExtractionSettlement.Decide(outcome, args.Message.DeliveryCount))
+            {
+                case ExtractionSettlement.Action.Abandon:
+                    // ADR-027 §C6: no row yet inside this tenant's scope on an early delivery -- the
+                    // upload's commit is still landing. Abandon so the redelivery sees it.
+                    logger.LogWarning(
+                        "No extraction job row for document {DocumentId} yet (delivery {Delivery}); abandoning for redelivery",
+                        message.DocumentId, args.Message.DeliveryCount);
+                    await args.AbandonMessageAsync(args.Message, cancellationToken: args.CancellationToken).ConfigureAwait(false);
+                    break;
+                case ExtractionSettlement.Action.DeadLetter:
+                    // Still no row after the capped redeliveries: an operator's pointer, never a silent
+                    // complete that would strand the document at Uploaded.
+                    logger.LogError(
+                        "No extraction job row for document {DocumentId} after {Delivery} deliveries; dead-lettering as {Reason}",
+                        message.DocumentId, args.Message.DeliveryCount, ExtractionSettlement.JobNotFoundReason);
+                    await args.DeadLetterMessageAsync(
+                        args.Message, ExtractionSettlement.JobNotFoundReason,
+                        $"document {message.DocumentId}: no extraction job row after {args.Message.DeliveryCount} deliveries",
+                        args.CancellationToken).ConfigureAwait(false);
+                    break;
+                default:
+                    await args.CompleteMessageAsync(args.Message, args.CancellationToken).ConfigureAwait(false);
+                    break;
+            }
         }
         catch (ExtractionTransientException exception)
         {

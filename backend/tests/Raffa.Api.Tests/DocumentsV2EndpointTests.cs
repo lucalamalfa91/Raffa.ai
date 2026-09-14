@@ -34,7 +34,7 @@ namespace Raffa.Api.Tests;
 /// dedicated N9 proof, including the creator's real bootstrap-written membership.
 /// </para>
 /// </summary>
-public sealed class DocumentsV2EndpointTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class DocumentsV2EndpointTests : IClassFixture<RaffaApiFactory>
 {
     private const string MsaText =
         "MASTER SERVICES AGREEMENT between Acme Corp and Contoso Ltd, effective 2026-01-01. " +
@@ -47,7 +47,7 @@ public sealed class DocumentsV2EndpointTests : IClassFixture<WebApplicationFacto
 
     private readonly WebApplicationFactory<Program> _baseFactory;
 
-    public DocumentsV2EndpointTests(WebApplicationFactory<Program> factory)
+    public DocumentsV2EndpointTests(RaffaApiFactory factory)
     {
         _baseFactory = factory;
     }
@@ -155,12 +155,16 @@ public sealed class DocumentsV2EndpointTests : IClassFixture<WebApplicationFacto
         // Procurement (and a caller with no role at all) get 403 — R-DOC-07. A spoofed X-Role
         // header is no longer an authorization source (ADR-025 §E), so it proves nothing here; both
         // callers simply hold no real membership row in this tenant.
+        // NW-05 (2026-09-14): the seeded Procurement member is refused (403); a caller with no
+        // membership in this tenant is 404, never 403 (ADR-025 Rule B1).
+        const string procurementEmail = "buyer@acme.example";
+        await SeedMembershipAsync(host, tenantId, procurementEmail, WorkspaceRoleName.Procurement);
         await AssertStatusAsync(
             HttpStatusCode.Forbidden,
-            await SendAsync(client, HttpMethod.Post, $"/api/documents/{documentId}/reprocess", tenantId.ToString(), "Procurement"));
+            await SendAsync(client, HttpMethod.Post, $"/api/documents/{documentId}/reprocess", tenantId.ToString(), role: null, userId: procurementEmail));
         Assert.Equal(
-            HttpStatusCode.Forbidden,
-            (await SendAsync(client, HttpMethod.Post, $"/api/documents/{documentId}/reprocess", tenantId.ToString())).StatusCode);
+            HttpStatusCode.NotFound,
+            (await SendAsync(client, HttpMethod.Post, $"/api/documents/{documentId}/reprocess", tenantId.ToString(), role: null, userId: "stranger@elsewhere.example")).StatusCode);
 
         // A real membership row is what the Admin case now proves (task E14/F02/US02/T01) — the
         // (now-inert) X-Role header is dropped rather than kept as decoration.
@@ -208,6 +212,9 @@ public sealed class DocumentsV2EndpointTests : IClassFixture<WebApplicationFacto
         Assert.Equal("NeedsReview", before.RootElement.GetProperty("processingStatus").GetString());
 
         // Procurement signs off — no Admin gate on a review (unlike reprocess/delete).
+        // NW-05 (2026-09-14): the reviewer is a real Procurement member, seeded; the X-Role header is
+        // inert and stays only as a record of what the caller claims.
+        await SeedMembershipAsync(host, tenantId, "buyer@acme.example", WorkspaceRoleName.Procurement);
         var response = await SendJsonAsync(
             client, HttpMethod.Post, $"/api/documents/{documentId}/validate", tenantId.ToString(),
             """{"acceptedFields":["supplier","currency"]}""", "Procurement", "buyer@acme.example");
@@ -305,9 +312,16 @@ public sealed class DocumentsV2EndpointTests : IClassFixture<WebApplicationFacto
 
         // A spoofed X-Role header proves nothing after task E14/F02/US02/T01 (ADR-025 §E) -- this
         // caller simply holds no real membership row in this tenant.
+        // NW-05 (2026-09-14): the role comes from the membership row and nowhere else -- a seeded
+        // Procurement member is 403, a caller with no membership here is 404, never 403 (ADR-025 B1).
+        const string procurementEmail = "buyer@acme.example";
+        await SeedMembershipAsync(host, tenantId, procurementEmail, WorkspaceRoleName.Procurement);
         Assert.Equal(
             HttpStatusCode.Forbidden,
-            (await SendAsync(client, HttpMethod.Delete, $"/api/documents/{documentId}", tenantId.ToString(), "Procurement")).StatusCode);
+            (await SendAsync(client, HttpMethod.Delete, $"/api/documents/{documentId}", tenantId.ToString(), role: null, userId: procurementEmail)).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.NotFound,
+            (await SendAsync(client, HttpMethod.Delete, $"/api/documents/{documentId}", tenantId.ToString(), role: null, userId: "stranger@elsewhere.example")).StatusCode);
         Assert.Empty(host.Storage.Deleted);
 
         // A real membership row is what the Admin case now proves.
@@ -362,9 +376,9 @@ public sealed class DocumentsV2EndpointTests : IClassFixture<WebApplicationFacto
                 client, HttpMethod.Post, $"/api/documents/{documentId}/reprocess", tenantId.ToString(),
                 role: null, userId: adminEmail));
 
-        // A membership in another tenant grants nothing here.
+        // A membership in another tenant grants nothing here. Under NW-05 that caller is a non-member here: 404, never 403 (ADR-025 B1).
         await AssertStatusAsync(
-            HttpStatusCode.Forbidden,
+            HttpStatusCode.NotFound,
             await SendAsync(
                 client, HttpMethod.Post, $"/api/documents/{documentId}/reprocess", Guid.NewGuid().ToString(),
                 role: null, userId: adminEmail));
@@ -440,7 +454,7 @@ public sealed class DocumentsV2EndpointTests : IClassFixture<WebApplicationFacto
         string url,
         string tenantId,
         string? role = null,
-        string userId = "operator@acme.example")
+        string userId = ImplicitTenantAdminStartupFilter.Email)
     {
         using var request = new HttpRequestMessage(method, url);
         request.Headers.Add("X-Tenant-Id", tenantId);
@@ -460,7 +474,7 @@ public sealed class DocumentsV2EndpointTests : IClassFixture<WebApplicationFacto
         string tenantId,
         string json,
         string? role = null,
-        string userId = "operator@acme.example")
+        string userId = ImplicitTenantAdminStartupFilter.Email)
     {
         using var request = new HttpRequestMessage(method, url)
         {

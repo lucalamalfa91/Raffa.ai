@@ -22,13 +22,13 @@ namespace Raffa.Api.Tests;
 /// point is the projection over every status, not the pipeline that produces them (that is
 /// <see cref="DocumentUploadEndpointTests"/>' job).
 /// </summary>
-public sealed class DocumentsListCountsTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class DocumentsListCountsTests : IClassFixture<RaffaApiFactory>
 {
     private static readonly DateTimeOffset Now = new(2026, 9, 14, 9, 0, 0, TimeSpan.Zero);
 
     private readonly WebApplicationFactory<Program> _factory;
 
-    public DocumentsListCountsTests(WebApplicationFactory<Program> factory)
+    public DocumentsListCountsTests(RaffaApiFactory factory)
     {
         _factory = PortfolioEndpointTests.WithSupplierNames(
             factory.WithWebHostBuilder(builder =>

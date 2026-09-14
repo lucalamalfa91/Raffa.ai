@@ -1,3 +1,4 @@
+using Raffa.Api.Tests.TestSupport;
 using System.Net;
 using Microsoft.AspNetCore.Mvc.Testing;
 
@@ -13,11 +14,11 @@ namespace Raffa.Api.Tests;
 /// <c>Raffa.Documents.Contracts.Tests.ContractCorrectionHistoryQueryServiceTests</c> (a separate
 /// assembly) proves the actual query behaviour against a real database.
 /// </summary>
-public sealed class ContractCorrectionHistoryEndpointTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class ContractCorrectionHistoryEndpointTests : IClassFixture<RaffaApiFactory>
 {
     private readonly WebApplicationFactory<Program> _factory;
 
-    public ContractCorrectionHistoryEndpointTests(WebApplicationFactory<Program> factory)
+    public ContractCorrectionHistoryEndpointTests(RaffaApiFactory factory)
     {
         _factory = factory.WithWebHostBuilder(builder =>
         {

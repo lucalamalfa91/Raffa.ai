@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Raffa.Identity.Workspace.Domain;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Contracts;
@@ -249,8 +250,13 @@ public sealed class AskRaffaRagCrossTenantIsolationTests : IClassFixture<R0Integ
         Assert.True(result.IsSuccess, result.IsFailure ? result.Error : string.Empty);
     }
 
-    private static async Task<HttpResponseMessage> PostChatQueryAsync(HttpClient client, TenantId tenantId, string userId)
+    private async Task<HttpResponseMessage> PostChatQueryAsync(HttpClient client, TenantId tenantId, string userId)
     {
+        // NW-05 (2026-09-14): a presented caller now has to be a member of the tenant it names, or
+        // ICallerContext answers 404 before the handler runs -- so the test grants that membership
+        // first, exactly the way the invite flow would have.
+        await ImplicitTenantAdminStartupFilter.EnsureMembershipAsync(_fixture.Services, tenantId, userId, WorkspaceRoleName.Admin);
+
         // Must await inside this `using` block (not return the un-awaited Task): disposing
         // `request` before SendAsync's work actually completes would race its Content stream.
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/chat/query")
@@ -262,8 +268,13 @@ public sealed class AskRaffaRagCrossTenantIsolationTests : IClassFixture<R0Integ
         return await client.SendAsync(request);
     }
 
-    private static async Task<Guid> CreateConversationAsync(HttpClient client, TenantId tenantId, string userId)
+    private async Task<Guid> CreateConversationAsync(HttpClient client, TenantId tenantId, string userId)
     {
+        // NW-05 (2026-09-14): a presented caller now has to be a member of the tenant it names, or
+        // ICallerContext answers 404 before the handler runs -- so the test grants that membership
+        // first, exactly the way the invite flow would have.
+        await ImplicitTenantAdminStartupFilter.EnsureMembershipAsync(_fixture.Services, tenantId, userId, WorkspaceRoleName.Admin);
+
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/conversations")
         {
             Content = JsonContent.Create(new { }),

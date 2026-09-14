@@ -28,7 +28,7 @@ namespace Raffa.Api.Tests;
 /// unchanged 409s. The guard in front (401 → 404 → 403) is
 /// <see cref="WorkspaceInviteAuthorizationTests"/>' own proof and is not repeated here.
 /// </summary>
-public sealed class WorkspaceInviteOutcomeTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class WorkspaceInviteOutcomeTests : IClassFixture<RaffaApiFactory>
 {
     private const string AcceptUrlBase = "https://app.dev.raffa.example";
     private const string Admin = "admin@acme.example";
@@ -36,7 +36,7 @@ public sealed class WorkspaceInviteOutcomeTests : IClassFixture<WebApplicationFa
 
     private readonly WebApplicationFactory<Program> _baseFactory;
 
-    public WorkspaceInviteOutcomeTests(WebApplicationFactory<Program> factory)
+    public WorkspaceInviteOutcomeTests(RaffaApiFactory factory)
     {
         _baseFactory = factory;
     }

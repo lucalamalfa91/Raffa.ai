@@ -1,13 +1,18 @@
 using System.Net.Http.Json;
+using System.Security.Claims;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Fixtures;
 using Raffa.Chat.Infrastructure;
 using Raffa.Documents.Contracts.Infrastructure;
+using Raffa.Identity.Workspace.Domain;
+using Raffa.Identity.Workspace.Infrastructure;
 using Raffa.Savings.Infrastructure;
 using Raffa.SharedKernel;
 using Raffa.Suppliers.Products.Infrastructure;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
@@ -124,6 +129,7 @@ internal sealed class AskEvalHost : IAsyncDisposable
         var suppliersDbName = $"aieval-suppliers-{fixture.Key}";
         var savingsDbName = $"aieval-savings-{fixture.Key}";
         var chatDbName = $"aieval-chat-{fixture.Key}";
+        var identityDbName = $"aieval-identity-{fixture.Key}";
 
         var auditWriter = new RecordingAuditWriter();
         RecordingAiGateway? gateway = AiEvalOptions.UseFoundry
@@ -144,6 +150,15 @@ internal sealed class AskEvalHost : IAsyncDisposable
                 SwapToInMemory<SuppliersDbContext>(services, suppliersDbName);
                 SwapToInMemory<SavingsDbContext>(services, savingsDbName);
                 SwapToInMemory<ChatDbContext>(services, chatDbName);
+
+                // NW-05 (2026-09-14): every Ask turn now goes through ICallerContext -- a validated
+                // identity, then membership in the tenant the request names. This host has no bearer
+                // token, so a startup filter turns the X-User-Id every golden turn already sends into
+                // the oid/email principal the seam reads, and SeedAsync makes that caller a member of
+                // the fixture tenant in an in-memory identity store (the appsettings default would
+                // dial a Postgres that is never there).
+                SwapToInMemory<IdentityWorkspaceDbContext>(services, identityDbName);
+                services.AddSingleton<IStartupFilter, GoldenCallerStartupFilter>();
 
                 // Plain interface registrations: unlike AddDbContext's TryAdd-based core services,
                 // "last registration wins" really does hold for a single GetRequiredService<T>()
@@ -236,6 +251,15 @@ internal sealed class AskEvalHost : IAsyncDisposable
     {
         using var scope = _factory.Services.CreateScope();
 
+        // The golden caller is an Admin member of the fixture tenant (NW-05, see the filter above).
+        var identity = scope.ServiceProvider.GetRequiredService<IdentityWorkspaceDbContext>();
+        var member = new WorkspaceUser { TenantId = Fixture.TenantId, Email = GoldenSetCallerId, CreatedAt = AiEvalOptions.EvaluationInstant };
+        var adminRole = new WorkspaceRole { TenantId = Fixture.TenantId, Name = WorkspaceRoleName.Admin, CreatedAt = AiEvalOptions.EvaluationInstant };
+        identity.WorkspaceUsers.Add(member);
+        identity.WorkspaceRoles.Add(adminRole);
+        identity.WorkspaceMemberships.Add(new WorkspaceMembership { TenantId = Fixture.TenantId, WorkspaceUserId = member.Id, WorkspaceRoleId = adminRole.Id, CreatedAt = AiEvalOptions.EvaluationInstant });
+        await identity.SaveChangesAsync().ConfigureAwait(false);
+
         if (Fixture.Suppliers.Count > 0)
         {
             var suppliers = scope.ServiceProvider.GetRequiredService<SuppliersDbContext>();
@@ -249,6 +273,28 @@ internal sealed class AskEvalHost : IAsyncDisposable
             documents.Contracts.AddRange(Fixture.Contracts);
             await documents.SaveChangesAsync().ConfigureAwait(false);
         }
+    }
+
+    /// <summary>NW-05 (2026-09-14): turns the X-User-Id header this host already sends into the
+    /// authenticated principal TokenCallerIdentity reads (oid + email). Program.cs's JwtBearer
+    /// scheme sees no bearer token, returns NoResult, and leaves this principal in place.</summary>
+    private sealed class GoldenCallerStartupFilter : IStartupFilter
+    {
+        public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
+        {
+            app.Use(async (context, nextMiddleware) =>
+            {
+                if (context.Request.Headers.TryGetValue("X-User-Id", out var values) && !string.IsNullOrWhiteSpace(values.ToString()))
+                {
+                    var claims = new List<Claim> { new("oid", values.ToString()), new("email", values.ToString()) };
+                    context.User = new ClaimsPrincipal(new ClaimsIdentity(claims, authenticationType: "GoldenSet"));
+                }
+
+                await nextMiddleware().ConfigureAwait(false);
+            });
+
+            next(app);
+        };
     }
 }
 

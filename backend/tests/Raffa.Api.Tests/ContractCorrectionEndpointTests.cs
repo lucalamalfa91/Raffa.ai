@@ -1,3 +1,4 @@
+using Raffa.Api.Tests.TestSupport;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -15,11 +16,11 @@ namespace Raffa.Api.Tests;
 /// <c>Raffa.Documents.Contracts.Tests.ContractCorrectionServiceTests</c> (a separate assembly)
 /// proves the actual versioning/history behaviour against a real database.
 /// </summary>
-public sealed class ContractCorrectionEndpointTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class ContractCorrectionEndpointTests : IClassFixture<RaffaApiFactory>
 {
     private readonly WebApplicationFactory<Program> _factory;
 
-    public ContractCorrectionEndpointTests(WebApplicationFactory<Program> factory)
+    public ContractCorrectionEndpointTests(RaffaApiFactory factory)
     {
         _factory = factory.WithWebHostBuilder(builder =>
         {
