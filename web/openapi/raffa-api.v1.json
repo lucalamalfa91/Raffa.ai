@@ -421,7 +421,7 @@
         },
         "responses": {
           "201": {
-            "description": "An invitation was issued (task E15/F01/US01/T01, wave w14; ADR-025 §D.1, ADR-026 §D5). This is an offer, not a grant: no workspace_membership row is written until the invitee calls POST /api/invites/accept. acceptUrl is site-relative (/invite/accept#<token>, ADR-025 Rule C9) and the token appears in this response exactly once -- it is never persisted client-side and never resent. mailDelivered is a server fact (ADR-026 §D6): false in w14 by construction (NullInvitationMailer, OQ-w14-002), so the UI must not claim a mail was sent.",
+            "description": "An invitation was issued (task E15/F01/US01/T01, wave w14; ADR-025 §D.1, ADR-026 §D5). This is an offer, not a grant: no workspace_membership row is written until the invitee calls POST /api/invites/accept. Since task E17/F01/US01/T01 (wave w15, NW-67/NW-68; ADR-026 w15 footers §1/§4/§8, ADR-025 §J): the guest was provisioned in the company directory BEFORE this row was written (a provisioning failure is the 502 below, never a 201); acceptUrl is absolute ({Invitations__AcceptUrlBase}/invite/accept#<token>) when a base is configured and site-relative otherwise -- the token stays after the `#` (ADR-025 Rule C9) and appears in this response exactly once; the mail, when a transport is configured, is the second channel for the same link. `deliveryOutcome` is the one discriminant the pane branches on; `mailDelivered` stays what it always was (the mailer's own bool, accepted for delivery, never a receipt) and `deliveryOutcome == \"sent\"` if and only if `mailDelivered`. A live invitation for the same address is REPLACED by this call (revoked and re-issued in one transaction), so the link the Admin already shared stops working.",
             "content": {
               "application/json": {
                 "schema": {
@@ -454,9 +454,22 @@
                       "type": "string",
                       "description": "Site-relative /invite/accept#<token> -- a URL fragment, never a path or query string (ADR-025 Rule C9)."
                     },
+                    "deliveryOutcome": {
+                      "type": "string",
+                      "enum": [
+                        "sent",
+                        "mail_failed",
+                        "no_transport"
+                      ],
+                      "description": "ADR-026 w15 footer §8: the server's own delivery discriminant -- `sent` (the mail was accepted for delivery), `mail_failed` (a transport is configured and refused; the copyable acceptUrl is the remedy), `no_transport` (no mail transport is configured; the copyable acceptUrl is the only channel). Non-nullable with an enum on purpose (ADR-012 w15 §9): the generator renders a literal union, which is what keeps the pane's three-arm branch exhaustive under tsc. There is no fourth value -- a guest-provisioning failure is the 502 below, not a 201."
+                    },
                     "mailDelivered": {
                       "type": "boolean",
-                      "description": "Whether IInvitationMailer actually sent it. Always false in w14 (no transport, OQ-w14-002) -- the UI shows the copyable acceptUrl instead of claiming a mail was sent."
+                      "description": "IInvitationMailer.TrySendAsync's own return: accepted for delivery, never a delivery receipt (ADR-025 §J.6e). Equals `deliveryOutcome == \"sent\"` by construction; the client branches on `deliveryOutcome` and never combines the two."
+                    },
+                    "identityProvisioned": {
+                      "type": "boolean",
+                      "description": "ADR-026 w15 footer §1: true when the company directory holds a guest for this address after the call -- created by it or already present, deliberately indistinguishable (ADR-025 §J.4a, no directory-enumeration oracle) -- and false when guest provisioning is not configured (Invitations__GuestProvisioning__Enabled). `false` means NOT CONFIGURED, never failed: a failure is the 502 below. The pane keys the one-time-code sentence to this boolean."
                     }
                   },
                   "required": [
@@ -465,7 +478,9 @@
                     "role",
                     "expiresAt",
                     "acceptUrl",
-                    "mailDelivered"
+                    "deliveryOutcome",
+                    "mailDelivered",
+                    "identityProvisioned"
                   ]
                 }
               }
@@ -482,11 +497,35 @@
             }
           },
           "409": {
-            "description": "This email already holds that role, or already has a live (unaccepted, unrevoked) invitation in this workspace -- at most one may exist per email at a time regardless of role (ADR-026 §D4's partial unique index). A removed person (no live membership, and their prior invitation revoked by the removal itself) is not blocked by this -- see DELETE /api/workspaces/{tenantId}/members/{membershipId}.",
+            "description": "This email already holds that role in this workspace (a live MEMBERSHIP is never re-issued), the workspace has reached its cap of live invitations (100 distinct addresses, ADR-025 §J.1c.4), or two concurrent invites for one address raced ADR-026 §D4's partial unique index. Since task E17/F01/US01/T01 (ADR-025 §J.2b) a live (unaccepted, unrevoked) invitation is NOT a 409 any more: it is replaced by the new one in one transaction. A removed person (no live membership, and their prior invitation revoked by the removal itself) is not blocked by this -- see DELETE /api/workspaces/{tenantId}/members/{membershipId}.",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "string"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Task E17/F01/US01/T01 (wave w15; ADR-026 w15 footer §3, ADR-025 §J.2a/§J.4): the company directory did not provision a guest for this address, so the invitation was ABORTED -- no invitation row, no token, no mail; the address slot is free and the Admin may retry at once. `failureReason` is a closed set the pane maps onto ADR-020 w15 §3.5's copy (and a catch-all row for any value outside it); the directory's own error body is never surfaced (§J.4b). Declared inline, non-nullable, with an enum, so the generated client types it and the pane never string-matches server prose (ADR-012 w15 §13.2).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "failureReason"
+                  ],
+                  "properties": {
+                    "failureReason": {
+                      "type": "string",
+                      "enum": [
+                        "consent_missing",
+                        "provisioning_failed",
+                        "directory_unavailable"
+                      ],
+                      "description": "`consent_missing`: the directory answered 401/403 -- the User.Invite.All application permission is not consented or a directory policy forbids invitations. `provisioning_failed`: the directory refused this request (an address it will not add, a refused domain). `directory_unavailable`: the directory could not be reached or failed on its side."
+                    }
+                  }
                 }
               }
             }

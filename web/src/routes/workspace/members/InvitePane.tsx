@@ -1,14 +1,26 @@
 import { useEffect, useState, type FormEvent } from "react";
 import {
+  IDENTITY_ONE_TIME_CODE_LINE,
   INVITE_ROLE_LABEL,
   INVITE_ROLE_ORDER,
   INVITE_ROLE_SUMMARY,
+  NO_INVITATION_CREATED_META,
   composeAcceptLink,
   inviteEmailPlaceholder,
+  inviteFailureCopy,
   inviteLinkExpiryMeta,
+  inviteOutcomeSentence,
   type Day1InviteRole,
   type InviteOutcome,
 } from "./memberViewModel";
+
+/** The 502's fact (task E17/F02/US01/T01): the directory would not provision the guest, and NO
+ * invitation was created. `failureReason` is the server's closed-set code, mapped to copy by
+ * `inviteFailureCopy` -- never rendered raw. */
+export interface InviteFailure {
+  failureReason: string;
+  email: string;
+}
 
 export interface InvitePaneProps {
   email: string;
@@ -17,6 +29,9 @@ export interface InvitePaneProps {
   tenantDomain: string | null;
   /** A blocking failure: a format error caught before the request, or the server's own 400/409. */
   error: string | null;
+  /** A blocking 502 -- the directory refused the guest; rendered in the same pre-creation error slot
+   * as `error`, with its designed copy and the "No invitation was created." meta. */
+  failure: InviteFailure | null;
   /** Non-blocking cross-domain notice (AC-5) -- submit stays enabled either way. */
   domainWarning: string | null;
   /** The server's own answer to the last successful invite, or `null` before one exists / after the
@@ -34,13 +49,29 @@ export interface InvitePaneProps {
  * each with a bold label and a muted one-line summary, `.radio` + `.dot` from the ADR-019 catalogue,
  * the native control stays in the accessibility tree) -> block "Send invitation" -> the outcome.
  *
- * Task E15/F02/US01/T01 (wave w14, N3b-1): the outcome is the server's own `mailDelivered` fact, in
- * exactly two strings (see the JSX below for the exact copy) -- one confirms delivery, the other
- * gives a copyable single-use link, its expiry, and a Copy link button, and deliberately never
- * describes what happened to the mail: that copy is written to stay true for both of that boolean's
- * `false` causes (no transport configured, transport errored) without ever diagnosing the mailer.
+ * Task E17/F02/US01/T01 (wave w15, NW-69/NW-68/NW-67; ADR-020 w15 §3): the outcome is the server's
+ * own `deliveryOutcome`, in exactly three states -- "Invitation sent to {email}." (no link), "Invitation
+ * created, but the email could not be sent." (the copyable link is the remedy), "Invitation ready for
+ * {email}." (the link, plus its expiry meta) -- each with the one-time-code sentence while the 201's
+ * `identityProvisioned` is true. A 502 renders its designed copy in the pre-creation error slot with
+ * "No invitation was created." beneath it. There is deliberately no resend affordance on this pane:
+ * the server cannot re-send the original link (the token is stored only as a hash), so any retry is
+ * a re-issue that kills the link the Admin is looking at -- the link block IS the remedy, and the
+ * roster row's "Send a new invitation" remains the only re-issue path (ADR-020 w15 §3.4).
  */
-export default function InvitePane({ email, role, tenantDomain, error, domainWarning, outcome, submitting, onEmailChange, onRoleChange, onSubmit }: InvitePaneProps) {
+export default function InvitePane({
+  email,
+  role,
+  tenantDomain,
+  error,
+  failure,
+  domainWarning,
+  outcome,
+  submitting,
+  onEmailChange,
+  onRoleChange,
+  onSubmit,
+}: InvitePaneProps) {
   const [linkCopied, setLinkCopied] = useState(false);
 
   useEffect(() => {
@@ -57,6 +88,8 @@ export default function InvitePane({ email, role, tenantDomain, error, domainWar
     if (!clipboard) return;
     void clipboard.writeText(link).then(() => setLinkCopied(true));
   };
+
+  const blocked = error !== null || failure !== null;
 
   return (
     <aside className="members-invite-pane" aria-label="Invite a colleague">
@@ -113,15 +146,23 @@ export default function InvitePane({ email, role, tenantDomain, error, domainWar
           </p>
         )}
 
-        {error === null && outcome !== null && outcome.mailDelivered && (
-          <p className="members-invite-outcome" role="status">
-            Invitation sent to {outcome.email}.
-          </p>
+        {error === null && failure !== null && (
+          <div className="members-invite-error" role="alert">
+            <p className="members-invite-failure">{inviteFailureCopy(failure.failureReason, failure.email)}</p>
+            <p className="micro-meta">{NO_INVITATION_CREATED_META}</p>
+          </div>
         )}
 
-        {error === null && outcome !== null && !outcome.mailDelivered && (
+        {!blocked && outcome !== null && outcome.outcome === "sent" && (
+          <div className="members-invite-outcome-block" role="status">
+            <p className="members-invite-outcome">{inviteOutcomeSentence(outcome)}</p>
+            {outcome.identityProvisioned && <p className="micro-meta">{IDENTITY_ONE_TIME_CODE_LINE}</p>}
+          </div>
+        )}
+
+        {!blocked && outcome !== null && outcome.outcome !== "sent" && (
           <div className="members-invite-link" role="status">
-            <p className="members-invite-outcome">Invitation ready for {outcome.email}.</p>
+            <p className="members-invite-outcome">{inviteOutcomeSentence(outcome)}</p>
             <div className="members-invite-link-row">
               <input
                 className="input members-invite-link-field"
@@ -136,6 +177,7 @@ export default function InvitePane({ email, role, tenantDomain, error, domainWar
               </button>
             </div>
             <p className="micro-meta">{inviteLinkExpiryMeta(outcome.expiresAt)}</p>
+            {outcome.identityProvisioned && <p className="micro-meta">{IDENTITY_ONE_TIME_CODE_LINE}</p>}
           </div>
         )}
       </form>

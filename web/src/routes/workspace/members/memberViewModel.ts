@@ -164,13 +164,81 @@ export function removeConsequence(email: string, isSelf: boolean): ActionConsequ
 }
 
 /**
- * The invite result is the server's fact, never a client inference from a 201 (N3b-1). Exactly the
- * server's own `mailDelivered` boolean as the discriminant -- not a third, invented state; the
- * transport wave that needs a third value owns that change, not this one.
+ * The invite result is the server's fact, never a client inference from a 201 (N3b-1). Task
+ * E17/F02/US01/T01 (wave w15, NW-69; ADR-026 w15 footer §8, ADR-020 w15 §3.3): the discriminant is
+ * the server's own `deliveryOutcome` string -- three arms, one per outcome, and never a fourth: a
+ * guest-provisioning failure is a 502 with no invitation at all (`InviteFailure` below), which is
+ * what makes "a link renders only when it is usable" true by construction. `mailDelivered` is no
+ * longer the discriminant and is never combined with the outcome (ADR-012 w15 §7). The link rides
+ * on exactly `mail_failed` and `no_transport`; `identityProvisioned` is the one server boolean the
+ * pane renders (the one-time-code sentence), on every arm.
  */
 export type InviteOutcome =
-  | { mailDelivered: true; email: string }
-  | { mailDelivered: false; email: string; acceptUrl: string; expiresAt: string };
+  | { outcome: "sent"; email: string; identityProvisioned: boolean }
+  | { outcome: "mail_failed"; email: string; acceptUrl: string; expiresAt: string; identityProvisioned: boolean }
+  | { outcome: "no_transport"; email: string; acceptUrl: string; expiresAt: string; identityProvisioned: boolean };
+
+/** Builds the pane's fact from the 201 body, keyed on its own `deliveryOutcome` -- the one place
+ * the wire vocabulary is read, so the pane branches on a server string it never re-derives. */
+export function inviteOutcomeFrom(member: {
+  email: string;
+  acceptUrl: string;
+  expiresAt: string;
+  deliveryOutcome: "sent" | "mail_failed" | "no_transport";
+  identityProvisioned: boolean;
+}): InviteOutcome {
+  const { email, acceptUrl, expiresAt, identityProvisioned } = member;
+  switch (member.deliveryOutcome) {
+    case "sent":
+      return { outcome: "sent", email, identityProvisioned };
+    case "mail_failed":
+      return { outcome: "mail_failed", email, acceptUrl, expiresAt, identityProvisioned };
+    case "no_transport":
+      return { outcome: "no_transport", email, acceptUrl, expiresAt, identityProvisioned };
+  }
+}
+
+/** ADR-020 w15 §3.3, verbatim: the 201 sentences, one per outcome. The word "sent" appears in the
+ * first only. */
+export function inviteOutcomeSentence(outcome: InviteOutcome): string {
+  switch (outcome.outcome) {
+    case "sent":
+      return `Invitation sent to ${outcome.email}.`;
+    case "mail_failed":
+      return "Invitation created, but the email could not be sent.";
+    case "no_transport":
+      return `Invitation ready for ${outcome.email}.`;
+  }
+}
+
+/** ADR-020 w15 §3.6, verbatim: rendered only while the 201's `identityProvisioned` is true, and
+ * identical whether the guest was created or already existed (no directory-enumeration oracle). */
+export const IDENTITY_ONE_TIME_CODE_LINE = "They will get a one-time code from Microsoft the first time they sign in.";
+
+/** ADR-020 w15 §3.5: every 502 row carries this, so the Admin never wonders whether a
+ * half-invitation exists. */
+export const NO_INVITATION_CREATED_META = "No invitation was created.";
+
+/**
+ * ADR-020 w15 §3.5's copy for the 502's closed reason set, plus the mandatory catch-all: the wire
+ * `failureReason` is never rendered, so an unrecognised value, a proxy-mangled body or a later
+ * addition to the set can never put a raw enum on screen (ADR-012 w15 §13.2: the literal union
+ * describes the contract, not the wire, which is why the last row stays even though `tsc` calls it
+ * unreachable). `consent_missing` names "a tenant administrator", not "you": a Raffa.ai workspace
+ * Admin is usually not the Entra tenant admin.
+ */
+export function inviteFailureCopy(failureReason: string, email: string): string {
+  switch (failureReason) {
+    case "consent_missing":
+      return "Raffa.ai is not allowed to add guests to your company directory yet. A tenant administrator has to approve that permission.";
+    case "provisioning_failed":
+      return `Your company directory would not add ${email}. Check the address, or ask a tenant administrator.`;
+    case "directory_unavailable":
+      return "Your company directory could not be reached. Try again in a few minutes.";
+    default:
+      return "Raffa.ai could not create this invitation.";
+  }
+}
 
 /** `new URL(acceptUrl, origin)` accepts both a site-relative (w14) and an absolute (future
  * transport-wave) `acceptUrl` unchanged -- no client change needed when that wave lands. */

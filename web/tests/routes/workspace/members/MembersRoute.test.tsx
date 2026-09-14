@@ -74,9 +74,14 @@ function invited(overrides: Partial<NonNullable<InviteWorkspaceMemberResult["mem
       role: "Procurement",
       expiresAt: "2099-01-01T00:00:00Z",
       acceptUrl: "/invite/accept#00000000000000000000000000000000.fake-secret",
+      // Task E17/F02/US01/T01: `deliveryOutcome` is the discriminant; `mailDelivered` agrees with it
+      // by the server's own biconditional and is never read by the pane.
+      deliveryOutcome: "no_transport",
       mailDelivered: false,
+      identityProvisioned: false,
       ...overrides,
     },
+    failureReason: null,
     error: null,
   };
 }
@@ -208,12 +213,12 @@ describe("MembersRoute (V2, ADR-020/ADR-025/ADR-026 w14 footers; screens-v2.md #
     expect(inviteWorkspaceMember).toHaveBeenCalledTimes(1);
   });
 
-  it("a successful invite re-reads the roster instead of appending a row locally, and renders 'Invitation sent to {email}.' when mailDelivered is true", async () => {
+  it("a successful invite re-reads the roster instead of appending a row locally, and renders 'Invitation sent to {email}.' on deliveryOutcome 'sent' with no link", async () => {
     const getWorkspaceMembers = vi
       .fn()
       .mockResolvedValueOnce(membersOk([activeMember()]))
       .mockResolvedValueOnce(membersOk([activeMember(), invitedMember({ email: "buyer@acme.example" })]));
-    const inviteWorkspaceMember = vi.fn().mockResolvedValue(invited({ email: "buyer@acme.example", mailDelivered: true }));
+    const inviteWorkspaceMember = vi.fn().mockResolvedValue(invited({ email: "buyer@acme.example", deliveryOutcome: "sent", mailDelivered: true }));
     renderMembers(mockApiClient({ getWorkspaceMembers, inviteWorkspaceMember }), { workspaceId: WORKSPACE_ID });
     await screen.findByRole("table");
 
@@ -227,9 +232,70 @@ describe("MembersRoute (V2, ADR-020/ADR-025/ADR-026 w14 footers; screens-v2.md #
     expect(screen.queryByLabelText("Invitation link")).not.toBeInTheDocument();
   });
 
-  it("mailDelivered false renders 'Invitation ready for {email}.' with the copyable link and expiry -- the word 'sent' appears nowhere", async () => {
+  // Task E17/F02/US01/T01 (ADR-020 w15 §3.3/§3.4): the second outcome -- the mail failed -- keeps
+  // the link block as the remedy and offers no "Try sending again".
+  it("deliveryOutcome 'mail_failed' renders 'Invitation created, but the email could not be sent.' with the copyable link, and no retry affordance", async () => {
     const getWorkspaceMembers = vi.fn().mockResolvedValue(membersOk([activeMember()]));
-    const inviteWorkspaceMember = vi.fn().mockResolvedValue(invited({ email: "buyer@acme.example", mailDelivered: false }));
+    const inviteWorkspaceMember = vi.fn().mockResolvedValue(invited({ email: "buyer@acme.example", deliveryOutcome: "mail_failed", mailDelivered: false }));
+    renderMembers(mockApiClient({ getWorkspaceMembers, inviteWorkspaceMember }), { workspaceId: WORKSPACE_ID });
+    await screen.findByRole("table");
+
+    fireEvent.change(screen.getByLabelText("Work email"), { target: { value: "buyer@acme.example" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
+
+    expect(await screen.findByText("Invitation created, but the email could not be sent.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Invitation link")).toBeInTheDocument();
+    expect(screen.queryByText(/try sending again/i)).not.toBeInTheDocument();
+  });
+
+  // ADR-020 w15 §3.6: the identity sentence is keyed to the 201's own `identityProvisioned`, on
+  // every outcome, and never appears while provisioning is not configured.
+  it("renders the one-time-code sentence only while identityProvisioned is true, identically for a created and an already-present guest", async () => {
+    const getWorkspaceMembers = vi.fn().mockResolvedValue(membersOk([activeMember()]));
+    const inviteWorkspaceMember = vi
+      .fn()
+      .mockResolvedValueOnce(invited({ email: "buyer@acme.example", deliveryOutcome: "sent", mailDelivered: true, identityProvisioned: true }))
+      .mockResolvedValueOnce(invited({ email: "other@acme.example", deliveryOutcome: "no_transport", identityProvisioned: false }));
+    renderMembers(mockApiClient({ getWorkspaceMembers, inviteWorkspaceMember }), { workspaceId: WORKSPACE_ID });
+    await screen.findByRole("table");
+
+    fireEvent.change(screen.getByLabelText("Work email"), { target: { value: "buyer@acme.example" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
+    expect(await screen.findByText("They will get a one-time code from Microsoft the first time they sign in.")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Work email"), { target: { value: "other@acme.example" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
+    expect(await screen.findByText("Invitation ready for other@acme.example.")).toBeInTheDocument();
+    expect(screen.queryByText(/one-time code/i)).not.toBeInTheDocument();
+  });
+
+  // ADR-020 w15 §3.5: each 502 reason renders its designed copy with "No invitation was created.";
+  // an unknown value hits the catch-all and never shows a raw enum; no link renders.
+  it.each([
+    ["consent_missing", "Raffa.ai is not allowed to add guests to your company directory yet. A tenant administrator has to approve that permission."],
+    ["provisioning_failed", "Your company directory would not add buyer@acme.example. Check the address, or ask a tenant administrator."],
+    ["directory_unavailable", "Your company directory could not be reached. Try again in a few minutes."],
+    ["some_future_reason", "Raffa.ai could not create this invitation."],
+  ])("a 502 with failureReason %s renders its designed copy and 'No invitation was created.'", async (failureReason, copy) => {
+    const getWorkspaceMembers = vi.fn().mockResolvedValue(membersOk([activeMember()]));
+    const inviteWorkspaceMember = vi.fn().mockResolvedValue({ ok: false, statusCode: 502, member: null, failureReason, error: null });
+    renderMembers(mockApiClient({ getWorkspaceMembers, inviteWorkspaceMember }), { workspaceId: WORKSPACE_ID });
+    await screen.findByRole("table");
+
+    fireEvent.change(screen.getByLabelText("Work email"), { target: { value: "buyer@acme.example" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(copy);
+    expect(alert).toHaveTextContent("No invitation was created.");
+    expect(alert).not.toHaveTextContent(failureReason);
+    expect(screen.queryByLabelText("Invitation link")).not.toBeInTheDocument();
+    expect(screen.queryByText(/invitation (sent|ready|created)/i)).not.toBeInTheDocument();
+  });
+
+  it("deliveryOutcome 'no_transport' renders 'Invitation ready for {email}.' with the copyable link and expiry -- the word 'sent' appears nowhere", async () => {
+    const getWorkspaceMembers = vi.fn().mockResolvedValue(membersOk([activeMember()]));
+    const inviteWorkspaceMember = vi.fn().mockResolvedValue(invited({ email: "buyer@acme.example", deliveryOutcome: "no_transport", mailDelivered: false }));
     renderMembers(mockApiClient({ getWorkspaceMembers, inviteWorkspaceMember }), { workspaceId: WORKSPACE_ID });
     await screen.findByRole("table");
 
@@ -252,7 +318,7 @@ describe("MembersRoute (V2, ADR-020/ADR-025/ADR-026 w14 footers; screens-v2.md #
 
   it("a failed invite request never claims a mail either way (index.tsx:63's own defect this task closes)", async () => {
     const getWorkspaceMembers = vi.fn().mockResolvedValue(membersOk([activeMember()]));
-    const inviteWorkspaceMember = vi.fn().mockResolvedValue({ ok: false, statusCode: 500, member: null, error: null });
+    const inviteWorkspaceMember = vi.fn().mockResolvedValue({ ok: false, statusCode: 500, member: null, failureReason: null, error: null });
     renderMembers(mockApiClient({ getWorkspaceMembers, inviteWorkspaceMember }), { workspaceId: WORKSPACE_ID });
     await screen.findByRole("table");
 
@@ -269,6 +335,7 @@ describe("MembersRoute (V2, ADR-020/ADR-025/ADR-026 w14 footers; screens-v2.md #
       ok: false,
       statusCode: 409,
       member: null,
+      failureReason: null,
       error: "buyer@acme.example already holds the Procurement role in this workspace.",
     });
     renderMembers(mockApiClient({ getWorkspaceMembers, inviteWorkspaceMember }), { workspaceId: WORKSPACE_ID });

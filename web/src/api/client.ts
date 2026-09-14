@@ -166,9 +166,19 @@ export interface GetWorkspaceMembersResult {
 // `expiresAt`/`acceptUrl`/`mailDelivered` straight off the regenerated schema, no hand-written change
 // needed here (see this file's header comment on why response shapes are type-anchored, not
 // hand-declared). `acceptUrl` is the one input getInvitation/acceptInvitation below need.
+//
+// Task E17/F02/US01/T01 (wave w15, NW-69; ADR-026 w15 footer §1/§3/§8, ADR-012 w15 §13.2): the 201
+// gained `deliveryOutcome` (a literal union -- the one discriminant the pane branches on, never a
+// client inference from `mailDelivered` or a status code) and `identityProvisioned`; a guest-
+// provisioning failure is a DECLARED 502 whose `failureReason` is typed straight off the generated
+// `[502]` response below, exactly as `InvitedMemberBody` is anchored to `[201]` -- an undeclared
+// 502 would have left the pane string-matching server prose through `error`.
 type InviteWorkspaceMemberResponses = paths["/api/workspaces/{tenantId}/invites"]["post"]["responses"];
 export type InvitedMemberBody = InviteWorkspaceMemberResponses[201]["content"]["application/json"];
 export type InviteWorkspaceRole = InvitedMemberBody["role"];
+export type InviteDeliveryOutcome = InvitedMemberBody["deliveryOutcome"];
+export type InviteFailureBody = InviteWorkspaceMemberResponses[502]["content"]["application/json"];
+export type InviteFailureReason = InviteFailureBody["failureReason"];
 
 /** `POST /api/workspaces/{tenantId}/invites` request body. Hand-written -- see this file's header comment for why (the generator does not parse `requestBody`). */
 export interface InviteWorkspaceMemberRequest {
@@ -184,7 +194,15 @@ export interface InviteWorkspaceMemberResult {
   /** The issued invitation -- an offer, not a grant, see this method's own doc comment on the
    * ApiClient interface -- present only when `ok` is true. */
   member: InvitedMemberBody | null;
-  /** Plain-language failure reason (400 validation message, 409 duplicate invite/role, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  /**
+   * The 502's machine-readable reason (task E17/F02/US01/T01): the company directory would not
+   * provision a guest, so NO invitation was created. Present only on a real 502 with a parseable
+   * body -- `error` stays `null` in that case; the pane picks its copy from this value's closed set
+   * (`memberViewModel.ts#inviteFailureCopy`) and keeps a catch-all for anything outside it, because
+   * a literal union describes the contract, not the wire.
+   */
+  failureReason: InviteFailureReason | null;
+  /** Plain-language failure reason (400 validation message, 409 held role / cap / concurrent invite, HTTP status text, or network-failure cause), present only when `ok` is false and this was not a structured 502. */
   error: string | null;
 }
 
@@ -1443,13 +1461,29 @@ export function createApiClient(
           ok: false,
           statusCode: null,
           member: null,
+          failureReason: null,
           error: `Unable to reach ${baseUrl}/api/workspaces/${tenantId}/invites. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
         };
       }
 
       if (response.status === 201) {
         const member = (await response.json()) as InvitedMemberBody;
-        return { ok: true, statusCode: 201, member, error: null };
+        return { ok: true, statusCode: 201, member, failureReason: null, error: null };
+      }
+
+      // Task E17/F02/US01/T01: the declared 502 -- the directory would not provision the guest and
+      // no invitation exists. Read into `failureReason`, never into `error` prose. A 502 from a
+      // proxy in front of the API carries no such body and falls through to the generic branch.
+      if (response.status === 502) {
+        try {
+          const failure = (await response.json()) as Partial<InviteFailureBody> | null;
+          if (failure && typeof failure.failureReason === "string") {
+            return { ok: false, statusCode: 502, member: null, failureReason: failure.failureReason, error: null };
+          }
+        } catch {
+          // Not the API's own body -- handled as a plain failure below.
+        }
+        return { ok: false, statusCode: 502, member: null, failureReason: null, error: `Request failed with HTTP 502 ${response.statusText}.` };
       }
 
       let error: string;
@@ -1460,7 +1494,7 @@ export function createApiClient(
         error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
       }
 
-      return { ok: false, statusCode: response.status, member: null, error };
+      return { ok: false, statusCode: response.status, member: null, failureReason: null, error };
     },
 
     async listWorkspaces() {

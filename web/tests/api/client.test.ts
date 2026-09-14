@@ -1742,8 +1742,17 @@ describe("createApiClient().inviteWorkspaceMember (task E06/F04/US01/T01)", () =
     });
   });
 
-  it("reports ok:true with the created membership on 201", async () => {
-    const member = { id: "m-1", email: "buyer@acme.example", role: "Procurement" as const };
+  it("reports ok:true with the issued invitation on 201", async () => {
+    const member = {
+      id: "m-1",
+      email: "buyer@acme.example",
+      role: "Procurement" as const,
+      expiresAt: "2026-09-21T00:00:00Z",
+      acceptUrl: "https://app.dev.raffa.example/invite/accept#abc.def",
+      deliveryOutcome: "sent" as const,
+      mailDelivered: true,
+      identityProvisioned: true,
+    };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(member), { status: 201 })));
 
     const result = await createApiClient("https://api.dev.raffa.example").inviteWorkspaceMember("tenant-1", {
@@ -1751,7 +1760,30 @@ describe("createApiClient().inviteWorkspaceMember (task E06/F04/US01/T01)", () =
       role: "Procurement",
     });
 
-    expect(result).toEqual({ ok: true, statusCode: 201, member, error: null });
+    expect(result).toEqual({ ok: true, statusCode: 201, member, failureReason: null, error: null });
+  });
+
+  // Task E17/F02/US01/T01 (ADR-012 w15 §13.2): the declared 502 is typed, never string-matched.
+  it("reads the declared 502's failureReason into its own typed field, with error null", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ failureReason: "consent_missing" }), { status: 502 })));
+
+    const result = await createApiClient("https://api.dev.raffa.example").inviteWorkspaceMember("tenant-1", {
+      email: "buyer@acme.example",
+      role: "Procurement",
+    });
+
+    expect(result).toEqual({ ok: false, statusCode: 502, member: null, failureReason: "consent_missing", error: null });
+  });
+
+  it("treats a 502 with no API body (a proxy in front of the API) as a plain failure, not a provisioning reason", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("Bad Gateway", { status: 502, statusText: "Bad Gateway" })));
+
+    const result = await createApiClient("https://api.dev.raffa.example").inviteWorkspaceMember("tenant-1", {
+      email: "buyer@acme.example",
+      role: "Procurement",
+    });
+
+    expect(result).toEqual({ ok: false, statusCode: 502, member: null, failureReason: null, error: "Request failed with HTTP 502 Bad Gateway." });
   });
 
   it("reports ok:false with the parsed JSON string error on 400 (Results.BadRequest(string))", async () => {
@@ -1769,6 +1801,7 @@ describe("createApiClient().inviteWorkspaceMember (task E06/F04/US01/T01)", () =
       ok: false,
       statusCode: 400,
       member: null,
+      failureReason: null,
       error: "An 'email' is required.",
     });
   });

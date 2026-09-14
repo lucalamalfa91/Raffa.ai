@@ -102,6 +102,13 @@ export default function AcceptInvitationRoute({ apiClient, appConfig }: AcceptIn
   const [state, setState] = useState<AcceptState>(() =>
     token === null ? { phase: "no-token" } : { phase: "loading" },
   );
+  // Task E17/F02/US01/T01 (ADR-012 w15 §8): set only by this screen's own Entra CTA once its popup
+  // has resolved, so the accept fires on the transition THIS screen initiated -- never an effect
+  // on `accounts`, which would silently auto-join a visitor who arrived already signed in and
+  // remove the one consent step state 3 exists for. If the offer read has not resolved when the
+  // popup does, the accept waits for it (the `useEffect` below) instead of weakening handleJoin's
+  // own guard into a race.
+  const [joinOnceOffered, setJoinOnceOffered] = useState(false);
 
   const fetchInvitation = useCallback(() => {
     if (token === null) return;
@@ -169,17 +176,33 @@ export default function AcceptInvitationRoute({ apiClient, appConfig }: AcceptIn
     });
   }, [apiClient, navigate, state, token]);
 
+  // Task E17/F02/US01/T01 (NW-67, A15-4): once the popup has resolved, the accept is the SAME user
+  // gesture -- the consent the button carries is consent to join -- so it continues straight into
+  // the accept the moment the offer is on screen, with no second, mandatory "Join" click.
+  useEffect(() => {
+    if (!joinOnceOffered || state.phase !== "offer") return;
+    setJoinOnceOffered(false);
+    handleJoin();
+  }, [joinOnceOffered, state.phase, handleJoin]);
+
   const handleContinueWithEntra = () => {
     // ADR-012 w14 footer clause 6: `loginPopup`, not the app-wide `loginRedirect` -- the request
     // shape is identical (`{ scopes }`, `buildLoginRequest`'s only field), and structurally satisfies
     // `PopupRequest` as well as `RedirectRequest`. A rejection (blocked popup, closed by the user, or
     // any other failure) falls back to state 5, deliberately the same state a reload lands on --
-    // "the popup-blocked and reload cases share one state, so it ships regardless". Success needs no
-    // handling here: see the component header comment for why `useMsal()`'s `accounts` alone drives
-    // the CTA from "Continue with Microsoft Entra ID" to "Join".
-    instance.loginPopup(buildLoginRequest(appConfig)).catch(() => {
-      setState({ phase: "no-token" });
-    });
+    // "the popup-blocked and reload cases share one state, so it ships regardless". Task
+    // E17/F02/US01/T01 (ADR-012 w15 §8): the handler now AWAITS its own promise and continues into
+    // the accept on resolution -- previously "success needed no handling here", which is exactly why
+    // A15-4 died on a second click. A visitor who arrived already signed in never reaches this
+    // handler (state 3 renders "Join" instead), so their explicit consent step is untouched.
+    instance
+      .loginPopup(buildLoginRequest(appConfig))
+      .then(() => {
+        setJoinOnceOffered(true);
+      })
+      .catch(() => {
+        setState({ phase: "no-token" });
+      });
   };
 
   const handleSignOutAndSwitch = () => {

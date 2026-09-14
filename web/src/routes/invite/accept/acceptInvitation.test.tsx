@@ -38,7 +38,14 @@ const appConfig: AppConfig = {
 };
 
 function apiClientWith(overrides: Partial<ApiClient>): ApiClient {
-  return { getInvitation: vi.fn(), acceptInvitation: vi.fn(), ...overrides } as unknown as ApiClient;
+  // `acceptInvitation` resolves by default: since task E17/F02/US01/T01 a resolved popup continues
+  // straight into the accept, so a suite that only exercises the CTA must not leave an unconfigured
+  // vi.fn() (undefined) for that call to `.then()` on.
+  return {
+    getInvitation: vi.fn(),
+    acceptInvitation: vi.fn().mockResolvedValue({ ok: false, statusCode: null, acceptance: null, error: "not scripted" }),
+    ...overrides,
+  } as unknown as ApiClient;
 }
 
 function setHash(hash: string) {
@@ -145,10 +152,18 @@ describe("AcceptInvitationRoute", () => {
     expect(screen.queryByRole("button", { name: /continue with microsoft entra id/i })).not.toBeInTheDocument();
   });
 
-  it("a successful popup does not fall back to state 5 -- `useMsal()`'s own accounts update is what drives the CTA to Join", async () => {
+  // Task E17/F02/US01/T01 (ADR-012 w15 §8, A15-4): the popup resolving IS the join gesture -- the
+  // accept continues without a second, mandatory click, and never falls back to state 5.
+  it("a successful popup continues straight into the accept -- no second click, no state 5", async () => {
     setHash(`#${TOKEN}`);
     msalAccounts = [];
     loginPopupMock.mockResolvedValue({ account: { username: "user@example.test", homeAccountId: "home-1" } });
+    const acceptInvitation = vi.fn().mockResolvedValue({
+      ok: true,
+      statusCode: 200,
+      acceptance: { workspaceId: "w-1", workspaceName: "Acme Procurement", role: "Procurement" },
+      error: null,
+    });
     renderAccept(
       apiClientWith({
         getInvitation: vi.fn().mockResolvedValue({
@@ -157,15 +172,74 @@ describe("AcceptInvitationRoute", () => {
           invitation: { workspaceName: "Acme Procurement", role: "Procurement", expiresAt: "2026-12-01T00:00:00Z" },
           error: null,
         }),
+        acceptInvitation,
       }),
     );
 
     const cta = await screen.findByRole("button", { name: /continue with microsoft entra id/i });
+    expect(acceptInvitation).not.toHaveBeenCalled();
     await userEvent.click(cta);
 
     await waitFor(() => expect(loginPopupMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(acceptInvitation).toHaveBeenCalledWith(TOKEN));
+    await waitFor(() => expect(navigateMock).toHaveBeenCalledWith("/", { replace: true }));
     expect(screen.queryByRole("heading", { name: /open your invitation link again/i })).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /join acme procurement/i })).toBeInTheDocument();
+  });
+
+  it("the accept waits for the offer when the popup resolves before the pre-accept read does -- handleJoin's guard is not weakened", async () => {
+    setHash(`#${TOKEN}`);
+    msalAccounts = [];
+    loginPopupMock.mockResolvedValue({ account: { username: "user@example.test", homeAccountId: "home-1" } });
+    let resolveOffer: (value: unknown) => void = () => {};
+    const getInvitation = vi.fn().mockReturnValue(new Promise((resolve) => (resolveOffer = resolve)));
+    const acceptInvitation = vi.fn().mockResolvedValue({
+      ok: true,
+      statusCode: 200,
+      acceptance: { workspaceId: "w-1", workspaceName: "Acme Procurement", role: "Procurement" },
+      error: null,
+    });
+    const { rerender } = renderAccept(apiClientWith({ getInvitation, acceptInvitation }));
+
+    // The offer is still loading: no CTA yet. Simulate the popup having resolved first by
+    // resolving the offer only after the sign-in transition has been recorded.
+    expect(screen.getByRole("status")).toBeInTheDocument();
+    resolveOffer({
+      ok: true,
+      statusCode: 200,
+      invitation: { workspaceName: "Acme Procurement", role: "Procurement", expiresAt: "2026-12-01T00:00:00Z" },
+      error: null,
+    });
+    rerender(
+      <MemoryRouter>
+        <AcceptInvitationRoute apiClient={apiClientWith({ getInvitation, acceptInvitation })} appConfig={appConfig} />
+      </MemoryRouter>,
+    );
+    const cta = await screen.findByRole("button", { name: /continue with microsoft entra id/i });
+    await userEvent.click(cta);
+
+    await waitFor(() => expect(acceptInvitation).toHaveBeenCalledWith(TOKEN));
+    expect(acceptInvitation).toHaveBeenCalledTimes(1);
+  });
+
+  it("a visitor already signed in still sees state 3's explicit Join button, and nothing accepts on their behalf", async () => {
+    setHash(`#${TOKEN}`);
+    msalAccounts = [{ username: "user@example.test", homeAccountId: "home-1" }];
+    const acceptInvitation = vi.fn();
+    renderAccept(
+      apiClientWith({
+        getInvitation: vi.fn().mockResolvedValue({
+          ok: true,
+          statusCode: 200,
+          invitation: { workspaceName: "Acme Procurement", role: "Procurement", expiresAt: "2026-12-01T00:00:00Z" },
+          error: null,
+        }),
+        acceptInvitation,
+      }),
+    );
+
+    expect(await screen.findByRole("button", { name: /^join acme procurement$/i })).toBeInTheDocument();
+    expect(loginPopupMock).not.toHaveBeenCalled();
+    expect(acceptInvitation).not.toHaveBeenCalled();
   });
 
   it("state 3/4 -- valid, signed in: clicking Join calls acceptInvitation and disables the CTA meanwhile", async () => {

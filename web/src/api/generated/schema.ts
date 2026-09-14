@@ -96,7 +96,7 @@ export interface operations {
     responses: {
       201: {
         content: {
-          "application/json": { id: string; email: string; role: "Admin" | "Procurement" | "Legal" | "Finance" | "ReadOnly"; expiresAt: string; acceptUrl: string; mailDelivered: boolean };
+          "application/json": { id: string; email: string; role: "Admin" | "Procurement" | "Legal" | "Finance" | "ReadOnly"; expiresAt: string; acceptUrl: string; deliveryOutcome: "sent" | "mail_failed" | "no_transport"; mailDelivered: boolean; identityProvisioned: boolean };
         };
       };
       400: {
@@ -107,6 +107,11 @@ export interface operations {
       409: {
         content: {
           "application/json": string;
+        };
+      };
+      502: {
+        content: {
+          "application/json": { failureReason: "consent_missing" | "provisioning_failed" | "directory_unavailable" };
         };
       };
     };
