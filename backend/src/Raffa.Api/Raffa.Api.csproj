@@ -32,6 +32,14 @@
     <!-- Only the host may reference a cloud storage SDK directly (ADR-002); domain modules see
          only Raffa.SharedKernel.Storage.IDocumentStorage. -->
     <PackageReference Include="Azure.Storage.Blobs" Version="12.26.0" />
+    <!-- Task E18/F01/US01/T01 (wave w15, NW-05; ADR-010): JWT bearer validation itself
+         (AddAuthentication/AddJwtBearer, JwtBearerOptions, TokenValidationParameters) is part of
+         the Microsoft.AspNetCore.App shared framework Microsoft.NET.Sdk.Web already references,
+         so no package is needed for that half. Microsoft.Identity.Web supplies the one thing the
+         shared framework does not: ClaimsPrincipal.GetObjectId(), which resolves the validated
+         token's oid claim (Raffa.Api.Infrastructure.TokenCallerIdentity) whether or not JwtBearer's
+         own inbound-claim mapping has renamed it, more robust than a hand-rolled FindFirst call. -->
+    <PackageReference Include="Microsoft.Identity.Web" Version="3.0.1" />
   </ItemGroup>
 
 </Project>
