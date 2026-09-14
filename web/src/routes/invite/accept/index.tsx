@@ -34,25 +34,37 @@ export interface AcceptInvitationRouteProps {
  * are needed because they fail differently -- C10a survives a refactor of *this* ordering, C10b
  * survives a change to MSAL's own default.
  *
- * **Guaranteed flow, by design -- with one optimisation.** `/signin`'s own CTA
- * (`routes/signin/index.tsx`) is redirect-only, so a signed-out invitee who signs in from *there*
- * loses this page (and the token) to the redirect round-trip -- "sign in, then open the invitation
- * link again" is the guaranteed path, not a fallback. `WorkspacePickerScreen.tsx`'s empty-list state
- * carries the pointer back for exactly that reload/redirect landing (ADR-012 w14 footer clause 3,
- * corrected copy in ADR-020's own second w14 footer).
+ * **Fix 2026-09-14: `loginRedirect`, not `loginPopup` -- the guarantee is now unconditional.**
+ * ADR-012 w14 footer clause 6 originally sanctioned `loginPopup` here, and only here, so a signed-out
+ * invitee's click never unloaded this page and the in-memory token survived the round-trip. In
+ * practice that round-trip depends on `@azure/msal-browser`'s popup-completion handoff -- the popup
+ * lands back on this app's own origin, and a `BroadcastChannel` the popup's own fresh page instance
+ * must post to is what lets the opener's `loginPopup()` promise ever resolve
+ * (`node_modules/@azure/msal-browser/dist/utils/BrowserUtils.mjs`'s `waitForBridgeResponse`) -- and on
+ * dev that handoff was observed to hang indefinitely: the popup lands on `#code=...`, shows this
+ * app's own generic sign-in screen stuck mid-interaction, and never closes. Confirmed live 2026-09-14.
  *
- * **This screen's own Entra CTA is the one path that can beat the guarantee.** ADR-012 w14 footer
- * clause 6 sanctions `loginPopup` *here, and only here* -- "the one path on which the invitee never
- * leaves the accept screen" (the same footer's second amendment, point 4) -- because this page is
- * never unloaded and the in-memory token survives a popup round-trip: single-click where the browser
- * allows it. `handleContinueWithEntra` below calls `loginPopup`, not `loginRedirect`. On success this
- * component does nothing further: `useMsal()`'s `accounts` (destructured above, already the reactive
- * source `App.tsx`'s own top-level gate relies on) updates via MSAL's event system once the popup
- * resolves, which alone turns the CTA into state 3's "Join" button -- no navigation, no local state
- * change. If the popup is blocked, closed, or rejects for any other reason, the handler falls back to
- * state 5 ("Open your invitation link again") -- **the same state a reload lands on, on purpose**:
- * "the popup-blocked and reload cases share one state, so it ships regardless" (ADR-012 w14 footer
- * clause 6). That state's copy already covers this without a dedicated eleventh state.
+ * The redirect-loses-the-token trade-off this screen was built to avoid no longer matters: a signed-
+ * out invitee who clicks this CTA now leaves via `loginRedirect` exactly like `/signin`'s own CTA
+ * always has (`routes/signin/index.tsx`), and lands back at `App.tsx`'s account/workspace gate with
+ * no token and no memory of ever having been on this page -- deliberately. That gate's own
+ * `AuthenticatedGate` (fix 2026-09-14) now retries the join itself, silently, from the identity alone:
+ * `GET /api/workspaces` surfaces the same live invitation as a `pendingInvitation`, and
+ * `POST /api/workspaces/{tenantId}/invites/accept` grants it with no token at all. The invitee lands
+ * directly in the workspace with no picker and no second click -- a strictly better outcome than the
+ * popup's own best case, reached over a path (full-page redirect) that is already proven reliable
+ * (it is `/signin`'s only path). "Sign in, then open the invitation link again" -- this screen's own
+ * long-standing fallback copy (state 5, below) -- is no longer the outcome for this CTA either: the
+ * invitee does not need to come back here at all.
+ *
+ * The one thing this trade gives up: state 5 ("wrong-account") and this screen's own "invalid"/
+ * "already-accepted" copy are reachable only via `handleJoin` below now -- the token-based accept for
+ * a visitor who arrives *already* signed in (state 3, unchanged). A signed-out visitor who redirects
+ * through the wrong Microsoft account no longer sees "this invitation was sent to a different
+ * address"; they see the ordinary empty-workspace picker, because `AcceptForIdentityAsync`
+ * deliberately answers "no live invitation for this identity here" and "wrong identity entirely" with
+ * the same 404 (never an oracle -- see that method's own doc comment, backend). Accepted as strictly
+ * better than the failure mode this fix replaces: a screen stuck forever with no error at all.
  */
 function readAndClearInvitationToken(): string | null {
   const { hash } = window.location;
@@ -102,13 +114,6 @@ export default function AcceptInvitationRoute({ apiClient, appConfig }: AcceptIn
   const [state, setState] = useState<AcceptState>(() =>
     token === null ? { phase: "no-token" } : { phase: "loading" },
   );
-  // Task E17/F02/US01/T01 (ADR-012 w15 §8): set only by this screen's own Entra CTA once its popup
-  // has resolved, so the accept fires on the transition THIS screen initiated -- never an effect
-  // on `accounts`, which would silently auto-join a visitor who arrived already signed in and
-  // remove the one consent step state 3 exists for. If the offer read has not resolved when the
-  // popup does, the accept waits for it (the `useEffect` below) instead of weakening handleJoin's
-  // own guard into a race.
-  const [joinOnceOffered, setJoinOnceOffered] = useState(false);
 
   const fetchInvitation = useCallback(() => {
     if (token === null) return;
@@ -176,33 +181,13 @@ export default function AcceptInvitationRoute({ apiClient, appConfig }: AcceptIn
     });
   }, [apiClient, navigate, state, token]);
 
-  // Task E17/F02/US01/T01 (NW-67, A15-4): once the popup has resolved, the accept is the SAME user
-  // gesture -- the consent the button carries is consent to join -- so it continues straight into
-  // the accept the moment the offer is on screen, with no second, mandatory "Join" click.
-  useEffect(() => {
-    if (!joinOnceOffered || state.phase !== "offer") return;
-    setJoinOnceOffered(false);
-    handleJoin();
-  }, [joinOnceOffered, state.phase, handleJoin]);
-
   const handleContinueWithEntra = () => {
-    // ADR-012 w14 footer clause 6: `loginPopup`, not the app-wide `loginRedirect` -- the request
-    // shape is identical (`{ scopes }`, `buildLoginRequest`'s only field), and structurally satisfies
-    // `PopupRequest` as well as `RedirectRequest`. A rejection (blocked popup, closed by the user, or
-    // any other failure) falls back to state 5, deliberately the same state a reload lands on --
-    // "the popup-blocked and reload cases share one state, so it ships regardless". Task
-    // E17/F02/US01/T01 (ADR-012 w15 §8): the handler now AWAITS its own promise and continues into
-    // the accept on resolution -- previously "success needed no handling here", which is exactly why
-    // A15-4 died on a second click. A visitor who arrived already signed in never reaches this
-    // handler (state 3 renders "Join" instead), so their explicit consent step is untouched.
-    instance
-      .loginPopup(buildLoginRequest(appConfig))
-      .then(() => {
-        setJoinOnceOffered(true);
-      })
-      .catch(() => {
-        setState({ phase: "no-token" });
-      });
+    // Fix 2026-09-14: `loginRedirect`, the same call `/signin`'s own CTA makes
+    // (`routes/signin/index.tsx`'s `handleContinue`) -- see this file's own header comment for why
+    // the popup this used to call is gone. Fire-and-forget, same as that CTA: the browser is about to
+    // navigate away, there is no meaningful `.then()` to run first, and `AuthenticatedGate` (App.tsx)
+    // -- not this component, which will have unmounted -- picks up the join on the other side.
+    void instance.loginRedirect(buildLoginRequest(appConfig));
   };
 
   const handleSignOutAndSwitch = () => {
