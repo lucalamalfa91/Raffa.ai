@@ -1377,6 +1377,48 @@
         }
       }
     },
+    "/api/documents/{id}/prioritise": {
+      "post": {
+        "operationId": "prioritiseDocument",
+        "summary": "Ask the Worker to take this still-queued document at its next free slot, ahead of the FIFO (task E16/F03/US02/T01, ADR-027 w15 footer C12).",
+        "description": "Maps to Raffa.Api.DocumentsEndpointExtensions' prioritise handler backed by `Raffa.Documents.Contracts.Application.DocumentPriorityService`. The web calls it once when a user opens a document whose row is still `Uploaded`/`Processing`: the document's queued, unclaimed classification job is stamped `prioritised_at`, and the next delivery any Worker replica handles in this tenant runs that job before its own. Any live member may call it; it grants nothing but an order. 204 whenever the document exists -- already claimed, already prioritised or already terminal are no-ops, so the client may call it blindly. Poll `GET /api/documents` for the stage.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Document.Id."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The request was recorded (or there was nothing left to prioritise). Poll the list for the stage."
+          },
+          "400": {
+            "description": "The document id in the route is not a GUID, or the tenant header is missing/malformed."
+          },
+          "401": {
+            "description": "No validated identity (NW-05)."
+          },
+          "404": {
+            "description": "No such document for this tenant, or the caller is not a member of it (never 403, ADR-025 Rule B1)."
+          }
+        }
+      }
+    },
     "/api/documents/{id}/validate": {
       "post": {
         "operationId": "validateDocument",

@@ -65,6 +65,12 @@ describe("getStatusTag", () => {
   it("maps rejected to the outline 'Not added' tag, never accent and never undefined", () => {
     expect(getStatusTag("rejected")).toEqual({ variant: "outline", label: "Not added" });
   });
+
+  // Task E16/F03/US02/T02 (ADR-020 w15 footer 10): the perceived-instant batch row -- neutral, the
+  // same variant as processing, since nothing has gone wrong and nothing needs the user yet.
+  it("maps uploaded to a neutral 'Uploaded' tag, distinct from processing", () => {
+    expect(getStatusTag("uploaded")).toEqual({ variant: "neutral", label: "Uploaded" });
+  });
 });
 
 describe("getRiskTag", () => {

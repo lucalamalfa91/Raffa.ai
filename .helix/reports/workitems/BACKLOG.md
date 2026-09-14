@@ -193,6 +193,20 @@ prefix (`scripts/assert_next_plan_untouched.py`), so waves cut by
 | NW-06 | Workspace role from membership / claims, never a client assertion | `E18/F01/US01/T01` (the deletion rides NW-05's seam) | 1 |
 | — | Final integration + acceptance runbook | `E16/F04/US01/T01` | 5 |
 
+### Added after the fan-out (2026-09-14, built by hand)
+
+The first real twenty-file batch on `dev` (`docs/waves/w15-acceptance.md` §0.2)
+found a UX failure NW-61's own design had not modelled: twenty truthful rows
+that still read as stalled (~30 s cold start, ~100 s/document measured, a bar
+at 0% the whole time). Two tasks close it — `feature-03-documents-truthful-surfaces/us-02-perceived-instant-batch/` —
+appended to phase 4 of `reports/plan/slices/w15.yaml`, no council round, no new
+ADR, no infrastructure change.
+
+| Item | Title | Task ids | Phase(s) |
+|---|---|---|---|
+| — | Priority by claim: the column, the service, the endpoint, the Worker's queue-jump (ADR-027 w15 footer C12) | `E16/F03/US02/T01` | 4 |
+| — | The perceived-instant batch: the row reading and the progress panel (ADR-020 w15 footer §10–12) | `E16/F03/US02/T02` | 4 |
+
 ### Queued for the next wave
 
 Per `reports/context/waves/w15-requirements.md` §5, these four `should` items are
@@ -238,11 +252,14 @@ the operator to reconcile in a historical slice this wave.
 
 ### ADRs touched
 
-- **New**: ADR-027 (async document processing) — the wave's only new ADR.
+- **New**: ADR-027 (async document processing) — the wave's only new ADR, now
+  on its **fourth** round (rounds 2–4; round 4, C12–C13, built by hand
+  2026-09-14, priority by claim).
 - **Amended by w15 footers** (bodies untouched, every `Status: accepted`
   unchanged, nothing superseded): ADR-001, ADR-002, ADR-005 (×2), ADR-007,
-  ADR-009, ADR-010, ADR-011 (×2), ADR-012 (×2), ADR-014, ADR-015 (**its first
-  amendment since 2026-09-01**), ADR-016 (×2), ADR-018 (×2), ADR-019 (×2),
-  ADR-020 (×2), ADR-022, ADR-024, ADR-025 (a new §J), ADR-026.
+  ADR-009, ADR-010, ADR-011 (×2), ADR-012 (×3, its third built by hand
+  2026-09-14), ADR-014, ADR-015 (**its first amendment since 2026-09-01**),
+  ADR-016 (×2), ADR-018 (×2), ADR-019 (×2), ADR-020 (×3, its third built by
+  hand 2026-09-14), ADR-022, ADR-024, ADR-025 (a new §J), ADR-026.
 - **`none — no change`, with reasons recorded**: ADR-003, ADR-004, ADR-006,
   ADR-008, ADR-013, ADR-017, ADR-021, ADR-023.

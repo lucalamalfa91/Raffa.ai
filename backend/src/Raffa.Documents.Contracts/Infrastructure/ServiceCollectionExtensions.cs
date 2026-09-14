@@ -127,6 +127,7 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<IDocumentPreviewRenderer, PlaceholderDocumentPreviewRenderer>();
         services.AddScoped<DocumentPreviewService>();
         services.AddScoped<DocumentReprocessService>();
+        services.AddScoped<DocumentPriorityService>();
         services.AddScoped<DocumentDeleteService>();
 
         // Review sign-off and the evidence read behind the review screen's pane

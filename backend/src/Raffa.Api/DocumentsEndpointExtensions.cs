@@ -93,6 +93,7 @@ public static class DocumentsEndpointExtensions
         endpoints.MapGet("/api/documents/{id}", GetDocumentAsync);
         endpoints.MapGet("/api/documents/{id}/preview", GetDocumentPreviewAsync);
         endpoints.MapPost("/api/documents/{id}/reprocess", ReprocessDocumentAsync);
+        endpoints.MapPost("/api/documents/{id}/prioritise", PrioritiseDocumentAsync);
         endpoints.MapPost("/api/documents/{id}/validate", ValidateDocumentAsync);
         endpoints.MapDelete("/api/documents/{id}", DeleteDocumentAsync);
         return endpoints;
@@ -540,6 +541,46 @@ public static class DocumentsEndpointExtensions
     /// retrieval chunks and the rows; the contract survives with its document link gone. Writes one
     /// <c>document.deleted</c> audit row before returning 204.
     /// </summary>
+    /// <summary>
+    /// <c>POST /api/documents/{id}/prioritise</c> (task E16/F03/US02/T01, ADR-027 w15 footer C12,
+    /// ADR-020 w15 footer 11; built by hand 2026-09-14). The web calls it once when a user opens a
+    /// document that is still queued: the document's queued, unclaimed classification job is stamped
+    /// <c>prioritised_at</c> and the Worker takes it at its next free slot in this tenant, ahead of the
+    /// FIFO. Any live member may ask -- whoever opened the document is the one waiting for it, and
+    /// it grants nothing but an order. <b>204</b> always when the document exists: already claimed,
+    /// already prioritised or already terminal are all no-ops (the client calls this blindly on
+    /// open); <b>404</b> when the document does not exist for this tenant (never 403, Rule B1);
+    /// <b>400</b> for a non-GUID id. One <c>document.prioritised</c> audit row when it changed
+    /// something, none otherwise.
+    /// </summary>
+    private static async Task<IResult> PrioritiseDocumentAsync(
+        string id,
+        HttpRequest request,
+        DocumentPriorityService priorityService,
+        ICallerContext callerContext,
+        CancellationToken cancellationToken)
+    {
+        var caller = await callerContext.ResolveTenantAsync(request, cancellationToken);
+        if (caller.Failure is not null)
+        {
+            return caller.Failure;
+        }
+
+        using var callerTenantScope = caller.Scope;
+        var tenantId = caller.TenantId;
+
+        if (!Guid.TryParse(id, out var documentGuid))
+        {
+            return Results.BadRequest("The document id in the route must be a GUID.");
+        }
+
+        var outcome = await priorityService
+            .PrioritiseAsync(tenantId, new EntityId(documentGuid), caller.Identity!, cancellationToken)
+            .ConfigureAwait(false);
+
+        return outcome is null ? Results.NotFound() : Results.NoContent();
+    }
+
     private static async Task<IResult> DeleteDocumentAsync(
         string id,
         HttpContext httpContext,

@@ -71,6 +71,7 @@ function mockApiClient(result: Promise<HealthCheckResult> | HealthCheckResult): 
     getDocumentPreviewUrl: vi.fn(),
     reprocessDocument: vi.fn(),
     deleteDocument: vi.fn(),
+    prioritiseDocument: vi.fn(),
     // Task E07/F01/US01/T01 (portfolio-list-filters): exercised in depth by
     // tests/routes/contracts/*.test.tsx. Task E13/F09/US01/T01 (web-shell-v2) made this call
     // unconditional here too -- AppShell's own `useValidatedContractCount` calls it on every mount

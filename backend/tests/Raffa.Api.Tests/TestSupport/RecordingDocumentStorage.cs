@@ -58,6 +58,11 @@ internal sealed class RecordingDocumentStorage : IDocumentStorage
         return Task.CompletedTask;
     }
 
+    /// <summary>The blob vanished out of band -- nobody called <see cref="DeleteAsync"/>, so nothing
+    /// lands in <see cref="Deleted"/>; the next load simply finds nothing. Models storage that lost
+    /// the bytes between the upload and the Worker's delivery (task E16/F03/US02/T01).</summary>
+    public void Forget(string storagePath) => _objects.Remove(storagePath);
+
     private async Task<string> StoreAsync(string path, Stream content, CancellationToken cancellationToken)
     {
         using var buffer = new MemoryStream();

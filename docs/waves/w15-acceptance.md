@@ -1,4 +1,4 @@
-# Wave w15 "async documents, real invitations" — acceptance runbook (W15-A1, A15-1…A15-8, N3b)
+# Wave w15 "async documents, real invitations" — acceptance runbook (W15-A1, A15-1…A15-9, N3b)
 
 Operator checklist for wave `w15` (`.helix/reports/context/waves/w15-requirements.md`;
 decision record `.helix/reports/architecture/waves/w15.md`; ADR-027 async document
@@ -44,6 +44,15 @@ four never ran (`E16/F02/US03/T01`, `E16/F03/US01/T01`, `E17/F02/US01/T01`, `E16
 All six were implemented by hand on branch `w15/manual-remaining` on 2026-09-14 (commits
 `aa4ffb3`, `2370995`, `9c4975e`, `de11e34`, `acde613` and the integration commit carrying this
 runbook). Nothing in this document relies on the fan-out's own delivery claims.
+
+**A second, later hand-built round, same day.** The first real twenty-file batch on deployed
+`dev` (walked against the six tasks above) showed a UX failure no council lane had modelled:
+twenty truthful rows (`Uploaded`/`Processing`) that still read as stalled for the ~30 s cold
+start and ~100 s/document the batch actually measured. Two more tasks —
+`E16/F03/US02/T01` (backend: priority by claim, ADR-027 w15 footer C12) and `E16/F03/US02/T02`
+(web: the perceived-instant row reading and the progress panel, ADR-020 w15 footer §10–12) —
+were built by hand on branch `feat/upload-perceived-instant`, also 2026-09-14, outside any
+council round and with no new ADR. **A15-9** below is their acceptance step.
 
 ### 0.3 The operator sequence
 
@@ -98,10 +107,12 @@ Record each with its value; the wave is not closed until all six are written dow
 1. `WEB/documents`. Drop **15 PDFs** at once (real contracts, the two sample MSAs, anything
    `%PDF-`). Start a stopwatch on the drop.
 2. **Within 2 s**: 15 rows are on screen and each already carries a server id — reload the
-   page: the 15 rows are still there, each reading **Processing** with **Queued…** or a real
-   stage string underneath; the chips read **Needs your attention · 15** / **All documents ·
-   15**, and the rail badge reads **15 docs**. Open the same workspace in a second browser
-   (or a private window): the same 15 rows.
+   page: the 15 rows are still there, each reading **Uploaded** (no bar) or, once a Worker
+   has claimed it, **Processing** with a real stage string underneath (wave w15 round 3,
+   built by hand 2026-09-14: a row never reads **Queued…** any more — click it open for the
+   six-stage checklist instead, see **A15-9** below); the chips read **Needs your attention ·
+   15** / **All documents · 15**, and the rail badge reads **15 docs**. Open the same
+   workspace in a second browser (or a private window): the same 15 rows.
 3. `POST /api/documents` timing: the Network tab shows each upload answering `201` in well
    under 2 s (p95 < 2 s on 15 uploads) with `processingStatus: "Uploaded"` and
    `contractId: null`. **No** `422` anywhere.
@@ -235,6 +246,34 @@ Pass: a 502 leaves nothing behind and the retry succeeds without a revoke.
 
 Pass: all four.
 
+## A15-9 — open a queued document: the stage bar, and it finishes before its neighbours (NW-27, NW-61)
+
+Built by hand 2026-09-14 (`E16/F03/US02/T01`/`T02`), after A15-1's own batch showed the failure
+this step exists to close.
+
+1. `WEB/documents`. Drop **6–8 PDFs** at once. Within 2 s every row reads **Uploaded**, no
+   bar, "Processing in the background" — confirm none reads "Queued…" or "Processing" yet
+   (that would mean a Worker somehow claimed a job in under 2 s, unlikely but not wrong if it
+   happens).
+2. Click the **last** row's filename (the one that dropped last, so it is last in the FIFO).
+   The Progress panel opens (`?progress=<id>`): the six-stage checklist, every stage **todo**
+   or the headline **"Queued, starting shortly"**, and the line "Raffa.ai is giving this
+   document priority over the rest of the queue."
+3. `curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $TOKEN" -H "X-Tenant-Id: $TENANT" "$API/api/documents/<id>/prioritise"` — **204**, repeatable (idempotent; a
+   second call while still queued is still `204`, no second audit row — not directly
+   observable from `curl`, see the DoD's audit-row assertion in the task instead).
+4. **Watch this row against its neighbours.** It reaches a terminal status (**Completed**,
+   **Needs review**, or **Failed**) at or before the rows that were dropped before it and were
+   **not** opened — the queue-jump, observed. The panel itself never redirects: when the
+   status turns, the panel offers a link (**Review now** / **Open the contract** / **Open
+   Quote check**) instead of navigating on its own; click it.
+5. Go back to `WEB/documents` (**← Documents**). The row now reads its terminal state, exactly
+   like every row that was never prioritised — nothing about a prioritised document's own
+   terminal row looks different from an unprioritised one.
+
+Pass: steps 1–5 all hold. Record how many rows, if any, the prioritised document finished
+ahead of.
+
 ## N3b — the invitation e2e, walked by hand (NW-58r)
 
 `web/e2e/invite.spec.ts` is **skipped in CI with the passcode reason** (a one-time passcode
@@ -302,3 +341,4 @@ PR without merging.
 | The Postgres-backed suites (`DocumentLifecycleTests`, `InviteProvisioningOrderingTests`, `InvitationLifecycleEndpointTests`, …) run in CI only — the authoring machine's Docker engine does not start | W15-A1 point (d) is the proof |
 | `terraform fmt -check` / `terraform validate` were not run on the authoring machine (no Terraform binary); `infra/**` is untouched by the hand-built branch | `infra.yml` runs both on the PR |
 | `npm run test:e2e` locally reports **19 skipped**: the specs refuse a `localhost` base by design (`RAFFA_E2E_BASE_URL` must be the real `dev`/`demo` origin) | run it against `dev` after the deploy: `RAFFA_E2E_BASE_URL=$WEB … npm run test:e2e` — `v2.spec.ts` A1 now asserts the **Not added · 2** chip and the two refused rows, not the retired card |
+| `POST /api/documents/{id}/prioritise` (A15-9) only ever reorders work **inside the calling tenant**, and only while the document's classification job is still `Queued`/unclaimed — opening an already-`Processing` (claimed) or terminal document is a harmless no-op, never an error, and never moves anything. There is no cross-tenant fairness story and none is claimed: a tenant cannot make another tenant's documents wait, and a document already being worked on cannot be pulled ahead of itself | by design (ADR-027 w15 footer C12, ADR-009); not a gap to close, recorded so a reviewer does not read the 204-always contract as "always does something" |
