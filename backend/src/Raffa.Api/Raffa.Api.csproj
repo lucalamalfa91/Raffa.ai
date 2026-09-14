@@ -26,12 +26,22 @@
          (already transitively registered via AddSavingsModule/AddQuotesModule) — the market
          -intelligence feed side of the three-source context pack (ADR-024). -->
     <ProjectReference Include="..\Raffa.Market\Raffa.Market.csproj" />
+    <!-- Task E16/F02/US02/T01 (durable-queue-transport, ADR-027 §D11): the blob adapter moved out
+         of this host's own Infrastructure/ folder into Raffa.Storage so Raffa.Worker can resolve
+         IDocumentStorage too. This host no longer references Azure.Storage.Blobs directly: only
+         Raffa.Storage does. -->
+    <ProjectReference Include="..\Raffa.Storage\Raffa.Storage.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Only the host may reference a cloud storage SDK directly (ADR-002); domain modules see
-         only Raffa.SharedKernel.Storage.IDocumentStorage. -->
-    <PackageReference Include="Azure.Storage.Blobs" Version="12.26.0" />
+    <!-- Task E16/F02/US02/T01 (durable-queue-transport, ADR-027 §D10, ADR-005 w15 footer §2):
+         the Service Bus publisher (managed identity, no connection-string secret; ADR-011 w15
+         footer §2a) and its DefaultAzureCredential auth. Raffa.AiGateway.Tests.SdkAllowListTests'
+         package-scoped map (amended by this same task) allows Azure.Identity here and in
+         Raffa.Worker, in addition to Raffa.AiGateway. Azure.AI.* stays refused everywhere but
+         Raffa.AiGateway. -->
+    <PackageReference Include="Azure.Messaging.ServiceBus" Version="7.18.0" />
+    <PackageReference Include="Azure.Identity" Version="1.17.1" />
   </ItemGroup>
 
 </Project>

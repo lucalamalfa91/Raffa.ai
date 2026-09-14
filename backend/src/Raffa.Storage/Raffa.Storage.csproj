@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Raffa.SharedKernel\Raffa.SharedKernel.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Task E16/F02/US02/T01 (durable-queue-transport, ADR-027 §D11, ADR-002 w15 footer clause 2):
+         the only Azure Storage SDK reference in this whole solution. AzureBlobDocumentStorage
+         moved here from Raffa.Api/Infrastructure so Raffa.Worker can resolve IDocumentStorage too:
+         the worker was the "landmine under any host-builder configuration that validates the DI
+         graph eagerly" WorkerServiceCollectionExtensions.AddWorkerHost's own doc comment already
+         named for IAuditWriter. This project is the Raffa.AiGateway shape: a provider adapter
+         referenced by both hosts and by nothing else, not a bounded context (ADR-002 w15 footer):
+         no DbContext, no migration, no .sql (ADR-027 §C10), so backend.yml's two script arrays stay
+         untouched and w15's CI-YAML set stays zero files. -->
+    <PackageReference Include="Azure.Storage.Blobs" Version="12.26.0" />
+  </ItemGroup>
+
+</Project>
