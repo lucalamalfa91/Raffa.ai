@@ -66,6 +66,13 @@ export default function MembersTable({ members, currentUserEmail, canManage, pen
         {members.map((member) => {
           const statusTag = getMemberStatusTag(member.status);
           const isSelf = member.email.toLowerCase() === currentUserEmail.toLowerCase();
+          // Fix 2026-09-15: `pendingActionId`/`actionError.id` (routes/workspace/members/index.tsx's
+          // `handleRevoke`/`handleRemove`) are keyed by the same action id now passed to
+          // onRevoke/onRemove below (invitationId/membershipId) -- comparing them against `member.id`
+          // (the stable WorkspaceUser id, used only for React's own `key` and this file's local
+          // `confirmingId`) would never match, silently dropping the pending/error state this row
+          // should show while its own request is in flight.
+          const actionId = member.invitationId ?? member.membershipId ?? member.id;
           return (
             <tr key={member.id}>
               <td>
@@ -82,13 +89,21 @@ export default function MembersTable({ members, currentUserEmail, canManage, pen
                     member={member}
                     members={members}
                     isSelf={isSelf}
-                    pending={pendingActionId === member.id}
-                    error={actionError?.id === member.id ? actionError.message : null}
+                    pending={pendingActionId === actionId}
+                    error={actionError?.id === actionId ? actionError.message : null}
                     confirming={confirmingId === member.id}
                     onRequestConfirm={() => setConfirmingId(member.id)}
                     onCancelConfirm={() => setConfirmingId(null)}
-                    onRevoke={() => onRevoke(member.id)}
-                    onRemove={() => onRemove(member.id, isSelf)}
+                    // Fix 2026-09-15: `member.id` is the roster row's own WorkspaceUser id -- stable
+                    // across the Active/Invited transition, never an action target (the backend's
+                    // own WorkspaceMembersEndpointExtensions.ListMembersAsync doc comment: "DELETE
+                    // .../members/{membershipId} and the invitation revoke each need their own id,
+                    // never `id`"). Sending it as the action id 404s ("No member/invitation found for
+                    // id <the person's own stable id>") every time, confirmed live on dev. Exactly
+                    // one of invitationId/membershipId is set per status; the guard is defensive only
+                    // -- these buttons only render once that status's own id is on the row.
+                    onRevoke={() => member.invitationId && onRevoke(member.invitationId)}
+                    onRemove={() => member.membershipId && onRemove(member.membershipId, isSelf)}
                   />
                 </td>
               )}
