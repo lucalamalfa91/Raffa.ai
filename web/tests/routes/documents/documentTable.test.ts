@@ -7,6 +7,7 @@ import {
   formatUploadedAt,
   getDocumentTypeLabel,
   getFilterHint,
+  getOpenTarget,
   getRowAction,
   getRowStatus,
   getRowStatusTag,
@@ -63,7 +64,10 @@ describe("formatUploadedAt", () => {
 
 describe("getRowStatus / getRowStatusTag", () => {
   it.each<{ processingStatus: DocumentListItemBody["processingStatus"]; status: string; variant: string; label: string }>([
-    { processingStatus: "Uploaded", status: "processing", variant: "neutral", label: "Processing" },
+    // Task E16/F03/US02/T02 (ADR-020 w15 footer 10, wave w15): `Uploaded` and `Processing` no
+    // longer fold into one reading -- `Uploaded` is "Uploaded" (the perceived-instant batch), and
+    // only `Processing` (the Worker has genuinely claimed the job) is "Processing".
+    { processingStatus: "Uploaded", status: "uploaded", variant: "neutral", label: "Uploaded" },
     { processingStatus: "Processing", status: "processing", variant: "neutral", label: "Processing" },
     { processingStatus: "NeedsReview", status: "needs_review", variant: "outline", label: "Needs review" },
     { processingStatus: "Completed", status: "completed", variant: "neutral", label: "Completed" },
@@ -75,6 +79,37 @@ describe("getRowStatus / getRowStatusTag", () => {
     const rowStatus = getRowStatus(processingStatus);
     expect(rowStatus).toBe(status);
     expect(getRowStatusTag(rowStatus)).toEqual({ variant, label });
+  });
+});
+
+// Task E16/F03/US02/T02 (wave w15, ADR-020 w15 footer 11): one definition of "where does the
+// filename open", shared by DocumentStatusTable.tsx's own `<Link>` and the progress panel's view
+// model (documentProgress.ts) -- this suite is what keeps the two from drifting apart.
+describe("getOpenTarget", () => {
+  it("opens needs_review at the review state, regardless of contract id", () => {
+    expect(getOpenTarget(item({ id: "doc-1", processingStatus: "NeedsReview" }), "needs_review")).toBe("/documents?review=doc-1");
+  });
+
+  it("opens a completed, non-Quote document at its contract", () => {
+    expect(getOpenTarget(item({ contractId: "contract-9", documentType: "Msa" }), "completed")).toBe("/contracts/contract-9");
+  });
+
+  it("opens a completed Quote at Quote check, never a contract", () => {
+    expect(getOpenTarget(item({ contractId: "contract-9", documentType: "Quote" }), "completed")).toBe("/quotes");
+  });
+
+  it("returns null for a completed document with no contract id yet (defensive)", () => {
+    expect(getOpenTarget(item({ contractId: null, documentType: "Msa" }), "completed")).toBeNull();
+  });
+
+  // Task E16/F03/US02/T02: the perceived-instant batch's own destination -- not ready yet is still
+  // somewhere to go, the progress panel.
+  it.each<"uploaded" | "processing">(["uploaded", "processing"])("opens %s at the progress panel", (rowStatus) => {
+    expect(getOpenTarget(item({ id: "doc-3" }), rowStatus)).toBe("/documents?progress=doc-3");
+  });
+
+  it.each<"failed" | "rejected">(["failed", "rejected"])("returns null for %s -- nowhere to go, only a sentence", (rowStatus) => {
+    expect(getOpenTarget(item(), rowStatus)).toBeNull();
   });
 });
 

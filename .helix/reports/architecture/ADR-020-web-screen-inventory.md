@@ -1113,3 +1113,117 @@ own idiom: (12) a Documents list with a **local "Not added" row** above the serv
 rows; (13) the **updates paused** notice with its resume control, on screen 3 and
 in the empty block of screens 2, 5 and 6.
 `HITL_CLAUDE_DESIGN: export screen 3 with a local "Not added" row above the server rows and with the paused-updates notice, and a tier empty block carrying a secondary "Check again" beside its primary CTA.`
+
+## Amendment (2026-09-14, wave w15 round 3 — the batch reads as loaded, the bar moves to a screen of its own, and the open document gets priority)
+
+Continues the **2026-09-14 re-entry-round footer** above (`:932-1115`, sections
+0–9), every clause of which stays in force; section numbering continues from
+it. Serves **NW-27**'s own follow-on, task E16/F03/US02/T02 (raffa-web) beside
+ADR-027 w15 footer C12 (raffa-backend, task E16/F03/US02/T01). Built by hand,
+after the first real twenty-file batch on `dev` showed the honest failure mode
+of §1.6's own "Queued…" reading: twenty rows, twenty bars at 0%, a wall for two
+minutes. The screen was truthful and still felt broken — this round does not
+withdraw truthfulness, it moves *where* the wait is shown.
+
+### 10. A row is not the place to watch a queue; the row now says only "Uploaded", and the bar moves to a panel opened on request
+
+**10.1 The reading a batch drop produces today is the defect.** Every row in a
+twenty-file batch shows "Processing" (§1.6's `Uploaded`/`Processing` merge) with
+a bar at 0% and "Queued…" underneath, for as long as the Worker takes to reach
+it — measured at ~30 s cold start, ~100 s/document. Nothing here is false, and
+all of it reads as stalled, because a bar is a promise of *visible* motion and
+twenty static bars break that promise twenty times at once.
+
+**10.2 The correction is a fourth row reading, not a faster bar.** `RowStatus`
+(`documentTable.ts:81-98`) splits `"uploaded"` out of the `"processing"` it used
+to share with `Processing` — `Uploaded` now reads the tag **"Uploaded"**
+(neutral, same variant as `processing`; `semantics.ts:83`), no bar, next-step
+**"Processing in the background"** (`DocumentStatusTable.tsx:144`, `:190`). Only
+a genuine `Processing` row — the Worker has actually claimed the job — still
+gets the stage bar and the real stage text; §1.6's "Queued…" reading is
+retired from the row grid entirely (it moves into the panel, §11.2). The local,
+pre-201 row (§6.1's own local-row shape) takes the identical reading: the
+moment a file is picked, before the request has even resolved, it shows
+**"Uploaded"** too (`localRowStatus`, `DocumentStatusTable.tsx:44-54`) — the one
+place on this screen a label runs ahead of a server fact, and it is **declared
+and bounded here, nowhere else**: it applies to this one row's own chip and
+next-step text, only for as long as its request is in flight, and it resolves
+to a real terminal state (including `"failed"`) the moment the request
+answers. It is not a new instance of "screens never infer" (§0's own rule) —
+it is the one, named exception to it, the same shape ADR-012 w14 clause 7
+already drew around a different local guess before deleting it; this one
+survives because what it claims (bytes are on their way to becoming a
+document) is true for its entire, bounded lifetime.
+
+**10.3 Twenty rows now read as twenty facts, uniformly.** "Uploaded" is not a
+softened truth — it is the D1 fact restated ("stored at the store, before any
+model call"), read as an outcome rather than as a wait. The batch-drop failure
+mode (§10.1) is closed at its root: nothing on the list *looks* stalled,
+because nothing on the list claims to be moving.
+
+### 11. The stage bar lives in a panel opened on request, and opening it asks the Worker to go there next
+
+**11.1 A fourth state of Documents, `?progress=<documentId>`.** Same idiom as
+screen 3's own review state (§3's `?review=<documentId>`, `ReviewState.tsx`):
+rendered in place of the list, never a separate route, closed by the identical
+"← Documents" control. `getOpenTarget` (`documentTable.ts:114-129`) is the one
+function that decides where a row's filename opens, shared by the row grid and
+this panel so the two destinations cannot drift apart — `"uploaded"` and
+`"processing"` both open `/documents?progress=<id>`; `"needs_review"` and
+`"completed"` are unchanged (their own direct destinations); `"failed"` and
+`"rejected"` still open nothing, the same sentence-only treatment §1.3/§6
+already established. The row's filename becomes a `<Link>` for a row that
+previously had **no** primary interactive surface at all (`DocumentStatusTable
+.tsx`'s own header comment: "no action cell also meant no click" — no longer
+true for exactly these two statuses).
+
+**11.2 The panel (`DocumentProgressPanel.tsx`) is where §1.6's stage list
+finally lives.** The six real stage names (`DOCUMENT_PROCESSING_STAGES`,
+unchanged) render as a checklist, done / current / todo against the document's
+own `stage` (`documentProgress.ts#getProgressStages`, the same source the
+row's own bar reads via `getStagePercent` — the two can never disagree). A
+`null` stage (queued, unclaimed) reads **"Queued, starting shortly"** — the
+"Queued…" wording §10.2 retired from the row grid is not lost, it moves here,
+to the one place a user asked to see it. A real stage reads its own name,
+verbatim (`"{stage}…"`), the same string the row's next-step cell would have
+shown. The panel never auto-navigates: if the document finishes while it is
+open (the same 2 s poll the list already runs re-renders it with a fresher
+item), the headline and a link change — to `?review=`, to the contract, or to
+Quote check — but the screen stays put; the user clicks through, the same
+posture screen 3 already takes for "Mark as validated" never firing itself.
+`Failed`/`Rejected` read the row grid's own sentence, verbatim, no
+second-authored copy (the "one convention for the wave" rule from §6.3
+extended: the panel *selects* which of the row's own sentences to show, it
+never writes a new one).
+
+**11.3 Opening the panel is the priority signal, stated once, honestly.**
+`DocumentProgressPanel` calls `POST /api/documents/{id}/prioritise` exactly
+once per document id on mount (`prioritiseDocument`, `client.ts`; ADR-027 w15
+footer C12) and never surfaces the outcome — the call is fire-and-forget, the
+same "errors do not block the screen that only optimises" posture the stopped-
+poll notice (§8) already takes toward its own budget. The panel's own copy
+says so, plainly, under the checklist: **"Raffa.ai is giving this document
+priority over the rest of the queue."** It does not promise a time, a
+position, or that the call changed anything — ADR-027 §C12's own honest
+promise ("next free Worker slot in this tenant") is the ceiling on what this
+sentence may claim, and it does not exceed it.
+
+**11.4 The stopped-poll notice (§8) reaches the panel unchanged.** While
+`isWaiting`, the panel shows the identical `.hint` + "Check again" pair every
+other waiting surface already shares (`updatesPaused`/`onResumeUpdates`,
+threaded from `useDocumentsList.ts` through `index.tsx` exactly as the row
+grid already receives them) — one more surface honouring §8's rule rather
+than a fifth copy of its sentence.
+
+### 12. What this footer does not change
+
+Sections 0–9 above, both earlier w15 footers, and every other screen. The six
+stage strings, the confidence vocabulary, `RowAction`/`getRowAction`'s own next-
+step buttons (`"Review N fields"`, `"Ask about it"`, `"Retry upload"`, `"Open
+Quote check"`), and every error/loading treatment are untouched. `counts` and
+the three filter chips are untouched: `"uploaded"` is still `isAttentionStatus`
+(`documentTable.ts:175-177`, unchanged predicate) alongside `"processing"`, so
+the chip's number does not move. **Design exports owed** — the thirteen at
+`:1110-1114` gain one: (14) the progress panel, its six-stage checklist against
+the row grid's own bar treatment, and the row's filename as a live link.
+`HITL_CLAUDE_DESIGN: export the progress panel — the six-stage checklist (done/current/todo), the priority sentence, the terminal-state link, and the paused-updates notice reused from screen 3.`

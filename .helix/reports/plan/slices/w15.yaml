@@ -35,6 +35,9 @@ phases:
       - {id: E16/F03/US01/T01, prompt: reports/workitems/epic-16-async-document-processing/feature-03-documents-truthful-surfaces/us-01-documents-states-and-counts/tasks/task-01-documents-states-and-counts.md, produces: [documents-truthful-surfaces], depends_on: [documents-async-api], effort: L, layer: frontend, status: live}
       - {id: E17/F02/US01/T01, prompt: reports/workitems/epic-17-invitation-delivery-and-identity/feature-02-invite-pane-and-accept/us-01-honest-invite-pane/tasks/task-01-honest-invite-pane.md, produces: [invite-pane-and-accept], depends_on: [invitation-identity-and-mail, web-bearer-token], effort: M, layer: frontend, status: live}
       - {id: E17/F03/US01/T01, prompt: reports/workitems/epic-17-invitation-delivery-and-identity/feature-03-invitation-e2e/us-01-n3b-and-no-test-seam/tasks/task-01-n3b-and-no-test-seam.md, produces: [invitation-e2e-and-seam-ban], depends_on: [invitation-identity-and-mail], effort: S, layer: backend, status: live}
+      # built by hand 2026-09-14, after the first real twenty-file batch on dev (docs/waves/w15-acceptance.md §0.2)
+      - {id: E16/F03/US02/T01, prompt: reports/workitems/epic-16-async-document-processing/feature-03-documents-truthful-surfaces/us-02-perceived-instant-batch/tasks/task-01-priority-by-claim.md, produces: [documents-priority-by-claim], depends_on: [documents-async-api], effort: M, layer: backend, status: live}
+      - {id: E16/F03/US02/T02, prompt: reports/workitems/epic-16-async-document-processing/feature-03-documents-truthful-surfaces/us-02-perceived-instant-batch/tasks/task-02-perceived-instant-batch.md, produces: [documents-perceived-instant-batch], depends_on: [documents-truthful-surfaces, documents-priority-by-claim], effort: M, layer: frontend, status: live}
   - id: 5
     name: phase-5
     tasks:

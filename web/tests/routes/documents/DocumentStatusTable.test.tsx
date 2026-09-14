@@ -90,23 +90,28 @@ describe("DocumentStatusTable", () => {
     expect(screen.getByRole("link", { name: "Open Quote check" })).toHaveAttribute("href", "/quotes");
   });
 
-  it("shows the real stage and a progress bar for a processing row, no action button", () => {
-    renderTable({ documents: [item({ processingStatus: "Processing", stage: "OCR / text" })] });
+  it("shows the real stage and a progress bar for a processing row, no action button, filename opens the progress panel", () => {
+    renderTable({ documents: [item({ id: "doc-1", processingStatus: "Processing", stage: "OCR / text" })] });
 
     expect(screen.getByText("OCR / text…")).toBeInTheDocument();
     expect(screen.getByRole("progressbar")).toBeInTheDocument();
-    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    // The only link on the row is the filename, opening the progress panel -- the next-step cell
+    // has the stage text, never an action button, while a Worker is on it.
+    expect(screen.getAllByRole("link")).toHaveLength(1);
+    expect(screen.getByRole("link", { name: "Salesforce_MSA.pdf" })).toHaveAttribute("href", "/documents?progress=doc-1");
   });
 
-  // ADR-020 w15 §1.6 (task E16/F03/US01/T01): a stored server row waiting for a Worker reads
-  // "Queued…", never "Uploading…" -- the bytes are already durable; the local pre-201 row keeps
-  // "Uploading…" (ADR-012 w15 §13.7), and the stage bar stays at 0% for a null stage.
-  it("reads 'Queued…' for a server row at Uploaded with no stage yet", () => {
-    renderTable({ documents: [item({ processingStatus: "Uploaded", stage: null, contractId: null })] });
+  // ADR-020 w15 footer 10 (task E16/F03/US02/T02, wave w15): a stored server row at `Uploaded`
+  // reads "Uploaded", not "Queued…" and not a bar -- the perceived-instant batch. Its filename
+  // still opens the progress panel (footer 11), which is where the real stage checklist lives.
+  it("reads 'Uploaded' with no bar for a server row at Uploaded, filename opens the progress panel", () => {
+    renderTable({ documents: [item({ id: "doc-1", processingStatus: "Uploaded", stage: null, contractId: null })] });
 
-    expect(screen.getByText("Queued…")).toBeInTheDocument();
-    expect(screen.queryByText("Uploading…")).not.toBeInTheDocument();
-    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "0");
+    expect(screen.getByText("Uploaded")).toHaveClass("tag", "tag-neutral");
+    expect(screen.getByText("Processing in the background")).toBeInTheDocument();
+    expect(screen.queryByText("Queued…")).not.toBeInTheDocument();
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Salesforce_MSA.pdf" })).toHaveAttribute("href", "/documents?progress=doc-1");
   });
 
   it("offers Retry upload for a server-known failed row, calling onRetryServer with its id", async () => {
@@ -118,14 +123,22 @@ describe("DocumentStatusTable", () => {
     expect(onRetryServer).toHaveBeenCalledWith("doc-9");
   });
 
-  it("renders a local in-flight upload as its own row from the moment it is picked (R-DOC-01 AC-1)", () => {
+  // Task E16/F03/US02/T02 (ADR-020 w15 footer 10, wave w15): the perceived-instant batch -- a row
+  // reads "Uploaded", never "Uploading…" and never a bar, from the moment a file is picked, before
+  // the POST has even resolved (R-DOC-01 AC-1). No `<Link>` either: a local entry has no server id
+  // yet for the progress panel to look up.
+  it("renders a local in-flight upload as its own 'Uploaded' row from the moment it is picked (R-DOC-01 AC-1)", () => {
     const localUploads: LocalUploadEntry[] = [
       { key: "local-1", file: new File(["x"], "New.pdf", { type: "application/pdf" }), phase: "uploading" },
     ];
     renderTable({ localUploads });
 
     expect(screen.getByText("New.pdf")).toBeInTheDocument();
-    expect(screen.getByText("Uploading…")).toBeInTheDocument();
+    expect(screen.getByText("Uploaded")).toHaveClass("tag", "tag-neutral");
+    expect(screen.getByText("Processing in the background")).toBeInTheDocument();
+    expect(screen.queryByText("Uploading…")).not.toBeInTheDocument();
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 
   it("offers Retry upload for a local failed upload, calling onRetryLocal with its key", async () => {
@@ -216,8 +229,8 @@ describe("DocumentStatusTable", () => {
     renderTable({ documents: [item({ processingStatus: "Uploaded", stage: null, contractId: null })], updatesPaused: true, onResumeUpdates });
 
     expect(screen.getByText("Nothing has changed for five minutes, so this page stopped checking for updates.")).toHaveClass("hint");
-    expect(screen.getByText("Queued…")).toBeInTheDocument();
-    expect(screen.getByText("Processing")).toHaveClass("tag");
+    expect(screen.getByText("Processing in the background")).toBeInTheDocument();
+    expect(screen.getByText("Uploaded")).toHaveClass("tag");
     await userEvent.click(screen.getByRole("button", { name: "Check again" }));
     expect(onResumeUpdates).toHaveBeenCalledTimes(1);
   });

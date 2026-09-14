@@ -9,6 +9,7 @@ import AttentionFilter from "./AttentionFilter";
 import UploadDropzone from "./UploadDropzone";
 import DocumentStatusTable from "./DocumentStatusTable";
 import ReviewState from "./ReviewState";
+import DocumentProgressPanel from "./DocumentProgressPanel";
 import { createSampleDocumentFile, type SampleDocumentKey } from "./sampleDocument";
 import { buildKbSummary, getDocumentTypeLabel } from "./documentTable";
 import "./documents.css";
@@ -32,7 +33,7 @@ interface JustValidated {
 /**
  * Route `/documents` (ADR-018/ADR-024; `raffa-v2/screens-v2.md` #3 and #4; task E13/F09/US01/T03).
  * V2 rebuild of `raffa-v2/app.jsx`'s own state machine (`docView: 'list' | 'review'`,
- * `docFilter`, `justValidated`) -- three states, not V1's single upload-pipeline screen:
+ * `docFilter`, `justValidated`) -- four states, not V1's single upload-pipeline screen:
  *
  *   1. **Onboarding empty** (`OnboardingEmptyState.tsx`) -- this tenant has no tracked document at
  *      all (not even an in-flight/rejected one this session).
@@ -42,6 +43,9 @@ interface JustValidated {
  *      `sessionStorage` tracker the rail used to read is deleted (ADR-012 w15 §6).
  *   3. **Review, a state of Documents** (`?review=<documentId>`, `ReviewState.tsx`) -- rendered in
  *      place of the list, never a separate route.
+ *   4. **Progress, a state of Documents** (`?progress=<documentId>`, `DocumentProgressPanel.tsx`,
+ *      task E16/F03/US02/T02, wave w15, ADR-020 w15 footer 11) -- the same "in place of the list,
+ *      never a separate route" idiom as review, opened from an `"uploaded"`/`"processing"` row.
  *
  * `?filter=all` (read once, on mount) honours `components/shell/WorkspaceShellApp.tsx`'s own
  * `/review -> /documents?filter=attention` redirect target and any future explicit link to the
@@ -66,6 +70,7 @@ export default function DocumentsRoute({ apiClient, role }: DocumentsRouteProps)
   }, []);
 
   const reviewDocumentId = searchParams.get("review");
+  const progressDocumentId = searchParams.get("progress");
 
   if (!workspace) {
     // Should not normally be reachable -- App.tsx only mounts the shell (and therefore this route)
@@ -113,6 +118,41 @@ export default function DocumentsRoute({ apiClient, role }: DocumentsRouteProps)
           setJustValidated({ contractId, displayName });
           navigate("/documents");
         }}
+      />
+    );
+  }
+
+  if (progressDocumentId !== null) {
+    const target = list.documents.find((item) => item.id === progressDocumentId);
+
+    if (list.fetchState === "loading" && target === undefined) {
+      return (
+        <div className="review-skeleton" role="status" aria-live="polite">
+          <p className="micro-meta">Loading…</p>
+        </div>
+      );
+    }
+
+    if (target === undefined) {
+      return (
+        <div className="empty-state" role="status">
+          <h3>This document no longer exists</h3>
+          <p className="micro-meta">It may have been deleted, or this link is stale.</p>
+          <button type="button" className="btn btn-secondary" onClick={() => navigate("/documents")}>
+            ← Documents
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <DocumentProgressPanel
+        apiClient={apiClient}
+        tenantId={workspace.id}
+        item={target}
+        onBack={() => navigate("/documents")}
+        updatesPaused={list.updatesPaused}
+        onResumeUpdates={list.resumeUpdates}
       />
     );
   }

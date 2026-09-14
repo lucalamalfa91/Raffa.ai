@@ -339,10 +339,10 @@ hint discarded.
 
 ### Documents (ADR-020 screen 3; V1 tasks E06/F05/US01/T01 + E06/F05/US02/T01; V2 rebuild task E13/F09/US01/T03, `raffa-v2/screens-v2.md` #3/#4)
 
-`src/routes/documents/` implements `/documents` as three states
+`src/routes/documents/` implements `/documents` as four states
 (`index.tsx`'s own header comment; mirrors `raffa-v2/app.jsx`'s own
-`docView: 'list' | 'review'` state machine), not V1's single
-upload-then-table screen:
+`docView: 'list' | 'review'` state machine, widened by wave w15 round 3), not
+V1's single upload-then-table screen:
 
 1. **Onboarding empty** (`OnboardingEmptyState.tsx`) -- this tenant has no
    tracked document at all, not even an in-flight/rejected one this session
@@ -362,6 +362,15 @@ upload-then-table screen:
 3. **Review, a state of Documents** (`ReviewState.tsx`,
    `?review=<documentId>`) -- rendered in place of the list, never a
    separate route.
+4. **Progress, a state of Documents** (`DocumentProgressPanel.tsx`,
+   `?progress=<documentId>`; task E16/F03/US02/T02, wave w15, built by hand
+   2026-09-14, ADR-020 w15 footer §10-12) -- same idiom as Review, opened
+   from an `"uploaded"`/`"processing"` row's own filename link. Shows the
+   six real stages as a checklist against the document's `stage`, calls
+   `POST /api/documents/{id}/prioritise` once on open (ADR-027 w15 footer
+   C12 -- the Worker takes this document at its next free slot in this
+   tenant, ahead of the FIFO), and never auto-navigates: a document that
+   finishes while the panel is open offers a link, the user clicks through.
 
 **Upload (dropzone, shared by onboarding and list; `UploadDropzone.tsx`,
 `uploadPipeline.ts`)**:
@@ -404,9 +413,18 @@ upload-then-table screen:
   OCR / text · Sections & tables · Extracting facts · Validating schema)
   read straight off `GET /api/documents`'s own `stage` field, polled every
   2 s while any row is non-terminal (`useDocumentsList.ts`, R-DOC-09). A
-  stored row with no stage yet reads **Queued…** (the bytes are durable, a
-  Worker has not picked the job up); a local pre-201 row reads
-  **Uploading…**. The poll has a five-minute no-change budget
+  stored row that is genuinely `Processing` (the Worker has claimed the job)
+  shows the real stage and the bar; a row at `Uploaded` -- stored or, before
+  the POST resolves, still local -- reads **Uploaded**, no bar, next step
+  **"Processing in the background"** (wave w15 round 3, ADR-020 w15 footer
+  §10, task E16/F03/US02/T02, built by hand 2026-09-14: the "Uploading…" /
+  "Queued…" readings this section used to name are gone from the row grid --
+  the batch reads as loaded the instant it appears; the "Queued, starting
+  shortly" reading moved into the Progress panel above, where the six-stage
+  checklist now lives). The local row's own "Uploaded" label is the one
+  place on this screen that runs ahead of the 201 -- declared and bounded to
+  that row's own text, for as long as its own request is in flight. The poll
+  has a five-minute no-change budget
   (`components/shell/usePollBudget.ts`, ADR-012 w15 §17): after it, rows
   stay exactly as the server last said and a list-level `.hint` --
   "Nothing has changed for five minutes, so this page stopped checking for

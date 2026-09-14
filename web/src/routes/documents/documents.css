@@ -330,3 +330,76 @@
   font-size: 12px;
   margin-bottom: var(--space-2);
 }
+
+/* ---- Progress panel, a state of Documents (DocumentProgressPanel.tsx, task E16/F03/US02/T02,
+   wave w15, ADR-020 w15 footer 11) -- `.documents-review-back` above is reused as-is for its own
+   "← Documents" control, the same class two states of one screen already share. */
+
+.documents-progress-panel {
+  display: flex;
+  flex-direction: column;
+  max-width: 560px;
+  padding: 22px 32px 32px;
+}
+
+.documents-progress-header {
+  margin-bottom: var(--space-4);
+}
+
+.documents-progress-header .screen-title {
+  margin: var(--space-1) 0 var(--space-2);
+  overflow-wrap: anywhere;
+}
+
+.documents-progress-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.documents-progress-stages {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  list-style: none;
+  margin: 0 0 var(--space-4);
+  padding: 0;
+}
+
+.documents-progress-stage {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-neutral-500);
+}
+
+.documents-progress-stage-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-neutral-200);
+  flex-shrink: 0;
+}
+
+.documents-progress-stage--done {
+  color: var(--color-text);
+}
+
+.documents-progress-stage--done .documents-progress-stage-dot {
+  background: var(--color-accent);
+}
+
+.documents-progress-stage--current {
+  color: var(--color-text);
+  font-weight: var(--weight-body-strong);
+}
+
+.documents-progress-stage--current .documents-progress-stage-dot {
+  background: var(--color-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 20%, transparent);
+}
+
+.documents-progress-link {
+  align-self: flex-start;
+}

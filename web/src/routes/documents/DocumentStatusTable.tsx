@@ -6,6 +6,7 @@ import { getRejectionReasonCopy, type LocalUploadEntry } from "./uploadPipeline"
 import {
   formatUploadedAt,
   getDocumentTypeLabel,
+  getOpenTarget,
   getRowAction,
   getRowStatus,
   getRowStatusTag,
@@ -32,7 +33,14 @@ export interface DocumentStatusTableProps {
 /** ADR-019 w15 clause 4 / ADR-020 w15 §6: a local entry's tag is keyed on the reading, not on where
  * the fact came from -- a refused file reads "Not added" whether the server or this browser
  * refused it. The third branch is the one the compiler never asks for (`DocumentStatusTable.tsx`
- * used to map this with a two-way ternary), so it is a switch here, not a ternary. */
+ * used to map this with a two-way ternary), so it is a switch here, not a ternary.
+ *
+ * `queued`/`uploading` read `"uploaded"`, not `"processing"` (ADR-020 w15 footer 10, task
+ * E16/F03/US02/T02): the whole point of the perceived-instant batch is that the row the user sees
+ * the moment a file is picked -- before the POST has even been sent -- already reads "Uploaded",
+ * never a bar. This is the one place a screen states something not yet true end-to-end (the bytes
+ * may still be in flight to the browser's own fetch call); it is deliberate, scoped to this label
+ * alone, and only for as long as the request is in flight -- a failure still lands on `"failed"`. */
 function localRowStatus(phase: LocalUploadEntry["phase"]): RowStatus {
   switch (phase) {
     case "failed":
@@ -41,7 +49,7 @@ function localRowStatus(phase: LocalUploadEntry["phase"]): RowStatus {
       return "rejected";
     case "queued":
     case "uploading":
-      return "processing";
+      return "uploaded";
   }
 }
 
@@ -59,10 +67,15 @@ function localRowStatus(phase: LocalUploadEntry["phase"]): RowStatus {
  *
  * Task E16/F03/US01/T01 (wave w15): a refused file is a *row*, never a card (ADR-020 w15 §1 and
  * §6) -- the server's `Rejected` row with its reason hint, or a local row for a refusal that never
- * reached the server -- with an empty action cell and no dismiss; a server row at `Uploaded` reads
- * "Queued…" (§1.6), a local pre-201 row still reads "Uploading…" (ADR-012 w15 §13.7); and the
- * stopped-poll notice renders below the grid as `.hint` + `.btn-secondary` (§8), a list state,
- * never a row state.
+ * reached the server -- with an empty action cell and no dismiss; and the stopped-poll notice
+ * renders below the grid as `.hint` + `.btn-secondary` (§8), a list state, never a row state.
+ *
+ * Task E16/F03/US02/T02 (wave w15, ADR-020 w15 footer 10): a local row and a server row at
+ * `Uploaded` both read "Uploaded" now, no bar -- the perceived-instant batch (a document is not
+ * "Queued…" until the user can see it is waiting on something real, and this app no longer makes
+ * anyone wait to see the row at all). The filename `<Link>` for `Uploaded`/`Processing` opens the
+ * progress panel (`?progress=<id>`, footer 11) instead of doing nothing -- the one case where "no
+ * action cell" no longer also means "no click".
  */
 export default function DocumentStatusTable({
   documents,
@@ -119,7 +132,6 @@ export default function DocumentStatusTable({
                   <td className="micro-meta">—</td>
                   <td>
                     <span className={`tag tag-${tag.variant}`}>{tag.label}</span>
-                    {entry.phase === "uploading" && <ProcessingPipeline stage={null} />}
                   </td>
                   <td className="document-status-table-next-step">
                     {entry.phase === "failed" ? (
@@ -127,7 +139,9 @@ export default function DocumentStatusTable({
                         Retry upload
                       </button>
                     ) : entry.phase === "rejected" ? null : (
-                      <span className="micro-meta">Uploading…</span>
+                      // ADR-020 w15 footer 10: the row already reads "Uploaded" above -- this is
+                      // the honest half of that claim, said once, right underneath it.
+                      <span className="micro-meta">Processing in the background</span>
                     )}
                   </td>
                   {isAdmin && <td />}
@@ -139,18 +153,8 @@ export default function DocumentStatusTable({
               const rowStatus = getRowStatus(item.processingStatus);
               const tag = getRowStatusTag(rowStatus);
               const action = getRowAction(item);
-              const isQuote = item.documentType === "Quote";
               const rejectionHint = rowStatus === "rejected" ? getRejectionReasonCopy(item.rejectionReason) : null;
-              const openTarget =
-                rowStatus === "needs_review"
-                  ? `/documents?review=${item.id}`
-                  : rowStatus === "completed"
-                    ? isQuote
-                      ? "/quotes"
-                      : item.contractId !== null
-                        ? `/contracts/${item.contractId}`
-                        : null
-                    : null;
+              const openTarget = getOpenTarget(item, rowStatus);
 
               return (
                 <tr key={item.id}>
@@ -179,10 +183,14 @@ export default function DocumentStatusTable({
                     {rowStatus === "processing" && <ProcessingPipeline stage={item.stage} />}
                   </td>
                   <td className="document-status-table-next-step">
-                    {rowStatus === "processing" ? (
-                      // ADR-020 w15 §1.6: a stored row waiting for a Worker is "Queued…", never
-                      // "Uploading…" -- the bytes are already durable; a `Processing` row reads its
-                      // real stage string, verbatim.
+                    {rowStatus === "uploaded" ? (
+                      // ADR-020 w15 footer 10 (task E16/F03/US02/T02): the row already reads
+                      // "Uploaded" -- no Worker has claimed it yet, so there is no real stage to
+                      // report, only that it is on its way.
+                      <span className="micro-meta">Processing in the background</span>
+                    ) : rowStatus === "processing" ? (
+                      // A `Processing` row reads its real stage string, verbatim -- the Worker has
+                      // genuinely claimed the job by the time this branch renders.
                       <span className="micro-meta">{(item.stage ?? "Queued") + "…"}</span>
                     ) : action !== null ? (
                       action.kind === "retry" ? (

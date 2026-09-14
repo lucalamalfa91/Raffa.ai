@@ -290,6 +290,26 @@ export interface operations {
       };
     };
   };
+  prioritiseDocument: {
+    responses: {
+      204: {
+        content: {
+        };
+      };
+      400: {
+        content: {
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
   validateDocument: {
     responses: {
       200: {
@@ -717,6 +737,9 @@ export interface paths {
   };
   "/api/documents/{id}/reprocess": {
     post: operations["reprocessDocument"];
+  };
+  "/api/documents/{id}/prioritise": {
+    post: operations["prioritiseDocument"];
   };
   "/api/documents/{id}/validate": {
     post: operations["validateDocument"];

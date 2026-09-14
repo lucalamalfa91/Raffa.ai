@@ -71,18 +71,20 @@ export function getStagePercent(stage: string | null): number {
   return index === -1 ? 0 : Math.round(((index + 1) / DOCUMENT_PROCESSING_STAGES.length) * 100);
 }
 
-/** The five statuses a real (server-known) row can render. `Uploaded` and `Processing` both fold
- * into `"processing"` -- the row grid (screens-v2.md #3) does not distinguish "queued" from
- * "actively processing" visually, only the stage text underneath the tag does that. `"rejected"` is
- * task E16/F02/US03/T01's (wave w15, ADR-027 §D6): the content gate now runs on the Worker after
- * the upload has returned, so a file that turns out not to be a contract is a *server row* in
- * `Rejected` with a `rejectionReason`, no longer only the session-local card the synchronous 422
- * used to produce. */
-export type RowStatus = "processing" | "needs_review" | "completed" | "failed" | "rejected";
+/** The six statuses a real (server-known) row can render. `"rejected"` is task E16/F02/US03/T01's
+ * (wave w15, ADR-027 §D6): the content gate now runs on the Worker after the upload has returned,
+ * so a file that turns out not to be a contract is a *server row* in `Rejected` with a
+ * `rejectionReason`, no longer only the session-local card the synchronous 422 used to produce.
+ * `"uploaded"` is task E16/F03/US02/T02's (wave w15, ADR-020 w15 footer 10): `Uploaded` and
+ * `Processing` used to fold into one `"processing"` reading -- now `Uploaded` reads "Uploaded", no
+ * bar, because that is the state a document is in the instant its row appears (perceived-instant
+ * batch), and only `Processing` (the Worker has genuinely claimed the job) earns the stage bar. */
+export type RowStatus = "uploaded" | "processing" | "needs_review" | "completed" | "failed" | "rejected";
 
 export function getRowStatus(processingStatus: DocumentListItemBody["processingStatus"]): RowStatus {
   switch (processingStatus) {
     case "Uploaded":
+      return "uploaded";
     case "Processing":
       return "processing";
     case "NeedsReview":
@@ -102,6 +104,26 @@ export function getRowStatus(processingStatus: DocumentListItemBody["processingS
  * so there is no cast here any more and the switch there stays exhaustive under `tsc`. */
 export function getRowStatusTag(status: RowStatus): SemanticTag {
   return getStatusTag(status);
+}
+
+/** Where a row's filename opens, for every `RowStatus` -- `null` only when there is genuinely
+ * nowhere to go yet (`"failed"`, `"rejected"`, or `"completed"` with no contract id resolved).
+ * Shared by `DocumentStatusTable.tsx` (the row grid's own `<Link>`) and `documentProgress.ts` (the
+ * progress panel opened from an `"uploaded"`/`"processing"` row, task E16/F03/US02/T02, wave w15,
+ * ADR-020 w15 footer 11) so the two destinations can never drift apart -- one definition, not two. */
+export function getOpenTarget(item: Pick<DocumentListItemBody, "id" | "contractId" | "documentType">, rowStatus: RowStatus): string | null {
+  switch (rowStatus) {
+    case "needs_review":
+      return `/documents?review=${item.id}`;
+    case "completed":
+      return item.documentType === "Quote" ? "/quotes" : item.contractId !== null ? `/contracts/${item.contractId}` : null;
+    case "uploaded":
+    case "processing":
+      return `/documents?progress=${item.id}`;
+    case "failed":
+    case "rejected":
+      return null;
+  }
 }
 
 export type RowActionKind = "review" | "ask" | "quote" | "retry";

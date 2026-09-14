@@ -80,6 +80,7 @@ function mockApiClient(): ApiClient {
     getDocumentPreviewUrl: vi.fn(),
     reprocessDocument: vi.fn(),
     deleteDocument: vi.fn(),
+    prioritiseDocument: vi.fn(),
     getPortfolio: vi
       .fn()
       .mockResolvedValue({ ok: true, statusCode: 200, portfolio: { items: [], page: 1, pageSize: 100, totalCount: 0 }, error: null }),

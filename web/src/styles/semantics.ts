@@ -49,7 +49,7 @@ export function isConfidenceBlocking(confidencePct: number): boolean {
   return confidencePct < 80;
 }
 
-export type DocumentStatus = "completed" | "ready" | "needs_review" | "failed" | "processing" | "rejected";
+export type DocumentStatus = "completed" | "ready" | "needs_review" | "failed" | "processing" | "rejected" | "uploaded";
 
 /**
  * Status completed/Ready -> neutral; needs_review -> outline; failed -> accent; processing ->
@@ -60,7 +60,11 @@ export type DocumentStatus = "completed" | "ready" | "needs_review" | "failed" |
  * outline "Not added" (ADR-019 w15 clause 1, task E16/F03/US01/T01: a refusal is a decision about
  * the file, not a Raffa-side failure the user can retry, so it takes the system's "this row is
  * about a decision" treatment -- the same `.tag-outline` the retired "Not added" card carried --
- * and never `.tag-accent`, which stays reserved for `failed`).
+ * and never `.tag-accent`, which stays reserved for `failed`); uploaded -> neutral "Uploaded" (ADR-019
+ * w15 round-3 clause 1, task E16/F03/US02/T02, wave w15: the row the user sees the instant a file is
+ * picked or the server first stores it, before any Worker stage has run -- deliberately the same
+ * neutral variant as `processing`, since nothing has gone wrong and nothing needs the user yet; the
+ * *label* is what carries "there is genuinely nothing to look at here", never colour alone).
  */
 export function getStatusTag(status: DocumentStatus): SemanticTag {
   switch (status) {
@@ -76,6 +80,8 @@ export function getStatusTag(status: DocumentStatus): SemanticTag {
       return { variant: "neutral", label: "Processing" };
     case "rejected":
       return { variant: "outline", label: "Not added" };
+    case "uploaded":
+      return { variant: "neutral", label: "Uploaded" };
   }
 }
 

@@ -438,6 +438,23 @@ export interface DeleteDocumentResult {
   error: string | null;
 }
 
+// Task E16/F03/US02/T02 (wave w15): `prioritiseDocument`, wrapping `POST
+// /api/documents/{id}/prioritise` (ADR-027 w15 footer C12; any live member, never Admin-only --
+// whoever opened the document is the one waiting for it). `DocumentProgressPanel.tsx` calls this
+// once per document id, unconditionally and blindly on open: `204` is the only outcome that
+// matters to it, and even a failed call is not shown as an error (priority is an optimisation the
+// Worker may already have made moot, never a promise this screen has to keep) -- `error` and
+// `statusCode` exist here only so this wrapper stays an honest, complete mirror of the real
+// endpoint, the same convention every other call in this file follows.
+export interface PrioritiseDocumentResult {
+  /** True only on `204 No Content`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** Plain-language failure reason (404/network-failure), present only when `ok` is false. */
+  error: string | null;
+}
+
 // Task E07/F01/US01/T01 (us-01-portfolio-list-filters, epic-07-web-contract-intelligence): `getPortfolio`,
 // wrapping `GET /api/contracts` (backend/src/Raffa.Api/PortfolioEndpointExtensions.cs). This is the first
 // web epic to reach into the set of E02-E05 backend routes this file's own header comment and
@@ -1194,6 +1211,13 @@ export interface ApiClient {
    * never-throws shape as every other call here; a `403` (Procurement) is a normal, expected outcome.
    */
   deleteDocument(tenantId: string, id: string): Promise<DeleteDocumentResult>;
+  /**
+   * Calls `POST /api/documents/{id}/prioritise` (operationId `prioritiseDocument`, any live member,
+   * ADR-027 w15 footer C12). Same never-throws shape as every other call here; `DocumentProgressPanel
+   * .tsx` calls this once per document id and never surfaces the outcome -- priority is an
+   * optimisation, not a function.
+   */
+  prioritiseDocument(tenantId: string, id: string): Promise<PrioritiseDocumentResult>;
   /**
    * Calls `GET /api/contracts` (operationId `getPortfolio`) -- the portfolio list behind
    * `src/routes/contracts/` (AC-1 filters, AC-2 attention strip, AC-3 sort/tint, AC-4 states). Same
@@ -2001,6 +2025,33 @@ export function createApiClient(
 
       if (response.status === 403) {
         return { ok: false, statusCode: 403, error: "Only a Workspace Admin can delete a document." };
+      }
+
+      if (response.status === 404) {
+        return { ok: false, statusCode: 404, error: `No document found for id ${id}.` };
+      }
+
+      return { ok: false, statusCode: response.status, error: `Request failed with HTTP ${response.status} ${response.statusText}.` };
+    },
+
+    async prioritiseDocument(tenantId, id) {
+      let response: Response;
+      try {
+        response = await fetch(new URL(`/api/documents/${encodeURIComponent(id)}/prioritise`, baseUrl), {
+          method: "POST",
+          headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          error: `Unable to reach ${baseUrl}/api/documents/${id}/prioritise. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 204) {
+        return { ok: true, statusCode: 204, error: null };
       }
 
       if (response.status === 404) {

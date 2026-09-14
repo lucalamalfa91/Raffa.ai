@@ -840,3 +840,62 @@ here.** C6 changes one disposition rule inside the worker's handler, C7 and C8
 set two values, C9 restates one wire field's predicate, C10 and C11 record a
 declaration and a prohibition. `waves/w15.md` records this round under NW-27 and
 NW-61.
+
+## Amendment (2026-09-14, wave w15 round 4 — priority by claim: the document the user opens goes first)
+
+Built by hand, after the first real twenty-file batch on `dev` (task E16/F03/US02/T01, raffa-backend;
+raffa-web's own task E16/F03/US02/T02 is the client half, `ADR-020` w15 footer 11). **D1–D12 and
+C1–C11 stand.** One nullable column, one service, one endpoint, and four lines inside the Worker's
+existing handler — no new subscription, no new message shape, no change to `ExtractionRequested`.
+
+### C12 — the queue-jump lives on the row, never on the broker
+
+OQ-w15-012 fixed Service Bus at **exactly one** subscription — "a design constraint, not an
+accident" — so there is no broker-level way to move a message ahead of the ones in front of it, and
+this footer does not try. A document a user opens while it is still queued moves on its own row
+instead:
+
+- `ExtractionJob.PrioritisedAt` (`Domain/ExtractionJob.cs:54`, nullable `timestamp with time zone`,
+  additive — `Migrations/20260914200000_AddExtractionJobPrioritisedAt.cs`, same "no column dropped,
+  no type changed, no existing column turns `NOT NULL`" shape as D2's own migration and C6's
+  settlement columns, so the previous image still runs unchanged against the new schema).
+- `DocumentPriorityService.PrioritiseAsync` (`Application/DocumentPriorityService.cs`) stamps
+  `PrioritisedAt = clock.UtcNow` on the document's queued, unclaimed classification job(s) and writes
+  one `document.prioritised` audit row — **idempotent by design**: a job already claimed, already
+  prioritised, or already terminal is a no-op that still answers 204, because `POST
+  /api/documents/{id}/prioritise` (`Raffa.Api/DocumentsEndpointExtensions.cs:96`) is called blindly
+  by the web every time a user opens a document that is not yet ready (ADR-020 w15 footer 11), never
+  gated on the caller first checking whether it is worth calling.
+- `ExtractionRequestedHandler.HandleAsync` (`Application/Extraction/ExtractionRequestedHandler.cs`)
+  now runs *before* claiming its own delivery's job: inside the same tenant scope (ADR-009), it reads
+  up to `MaxPrioritisedPerDelivery = 1` (`:70`) queued, unclaimed, prioritised classification jobs in
+  this tenant (`:90`), claims each with the identical compare-and-swap every delivery already uses,
+  and runs it to completion before its own job. One per delivery, deliberately: three replicas ×
+  four calls in flight already lets a dozen opened documents start at once, and every extra job a
+  delivery carries widens the message-lock exposure (a delivery holds its lock for the whole run).
+  Each prioritised job runs inside its own `try`/`catch`, and `dbContext.ChangeTracker.Clear()`
+  (`:137`) runs after every one — the gate, the pipeline and the claim store share this one scoped
+  `DbContext`, and nothing a half-processed prioritised job left tracked may leak into the delivery's
+  own `SaveChanges`.
+- The prioritised job's **own** message still arrives, later, on its own delivery. Its claim finds a
+  row already `Processing`/terminal — zero rows affected — and **C6's settlement already has the
+  name for that**: `ClaimLost`, completed, never a redelivery, never a duplicate run. No new outcome,
+  no new branch in `ExtractionSettlement.Decide`; work is conserved and the FIFO resumes immediately
+  after.
+
+**Fairness is bounded, not promised.** In the worst case one delivery spends ~200 s more on a
+prioritised job before it reaches its own — there is no starvation, because the cap is per delivery
+and the prioritised queue itself is FIFO (`OrderBy(PrioritisedAt).ThenBy(QueuedAt)`). This is an
+*order* between documents already in the same tenant's queue, never a cross-tenant read (ADR-009),
+never a second subscription (OQ-w15-012 intact), never a guarantee the document finishes by any
+particular time — the honest promise is "next free Worker slot in this tenant", stated once here and
+in `DocumentPriorityService`'s own doc comment, never oversold in the screen copy that calls it
+(ADR-020 w15 footer 11).
+
+### C13 — what this footer does not change
+
+No endpoint's response shape, no message contract, no Service Bus resource, and no settlement
+outcome. `ExtractionSettlement` (C6) is read, never edited. Reprocess (`DocumentReprocessService
+.RequeueClassificationJobAsync`) resets `PrioritisedAt = null` on the fresh classification job it
+queues — a reprocessed document re-enters the FIFO exactly where a first upload would, never
+carrying a stale priority forward. `waves/w15.md` records this round under NW-27.

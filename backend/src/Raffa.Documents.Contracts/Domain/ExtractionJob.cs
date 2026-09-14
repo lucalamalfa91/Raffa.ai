@@ -46,4 +46,10 @@ public sealed class ExtractionJob : TenantScopedEntity
     /// <see cref="ClaimedAt"/>.
     /// </summary>
     public string? ClaimedBy { get; set; }
+
+    /// <summary>ADR-027 w15 footer C12 (2026-09-14): the instant a user opened this document while it
+    /// was still queued. A prioritised job is taken by the next free Worker slot in its own tenant,
+    /// ahead of the FIFO, ordered by this instant ("asked first"). Null for every job nobody waited
+    /// for; reset to null by a reprocess, which queues a fresh run nobody has asked for yet.</summary>
+    public DateTimeOffset? PrioritisedAt { get; set; }
 }
