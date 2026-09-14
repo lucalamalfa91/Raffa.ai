@@ -18,3 +18,19 @@ output "fqdn" {
   description = "Fully qualified domain name of the Service Bus namespace (Azure public-cloud DNS suffix)."
   value       = "${azurerm_servicebus_namespace.this.name}.servicebus.windows.net"
 }
+
+# Task E16/F01/US01/T01 (w15 Terraform): non-secret config, threaded through
+# modules/containerapps as ServiceBus__TopicName / ServiceBus__SubscriptionName
+# so no consumer ever hand-types a name that can drift from this resource --
+# the exact class of defect ADR-027 §C8 found and repaired (a stale
+# "extraction-worker" constant naming a subscription this module never
+# created).
+output "topic_name" {
+  description = "Name of the extraction-events Service Bus topic."
+  value       = azurerm_servicebus_topic.extraction_events.name
+}
+
+output "subscription_name" {
+  description = "Name of the document-processing subscription on the extraction-events topic."
+  value       = azurerm_servicebus_subscription.document_processing.name
+}
