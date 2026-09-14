@@ -30,6 +30,13 @@ public sealed class DocumentConfiguration : IEntityTypeConfiguration<Document>
         // tenant-prefixed storage path (R-DOC-08) — same length budget as StoragePath below.
         builder.Property(e => e.PreviewPath).HasMaxLength(1000);
 
+        // Task E16/F02/US01/T01 (async-processing-schema, ADR-027 §D6): the refusal record.
+        // All three nullable, no CHECK, no default — a rejected row is the only kind that ever
+        // sets them. RejectionReason is sized like ProcessingStatus (a small closed-set code);
+        // RejectionDetectedType like DocumentType (the same ContractDocumentType vocabulary).
+        builder.Property(e => e.RejectionReason).HasConversion<string>().HasMaxLength(30);
+        builder.Property(e => e.RejectionDetectedType).HasConversion<string>().HasMaxLength(50);
+
         builder.HasIndex(e => e.TenantId);
         builder.HasIndex(e => e.ContractId);
 
