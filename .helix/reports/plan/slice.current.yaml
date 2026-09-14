@@ -1,44 +1,42 @@
-waveId: wave-v1-epic-e13
+waveId: wave-next-w15
 status: planned
-# E13 Ask Raffa V2 (documents, conversations, market feed, strategies, system-aware). Prior-wave depends_on dropped (producer-completeness).
-# estimated tokens: 30.4M (S/M/L mapped; not a packing cap).
-# Launch: ./run.ps1 -Max -Slice e13 -o execution-fanout
-# Design oracle: inputs/design/prototypes/Raffa V2 Prototype.html (unpacked: inputs/design/prototypes/raffa-v2/). Requirements: inputs/requirements.md.
-# Studio: raffa-process.yaml -> execution-fanout after copying this file to slice.current.yaml.
+# title: W15 — upload feels instant, and inviting a colleague works end to end
+# source: inputs/next/w15-todo.md
+# requirements: reports/context/waves/w15-requirements.md
+# decisions: reports/architecture/waves/w15.md (approved; ADR-027 new, 18 ADRs amended)
+# caps: 20 tasks / 5 phases (reports/plan/next-run.json) -> 11 live tasks / 5 phases
+# W15-01 has no task: the base merge + green-base proof is an operator act at HITL,
+#   enforced by reports/plan/gates/w15.hitl-ok and recorded by E16/F04/US01/T01 (W15-A1).
+# E16/F01/US01/T01 (Terraform) has NO dependents on purpose: an HCP apply is not
+#   observable by the wave that wrote it (ADR-016 w14 clause 3), so a depends_on
+#   pointing at it would be a lie that fails real tasks under require_delivery.
+#   It merges to main in its own infra-only PR BEFORE the wave PR (ADR-014 w15 clause 5).
+# Launch: ./run.ps1 -Max -Slice w15 -o execution-fanout
 phases:
   - id: 1
     name: phase-1
     tasks:
-      - {id: E13/F01/US01/T01, prompt: reports/workitems/epic-13-ask-v2/feature-01-v2-foundation/us-01-v2-foundation/tasks/task-01-solution-scaffold.md, produces: [v2-scaffold], depends_on: [], effort: M, layer: backend, status: live}
-      - {id: E13/F01/US01/T02, prompt: reports/workitems/epic-13-ask-v2/feature-01-v2-foundation/us-01-v2-foundation/tasks/task-02-foundry-gateway.md, produces: [foundry-gateway], depends_on: [], effort: L, layer: backend, status: live}
-      - {id: E13/F04/US01/T01, prompt: reports/workitems/epic-13-ask-v2/feature-04-documents-v2/us-01-documents-v2/tasks/task-01-documents-admission.md, produces: [documents-admission], depends_on: [], effort: L, layer: backend, status: live}
-      - {id: E13/F05/US01/T01, prompt: reports/workitems/epic-13-ask-v2/feature-05-conversations/us-01-conversations/tasks/task-01-conversations-store.md, produces: [conversations-store], depends_on: [], effort: M, layer: backend, status: live}
-      - {id: E13/F09/US01/T01, prompt: reports/workitems/epic-13-ask-v2/feature-09-web-v2/us-01-web-v2/tasks/task-01-web-shell-v2.md, produces: [web-shell-v2], depends_on: [], effort: L, layer: frontend, status: live}
+      - {id: E16/F01/US01/T01, prompt: reports/workitems/epic-16-async-document-processing/feature-01-wave-infrastructure/us-01-w15-terraform/tasks/task-01-w15-terraform.md, produces: [w15-terraform], depends_on: [], effort: L, layer: backend, status: live}
+      - {id: E16/F02/US01/T01, prompt: reports/workitems/epic-16-async-document-processing/feature-02-durable-document-processing/us-01-async-processing-schema/tasks/task-01-async-processing-schema.md, produces: [documents-async-schema], depends_on: [], effort: M, layer: backend, status: live}
+      - {id: E18/F01/US01/T01, prompt: reports/workitems/epic-18-api-authentication/feature-01-token-identity/us-01-api-validates-the-token/tasks/task-01-api-validates-the-token.md, produces: [api-jwt-identity], depends_on: [], effort: L, layer: backend, status: live}
   - id: 2
     name: phase-2
     tasks:
-      - {id: E13/F02/US01/T01, prompt: reports/workitems/epic-13-ask-v2/feature-02-market-intelligence/us-01-market-intelligence/tasks/task-01-market-feed-mock.md, produces: [market-feed-mock], depends_on: [v2-scaffold], effort: L, layer: backend, status: live}
-      - {id: E13/F03/US01/T01, prompt: reports/workitems/epic-13-ask-v2/feature-03-supplier-identity/us-01-supplier-identity/tasks/task-01-supplier-entity.md, produces: [supplier-entity], depends_on: [v2-scaffold], effort: M, layer: backend, status: live}
-      - {id: E13/F04/US01/T02, prompt: reports/workitems/epic-13-ask-v2/feature-04-documents-v2/us-01-documents-v2/tasks/task-02-documents-v2-api.md, produces: [documents-v2-api], depends_on: [documents-admission, foundry-gateway], effort: L, layer: backend, status: live}
-      - {id: E13/F05/US01/T02, prompt: reports/workitems/epic-13-ask-v2/feature-05-conversations/us-01-conversations/tasks/task-02-conversations-api.md, produces: [conversations-api], depends_on: [conversations-store], effort: M, layer: backend, status: live}
-      - {id: E13/F07/US01/T01, prompt: reports/workitems/epic-13-ask-v2/feature-07-insights/us-01-insights/tasks/task-01-insights-calculators.md, produces: [insights-calculators], depends_on: [v2-scaffold], effort: L, layer: backend, status: live}
-      - {id: E13/F08/US01/T01, prompt: reports/workitems/epic-13-ask-v2/feature-08-capability-catalog/us-01-capability-catalog/tasks/task-01-capability-catalog.md, produces: [capability-catalog], depends_on: [conversations-store], effort: M, layer: backend, status: live}
-      - {id: E13/F09/US01/T02, prompt: reports/workitems/epic-13-ask-v2/feature-09-web-v2/us-01-web-v2/tasks/task-02-web-rich-reply.md, produces: [web-rich-reply], depends_on: [web-shell-v2], effort: L, layer: frontend, status: live}
+      - {id: E16/F02/US02/T01, prompt: reports/workitems/epic-16-async-document-processing/feature-02-durable-document-processing/us-02-durable-queue-transport/tasks/task-01-durable-queue-transport.md, produces: [document-queue-transport], depends_on: [documents-async-schema], effort: L, layer: backend, status: live}
+      - {id: E18/F01/US02/T01, prompt: reports/workitems/epic-18-api-authentication/feature-01-token-identity/us-02-spa-sends-the-token/tasks/task-01-spa-sends-the-token.md, produces: [web-bearer-token], depends_on: [api-jwt-identity], effort: M, layer: frontend, status: live}
   - id: 3
     name: phase-3
     tasks:
-      - {id: E13/F02/US01/T02, prompt: reports/workitems/epic-13-ask-v2/feature-02-market-intelligence/us-01-market-intelligence/tasks/task-02-market-index.md, produces: [market-index], depends_on: [market-feed-mock, foundry-gateway], effort: L, layer: backend, status: live}
-      - {id: E13/F03/US01/T02, prompt: reports/workitems/epic-13-ask-v2/feature-03-supplier-identity/us-01-supplier-identity/tasks/task-02-supplier-extraction.md, produces: [supplier-extraction], depends_on: [supplier-entity, documents-v2-api], effort: L, layer: backend, status: live}
-      - {id: E13/F06/US01/T01, prompt: reports/workitems/epic-13-ask-v2/feature-06-ask-engine/us-01-ask-engine/tasks/task-01-ask-engine.md, produces: [ask-engine], depends_on: [foundry-gateway, market-feed-mock, supplier-entity, documents-v2-api, conversations-api, insights-calculators, capability-catalog], effort: L, layer: backend, status: live}
-      - {id: E13/F09/US01/T03, prompt: reports/workitems/epic-13-ask-v2/feature-09-web-v2/us-01-web-v2/tasks/task-03-web-documents-v2.md, produces: [web-documents-v2], depends_on: [documents-v2-api, web-shell-v2], effort: L, layer: frontend, status: live}
-      - {id: E13/F10/US01/T01, prompt: reports/workitems/epic-13-ask-v2/feature-10-contract360-landing/us-01-contract360-landing/tasks/task-01-contract360-landing.md, produces: [web-contract360-landing], depends_on: [web-rich-reply], effort: M, layer: frontend, status: live}
+      - {id: E16/F02/US03/T01, prompt: reports/workitems/epic-16-async-document-processing/feature-02-durable-document-processing/us-03-upload-returns-when-stored/tasks/task-01-upload-returns-when-stored.md, produces: [documents-async-api], depends_on: [document-queue-transport], effort: L, layer: backend, status: live}
+      - {id: E17/F01/US01/T01, prompt: reports/workitems/epic-17-invitation-delivery-and-identity/feature-01-guest-identity-and-mail/us-01-invite-provisions-and-mails/tasks/task-01-invite-provisions-and-mails.md, produces: [invitation-identity-and-mail], depends_on: [api-jwt-identity], effort: L, layer: backend, status: live}
   - id: 4
     name: phase-4
     tasks:
-      - {id: E13/F06/US01/T02, prompt: reports/workitems/epic-13-ask-v2/feature-06-ask-engine/us-01-ask-engine/tasks/task-02-ask-golden-set.md, produces: [ask-golden-set], depends_on: [ask-engine], effort: M, layer: backend, status: live}
-      - {id: E13/F09/US01/T04, prompt: reports/workitems/epic-13-ask-v2/feature-09-web-v2/us-01-web-v2/tasks/task-04-web-ask-v2.md, produces: [web-ask-v2], depends_on: [ask-engine, market-index, web-rich-reply, web-documents-v2], effort: L, layer: frontend, status: live}
+      - {id: E16/F03/US01/T01, prompt: reports/workitems/epic-16-async-document-processing/feature-03-documents-truthful-surfaces/us-01-documents-states-and-counts/tasks/task-01-documents-states-and-counts.md, produces: [documents-truthful-surfaces], depends_on: [documents-async-api], effort: L, layer: frontend, status: live}
+      - {id: E17/F02/US01/T01, prompt: reports/workitems/epic-17-invitation-delivery-and-identity/feature-02-invite-pane-and-accept/us-01-honest-invite-pane/tasks/task-01-honest-invite-pane.md, produces: [invite-pane-and-accept], depends_on: [invitation-identity-and-mail, web-bearer-token], effort: M, layer: frontend, status: live}
+      - {id: E17/F03/US01/T01, prompt: reports/workitems/epic-17-invitation-delivery-and-identity/feature-03-invitation-e2e/us-01-n3b-and-no-test-seam/tasks/task-01-n3b-and-no-test-seam.md, produces: [invitation-e2e-and-seam-ban], depends_on: [invitation-identity-and-mail], effort: S, layer: backend, status: live}
   - id: 5
     name: phase-5
     tasks:
-      - {id: E13/F11/US01/T01, prompt: reports/workitems/epic-13-ask-v2/feature-11-integration/us-01-integration/tasks/task-01-v2-integration.md, produces: [v2-integration], depends_on: [ask-golden-set, web-ask-v2, web-contract360-landing, supplier-extraction, market-index], effort: L, layer: backend, status: live}
+      - {id: E16/F04/US01/T01, prompt: reports/workitems/epic-16-async-document-processing/feature-04-w15-integration/us-01-final-integration/tasks/task-01-w15-integration.md, produces: [w15-integration], depends_on: [documents-truthful-surfaces, invite-pane-and-accept, invitation-e2e-and-seam-ban], effort: L, layer: backend, status: live}
 forks: []
