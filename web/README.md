@@ -1519,11 +1519,17 @@ verdict is that step's line in the report, not the file's exit code.
 | N3b-5 | the Admin's reloaded roster shows the member `Active`; a sole Admin's own **Remove** is disabled with a hint (asserted only when this Admin is the sole one, annotated otherwise) | same |
 | N3b-6/7/8 | **Remove** -> inline **Yes, remove** -> the row is gone; the invitee's next load no longer offers that workspace; the used link renders "This invitation is no longer valid." | same |
 
-Without the second account the whole group `test.skip`s with the named reason
-*"requires a second Entra account on the pilot tenant"* -- the operator prerequisite
-`reports/audit/w14-hitl.md` records. It need **not** share the Admin's email domain:
-after w14 the cross-domain invite check is a non-blocking warning (ADR-001 w14
-footer; `memberViewModel.ts#inviteDomainWarning`), never a block.
+Without both accounts the whole group `test.skip`s with the named reason
+*"requires reading the invitee's one-time passcode"* -- w15's NW-67 has Raffa
+provision the invitee's second Entra account itself (a B2B guest, created via
+Microsoft Graph at invite time; ADR-025 §J.8b), so a pre-existing second account
+is no longer the operator prerequisite this section originally recorded here for
+w14. There is no mail-catcher this wave to read that emailed passcode
+automatically (a `dev`-only one is bounded future work for NW-50, W18 -- ADR-025
+§J.8c), so `RAFFA_E2E_SECOND_ENTRA_EMAIL` / `_PASSWORD` below still cannot be
+supplied by a script. It need **not** share the Admin's email domain: after w14
+the cross-domain invite check is a non-blocking warning (ADR-001 w14 footer;
+`memberViewModel.ts#inviteDomainWarning`), never a block.
 
 ### Running it
 
