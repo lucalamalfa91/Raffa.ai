@@ -54,12 +54,32 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
   };
 }
 
+// Fix 2026-09-15: `id` (the roster row's own stable WorkspaceUser id) and `membershipId`/
+// `invitationId` (the action ids DELETE/revoke actually take) are deliberately DIFFERENT default
+// values here -- not the same string reused for both, which is exactly the fixture shape that let
+// MembersTable.tsx send `member.id` as the action id for months without a single test catching it
+// (confirmed live on dev). Any future regression back to `member.id` now fails every test below
+// that asserts what removeMember/revokeInvitation were called with.
 function activeMember(overrides: Partial<WorkspaceMemberBody> = {}): WorkspaceMemberBody {
-  return { id: "admin-membership-1", email: USER_LABEL, role: "Admin", status: "Active", ...overrides };
+  return {
+    id: "admin-user-1",
+    membershipId: "admin-membership-1",
+    email: USER_LABEL,
+    role: "Admin",
+    status: "Active",
+    ...overrides,
+  };
 }
 
 function invitedMember(overrides: Partial<WorkspaceMemberBody> = {}): WorkspaceMemberBody {
-  return { id: "invite-1", email: "invitee@acme.example", role: "Procurement", status: "Invited", ...overrides };
+  return {
+    id: "invite-user-1",
+    invitationId: "invite-1",
+    email: "invitee@acme.example",
+    role: "Procurement",
+    status: "Invited",
+    ...overrides,
+  };
 }
 
 function membersOk(members: WorkspaceMemberBody[]): GetWorkspaceMembersResult {
@@ -352,8 +372,8 @@ describe("MembersRoute (V2, ADR-020/ADR-025/ADR-026 w14 footers; screens-v2.md #
 
   it("revoke (Invited) and remove (Active) confirm inline with different consequence copy, and neither call fires before the confirm click (AC-6/AC-7)", async () => {
     const admin = activeMember();
-    const invitee = invitedMember({ id: "invite-9", email: "invitee@acme.example" });
-    const activeOther = activeMember({ id: "member-9", email: "other@acme.example", role: "Procurement" });
+    const invitee = invitedMember({ invitationId: "invite-9", email: "invitee@acme.example" });
+    const activeOther = activeMember({ membershipId: "member-9", email: "other@acme.example", role: "Procurement" });
     const getWorkspaceMembers = vi.fn().mockResolvedValue(membersOk([admin, invitee, activeOther]));
     const revokeInvitation = vi.fn().mockResolvedValue({ ok: true, statusCode: 204, error: null });
     const removeMember = vi.fn().mockResolvedValue({ ok: true, statusCode: 204, error: null });
