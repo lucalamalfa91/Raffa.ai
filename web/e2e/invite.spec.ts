@@ -9,8 +9,9 @@ import { test, expect, type BrowserContext, type Page } from "@playwright/test";
  * is `docs/waves/w14-acceptance.md` → N3b.
  *
  * The walk: an Admin invites an address → a **second browser context** (fresh storage, a
- * different Entra account) opens the accept link → signs in through the accept screen's own
- * popup CTA → **Join** → lands in *that* workspace, never on a create form → the Admin removes
+ * different Entra account) opens the accept link → signs in through a redirect (fix 2026-09-14:
+ * no longer the accept screen's own popup CTA, which was observed to hang indefinitely on dev) →
+ * auto-joins with no second click → lands in *that* workspace, never on a create form → the Admin removes
  * them from `/workspace/members` → the removed account's next load loses access through the
  * ordinary sign-in revalidation (`GET /api/workspaces`, no new endpoint), and the link they
  * used now renders the "no longer valid" state, because removal revoked that email's live
@@ -72,7 +73,9 @@ const SECOND_ACCOUNT_REASON =
 /**
  * Entra's own identifier → password → optional "Stay signed in?" pages — the same selectors
  * `v2.spec.ts#signInWithEntra` drives, factored out because this file needs them twice: once
- * on the Admin's page (redirect flow) and once inside the invitee's popup.
+ * on the Admin's page and once on the invitee's own page (both redirect flows since fix
+ * 2026-09-14 -- see routes/invite/accept/index.tsx's own header comment for why the invitee's
+ * side used to be a popup and no longer is).
  */
 async function driveEntraPages(page: Page, email: string, password: string): Promise<void> {
   await page.locator('input[name="loginfmt"]').waitFor({ state: "visible", timeout: 60_000 });
@@ -190,7 +193,7 @@ test.describe("N3b — invite → accept in a second browser → removal ends ac
     await expect(rosterRow(adminPage, INVITEE_EMAIL)).toContainText("Invited");
   });
 
-  test("N3b-3/4 — a second browser opens the link, signs in through the popup, joins, and lands in that workspace", async () => {
+  test("N3b-3/4 — a second browser opens the link, signs in through a redirect, and auto-joins that workspace with no second click", async () => {
     await inviteePage.goto(acceptLink);
 
     // Screen 11 state 3: the workspace name and the offered role — never the invited address
@@ -199,26 +202,23 @@ test.describe("N3b — invite → accept in a second browser → removal ends ac
     expect(inviteePage.url(), "the token is read from the fragment on mount and the address bar is cleared (Rule C10)").not.toContain("#");
     await expect(inviteePage.locator("main")).not.toContainText(INVITEE_EMAIL);
 
-    // Signed out, the CTA is the Entra sign-in — `loginPopup`, not the app-wide redirect (ADR-012
-    // w14 footer clause 6), so this page is never unloaded and the in-memory token survives.
-    const popupPromise = invitee.waitForEvent("page");
+    // Fix 2026-09-14: signed out, the CTA is now `loginRedirect` on this same page — not a popup
+    // (see routes/invite/accept/index.tsx's own header comment for why: msal-browser's popup
+    // completion handoff was observed to hang indefinitely on dev). This page unloads; the
+    // invitation token is deliberately lost with it (Rule C10 never persists it).
     await inviteePage.getByRole("button", { name: /continue with microsoft entra id/i }).click();
-    const popup = await popupPromise;
-    await driveEntraPages(popup, INVITEE_EMAIL, INVITEE_PASSWORD);
-    if (!popup.isClosed()) {
-      await popup.waitForEvent("close", { timeout: 60_000 });
-    }
+    await inviteePage.waitForURL(/login\.microsoftonline\.com/i, { timeout: 60_000 });
+    await driveEntraPages(inviteePage, INVITEE_EMAIL, INVITEE_PASSWORD);
+    await inviteePage.waitForURL((url) => !/login\.microsoftonline\.com/i.test(url.href), { timeout: 60_000 });
 
-    // Same mount, same token: the CTA becomes "Join {workspace}" off `useMsal().accounts` alone.
-    const join = inviteePage.getByRole("button", { name: `Join ${workspaceName}` });
-    await expect(join).toBeVisible({ timeout: 30_000 });
-    await join.click();
-
-    // Membership is proven by the next GET /api/workspaces, not trusted from the accept body: the
-    // invitee lands in *that* workspace — the rail names it — and never on a create form.
+    // No "Join" click: AuthenticatedGate (App.tsx, fix 2026-09-14) finds this identity's live
+    // invitation via GET /api/workspaces's own `pendingInvitations` and grants it silently through
+    // POST /api/workspaces/{tenantId}/invites/accept — the invitee lands in *that* workspace, the
+    // rail names it, and the picker/create-form never render at all.
     await expect(inviteePage).not.toHaveURL(/\/invite\/accept/, { timeout: 60_000 });
     await expect(inviteePage.locator(".shell-rail-workspace-name")).toHaveText(workspaceName, { timeout: 60_000 });
     await expect(inviteePage.getByRole("heading", { name: "Create your workspace" })).toHaveCount(0);
+    await expect(inviteePage.getByRole("heading", { name: "Choose a workspace" })).toHaveCount(0);
   });
 
   test("N3b-5 — the Admin's roster shows the member Active; a sole Admin's own Remove is disabled, never a 409 click", async () => {
