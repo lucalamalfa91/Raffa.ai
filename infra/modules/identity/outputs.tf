@@ -27,6 +27,17 @@ output "issuer" {
   value       = "https://login.microsoftonline.com/${data.azuread_client_config.current.tenant_id}/v2.0"
 }
 
+# Task E16/F01/US01/T01 (NW-05, NW-67): this output existed nowhere before
+# w15 -- both consumers are new. Published as the API app's AzureAd__TenantId
+# and, when guest provisioning is enabled, Invitations__GuestProvisioning__TenantId
+# (modules/containerapps). This is the Entra DIRECTORY guid both
+# environments share (ADR-010 w15 footer S15-7's `tid`), never a Raffa
+# workspace tenant id -- the two must never be confused.
+output "tenant_id" {
+  description = "Entra directory (tenant) GUID (data.azuread_client_config.current.tenant_id). Both dev and demo authenticate against the same Entra tenant; this is not a Raffa workspace tenant id."
+  value       = data.azuread_client_config.current.tenant_id
+}
+
 # The client (application) id of the same identity. DefaultAzureCredential needs
 # this one -- an ARM resource id is not something it can authenticate with -- and
 # a container app with a user-assigned identity must publish it as AZURE_CLIENT_ID

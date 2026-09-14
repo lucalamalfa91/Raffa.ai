@@ -39,7 +39,18 @@ resource "azurerm_user_assigned_identity" "workload" {
   resource_group_name = var.resource_group_name
 
   # oidcPublicClientId is not secret (PKCE public client). web.yml reads it
-  # over ARM so the deploy job does not need Microsoft Graph (ADR-015).
+  # over ARM, so the DEPLOY plane (raffa-sp-<env>, GitHub OIDC) still needs
+  # no Microsoft Graph permission -- that much of the original comment
+  # holds unchanged. It stopped being the whole story at w15 (ADR-015 w15
+  # footer): the APPLY plane -- the identity that runs this HCP Terraform
+  # plan -- must itself hold a Microsoft Graph directory-write permission
+  # to create the azuread_app_role_assignment below, because creating an
+  # app-role assignment is itself a directory write. The preferred shape
+  # is a one-time, out-of-band grant by a tenant admin, before the first
+  # apply (ADR-011 w15 footer §9); var.guest_provisioning_enabled defaults
+  # false and that resource is count-gated, so an apply identity that
+  # still lacks the right degrades NW-67 to a later one-line flip instead
+  # of blocking Service Bus and mail in the same PR (ADR-015 clause 4).
   tags = merge(local.tags, {
     oidcPublicClientId = azuread_application.public_client.client_id
   })
@@ -94,6 +105,25 @@ resource "azuread_application" "api" {
       admin_consent_display_name = "Write Raffa data"
       user_consent_description   = "Allow this app to create and update your Raffa procurement data."
       user_consent_display_name  = "Write your Raffa data"
+    }
+  }
+
+  # Task E16/F01/US01/T01 (NW-05, ADR-010 §2.4 / ADR-005 w15 footer §11,
+  # S15-9): request the `email` claim on this application's own access
+  # tokens. Ungated -- no count, no variable -- because it serves every
+  # sign-in (ADR-010 §2.3's oid -> email -> 403 resolution order), not only
+  # guest provisioning; tying it to var.guest_provisioning_enabled would
+  # make an unrelated flag gate a claim every sign-in can use. The design
+  # does not depend on it (oid is bound at invite time): absence degrades
+  # to a 403 and a re-invite, never a silent grant. This block must add,
+  # never replace -- the PR plan must show azuread_application.api as `~`,
+  # never `-/+` (ADR-005 clause 11 / ADR-011 §11): a replacement mints a
+  # new client id, which is AzureAd__ClientId, the aud every token is
+  # validated against, and the id both Static Web Apps and web.yml's
+  # hardcoded scope literals resolve against.
+  optional_claims {
+    access_token {
+      name = "email"
     }
   }
 
@@ -160,4 +190,30 @@ resource "azuread_application_pre_authorized" "public_client" {
     azuread_application.api.oauth2_permission_scope_ids["Raffa.Read"],
     azuread_application.api.oauth2_permission_scope_ids["Raffa.Write"],
   ]
+}
+
+# Task E16/F01/US01/T01 (NW-67, ADR-005 w15 footer §4, ADR-015 w15 footer,
+# ADR-025 §J): grant the existing per-environment workload identity the
+# least-privilege Microsoft Graph APPLICATION permission "User.Invite.All"
+# so it can provision an Entra B2B guest at invite time --
+# DefaultAzureCredential against https://graph.microsoft.com/.default, no
+# secret, no new app registration, no client credential. For a managed
+# identity there is no separate "Grant admin consent" click -- this
+# app-role assignment IS the consent.
+data "azuread_service_principal" "msgraph" {
+  client_id = "00000003-0000-0000-c000-000000000000" # Microsoft Graph -- every tenant
+}
+
+# count-gated (ADR-015 clause 4, ADR-011 §9): while the identity running
+# this apply lacks the directory right to write an app-role assignment,
+# var.guest_provisioning_enabled stays false, count = 0, and this whole
+# apply still succeeds -- a missing directory permission degrades NW-67 to
+# a later one-line flip instead of blocking Service Bus wiring and mail in
+# the same PR.
+resource "azuread_app_role_assignment" "workload_guest_inviter" {
+  count = var.guest_provisioning_enabled ? 1 : 0
+
+  app_role_id         = data.azuread_service_principal.msgraph.app_role_ids["User.Invite.All"]
+  principal_object_id = azurerm_user_assigned_identity.workload.principal_id
+  resource_object_id  = data.azuread_service_principal.msgraph.object_id
 }
