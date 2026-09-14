@@ -94,3 +94,29 @@ that file; do not regenerate the TS client).
   layer: backend
   status: live
 ```
+
+## Superseded in part (2026-09-14, wave w15)
+
+**`status` stays `live` — this task shipped and is not withdrawn.** It carries the
+same premise as the story it serves
+(`us-01-documents-v2`, bannered on the same date), and the w15 council's ruling on
+`OQ-w15-004` negates part of it: the admission gate **splits**, and a content
+refusal becomes a terminal `Rejected` row rather than a 422 with nothing
+persisted.
+
+| Clause | Status |
+|---|---|
+| The required-test row at `:63` — *"415 / 413 / 422 / 201 paths; **nothing persisted on 422**"* | **superseded in part**: the 415 and 413 paths stand; the "nothing persisted on 422" clause does not, because the content refusal leaves the endpoint |
+| The Tests-required row at `:81` — *"415 / 413 / 422 / 201 and **nothing persisted on rejection**"* | **superseded in part**, identically |
+| The Open-questions line at `:85` — `OQ-askv2-007 — synchronous upload (assumed)` | **retired**: `OQ-askv2-007` is `assumed-wrong` from wave w15 on (`OQ-w15-003`) |
+
+Everything else — the format sniffer, the 415 gate, the endpoint move out of
+`Program.cs`, the type-enum widening, the OpenAPI work — **stands unchanged**.
+
+Replaced by
+`reports/workitems/epic-16-async-document-processing/feature-02-durable-document-processing/us-03-upload-returns-when-stored/tasks/task-01-upload-returns-when-stored.md`,
+which also retires the now-false type comment at
+`backend/src/Raffa.Documents.Contracts/Application/Extraction/DocumentProcessingPipeline.cs:65-77`.
+
+Authority: `reports/architecture/waves/w15.md` §"Work-item instructions";
+ADR-001 w15 footer clauses 1–2; ADR-024 w15 footer §1–§3; ADR-027 §D1, §D6.

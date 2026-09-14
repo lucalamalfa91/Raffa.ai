@@ -166,3 +166,181 @@ and indexed, `ENABLE` + `FORCE ROW LEVEL SECURITY`, a `tenant_isolation` policy
 with both `USING` and `WITH CHECK`, shipped **in the same migration as the table**.
 It gets no identity policy. Cross-module reads (the validated-contract count) run
 under that tenant's own claim — never a cross-tenant aggregate.
+
+## Amendment (2026-09-13, wave w15 — the Worker's tenant scope is caller-derived input)
+
+Serves **NW-27**, and records the identity-swap consequence of **NW-05 / NW-06**.
+The Decision outcome above is unchanged: RLS on every tenant table, application
+scoping primary, RLS the non-bypassable backstop, **no `BYPASSRLS` in the
+application path**. The w14 footer's eight clauses are unchanged and in force.
+This footer gives the Implications section's third bullet — *"Background worker
+jobs must carry `tenant_id` from the queue message and set the same connection
+claim — a job derived from tenant A's document must never run in tenant B's
+context"* — the mechanism it has never needed until now, because **w15 is the first
+wave that actually builds that path**.
+
+The NW-27 decision row is software-architect's; this footer is the ADR-009 rule it
+must satisfy. Software-architect independently reached the same conclusion from the
+other direction: `extraction_job` carries `ENABLE` **and `FORCE ROW LEVEL
+SECURITY`** (`documents-contracts.sql:476-477`), `FORCE` binds the table owner too,
+so "find every queued job across tenants" returns **zero rows** — which is why the
+design publishes before it commits rather than sweeping. **A cross-tenant recovery
+sweep is not available to this product, by construction. That is the constraint, not
+a defect to be worked around.**
+
+### 1. A queue message is untrusted input
+
+**1a.** Anyone holding Send rights on the namespace can enqueue a message. Its
+tenant id therefore gets **exactly the ADR-025 Rule C4 treatment**:
+`Guid.TryParseExact(…, "N")` **before** `ITenantContext.BeginScope`. A parse
+failure dead-letters the message and **enters no scope**. This keeps
+`TenantRlsConnectionInterceptor.BuildSetCommandText`'s own justification — "the
+tenant is always a parsed Guid" — true for the second caller-controlled value that
+now reaches it.
+
+**1b — the first statement inside the scope is the job-row match.** The Worker
+reads **nothing** — not the document, not the blob, not a count — until the
+`ExtractionJob` row named by the message is found **in that tenant**. A miss
+disposes the scope and dead-letters. Without this ordering a forged message is a
+read primitive against an arbitrary tenant. This is Rule C5's discipline (the
+token-hash match is the first statement inside the invitation scope), reused
+verbatim for the same reason.
+
+**1c — one scope per message, and a message is one job.** Clause 4 of the w14
+footer ("two named exceptions, and only two") is **unchanged**: the Worker is
+**not** a third exception. One message → one tenant → one scope → one unit of
+work, and the connection closes between messages. Clause 5 is why that last part
+matters: a scope change takes effect only on a connection opened after it, so a
+pooled connection carrying a stale claim is a cross-tenant read **RLS cannot
+catch**, because the claim it enforces is the stale one.
+
+### 2. The storage path must never come from the message
+
+This is the sharpest consequence of ADR-027 §D11 and it is not visible from either
+ADR alone. `DocumentStoragePath.EnsureWithinTenant`
+(`SharedKernel/Storage/DocumentStoragePath.cs:28-38`) is the blob-side tenant
+guard, called on the read and delete sides
+(`AzureBlobDocumentStorage.cs:45`, `:64`). Its mechanism is
+`storagePath.StartsWith(TenantPrefix(tenantId))` — **it compares two values the
+caller supplies**. In the API both come from a verified request. In the Worker,
+**if the path and the tenant both came from the message, the guard would compare
+an attacker's tenant against an attacker's path and pass.**
+
+**Rule: the Worker passes only the parsed tenant id (1a) and a storage path read
+from the `document` row *inside that tenant's own scope* (1b).** The message
+carries ids, never a path. The guard then means what it says. Promoting the
+adapter into `Raffa.Storage` (ADR-027 §D11) is the right call for this reason too
+— ADR-027 rejects duplicating it into the Worker because "two copies of it will
+diverge", and a diverged copy of this particular guard is a cross-tenant blob read.
+
+### 3. The message carries ids only
+
+No contract text, no extracted facts, no personal data, no file bytes, no blob
+SAS, no storage path (§2). A queue — and especially its **dead-letter queue**,
+which retains bodies for operator inspection — is a log-like sink readable by
+anyone with Listen rights, and ADR-011 forbids raw contract content in a log sink.
+**ADR-011's w15 footer §2c depends on this clause**: it accepts a bounded
+`listen`-only scaler credential as a fallback *because* a leaked listen key would
+disclose identifiers rather than contract content.
+
+### 4. Any new table this wave adds is an ordinary tenant table — and the guard that proves it is conditional
+
+**4a — the rule, unchanged from clause 8.** If NW-27 adds an outbox, a job-claim
+table or a rejection record, it carries `tenant_id` not null and indexed, `ENABLE`
++ `FORCE ROW LEVEL SECURITY`, and a `tenant_isolation` policy with **both**
+`USING` and `WITH CHECK`, shipped **in the same migration as the table**. No
+identity-keyed policy — the §F.1 widening stays confined to `workspace_user`.
+
+**4b — the guard's real name.** The CI check the Implications section promises
+("a CI migration check rejects any tenant-scoped table without one") is
+**`backend/tests/Raffa.Tenancy/TenantRlsMigrationCheckTests.cs`** —
+`Every_tenant_scoped_table_has_forced_row_level_security_and_a_policy` (`:29`). Its
+own doc comment (`:9-12`) describes the mechanism: it runs in the normal
+`dotnet test` step of `backend.yml`, migrates a disposable Postgres instance, and
+fails the build if any tenant-scoped table is missing `ROW LEVEL SECURITY`,
+`FORCE ROW LEVEL SECURITY`, or an actual policy. Recorded because a task told to
+satisfy a **mis-named** test finds nothing, concludes the guard is absent, and
+ships the table without the policy.
+
+**4c — the coverage is conditional, and "the migration check covers it" is false
+half the time.** The check discovers its table list **dynamically from the EF
+model — every `TenantScopedEntity` subclass — of `DocumentsContractsDbContext`
+alone** (`:31-44`). Automatic coverage therefore holds **only** when the new
+entity subclasses `TenantScopedEntity` **and** lives in that context. The tree
+already proves the gap: `workspace_invitation` (w14) lives in
+`IdentityWorkspaceDbContext`, so w14 had to hand-write
+**`WorkspaceInvitationRlsTests.cs`** for it. **So NW-27's task must either put the
+new table in `DocumentsContractsDbContext` as a `TenantScopedEntity`, or ship a
+hand-written per-table RLS test on the `WorkspaceInvitationRlsTests` pattern.**
+A decomposer will otherwise assume coverage for free.
+
+**4d — and a hand-written RLS test written the obvious way is green and
+worthless.** `WorkspaceInvitationRlsTests:23-25` states the trap outright: its
+assertions run "through a dedicated, deliberately unprivileged Postgres role …
+a superuser connection would make this pass vacuously" (`:29-30`,
+`raffa_invitation_app`). **Testcontainers hands you a superuser by default, and
+RLS constrains neither a superuser nor a table owner.** Any test written under 4c
+must create its own unprivileged role. This binds NW-27's task and is not visible
+from this ADR's text alone — which is why it is now in it.
+
+**4e — a `Rejected` document row is a tenant row like any other.** It needs **no
+DDL** (`processing_status` is `character varying(30)` with no CHECK and no enum
+type — software-architect verified it at `documents-contracts.sql:110`), so
+ADR-021 is untouched. Two consequences are this seat's: it must produce **no
+embedding rows in either corpus** (ADR-011 w15 footer §3b), and until its blob is
+deleted the stored bytes obey the tenant-prefixed path rule above like any other
+object.
+
+### 5. The identity swap changes a value, not a policy
+
+**5a — no policy changes in this wave.** NW-05 / NW-06 change the *source* of
+`app.identity_subject` from a header string to the token `oid`. Rule F.2c already
+guarantees the `identity_self` policy needs no edit: it matches
+`external_subject_id` **and** `email`. `workspace`, `workspace_role` and
+`workspace_membership` keep exactly one policy each, unchanged, and the single
+identity-keyed policy on `workspace_user` (clause 1) is untouched.
+
+**5b — the one change this wave must *not* make.** `app.identity_subject` is still
+set with `SELECT set_config('app.identity_subject', @identity, false)` — a **bound
+parameter**, never `BuildSetCommandText`'s interpolation (clause 3). An `oid` is a
+directory GUID and therefore *looks* safe to interpolate; that is exactly the
+reasoning that would remove the binding and leave the sink open for the next value
+that is not a GUID. **The negative test with `'`, `;` and `--` stays mandatory and
+stays green.**
+
+**5c — verify, then scope, then read, is unchanged and now covers every route.**
+Clause 7 applied to routes carrying a tenant id. After NW-05 a caller-supplied
+tenant — in a route segment or a header — is an **authorized selector**: the token
+subject's membership in it is verified **before** the scope is entered, and
+failure is **404**, never 403 (ADR-022 w15 footer clause 2, ADR-025 Rule B1).
+"Scope and see what comes back" turns an authorization question into an
+empty-result question.
+
+### 6. Forward, for the W16 head (recorded so W16 does not re-audit)
+
+- **NW-08 — `GET /api/audit` after NW-05 fails closed, and that is correct.**
+  `WorkspacePrincipalAuthorization.TryAuthorize` demands an authenticated
+  principal (`:56-60`), a **`tenant_id`** claim (`:35`, `:62-67`) and a
+  `ClaimTypes.Role` claim (`:69-74`). A real Entra token supplies neither claim,
+  so the endpoint stays 401/403. **The danger is the repair**: mapping `tid` →
+  `tenant_id` or minting a role claim would ship the stale-authorization window
+  ADR-025 §I names by id. NW-08's fix is the **§I seam swap** at
+  `WorkspacePrincipalAuthorization.cs:32-33` — tenant and role resolution move from
+  claim-reading to membership-reading, and `TenantIdClaimType` is deleted with it.
+  Who may read a tenant's audit trail: **a live `Admin` membership in that tenant,
+  and nobody else.** The route gains no `?tenantId=`.
+- **NW-07 — the conversation key becomes the token `oid`**, which is
+  case-invariant by construction and dissolves the live normalization bug
+  (`CallerIdentity.cs:71` lower-cases; `ConversationsEndpointExtensions.TryResolveUserId`
+  does not, so one person splits across two keys). Rows written under the old
+  header-derived key are **not silently re-keyed**: a migration that re-points
+  conversation ownership by string matching is a cross-user data move. Either
+  migrate on an explicit `(old key, oid)` pair supplied at HITL (the Rule D.2e
+  backfill pattern) or leave them orphaned. **Orphaned pilot history is a smaller
+  problem than mis-attributed history.**
+- **NW-32 — the `"unattributed"` actor becomes a deliberate deletion.** After
+  NW-05 an absent identity is 401 everywhere, so the three divergent behaviours
+  collapse; but the nine service-layer defaults would survive as the value written
+  to `CreatedBy` / `CorrectedBy` and to audit rows. The constant goes, the resolved
+  identity is threaded in, and **an audit row that cannot name its actor becomes
+  unwritable rather than unattributed**. ADR-011's audit posture requires it.

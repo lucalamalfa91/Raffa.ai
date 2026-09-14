@@ -93,3 +93,155 @@ and is reproducible as Terraform output for the federation config.
   gate deployment to branch/`pull_request: false` before this is accepted.
 - Foundry account shape (one vs two) is cloud-architect's ADR; this ADR only fixes the CI→Azure control
   plane identity and does not pre-decide the Foundry runtime identity.
+
+## Amendment (2026-09-13, wave w15)
+
+Item **NW-67** (Raffa provisions the invitee's Entra B2B guest at invite time).
+Seat: delivery-manager, with the text supplied by cloud-architect and the
+permission ruled by security-architect — the same joint authorship the body
+records. This is this ADR's **first** amendment. Everything above is unchanged
+and `Status: accepted` stands. OIDC federation, the two per-environment service
+principals and the subject-claim pinning are untouched; **no GitHub secret, no
+new federated credential and no new environment is added by this wave.**
+
+**1. The runtime workload identity gains a *directory* permission — the first
+of its kind.** The Implications section's last bullet (`:82-83`) already says
+the API, the worker and the AI Gateway authenticate to Azure services with the
+per-environment managed identity, "CI identity is only for deploy-time
+control-plane actions". NW-67 extends that sentence to a **directory** API for
+the first time: `id-raffa-<env>-workload`, already attached to both container
+apps and already published as `AZURE_CLIENT_ID`, receives the Microsoft Graph
+**application** permission `User.Invite.All` (security-architect's ruling —
+an app-role assignment is a fixed, named, Terraform-visible grant, whereas the
+Guest Inviter directory role is a Microsoft-owned bundle that can widen without
+our Terraform changing). `DefaultAzureCredential` against
+`https://graph.microsoft.com/.default`; **no secret, no app registration, no
+client credential**, so ADR-011 gains nothing for NW-67.
+
+**2. The change that is genuinely this ADR's: the *apply* plane.**
+`infra/modules/identity/main.tf:41-42` records that "web.yml reads it over ARM
+so the deploy job does not need Microsoft Graph (ADR-015)". That stays true for
+the **deploy** job and stops being true for the **apply** identity: creating an
+`azuread_app_role_assignment` is itself a directory write, so the identity that
+runs the HCP apply must hold Graph `AppRoleAssignment.ReadWrite.All` +
+`Application.Read.All`, or the **Privileged Role Administrator** / **Cloud
+Application Administrator** role. It does not hold them today. That grant is a
+**one-time operator act, out of band, before the first apply**, verified at the
+ADR-014 w15 gate — never discovered from a red HCP run. It is the **only
+change to any deploy-plane identity's rights in this wave**, which is why it is
+recorded here rather than folded into an ADR-016 ordering clause.
+
+**3. For a managed identity the assignment *is* the consent.** There is no
+separate "Grant admin consent" click to schedule — cloud-architect's correction,
+accepted as stated, and it replaces this seat's lane preference for an
+out-of-Terraform grant. Keeping the assignment in Terraform state is better than
+an untracked portal act, provided clause 4 holds.
+
+**4. The grant must not be able to error the shared run.** Both environment
+roots are a single state each, and w15's one infrastructure PR carries Service
+Bus wiring (NW-27) and ACS Email (NW-68) alongside this. If the app-role
+assignment errored, three features would fail on one missing directory right.
+The control is cloud-architect's `count`-gated resource behind
+`var.guest_provisioning_enabled` (default **`false`**): with the permission
+absent the flag stays false, `count = 0`, **the whole w15 apply still succeeds**,
+and NW-67 lands on a later one-line flip. A missing directory right therefore
+**degrades NW-67** instead of blocking the wave. Fallback if the operator
+declines to widen the apply identity permanently: a Global Administrator
+performs the single assignment out of band, the resource stays at `count = 0`,
+and the deviation is recorded with an `import` path.
+
+**5. CI gains nothing, stated as a rule so it is not "helpfully" added.** No
+Graph permission on `raffa-sp-dev` / `raffa-sp-demo`, no new subject claim, no
+new repository or environment secret, and no workflow mentions Graph or
+`User.Invite` (zero occurrences across all ten workflow files, surveyed
+2026-09-13). Security-architect records the same conclusion as `none — ADR-015`
+from their side: the runtime permission is not a CI credential.
+
+**Not decided here**: the Graph call's placement and failure contract
+(software-architect, ADR-026), the permission's blast radius and the `oid` bind
+(security-architect, ADR-025 §J), and the Terraform resources themselves
+(cloud-architect, ADR-005 / ADR-007).
+
+## Amendment (2026-09-14, wave w15 — re-entry round: the apply identity's grant is re-priced, and one of clause 2's three options cannot perform it)
+
+Item **NW-67**. Seat: delivery-manager, ruling adopted from security-architect
+(`ADR-011` w15 §7–§10, their second w15 footer). Everything above is unchanged —
+the body and the first w15 footer's clauses 1–5 — and `Status: accepted` stands.
+**Nothing is superseded.** This footer adds no resource, no federated credential
+and no workflow. It changes **which of two options already on this page is the
+default**, and it **strikes a third that cannot work.** Clause numbering
+continues at **6**.
+
+**6. Clause 2 named three options and one of them cannot perform this
+assignment.** `:126-128` offers Graph `AppRoleAssignment.ReadWrite.All` +
+`Application.Read.All`, **or** Privileged Role Administrator, **or** Cloud
+Application Administrator. Security-architect checked all three against the
+permission actually being granted (`ADR-011` §8): **Cloud Application
+Administrator — and Application Administrator — may consent to delegated and
+application permissions *excluding Microsoft Graph application permissions*, and
+`User.Invite.All` is precisely one of those.** That option is **struck**.
+
+It is not a near-miss. It is the narrowest-sounding entry on a list this seat
+wrote, so it is the one a least-privilege-minded operator reaches for **first**,
+and it fails **at the apply** — producing exactly the red HCP run clause 2's own
+closing words exist to prevent ("verified at the ADR-014 w15 gate — never
+discovered from a red HCP run"). The two remaining options both work and **both
+are tenant-wide escalation**: Privileged Role Administrator assigns any
+directory role, Global Administrator included. A list whose narrow option is
+broken and whose working options are unbounded routes an operator to a red run
+and then, under time pressure, to the broadest grant on the page. That is this
+seat's error, in this seat's file, and it is corrected here rather than
+explained.
+
+**7. The default inverts: clause 4's fallback becomes the preferred shape, and
+the standing grant becomes the fallback.** Clause 4 recorded the out-of-band
+assignment as a degradation ("*Fallback if the operator declines to widen the
+apply identity permanently*", `:148-151`). Security-architect rules it the
+preferred shape (`ADR-011` §9), and the pricing that decides it is the half this
+seat never did: **`AppRoleAssignment.ReadWrite.All` is not a narrow right — it
+grants any application permission of any API, Graph's own
+`Directory.ReadWrite.All` and `RoleManagement.ReadWrite.Directory` included, to
+any service principal, including itself.** Held by an *automation* identity
+whose trigger is a merge to `infra/`— this seat's own two-merge structure
+(ADR-014 w15 clause 5) — it means **whoever can merge Terraform can mint
+arbitrary directory privilege in the customer's tenant**, inside a plan that
+reads as one assignment. The need is one assignment, of one permission, once.
+
+- **Default** — a Global Administrator performs the single `User.Invite.All`
+  app-role assignment **out of band, once**, before the first apply.
+  `var.guest_provisioning_enabled` stays `false`, the resource stays at
+  `count = 0`, and the later `import` leaves the apply identity needing only
+  **read** (`Application.Read.All`) — a read right cannot grant anything.
+  **Revocation stays a human act**, not something a merge can perform.
+- **Fallback** — the standing grant, under security-architect's four conditions:
+  never Privileged Role Administrator; exactly one assignment, and never one
+  whose principal is the apply identity itself; re-reviewed at **every**
+  `infra/` wave; recorded in the ADR-016 runbook with date and grantor.
+
+Clause 3 is untouched: for a managed identity the assignment **is** the consent,
+and there is still no "Grant admin consent" click to schedule. Clause 4's
+`count` gate is untouched and is what makes **either** shape safe — with the
+permission absent the flag stays `false` and **the whole w15 apply still
+succeeds**, so NW-67 degrades instead of blocking Service Bus and mail.
+
+**8. The gate check gets a named expected outcome per shape, so it proves the
+answer either way.** Clause 2 asks the operator to verify the apply identity's
+rights *before* the first apply; it never said what "verified" looks like, and an
+unstated expectation is how a check becomes a shrug. Security-architect's
+`ADR-011` §10 supplies the shape and this seat adopts it as the wording of that
+gate step:
+
+| Shape in force | What the `raffa-dev` plan must show | If it shows otherwise |
+|---|---|---|
+| **Default** (out-of-band grant) | `azuread_app_role_assignment` at `count = 0` — **no directory write in the plan at all** | a plan proposing the assignment means the flag was set without the grant — stop |
+| **Fallback** (standing grant) | exactly **one** `azuread_app_role_assignment` to create, principal `id-raffa-<env>-workload` | more than one, or a principal that is the apply identity itself, is clause 7's escalation condition — stop |
+
+A plan that **errors** on a missing directory right is the failure this check
+prevents, not its result. This discharges the ask this seat carried into the
+table — *the apply identity's Graph rights are verified at the gate rather than
+discovered from a red run* — and it is read at the operator-prerequisite list of
+ADR-014 w15 clause 7, whose wording does not change.
+
+**Not decided here** (unchanged): the Graph call's placement and failure
+contract (ADR-026), the permission's blast radius and the `oid` bind (ADR-025
+§J), and the Terraform resources themselves (ADR-005 / ADR-007).

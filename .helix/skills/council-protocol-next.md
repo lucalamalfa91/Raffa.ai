@@ -25,6 +25,14 @@ normalized requirements, with the seat roster) and its companion
    open questions with an assumption in force. Use
    `templates/adr-template.md` only for a **new** ADR. Last line:
    `LANE_DRAFTS_WRITTEN: <seat>`
+4. **Size cap (binding since w15).** The draft is an intermediate artefact —
+   the table reads it once and the decision record + ADR footers are the real
+   output. Keep it **≤ 15 KB (≈ 250 lines)**: only the items that name you;
+   per item, the decision, the ADR action, the consequences and the open
+   questions as bullets; **no** restating of the requirement, the ADR body or
+   the code you read (cite `path:line` instead). Measured on w15: seven drafts
+   of 47–81 KB (420 KB) took ~100 min of serial writing and were the bulk of
+   the council's time; the table used a fraction of it.
 
 **Table** (`next-council-close`, group_chat, round robin, 8 participants):
 
