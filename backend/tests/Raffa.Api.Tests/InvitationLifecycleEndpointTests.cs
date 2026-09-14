@@ -380,6 +380,56 @@ public sealed class InvitationLifecycleEndpointTests : IClassFixture<InvitationL
         Assert.DoesNotContain("Foreign Tenant Secret Co", body, StringComparison.Ordinal);
     }
 
+    // ----- T13 (fix 2026-09-14): accept by identity, no token -----
+
+    [Fact]
+    public async Task T13_accept_for_identity_grants_membership_with_no_token_at_all()
+    {
+        var client = _fixture.CreateClient();
+        var tenantId = await CreateWorkspaceAsync(client, "No Token Co", "admin@notoken.example");
+        await InviteAndParseAsync(client, tenantId, "admin@notoken.example", "invitee@notoken.example", "Procurement");
+
+        var response = await AcceptForIdentityAsync(client, tenantId, "invitee@notoken.example");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(tenantId, body.RootElement.GetProperty("workspaceId").GetGuid());
+        Assert.Equal("No Token Co", body.RootElement.GetProperty("workspaceName").GetString());
+        Assert.Equal("Procurement", body.RootElement.GetProperty("role").GetString());
+    }
+
+    [Fact]
+    public async Task T13_accept_for_identity_with_no_live_invitation_is_404()
+    {
+        var client = _fixture.CreateClient();
+        var tenantId = await CreateWorkspaceAsync(client, "Nobody Invited Co", "admin@noinvite.example");
+
+        var response = await AcceptForIdentityAsync(client, tenantId, "never-invited@noinvite.example");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task T13_accept_for_identity_in_a_tenant_that_never_invited_them_is_404_and_grants_nothing()
+    {
+        var client = _fixture.CreateClient();
+        var tenantWithInvitation = await CreateWorkspaceAsync(client, "Real Invite Co", "admin@real.example");
+        var tenantWithout = await CreateWorkspaceAsync(client, "Unrelated Co", "admin@unrelated.example");
+        await InviteAndParseAsync(client, tenantWithInvitation, "admin@real.example", "roaming@real.example", "Admin");
+
+        var response = await AcceptForIdentityAsync(client, tenantWithout, "roaming@real.example");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+
+        using var scope = _fixture.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<IdentityWorkspaceDbContext>();
+        var tenant = new TenantId(tenantWithout);
+        using var _ = scope.ServiceProvider.GetRequiredService<Raffa.SharedKernel.Tenancy.ITenantContext>().BeginScope(tenant);
+        Assert.False(await db.WorkspaceMemberships.AnyAsync(m =>
+            m.TenantId == tenant
+            && db.WorkspaceUsers.Any(u => u.Id == m.WorkspaceUserId && u.Email == "roaming@real.example")));
+    }
+
     // ----- helpers -----
 
     private static async Task<Guid> CreateWorkspaceAsync(HttpClient client, string name, string userId)
@@ -439,6 +489,17 @@ public sealed class InvitationLifecycleEndpointTests : IClassFixture<InvitationL
         request.Headers.Add("X-User-Id", adminUserId);
         return await client.SendAsync(request);
     }
+
+    /// <summary>Fix 2026-09-14: `POST /api/workspaces/{tenantId}/invites/accept` -- no
+    /// <c>X-Invitation-Token</c> header at all, the one thing that distinguishes this from
+    /// <see cref="AcceptInvitationAsync"/> above.</summary>
+    private static async Task<HttpResponseMessage> AcceptForIdentityAsync(HttpClient client, Guid tenantId, string userId)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/workspaces/{tenantId}/invites/accept");
+        request.Headers.Add("X-User-Id", userId);
+        return await client.SendAsync(request);
+    }
+
 
     /// <summary>The accept link is <c>/invite/accept#&lt;token&gt;</c> -- a URL fragment is never
     /// transmitted to a server, so the SPA reads it client-side (ADR-025 Rule C9); this test-side

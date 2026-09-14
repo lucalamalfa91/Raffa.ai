@@ -38,8 +38,10 @@ function mockApiClient(result: Promise<HealthCheckResult> | HealthCheckResult): 
     // (undefined, not a Promise) would throw the moment either .then() runs, the same "resolved
     // default required" reasoning this file's own getPortfolio/listDocuments comments already give.
     // Empty is the safe default (resolves to the create-form empty state, never a crash); tests that
-    // need the shell to mount override this per-test.
-    listWorkspaces: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, workspaces: [], error: null }),
+    // need the shell to mount override this per-test. `pendingInvitations: []` (fix 2026-09-14) keeps
+    // this default inert for AuthenticatedGate's own auto-join branch -- tests that need it override
+    // both this and acceptPendingInvitation below.
+    listWorkspaces: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, workspaces: [], pendingInvitations: [], error: null }),
     getWorkspaceMembers: vi.fn(),
     // Task E15/F01/US01/T01 (wave w14, invitation lifecycle): plain stubs, same isolation
     // convention as the rest of this mock -- this suite exercises none of them.
@@ -47,6 +49,7 @@ function mockApiClient(result: Promise<HealthCheckResult> | HealthCheckResult): 
     removeMember: vi.fn(),
     getInvitation: vi.fn(),
     acceptInvitation: vi.fn(),
+    acceptPendingInvitation: vi.fn(),
     // Task E06/F05/US01/T01 (document-upload): exercised by
     // tests/routes/documents/*.test.tsx; a plain stub here so App's own
     // rendering stays isolated (same convention getHealth/createWorkspace
@@ -284,6 +287,80 @@ describe("App", () => {
 
       expect(await screen.findByText(/API: reachable \(Healthy\)/)).toBeInTheDocument();
       expect(await screen.findByText("Acme Procurement")).toBeInTheDocument();
+    });
+  });
+
+  describe("auto-joins a pending invitation instead of showing 'create a workspace' (fix 2026-09-14)", () => {
+    beforeEach(() => {
+      useMsalMock.mockReturnValue({
+        instance: { loginRedirect: vi.fn(), logoutRedirect: vi.fn() },
+        accounts: [{ username: "invitee@example.test", homeAccountId: "home-1" }],
+        inProgress: InteractionStatus.None,
+      });
+    });
+
+    it("enters the invited workspace directly, with no create-workspace screen ever shown", async () => {
+      const apiClient = healthyClient();
+      (apiClient.listWorkspaces as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce({
+          ok: true,
+          statusCode: 200,
+          workspaces: [],
+          pendingInvitations: [{ tenantId: "w-pending", workspaceName: "Invited Co", role: "Procurement" }],
+          error: null,
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          statusCode: 200,
+          workspaces: [
+            { id: "w-pending", name: "Invited Co", createdAt: "2026-01-01T00:00:00Z", role: "Procurement", contractCount: 0 },
+          ],
+          pendingInvitations: [],
+          error: null,
+        });
+      (apiClient.acceptPendingInvitation as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: true,
+        statusCode: 200,
+        acceptance: { workspaceId: "w-pending", workspaceName: "Invited Co", role: "Procurement" },
+        error: null,
+      });
+
+      render(<App appConfig={appConfig} apiClient={apiClient} />);
+
+      expect(await screen.findByText("Invited Co")).toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: /create your workspace/i })).not.toBeInTheDocument();
+      // Exactly once -- the guard against a retry loop -- not a listWorkspaces() count: once the
+      // shell mounts, useValidatedContractCount.ts fires its own independent listWorkspaces() call
+      // (see this file's own mockApiClient() header comment), which is unrelated to this fix and
+      // would make an exact count here couple this test to that hook's own internals.
+      expect(apiClient.acceptPendingInvitation).toHaveBeenCalledTimes(1);
+      expect(apiClient.acceptPendingInvitation).toHaveBeenCalledWith("w-pending");
+    });
+
+    it("falls back to the create-workspace screen when the auto-join attempt fails, without retrying", async () => {
+      const apiClient = healthyClient();
+      (apiClient.listWorkspaces as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: true,
+        statusCode: 200,
+        workspaces: [],
+        pendingInvitations: [{ tenantId: "w-pending", workspaceName: "Invited Co", role: "Procurement" }],
+        error: null,
+      });
+      (apiClient.acceptPendingInvitation as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: false,
+        statusCode: 404,
+        acceptance: null,
+        error: "No pending invitation found for this identity in this workspace.",
+      });
+
+      render(<App appConfig={appConfig} apiClient={apiClient} />);
+
+      expect(await screen.findByRole("heading", { name: /create your workspace/i })).toBeInTheDocument();
+      expect(apiClient.acceptPendingInvitation).toHaveBeenCalledTimes(1);
+      expect(apiClient.acceptPendingInvitation).toHaveBeenCalledWith("w-pending");
+      // No retry loop: one listWorkspaces call, one join attempt, then the empty picker -- never a
+      // second listWorkspaces call chasing a join that already failed.
+      expect(apiClient.listWorkspaces).toHaveBeenCalledTimes(1);
     });
   });
 

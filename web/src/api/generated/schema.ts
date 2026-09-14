@@ -23,7 +23,7 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": { workspaces: ({ id: string; name: string; createdAt: string; role: string; contractCount: number; country?: string | null; currency?: string | null })[] };
+          "application/json": { workspaces: ({ id: string; name: string; createdAt: string; role: string; contractCount: number; country?: string | null; currency?: string | null })[]; pendingInvitations: ({ tenantId: string; workspaceName: string; role: string })[] };
         };
       };
       401: {
@@ -131,6 +131,27 @@ export interface operations {
         };
       };
       404: {
+        content: {
+        };
+      };
+    };
+  };
+  acceptInvitationForIdentity: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { workspaceId: string; workspaceName: string; role: string };
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+      410: {
         content: {
         };
       };
@@ -717,6 +738,9 @@ export interface paths {
   };
   "/api/workspaces/{tenantId}/invites/{id}": {
     delete: operations["revokeInvitation"];
+  };
+  "/api/workspaces/{tenantId}/invites/accept": {
+    post: operations["acceptInvitationForIdentity"];
   };
   "/api/invites": {
     get: operations["getInvitation"];

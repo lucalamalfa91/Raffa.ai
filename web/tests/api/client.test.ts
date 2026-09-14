@@ -2310,7 +2310,7 @@ describe("createApiClient() Authorization header (task E18/F01/US02/T01, NW-05; 
 
     const result = await createApiClient("https://api.dev.raffa.example", getAccessToken).listWorkspaces();
 
-    expect(result).toEqual({ ok: false, statusCode: 401, workspaces: null, error: "Sign-in required." });
+    expect(result).toEqual({ ok: false, statusCode: 401, workspaces: null, pendingInvitations: null, error: "Sign-in required." });
     // Never a silent retry loop: one acquisition, one request, the 401 surfaced as-is.
     expect(getAccessToken).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -2336,6 +2336,7 @@ describe("createApiClient() Authorization header (task E18/F01/US02/T01, NW-05; 
       removeMember: () => client.removeMember("tenant-1", "member-1"),
       getInvitation: () => client.getInvitation("invite-token-1"),
       acceptInvitation: () => client.acceptInvitation("invite-token-1"),
+      acceptPendingInvitation: () => client.acceptPendingInvitation("tenant-1"),
       uploadDocument: () => client.uploadDocument("tenant-1", pdfFile()),
       getDocument: () => client.getDocument("tenant-1", "doc-1"),
       listDocuments: () => client.listDocuments("tenant-1"),

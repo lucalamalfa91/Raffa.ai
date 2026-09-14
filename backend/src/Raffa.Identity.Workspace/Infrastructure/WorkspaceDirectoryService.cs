@@ -22,6 +22,23 @@ public sealed record WorkspaceListItem(
     string? Currency);
 
 /// <summary>
+/// A live invitation discovered for the calling identity during <see cref="WorkspaceDirectoryService.DiscoverForIdentityAsync"/>'s
+/// own candidate scan (fix 2026-09-14; ADR-025 §F.3 Exception 1 -- never a second scope-scanning
+/// method, see that method's own doc comment). Carries no token and grants nothing by itself: it is
+/// a hint for the client to retry through <c>POST /api/workspaces/{tenantId}/invites/accept</c>
+/// (<see cref="WorkspaceInvitationService.AcceptForIdentityAsync"/>), which re-verifies a live
+/// invitation under this same <see cref="TenantId"/>'s own scope before granting anything.
+/// </summary>
+public sealed record PendingWorkspaceInvitation(TenantId TenantId, string WorkspaceName, WorkspaceRoleName Role);
+
+/// <summary>The two facts <see cref="WorkspaceDirectoryService.DiscoverForIdentityAsync"/> produces
+/// from its one sanctioned cross-tenant scan (fix 2026-09-14): the caller's live workspaces, and any
+/// tenant where they hold no membership yet but do hold a live invitation.</summary>
+public sealed record WorkspaceDirectoryResult(
+    IReadOnlyList<WorkspaceListItem> Workspaces,
+    IReadOnlyList<PendingWorkspaceInvitation> PendingInvitations);
+
+/// <summary>
 /// Implements task E14/F03/US01/T01 (wave w14 "workspace is real", NW-01; ADR-026 §D1, ADR-025
 /// §F.1/§F.3): "which workspaces does this identity belong to". Registered in
 /// <see cref="ServiceCollectionExtensions"/>; <c>Raffa.Api.WorkspaceEndpointExtensions</c>'
@@ -43,6 +60,14 @@ public sealed class WorkspaceDirectoryService(
     /// duplicated magic number that could silently drift from it.
     /// </summary>
     public const int MaxCandidates = 50;
+
+    /// <summary>The pre-fix shape: workspaces only, for every caller that does not need
+    /// <see cref="PendingWorkspaceInvitation"/> too. A thin wrapper over <see cref="DiscoverForIdentityAsync"/>
+    /// -- the scan itself lives in exactly that one place -- kept so every existing caller and test
+    /// written against this signature is untouched by the fix.</summary>
+    public async Task<IReadOnlyList<WorkspaceListItem>> ListForIdentityAsync(
+        string identity, CancellationToken cancellationToken = default) =>
+        (await DiscoverForIdentityAsync(identity, cancellationToken).ConfigureAwait(false)).Workspaces;
 
     /// <summary>
     /// Two-phase workspace discovery for <paramref name="identity"/> (ADR-026 §D1):
@@ -87,8 +112,15 @@ public sealed class WorkspaceDirectoryService(
     /// defect, not a precedent").</item>
     /// </list>
     /// </para>
+    ///
+    /// <para>
+    /// Fix 2026-09-14: this method now also returns <see cref="PendingWorkspaceInvitation"/>s
+    /// alongside <see cref="WorkspaceListItem"/>s -- still the same one sanctioned scan, still bounded
+    /// by the same four rules; see the loop's own comment at the no-live-membership branch for why an
+    /// invited-but-never-accepted candidate is discovered here at all.
+    /// </para>
     /// </summary>
-    public async Task<IReadOnlyList<WorkspaceListItem>> ListForIdentityAsync(
+    public async Task<WorkspaceDirectoryResult> DiscoverForIdentityAsync(
         string identity, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(identity);
@@ -111,6 +143,8 @@ public sealed class WorkspaceDirectoryService(
         var candidates = truncated ? discovered.Take(MaxCandidates).ToList() : discovered;
 
         var items = new List<WorkspaceListItem>(candidates.Count);
+        var pendingInvitations = new List<PendingWorkspaceInvitation>();
+        var now = clock.UtcNow;
         for (var index = 0; index < candidates.Count; index++)
         {
             var candidateTenantId = candidates[index];
@@ -153,6 +187,42 @@ public sealed class WorkspaceDirectoryService(
             // also collapses a person holding two roles in this one tenant to a single row.
             if (!WorkspaceRoleClaimResolver.TryResolve(roleNames.Select(name => name.ToString()), out var role))
             {
+                // Fix 2026-09-14: no live membership here -- Rule F.1d's removed-member case, or an
+                // invite that was never accepted. The invitation row is keyed by email, never by
+                // ExternalSubjectId, so the same identity/email predicate the membership join above
+                // uses is repeated here rather than reusing its result. At most one live invitation
+                // can exist for one email in one tenant (the partial unique index ADR-026 §D4 backs
+                // InviteAsync's own re-issue-by-replacement with), so Take(1) is exact, not a guess.
+                var pendingInvitationRoles = await (
+                    from user in db.WorkspaceUsers
+                    join invitation in db.WorkspaceInvitations on user.Email equals invitation.Email
+                    join invitationRole in db.WorkspaceRoles on invitation.WorkspaceRoleId equals invitationRole.Id
+                    where user.TenantId == candidateTenantId
+                        && invitation.TenantId == candidateTenantId
+                        && invitationRole.TenantId == candidateTenantId
+                        && (user.Email.ToLower() == normalizedIdentity || user.ExternalSubjectId == normalizedIdentity)
+                        && invitation.AcceptedAt == null && invitation.RevokedAt == null && invitation.ExpiresAt > now
+                    select invitationRole.Name)
+                    .Take(1)
+                    .ToListAsync(cancellationToken)
+                    .ConfigureAwait(false);
+
+                if (pendingInvitationRoles.Count > 0)
+                {
+                    var pendingWorkspace = await db.Workspaces.AsNoTracking()
+                        .SingleOrDefaultAsync(w => w.TenantId == candidateTenantId, cancellationToken)
+                        .ConfigureAwait(false);
+
+                    // Defensive only, same posture as the live-membership branch below: WorkspaceFactory's
+                    // own Id == TenantId invariant means a live invitation cannot exist without a
+                    // workspace row.
+                    if (pendingWorkspace is not null)
+                    {
+                        pendingInvitations.Add(
+                            new PendingWorkspaceInvitation(candidateTenantId, pendingWorkspace.Name, pendingInvitationRoles[0]));
+                    }
+                }
+
                 continue;
             }
 
@@ -176,6 +246,6 @@ public sealed class WorkspaceDirectoryService(
         // AC-1/N2: ordered by createdAt ascending, stable — OrderBy is a stable sort, so two
         // workspaces created in the same instant keep their discovery order instead of reshuffling
         // between loads.
-        return items.OrderBy(item => item.CreatedAt).ToList();
+        return new WorkspaceDirectoryResult(items.OrderBy(item => item.CreatedAt).ToList(), pendingInvitations);
     }
 }

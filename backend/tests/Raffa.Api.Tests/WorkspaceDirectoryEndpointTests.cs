@@ -192,6 +192,17 @@ public sealed class WorkspaceDirectoryEndpointTests : IClassFixture<WorkspaceDir
         return await client.SendAsync(request);
     }
 
+    /// <summary>Fix 2026-09-14: `POST /api/workspaces/{tenantId}/invites/accept` -- no
+    /// `X-Invitation-Token` header at all, the one thing that distinguishes this from the inline
+    /// token-based accept request <see cref="A_non_admin_invited_member_sees_their_own_real_role"/>
+    /// builds by hand above.</summary>
+    private static async Task<HttpResponseMessage> AcceptForIdentityAsync(HttpClient client, Guid tenantId, string userId)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/workspaces/{tenantId}/invites/accept");
+        request.Headers.Add("X-User-Id", userId);
+        return await client.SendAsync(request);
+    }
+
     private static async Task<HttpResponseMessage> GetWorkspacesAsync(
         HttpClient client, string? userId, Guid? craftedTenantId = null)
     {
@@ -359,6 +370,43 @@ public sealed class WorkspaceDirectoryEndpointTests : IClassFixture<WorkspaceDir
         var only = Assert.Single(EnumerateArray(workspaces));
         Assert.Equal(tenantId, only.GetProperty("id").GetGuid());
         Assert.Equal("Procurement", only.GetProperty("role").GetString());
+    }
+
+    [Fact]
+    public async Task Pending_invitation_is_surfaced_before_accept_and_gone_after_no_token_needed()
+    {
+        // Fix 2026-09-14: the end-to-end contract the SPA's own auto-join relies on --
+        // GET /api/workspaces tells a signed-in, not-yet-a-member caller about a live invitation, and
+        // POST /api/workspaces/{tenantId}/invites/accept completes it with no token at all (contrast
+        // A_non_admin_invited_member_sees_their_own_real_role's own hand-built X-Invitation-Token
+        // request above).
+        var client = _fixture.CreateClient();
+        var tenantId = await CreateWorkspaceAsync(client, "Discoverable Co", "admin@discoverable.example");
+        await AssertStatusAsync(
+            HttpStatusCode.Created,
+            await InviteAsync(client, tenantId, "admin@discoverable.example", "findable@discoverable.example", "Finance"));
+
+        var before = await GetWorkspacesAsync(client, "findable@discoverable.example");
+        Assert.Equal(HttpStatusCode.OK, before.StatusCode);
+        using var beforeBody = JsonDocument.Parse(await before.Content.ReadAsStringAsync());
+        Assert.Equal(0, beforeBody.RootElement.GetProperty("workspaces").GetArrayLength());
+        var pendingBefore = Assert.Single(EnumerateArray(beforeBody.RootElement.GetProperty("pendingInvitations")));
+        Assert.Equal(tenantId, pendingBefore.GetProperty("tenantId").GetGuid());
+        Assert.Equal("Discoverable Co", pendingBefore.GetProperty("workspaceName").GetString());
+        Assert.Equal("Finance", pendingBefore.GetProperty("role").GetString());
+
+        var acceptResponse = await AcceptForIdentityAsync(client, tenantId, "findable@discoverable.example");
+        Assert.Equal(HttpStatusCode.OK, acceptResponse.StatusCode);
+        using var acceptBody = JsonDocument.Parse(await acceptResponse.Content.ReadAsStringAsync());
+        Assert.Equal(tenantId, acceptBody.RootElement.GetProperty("workspaceId").GetGuid());
+        Assert.Equal("Finance", acceptBody.RootElement.GetProperty("role").GetString());
+
+        var after = await GetWorkspacesAsync(client, "findable@discoverable.example");
+        using var afterBody = JsonDocument.Parse(await after.Content.ReadAsStringAsync());
+        Assert.Equal(0, afterBody.RootElement.GetProperty("pendingInvitations").GetArrayLength());
+        var workspaceAfter = Assert.Single(EnumerateArray(afterBody.RootElement.GetProperty("workspaces")));
+        Assert.Equal(tenantId, workspaceAfter.GetProperty("id").GetGuid());
+        Assert.Equal("Finance", workspaceAfter.GetProperty("role").GetString());
     }
 
     [Fact]

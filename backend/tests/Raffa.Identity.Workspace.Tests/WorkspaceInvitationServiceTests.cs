@@ -165,6 +165,116 @@ public sealed class WorkspaceInvitationServiceTests : IAsyncLifetime
         Assert.Single(memberships);
     }
 
+    // ----- AcceptForIdentityAsync (fix 2026-09-14): the identity-keyed counterpart, no token -----
+
+    [Fact]
+    public async Task AcceptForIdentityAsync_grants_membership_for_a_live_invitation_matching_the_identity()
+    {
+        var clock = FixedClock.Instance;
+        var tenantId = await SeedWorkspaceAsync(clock);
+        var service = CreateInvitationService(CreateContext(), clock, new NullInvitationMailer(NullLogger<NullInvitationMailer>.Instance));
+
+        var issued = await service.IssueAsync(tenantId, "no-token-needed@acme.example", WorkspaceRoleName.Procurement, "admin@acme.example");
+        Assert.True(issued.IsSuccess);
+
+        var result = await service.AcceptForIdentityAsync(tenantId, "no-token-needed@acme.example");
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(tenantId, result.WorkspaceId);
+        Assert.Equal(WorkspaceRoleName.Procurement, result.Role);
+
+        using var _ = _tenantContext.BeginScope(tenantId);
+        await using var readDb = CreateContext();
+        var invitation = await readDb.WorkspaceInvitations.SingleAsync(i => i.TenantId == tenantId && i.Email == "no-token-needed@acme.example");
+        Assert.NotNull(invitation.AcceptedAt);
+        var user = await readDb.WorkspaceUsers.SingleAsync(u => u.TenantId == tenantId && u.Email == "no-token-needed@acme.example");
+        Assert.True(await readDb.WorkspaceMemberships.AnyAsync(m => m.WorkspaceUserId == user.Id));
+    }
+
+    [Fact]
+    public async Task AcceptForIdentityAsync_with_no_live_invitation_for_this_identity_is_not_found()
+    {
+        var clock = FixedClock.Instance;
+        var tenantId = await SeedWorkspaceAsync(clock);
+        var service = CreateInvitationService(CreateContext(), clock, new NullInvitationMailer(NullLogger<NullInvitationMailer>.Instance));
+
+        var result = await service.AcceptForIdentityAsync(tenantId, "nobody-invited-me@acme.example");
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(MembershipOperationStatus.NotFound, result.Status);
+    }
+
+    [Fact]
+    public async Task AcceptForIdentityAsync_a_second_call_after_success_is_not_found_not_conflict()
+    {
+        // Deliberate difference from AcceptAsync's own 409 (A_second_accept_is_refused_single_use):
+        // there is no token to re-present here, so a second call simply finds no live invitation left
+        // -- see this method's own doc comment, "Deliberately no 409".
+        var clock = FixedClock.Instance;
+        var tenantId = await SeedWorkspaceAsync(clock);
+        var service = CreateInvitationService(CreateContext(), clock, new NullInvitationMailer(NullLogger<NullInvitationMailer>.Instance));
+
+        var issued = await service.IssueAsync(tenantId, "repeat-no-token@acme.example", WorkspaceRoleName.Legal, "admin@acme.example");
+        Assert.True(issued.IsSuccess);
+
+        var first = await service.AcceptForIdentityAsync(tenantId, "repeat-no-token@acme.example");
+        Assert.True(first.IsSuccess);
+
+        var second = await service.AcceptForIdentityAsync(tenantId, "repeat-no-token@acme.example");
+        Assert.False(second.IsSuccess);
+        Assert.Equal(MembershipOperationStatus.NotFound, second.Status);
+
+        using var _ = _tenantContext.BeginScope(tenantId);
+        await using var readDb = CreateContext();
+        var user = await readDb.WorkspaceUsers.SingleAsync(u => u.TenantId == tenantId && u.Email == "repeat-no-token@acme.example");
+        Assert.Single(await readDb.WorkspaceMemberships.Where(m => m.WorkspaceUserId == user.Id).ToListAsync());
+    }
+
+    [Fact]
+    public async Task AcceptForIdentityAsync_an_expired_invitation_is_expired_not_not_found()
+    {
+        var now = new DateTimeOffset(2026, 9, 11, 9, 0, 0, TimeSpan.Zero);
+        var clock = new FixedClock(now);
+        var tenantId = await SeedWorkspaceAsync(clock);
+        var service = CreateInvitationService(CreateContext(), clock, new NullInvitationMailer(NullLogger<NullInvitationMailer>.Instance));
+
+        var issued = await service.IssueAsync(tenantId, "expired-no-token@acme.example", WorkspaceRoleName.Legal, "admin@acme.example");
+        Assert.True(issued.IsSuccess);
+
+        var laterService = CreateInvitationService(
+            CreateContext(), new FixedClock(now.AddDays(8)), new NullInvitationMailer(NullLogger<NullInvitationMailer>.Instance));
+
+        var result = await laterService.AcceptForIdentityAsync(tenantId, "expired-no-token@acme.example");
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(MembershipOperationStatus.Expired, result.Status);
+    }
+
+    [Fact]
+    public async Task AcceptForIdentityAsync_never_grants_in_a_tenant_where_this_identity_holds_no_invitation()
+    {
+        var clock = FixedClock.Instance;
+        var tenantWithInvitation = await SeedWorkspaceAsync(clock);
+        var tenantWithout = await SeedWorkspaceAsync(clock);
+        var service = CreateInvitationService(CreateContext(), clock, new NullInvitationMailer(NullLogger<NullInvitationMailer>.Instance));
+
+        var issued = await service.IssueAsync(tenantWithInvitation, "elsewhere@acme.example", WorkspaceRoleName.Admin, "admin@acme.example");
+        Assert.True(issued.IsSuccess);
+
+        // Same identity, but the ROUTE tenant (tenantWithout) is not where their invitation lives --
+        // this is the "caller-supplied tenantId is never trusted, always re-verified" guarantee: a
+        // real invitation existing SOMEWHERE for this identity must not leak a grant into a tenant
+        // that never invited them.
+        var result = await service.AcceptForIdentityAsync(tenantWithout, "elsewhere@acme.example");
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(MembershipOperationStatus.NotFound, result.Status);
+
+        using var _ = _tenantContext.BeginScope(tenantWithout);
+        await using var readDb = CreateContext();
+        Assert.False(await readDb.WorkspaceMemberships.AnyAsync(m => m.TenantId == tenantWithout));
+    }
+
     [Fact]
     public async Task A_token_whose_prefix_is_not_a_guid_is_refused_with_no_scope_entered()
     {
