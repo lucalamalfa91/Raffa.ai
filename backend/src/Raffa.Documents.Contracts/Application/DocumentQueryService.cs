@@ -126,16 +126,24 @@ public sealed class DocumentQueryService(
             Processing: Of(DocumentProcessingStatus.Uploaded, DocumentProcessingStatus.Processing),
             Rejected: Of(DocumentProcessingStatus.Rejected));
 
-        // Queue order (fix 2026-09-14, after the first real batch on dev): the list IS the work queue.
-        // The Worker consumes oldest-first, so a newest-first list changed from the bottom -- the
-        // rows on screen were exactly the ones done last, and a twenty-file drop looked frozen for
-        // minutes while it was being worked. Rows still in flight (Uploaded, Processing) come first,
-        // in the order they will be processed (oldest first): the top row is what the Worker is
-        // doing now, and it is the first to leave. Terminal rows follow, newest first, so the latest
-        // finished document is still the first finished one you see.
+        // Actionable-first order (fix 2026-09-14 evening, superseding the queue-order fix earlier the
+        // same day): that first fix put in-flight rows on top because a stalled-looking bar made a
+        // twenty-file drop read as frozen from the bottom up. The perceived-instant-batch fix (ADR-020
+        // w15 footer 10-12, same day) closed that problem a different way -- a row reads "Uploaded",
+        // never a stalled bar -- so queue position no longer needs to drive the list's own order, and
+        // it can instead answer the question a user actually opens this screen with: what is ready for
+        // me to look at? Completed/NeedsReview/Failed (terminal -- there is a decision or an answer
+        // waiting) sort first, newest first, so the most recently finished document is the one you see;
+        // Processing next (a Worker is genuinely on it), then Uploaded (queued, not yet started) --
+        // both still oldest-first within their own bucket, so the document closest to being picked up
+        // stays at the top of its section. `Rejected` rows share the terminal bucket too, though in
+        // practice they never reach here unfiltered: `counts.all` excludes them and the client's own
+        // "attention"/"all" views filter them out client-side (they are visible only through the
+        // dedicated `status=Rejected` fetch, which returns nothing else to sort against).
         var documents = await query
-            .OrderBy(d => d.ProcessingStatus == DocumentProcessingStatus.Uploaded
-                || d.ProcessingStatus == DocumentProcessingStatus.Processing ? 0 : 1)
+            .OrderBy(d => d.ProcessingStatus == DocumentProcessingStatus.Processing ? 1
+                : d.ProcessingStatus == DocumentProcessingStatus.Uploaded ? 2
+                : 0)
             .ThenBy(d => d.ProcessingStatus == DocumentProcessingStatus.Uploaded
                 || d.ProcessingStatus == DocumentProcessingStatus.Processing ? d.CreatedAt : DateTimeOffset.MinValue)
             .ThenByDescending(d => d.CreatedAt)
