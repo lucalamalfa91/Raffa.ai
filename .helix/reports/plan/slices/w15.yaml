@@ -1,0 +1,42 @@
+waveId: wave-next-w15
+status: planned
+# title: W15 — upload feels instant, and inviting a colleague works end to end
+# source: inputs/next/w15-todo.md
+# requirements: reports/context/waves/w15-requirements.md
+# decisions: reports/architecture/waves/w15.md (approved; ADR-027 new, 18 ADRs amended)
+# caps: 20 tasks / 5 phases (reports/plan/next-run.json) -> 11 live tasks / 5 phases
+# W15-01 has no task: the base merge + green-base proof is an operator act at HITL,
+#   enforced by reports/plan/gates/w15.hitl-ok and recorded by E16/F04/US01/T01 (W15-A1).
+# E16/F01/US01/T01 (Terraform) has NO dependents on purpose: an HCP apply is not
+#   observable by the wave that wrote it (ADR-016 w14 clause 3), so a depends_on
+#   pointing at it would be a lie that fails real tasks under require_delivery.
+#   It merges to main in its own infra-only PR BEFORE the wave PR (ADR-014 w15 clause 5).
+# Launch: ./run.ps1 -Max -Slice w15 -o execution-fanout
+phases:
+  - id: 1
+    name: phase-1
+    tasks:
+      - {id: E16/F01/US01/T01, prompt: reports/workitems/epic-16-async-document-processing/feature-01-wave-infrastructure/us-01-w15-terraform/tasks/task-01-w15-terraform.md, produces: [w15-terraform], depends_on: [], effort: L, layer: backend, status: live}
+      - {id: E16/F02/US01/T01, prompt: reports/workitems/epic-16-async-document-processing/feature-02-durable-document-processing/us-01-async-processing-schema/tasks/task-01-async-processing-schema.md, produces: [documents-async-schema], depends_on: [], effort: M, layer: backend, status: live}
+      - {id: E18/F01/US01/T01, prompt: reports/workitems/epic-18-api-authentication/feature-01-token-identity/us-01-api-validates-the-token/tasks/task-01-api-validates-the-token.md, produces: [api-jwt-identity], depends_on: [], effort: L, layer: backend, status: live}
+  - id: 2
+    name: phase-2
+    tasks:
+      - {id: E16/F02/US02/T01, prompt: reports/workitems/epic-16-async-document-processing/feature-02-durable-document-processing/us-02-durable-queue-transport/tasks/task-01-durable-queue-transport.md, produces: [document-queue-transport], depends_on: [documents-async-schema], effort: L, layer: backend, status: live}
+      - {id: E18/F01/US02/T01, prompt: reports/workitems/epic-18-api-authentication/feature-01-token-identity/us-02-spa-sends-the-token/tasks/task-01-spa-sends-the-token.md, produces: [web-bearer-token], depends_on: [api-jwt-identity], effort: M, layer: frontend, status: live}
+  - id: 3
+    name: phase-3
+    tasks:
+      - {id: E16/F02/US03/T01, prompt: reports/workitems/epic-16-async-document-processing/feature-02-durable-document-processing/us-03-upload-returns-when-stored/tasks/task-01-upload-returns-when-stored.md, produces: [documents-async-api], depends_on: [document-queue-transport], effort: L, layer: backend, status: live}
+      - {id: E17/F01/US01/T01, prompt: reports/workitems/epic-17-invitation-delivery-and-identity/feature-01-guest-identity-and-mail/us-01-invite-provisions-and-mails/tasks/task-01-invite-provisions-and-mails.md, produces: [invitation-identity-and-mail], depends_on: [api-jwt-identity], effort: L, layer: backend, status: live}
+  - id: 4
+    name: phase-4
+    tasks:
+      - {id: E16/F03/US01/T01, prompt: reports/workitems/epic-16-async-document-processing/feature-03-documents-truthful-surfaces/us-01-documents-states-and-counts/tasks/task-01-documents-states-and-counts.md, produces: [documents-truthful-surfaces], depends_on: [documents-async-api], effort: L, layer: frontend, status: live}
+      - {id: E17/F02/US01/T01, prompt: reports/workitems/epic-17-invitation-delivery-and-identity/feature-02-invite-pane-and-accept/us-01-honest-invite-pane/tasks/task-01-honest-invite-pane.md, produces: [invite-pane-and-accept], depends_on: [invitation-identity-and-mail, web-bearer-token], effort: M, layer: frontend, status: live}
+      - {id: E17/F03/US01/T01, prompt: reports/workitems/epic-17-invitation-delivery-and-identity/feature-03-invitation-e2e/us-01-n3b-and-no-test-seam/tasks/task-01-n3b-and-no-test-seam.md, produces: [invitation-e2e-and-seam-ban], depends_on: [invitation-identity-and-mail], effort: S, layer: backend, status: live}
+  - id: 5
+    name: phase-5
+    tasks:
+      - {id: E16/F04/US01/T01, prompt: reports/workitems/epic-16-async-document-processing/feature-04-w15-integration/us-01-final-integration/tasks/task-01-w15-integration.md, produces: [w15-integration], depends_on: [documents-truthful-surfaces, invite-pane-and-accept, invitation-e2e-and-seam-ban], effort: L, layer: backend, status: live}
+forks: []

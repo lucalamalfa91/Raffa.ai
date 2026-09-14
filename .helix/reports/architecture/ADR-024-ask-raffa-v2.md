@@ -144,3 +144,121 @@ unlimited retention; `X-User-Id` until ADR-010; answer language follows the
 question; synchronous upload; a Quote admitted in Documents is routed to
 Quote check (no automatic `Quote` record); live Foundry on `dev` / `demo`
 for acceptance A2–A8 while the fixture proves the paths in CI.
+
+## Amendment (2026-09-13, wave w15 — the admission gate moves to the Worker; one definition of "validated")
+
+Serves **NW-27, NW-61**. The **Decision outcome above is unchanged and still in
+force**. Ask Raffa V2's three sources, the one-rule citation contract, the
+no-tools / grounding / numeric guards, the conversations model, the deterministic
+strategies, the capability catalog and the V2 IA are **all untouched**. This
+footer supersedes **two clauses about *when* intake decides**, and settles one
+number Ask already reports wrongly. The mechanism lives in **ADR-027**; scope is
+ADR-001's w15 footer.
+
+### 1. Superseded: "classify before you store"
+
+Two places in this ADR say intake refuses **before** anything is written:
+
+- the **Implications** line — *"The admission gate runs before
+  `IDocumentStorage.SaveAsync`; a task that stores first and classifies later is
+  incomplete"*;
+- the **Intake (D1, D3, D7, D8)** row's clauses *"Parse … and `classify` run
+  **before** any blob or row is written"*, *"Rejected files get HTTP 422 … no
+  storage"*.
+
+**Both are superseded, and only in their ordering half.** From w15 the gate
+**splits** (ADR-001 w15 footer clause 2, resolving OQ-w15-004):
+
+- **format and size stay in the request** — `DocumentFormatSniffer` → **415**,
+  `MaxFileBytes` → **413**, both before any blob is written, so **nothing is
+  stored for a non-document** and D1's 415 clause stands **verbatim**;
+- **content classification moves to the Worker**, because it needs OCR and a live
+  Foundry call and cannot be promised inside NW-27's 2 s budget — and, a second
+  and independent reason, because `AdmissionDecision.Pages` carries the parsed
+  text in memory (`AdmissionDecision.cs:67`) and a queue message cannot: a gate
+  left in the request would make the worker **parse every document a second
+  time**, paying Document Intelligence twice per upload forever.
+
+**HTTP 422 leaves `POST /api/documents`.** After the split the only synchronous
+refusals are 413 and 415; `not_a_contract` and `no_readable_text` both need a
+parse. A refusal becomes a **terminal `Rejected` document row** whose blob is
+deleted (ADR-027 §D6).
+
+### 2. What "never store" meant, and why it survives
+
+D3's rule — *reject and never store non-contracts* — is about a non-contract's
+**content** living in the tenant's corpus. That property is **fully preserved**
+and is restated here as the binding form:
+
+> On a refusal the worker extracts nothing, creates no `contract` row, and puts
+> **nothing** in the tenant `embedding` index. The blob is deleted. What persists
+> is a content-free record *of the refusal* — the same thing the
+> `document.rejected` audit row (`DocumentAdmissionGate.cs:222-251`, hash, type,
+> confidence, never content) already persisted before this wave.
+
+The three-source isolation of §2, the market-index separation and ADR-011's
+authz-before-retrieval are therefore **untouched by this footer**. A task that
+lets a rejected document's text reach the tenant `embedding` table is still a
+defect, exactly as before.
+
+**The refusal record is never askable and never counted** in "All documents" or
+the review queue (ADR-001 w15 footer clause 2; `requirements.md` R-DOC-04's
+*never counted* clause stands unchanged). `Rejected` is a code-only enum value:
+`processing_status` is `character varying(30)` with no CHECK and no enum type
+(`documents-contracts.sql:110`), so **ADR-021 needs no amendment**.
+
+### 3. Superseded requirements, recorded here because `inputs/**` is never edited
+
+| Source | Clause | Status from w15 |
+|---|---|---|
+| `inputs/requirements.md` §13 **A7** / `OQ-askv2-007` | "upload stays synchronous" | **`assumed-wrong`** (OQ-w15-003, ratified by product-owner). NW-27 makes upload asynchronous by design. |
+| `inputs/requirements.md` **R-DOC-05 AC-1** | "`DocumentProcessingStatus` gains no `Rejected` value (rejected files do not exist server-side)" | **Superseded on the record** (OQ-w15-D3, ratified by product-owner; raised by ux-ui-designer, who was right to refuse to supersede an accepted HITL requirement from its own seat). |
+| `inputs/requirements.md` **R-DOC-04** | *session-only / not stored* half | Superseded. **The *never counted* half stands.** |
+
+`inputs/**` is read-only for this process, so these rows **are** the
+supersession. The authority must not survive in code either: the comment at
+`DocumentProcessingPipeline.cs:65-77` citing synchronous upload is retired by the
+NW-27 task, and the two work-item files named in `waves/w15.md`'s "Work-item
+instructions" get their partial banners.
+
+### 4. Ask counts contracts that are not validated — a defect, not a preference
+
+The **Engine** row's authorization → gate → planner → pack → `answer` → guards
+pipeline is unchanged. What changes is **what is allowed into the pack**, and it
+is a live break of this ADR's own "never invent" promise:
+
+`RoutingContext.ValidatedContractCount` is documented as the switch that decides
+whether Ask answers or offers the upload action (`RoutingContext.cs:29-31`), and
+`AskCopilotService` feeds it `portfolio.Items.Count` / `TotalCount` —
+**unfiltered** (`:159, 178, 191, 200, 259`). Worse, `:294` composes the abstain
+reply as `$"Nothing in the {portfolio.Items.Count} validated contract(s) supports
+a reliable answer."`, so the product **states to the user** that N contracts are
+*validated* when N includes every bootstrap shell a still-processing document
+created (`Contract.Status`'s bootstrap value is the literal `"processing"` —
+`StagedExtractionService.cs:157`).
+
+**Binding from w15: "validated" has exactly one definition — ADR-026 §D2's** (a
+contract is validated iff at least one linked document is
+`ProcessingStatus.Completed`), obtained from `CountValidatedContractsAsync`. The
+free-text `Contract.Status != "completed"` test (`AskCopilotService.cs:790-792`)
+is deleted. One swap fixes the routing gate and the user-facing sentence
+together.
+
+**Not changed**: `AnswerPromptV2.cs:33-35` and `GroundingGuard.cs:40-70` stay
+exactly as they are. The `answer` role still carries no `tools` and no grounding
+payload, and the compliance test on the fake HTTP handler still asserts it.
+
+### 5. What a decomposer must carry out of this footer
+
+1. The admission gate is **called from the worker's message handler**, not from
+   the upload endpoint; the 422 block
+   (`DocumentsEndpointExtensions.cs:242-252`) and its contract entry are removed.
+2. `processingStatus` gains `Rejected` **in eight contract places** — the eighth
+   is `listDocuments`' `status` **query parameter** (`raffa-api.v1.json:864-878`),
+   which the client generator never parses, so no build failure will reveal a
+   miss (client-architect's §8.1).
+3. Ask's count comes from `CountValidatedContractsAsync`; no surface may
+   re-derive "validated" from `Contract.Status`.
+4. Every other ADR-024 instruction — market rows never in the tenant index, the
+   provenance label on market numbers, the golden set, the no-tools compliance
+   test, the V2 e2e path — is **unchanged and still required**.

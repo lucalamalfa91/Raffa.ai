@@ -493,3 +493,308 @@ invitations, the derived `status`, `name` mapping to `WorkspaceUser.DisplayName`
 and never derived from an email, the highest-role collapse using
 `WorkspaceRoleResolver`'s existing precedence (`:101-103`), and ADR-025's
 **404 rather than 403** for a non-member — all stand unchanged.
+
+## Amendment (2026-09-13, wave w15 — guest provisioning, the absolute accept link, and what a failed invite must not leave behind)
+
+Serves **NW-67, NW-68, NW-69**. The **Decision outcome above is unchanged and
+still in force**. D1 (two-phase discovery, no tenant input), D2 (the one count
+definition), D3 (the derived roster), D4 (the table, the token shape and the
+partial unique index) and every implication are **untouched**. This footer adds
+**two response fields and one seam** to D5/D6, and closes the `acceptUrl` shape
+gap the **ADR-005 second w14 footer raised explicitly for this seat**.
+Authorization, the Graph permission and the audit verbs are **ADR-025's and
+security-architect's**; this footer is the contract and the code shape.
+
+### 1. The invite 201 gains `identityProvisioned` (NW-67)
+
+```
+POST /api/workspaces/{tenantId}/invites
+  201 -> { id, email, role, expiresAt, acceptUrl, mailDelivered, identityProvisioned }
+```
+
+`identityProvisioned` is **`true` for both `Provisioned` and `AlreadyPresent`**
+and `false` when provisioning is not configured. It is a **server fact**,
+exactly as `mailDelivered` is (D5's last bullet), and it exists because NW-69's
+pane must distinguish "this person has no account on the tenant yet" from "the
+mail did not leave" — two different outcomes with two different remedies. Without
+it the client would infer identity state from delivery state, which is the
+inference ADR-012's provenance rule forbids.
+
+Both flags are **non-nullable booleans**, never absent: an omitted flag would be
+read as `false` by one client and `undefined` by another.
+
+### 2. `IGuestProvisioner` joins D6's seam family, with a fourth value
+
+```
+Raffa.Identity.Workspace/Application/IGuestProvisioner.cs
+    Task<GuestProvisioningResult> EnsureGuestAsync(string email, string workspaceName, CancellationToken)
+    // Provisioned | AlreadyPresent | NotConfigured | Failed(reason)
+```
+
+Exactly `IInvitationMailer`'s shape (`IInvitationMailer.cs:16-33`), in the same
+folder, for the same reason D6 gives: **the wave lands whole whether or not the
+directory permission ships.** `NotConfigured` is gated by
+`Invitations__GuestProvisioning__Enabled` (default **false**), under which the
+invite behaves exactly as it does on `main` today — link-only, no directory
+write — instead of either lying or failing. Same two-phase wiring as
+`invitation_mail_enabled` and `ai_gateway_wired`, both already proven on this
+tenant.
+
+**The adapter is `Raffa.Api/Infrastructure/GraphGuestProvisioner.cs`, never the
+module.** `Microsoft.Graph` is a provider SDK and ADR-002's rule is that only a
+host holds one — the same reason `Azure.Storage.Blobs` sits in `Raffa.Api.csproj`
+(`:32-34`). It authenticates as the existing workload managed identity, so
+`Azure.Identity` enters `Raffa.Api`, **which trips `SdkAllowListTests`**
+(`:23` `ForbiddenPrefixes = ["Azure.AI.", "Azure.Identity"]`, `:25`
+`AllowedProjectName = "Raffa.AiGateway"`). That test is therefore amended **in
+the same task**, from one allowed project to a per-prefix map: `Azure.AI.*` stays
+`Raffa.AiGateway`-only, `Azure.Identity` is additionally permitted in
+`Raffa.Api`. **This is part of the design, not a workaround** — the test's own
+doc comment (`:13-19`) already records that `Raffa.Api`'s `Azure.Storage.Blobs`
+is deliberately legitimate, so the amendment runs *with* its stated intent. The
+task must extend that comment to say why.
+
+### 3. Provisioning runs inside the invite request, before the mail — and a failure leaves nothing behind
+
+Order in the handler: existing guards (unchanged,
+`WorkspaceInvitesEndpointExtensions.cs:81-124`) → **provision the guest** → mint
+token + write rows → send mail → 201. The Graph call sits **outside** the
+database transaction: a remote call inside one holds a connection and cannot be
+rolled back anyway.
+
+Synchronous, because `POST …/invites` is one interactive action with no 2 s
+budget and a Graph `POST /invitations` is one sub-second call. Before the mail,
+because a mail whose link leads to a sign-in the invitee cannot complete is
+A15-4's failure, not a pass.
+
+**On failure: no invitation row, no mail, no token.** This is forced by **D4's
+own index**. The partial unique index `(tenant_id, lower(email)) WHERE
+accepted_at IS NULL AND revoked_at IS NULL` means a live invitation **holds the
+slot**, so an invitation left behind by a failed provisioning could not be
+retried without first revoking — the exact dead-slot trap ADR-020's second w14
+footer documented for the `Expired` case. Instead: one audit row
+(free-form verb, no schema change — `AuditEvent.cs:29-31`), and a **502** whose
+problem body carries a stable machine-readable `reason` from a **closed set** —
+`consent_missing` | `provisioning_failed` | `directory_unavailable` — so the pane
+picks copy from a fixed list and **ux-ui-designer owns the strings**. The Admin
+can retry immediately, because no slot was taken.
+
+**Idempotency (A15-5) is the implementation's obligation.** Inviting an address
+already in the tenant must create no duplicate guest. Whether that is satisfied
+by the invite permission alone or needs a directory read first is a
+least-privilege question **security-architect and cloud-architect own**
+(OQ-w15-005); `IGuestProvisioner`'s contract is identical either way.
+
+### 4. `acceptUrl` becomes absolute when a transport is configured — closing the D5 gap
+
+D5 specifies `acceptUrl` on the 201 but never fixes whether it is absolute; w14
+shipped the site-relative form, which is unusable in an email body. The ADR-005
+second w14 footer raised this **for this seat** to answer, and this is the
+answer:
+
+- with `Invitations__AcceptUrlBase` configured, `acceptUrl` is
+  `{base}/invite/accept#{token}`;
+- without it, the site-relative form of w14, unchanged.
+
+**The fragment stays** (`AcceptRoutePrefix = "/invite/accept#"`,
+`WorkspaceInvitationService.cs:58`; composed at `:86`) — ADR-025 Rule C9 and the
+ADR-005 second w14 footer, never a query string, because `staticwebapp.config.json`
+rewrites the accept path and the platform logs it.
+
+**The misconfiguration "mail enabled, no accept-url base" is handled where it can
+be handled honestly.** Per D6 the binding is optional and must never `?? throw`
+at startup, so instead **`TrySendAsync` refuses and returns `false`**, logging one
+line. The pane then shows the already-designed "could not be sent" state with the
+copyable link. Mailing a relative link nobody can open would be worse; a startup
+crash would violate D6.
+
+Product-owner's w15 footer makes the consequence explicit: **a site-relative link
+means NW-68 does not ship** — the item is cut, not narrowed.
+
+### 5. The real mailer is one line, and the registration order is load-bearing
+
+`AcsInvitationMailer` replaces `NullInvitationMailer` at exactly one line —
+`Raffa.Identity.Workspace/Infrastructure/ServiceCollectionExtensions.cs:61` is
+`TryAddScoped`, and its own comment already records that a real mailer is "a
+second `TryAddScoped` call in a later task". **`TryAdd` means the first
+registration wins**, so the real mailer must be registered **before**
+`AddIdentityWorkspaceModule`. That module's signature takes only a connection
+string (`:34-35`), so configuration is bound by the host in the established
+`sp.GetRequiredService<IConfiguration>().GetSection(...).Bind(...)` factory shape
+(`Raffa.AiGateway/ServiceCollectionExtensions.cs:85-92`), **never `IOptions<T>`**,
+which appears nowhere in `backend/src`.
+
+`mailDelivered` itself is **unchanged**: it is literally the return of
+`IInvitationMailer.TrySendAsync` (`WorkspaceInvitationService.cs:96-103`) and is
+already `required` in the contract (`raffa-api.v1.json:463-470`). **No wire
+change** — w14 designed this correctly and w15 only fills in the transport.
+
+**No mail body, no accept URL and no token in any log or audit row** — the rule
+`NullInvitationMailer.cs:25-29` already keeps deliberately, and which now matters
+for real.
+
+### 6. A finding the wave must not discover in implementation: the server cannot re-send the original link
+
+The token is stored only as a SHA-256 hash (`WorkspaceInvitationService.cs:73`,
+`:297-300`) and the plaintext exists only on the `IssueAsync` stack and in the
+201 body. **So any user-initiated retry after the response is a re-issue, and the
+old link dies.**
+
+- Inside the request, a transient transport failure may be retried once by the
+  mailer — that is the only true "send it again".
+- After the response, "Try sending again" is **revoke-then-invite**. ADR-016's
+  second w14 footer already contemplates a client-composed `DELETE` + `POST`,
+  which adds no server writer.
+
+**Proposed, and deferred to ADR-025's owner**: make `POST …/invites` **replace**
+a live invitation for the same address in one transaction (revoke + issue, two
+audit rows) instead of returning the 409 today's partial unique index produces
+(`WorkspaceMembershipService.cs:142-151`, `:174-182`). It is atomic where the
+two-call sequence is not, and it collapses "lost the link", "it lapsed" and "the
+mail failed" into one affordance with one call — the gap ADR-020's second w14
+footer called *"no legal path as written"*. **It changes an accepted lifecycle,
+so security-architect rules**; if they decline, the client-composed sequence is
+the fallback and **no server file changes**. Either way the UI warns first
+("The link you already shared stops working."), which is ADR-020's rule and is
+not re-opened here.
+
+### 7. What a decomposer must carry out of this footer
+
+1. Contract delta on `POST …/invites`: add `identityProvisioned`, document the
+   new **502** and its `reason` set, and document the 401/403/404 the guard
+   already returns. One task owns `raffa-api.v1.json` per phase (implication 7).
+2. `Program.cs` gains the mailer and provisioner registrations **before**
+   `AddIdentityWorkspaceModule` — and that file is contended by three items this
+   wave (NW-27, NW-05, NW-68). One owner or an explicit sequence.
+3. `Raffa.Api.csproj` gains `Microsoft.Graph` and `Azure.Communication.Email`;
+   `SdkAllowListTests.cs` is amended in the NW-67 task (§2);
+   `DependencyDirectionTests.ForbiddenSdkPrefixes` gains `Microsoft.Graph`
+   (ADR-002 w15 footer clause 4).
+4. **No schema change.** No new column, no new table, no migration, and
+   `identity-workspace.sql` is **not** regenerated by this wave's invite work —
+   so implication 4's ordering hazard does not apply to NW-67/NW-68.
+5. Tests: provisioning failure → **no invitation row**, one audit row, 502 with a
+   `reason` from the closed set; `NotConfigured` → the w14 link-only behaviour
+   unchanged; mailer `false` → the link path intact; absolute link composed when
+   the base is set, relative when it is not.
+
+## Amendment (2026-09-13, wave w15 round 2 — the invite 201's delivery discriminant, re-issue by replacement, and the SDK allow-list map)
+
+Serves **NW-68, NW-69, NW-67**. **D1–D4 and every implication are untouched**, and
+so are §1–§5 and §7 of the first w15 footer. **No schema change, no new column, no
+new table, no migration, no regenerated `.sql`.** This footer does three things the
+table asked of this seat: it names the field two seats routed here, it closes §6's
+deferral with the ruling that came back, and it completes the SDK allow-list map.
+
+### 8. The 201 carries one discriminant string, not two booleans (NW-69)
+
+Client-architect ruled at the table that the pane branches on **the server's
+outcome string** — *"not a second boolean, not two booleans the client combines,
+and never a client inference from a status code"* — and ux-ui-designer ruled the
+outcome set to **three** values, because a provisioning failure aborts the
+invitation (§3: one audit row and a **502**, no invitation row, no token, no
+mail), so the fourth outcome both lanes had drafted **cannot occur**. Both routed
+the field's **name and values** to this seat. They are:
+
+```
+POST /api/workspaces/{tenantId}/invites
+  201 -> { id, email, role, expiresAt, acceptUrl,
+           deliveryOutcome, mailDelivered, identityProvisioned }
+```
+
+- **`deliveryOutcome`** — a **non-nullable string carrying an `enum`** of exactly
+  `"sent" | "mail_failed" | "no_transport"`. A closed server-side vocabulary, so a
+  literal union is correct here where `role` is deliberately a bare string
+  (w14 clause 3: role names are per-tenant rows) — and it is what makes the pane's
+  branch exhaustive under `tsc --noEmit`. **Non-nullable is not a preference**: the
+  generator checks `enum` (`generate-api-client.mjs:63-65`) *before* the nullable
+  union (`:72-76`), so a nullable enum silently loses its `null`. `snake_case`
+  matches §3's 502 `reason` set, so one endpoint speaks one vocabulary.
+- The three values map 1:1 onto ux-ui-designer's three 10.1 strings: `sent` →
+  "Invitation sent to {email}."; `mail_failed` → "Invitation created, but the
+  email could not be sent." **+ the link block**; `no_transport` → "Invitation
+  ready for {email}." **+ the link block**. **There is no fourth value** —
+  `provisioning_failed` is a 502, not a 201, which is what makes *a link renders
+  only when it is usable* true by construction rather than by a branch.
+- **`mailDelivered` stays on the wire and stays exactly what it is**:
+  `IInvitationMailer.TrySendAsync`'s return
+  (`WorkspaceInvitationService.cs:96-103`), already `required` in the contract
+  (`raffa-api.v1.json:463-470`), *accepted for delivery and never a receipt*
+  (security-architect), never optimistically `true` (product-owner). It is **not**
+  removed: three seats ruled on its meaning this wave, and deleting a `required`
+  field nobody asked to delete is a wire break for nothing.
+- **The invariant that stops the two diverging, and it is normative**:
+  `deliveryOutcome == "sent"` **if and only if** `mailDelivered == true`. Both are
+  computed at one place from one call, and **the client branches on
+  `deliveryOutcome` and never combines the two** — which is what client-architect's
+  rule actually forbids. A vitest case asserting the biconditional across the
+  three outcomes is the only thing that keeps a later `mail_failed`-with-
+  `mailDelivered: true` from being expressible at all.
+- **`identityProvisioned` is unchanged from §1** — the one boolean ux-ui-designer
+  keys the one-time-code sentence to. `true` for **both** `Provisioned` and
+  `AlreadyPresent` (so the form is not a directory-enumeration oracle — ADR-025
+  §J), `false` when provisioning is not configured, under which that sentence
+  renders nothing at all and leaks no configuration fact.
+
+### 9. Re-issue by replacement — §6's deferral is closed, and the shape §6 proposed is the one that was ruled
+
+Security-architect ruled it in **ADR-025 §J.2b**: revoke the live invitation and
+create the new one **in one transaction**, so two live tokens for one address
+never coexist. §6 proposed exactly that and **this seat adopts the ruling**; where
+the two ADRs touch this mechanism, ADR-025 governs. The contract and code
+consequences are this seat's:
+
+- **`POST …/invites` becomes replace-on-live-invitation. No new endpoint, no new
+  verb, no schema change.** `InviteAsync`'s `alreadyInvited` pre-check
+  (`WorkspaceMembershipService.cs:142-151`) stops returning `Conflict`; it revokes
+  the live row and issues the new one inside the **same** `SaveChangesAsync`,
+  writing two audit rows (`workspace.invitation.revoked` + `.issued` — both
+  existing free-form verbs, no schema change).
+- **Two things must not move with it, and both are easy to lose in that edit.**
+  The `alreadyMember` branch (`:136-140`) keeps returning `Conflict`: a live
+  **membership** is not a re-issue case, and replacement must never become a way
+  to re-grant a role to someone who already holds it. And the `IsUniqueViolation`
+  catch (`:174-182`) **stays**: it is the backstop for two concurrent invites for
+  the same address and still owes that racer a clean 409, which the pre-check no
+  longer produces.
+- **Contract delta**: the operation's `409` stops being reachable for *"already
+  has a pending invitation"* and stays documented for the concurrent-writer and
+  already-a-member cases; the description states that a live invitation is
+  replaced. Same `raffa-api.v1.json` task as §7 item 1 — **one owner per phase**.
+- This is what finally makes ADR-020's **"Send a new invitation"** affordance
+  legal — the gap its second w14 footer called *"no legal path as written"*,
+  caused by D4's partial unique index holding the slot for a lapsed invitation.
+  **D4's index is unchanged**; replacement satisfies it by revoking first, which
+  is why no predicate had to be widened — and it could not have been, since
+  "expired" is a clock comparison and a partial-index predicate must be immutable.
+- **§6's client-composed `DELETE` + `POST` fallback is withdrawn.** It is two
+  requests with a window between them in which the address holds no invitation at
+  all — and if the second fails, the Admin has destroyed a working link and
+  created nothing.
+
+### 10. `SdkAllowListTests` — the per-prefix map, completed for the whole wave
+
+§2 amends that test for `Azure.Identity` in `Raffa.Api`. Two corrections from the
+table, both verified at the source:
+
+- **Security-architect's §J.1**: the amendment must be **package-scoped** — a
+  per-prefix map, never a second `AllowedProjectName`. Widening the single skip
+  (`SdkAllowListTests.cs:25`, `:40-43`) is the one-word edit a task will reach for
+  and it makes **`Azure.AI.*` legal in `Raffa.Api`**, un-guarding the Foundry
+  boundary.
+- **NW-27 needs the same file.** Cloud-architect's transport authenticates by
+  managed identity (topic-scoped RBAC, **no connection-string secret**), so
+  `DefaultAzureCredential` — `Azure.Identity` — lands in **`Raffa.Worker`** as
+  well as `Raffa.Api`. The map: `Azure.AI.*` → `Raffa.AiGateway`; `Azure.Identity`
+  → `Raffa.AiGateway` + `Raffa.Api` + `Raffa.Worker`; `Microsoft.Graph` →
+  `Raffa.Api`. **`SdkAllowListTests.cs` is a single-writer file contended by NW-27
+  and NW-67.**
+- **§7 item 3 is corrected in its reading, not its instruction**: adding
+  `Microsoft.Graph` to `DependencyDirectionTests.ForbiddenSdkPrefixes` is right
+  (nothing in that list matches it today) **and insufficient** — that test scans
+  only the fixed ADR-002 domain-module list, never a host, which is where the
+  adapter lives. See **ADR-002's second w15 footer**.
+
+**`waves/w15.md` records this under NW-67 and NW-68.** Nothing in D1–D4, the
+token shape, the partial unique index, the RLS policy or the roster projection
+changes.

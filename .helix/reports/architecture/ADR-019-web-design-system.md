@@ -228,3 +228,110 @@ decision of 2026-09-10 ("≥90% is auto-accepted … Supersedes the earlier §7.
 bands"), so the body above is already stale against an operator ruling.
 Reconciling it is **NW-65, queued to W17**; appending an unrelated group of rows
 here neither closes nor pre-empts that.
+
+## Amendment (2026-09-13, wave w15 — one semantic row for a refused document; no token, no component)
+
+Serves **NW-27**. Written by ux-ui-designer, owner of this ADR (`INDEX.md:52`).
+Every section above stays in force. This footer adds **one row** to the Semantic
+mapping and changes **no token, no type-scale row, no component and no confidence
+threshold**. It is deliberately the smallest footer this seat writes in w15:
+three of the four items it owns need nothing from the design system at all.
+
+**1. The Semantic mapping gains the refused document.**
+
+| Meaning | Treatment | Text label |
+|---|---|---|
+| Document refused at admission (`Rejected`) | `.tag-outline` | **Not added** |
+
+**Derived, not invented** — treatment and label already ship together on the card
+this wave retires: `UploadResultCard.tsx:24` is
+`<span class="tag tag-outline">Not added</span>`. It is also the correct
+derivation from the table above rather than a free choice. `.tag-accent` is
+`Status failed` (`:105`): a **Raffa-side** failure the user can retry. A refusal
+is not a failure — it is a **decision about the file**, and `.tag-outline` is
+already this system's "this row is about a decision" treatment: `Status
+needs_review` (`:104`), `Review · 71%` (`:102`, "blocks consequential use"), and
+w14's `Expired` by exactly this reasoning. The **one-accent rule** holds, and
+`## Accessibility baseline`'s no-colour-only rule is satisfied by the text label,
+as it is for every row above.
+
+**2. The compiler will not ask for the second half of this edit, and that is why
+it is in the ADR and not only in the task.** `documentTable.ts:97-99` is
+`getStatusTag(status as DocumentStatus)` — an **unchecked cast**. `DocumentStatus`
+(`semantics.ts:52`) is
+`"completed" | "ready" | "needs_review" | "failed" | "processing"` and has no
+`"rejected"`. A task that adds `"rejected"` to `RowStatus` (`documentTable.ts:79`)
+and stops there **compiles clean**, and `getStatusTag`'s exhaustive switch falls
+through to `undefined` — a blank tag or a runtime crash, never a build error.
+**The row above is therefore a two-file edit**: `semantics.ts:52` and `:61-73`
+(add `"rejected"` → `{ variant: "outline", label: "Not added" }`) **and**
+`documentTable.ts:79` and `:81-93`. A task must cite both. This is the only place
+in this wave's design surface where the type system does not protect the change.
+
+**3. No new component — for three surfaces that each look like they need one.**
+
+(a) The Documents filter gains a **third** `<button aria-pressed>` inside the
+existing `.seg` (catalogued at `:91`; `AttentionFilter.tsx:18-32` is already "a
+controlled pair of native `<button aria-pressed>` toggles"). A third child is a
+**catalogue use, not an extension**.
+
+(b) NW-69's invite pane is `.btn-secondary`, `.micro-meta`, `.input` and
+paragraphs — all already available. w14 clause 3's note stands: `.micro-meta` and
+`.hint` are **implemented classes in `web/src`, not catalogue entries**, and they
+are used exactly as they exist. No status treatment is needed that the map above
+lacks, so NW-69 adds no row.
+
+(c) **The invitation email consumes token *values*, never the system** (ADR-020's
+w15 footer, surface 12). None of this system's mechanism survives an email
+client: no external stylesheet, no CSS custom property, and **no web font** —
+`--font-heading / --font-body` is **Archivo** (`:76`), which a mail client will
+not load. Any colour is therefore an **inline literal of a value from
+`## Token set (locked)`** — `--color-text` `#201e1d`, `--color-accent` `#ec3013`,
+`--color-accent-700` `#ae1800` — never a variable reference, never a new value,
+and never a near-miss picked to look right in one client. That is
+"consume tokens, do not fork them" honoured in the only way an email allows, and
+it is recorded here so that the first surface Raffa sends **outside the browser**
+does not quietly become a second design system nobody owns.
+
+## Amendment (2026-09-14, wave w15 — re-entry round: one treatment, two producers, and a third site the compiler will not ask for)
+
+Continues the **2026-09-13 w15 footer** above (`:232-294`, clauses 1–3), every
+clause of which stays in force. Serves **NW-27** and **NW-61**. Written by
+ux-ui-designer, owner of this ADR (`INDEX.md:52`). **No token, no type-scale row,
+no component and no confidence threshold changes here either** — and the Semantic
+mapping gains **no new row**.
+
+**4. The refusal treatment is keyed on the reading, not on where the fact came
+from.** Clause 1's row (`Rejected` → `.tag-outline` **Not added**) now also serves
+a refusal that never reached the server: the browser-side oversize check and a
+413/415, which ADR-020 w15 round-3 §6 renders as a **local row** rather than as
+the retired card. Same tag, same label, deliberately indistinguishable — the
+user's fact is identical and the difference between the two producers is ours.
+
+**The consequence is a third edit site, and it is the dangerous one.**
+Clause 2 established that adding `"rejected"` to `RowStatus` while forgetting
+`semantics.ts:52` compiles clean (`documentTable.ts:97-99` is an unchecked cast)
+and yields a blank tag. The local row adds a site that fails **worse**:
+`DocumentStatusTable.tsx:94-96` maps a local entry with a ternary —
+`getRowStatusTag(entry.phase === "failed" ? "failed" : "processing")` — so widening
+`LocalUploadEntry.phase` with `"rejected"` and stopping there also **compiles
+clean**, and renders a refused file as **Processing**, indefinitely, with
+`Uploading…` beneath it (`:105`). A blank tag is a visible defect; a confident
+wrong status is a lie the user has no way to catch. So the two-file edit of clause
+2 is a **three-site** edit — `semantics.ts:52` / `:61-73`, `documentTable.ts:79` /
+`:81-93`, and `DocumentStatusTable.tsx:94-96` (with `:90`, `:97`, `:105`) — and
+**not one of the three fails a build if it is forgotten**. A task must cite all
+three; the check is a grep, not a green build.
+
+**5. The paused-updates notice adds nothing to this system.** ADR-020 w15 round-3
+§8's stopped-poll notice is `.hint` + `.btn-secondary` — the pair
+`DocumentStatusTable.tsx:100-103` already ships for the failed row — and on the
+tier surfaces it is a **secondary beside** the empty block's existing primary CTA,
+which is the block's shape, not an extension of it. It is **never** `.tag-accent`
+and never an alert treatment: nothing has failed, so the one-accent rule (clause
+1, `:249-254`) holds and `## Accessibility baseline`'s no-colour-only rule is
+satisfied by the sentence itself.
+
+**6. Unchanged.** `## Token set (locked)`, `## Type scale (app)`,
+`## Component catalogue (locked)`, `## Accessibility baseline (locked)`, the three
+confidence rows, the w14 footer, and w15 clauses 1–3.

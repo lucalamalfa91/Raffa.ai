@@ -331,6 +331,37 @@
       "mode": "next",
       "source": "inputs/next/next-waves-todo.md",
       "requirements": "reports/context/waves/w14-requirements.md"
+    },
+    {
+      "id": "w15",
+      "title": "W15 \u2014 upload feels instant, and inviting a colleague works end to end",
+      "previous": "w14",
+      "tokens": 16100000,
+      "tasks": 11,
+      "epic": "E16, E17, E18",
+      "integration": false,
+      "checks": [
+        "github_auth",
+        "github_org",
+        "github_repos",
+        "hitl_previous"
+      ],
+      "stories": [
+        "E16/F01/US01",
+        "E16/F02/US01",
+        "E16/F02/US02",
+        "E16/F02/US03",
+        "E16/F03/US01",
+        "E16/F04/US01",
+        "E17/F01/US01",
+        "E17/F02/US01",
+        "E17/F03/US01",
+        "E18/F01/US01",
+        "E18/F01/US02"
+      ],
+      "mode": "next",
+      "source": "inputs/next/w15-todo.md",
+      "requirements": "reports/context/waves/w15-requirements.md"
     }
   ]
 }

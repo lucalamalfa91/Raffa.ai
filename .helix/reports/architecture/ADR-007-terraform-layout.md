@@ -90,3 +90,101 @@ infra/
 
 - HCP Terraform supports two workshops/workspaces (or two backend `key` values) for the `raffa` repo.
 - `azurerm` and `azuread` providers are used; exact provider minor versions are pinned at implementation time in the target region.
+
+## Amendment (2026-09-13, wave w15 — the module list is reconciled with the tree, and two edges become real)
+
+**Items served**: NW-27, NW-67, NW-68, NW-05. **Owner**: cloud-architect. This
+is ADR-007's first amendment. Option 1 is unchanged and not re-opened: a
+reusable module library plus two thin environment roots, **remote state per
+environment** (HCP workspaces `raffa-dev` / `raffa-demo`), **no state in git**,
+**no secrets in Terraform source**, and mandatory `project=raffa` /
+`env=dev|demo` tagging. Every implication at `:84-87` stands verbatim.
+
+### 1. The layout block at `:36-61` is two waves stale — nine modules, not eleven
+
+The block above lists **nine** modules. The tree carries **eleven**: the same
+nine plus **`staticwebapp/`** (Azure Static Web Apps Free, region West US 2) and
+**`foundry/`** (shared AI Services account + per-env project + model deployments
++ RBAC, ADR-004/008/017). Both landed **without an ADR-007 footer**, which is
+why this correction is recorded before the w15 addition rather than after it:
+publishing "nine → ten" would re-publish a list that has been wrong for two
+waves and hand the decomposer a layout that does not match the tree it must
+edit.
+
+**With w15's addition the module set is twelve:**
+
+```
+infra/modules/
+  network/  identity/  postgres/  storage/  servicebus/  containerapps/
+  keyvault/  acr/  monitor/  staticwebapp/  foundry/  communication/   # new in w15
+```
+
+**`infra/modules/communication/`** (new, NW-68) holds the four
+`azurerm_communication_*` / `azurerm_email_communication_*` resources of the
+ADR-005 w14 footer, one set per environment, never shared. It exports
+`connection_string` (**`sensitive = true`**) and `sender_address`.
+
+**A second file, and it is the one an engineer actually opens.**
+`infra/README.md:18-29` carries a **parallel layout tree** that already lists all
+eleven directories correctly. It gains `communication/` in the **same task** as
+the module itself. **Two files, one edit — not one.** Recorded because this
+ADR's block and that README have already drifted apart once, in opposite
+directions.
+
+### 2. Two module edges that the layout implies and the tree does not have
+
+- **`servicebus → containerapps`.** `modules/servicebus`'s three outputs (`id`,
+  `name`, `fqdn`) have **one consumer in the whole repo**
+  (`environments/dev/outputs.tf:77`), and `modules/containerapps/variables.tf`
+  declares **no Service Bus input at all**. w15 creates the edge: the
+  containerapps module gains `servicebus_namespace_name`, `servicebus_fqdn`,
+  `servicebus_topic_name`, `servicebus_subscription_name` (plus
+  `worker_max_replicas` / `api_max_replicas`), wired in both roots from
+  `module.servicebus.*`. **No plan-time unknown is introduced**:
+  `modules/servicebus/outputs.tf:19` composes `fqdn` from the namespace **name**,
+  which is the literal `sbns-raffa-${var.environment}` and not a post-apply
+  attribute, so the reviewer sees the real string in the w15 plan instead of
+  `(known after apply)`.
+- **`identity → servicebus`.** `modules/servicebus` gains a required
+  `workload_principal_id` input and creates the two **topic-scoped** role
+  assignments of the ADR-005 w15 footer §2. This is the shape `modules/foundry`
+  and `modules/keyvault` already use.
+
+`modules/identity` additionally gains a Microsoft Graph **data source**, a
+`count`-gated `azuread_app_role_assignment` and a `tenant_id` output (NW-67,
+NW-05) — all **inside** the existing module, so no boundary moves.
+`modules/keyvault` gains one secret and one output. `modules/containerapps`
+gains the `acs-cs` and worker `st-cs` handles. The new dependency chain
+`communication → keyvault → containerapps` is acyclic and is created **by
+reference**, so `module "communication"` may sit anywhere in a root: Terraform
+orders by reference, not by file position — which is why `module "keyvault"`
+already sits *after* `module "containerapps"` in both roots and works.
+
+### 3. What does not change
+
+- **Remote state per environment** — untouched. No w15 resource is shared
+  between `dev` and `demo`; the one pre-existing exception (`aisvc-raffa`,
+  ADR-008) is not widened, and mail is explicitly **one resource set per
+  environment** because it has no fixed cost to amortise.
+- **No secrets in source** — upheld and strengthened. The Service Bus data plane
+  is **RBAC with no secret at all**. The one secret w15 adds (`acs-connection`)
+  follows the `postgres-connection` / `storage-connection` path byte for byte:
+  Terraform references Key Vault, the app reads at runtime through the workload
+  identity, and **no secret value is written into Terraform source**. The
+  conditional KEDA fallback of the ADR-005 w15 footer §2, if taken, is
+  `listen`-only and is referenced **only** by `custom_scale_rule.authentication`,
+  never by an `env {}` block and never by application code.
+- **Tagging** — `project = "raffa"` and `env = var.environment` on every taggable
+  w15 resource, including all four ACS types.
+
+### 4. Implication for the decomposition
+
+**One Terraform PR touches all of `infra/**` in this wave** — six modules
+(`servicebus`, `containerapps`, `communication`, `keyvault`, `identity`, plus
+`infra/README.md`) and both environment roots. That is not a preference: it is
+what `scripts/check_single_writer.py` requires, and splitting it would serialise
+three PRs against one VCS-connected workspace while buying three separate human
+confirmations. **The four `azurerm_communication_*` spellings and the
+`custom_scale_rule` authentication shape are proved by `terraform fmt -check
+-recursive` + `terraform validate` in the `infra.yml` PR job — never asserted
+from an ADR footer**, per the ADR-005 w14 prerequisite at `:211-219`.
