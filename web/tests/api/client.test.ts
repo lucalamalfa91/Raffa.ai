@@ -1783,9 +1783,11 @@ describe("createApiClient().inviteWorkspaceMember (task E06/F04/US01/T01)", () =
 });
 
 // Task E13/F09/US01/T04 (web-ask-v2, ADR-024 §6): conversations, the reply contract, the capability
-// catalog, one market record, and the X-User-Id header every method above now sends when supplied --
-// this task is the phase-4 writer of both the OpenAPI contract and this client for the six describes
-// below (see this file's own header comment on X-User-Id's full provenance).
+// catalog and one market record -- this task is the phase-4 writer of both the OpenAPI contract and
+// this client for the six describes below. The interim identity header these methods sent when
+// supplied is gone (task E18/F01/US02/T01, NW-05): see "createApiClient() Authorization header"
+// below for its replacement, the single `Authorization: Bearer` choke point every method now goes
+// through.
 
 describe("createApiClient().listConversations (task E13/F09/US01/T04)", () => {
   afterEach(() => {
@@ -2162,32 +2164,32 @@ describe("createApiClient().getMarketRecord (task E13/F09/US01/T04)", () => {
   });
 });
 
-describe("createApiClient() X-User-Id header (task E13/F09/US01/T04, OQ-askv2-005/ADR-022)", () => {
+describe("createApiClient() Authorization header (task E18/F01/US02/T01, NW-05; ADR-012 w15 footer clause 1)", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it("adds X-User-Id alongside X-Tenant-Id when getUserId resolves a real value", async () => {
+  it("adds Authorization: Bearer <token> alongside X-Tenant-Id when the token accessor resolves a real value", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify([]), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.raffa.example", () => "buyer@acme.example").listConversations("tenant-1");
+    await createApiClient("https://api.dev.raffa.example", async () => "test-access-token").listConversations("tenant-1");
 
     const [, init] = fetchMock.mock.calls[0];
-    expect(init.headers).toEqual({ "X-Tenant-Id": "tenant-1", "X-User-Id": "buyer@acme.example" });
+    expect(init.headers).toEqual({ "X-Tenant-Id": "tenant-1", Authorization: "Bearer test-access-token" });
   });
 
-  it("adds X-User-Id even on a call that otherwise sends no headers at all (getHealth)", async () => {
+  it("adds Authorization even on a call that otherwise sends no headers at all (getHealth)", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response("Healthy", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.raffa.example", () => "buyer@acme.example").getHealth();
+    await createApiClient("https://api.dev.raffa.example", async () => "test-access-token").getHealth();
 
     const [, init] = fetchMock.mock.calls[0];
-    expect(init).toEqual({ headers: { "X-User-Id": "buyer@acme.example" }, cache: "no-store" });
+    expect(init).toEqual({ headers: { Authorization: "Bearer test-access-token" }, cache: "no-store" });
   });
 
-  it("omits the header key entirely (not an empty string) when no getUserId is supplied at all -- every pre-existing call site's exact-toEqual headers check keeps passing unchanged", async () => {
+  it("omits the header key entirely (not an empty string) when no token accessor is supplied at all -- every pre-existing call site's exact-toEqual headers check keeps passing unchanged", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response("Healthy", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -2197,24 +2199,106 @@ describe("createApiClient() X-User-Id header (task E13/F09/US01/T04, OQ-askv2-00
     expect(init).toEqual({ cache: "no-store" });
   });
 
-  it("omits the header key when getUserId resolves null (no signed-in account yet)", async () => {
+  it("omits the header key when the token accessor resolves null (no signed-in account yet)", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify([]), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.raffa.example", () => null).listConversations("tenant-1");
+    await createApiClient("https://api.dev.raffa.example", async () => null).listConversations("tenant-1");
 
     const [, init] = fetchMock.mock.calls[0];
     expect(init.headers).toEqual({ "X-Tenant-Id": "tenant-1" });
   });
 
-  it("omits the header key when getUserId resolves a blank/whitespace-only string (never sends X-User-Id: '')", async () => {
+  it("omits the header key when the token accessor resolves a blank/whitespace-only string (never sends 'Bearer ' with nothing after it)", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify([]), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createApiClient("https://api.dev.raffa.example", () => "   ").listConversations("tenant-1");
+    await createApiClient("https://api.dev.raffa.example", async () => "   ").listConversations("tenant-1");
 
     const [, init] = fetchMock.mock.calls[0];
     expect(init.headers).toEqual({ "X-Tenant-Id": "tenant-1" });
+  });
+
+  it("surfaces a 401 after a successful token acquisition as a server rejection, without retrying acquisition or the request (AC-4)", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 401 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const getAccessToken = vi.fn().mockResolvedValue("test-access-token");
+
+    const result = await createApiClient("https://api.dev.raffa.example", getAccessToken).listWorkspaces();
+
+    expect(result).toEqual({ ok: false, statusCode: 401, workspaces: null, error: "Sign-in required." });
+    // Never a silent retry loop: one acquisition, one request, the 401 surfaced as-is.
+    expect(getAccessToken).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("attaches Authorization on every one of the ApiClient's methods -- the 37-call-site risk gets a real gate (ADR-012 w15 footer clause 1/12)", async () => {
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify({}), { status: 200 })));
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: vi.fn().mockReturnValue("blob:mock-url") }));
+
+    const client = createApiClient("https://api.dev.raffa.example", async () => "test-access-token");
+
+    // One entry per ApiClient method, invoked with the minimal args its own request type needs.
+    // The completeness assertion below (this table's keys vs. Object.keys(client)) is what turns
+    // "a new method forgot to go through authHeaders" into a failing test rather than a silent gap.
+    const invocations: Record<string, () => Promise<unknown>> = {
+      getHealth: () => client.getHealth(),
+      createWorkspace: () => client.createWorkspace({ name: "Acme" }),
+      inviteWorkspaceMember: () => client.inviteWorkspaceMember("tenant-1", { email: "buyer@acme.example", role: "Procurement" }),
+      listWorkspaces: () => client.listWorkspaces(),
+      getWorkspaceMembers: () => client.getWorkspaceMembers("tenant-1"),
+      revokeInvitation: () => client.revokeInvitation("tenant-1", "invite-1"),
+      removeMember: () => client.removeMember("tenant-1", "member-1"),
+      getInvitation: () => client.getInvitation("invite-token-1"),
+      acceptInvitation: () => client.acceptInvitation("invite-token-1"),
+      uploadDocument: () => client.uploadDocument("tenant-1", pdfFile()),
+      getDocument: () => client.getDocument("tenant-1", "doc-1"),
+      listDocuments: () => client.listDocuments("tenant-1"),
+      getDocumentPreviewUrl: () => client.getDocumentPreviewUrl("tenant-1", "doc-1"),
+      reprocessDocument: () => client.reprocessDocument("tenant-1", "doc-1"),
+      deleteDocument: () => client.deleteDocument("tenant-1", "doc-1"),
+      getPortfolio: () => client.getPortfolio("tenant-1"),
+      getContract360: () => client.getContract360("tenant-1", "contract-1"),
+      getRenewals: () => client.getRenewals("tenant-1"),
+      getRenewalPriority: () => client.getRenewalPriority("tenant-1", "contract-1"),
+      getCorrectionHistory: () => client.getCorrectionHistory("tenant-1", "contract-1"),
+      correctContract: () => client.correctContract("tenant-1", "contract-1", { corrections: { annualSpend: "1" } }),
+      getContractEvidence: () => client.getContractEvidence("tenant-1", "contract-1"),
+      validateDocument: () => client.validateDocument("tenant-1", "doc-1", { acceptedFields: [] }),
+      postRenewalAction: () =>
+        client.postRenewalAction("tenant-1", "contract-1", { owner: "buyer@acme.example", status: "InProgress", action: "…" }),
+      uploadQuote: () => client.uploadQuote("tenant-1", pdfFile()),
+      getQuoteAssessment: () => client.getQuoteAssessment("tenant-1", "quote-1"),
+      recalculateQuoteAssessment: () => client.recalculateQuoteAssessment("tenant-1", "quote-1"),
+      captureNegotiationOutcome: () =>
+        client.captureNegotiationOutcome("tenant-1", {
+          quoteId: "quote-1",
+          originalQuoteTotal: 1,
+          finalPrice: 1,
+          negotiationDurationDays: 1,
+          leversUsed: ["Term"],
+        }),
+      askRaffa: () => client.askRaffa("tenant-1", { question: "?" }),
+      getSavingsKpis: () => client.getSavingsKpis("tenant-1"),
+      getSavingsOpportunities: () => client.getSavingsOpportunities("tenant-1"),
+      listConversations: () => client.listConversations("tenant-1"),
+      createConversation: () => client.createConversation("tenant-1"),
+      getConversation: () => client.getConversation("tenant-1", "conv-1"),
+      postMessage: () => client.postMessage("tenant-1", "conv-1", { question: "?" }),
+      getCapabilities: () => client.getCapabilities(),
+      getMarketRecord: () => client.getMarketRecord("rec-1"),
+    };
+
+    expect(Object.keys(invocations).sort()).toEqual(Object.keys(client).sort());
+
+    for (const [name, invoke] of Object.entries(invocations)) {
+      fetchMock.mockClear();
+      await invoke();
+      expect(fetchMock, `${name} did not call fetch exactly once`).toHaveBeenCalledTimes(1);
+      const [, init] = fetchMock.mock.calls[0];
+      expect(init?.headers?.Authorization, `${name} did not attach Authorization`).toBe("Bearer test-access-token");
+    }
   });
 });
 

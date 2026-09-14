@@ -4,7 +4,7 @@ import { PublicClientApplication } from "@azure/msal-browser";
 import { MsalProvider } from "@azure/msal-react";
 import App from "./App";
 import { AppConfigError, loadAppConfig } from "./config/appConfig";
-import { buildMsalConfig, handleRedirectPromiseOptions } from "./auth/msalConfig";
+import { acquireApiAccessToken, buildMsalConfig, handleRedirectPromiseOptions } from "./auth/msalConfig";
 import { createApiClient } from "./api/client";
 import "./index.css";
 
@@ -59,18 +59,15 @@ async function bootstrap() {
   // built from the same runtime config as MSAL (ADR-012 "config, not code") --
   // never a hard-coded origin.
   //
-  // Task E13/F09/US01/T04 (OQ-askv2-005/R-CONV-03/ADR-022): `getUserId` is resolved lazily, at
-  // request time, off `msalInstance` directly (its own synchronous, non-React
-  // `getActiveAccount()`/`getAllAccounts()` API) rather than the `useMsal()` hook -- this bootstrap
-  // runs before `<MsalProvider>` even mounts, so no React account state exists yet at the point
-  // `createApiClient` is called, only the instance itself. `getActiveAccount()` is null until
-  // something calls `setActiveAccount`, which nothing in this app does today (single-account usage
-  // throughout, `App.tsx`'s own `accounts[0]`), so this falls back to the first cached account --
-  // the same account `App.tsx` itself already treats as "the" signed-in one.
-  const apiClient = createApiClient(
-    appConfig.apiBaseUrl,
-    () => msalInstance.getActiveAccount()?.username ?? msalInstance.getAllAccounts()[0]?.username ?? null,
-  );
+  // Task E18/F01/US02/T01 (wave w15, NW-05; ADR-012 w15 footer clause 1, ADR-010 w14 footer clause
+  // 3): the access-token accessor is resolved lazily, at request time, off `msalInstance` directly
+  // via `acquireApiAccessToken` (auth/msalConfig.ts) rather than the `useMsal()` hook -- this
+  // bootstrap runs before `<MsalProvider>` even mounts, so no React account state exists yet at the
+  // point `createApiClient` is called, only the instance itself. Replaces the synchronous
+  // per-caller-username closure task E13/F09/US01/T04 (OQ-askv2-005/ADR-022) left here -- deleted
+  // whole by this task, not made conditional; see `acquireApiAccessToken`'s own doc comment for the
+  // account-fallback and never-throws rules that used to live in this comment.
+  const apiClient = createApiClient(appConfig.apiBaseUrl, () => acquireApiAccessToken(msalInstance, appConfig));
 
   root.render(
     <StrictMode>

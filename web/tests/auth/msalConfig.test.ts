@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
-import { BrowserCacheLocation } from "@azure/msal-browser";
-import { buildLoginRequest, buildMsalConfig } from "../../src/auth/msalConfig";
+import { describe, expect, it, vi } from "vitest";
+import { BrowserCacheLocation, InteractionRequiredAuthError } from "@azure/msal-browser";
+import type { AccountInfo, IPublicClientApplication } from "@azure/msal-browser";
+import { acquireApiAccessToken, buildLoginRequest, buildMsalConfig } from "../../src/auth/msalConfig";
 import type { AppConfig } from "../../src/config/appConfig";
 
 const appConfig: AppConfig = {
@@ -42,5 +43,117 @@ describe("buildMsalConfig", () => {
 describe("buildLoginRequest", () => {
   it("requests exactly the API scopes named in runtime config", () => {
     expect(buildLoginRequest(appConfig).scopes).toEqual(appConfig.oidcApiScopes);
+  });
+});
+
+describe("acquireApiAccessToken (task E18/F01/US02/T01, NW-05; ADR-012 w15 footer clause 1)", () => {
+  const account = { username: "buyer@acme.example", homeAccountId: "home-1" } as unknown as AccountInfo;
+
+  it("resolves null without acquiring anything when no account is signed in", async () => {
+    const acquireTokenSilent = vi.fn();
+    const acquireTokenPopup = vi.fn();
+    const instance = {
+      getActiveAccount: vi.fn().mockReturnValue(null),
+      getAllAccounts: vi.fn().mockReturnValue([]),
+      acquireTokenSilent,
+      acquireTokenPopup,
+      acquireTokenRedirect: vi.fn(),
+    } as unknown as IPublicClientApplication;
+
+    const token = await acquireApiAccessToken(instance, appConfig);
+
+    expect(token).toBeNull();
+    expect(acquireTokenSilent).not.toHaveBeenCalled();
+    expect(acquireTokenPopup).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the first cached account when none is active (mirrors main.tsx's own former fallback)", async () => {
+    const acquireTokenSilent = vi.fn().mockResolvedValue({ accessToken: "silent-token" });
+    const instance = {
+      getActiveAccount: vi.fn().mockReturnValue(null),
+      getAllAccounts: vi.fn().mockReturnValue([account]),
+      acquireTokenSilent,
+      acquireTokenPopup: vi.fn(),
+      acquireTokenRedirect: vi.fn(),
+    } as unknown as IPublicClientApplication;
+
+    const token = await acquireApiAccessToken(instance, appConfig);
+
+    expect(token).toBe("silent-token");
+    expect(acquireTokenSilent).toHaveBeenCalledWith(
+      expect.objectContaining({ scopes: appConfig.oidcApiScopes, account }),
+    );
+  });
+
+  it("returns the acquireTokenSilent access token via {scopes, account}, and never calls the popup or redirect fallback", async () => {
+    const acquireTokenSilent = vi.fn().mockResolvedValue({ accessToken: "silent-token" });
+    const acquireTokenPopup = vi.fn();
+    const acquireTokenRedirect = vi.fn();
+    const instance = {
+      getActiveAccount: vi.fn().mockReturnValue(account),
+      getAllAccounts: vi.fn().mockReturnValue([account]),
+      acquireTokenSilent,
+      acquireTokenPopup,
+      acquireTokenRedirect,
+    } as unknown as IPublicClientApplication;
+
+    const token = await acquireApiAccessToken(instance, appConfig);
+
+    expect(token).toBe("silent-token");
+    expect(acquireTokenSilent).toHaveBeenCalledWith(
+      expect.objectContaining({ scopes: appConfig.oidcApiScopes, account }),
+    );
+    expect(acquireTokenPopup).not.toHaveBeenCalled();
+    expect(acquireTokenRedirect).not.toHaveBeenCalled();
+  });
+
+  it("falls back to acquireTokenPopup on InteractionRequiredAuthError, and returns its access token (AC-3)", async () => {
+    const acquireTokenPopup = vi.fn().mockResolvedValue({ accessToken: "popup-token" });
+    const acquireTokenRedirect = vi.fn();
+    const instance = {
+      getActiveAccount: vi.fn().mockReturnValue(account),
+      getAllAccounts: vi.fn().mockReturnValue([account]),
+      acquireTokenSilent: vi.fn().mockRejectedValue(new InteractionRequiredAuthError("interaction_required", "test-correlation-id")),
+      acquireTokenPopup,
+      acquireTokenRedirect,
+    } as unknown as IPublicClientApplication;
+
+    const token = await acquireApiAccessToken(instance, appConfig);
+
+    expect(token).toBe("popup-token");
+    expect(acquireTokenPopup).toHaveBeenCalledWith(
+      expect.objectContaining({ scopes: appConfig.oidcApiScopes, account }),
+    );
+    expect(acquireTokenRedirect).not.toHaveBeenCalled();
+  });
+
+  it("never calls acquireTokenRedirect, even when both silent and popup fail (never a redirect from inside a request)", async () => {
+    const acquireTokenRedirect = vi.fn();
+    const instance = {
+      getActiveAccount: vi.fn().mockReturnValue(account),
+      getAllAccounts: vi.fn().mockReturnValue([account]),
+      acquireTokenSilent: vi.fn().mockRejectedValue(new InteractionRequiredAuthError("interaction_required", "test-correlation-id")),
+      acquireTokenPopup: vi.fn().mockRejectedValue(new Error("user closed the popup")),
+      acquireTokenRedirect,
+    } as unknown as IPublicClientApplication;
+
+    const token = await acquireApiAccessToken(instance, appConfig);
+
+    expect(token).toBeNull();
+    expect(acquireTokenRedirect).not.toHaveBeenCalled();
+  });
+
+  it("resolves null (never throws) when acquireTokenSilent fails with something other than InteractionRequiredAuthError -- no popup for an unrelated failure", async () => {
+    const acquireTokenPopup = vi.fn();
+    const instance = {
+      getActiveAccount: vi.fn().mockReturnValue(account),
+      getAllAccounts: vi.fn().mockReturnValue([account]),
+      acquireTokenSilent: vi.fn().mockRejectedValue(new Error("network down")),
+      acquireTokenPopup,
+      acquireTokenRedirect: vi.fn(),
+    } as unknown as IPublicClientApplication;
+
+    await expect(acquireApiAccessToken(instance, appConfig)).resolves.toBeNull();
+    expect(acquireTokenPopup).not.toHaveBeenCalled();
   });
 });
