@@ -204,14 +204,25 @@ data "azuread_service_principal" "msgraph" {
   client_id = "00000003-0000-0000-c000-000000000000" # Microsoft Graph -- every tenant
 }
 
-# count-gated (ADR-015 clause 4, ADR-011 §9): while the identity running
-# this apply lacks the directory right to write an app-role assignment,
-# var.guest_provisioning_enabled stays false, count = 0, and this whole
-# apply still succeeds -- a missing directory permission degrades NW-67 to
-# a later one-line flip instead of blocking Service Bus wiring and mail in
-# the same PR.
+# count-gated (ADR-015 clause 4, ADR-011 §9) on TWO independent conditions,
+# split apart 2026-09-14 after the first real dev apply:
+#
+# 1. var.guest_provisioning_enabled -- the PRODUCT decision: does this
+#    environment provision an Entra B2B guest at invite time at all.
+# 2. var.guest_role_assignment_managed -- the APPLY-PLANE decision: does
+#    Terraform write the grant, or did a Global Administrator already write
+#    it out-of-band. The HCP apply identity is not a directory
+#    administrator, so writing this assignment returned
+#    `Authorization_RequestDenied` and failed the entire run with it --
+#    Service Bus and ACS included.
+#
+# A missing directory right must DEGRADE NW-67, never block the rest of the
+# apply; while both conditions shared one flag it could not, because
+# turning the grant off also turned the product flag off. The grant itself
+# is idempotent in Entra either way; what is not idempotent is Terraform
+# owning a grant it has no right to write.
 resource "azuread_app_role_assignment" "workload_guest_inviter" {
-  count = var.guest_provisioning_enabled ? 1 : 0
+  count = var.guest_provisioning_enabled && var.guest_role_assignment_managed ? 1 : 0
 
   app_role_id         = data.azuread_service_principal.msgraph.app_role_ids["User.Invite.All"]
   principal_object_id = azurerm_user_assigned_identity.workload.principal_id

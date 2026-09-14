@@ -49,14 +49,17 @@ runbook). Nothing in this document relies on the fan-out's own delivery claims.
 
 Run these **in order**. Every step is an explicit act — none is a side effect of a push.
 
+Steps 1 and 2 are the two subscription/directory prerequisites. Both were found the hard way: the first real `dev` apply, on 2026-09-14, failed on both at once and took Service Bus and ACS down with it. Both are one-time acts per subscription/tenant, and neither belongs in Terraform.
+
 | # | What | How |
 |---|---|---|
-| 1 | Merge the wave PR to `main` | `dev` deploys on push to `main` (`backend.yml`, `web.yml`); the image tag is the merged sha — W15-A1 point (a) |
-| 2 | **Apply the infrastructure** (HCP Terraform `raffa-dev`, auto-apply OFF) | `infra.yml` queues the run on merge; a human confirms it in HCP. It must reach `CURRENT` **before** the walk: it carries the Service Bus topic `extraction-events` + subscription `document-processing`, the Worker's scale rule, the two topic-scoped role assignments, the ACS Email managed domain and its `acs-cs` Key Vault secret, and the `Invitations__*`/`ServiceBus__*` env keys on both container apps. **Nothing in the walk works before this apply** — an API deployed without `ServiceBus__FullyQualifiedNamespace` falls back to an in-process channel and logs that fact at startup, and the Worker then consumes nothing |
-| 3 | **Grant the directory permission** | `guest_provisioning_enabled = true` in `infra/environments/dev/variables.tf` creates `azuread_app_role_assignment.workload_guest_inviter` (`User.Invite.All`, application permission, on the workload identity). For a managed identity **this assignment is the admin consent** — there is no portal click — but the identity that runs the apply must hold the directory right to write an app-role assignment (ADR-015 clause 4). If it does not, the flag stays `false`, the apply still succeeds, and A15-4/A15-5/A15-7 run in the `NotConfigured` (link-only) shape: record that, do not fake it |
-| 4 | **Set the two product flags on `dev`** | `Invitations__Mail__Enabled = true` and `Invitations__GuestProvisioning__Enabled = true` (both from `infra/environments/dev/variables.tf`); `demo` keeps both `false` this wave |
-| 5 | One interactive sign-in on deployed `dev` | W15-A1 point (f) — before anything else, because NW-05 fails closed: without a valid token every tenant-scoped route is `401` |
-| 6 | Walk W15-A1, then A15-1 … A15-8, N3b | this document |
+| 1 | **Register the `Microsoft.Communication` resource provider** (once per subscription) | `az provider register --namespace Microsoft.Communication --wait`. It is not in the `azurerm` provider's default registration set, so without it `modules/communication` fails the apply with `MissingSubscriptionRegistration` (409) on both the Communication Service and the Email Service. **Done on subscription `47fb604b-85fa-4eb5-916d-78c064a7a08f` on 2026-09-14** — `az provider show -n Microsoft.Communication --query registrationState -o tsv` must print `Registered` before step 3 |
+| 2 | **Grant the directory permission out-of-band** (once per tenant, by a Global Administrator) | The workload identity needs the Microsoft Graph **application** permission `User.Invite.All`. For a managed identity that app-role assignment **is** the admin consent — there is no portal click — but the identity running the HCP apply is not a directory administrator and gets `Authorization_RequestDenied`. So a Global Administrator writes it directly: `az rest --method post --url "https://graph.microsoft.com/v1.0/servicePrincipals/264242da-e217-4aae-8cd7-48f3f32f4f0c/appRoleAssignedTo" --headers "Content-Type=application/json" --body '{"principalId":"<workload-identity-principalId>","resourceId":"264242da-e217-4aae-8cd7-48f3f32f4f0c","appRoleId":"09850681-111b-4a89-9bed-3f2cae46d706"}'`. On `dev` the principal id is `e3baf9d5-d1e8-4520-aafa-642b6bd29c91` (`az identity show -g rg-raffa-dev -n id-raffa-dev-workload --query principalId -o tsv`); `264242da-…` is this tenant's Microsoft Graph service principal and `09850681-…` is `User.Invite.All`. Idempotent, outside Terraform state, nothing to import. `var.guest_role_assignment_managed = false` (both roots) is what keeps Terraform from trying to own it. **Skipping this step is legitimate** — the apply still succeeds and A15-4/A15-5/A15-7 then run in the `NotConfigured` (link-only) shape: record that, do not fake it |
+| 3 | Merge the wave PR to `main` | `dev` deploys on push to `main` (`backend.yml`, `web.yml`); the image tag is the merged sha — W15-A1 point (a) |
+| 4 | **Apply the infrastructure** (HCP Terraform `raffa-dev`, auto-apply OFF) | `infra.yml` queues the run on merge; a human confirms it in HCP. It must reach `CURRENT` **before** the walk: it carries the Service Bus topic `extraction-events` + subscription `document-processing`, the Worker's scale rule, the two topic-scoped role assignments, the ACS Email managed domain and its `acs-cs` Key Vault secret, and the `Invitations__*`/`ServiceBus__*` env keys on both container apps. **Nothing in the walk works before this apply** — an API deployed without `ServiceBus__FullyQualifiedNamespace` falls back to an in-process channel and logs that fact at startup, and the Worker then consumes nothing |
+| 5 | **Check the two product flags on `dev`** | `invitation_mail_enabled` and `guest_provisioning_enabled` are both `true` in `infra/environments/dev/variables.tf` already, so step 4 publishes `Invitations__Mail__Enabled` and `Invitations__GuestProvisioning__Enabled` to the API app. Confirm them on the running revision rather than assuming; `demo` keeps both `false` this wave |
+| 6 | One interactive sign-in on deployed `dev` | W15-A1 point (f) — before anything else, because NW-05 fails closed: without a valid token every tenant-scoped route is `401` |
+| 7 | Walk W15-A1, then A15-1 … A15-8, N3b | this document |
 
 ### 0.4 The values every command below needs
 
@@ -198,11 +201,17 @@ Pass: 2–3 hold; the audit trail has `workspace.invitation.mail_failed` then `.
 
 ## A15-7 — the directory permission missing: a named error, an audit row, no invitation claiming "sent" (NW-67, NW-69)
 
-1. Remove the permission on purpose: `guest_provisioning_enabled = false` **keeps the flag
-   `Invitations__GuestProvisioning__Enabled` true** only if you set it by hand — instead, set
-   the Terraform variable `guest_provisioning_enabled = false` (destroys the app-role
-   assignment) **and** override `Invitations__GuestProvisioning__Enabled = true` on the API
-   container app for the walk (`az containerapp update … --set-env-vars`).
+1. Remove the permission on purpose. Since 2026-09-14 the grant is **out-of-band**, not a
+   Terraform resource (`var.guest_role_assignment_managed = false`), so revoke it directly and
+   leave both the Terraform flag and `Invitations__GuestProvisioning__Enabled` **true** — that
+   is the whole point of the test: the product believes it may provision guests, the directory
+   disagrees. Find the assignment and delete it:
+   `az rest --method get --url "https://graph.microsoft.com/v1.0/servicePrincipals(appId='b689f28a-875e-498d-922b-fcd52a263e54')/appRoleAssignments" --query "value[?appRoleId=='09850681-111b-4a89-9bed-3f2cae46d706'].id" -o tsv`
+   then
+   `az rest --method delete --url "https://graph.microsoft.com/v1.0/servicePrincipals(appId='b689f28a-875e-498d-922b-fcd52a263e54')/appRoleAssignments/<id>"`.
+   Entra caches the token's roles, so restart the API revision (`az containerapp revision
+   restart`) or wait for the cached app token to expire before step 2, otherwise the old
+   permission is still in force and the invite succeeds.
 2. Invite a fresh external address. The pane shows **"Raffa.ai is not allowed to add guests to
    your company directory yet. A tenant administrator has to approve that permission."** with
    **"No invitation was created."** beneath it; the response is `502 { "failureReason":
@@ -210,8 +219,8 @@ Pass: 2–3 hold; the audit trail has `workspace.invitation.mail_failed` then `.
 3. `GET $API/api/workspaces/$TENANT/members`: the address is not there.
    Audit: one `workspace.guest.provisioning_failed` row with `reason=consent_missing` and the
    Graph `request-id`; **no** `workspace.invitation.issued` row for that address.
-4. Restore the assignment (flag back to `true`, apply) and remove the manual override; invite
-   the same address again → `201`, `sent` — the slot was never taken.
+4. Restore the grant with the §0.3 step 2 command, restart the API revision, and invite the
+   same address again → `201`, `sent` — the slot was never taken.
 
 Pass: a 502 leaves nothing behind and the retry succeeds without a revoke.
 

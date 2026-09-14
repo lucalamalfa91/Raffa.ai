@@ -33,3 +33,18 @@ variable "guest_provisioning_enabled" {
   type        = bool
   default     = false
 }
+
+# Fix 2026-09-14 (first real dev apply of w15): the app-role assignment and
+# the product feature are two different decisions and must be gated
+# separately. The identity running the HCP apply is NOT a directory
+# administrator -- writing an app-role assignment returned
+# `Authorization_RequestDenied` and took the whole apply down with it,
+# including Service Bus and ACS. Set this false when a Global Administrator
+# has granted User.Invite.All out-of-band (the path infra/README.md already
+# called "preferably"); guest_provisioning_enabled then still publishes the
+# product flag, and Terraform simply does not manage the grant.
+variable "guest_role_assignment_managed" {
+  description = "Whether Terraform manages the Graph User.Invite.All app-role assignment for the workload identity. false = a Global Administrator granted it out-of-band; the grant stays outside state and the apply needs no directory right."
+  type        = bool
+  default     = true
+}
