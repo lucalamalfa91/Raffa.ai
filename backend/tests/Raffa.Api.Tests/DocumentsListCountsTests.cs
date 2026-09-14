@@ -108,6 +108,32 @@ public sealed class DocumentsListCountsTests : IClassFixture<RaffaApiFactory>
         AssertCounts(rejected.RootElement, all: 1, needsAttention: 0, needsReview: 0, processing: 0, rejected: 1);
     }
 
+    /// <summary>Fix 2026-09-14, after the first real twenty-file batch on dev: the list is the work
+    /// queue. Rows still in flight come first in the order the Worker will take them (oldest first),
+    /// so the top row is the one being worked on now and the first to leave; terminal rows follow,
+    /// newest first. A newest-first list changed from the bottom and looked frozen for minutes.</summary>
+    [Fact]
+    public async Task The_list_is_in_queue_order_in_flight_oldest_first_then_terminal_newest_first()
+    {
+        var tenantId = TenantId.New();
+        Document At(Document d, int minutesAgo) { d.CreatedAt = Now.AddMinutes(-minutesAgo); return d; }
+        await SeedDocumentsAsync(
+            At(NewDocument(tenantId, DocumentProcessingStatus.Completed, "done-old.pdf"), 60),
+            At(NewDocument(tenantId, DocumentProcessingStatus.Uploaded, "queued-first.pdf"), 5),
+            At(NewDocument(tenantId, DocumentProcessingStatus.Processing, "working-now.pdf"), 6),
+            At(NewDocument(tenantId, DocumentProcessingStatus.Uploaded, "queued-last.pdf"), 4),
+            At(NewDocument(tenantId, DocumentProcessingStatus.NeedsReview, "review-new.pdf"), 2),
+            At(NewDocument(tenantId, DocumentProcessingStatus.Completed, "done-new.pdf"), 1));
+
+        using var body = await GetAsync("/api/documents", tenantId);
+        var order = body.RootElement.GetProperty("items").EnumerateArray()
+            .Select(i => i.GetProperty("fileName").GetString()!).ToArray();
+
+        Assert.Equal(
+            ["working-now.pdf", "queued-first.pdf", "queued-last.pdf", "done-new.pdf", "review-new.pdf", "done-old.pdf"],
+            order);
+    }
+
     [Fact]
     public async Task An_empty_tenant_reports_five_zeros_present_not_absent()
     {
