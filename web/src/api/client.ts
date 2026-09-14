@@ -285,15 +285,16 @@ export interface UploadDocumentResult {
   ok: boolean;
   /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
   statusCode: number | null;
-  /** The stored document (already processed -- see `ApiClient.uploadDocument`'s own doc comment), present only when `ok` is true. */
+  /** The stored, queued document (`processingStatus: "Uploaded"`, `contractId: null` -- see `ApiClient.uploadDocument`'s own doc comment), present only when `ok` is true. */
   document: UploadedDocument | null;
   /**
-   * The admission gate's own structured rejection, present only on a real `422` (task
-   * E13/F04/US01/T01) -- `error` below stays `null` in that case; a 413/415/generic 400/5xx keeps
-   * using `error` (a plain string) with `rejection: null`, the same split `getQuoteAssessment`'s own
-   * "real body vs bare empty 404" distinction already establishes for a different status pair.
-   * `src/routes/documents/uploadPipeline.ts#getRejectionCopy` maps `reason` onto the requirements'
-   * own longer "Not added" sentence -- this field is never rendered from `hint` directly.
+   * The admission gate's structured rejection, present only on a `422` (task E13/F04/US01/T01) --
+   * `error` below stays `null` in that case; a 413/415/generic 400/5xx keeps using `error` (a plain
+   * string) with `rejection: null`. Since task E16/F02/US03/T01 (ADR-027 §D6) the content gate runs
+   * on the Worker and the upload endpoint no longer emits a 422 at all -- the refusal is a
+   * `Rejected` row with a `rejectionReason` on `listDocuments`, mapped by
+   * `src/routes/documents/uploadPipeline.ts#getRejectionReasonCopy`. The field stays typed off the
+   * still-declared 422 so this shape keeps compiling; it is always `null` on the wire now.
    */
   rejection: RejectedUploadBody | null;
   /** Plain-language failure reason (400/413/415 message, HTTP status text, or network-failure cause), present only when `ok` is false and this was not a structured 422. */
@@ -307,8 +308,8 @@ export interface UploadDocumentResult {
 // yet ... belongs to whichever future task builds ... the document table /
 // status read-back" -- that task is this one. `ReadBackDocument` carries
 // `documentType`, which `UploadedDocument` (the POST response) does not --
-// see src/routes/documents/documentStore.ts for why the document table
-// re-fetches this instead of only trusting the upload response.
+// since wave w15 the 201 carries no verdict at all (the Worker classifies
+// afterwards), so the list/read-back is the only source of the type.
 type GetDocumentResponses = paths["/api/documents/{id}"]["get"]["responses"];
 export type ReadBackDocument = GetDocumentResponses[200]["content"]["application/json"];
 export type DocumentType = ReadBackDocument["documentType"];
@@ -325,8 +326,8 @@ export interface GetDocumentResult {
 }
 
 // Task E13/F09/US01/T03 (web-documents-v2): `listDocuments`, wrapping `GET /api/documents` -- the
-// server-side list that replaces `src/routes/documents/documentStore.ts`'s own `sessionStorage`
-// tracking (R-DOC-06 AC-1 "reloading the browser shows the same list as before"). Documented ahead
+// server-side list that replaced the web's own `sessionStorage` tracking (deleted outright in wave
+// w15, task E16/F03/US01/T01) (R-DOC-06 AC-1 "reloading the browser shows the same list as before"). Documented ahead
 // of the backend counterpart (epic-13/feature-04) landing in this worktree -- see
 // web/openapi/raffa-api.v1.json's own `listDocuments` operation description for the full
 // provenance. `DocumentListItemBody["documentType"]` already carries the widened admitted-type
@@ -1127,16 +1128,18 @@ export interface ApiClient {
    * src/routes/signin/workspaceStore.ts's own doc comment, which names this
    * exact call as the reason it keeps the current workspace id available.
    *
-   * The backend runs the whole parse -> classify -> extract pipeline
-   * *synchronously* before responding (task E02/F06/US01/T01's own
-   * description in openapi/raffa-api.v1.json), so a resolved call already
-   * carries a terminal (or near-terminal) `processingStatus` -- see
-   * src/routes/documents/uploadPipeline.ts for how the UI turns that into
-   * the 6-stage pipeline animation + result card. Same never-throws shape as
-   * `createWorkspace`: a 400 (bad file/tenant) is a normal, expected outcome
-   * the caller renders inline, not an exception.
+   * Since task E16/F02/US03/T01 (wave w15, ADR-027 §D1) the request returns the
+   * moment the bytes are stored: the 201 carries `processingStatus: "Uploaded"`
+   * and a null `contractId`, and the Worker runs the content gate and the
+   * parse -> classify -> extract pipeline afterwards -- poll `listDocuments` /
+   * `getDocument` for the terminal status (`src/routes/documents/useDocumentsList.ts`).
+   * `options.signal` is the caller's abort signal (ADR-012 w15 §5: one
+   * client-owned upload deadline, `uploadPipeline.ts#UPLOAD_DEADLINE_MS`); an
+   * abort resolves like any other transport failure (`statusCode: null`).
+   * Same never-throws shape as `createWorkspace`: a 400 (bad file/tenant) is
+   * a normal, expected outcome the caller renders inline, not an exception.
    */
-  uploadDocument(tenantId: string, file: File): Promise<UploadDocumentResult>;
+  uploadDocument(tenantId: string, file: File, options?: { signal?: AbortSignal }): Promise<UploadDocumentResult>;
   /**
    * Calls `GET /api/documents/{id}` (operationId `getDocument`) -- the
    * OpenAPI document's own description is "Read back one document's
@@ -1150,8 +1153,8 @@ export interface ApiClient {
   getDocument(tenantId: string, id: string): Promise<GetDocumentResult>;
   /**
    * Calls `GET /api/documents` (operationId `listDocuments`) -- the server-side list behind
-   * `src/routes/documents/` (R-DOC-06), replacing `documentStore.ts`'s own `sessionStorage`
-   * tracking. Same never-throws shape as every other call here. `query` is optional and, when
+   * `src/routes/documents/` (R-DOC-06) and, since wave w15, the tenant-wide `counts` the rail badge
+   * and every "not ready yet" surface read. Same never-throws shape as every other call here. `query` is optional and, when
    * omitted, fetches the tenant's whole list unfiltered -- see `ListDocumentsQuery`'s own doc
    * comment for why the attention/all toggle is not this parameter.
    */
@@ -1741,7 +1744,7 @@ export function createApiClient(
       };
     },
 
-    async uploadDocument(tenantId, file) {
+    async uploadDocument(tenantId, file, options = {}) {
       const formData = new FormData();
       // `file` is already a `File` (extends `Blob` with its own `.name`), so
       // FormData uses that name automatically -- no third `filename` arg
@@ -1755,6 +1758,7 @@ export function createApiClient(
           headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           body: formData,
           cache: "no-store",
+          signal: options.signal,
         });
       } catch (cause) {
         return {

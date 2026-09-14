@@ -62,7 +62,12 @@ function mockApiClient(result: Promise<HealthCheckResult> | HealthCheckResult): 
     // so an unconfigured vi.fn() would throw the moment that call's .then() runs, the same
     // "unconditional shell-level call needs a resolved default" reasoning getPortfolio's own comment
     // below already gives.
-    listDocuments: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, page: { items: [], page: 1, pageSize: 100, totalCount: 0 }, error: null }),
+    listDocuments: vi.fn().mockResolvedValue({
+      ok: true,
+      statusCode: 200,
+      page: { items: [], page: 1, pageSize: 100, totalCount: 0, counts: { all: 0, needsAttention: 0, needsReview: 0, processing: 0, rejected: 0 } },
+      error: null,
+    }),
     getDocumentPreviewUrl: vi.fn(),
     reprocessDocument: vi.fn(),
     deleteDocument: vi.fn(),

@@ -1022,10 +1022,11 @@
                     },
                     "counts": {
                       "type": "object",
-                      "description": "ADR-027 §D7: tenant-wide, independent of `status`/`page` -- the same four numbers whichever page or filter was requested, so the rail badge and the segmented toggle never disagree with the list. `needsAttention` (`NeedsReview` + `Failed`) and `processing` (`Uploaded` + `Processing`) are overlapping projections of `all`, not a partition of it; `rejected` sits outside `all` altogether (a rejected file was never added). No sum holds across the four, and a client must not derive \"askable\" from `all - needsAttention`.",
+                      "description": "ADR-027 §D7 with §C5/§C9: tenant-wide, independent of `status`/`page` -- the same five numbers whichever page or filter was requested, so the rail badge, the segmented toggle and the summary line never disagree with the list. Five overlapping projections of one grouped query, never a partition: `needsAttention` (not `Completed`, not `Rejected`) contains `processing` (`Uploaded` + `Processing`), and `needsReview` sits inside both; `rejected` sits outside `all` altogether (a rejected file was never added). No sum holds, every surface reads exactly one member, and a client must not derive \"askable\" from `all - needsAttention` -- askability is the contract-level number `GET /api/workspaces` already carries.",
                       "required": [
                         "all",
                         "needsAttention",
+                        "needsReview",
                         "processing",
                         "rejected"
                       ],
@@ -1036,7 +1037,11 @@
                         },
                         "needsAttention": {
                           "type": "integer",
-                          "description": "Documents in `NeedsReview` or `Failed` -- the definition the web's own \"Needs your attention\" toggle already applied client-side, now computed once on the server; the rail badge reads this number."
+                          "description": "Documents that are not `Completed` and not `Rejected` -- `Uploaded` + `Processing` + `NeedsReview` + `Failed` (ADR-027 §C9): exactly the set the web's own \"Needs your attention\" filter lists, computed once on the server so the chip's number and the rows it filters to are the same set. Contains `processing`."
+                        },
+                        "needsReview": {
+                          "type": "integer",
+                          "description": "Documents in `NeedsReview` alone (ADR-027 §C5) -- the \"K waiting for your review\" number; inside both `all` and `needsAttention`."
                         },
                         "processing": {
                           "type": "integer",

@@ -19,7 +19,15 @@ function mockApiClient(getPortfolio: ApiClient["getPortfolio"] = vi.fn()): ApiCl
     acceptInvitation: vi.fn(),
     uploadDocument: vi.fn(),
     getDocument: vi.fn(),
-    listDocuments: vi.fn(),
+    // Task E16/F03/US01/T01 (ADR-020 w15 §2.2): the zero state reads the server's document counts
+    // through a one-row listDocuments call, so it needs a resolved default -- an empty tenant, which
+    // keeps every pre-existing zero-state assertion (the "Upload one to start." sentence) unchanged.
+    listDocuments: vi.fn().mockResolvedValue({
+      ok: true,
+      statusCode: 200,
+      page: { items: [], page: 1, pageSize: 1, totalCount: 0, counts: { all: 0, needsAttention: 0, needsReview: 0, processing: 0, rejected: 0 } },
+      error: null,
+    }),
     getDocumentPreviewUrl: vi.fn(),
     reprocessDocument: vi.fn(),
     deleteDocument: vi.fn(),
@@ -149,6 +157,90 @@ describe("PortfolioRoute (V2, screens-v2.md #6 / markup.html PORTFOLIO block)", 
     expect(screen.getByText("Lights up from validated contracts")).toBeInTheDocument();
     expect(screen.queryByRole("table")).toBeNull();
     expect(screen.queryByRole("button", { name: "More columns" })).toBeNull();
+  });
+
+  // Task E16/F03/US01/T01 (ADR-020 w15 §2.2, ADR-012 w15 §4): the zero state has three variants
+  // and no new string, selected by the server's document counts -- never by the empty page.
+  describe("zero-state variants read the server's document counts", () => {
+    function countsPage(counts: { all: number; needsAttention: number; needsReview: number; processing: number; rejected: number }) {
+      return { ok: true, statusCode: 200, page: { items: [], page: 1, pageSize: 1, totalCount: counts.all, counts }, error: null };
+    }
+
+    it("says the documents are still being processed, with 'Go to Documents', while any is in flight", async () => {
+      const client = mockApiClient(vi.fn().mockResolvedValue(ok([])));
+      (client.listDocuments as ReturnType<typeof vi.fn>).mockResolvedValue(
+        countsPage({ all: 2, needsAttention: 2, needsReview: 0, processing: 2, rejected: 0 }),
+      );
+      renderPortfolio(client);
+
+      expect(await screen.findByText("Your documents are still being processed. The portfolio lights up from validated contracts.")).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Nothing to triage yet" })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Go to Documents" })).toHaveAttribute("href", "/documents");
+      expect(screen.queryByText(/Upload one to start/)).toBeNull();
+    });
+
+    it("drops 'Upload one to start.' once documents are held but none is in flight or validated", async () => {
+      const client = mockApiClient(vi.fn().mockResolvedValue(ok([])));
+      (client.listDocuments as ReturnType<typeof vi.fn>).mockResolvedValue(
+        countsPage({ all: 1, needsAttention: 1, needsReview: 0, processing: 0, rejected: 0 }),
+      );
+      renderPortfolio(client);
+
+      expect(await screen.findByRole("link", { name: "Go to Documents" })).toHaveAttribute("href", "/documents");
+      expect(screen.getByText("The portfolio lights up from validated contracts.")).toBeInTheDocument();
+      expect(screen.queryByText(/Upload one to start/)).toBeNull();
+    });
+
+    it("keeps the shipped sentence for a tenant holding only refused files -- `all` excludes Rejected", async () => {
+      const client = mockApiClient(vi.fn().mockResolvedValue(ok([])));
+      (client.listDocuments as ReturnType<typeof vi.fn>).mockResolvedValue(
+        countsPage({ all: 0, needsAttention: 0, needsReview: 0, processing: 0, rejected: 2 }),
+      );
+      renderPortfolio(client);
+
+      expect(await screen.findByText("The portfolio lights up from validated contracts. Upload one to start.")).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Upload a contract" })).toBeInTheDocument();
+    });
+
+    it("stops re-reading after five minutes without a change and offers 'Check again' beside the CTA", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        const getPortfolio = vi.fn().mockResolvedValue(ok([]));
+        const client = mockApiClient(getPortfolio);
+        const listDocuments = client.listDocuments as ReturnType<typeof vi.fn>;
+        listDocuments.mockResolvedValue(countsPage({ all: 1, needsAttention: 1, needsReview: 0, processing: 1, rejected: 0 }));
+        renderPortfolio(client);
+
+        await screen.findByText(/still being processed/);
+        const callsBefore = listDocuments.mock.calls.length;
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(4_000);
+        });
+        expect(listDocuments.mock.calls.length).toBeGreaterThan(callsBefore);
+
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(5 * 60_000);
+        });
+        expect(await screen.findByText("Nothing has changed for five minutes, so this page stopped checking for updates.")).toBeInTheDocument();
+        // The sentence and the primary CTA are unchanged; nothing is re-labelled.
+        expect(screen.getByText(/still being processed/)).toBeInTheDocument();
+        expect(screen.getByRole("link", { name: "Go to Documents" })).toBeInTheDocument();
+
+        const callsWhenPaused = listDocuments.mock.calls.length;
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(10_000);
+        });
+        expect(listDocuments.mock.calls.length).toBe(callsWhenPaused);
+
+        fireEvent.click(screen.getByRole("button", { name: "Check again" }));
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(0);
+        });
+        expect(listDocuments.mock.calls.length).toBe(callsWhenPaused + 1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   it("error state: a 503 renders a plain-language message with a Retry that re-fetches", async () => {

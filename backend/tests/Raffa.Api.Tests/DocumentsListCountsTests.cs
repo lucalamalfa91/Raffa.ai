@@ -59,16 +59,18 @@ public sealed class DocumentsListCountsTests : IClassFixture<WebApplicationFacto
             NewDocument(otherTenant, DocumentProcessingStatus.Rejected, "not-yours-either.pdf"));
 
         // A filtered, one-row page: the page is scoped, the counts are not (ADR-027 §D7 "tenant-wide,
-        // never page-wide" — a page-scoped count would be a new lie at page 2).
+        // never page-wide" — a page-scoped count would be a new lie at page 2). `needsAttention` is
+        // "not Completed and not Rejected" (§C9), so it contains the two processing rows; `needsReview`
+        // (§C5) is the one NeedsReview row inside it. Overlapping projections: no sum is asserted.
         using var page = await GetAsync($"/api/documents?status=Completed&pageSize=1", tenantId);
         Assert.Equal(1, page.RootElement.GetProperty("totalCount").GetInt32());
         Assert.Single(page.RootElement.GetProperty("items").EnumerateArray());
-        AssertCounts(page.RootElement, all: 5, needsAttention: 2, processing: 2, rejected: 1);
+        AssertCounts(page.RootElement, all: 5, needsAttention: 4, needsReview: 1, processing: 2, rejected: 1);
 
-        // And the unfiltered read says exactly the same four numbers.
+        // And the unfiltered read says exactly the same five numbers.
         using var all = await GetAsync("/api/documents", tenantId);
         Assert.Equal(6, all.RootElement.GetProperty("totalCount").GetInt32());
-        AssertCounts(all.RootElement, all: 5, needsAttention: 2, processing: 2, rejected: 1);
+        AssertCounts(all.RootElement, all: 5, needsAttention: 4, needsReview: 1, processing: 2, rejected: 1);
 
         // rejectionReason is present-and-null on every row that was not rejected — one row shape
         // for the screen (the same reason supplierName/stage are never omitted keys).
@@ -103,24 +105,25 @@ public sealed class DocumentsListCountsTests : IClassFixture<WebApplicationFacto
         Assert.Equal("Rejected", item.GetProperty("processingStatus").GetString());
         Assert.Equal("no_readable_text", item.GetProperty("rejectionReason").GetString());
         Assert.Equal(JsonValueKind.Null, item.GetProperty("stage").ValueKind);
-        AssertCounts(rejected.RootElement, all: 1, needsAttention: 0, processing: 0, rejected: 1);
+        AssertCounts(rejected.RootElement, all: 1, needsAttention: 0, needsReview: 0, processing: 0, rejected: 1);
     }
 
     [Fact]
-    public async Task An_empty_tenant_reports_four_zeros_present_not_absent()
+    public async Task An_empty_tenant_reports_five_zeros_present_not_absent()
     {
         using var body = await GetAsync("/api/documents", TenantId.New());
 
         Assert.Equal(0, body.RootElement.GetProperty("totalCount").GetInt32());
         Assert.Empty(body.RootElement.GetProperty("items").EnumerateArray());
-        AssertCounts(body.RootElement, all: 0, needsAttention: 0, processing: 0, rejected: 0);
+        AssertCounts(body.RootElement, all: 0, needsAttention: 0, needsReview: 0, processing: 0, rejected: 0);
     }
 
-    private static void AssertCounts(JsonElement root, int all, int needsAttention, int processing, int rejected)
+    private static void AssertCounts(JsonElement root, int all, int needsAttention, int needsReview, int processing, int rejected)
     {
         var counts = root.GetProperty("counts");
         Assert.Equal(all, counts.GetProperty("all").GetInt32());
         Assert.Equal(needsAttention, counts.GetProperty("needsAttention").GetInt32());
+        Assert.Equal(needsReview, counts.GetProperty("needsReview").GetInt32());
         Assert.Equal(processing, counts.GetProperty("processing").GetInt32());
         Assert.Equal(rejected, counts.GetProperty("rejected").GetInt32());
     }

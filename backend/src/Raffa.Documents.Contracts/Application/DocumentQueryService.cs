@@ -112,9 +112,17 @@ public sealed class DocumentQueryService(
             .ConfigureAwait(false);
         int Of(params DocumentProcessingStatus[] statuses) =>
             byStatus.Where(b => statuses.Contains(b.Status)).Sum(b => b.Count);
+        // ADR-027 §C9: `needsAttention` is "not Completed and not Rejected" -- the set the screen's
+        // own default filter lists -- so it contains `processing`; §C5's `needsReview` sits inside
+        // both. Five overlapping projections of one grouped query, never a partition.
         var counts = new DocumentCounts(
             All: byStatus.Where(b => b.Status != DocumentProcessingStatus.Rejected).Sum(b => b.Count),
-            NeedsAttention: Of(DocumentProcessingStatus.NeedsReview, DocumentProcessingStatus.Failed),
+            NeedsAttention: Of(
+                DocumentProcessingStatus.Uploaded,
+                DocumentProcessingStatus.Processing,
+                DocumentProcessingStatus.NeedsReview,
+                DocumentProcessingStatus.Failed),
+            NeedsReview: Of(DocumentProcessingStatus.NeedsReview),
             Processing: Of(DocumentProcessingStatus.Uploaded, DocumentProcessingStatus.Processing),
             Rejected: Of(DocumentProcessingStatus.Rejected));
 

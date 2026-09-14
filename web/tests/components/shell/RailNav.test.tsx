@@ -3,7 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import RailNav from "../../../src/components/shell/RailNav";
-import { rememberDocument } from "../../../src/routes/documents/documentStore";
+import type { DocumentCountsBody } from "../../../src/components/shell/useDocumentCounts";
 import type { ApiClient, ConversationSummaryBody } from "../../../src/api/client";
 
 const WORKSPACE_ID = "11111111-1111-1111-1111-111111111111";
@@ -69,6 +69,7 @@ function renderRail(
     role: "admin" | "procurement";
     kbReady: boolean;
     validatedContractCount: number;
+    documentCounts: DocumentCountsBody | null;
     onSignOut: () => void;
     apiClient: ApiClient;
     initialEntry: string;
@@ -78,6 +79,7 @@ function renderRail(
     role = "admin",
     kbReady = false,
     validatedContractCount = 0,
+    documentCounts = null,
     onSignOut = vi.fn(),
     apiClient = mockApiClient(),
     initialEntry = "/ask",
@@ -90,11 +92,16 @@ function renderRail(
         userLabel="user@example.test"
         kbReady={kbReady}
         validatedContractCount={validatedContractCount}
+        documentCounts={documentCounts}
         onSignOut={onSignOut}
         apiClient={apiClient}
       />
     </MemoryRouter>,
   );
+}
+
+function counts(overrides: Partial<DocumentCountsBody> = {}): DocumentCountsBody {
+  return { all: 0, needsAttention: 0, needsReview: 0, processing: 0, rejected: 0, ...overrides };
 }
 
 describe("RailNav (V2 two-tier rail, ADR-024 amendment; task E13/F09/US01/T01, gap G-IA-V2)", () => {
@@ -133,41 +140,32 @@ describe("RailNav (V2 two-tier rail, ADR-024 amendment; task E13/F09/US01/T01, g
     expect(newChat).toHaveAttribute("href", "/ask");
   });
 
+  // Task E16/F03/US01/T01 (ADR-012 w15 §6, NW-10): the badge reads the server's `counts`, fetched
+  // once by AppShell (`useDocumentCounts`) and passed down -- the sessionStorage tracker is gone.
   describe("Documents badge (`app.jsx`: needReview -> 'N to review' (attention) else docs.length -> 'N docs')", () => {
-    it("shows no badge when this browser has not tracked any document yet", () => {
-      renderRail();
+    it("shows no badge while the shell has not confirmed a count (null), never a fabricated '0 docs'", () => {
+      renderRail({ documentCounts: null });
 
       const documentsLink = screen.getByText("Documents").closest("a")!;
       expect(documentsLink).toHaveTextContent(/^Documents$/);
     });
 
-    it("shows a muted 'N docs' count once documents are tracked, none needing review", () => {
-      rememberDocument({
-        id: "doc-1",
-        contractId: "contract-1",
-        fileName: "msa.pdf",
-        documentType: "Msa",
-        processingStatus: "Completed",
-        createdAt: "2026-09-01T00:00:00Z",
-      });
+    it("shows no badge when the tenant holds nothing -- refused files are not held (`all` excludes Rejected)", () => {
+      renderRail({ documentCounts: counts({ rejected: 2 }) });
 
-      renderRail();
+      const documentsLink = screen.getByText("Documents").closest("a")!;
+      expect(documentsLink).toHaveTextContent(/^Documents$/);
+    });
+
+    it("shows a muted 'N docs' count off counts.all when nothing needs review", () => {
+      renderRail({ documentCounts: counts({ all: 1 }) });
 
       const documentsLink = screen.getByText("Documents").closest("a")!;
       expect(documentsLink).toHaveTextContent("1 docs");
     });
 
-    it("shows an attention-toned 'N to review' once at least one tracked document needs review", () => {
-      rememberDocument({
-        id: "doc-1",
-        contractId: "contract-1",
-        fileName: "msa.pdf",
-        documentType: "Msa",
-        processingStatus: "NeedsReview",
-        createdAt: "2026-09-01T00:00:00Z",
-      });
-
-      renderRail();
+    it("shows an attention-toned 'N to review' off counts.needsReview", () => {
+      renderRail({ documentCounts: counts({ all: 4, needsAttention: 3, needsReview: 1, processing: 2 }) });
 
       const documentsLink = screen.getByText("Documents").closest("a")!;
       expect(documentsLink).toHaveTextContent("1 to review");

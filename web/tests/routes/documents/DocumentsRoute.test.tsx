@@ -92,15 +92,17 @@ function docItem(overrides: Partial<DocumentListItemBody> = {}): DocumentListIte
   };
 }
 
-/** Task E16/F02/US03/T01 (ADR-027 §D7): the server's tenant-wide counts, derived here from the
- * page the way the backend derives them from the table -- `all` excludes `Rejected`,
- * `needsAttention` is NeedsReview + Failed, `processing` is Uploaded + Processing. */
+/** Task E16/F02/US03/T01 (ADR-027 §D7, §C5, §C9): the server's tenant-wide counts, derived here
+ * from the page the way the backend derives them from the table -- `all` excludes `Rejected`,
+ * `needsAttention` is "not Completed and not Rejected", `needsReview` is NeedsReview alone,
+ * `processing` is Uploaded + Processing. Overlapping projections, never summed. */
 function countsOf(items: DocumentListItemBody[]): DocumentListPageBody["counts"] {
   const of = (...statuses: DocumentListItemBody["processingStatus"][]) =>
     items.filter((item) => statuses.includes(item.processingStatus)).length;
   return {
     all: items.length - of("Rejected"),
-    needsAttention: of("NeedsReview", "Failed"),
+    needsAttention: of("Uploaded", "Processing", "NeedsReview", "Failed"),
+    needsReview: of("NeedsReview"),
     processing: of("Uploaded", "Processing"),
     rejected: of("Rejected"),
   };
@@ -266,34 +268,54 @@ describe("DocumentsRoute (task E13/F09/US01/T03, web-documents-v2)", () => {
     await waitFor(() => expect(listDocuments).toHaveBeenCalled());
   });
 
-  it("a 422 not_a_contract rejection renders a Not added card with the requirements copy, and the summary count stays unchanged", async () => {
-    const existing = [docItem({ id: "existing-1" })];
-    const uploadDocument = vi.fn().mockResolvedValue({
-      ok: false,
-      statusCode: 422,
-      document: null,
-      rejection: { rejected: true, detectedType: "Other", confidence: 0.91, reason: "not_a_contract", hint: "..." },
-      error: null,
-    });
-    const listDocuments = vi.fn().mockResolvedValue(listOk(existing));
-    renderDocuments(mockApiClient({ uploadDocument, listDocuments }));
+  // Task E16/F03/US01/T01 (ADR-020 w15 §1, §6; ADR-012 w15 §4, §5, §13.5): every number is the
+  // server's `counts`, a refusal is a row, and the optimistic row leaves only on evidence.
+  it("the chips and the summary read the server's counts, never the fetched page", async () => {
+    // One row on the page, fifteen in the tenant: the chips must never say 1 (or 0).
+    const page: DocumentListPageBody = {
+      items: [docItem({ id: "a", processingStatus: "Processing", stage: "Classifying" })],
+      page: 1,
+      pageSize: 100,
+      totalCount: 15,
+      counts: { all: 15, needsAttention: 15, needsReview: 3, processing: 12, rejected: 0 },
+    };
+    renderDocuments(mockApiClient({ listDocuments: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, page, error: null }) }));
 
-    expect(await screen.findByText("1 document · 1 askable")).toBeInTheDocument();
-
-    selectFiles([pdfFile("recipe.pdf")]);
-
-    expect(
-      await screen.findByText(
-        "Not added: this looks like a recipe, not a contract. Raffa.ai only keeps contracts, order forms, quotes and the documents around them. Drop the signed agreement or the supplier's proposal.",
-      ),
-    ).toBeInTheDocument();
-    expect(screen.getByText("Not added")).toHaveClass("tag");
-    // Never becomes a row, and the summary line (server documents only) is unchanged.
-    expect(screen.queryByText("recipe.pdf", { selector: ".document-status-table-filename, .document-status-table-link" })).not.toBeInTheDocument();
-    expect(screen.getByText("1 document · 1 askable")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Needs your attention · 15" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "All documents · 15" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Not added ·/ })).toBeNull();
+    // The summary line has no page-derived "M askable" segment any more (ADR-027 §C5).
+    expect(screen.getByText("15 documents · 3 waiting for your review")).toHaveClass("screen-header-summary");
   });
 
-  it("a 415 rejection renders a Not added card with the server's own format message", async () => {
+  it("a server Rejected row lives under the third chip with the requirements sentence, and 'All documents' never counts it", async () => {
+    const kept = docItem({ id: "existing-1", fileName: "Salesforce_MSA.pdf", processingStatus: "Completed" });
+    const refused = docItem({ id: "refused-1", fileName: "recipe.pdf", processingStatus: "Rejected", contractId: null, rejectionReason: "not_a_contract" });
+    const listDocuments = vi.fn().mockImplementation(async (_tenantId: string, query?: { status?: string }) =>
+      listOk(query?.status === "Rejected" ? [refused] : [kept, refused]),
+    );
+    renderDocuments(mockApiClient({ listDocuments }));
+
+    expect(await screen.findByText("1 document")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "All documents · 1" })).toBeInTheDocument();
+    const chip = screen.getByRole("button", { name: "Not added · 1" });
+    expect(screen.queryByText("recipe.pdf")).toBeNull();
+
+    await userEvent.click(chip);
+
+    expect(await screen.findByText("recipe.pdf")).toBeInTheDocument();
+    expect(screen.getByText("Not added")).toHaveClass("tag", "tag-outline");
+    expect(
+      screen.getByText(
+        "This looks like a recipe, not a contract. Raffa.ai only keeps contracts, order forms, quotes and the documents around them. Drop the signed agreement or the supplier's proposal.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Files Raffa.ai did not keep — never counted, never askable.")).toBeInTheDocument();
+    expect(listDocuments).toHaveBeenCalledWith(WORKSPACE_ID, { status: "Rejected", pageSize: 100 });
+    expect(screen.queryByText("Salesforce_MSA.pdf")).toBeNull();
+  });
+
+  it("a 415 refusal renders one local 'Not added' row with the designed sentence -- never the server's prose, never a silent drop", async () => {
     const uploadDocument = vi.fn().mockResolvedValue({
       ok: false,
       statusCode: 415,
@@ -306,7 +328,99 @@ describe("DocumentsRoute (task E13/F09/US01/T03, web-documents-v2)", () => {
     await screen.findByText("First your contracts. Then your questions.");
     selectFiles([pdfFile("archive.zip")]);
 
-    expect(await screen.findByText("Raffa reads PDF, Word, Excel and scanned images")).toBeInTheDocument();
+    expect(await screen.findByText("Raffa.ai cannot open this file type. Try the original PDF, or a clear scan of the signed pages.")).toBeInTheDocument();
+    expect(screen.getByText("archive.zip")).toBeInTheDocument();
+    expect(screen.getByText("Not added")).toHaveClass("tag", "tag-outline");
+    expect(screen.queryByText("Raffa reads PDF, Word, Excel and scanned images")).toBeNull();
+    expect(screen.queryByRole("button", { name: /dismiss/i })).toBeNull();
+    expect(screen.queryByText("Uploading…")).toBeNull();
+  });
+
+  it("an oversize file renders one local 'Not added' row without any API call", async () => {
+    const uploadDocument = vi.fn();
+    renderDocuments(mockApiClient({ uploadDocument, listDocuments: vi.fn().mockResolvedValue(emptyPage()) }));
+
+    await screen.findByText("First your contracts. Then your questions.");
+    const huge = new File([new Uint8Array(1)], "huge.pdf", { type: "application/pdf" });
+    Object.defineProperty(huge, "size", { value: 50 * 1024 * 1024 + 1 });
+    selectFiles([huge]);
+
+    expect(await screen.findByText("This file is larger than 50 MB, the most Raffa.ai accepts.")).toBeInTheDocument();
+    expect(screen.getByText("huge.pdf")).toBeInTheDocument();
+    expect(uploadDocument).not.toHaveBeenCalled();
+  });
+
+  it("hands the optimistic row off only once the server list carries its id -- never a gap between drop and reload", async () => {
+    const stored = docItem({ id: "id-A.pdf", fileName: "A.pdf", processingStatus: "Uploaded", stage: null, contractId: null });
+    let listCalls = 0;
+    const listDocuments = vi.fn().mockImplementation(async () => {
+      listCalls += 1;
+      // The initial read is empty; the read the 201 triggers carries the row.
+      return listCalls === 1 ? emptyPage() : listOk([stored]);
+    });
+    const uploadDocument = vi.fn().mockResolvedValue(uploadedOk({ id: "id-A.pdf", fileName: "A.pdf", contractId: null, processingStatus: "Uploaded" }));
+    renderDocuments(mockApiClient({ uploadDocument, listDocuments }));
+
+    await screen.findByText("First your contracts. Then your questions.");
+    selectFiles([pdfFile("A.pdf")]);
+
+    expect(screen.getByText("A.pdf")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Queued…")).toBeInTheDocument());
+    // Exactly one A.pdf: the server row replaced the local one, with no moment in between.
+    expect(screen.getAllByText("A.pdf")).toHaveLength(1);
+    expect(screen.queryByText("Uploading…")).toBeNull();
+  });
+
+  it("keeps the optimistic row when the reload after the 201 fails, showing the error inline", async () => {
+    let listCalls = 0;
+    const listDocuments = vi.fn().mockImplementation(async () => {
+      listCalls += 1;
+      return listCalls === 1 ? emptyPage() : { ok: false, statusCode: 503, page: null, error: "Service Unavailable" };
+    });
+    const uploadDocument = vi.fn().mockResolvedValue(uploadedOk({ id: "id-A.pdf", fileName: "A.pdf", contractId: null, processingStatus: "Uploaded" }));
+    renderDocuments(mockApiClient({ uploadDocument, listDocuments }));
+
+    await screen.findByText("First your contracts. Then your questions.");
+    selectFiles([pdfFile("A.pdf")]);
+
+    await waitFor(() => expect(listDocuments).toHaveBeenCalledTimes(2));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/temporarily unavailable/);
+    expect(screen.getByText("A.pdf")).toBeInTheDocument();
+    expect(screen.getByText("Uploading…")).toBeInTheDocument();
+  });
+
+  it("stops polling after five minutes without a change, re-labels nothing, and resumes on 'Check again'", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const listDocuments = vi
+      .fn<ApiClient["listDocuments"]>()
+      .mockResolvedValue(listOk([docItem({ id: "p", fileName: "Stuck.pdf", processingStatus: "Uploaded", stage: null, contractId: null })]));
+    renderDocuments(mockApiClient({ listDocuments }));
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(await screen.findByText("Queued…")).toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+    });
+    expect(await screen.findByText("Nothing has changed for five minutes, so this page stopped checking for updates.")).toBeInTheDocument();
+    expect(screen.getByText("Queued…")).toBeInTheDocument();
+    expect(screen.getByText("Processing")).toHaveClass("tag");
+    expect(screen.queryByText("Failed")).toBeNull();
+
+    const callsWhenPaused = listDocuments.mock.calls.length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(listDocuments).toHaveBeenCalledTimes(callsWhenPaused);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Check again" }));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(listDocuments).toHaveBeenCalledTimes(callsWhenPaused + 1);
+    expect(screen.queryByText(/stopped checking for updates/)).toBeNull();
   });
 
   it("the attention filter hides completed rows and shows the empty message; 'All documents' reveals them", async () => {

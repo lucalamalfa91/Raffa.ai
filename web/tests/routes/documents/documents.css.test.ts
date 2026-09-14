@@ -30,7 +30,6 @@ describe("documents.css (task E13/F09/US01/T03, web-documents-v2)", () => {
   });
 
   it("filenames wrap at word/character-run boundaries, not one glyph per line", () => {
-    expect(ruleBodyFor(css, ".upload-result-filename")).toMatch(/overflow-wrap:\s*anywhere/);
     expect(ruleBodyFor(css, ".document-status-table-filename")).toMatch(/overflow-wrap:\s*anywhere/);
     expect(ruleBodyFor(css, ".document-status-table-link")).toMatch(/overflow-wrap:\s*anywhere/);
   });
@@ -41,9 +40,18 @@ describe("documents.css (task E13/F09/US01/T03, web-documents-v2)", () => {
     expect(ruleBodyFor(css, ".upload-dropzone--list")).toMatch(/padding:\s*14px 18px/);
   });
 
-  it("does not reintroduce a boxed .card on the 'Not added' card (ADR-019: recommendation/provenance only)", () => {
-    const body = ruleBodyFor(css, ".upload-result-card");
-    expect(body).not.toMatch(/\bbackground\b|\bbox-shadow\b/);
+  // Task E16/F03/US01/T01 (ADR-020 w15 §1.3/§6): the "Not added" card is gone -- a refusal is a
+  // row -- so no `.upload-result-*` rule may survive to be re-adopted.
+  it("carries no rule for the retired 'Not added' card", () => {
+    expect(css).not.toMatch(/\.upload-result-/);
+  });
+
+  // ADR-020 w15 §8 / ADR-019 w15 round-3 clause 5: the stopped-poll notice is a list-level `.hint`
+  // + `.btn-secondary` pair, laid out inline, never an alert or an accent treatment.
+  it("lays the updates-paused notice out as an inline hint + control pair, with no accent", () => {
+    const body = ruleBodyFor(css, ".documents-updates-paused");
+    expect(body).toMatch(/display:\s*flex/);
+    expect(body).not.toMatch(/accent|background|border/);
   });
 
   it("the row progress bar is a bare 4px fill, no label baked into the bar itself", () => {

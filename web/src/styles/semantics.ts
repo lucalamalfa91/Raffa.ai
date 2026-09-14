@@ -49,14 +49,18 @@ export function isConfidenceBlocking(confidencePct: number): boolean {
   return confidencePct < 80;
 }
 
-export type DocumentStatus = "completed" | "ready" | "needs_review" | "failed" | "processing";
+export type DocumentStatus = "completed" | "ready" | "needs_review" | "failed" | "processing" | "rejected";
 
 /**
  * Status completed/Ready -> neutral; needs_review -> outline; failed -> accent; processing ->
  * neutral (task E13/F09/US01/T03, web-documents-v2: a document row is visible from the moment it
  * is picked, R-DOC-01 AC-1 -- V1 never rendered a `processing` row in a status tag at all, since its
  * synchronous upload pipeline only ever wrote a table row once a document reached a terminal status;
- * see `raffa-v2/app.jsx`'s own `docRows` map, `processing:{tag:'tag-neutral',...}`).
+ * see `raffa-v2/app.jsx`'s own `docRows` map, `processing:{tag:'tag-neutral',...}`); rejected ->
+ * outline "Not added" (ADR-019 w15 clause 1, task E16/F03/US01/T01: a refusal is a decision about
+ * the file, not a Raffa-side failure the user can retry, so it takes the system's "this row is
+ * about a decision" treatment -- the same `.tag-outline` the retired "Not added" card carried --
+ * and never `.tag-accent`, which stays reserved for `failed`).
  */
 export function getStatusTag(status: DocumentStatus): SemanticTag {
   switch (status) {
@@ -70,6 +74,8 @@ export function getStatusTag(status: DocumentStatus): SemanticTag {
       return { variant: "accent", label: "Failed" };
     case "processing":
       return { variant: "neutral", label: "Processing" };
+    case "rejected":
+      return { variant: "outline", label: "Not added" };
   }
 }
 

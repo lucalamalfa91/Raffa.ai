@@ -9,7 +9,7 @@ import type {
   RenewalPipelineItemBody,
   RenewalPriorityBody,
 } from "../../../api/client";
-import { getConfidenceTag, isDeadlineCritical, type SemanticTag } from "../../../styles/semantics";
+import { getConfidenceTag, getStatusTag, isDeadlineCritical, type DocumentStatus, type SemanticTag } from "../../../styles/semantics";
 import { daysUntil } from "../portfolioAttention";
 import { formatDateOnly, formatSupplier, getContractTypeLabel, getPortfolioStatusTag } from "../portfolioTableFormatters";
 
@@ -440,14 +440,67 @@ export interface DocumentRow {
   status: SemanticTag;
 }
 
+/** `Document.ProcessingStatus` is the closed enum ADR-019's locked status mapping was written
+ * against, so a family row's tag is `styles/semantics.ts#getStatusTag`'s own (task E16/F03/US01/T01:
+ * a not-yet-validated document renders *with its row status tag* rather than being omitted --
+ * ADR-020 w15 §2.3 -- and a refused one reads "Not added", never a capitalised wire value). */
+function toDocumentStatus(processingStatus: Contract360DocumentBody["processingStatus"]): DocumentStatus {
+  switch (processingStatus) {
+    case "Uploaded":
+    case "Processing":
+      return "processing";
+    case "NeedsReview":
+      return "needs_review";
+    case "Completed":
+      return "completed";
+    case "Failed":
+      return "failed";
+    case "Rejected":
+      return "rejected";
+  }
+}
+
 /** "Documents" (`app.jsx` `family`: type · file · status tag). */
 export function buildDocumentRows(documents: readonly Contract360DocumentBody[]): DocumentRow[] {
   return documents.map((d) => ({
     documentId: d.documentId,
     type: getContractTypeLabel(d.documentType),
     fileName: d.fileName,
-    status: getPortfolioStatusTag(d.processingStatus),
+    status: getStatusTag(toDocumentStatus(d.processingStatus)),
   }));
+}
+
+// ---------------------------------------------------------------------------------------------
+// Readiness (ADR-027 §D9; ADR-020 w15 §2.3 -- the fifth state, task E16/F03/US01/T01)
+// ---------------------------------------------------------------------------------------------
+
+export interface ReadinessCopy {
+  heading: string;
+  sentence: string;
+}
+
+/**
+ * The two readings of `readiness.state` that keep the screen from rendering an *empty contract*:
+ * once NW-27 creates a `contractId` before extraction finishes, `ready` would otherwise show an
+ * aggregate with no clauses, no spend and no dates, indistinguishable from a contract whose
+ * extraction genuinely found nothing. Driven by the server's `readiness` and never inferred from
+ * an empty clause array (ADR-012 w15 §4). `null` for `ready`: the page renders as before.
+ */
+export function resolveReadinessCopy(readiness: Contract360Body["readiness"]): ReadinessCopy | null {
+  switch (readiness.state) {
+    case "ready":
+      return null;
+    case "processing":
+      return {
+        heading: "This contract is still being prepared.",
+        sentence: "Raffa.ai is still extracting the facts. It will open here once they pass validation.",
+      };
+    case "unavailable":
+      return {
+        heading: "This contract has no validated facts yet.",
+        sentence: "Raffa.ai could not finish processing its documents. Open Documents to see what happened to each one.",
+      };
+  }
 }
 
 export interface PriorityComponentRow {

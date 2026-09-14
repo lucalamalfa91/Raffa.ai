@@ -391,6 +391,7 @@ public static class DocumentsEndpointExtensions
             {
                 all = counts.All,
                 needsAttention = counts.NeedsAttention,
+                needsReview = counts.NeedsReview,
                 processing = counts.Processing,
                 rejected = counts.Rejected,
             },

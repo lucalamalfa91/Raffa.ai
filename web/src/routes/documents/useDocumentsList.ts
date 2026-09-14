@@ -1,21 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ApiClient, DocumentListItemBody } from "../../api/client";
 import { loadCurrentWorkspace } from "../signin/workspaceStore";
-import {
-  runUploadBatch,
-  MAX_FILES_PER_BATCH,
-  type LocalUploadEntry,
-  type RejectedFileOutcome,
-} from "./uploadPipeline";
-import { filterDocumentsByAttention, type AttentionFilterValue } from "./documentTable";
+import { POLL_INTERVAL_MS, POLL_NO_CHANGE_BUDGET_MS, usePollBudget } from "../../components/shell/usePollBudget";
+import { runUploadBatch, MAX_FILES_PER_BATCH, type LocalUploadEntry } from "./uploadPipeline";
+import { filterDocumentsByAttention, type AttentionFilterValue, type DocumentCountsBody } from "./documentTable";
 
-/** R-DOC-09: "polled every 2 s until terminal." */
-const POLL_INTERVAL_MS = 2000;
+// R-DOC-09's cadence and ADR-012 w15 §17's no-change budget live in the shared hook every "not
+// ready yet" surface polls through (`usePollBudget.ts`); re-exported so this file stays the one
+// place a reader of the Documents screen looks for them.
+export { POLL_INTERVAL_MS, POLL_NO_CHANGE_BUDGET_MS };
 
 /** Same 100-row fetch-once ceiling `getPortfolio`'s own callers already use (`PortfolioPageRequest
  * .MaxPageSize`) -- Documents V2 buckets attention/all client-side (`documentTable.ts`), not via a
- * server round trip per filter click, the same architecture Portfolio already established. */
+ * server round trip per filter click, the same architecture Portfolio already established. The
+ * *numbers* are never this page's, though: every count is the server's `counts` (ADR-012 w15 §4). */
 const LIST_PAGE_SIZE = 100;
+
+/** Five zeros, present-and-zero -- the server's own shape before the first fetch resolves. */
+export const ZERO_COUNTS: DocumentCountsBody = { all: 0, needsAttention: 0, needsReview: 0, processing: 0, rejected: 0 };
 
 export type DocumentsFetchState = "loading" | "error" | "ready";
 
@@ -25,19 +27,21 @@ export interface UseDocumentsListResult {
   fetchState: DocumentsFetchState;
   errorMessage: string | null;
   reload: () => void;
-  /** The tenant's whole list, unfiltered, newest-first (server order). */
+  /** The tenant's first page, unfiltered, newest-first (server order) -- `Rejected` rows included,
+   * which is why every reader goes through `filteredDocuments`, never this array's length. */
   documents: readonly DocumentListItemBody[];
+  /** ADR-027 §D7: the server's tenant-wide counts -- the chips, the rail badge and the summary line
+   * read these, never the fetched page (ADR-012 w15 §4). */
+  counts: DocumentCountsBody;
   filter: AttentionFilterValue;
   setFilter: (value: AttentionFilterValue) => void;
+  /** The rows for the current chip: a client bucket of `documents` for attention/all, the server's
+   * own `status=Rejected` bucket for the third chip (ADR-012 w15 §13.5b). */
   filteredDocuments: readonly DocumentListItemBody[];
-  attentionCount: number;
-  allCount: number;
-  /** Files picked/dropped this session, not yet a real server document (R-DOC-01 AC-1: a row from
-   * the moment it is picked) or that failed before one could be created. */
+  /** Files picked/dropped this session that the server list does not carry yet (R-DOC-01 AC-1: a row
+   * from the moment it is picked), that failed before a server row could be created, or that were
+   * refused before storage (oversize, 413, 415 -- ADR-020 w15 §6's local "Not added" row). */
   localUploads: readonly LocalUploadEntry[];
-  /** R-DOC-04: rejected files, this session only, never counted above. */
-  rejected: readonly RejectedFileOutcome[];
-  dismissRejected: (key: string) => void;
   /** Starts uploading every file in `files` (capped at `MAX_FILES_PER_BATCH`, <= 3 in flight). */
   uploadFiles: (files: File[]) => void;
   /** Re-submits a `localUploads` entry's own file (phase `"failed"` only). */
@@ -48,10 +52,17 @@ export interface UseDocumentsListResult {
    * in this app already follows). */
   retryServerDocument: (documentId: string) => void;
   retryError: string | null;
+  /** ADR-012 w15 §17 / ADR-020 w15 §8: the 2 s poll stopped after five minutes without a change.
+   * Rows stay exactly as the server last reported them; `resumeUpdates` is "Check again". */
+  updatesPaused: boolean;
+  resumeUpdates: () => void;
 }
 
-function dedupeNewestFirst(entries: readonly LocalUploadEntry[]): LocalUploadEntry[] {
-  return [...entries];
+/** What "changed" means for the poll budget: a row appearing, leaving, or moving status/stage, or a
+ * count moving -- the server's last answer, reduced to a string. */
+function fingerprintOf(documents: readonly DocumentListItemBody[], counts: DocumentCountsBody): string {
+  const rows = documents.map((item) => `${item.id}:${item.processingStatus}:${item.stage ?? ""}`).join("|");
+  return `${rows}#${counts.all}/${counts.needsAttention}/${counts.needsReview}/${counts.processing}/${counts.rejected}`;
 }
 
 export function useDocumentsList(apiClient: ApiClient): UseDocumentsListResult {
@@ -59,13 +70,14 @@ export function useDocumentsList(apiClient: ApiClient): UseDocumentsListResult {
   const [fetchState, setFetchState] = useState<DocumentsFetchState>("loading");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [documents, setDocuments] = useState<readonly DocumentListItemBody[]>([]);
-  const [filter, setFilter] = useState<AttentionFilterValue>("attention");
+  const [counts, setCounts] = useState<DocumentCountsBody>(ZERO_COUNTS);
+  const [rejectedDocuments, setRejectedDocuments] = useState<readonly DocumentListItemBody[]>([]);
+  const [filter, setFilterState] = useState<AttentionFilterValue>("attention");
   const [localUploads, setLocalUploads] = useState<readonly LocalUploadEntry[]>([]);
-  const [rejected, setRejected] = useState<readonly RejectedFileOutcome[]>([]);
   const [retryError, setRetryError] = useState<string | null>(null);
 
   const mountedRef = useRef(true);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const filterRef = useRef<AttentionFilterValue>("attention");
 
   useEffect(
     () => () => {
@@ -73,6 +85,16 @@ export function useDocumentsList(apiClient: ApiClient): UseDocumentsListResult {
     },
     [],
   );
+
+  // The third chip's rows are the server's own bucket (`status=Rejected`), fetched only while that
+  // chip is selected -- `counts.rejected` is what says whether the chip exists at all.
+  const loadRejected = useCallback(() => {
+    if (!workspace) return;
+    void apiClient.listDocuments(workspace.id, { status: "Rejected", pageSize: LIST_PAGE_SIZE }).then((result) => {
+      if (!mountedRef.current) return;
+      if (result.ok && result.page) setRejectedDocuments(result.page.items);
+    });
+  }, [apiClient, workspace?.id]);
 
   const load = useCallback(() => {
     if (!workspace) return;
@@ -82,45 +104,106 @@ export function useDocumentsList(apiClient: ApiClient): UseDocumentsListResult {
         setFetchState("error");
         setErrorMessage(
           result.statusCode === 503 || result.statusCode === null
-            ? "Raffa's document service is temporarily unavailable. Try again in a moment."
+            ? "Raffa.ai's document service is temporarily unavailable. Try again in a moment."
             : (result.error ?? "The document list could not be loaded."),
         );
         return;
       }
       setDocuments(result.page.items);
+      setCounts(result.page.counts);
       setFetchState("ready");
       setErrorMessage(null);
     });
+    if (filterRef.current === "rejected") loadRejected();
     // workspace?.id (a primitive), not workspace itself -- loadCurrentWorkspace() returns a fresh
     // object every call, the same convention every other route's own load() callback follows.
-  }, [apiClient, workspace?.id]);
+  }, [apiClient, workspace?.id, loadRejected]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  // R-DOC-09: poll every 2s while at least one row is non-terminal (Uploaded/Processing). `hasWork`
-  // is a plain boolean (not the `documents` array itself) so this effect only restarts the interval
-  // when that boolean actually flips, never on every unrelated render.
+  const setFilter = useCallback(
+    (value: AttentionFilterValue) => {
+      filterRef.current = value;
+      setFilterState(value);
+      if (value === "rejected") loadRejected();
+    },
+    [loadRejected],
+  );
+
+  // The chip disappears with its last row (an Admin deleted it): fall back to the default filter
+  // rather than showing an empty bucket under a chip that no longer renders.
+  useEffect(() => {
+    if (filter === "rejected" && fetchState === "ready" && counts.rejected === 0) {
+      filterRef.current = "attention";
+      setFilterState("attention");
+    }
+  }, [filter, fetchState, counts.rejected]);
+
+  // R-DOC-09: poll every 2 s while at least one row is non-terminal (Uploaded/Processing). The
+  // predicate reads the *server* array (ADR-012 w15 §5: unchanged, and deliberately so); the budget
+  // gates the interval, never the row's meaning (§17).
   const hasNonTerminalRow = useMemo(
     () => documents.some((item) => item.processingStatus === "Uploaded" || item.processingStatus === "Processing"),
     [documents],
   );
+  const fingerprint = useMemo(() => fingerprintOf(documents, counts), [documents, counts]);
+  const { paused: updatesPaused, resume: resumeUpdates } = usePollBudget({
+    active: hasNonTerminalRow && workspace !== null,
+    fingerprint,
+    onTick: load,
+  });
 
+  // ADR-012 w15 §5: the optimistic row is handed off on evidence, never on a timer -- a local entry
+  // that carries a server id is dropped only once the server list actually carries that id. If a
+  // load fails, the row stays.
   useEffect(() => {
-    if (!hasNonTerminalRow || !workspace) return;
-    pollRef.current = setInterval(load, POLL_INTERVAL_MS);
-    return () => {
-      if (pollRef.current !== null) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
-    };
-  }, [hasNonTerminalRow, workspace?.id, load]);
+    if (documents.length === 0) return;
+    const serverIds = new Set(documents.map((item) => item.id));
+    setLocalUploads((current) =>
+      current.some((entry) => entry.serverId !== undefined && serverIds.has(entry.serverId))
+        ? current.filter((entry) => entry.serverId === undefined || !serverIds.has(entry.serverId))
+        : current,
+    );
+  }, [documents]);
 
-  const filteredDocuments = useMemo(() => filterDocumentsByAttention(documents, filter), [documents, filter]);
-  const attentionCount = useMemo(() => filterDocumentsByAttention(documents, "attention").length, [documents]);
-  const allCount = documents.length;
+  const filteredDocuments = useMemo(
+    () => (filter === "rejected" ? rejectedDocuments : filterDocumentsByAttention(documents, filter)),
+    [documents, rejectedDocuments, filter],
+  );
+
+  const settle = useCallback(
+    (outcome: Parameters<Parameters<typeof runUploadBatch>[3]>[0]) => {
+      if (!mountedRef.current) return;
+
+      if (outcome.kind === "admitted") {
+        // Stored (201): keep the row, remember the server id, and bring the real row in from the
+        // server list (which also (re)starts polling if needed) -- the local row leaves only when
+        // that row is present (see the effect above).
+        setLocalUploads((current) =>
+          current.map((entry) => (entry.key === outcome.key ? { ...entry, phase: "uploading" as const, serverId: outcome.document.id } : entry)),
+        );
+        load();
+        return;
+      }
+
+      if (outcome.kind === "rejected") {
+        // Refused before storage (oversize, 413, 415): a local "Not added" row with the designed
+        // sentence, no next step, no dismiss -- a reload clears it (ADR-020 w15 §6).
+        setLocalUploads((current) =>
+          current.map((entry) => (entry.key === outcome.key ? { ...entry, phase: "rejected" as const, errorMessage: outcome.message } : entry)),
+        );
+        return;
+      }
+
+      // "failed": keep the entry (with its own File) so retryLocalUpload can resubmit it.
+      setLocalUploads((current) =>
+        current.map((entry) => (entry.key === outcome.key ? { ...entry, phase: "failed" as const, errorMessage: outcome.message } : entry)),
+      );
+    },
+    [load],
+  );
 
   const uploadFiles = useCallback(
     (files: File[]) => {
@@ -129,34 +212,11 @@ export function useDocumentsList(apiClient: ApiClient): UseDocumentsListResult {
       const entries = capped.map((file) => ({ key: crypto.randomUUID(), file }));
 
       // R-DOC-01 AC-1: a row exists the moment the file is picked, before the request even starts.
-      setLocalUploads((current) =>
-        dedupeNewestFirst([...entries.map((entry) => ({ ...entry, phase: "uploading" as const })), ...current]),
-      );
+      setLocalUploads((current) => [...entries.map((entry) => ({ ...entry, phase: "uploading" as const })), ...current]);
 
-      void runUploadBatch(entries, apiClient, workspace.id, (outcome) => {
-        if (!mountedRef.current) return;
-
-        if (outcome.kind === "admitted") {
-          setLocalUploads((current) => current.filter((entry) => entry.key !== outcome.key));
-          load(); // brings the real row in from the server list (also (re)starts polling if needed)
-          return;
-        }
-
-        if (outcome.kind === "rejected") {
-          setLocalUploads((current) => current.filter((entry) => entry.key !== outcome.key));
-          setRejected((current) => [{ key: outcome.key, fileName: outcome.fileName, message: outcome.message }, ...current]);
-          return;
-        }
-
-        // "failed": keep the entry (with its own File) so retryLocalUpload can resubmit it.
-        setLocalUploads((current) =>
-          current.map((entry) =>
-            entry.key === outcome.key ? { ...entry, phase: "failed" as const, errorMessage: outcome.message } : entry,
-          ),
-        );
-      });
+      void runUploadBatch(entries, apiClient, workspace.id, settle);
     },
-    [apiClient, workspace?.id, load],
+    [apiClient, workspace?.id, settle],
   );
 
   const retryLocalUpload = useCallback(
@@ -164,26 +224,13 @@ export function useDocumentsList(apiClient: ApiClient): UseDocumentsListResult {
       if (!workspace) return;
       const entry = localUploads.find((candidate) => candidate.key === key);
       if (!entry) return;
-      setLocalUploads((current) => current.map((e) => (e.key === key ? { ...e, phase: "uploading" as const } : e)));
+      setLocalUploads((current) =>
+        current.map((e) => (e.key === key ? { ...e, phase: "uploading" as const, errorMessage: undefined } : e)),
+      );
 
-      void runUploadBatch([{ key: entry.key, file: entry.file }], apiClient, workspace.id, (outcome) => {
-        if (!mountedRef.current) return;
-        if (outcome.kind === "admitted") {
-          setLocalUploads((current) => current.filter((e) => e.key !== outcome.key));
-          load();
-          return;
-        }
-        if (outcome.kind === "rejected") {
-          setLocalUploads((current) => current.filter((e) => e.key !== outcome.key));
-          setRejected((current) => [{ key: outcome.key, fileName: outcome.fileName, message: outcome.message }, ...current]);
-          return;
-        }
-        setLocalUploads((current) =>
-          current.map((e) => (e.key === outcome.key ? { ...e, phase: "failed" as const, errorMessage: outcome.message } : e)),
-        );
-      });
+      void runUploadBatch([{ key: entry.key, file: entry.file }], apiClient, workspace.id, settle);
     },
-    [apiClient, workspace?.id, localUploads, load],
+    [apiClient, workspace?.id, localUploads, settle],
   );
 
   const retryServerDocument = useCallback(
@@ -193,7 +240,7 @@ export function useDocumentsList(apiClient: ApiClient): UseDocumentsListResult {
       void apiClient.reprocessDocument(workspace.id, documentId).then((result) => {
         if (!mountedRef.current) return;
         if (!result.ok) {
-          setRetryError(result.error ?? "Raffa could not reprocess this document.");
+          setRetryError(result.error ?? "Raffa.ai could not reprocess this document.");
           return;
         }
         load();
@@ -202,27 +249,22 @@ export function useDocumentsList(apiClient: ApiClient): UseDocumentsListResult {
     [apiClient, workspace?.id, load],
   );
 
-  const dismissRejected = useCallback((key: string) => {
-    setRejected((current) => current.filter((entry) => entry.key !== key));
-  }, []);
-
   return {
     hasWorkspace: workspace !== null,
     fetchState,
     errorMessage,
     reload: load,
     documents,
+    counts,
     filter,
     setFilter,
     filteredDocuments,
-    attentionCount,
-    allCount,
     localUploads,
-    rejected,
-    dismissRejected,
     uploadFiles,
     retryLocalUpload,
     retryServerDocument,
     retryError,
+    updatesPaused,
+    resumeUpdates,
   };
 }

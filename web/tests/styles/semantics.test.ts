@@ -58,6 +58,13 @@ describe("getStatusTag", () => {
   it("maps processing to a neutral tag", () => {
     expect(getStatusTag("processing")).toEqual({ variant: "neutral", label: "Processing" });
   });
+
+  // ADR-019 w15 clause 1 (task E16/F03/US01/T01): a refused document is a decision about the file,
+  // so it takes the "this row is about a decision" outline treatment with the retired card's own
+  // label -- never `failed`'s accent -- and the switch stays exhaustive: no `undefined` fall-through.
+  it("maps rejected to the outline 'Not added' tag, never accent and never undefined", () => {
+    expect(getStatusTag("rejected")).toEqual({ variant: "outline", label: "Not added" });
+  });
 });
 
 describe("getRiskTag", () => {

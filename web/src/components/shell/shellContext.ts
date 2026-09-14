@@ -1,4 +1,5 @@
 import { useOutletContext } from "react-router-dom";
+import type { DocumentCountsBody } from "./useDocumentCounts";
 
 /**
  * What the app shell knows once, for every screen under it (ADR-024 V2 IA; R-WEB-02): whether the
@@ -22,6 +23,12 @@ export interface ShellOutletContext {
   workspaceId?: string;
   kbReady: boolean;
   validatedContractCount: number;
+  /**
+   * Task E16/F03/US01/T01 (wave w15): the server's tenant-wide document `counts` the rail badge
+   * renders (`useDocumentCounts`), fetched once by the shell at mount; `null` until known. Optional
+   * for the same "widen, don't break a sibling's hand-built literal" reason as `workspaceId`.
+   */
+  documentCounts?: DocumentCountsBody | null;
 }
 
 /**

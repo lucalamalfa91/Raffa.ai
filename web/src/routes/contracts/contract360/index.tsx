@@ -1,14 +1,22 @@
 import { useCallback, useEffect, useState } from "react";
-import { useLocation, useParams } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 import type { ApiClient, Contract360Body, RenewalPipelineItemBody, RenewalPriorityBody } from "../../../api/client";
 import { loadCurrentWorkspace } from "../../signin/workspaceStore";
+import { CHECK_AGAIN_LABEL, UPDATES_PAUSED_NOTICE, usePollBudget } from "../../../components/shell/usePollBudget";
 import { forgetRenewalAction, getTrackedRenewalAction, rememberRenewalAction, type TrackedRenewalAction } from "../../renewals/renewalActionStore";
 import { getRenewalActionPlan, type RenewalActionKind } from "../../renewals/renewalPipelineViewModel";
 import AnswersBand from "./AnswersBand";
 import Contract360Header from "./Contract360Header";
 import DetailsSection from "./DetailsSection";
 import WhyClauses from "./WhyClauses";
-import { buildAnswers, buildNegotiationSteps, resolveBackLink, resolveHighlightedClauseId, resolveSupplierLabel } from "./contract360ViewModel";
+import {
+  buildAnswers,
+  buildNegotiationSteps,
+  resolveBackLink,
+  resolveHighlightedClauseId,
+  resolveReadinessCopy,
+  resolveSupplierLabel,
+} from "./contract360ViewModel";
 import { clearNegotiationSteps, loadNegotiationSteps, saveNegotiationSteps } from "./negotiationStepsStore";
 import "./contract360.css";
 
@@ -69,14 +77,18 @@ export default function Contract360Route({ apiClient, userLabel }: Contract360Ro
   const [actionPending, setActionPending] = useState<RenewalActionKind | "undo" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const load = useCallback(() => {
+  const load = useCallback((silent = false) => {
     if (!workspace || !contractId) return;
 
-    setFetchState({ phase: "loading" });
-    setDetailsOpen(false);
-    setTracked(getTrackedRenewalAction(contractId));
-    setStepsDone(loadNegotiationSteps(contractId));
-    setActionError(null);
+    // A silent re-read (the "still being prepared" poll) refreshes the fetched contract in place --
+    // no skeleton flash every 2 s, no reset of the drawer or the tracker.
+    if (!silent) {
+      setFetchState({ phase: "loading" });
+      setDetailsOpen(false);
+      setTracked(getTrackedRenewalAction(contractId));
+      setStepsDone(loadNegotiationSteps(contractId));
+      setActionError(null);
+    }
 
     void apiClient.getContract360(workspace.id, contractId).then(async (result) => {
       if (!result.ok || !result.contract) {
@@ -119,6 +131,17 @@ export default function Contract360Route({ apiClient, userLabel }: Contract360Ro
   useEffect(() => {
     load();
   }, [load]);
+
+  // ADR-020 w15 §2.3 / §8.3: while the server says the contract is still being prepared, re-read it
+  // on the shared 2 s cadence under the five-minute no-change budget; once spent, the block keeps
+  // its heading and sentence and adds "Check again" beside its CTA.
+  const readiness = fetchState.phase === "ready" ? fetchState.contract.readiness : null;
+  const silentLoad = useCallback(() => load(true), [load]);
+  const { paused: updatesPaused, resume: resumeUpdates } = usePollBudget({
+    active: readiness !== null && readiness.state === "processing",
+    fingerprint: readiness === null ? "none" : `${readiness.state}/${readiness.stage ?? ""}/${readiness.documentCount}/${readiness.completedDocumentCount}`,
+    onTick: silentLoad,
+  });
 
   if (!workspace) {
     return (
@@ -165,7 +188,7 @@ export default function Contract360Route({ apiClient, userLabel }: Contract360Ro
           {fetchState.message}
           {fetchState.statusCode !== null && ` (HTTP ${fetchState.statusCode})`}
         </p>
-        <button type="button" className="btn btn-secondary" onClick={load}>
+        <button type="button" className="btn btn-secondary" onClick={() => load()}>
           Retry
         </button>
       </div>
@@ -174,6 +197,32 @@ export default function Contract360Route({ apiClient, userLabel }: Contract360Ro
 
   const { contract, renewals, priority } = fetchState;
   const { header, tabs } = contract;
+
+  // The fifth state (ADR-020 w15 §2.3), driven by the server's `readiness` and never by an empty
+  // clause array: a contract mid-pipeline, or one whose documents all ended without a validated
+  // fact, is told so instead of being rendered as an empty aggregate.
+  const readinessCopy = resolveReadinessCopy(contract.readiness);
+  if (readinessCopy !== null) {
+    return (
+      <div className="contract360-screen">
+        <div className="screen-reroute contract360-not-ready" role="status">
+          <h3>{readinessCopy.heading}</h3>
+          <p>{readinessCopy.sentence}</p>
+          {updatesPaused && <p className="hint">{UPDATES_PAUSED_NOTICE}</p>}
+          <div className="screen-reroute-actions">
+            <Link to="/documents" className="btn btn-secondary">
+              Go to Documents
+            </Link>
+            {updatesPaused && (
+              <button type="button" className="btn btn-secondary" onClick={resumeUpdates}>
+                {CHECK_AGAIN_LABEL}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
   const answers = buildAnswers(header, tabs.renewal, renewals);
   const pipelineItem = renewals.find((r) => r.contractId === contractId) ?? null;
   const steps = buildNegotiationSteps(resolveSupplierLabel(header).label, answers.move.deadline);

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import Contract360Route from "../../../../src/routes/contracts/contract360";
 import { loadNegotiationSteps } from "../../../../src/routes/contracts/contract360/negotiationStepsStore";
@@ -312,6 +312,94 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
     renderContract360(mockApiClient({ getContract360 }));
 
     expect(getContract360).toHaveBeenCalledWith(WORKSPACE_ID, CONTRACT_ID);
+  });
+
+  // Task E16/F03/US01/T01 (ADR-020 w15 §2.3, ADR-027 §D9): the fifth state is driven by the
+  // server's `readiness`, never inferred from an empty clause array -- a contract whose tabs are
+  // empty *because* extraction has not run must not render as an empty aggregate.
+  describe("readiness (the fifth state)", () => {
+    const emptyTabs = (): Contract360Body["tabs"] => ({
+      ...contract().tabs,
+      products: [],
+      clauses: [],
+      obligations: [],
+      risks: [],
+      documents: [{ documentId: "doc-1", fileName: "Acme_MSA.pdf", mimeType: "application/pdf", documentType: "Msa", processingStatus: "Processing", createdAt: "2025-01-01T00:00:00Z" }],
+    });
+
+    it("renders 'still being prepared' with 'Go to Documents' while readiness is processing, instead of an empty contract", async () => {
+      const body = contract({
+        readiness: { state: "processing", stage: "Extracting facts", documentCount: 1, completedDocumentCount: 0 },
+        tabs: emptyTabs(),
+      });
+      renderContract360(populatedClient({ getContract360: vi.fn().mockResolvedValue(ok(body)) }));
+
+      expect(await screen.findByRole("heading", { name: "This contract is still being prepared." })).toBeInTheDocument();
+      expect(screen.getByText("Raffa.ai is still extracting the facts. It will open here once they pass validation.")).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Go to Documents" })).toHaveAttribute("href", "/documents");
+      expect(screen.queryByRole("heading", { level: 2, name: "MSA" })).toBeNull();
+      expect(screen.queryByText(/Where you can save/)).toBeNull();
+    });
+
+    it("renders 'no validated facts yet' when every linked document ended without a validated one", async () => {
+      const body = contract({
+        readiness: { state: "unavailable", stage: null, documentCount: 1, completedDocumentCount: 0 },
+        tabs: emptyTabs(),
+      });
+      renderContract360(populatedClient({ getContract360: vi.fn().mockResolvedValue(ok(body)) }));
+
+      expect(await screen.findByRole("heading", { name: "This contract has no validated facts yet." })).toBeInTheDocument();
+      expect(screen.getByText("Raffa.ai could not finish processing its documents. Open Documents to see what happened to each one.")).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Go to Documents" })).toBeInTheDocument();
+      expect(screen.queryByText(/still being prepared/)).toBeNull();
+    });
+
+    it("re-reads a processing contract every 2 s and opens the page the moment readiness flips to ready", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        const getContract360 = vi
+          .fn()
+          .mockResolvedValueOnce(ok(contract({ readiness: { state: "processing", stage: "Classifying", documentCount: 1, completedDocumentCount: 0 }, tabs: emptyTabs() })))
+          .mockResolvedValue(ok(contract()));
+        renderContract360(populatedClient({ getContract360 }));
+
+        await screen.findByRole("heading", { name: "This contract is still being prepared." });
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(2_000);
+        });
+
+        expect(await screen.findByRole("heading", { level: 2, name: "MSA" })).toBeInTheDocument();
+        expect(getContract360).toHaveBeenCalledTimes(2);
+        const callsWhenReady = getContract360.mock.calls.length;
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(4_000);
+        });
+        expect(getContract360).toHaveBeenCalledTimes(callsWhenReady); // the poll stops once ready
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("renders a family document with its own row status tag in Details, never omitting an in-flight one", async () => {
+      const body = contract({
+        tabs: {
+          ...contract().tabs,
+          documents: [
+            { documentId: "doc-1", fileName: "Acme_MSA.pdf", mimeType: "application/pdf", documentType: "Msa", processingStatus: "Completed", createdAt: "2025-01-01T00:00:00Z" },
+            { documentId: "doc-2", fileName: "Acme_SOW.pdf", mimeType: "application/pdf", documentType: "Sow", processingStatus: "Processing", createdAt: "2025-01-02T00:00:00Z" },
+            { documentId: "doc-3", fileName: "carbonara.pdf", mimeType: "application/pdf", documentType: "Other", processingStatus: "Rejected", createdAt: "2025-01-03T00:00:00Z" },
+          ],
+        },
+      });
+      renderContract360(populatedClient({ getContract360: vi.fn().mockResolvedValue(ok(body)) }));
+
+      await screen.findByRole("heading", { level: 2, name: "MSA" });
+      fireEvent.click(screen.getByRole("button", { name: /All terms, documents and open facts/ }));
+
+      expect(await screen.findByText("Acme_SOW.pdf")).toBeInTheDocument();
+      expect(screen.getByText("Processing")).toHaveClass("tag");
+      expect(screen.getByText("Not added")).toHaveClass("tag", "tag-outline");
+    });
   });
 
   it("renders a named not-found state on a 404, not a generic error", async () => {
