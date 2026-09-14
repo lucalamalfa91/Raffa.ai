@@ -414,6 +414,18 @@ resource "azurerm_container_app" "worker" {
         value = "30"
       }
 
+      # Fix 2026-09-14, after the first real twenty-file batch on dev: one document takes
+      # ~100 s through the pipeline (classify, staged extraction, embeddings -- model
+      # calls, so the replica is waiting on the network most of that time). Two
+      # messages in flight per replica left the batch visibly frozen for minutes; four
+      # doubles throughput at no fixed cost (the replica only exists while the queue is
+      # non-empty). Bounded above by max_replicas x this value; a Foundry 429 surfaces as
+      # ExtractionTransientException -> abandon -> redelivery, never a lost document.
+      env {
+        name  = "ServiceBus__MaxConcurrentCalls"
+        value = "4"
+      }
+
       # Task E10/F02/US01/T01 (foundry-ocr-ca): the worker runs the hybrid
       # OCR pre-pass (ADR-017) and needs the same non-secret AI Gateway
       # connection info as the api app above.
@@ -467,7 +479,7 @@ resource "azurerm_container_app" "worker" {
         namespace        = var.servicebus_namespace_name
         topicName        = var.servicebus_topic_name
         subscriptionName = var.servicebus_subscription_name
-        messageCount     = "5"
+        messageCount     = "4"
       }
     }
   }
