@@ -3,15 +3,24 @@ using Azure.Storage.Blobs;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Storage;
 
-namespace Raffa.Api.Infrastructure;
+namespace Raffa.Storage;
 
 /// <summary>
 /// Azure Blob Storage adapter for <see cref="IDocumentStorage"/> (ADR-005/ADR-009). Every path is
 /// derived from <see cref="DocumentStoragePath"/>, and the read/delete side re-checks it against
 /// the caller's tenant prefix before touching the container — see
 /// <see cref="DocumentStoragePath.EnsureWithinTenant"/>.
+///
+/// Task E16/F02/US02/T01 (durable-queue-transport, ADR-027 §D11): moved out of
+/// <c>Raffa.Api.Infrastructure</c> (where it was <c>internal sealed</c> to that host) into this
+/// dedicated adapter project so <c>Raffa.Worker</c> — which must read the blob it is asked to OCR —
+/// can resolve <see cref="IDocumentStorage"/> too. <c>public</c> rather than <c>internal</c>
+/// because it is now shared by two hosts' own composition roots
+/// (<see cref="StorageServiceCollectionExtensions"/>, called from both
+/// <c>Raffa.Api/Program.cs</c> and <c>Raffa.Worker/WorkerServiceCollectionExtensions</c>), not
+/// `internal` to either one.
 /// </summary>
-internal sealed class AzureBlobDocumentStorage(BlobContainerClient container) : IDocumentStorage
+public sealed class AzureBlobDocumentStorage(BlobContainerClient container) : IDocumentStorage
 {
     public async Task<string> SaveAsync(
         TenantId tenantId,

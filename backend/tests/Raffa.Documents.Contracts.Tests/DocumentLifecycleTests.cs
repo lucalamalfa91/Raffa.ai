@@ -371,7 +371,8 @@ public sealed class DocumentLifecycleTests : IAsyncLifetime
         await using (var db = CreateAppContext(tenantContext))
         {
             var uploadService = new DocumentUploadService(
-                db, harness.Storage, tenantContext, new FixedClock(now), new NoOpAuditWriter());
+                db, harness.Storage, new NoOpExtractionQueuePublisher(), tenantContext, new FixedClock(now),
+                new NoOpAuditWriter());
             using var content = new MemoryStream(bytes);
             var upload = await uploadService.UploadAsync(tenantId, fileName, "application/pdf", content);
             Assert.True(upload.IsSuccess, upload.IsFailure ? upload.Error : string.Empty);
@@ -457,6 +458,16 @@ public sealed class DocumentLifecycleTests : IAsyncLifetime
     private sealed class NoOpAuditWriter : IAuditWriter
     {
         public Task WriteAsync(AuditEntry entry, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    /// <summary>Task E16/F02/US02/T01 (durable-queue-transport): a no-op stand-in for the port
+    /// <see cref="DocumentUploadService"/> now publishes through before it commits — out of scope
+    /// for this suite's own assertions (queue transport is <c>Raffa.Worker.Tests</c>' scope).
+    /// </summary>
+    private sealed class NoOpExtractionQueuePublisher : IExtractionQueuePublisher
+    {
+        public Task PublishAsync(ExtractionRequested message, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
     }
 
     private sealed class StubSupplierNameLookup(EntityId supplierId, string name) : ISupplierNameLookup

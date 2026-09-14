@@ -1,5 +1,6 @@
 using System.Text;
 using Raffa.Documents.Contracts.Application;
+using Raffa.Documents.Contracts.Application.Extraction;
 using Raffa.Documents.Contracts.Domain;
 using Raffa.Documents.Contracts.Infrastructure;
 using Raffa.SharedKernel;
@@ -145,6 +146,16 @@ public sealed class DocumentQueryServiceTests : IAsyncLifetime
             Task.CompletedTask;
     }
 
+    /// <summary>Task E16/F02/US02/T01 (durable-queue-transport): a no-op stand-in for the port
+    /// <see cref="DocumentUploadService"/> now publishes through before it commits — out of scope
+    /// for this suite's own assertions (queue transport is <c>Raffa.Worker.Tests</c>' scope).
+    /// </summary>
+    private sealed class NoOpExtractionQueuePublisher : IExtractionQueuePublisher
+    {
+        public Task PublishAsync(ExtractionRequested message, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+    }
+
     /// <summary>Seeds a document via the real upload path (task T01) so this test proves a read
     /// back of genuinely persisted data, not a hand-inserted fixture row.</summary>
     private async Task<EntityId> SeedDocumentAsync(
@@ -152,7 +163,8 @@ public sealed class DocumentQueryServiceTests : IAsyncLifetime
     {
         await using var db = CreateAppContext(tenantContext);
         var uploadService = new DocumentUploadService(
-            db, new RecordingDocumentStorage(), tenantContext, new FixedClock(now), new NoOpAuditWriter());
+            db, new RecordingDocumentStorage(), new NoOpExtractionQueuePublisher(), tenantContext,
+            new FixedClock(now), new NoOpAuditWriter());
 
         using var content = new MemoryStream(Encoding.UTF8.GetBytes($"%PDF-1.4 {fileName}"));
         var result = await uploadService.UploadAsync(tenantId, fileName, "application/pdf", content);

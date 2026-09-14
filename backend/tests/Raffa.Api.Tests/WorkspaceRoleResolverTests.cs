@@ -116,7 +116,7 @@ public sealed class WorkspaceRoleResolverTests
     {
         httpContext = new DefaultHttpContext();
         var accessor = new HttpContextAccessor { HttpContext = httpContext };
-        return new WorkspaceRoleResolver(db, new TenantContext(), new HeaderCallerIdentity(accessor));
+        return new WorkspaceRoleResolver(db, new TenantContext(), new TokenCallerIdentity(accessor));
     }
 
     /// <summary>Seeds the membership row directly through the DbContext -- the same "not through

@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using Raffa.Documents.Contracts.Application;
+using Raffa.Documents.Contracts.Application.Extraction;
 using Raffa.Documents.Contracts.Domain;
 using Raffa.Documents.Contracts.Infrastructure;
 using Raffa.SharedKernel;
@@ -76,6 +77,17 @@ public sealed class DocumentUploadServiceTests : IAsyncLifetime
         var optionsBuilder = new DbContextOptionsBuilder<DocumentsContractsDbContext>();
         DocumentsContractsDbContextOptions.Configure(optionsBuilder, connectionString, tenantContext);
         return new DocumentsContractsDbContext(optionsBuilder.Options);
+    }
+
+    /// <summary>Task E16/F02/US02/T01 (durable-queue-transport): a no-op stand-in for the port
+    /// <see cref="DocumentUploadService"/> now publishes through before it commits — this test
+    /// suite proves the upload's own rows/storage/audit behaviour, not the queue transport (that is
+    /// <c>Raffa.Worker.Tests</c>' scope), so nothing here asserts on the messages this fake
+    /// discards.</summary>
+    private sealed class NoOpExtractionQueuePublisher : IExtractionQueuePublisher
+    {
+        public Task PublishAsync(ExtractionRequested message, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
     }
 
     private sealed class RecordingAuditWriter : IAuditWriter
@@ -167,7 +179,8 @@ public sealed class DocumentUploadServiceTests : IAsyncLifetime
 
         var tenantContext = new TenantContext();
         await using var db = CreateAppContext(tenantContext);
-        var service = new DocumentUploadService(db, storage, tenantContext, new FixedClock(now), auditWriter);
+        var service = new DocumentUploadService(
+            db, storage, new NoOpExtractionQueuePublisher(), tenantContext, new FixedClock(now), auditWriter);
 
         using var content = new MemoryStream(bytes);
         var result = await service.UploadAsync(tenantId, "contract.pdf", "application/pdf", content);
@@ -224,7 +237,8 @@ public sealed class DocumentUploadServiceTests : IAsyncLifetime
         var auditWriter = new RecordingAuditWriter();
         var tenantContext = new TenantContext();
         await using var db = CreateAppContext(tenantContext);
-        var service = new DocumentUploadService(db, storage, tenantContext, new FixedClock(DateTimeOffset.UtcNow), auditWriter);
+        var service = new DocumentUploadService(
+            db, storage, new NoOpExtractionQueuePublisher(), tenantContext, new FixedClock(DateTimeOffset.UtcNow), auditWriter);
 
         using var emptyContent = new MemoryStream();
         var result = await service.UploadAsync(tenantId, "empty.pdf", "application/pdf", emptyContent);
@@ -251,7 +265,8 @@ public sealed class DocumentUploadServiceTests : IAsyncLifetime
         await using (var db = CreateAppContext(tenantContext))
         {
             var service = new DocumentUploadService(
-                db, storage, tenantContext, new FixedClock(DateTimeOffset.UtcNow), new RecordingAuditWriter());
+                db, storage, new NoOpExtractionQueuePublisher(), tenantContext, new FixedClock(DateTimeOffset.UtcNow),
+                new RecordingAuditWriter());
             using var content = new MemoryStream("owned-by-tenant-a"u8.ToArray());
             var result = await service.UploadAsync(tenantA, "contract.pdf", "application/pdf", content);
             Assert.True(result.IsSuccess);
