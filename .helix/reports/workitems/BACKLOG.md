@@ -113,6 +113,9 @@ prefix (`scripts/assert_next_plan_untouched.py`), so waves cut by
 |----|------|------|--------|
 | epic-14 | workspace-identity | w14 | active — decomposed (next-wave) |
 | epic-15 | workspace-invitations | w14 | active — decomposed (next-wave) |
+| epic-16 | async-document-processing | w15 | active — decomposed (next-wave) |
+| epic-17 | invitation-delivery-and-identity | w15 | active — decomposed (next-wave) |
+| epic-18 | api-authentication | w15 | active — decomposed (next-wave; F02 and F03 queued to W16) |
 
 ## ADR → wave coverage (continued) — next-wave process
 
@@ -137,75 +140,109 @@ prefix (`scripts/assert_next_plan_untouched.py`), so waves cut by
 | ADR-024 | Ask Raffa V2 | epic-13 |
 | ADR-025 | Workspace membership authorization + invitation lifecycle | **new at the w14 table** — epic-14 F01/F02/F03/F04, epic-15 F01/F02 |
 | ADR-026 | Workspace discovery, roster, invitations: API contract + data model | **new at the w14 table** — epic-14 F01/F03/F04, epic-15 F01 |
+| ADR-027 | Async document processing | **new at the w15 table** — epic-16 F02/F03 (publish-before-commit, the conditional-`UPDATE` claim, the `DeliveryCount` split, `counts` / `readiness`, `Rejected`) |
+| ADR-001 | V1 scope R0–R4 | epic-16 F02 (w15 footer clauses 1–3: a refusal is persistent, visible and terminal; "still processing" outranks "empty"), epic-17 F01 (clauses 4–6: a guest per invited address; the mail transport's deferral ends), epic-18 (addendum clause 12: which acceptance is `dev`-only) |
+| ADR-002 | .NET solution shape | epic-16 F02 (w15 footers: the queue port becomes durable; **`Raffa.Storage`**; the Graph adapter lives in the host, never the module) |
+| ADR-005 | Azure SKUs | epic-16 F01 (w15 footers: Service Bus **wired** — one subscription, two topic-scoped role assignments, the scale rule, `max_delivery_count = 8`; the four ACS rows; the four `AzureAd__*` keys; the `email` optional claim; **$0.00**) |
+| ADR-007 | Terraform layout | epic-16 F01 (w15 footer: `infra/modules/communication/` joins the layout; `servicebus → containerapps` and `identity → servicebus` become real edges) |
+| ADR-009 | Tenancy / RLS | epic-16 F02 (w15 §5: only the *source* of `app.identity_subject` changes; the GUC stays **parameter-bound**), epic-17 F01 (`ExternalSubjectId` is populated earlier on a table that already has its policy) |
+| ADR-010 | Entra ID / OIDC | epic-18 F01 (w15 §1–§4: `ValidateAudience` with the **client id**, the pinned issuer, `oid` as identity, the claims-branch deletion), epic-17 F01 (§2.3–§2.4: the `#EXT#` UPN is never parsed; the `email` optional claim) |
+| ADR-011 | Key Vault + RAG isolation | epic-16 F01/F02 (w15 §2: Service Bus is identity + RBAC, **no secret**), epic-17 F01 (§1, §4: `acs-connection` is the wave's **one** new entry; the log/audit split; the apply identity's grant priced) |
+| ADR-012 | Web stack | epic-16 F03 (w15 §4–§6, §9–§10, §13–§18: the provenance rule, the counters, the local refusal row, the poll budget), epic-17 F02 (§7, §8, §13.1–§13.3), epic-18 F01 (§1–§3: the choke point, the never-stored token) |
+| ADR-014 | Git flow | epic-16 F01/F04 (w15 clauses 1–7: the base is read at the gate, the zero-product-delta merge test, **two merges to `main`**, the zero-CI-YAML set, W15-A1) |
+| ADR-015 | CI → Azure auth | epic-17 F01 (w15 clauses 1–9 — **its first amendment since 2026-09-01**: the runtime identity's directory permission, the **apply** identity's rights granted out of band by default, CI gains nothing) |
+| ADR-016 | Promotion dev→demo | epic-16 F01/F04 (w15 clauses 13–26: the first per-environment API key, one infrastructure PR merged first, the corrected revision-state assertion, the DLQ as a standing condition, the `demo-v4` ruling), epic-17 F01/F03 |
+| ADR-018 | Web IA | epic-16 F03 (w15 clauses 1–3, 6: the **not ready yet** and **nothing made it through** states, what each Documents number counts, one stopped-updates budget across five surfaces) |
+| ADR-019 | Web design system | epic-16 F03 (w15: **one** semantic row, `Rejected → .tag-outline` "Not added", derived from the shipped card — no token, no component) |
+| ADR-020 | Web screen inventory | epic-16 F03 (w15 §0–§2, §6, §8: screen 3's row and third chip, screens 2/5/6's new states, the stopped-updates notice, the wave-wide rebrand rule), epic-17 F01/F02 (§3 screen 10's three outcomes; **§4 surface 12, the invitation email**) |
+| ADR-021 | Schema apply on Azure Postgres | epic-16 F02 — **`none`**: `processing_status` is `varchar(30)` with no CHECK, so `Rejected` needs no DDL and neither `backend.yml` array moves |
+| ADR-022 | Day-1 demo auth + fixture seed | epic-18 F01 (w15 footer: the interim identity is **retired** — `X-User-Id` deleted, `X-Tenant-Id` demoted to a membership-verified selector) |
+| ADR-024 | Ask Raffa V2 | epic-16 F02 (w15 footer §1–§4: R-DOC-01/03/09 become asynchronous; A7, `OQ-askv2-007` and R-DOC-05 AC-1 are `assumed-wrong`; one definition of *validated*) |
+| ADR-025 | Workspace membership authorization + invitation lifecycle | epic-17 F01/F03 (w15 — a new **§J**: the Graph permission and its blast radius, guest-before-row, the `oid` bind, the failure contract, removal never deletes a guest, the test-seam refusal and **S-T23**) |
+| ADR-026 | Workspace discovery, roster, invitations: API contract + data model | epic-17 F01/F02 (w15 §1–§9: `identityProvisioned`, `deliveryOutcome`, the declared 502, replace-on-live-invitation) |
 
-## Wave w14 (2026-09-11) — "Workspace is real"
+## Wave w15 (2026-09-14) — "Upload feels instant, and inviting a colleague works end to end"
 
-- **Source**: `inputs/next/next-waves-todo.md`
-  (sha256 `e3fd34176de46d24f4c8fdb7526c29c91930fe97874cf75fd36c44554bacd23c`)
-- **Requirements**: `reports/context/waves/w14-requirements.md`
-- **Council decisions**: `reports/architecture/waves/w14.md` (approved; nine
-  decisions, all seven seats)
-- **Wave file**: `reports/plan/slices/w14.yaml` · **HITL**: `reports/audit/w14-hitl.md`
-- **Previous**: `e13`
-- **New epics**: `epic-14-workspace-identity` (extends epic-01 F05, epic-06
-  F03/F04), `epic-15-workspace-invitations` (extends epic-01 F05, epic-06 F04)
-- **Caps**: 20 tasks / 5 phases → **11 live tasks in 5 phases, 10 stories**
+- **Source**: `inputs/next/w15-todo.md`
+  (sha256 `d54da30d7564ea5cebdfd5bc003404626107ebf04daeec4ad2f5858cd3b51e6f`)
+- **Requirements**: `reports/context/waves/w15-requirements.md`
+- **Council decisions**: `reports/architecture/waves/w15.md` (approved; ten
+  in-wave decisions, all seven seats involved — no seat sat this wave out)
+- **Wave file**: `reports/plan/slices/w15.yaml` · **HITL**: `reports/audit/w15-hitl.md`
+- **Previous**: `w14`
+- **New epics**: `epic-16-async-document-processing` (extends epic-01 F06,
+  epic-06 F05, epic-13 F04), `epic-17-invitation-delivery-and-identity`
+  (extends epic-15, epic-06 F04), `epic-18-api-authentication` (extends
+  epic-01 F05, epic-14 F02)
+- **Caps**: 20 tasks / 5 phases → **11 live tasks in 5 phases, 15 stories**
+  (11 of them carrying a live task), **4 queued tasks**
 
 ### Items in the wave
 
 | Item | Title | Task ids | Phase(s) |
 |---|---|---|---|
-| W14-01 | Wave base is the post-rebrand `origin/main` | **no task** — operator act at HITL; its proof (W14-A1) is recorded by `E14/F06/US01/T01` | — |
-| NW-01 | `GET /api/workspaces` for the signed-in identity | `E14/F01/US01/T01`, `E14/F01/US01/T02`, `E14/F03/US01/T01`, `E14/F03/US02/T01`, `E14/F05/US01/T01` | 1, 2, 4 |
-| NW-02 | Create workspace also writes the creator's membership (Admin) | `E14/F02/US01/T01`, `E14/F05/US01/T01` | 1 |
-| NW-03 | Current workspace is a server fact, not `sessionStorage` | `E14/F03/US02/T01`, `E14/F05/US01/T01` | 1, 4 |
-| NW-04 | `GET /api/workspaces/{tenantId}/members` | `E14/F04/US01/T01`, `E15/F02/US01/T01` | 2, 4 |
-| NW-09 | Workspace picker contract count is frozen at 0 | `E14/F03/US01/T01`, `E14/F03/US02/T01` | 2, 4 |
-| NW-14 | Delete and Retry upload 403 for the workspace creator | `E14/F02/US02/T01`, `E14/F03/US02/T01` | 2, 4 |
-| NW-24 | Workspace has no currency / region (HITL) | `E14/F01/US01/T02`, `E14/F03/US01/T01`, `E14/F03/US02/T01` | 1, 2, 4 |
-| NW-58 | Invites are email + link; login joins that workspace; Admin remove requires a new invite | `E14/F01/US01/T02`, `E14/F02/US01/T01` (the ADR-025 §D.1a guard), `E15/F01/US01/T01`, `E14/F03/US02/T01` (accept screen), `E15/F02/US01/T01` | 1, 3, 4 |
-| — | Final integration + acceptance runbook | `E14/F06/US01/T01` | 5 |
+| W15-01 | Wave base is `origin/main`, merged in | **no task** — operator act at HITL; its proof (W15-A1, six points) is recorded by `E16/F04/US01/T01` | — |
+| NW-27 | `POST /api/documents` returns once the file is stored; processing on the Worker | `E16/F01/US01/T01`, `E16/F02/US01/T01`, `E16/F02/US02/T01`, `E16/F02/US03/T01`, `E16/F03/US01/T01` | 1, 2, 3, 4 |
+| NW-61 | Upload feels instant; details only when the document is ready | `E16/F02/US03/T01`, `E16/F03/US01/T01` | 3, 4 |
+| NW-10 | Rail Documents badge reads the server | `E16/F03/US01/T01` (co-located, per OQ-w15-008) | 4 |
+| NW-67 | Raffa provisions the invitee's Entra B2B guest at invite time (Graph) | `E16/F01/US01/T01`, `E17/F01/US01/T01`, `E17/F02/US01/T01` | 1, 3, 4 |
+| NW-68 | Raffa sends the invitation email (ACS Email) | `E16/F01/US01/T01`, `E17/F01/US01/T01`, `E17/F02/US01/T01` | 1, 3, 4 |
+| NW-69 | Invite pane: honest delivery and identity state | `E17/F02/US01/T01` | 4 |
+| NW-58r | Invitation e2e (N3b) runs because the flow creates the second account | `E17/F03/US01/T01` | 4 |
+| NW-05 | API JWT (ADR-010) replaces spoofable headers | `E16/F01/US01/T01`, `E18/F01/US01/T01`, `E18/F01/US02/T01` | 1, 2 |
+| NW-06 | Workspace role from membership / claims, never a client assertion | `E18/F01/US01/T01` (the deletion rides NW-05's seam) | 1 |
+| — | Final integration + acceptance runbook | `E16/F04/US01/T01` | 5 |
 
 ### Queued for the next wave
 
-Per `reports/context/waves/w14-requirements.md` §"Queued items": **no task file
-is written for any item below**. The next run's intake picks them up as
-carry-over.
+Per `reports/context/waves/w15-requirements.md` §5, these four `should` items are
+**decomposed with full evidence** but carry `status: queued` and have **no entry
+in `reports/plan/slices/w15.yaml`**. They are the **head of W16**, in this order.
+The next run's intake picks them up first.
 
-- **W15 — API JWT (ADR-010)**: NW-05, NW-06, NW-07, NW-08, NW-31, NW-32. Plus
-  the never-delivered "with OIDC claims" half of the superseded
-  `E01/F05/US01/T02`. ADR-025 §H **T14 is authored in w14 and `Skip`ped**
-  (`E15/F01/US01/T01`), to be activated by NW-05/NW-08.
-- **W16 — no session as source of truth**: NW-10, NW-11, NW-12, NW-13, NW-21.
-- **W17 — domain completeness (Contract 360)**: NW-20, NW-22, NW-23, NW-25,
-  NW-26, NW-62, NW-63, NW-64, NW-65, NW-66.
-- **W18 — contract, ops, and the Ask/Quote residuals**: NW-27, NW-30, NW-40,
-  NW-41, NW-50, NW-55, NW-56, NW-57, NW-59, NW-60, NW-61.
-- **Out**: NW-51 (closed on `main`); NW-52, NW-53, NW-54 (deferred).
+- **NW-07** — conversation `user_id` is the token subject → `E18/F02/US01/T01`
+- **NW-08** — `GET /api/audit` works for a real Admin → `E18/F02/US02/T01`
+- **NW-31** — retire the dual role headers → `E18/F03/US01/T01`
+  (it also **owns `reprocess-tenant-documents.yml`**, which NW-05 takes out of
+  service in w15 and which w15 neither repairs nor edits, so one wave opens that
+  file once — ADR-016 w15 clause 21)
+- **NW-32** — one answer for an absent caller identity → `E18/F03/US02/T01`
 
-Nothing the council decided for an in-wave item was dropped for the cap. NW-24
-was named as "the first item to cut" and **was not cut**.
+Then, unchanged from `w15-requirements.md` §5: **W16** continues with NW-11,
+NW-12, NW-13, NW-21 (NW-10 leaves the W16 queue — w15 co-located it);
+**W17** NW-20, NW-22, NW-23, NW-25, NW-26, NW-62–NW-66; **W18** NW-30, NW-40,
+NW-41, NW-50, NW-55, NW-56, NW-57, NW-59, NW-60.
+
+**Nothing the council decided for an in-wave item was dropped for the cap.** The
+three release valves product-owner named — NW-10, then NW-58r's runbook walk,
+then NW-69 — were **not used**: 11 live tasks against a cap of 20.
 
 ### Superseded items
 
-| Work item | Superseded by | Why |
+| Work item | Instruction | Why |
 |---|---|---|
-| `epic-01-platform/feature-05-identity-workspace/us-01-workspace-roles/tasks/task-02-membership-invite.md` (was `status: live`) | `E15/F01/US01/T01` (NW-58) | Ruled at the w14 table (`reports/architecture/waves/w14.md`, §"Work items this wave supersedes"). It delivered "invite ⇒ membership row **immediately**"; NW-58 makes membership happen **on accept**. Same word, two different product rules — a replacement, not an extension. Its never-delivered "with OIDC claims" half moves to W15 / NW-05 |
-| `epic-06-web-foundation/feature-04-workspace-members-ui/us-01-workspace-members-invite/tasks/task-01-workspace-members-invite.md` | **not superseded** — no banner | Its three ACs are still exactly what the product wants. NW-04 changes the table's **data source** and NW-58 changes the pane's **copy and payload**: amended behaviour inside a still-wanted story |
+| `epic-13-ask-v2/feature-04-documents-v2/us-01-documents-v2/us-01-documents-v2.md` | **Partial banner, `status` stays `active`** — `## Superseded in part (2026-09-14, wave w15)` naming **AC-6 entirely** and **AC-1's 422 / nothing-persisted clause only** | AC-6 says verbatim *"no `Rejected` status exists server-side"* — negated word for word by OQ-w15-004's split gate. AC-1's *"no blob, no `document` row"* is half negated; its **415 format clause stands**. AC-2–AC-5 stand, so the story is **mostly still wanted** and must not be superseded whole (`waves/w15.md` §"Work-item instructions", product-owner correcting §6 of the intake) |
+| `.../us-01-documents-v2/tasks/task-01-documents-admission.md` | **Partial banner, `status` stays `active`** — the same footer, naming its two required-test rows (`:63`, `:81`, "nothing persisted on 422") as superseded by the split gate, and its `OQ-askv2-007` line (`:85`) as retired | The task carries the same premise as the story it serves |
+| `epic-15-workspace-invitations/feature-01-invitation-lifecycle/us-01-invite-accept-remove` | **No banner** | NW-67 / NW-68 land its two *deferred* clauses; the delivered lifecycle stands unchanged. The intake and product-owner agree here |
 
-`reports/plan/slices/e01.yaml:52` and `reports/plan/wave-spec.execution.yaml:87`
-still list the superseded task as `status: live`. Those are historical wave files
-and this process never edits them — see `reports/audit/w14-hitl.md`
-§"Superseded items".
+**No work item is superseded whole this wave**, and no `status:` line is changed
+to `superseded`. What *is* superseded is an oracle assumption, on the record and
+never edited in place (`inputs/**` is never written by this process):
+`inputs/requirements.md` **A7** (`:827`), **`OQ-askv2-007`** and **R-DOC-05 AC-1**
+are `assumed-wrong` from this wave on (OQ-w15-003, OQ-w15-D3; ADR-024 w15 footer
+§3). R-DOC-04's *session-only / not stored* clause is superseded; its **"never
+counted" clause stands**.
+
+No earlier wave file lists either bannered item as `live`, so there is nothing for
+the operator to reconcile in a historical slice this wave.
 
 ### ADRs touched
 
-- **New**: ADR-025 (workspace membership authorization and the invitation
-  lifecycle), ADR-026 (workspace discovery, roster and invitations: API
-  contract, data model and module composition).
-- **Amended by w14 footer** (bodies untouched, every `Status: accepted`
-  unchanged, every footer a narrowing): ADR-001, ADR-003, ADR-005, ADR-006,
-  ADR-009, ADR-010, ADR-011, ADR-012, ADR-014, ADR-016, ADR-018 (two footers),
-  ADR-019, ADR-020, ADR-022.
-- **`none — no change`**: ADR-002, ADR-004, ADR-013, ADR-015, ADR-017, ADR-021,
-  ADR-023, ADR-024.
+- **New**: ADR-027 (async document processing) — the wave's only new ADR.
+- **Amended by w15 footers** (bodies untouched, every `Status: accepted`
+  unchanged, nothing superseded): ADR-001, ADR-002, ADR-005 (×2), ADR-007,
+  ADR-009, ADR-010, ADR-011 (×2), ADR-012 (×2), ADR-014, ADR-015 (**its first
+  amendment since 2026-09-01**), ADR-016 (×2), ADR-018 (×2), ADR-019 (×2),
+  ADR-020 (×2), ADR-022, ADR-024, ADR-025 (a new §J), ADR-026.
+- **`none — no change`, with reasons recorded**: ADR-003, ADR-004, ADR-006,
+  ADR-008, ADR-013, ADR-017, ADR-021, ADR-023.

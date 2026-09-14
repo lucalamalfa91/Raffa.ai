@@ -74,8 +74,8 @@ public sealed class DocumentsV2EndpointTests : IClassFixture<WebApplicationFacto
         var tenantId = Guid.NewGuid();
         var otherTenant = Guid.NewGuid();
 
-        var documentId = await UploadAsync(client, tenantId, "msa.pdf");
-        await UploadAsync(client, otherTenant, "not-yours.pdf");
+        var documentId = await UploadAsync(host, tenantId, "msa.pdf");
+        await UploadAsync(host, otherTenant, "not-yours.pdf");
 
         var response = await GetAsync(client, "/api/documents", tenantId.ToString());
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -103,8 +103,8 @@ public sealed class DocumentsV2EndpointTests : IClassFixture<WebApplicationFacto
         var client = host.Factory.CreateClient();
         var tenantId = Guid.NewGuid();
 
-        await UploadAsync(client, tenantId, "one.pdf");
-        await UploadAsync(client, tenantId, "two.pdf");
+        await UploadAsync(host, tenantId, "one.pdf");
+        await UploadAsync(host, tenantId, "two.pdf");
 
         var firstPage = await ReadJsonAsync(await GetAsync(client, "/api/documents?page=1&pageSize=1", tenantId.ToString()));
         Assert.Equal(2, firstPage.RootElement.GetProperty("totalCount").GetInt32());
@@ -124,7 +124,7 @@ public sealed class DocumentsV2EndpointTests : IClassFixture<WebApplicationFacto
         var host = CreateHost();
         var client = host.Factory.CreateClient();
         var tenantId = Guid.NewGuid();
-        var documentId = await UploadAsync(client, tenantId, "msa.pdf");
+        var documentId = await UploadAsync(host, tenantId, "msa.pdf");
 
         var response = await GetAsync(client, $"/api/documents/{documentId}/preview", tenantId.ToString());
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -150,7 +150,7 @@ public sealed class DocumentsV2EndpointTests : IClassFixture<WebApplicationFacto
         var host = CreateHost();
         var client = host.Factory.CreateClient();
         var tenantId = Guid.NewGuid();
-        var documentId = await UploadAsync(client, tenantId, "msa.pdf");
+        var documentId = await UploadAsync(host, tenantId, "msa.pdf");
 
         // Procurement (and a caller with no role at all) get 403 — R-DOC-07. A spoofed X-Role
         // header is no longer an authorization source (ADR-025 §E), so it proves nothing here; both
@@ -168,16 +168,26 @@ public sealed class DocumentsV2EndpointTests : IClassFixture<WebApplicationFacto
         await SeedMembershipAsync(host, tenantId, adminEmail, WorkspaceRoleName.Admin);
         var response = await SendAsync(
             client, HttpMethod.Post, $"/api/documents/{documentId}/reprocess", tenantId.ToString(), role: null, userId: adminEmail);
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        // 202, not 200 (task E16/F02/US03/T01, ADR-027 §D1): the re-run is queued for the Worker.
+        // The summary the 200 used to carry (documentType, pagesParsed, chunksIndexed) is now read
+        // back through GET /api/documents once the Worker has run -- proven just below.
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
 
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.Equal(documentId, body.RootElement.GetProperty("documentId").GetGuid());
-        Assert.Equal("Msa", body.RootElement.GetProperty("documentType").GetString());
-        Assert.Equal(1, body.RootElement.GetProperty("pagesParsed").GetInt32());
-        Assert.Equal(1, body.RootElement.GetProperty("chunksIndexed").GetInt32());
-        Assert.Equal(JsonValueKind.String, body.RootElement.GetProperty("contractId").ValueKind);
+        Assert.Equal(JsonValueKind.String, body.RootElement.GetProperty("extractionJobId").ValueKind);
+        Assert.Equal("Uploaded", body.RootElement.GetProperty("processingStatus").GetString());
 
-        Assert.Contains(host.Audit.Entries, e => e.Action == "document.reprocessed");
+        Assert.Contains(
+            host.Audit.Entries,
+            e => e.Action == "document.reprocessed" && e.Detail != null && e.Detail.Contains("queued", StringComparison.Ordinal));
+
+        // The Worker's half: exactly one pointer was published for the re-run, and processing it
+        // leaves the document classified again, with its contract link intact.
+        Assert.Equal(1, await host.Factory.DrainExtractionQueueAsync());
+        var reread = await ReadJsonAsync(await GetAsync(client, $"/api/documents/{documentId}", tenantId.ToString()));
+        Assert.Equal("Msa", reread.RootElement.GetProperty("documentType").GetString());
+        Assert.NotEqual("Uploaded", reread.RootElement.GetProperty("processingStatus").GetString());
 
         // An unknown document is a 404 for an Admin, never a 403.
         Assert.Equal(
@@ -193,7 +203,7 @@ public sealed class DocumentsV2EndpointTests : IClassFixture<WebApplicationFacto
         var tenantId = Guid.NewGuid();
         // MsaText names its two parties without a role label, so the fixture extractor proposes the
         // supplier at low confidence and the upload lands in needs_review — a real review to close.
-        var documentId = await UploadAsync(client, tenantId, "msa.pdf");
+        var documentId = await UploadAsync(host, tenantId, "msa.pdf");
         var before = await ReadJsonAsync(await GetAsync(client, $"/api/documents/{documentId}", tenantId.ToString()));
         Assert.Equal("NeedsReview", before.RootElement.GetProperty("processingStatus").GetString());
 
@@ -241,7 +251,7 @@ public sealed class DocumentsV2EndpointTests : IClassFixture<WebApplicationFacto
         var host = CreateHost();
         var client = host.Factory.CreateClient();
         var tenantId = Guid.NewGuid();
-        var documentId = await UploadAsync(client, tenantId, "msa.pdf");
+        var documentId = await UploadAsync(host, tenantId, "msa.pdf");
 
         var document = await ReadJsonAsync(await GetAsync(client, $"/api/documents/{documentId}", tenantId.ToString()));
         var contractId = document.RootElement.GetProperty("contractId").GetGuid();
@@ -291,7 +301,7 @@ public sealed class DocumentsV2EndpointTests : IClassFixture<WebApplicationFacto
         var host = CreateHost();
         var client = host.Factory.CreateClient();
         var tenantId = Guid.NewGuid();
-        var documentId = await UploadAsync(client, tenantId, "msa.pdf");
+        var documentId = await UploadAsync(host, tenantId, "msa.pdf");
 
         // A spoofed X-Role header proves nothing after task E14/F02/US02/T01 (ADR-025 §E) -- this
         // caller simply holds no real membership row in this tenant.
@@ -330,7 +340,7 @@ public sealed class DocumentsV2EndpointTests : IClassFixture<WebApplicationFacto
         var host = CreateHost();
         var client = host.Factory.CreateClient();
         var tenantId = Guid.NewGuid();
-        var documentId = await UploadAsync(client, tenantId, "msa.pdf");
+        var documentId = await UploadAsync(host, tenantId, "msa.pdf");
 
         // The web sends X-User-Id on every call and no role header at all (see web/src/api/client.ts),
         // so this is the branch that decides whether its Admin-only buttons work: the membership row.
@@ -345,8 +355,9 @@ public sealed class DocumentsV2EndpointTests : IClassFixture<WebApplicationFacto
                 client, HttpMethod.Post, $"/api/documents/{documentId}/reprocess", tenantId.ToString(),
                 role: null, userId: procurementEmail));
 
+        // 202 since task E16/F02/US03/T01: the Admin's re-run is queued, not run inline.
         await AssertStatusAsync(
-            HttpStatusCode.OK,
+            HttpStatusCode.Accepted,
             await SendAsync(
                 client, HttpMethod.Post, $"/api/documents/{documentId}/reprocess", tenantId.ToString(),
                 role: null, userId: adminEmail));
@@ -365,7 +376,7 @@ public sealed class DocumentsV2EndpointTests : IClassFixture<WebApplicationFacto
         var host = CreateHost();
         var client = host.Factory.CreateClient();
         var tenantId = Guid.NewGuid();
-        var documentId = await UploadAsync(client, tenantId, "msa.pdf");
+        var documentId = await UploadAsync(host, tenantId, "msa.pdf");
 
         // A *real* Admin membership in a different tenant -- proving tenant scoping on the delete
         // path itself, independent of the Admin gate (a spoofed header would no longer reach this
@@ -393,8 +404,17 @@ public sealed class DocumentsV2EndpointTests : IClassFixture<WebApplicationFacto
         return new Host { Factory = factory, Storage = storage, Audit = audit };
     }
 
-    private static async Task<Guid> UploadAsync(HttpClient client, Guid tenantId, string fileName)
+    /// <summary>
+    /// Uploads and then <em>processes</em> the document. Since task E16/F02/US03/T01 the upload
+    /// request returns 201 at the store and the content gate + pipeline run on the Worker; this host
+    /// has no Worker, so the helper plays it — <see cref="InMemoryAskEngineFactory.DrainExtractionQueueAsync"/>
+    /// runs the real handler on the pointer the upload published. Every test in this class that
+    /// asserts on a processed document (type, contract id, evidence, validate, preview) therefore
+    /// still proves the full path, not a shortcut.
+    /// </summary>
+    private static async Task<Guid> UploadAsync(Host host, Guid tenantId, string fileName)
     {
+        var client = host.Factory.CreateClient();
         var file = new ByteArrayContent(BuildPdf(MsaText));
         file.Headers.ContentType = new MediaTypeHeaderValue("application/pdf");
         using var content = new MultipartFormDataContent { { file, "file", fileName } };
@@ -405,7 +425,10 @@ public sealed class DocumentsV2EndpointTests : IClassFixture<WebApplicationFacto
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
 
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        return body.RootElement.GetProperty("id").GetGuid();
+        var documentId = body.RootElement.GetProperty("id").GetGuid();
+
+        Assert.Equal(1, await host.Factory.DrainExtractionQueueAsync());
+        return documentId;
     }
 
     private static Task<HttpResponseMessage> GetAsync(HttpClient client, string url, string tenantId) =>

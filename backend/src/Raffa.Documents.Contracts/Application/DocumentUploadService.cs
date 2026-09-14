@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using Raffa.Documents.Contracts.Application.Extraction;
 using Raffa.Documents.Contracts.Domain;
 using Raffa.Documents.Contracts.Infrastructure;
 using Raffa.SharedKernel;
@@ -29,10 +30,20 @@ namespace Raffa.Documents.Contracts.Application;
 /// <see cref="IDocumentStorage"/>. The write happens inside the same tenant scope the upload
 /// itself opened, so the audit row's RLS `WITH CHECK` is satisfied by the identical ambient
 /// tenant claim (see <see cref="Raffa.Audit.Infrastructure.AuditWriter"/>'s own doc comment).
+///
+/// Task E16/F02/US02/T01 (durable-queue-transport, ADR-027 §D2): also publishes an
+/// <see cref="ExtractionRequested"/> pointer through <see cref="IExtractionQueuePublisher"/> —
+/// <b>before</b> <see cref="Microsoft.EntityFrameworkCore.DbContext.SaveChangesAsync(CancellationToken)"/>
+/// commits the three rows below, never after. That ordering is not incidental: <c>extraction_job</c>
+/// carries <c>FORCE ROW LEVEL SECURITY</c>, so a poller or a sweeper over it is a cross-tenant read
+/// ADR-009 forbids, which makes "commit, then publish, with a recovery sweep for a lost publish" an
+/// unavailable design here — the ordering below is the only one whose failure mode (a phantom
+/// message when the commit that follows fails) needs no such sweep.
 /// </summary>
 public sealed class DocumentUploadService(
     DocumentsContractsDbContext dbContext,
     IDocumentStorage storage,
+    IExtractionQueuePublisher extractionQueuePublisher,
     ITenantContext tenantContext,
     IClock clock,
     IAuditWriter auditWriter)
@@ -123,6 +134,19 @@ public sealed class DocumentUploadService(
         dbContext.Documents.Add(document);
         dbContext.DocumentVersions.Add(version);
         dbContext.ExtractionJobs.Add(classificationJob);
+
+        // Publish before commit (ADR-027 §D2, see the type doc comment): the ids are already known
+        // because ExtractionJob.Id is ValueGeneratedNever (client-generated, TenantScopedEntity), so
+        // the message can be built before SaveChangesAsync ever runs. If the commit below then
+        // fails, the message is a harmless phantom — the Worker's claim finds no such job and
+        // completes it (ADR-027 §D3/§C6).
+        await extractionQueuePublisher.PublishAsync(
+            new ExtractionRequested(
+                tenantId.Value,
+                documentId.Value,
+                classificationJob.Id.Value,
+                ExtractionRequested.CurrentSchemaVersion),
+            cancellationToken).ConfigureAwait(false);
 
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 

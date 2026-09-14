@@ -13,6 +13,10 @@
   <ItemGroup>
     <ProjectReference Include="..\Raffa.SharedKernel\Raffa.SharedKernel.csproj" />
     <ProjectReference Include="..\Raffa.Documents.Contracts\Raffa.Documents.Contracts.csproj" />
+    <!-- Task E16/F02/US03/T01 (ADR-027 D2/D3, ADR-002 w15 footer): the Worker is the consumer of the
+         extraction queue and needs the blob adapter to read the bytes it processes. -->
+    <ProjectReference Include="..\Raffa.Messaging\Raffa.Messaging.csproj" />
+    <ProjectReference Include="..\Raffa.Storage\Raffa.Storage.csproj" />
     <ProjectReference Include="..\Raffa.Renewals\Raffa.Renewals.csproj" />
     <ProjectReference Include="..\Raffa.Savings\Raffa.Savings.csproj" />
     <ProjectReference Include="..\Raffa.Quotes\Raffa.Quotes.csproj" />

@@ -111,3 +111,64 @@ assert another `X-User-Id`. The Admin gate resolves from the membership row rath
 than from a client-supplied role, so NW-58's N3b-8 is honest; the residual belongs
 in the epic story and is closed by NW-05. **A reviewer must not reject NW-58 for
 it.**
+
+## Amendment (2026-09-13, wave w15 — the interim identity is retired, and what proves it)
+
+Serves **NW-05, NW-06**; records the forward state of **NW-31, NW-32** (W16 head).
+The Decision outcome above is unchanged as a historical record of how `demo` ran
+from e10 to w14. The w14 footer is unchanged. This footer records that the
+retirement schedule in w14 clause 5 **fires now for its first two rows**, and
+names the evidence a reviewer checks instead of taking a task's word for it.
+
+**1. `X-User-Id` stops being read at all.** `HeaderCallerIdentity`
+(`CallerIdentity.cs:58-73`, trimming and lower-casing at `:70-71`) is replaced by
+a token-subject implementation at the one seam w14 clause 4 promised. The class
+and its `UserIdHeaderName` constant (`:60`) are **deleted, not kept "for
+compatibility"**. Precedence is not enough — a header that is read and then
+overridden is one refactor away from being read and honoured. Proof: **T14**
+(ADR-025 §H, written in w14, activated here) plus a `Grep` for `X-User-Id` in
+`backend/src` returning zero hits outside the deletion test.
+
+**2. `X-Tenant-Id` is demoted, not deleted — and this is a deliberate departure
+from the intake's wording.** The intake's NW-05 block reads as though the header
+disappears. It cannot: a caller may belong to several workspaces, so the token
+subject **alone names no tenant**, and only 6 of 36 routes carry `{tenantId}`.
+The header therefore becomes an **authorized selector** — a caller-supplied
+*candidate* whose membership is verified against the **token subject** on every
+request, before `BeginScope`, with **404** on failure (ADR-025 Rule B1 and
+ADR-009 w14 clause 7, both unchanged). This generalizes w14 clause 3 from
+membership routes to every route. Whether the selector travels as a header or a
+route segment is software-architect's shape, and nothing in this clause changes
+under either. **What is retired is its status as an assertion, not its presence on
+the wire.**
+
+**3. Sizing, measured rather than estimated.** The intake calls this "~12
+copy-pasted blocks"; that is the endpoint-guard count. Verified on this tree:
+**`X-Tenant-Id` appears 74 times across 17 files** in `backend/src`. The
+retirement is **one task**, or two identity regimes run live at once — which is
+the one shape that is worse than either regime alone. The paired assertion in
+**S-T16** uses the real number.
+
+**4. Retirement schedule — w14 clause 5, updated.**
+
+| Mechanism | After w15 | Removed by | Proof |
+|---|---|---|---|
+| `X-User-Id` as identity | **gone** — the seam reads the token subject (`oid`) | NW-05 (this wave) | T14, S-T16 |
+| `X-Tenant-Id` as a tenant **assertion** | **gone** — demoted to a membership-verified selector (clause 2) | NW-05 (this wave) | S-T16, S-T17 |
+| `X-Role` / `X-Workspace-Role` | already demoted in w14; the claims branch and the two constants are **deleted** by NW-06 | NW-06 (this wave) removes the reader; **NW-31 (W16)** removes the remaining `GET /api/capabilities` alias | S-T17(c) |
+| `"unattributed"` actor | unreachable on the API surface — absent identity is 401 everywhere | **NW-32 (W16)** deletes the constant | ADR-009 w15 footer §6 |
+| Fixture / seeded `demo` data | unchanged this wave | out of w15 scope | — |
+
+**5. The w14 recorded limitation is closed.** That footer's closing paragraph said
+a caller could still assert another `X-User-Id` until ADR-010 landed, and asked a
+reviewer not to reject NW-58 for it. **ADR-010 lands in this wave.** From w15 the
+limitation is a defect, not a residual: a forged `X-User-Id` or `X-Tenant-Id`
+presented **without** a valid token is **401** on every tenant-scoped route
+(acceptance A15-8), and presented **with** one is ignored. The epic-15 story's
+residual note is discharged by NW-05, not by argument.
+
+**6. What this footer does not retire.** `demo`'s fixture seed and the operator
+seed job (Decision outcome, third bullet) are untouched: they are data, not
+identity. Delivery-manager's ADR-016 w15 footer carries the consequence that
+matters operationally — **web must deploy before backend**, or `dev` locks every
+user out for the length of the gap.

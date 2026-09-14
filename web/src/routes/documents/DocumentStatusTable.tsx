@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import type { DocumentListItemBody } from "../../api/client";
-import type { LocalUploadEntry, RejectedFileOutcome } from "./uploadPipeline";
+import { CHECK_AGAIN_LABEL, UPDATES_PAUSED_NOTICE } from "../../components/shell/usePollBudget";
+import { getRejectionReasonCopy, type LocalUploadEntry } from "./uploadPipeline";
 import {
   formatUploadedAt,
   getDocumentTypeLabel,
@@ -9,22 +10,39 @@ import {
   getRowStatus,
   getRowStatusTag,
   type AttentionFilterValue,
+  type RowStatus,
 } from "./documentTable";
 import ProcessingPipeline from "./ProcessingPipeline";
-import UploadResultCard from "./UploadResultCard";
 
 export interface DocumentStatusTableProps {
-  /** Already filtered by the caller's current attention/all toggle. */
+  /** Already filtered by the caller's current chip. */
   documents: readonly DocumentListItemBody[];
   filter: AttentionFilterValue;
   localUploads: readonly LocalUploadEntry[];
-  rejected: readonly RejectedFileOutcome[];
-  onDismissRejected: (key: string) => void;
   onRetryLocal: (key: string) => void;
   onRetryServer: (documentId: string) => void;
   onDelete: (documentId: string) => void;
   /** R-WEB-07: "Procurement sees ... delete disabled." */
   isAdmin: boolean;
+  /** ADR-020 w15 §8: the list-level "stopped checking" notice with its one resume control. */
+  updatesPaused?: boolean;
+  onResumeUpdates?: () => void;
+}
+
+/** ADR-019 w15 clause 4 / ADR-020 w15 §6: a local entry's tag is keyed on the reading, not on where
+ * the fact came from -- a refused file reads "Not added" whether the server or this browser
+ * refused it. The third branch is the one the compiler never asks for (`DocumentStatusTable.tsx`
+ * used to map this with a two-way ternary), so it is a switch here, not a ternary. */
+function localRowStatus(phase: LocalUploadEntry["phase"]): RowStatus {
+  switch (phase) {
+    case "failed":
+      return "failed";
+    case "rejected":
+      return "rejected";
+    case "queued":
+    case "uploading":
+      return "processing";
+  }
 }
 
 /**
@@ -38,29 +56,36 @@ export interface DocumentStatusTableProps {
  * interactive surface with its own destination (screens-v2.md #3's row-click and action-button
  * targets genuinely differ for a `completed` row: the filename opens Contract 360, "Ask about it"
  * opens a new Ask chat).
+ *
+ * Task E16/F03/US01/T01 (wave w15): a refused file is a *row*, never a card (ADR-020 w15 §1 and
+ * §6) -- the server's `Rejected` row with its reason hint, or a local row for a refusal that never
+ * reached the server -- with an empty action cell and no dismiss; a server row at `Uploaded` reads
+ * "Queued…" (§1.6), a local pre-201 row still reads "Uploading…" (ADR-012 w15 §13.7); and the
+ * stopped-poll notice renders below the grid as `.hint` + `.btn-secondary` (§8), a list state,
+ * never a row state.
  */
 export default function DocumentStatusTable({
   documents,
   filter,
   localUploads,
-  rejected,
-  onDismissRejected,
   onRetryLocal,
   onRetryServer,
   onDelete,
   isAdmin,
+  updatesPaused = false,
+  onResumeUpdates,
 }: DocumentStatusTableProps) {
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
 
-  const attentionEmpty = filter === "attention" && documents.length === 0 && localUploads.length === 0;
-  const rowsVisible = documents.length > 0 || localUploads.length > 0;
+  // A local refusal (or an in-flight upload) appears only in the default list, above the server
+  // rows, exactly where the card was -- the third chip reads the server bucket alone (ADR-020 w15
+  // §6.4).
+  const visibleLocalUploads = filter === "rejected" ? [] : localUploads;
+  const attentionEmpty = filter === "attention" && documents.length === 0 && visibleLocalUploads.length === 0;
+  const rowsVisible = documents.length > 0 || visibleLocalUploads.length > 0;
 
   return (
     <div className="documents-list-body">
-      {rejected.map((entry) => (
-        <UploadResultCard key={entry.key} fileName={entry.fileName} message={entry.message} onDismiss={() => onDismissRejected(entry.key)} />
-      ))}
-
       {attentionEmpty && (
         <div className="documents-attention-empty">
           <h3>Nothing needs you right now.</h3>
@@ -83,37 +108,39 @@ export default function DocumentStatusTable({
             </tr>
           </thead>
           <tbody>
-            {localUploads.map((entry) => (
-              <tr key={entry.key}>
-                <td>
-                  <div className="document-status-table-filename">{entry.file.name}</div>
-                  {entry.phase === "failed" && entry.errorMessage && <div className="hint">{entry.errorMessage}</div>}
-                </td>
-                <td className="micro-meta">—</td>
-                <td>
-                  <span className={`tag tag-${getRowStatusTag(entry.phase === "failed" ? "failed" : "processing").variant}`}>
-                    {getRowStatusTag(entry.phase === "failed" ? "failed" : "processing").label}
-                  </span>
-                  {entry.phase === "uploading" && <ProcessingPipeline stage={null} />}
-                </td>
-                <td className="document-status-table-next-step">
-                  {entry.phase === "failed" ? (
-                    <button type="button" className="btn btn-secondary" onClick={() => onRetryLocal(entry.key)}>
-                      Retry upload
-                    </button>
-                  ) : (
-                    <span className="micro-meta">Uploading…</span>
-                  )}
-                </td>
-                {isAdmin && <td />}
-              </tr>
-            ))}
+            {visibleLocalUploads.map((entry) => {
+              const tag = getRowStatusTag(localRowStatus(entry.phase));
+              return (
+                <tr key={entry.key}>
+                  <td>
+                    <div className="document-status-table-filename">{entry.file.name}</div>
+                    {entry.errorMessage && <div className="hint">{entry.errorMessage}</div>}
+                  </td>
+                  <td className="micro-meta">—</td>
+                  <td>
+                    <span className={`tag tag-${tag.variant}`}>{tag.label}</span>
+                    {entry.phase === "uploading" && <ProcessingPipeline stage={null} />}
+                  </td>
+                  <td className="document-status-table-next-step">
+                    {entry.phase === "failed" ? (
+                      <button type="button" className="btn btn-secondary" onClick={() => onRetryLocal(entry.key)}>
+                        Retry upload
+                      </button>
+                    ) : entry.phase === "rejected" ? null : (
+                      <span className="micro-meta">Uploading…</span>
+                    )}
+                  </td>
+                  {isAdmin && <td />}
+                </tr>
+              );
+            })}
 
             {documents.map((item) => {
               const rowStatus = getRowStatus(item.processingStatus);
               const tag = getRowStatusTag(rowStatus);
               const action = getRowAction(item);
               const isQuote = item.documentType === "Quote";
+              const rejectionHint = rowStatus === "rejected" ? getRejectionReasonCopy(item.rejectionReason) : null;
               const openTarget =
                 rowStatus === "needs_review"
                   ? `/documents?review=${item.id}`
@@ -136,6 +163,7 @@ export default function DocumentStatusTable({
                       <>
                         <div className="document-status-table-filename">{item.fileName}</div>
                         {rowStatus === "failed" && <div className="hint">Not yet linked to a contract</div>}
+                        {rejectionHint !== null && <div className="hint">{rejectionHint}</div>}
                       </>
                     )}
                     <div className="micro-meta">
@@ -152,7 +180,10 @@ export default function DocumentStatusTable({
                   </td>
                   <td className="document-status-table-next-step">
                     {rowStatus === "processing" ? (
-                      <span className="micro-meta">{(item.stage ?? "Uploading") + "…"}</span>
+                      // ADR-020 w15 §1.6: a stored row waiting for a Worker is "Queued…", never
+                      // "Uploading…" -- the bytes are already durable; a `Processing` row reads its
+                      // real stage string, verbatim.
+                      <span className="micro-meta">{(item.stage ?? "Queued") + "…"}</span>
                     ) : action !== null ? (
                       action.kind === "retry" ? (
                         <button type="button" className="btn btn-secondary" onClick={() => onRetryServer(item.id)}>
@@ -211,6 +242,17 @@ export default function DocumentStatusTable({
             })}
           </tbody>
         </table>
+      )}
+
+      {updatesPaused && (
+        <div className="documents-updates-paused" role="status">
+          <p className="hint">{UPDATES_PAUSED_NOTICE}</p>
+          {onResumeUpdates !== undefined && (
+            <button type="button" className="btn btn-secondary" onClick={onResumeUpdates}>
+              {CHECK_AGAIN_LABEL}
+            </button>
+          )}
+        </div>
       )}
     </div>
   );

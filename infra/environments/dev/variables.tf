@@ -44,3 +44,18 @@ variable "ai_gateway_extra_env" {
   type        = map(string)
   default     = {}
 }
+
+# Task E16/F01/US01/T01 (NW-68, ADR-005 w15 footer §5 rule 3 / ADR-016 w15
+# footer clause 14): mirrors ai_gateway_wired's own per-environment
+# lifecycle. dev flips both true from this apply.
+variable "invitation_mail_enabled" {
+  description = "Publishes Invitations__Mail__Enabled to the API app (ADR-005 w15 footer). dev: true from this apply."
+  type        = bool
+  default     = true
+}
+
+variable "guest_provisioning_enabled" {
+  description = "Enables the count-gated Graph app-role assignment (modules/identity) and publishes Invitations__GuestProvisioning__Enabled (modules/containerapps). dev: true from this apply, contingent on the apply identity's Graph rights (ADR-015 w15 footer)."
+  type        = bool
+  default     = true
+}

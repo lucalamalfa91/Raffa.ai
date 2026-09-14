@@ -99,3 +99,19 @@ resource "azurerm_key_vault_secret" "storage_connection" {
     azurerm_role_assignment.workload_secrets_user,
   ]
 }
+
+# Task E16/F01/US01/T01 (w15 Terraform, ADR-011 w15 footer): the wave's one
+# new secret, wired to the API app only (modules/containerapps `acs-cs`
+# handle) -- same depends_on RBAC pair as postgres-connection/
+# storage-connection above, for the same reason: it stops the first apply
+# racing RBAC propagation on this rbac_authorization_enabled vault.
+resource "azurerm_key_vault_secret" "acs_connection" {
+  name         = "acs-connection"
+  value        = var.acs_connection_string
+  key_vault_id = azurerm_key_vault.this.id
+
+  depends_on = [
+    azurerm_role_assignment.deployer_secrets_officer,
+    azurerm_role_assignment.workload_secrets_user,
+  ]
+}

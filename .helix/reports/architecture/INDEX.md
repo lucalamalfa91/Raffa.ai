@@ -588,3 +588,717 @@ Clause numbers continue the first footer (clauses 8–12).
 - **`waves/w14.md` was not edited**, per the product-owner's principle. Its acceptance
   step list at `:508-514` is incomplete, not wrong; the NW-58 and W14-01 rows already
   name ADR-016 as governing.
+
+## Upload feels instant, and inviting a colleague works end to end (wave w15, appended 2026-09-13)
+
+ADR-001…026 keep their original Decision outcomes. **No ADR is superseded by
+this wave.** Items served: NW-27, NW-61, NW-10, NW-67, NW-68, NW-69, NW-05,
+NW-06, NW-58r, W15-01 (`reports/architecture/waves/w15.md`).
+
+New ADR from the w15 table:
+
+| ADR | Topic | Seat | One-line decision |
+| --- | --- | --- | --- |
+| ADR-027 | Asynchronous document processing — the extraction queue, the rejection state and the completeness contract | software-architect (owner; cloud-, security-, client-architect, ux-ui-designer, product-owner, delivery-manager co-decide) | `POST /api/documents` returns 201 once the blob and rows are durable and the AI pipeline runs on `Raffa.Worker`; the message is **published before the commit** because `extraction_job` carries `FORCE ROW LEVEL SECURITY`, which makes every poller and every sweeper a cross-tenant read ADR-009 forbids; idempotency is a conditional `UPDATE` claim on the already-written `ExtractionJob` row, never a broker feature, and the **database owns the terminal state** (`max_delivery_count` strictly above the app's `MaxAttempts`), which is what makes "every row terminal" a property of the schema; the pipeline must **replace rather than append**, because at-least-once delivery otherwise duplicates every extracted fact; content classification moves to the worker and a refusal becomes a terminal `Rejected` row (code-only enum value) whose blob is deleted, listed but **never counted** and never askable; and one server-computed completeness contract (`counts`, `readiness`, `processingDocumentCount`) replaces **four** incompatible definitions of "ready", one of which already tells users a fabricated number. |
+
+**ADR-001 gains a w15 amendment footer** (product-owner, owner). It *completes*
+its w14 clauses 1–2, *resolves* clause 7, and **supersedes nothing**; the R0–R4
+ladder and the §1.2 non-goal list quoted verbatim are unchanged. The
+**asynchronous pipeline is restored as the product rule and grants no new scope
+authority** — spec §7.1 is literally headed "Asynchronous pipeline", `uploaded`
+is defined there as "processing **not started**" and §16.1 ranks the async
+worker **P0**, so an undelivered P0 is being delivered late, and
+`requirements.md` **A7 / OQ-askv2-007** are `assumed-wrong` from this wave on.
+The **admission gate splits** (format and size in the request, content
+classification on the Worker) and a refused file becomes a **persistent,
+visible, terminal record whose content Raffa does not keep** — never askable,
+**never counted**, removable by the existing `DELETE` — which supersedes
+**R-DOC-05 AC-1** and R-DOC-04's *session-only / not stored* clause **on the
+record** (`inputs/**` is never edited) while R-DOC-04's ***never counted* clause
+stands**, because async classification **plus** a session-only refusal is the
+one combination that loses a user's file without telling them. **"Still
+processing" outranks "empty"**, *askable = validated, not merely `completed`*,
+and screens are **gated, never blocked**. Inviting a colleague **provisions a
+guest identity and never anything more**: Raffa creates a guest and **never
+deletes or blocks one** (answering OQ-w15-007), one guest per address, no
+directory reads beyond provisioning — not §1.2's "supplier onboarding", because
+the invitee is a **colleague** joining the customer's own workspace. The
+deferred **workspace-domain invite restriction is resolved as NOT enforced**,
+since *a deferral does not convert into an obligation when its trigger fires*.
+The **mail deferral ends with scope unchanged**: exactly one mail type, the
+pilot script gains no inbox step, `mailDelivered` is a **server fact**, and **a
+mail carrying a site-relative accept link means NW-68 does not ship**. The
+general rule under all six clauses is w14 clause 3's mirror — **the system must
+not silently drop a fact the user is entitled to.** An **addendum** from a later
+table round corrects **A15-6's acceptance wording** (no "Try sending again"
+ships, withdrawing this seat's own lane draft against ADR-020 w15 §3.4, because
+the token is stored only as a SHA-256 hash so any retry is a **re-issue** that
+kills the link on screen — revoke + re-invite under §J.2b keeps the capability),
+confirms **OQ-w15-D2 unoverruled** on a role-boundary ground (widening Admin-only
+`DELETE` to Procurement is a **spec §3.1** change, not a list tidy-up), sets the
+live-invitation cap at **100** as a safety bound rather than a quota
+(OQ-w15-sec-03), and rules that **if the 20-task cap binds the two `should`s
+yield before either `must`** — NW-10 first, then NW-58r to its runbook walk,
+then NW-69 — while NW-27's durability, NW-67's failure contract and NW-68's
+absolute accept link are **never** narrowed. A re-entry round adds **clause 12**,
+which rules what `demo` actually shows this wave: both new capabilities ship
+behind per-environment flags defaulting **false** there, and ADR-026 §2's fourth
+value **`NotConfigured`** makes flag-off behave *link-only, exactly as `main`
+does today*, so the "a failure leaves nothing behind" rule binds **`Failed`**
+alone and **`demo` loses nothing w14 delivered**; **A15-4 / A15-5 / A15-7 are
+therefore `dev` acceptance and are not walkable on `demo`**, and no task may
+enable either flag on `demo` to make them pass. The same clause **ratifies the
+`demo-v4` cut as a product requirement** — `demo` stands a whole wave behind at
+`demo-v3`, so the workspace-and-invite half of `percorso-pilota-v1.md` has never
+existed on the environment the client demo is run from.
+
+**ADR-002 gains its first amendment footer** (software-architect, owner). The
+modular monolith, the module map and "no microservices split in V1" are
+unchanged. The queue stops being a diagram and becomes a real port
+(`SharedKernel/Messaging/`), with handlers confined to the worker host as
+ADR-002's own Implications section already required; **one new project,
+`Raffa.Storage`**, carries the blob adapter that is `internal` to `Raffa.Api`
+today but is needed by both hosts — the `Raffa.AiGateway` shape, not a bounded
+context, so the spec §5.1 module map does not move; `Microsoft.Graph` joins
+`ForbiddenSdkPrefixes` so ADR-002's provider-SDK rule becomes enforced rather
+than merely stated; and the assumption "no durable outbox/messaging middleware
+beyond the queue at R0" retires — it is a **broker, not an outbox**, deliberately,
+because a transactional outbox would need the cross-tenant sweep ADR-009 forbids.
+
+**ADR-024 gains its first amendment footer** (software-architect, owner). Ask
+Raffa V2's three sources, the no-tools `answer` role, the grounding and numeric
+guards, conversations, strategies, the capability catalog and the V2 IA are all
+untouched. Superseded in their **ordering half only**: "the admission gate runs
+before `IDocumentStorage.SaveAsync`" and the intake row's "before any blob or row
+is written" / 422 clauses — the gate now **splits**, format and size staying in
+the request (so nothing is stored for a non-document, and the 415 clause stands
+verbatim) while content classification moves to the worker. D3's substance —
+a non-contract's **content** never enters the tenant corpus — is preserved and
+restated as binding. The footer also records `requirements.md` **A7 /
+OQ-askv2-007** and **R-DOC-05 AC-1** as superseded **on the record** (`inputs/**`
+is never edited), R-DOC-04's *never counted* clause as standing, and fixes a live
+defect: Ask's `validatedContractCount` is fed an **unfiltered** portfolio count
+and `AskCopilotService.cs:294` renders it into user-facing copy as "N validated
+contract(s)" — from w15 there is exactly one definition of validated, ADR-026
+§D2's.
+
+**ADR-026 gains a second amendment footer** (software-architect, owner). D1–D4
+and every implication are untouched; no schema change and no regenerated
+`.sql`. The invite 201 gains `identityProvisioned` (a server fact beside
+`mailDelivered`, so the pane never infers identity state from delivery state);
+`IGuestProvisioner` joins D6's seam family with a fourth `NotConfigured` value
+that keeps the wave landable if the directory permission does not ship;
+provisioning runs inside the request **before the mail** and a failure leaves
+**no invitation row** — forced by D4's own partial unique index, which would
+otherwise let a failed invite hold the address slot; `acceptUrl` becomes
+**absolute** when a transport is configured, closing the D5 shape gap the ADR-005
+second w14 footer raised for this seat, with the fragment form unchanged; and the
+footer records that the server **cannot re-send the original link** (the token is
+stored only as a hash), so "Try sending again" is necessarily a re-issue.
+
+**ADR-005 gains a third amendment footer** (cloud-architect, owner). Every SKU,
+the scale-to-zero rule, the shared-`aisvc-raffa` exception, the ACS design with
+its rejected alternatives and the fragment accept link are unchanged. Service
+Bus moves from **provisioned** to **wired** and the ACS rows from **decided** to
+**applied**. Three independent Terraform gaps produce the *same* symptom — 201 in
+under 2 s and no document ever progresses: `modules/servicebus` creates a topic
+with **no subscription** (a topic with zero subscriptions **discards** every
+message, so the producer reports success and the documents are lost), the worker
+has `min_replicas = 0` with no ingress and **zero `scale_rule` matches anywhere
+in `infra/`**, and **no Service Bus RBAC or authorization rule exists**. w15 adds
+**exactly one** subscription (`max_delivery_count = 5`, strictly above the app's
+`MaxAttempts` so the database owns the terminal state; `lock_duration = PT5M`,
+the Service Bus maximum, coupled to `ServiceBus__MaxAutoLockRenewalMinutes`;
+sessions deliberately **not** enabled), two **topic-scoped** role assignments on
+the existing workload identity (**no secret at all**), a KEDA scale rule whose
+authentication shape must be **proved by `terraform validate`, never asserted**,
+and `max_replicas` 1 → 3 on both apps. **`min_replicas = 1` is rejected** with
+its ~$14/env/month arithmetic, recorded so it is not re-proposed as a
+simplification. The worker's **absent `ConnectionStrings__Storage`** is the
+quiet blocker — it needs **no new module variable and no root change**, and it
+must stay **fail-fast** while all nine `ServiceBus__*` / `Invitations__*` keys
+bind **optionally**, the shape `Raffa.Worker/Program.cs:44` already uses for
+`Market`. The connection-string form for ACS **stands for w15** and the
+`TokenCredential` migration security-architect proposed is recorded as the
+preferred later step (an ADR-011 amendment and one role assignment). **Fixed-cost
+delta: $0.00 in both environments** — `:56` still names Service Bus Standard and
+ACR Basic as the only two non-trivial fixed lines, and w15 adds no third.
+
+**ADR-007 gains its first amendment footer** (cloud-architect, owner). Option 1,
+remote state per environment, no state in git, no secrets in source and the
+mandatory tagging are all unchanged. The layout block at `:36-61` is reconciled
+with the tree: it listed **nine** modules while `staticwebapp/` and `foundry/`
+had already landed without a footer, so the corrected count is **eleven, and
+twelve** with w15's new `communication/` — and `infra/README.md:18-29` is named
+as a **second, parallel layout tree** that gains the same directory in the same
+task. Two module edges the layout implied and the tree did not have become real
+(`servicebus → containerapps`, `identity → servicebus`), with the note that
+`module.servicebus.fqdn` derives from the namespace **name** and so introduces
+**no plan-time unknown**. One Terraform PR owns all of `infra/**` this wave,
+which is what `check_single_writer.py` requires.
+
+**ADR-010 gains its second amendment footer** (security-architect, owner). The
+four registrations, PKCE, no client secrets and per-environment `iss`/`aud`
+validation are unchanged, as is the w14 footer. w15 records the **validation
+parameters**: `ValidateAudience = true` against **`api_client_id`** — not the
+`api://` identifier URI, because `requested_access_token_version = 2` makes the
+client id the `aud` a token actually carries, and a task that wires the URI sees
+every token rejected and reaches for `ValidateAudience = false`; `ValidateIssuer`
+pinned to the concrete tenant issuer, never `common`/`organizations`/`consumers`;
+`ClockSkew ≤ 2 minutes`; a missing scope denies and a present scope **grants
+nothing**. `oid` is the identity and `email` only ever a first-bind aid; **`tid`
+is the directory, never the Raffa tenant**; the `#EXT#` guest UPN is never parsed
+into an email for an authorization decision. The footer also carries the finding
+that makes **NW-06 urgent rather than tidy**: `WorkspaceRoleResolver`'s claims
+branch returns a role **without ever referencing its `tenantId` parameter**, so
+wiring JWT would turn one directory-wide app role into Admin **in every workspace
+the caller can name**, bypassing `workspace_membership` on the path that gates
+document deletion and reprocess. The branch is **deleted, together with the doc
+comment at `:20-22` that instructs the next implementer to keep it**, and no
+authentication kill-switch is added in any environment.
+
+**ADR-022 gains its second amendment footer** (security-architect, owner). The
+Day-1 posture stands as history; its w14 retirement schedule **fires for its first
+two rows**. `X-User-Id` stops being read at all — the class and its constant are
+deleted, not kept for compatibility. **`X-Tenant-Id` is demoted, not deleted**, a
+deliberate departure from the intake's wording: a caller may belong to several
+workspaces, so the token subject alone names no tenant and only 6 of 36 routes
+carry `{tenantId}`; it becomes an **authorized selector** verified against the
+token subject's live membership before scope entry, **404** on failure. Sizing is
+measured, not estimated — **74 occurrences across 17 files**, one task, or two
+identity regimes run live at once. The w14 "recorded limitation" (a caller can
+still assert another `X-User-Id`) is **closed**: from w15 it is a defect, not a
+residual.
+
+**ADR-025 gains a second amendment footer — a new §J** (security-architect,
+owner). §A–§I are untouched. §J governs the wave in which an invitation becomes a
+**write into the customer's company directory** and the accept link becomes an
+**email**: `User.Invite.All` as a Graph **application** permission on the existing
+workload identity rather than the Guest Inviter directory role (a fixed, auditable
+grant versus a Microsoft-owned bundle that can widen without our Terraform
+changing); guest **before** row, so a failure leaves an inert directory object
+rather than a live 256-bit token for an identity that cannot sign in — the same
+answer software-architect reached from D4's partial unique index; **bind the
+Graph-returned guest object id into `workspace_user.ExternalSubjectId` at invite
+time**, without which NW-67 and NW-05 together break Rule D.3b's email equality and
+A15-4 fails at its last step; the Graph `inviteRedeemUrl` is credential-shaped and
+is never mailed, returned, stored, logged or audited; exactly two externally
+visible provisioning outcomes, so the invite form is not a directory-enumeration
+oracle; removal **never** deletes or blocks the guest; the accept base is
+configuration and never a request header, or Raffa mails a live token to an
+attacker-controlled origin; Rule C9's fragment survives the transport and is now
+load-bearing against link-rewriting mail gateways; **no test-only authentication
+seam ships, in any wave**; five additive audit verbs; and T14/T15 activated beside
+eight new tests. §J also corrects the guard-test half of ADR-002's w15 footer:
+`DependencyDirectionTests` covers only the ADR-002 **domain-module** list, so it
+cannot enforce "one Graph call site" in a **host** — that belongs in
+`SdkAllowListTests`, which covers every project, and the amendment must be
+**package-scoped**, since widening its single `AllowedProjectName` skip would make
+`Azure.AI.*` legal in `Raffa.Api` as well.
+
+**ADR-011 gains its fourth amendment footer** (security-architect, owner). One Key
+Vault per environment, managed identity, no secrets in source or bundle,
+authorization before retrieval, audit, no training on customer content — all
+unchanged. **w15 adds exactly one Key Vault secret (`acs-connection`) and no new
+Key Vault permission**; Graph, Service Bus and the API JWT add **none**. The
+footer resolves a **contradiction between two ADRs written at this same table**:
+ADR-027 §D12 (`:347`, `:395`) specifies the Service Bus connection as a Key Vault
+secret on both hosts "exactly as `pg-cs` and `st-cs` already do", while ADR-005's
+w15 footer specifies topic-scoped RBAC and no secret at all. **This ADR owns the
+secret-versus-identity question and rules for identity + RBAC** (`Data Sender` /
+`Data Receiver`, never `RootManageSharedAccessKey`), leaving ADR-027's other
+requirements untouched. Cloud-architect's `listen`-only KEDA fallback is accepted
+**because** the message carries ids only — a leaked listen key would disclose
+identifiers, not contract content. The `TokenCredential` migration for ACS is
+recorded as accepted-later, not re-argued. And the ADR-024 footer's "classified
+before persistence; rejected files are never stored" is superseded **in its
+ordering half only**: the *rule* — a refused file's content never becomes
+retrievable, no embedding rows in either corpus — is preserved exactly.
+
+**ADR-009 gains its second amendment footer** (security-architect, owner). RLS on
+every tenant table, no `BYPASSRLS`, and the w14 footer's eight clauses are
+unchanged. w15 gives the Implications section's background-worker bullet its
+mechanism, because this is the first wave that builds that path: a queue message is
+**untrusted input** (`TryParseExact` before `BeginScope`, the job-row match as the
+first statement inside the scope, one scope per message, the Worker is **not** a
+third exception to clause 4). The footer's sharpest clause is one neither ADR shows
+alone — **the storage path must never come from the message**, because
+`DocumentStoragePath.EnsureWithinTenant` compares the path against the tenant *the
+caller passes*, so a message supplying both sides of that comparison would pass the
+guard. It also names the RLS guard correctly — **`TenantRlsMigrationCheckTests`** —
+and records that its coverage is **conditional**: it discovers tables from
+`TenantScopedEntity` subclasses of `DocumentsContractsDbContext` **alone**, which is
+why w14 had to hand-write `WorkspaceInvitationRlsTests`; and that a hand-written RLS
+test run against Testcontainers' default **superuser** is green and worthless.
+
+**ADR-012 gains its third amendment footer** (client-architect, owner). The
+Decision outcome (React + TypeScript + Vite, OIDC PKCE, a static bundle on Static
+Web Apps) and both w14 footers are unchanged. w15 adds the client half of five
+items in **one** footer: the **authorized-fetch choke point** — `client.ts`'s
+identity accessor is synchronous and its header literal is spread into **37
+separate `await fetch(` call sites**, so NW-05 cannot be a find-and-replace and
+`X-User-Id` is **deleted, not made conditional**; the SPA never stores the access
+token and **never reads a role claim from it**; `X-Tenant-Id` **stays a header**,
+demoted to a membership-verified selector by security-architect's ruling, so the
+w14 workspace hint and the `v2.spec.ts` e2e seam survive; the NW-61 provenance
+rule — **a client must not infer a server state it can be told** (Ask's off-state
+branches on `totalCount > 0` today and therefore lies to a tenant whose only
+document failed); the optimistic upload row is handed off **on the server row's
+arrival, never a timer**, because NW-27 turns a one-RTT gap into a visible
+flicker on every file of a 15-file batch; NW-69's outcome discriminant becomes a
+**server string** and the accept link renders **only when it is usable**; and
+NW-67's `loginPopup` **continues into the accept on its own resolution** rather
+than requiring a second click. The footer's sharpest clause **corrects this
+ADR's own w14 clause 3**: the claim that "a nested object renders `unknown`" is
+**false** — `renderSchemaType` recurses at `generate-api-client.mjs:110`, and the
+contract already nests three deep (`raffa-api.v1.json:3103-3105`) with the
+rendered result on disk (`schema.ts:646`). What genuinely renders `unknown` is
+**`$ref`/`oneOf`**, which the contract itself works around by duplicating shapes
+inline (`:3910`). This matters because ADR-027 §D7–§D9 promoted `counts` and
+`readiness` believing they would render `unknown`, whose likeliest repair is a
+**hand-written DTO in `client.ts`** — the one prohibition ADR-012 `:53` has held
+since it was accepted. It also records that `processingStatus` lives in **eight**
+contract sites, the eighth being a **query parameter** that no build or `tsc`
+check can catch. **ADR-018, ADR-013 and ADR-020 take no action** — no route is
+added, moved or removed this wave, mobile is untouched, and the states' copy is
+the designer's. A **round-two clause 13** adopts ux-ui-designer's two corrections
+to this footer and supplies the mechanisms they need: the invite outcome is
+**three** values, not four (a provisioning failure aborts the invitation, so no
+201 can carry it); the 502's closed `reason` set reaches the pane as a **typed
+`failureReason` off a declared 502 response**, because the envelope carries only
+prose today (`client.ts:160-170`) and string-matching it is the inference clause 4
+forbids; and **`UploadResultCard.tsx` may not simply be deleted** — the refusal
+has four producers and only the Worker-side content gate becomes a row, while the
+browser-side oversize check and the pre-storage 413/415 never can, so they move to
+a **local `"rejected"` row** rather than being silently dropped.
+
+**ADR-018 gains its fifth amendment footer** (ux-ui-designer, owner). The Route
+map, the Roles section and the three original states of
+`## Empty / error / loading (IA-level contract)` are unchanged, and **no route is
+added, moved or removed this wave** — recorded from this seat as well as from
+client-architect's so no task re-opens the router table from either side. w15
+adds two states to that contract: **not ready yet** (something is in flight) and
+**nothing made it through** (Raffa.ai holds documents, none in flight, none
+validated). Both use the *empty* block and never the error treatment, both are
+**told by the server and never inferred**, and both exist to enforce one rule —
+*an empty state must never tell a user to do a thing they have already done*.
+The footer binds Ask, Portfolio, Contract 360, Renewals and Quote check in one
+statement. It also settles **what each Documents number counts**, and in doing so
+**withdraws a ruling of this seat's own lane draft**: `All documents · N` does
+*not* count refused files. Instead every number reads exactly one server field —
+`counts.needsAttention`, `counts.all`, and a **third filter chip `Not added · K`**
+reading `counts.rejected`, which had no consumer in ADR-027 §D7 until now. That
+is the only arrangement in which product-owner's "persistent, visible, terminal"
+refusal row is actually **reachable**: with two chips and `counts.all` excluding
+`Rejected`, the row exists on the server and no filter shows it. A third finding
+is recorded as an ask rather than assumed: `kbSummary`'s **"M askable"** is
+page-scoped *and* equates askable with `Completed`, which ADR-026 §D2 rules is not
+the definition — the same fabricated-fact class software-architect found at
+`AskCopilotService.cs:294`, one screen earlier.
+
+**ADR-019 gains its second amendment footer** (ux-ui-designer, owner) and it is
+deliberately the smallest of the wave: **one row** joins the locked Semantic
+mapping — *document refused at admission (`Rejected`) → `.tag-outline`, label
+"Not added"* — **derived, not invented**, since that treatment and that label
+already ship together on the card w15 retires (`UploadResultCard.tsx:24`), and
+`.tag-accent` is reserved for a Raffa.ai-side failure the user can retry. **No
+token, no type-scale row, no component, no confidence threshold changes.** The
+footer records the one place in this wave's design surface where the type system
+does not protect the change: `documentTable.ts:97-99` is an **unchecked cast**,
+so adding `"rejected"` to `RowStatus` while forgetting `semantics.ts:52`
+**compiles clean** and falls through an exhaustive switch to `undefined`. It also
+confirms no component is needed for three surfaces that look like they need one —
+the third `.seg` button is a catalogue *use*; and the invitation email consumes
+token **values as inline literals**, because no custom property and no web font
+(`Archivo`) survives an email client.
+
+**ADR-020 gains its fifth amendment footer** (ux-ui-designer, owner). Both w14
+footers stand and are quoted where touched. It rules on four surfaces. **Screen 3**:
+a refused file becomes a **row** with a terminal status, the reason moves verbatim
+into the existing hint slot, `UploadResultCard.tsx` is deleted, the row offers no
+next step but stays removable by the existing `DELETE`, and `stage: null` reads
+**"Queued…"** — which costs nothing, because `documentTable.ts:76-78` already
+states that only the stage text distinguishes queued from processing. **Screens 2,
+5 and 6**: Ask's off-state gains a **third** variant (OQ-w15-ca-04, routed here by
+client-architect) because its predicate today tells a tenant whose only document
+*failed* that it "is still processing"; Portfolio gains a third variant with **no
+new string**; Contract 360 gains a fifth state with two readings. **Screen 10**:
+the pane's outcome set is corrected against what the backend seats promoted — a
+provisioning failure **aborts the invitation**, so it is a blocking **502**, not a
+fourth success state; this seat's "suppress the link" and client-architect's
+fourth outcome both yield to a mechanism that is strictly stronger, and the rule
+*a link renders only when it is usable* is satisfied **by construction**. 10.1
+therefore gains **one** value, and its pre-decided **"Try sending again" affordance
+does not ship**, because the server cannot re-send the original link (the token is
+a SHA-256 hash) so any retry is a re-issue that kills the link the Admin is
+looking at — the precedent being this ADR's own w14 §2, *an affordance with no
+legal mechanism is not shipped*. Copy is supplied for software-architect's closed
+502 reason set, with a fourth row guaranteeing a raw wire enum can never reach the
+screen. **Surface 12 is new — the invitation email**, which has no design owner in
+any export: plain-text body of record, no image, no web font, the accept link as a
+visible absolute URL, and lines lifted verbatim from screen 11 so the mail and the
+landing page say the same thing. One rule binds the whole wave: the V2 export is
+**pre-rebrand** ("Raffa") while every shipped string says **"Raffa.ai"**, so any
+task retyping copy out of the export silently reverts the rebrand.
+
+**ADR-027, ADR-002 and ADR-026 each gain a second w15 amendment footer**
+(software-architect, owner of all three) — the reconciliation round. **No new ADR,
+no new row, no new endpoint, no new table, no migration, no infrastructure and no
+Terraform delta.** Three peer corrections are adopted after re-verification at the
+source, one cross-item hazard no lane had named is recorded, and two questions
+routed to this seat are answered.
+
+- **ADR-027 (C1–C5).** Implication 5 is **withdrawn**: `renderSchemaType` **recurses**
+  (`generate-api-client.mjs:109-111`) and returns `unknown` only for a missing
+  `properties` map or a `$ref`/`oneOf`, so `counts` and `readiness` land **inline** —
+  the generator is not extended, nothing is flattened, and nothing is hand-written
+  (client-architect's correction; the wrong repair in front of an `unknown` is the
+  hand-written DTO ADR-012 `:53` forbids). The case's own doc comment still claims
+  *"flat property maps only"*, which its next two lines falsify — the same staleness
+  class as OQ-w15-003's, retired by the task that first exercises the recursion. D12's
+  worker key list is **false and would fail the apply**: the worker already carries
+  `AZURE_CLIENT_ID` and all three `AiGateway__*` keys, so acting on it emits duplicate
+  `env` names; only `ConnectionStrings__Storage` is absent (cloud-architect's
+  correction). D12's remaining bullets **yield to ADR-005's w15 footer**, which is the
+  ruling D12 asked for: `min_replicas = 1` **rejected** in favour of a KEDA scale rule,
+  the subscription is `document-processing`, and **NW-27 adds no Key Vault secret** —
+  topic-scoped RBAC — so ADR-011's "`acs-connection` is the one new entry" is exact.
+  D10's selection predicate inherits (namespace, not connection string). And **`counts`
+  does not gain `askable`**: a document envelope cannot carry a contract fact without
+  minting a fifth definition of *ready* in the wave whose D8 collapses four into one —
+  the segment renders §D2's existing `contractCount`, already fetched by the shell, or
+  it is removed (ux-ui-designer's copy call), while `counts` gains **`needsReview`**,
+  a free projection of the one grouped query, because `needsAttention` is the wider
+  number and rendering it under narrower words is the same defect D8 removes.
+  **Round 3 (C6–C11)** adds one correction this seat found in its own design and five
+  discharges. **C6: D3 completed a message that may not be a phantom.** A commit slower
+  than D2's 2 s delay makes the row invisible at delivery, D3 completed the message, the
+  commit then landed, and — with no sweeper possible under `FORCE` RLS (§0.1) — the
+  document sat at `Uploaded` **forever on a 201**. The three cases D3 merged are split by
+  `DeliveryCount`: row present ⇒ complete; absent and `< 2` ⇒ **abandon**; absent and
+  `≥ 2` ⇒ **dead-letter `job-not-found`**. D2's "nothing is lost" is corrected — the
+  residual stranding is bounded, alarmed and recoverable by D5's re-enqueue, and closing
+  it fully would need the cross-tenant sweep ADR-009 forbids; a non-empty DLQ now also
+  means *"an upload's commit failed"*. **C7: `MaxAttempts = 3`**, the number `ADR-005:358`
+  assigns to this seat — strictly-below is insufficient because deliveries and attempts do
+  not advance together, and `4` would let the broker dead-letter before the handler wrote
+  `Failed`; `MaxAutoLockRenewalMinutes = 30` binds to `lock_duration = PT5M`. **C8:** C3
+  renamed the subscription in prose but left D2's constant `extraction-worker`, which
+  fails at first receive inside a **green** CI run — it is `document-processing`; the
+  topic is re-verified correct and the module carries **no subscription resource at all**.
+  **C9:** D7's `needsAttention` takes ADR-018 clause 2b (*not `Completed` and not
+  `Rejected`*), its old premise being false at `documentTable.ts:141-143`; `counts` is
+  therefore **five overlapping projections, not a partition** (no sum holds), and
+  `all − needsAttention` must never render as *askable*. **C10:** `Raffa.Storage` carries
+  **no `DbContext`, migration or `.sql`**, so `backend.yml` is untouched and w15's CI-YAML
+  set stays **zero** (delivery-manager's ask). **C11:** the message stays **ids-only** —
+  a path beside its own tenant id would make `EnsureWithinTenant` self-referential — and
+  `AzureAd__` is confirmed unclaimed anywhere in `backend/src`.
+- **ADR-002 (clause 4 corrected).** Adding `Microsoft.Graph` to
+  `DependencyDirectionTests.ForbiddenSdkPrefixes` closes a real hole — nothing in that
+  list matches it — but **cannot** enforce "one Graph call site", because that test
+  scans only the fixed ADR-002 **domain-module** list and the adapter lives in a
+  **host**. The enforcing test is **`SdkAllowListTests`** (every project, "hosts and
+  tests included"), amended **package-scoped**: widening its single `AllowedProjectName`
+  would make `Azure.AI.*` legal in `Raffa.Api` (security-architect's §J.1). The
+  wave-wide map is stated once — `Azure.AI.*` → `Raffa.AiGateway`; `Azure.Identity` →
+  `Raffa.AiGateway` + `Raffa.Api` + **`Raffa.Worker`**; `Microsoft.Graph` → `Raffa.Api`.
+  **The `Raffa.Worker` entry is the hazard no lane named**: cloud-architect's RBAC
+  transport puts `DefaultAzureCredential` in the worker, so **NW-27 turns that test red
+  on a file NW-67 already edits** — `SdkAllowListTests.cs` is a single-writer file
+  contended by two items, like `Program.cs`.
+- **ADR-026 (§8–§10).** The invite 201 gains **`deliveryOutcome`**, a **non-nullable
+  `enum`** of `"sent" | "mail_failed" | "no_transport"` — the field client-architect and
+  ux-ui-designer both routed to this seat to name, with three values because a
+  provisioning failure is a **502**, not a fourth success state. `mailDelivered` is
+  **kept** (three seats ruled on its meaning this wave) under a normative biconditional
+  — `deliveryOutcome == "sent"` **iff** `mailDelivered == true` — so the pane branches on
+  one string and never combines two booleans. §6's deferral **closes**: ADR-025 §J.2b
+  ruled re-issue **by replacement**, so `POST …/invites` replaces a live invitation in
+  one transaction — no new endpoint, the `alreadyMember` 409 and the unique-violation
+  concurrency backstop both **stay**, and the client-composed `DELETE`+`POST` fallback is
+  **withdrawn**. This is what finally makes ADR-020's "Send a new invitation" affordance
+  legal against D4's index, which is itself unchanged.
+
+**ADR-014 gains its second amendment footer** (delivery-manager, owner). The
+trunk-based model, the protected `main`, the tag-plus-approval promotion and the
+whole w14 footer are unchanged. w15 sharpens the wave base — **the base SHA is
+read at the gate, never quoted from a wave document** (the requirements name
+`3c89d35` while `origin/main` on disk was already `6ae21b9`, and `packed-refs`
+is stale for **every** branch ref this wave touches, so the loose ref wins) — and
+adds the check w14 lacked: a behind-base wave's merge must leave a **zero
+product-tree delta**, because three of the five differing files were *shorter*
+on the process branch and a wrong resolution would have silently reverted the
+previous wave's README and e2e work with no build, test or deploy noticing. It
+also records that green means the **`build + test` job at the base commit**, not
+the deploy (a red `main` is no `dev` deploy, which is no wave — the trap w14
+closed blind to), that `integration` is **re-created** from the base rather than
+merged into (it has diverged: `8ed3af1a` vs `271c3ae1`), and that w15's planned
+CI-YAML set is **zero files**. Its one structural change extends w14 clause 2:
+**a wave that changes `infra/` has two merges to `main`**, the infrastructure-only
+PR first, because an HCP apply is triggered *by* the merge and therefore a single
+merge event cannot satisfy "the apply is `CURRENT` before the image that reads
+it deploys" — which w15 needs twice over, for the worker's fail-fast storage key
+and the API's four `AzureAd__*` keys.
+
+**ADR-015 gains its first amendment footer since 2026-09-01** (delivery-manager,
+with cloud-architect's text and security-architect's permission ruling — the
+same joint authorship the body records). OIDC federation, the two per-environment
+service principals and the subject-claim pinning are untouched, and **no GitHub
+secret, federated credential or environment is added**. NW-67 extends the body's
+`:82-83` runtime-identity sentence to a **directory** API for the first time:
+the existing per-environment workload managed identity receives Graph
+`User.Invite.All` as an **application** permission, with no secret and no client
+credential. The change that is genuinely this ADR's is the **apply plane**:
+`infra/modules/identity/main.tf:41-42` records that the deploy job does not need
+Graph, which stays true for *deploy* and stops being true for the identity that
+runs the HCP apply — creating an `azuread_app_role_assignment` is itself a
+directory write, so that identity needs `AppRoleAssignment.ReadWrite.All` +
+`Application.Read.All` (or Privileged Role Administrator), granted **once, out
+of band, before the first apply** and verified at the gate rather than
+discovered from a red run. For a managed identity the assignment **is** the
+consent, so no separate consent click is scheduled; and because one PR carries
+Service Bus, ACS and Graph into a single state per environment, the resource is
+`count`-gated behind `guest_provisioning_enabled` (default `false`) so a missing
+directory right **degrades NW-67** instead of blocking the wave's other two
+features.
+
+**ADR-016 gains its third amendment footer** (delivery-manager, reconciled with
+cloud-architect and security-architect), clauses continuing at **13**. w15 is the
+wave that breaks its own w14 clause 1 — the **first per-environment API
+configuration key**, precisely the case that clause predicted — so the barrier is
+restated and the ordering built: **one infrastructure PR owning all of
+`infra/**`, merged before the wave PR**, with `demo`'s keys flag-gated `false` at
+that merge because both HCP workspaces watch the same `infra/` prefix and
+`demo`'s infrastructure therefore moves while it is still serving the previous
+wave's images. Every new key declares its absent-value behaviour and **none may
+fail open**: the `ServiceBus__*` and `Invitations__*` keys are optional, the
+worker's `ConnectionStrings__Storage` is fail-fast (the soft alternative marks
+*every* document `Failed` while A15-2 still passes), and `AzureAd__*` is
+**fail-closed but never crash-closed** — 401 with no header fallback, because a
+boot-crash loop costs the wave its acceptance environment. Three findings shape
+the rest: **a green `backend.yml` run does not prove the worker started** (no
+revision-state assertion exists anywhere in the workflow, and three independent
+Terraform gaps produce the identical silent symptom), so the gate gains one
+post-deploy revision-state assertion and A15-2 is walked on deployed `dev`;
+**w14 was never promoted** — the highest tag is `demo-v3` of 2026-09-04, so
+`demo-v4` is cut at the gate to restore one-promotion-one-wave and w15 promotes
+as `demo-v5`, with the three data-plane steps `demo` owes recorded as the
+*previous* wave's debt; and the **web-before-backend ordering three seats asked
+for is neither enforceable nor useful** — the outage window is symmetric, and the
+direction that was requested is the one that can land writes attributed to
+nobody. Clause 21 records that NW-05 takes `reprocess-tenant-documents.yml` out
+of service at the code merge, failing loudly on a read before any write, and
+that w15 neither repairs nor edits it because NW-31 owns that file in W16.
+
+**ADR-005 gains a second w15 amendment footer** (cloud-architect, owner), clauses
+**9–14**, written at the re-entry round. No resource, SKU or module changes and
+the **$0.00** fixed-cost delta is unchanged; ADR-007 needs nothing this round
+(`modules/identity` gains a block, not a module or an edge). **Clause 9 corrects
+this seat's own number**: `max_delivery_count` moves **`5` → `8`** and the
+value quoted at `:709` above, at `ADR-027:609` and at `:732`, is superseded by it.
+ADR-027 §C7 discharged the app-side half as `MaxAttempts = 3` and closed its
+arithmetic *exactly* — 2 abandons + 3 attempts = 5 — but a delivery is also spent
+by failures that advance no attempt: the transient pre-claim error §C7 itself
+names, §C6's abandons, and two this seat created and must therefore budget for —
+**scale-in eviction** under `min_replicas = 0` and the 30-minute **renewal
+ceiling** against `lock_duration = PT5M`. Realistic worst case is **7 deliveries
+against a ceiling of 5**, so the broker dead-letters before the handler writes
+`Failed`, which is the exact failure §C7 exists to prevent. `MaxAttempts = 3`
+**stands unchanged** and the inequality holds *a fortiori*; the bound on a
+looping message is **time, not count** (`P1D` + dead-letter on expiry), so the
+headroom cannot loop and costs **$0.00**. **Clause 10** accepts §C6's hand-off —
+a non-empty DLQ now also means *"an upload's commit failed"* — and lands it on
+**two new operator checks** rather than a resource, noting that the dead-letter
+queue is **durable and swept by nothing**, which is what makes "recoverable"
+true. **Clause 11 fills a gap in this seat's own §4**: the `email` **optional
+claim** (ADR-010 §2.4 / S15-9) is a real Terraform addition — verified absent
+from all of `infra/` — on `azuread_application.api`
+(`modules/identity/main.tf:57`) only, ungated, and **the plan must show an
+in-place update (`~`), never a replacement (`-/+`)**, because replacing that
+registration mints a new client id and takes out `AzureAd__ClientId`, the `aud`,
+both SWAs and `web.yml`'s scope literals behind a green CI run. **Clause 12**
+accepts ADR-011 §2c's three conditions verbatim and offers one narrowing —
+a **topic-scoped** authorization rule instead of the namespace-wide one this
+seat's own draft named, shrinking condition (iii)'s residual to the single DLQ
+ADR-009 §5 already bounds to ids, subject to proof. **Clause 13** answers
+OQ-w15-ca-01: **no ingress ceiling is pinned and client-architect's 120 s
+stands**, because NW-27 makes the API's longest synchronous request *shorter*.
+**Clause 14** confirms delivery-manager's two asks (the infra PR is **only**
+`infra/**`, which `infra/README.md` is inside; `demo`'s two flags default
+`false`) and constrains the gate's new revision-state assertion: with
+`min_replicas = 0` a healthy worker has **zero replicas at rest**, so "a replica
+is running" fails on a healthy environment and "the revision exists" passes
+through a crash-loop — the assertion belongs against a worker **given work**,
+which is A15-2's walk.
+
+**ADR-011 gains a second w15 amendment footer** (security-architect, owner),
+clauses **6–13**, written at the re-entry round. No new Key Vault secret, no new
+Key Vault permission and no new CI credential: w15 still adds exactly one
+(`acs-connection`). **Clause 6 corrects this seat's own ruling** — the first-round
+`none — ADR-015` reasoned about the **deploy** identity (`raffa-sp-dev` /
+`raffa-sp-demo`) and never about the **apply** identity, and creating an
+`azuread_app_role_assignment` is itself a **directory write**, so the new privilege
+lands where this seat did not look. **Clause 7** prices what nobody priced:
+`AppRoleAssignment.ReadWrite.All` grants **any** application permission of **any**
+API — Graph's own `Directory.ReadWrite.All` and `RoleManagement.ReadWrite.Directory`
+included — to any service principal, so a standing grant would let whoever can merge
+`infra/**` mint arbitrary directory privilege in the **customer's** tenant, for a
+need that is one assignment, once. **Clause 8** finds that of the three options at
+`ADR-015:126-128`, **Cloud Application Administrator cannot perform this assignment
+at all** (that role excludes Microsoft Graph application permissions, and
+`User.Invite.All` is one), so the two that work are both tenant-wide escalation and
+the narrow-sounding one fails — routing an operator to a red apply and then to an
+escalation. **Clause 9 rules `ADR-015` clause 4's fallback the default**: a Global
+Administrator makes the single assignment out of band, the resource stays
+`count = 0`, the later `import` leaves the apply identity needing only **read**, and
+revocation stays a human act; the standing grant survives as a fallback under four
+conditions (never Privileged Role Administrator; exactly one assignment and never one
+whose principal is the apply identity; re-reviewed each `infra/**` wave; recorded in
+the ADR-016 runbook). No ADR body changes and no seat re-works anything — both
+options were already on delivery-manager's page. **Clause 10** makes it a gate check
+with a named expected outcome per shape, discharging delivery-manager's ask.
+**Clause 11 co-signs ADR-005 clause 11's `~`-not-`-/+` rule as an *authorization*
+requirement** — the API application's client id **is** the `aud` ADR-010 w15 §1.2
+pins, so a replacement fails every token at once and the tempting repair is the
+`ValidateAudience = false` that §1.2 forbids — and corrects its premise: ADR-010 §2.4
+already says the design does **not** depend on the `email` claim, because `oid` is
+bound at invite time, and the stronger reading invites an **email match** on a mutable
+identifier. **Clause 12** binds ADR-027 §C6's `DeliveryCount` split to the message's
+own tenant scope (a `job-not-found` is never a cross-tenant lookup) and accepts
+ADR-005 clause 12's topic-scoped narrowing of ADR-011 §2c(iii), with the namespace
+rule standing if the narrowing proves inexpressible.
+
+**ADR-012 gains a second w15 amendment footer, §15–§20** (client-architect, owner),
+written at the re-entry round. **§15 is the finding**: the SPA's identity
+configuration is not in the bundle and not in the repo — `web.yml:144-205` writes
+`dist/config.json` during the **deploy** job from four live Azure lookups plus two
+hardcoded scope literals, and `web.yml` fires only on `web/**`,
+`.github/workflows/web.yml`, `.github/actions/azure-login/**` and
+`scripts/write_web_runtime_config.py` (`:9-23`), with **no `workflow_dispatch`**.
+`infra/**` is in neither workflow's filter, so the wave's infrastructure-only PR
+(ADR-014 w15 clause 5) applies with **no web run at all**: anything `config.json`
+carries that the apply moves stays stale on the deployed SPA until an unrelated
+`web/**` push. Not "behind a green CI run" — behind **no run**, and on `dev` there
+is no manual redeploy; nor is it loud at boot, since `AppConfigError`
+(`appConfig.ts:44-50`) rejects only *missing or malformed* config and a stale
+client id is neither. The rule is a **gate step**, not a task, and w15's own answer
+is **checked and negative**: the one registration touched is
+`azuread_application.api` (`identity/main.tf:57`), not the public client (`:116`),
+and a Container Apps FQDN is per app, not per revision. **§16 adopts ADR-005 clause
+11's `~`-not-`-/+` rule and corrects its client-half collateral**: both SWAs record
+the **public-client** id (`web.yml:202` ← `tags.oidcPublicClientId` ←
+`identity/main.tf:43-44`, and `appConfig.ts:25` names the field), not the API's, so
+that item is struck — clause 11's own next bullet says the public client is not
+touched; the scope literals resolve against `identifier_uris` (`:70`), a
+**name-based** string, so a replacement re-creates them intact and what it actually
+takes out is the service principal (`:107`) and the pre-authorization (`:155-161`),
+turning every sign-in into a consent prompt. **And the inversion**: the SPA binds by
+**URI string**, so the shape clause 11 declares safe is the one that breaks it — an
+in-place `~` changing `identifier_uris` passes the check and silently breaks every
+login, because `web.yml:204-205` is a hand-copied duplicate of `identity/main.tf:70`
+with no test, no build step and no plan assertion comparing them. **The plan gains a
+second assertion: `identifier_uris` shows no diff at all.** **§17 is the second
+finding, against a property withdrawn at this round**: ADR-027 §C6 honestly retires
+D3's "the database owns the terminal state", which is what made the 2 s poll's
+termination a theorem — `useDocumentsList.ts:105-108` polls while any row is
+`Uploaded`/`Processing` and `:110-119` clears the interval only when that boolean
+flips, so §C6's permanently-stranded row means an open tab polls **every 2 s
+forever** (~1,800 requests/hour/tab) while the screen shows a *not ready yet* state
+that is true and never resolves. The poll gains a **no-change budget** with an
+explicit resume, under three prohibitions — never re-label the row `Failed`, never a
+client timer feeding the bar, never a second definition of terminal —
+copy owed by ux-ui-designer as **OQ-w15-ca-05**. **§18** closes the counts clauses:
+§C9 adopted this seat's `isAttentionStatus` ask in full, §C5 and ADR-018 clause 3
+resolve §13.6 to its second branch, and the one mechanism still missing is a
+**signature** — `buildKbSummary` (`documentTable.ts:154-160`) becomes a function of
+`counts` (`all`, `needsReview`), after which no page-derived number survives screen
+3; §C9.1 lands as a client prohibition (five overlapping projections, so no chip is
+computed from another). **§19** discharges OQ-w15-ca-01 (120 s stands, ADR-005 clause
+13), -ca-02 (scheduled as a numbered walk), -ca-03 and -ca-04, and **accepts
+delivery-manager's refusal of "web before backend"** on evidence. No route changes
+this wave, no new ADR from this seat, and no CI-YAML file added to a zero-file set.
+
+**ADR-020, ADR-018 and ADR-019 gain second w15 footers** (ux-ui-designer,
+re-entry round, 2026-09-14) — three findings, two of them against this seat's own
+round-1 text. **ADR-020 §6** corrects §1.3: a refusal has **four producers** and
+only the content gate becomes a server row, so the oversize check
+(`uploadPipeline.ts:105-108`, no HTTP call at all) and **413/415** (`:122-125`,
+kept in-request by the split gate) render as a **local row** — client-architect's
+mechanism (ADR-012 §13.4), adopted, which is what makes "one file, one row on
+every path" true rather than aspirational. Same `.tag-outline` **Not added** on
+both, lead-in dropped on both, and the oversize sentence loses its interpolated
+filename because the row already has a filename cell — licensed by provenance:
+that sentence is app-authored, while `getRejectionReasonCopy`'s two are
+requirements copy (`requirements.md:186`). **§6.3 is the finding**: `:123` renders
+`result.error ?? "Not added: this file could not be added."`, a user-facing
+sentence **the API authors** and no oracle contains, on the one refusal path that
+survives NW-27 — replaced by two designed sentences keyed on the status code,
+under the rule *a server field may select the sentence a user reads, never supply
+it* (the same convention NW-67 already uses). **§7**: ADR-027 §D6 persists the
+rejection reason but §D7's `items[]` and §11's contract list **carry no reason
+field**, so after the reload §1.1 exists to survive, a terminal **Not added** row
+renders with an **empty hint** — ask to software-architect for a reason **code**
+from the closed set (`AdmissionDecision.cs:23-32`), copy staying client-side;
+assumption in force is tag-and-no-hint, never a remembered 422. **§8 answers
+OQ-w15-ca-05**: the stopped poll is a **list-level notice**, not a row state and
+not an error — *"Nothing has changed for five minutes, so this page stopped
+checking for updates."* + **"Check again"**, `.hint` + `.btn-secondary`, the actor
+being the page and never Raffa.ai, and never implying failure. **§8.3 generalises
+it, and this is the half ADR-012 §17 could not see from one hook**: NW-61 turns
+Ask's one-shot gate fetch (`ask/index.tsx:100-105`, verified) into a 2 s poll, so
+the wave adds a **second** unbounded re-read on the surface where "not ready yet"
+is the whole promise. **ADR-018 clause 6** therefore states it at IA level — *a
+"not ready yet" state that depends on a repeating re-read stops on a bounded
+no-change budget and offers an explicit resume; a surface that cannot offer the
+resume must not claim it is waiting* — binding five surfaces with one sentence and
+one label; **clause 7** fences the counting table (a pre-storage refusal has no id
+and no client-side increment may "fix" the chip). **ADR-019 clause 4** adds **no
+semantic row** — the treatment is keyed on the reading — but names the third edit
+site: `DocumentStatusTable.tsx:94-96` is a ternary, so a forgotten branch renders
+a refused file as **Processing** forever, compiling clean; clause 5 confirms the
+paused notice needs no component and no token. No new ADR from this seat.
+
+**ADR-015 and ADR-016 gain second w15 footers** (delivery-manager, re-entry
+round, 2026-09-14) — four corrections, **three of them against this seat's own
+promoted clauses**, and none of them reachable by re-reading its own lane.
+**ADR-015 clause 6** strikes one of the three options its own clause 2 offered
+for the apply identity: **Cloud Application Administrator excludes Microsoft
+Graph *application* permissions**, and `User.Invite.All` is one
+(security-architect, `ADR-011` §8) — it is the narrowest-sounding entry on the
+list, therefore the one a least-privilege operator picks first, and it fails **at
+the apply**, producing the red HCP run clause 2 exists to prevent. **Clause 7
+inverts the default**: clause 4's out-of-band Global Administrator grant becomes
+the preferred shape and the standing grant the fallback, on security-architect's
+pricing (`ADR-011` §9) — `AppRoleAssignment.ReadWrite.All` grants any
+application permission of any API to any service principal **including itself**,
+so held by an automation identity triggered by a merge to `infra/`, whoever can
+merge Terraform can mint arbitrary directory privilege in the customer's tenant,
+for a need that is one assignment, once. **Clause 8** gives the gate check a
+named expected outcome **per shape**, so it proves the answer either way rather
+than becoming a shrug. **ADR-016 clause 23 rewords clause 17's revision-state
+assertion, which as written fails on a healthy environment**: cloud-architect's
+`min_replicas = 0` means a healthy worker has **zero replicas at rest**, so *"a
+replica is running"* fails when nothing is wrong and *"the revision exists"*
+passes through a crash-loop — the check splits into a static half where **zero
+replicas at rest is a PASS** and a dynamic half that is A15-2's walk, on the
+rule that *a gate check that fails when nothing is wrong gets waived, and the
+waiver is what the next silent worker death hides behind* (wording this seat's
+at cloud-architect's request, `ADR-005` §14). **Clause 24** puts the
+dead-letter queue into the promotion sequence as a **standing condition to be
+read** — empty before the acceptance walk, and after it read with §C6's two
+meanings and **routed, never drained**, since nothing sweeps it and no
+cross-tenant sweep may exist. **Clause 25** adds two *different* plan assertions
+on one resource: `azuread_application.api` shows `~` and never `-/+`
+(`ADR-005` §11), **and** `identifier_uris` shows no diff at all (`ADR-012` §16)
+— the inversion, because the SPA binds by URI string, so the shape the first
+assertion declares safe is the one that breaks every login. **Clause 26** names
+the other edge of this seat's own two-merge structure: `web.yml` builds
+`dist/config.json` in its deploy job and has **no `workflow_dispatch`**
+(verified: `pull_request`/`push`/`workflow_call` only), so a PR 1 that ever
+changed a config-borne value would leave an outage **behind no run at all** —
+**checked negative for w15** and recorded as a negative result, to be asked by
+the next wave that touches `infra/` rather than inherited. No new ADR from this
+seat; w15's CI-YAML set stays **zero files**.
+
+`waves/w15.md` carries the per-item rows and the votes.

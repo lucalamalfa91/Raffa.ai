@@ -57,3 +57,141 @@ Every task that creates or extends a domain capability must add code to the matc
 - "Current LTS" is .NET 10 (the LTS at the expected implementation date); final target confirmed at implementation time.
 - API versioning scheme (URI prefix `/api/v1` vs header) is an open question carried in reports/open-questions.md (CQ-005 subset).
 - The mediator/DI pattern is in-process; no durable outbox/messaging middleware is assumed beyond the queue at R0.
+
+## Amendment (2026-09-13, wave w15 — the queue becomes real, and a second host-shared project appears)
+
+Serves **NW-27**. The **Decision outcome above is unchanged and still in force**:
+one class-library project per bounded context, a thin API host, a thin Worker
+host referencing the same libraries and consuming the same queue, and **no
+microservices split in V1**. Nothing in this footer moves a module boundary.
+Detail lives in **ADR-027**; this footer records only what changes in ADR-002's
+own subject — the project layout and the dependency rules.
+
+**1. The queue stops being a diagram and becomes a port.** ADR-002's Decision
+already says the Worker "consumes the same queue"; until w15 no queue existed in
+code. NW-27 adds `Raffa.SharedKernel/Messaging/` — `ExtractionRequested`,
+`IExtractionQueuePublisher`, `ExtractionQueueNames` — and an adapter per host.
+The port sits in `Raffa.SharedKernel` for the same reason `IDocumentStorage`
+(`Storage/IDocumentStorage.cs:23`) and `IAuditWriter` (`IAuditWriter.cs:8`)
+already do: it is a cross-host port, and `Raffa.Api` cannot see `Raffa.Worker`'s
+types (`IQueueConsumer` and `QueueMessage` are `internal` with
+`InternalsVisibleTo("Raffa.Worker.Tests")` only — `Raffa.Worker/AssemblyInfo.cs:9`).
+
+**The rule this ADR's Implications section already states is unchanged and now
+binds for the first time**: *"queue message handlers belong to the worker host,
+not to domain projects."* `ExtractionMessageHandler` and the Service Bus
+consumer are `internal` to `Raffa.Worker`, which is also what keeps
+`Host_must_not_contain_domain_types` green.
+
+**2. One new project: `Raffa.Storage`.** `AzureBlobDocumentStorage` and its
+`ServiceCollectionExtensions` move out of `Raffa.Api/Infrastructure/`, taking
+`Azure.Storage.Blobs` with them. Referenced by **the two hosts and by nothing
+else** — the `Raffa.AiGateway` shape.
+
+This is forced, not stylistic. The adapter is `internal sealed` to a **host**
+(`AzureBlobDocumentStorage.cs:14`) and is registered in exactly one place
+(`Raffa.Api/Infrastructure/DocumentStorageServiceCollectionExtensions.cs:26`),
+while four services the Worker now needs require `IDocumentStorage`. The
+codebase already names this failure mode in the abstract:
+`WorkerServiceCollectionExtensions.AddWorkerHost`'s doc comment (`:28-40`) warns
+that a module's `AddXxx` "registers that service in *any* host that calls it —
+including this one … a landmine under any host-builder configuration that
+validates the DI graph eagerly". That warning was written about `IAuditWriter`
+and closed by calling `AddAuditModule`; **the same remedy is unavailable for
+`IDocumentStorage` precisely because the adapter belongs to a host, not to a
+module.** Duplicating it into `Raffa.Worker` is rejected: `DocumentStoragePath`
+exists because the tenant-path guard is security-relevant
+(`SharedKernel/Storage/DocumentStoragePath.cs:24`), and two copies of it will
+diverge.
+
+`Raffa.Storage` is **not a bounded context** and holds no domain type. It is an
+infrastructure adapter project of exactly the kind ADR-002 already sanctions for
+`Raffa.AiGateway`, so **the module map of the product spec §5.1 is unchanged**
+and the "no microservices split" lock is untouched — this adds no host, no
+process and no network boundary.
+
+**3. Dependency direction, stated so the architecture tests can enforce it.**
+`Raffa.Storage` → `[Raffa.SharedKernel]` only. No domain module may reference
+it; they depend on `IDocumentStorage` in the shared kernel exactly as they do
+today, so **no domain project's reference list changes**. `Raffa.slnx` and
+`DependencyDirectionTests.cs` are both single-writer files this wave and are
+edited once, by the task that creates the project.
+
+**4. `Microsoft.Graph` joins the forbidden SDK prefixes** (NW-67, ADR-026's w15
+footer). `DependencyDirectionTests.ForbiddenSdkPrefixes` (`:76-84`) does not
+currently list it, so ADR-002's rule that a domain module never holds a provider
+SDK is **stated but unenforced** for Graph. Adding the prefix makes the existing
+rule testable; it changes no boundary.
+
+**5. What retires from the Assumptions.** *"No durable outbox/messaging
+middleware is assumed beyond the queue at R0"* — w15 lands the queue it
+anticipated. **It is a broker, not an outbox**: ADR-027 §D2 deliberately
+publishes *before* the commit and keeps the already-written `ExtractionJob` row
+as the durable work record, because a transactional-outbox table would need a
+cross-tenant sweep that ADR-009 forbids. The two other assumptions (.NET LTS,
+API versioning as an open question) are untouched.
+
+**`waves/w15.md` records this under NW-27.** No endpoint, table or module
+boundary in ADR-002's body moves.
+
+## Amendment (2026-09-13, wave w15 round 2 — clause 4's guard is corrected: the enforcing test is `SdkAllowListTests`, and it must be package-scoped)
+
+Serves **NW-67**, and **NW-27** inherits it. The **Decision outcome is unchanged**,
+and so are clauses **1, 2, 3 and 5** of the first w15 footer — the messaging port,
+`Raffa.Storage`, the dependency direction and the retired assumption all stand as
+written. **Clause 4 is corrected**, adopting security-architect's ADR-025 §J.1.
+Verified here at the source rather than taken on their word, because the
+difference is between a rule and a build failure.
+
+**What clause 4 got wrong.** It claimed that adding `Microsoft.Graph` to
+`DependencyDirectionTests.ForbiddenSdkPrefixes` makes ADR-002's provider-SDK rule
+*"enforced rather than merely stated"*. It does not.
+`Domain_module_must_not_reference_provider_sdks` builds its path as
+`src/{moduleName}/{moduleName}.csproj` (`DependencyDirectionTests.cs:111`) from
+the **fixed ADR-002 domain-module list** (`:60-73`), and `SdkAllowListTests.cs:13-19`
+already says so in its own words. **The Graph adapter lives in `Raffa.Api` — a
+host that list never scans** (and deliberately: the same test must not forbid
+`Raffa.Api`'s legitimate `Azure.Storage.Blobs`). Clause 4 as written therefore
+enforces nothing where the SDK actually lands.
+
+**The correction has two halves, and the first is that clause 4 is not deleted.**
+
+1. **`Microsoft.Graph` still joins `ForbiddenSdkPrefixes`, narrowed to what that
+   list can do.** The existing entries are `"Azure."`, `"Microsoft.Azure."`,
+   `"Microsoft.AI."`, `"OpenAI"`, `"Google.Cloud."`, `"Amazon."` (`:78-83`) —
+   **none matches `Microsoft.Graph`**, so a domain module could take a direct
+   Graph dependency today and no test would object. That is a real hole in
+   ADR-002's own rule and closing it is correct. It is simply not the rule about
+   the host.
+2. **The host rule belongs to `SdkAllowListTests`**
+   (`backend/tests/Raffa.AiGateway.Tests/SdkAllowListTests.cs`), which scans every
+   `*.csproj` under the solution root (`:31`) — *"hosts and tests included"*
+   (`:19`). Its amendment is **package-scoped: a per-prefix map, never a second
+   `AllowedProjectName`.** Widening the single allowed project (`:25`, `:40-43`)
+   is the one-word edit a task will reach for, and it would make **`Azure.AI.*`
+   legal in `Raffa.Api`** — silently un-guarding the ADR-004 / ADR-017 Foundry
+   boundary that this ADR's "only the gateway holds a provider SDK" rule exists
+   to protect, and making the test's own non-vacuity proof meaningless.
+
+**The map w15 needs, stated once here so two items do not each invent one:**
+
+| Prefix | Projects permitted to reference it | Why |
+|---|---|---|
+| `Azure.AI.*` | `Raffa.AiGateway` | unchanged — ADR-004 / ADR-017 |
+| `Azure.Identity` | `Raffa.AiGateway`, `Raffa.Api`, `Raffa.Worker` | Graph in the API (NW-67); Service Bus RBAC in **both** hosts (NW-27 — cloud-architect's topic-scoped role assignments mean `DefaultAzureCredential`, not a connection string) |
+| `Microsoft.Graph` | `Raffa.Api` | this is what actually enforces "one Graph call site" |
+
+`SdkAllowListTests.cs` is consequently a **single-writer file contended by NW-27
+and NW-67** — one owner or an explicit sequence, exactly like `Program.cs`. The
+task that edits it must extend the class doc comment to say why each prefix has
+the allow-list it has; the comment is already the place a future reader will
+look, and `:13-19` already records the `Azure.Storage.Blobs` precedent that makes
+this amendment run *with* the test's stated intent rather than against it.
+
+**ADR-026's first w15 footer §7 item 3** instructs a task to add `Microsoft.Graph`
+to `ForbiddenSdkPrefixes` citing *"ADR-002 w15 footer clause 4"*. That instruction
+is **still correct and now known to be insufficient**; ADR-026's second w15 footer
+§10 carries the rest.
+
+No module boundary, project layout, dependency direction or host count changes.
+**`waves/w15.md` records this under NW-67.**

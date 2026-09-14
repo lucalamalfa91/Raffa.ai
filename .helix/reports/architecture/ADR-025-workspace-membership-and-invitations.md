@@ -827,3 +827,402 @@ would mean the approved record is not the one that was checked. It does not touc
 ADR-026, ADR-012, ADR-018 or ADR-020, which this seat does not own. The decomposer
 reaches this footer through the NW-58 and NW-03 rows, which already name ADR-025 as
 governing, and through the INDEX note.
+
+## Amendment (2026-09-13, wave w15 — §J: the invitation becomes a directory write, and the link becomes an email)
+
+Serves **NW-67, NW-68, NW-58r**; constrains **NW-69**. Everything above is
+unchanged and in force — §A…§I, the token design (§C), the lifecycle (§D), the
+RLS consequences (§F), the audit list (§G), §H's tests and §I's forward binding on
+ADR-010. No rule is weakened, no row is edited. This footer adds **§J**, because
+w15 is the wave in which an invitation stops being a database row and becomes a
+**write into the customer's company directory** — a new trust boundary — and in
+which the accept link stops being a response field and becomes an **email**.
+
+### §J.1 — the permission, and its blast radius
+
+**J.1a — `User.Invite.All`, application permission, on the existing
+per-environment workload managed identity.** This confirms OQ-w15-005's assumption
+in force and answers cloud-architect's ask (`User.Invite.All` vs the **Guest
+Inviter** directory role). Ruling: **the Graph application permission, not the
+directory role.** Both are narrow enough; they differ in what a reviewer can see
+and in who owns the definition. An app-role assignment is a **fixed, named grant**
+that appears in the API's consented-permission surface and in Terraform state,
+and it changes only when our code changes. A directory role is a
+**Microsoft-owned bundle** whose contents can widen without our Terraform
+changing, and it does not appear where a security reviewer looks for an
+application's rights. It is one resource either way
+(`azuread_app_role_assignment`), so least privilege is decided by auditability.
+
+- **Rejected: `User.ReadWrite.All`** — read, update and delete of *every* user
+  object in the directory, in order to create one guest. Not proportionate.
+- **Rejected: delegated `User.Invite.All` via on-behalf-of.** Better attribution
+  (the invite runs as the human Admin), but it needs an OBO exchange, a
+  confidential-client credential this design deliberately does not have (ADR-010
+  Implications: "the API does **not** store or share client secrets"), and the
+  inviting Admin to hold the directory's *Guest Inviter* role — which a customer's
+  Procurement Admin will not. Recorded as the correct shape for a future
+  enterprise tenant, not for the pilot.
+- **No new secret.** Managed identity, so **ADR-011 gains no Key Vault entry for
+  NW-67** — recorded as a confirmation so a later task does not invent one.
+
+**J.1b — a directory policy can still refuse, and that is a named outcome, not a
+surprise.** The tenant's external-collaboration setting governs who may invite
+guests. The grant above is necessary; it is not by itself sufficient against a
+directory configured to forbid invitations. This is why J.4's reason set is a
+**closed enumeration** rather than a boolean, and why ADR-010 §2.5 applies to
+NW-67 too: **provisioning is proven by one real invite on deployed `dev`, never
+asserted from Terraform state.**
+
+**J.1c — blast radius, stated so it is owned.** The API container app can now
+invite any external address into the company directory. Four bounds, all
+enforceable:
+
+1. **One call site.** The Graph client is constructed and called in exactly one
+   type. See J.1d — this must be a **build failure**, not a review note.
+2. **Reachable only behind Rule D.1a** — identity (401) → membership in the
+   route tenant (404) → `Admin` (403). The directory write happens *after* all
+   three, never before.
+3. **The invited address comes from the authenticated Admin's request body and
+   nowhere else** — never a claim, never a header, never an `X-Forwarded-*` value.
+4. **A per-tenant cap on live (unaccepted, unrevoked) invitations**, default
+   **100**, audited as `workspace.invitation.cap_reached` when hit. §F.4's partial
+   unique index already prevents accumulating links for the *same* address; the
+   cap bounds **distinct** addresses, which is the directory-spam shape. The
+   product-owner may change the number; the mechanism does not change.
+
+**J.1d — the guard test, and the correction that keeps it a guard.** ADR-002's
+w15 footer adds `Microsoft.Graph` to
+`Raffa.ArchitectureTests.DependencyDirectionTests.ForbiddenSdkPrefixes` so the
+provider-SDK rule is "enforced rather than merely stated". Verified on disk, and
+**that test does not enforce J.1c.1**: its own scope is the fixed ADR-002
+**domain-module** list, and `SdkAllowListTests.cs:13-19` says so explicitly — it
+"does not, and should not, forbid `Raffa.Api`'s legitimate `Azure.Storage.Blobs`
+reference". The Graph adapter lives in a **host** (`Raffa.Api/Infrastructure/`),
+which that list does not cover. The test that *does* cover every project, "hosts
+and tests included", is **`Raffa.AiGateway.Tests.SdkAllowListTests`**. So:
+
+- `Microsoft.Graph` is added to **`SdkAllowListTests`'s** prefix list, where it
+  makes a second call site fail the build, in addition to ADR-002's domain-module
+  entry.
+- **The allow-list becomes a (prefix → allowed project) map, not a wider project
+  skip.** Today `AllowedProjectName` is a single const (`:25`) and the loop
+  **skips that project entirely** (`:40-43`). Adding `Raffa.Api` to that skip —
+  the one-word edit a task will reach for, because software-architect's row says
+  "`SdkAllowListTests` must be amended in the same task" — would make
+  **`Azure.AI.*` legal in `Raffa.Api` as well**, silently un-guarding the Foundry
+  boundary ADR-004/ADR-017 rest on and making `:62-77`'s non-vacuity check
+  meaningless. The amendment must be **package-scoped**: `Azure.AI.*` stays
+  `Raffa.AiGateway` only; `Azure.Identity` gains exactly the Graph adapter's
+  project; `Microsoft.Graph` is allowed in that project and nowhere else.
+
+This is a guard test being loosened in the same task that adds a directory-write
+capability. It is the kind of change that passes review because "the ADR said to
+amend it", so the ADR says **how**.
+
+**J.1e — `sendInvitationMessage: false`, and the redeem URL is radioactive.**
+Graph returns an `inviteRedeemUrl`. It is a **credential-shaped URL** that redeems
+the guest directly — with no Raffa invitation row, no token, no email match (Rule
+D.3b) and **no `workspace_membership` write**. An invitee who used it would become
+a guest inside a customer's Entra tenant while belonging to no workspace. **The
+`inviteRedeemUrl` is never mailed, never returned to any client, never stored,
+never logged, never audited.** It is consumed nowhere. Raffa's own
+`/invite/accept#<token>` (`WorkspaceInvitationService.cs:58`, `:86`) remains the
+one and only accept channel. Proof: **S-T20**.
+
+### §J.2 — ordering: guest first, invitation row second
+
+**J.2a.** Provision the guest **before** the invitation row is committed. The two
+failure modes are not symmetric:
+
+- *Row first, Graph fails* → a **live 256-bit token** exists for an identity that
+  cannot sign in. That is exactly A15-7's defect — "a 'ready' link that cannot be
+  used" — and the token sits in a database for seven days.
+- *Graph first, row fails* → an **orphan B2B guest** with no `workspace_user` and
+  no `workspace_membership`. Under J.3a that guest can see **nothing**, in any
+  workspace, in either environment. It is inert, and the next invite for the same
+  address reconciles it (the existing no-op, A15-5).
+
+**An inert artefact beats a live credential.** Where the Graph seam *sits* is
+software-architect's; the **ordering** is this seat's. Software-architect reached
+the same ordering from the other direction — a failed invite must leave **no row**,
+because §F.4's partial unique index would otherwise let it **hold the address slot
+and block the retry** (the dead-slot trap ADR-020's second w14 footer documents).
+Two independent derivations, one answer: **a provisioning failure aborts the
+invitation — no row, no token, no mail.**
+
+**J.2b — re-issue is by replacement, and this seat rules on it.**
+Software-architect found that the server **cannot re-send the original link**
+(§C stores the token only as a SHA-256 hash) and proposed invite-by-replacement in
+one transaction, deferring to this ADR's owner. **Accepted, with the conditions
+that make it safe:** a re-issue **revokes the existing live invitation and creates
+a new one in the same transaction**, so at no point do two live tokens exist for
+one address (§F.4's index already forbids it, and a `DELETE`+`POST` composed by a
+client is two requests with a window between them). The revoked row is audited as
+`workspace.invitation.revoked` and the new one as `workspace.invitation.issued` —
+both already in §G, no new verb. **Re-issue invalidates the link the Admin already
+shared**, which is a product consequence ADR-020's w14 footer already states in
+copy ("The link you already shared stops working."), not a new one. A re-issue is
+an Admin action under D.1a like any other.
+
+### §J.3 — directory presence is not a grant
+
+**J.3a.** Rule F.1d already says membership, not `workspace_user` existence, is
+the grant. §J extends the same sentence one level out: **a B2B guest object grants
+nothing.** A guest who signs in with no membership row gets **404** on every
+tenant-scoped route and an **empty** `GET /api/workspaces` (Rule F.1g — the list
+is keyed on identity and returns only tenants with a live membership). This is the
+rule that makes J.2a, J.3b and J.4 all safe at once. Proof: **S-T19**.
+
+**J.3b — bind the Graph-returned guest object id into
+`workspace_user.ExternalSubjectId` at invite time.** Raffa issues the Graph call,
+so it receives the created (or already-existing) guest's `id` — the **`oid` that
+will appear in that person's token**. Binding it at invite time means accept
+matches on `oid` exactly (ADR-010 w15 §2.1) and the mangled `#EXT#` UPN never
+enters an authorization decision (ADR-010 w15 §2.3). **Without this, NW-67 and
+NW-05 together break Rule D.3b's email equality and A15-4 fails at its last step,
+with the invitee signed in and locked out.** Rule D.3c step 2 (`LinkSignInAsync`)
+is **unchanged** — it becomes a confirmation of an already-bound subject rather
+than the first bind. This is the single instruction in this wave most likely to be
+lost between seats; it belongs in the task body, not only here.
+
+**J.3c — one directory across `dev` and `demo` is acceptable, and here is why.**
+This answers OQ-w15-005's second half. Both registrations are `AzureADMyOrg` in the
+**same** directory (`identity/main.tf:63`, `:118`), and **there is no Azure control
+that makes a B2B guest environment-scoped** — claiming otherwise would fail at
+acceptance. What *is* environment-scoped is **membership**: per-environment
+PostgreSQL, per-environment RLS (ADR-009), never shared. A guest provisioned from
+`dev` who signs in to `demo` gets §D's two-phase discovery over **`demo`'s**
+database, finds **zero** workspaces, and receives **404** for any tenant id they
+name. **Blast radius: can authenticate to `demo`, can see nothing** — the posture
+every employee of that directory already has, and **not new surface created by
+NW-67**. It is acceptable **only because J.3a holds**, which is why **S-T19 proves
+it rather than assuming it**. Per-environment gating of provisioning was
+considered and **rejected**: same directory, same object, so it would prevent a
+`demo` invite from provisioning at all while buying nothing J.3a does not already
+give. Recorded residual, accepted: the invitee's address becomes visible to
+whoever can read the company directory — the customer's own admins — **not to
+another customer and not to another workspace**.
+
+### §J.4 — the failure contract, and what the caller may learn
+
+**J.4a — exactly two externally-visible outcomes.** `provisioned` (covering
+**both** "newly created" and "already present in the directory") and `failed`
+(carrying a **closed enumeration** of named reasons; software-architect's row
+names `consent_missing` | `provisioning_failed` | `directory_unavailable`, and its
+copy is ux-ui-designer's). The invite form must not become a **directory-enumeration
+oracle**: a workspace Admin is not a directory admin, and "this address already
+exists in your company tenant" is a fact about the directory, not about the
+workspace. **A15-5's no-op must be indistinguishable in shape from a fresh
+provision.**
+
+**J.4b — a Graph error body is never surfaced or logged verbatim.** It can carry
+directory configuration, tenant policy detail and other users' data. The response
+carries a named code from J.4a; the audit row and the log carry that code plus the
+Graph `request-id` (an opaque correlation value). Never the raw response, never the
+`inviteRedeemUrl`.
+
+**J.4c — a failed provisioning never yields a link any surface presents as
+ready.** The 201's `identityProvisioned` (software-architect's field) makes the
+outcome a **server fact** the pane renders; the pane never infers it. This is the
+security half of A15-7 and it binds NW-69: **mail failed → the copyable link is
+shown; identity provisioning failed → the link is suppressed and the named error
+shown**, because a link that cannot be redeemed is worse than no link.
+
+### §J.5 — removal, unchanged and now explicit
+
+**J.5a.** Removing a workspace membership **never deletes or blocks the Entra
+guest.** This confirms OQ-w15-007. The directory object is the **customer's**; the
+same person may belong to other workspaces or to the tenant's own business;
+deleting a directory object because one workspace removed a member is destructive
+and far outside Raffa's mandate. It is also **unnecessary**: Rule D.5b already
+makes removal immediate (nothing caches authorization — ADR-010 w15 §4.1) and
+J.3a makes the surviving guest inert. **No directory-deletion or directory-block
+path is built, in this wave or any later one, without a new ADR.** Rule D.5c
+(removal revokes that email's live invitations in the same transaction) is
+unchanged and still carries the whole revocation.
+
+### §J.6 — the accept link becomes an email (NW-68)
+
+**J.6a — the accept base is configuration, never a request value.**
+`Invitations__AcceptUrlBase` is `https://` + **this environment's own SPA host**,
+supplied by Terraform (cloud-architect reuses `var.spa_host_name`, already wired
+and today consumed only by the CORS block). It is **never** derived from `Host`,
+`Origin`, `X-Forwarded-Host` or any other request header. A host-header-injected
+accept base means Raffa **mails a live invitation token to an attacker-controlled
+origin**, and the invitee hands it over by clicking a Raffa-branded mail. This is
+the single reason the base cannot be "computed".
+
+**J.6b — fail closed at startup.** If `Invitations__Mail__Enabled` is true and
+`Invitations__AcceptUrlBase` is absent, not `https://`, or not a well-formed
+absolute URI, the API **fails to start**. It does not fall back to the
+site-relative constant and mail a fragment with no origin. If mail is disabled the
+seam stays `NullInvitationMailer` — there is no third state in which a mailer is
+registered but unconfigured. (Software-architect's §D6 binding rule says the
+*config binding* must not `?? throw`; that is compatible — the refusal is a
+validated startup check on the composed pair, not an unbound-key crash, and
+"enabled with no usable base" is the one combination that must never run.)
+
+**J.6c — Rule C9 survives the transport, and is now load-bearing for a second
+reason.** C9 puts the token in a URL **fragment**
+(`AcceptRoutePrefix = "/invite/accept#"`). A fragment is never transmitted to a
+server — which is precisely what makes it safe to put this link in an **email**,
+where it passes through mail gateways, archivers and click-protection /
+link-rewriting services that fetch and rewrite URLs server-side. A token in a
+query string would be handed to every one of them, and cloud-architect confirms
+the platform half: SWA rewrites every non-asset path to `/index.html` and **logs
+the accept path**. The absolute base changes the **origin and nothing else**: the
+token stays after the `#`, and **Rules C10, C10a, C10b and test T15 are
+unchanged** (C10 governs client-side persistence, not channel count).
+
+**J.6d — one recipient, no other headers.** The mail goes to the invited address
+only. No CC, no BCC, no distribution list, and no `Reply-To` pointing at a
+Raffa-operated mailbox that could receive a forwarded token. The invited address is
+never echoed into another tenant's mail.
+
+**J.6e — `mailDelivered: true` means *accepted for delivery*, not *delivered*.**
+It stays the server fact `WorkspaceInvitationService.cs:99-101` already returns —
+the bool from `IInvitationMailer.TrySendAsync`. Never a delivery receipt, never
+inferred by the client, never optimistically `true` on an unconfirmed send.
+A15-6's failure path (`false` + the ADR-020 copy + the link still works) is the
+honest answer and must stay reachable — the more so because cloud-architect's
+deliverability caveat (an Azure Managed Domain sends from `…azurecomm.net`, which
+corporate filters treat harshly) makes `false` a *likely* branch, not a rare one.
+
+**J.6f — one shipped comment becomes false and is retired in the same task.**
+`NullInvitationMailer.cs:28-29` asserts *"the 201 response body is the link's
+**only** channel"*. NW-68 makes mail a second channel. Same class of in-code
+staleness as OQ-w15-003's synchronous-upload comment: the task that falsifies a
+comment retires it.
+
+### §J.7 — audit (extends §G and ADR-011; additive, no schema change)
+
+`AuditEvent.Action` is a free-form string (`Raffa.Audit/Domain/AuditEvent.cs:29`)
+and every existing verb is an inline literal, so these five are additive — **no
+migration, no column**:
+
+| Action | Actor | ResourceType / ResourceId | `Detail` may carry |
+|---|---|---|---|
+| `workspace.guest.provisioned` | inviting Admin | `WorkspaceInvitation` / invitation id | invited email, role, guest object id |
+| `workspace.guest.provisioning_failed` | inviting Admin | `WorkspaceInvitation` / invitation id | invited email, the **named** reason (J.4a), the Graph `request-id` |
+| `workspace.invitation.cap_reached` | inviting Admin | `Workspace` / cap value | the cap |
+| `workspace.invitation.mail_sent` | inviting Admin | `WorkspaceInvitation` / invitation id | invited email, the ACS operation id |
+| `workspace.invitation.mail_failed` | inviting Admin | `WorkspaceInvitation` / invitation id | invited email, a named failure reason |
+
+**J.7a — never recorded, extending §G's list**: the Graph `inviteRedeemUrl`, any
+raw Graph or ACS response body, any `Authorization` header (ours or Graph's), the
+access token the workload identity obtained, the rendered mail body or subject,
+the accept URL, and the invitation token or its hash (unchanged).
+
+**J.7b — the audit row and the application log are not the same sink, and the
+invited address belongs to only one of them.** This answers cloud-architect's ask
+("no recipient address in a log or an audit row") by splitting it. The **audit
+row** keeps the invited email: ADR-011's w14 footer clause 4 already admits it as
+a *membership fact inside that tenant, visible to its members anyway*, the table is
+tenant-scoped and RLS-protected, and an audit trail that cannot name who was
+invited is not an audit trail. The **application log** does not: it is a
+cross-tenant sink read by operators, so it carries the invitation id, the ACS
+operation id and a named outcome — **not the address**.
+`NullInvitationMailer.cs:25-29` already models the discipline exactly: the
+`acceptUrl` parameter is in the signature and is deliberately never interpolated
+into the log statement. The real mailer keeps that property.
+
+### §J.8 — NW-58r: no test-only authentication seam (answers OQ-w15-006)
+
+**J.8a.** **No authentication-bypass seam ships, on any environment, in any
+wave.** A code path that mints, reads or short-circuits an authentication
+credential, gated only by configuration, is present in the shipped image
+everywhere. Three facts make it worse here rather than better: `dev` and `demo`
+**share one directory**, so a seam "only on `dev`" is a seam against the directory
+`demo` trusts; there is **no Playwright runner at all** (`web.yml` runs vitest
+only — wiring one is NW-50, W18), so it would ship with **nothing executing it**,
+a bypass with no compensating check; and **NW-05 lands in this same wave**, so it
+would add an impersonation path to the wave that closes impersonation.
+
+**J.8b.** N3b is a **runbook walk** this wave, and the spec's skip reason is
+rewritten to name the **passcode** — the second account is no longer the blocker,
+because NW-67 creates it. The "where it runs" half is delivery-manager's and this
+seat concurs.
+
+**J.8c — the acceptable future shape, recorded so W18 does not invent another.**
+A **`dev` mail-catcher** is test infrastructure, not a product code path, so it
+does not violate J.8a. If NW-50 builds it: `dev` only, never provisioned in
+`demo`; it receives only addresses on a dedicated test alias/domain, never a real
+person's mailbox; it is not reachable from the API and holds no Raffa credential;
+its contents are treated as secrets in CI (no artifact upload of a mailbox dump).
+
+**J.8d — if e2e directory credentials ever exist, they are bounded (binds NW-50,
+W18).** GitHub **environment** secrets scoped to `dev`, never repository-wide,
+never a workflow literal, never a repo `.env`; the account is a dedicated test
+principal whose only workspace grant is the test tenant, never an Admin of a real
+pilot workspace; and because **Playwright traces, videos and screenshots capture
+typed input**, the sign-in step runs with tracing off or the field masked and no
+trace artifact from a signed-in run is uploaded. A leaked trace is a leaked
+directory password.
+
+### §J.9 — tests (join §H as non-negotiable)
+
+T14 and T15 are §H's, **written in w14 and activated here**. S-T16…S-T23 are new;
+each names the rule it defends.
+
+- **T14** — with a validated token present, `X-User-Id` is **ignored**, not
+  overridden: token `A` + `X-User-Id: B` acts as `A`. A token carrying `roles` /
+  `tenant_id` claims grants neither.
+- **T15** — the token is in no browser store. Still green after the accept URL
+  becomes absolute (J.6c).
+- **S-T16 — a spoofed header is rejected with no token.** Every tenant-scoped
+  route with a forged `X-User-Id` and/or `X-Tenant-Id` and **no** `Authorization`
+  header → **401** (A15-8). Paired: `Grep` for `X-User-Id` in `backend/src`
+  returns zero hits outside the deletion test, and none of the **74**
+  `X-Tenant-Id` occurrences survives as an authorization input.
+- **S-T17 — another tenant never appears, now under a token.** Identity `A` holds
+  a live membership in `T1` only. (a) a valid token for `A` naming `T2` → **404**
+  on every tenant-scoped route, with no `T2` name, id or count in the body;
+  (b) `GET /api/workspaces` returns exactly `[T1]`; (c) **a token whose `roles`
+  claim resolves to `Admin`, for a caller with no membership in `T1`, is not Admin
+  of `T1`** — the Admin-only routes answer 404, never 403 and never 204 (this is
+  the test that proves the claims branch is **gone**, not merely unreachable);
+  (d) a token with a valid `tid` but no membership anywhere gets an empty list and
+  404 everywhere.
+- **S-T18 — validation is not optional.** Wrong `aud` → 401; wrong `iss` → 401;
+  expired → 401; an **id token** instead of an access token → 401; missing
+  required `scp` → 403. Negative-by-construction: the test asserts
+  `ValidateAudience` / `ValidateIssuer` are **`true`**, so a later "temporary" flip
+  fails a test rather than a pen test.
+- **S-T19 — directory presence is not a grant (J.3a, J.3c).** A B2B guest with no
+  `workspace_membership`: `GET /api/workspaces` empty, every tenant-scoped route
+  **404**, Ask retrieves nothing. Run for a guest provisioned against a `dev`
+  tenant and asserted against a `demo` tenant — **this is the test that makes the
+  shared directory acceptable rather than assumed.**
+- **S-T20 — the redeem URL never leaves the seam (J.1e).** The Graph
+  `inviteRedeemUrl` is absent from the 201 body, every audit row, every log sink
+  and the mail.
+- **S-T21 — provisioning failure never yields a ready link (J.2a, J.4).** With
+  Graph failing: the response carries the **named** failure (never the Graph error
+  body, never a Graph URL), a `workspace.guest.provisioning_failed` audit row
+  exists, **no invitation row and no token are created**, and the pane's
+  ready-to-send state is unreachable. Paired (A15-5): inviting an address already
+  present in the directory produces a response **identical in shape** to a fresh
+  provision.
+- **S-T22 — the mail leaks nothing (J.6).** (a) mail enabled + `AcceptUrlBase`
+  absent or non-`https` → the API **fails to start**; (b) a request carrying
+  `Host` / `X-Forwarded-Host` for an attacker origin still produces an accept link
+  on the **configured** origin; (c) the captured log output for a successful send
+  contains neither the token, nor the accept URL, nor the rendered body, **nor the
+  recipient address** (J.7b); (d) `mailDelivered` is `false` when the transport
+  refuses and the copyable-link path still works (A15-6).
+- **S-T23 — no bypass shipped (J.8a).** A repository-wide search finds no
+  configuration key, environment variable or code path that skips, mints or reads
+  an authentication credential for test purposes. A *negative* test, and the whole
+  deliverable of J.8 — it is what stops W18 adding one quietly.
+
+### §J.10 — what this footer does not do
+
+It creates no table, no column and no migration (§J.7's verbs are values in a
+free-form column). It does not change §B's status codes, §C's token design, §D's
+lifecycle or §F's policies. It does not touch ADR-026 (the 201's **shape** is
+software-architect's; J.4a constrains only its **values**), ADR-005 or ADR-007
+(cloud-architect's), ADR-015 or ADR-016 (delivery-manager's), or ADR-020's copy
+(ux-ui-designer's). **ADR-015 action is `none` from this seat**: the Graph
+permission sits on the **runtime** workload identity, not on a deploy service
+principal, so CI gains no credential — the separate matter of the **apply**
+identity's directory rights is cloud-architect's text in delivery-manager's file.

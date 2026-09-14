@@ -39,6 +39,20 @@ namespace Raffa.Identity.Workspace.Infrastructure;
 /// <c>ix_workspace_invitation_tenant_id_token_hash</c> — an index lookup, not a secret-to-secret
 /// comparison, so there is nothing to time-equalize. Do not "harden" this into a table scan.
 /// </para>
+///
+/// <para>
+/// <b>Task E17/F01/US01/T01 (wave w15, NW-67/NW-68; ADR-025 §J, ADR-026 w15 footers §1–§9).</b>
+/// <see cref="IssueAsync"/> now runs in this order: the per-tenant cap (§J.1c.4) → the
+/// <see cref="IGuestProvisioner"/> (<b>guest first, invitation row second</b>, §J.2a: a failure
+/// leaves no row, no token and no mail, and comes back as a 502 with a reason from a closed set) →
+/// the rows, with the guest's object id bound into <see cref="WorkspaceUser.ExternalSubjectId"/>
+/// (§J.3b, so the accept matches on <c>oid</c> exactly) → the absolute accept link
+/// (<see cref="InvitationOptions.ComposeAcceptUrl"/>) → the mailer, whose one call yields both
+/// <c>mailDelivered</c> and <c>deliveryOutcome</c> (ADR-026 §8's biconditional, computed here and
+/// nowhere else). <see cref="AcceptAsync"/> matches the signed-in identity in ADR-010 w15 §2.3's
+/// order — the <c>oid</c> bound at invite → the token's <c>email</c> claim → refuse — and never
+/// parses a <c>#EXT#</c> UPN.
+/// </para>
 /// </summary>
 public sealed class WorkspaceInvitationService(
     IdentityWorkspaceDbContext db,
@@ -46,35 +60,97 @@ public sealed class WorkspaceInvitationService(
     IClock clock,
     IAuditWriter auditWriter,
     IInvitationMailer mailer,
-    WorkspaceMembershipService membershipService)
+    WorkspaceMembershipService membershipService,
+    IGuestProvisioner guestProvisioner,
+    InvitationOptions options)
 {
     /// <summary>ADR-025 Rule C7: 7-day absolute expiry, evaluated server-side against <see cref="IClock"/>.</summary>
     public const int TokenExpiryDays = 7;
 
+    /// <summary>ADR-025 §J.7's five additive audit verbs (free-form strings, no schema change).</summary>
+    public const string GuestProvisionedAuditAction = "workspace.guest.provisioned";
+    public const string GuestProvisioningFailedAuditAction = "workspace.guest.provisioning_failed";
+    public const string CapReachedAuditAction = "workspace.invitation.cap_reached";
+    public const string MailSentAuditAction = "workspace.invitation.mail_sent";
+    public const string MailFailedAuditAction = "workspace.invitation.mail_failed";
+
     /// <summary>256 bits (ADR-025 Rule C1).</summary>
     private const int SecretByteLength = 32;
 
-    /// <summary>ADR-025 Rule C9: a URL <b>fragment</b>, never a path or query string.</summary>
-    private const string AcceptRoutePrefix = "/invite/accept#";
-
     /// <summary>
-    /// Issue (ADR-025 §D.1, ADR-026 §D5): mints a fresh token, delegates the
-    /// <see cref="WorkspaceUser"/>/<see cref="WorkspaceInvitation"/> write to
-    /// <see cref="WorkspaceMembershipService.InviteAsync"/>, then attempts delivery through
-    /// <see cref="IInvitationMailer"/>. The plaintext token exists only in this call's own stack and
-    /// in the returned <see cref="InvitationIssueResult.AcceptUrl"/> — never persisted (Rule C10),
-    /// and the 201 response carries it exactly once.
+    /// Issue (ADR-025 §D.1, ADR-026 §D5, w15: §J.1c.4/§J.2a/§J.3b/§J.6): cap → provision the guest →
+    /// mint a fresh token and delegate the <see cref="WorkspaceUser"/>/<see cref="WorkspaceInvitation"/>
+    /// write to <see cref="WorkspaceMembershipService.InviteAsync"/> (which replaces a still-live
+    /// invitation for the same address in one transaction, §J.2b) → attempt delivery. The plaintext
+    /// token exists only in this call's own stack and in the returned
+    /// <see cref="InvitationIssueResult.AcceptUrl"/> — never persisted (Rule C10), and the 201
+    /// response carries it exactly once (the mail is the second channel, §J.6).
     /// </summary>
     public async Task<InvitationIssueResult> IssueAsync(
         TenantId tenantId, string email, WorkspaceRoleName role, string invitedBy, CancellationToken cancellationToken = default)
     {
+        var normalizedEmail = email?.Trim().ToLowerInvariant() ?? string.Empty;
+        var now = clock.UtcNow;
+
+        WorkspaceTenant? workspace;
+        int liveInvitations;
+        bool replacesLiveInvitation;
+        using (tenantContext.BeginScope(tenantId))
+        {
+            workspace = await db.Workspaces.AsNoTracking()
+                .SingleOrDefaultAsync(w => w.TenantId == tenantId, cancellationToken)
+                .ConfigureAwait(false);
+            liveInvitations = await db.WorkspaceInvitations
+                .CountAsync(i => i.TenantId == tenantId && i.AcceptedAt == null && i.RevokedAt == null, cancellationToken)
+                .ConfigureAwait(false);
+            replacesLiveInvitation = await db.WorkspaceInvitations
+                .AnyAsync(
+                    i => i.TenantId == tenantId && i.Email == normalizedEmail && i.AcceptedAt == null && i.RevokedAt == null,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        // ADR-025 §J.1c.4: the cap bounds DISTINCT live addresses (the directory-spam shape) -- a
+        // re-issue for an address that already holds a live invitation replaces it and adds none.
+        if (!replacesLiveInvitation && liveInvitations >= options.LiveInvitationCap)
+        {
+            await auditWriter.WriteAsync(
+                new AuditEntry(
+                    tenantId, invitedBy, CapReachedAuditAction, "Workspace", options.LiveInvitationCap.ToString(),
+                    now, $"cap={options.LiveInvitationCap}; live={liveInvitations}"),
+                cancellationToken).ConfigureAwait(false);
+
+            return InvitationIssueResult.Failure(
+                MembershipOperationStatus.Conflict,
+                $"this workspace has reached its limit of {options.LiveInvitationCap} pending invitations; " +
+                "revoke one before inviting another address.");
+        }
+
+        // ADR-025 §J.2a: guest first, invitation row second. Nothing is written before this answers.
+        var provisioning = await guestProvisioner
+            .EnsureGuestAsync(normalizedEmail, workspace?.Name ?? string.Empty, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (provisioning.Status == GuestProvisioningStatus.Failed)
+        {
+            var reason = provisioning.FailureReason ?? GuestProvisioningFailureReason.ProvisioningFailed;
+            // §J.7: the named reason and the directory's opaque request id -- never the raw body.
+            await auditWriter.WriteAsync(
+                new AuditEntry(
+                    tenantId, invitedBy, GuestProvisioningFailedAuditAction, "WorkspaceInvitation", "not-issued", now,
+                    $"email={normalizedEmail}; reason={reason.ToWireValue()}; request-id={provisioning.CorrelationId ?? "-"}"),
+                cancellationToken).ConfigureAwait(false);
+
+            return InvitationIssueResult.ProvisioningFailed(reason);
+        }
+
         var secret = Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(SecretByteLength));
         var token = $"{tenantId.Value:N}.{secret}";
         var tokenHash = ComputeHash(secret);
-        var expiresAt = clock.UtcNow.AddDays(TokenExpiryDays);
+        var expiresAt = now.AddDays(TokenExpiryDays);
 
         var inviteResult = await membershipService
-            .InviteAsync(tenantId, email, role, invitedBy, tokenHash, expiresAt, cancellationToken)
+            .InviteAsync(tenantId, normalizedEmail, role, invitedBy, tokenHash, expiresAt, cancellationToken, provisioning.GuestObjectId)
             .ConfigureAwait(false);
 
         if (!inviteResult.IsSuccess)
@@ -83,24 +159,37 @@ public sealed class WorkspaceInvitationService(
         }
 
         var invitation = inviteResult.Invitation!;
-        var acceptUrl = AcceptRoutePrefix + token;
 
-        WorkspaceTenant? workspace;
-        using (tenantContext.BeginScope(tenantId))
+        if (provisioning.IdentityProvisioned)
         {
-            workspace = await db.Workspaces.AsNoTracking()
-                .SingleOrDefaultAsync(w => w.TenantId == tenantId, cancellationToken)
-                .ConfigureAwait(false);
+            await auditWriter.WriteAsync(
+                new AuditEntry(
+                    tenantId, invitedBy, GuestProvisionedAuditAction, "WorkspaceInvitation", invitation.Id.Value.ToString(), now,
+                    $"email={normalizedEmail}; role={role}; guest={provisioning.GuestObjectId}"),
+                cancellationToken).ConfigureAwait(false);
         }
 
-        // ADR-026 §D6: the bool result IS mailDelivered -- a server fact, never a convention. The
-        // NullInvitationMailer this wave registers always returns false; a future transport is a DI
-        // registration change here, not a redesign.
-        var mailDelivered = await mailer
-            .TrySendAsync(invitation.Email, workspace?.Name ?? string.Empty, role, acceptUrl, cancellationToken)
-            .ConfigureAwait(false);
+        var acceptUrl = options.ComposeAcceptUrl(token);
 
-        return InvitationIssueResult.Success(invitation, acceptUrl, mailDelivered);
+        // ADR-026 §D6/§8: mailDelivered IS the mailer's bool, and deliveryOutcome is computed from
+        // the same call, here and nowhere else -- `sent` if and only if `mailDelivered`.
+        var deliveryOutcome = InvitationDeliveryOutcome.NoTransport;
+        var mailDelivered = false;
+        if (mailer.IsConfigured)
+        {
+            mailDelivered = await mailer
+                .TrySendAsync(invitation.Email, workspace?.Name ?? string.Empty, role, acceptUrl, invitation.ExpiresAt, cancellationToken)
+                .ConfigureAwait(false);
+            deliveryOutcome = mailDelivered ? InvitationDeliveryOutcome.Sent : InvitationDeliveryOutcome.MailFailed;
+
+            await auditWriter.WriteAsync(
+                new AuditEntry(
+                    tenantId, invitedBy, mailDelivered ? MailSentAuditAction : MailFailedAuditAction, "WorkspaceInvitation",
+                    invitation.Id.Value.ToString(), now, $"email={normalizedEmail}"),
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        return InvitationIssueResult.Success(invitation, acceptUrl, mailDelivered, deliveryOutcome, provisioning.IdentityProvisioned);
     }
 
     /// <summary>
@@ -156,11 +245,21 @@ public sealed class WorkspaceInvitationService(
     /// — revoked/unknown/malformed → 404 (one indistinguishable answer for every "not yours" case);
     /// expired → 410 (safe because reaching this branch already proves possession of the 256-bit
     /// secret); already accepted by <b>this</b> identity → 409 (idempotency signal); by any other →
-    /// 404; email mismatch → 403 with a reason that never echoes the invited address — before
+    /// 404; identity mismatch → 403 with a reason that never echoes the invited address — before
     /// delegating the actual grant to <see cref="WorkspaceMembershipService.AcceptInvitationAsync"/>.
+    ///
+    /// <para>
+    /// <b>Who counts as the invited person</b> (ADR-010 w15 §2.1/§2.3, ADR-025 §J.3b): the
+    /// <see cref="WorkspaceUser.ExternalSubjectId"/> bound at invite time (the guest's <c>oid</c>) or
+    /// at a previous sign-in must equal <paramref name="signedInIdentity"/>; failing a bound subject,
+    /// the token's own <paramref name="signedInEmail"/> claim must equal the invited address; failing
+    /// that, an identity that <em>is</em> the invited address (the interim header-bridged hosts) is
+    /// accepted. Never a mangled <c>#EXT#</c> UPN, which is why a guest signed in with no bound
+    /// subject and no <c>email</c> claim is refused and told to be re-invited rather than de-mangled.
+    /// </para>
     /// </summary>
     public async Task<InvitationAcceptResult> AcceptAsync(
-        string rawToken, string signedInIdentity, CancellationToken cancellationToken = default)
+        string rawToken, string signedInIdentity, string? signedInEmail = null, CancellationToken cancellationToken = default)
     {
         if (!TryParseToken(rawToken, out var tenantId, out var secret))
         {
@@ -179,12 +278,16 @@ public sealed class WorkspaceInvitationService(
             return InvitationAcceptResult.Failure(MembershipOperationStatus.NotFound, null);
         }
 
+        var invitedUser = await db.WorkspaceUsers.AsNoTracking()
+            .SingleOrDefaultAsync(u => u.TenantId == tenantId && u.Email == invitation.Email, cancellationToken)
+            .ConfigureAwait(false);
+        var isInvitedPerson = MatchesInvitedPerson(invitation, invitedUser, signedInIdentity, signedInEmail);
+
         if (invitation.AcceptedAt is not null)
         {
             // Rule D.3d: 409 for the same identity (idempotency signal), 404 for any other (the
-            // same "one indistinguishable answer" posture as an unknown token) -- comparison is
-            // case-insensitive, matching the same-address check below.
-            return string.Equals(invitation.Email, signedInIdentity, StringComparison.OrdinalIgnoreCase)
+            // same "one indistinguishable answer" posture as an unknown token).
+            return isInvitedPerson
                 ? InvitationAcceptResult.Failure(MembershipOperationStatus.Conflict, "this invitation has already been accepted.")
                 : InvitationAcceptResult.Failure(MembershipOperationStatus.NotFound, null);
         }
@@ -194,7 +297,7 @@ public sealed class WorkspaceInvitationService(
             return InvitationAcceptResult.Failure(MembershipOperationStatus.Expired, null);
         }
 
-        if (!string.Equals(invitation.Email, signedInIdentity, StringComparison.OrdinalIgnoreCase))
+        if (!isInvitedPerson)
         {
             // Rule D.3b: never echo the invited address in the HTTP response below. The audit
             // Detail is a different channel -- coding objective #8's own "Detail may carry the
@@ -264,6 +367,25 @@ public sealed class WorkspaceInvitationService(
         return MembershipOperationStatus.Success;
     }
 
+    /// <summary>ADR-010 w15 §2.3's resolution order: the bound <c>oid</c> → the <c>email</c> claim →
+    /// (interim) the identity being the address itself → refuse. Never the <c>#EXT#</c> UPN.</summary>
+    private static bool MatchesInvitedPerson(
+        WorkspaceInvitation invitation, WorkspaceUser? invitedUser, string signedInIdentity, string? signedInEmail)
+    {
+        if (invitedUser?.ExternalSubjectId is { Length: > 0 } boundSubject)
+        {
+            return string.Equals(boundSubject, signedInIdentity, StringComparison.Ordinal);
+        }
+
+        if (!string.IsNullOrWhiteSpace(signedInEmail)
+            && string.Equals(invitation.Email, signedInEmail.Trim(), StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return string.Equals(invitation.Email, signedInIdentity, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static bool TryParseToken(string? rawToken, out TenantId tenantId, out string secret)
     {
         tenantId = default;
@@ -300,16 +422,45 @@ public sealed class WorkspaceInvitationService(
         Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(secret)));
 }
 
+/// <summary>The 201's <c>deliveryOutcome</c> (ADR-026 w15 footer §8): one discriminant string, not
+/// two booleans. <see cref="Sent"/> if and only if <c>mailDelivered</c>.</summary>
+public enum InvitationDeliveryOutcome
+{
+    Sent,
+    MailFailed,
+    NoTransport,
+}
+
+public static class InvitationDeliveryOutcomeExtensions
+{
+    public static string ToWireValue(this InvitationDeliveryOutcome outcome) => outcome switch
+    {
+        InvitationDeliveryOutcome.Sent => "sent",
+        InvitationDeliveryOutcome.MailFailed => "mail_failed",
+        _ => "no_transport",
+    };
+}
+
 /// <summary>Outcome of <see cref="WorkspaceInvitationService.IssueAsync"/>.</summary>
 public sealed class InvitationIssueResult
 {
     private InvitationIssueResult(
-        MembershipOperationStatus status, WorkspaceInvitation? invitation, string? acceptUrl, bool mailDelivered, string? error)
+        MembershipOperationStatus status,
+        WorkspaceInvitation? invitation,
+        string? acceptUrl,
+        bool mailDelivered,
+        InvitationDeliveryOutcome deliveryOutcome,
+        bool identityProvisioned,
+        GuestProvisioningFailureReason? provisioningFailureReason,
+        string? error)
     {
         Status = status;
         Invitation = invitation;
         AcceptUrl = acceptUrl;
         MailDelivered = mailDelivered;
+        DeliveryOutcome = deliveryOutcome;
+        IdentityProvisioned = identityProvisioned;
+        ProvisioningFailureReason = provisioningFailureReason;
         Error = error;
     }
 
@@ -319,18 +470,39 @@ public sealed class InvitationIssueResult
 
     public WorkspaceInvitation? Invitation { get; }
 
-    /// <summary>Site-relative <c>/invite/accept#&lt;token&gt;</c> (ADR-025 Rule C9). Present only on success.</summary>
+    /// <summary><c>{base}/invite/accept#&lt;token&gt;</c> when an accept base is configured, the w14
+    /// site-relative form otherwise (ADR-025 Rule C9 / ADR-026 w15 footer §4). Present only on success.</summary>
     public string? AcceptUrl { get; }
 
+    /// <summary>The mailer's own bool: accepted for delivery, never a receipt (ADR-025 §J.6e).</summary>
     public bool MailDelivered { get; }
+
+    /// <summary>ADR-026 w15 footer §8: <c>sent</c> ⇔ <see cref="MailDelivered"/>.</summary>
+    public InvitationDeliveryOutcome DeliveryOutcome { get; }
+
+    /// <summary>ADR-026 w15 footer §1: true for a created or an already-present guest, false when
+    /// provisioning is not configured.</summary>
+    public bool IdentityProvisioned { get; }
+
+    /// <summary>Set only for <see cref="MembershipOperationStatus.ProvisioningFailed"/>: the 502's reason.</summary>
+    public GuestProvisioningFailureReason? ProvisioningFailureReason { get; }
 
     public string? Error { get; }
 
-    public static InvitationIssueResult Success(WorkspaceInvitation invitation, string acceptUrl, bool mailDelivered) =>
-        new(MembershipOperationStatus.Success, invitation, acceptUrl, mailDelivered, null);
+    public static InvitationIssueResult Success(
+        WorkspaceInvitation invitation,
+        string acceptUrl,
+        bool mailDelivered,
+        InvitationDeliveryOutcome deliveryOutcome,
+        bool identityProvisioned) =>
+        new(MembershipOperationStatus.Success, invitation, acceptUrl, mailDelivered, deliveryOutcome, identityProvisioned, null, null);
 
     public static InvitationIssueResult Failure(MembershipOperationStatus status, string? error) =>
-        new(status, null, null, false, error);
+        new(status, null, null, false, InvitationDeliveryOutcome.NoTransport, false, null, error);
+
+    public static InvitationIssueResult ProvisioningFailed(GuestProvisioningFailureReason reason) =>
+        new(MembershipOperationStatus.ProvisioningFailed, null, null, false, InvitationDeliveryOutcome.NoTransport, false, reason,
+            "the company directory did not provision a guest for this address; no invitation was created.");
 }
 
 /// <summary>Outcome of <see cref="WorkspaceInvitationService.PreAcceptAsync"/> — ADR-025 Rule D.3e:

@@ -96,11 +96,32 @@ if ($Wave -notmatch '^[ew]\d{1,3}$') { throw "wave id must look like w14 (got '$
 $Previous = (& python (Join-Path $Here "scripts\register_wave.py") --last-id).Trim()
 if ($Previous -eq $Wave) { $Previous = "" }
 
+# Passata 1 runs the engine in THIS process too, so the same orphan guard the
+# fan-out gets through run.ps1 applies here: the watcher accumulates the `claude`
+# descendants of $PID and collects whatever outlives the engine. See
+# scripts/reap_agents.ps1 for why the ordered SDK teardown is not enough.
 function Invoke-Helix([string[]]$passArgs) {
     $helixExe = Join-Path $backend ".venv\Scripts\helix.exe"
     $uvWorks = $false
     if (Get-Command uv -ErrorAction SilentlyContinue) {
         try { $null = & uv --version 2>&1; $uvWorks = ($LASTEXITCODE -eq 0) } catch { $uvWorks = $false }
+    }
+    $reaper = Join-Path $Here "scripts\reap_agents.ps1"
+    $reapPidFile = Join-Path $env:TEMP ("helix-agents-{0}-{1}.pids" -f $PID, [guid]::NewGuid().ToString("N").Substring(0, 6))
+    $stallMinutes = 45
+    if (-not [string]::IsNullOrWhiteSpace($env:HELIX_STALL_ABORT_MINUTES)) {
+        $parsed = 0
+        if ([int]::TryParse($env:HELIX_STALL_ABORT_MINUTES, [ref]$parsed)) { $stallMinutes = $parsed }
+    }
+    $watcher = $null
+    if (Test-Path $reaper) {
+        $watcher = Start-Process -FilePath "pwsh" -PassThru -WindowStyle Hidden -ArgumentList @(
+            "-NoProfile", "-File", $reaper,
+            "-Watch", "-RootPid", $PID,
+            "-RepoRoot", (Resolve-Path (Join-Path $Here "..")).Path,
+            "-StallMinutes", $stallMinutes,
+            "-PidFile", $reapPidFile
+        ) -ErrorAction SilentlyContinue
     }
     Push-Location $backend
     try {
@@ -108,7 +129,11 @@ function Invoke-Helix([string[]]$passArgs) {
         if (Test-Path $helixExe) { & $helixExe run $Artifact @passArgs; return $LASTEXITCODE }
         throw "neither a working uv nor helix.exe is available under $backend"
     }
-    finally { Pop-Location }
+    finally {
+        Pop-Location
+        if (Test-Path $reaper) { & pwsh -NoProfile -File $reaper -Reap -PidFile $reapPidFile }
+        if ($null -ne $watcher) { Stop-Process -Id $watcher.Id -Force -ErrorAction SilentlyContinue }
+    }
 }
 
 # --- Passata 1 ------------------------------------------------------------------

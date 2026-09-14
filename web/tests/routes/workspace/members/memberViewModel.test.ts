@@ -4,13 +4,18 @@ import {
   INVITE_ROLE_ORDER,
   INVITE_ROLE_SUMMARY,
   MEMBERS_TIP,
+  IDENTITY_ONE_TIME_CODE_LINE,
+  NO_INVITATION_CREATED_META,
   composeAcceptLink,
   formatExpiryDate,
   formatWorkspaceLine,
   getMemberStatusTag,
   inviteDomainWarning,
   inviteEmailPlaceholder,
+  inviteFailureCopy,
   inviteLinkExpiryMeta,
+  inviteOutcomeFrom,
+  inviteOutcomeSentence,
   isLastActiveAdmin,
   memberRoleLabel,
   removeConsequence,
@@ -193,6 +198,66 @@ describe("expiry formatting", () => {
 
   it("builds the false-outcome meta line verbatim (ADR-020's second w14 amendment footer)", () => {
     expect(inviteLinkExpiryMeta("2026-09-20T00:00:00Z")).toBe("It expires 20/09/2026, can be used once, and is not shown again.");
+  });
+});
+
+// Task E17/F02/US01/T01 (ADR-026 w15 footer §8, ADR-020 w15 §3.3-§3.6): the pane branches on the
+// server's own `deliveryOutcome` string -- three arms, the link on exactly two of them -- and never
+// on `mailDelivered` or a status code.
+describe("inviteOutcomeFrom / inviteOutcomeSentence", () => {
+  const member = {
+    email: "buyer@acme.example",
+    acceptUrl: "/invite/accept#abc.def",
+    expiresAt: "2026-09-20T00:00:00Z",
+    identityProvisioned: true,
+  };
+
+  it("keys the three arms on deliveryOutcome, carrying the link only for mail_failed and no_transport", () => {
+    expect(inviteOutcomeFrom({ ...member, deliveryOutcome: "sent" })).toEqual({ outcome: "sent", email: member.email, identityProvisioned: true });
+    expect(inviteOutcomeFrom({ ...member, deliveryOutcome: "mail_failed" })).toEqual({
+      outcome: "mail_failed",
+      email: member.email,
+      acceptUrl: member.acceptUrl,
+      expiresAt: member.expiresAt,
+      identityProvisioned: true,
+    });
+    expect(inviteOutcomeFrom({ ...member, deliveryOutcome: "no_transport" })).toEqual({
+      outcome: "no_transport",
+      email: member.email,
+      acceptUrl: member.acceptUrl,
+      expiresAt: member.expiresAt,
+      identityProvisioned: true,
+    });
+  });
+
+  it("renders each outcome's own sentence verbatim, and the word 'sent' appears in the first only", () => {
+    expect(inviteOutcomeSentence(inviteOutcomeFrom({ ...member, deliveryOutcome: "sent" }))).toBe("Invitation sent to buyer@acme.example.");
+    expect(inviteOutcomeSentence(inviteOutcomeFrom({ ...member, deliveryOutcome: "mail_failed" }))).toBe(
+      "Invitation created, but the email could not be sent.",
+    );
+    expect(inviteOutcomeSentence(inviteOutcomeFrom({ ...member, deliveryOutcome: "no_transport" }))).toBe("Invitation ready for buyer@acme.example.");
+  });
+});
+
+describe("inviteFailureCopy (ADR-020 w15 §3.5: the closed reason set plus the catch-all)", () => {
+  it("names what someone must do next for each reason, addressing a tenant administrator rather than the Admin", () => {
+    expect(inviteFailureCopy("consent_missing", "x@acme.example")).toBe(
+      "Raffa.ai is not allowed to add guests to your company directory yet. A tenant administrator has to approve that permission.",
+    );
+    expect(inviteFailureCopy("provisioning_failed", "x@acme.example")).toBe(
+      "Your company directory would not add x@acme.example. Check the address, or ask a tenant administrator.",
+    );
+    expect(inviteFailureCopy("directory_unavailable", "x@acme.example")).toBe("Your company directory could not be reached. Try again in a few minutes.");
+  });
+
+  it("never renders a raw enum: an unknown value hits the catch-all", () => {
+    expect(inviteFailureCopy("proxy_mangled", "x@acme.example")).toBe("Raffa.ai could not create this invitation.");
+    expect(inviteFailureCopy("", "x@acme.example")).toBe("Raffa.ai could not create this invitation.");
+  });
+
+  it("keeps the two shared sentences verbatim", () => {
+    expect(NO_INVITATION_CREATED_META).toBe("No invitation was created.");
+    expect(IDENTITY_ONE_TIME_CODE_LINE).toBe("They will get a one-time code from Microsoft the first time they sign in.");
   });
 });
 

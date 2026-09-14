@@ -1,8 +1,10 @@
 using System.Text;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Configuration;
+using Raffa.AiGateway.Contracts;
 using Raffa.AiGateway.Fixtures;
 using Raffa.Documents.Contracts.Application;
+using Raffa.Documents.Contracts.Application.Admission;
 using Raffa.Documents.Contracts.Application.Extraction;
 using Raffa.Documents.Contracts.Application.Preview;
 using Raffa.Documents.Contracts.Domain;
@@ -12,6 +14,7 @@ using Raffa.SharedKernel.Storage;
 using Raffa.SharedKernel.Suppliers;
 using Raffa.SharedKernel.Tenancy;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
 using Testcontainers.PostgreSql;
 
@@ -42,6 +45,14 @@ public sealed class DocumentLifecycleTests : IAsyncLifetime
         "This Agreement governs all Order Forms executed by the parties. Annual fees are EUR 48,000, " +
         "payable within thirty days of invoice. The initial term is thirty-six months and renews " +
         "automatically unless either party gives ninety days written notice.";
+
+    /// <summary>Readable, born-digital, and not a contract: the fixture classifies it `Other`, so
+    /// the content gate refuses it (task E16/F02/US03/T01's split-gate proof below).</summary>
+    private const string RecipeText =
+        "Spaghetti alla carbonara for four. Boil 400 g of spaghetti in salted water. Meanwhile fry " +
+        "150 g of guanciale until crisp. Whisk four egg yolks with 100 g of grated pecorino and " +
+        "plenty of black pepper. Drain the pasta, toss with the guanciale off the heat, then fold in " +
+        "the egg mixture until creamy. Serve immediately with extra pecorino.";
 
     public async Task InitializeAsync()
     {
@@ -206,20 +217,53 @@ public sealed class DocumentLifecycleTests : IAsyncLifetime
             await db.SaveChangesAsync();
         }
 
-        Result<DocumentProcessingSummary>? result;
+        // Task E16/F02/US03/T01: the request queues; the Worker re-runs. Both halves are proven
+        // here -- the queued contract first, then the pipeline played by hand as the Worker.
+        var queue = new InMemoryExtractionQueue();
+        Result<DocumentReprocessQueued>? result;
         await using (var db = CreateAppContext(tenantContext))
         {
-            var service = CreateReprocessService(db, harness, tenantContext);
+            var service = CreateReprocessService(db, harness, tenantContext, queue);
             result = await service.ReprocessAsync(tenantId, documentId, Actor);
         }
 
         Assert.NotNull(result);
         Assert.True(result!.IsSuccess, result.IsFailure ? result.Error : string.Empty);
-        Assert.Equal(1, result.Value.PagesParsed);
-        Assert.Equal(1, result.Value.ChunksIndexed);
+        Assert.Equal(documentId, result.Value.DocumentId);
+
+        // One pointer, at the job the row says is queued and unclaimed -- the state a fresh claim
+        // requires (claimed_at IS NULL is the compare-and-swap).
+        var published = Assert.Single(queue.Published);
+        Assert.Equal(documentId.Value, published.DocumentId);
+        Assert.Equal(result.Value.ExtractionJobId.Value, published.ExtractionJobId);
+        await using (var db = CreateAppContext(tenantContext))
+        {
+            using var scope = tenantContext.BeginScope(tenantId);
+            var job = await db.ExtractionJobs.SingleAsync(j => j.Id == result.Value.ExtractionJobId);
+            Assert.Equal(ExtractionJobStatus.Queued, job.Status);
+            Assert.Null(job.ClaimedAt);
+            Assert.Null(job.ClaimedBy);
+            Assert.Equal(
+                DocumentProcessingStatus.Uploaded,
+                (await db.Documents.SingleAsync(d => d.Id == documentId)).ProcessingStatus);
+            // R-DOC-07 AC-1: the stale chunks are gone in the request, not at the Worker's leisure.
+            Assert.Empty(await db.Embeddings.Where(e => e.TenantId == tenantId && e.SourceId == documentId).ToListAsync());
+        }
+
         Assert.Contains(
             harness.Audit.Entries,
-            e => e.Action == DocumentReprocessService.ReprocessedAuditAction && e.Actor == Actor);
+            e => e.Action == DocumentReprocessService.ReprocessedAuditAction && e.Actor == Actor
+                && e.Detail != null && e.Detail.Contains("queued", StringComparison.Ordinal));
+
+        // The Worker's half: the same pipeline a first upload goes through.
+        await using (var db = CreateAppContext(tenantContext))
+        {
+            var pipeline = CreatePipeline(db, harness, tenantContext);
+            var rerun = await pipeline.ProcessAsync(tenantId, documentId, "msa.pdf", "application/pdf", BuildPdf(ContractText));
+            Assert.True(rerun.IsSuccess, rerun.IsFailure ? rerun.Error : string.Empty);
+            Assert.Equal(1, rerun.Value.PagesParsed);
+            Assert.Equal(1, rerun.Value.ChunksIndexed);
+        }
 
         await using (var db = CreateAppContext(tenantContext))
         {
@@ -246,7 +290,7 @@ public sealed class DocumentLifecycleTests : IAsyncLifetime
         var documentId = await UploadAndProcessAsync(harness, tenantContext, tenantId, "msa.pdf", Now);
 
         await using var db = CreateAppContext(tenantContext);
-        var service = CreateReprocessService(db, harness, tenantContext);
+        var service = CreateReprocessService(db, harness, tenantContext, new InMemoryExtractionQueue());
 
         Assert.Null(await service.ReprocessAsync(otherTenant, documentId, Actor));
     }
@@ -347,7 +391,122 @@ public sealed class DocumentLifecycleTests : IAsyncLifetime
         Assert.Null(await previewService.LoadAsync(tenantId, EntityId.New()));
     }
 
+    /// <summary>
+    /// Task E16/F02/US03/T01 (ADR-027 §D1/§D3/§D6): the split gate, proven on the real Postgres
+    /// path. The request half — <see cref="DocumentUploadService"/> — stores the bytes, writes the
+    /// row and the queued job and publishes one pointer; it calls no model and never sees the
+    /// content gate. The content half — parse/OCR, the readable-text floor, <c>classify</c>, the
+    /// threshold — is reachable only from the Worker path (<see cref="ExtractionRequestedHandler"/>),
+    /// where a refusal becomes a <see cref="DocumentProcessingStatus.Rejected"/> row with its reason
+    /// code, the blob deleted and the job completed. The real <see cref="ExtractionJobClaimStore"/>
+    /// does the compare-and-swap here, so the claim — and the redelivery no-op — are proven on
+    /// Postgres too, not on the InMemory stand-in the API host uses.
+    /// </summary>
+    [Fact]
+    public async Task Upload_stores_and_queues_without_a_model_call_and_the_content_gate_runs_only_on_the_worker_path()
+    {
+        var tenantId = TenantId.New();
+        var tenantContext = new TenantContext();
+        var gateway = new CountingAiGateway(
+            new FixtureAiGateway(new AiGatewayModelOptions(), new FixedClock(Now), new AiGatewayOcrOptions()));
+        var harness = new Harness(new RecordingDocumentStorage(), gateway, new FixedClock(Now), new RecordingAuditWriter());
+        var queue = new InMemoryExtractionQueue();
+        var bytes = BuildPdf(RecipeText);
+
+        // The request half: durable bytes, a row, a queued job, one pointer -- and no model call.
+        EntityId documentId;
+        await using (var db = CreateAppContext(tenantContext))
+        {
+            var uploadService = new DocumentUploadService(
+                db, harness.Storage, queue, tenantContext, harness.Clock, harness.Audit);
+            using var content = new MemoryStream(bytes);
+            var upload = await uploadService.UploadAsync(tenantId, "carbonara.pdf", "application/pdf", content);
+            Assert.True(upload.IsSuccess, upload.IsFailure ? upload.Error : string.Empty);
+            documentId = upload.Value.DocumentId;
+        }
+
+        Assert.Equal(0, gateway.OcrCalls);
+        Assert.Equal(0, gateway.ClassifyCalls);
+        Assert.Single(harness.Storage.Saved);
+        Assert.DoesNotContain(harness.Audit.Entries, e => e.Action == DocumentAdmissionGate.RejectedAuditAction);
+        var message = Assert.Single(queue.Published);
+        Assert.Equal(tenantId.Value, message.TenantId);
+        Assert.Equal(documentId.Value, message.DocumentId);
+        var jobId = new EntityId(message.ExtractionJobId);
+
+        await using (var db = CreateAppContext(tenantContext))
+        {
+            using var scope = tenantContext.BeginScope(tenantId);
+            var document = await db.Documents.SingleAsync(d => d.Id == documentId);
+            Assert.Equal(DocumentProcessingStatus.Uploaded, document.ProcessingStatus);
+            Assert.Null(document.RejectionReason);
+            var job = await db.ExtractionJobs.SingleAsync(j => j.Id == jobId);
+            Assert.Equal(ExtractionJobStatus.Queued, job.Status);
+            Assert.Null(job.ClaimedAt);
+        }
+
+        // The Worker half: the claim on Postgres, then the content gate -- OCR once, classify once
+        // -- and the refusal written as a row, never thrown at a caller that has already gone.
+        await using (var db = CreateAppContext(tenantContext))
+        {
+            await CreateHandler(db, harness, tenantContext).HandleAsync(message);
+        }
+
+        Assert.Equal(1, gateway.OcrCalls);
+        Assert.Equal(1, gateway.ClassifyCalls);
+        Assert.Equal(0, gateway.ExtractCalls);
+
+        await using (var db = CreateAppContext(tenantContext))
+        {
+            using var scope = tenantContext.BeginScope(tenantId);
+            var document = await db.Documents.SingleAsync(d => d.Id == documentId);
+            Assert.Equal(DocumentProcessingStatus.Rejected, document.ProcessingStatus);
+            Assert.Equal(AdmissionRejectionReason.NotAContract, document.RejectionReason);
+            Assert.Equal(ContractDocumentType.Other, document.RejectionDetectedType);
+            var job = await db.ExtractionJobs.SingleAsync(j => j.Id == jobId);
+            Assert.Equal(ExtractionJobStatus.Completed, job.Status);
+            Assert.NotNull(job.ClaimedAt);
+            Assert.Equal(1, job.AttemptCount);
+            Assert.Empty(await db.Embeddings.Where(e => e.TenantId == tenantId && e.SourceId == documentId).ToListAsync());
+        }
+
+        Assert.Contains(harness.Storage.Deleted, path => path.EndsWith("carbonara.pdf", StringComparison.Ordinal));
+        var audit = Assert.Single(harness.Audit.Entries, e => e.Action == DocumentAdmissionGate.RejectedAuditAction);
+        Assert.Equal(ExtractionRequestedHandler.WorkerActor, audit.Actor);
+
+        // At-least-once delivery: the same pointer again is a no-op -- the claim is spent and the
+        // row is terminal, so nothing is parsed, classified or rewritten.
+        await using (var db = CreateAppContext(tenantContext))
+        {
+            await CreateHandler(db, harness, tenantContext).HandleAsync(message);
+        }
+
+        Assert.Equal(1, gateway.OcrCalls);
+        Assert.Equal(1, gateway.ClassifyCalls);
+        Assert.Single(harness.Audit.Entries, e => e.Action == DocumentAdmissionGate.RejectedAuditAction);
+    }
+
     // ----- harness -----
+
+    /// <summary>The Worker's handler over the real claim store (raw SQL on the app role), the real
+    /// content gate and the same pipeline <see cref="CreatePipeline"/> plays for a first upload.</summary>
+    private static ExtractionRequestedHandler CreateHandler(
+        DocumentsContractsDbContext db, Harness harness, ITenantContext tenantContext) =>
+        new(
+            db,
+            harness.Storage,
+            new DocumentAdmissionGate(
+                new HybridDocumentParsingService(harness.Gateway, new NativeDocumentTextExtractor()),
+                harness.Gateway,
+                new DocumentAdmissionOptions(),
+                tenantContext,
+                harness.Audit,
+                harness.Clock),
+            CreatePipeline(db, harness, tenantContext),
+            new ExtractionJobClaimStore(db, harness.Clock),
+            tenantContext,
+            harness.Clock,
+            NullLogger<ExtractionRequestedHandler>.Instance);
 
     private DocumentsContractsDbContext CreateAppContext(ITenantContext tenantContext)
     {
@@ -371,7 +530,8 @@ public sealed class DocumentLifecycleTests : IAsyncLifetime
         await using (var db = CreateAppContext(tenantContext))
         {
             var uploadService = new DocumentUploadService(
-                db, harness.Storage, tenantContext, new FixedClock(now), new NoOpAuditWriter());
+                db, harness.Storage, new NoOpExtractionQueuePublisher(), tenantContext, new FixedClock(now),
+                new NoOpAuditWriter());
             using var content = new MemoryStream(bytes);
             var upload = await uploadService.UploadAsync(tenantId, fileName, "application/pdf", content);
             Assert.True(upload.IsSuccess, upload.IsFailure ? upload.Error : string.Empty);
@@ -400,12 +560,16 @@ public sealed class DocumentLifecycleTests : IAsyncLifetime
             harness.Clock,
             new DocumentPreviewService(db, harness.Storage, new PlaceholderDocumentPreviewRenderer(), tenantContext));
 
+    /// <summary>Task E16/F02/US03/T01: the service no longer owns a pipeline — it publishes to
+    /// the queue. The test passes its own <see cref="InMemoryExtractionQueue"/> so it can assert
+    /// the pointer, then plays the Worker itself (<see cref="CreatePipeline"/>), exactly as
+    /// <see cref="UploadAndProcessAsync"/> already does for a first upload.</summary>
     private static DocumentReprocessService CreateReprocessService(
-        DocumentsContractsDbContext db, Harness harness, ITenantContext tenantContext) =>
+        DocumentsContractsDbContext db, Harness harness, ITenantContext tenantContext, InMemoryExtractionQueue queue) =>
         new(
             db,
             harness.Storage,
-            CreatePipeline(db, harness, tenantContext),
+            queue,
             new EmbeddingRetrievalService(db, harness.Gateway, tenantContext, harness.Clock),
             tenantContext,
             harness.Audit,
@@ -438,6 +602,44 @@ public sealed class DocumentLifecycleTests : IAsyncLifetime
     private sealed record Harness(
         RecordingDocumentStorage Storage, IAiGateway Gateway, IClock Clock, RecordingAuditWriter Audit);
 
+    /// <summary>Counts each role's calls on the way to the real fixture gateway, so "no model call
+    /// on the request path" and "classified once on the Worker path" are facts, not inference.</summary>
+    private sealed class CountingAiGateway(IAiGateway inner) : IAiGateway
+    {
+        public int ClassifyCalls { get; private set; }
+        public int ExtractCalls { get; private set; }
+        public int OcrCalls { get; private set; }
+
+        public Task<Result<AiClassificationResult>> ClassifyAsync(
+            AiClassificationRequest request, CancellationToken cancellationToken = default)
+        {
+            ClassifyCalls++;
+            return inner.ClassifyAsync(request, cancellationToken);
+        }
+
+        public Task<Result<AiExtractionResult>> ExtractAsync(
+            AiExtractionRequest request, CancellationToken cancellationToken = default)
+        {
+            ExtractCalls++;
+            return inner.ExtractAsync(request, cancellationToken);
+        }
+
+        public Task<Result<AiEmbeddingResult>> EmbedAsync(
+            AiEmbeddingRequest request, CancellationToken cancellationToken = default) =>
+            inner.EmbedAsync(request, cancellationToken);
+
+        public Task<Result<AiAnswerResult>> AnswerAsync(
+            AiAnswerRequest request, CancellationToken cancellationToken = default) =>
+            inner.AnswerAsync(request, cancellationToken);
+
+        public Task<Result<AiOcrResult>> OcrAsync(
+            AiOcrRequest request, CancellationToken cancellationToken = default)
+        {
+            OcrCalls++;
+            return inner.OcrAsync(request, cancellationToken);
+        }
+    }
+
     private sealed class RecordingAuditWriter : IAuditWriter
     {
         public List<AuditEntry> Entries { get; } = [];
@@ -457,6 +659,16 @@ public sealed class DocumentLifecycleTests : IAsyncLifetime
     private sealed class NoOpAuditWriter : IAuditWriter
     {
         public Task WriteAsync(AuditEntry entry, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    /// <summary>Task E16/F02/US02/T01 (durable-queue-transport): a no-op stand-in for the port
+    /// <see cref="DocumentUploadService"/> now publishes through before it commits — out of scope
+    /// for this suite's own assertions (queue transport is <c>Raffa.Worker.Tests</c>' scope).
+    /// </summary>
+    private sealed class NoOpExtractionQueuePublisher : IExtractionQueuePublisher
+    {
+        public Task PublishAsync(ExtractionRequested message, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
     }
 
     private sealed class StubSupplierNameLookup(EntityId supplierId, string name) : ISupplierNameLookup

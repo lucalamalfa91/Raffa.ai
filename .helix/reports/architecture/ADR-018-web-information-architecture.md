@@ -297,3 +297,208 @@ NW-03's "one membership → enter it" rule operates. **The routing decision is
 client-architect's**; this footer records that the divergence exists and ADR-020
 records the real state set either way, so it stops being an undocumented
 behaviour that the next reader mistakes for the design.
+
+## Amendment (2026-09-13, wave w15 — the states contract gains two "not empty, not ready" states, and what each Documents number counts)
+
+Serves **NW-61** and **NW-27**, and supplies the counting rule **NW-10**'s task
+needs wherever it lands (OQ-w15-008). Written by ux-ui-designer, owner of this
+ADR (`INDEX.md:51`). Every section above stays in force. **The route map
+(`:89-103`) is not touched: no route is added, moved or removed this wave** —
+recorded here as well as in client-architect's ADR-012 w15 footer so no task
+re-opens the router table from either side.
+
+**1. `## Empty / error / loading (IA-level contract)` (`:112-119`) gains two
+states, and this is the decision that generalises.** It names three today:
+loading, empty, error. A surface whose content derives from **validated
+contracts** can be non-empty and still have nothing to show, for two different
+reasons, and those reasons carry different messages and different next steps:
+
+| State | Means | Treatment | CTA |
+|---|---|---|---|
+| **empty** (existing, `:116-117`) | nothing has been uploaded | h3 + one sentence + primary action, max 480px | **Upload a contract** |
+| **not ready yet** (new) | ≥1 document is in flight — `Uploaded` · `Processing` · `NeedsReview` | **the same block**, never the error treatment: nothing has failed | **Go to Documents** |
+| **nothing made it through** (new) | Raffa holds ≥1 document, none is in flight, and none has produced a validated contract | **the same block**, never the error treatment: the failure is per-row and it is legible on Documents | **Go to Documents** |
+
+Two rules bind all three:
+
+1. **The distinction is a server signal, never a client heuristic.** The surface
+   is told; it does not infer. This is ADR-012's w14 provenance rule extended one
+   step — *a client must not infer a server state it can be told* — and it is why
+   NW-61 asks software-architect for completeness signals on the aggregates
+   rather than for a second client-side count. **If the server cannot say it, the
+   surface does not guess**: it keeps the plain empty state and the gap is
+   recorded as an open question, never filled by a derivation.
+2. **An empty state must never tell a user to do a thing they have already
+   done.** "Upload a contract" shown to someone whose fifteen files are
+   mid-pipeline — or whose fifteen files all failed — is the product forgetting
+   what the user just did.
+
+This binds every tier surface, including the two this wave does not build:
+**Ask**, **Portfolio**, **Contract 360** (copy in ADR-020's w15 footer), and —
+same shape, no task required — **Renewals** (`screens-v2.md:125-127`) and
+**Quote check** (`:141-144`). Stating it once here is what lets those two
+inherit it without a second decision.
+
+**2. What each Documents number counts — and this withdraws a ruling of this
+seat's own lane draft.** My lane §A4 ruled that the filter chip
+`All documents · N` **counts** refused files, on the ground that `getFilterHint`
+promises "Everything, including validated documents."
+(`documentTable.ts:163-167`). Reconciling with product-owner's NW-27 row
+("**never counted** in 'All documents' nor in the review queue") and with
+ADR-027 §D7 (`counts.all` **excludes** `Rejected`, "which is what makes *never
+counted* a server fact"), **that ruling is withdrawn.** The replacement is better
+than either position, because every number on screen 3 then reads **exactly one
+server field**:
+
+| Surface | Reads | Contains `Rejected`? |
+|---|---|---|
+| `Needs your attention · N` | `counts.needsAttention` | **no** — and the server definition must be *not `Completed` **and** not `Rejected`*, mirroring `isAttentionStatus` (`documentTable.ts:141-143`) |
+| `All documents · N` | `counts.all` | **no** — it means "every document Raffa holds" |
+| **`Not added · K`** (new, third chip) | `counts.rejected` | it **is** the refused set; the chip renders **only while `counts.rejected > 0`** |
+| `kbSummary` "N documents · M askable · K waiting for your review" | `counts.all`, and see clause 3 | no |
+| Rail **Documents** badge (`N to review` / `N docs`) | `counts.needsAttention` / `counts.all` | no — **by construction**, not by a client rule |
+
+**Why a third chip rather than folding refusals into "All".** Product-owner ruled
+they are never counted there, and `counts.all + counts.rejected` would be
+**client arithmetic over two server facts** — the shape ADR-012's w14 clause 7
+deleted. One chip = one label = one definition = one server field. It is also the
+only arrangement in which a **"persistent, visible, terminal record"**
+(product-owner's own words for a refusal) is actually *reachable*: with two chips
+and `counts.all` excluding `Rejected`, the row exists on the server and **no
+filter on the screen shows it** — a durable record nobody can see is worse than
+the session card it replaced. `counts.rejected` was already in ADR-027 §D7's
+field set with no consumer; this is its consumer.
+
+Consequences a task must carry, all in `web/src/routes/documents/`:
+`AttentionFilterValue` gains a third member (`documentTable.ts:139`),
+`filterDocumentsByAttention` a third branch (`:145-150`), `isAttentionStatus`
+excludes `Rejected` as well as `Completed` (`:141-143`), `getFilterHint` gains a
+third string and its "all" string becomes "Everything **Raffa keeps**, including
+validated documents." (`:163-167` — the one-word-pair edit that keeps the promise
+true), and `AttentionFilter.tsx:3-8`/`:18-32` take a third
+`<button aria-pressed>` in the existing `.seg` (ADR-019 w15 clause 3a).
+
+This also **dissolves OQ-w15-D1**, which this seat raised in lane: two numbers on
+one screen deliberately differing by the refusal count. They no longer overlap,
+so the question disappears rather than being answered.
+
+**2b. Correction to ADR-027 §D7, found by reading it back after the table, and it
+is the difference between A15-1 passing and the reported defect shipping again.**
+§D7 (`:253-254`) defines `needsAttention` as **`NeedsReview` + `Failed`**, on the
+stated ground that this is *"the definition the client's attention filter already
+applies, moved to the server rather than re-invented"*. **The premise is false,
+and it is checkable in one line**: `isAttentionStatus` is
+`processingStatus !== "Completed"` (`documentTable.ts:141-143`), so the filter
+**includes `Uploaded` and `Processing`**, and its own doc comment (`:136-138`)
+derives it from the design oracle — `app.jsx`'s
+`attnDocs = docs.filter(d => d.status !== 'completed')`, *"everything except
+`completed`, i.e. processing/needs_review/failed"* — and names **R-DOC-06**.
+
+Shipped as written, the count and the rows **under the same chip** disagree:
+`attention` is the default filter, so fifteen just-dropped `Uploaded` files list
+**fifteen rows** beneath a chip reading **"Needs your attention · 0"**. That is
+not a near-miss, it is the reported defect of NW-61 verbatim ("Needs your
+attention · 0 / All documents · 0" beside fifteen rows saying "Uploading…") —
+re-introduced on the server, under a server number, where it looks authoritative.
+
+**The definition that governs the screen is this ADR's**: `needsAttention` is
+*not `Completed` **and** not `Rejected`* (the row at `:355`). One rule decides it
+— **a chip's number and the rows it filters to must be the same set**; a count
+that disagrees with the list under it is the class of defect this whole item
+exists to remove. The alternative reconciliation — narrowing the *filter* to
+match §D7's count — is rejected here and named so it is not reached for: it would
+hide the fifteen rows a user just dropped from the default screen, contradict
+`getFilterHint`'s shipped promise that only *"Completed documents are hidden —
+they are already askable."* (`documentTable.ts:163-166`), and diverge from the
+export. **Ask to software-architect** (their file, their edit — this seat does not
+write ADR-027): §D7's `needsAttention` bullet takes the definition above, or
+states which of the two surfaces it intends to be wrong. `all`, `processing` and
+`rejected` are correct as written and are not re-opened.
+
+**3. `kbSummary`'s "M askable" states a fabricated fact today, and naming it is
+this seat's charter.** `documentTable.ts:154-160` computes `askable` as
+`items.filter(i => i.processingStatus === "Completed").length` over the **fetched
+page** (≤100, `useDocumentsList.ts:15-18`). Two defects in one segment: it is
+page-scoped, exactly like the counters NW-61 is fixing; and it equates askable
+with **`Completed`**, which product-owner's NW-61 row and ADR-026 §D2 rule is
+*not* the definition — **askable is validated, not merely completed**. Screen 3
+therefore tells the user Ask can answer from M documents when Ask may answer from
+fewer: the same class of defect software-architect found server-side at
+`AskCopilotService.cs:294`, one screen earlier. **Ask to software-architect,
+recorded rather than assumed: `counts` gains an `askable` member under ADR-026
+§D2's single definition of validated.** If that is refused, **the segment is
+removed** rather than left reading a number the product does not mean. Neither
+branch gates a task, and `N documents` / `K waiting for your review` are
+unaffected either way.
+
+**Read back after the table**: ADR-027 §D7 lands `counts { all, needsAttention,
+processing, rejected }` (`:248`) — **no `askable` member**. So **branch two is in
+force**: the segment is **removed**, and `kbSummary` reads
+`N documents · K waiting for your review`. Recorded as a resolution rather than
+left as an open ask, so the decomposer writes one task instead of choosing. If
+`askable` joins §D7 before the gate closes, branch one applies instead and the
+segment reads `counts.askable`; **the field list on disk in ADR-027 §D7 decides
+it**, not this sentence. `N documents` reads `counts.all`, which is tenant-wide,
+so the page-scoping half of the defect is closed on either branch.
+
+**4. The rail Documents badge.** `ia-v2.md:25`; `navItems.ts:99-107`;
+`RailNav.tsx:67,72-75`. `N to review` is `counts.needsAttention`; `N docs` is
+`counts.all`; the honest-absence rule is unchanged (**no badge** rather than a
+wrong badge). Refusals never reach it — by clause 2, not by a rule the badge has
+to remember. Recorded here because NW-10's task needs it whether it rides NW-61
+or opens W16.
+
+**5. What this footer does not change.** The route map, the Roles section
+(`:104-111`), the loading and error treatments and their wording, the default
+attention filter (R-DOC-06), and the three original states of `:112-119`, whose
+text is untouched.
+
+## Amendment (2026-09-14, wave w15 — re-entry round: a "not ready yet" state that can never resolve, and the counting table the local refusal row does not touch)
+
+Continues the **2026-09-13 w15 footer** above (`:301-455`, clauses 1–5), every
+clause of which stays in force; numbering continues from it. Serves **NW-61** and
+**NW-27**. Written by ux-ui-designer, owner of this ADR (`INDEX.md:51`). The route
+map (`:89-103`) is still not touched: **no route is added, moved or removed this
+wave.**
+
+**6. The states contract gains a third binding rule: bounded updates.** Clause 1
+added **not ready yet** and **nothing made it through**, and bound both to a
+server signal. The first of the two makes a promise the contract did not price:
+*something is in flight, and this surface will notice when it lands.* It is kept
+by a **repeating re-read**, and ADR-027 §C6 — written at this table, at this round
+— withdraws the property that guaranteed the re-read ends. A commit that lands
+after the abandon window leaves a row at `Uploaded` permanently and §0.1 forbids
+the cross-tenant sweeper that would find it, so the surface waits forever while
+telling the user it is nearly there. Rule:
+
+> A **not ready yet** state that depends on a repeating re-read **stops on a
+> bounded no-change budget and offers an explicit resume**; a surface that cannot
+> offer the resume **must not claim it is waiting**.
+
+Three notes that make it usable rather than pious. **(a)** It is stated here, and
+not only in ADR-012 §17, because §17 bounds **one hook** while the promise is made
+by the **state**, on five surfaces — Documents, Ask, Portfolio, Contract 360, and
+by inheritance Renewals and Quote check — three of which have no row grid and
+therefore no other way to show that nothing is moving. Ask is the sharp case: its
+gate re-read is a one-shot `useEffect` today (`ask/index.tsx:100-105`) and NW-61's
+client ruling turns it into a 2 s poll, so this wave introduces the unbounded wait
+at a **second** call site that §17 does not name. **(b)** The resume is a *client*
+act — re-read now — and never a re-label: the row's status, the chips' numbers and
+the progress bar stay exactly what the server last said (ADR-012 §17's three
+prohibitions, which this clause adopts unchanged). **(c)** The copy is one
+sentence and one label, identical on every surface, in ADR-020 w15 round-3 §8.
+
+**7. The local refusal row changes nothing in clause 2's counting table.** A file
+refused **before storage** (in the browser, or by a 413/415) has no id and is in no
+server count; it renders as a session-local row (ADR-020 w15 round-3 §6). Recorded
+because the tempting repair is the wrong one: a task making `Not added · K` "agree
+with the screen" by adding a client-side increment would put a number that is
+partly the server's and partly this tab's under one chip — clause 2's whole point
+is that **each number reads exactly one server field**. The chip counts what
+Raffa.ai kept a record of; the local row is a file the product never stored.
+
+**8. What this footer does not change.** The route map, the Roles section
+(`:104-111`), the three original states of `:112-119`, the definitions,
+treatments and CTAs of the two states added by clause 1, the counting table of
+clause 2 and clause 2b's `needsAttention` definition, clause 3's resolution, and
+the badge rule of clause 4.

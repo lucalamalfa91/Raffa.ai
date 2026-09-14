@@ -53,9 +53,22 @@ resource "azurerm_container_app" "api" {
     identity            = var.workload_identity_id
   }
 
+  # Task E16/F01/US01/T01 (NW-68, ADR-011 w15 footer §1): the wave's one
+  # new secret, API app only -- the worker neither issues nor sends
+  # invitations and must not receive it "for symmetry".
+  secret {
+    name                = "acs-cs"
+    key_vault_secret_id = var.acs_connection_secret_id
+    identity            = var.workload_identity_id
+  }
+
   template {
     min_replicas = 0
-    max_replicas = 1
+    # ADR-005 w15 footer §2: default 3, up from 1 -- not cosmetic. A15-1
+    # uploads three files in flight and one 0.25-vCPU replica serialising
+    # fifteen blob writes is the likeliest way that target fails once the
+    # pipeline itself is fixed.
+    max_replicas = var.api_max_replicas
 
     container {
       name   = "api"
@@ -173,6 +186,87 @@ resource "azurerm_container_app" "api" {
           value = env.value
         }
       }
+
+      # Task E16/F01/US01/T01 (NW-27 publish side, ADR-005 w15 footer §5
+      # rule 1): optional, never `?? throw` -- mirrors Raffa.Worker/
+      # Program.cs:44's own precedent for a dependency that must degrade,
+      # never crash. Module outputs, never a root literal.
+      env {
+        name  = "ServiceBus__FullyQualifiedNamespace"
+        value = var.servicebus_fqdn
+      }
+
+      env {
+        name  = "ServiceBus__TopicName"
+        value = var.servicebus_topic_name
+      }
+
+      # Task E16/F01/US01/T01 (NW-68, ADR-005 w15 footer §5 rule 3):
+      # Enabled is a PRODUCT switch, not a provisioning gate -- a working
+      # connection string behind Enabled = false is harmless, so resources,
+      # secret and all four keys land in one apply per environment. dev
+      # "true", demo "false" (infra/environments/{dev,demo}/variables.tf).
+      env {
+        name  = "Invitations__Mail__Enabled"
+        value = tostring(var.invitation_mail_enabled)
+      }
+
+      env {
+        name  = "Invitations__Mail__SenderAddress"
+        value = var.acs_sender_address
+      }
+
+      env {
+        name        = "Invitations__Mail__ConnectionString"
+        secret_name = "acs-cs"
+      }
+
+      # Composed here from var.spa_host_name -- "https://<host>", no
+      # trailing slash (AC-6) -- never a typed literal in an environment
+      # root, and never derived from a request header.
+      env {
+        name  = "Invitations__AcceptUrlBase"
+        value = "https://${var.spa_host_name}"
+      }
+
+      env {
+        name  = "Invitations__GuestProvisioning__Enabled"
+        value = tostring(var.guest_provisioning_enabled)
+      }
+
+      env {
+        name  = "Invitations__GuestProvisioning__TenantId"
+        value = var.azuread_tenant_id
+      }
+
+      # Task E16/F01/US01/T01 (NW-05, ADR-016 w15 footer clause 15):
+      # fail-closed, never crash-closed -- absent, the authenticated routes
+      # answer 401 and the API still boots; no header fallback is
+      # re-added, not even temporarily. ClientId and Audience are BOTH
+      # published on purpose: at requested_access_token_version = 2 the
+      # `aud` claim IS the client id, while the SPA requests scopes
+      # against the identifier URI (ADR-010 w15 footer S15-2) -- wiring
+      # api_identifier_uri where the client id belongs applies cleanly,
+      # deploys cleanly, and then 401s every request in the browser.
+      env {
+        name  = "AzureAd__Authority"
+        value = var.azuread_authority
+      }
+
+      env {
+        name  = "AzureAd__TenantId"
+        value = var.azuread_tenant_id
+      }
+
+      env {
+        name  = "AzureAd__ClientId"
+        value = var.azuread_client_id
+      }
+
+      env {
+        name  = "AzureAd__Audience"
+        value = var.azuread_audience
+      }
     }
   }
 
@@ -227,9 +321,23 @@ resource "azurerm_container_app" "worker" {
     identity            = var.workload_identity_id
   }
 
+  # Task E16/F01/US01/T01 (NW-27, ADR-005 w15 footer §5 / ADR-027 D12/C2):
+  # the worker's own missing key. var.storage_connection_secret_id already
+  # reaches this module (see the API's identical handle above) -- no new
+  # module variable, no environment-root change.
+  secret {
+    name                = "st-cs"
+    key_vault_secret_id = var.storage_connection_secret_id
+    identity            = var.workload_identity_id
+  }
+
   template {
     min_replicas = 0
-    max_replicas = 1
+    # ADR-005 w15 footer §2: default 3, up from 1. min_replicas stays 0 --
+    # raising that floor to 1 is rejected outright (a new ~$14/env/month
+    # fixed line the cost lock forbids); scale-out on consumption is paid
+    # only while used.
+    max_replicas = var.worker_max_replicas
 
     container {
       name   = "worker"
@@ -271,6 +379,41 @@ resource "azurerm_container_app" "worker" {
         secret_name = "pg-cs"
       }
 
+      # Task E16/F01/US01/T01 (NW-27, ADR-005 w15 footer §5 rule 2): the
+      # boundary that MUST stay fail-fast -- a worker that silently cannot
+      # read blobs marks every document Failed, a config gap wearing the
+      # costume of a product defect across a whole environment. Mirrors
+      # Raffa.Api/Program.cs:66-69's own fail-fast shape.
+      env {
+        name        = "ConnectionStrings__Storage"
+        secret_name = "st-cs"
+      }
+
+      # Task E16/F01/US01/T01 (NW-27, ADR-005 w15 footer §5 rule 1):
+      # optional -- absent degrades to today's shipped (synchronous)
+      # behaviour. MaxAutoLockRenewalMinutes is coupled to
+      # lock_duration = "PT5M" on the document-processing subscription
+      # (modules/servicebus) via ServiceBusProcessorOptions.MaxAutoLockRenewalDuration.
+      env {
+        name  = "ServiceBus__FullyQualifiedNamespace"
+        value = var.servicebus_fqdn
+      }
+
+      env {
+        name  = "ServiceBus__TopicName"
+        value = var.servicebus_topic_name
+      }
+
+      env {
+        name  = "ServiceBus__SubscriptionName"
+        value = var.servicebus_subscription_name
+      }
+
+      env {
+        name  = "ServiceBus__MaxAutoLockRenewalMinutes"
+        value = "30"
+      }
+
       # Task E10/F02/US01/T01 (foundry-ocr-ca): the worker runs the hybrid
       # OCR pre-pass (ADR-017) and needs the same non-secret AI Gateway
       # connection info as the api app above.
@@ -303,6 +446,28 @@ resource "azurerm_container_app" "worker" {
           name  = env.key
           value = env.value
         }
+      }
+    }
+
+    # Task E16/F01/US01/T01 (NW-27, ADR-005 w15 footer §2, OQ-w15-cl-01):
+    # identity-based auth on the scale rule itself -- `identity_id`,
+    # proved against the pinned azurerm ~> 4.0 provider schema
+    # (`terraform providers schema -json`) rather than copied from a
+    # council document. Zero secrets: the first of the preference order's
+    # three options. min_replicas stays 0 (unchanged) -- KEDA raises the
+    # worker off zero as the queue fills. messageCount is the scale
+    # trigger's own threshold, independent of the subscription's
+    # max_delivery_count.
+    custom_scale_rule {
+      name             = "servicebus-document-processing"
+      custom_rule_type = "azure-servicebus"
+      identity_id      = var.workload_identity_id
+
+      metadata = {
+        namespace        = var.servicebus_namespace_name
+        topicName        = var.servicebus_topic_name
+        subscriptionName = var.servicebus_subscription_name
+        messageCount     = "5"
       }
     }
   }

@@ -54,27 +54,19 @@ namespace Raffa.Documents.Contracts.Application.Extraction;
 /// <see cref="Document"/> row returns the same tracked, already-updated entity rather than racing a
 /// second connection).
 ///
-/// <b>Bytes in, not a storage re-read</b>: the bytes overload takes <c>content</c> directly rather
-/// than loading it back through <c>Raffa.SharedKernel.Storage.IDocumentStorage</c> — that
-/// interface exposes no read/load method today (only <c>SaveAsync</c>; see its own doc comment),
-/// and adding one is a larger, separate change to a shared abstraction every module and both hosts
-/// depend on. The callers already hold the uploaded bytes in memory for
-/// <c>DocumentUploadService.UploadAsync</c>'s own storage write, so passing the same buffer here
-/// avoids the extra round trip entirely rather than working around a missing read API.
+/// <b>Bytes in, not a storage re-read</b>: both overloads take <c>content</c> directly. The caller
+/// already holds the bytes — the upload request did, and since wave w15 the Worker's
+/// <see cref="ExtractionRequestedHandler"/> loads them once through
+/// <c>IDocumentStorage.LoadAsync</c> and hands them to the content gate and to this type in turn —
+/// so a second storage round trip here would only be waste.
 ///
-/// <b>Synchronous, in-request, not a queue dispatch</b>: <c>Raffa.Worker.Queue
-/// .QueueConsumerHostedService</c> deliberately does not dispatch a received message to a domain
-/// handler yet (its own doc comment: "is a later task once that handler exists"), and nothing in
-/// this codebase enqueues a durable message for <c>InMemoryQueueConsumer</c> to receive either —
-/// <see cref="Domain.ExtractionJob"/> rows are written directly by <c>DocumentUploadService</c>,
-/// never posted to <c>Raffa.Worker.Queue.IQueueConsumer</c>. Building that real async dispatch
-/// (a durable queue producer/consumer pair) is a Worker feature in its own right, not this
-/// integration task's scope. Running the rest of the pipeline synchronously, inline with the
-/// upload request, is the smallest honest way to make R1's "upload -&gt; ... -&gt; Ask Raffa"
-/// promise actually true on `dev`/`demo` today without redesigning the queue architecture — a
-/// documented interim choice, not a silently absorbed shortcut (OQ-askv2-007 keeps it in force for
-/// V2). A later task can move this call behind a real durable queue without changing either
-/// signature or behaviour.
+/// <b>Where this runs</b> (task E16/F02/US03/T01, wave w15, ADR-027 §D1): behind the durable
+/// extraction queue, on the Worker, one <see cref="ExtractionRequested"/> message per document —
+/// published by <c>DocumentUploadService</c> before its commit, claimed by
+/// <see cref="ExtractionRequestedHandler"/> through the conditional-<c>UPDATE</c> claim, and only
+/// then driven through the content gate and this pipeline. The upload request returns 201 at the
+/// store. Until w15 this type ran synchronously inside <c>POST /api/documents</c>, an interim
+/// choice its previous doc comment recorded and that the same wave retired.
 ///
 /// <b>Never fails an already-durable upload</b>: every failure this type can report (parse
 /// failure, one extraction stage failing, one page failing to embed) is recorded on the

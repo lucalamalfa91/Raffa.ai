@@ -12,6 +12,7 @@ import {
   getRowStatusTag,
   getStagePercent,
   isAttentionStatus,
+  type DocumentCountsBody,
 } from "../../../src/routes/documents/documentTable";
 
 function item(overrides: Partial<DocumentListItemBody> = {}): DocumentListItemBody {
@@ -26,8 +27,13 @@ function item(overrides: Partial<DocumentListItemBody> = {}): DocumentListItemBo
     pageCount: 12,
     createdAt: "2026-09-06T08:05:00Z",
     weakFactCount: 0,
+    rejectionReason: null,
     ...overrides,
   };
+}
+
+function counts(overrides: Partial<DocumentCountsBody> = {}): DocumentCountsBody {
+  return { all: 0, needsAttention: 0, needsReview: 0, processing: 0, rejected: 0, ...overrides };
 }
 
 // Task E13/F04/US01/T01's widened admitted-type vocabulary (web/openapi/raffa-api.v1.json).
@@ -62,6 +68,9 @@ describe("getRowStatus / getRowStatusTag", () => {
     { processingStatus: "NeedsReview", status: "needs_review", variant: "outline", label: "Needs review" },
     { processingStatus: "Completed", status: "completed", variant: "neutral", label: "Completed" },
     { processingStatus: "Failed", status: "failed", variant: "accent", label: "Failed" },
+    // Task E16/F03/US01/T01 (ADR-019 w15 clause 1): a refusal is a row, read as "Not added" in the
+    // outline treatment -- never `failed`'s accent, and never a blank tag.
+    { processingStatus: "Rejected", status: "rejected", variant: "outline", label: "Not added" },
   ])("maps $processingStatus to row status $status ($variant)", ({ processingStatus, status, variant, label }) => {
     const rowStatus = getRowStatus(processingStatus);
     expect(rowStatus).toBe(status);
@@ -96,6 +105,11 @@ describe("getRowAction", () => {
     expect(getRowAction(item({ processingStatus: "Processing" }))).toBeNull();
   });
 
+  // ADR-020 w15 §1.4: a refused file offers no next step -- nothing to review, ask or retry.
+  it("returns null for a rejected document", () => {
+    expect(getRowAction(item({ processingStatus: "Rejected", contractId: null }))).toBeNull();
+  });
+
   // OQ-askv2-008: a Quote is routed to Quote check, never the review/ask flow, at any resolved status.
   it.each<DocumentListItemBody["processingStatus"]>(["Completed", "NeedsReview"])(
     "offers 'Open Quote check' for a Quote-typed document even when %s",
@@ -108,44 +122,58 @@ describe("getRowAction", () => {
   );
 });
 
+// Task E16/F03/US01/T01 (ADR-027 §C9, ADR-012 w15 §13.5): the client filter mirrors the server's
+// `counts.needsAttention` definition -- not Completed and not Rejected -- so a chip's number and
+// the rows it filters to are the same set. This suite, not `tsc`, is what keeps the two in step.
 describe("isAttentionStatus / filterDocumentsByAttention", () => {
   const items = [
     item({ id: "a", processingStatus: "Processing" }),
     item({ id: "b", processingStatus: "NeedsReview" }),
     item({ id: "c", processingStatus: "Failed" }),
     item({ id: "d", processingStatus: "Completed" }),
+    item({ id: "e", processingStatus: "Rejected", contractId: null, rejectionReason: "not_a_contract" }),
+    item({ id: "f", processingStatus: "Uploaded" }),
   ];
 
-  it("attention excludes only completed documents (raffa-v2/app.jsx's own attnDocs)", () => {
-    expect(items.map((candidate) => isAttentionStatus(candidate.processingStatus))).toEqual([true, true, true, false]);
-    expect(filterDocumentsByAttention(items, "attention").map((candidate) => candidate.id)).toEqual(["a", "b", "c"]);
+  it("attention is every status except Completed and Rejected (the server's own needsAttention set)", () => {
+    expect(items.map((candidate) => isAttentionStatus(candidate.processingStatus))).toEqual([true, true, true, false, false, true]);
+    expect(filterDocumentsByAttention(items, "attention").map((candidate) => candidate.id)).toEqual(["a", "b", "c", "f"]);
   });
 
-  it("all returns every document unfiltered", () => {
-    expect(filterDocumentsByAttention(items, "all")).toEqual(items);
+  it("all is everything Raffa.ai keeps -- `counts.all`'s definition, which excludes Rejected", () => {
+    expect(filterDocumentsByAttention(items, "all").map((candidate) => candidate.id)).toEqual(["a", "b", "c", "d", "f"]);
+  });
+
+  it("rejected is the refused rows alone", () => {
+    expect(filterDocumentsByAttention(items, "rejected").map((candidate) => candidate.id)).toEqual(["e"]);
   });
 });
 
+// ADR-012 w15 §13.6/§18: the summary is a function of the server's `counts`, never of the fetched
+// page, and the "M askable" segment is gone -- askability is a contract-level fact the shell carries.
 describe("buildKbSummary", () => {
-  it("counts total/askable/waiting exactly as raffa-v2/app.jsx's own kbSummary", () => {
-    const items = [
-      item({ id: "a", processingStatus: "Completed" }),
-      item({ id: "b", processingStatus: "Completed" }),
-      item({ id: "c", processingStatus: "NeedsReview" }),
-      item({ id: "d", processingStatus: "Processing" }),
-    ];
-    expect(buildKbSummary(items)).toBe("4 documents · 2 askable · 1 waiting for your review");
+  it("reads 'N documents' off counts.all and 'K waiting for your review' off counts.needsReview", () => {
+    expect(buildKbSummary(counts({ all: 4, needsAttention: 2, needsReview: 1, processing: 1 }))).toBe(
+      "4 documents · 1 waiting for your review",
+    );
   });
 
-  it("omits the waiting clause when nothing needs review, and uses singular 'document'", () => {
-    expect(buildKbSummary([item({ processingStatus: "Completed" })])).toBe("1 document · 1 askable");
+  it("omits the waiting clause when nothing needs review, uses singular 'document', and never says 'askable'", () => {
+    const summary = buildKbSummary(counts({ all: 1 }));
+    expect(summary).toBe("1 document");
+    expect(summary).not.toMatch(/askable/);
+  });
+
+  it("does not count refused files -- `all` already excludes them", () => {
+    expect(buildKbSummary(counts({ all: 0, rejected: 2 }))).toBe("0 documents");
   });
 });
 
 describe("getFilterHint", () => {
-  it("quotes raffa-v2/app.jsx's own filterHint ternary verbatim", () => {
+  it("quotes raffa-v2/app.jsx's own attention hint, and ADR-020 w15 §1.5's hints for the other two chips", () => {
     expect(getFilterHint("attention")).toBe("Completed documents are hidden — they are already askable.");
-    expect(getFilterHint("all")).toBe("Everything, including validated documents.");
+    expect(getFilterHint("all")).toBe("Everything Raffa.ai keeps, including validated documents.");
+    expect(getFilterHint("rejected")).toBe("Files Raffa.ai did not keep — never counted, never askable.");
   });
 });
 

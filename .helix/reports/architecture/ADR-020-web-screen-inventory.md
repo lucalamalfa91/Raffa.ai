@@ -569,3 +569,547 @@ row that already names ADR-020 as governing — the product-owner's principle,
 which binds this seat too. **The decomposer must read this footer to build that
 row.** The exports owed above gain one item: (7) the re-issue confirm on an
 `Invited` and an `Expired` row.
+
+## Amendment (2026-09-13, wave w15 — a refusal becomes a row, three surfaces learn to say "not ready yet", and the first surface Raffa sends outside the browser)
+
+Serves **NW-27**, **NW-61**, **NW-69** and **NW-68**. Written by ux-ui-designer,
+owner of this ADR (`INDEX.md:53`). Every section above and **both w14 footers
+stay in force and are not rewritten**; where this footer touches copy they
+pre-decided, it says so and quotes them. States named here implement ADR-018's
+w15 clause 1; treatments come from ADR-019's locked catalogue and its w15 row.
+
+### 0. One copy rule for the whole wave: the export is pre-rebrand, the product is not
+
+The product names itself **"Raffa.ai"** in every shipped user-facing string —
+`SignInScreen.tsx:52` (the lockup `h1`), `askViewModel.ts:232`/`:258`,
+`contracts/index.tsx:57`, `renewals/index.tsx:69`, `savings/index.tsx:61`,
+`quotes/index.tsx:103`, `QuoteLinesTable.tsx:18`, `uploadPipeline.ts:42`. The V2
+export says **"Raffa"** throughout (`screens-v2.md:26`, `:73`). This is not one
+stale sentence, it is a **class**: `inputs/design/prototypes/raffa-v2/` predates
+the rebrand, so **any task that retypes copy out of the export silently reverts
+it**. Rule, binding every string below and every string a w15 task moves: **copy
+already in `web/src` is moved character-for-character; copy taken from the export
+is corrected to "Raffa.ai".** Named divergence, recorded once here instead of
+six times.
+
+### 1. Screen 3 (Documents) — a refused file is a row, not a card (NW-27)
+
+**1.1 Why the session-only rule goes.** `screens-v2.md:75` marks the "Not added"
+card *session-only, never counted*, and three shipped files assert that premise
+by id (`documentTable.ts:74-79`, `UploadResultCard.tsx:14-16`,
+`uploadPipeline.ts:57`), as does `requirements.md` **R-DOC-05 AC-1**. The premise
+is stated by the code itself at `UploadResultCard.tsx:16` — *"a rejected file was
+never stored, has no id"* — and **NW-27 removes exactly that premise**: with the
+gate on the Worker the file **is** stored before the gate can run, and the
+refusal arrives seconds or minutes later, **possibly with the browser closed**.
+A card that vanishes on reload would then hide a durable server fact — the shape
+ADR-012's w14 footer forbids — and would lose files against A15-1's own promise
+that a dropped file survives a reload and a second browser. **Decision: a refused
+file is a row with a terminal server status.** The supersession of R-DOC-05 AC-1
+is **not this seat's to declare and was not declared here**: it is ratified by
+product-owner (ADR-001 w15 clause 2) and recorded by software-architect
+(ADR-024 w15 §3) — OQ-w15-D3. **What survives of the export's instinct is its
+important half: *never counted*** (ADR-018 w15 clause 2).
+
+**1.2 The wire value is `Rejected`; the screen says "Not added".** No new word
+enters the product — the label and its treatment are lifted from the card being
+retired (`UploadResultCard.tsx:24`), and the mapping is ADR-019's w15 row
+(`.tag-outline`, and **not** `.tag-accent`, which is reserved for a Raffa-side
+failure the user can retry). Two files, one of which the compiler will not ask
+for: see ADR-019 w15 clause 2.
+
+**1.3 The reason is the row's hint; the card is deleted.** The three refusal
+sentences are requirement copy and move **verbatim** —
+`uploadPipeline.ts:39-46` (`not_a_contract`, `no_readable_text`) and `:50-52`
+(`getOversizedCopy`) — into the existing hint slot under the filename, the slot
+`DocumentStatusTable.tsx:138` already uses. One deliberate edit: the
+**`"Not added: "` lead-in is dropped**, because beside the tag the tag *is* the
+lead-in; the lead-in is **embedded inside those two functions**
+(`UploadResultCard.tsx:3-4` documents this), so dropping it is an edit to those
+functions or to the server field that replaces them, never a render-time strip.
+Per clause 0 the sentences keep "Raffa.ai". **`UploadResultCard.tsx` is deleted,
+not kept beside the row**: `screens-v2.md:76` is "one row per file, per-file
+outcome", and a card *and* a row for one file is two surfaces for one fact.
+
+**1.4 A `Rejected` row offers no next step.** The action cell is empty
+(`getRowAction`, `documentTable.ts:117-134`, already returns `null` for a
+processing row). There is nothing to review, ask or retry — re-dropping the same
+file would be refused again. The Admin's existing `Delete`
+(`DocumentStatusTable.tsx:184-208`) clears it, which needs no new endpoint and no
+new copy, and product-owner's NW-27 row requires exactly that the row stay
+"removable by the existing `DELETE`". **No "Dismiss" affordance**: a durable row
+cannot be dismissed client-side without a client store standing in for the
+server.
+
+**1.5 Where the row is reachable: a third filter chip.** `Not added · K`, reading
+`counts.rejected`, rendered **only while that count is > 0**; hint **"Files
+Raffa.ai did not keep — never counted, never askable."**; the `all` hint becomes
+"Everything **Raffa.ai keeps**, including validated documents." The full counting
+contract, and the withdrawal of this seat's lane §A4, are ADR-018 w15 clause 2 —
+this is its copy half.
+
+**1.6 `stage: null` reads "Queued…", and the code already agrees.** Today
+`DocumentStatusTable.tsx:155` renders `(item.stage ?? "Uploading") + "…"`, which
+is true only in a synchronous product where the row and the upload are one act.
+Once `POST /api/documents` returns at `Uploaded`, the file **is stored** and the
+row is waiting for a Worker — a window the export never had (`app.jsx:46-48`
+ticks to stage 1 after 700 ms) and one A15-2 deliberately makes long. A local
+pre-201 row still reads **"Uploading…"**; a server row at `Uploaded` reads
+**"Queued…"**; a `Processing` row reads its stage string, verbatim. **The six
+stage strings are untouched** (`screens-v2.md:65-66` = `app.jsx:76` =
+`documentTable.ts:56-63` = `DocumentProcessingStageMap.cs:20-39`) and
+`getStagePercent(null)` stays 0%. **This costs nothing in the design system**,
+and `documentTable.ts:76-78` says why in its own words: "`Uploaded` and
+`Processing` both fold into `processing` — the row grid does not distinguish
+'queued' from 'actively processing' visually, **only the stage text underneath
+the tag does that**." Named divergence: the export cannot answer this because it
+has no queue wait. A row stuck at "Uploading…" for a minute is
+indistinguishable from a stuck upload — the exact defect A15-2 exists to catch.
+
+**1.7 Screen 3's state inventory** becomes: onboarding empty · **queued** ·
+uploading/processing (real stages) · needs_review · completed · failed (retry) ·
+**not added (a row, terminal)** · attention-empty · list error.
+
+### 2. Screens 2, 5 and 6 — "still processing" and "nothing made it through" (NW-61)
+
+ADR-018 w15 clause 1 defines the two states; this is their copy. **Four new
+strings enter the product in this clause and none has an oracle**, because the
+export has no such state anywhere — each is derived from a shipped sentence and
+listed in the exports owed below.
+
+**2.1 Screen 2 (Ask) — the copy is right, the *predicate* is wrong, and a third
+variant is forced.** `buildOffCopy(hasAnyDocument: boolean)`
+(`askViewModel.ts:250-261`) is a **boolean ternary**, and `hasAnyDocument` is
+`totalCount > 0` over documents **in any state** (`ask/index.tsx:99-105`). So a
+tenant whose only document **failed** is told *"Your document is still processing
+or waiting for review"* — **a fabricated fact the product ships today**, and
+A15-3's exact prohibition. The h3 (`screens-v2.md:25`, "Ask needs at least one
+validated contract.") is true in all three cases and is unchanged.
+
+| Shown when | Sentence | CTA |
+|---|---|---|
+| Raffa.ai holds **no** document | "Upload a contract first. Raffa.ai extracts the facts, you sign off the weak ones, and Ask switches on." — **shipped, unchanged** (`:258`) | **Upload a contract** |
+| ≥1 document is `Uploaded` · `Processing` · `NeedsReview` | "Your document is still processing or waiting for review. Ask only answers from facts that passed validation — so it never guesses." — **shipped, unchanged** (`:254`) | **Go to Documents** |
+| ≥1 held, **none in flight, none validated** | **"Raffa.ai could not finish processing your documents. Ask only answers from facts that passed validation — so it never guesses."** — *new*; its second clause is the shipped one, verbatim | **Go to Documents** |
+
+This answers **OQ-w15-ca-04**, routed here by client-architect, and it honours
+their binding constraint exactly: the third state is **not** collapsed into the
+"still processing" sentence. **A tenant holding only refused files gets the first
+row, not the third** — because ADR-018 w15 clause 2 excludes `Rejected` from what
+Raffa.ai holds, so "Upload a contract first" is *true* for them, and they were
+already told per file, on the row, why each was refused. That is the counting
+rule doing real work rather than being bookkeeping. Fixed grammatical number is
+the product's existing practice on this surface (the shipped sentence says "Your
+document" for any count), so **no pluralisation logic is introduced**.
+`buildOffCopy`'s signature widens from `boolean` to the three-way state — the
+anchor a task must cite.
+
+**2.2 Screen 6 (Portfolio) — a third variant and *no* new string.** Today one
+zero state (`contracts/index.tsx:130-139`), verbatim from `markup.html`'s `kbOff`
+and `screens-v2.md:116-117`. The h3 **"Nothing to triage yet"** is true in all
+three cases and never changes.
+
+| Shown when | Sentence | CTA |
+|---|---|---|
+| 0 validated, nothing held | "The portfolio lights up from validated contracts. Upload one to start." — shipped, unchanged | **Upload a contract** |
+| 0 validated, ≥1 in flight | "Your documents are still being processed. The portfolio lights up from validated contracts." | **Go to Documents** |
+| 0 validated, ≥1 held, none in flight | "The portfolio lights up from validated contracts." — **the shipped sentence minus its "Upload one to start." clause** | **Go to Documents** |
+
+Dropping that clause is the whole fix: it is the one part of the sentence that
+tells a user to do what they have already done (ADR-018 w15 clause 1, rule 2).
+
+**2.3 Screen 5 (Contract 360) — a fifth state, because the alternative is an
+empty contract.** `screens-v2.md:112` lists `open · in negotiation · assigned ·
+not uploaded (empty)`; the code has `loading | not-found | error | ready`
+(`contract360/index.tsx:21-25`, `:140-157`). Once NW-27 creates a `contractId`
+before extraction finishes, `ready` renders an aggregate with no clauses, no
+spend and no dates — an **empty contract**, indistinguishable from a contract
+whose extraction genuinely found nothing. Both readings of ADR-018's new state
+apply, driven by ADR-027 §D8's `readiness` and **never inferred from an empty
+clause array**:
+
+| `readiness` | h3 | Sentence | CTA |
+|---|---|---|---|
+| in flight | **"This contract is still being prepared."** | **"Raffa.ai is still extracting the facts. It will open here once they pass validation."** | `.btn-secondary` **Go to Documents** |
+| terminal, nothing extracted | **"This contract has no validated facts yet."** | **"Raffa.ai could not finish processing its documents. Open Documents to see what happened to each one."** | `.btn-secondary` **Go to Documents** |
+
+The second reading shares its opening clause with 2.1's new sentence by design —
+one new idea, two surfaces. Two smaller consequences of the same rule: **Details ▾
+› "documents in family"** (`screens-v2.md:103-104`) renders a not-yet-validated
+document **with its row status tag** rather than omitting it silently — a family
+that hides its own in-flight members is the same lie one level down — and the
+back label and all other chrome are unchanged.
+
+**2.4 What NW-61 does not change**: the optimistic local row, the stage
+rendering, the progress bar, the six stage strings, the attention filter's
+default, `justValidated`'s hook. The poll predicate, the request deadline and the
+read-back contract are **client-architect's**.
+
+### 3. Screen 10 — the invite pane's outcome set (NW-69), corrected against what the backend seats ruled
+
+**3.1 One boolean cannot carry what NW-67 and NW-68 produce.** Today two states
+from one flag (`InvitePane.tsx:116-120`, `:122-140`), typed as a binary union at
+`memberViewModel.ts:171-173`, whose own doc comment reads *"not a third, invented
+state; **the transport wave that needs a third value owns that change**, not this
+one."* **This is that wave.** 10.1 already reserved the third value; 10.3 named
+the same defect shape for `MemberStatus`.
+
+**3.2 A provisioning failure is a *blocking* error, not a fourth success state —
+and this corrects this seat's lane draft and client-architect's cell.** My lane
+§D2 designed a state "Invitation created, but {email} cannot sign in yet" with
+the link suppressed, and client-architect's NW-69 cell lists
+"guest provisioning failed" as one of four 201 outcomes. **Neither can occur**:
+software-architect's NW-67 row rules that a provisioning failure **aborts the
+invitation — no invitation row, no mail, no token** — and returns **502**, and
+security-architect concurs from the credential side ("an inert artefact beats a
+live credential"). So there is nothing to show a link *for*. **My reasoning
+reached "suppress the link"; their mechanism reached "there is no link", which is
+strictly stronger, and this seat adopts it.** The pane's rule survives verbatim —
+**a link renders only when it is usable** — and is now satisfied **by
+construction** rather than by a branch. The 201's outcome enum therefore carries
+**three** values, and 10.1 gains **one** new value, not two.
+
+**3.3 The three success outcomes** (an invitation exists; the guest is
+provisioned or provisioning is not configured):
+
+| # | Outcome | Copy | Link block |
+|---|---|---|---|
+| 1 | mail **sent** | "Invitation sent to {email}." — 10.1, **unchanged** | no |
+| 2 | mail **failed** | "Invitation created, but the email could not be sent." — **10.1's pre-decided third value, verbatim** (`:282-284`) | **yes** |
+| 3 | **no transport configured** | "Invitation ready for {email}." — 10.1, **unchanged**, + the expiry `.micro-meta` (`memberViewModel.ts:194-196`) | yes |
+
+The word **"sent"** appears in outcome 1 only. Blocking pre-creation failures
+(format, 400, 409) are unchanged (`InvitePane.tsx:110-114`).
+
+**3.4 "Try sending again" does not ship, and this ADR has already made this
+ruling once.** 10.1 pre-decided the *sentence* for outcome 2 **and** a
+`.btn-secondary` "Try sending again". The sentence ships; **the affordance does
+not, because no mechanism can perform it.** Software-architect's NW-68 row
+establishes that the server **cannot re-send the original link** — the token is
+stored only as a SHA-256 hash — so any retry is necessarily a **re-issue**, which
+mints a new token and kills the link the Admin is looking at; and this ADR's own
+w14 footer `:284-287` already forbids telling the Admin to invite again from this
+pane ("re-inviting the same email at the same role is exactly what fails today").
+A button that silently invalidates a link the Admin may already have copied,
+under a label that says "try again", would be misleading copy authored by this
+seat. **The link block *is* the remedy** — and cloud-architect's deliverability
+caveat (a managed domain sends from `…azurecomm.net`, which corporate filters
+treat harshly) makes outcome 2 **common rather than rare**, which is exactly why
+it must be fully functional. The only re-issue path stays the roster row's
+**"Send a new invitation"** with its inline confirm and its "The link you already
+shared stops working." consequence line (`:539-546`). This applies the precedent
+of this footer's own predecessor, §2 above: *an affordance with no legal
+mechanism is not shipped*. **This withdraws the fallback branch my lane §8.2 had
+already corrected once, and closes it.**
+
+**3.5 The blocking 502: copy for a closed reason set.** Software-architect's
+closed set is `consent_missing` | `provisioning_failed` | `directory_unavailable`
+and routes its copy here. Rendered in the existing pre-creation error slot
+(`InvitePane.tsx:110-114`), each with the shared `.micro-meta` **"No invitation
+was created."** so the Admin never has to wonder whether a half-invitation
+exists:
+
+| `reason` | Sentence |
+|---|---|
+| `consent_missing` | "Raffa.ai is not allowed to add guests to your company directory yet. A tenant administrator has to approve that permission." |
+| `provisioning_failed` | "Your company directory would not add {email}. Check the address, or ask a tenant administrator." |
+| `directory_unavailable` | "Your company directory could not be reached. Try again in a few minutes." |
+| *anything else* | "Raffa.ai could not create this invitation." |
+
+**The wire `reason` is never rendered** — the fourth row exists so that an
+unrecognised value, a proxy-mangled body or a later addition to the set can never
+put a raw enum on screen. **No new affordance**: the invite form is still filled
+and is itself the retry, so nothing is added for a path where retrying may be
+futile. Each sentence names **what someone must do next** (ADR-019 w14 clause 2),
+and `consent_missing` says "a tenant administrator" rather than "you" because the
+Admin of a Raffa.ai workspace is usually **not** the Entra tenant admin — telling
+them to fix a permission they do not hold is worse than telling them nothing.
+
+**3.6 One sentence about identity, on three surfaces, keyed to a server fact.**
+
+> **"They will get a one-time code from Microsoft the first time they sign in."**
+
+It renders as a `.micro-meta` on outcomes 1–3 **only while the 201's
+`identityProvisioned` is true**, on screen 11 state 2 (`:397`), and in the second
+person in the email (§4). With NW-67 the invitee's first sign-in triggers an
+Entra **email one-time passcode** — a second, unexpected message from Microsoft —
+and the raw file names that exact abandonment ("today the first signal is
+Microsoft's error inside the popup, where Raffa cannot intervene"). It satisfies
+security-architect's **no-directory-enumeration-oracle** rule, because it says
+the identical thing whether the guest was created or already existed. When
+provisioning is **not configured** it does not render at all: the pane then says
+nothing about identity, which is w14's behaviour and leaks no configuration fact.
+**There is deliberately no pre-send identity state** — with NW-67 the product
+creates the account, so a warning that the invitee "has no account yet" would be
+false the instant it rendered. The domain warning (10.2) is untouched.
+
+**3.7 No new member status.** The roster keeps `Active · Invited · Expired`
+(10.3, ADR-019 w14 clause 1). A fifth status is refused: the roster answers "who
+can get in", and a delivery or provisioning outcome is a **pane fact about the
+last action**, not a permanent property of a row.
+
+**3.8 Vocabulary mapping.** Client-architect asked that if this seat's vocabulary
+differs from the wire values, the mapping live in `memberViewModel.ts` and be
+named here. It does not differ: three outcomes, one per row of 3.3, plus
+`identityProvisioned` for 3.6. The pane branches on **one server string** and
+renders **one server boolean**; it infers neither.
+
+### 4. Surface 12 — the invitation email (NW-68)
+
+**4.1 The pane's delivery copy is confirmed unchanged** — 10.1 pre-decided it
+"so it is not re-opened" (`:280-287`) and this seat re-opens nothing. What
+changes is the outcome *set* (§3), not the words. The absolute accept link needs
+**no copy change**: `composeAcceptLink` (`memberViewModel.ts:175-179`) already
+accepts a site-relative or an absolute `acceptUrl` unchanged, by design —
+recorded so no task is written for it.
+
+**4.2 The email has no design owner in any export, and that is how a task invents
+one.** `inputs/design/` holds screens, `markup.html`, `styles.css` and `app.jsx`
+— **nothing that leaves the browser**. Left to the implementing task, the first
+message Raffa.ai ever sends to a person outside the tenant would be branded HTML
+nobody reviewed. It is therefore **surface 12 of this inventory**: not a screen,
+but a user-visible surface with a state set and an owner. (If a second message
+ever ships, a later wave may lift it into its own ADR; one message does not earn
+one.)
+
+**Form.** **Plain text is the body of record**; an HTML part may be added but
+must carry the same words in the same order and read correctly when stripped. One
+column, left-aligned, **no images, no logo file, no web font, no external
+stylesheet**; any colour is an inline token *value* (ADR-019 w15 clause 3c). The
+accept link appears as a **plain visible absolute URL** as well as an anchor, so
+a forwarded or text-only copy is still usable.
+
+**Copy — deliberately the same words as the screen the link opens.**
+
+> **Subject**: You've been invited to {workspace} on Raffa.ai
+>
+> **Join {workspace}**
+>
+> You have been invited as {role}.
+>
+> [ Open your invitation ]   ← the absolute accept link
+>
+> Signing in uses your email address — Microsoft will send you a one-time code.
+>
+> This link expires {date} and can be used once.
+>
+> If you were not expecting this, you can ignore this message.
+
+Lines 2 and 3 are **screen 11 state 2 verbatim** (`:397`): the mail and the
+landing page must say the same thing or the invitee thinks they clicked the wrong
+link. Per clause 0 the subject carries **"Raffa.ai"**, the product's own name in
+every shipped string.
+
+**Three rules, each closing a real failure.** (1) **The mail carries the
+workspace name, the offered role and the expiry — and nothing else.** No
+validated-contract count, no member list, no supplier names: the leak guard of
+`:422-425`, and stronger, because a mail can be forwarded by anyone, forever.
+This is the copy half of security-architect's one-recipient rule. (2) **The
+one-time-code line is not decoration** — it is the same sentence as 3.6, in the
+second person, and it is what turns a suspicious second email into an expected
+step. (3) **The mail never claims an account was created.** It says signing in
+uses their email address; "we created an account for you" is both alarming and,
+from the invitee's side, untrue — nothing exists for them to manage.
+
+**Anchors**: `IInvitationMailer.cs:16-33`; `NullInvitationMailer.cs:16-38`, which
+deliberately never interpolates the URL and whose `:28-29` comment ("the 201
+response body is the link's **only** channel") **becomes false this wave and is
+retired in the same edit**.
+
+### 5. What this footer does not change, and what is still owed
+
+Screens 1, 4, 7, 8, 9 and 11 (beyond 3.6's `.micro-meta`); both w14 footers;
+10.2–10.8; the six stage strings; the confidence vocabulary; every error and
+loading treatment. **Design exports owed** — `:438-449` and `:571` gain four, and
+**none blocks w15**, because every state above is decided from ADR-019's locked
+catalogue and the export's own idiom: (8) the invite pane in its **three** outcome
+states plus the blocking-error state; (9) a Documents row reading **Not added**
+with its reason hint and empty action cell, a row reading **Queued…**, and the
+**third filter chip**; (10) Portfolio and Contract 360 in their two new zero
+states; (11) **the invitation email**. The Claude Design round-trip stays lost
+until the operator exports them.
+
+## Amendment (2026-09-14, wave w15 — re-entry round: the refusals that never become rows, the reason the durable row has no wire for, and the copy for a poll that stops)
+
+Continues the **2026-09-13 w15 footer** above (`:573-930`, sections 0–5), every
+clause of which stays in force; section numbering continues from it. Serves
+**NW-27** and **NW-61**. Written by ux-ui-designer, owner of this ADR
+(`INDEX.md:53`). Two of the three sections below **correct this seat's own §1.3**
+rather than a peer's; the third answers **OQ-w15-ca-05**, which client-architect
+routed here at this round.
+
+### 6. A refusal has four producers, three of them never become rows, and §1.3 sent all three sentences to a slot only one can reach
+
+**6.1 The correction.** §1.3 moved "the three refusal sentences" verbatim into
+"the existing hint slot ... `DocumentStatusTable.tsx:138`". That slot is inside
+the **server-row** branch (`:112-145`). Read against `runUploadBatch` — the
+finding is client-architect's (ADR-012 §13.4) and is re-verified here at source —
+only one of the four producers ever has a server row:
+
+| Producer | Site | Stored? | Surface |
+|---|---|---|---|
+| content gate `not_a_contract` / `no_readable_text` | `uploadPipeline.ts:117-120` (422); moves to the Worker under NW-27 | **yes** | server row, `Rejected`, hint at `DocumentStatusTable.tsx:138` |
+| oversize, refused **in the browser with no HTTP call at all** | `:105-108` → `getOversizedCopy` (`:48-52`) | never | **local row** |
+| **413 / 415**, refused in-request by product-owner's split gate | `:122-125` | never | **local row** |
+| transport / server failure | `:127-132` | n/a | unchanged (`failed`, "Retry upload") |
+
+**Decision: the local row is adopted, the card is still deleted, and §1.3's
+routing splits accordingly.** `LocalUploadEntry.phase` (`uploadPipeline.ts:69-75`)
+gains `"rejected"`, and the two pre-storage refusals render as a **local row** in
+the grid that already renders local entries (`DocumentStatusTable.tsx:86-110`),
+whose hint condition at `:90` widens from `phase === "failed" && errorMessage` to
+any entry carrying a message. One file is then **one row on every path** — which
+was §1.3's own stated ground for deleting the card, and it is only *true* once
+these two have a row. Keeping the card for them was the alternative offered and
+is **rejected**: it would leave screen 3 with a card *and* a row grid for the same
+class of outcome, which is exactly what §1.3 removed, and the card's premise
+doc-comment (`UploadResultCard.tsx:9-18`) is retired as a whole this wave.
+
+**6.2 What the user reads, on both surfaces.** The tag is the same
+`.tag-outline` **Not added** on the local row and on the server row (ADR-019 w15
+round-3 clause 4) — deliberately **indistinguishable**, because the user's fact is
+identical ("Raffa.ai did not keep this file") and the difference between the two
+is ours, not theirs. §1.3's lead-in rule applies to both: the tag *is* the
+lead-in, so `"Not added: "` is dropped at source in `getRejectionReasonCopy`
+(`:39-46`) and `getOversizedCopy` (`:50-52`).
+
+**One further edit, licensed by provenance rather than taste**: the oversize
+sentence also loses its interpolated `${fileName}`, because the row's filename
+cell (`:89`) already carries it — the card repeated it (`:25` beside `:30`) and a
+row must not. It may be edited where the other two may not:
+`getRejectionReasonCopy`'s two sentences are **requirements copy**
+(`inputs/requirements.md:186` quotes the `not_a_contract` sentence), whereas the
+oversize sentence is **app-authored** — the requirement fixes only the limit
+("batch ≤ 20 files, ≤ 50 MB per file", `:148`) and `uploadPipeline.ts:48-49` says
+so in its own comment. The row's hint becomes **"This file is larger than 50 MB,
+the most Raffa.ai accepts."**
+
+**6.3 The finding: one sentence on screen 3 is authored by the API, and it
+survives this wave.** `:122-125` renders
+`result.error ?? "Not added: this file could not be added."` — `result.error` is
+whatever the API's error body happens to carry, and the fallback appears in no
+oracle. It is the only user-facing sentence on this screen that nobody designed,
+and it is not going away: product-owner's NW-27 row keeps **format/size
+in-request**, so 413/415 is the one refusal path the Worker never sees. Two
+designed sentences replace it, selected by status code:
+
+| Code | The row's hint |
+|---|---|
+| **413** | **"This file is too large for Raffa.ai to accept. Try a smaller file, or split it into parts."** |
+| **415** | **"Raffa.ai cannot open this file type. Try the original PDF, or a clear scan of the signed pages."** |
+
+The 413 sentence deliberately **does not restate 50 MB**: the browser already
+refuses at 50 MB (`isOversized`, `:105`), so a 413 is the platform refusing a file
+the client thought was fine, and quoting a limit the client cannot vouch for is
+the fabricated-fact class A15-3 forbids. The 415 sentence is derived from the
+shipped `no_readable_text` sentence's second clause ("Try a clearer scan or the
+original PDF", `:44`), so no new idiom enters the product. **`result.error` is
+never rendered.** The rule this generalises is the one NW-67 already uses for a
+failed invitation: **a server field may *select* the sentence a user reads; it may
+never *supply* it.** One convention for the wave, not two.
+
+**6.4 The local row's shape.** No next-step control (the `Uploading…`
+`.micro-meta` at `:105` must not render for `phase === "rejected"`), no stage bar
+(`:97` already gates on `phase === "uploading"`), an empty delete cell (`:108`
+already renders one), and **no Dismiss** — a row a reload clears needs no second
+way to clear it, and §1.4 already refused Dismiss on the durable row for a
+different reason. It is never counted and never filterable: no id, never in
+`documents`, never in `counts`, and the `Not added · K` chip reads the **server**
+bucket (§1.5; ADR-012 §13.5b). A local refusal appears **only** in the default
+list, above the server rows, exactly where the card was. R-DOC-04's *session-only*
+rule therefore survives precisely where it is **true** — the half of the export's
+instinct §1.1 kept.
+
+### 7. The durable "Not added" row has no wire for its reason, so after a reload it says nothing
+
+**Verified, not assumed.** ADR-027 §D6 point 2 persists the rejection reason on
+the `document` row ("three nullable columns, and **this** is the migration",
+`ADR-027:217-218`), but §D7's response shape (`:246-256`) and §11's contract-change
+list (`:467`, "add `counts`, add `Rejected` to the `processingStatus`") add **no
+reason to `items[]`**. The 422 body that carries the sentence today exists only in
+the tab that uploaded the file — and NW-27's premise is that the refusal can
+arrive **with the browser closed** (§1.1). So on the very reload §1.1 exists to
+survive, the row renders a terminal **Not added** tag above an **empty hint**:
+product-owner's "persistent, visible, terminal record" satisfied in letter and
+lost in substance, because the user is told a file was refused and never told why.
+
+**Decision (the copy side, which is this seat's): the sentence stays here and the
+server sends a code.** The item carries a **rejection reason from the closed set
+the code already fixes** — `AdmissionDecision.cs:23-32`, `NotAContract |
+NoReadableText`, the only two, cited by §D6 itself — and the client maps it
+through `getRejectionReasonCopy`, whose two sentences are requirements copy and
+must not be re-authored server-side. **Ask to software-architect** (their file,
+their edit): §D7's item shape gains that field, or names the surface it intends to
+leave blank.
+
+**Assumption in force if it does not land before the gate**: the row renders the
+tag and **no hint** — silence, never a guessed reason, and never a client store
+remembering this session's 422 so the row "still looks right" on this machine.
+That last is the shape ADR-012's w14 clause 7 deleted and the reason
+`documentStore.ts` is being removed one item over. A blank hint is a gap a user
+can ask about; a remembered one is a lie the next browser tells.
+
+### 8. OQ-w15-ca-05 — the sentence and the label for a poll that has stopped
+
+ADR-012 §17 gives the Documents poll a **no-change budget** (five minutes) with an
+explicit resume, because ADR-027 §C6 withdrew the guarantee that every row reaches
+a terminal status. The stopped state's copy is this seat's, and here it is.
+
+**8.1 It is neither an empty state nor an error state.** Rows are on screen and
+each is exactly what the server last said; nothing has failed. It is therefore a
+**list-level notice, not a row state**: no tag changes, no row moves, the progress
+bar keeps rendering the server's stage (`:151`, `:155`), and the chips keep the
+server's last numbers. It renders as one `.hint` line **below the grid** with the
+resume control beside it as `.btn-secondary` — the pair `:100-103` already ships —
+so no component and no token is added (ADR-019 w15 round-3 clause 5).
+
+**8.2 The copy — two strings, and the same two everywhere.**
+
+| Element | String |
+|---|---|
+| Notice | **"Nothing has changed for five minutes, so this page stopped checking for updates."** |
+| Resume control | **"Check again"** |
+
+Three things the sentence deliberately does **not** say. It does not say Raffa.ai
+is still working on the file — in §C6's stranded case nothing is, and saying so is
+the fabricated fact A15-3 forbids. It does not say anything failed — nothing has,
+and `Failed` is a status this notice may never imply (client-architect's first
+prohibition, in copy form). It does not name a cause: the only fact the client
+owns is **what the page did**, and the actor is therefore *the page*, never
+Raffa.ai — "Raffa.ai stopped checking" would report a service outage that has not
+happened.
+
+**8.3 Where else it binds — the half §17 could not see from inside one hook.**
+§17's budget lives in `useDocumentsList.ts`. But NW-61's client ruling makes
+**Ask** re-read `listDocuments({ pageSize: 1 })` on the same 2 s cadence while its
+gate is off, where that fetch is a **one-shot `useEffect` today**
+(`ask/index.tsx:100-105`, verified) — a *second*, brand-new recurring re-read this
+wave introduces. The same stranded row leaves an Ask tab polling forever under
+**not ready yet**, and it is worse there than on Documents: that state's whole
+promise is *we will let you in when it is ready*, and Ask has no row grid to show
+the user that nothing is moving. Portfolio's third variant (§2) inherits the shape.
+
+**The rule is stated at IA level so no surface rediscovers it** (ADR-018 w15
+round-3 clause 6): *a "not ready yet" state that depends on a repeating re-read
+stops on the same budget and offers the same resume; a surface that cannot offer
+the resume must not claim it is waiting.* On screens 2, 5 and 6 the stopped state
+keeps its heading and sentence and adds **"Check again"** as a `.btn-secondary`
+**beside** the existing CTA; the block's one primary action ("Go to Documents")
+is unchanged. One notice string and one label, verbatim on all four surfaces: a
+stopped update is one fact, and four wordings of it would be four facts.
+
+**8.4 Screen 3's state inventory (§1.7) gains `updates paused`** — a **list**
+state, not a row state, and the only state in this ADR that describes the
+*client's* behaviour rather than a document's. Recorded as such so no task adds it
+to `RowStatus` or to `semantics.ts`.
+
+### 9. What this footer does not change, and what is owed
+
+Sections 0–5 above, both w14 footers and every other screen; the six stage
+strings, the confidence vocabulary, and every error and loading treatment.
+**Design exports owed** — the four at `:923-930` gain two, and neither blocks
+w15, because both are assembled from ADR-019's locked catalogue and this screen's
+own idiom: (12) a Documents list with a **local "Not added" row** above the server
+rows; (13) the **updates paused** notice with its resume control, on screen 3 and
+in the empty block of screens 2, 5 and 6.
+`HITL_CLAUDE_DESIGN: export screen 3 with a local "Not added" row above the server rows and with the paused-updates notice, and a tier empty block carrying a secondary "Check again" beside its primary CTA.`

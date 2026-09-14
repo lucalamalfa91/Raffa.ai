@@ -289,10 +289,16 @@ internal sealed class AskCopilotService(
                 ? capabilityRouting.ResolveActions([CapabilityIntent.HowTo(CapabilityCatalog.DocumentsKey)], routingContext)
                 : [];
 
+            // ADR-027 §D8 (task E16/F02/US03/T01): no number here. `portfolio.Items.Count` is the
+            // UNFILTERED portfolio -- every bootstrap shell a still-processing document created --
+            // so rendering it as "N validated contract(s)" asserted a fabricated fact to the user.
+            // The one definition of "validated" is ADR-026 §D2's CountValidatedContractsAsync; the
+            // pre-question off-state already renders that number from the server, and this
+            // sentence needs none.
             return (new CopilotReply(
                 ReplyKind.Abstain,
-                $"Nothing in the {portfolio.Items.Count} validated contract(s) supports a reliable " +
-                "answer. Try a question about dates, spend, notice periods or clauses.",
+                "Nothing in your validated contracts supports a reliable answer. " +
+                "Try a question about dates, spend, notice periods or clauses.",
                 [], emptyActions, ReplyProvenance.NoModelCall([]), []), false);
         }
 

@@ -8,6 +8,8 @@ using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Fixtures;
 using Raffa.Api.Tests.TestSupport;
 using Raffa.Documents.Contracts.Application.Admission;
+using Raffa.Documents.Contracts.Application.Extraction;
+using Raffa.Documents.Contracts.Domain;
 using Raffa.Documents.Contracts.Infrastructure;
 using Raffa.SharedKernel;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -18,11 +20,20 @@ namespace Raffa.Api.Tests;
 
 /// <summary>
 /// <c>POST /api/documents</c> (task E13/F04/US01/T01, documents-admission, story us-01-documents-v2
-/// AC-1/AC-2/AC-6): the 400 / 413 / 415 / 422 / 201 paths in order, and — the point of ADR-024
-/// "gate before persistence" — that a rejected upload leaves no blob, no <c>document</c> row and
-/// exactly one <c>document.rejected</c> audit row. Runs on the in-memory host
+/// AC-1/AC-2/AC-6): the 400 / 413 / 415 / 201 paths in order. Runs on the in-memory host
 /// (<see cref="InMemoryAskEngineFactory"/>) with the real <see cref="FixtureAiGateway"/> behind a
 /// call-recording decorator, so "zero gateway calls" on a 415 is proven, not assumed.
+///
+/// <para>
+/// Since task E16/F02/US03/T01 (wave w15, ADR-027 §D1) the request returns 201 at the store and
+/// the content gate — parse/OCR, readable-text floor, <c>classify</c>, threshold — runs on the
+/// Worker. The former 422 paths are therefore two-halved here: a 201 with <b>zero</b> gateway
+/// calls and one stored blob, then <see cref="InMemoryAskEngineFactory.DrainExtractionQueueAsync"/>
+/// playing the Worker, after which the refusal is a <c>Rejected</c> <b>row</b> carrying its reason
+/// code, the blob is deleted and the gate's <c>document.rejected</c> audit row is written as
+/// before. "Gate before persistence" (ADR-024) became "gate before <em>counting</em>": a rejected
+/// document is listed, never counted in <c>counts.all</c>, never askable (ADR-027 §D6/§D7).
+/// </para>
 /// </summary>
 public sealed class DocumentUploadEndpointTests : IClassFixture<WebApplicationFactory<Program>>
 {
@@ -144,7 +155,7 @@ public sealed class DocumentUploadEndpointTests : IClassFixture<WebApplicationFa
     }
 
     [Fact]
-    public async Task Recipe_pdf_returns_422_not_a_contract_and_persists_nothing()
+    public async Task Recipe_pdf_is_stored_at_201_then_rejected_by_the_worker_with_a_reason_code()
     {
         var host = Host.Create(_baseFactory);
         var client = host.Factory.CreateClient();
@@ -155,59 +166,91 @@ public sealed class DocumentUploadEndpointTests : IClassFixture<WebApplicationFa
 
         var response = await client.SendAsync(request);
 
-        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        // ADR-027 §D1 (task E16/F02/US03/T01): the request stores and returns. No model has been
+        // called yet -- the content verdict is the Worker's, so a recipe is 201 like anything else.
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.True(body.RootElement.GetProperty("rejected").GetBoolean());
-        Assert.Equal("Other", body.RootElement.GetProperty("detectedType").GetString());
-        Assert.Equal(0.5, body.RootElement.GetProperty("confidence").GetDouble());
-        Assert.Equal("not_a_contract", body.RootElement.GetProperty("reason").GetString());
-        Assert.Equal(DocumentAdmissionGate.Hint, body.RootElement.GetProperty("hint").GetString());
+        var documentId = body.RootElement.GetProperty("id").GetGuid();
+        Assert.Equal("Uploaded", body.RootElement.GetProperty("processingStatus").GetString());
+        Assert.Equal(JsonValueKind.Null, body.RootElement.GetProperty("contractId").ValueKind);
+        Assert.Empty(host.Gateway.Calls);
+        Assert.Single(host.Storage.Saved);
+        Assert.DoesNotContain(host.Audit.Entries, e => e.Action == "document.rejected");
 
-        // Gate before persistence: no blob, no document row, no embedding, no extraction job.
-        Assert.Empty(host.Storage.Saved);
+        // The Worker's half: parse, classify, refuse -- and the refusal is a ROW, not a 422
+        // (ADR-027 §D6): status Rejected, the reason as a code, the detected type and confidence
+        // for the screen to render, the blob deleted, the classification job completed.
+        Assert.Equal(1, await host.Factory.DrainExtractionQueueAsync());
+        Assert.Equal(["OcrAsync", "ClassifyAsync"], host.Gateway.Calls);
         using (var scope = host.Factory.Services.CreateScope())
         {
             var dbContext = scope.ServiceProvider.GetRequiredService<DocumentsContractsDbContext>();
-            Assert.Equal(0, await dbContext.Documents.CountAsync());
+            var document = await dbContext.Documents.SingleAsync(d => d.Id == new EntityId(documentId));
+            Assert.Equal(DocumentProcessingStatus.Rejected, document.ProcessingStatus);
+            Assert.Equal(AdmissionRejectionReason.NotAContract, document.RejectionReason);
+            Assert.Equal(ContractDocumentType.Other, document.RejectionDetectedType);
+            Assert.Equal(0.5, document.RejectionConfidence);
             Assert.Equal(0, await dbContext.Embeddings.CountAsync());
-            Assert.Equal(0, await dbContext.ExtractionJobs.CountAsync());
+            var job = Assert.Single(await dbContext.ExtractionJobs.ToListAsync());
+            Assert.Equal(ExtractionJobStatus.Completed, job.Status);
         }
+        Assert.Contains(host.Storage.Deleted, path => path.EndsWith("carbonara.pdf", StringComparison.Ordinal));
 
-        // Exactly one audit row, content-free: SHA-256 of the bytes as the resource id, no file name.
-        var audit = Assert.Single(host.Audit.Entries);
+        // The gate's own audit row, exactly as before, now attributed to the Worker: content-free,
+        // SHA-256 of the bytes as the resource id, no file name.
+        var audit = Assert.Single(host.Audit.Entries, e => e.Action == "document.rejected");
         Assert.Equal(new TenantId(tenantId), audit.TenantId);
-        Assert.Equal("chef@acme.example", audit.Actor);
-        Assert.Equal("document.rejected", audit.Action);
+        Assert.Equal(ExtractionRequestedHandler.WorkerActor, audit.Actor);
         Assert.Equal(Convert.ToHexString(SHA256.HashData(bytes)), audit.ResourceId);
         Assert.NotNull(audit.Detail);
         Assert.Contains("not_a_contract", audit.Detail);
         Assert.DoesNotContain("carbonara", audit.Detail, StringComparison.OrdinalIgnoreCase);
 
-        // Classified exactly once; nothing embedded or extracted.
-        Assert.Equal(["OcrAsync", "ClassifyAsync"], host.Gateway.Calls);
+        // And the list tells the screen: a Rejected row is listed, never counted in `all`.
+        using var list = new HttpRequestMessage(HttpMethod.Get, "/api/documents");
+        list.Headers.Add("X-Tenant-Id", tenantId.ToString());
+        using var listBody = JsonDocument.Parse(await (await client.SendAsync(list)).Content.ReadAsStringAsync());
+        var item = Assert.Single(listBody.RootElement.GetProperty("items").EnumerateArray());
+        Assert.Equal("Rejected", item.GetProperty("processingStatus").GetString());
+        Assert.Equal("not_a_contract", item.GetProperty("rejectionReason").GetString());
+        var counts = listBody.RootElement.GetProperty("counts");
+        Assert.Equal(0, counts.GetProperty("all").GetInt32());
+        Assert.Equal(1, counts.GetProperty("rejected").GetInt32());
     }
 
     [Fact]
-    public async Task Photo_without_readable_text_returns_422_no_readable_text_with_confidence_zero()
+    public async Task Photo_without_readable_text_is_stored_at_201_then_rejected_no_readable_text_with_confidence_zero()
     {
         var host = Host.Create(_baseFactory);
         var client = host.Factory.CreateClient();
+        var tenantId = Guid.NewGuid();
         // A PNG signature followed by a few bytes of "text": far below Documents:MinReadableChars.
         byte[] png = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, .. "nonna"u8.ToArray()];
         using var content = Multipart(png, "nonna.png", "image/png");
-        using var request = Upload(content, Guid.NewGuid().ToString());
+        using var request = Upload(content, tenantId.ToString());
 
         var response = await client.SendAsync(request);
 
-        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.Empty(host.Gateway.Calls);
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.Equal("no_readable_text", body.RootElement.GetProperty("reason").GetString());
-        Assert.Equal("Other", body.RootElement.GetProperty("detectedType").GetString());
-        Assert.Equal(0, body.RootElement.GetProperty("confidence").GetDouble());
+        var documentId = body.RootElement.GetProperty("id").GetGuid();
+
+        // Worker: the OCR role reads nothing usable -> Rejected with the no_readable_text code and
+        // a zero confidence the screen can show; the classify role is never reached.
+        Assert.Equal(1, await host.Factory.DrainExtractionQueueAsync());
         Assert.Equal(["OcrAsync"], host.Gateway.Calls);
-        Assert.Empty(host.Storage.Saved);
-        var audit = Assert.Single(host.Audit.Entries);
-        Assert.Equal("unattributed", audit.Actor);
+        using (var scope = host.Factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<DocumentsContractsDbContext>();
+            var document = await dbContext.Documents.SingleAsync(d => d.Id == new EntityId(documentId));
+            Assert.Equal(DocumentProcessingStatus.Rejected, document.ProcessingStatus);
+            Assert.Equal(AdmissionRejectionReason.NoReadableText, document.RejectionReason);
+            Assert.Equal(ContractDocumentType.Other, document.RejectionDetectedType);
+            Assert.Equal(0, document.RejectionConfidence);
+        }
+        var audit = Assert.Single(host.Audit.Entries, e => e.Action == "document.rejected");
+        Assert.Equal(ExtractionRequestedHandler.WorkerActor, audit.Actor);
         Assert.Contains("no_readable_text", audit.Detail);
     }
 
@@ -224,24 +267,31 @@ public sealed class DocumentUploadEndpointTests : IClassFixture<WebApplicationFa
 
         var response = await client.SendAsync(request);
 
+        // The request's own contract (ADR-027 §D1): 201 at the store, before any model call. No
+        // contractId yet -- classification has not run, and a fabricated link is the guessing this
+        // wave removes -- and the status is the row's, Uploaded.
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         var documentId = body.RootElement.GetProperty("id").GetGuid();
         Assert.Equal("msa-acme.pdf", body.RootElement.GetProperty("fileName").GetString());
         Assert.Equal("application/pdf", body.RootElement.GetProperty("mimeType").GetString());
-        Assert.Equal(JsonValueKind.String, body.RootElement.GetProperty("contractId").ValueKind);
-        Assert.NotEqual("Failed", body.RootElement.GetProperty("processingStatus").GetString());
+        Assert.Equal(JsonValueKind.Null, body.RootElement.GetProperty("contractId").ValueKind);
+        Assert.Equal("Uploaded", body.RootElement.GetProperty("processingStatus").GetString());
         Assert.Equal($"/api/documents/{documentId}", response.Headers.Location?.ToString());
-
-        // Two objects: the document blob and the first-page preview task E13/F04/US01/T02 renders.
-        Assert.Equal(2, host.Storage.Saved.Count);
-        var saved = host.Storage.Saved.Single(s => s.Path.EndsWith("msa-acme.pdf", StringComparison.Ordinal));
+        Assert.Empty(host.Gateway.Calls);
+        var saved = Assert.Single(host.Storage.Saved);
+        Assert.EndsWith("msa-acme.pdf", saved.Path, StringComparison.Ordinal);
         Assert.Equal(bytes, saved.Content);
+        Assert.Contains(host.Audit.Entries, e => e.Action == "document.uploaded");
+
+        // The Worker's half, played by the test host: the model is called once per role, the
+        // first-page preview task E13/F04/US01/T02 renders is the second stored object.
+        Assert.Equal(1, await host.Factory.DrainExtractionQueueAsync());
+        Assert.Equal(2, host.Storage.Saved.Count);
         Assert.Contains(host.Storage.Saved, s => s.Path.EndsWith("/preview/page-1.png", StringComparison.Ordinal));
         Assert.Equal(1, host.Gateway.Calls.Count(call => call == "ClassifyAsync"));
         // Every PDF is read by the `ocr` role exactly once (ADR-017 amendment 2026-09-09).
         Assert.Equal(1, host.Gateway.Calls.Count(call => call == "OcrAsync"));
-        Assert.Contains(host.Audit.Entries, e => e.Action == "document.uploaded");
         Assert.DoesNotContain(host.Audit.Entries, e => e.Action == "document.rejected");
 
         using var get = new HttpRequestMessage(HttpMethod.Get, $"/api/documents/{documentId}");
@@ -268,6 +318,8 @@ public sealed class DocumentUploadEndpointTests : IClassFixture<WebApplicationFa
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         var documentId = body.RootElement.GetProperty("id").GetGuid();
 
+        // The type is the Worker's verdict (ADR-027 §D1), so play the Worker before reading it.
+        Assert.Equal(1, await host.Factory.DrainExtractionQueueAsync());
         using var get = new HttpRequestMessage(HttpMethod.Get, $"/api/documents/{documentId}");
         get.Headers.Add("X-Tenant-Id", tenantId.ToString());
         var getResponse = await client.SendAsync(get);
@@ -287,10 +339,14 @@ public sealed class DocumentUploadEndpointTests : IClassFixture<WebApplicationFa
         var response = await client.SendAsync(request);
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        Assert.Equal(1, host.Gateway.Calls.Count(call => call == "OcrAsync"));
-        Assert.Equal(1, host.Gateway.Calls.Count(call => call == "ClassifyAsync"));
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.Equal("image/jpeg", body.RootElement.GetProperty("mimeType").GetString());
+        Assert.Empty(host.Gateway.Calls);
+
+        // The OCR path is the Worker's (ADR-027 §D1): one `ocr` read, one `classify`, on drain.
+        Assert.Equal(1, await host.Factory.DrainExtractionQueueAsync());
+        Assert.Equal(1, host.Gateway.Calls.Count(call => call == "OcrAsync"));
+        Assert.Equal(1, host.Gateway.Calls.Count(call => call == "ClassifyAsync"));
     }
 
     private static MultipartFormDataContent Multipart(byte[] bytes, string fileName, string? contentType = null)

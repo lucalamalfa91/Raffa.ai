@@ -30,18 +30,29 @@ namespace Raffa.Api;
 /// <c>.zip</c> renamed <c>.pdf</c> never reaches the gateway). The sniffed canonical MIME type,
 /// not the browser's <c>Content-Type</c>, is what gets stored and what selects the native-vs-OCR
 /// parse path;</item>
-/// <item><see cref="DocumentAdmissionGate"/>: parse/OCR in memory, readable-text floor,
-/// <c>classify</c> role, threshold → 422 <c>{ rejected, detectedType, confidence, reason, hint }</c>
-/// with nothing persisted and one <c>document.rejected</c> audit row (R-DOC-03); a gate that
-/// could not reach a verdict at all (parse or classify failure) is a 400 carrying the error,
-/// not a rejection;</item>
-/// <item>only when admitted: <see cref="DocumentUploadService.UploadAsync"/> (blob + rows, as
-/// before) then <see cref="DocumentProcessingPipeline"/>'s pages-and-classification overload —
-/// the parse and the classify verdict the gate already produced are reused, so the model is
-/// called once per upload. As before, a pipeline failure after the upload is durable is reported
-/// in the 201 body (<c>processingStatus</c>/<c>contractId</c> fall back to the pre-processing
-/// values), never turned into an HTTP error.</item>
+/// <item><see cref="DocumentUploadService.UploadAsync"/> — blob, rows and the queued
+/// <c>ExtractionJob</c>, with the pointer published before the commit — and then <b>201</b>.
+/// That is the end of the request.</item>
 /// </list>
+/// </para>
+///
+/// <para>
+/// <b>What no longer happens in the request</b> (task E16/F02/US03/T01, wave w15, ADR-027 §D1,
+/// closing NW-27). <see cref="DocumentAdmissionGate"/>'s content half (parse/OCR, readable-text
+/// floor, <c>classify</c> role and threshold) and the whole of
+/// <see cref="DocumentProcessingPipeline"/> moved behind the Worker. Two visible consequences:
+/// <list type="bullet">
+/// <item>a content refusal is <b>no longer a 422</b>. The document is persisted and the Worker
+/// drives it to <see cref="DocumentProcessingStatus.Rejected"/> carrying its reason
+/// <see cref="AdmissionRejectionReason">code</see>; the list endpoint returns that code and the
+/// screen writes the sentence (ADR-020 w15 §6). The <c>document.rejected</c> audit row still
+/// happens, on the Worker's side of the line;</item>
+/// <item>the 201 carries <c>contractId: null</c> and <c>processingStatus: "Uploaded"</c> —
+/// classification has not run, so there is nothing yet to link or to claim. Callers poll
+/// <c>GET /api/documents</c>, whose <c>counts</c> and per-item stage are the readiness contract
+/// (ADR-027 §C9).</item>
+/// </list>
+/// The request keeps only what it can decide for itself in milliseconds: size, format, tenancy.
 /// </para>
 ///
 /// <para>
@@ -153,9 +164,7 @@ public static class DocumentsEndpointExtensions
     private static async Task<IResult> UploadDocumentAsync(
         HttpRequest request,
         DocumentAdmissionOptions admissionOptions,
-        DocumentAdmissionGate admissionGate,
         DocumentUploadService uploadService,
-        DocumentProcessingPipeline processingPipeline,
         CancellationToken cancellationToken)
     {
         if (!TryResolveTenant(request, out var tenantId))
@@ -226,32 +235,22 @@ public static class DocumentsEndpointExtensions
                 statusCode: StatusCodes.Status415UnsupportedMediaType);
         }
 
-        var decision = await admissionGate.EvaluateAsync(
-            tenantId, ResolveActor(request), file.FileName, format.MimeType, fileBytes, cancellationToken);
-
-        switch (decision.Outcome)
-        {
-            case AdmissionOutcome.Failed:
-                // Two different failures wear the same outcome: a document this pipeline genuinely
-                // cannot read (the caller's problem -> 400) and an AI provider that could not be
-                // reached at all (ours -> 503, and worth retrying). Neither persists anything.
-                return decision.Error?.StartsWith(
-                    DocumentAdmissionGate.GatewayUnavailablePrefix, StringComparison.Ordinal) == true
-                    ? Results.Json(decision.Error, statusCode: StatusCodes.Status503ServiceUnavailable)
-                    : Results.BadRequest(decision.Error);
-            case AdmissionOutcome.Rejected:
-                return Results.Json(
-                    new
-                    {
-                        rejected = true,
-                        detectedType = decision.DetectedType.ToString(),
-                        confidence = decision.Confidence,
-                        reason = decision.Reason!.Value.ToApiValue(),
-                        hint = DocumentAdmissionGate.Hint,
-                    },
-                    statusCode: StatusCodes.Status422UnprocessableEntity);
-        }
-
+        // ADR-027 §D1 (task E16/F02/US03/T01, closes NW-27): everything above this line is a
+        // property of the REQUEST -- the multipart body, its declared size, the sniffed format --
+        // and stays in-request because refusing it needs no model call and costs milliseconds.
+        // Everything that needs to READ the document (parse/OCR, then the Foundry classify that
+        // decides "is this a contract at all") now belongs to the Worker: it is minutes of model
+        // latency against a Container Apps request timeout of about four, which is why fifteen
+        // dropped PDFs sat on "Uploading..." until the whole batch timed out.
+        //
+        // Consequences the callers must know, both deliberate:
+        //   * A content refusal is no longer a 422. The row is persisted and reaches
+        //     DocumentProcessingStatus.Rejected with its reason CODE (ADR-027 §D6); the list
+        //     endpoint carries that code and the screen -- never this API -- writes the sentence
+        //     (ADR-020 w15 §6).
+        //   * The 201 carries no contractId. Classification has not run, so there is nothing to
+        //     link yet; the client polls GET /api/documents for the progression. Answering with a
+        //     fabricated or null-but-meaningful id here is the guessing this task removes.
         using var storageContent = new MemoryStream(fileBytes);
         var result = await uploadService.UploadAsync(
             tenantId, file.FileName, format.MimeType, storageContent, cancellationToken);
@@ -262,28 +261,13 @@ public static class DocumentsEndpointExtensions
 
         var uploaded = result.Value;
 
-        var processingResult = await processingPipeline.ProcessAsync(
-            tenantId,
-            uploaded.DocumentId,
-            decision.Pages,
-            decision.Classification!,
-            fileBytes,
-            uploaded.FileName,
-            format.MimeType,
-            cancellationToken);
-
-        var processingStatus = processingResult.IsSuccess
-            ? processingResult.Value.ProcessingStatus
-            : uploaded.ProcessingStatus;
-        var contractId = processingResult.IsSuccess ? processingResult.Value.ContractId.Value : (Guid?)null;
-
         return Results.Created($"/api/documents/{uploaded.DocumentId}", new
         {
             id = uploaded.DocumentId.Value,
-            contractId,
+            contractId = (Guid?)null,
             fileName = uploaded.FileName,
             mimeType = uploaded.MimeType,
-            processingStatus = processingStatus.ToString(),
+            processingStatus = uploaded.ProcessingStatus.ToString(),
             createdAt = uploaded.CreatedAt,
         });
     }
@@ -377,6 +361,7 @@ public static class DocumentsEndpointExtensions
         }
 
         var result = await queryService.ListAsync(tenantId, status, page, pageSize, cancellationToken);
+        var counts = result.Counts ?? DocumentCounts.Empty;
 
         return Results.Ok(new
         {
@@ -392,10 +377,24 @@ public static class DocumentsEndpointExtensions
                 pageCount = item.PageCount,
                 createdAt = item.CreatedAt,
                 weakFactCount = item.WeakFactCount,
+                // ADR-027 §D6 (task E16/F02/US03/T01): the content gate's refusal as a CODE
+                // (`not_a_contract` | `no_readable_text`), null unless Rejected. The screen writes
+                // the sentence (ADR-020 w15 §6); this API never authors user-facing prose.
+                rejectionReason = item.RejectionReason?.ToApiValue(),
             }),
             page = result.Page,
             pageSize = result.PageSize,
             totalCount = result.TotalCount,
+            // ADR-027 §D7: tenant-wide, unfiltered by `status`, page-independent. Overlapping
+            // projections, not a partition -- the client must not add or subtract them.
+            counts = new
+            {
+                all = counts.All,
+                needsAttention = counts.NeedsAttention,
+                needsReview = counts.NeedsReview,
+                processing = counts.Processing,
+                rejected = counts.Rejected,
+            },
         });
     }
 
@@ -468,17 +467,18 @@ public static class DocumentsEndpointExtensions
             return Results.BadRequest(result.Error);
         }
 
-        // The audit row (document.reprocessed) is written by the service itself, inside the tenant
-        // scope the RLS-protected audit table requires — see DocumentReprocessService.
-        var summary = result.Value;
-        return Results.Ok(new
+        // 202, not 200 (task E16/F02/US03/T01, ADR-027 §D1): the re-run is queued, not done. The
+        // parse/classify/embed summary the 200 used to carry (pagesParsed, chunksIndexed, the
+        // re-derived documentType) belongs to the Worker now and is read back through
+        // GET /api/documents like any first upload. The audit row (document.reprocessed, "queued")
+        // is written by the service itself, inside the tenant scope the RLS-protected audit table
+        // requires — see DocumentReprocessService.
+        var queued = result.Value;
+        return Results.Accepted($"/api/documents/{queued.DocumentId.Value}", new
         {
-            documentId = summary.DocumentId.Value,
-            contractId = summary.ContractId.Value,
-            documentType = summary.DocumentType.ToString(),
-            processingStatus = summary.ProcessingStatus.ToString(),
-            pagesParsed = summary.PagesParsed,
-            chunksIndexed = summary.ChunksIndexed,
+            documentId = queued.DocumentId.Value,
+            extractionJobId = queued.ExtractionJobId.Value,
+            processingStatus = DocumentProcessingStatus.Uploaded.ToString(),
         });
     }
 

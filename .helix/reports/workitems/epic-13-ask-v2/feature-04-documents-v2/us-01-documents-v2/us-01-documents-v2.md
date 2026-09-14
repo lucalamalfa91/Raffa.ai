@@ -90,3 +90,33 @@ and the documents around them."*
 - OQ-askv2-002 — thresholds are configuration, tuned on the golden set (assumed)
 - OQ-askv2-007 — upload stays synchronous in the request (assumed)
 - OQ-askv2-008 — a Quote admitted here is routed to Quote check, no automatic Quote record (assumed)
+
+## Superseded in part (2026-09-14, wave w15)
+
+**`status` stays `active`. This story is *not* superseded whole** — AC-2, AC-3,
+AC-4 and AC-5 are still exactly what the product wants, and a reviewer should
+still hold a task to them.
+
+Two clauses are superseded by **NW-27**, on the ruling of `OQ-w15-004` at the w15
+council (`reports/architecture/waves/w15.md`), which splits the admission gate:
+format and size stay in the request, content classification moves to the Worker,
+and a refused file becomes a **persistent, visible, terminal `Rejected` record**
+whose content Raffa does not keep.
+
+| Clause | Status | Replaced by |
+|---|---|---|
+| **AC-6** (`:44-46`), entirely — *"no `Rejected` status exists server-side"* | **superseded**, negated word for word | `epic-16-async-document-processing/feature-02-durable-document-processing/us-01-async-processing-schema` (the status value) and `us-03-upload-returns-when-stored` (the row) |
+| **AC-1** (`:22-26`), its *"no blob, no `document` row"* clause on a **422 content refusal** only | **superseded in part** | `epic-16-…/feature-02-…/us-03-upload-returns-when-stored` |
+| **AC-1**'s 415 format clause (a `.zip` renamed `.pdf`) | **stands** — format and size are still refused in-request with nothing stored | — |
+
+`OQ-askv2-007` ("upload stays synchronous in the request"), listed under Open
+questions above, is recorded as **`assumed-wrong` from wave w15 on**
+(`OQ-w15-003`; ADR-024 w15 footer §3). `inputs/requirements.md` A7 and R-DOC-05
+AC-1 are superseded **on the record** in the same way — this process never edits
+`inputs/**`.
+
+Authority: `reports/architecture/ADR-001-scope-r0-r4.md` (w15 footer clauses 1–2),
+`reports/architecture/ADR-024-ask-raffa-v2.md` (w15 footer §1–§3),
+`reports/architecture/ADR-027-async-document-processing.md` (§D1, §D6), and
+`reports/architecture/waves/w15.md` §"Work-item instructions", where product-owner
+corrects §6 of the intake and requires this banner.

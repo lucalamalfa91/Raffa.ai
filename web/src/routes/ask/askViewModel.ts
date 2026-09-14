@@ -7,6 +7,7 @@ import type {
   ConversationMessageBody,
   ConversationReplyBody,
   ConversationReplyKind,
+  DocumentListPageBody,
 } from "../../api/client";
 import type { CitationCorpus, Reply, ReplyAction, ReplyCitation } from "./reply/replyTypes";
 
@@ -240,24 +241,51 @@ export interface AskOffCopy {
   ctaLabel: string;
 }
 
-/** `app.jsx`'s own ternary, quoted verbatim: `askOffReason:docs.length?'...processing...':'...
- * upload...'`, `askOffCta:docs.length?'Go to Documents':'Upload a contract'`. `hasAnyDocument`
- * (task text point 1: "from the shell hook" decides *whether* Ask is off; this decides *which*
- * off-copy variant) comes from `GET /api/documents`'s own `totalCount` (`index.tsx`'s own effect,
- * scoped to only run while off) -- not the session-only `documentStore.ts` tracker `RailNav.tsx`'s
- * own badge already documents as broken since task E13/F09/US01/T03 (nothing calls
- * `rememberDocument` any more), which would silently under-report here the same way. */
-export function buildOffCopy(hasAnyDocument: boolean): AskOffCopy {
-  return hasAnyDocument
-    ? {
-        reason:
-          "Your document is still processing or waiting for review. Ask only answers from facts that passed validation — so it never guesses.",
-        ctaLabel: "Go to Documents",
-      }
-    : {
+/**
+ * Which off-copy variant applies (task E16/F03/US01/T01, wave w15; ADR-020 w15 §2.1, ADR-012 w15
+ * §4). Three states, read off the server's own `counts` (`GET /api/documents`, ADR-027 §D7) --
+ * never off `totalCount > 0`, which is documents in *any* state and told a tenant whose only
+ * document had failed that it was "still processing": the fabricated fact A15-3 forbids.
+ *
+ * - `"no-documents"`: Raffa.ai holds no document. `counts.all` excludes `Rejected`, so a tenant
+ *   holding only refused files lands here too -- "Upload a contract first" is true for them, and
+ *   each refusal was already explained on its own row.
+ * - `"processing"`: at least one document is `Uploaded`, `Processing` or `NeedsReview`.
+ * - `"stalled"`: documents are held, none is in flight, none validated -- the third variant, which
+ *   must never be collapsed back into the "still processing" sentence.
+ */
+export type AskOffReason = "no-documents" | "processing" | "stalled";
+
+export function resolveAskOffReason(counts: DocumentListPageBody["counts"] | null): AskOffReason {
+  if (!counts || counts.all === 0) return "no-documents";
+  if (counts.processing > 0 || counts.needsReview > 0) return "processing";
+  return "stalled";
+}
+
+/** `app.jsx`'s own ternary for the first two rows, quoted verbatim (`askOffReason`/`askOffCta`);
+ * the third row is ADR-020 w15 §2.1's -- its second clause is the shipped sentence, verbatim, so
+ * exactly one new sentence enters the product. Fixed grammatical number is this surface's existing
+ * practice ("Your document", whatever the count), so no pluralisation logic is introduced. */
+export function buildOffCopy(reason: AskOffReason): AskOffCopy {
+  switch (reason) {
+    case "no-documents":
+      return {
         reason: "Upload a contract first. Raffa.ai extracts the facts, you sign off the weak ones, and Ask switches on.",
         ctaLabel: "Upload a contract",
       };
+    case "processing":
+      return {
+        reason:
+          "Your document is still processing or waiting for review. Ask only answers from facts that passed validation — so it never guesses.",
+        ctaLabel: "Go to Documents",
+      };
+    case "stalled":
+      return {
+        reason:
+          "Raffa.ai could not finish processing your documents. Ask only answers from facts that passed validation — so it never guesses.",
+        ctaLabel: "Go to Documents",
+      };
+  }
 }
 
 // ---------------------------------------------------------------------------------------------

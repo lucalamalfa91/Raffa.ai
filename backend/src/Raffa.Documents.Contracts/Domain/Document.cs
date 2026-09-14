@@ -1,3 +1,4 @@
+using Raffa.Documents.Contracts.Application.Admission;
 using Raffa.SharedKernel;
 
 namespace Raffa.Documents.Contracts.Domain;
@@ -43,4 +44,29 @@ public sealed class Document : TenantScopedEntity
     public string? PreviewPath { get; set; }
 
     public required DateTimeOffset CreatedAt { get; set; }
+
+    /// <summary>
+    /// Task E16/F02/US01/T01 (async-processing-schema, ADR-027 §D6): set only when <see
+    /// cref="ProcessingStatus"/> is <see cref="DocumentProcessingStatus.Rejected"/> — the
+    /// admission gate's own closed set, never a user-facing sentence (the screen picks the words
+    /// it renders, ADR-020 w15 §6). Mirrors the <c>reason</c> member of today's transient 422 body
+    /// (<c>POST /api/documents</c>), now persisted instead of thrown away.
+    /// </summary>
+    public AdmissionRejectionReason? RejectionReason { get; set; }
+
+    /// <summary>
+    /// The classify role's verdict at rejection time (ADR-027 §D6) — <see
+    /// cref="ContractDocumentType.Other"/> when classify never ran (<see
+    /// cref="AdmissionRejectionReason.NoReadableText"/>). Deliberately a separate nullable column
+    /// from <see cref="DocumentType"/>: a rejected document is never classified/linked, so
+    /// <see cref="DocumentType"/> keeps its own default and this column is the only record of what
+    /// the classifier guessed. Null until a rejection happens.
+    /// </summary>
+    public ContractDocumentType? RejectionDetectedType { get; set; }
+
+    /// <summary>
+    /// The classify role's own confidence (0-1) at rejection time; 0 when it never ran (mirrors
+    /// today's 422 body). Null until a rejection happens.
+    /// </summary>
+    public double? RejectionConfidence { get; set; }
 }

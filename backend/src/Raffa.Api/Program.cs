@@ -1,5 +1,8 @@
+using Raffa.Messaging;
 // Raffa API Host — thin composition root (ADR-002).
 // Wires all modules via DI; contains no business logic.
+using Azure.Communication.Email;
+using Azure.Identity;
 using Raffa.Api;
 using Raffa.Api.Infrastructure;
 using Raffa.Audit.Infrastructure;
@@ -7,7 +10,9 @@ using Raffa.Chat.Infrastructure;
 using Raffa.Documents.Contracts.Application;
 using Raffa.Documents.Contracts.Application.Extraction;
 using Raffa.Documents.Contracts.Infrastructure;
+using Raffa.Identity.Workspace.Application;
 using Raffa.Identity.Workspace.Infrastructure;
+using Microsoft.Graph;
 using Raffa.Insights;
 using Raffa.Market;
 using Raffa.Quotes.Infrastructure;
@@ -15,6 +20,8 @@ using Raffa.Renewals.Infrastructure;
 using Raffa.Savings.Infrastructure;
 using Raffa.SharedKernel;
 using Raffa.Suppliers.Products.Infrastructure;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -33,6 +40,35 @@ var identityWorkspaceConnectionString = builder.Configuration.GetConnectionStrin
         "Missing required configuration 'ConnectionStrings:IdentityWorkspace' " +
         "(set env var ConnectionStrings__IdentityWorkspace in deployed environments).");
 
+// Task E17/F01/US01/T01 (wave w15, NW-67/NW-68; ADR-026 w15 footer §5, ADR-025 §J.6b): the real
+// invitation transport and the Graph guest provisioner, registered BEFORE AddIdentityWorkspaceModule
+// because that module's own defaults (NullInvitationMailer, NullGuestProvisioner, a site-relative
+// link) are TryAdd -- first registration wins. Bound in the host's own GetSection(...).Get<T>()
+// shape (never IOptions<T>); every key is optional at bind time so a dev box still boots, and the
+// one combination that must never run -- mail enabled with no usable https accept base, sender or
+// connection string -- fails closed at startup (ValidateOrThrow), never falls back to mailing a
+// fragment with no origin.
+var invitationHostOptions = builder.Configuration.GetSection(InvitationHostOptions.SectionName).Get<InvitationHostOptions>()
+    ?? new InvitationHostOptions();
+invitationHostOptions.ValidateOrThrow();
+builder.Services.AddSingleton(invitationHostOptions);
+builder.Services.AddSingleton(new InvitationOptions { AcceptUrlBase = invitationHostOptions.AcceptUrlBase });
+
+if (invitationHostOptions.Mail.Enabled)
+{
+    builder.Services.AddSingleton(new EmailClient(invitationHostOptions.Mail.ConnectionString));
+    builder.Services.AddScoped<IInvitationMailer, AcsInvitationMailer>();
+}
+
+if (invitationHostOptions.GuestProvisioning.Enabled)
+{
+    // The one and only Microsoft Graph call site (ADR-025 §J.1c.1), as the workload managed
+    // identity DefaultAzureCredential resolves through AZURE_CLIENT_ID -- the same chain the
+    // Service Bus publisher and the blob adapter use.
+    builder.Services.AddSingleton(_ => new GraphServiceClient(new DefaultAzureCredential(), GraphGuestProvisioner.Scopes));
+    builder.Services.AddScoped<IGuestProvisioner, GraphGuestProvisioner>();
+}
+
 builder.Services.AddIdentityWorkspaceModule(identityWorkspaceConnectionString);
 
 var documentsContractsConnectionString = builder.Configuration.GetConnectionString("DocumentsContracts")
@@ -50,15 +86,82 @@ builder.Services.AddDocumentsContractsModule(documentsContractsConnectionString)
 // X-Workspace-Role header is no longer one of them.
 builder.Services.AddScoped<WorkspaceRoleResolver>();
 
-// Task E14/F02/US01/T01 (wave w14 "workspace is real", ADR-025 §A1): the one identity seam every
-// endpoint added or changed in this wave consumes instead of reading HttpRequest.Headers directly
-// -- W15 (NW-05) retires the interim X-User-Id header by editing only
-// Raffa.Api.Infrastructure.HeaderCallerIdentity, at this same registration. IHttpContextAccessor is
-// not otherwise registered by this host: ICallerIdentity.Resolve() takes no HttpContext parameter,
-// so it can be injected into a handler the same way WorkspaceProvisioningService/
-// WorkspaceMembershipService already are, not bound from the route.
+// Task E14/F02/US01/T01 (wave w14 "workspace is real", ADR-025 §A1), retired to the validated token
+// by task E18/F01/US01/T01 (wave w15, NW-05; ADR-022 w15 footer clause 1): the one identity seam
+// every tenant-scoped endpoint consumes (directly, or through ICallerContext below) instead of
+// reading HttpContext.User/request headers directly. TokenCallerIdentity resolves the bearer
+// token's validated `oid` claim -- the retired interim header implementation is deleted outright,
+// not kept "for compatibility" (ADR-022 w15 footer clause 1: "the header must stop being read at
+// all"). IHttpContextAccessor is not otherwise registered by this host: ICallerIdentity.Resolve()
+// takes no HttpContext parameter, so it can be injected into a handler the same way
+// WorkspaceProvisioningService/WorkspaceMembershipService already are, not bound from the route.
 builder.Services.AddHttpContextAccessor();
-builder.Services.AddScoped<ICallerIdentity, HeaderCallerIdentity>();
+builder.Services.AddScoped<ICallerIdentity, TokenCallerIdentity>();
+
+// Task E18/F01/US01/T01 (wave w15, NW-05; ADR-022 w15 footer clause 2; ADR-025 §I/Rule B1): the
+// request-scoped tenant selector every tenant-scoped endpoint now consumes instead of hand-parsing
+// its own 'X-Tenant-Id' header -- see Raffa.Api.Infrastructure.CallerContext's own doc comment for
+// the membership-verified, 404-on-failure contract this seam collapses ~19 copy-pasted parse sites
+// onto.
+builder.Services.AddScoped<ICallerContext, CallerContext>();
+
+// Task E18/F01/US01/T01 (wave w15, NW-05; ADR-010 w15 footer §1): JWT bearer validation, bound to
+// the four AzureAd__* keys infra/modules/identity has published since R0 and no image has ever
+// consumed (ADR-005 w15 footer §4 — cloud-architect's own finding). Every key is optional at bind
+// time (AzureAdOptions.Get<T>() defaults every property to null when the whole section is absent),
+// so this host still boots on a dev box or a container deployed before the Terraform apply that
+// sets them lands (ADR-016 w15 clause 15 "fail closed, never crash closed") -- a null Authority
+// means JwtBearerHandler never resolves signing keys and every bearer token fails validation
+// instead of throwing at startup, and a null ClientId makes ValidateAudience reject every token the
+// same way. Both failures surface as 401 at the point of use, never a boot crash.
+var azureAdOptions = builder.Configuration.GetSection(AzureAdOptions.SectionName).Get<AzureAdOptions>()
+    ?? new AzureAdOptions();
+
+builder.Services
+    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        // Preserves the token's own claim names (e.g. `oid`, `tid`, `scp`) instead of JwtBearer's
+        // legacy inbound remap to long-form XML claim URIs -- S15-10's acceptance runbook names the
+        // claims "actually observed" verbatim, and TokenCallerIdentity's own doc comment explains
+        // why it defends against either setting regardless.
+        options.MapInboundClaims = false;
+
+        // Authority drives both the OIDC discovery document (JWKS) fetch and, since it is left
+        // unset, the audience/issuer metadata JwtBearer would otherwise infer from it -- both are
+        // overridden explicitly below instead, so this line is the *key material* source only.
+        options.Authority = string.IsNullOrWhiteSpace(azureAdOptions.Authority) ? null : azureAdOptions.Authority;
+
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            // ADR-010 w15 footer §1.4/S15-4: fail closed. Keys come from the environment's own OIDC
+            // discovery document (JWKS, auto-refreshed by the ConfigurationManager Authority above
+            // provisions) -- never a pinned key, never a shared secret (this API has none).
+            ValidateIssuerSigningKey = true,
+            RequireSignedTokens = true,
+
+            // ADR-010 w15 footer §1.3/S15-3: pinned to this environment's own concrete tenant
+            // issuer -- identity/outputs.tf's own `issuer` output is already exactly this string --
+            // never a multi-tenant `common`/`organizations`/`consumers` authority the SPA's own
+            // write_web_runtime_config.py prefix check would let through.
+            ValidateIssuer = true,
+            ValidIssuer = azureAdOptions.Authority,
+
+            // ADR-010 w15 footer §1.2/S15-2: the audience is the API's *client id*, never the
+            // api://... identifier URI cloud-architect also publishes as AzureAd__Audience (see
+            // AzureAdOptions.Audience's own doc comment) -- wiring that URI here rejects every
+            // token, and the tempting repair (ValidateAudience = false) is forbidden and is exactly
+            // what S-T18 asserts against.
+            ValidateAudience = true,
+            ValidAudience = azureAdOptions.ClientId,
+
+            // ADR-010 w15 footer §1.4/S15-4: 2 minutes, never the library's 5-minute default -- a
+            // five-minute extension of stale authorization for free.
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.FromMinutes(2),
+        };
+    });
+builder.Services.AddAuthorization();
 
 // Object storage (ADR-005 "Object storage" row, ADR-011): the Azure Blob Storage adapter is
 // wired here, in the host, and only here — domain modules see IDocumentStorage, never the Azure
@@ -69,6 +172,11 @@ var storageConnectionString = builder.Configuration.GetConnectionString("Storage
         "(set env var ConnectionStrings__Storage in deployed environments).");
 
 builder.Services.AddAzureBlobDocumentStorage(storageConnectionString);
+// ADR-027 §D2 (task E16/F02/US03/T01): the upload publishes its ExtractionRequested pointer
+// before committing; this picks Service Bus when ServiceBus:FullyQualifiedNamespace is set
+// (every deployed environment, via infra/modules/containerapps) and the in-process channel
+// otherwise (tests). Same selector the Worker uses, so the two can never disagree.
+builder.Services.AddExtractionQueuePublisher(builder.Configuration);
 
 // Audit module (task E01/F06/US02/T02, GET /api/audit). Fails fast with a named error rather
 // than silently falling back when the config is missing (same "fail loud, not silent"
@@ -228,6 +336,19 @@ builder.Services.AddScoped<NegotiationOutcomePropagationService>();
 builder.Services.AddHealthChecks();
 
 var app = builder.Build();
+
+// Task E18/F01/US01/T01 (wave w15, NW-05; ADR-010 w15 footer): the one middleware pair this wave
+// adds to the gap between Build() and the first map -- the wave base has no app.Use* call here at
+// all, so nothing is reordered. UseAuthentication resolves HttpContext.User from the bearer token
+// (or leaves the default anonymous principal for a missing/invalid one) and never rejects a
+// request on its own; no endpoint below calls RequireAuthorization(), so UseAuthorization is a
+// pass-through too. Rejection happens at the point of use -- ICallerIdentity/ICallerContext mapping
+// a null/unverified identity to 401 -- because the public routes are real: /health,
+// GET /api/invites, POST /api/invites/accept, the POST /api/workspaces bootstrap, and
+// GET /api/workspaces, which takes no tenant input at all (ADR-026 §D1) and must keep working with
+// nothing mapped in front of it.
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.MapHealthChecks("/health");
 

@@ -1,5 +1,5 @@
-import type { AdmittedDocumentType, DocumentListItemBody } from "../../api/client";
-import { getStatusTag, type DocumentStatus, type SemanticTag } from "../../styles/semantics";
+import type { AdmittedDocumentType, DocumentListItemBody, DocumentListPageBody } from "../../api/client";
+import { getStatusTag, type SemanticTag } from "../../styles/semantics";
 
 /**
  * Pure view-model for the Documents V2 row grid (`raffa-v2/markup.html`'s `docRows`/`kbSummary`/
@@ -71,12 +71,14 @@ export function getStagePercent(stage: string | null): number {
   return index === -1 ? 0 : Math.round(((index + 1) / DOCUMENT_PROCESSING_STAGES.length) * 100);
 }
 
-/** The four statuses a real (server-known) row can render (R-DOC-05: no `Rejected` server-side --
- * rejected files are a wholly separate, session-only concept; see `uploadPipeline.ts
- * #RejectedFileOutcome`). `Uploaded` and `Processing` both fold into `"processing"` -- the row grid
- * (screens-v2.md #3) does not distinguish "queued" from "actively processing" visually, only the
- * stage text underneath the tag does that. */
-export type RowStatus = "processing" | "needs_review" | "completed" | "failed";
+/** The five statuses a real (server-known) row can render. `Uploaded` and `Processing` both fold
+ * into `"processing"` -- the row grid (screens-v2.md #3) does not distinguish "queued" from
+ * "actively processing" visually, only the stage text underneath the tag does that. `"rejected"` is
+ * task E16/F02/US03/T01's (wave w15, ADR-027 §D6): the content gate now runs on the Worker after
+ * the upload has returned, so a file that turns out not to be a contract is a *server row* in
+ * `Rejected` with a `rejectionReason`, no longer only the session-local card the synchronous 422
+ * used to produce. */
+export type RowStatus = "processing" | "needs_review" | "completed" | "failed" | "rejected";
 
 export function getRowStatus(processingStatus: DocumentListItemBody["processingStatus"]): RowStatus {
   switch (processingStatus) {
@@ -89,13 +91,17 @@ export function getRowStatus(processingStatus: DocumentListItemBody["processingS
       return "completed";
     case "Failed":
       return "failed";
+    case "Rejected":
+      return "rejected";
   }
 }
 
-/** Delegates to `styles/semantics.ts#getStatusTag` (ADR-019's locked mapping) -- never re-derived;
- * `RowStatus`'s four members are each a real `DocumentStatus` value. */
+/** Delegates to `styles/semantics.ts#getStatusTag` (ADR-019's locked mapping) -- never re-derived.
+ * Every `RowStatus` member is a real `DocumentStatus` value, `"rejected"` included since ADR-019
+ * w15 clause 1 (`.tag-outline` "Not added" -- a decision about the file, never `failed`'s accent),
+ * so there is no cast here any more and the switch there stays exhaustive under `tsc`. */
 export function getRowStatusTag(status: RowStatus): SemanticTag {
-  return getStatusTag(status as DocumentStatus);
+  return getStatusTag(status);
 }
 
 export type RowActionKind = "review" | "ask" | "quote" | "retry";
@@ -133,35 +139,61 @@ export function getRowAction(item: Pick<DocumentListItemBody, "processingStatus"
   return null;
 }
 
-/** `"Needs your attention"` (default) vs `"All documents"` (`raffa-v2/app.jsx`'s own
- * `attnDocs=docs.filter(d=>d.status!=='completed')` -- everything except `completed`, i.e.
- * processing/needs_review/failed, R-DOC-06). */
-export type AttentionFilterValue = "attention" | "all";
+/** The three chips (task E16/F03/US01/T01, wave w15). `"attention"` (the default, R-DOC-06) and
+ * `"all"` bucket the fetched page client-side; `"rejected"` reads the server's own `status=Rejected`
+ * bucket, because `counts.all` excludes `Rejected` and a client bucket would need the page to carry
+ * rows "All documents" says it does not contain -- two definitions of one list (ADR-012 w15 §13.5b). */
+export type AttentionFilterValue = "attention" | "all" | "rejected";
 
+/** Mirrors the server's `counts.needsAttention` definition -- *not `Completed` and not `Rejected`*
+ * (ADR-027 §C9) -- so the chip's number and the rows it filters to are the same set. One definition,
+ * two implementations, kept in step by `documentTable.test.ts` rather than by `tsc`: the council
+ * replaced the V2 export's own `attnDocs=docs.filter(d=>d.status!=='completed')`, which predates
+ * a refused file having a row at all. */
 export function isAttentionStatus(processingStatus: DocumentListItemBody["processingStatus"]): boolean {
-  return processingStatus !== "Completed";
+  return processingStatus !== "Completed" && processingStatus !== "Rejected";
 }
 
+/** `"all"` is every row Raffa.ai keeps -- `counts.all`'s own definition, which excludes `Rejected`
+ * -- so an unfiltered page's `Rejected` rows are left to the third chip and never counted twice. */
 export function filterDocumentsByAttention(
   items: readonly DocumentListItemBody[],
   filter: AttentionFilterValue,
 ): readonly DocumentListItemBody[] {
-  return filter === "attention" ? items.filter((item) => isAttentionStatus(item.processingStatus)) : items;
+  switch (filter) {
+    case "attention":
+      return items.filter((item) => isAttentionStatus(item.processingStatus));
+    case "all":
+      return items.filter((item) => item.processingStatus !== "Rejected");
+    case "rejected":
+      return items.filter((item) => item.processingStatus === "Rejected");
+  }
 }
 
-/** `raffa-v2/app.jsx`'s own `kbSummary` string: "N documents · M askable[ · K waiting for your
- * review]". */
-export function buildKbSummary(items: readonly DocumentListItemBody[]): string {
-  const total = items.length;
-  const askable = items.filter((item) => item.processingStatus === "Completed").length;
-  const needsReview = items.filter((item) => item.processingStatus === "NeedsReview").length;
-  const base = `${total} document${total === 1 ? "" : "s"} · ${askable} askable`;
-  return needsReview > 0 ? `${base} · ${needsReview} waiting for your review` : base;
+/** ADR-027 §D7/§C5/§C9's tenant-wide `counts` object, as `GET /api/documents` returns it. */
+export type DocumentCountsBody = DocumentListPageBody["counts"];
+
+/** The header summary line, a function of the server's `counts` and of nothing page-derived
+ * (ADR-012 w15 §13.6/§18): "N documents" reads `counts.all`, "K waiting for your review" reads
+ * `counts.needsReview`. The V2 export's "M askable" segment is gone: askability is the
+ * contract-level number the shell already carries (`contractCount`), and `Completed` documents
+ * counted over one page never were it (ADR-027 §C5). Each segment reads exactly one member; none
+ * is computed from another (§C9.1). */
+export function buildKbSummary(counts: DocumentCountsBody): string {
+  const base = `${counts.all} document${counts.all === 1 ? "" : "s"}`;
+  return counts.needsReview > 0 ? `${base} · ${counts.needsReview} waiting for your review` : base;
 }
 
-/** `raffa-v2/app.jsx`'s own `filterHint` ternary, verbatim. */
+/** The chip hints. The `attention` hint is `raffa-v2/app.jsx`'s own `filterHint`, verbatim; the
+ * `all` hint says what "All documents" counts -- everything Raffa.ai keeps -- and the third chip's
+ * says why its rows are nowhere else (ADR-020 w15 §1.5). */
 export function getFilterHint(filter: AttentionFilterValue): string {
-  return filter === "attention"
-    ? "Completed documents are hidden — they are already askable."
-    : "Everything, including validated documents.";
+  switch (filter) {
+    case "attention":
+      return "Completed documents are hidden — they are already askable.";
+    case "all":
+      return "Everything Raffa.ai keeps, including validated documents.";
+    case "rejected":
+      return "Files Raffa.ai did not keep — never counted, never askable.";
+  }
 }

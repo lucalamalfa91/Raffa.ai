@@ -47,8 +47,13 @@ const INITIAL_STATE: ValidatedContractCountState = { count: 0, kbReady: false };
  * (`documentStore.ts`, `workspaceStore.ts`). `routes/ask/index.tsx` calls this same hook a second
  * time, independently -- both call sites end up reading the identical server field, so the picker
  * and the rail (and Ask) cannot disagree about what "validated" means (N8's "rail matches").
+ *
+ * `refreshKey` (task E16/F03/US01/T01, wave w15; ADR-012 w15 §4 "Ask must re-read while it is
+ * off"): a caller that legitimately waits for this number to flip -- Ask's off state, re-reading
+ * on the shared poll budget -- passes a value that changes per tick, and the same server field is
+ * fetched again. The shell passes nothing and keeps its fetch-once behaviour.
  */
-export function useValidatedContractCount(apiClient: ApiClient): ValidatedContractCountState {
+export function useValidatedContractCount(apiClient: ApiClient, refreshKey: unknown = null): ValidatedContractCountState {
   const [state, setState] = useState<ValidatedContractCountState>(INITIAL_STATE);
   const workspace = loadCurrentWorkspace();
 
@@ -73,7 +78,7 @@ export function useValidatedContractCount(apiClient: ApiClient): ValidatedContra
     // workspace?.id (a primitive), not workspace itself -- loadCurrentWorkspace() returns a fresh
     // object every call, the same convention every other route's own load() callback in this app
     // follows (e.g. ../../routes/savings/index.tsx#loadKpis).
-  }, [apiClient, workspace?.id]);
+  }, [apiClient, workspace?.id, refreshKey]);
 
   return state;
 }

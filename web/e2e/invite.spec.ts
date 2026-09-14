@@ -18,12 +18,15 @@ import { test, expect, type BrowserContext, type Page } from "@playwright/test";
  *
  * ## Why it is skipped today, and with which words
  *
- * It needs **a second Entra account on the pilot tenant** — the operator prerequisite the task
- * text names and `reports/audit/w14-hitl.md` records — supplied as
- * `RAFFA_E2E_SECOND_ENTRA_EMAIL` / `RAFFA_E2E_SECOND_ENTRA_PASSWORD`. Until it exists this
- * file `test.skip`s with that exact, named reason (the same callback form `v2.spec.ts` uses,
- * so an unconfigured run never attempts a sign-in and the report still shows the gate exists)
- * — never a silent gap.
+ * NW-67 has Raffa provision the invitee's second Entra account itself — a B2B guest created via
+ * Microsoft Graph at invite time (ADR-025 §J.8b) — so a pre-existing second account is no longer
+ * the operator prerequisite `reports/audit/w14-hitl.md` recorded for w14. What still cannot be
+ * automated is reading the **one-time passcode** Entra emails the invitee to complete that first
+ * sign-in: there is no mail-catcher this wave (a `dev`-only one is bounded future work for NW-50,
+ * W18 — ADR-025 §J.8c) and this file has no way to script reading a human inbox. Until one
+ * exists, this file `test.skip`s with that exact, named reason (the same callback form
+ * `v2.spec.ts` uses, so an unconfigured run never attempts a sign-in and the report still shows
+ * the gate exists) — never a silent gap.
  *
  * The second account does **not** have to share the Admin's email domain: after w14 the
  * cross-domain invite check is a non-blocking warning, not a block (ADR-001 w14 footer;
@@ -59,9 +62,12 @@ const MISSING_SIGN_IN_ENV =
   "see web/README.md 'End-to-end (workspace invitation, N3b)' for how to supply them against `dev`.";
 
 const SECOND_ACCOUNT_REASON =
-  "requires a second Entra account on the pilot tenant — set RAFFA_E2E_SECOND_ENTRA_EMAIL / " +
-  "RAFFA_E2E_SECOND_ENTRA_PASSWORD (an operator prerequisite recorded in reports/audit/w14-hitl.md; " +
-  "it need not share the Admin's email domain — after w14 the cross-domain check is a warning, not a block).";
+  "requires reading the invitee's one-time passcode, emailed by Entra to complete the sign-in — " +
+  "NW-67 has Raffa provision the invitee's second Entra account itself (a B2B guest, created via " +
+  "Microsoft Graph at invite time), so a pre-existing second account is no longer the blocker " +
+  "(ADR-025 §J.8b). There is no mail-catcher this wave to read that passcode automatically (a " +
+  "dev-only one is bounded future work for NW-50, W18 — ADR-025 §J.8c), so " +
+  "RAFFA_E2E_SECOND_ENTRA_EMAIL / RAFFA_E2E_SECOND_ENTRA_PASSWORD cannot yet be supplied by a script.";
 
 /**
  * Entra's own identifier → password → optional "Stay signed in?" pages — the same selectors

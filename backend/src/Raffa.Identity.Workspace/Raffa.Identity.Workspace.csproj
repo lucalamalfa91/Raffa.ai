@@ -5,6 +5,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- No provider SDK here (ADR-002: domain modules never hold one — DependencyDirectionTests
+         .Domain_module_must_not_reference_provider_sdks bans any "Azure."-prefixed package for
+         this module by name). AcsInvitationMailer (task E17/F01/US01/T01, wave w15, NW-68) is
+         therefore a Raffa.Api/Infrastructure/ adapter, not a member of this project, exactly as
+         GraphGuestProvisioner is for Microsoft.Graph and AzureBlobDocumentStorage already is for
+         Azure.Storage.Blobs — this module keeps only the IInvitationMailer seam (Application/)
+         and NullInvitationMailer, its provider-SDK-free default (ADR-026 w15 footer §7 item 3:
+         "Raffa.Api.csproj gains Microsoft.Graph and Azure.Communication.Email"). -->
     <PackageReference Include="EFCore.NamingConventions" Version="10.0.1" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.4">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

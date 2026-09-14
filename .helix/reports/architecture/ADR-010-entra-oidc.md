@@ -138,3 +138,173 @@ the signed-in identity, so the wave base must be verified with one interactive
 sign-in on deployed `dev` before acceptance. Whether the scope literal changes is
 delivery-manager's W14-A1; that it must be *checked at the identity plane* is
 this ADR's.
+
+## Amendment (2026-09-13, wave w15 — the token is validated here, and two claims are never authorization)
+
+Serves **NW-05, NW-06**, and constrains **NW-67**. The Decision outcome above is
+unchanged: per-environment public-client + API registration pairs,
+authorization-code + PKCE, four registrations, per-environment `iss`/`aud`
+validation, no client secrets. The w14 footer is unchanged and still in force.
+This footer records the **validation parameters** the API now applies and closes
+the one path by which wiring JWT could make the product *less* safe than the
+interim it replaces. Rule ids `S15-n` are this seat's w15 lane
+(`draft/next/security-architect/w15.md`).
+
+### 1. Validation parameters (S15-1…S15-5)
+
+**1.1 Delegated user tokens only (S15-1).** The API accepts a **v2 access token**
+issued for this environment's API registration. An **id token** is not an access
+token and fails audience validation. An **app-only** token (no `scp`,
+`idtyp=app`) is rejected: this API defines no application role, so no app-only
+token should exist, and the rejection is what keeps it that way. Both are **401**.
+
+**1.2 `ValidateAudience = true`, and the value is `api_client_id` (S15-2).**
+`infra/modules/identity/main.tf:75` sets `requested_access_token_version = 2`, so
+`aud` is the API application's **client id** — `outputs.tf:13` says so verbatim:
+"the default `aud` claim on v2 access tokens issued for this environment's API".
+`api_identifier_uri` (`outputs.tf:18`) is the **alternate** resource identifier a
+client *requests*, not the audience a v2 token *carries*. A task that wires the
+`api://` URI as the audience sees **every** token rejected, and the tempting
+repair is `ValidateAudience = false`. It is forbidden. A second accepted audience
+is a new decision, not a fix. (Cloud-architect publishes **both** `AzureAd__ClientId`
+and `AzureAd__Audience` deliberately — ADR-005 w15 footer §4 — which removes an
+entire class of "token acquired, then 401"; this clause names which one the
+validator compares.)
+
+**1.3 `ValidateIssuer = true`, pinned to this environment's concrete tenant issuer
+(S15-3).** `identity/outputs.tf:25-28` already emits
+`https://login.microsoftonline.com/<tid>/v2.0`. **`common`, `organizations` and
+`consumers` are never accepted**, and the API never derives the issuer from the
+token. Defence in depth is mandatory here rather than optional: the SPA's
+runtime-config validator (`scripts/write_web_runtime_config.py:80-83`) checks the
+`https://login.microsoftonline.com/` **prefix only**, so `…/common` passes it
+today. Extending that validator to reject the three multi-tenant segments is a
+cheap and welcome addition, and it is delivery-manager's file.
+
+**1.4 The rest, fail closed (S15-4).** `ValidateIssuerSigningKey` and
+`RequireSignedTokens` true; keys from the environment's OIDC discovery document
+(JWKS, auto-refreshed) — never a pinned key and never a shared secret, which the
+Implications above already require ("the API does **not** store or share client
+secrets"). `ValidateLifetime` true with `ClockSkew` **≤ 2 minutes**: the 5-minute
+library default is a five-minute extension of stale authorization for free. A
+token whose `ver` is not `2.0` is rejected.
+
+**1.5 A missing scope denies; a present scope grants nothing (S15-5).**
+`Raffa.Read` / `Raffa.Write` (`identity/main.tf:79`, `:90`) are **client
+capability**: they say the browser was allowed to ask, never that the caller may
+touch a given tenant. Absent required scope → **403**. Present scope → the request
+proceeds to the membership check, which is the only grant. Recorded because "the
+token has `Raffa.Write`" is the most natural wrong reading of a scope.
+
+### 2. Which claim is the identity (S15-6…S15-9)
+
+**2.1 `oid` is the identity; `email` is a binding aid, never the standing key
+(S15-6).** Membership matches on `workspace_user.ExternalSubjectId = oid`. An
+email address is mutable and re-assignable inside a directory, so matching a
+*standing* membership on email lets a re-assigned alias silently inherit someone
+else's grant. Email keeps exactly two jobs: the **first** bind of a subject to an
+invited address (ADR-025 Rule D.3c step 2, `LinkSignInAsync`, unchanged) and the
+invitation email match (Rule D.3b). After the bind, `oid` is the key.
+`WorkspaceRoleResolver.cs:129` already matches `ExternalSubjectId`, so the swap
+needs no query change — exactly what ADR-025 Rule F.2c promised.
+
+**2.2 `tid` is the Entra directory, never the Raffa workspace tenant (S15-7).**
+A v2 token carries `tid`, the directory GUID. It is **not**
+`WorkspacePrincipalAuthorization.TenantIdClaimType` (`:35`, `"tenant_id"`), and
+mapping one onto the other to "make `GET /api/audit` work" would ship exactly the
+stale-authorization window clause 2 of the w14 footer and ADR-025 §I forbid. Both
+environments use the **same** directory (`identity/main.tf:63`, `:118`), so `tid`
+is identical for `dev` and `demo` and for every customer workspace — it can never
+select a tenant. **No Raffa code reads `tid` for any purpose.**
+
+**2.3 The `#EXT#` UPN is never parsed into an email for an authorization decision
+(S15-8).** A B2B guest's UPN in the resource directory is mangled
+(`luca_gmail.com#EXT#@<tenant>.onmicrosoft.com`). ADR-025 Rule D.3b matches the
+signed-in identity against the invited address by case-insensitive equality
+(`WorkspaceInvitationService.cs:187`, `:197`); against a mangled UPN that
+comparison **fails**, and A15-4 dies at its last step with the invitee signed in
+and locked out. The de-mangling "fix" (replace the final `_` before the domain
+with `@`) is ambiguous for addresses containing `_` and must never be a grant
+basis. Resolution order: **the `oid` bound at invite time by NW-67 (ADR-025 §J.3)
+→ the `email` claim → refuse (403) and tell the Admin to re-invite.** Never the
+UPN.
+
+**2.4 The `email` optional claim must be requested, in Terraform (S15-9).**
+Verified: there is **no `optional_claims` block anywhere** in
+`infra/modules/identity/main.tf`. 2.3's second branch exists only if the access
+token carries `email`, which needs
+`optional_claims { access_token { name = "email" } }` on
+`azuread_application.api`. Cloud-architect owns the file; this seat owns the
+requirement. The design does not *depend* on it — `oid` is bound at invite time —
+so its absence degrades to a 403 and a re-invite, never to a silent grant.
+
+**2.5 Nothing about a token's shape is proven until one interactive sign-in on
+deployed `dev` (S15-10).** Clause 4 of the w14 footer already requires this for
+the identity plane, and it fails **after CI is green, in the browser**. The NW-05
+task's acceptance names the claims it actually observed (`ver`, `aud`, `iss`,
+`oid`, `scp`, `email`) in the runbook. This is the honest form of every Entra
+claim statement above.
+
+### 3. NW-06 — the claims branch is deleted, not enabled (S15-13)
+
+**This is the finding that makes NW-06 urgent rather than tidy.**
+`WorkspaceRoleResolver.ResolveAsync(httpContext, tenantId, …)` has two sources: a
+claims branch (`:60-65`) and the tenant-scoped membership read (`:70`, `:104-137`).
+The claims branch returns `claimRole` **without ever referencing its `tenantId`
+parameter** — only `:70` is scoped. Today that is harmless, because this host has
+no authenticated principal at all (verified: `Grep` for
+`AddAuthentication|AddJwtBearer|UseAuthentication|JwtBearer|Microsoft.Identity.Web`
+over `backend/src` returns **two hits, both doc comments**). **The moment NW-05
+wires JWT, one Entra app role assigned once in the directory resolves to that role
+in every workspace the caller can name, bypassing `workspace_membership`
+entirely.** `IsAdminAsync` (`:74-76`) gates `DELETE /api/documents/{id}` and
+`POST …/reprocess`, so the failure is cross-tenant **destructive** access, not
+merely visibility.
+
+So NW-06 is a **deletion**: `ResolveAsync` collapses to
+`ResolveMembershipRoleAsync`; the two header constants (`:48-49`) and
+`TryResolveHeaderRole` (`:89-102`, zero call sites) go in the same edit;
+`WorkspaceRoleClaimResolver` keeps only its non-authorization caller
+(`GET /api/capabilities`) until NW-31. Deleting costs six lines; reviewing and
+tenant-scoping a claims path costs a design, a Terraform app role, an assignment
+story and a permanent second authorization source.
+
+**3.1 The deletion takes the doc comment with it.** The instruction to keep the
+branch is in the **source**, not in an ADR: `WorkspaceRoleResolver.cs:20-22`
+describes the claims branch as *"the ADR-010 end state, and the only source that
+survives past this wave."* An implementer opening the file to wire NW-05 reads a
+comment telling them to enable the very branch that is the escalation. If the
+comment survives, the next wave restores the branch from its own documentation.
+
+**3.2 §E / §I reconciliation, recorded so a reviewer reading one section does not
+conclude the opposite.** ADR-025 §E (`:395`) is about a **client-declared role**
+(headers). ADR-025 **§I** (`:658-677`) is the section written specifically to bind
+this wave and it governs: *"the token carries identity only … a `tenant_id` or
+`roles` claim is **never** the authorization source."* Where the two touch one
+mechanism, **§I governs**. ADR-025's body is not rewritten.
+
+### 4. Rejection contract (extends ADR-025 §B; no existing row changes)
+
+| Situation | Status |
+|---|---|
+| No `Authorization` header, or a token failing 1.1–1.4 | **401** |
+| Valid token, required scope absent (1.5) | **403** |
+| Valid token, caller is not a member of the selected tenant | **404** — ADR-025 Rule B1, unchanged (a 403 there is a tenant-existence oracle) |
+| Valid token, member, wrong role | **403** |
+| Forged `X-User-Id` / `X-Tenant-Id` with **no** valid token | **401** (acceptance A15-8) |
+| Valid token `A` **plus** `X-User-Id: B` | acts as `A`; the header is **not read** (ADR-025 Rule A3, test T14) |
+
+**4.1 Revocation stays immediate; nothing caches authorization (S15-12).** The
+token caches **identity** for its lifetime and nothing else. **No membership
+cache, no role cache, no session cookie, no claims transformation that
+materializes a role.** ADR-025 Rule D.5b holds *because* role and tenant are read
+from the database per request. A removed member's token still authenticates and
+gets 404 everywhere — which is the correct answer, not a gap.
+
+**4.2 No authentication kill-switch, in any environment.** This seat co-signs
+cloud-architect's ruling (ADR-005 w15 footer §5) from the security side: a
+configuration key that turns authentication off is a security control in the hands
+of whoever can run an apply, and it is exactly the "temporary" fallback that is
+never removed. Rollback is an image revert, not a flag. **NW-05 fails closed**: a
+bounded 401 window on `dev` is the correct failure, and no header fallback is
+re-added to shorten it.

@@ -21,6 +21,8 @@ const CONTRACT_ID = "11111111-1111-1111-1111-111111111111";
 function contract(overrides: Partial<Contract360Body> = {}): Contract360Body {
   return {
     contractId: CONTRACT_ID,
+    // Task E16/F02/US03/T01 (ADR-027 §D9): a reviewable fixture has one extracted document.
+    readiness: { state: "ready", stage: null, documentCount: 1, completedDocumentCount: 1 },
     header: {
       contractId: CONTRACT_ID,
       supplierId: null,

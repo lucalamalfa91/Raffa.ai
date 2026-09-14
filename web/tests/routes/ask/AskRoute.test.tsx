@@ -45,13 +45,19 @@ function validatedPortfolio(): GetPortfolioResult {
       page: 1,
       pageSize: 100,
       totalCount: 1,
+      processingDocumentCount: 0,
     },
     error: null,
   };
 }
 
 function emptyDocuments(): ListDocumentsResult {
-  return { ok: true, statusCode: 200, page: { items: [], page: 1, pageSize: 1, totalCount: 0 }, error: null };
+  return {
+    ok: true,
+    statusCode: 200,
+    page: { items: [], page: 1, pageSize: 1, totalCount: 0, counts: { all: 0, needsAttention: 0, needsReview: 0, processing: 0, rejected: 0 } },
+    error: null,
+  };
 }
 
 function emptyCatalog(): Awaited<ReturnType<ApiClient["getCapabilities"]>> {
@@ -235,11 +241,33 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
       expect(screen.getByRole("link", { name: "Upload a contract" })).toHaveAttribute("href", "/documents");
     });
 
-    it("shows the 'still processing' reason and 'Go to Documents' when a document exists but none is validated", async () => {
-      const listDocuments = vi.fn().mockResolvedValue({ ok: true, statusCode: 200, page: { items: [], page: 1, pageSize: 1, totalCount: 1 }, error: null });
+    it("shows the 'still processing' reason and 'Go to Documents' when the server counts a document in flight", async () => {
+      // Task E16/F03/US01/T01 (ADR-012 w15 §4): the variant is read off the server's `counts`,
+      // never off `totalCount` -- a tenant whose only document *failed* must not be told it is
+      // "still processing".
+      const listDocuments = vi.fn().mockResolvedValue({
+        ok: true,
+        statusCode: 200,
+        page: { items: [], page: 1, pageSize: 1, totalCount: 1, counts: { all: 1, needsAttention: 1, needsReview: 0, processing: 1, rejected: 0 } },
+        error: null,
+      });
       renderAsk(mockApiClient({ listWorkspaces: vi.fn().mockResolvedValue(validatedWorkspace(0)), listDocuments }));
 
       expect(await screen.findByText(/still processing or waiting for review/i)).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Go to Documents" })).toHaveAttribute("href", "/documents");
+    });
+
+    it("shows the third variant -- 'could not finish processing' -- when documents are held but none is in flight or validated", async () => {
+      const listDocuments = vi.fn().mockResolvedValue({
+        ok: true,
+        statusCode: 200,
+        page: { items: [], page: 1, pageSize: 1, totalCount: 1, counts: { all: 1, needsAttention: 1, needsReview: 0, processing: 0, rejected: 0 } },
+        error: null,
+      });
+      renderAsk(mockApiClient({ listWorkspaces: vi.fn().mockResolvedValue(validatedWorkspace(0)), listDocuments }));
+
+      expect(await screen.findByText(/could not finish processing your documents/i)).toBeInTheDocument();
+      expect(screen.queryByText(/still processing/i)).not.toBeInTheDocument();
       expect(screen.getByRole("link", { name: "Go to Documents" })).toHaveAttribute("href", "/documents");
     });
 

@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
-import type { ApiClient, CapabilityBody } from "../../api/client";
+import type { ApiClient, CapabilityBody, DocumentListPageBody } from "../../api/client";
 import { loadCurrentWorkspace } from "../signin/workspaceStore";
 import { useValidatedContractCount } from "../../components/shell/useValidatedContractCount";
+import { usePollBudget } from "../../components/shell/usePollBudget";
 import ReplyBody from "./reply/ReplyBody";
 import type { ReplyCitation } from "./reply/replyTypes";
 import AskOffState from "./AskOffState";
@@ -23,6 +24,7 @@ import {
   deriveConversationTitle,
   nextTurnId,
   parseScopeContractId,
+  resolveAskOffReason,
   resolveCitationOpenAction,
   suggestionsFor,
   type AskTurnView,
@@ -90,19 +92,43 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
 
   // AC-1: "the validated-contract count is 0 (from the shell hook)" -- the same hook
   // AppShell.tsx/GlobalAskBar.tsx already share for the identical gate, never re-derived here.
-  const { count: validatedContractCount, kbReady } = useValidatedContractCount(apiClient);
+  // `countsCheckedAt` re-keys it after every off-state counts tick below, so a gate that flips
+  // while this screen is open flips here too (ADR-012 w15 §4 "Ask must re-read while it is off").
+  const [countsCheckedAt, setCountsCheckedAt] = useState(0);
+  const { count: validatedContractCount, kbReady } = useValidatedContractCount(apiClient, countsCheckedAt);
 
-  // Off-state sub-copy (app.jsx `askOffReason`/`askOffCta`'s own `docs.length` ternary -- see
-  // askViewModel.ts#buildOffCopy's own doc comment for why this is GET /api/documents's own
-  // totalCount, not the broken session-only documentStore.ts tracker). Scoped to only run while
-  // off: the on-state never needs this fetch at all.
-  const [hasAnyDocument, setHasAnyDocument] = useState(false);
-  useEffect(() => {
-    if (kbReady || !workspace) return;
+  // Off-state sub-copy: which of the three variants applies is read off the server's own `counts`
+  // (ADR-027 §D7; askViewModel.ts#resolveAskOffReason), never inferred from `totalCount` -- task
+  // E16/F03/US01/T01 (ADR-012 w15 §4). Scoped to only run while off: the on-state never needs this
+  // fetch at all. While at least one document is in flight the one-row read repeats on the same
+  // 2 s cadence Documents polls on, under the same five-minute no-change budget (ADR-020 w15 §8.3),
+  // and it stops the moment the gate flips -- a user sitting on /ask while a document completes
+  // sees Ask switch on without a reload.
+  const [documentCounts, setDocumentCounts] = useState<DocumentListPageBody["counts"] | null>(null);
+  const loadDocumentCounts = useCallback(() => {
+    if (!workspace) return;
     void apiClient.listDocuments(workspace.id, { pageSize: 1 }).then((result) => {
-      setHasAnyDocument(result.ok && result.page ? result.page.totalCount > 0 : false);
+      setDocumentCounts(result.ok && result.page ? result.page.counts : null);
+      setCountsCheckedAt(Date.now());
     });
-  }, [apiClient, workspace?.id, kbReady]);
+  }, [apiClient, workspace?.id]);
+  useEffect(() => {
+    if (kbReady) return;
+    loadDocumentCounts();
+  }, [kbReady, loadDocumentCounts]);
+  const offReason = resolveAskOffReason(documentCounts);
+  const countsFingerprint = useMemo(
+    () =>
+      documentCounts === null
+        ? "none"
+        : `${documentCounts.all}/${documentCounts.needsAttention}/${documentCounts.needsReview}/${documentCounts.processing}/${documentCounts.rejected}`,
+    [documentCounts],
+  );
+  const { paused: offUpdatesPaused, resume: resumeOffUpdates } = usePollBudget({
+    active: !kbReady && workspace !== null && offReason === "processing",
+    fingerprint: countsFingerprint,
+    onTick: loadDocumentCounts,
+  });
 
   // AC-5 `/ask?scope=<contractId>`: a scoped new chat. Only consulted while there is no current
   // conversation yet -- once one exists (resumed or just created), the scope query string (if still
@@ -246,7 +272,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     return (
       <div className="empty-state" role="status">
         <h3>No workspace selected</h3>
-        <p className="micro-meta">Choose a workspace before asking Raffa a question.</p>
+        <p className="micro-meta">Choose a workspace before asking Raffa.ai a question.</p>
       </div>
     );
   }
@@ -254,7 +280,13 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   // AC-1/R-ASK-10: off, before anything else -- no chat surface at all with zero validated
   // contracts.
   if (!kbReady) {
-    return <AskOffState copy={buildOffCopy(hasAnyDocument)} />;
+    return (
+      <AskOffState
+        copy={buildOffCopy(offReason)}
+        updatesPaused={offReason === "processing" && offUpdatesPaused}
+        onCheckAgain={resumeOffUpdates}
+      />
+    );
   }
 
   if (resumeState.phase === "loading") {

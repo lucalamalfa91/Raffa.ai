@@ -135,6 +135,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<DocumentValidationService>();
         services.AddScoped<ContractEvidenceQueryService>();
 
+        // Task E16/F02/US01/T01 (async-processing-schema): the conditional-UPDATE claim us-02's
+        // Worker handler will use. Scoped — shares this registration's own DbContext instance,
+        // same reason as every other service above.
+        services.AddScoped<IExtractionJobClaimStore, ExtractionJobClaimStore>();
+
         return services;
     }
 }

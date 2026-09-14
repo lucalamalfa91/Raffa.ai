@@ -1,16 +1,22 @@
+using System.Security.Claims;
+using System.Text.Encodings.Web;
 using Raffa.AiGateway;
 using Raffa.Chat.Infrastructure;
+using Raffa.Documents.Contracts.Application.Extraction;
 using Raffa.Documents.Contracts.Domain;
 using Raffa.Documents.Contracts.Infrastructure;
 using Raffa.Identity.Workspace.Infrastructure;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Storage;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Raffa.Api.Tests.TestSupport;
 
@@ -121,8 +127,38 @@ internal static class InMemoryAskEngineFactory
                 .UseInMemoryDatabase(identityDbName)
                 .UseInternalServiceProvider(InMemoryProviderServices));
 
+            // Task E17/F01/US01/T01 (wave w15): NW-05 (E18/F01/US01/T01) replaced the interim
+            // X-User-Id-reading ICallerIdentity implementation with TokenCallerIdentity, which
+            // trusts only a validated bearer token's `oid` claim (Program.cs's own
+            // AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(...)) — but
+            // did not update this shared test factory, so every X-User-Id-sending test in this
+            // project (most of them, predating NW-05) silently started authenticating nobody and
+            // getting 401 everywhere a real guard used to answer 404/403/2xx. Minting a real,
+            // signed Entra token in a unit test is not possible, so this is the standard ASP.NET
+            // Core test substitute: register a second scheme that reads the same X-User-Id header
+            // these tests already send and turns it into the authenticated `oid` claim
+            // TokenCallerIdentity reads, then make it the default scheme for this host only —
+            // Program.cs's own JwtBearer registration is untouched and never runs in these tests.
+            // Every existing X-User-Id-driven assertion in this project is therefore proven again
+            // exactly as before, through the real (not faked) ICallerIdentity/WorkspaceRoleResolver
+            // seam, with no change to any test body.
+            services.AddAuthentication(TestUserIdAuthenticationHandler.SchemeName)
+                .AddScheme<AuthenticationSchemeOptions, TestUserIdAuthenticationHandler>(
+                    TestUserIdAuthenticationHandler.SchemeName, _ => { });
+
             services.AddSingleton<IAiGateway>(aiGateway);
             services.AddSingleton(auditWriter ?? new NoOpAuditWriter());
+
+            // Task E16/F02/US03/T01 (wave w15, ADR-027 D1-D3): the upload now returns at the store
+            // and the content gate + pipeline run on the Worker. This host has no Worker, so a test
+            // that needs a *processed* document drains the in-process queue itself
+            // (DrainExtractionQueueAsync below) through the real ExtractionRequestedHandler. Two
+            // swaps make that possible on the InMemory provider: the raw-SQL claim store cannot
+            // execute here (no relational provider), and the handler is otherwise only registered by
+            // the Worker's AddExtractionQueueConsumer.
+            services.RemoveAll<IExtractionJobClaimStore>();
+            services.AddScoped<IExtractionJobClaimStore, InMemoryExtractionJobClaimStore>();
+            services.AddScoped<ExtractionRequestedHandler>();
 
             if (documentStorage is not null)
             {
@@ -151,5 +187,72 @@ internal static class InMemoryAskEngineFactory
         var dbContext = scope.ServiceProvider.GetRequiredService<DocumentsContractsDbContext>();
         dbContext.Contracts.Add(contract);
         await dbContext.SaveChangesAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Plays the Worker for this host (task E16/F02/US03/T01): takes every
+    /// <see cref="ExtractionRequested"/> the upload path published to the in-process queue and runs
+    /// the real <see cref="ExtractionRequestedHandler"/> on it — content gate, then pipeline — in
+    /// its own DI scope, in order. Called by a test right after the upload's 201 and before it
+    /// asserts on anything processing produces (document type, contract id, evidence, the
+    /// <c>document.rejected</c> row). Messages are consumed from the channel, so a second drain is
+    /// a no-op, and a message the handler cannot claim (already processed) is skipped by the
+    /// handler itself, never by this helper. Returns how many messages were handled.
+    /// </summary>
+    public static async Task<int> DrainExtractionQueueAsync(this WebApplicationFactory<Program> factory)
+    {
+        ArgumentNullException.ThrowIfNull(factory);
+
+        var queue = factory.Services.GetRequiredService<InMemoryExtractionQueue>();
+        var handled = 0;
+        while (queue.Reader.TryRead(out var message))
+        {
+            using var scope = factory.Services.CreateScope();
+            var handler = scope.ServiceProvider.GetRequiredService<ExtractionRequestedHandler>();
+            await handler.HandleAsync(message).ConfigureAwait(false);
+            handled++;
+        }
+
+        return handled;
+    }
+}
+
+/// <summary>
+/// Test-only bridge from the interim <c>X-User-Id</c> header (ADR-022) to the authenticated
+/// <c>oid</c> claim <see cref="Raffa.Api.Infrastructure.TokenCallerIdentity"/> actually reads
+/// (ADR-010 w15 footer §2.1). Registered as the default authentication scheme by
+/// <see cref="InMemoryAskEngineFactory.WithInMemoryAskEngine"/> only — <c>Raffa.Api.Program</c>
+/// never sees this type. A missing or blank header is <see cref="AuthenticateResult.NoResult"/>
+/// (not <see cref="AuthenticateResult.Fail(string)"/>): this project's own
+/// <c>Missing_identity_returns_401</c>/<c>Blank_identity_header_returns_401</c>-shaped tests expect
+/// the request to reach the endpoint unauthenticated (<see cref="ClaimsPrincipal.Identity"/>'s
+/// <c>IsAuthenticated: false</c>) and be turned into 401 by <c>ICallerIdentity.Resolve()</c> itself,
+/// the same failure path a real missing/invalid bearer token takes in production — not short-circuited
+/// by the authentication middleware.
+/// </summary>
+internal sealed class TestUserIdAuthenticationHandler(
+    IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder)
+    : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
+{
+    public const string SchemeName = "TestUserId";
+
+    protected override Task<AuthenticateResult> HandleAuthenticateAsync()
+    {
+        // No trim, no case change: TokenCallerIdentity.Resolve() applies neither (its own doc
+        // comment records that as deliberate for an opaque, case-sensitive `oid`), so this bridge
+        // does not either — a header value only whitespace is treated exactly like a missing one,
+        // the same "IsNullOrWhiteSpace -> unauthenticated" rule TokenCallerIdentity itself applies.
+        if (!Request.Headers.TryGetValue("X-User-Id", out var values) ||
+            string.IsNullOrWhiteSpace(values.ToString()))
+        {
+            return Task.FromResult(AuthenticateResult.NoResult());
+        }
+
+        // "oid": the exact claim type Microsoft.Identity.Web's ClaimsPrincipal.GetObjectId()
+        // resolves (TokenCallerIdentity.Resolve()'s own source) — never ClaimTypes.NameIdentifier
+        // or another URI form, which GetObjectId() does not recognize.
+        var identity = new ClaimsIdentity([new Claim("oid", values.ToString())], authenticationType: SchemeName);
+        var ticket = new AuthenticationTicket(new ClaimsPrincipal(identity), SchemeName);
+        return Task.FromResult(AuthenticateResult.Success(ticket));
     }
 }

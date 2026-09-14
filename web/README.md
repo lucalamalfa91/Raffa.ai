@@ -97,7 +97,7 @@ own rail destination. Pixel/behaviour reference: `inputs/design/prototypes/Raffa
 | `/` | Redirects to `/ask` (R-WEB-01) -- there is no standalone Home screen in V2. | E13/F09/US01/T01 |
 | `/ask` | Ask Raffa, V2 rebuild: off state below 1 validated contract (fixed headline + doc-count-dependent reason + one CTA to `/documents`); new chat (hello line, scope line naming the validated count, two capability-sourced suggestion chips, optional `?scope=<contractId>`); conversation view rendering the phase-2 reply contract (markdown, numbered citation cards, actions, follow-ups) via `ReplyBody`. Calls the real `GET/POST /api/conversations`, `POST /api/conversations/{id}/messages`, `GET /api/capabilities`, `GET /api/market/records/{id}`. See "Ask Raffa" below. | E07/F04/US01/T01; V2 rebuild E13/F09/US01/T04 |
 | `/ask/:conversationId` | Same `AskRoute` as `/ask`, resuming: `useConversation` loads the conversation (`GET /api/conversations/{id}`) and renders every past turn, oldest first, with citation cards and actions still clickable; a named "not found" state for an unknown/foreign/another-user's id. | E13/F09/US01/T01 (route only); resume wired by E13/F09/US01/T04 |
-| `/documents` | V2 rebuild (ADR-024 amendment to ADR-020 screen 3): onboarding empty state ("First your contracts. Then your questions.") -> a server-backed list (`GET /api/documents`, survives a reload) with a **Needs your attention** (default) / **All documents · N** filter, multi-file drop (up to 20 files, <=3 uploads in flight, one row per file from the moment it is picked), real per-file stage text polled every 2s, a **Not added** card for a rejected file (422/415/oversized, session-only, never counted), Admin-only Delete, and Review as a *state* of this same route (`?review=<id>`, reusing `routes/contracts/review/*` as-is). Calls the real `GET /api/documents`, `GET /api/documents/{id}/preview`, `POST /api/documents`, `POST /api/documents/{id}/reprocess`, `DELETE /api/documents/{id}`. See "Documents" below. | E06/F05/US01/T01, E06/F05/US02/T01; V2 rebuild E13/F09/US01/T03 |
+| `/documents` | V2 rebuild (ADR-024 amendment to ADR-020 screen 3): onboarding empty state ("First your contracts. Then your questions.") -> a server-backed list (`GET /api/documents`, survives a reload) with a **Needs your attention · N** (default) / **All documents · N** / **Not added · K** (only while K > 0) filter whose numbers are the server's own tenant-wide `counts` (never the fetched page), multi-file drop (up to 20 files, <=3 uploads in flight, one row per file from the moment it is picked, a 120 s client-owned deadline per request), a stored row reading **Queued…** until the Worker picks it up and then its real stage text polled every 2 s — a poll that stops after five minutes without a change and offers **Check again** — a **Not added** *row* for a refused file (the server's `Rejected` row with the requirements' own reason sentence; a local row for an oversized/413/415 file), Admin-only Delete, and Review as a *state* of this same route (`?review=<id>`, reusing `routes/contracts/review/*` as-is). Calls the real `GET /api/documents`, `GET /api/documents/{id}/preview`, `POST /api/documents`, `POST /api/documents/{id}/reprocess` (202), `DELETE /api/documents/{id}`. See "Documents" below. | E06/F05/US01/T01, E06/F05/US02/T01; V2 rebuild E13/F09/US01/T03; truthful surfaces E16/F03/US01/T01 (wave w15) |
 | `/contracts` | Portfolio, V2: header ("Portfolio" + "N validated contracts · CHF 4.2M annual · K notice deadlines within 45 days", or "Lights up from validated contracts"), one table sorted by notice deadline (Supplier · Contract · Annual spend · Ends · Give notice by · Status; **More columns** adds Start · Auto · Risk; rows inside the 45-day window tinted + accent bar; rows open Contract 360), and the reroute state ("Nothing to triage yet" → Upload a contract) while nothing is validated. Calls the real `GET /api/contracts` (now carrying `currency`). See "Portfolio" below. | E07/F01/US01/T01; V2 design alignment (Sept 2026) |
 | `/contracts/:id` | Contract 360, V2 **no tabs**: origin back link ("← Ask Raffa / Documents / Portfolio / Renewals / Savings", else "← Back"), supplier · title · "{type} · {spend} / year · N documents · {status}", **Ask about it** → `/ask?scope=<id>`; the **answers band** (Where you can save · When you must move · What to do, with Start negotiation / Assign to me or the negotiation tracker once acted); **Why — the clauses behind it** (clause rows; click → the original wording highlighted in a serif evidence card; `?clause=<id>`/`?page=<n>` pre-select it); **Details ▾** (key terms, documents, facts still to decide, priority score, Products/Obligations/Risks). Calls the real `GET /api/contracts/{id}`, `GET /api/renewals`, `GET /api/renewals/{contractId}/priority`, `POST /api/renewals/{id}/action`. See "Contract 360" below. | E07/F02/US01/T01; citation landing E13/F10/US01/T01; V2 layout (Sept 2026) |
 | `/contracts/:id/review` | Review / correction: 4-column field list (critical marker, extracted value + real source line, real per-field confidence tag from the extraction evidence, Accept/Correct) + right-hand evidence pane (file · page header, the quoted passage with the span highlighted, model + confidence, correction form, real correction-history trail) + gated "Mark as validated" that really signs the document off. Calls the real `GET /api/contracts/{id}`, `GET /api/contracts/{id}/corrections`, `GET /api/contracts/{id}/evidence`, `PATCH /api/contracts/{id}`, `POST /api/documents/{id}/validate`. Shares its whole lifecycle with the Documents review state through `routes/contracts/review/useReviewSession.ts`. See "Review / correction" below. | E07/F03/US01/T01 |
@@ -105,7 +105,7 @@ own rail destination. Pixel/behaviour reference: `inputs/design/prototypes/Raffa
 | `/quotes`, `/quotes/:id` | Quote check, V2: constant header ("Optional · new purchase" · intro sentence); landing = the dashed drop card (**Upload a quote** + "or use the sample: Databricks proposal Q-88213", optional supplier/currency/geography/date under a disclosure); loaded = the Supplier quote · Market range · Assessment band, the lines table (Line · Quoted · P50 · Position · Benchmark) and "Target and negotiation levers are one step further — shown only if you want them." revealing Target, then Negotiation (outcome capture); unmapped SKUs show the mapping block instead. Calls the real `POST /api/quotes`, `POST /api/quotes/{id}/assessment/recalculate`, `POST /api/negotiations/outcomes`. See "Quote check" below. | E08/F03/US01/T01; V2 design alignment (Sept 2026) |
 | `/savings` | Savings, V2 (not a rail item -- reached from Ask actions, Renewals and Contract 360): header + summary, three KPI cells (Contracts analyzed · Upcoming renewals · Savings identified, each with a meta line), the opportunities table (Supplier · Action · Estimate · Status; rows open Contract 360), a stale-labelled KPI degrade when the benchmark provider is unreachable, and the reroute "No savings opportunities yet" → Renewals. Calls the real `GET /api/savings/kpis`, `GET /api/savings`, plus `GET /api/contracts` for supplier names. See "Savings" below. | E08/F02/US01/T01; moved by E13/F09/US01/T01; V2 design alignment (Sept 2026) |
 | `/review` | Redirects to `/documents?filter=attention` -- Review is a *state* of Documents in V2, not its own rail destination or screen. The old `src/routes/review/` rail landing (V1 review queue) has been deleted. | E13/F09/US01/T01 |
-| `/workspace/members` | Workspace & members, V2: "Setup" header (tenant meta line), the "invite the team once the first contract is validated" tip while nothing is validated, a server-read Member/Role/Status/Actions table (skeleton while loading, error + Retry, never a stale roster) and the **Invite a colleague** pane rendering the server's own `mailDelivered` fact ("Invitation sent to {email}." or a copyable single-use link with its expiry). Admin-only `Actions` column: revoke an `Invited` row, remove an `Active` one, both confirmed inline in the row, the last Admin's Remove disabled with a `.hint`. A Procurement visit sees the same roster read-only, with a real `mailto:` **Request access** instead of the invite pane. Calls the real `GET /api/workspaces/{tenantId}/members`, `POST .../invites`, `DELETE .../invites/{id}` and `DELETE .../members/{membershipId}`. See "Workspace & members" below. | E06/F04/US01/T01; server-backed roster + invitation lifecycle E15/F02/US01/T01 (wave w14) |
+| `/workspace/members` | Workspace & members, V2: "Setup" header (tenant meta line), the "invite the team once the first contract is validated" tip while nothing is validated, a server-read Member/Role/Status/Actions table (skeleton while loading, error + Retry, never a stale roster) and the **Invite a colleague** pane rendering the server's own `deliveryOutcome` in three states ("Invitation sent to {email}."; "Invitation created, but the email could not be sent." + the copyable link; "Invitation ready for {email}." + the link and its expiry), the one-time-code sentence while `identityProvisioned` is true, and a declared **502** ("No invitation was created.") when the company directory would not provision the guest. Admin-only `Actions` column: revoke an `Invited` row, remove an `Active` one, both confirmed inline in the row, the last Admin's Remove disabled with a `.hint`. A Procurement visit sees the same roster read-only, with a real `mailto:` **Request access** instead of the invite pane. Calls the real `GET /api/workspaces/{tenantId}/members`, `POST .../invites`, `DELETE .../invites/{id}` and `DELETE .../members/{membershipId}`. See "Workspace & members" below. | E06/F04/US01/T01; server-backed roster + invitation lifecycle E15/F02/US01/T01 (wave w14) |
 
 ### Layout -- full-bleed, matching the prototype's own canvas (ADR-018/019/020, task E06/F06/US01/T01)
 
@@ -230,22 +230,13 @@ from `markup.html`.
   in accent, plus "+ New chat"; `useRecentConversations` re-fetches on every
   navigation rather than once per shell mount, since a new conversation is a
   routine, every-few-clicks event -- wired by task E13/F09/US01/T04) and
-  Documents (badge `N to review`, accent, when this browser has a tracked
-  document in `NeedsReview`, else `N docs`, else no badge --
-  `src/routes/documents/documentStore.ts`'s session-scoped tracked list).
-  **Known gap (task E13/F09/US01/T03, out of that task's own
-  `components/shell/**` do-not-touch scope):** `GET /api/documents` exists
-  now and `routes/documents/` reads it exclusively
-  (`useDocumentsList.ts`), but nothing under `routes/documents/` calls
-  `documentStore.ts#rememberDocument` any more, so this rail badge silently
-  reads as empty (no badge, never `N to review` / `N docs`) for any session
-  that starts after this change -- see `documentStore.ts`'s own header
-  comment for the full provenance. A follow-up `components/shell/` task
-  should replace this rail's `loadTrackedDocuments()` call with a real count
-  sourced from `listDocuments` (e.g. a small `useDocumentCounts` hook
-  `AppShell.tsx` fetches once, the same shape
-  `useValidatedContractCount.ts` already establishes for the secondary rail
-  tier below), then `documentStore.ts` can be deleted outright.
+  Documents (badge `N to review`, accent, off the server's
+  `counts.needsReview`, else `N docs` off `counts.all`, else no badge --
+  `useDocumentCounts.ts`, one `listDocuments({ pageSize: 1 })` read
+  `AppShell.tsx` makes once per mount and passes down beside the validated
+  contract count, the same shape `useValidatedContractCount.ts` establishes
+  for the secondary tier below; task E16/F03/US01/T01, wave w15, NW-10 --
+  the `sessionStorage` tracker this badge used to read is deleted).
   **Secondary, "From
   your contracts"**: Portfolio, Renewals (badge = the validated-contract
   count), Quote check (badge is always the constant `optional`) -- the whole
@@ -366,8 +357,8 @@ upload-then-table screen:
 2. **List** (`AttentionFilter.tsx` + `DocumentStatusTable.tsx`) -- the
    default once anything exists; server-backed
    (`useDocumentsList.ts`, `GET /api/documents`, R-DOC-06 "reloading the
-   browser shows the same list as before"), not the V1 `sessionStorage`
-   table (see "`documentStore.ts` is deprecated..." below).
+   browser shows the same list as before"), never a client store -- every
+   number on it is the server's own `counts` (ADR-027 §D7).
 3. **Review, a state of Documents** (`ReviewState.tsx`,
    `?review=<documentId>`) -- rendered in place of the list, never a
    separate route.
@@ -412,20 +403,37 @@ upload-then-table screen:
   (`documentTable.ts#DOCUMENT_PROCESSING_STAGES`: Uploading · Classifying ·
   OCR / text · Sections & tables · Extracting facts · Validating schema)
   read straight off `GET /api/documents`'s own `stage` field, polled every
-  2 s while any row is non-terminal (`useDocumentsList.ts`, R-DOC-09) and
-  stopped once every row is terminal.
-- **"Not added" card, R-DOC-04** (`UploadResultCard.tsx`,
-  `uploadPipeline.ts#getRejectionReasonCopy`) -- a rejected file never
-  becomes a row and is never counted in the list summary; copy is keyed by
-  the admission gate's own `reason`: `not_a_contract` ("this looks like a
-  recipe, not a contract...") or `no_readable_text` ("Raffa could not read
-  any contract text in this file...") for a `422`, the server's own message
-  for a `415` (wrong format) or an oversized file rejected client-side
-  before any request is sent -- all quoted verbatim from
-  `inputs/requirements.md` §6, not the backend's own shorter `hint`
-  fragment. A `Quote`-typed outcome offers "Open Quote check" -> `/quotes`
+  2 s while any row is non-terminal (`useDocumentsList.ts`, R-DOC-09). A
+  stored row with no stage yet reads **Queued…** (the bytes are durable, a
+  Worker has not picked the job up); a local pre-201 row reads
+  **Uploading…**. The poll has a five-minute no-change budget
+  (`components/shell/usePollBudget.ts`, ADR-012 w15 §17): after it, rows
+  stay exactly as the server last said and a list-level `.hint` --
+  "Nothing has changed for five minutes, so this page stopped checking for
+  updates." -- offers **Check again**; nothing is re-labelled. The same
+  hook drives Ask's off state, Portfolio's zero state and Contract 360's
+  "still being prepared" state (ADR-020 w15 §8.3).
+- **"Not added" row, R-DOC-04 / ADR-020 w15 §1 and §6** -- a refused file
+  is a *row* reading **Not added** (`.tag-outline`, ADR-019 w15 clause 1),
+  never a card. The content gate runs on the Worker after the upload has
+  returned, so `not_a_contract` / `no_readable_text` arrive as the server's
+  own `Rejected` row with a `rejectionReason` code that
+  `uploadPipeline.ts#getRejectionReasonCopy` maps onto the requirements'
+  sentences (the "Not added: " lead-in is gone -- the tag is the lead-in;
+  an unknown code renders no hint, never a guess); such rows live under the
+  **Not added · K** chip, which reads the server's `status=Rejected` bucket,
+  and are never in "All documents" (`counts.all` excludes them). An
+  oversized file (refused in the browser, no request) and a 413/415
+  (refused in-request) render as a **local** row with designed copy --
+  `getOversizedCopy` / `getRefusalCopy`; the server's error prose is never
+  rendered -- with no next step and no dismiss (a reload clears it). A
+  `Quote`-typed outcome offers "Open Quote check" -> `/quotes`
   (`documentTable.ts#getRowAction`, OQ-askv2-008's own assumption: no
   automatic Quote record, just a hand-off).
+- **The optimistic row leaves on evidence** (ADR-012 w15 §5): the 201's
+  server id is recorded on the local entry, which is dropped only once the
+  server list carries that id -- never on a timer, and a failed reload keeps
+  the row on screen with the error inline.
 - `tenantId` is still read directly from `loadCurrentWorkspace()`
   (`src/routes/signin/workspaceStore.ts`), not threaded as a prop -- the
   same posture V1 already took; `apiClient` is still threaded as a prop
@@ -530,11 +538,10 @@ of backend state (AC-6) -- once the real backend lands, only its own
 response shapes need reconciling against what is already documented here,
 never the other way around.
 
-**`documentStore.ts` is deprecated for this route, kept only for
-`RailNav.tsx`'s own "N to review"/"N docs" badge**, which this task's own
-`components/shell/**` do-not-touch boundary could not rewire -- see "App
-shell, navigation, and the role guard" above for the full gap and its own
-named follow-up.
+**`documentStore.ts` is gone** (task E16/F03/US01/T01, wave w15): the
+rail badge reads `useDocumentCounts.ts` -- see "App shell, navigation, and
+the role guard" above -- and no client store stands in for
+`GET /api/documents` anywhere.
 
 ### Portfolio (ADR-024 V2, `raffa-v2/screens-v2.md` #6; originally ADR-020 screen 4, task E07/F01/US01/T01)
 
@@ -681,11 +688,16 @@ per-user conversations.
 - **Off** (`AskOffState.tsx`, R-ASK-10) -- gated by `useValidatedContractCount`'s `kbReady`, the same
   shell hook `AppShell.tsx`/`GlobalAskBar.tsx` already share for the identical signal, never
   re-derived here. Fixed headline ("Ask needs at least one validated contract.") never varies; the
-  reason + CTA do (`askViewModel.ts#buildOffCopy`): "Upload a contract first" / "Upload a contract"
-  when the tenant has no document at all, "still processing or waiting for review" / "Go to
-  Documents" once at least one exists but none is validated yet (`GET /api/documents`'s own
-  `totalCount`, fetched only while off -- not the session-only `documentStore.ts` tracker the rail
-  badge's own known gap above already documents as broken).
+  reason + CTA do (`askViewModel.ts#buildOffCopy`, three states read off `GET /api/documents`'s
+  own `counts` -- never `totalCount`, which counts a failed document too; task E16/F03/US01/T01,
+  ADR-020 w15 §2.1): "Upload a contract first" / "Upload a contract" when Raffa.ai holds no
+  document (`counts.all === 0`, so a tenant holding only refused files lands here), "still
+  processing or waiting for review" / "Go to Documents" while a document is `Uploaded`,
+  `Processing` or `NeedsReview`, and "Raffa.ai could not finish processing your documents." / "Go
+  to Documents" when documents are held but none is in flight or validated. While in flight the
+  one-row read repeats every 2 s under the shared five-minute budget (`usePollBudget.ts`) and the
+  gate re-reads the validated count, so Ask switches on without a reload; once the budget is spent
+  the block adds "Check again" beside its CTA.
 - **New chat** -- hello line (`ASK_HELLO`, "What do you want to know?"), scope line naming the
   validated count (`askViewModel.ts#buildScopeLine`, "Answers only from N validated contract(s) ·
   cites or abstains", the parenthetical supplier-name list omitted honestly until a future backend
@@ -729,9 +741,9 @@ per-user conversations.
   query…"`, `ROUTE_LINE_BY_INTENT`, and a raw `Document:<guid>`/`Clause:<guid>` chip are gone with
   the V1 screen this task deleted -- the "thinking" copy (`THINKING_COPY`) is the one line kept
   verbatim.
-- **`X-User-Id` on every call** (`client.ts`, OQ-askv2-005/ADR-022) -- see "API client" below for the
-  full header provenance; today only `/api/conversations*` actually reads it
-  (`ConversationsEndpointExtensions.TryResolveUserId`).
+- **`Authorization: Bearer <token>` on every call** (`client.ts`, task E18/F01/US02/T01, NW-05;
+  ADR-012 w15 footer clause 1) -- see "API client" below for the full header provenance; the interim
+  `X-User-Id` header this bullet used to name is deleted, not conditional.
 
 ### Renewals (ADR-024 V2, `raffa-v2/screens-v2.md` #7; originally ADR-020 screen 8, task E08/F01/US01/T01)
 
@@ -839,10 +851,19 @@ An Admin also gets a fourth `Actions` column and the **Invite a colleague** pane
 errors still block; the domain check is a typo guard, never a safeguard -- the server has no domain
 rule), Procurement first then Workspace Admin with the D8 summaries "Asks, uploads, reviews, triages
 renewals" / "Also deletes documents and manages members", block **Send invitation**, then the
-server's own `mailDelivered` fact in exactly two strings: "Invitation sent to {email}." or
-"Invitation ready for {email}." with a copyable single-use link (`new URL(acceptUrl,
-window.location.origin)`), its expiry and a **Copy link** button -- the client never infers delivery
-from a 201. `Actions` lets an Admin **revoke** an `Invited` row (`DELETE .../invites/{id}`) or
+server's own `deliveryOutcome` string in exactly three states (task E17/F02/US01/T01, wave w15;
+ADR-020 w15 §3): "Invitation sent to {email}." (no link), "Invitation created, but the email could
+not be sent." (the copyable link is the remedy) or "Invitation ready for {email}." (no transport
+configured) -- the last two with the single-use link (`new URL(acceptUrl, window.location.origin)`,
+absolute since the API composes it from `Invitations__AcceptUrlBase`), its expiry and a **Copy
+link** button -- plus "They will get a one-time code from Microsoft the first time they sign in."
+while the 201's `identityProvisioned` is true. The client never infers delivery from a 201 and
+never combines `mailDelivered` with the outcome. A declared **502** (the company directory would
+not provision the guest -- `consent_missing` / `provisioning_failed` / `directory_unavailable`, plus
+a catch-all so no raw code is ever rendered) renders its designed sentence with "No invitation was
+created." beneath it; there is no "resend" affordance on the pane, because the server cannot re-send
+the original link and any retry is a re-issue that kills it -- the roster row's **Send a new
+invitation** is the one re-issue path. `Actions` lets an Admin **revoke** an `Invited` row (`DELETE .../invites/{id}`) or
 **remove** an `Active` one (`DELETE .../members/{membershipId}`), each confirmed **inline in the
 row** (never a dialog) with its own consequence copy -- revoke never claims a grant that never
 existed; remove says the person loses access -- and the sole remaining Admin's Remove renders
@@ -1033,16 +1054,40 @@ Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
   `POST /api/conversations/{id}/messages` (the reply contract), `GET /api/capabilities`,
   `GET /api/market/records/{id}`, and `supplierName` on the portfolio/360/renewals/documents
   responses -- the seventh web epic to extend this document (see "API client" provenance paragraphs
-  above), and the first to add a header every method in this file now sends when supplied:
+  above), and the first to add a header every method in this file sent when supplied: the interim
   `X-User-Id` (`userIdHeaders`, OQ-askv2-005/ADR-022), resolved lazily via a `getUserId` callback
-  `main.tsx` supplies once MSAL resolves an account, mirroring `X-Tenant-Id`'s own
-  resolved-per-request shape -- an absent/blank id omits the header key entirely (never a blank
-  `X-User-Id: ""`), so every pre-existing call site/test keeps its exact `toEqual` headers check
-  passing unchanged. `getCapabilities`/`getMarketRecord` are the first genuinely tenant-agnostic
-  reads in this file (no `X-Tenant-Id` at all -- the catalog and the market index are both
-  static/shared, not per-tenant); `getCapabilities` also has no documented non-2xx body
-  (`CapabilitiesEndpointExtensions` has no failure branch), so its own error path is a status-based
-  message only, never an attempted JSON parse, unlike every write/tenant-scoped read above it.
+  `main.tsx` supplied once MSAL resolved an account, mirroring `X-Tenant-Id`'s own
+  resolved-per-request shape. **Deleted whole by task E18/F01/US02/T01 below**, not left as a
+  fallback. `getCapabilities`/`getMarketRecord` are the first genuinely tenant-agnostic reads in this
+  file (no `X-Tenant-Id` at all -- the catalog and the market index are both static/shared, not
+  per-tenant); `getCapabilities` also has no documented non-2xx body (`CapabilitiesEndpointExtensions`
+  has no failure branch), so its own error path is a status-based message only, never an attempted
+  JSON parse, unlike every write/tenant-scoped read above it.
+
+- **Task E18/F01/US02/T01 (wave w15, NW-05; ADR-012 w15 footer clause 1, ADR-010 w14 footer clause
+  3)** made the SPA send the token it already asks Entra for. `createApiClient`'s identity parameter
+  is now an **async token accessor** (`GetAccessToken`, `client.ts`), and **one** internal helper
+  (`authHeaders`) attaches `Authorization: Bearer <token>` to every request -- the 37 inline spreads
+  of the old synchronous `userIdHeaders(getUserId)` (one per method, the same 37-call-site count the
+  ADR names) collapse to that one choke point, verified this wave by a vitest case that enumerates
+  the whole `ApiClient` surface and asserts every method attaches the header
+  (`tests/api/client.test.ts`). The interim `X-User-Id` header, its `userIdHeaders` helper, the
+  synchronous `GetUserId` accessor, and `main.tsx`'s closure over
+  `getAllAccounts()[0]?.username` are all **deleted**, not made conditional. Acquisition
+  (`auth/msalConfig.ts#acquireApiAccessToken`) is `acquireTokenSilent({ scopes:
+  appConfig.oidcApiScopes, account })`, falling back to `acquireTokenPopup` only on
+  `InteractionRequiredAuthError` -- **never** `acquireTokenRedirect`, because a redirect unloads the
+  page and on `/invite/accept` would destroy the in-memory invitation token. A `401` after a
+  successful silent acquisition is treated as a server rejection, not a stale token: it is surfaced
+  exactly as before (no call site retries), never triggering a second acquisition. The access token is
+  never stored -- read from MSAL's own cache per request, never copied into React state, a module
+  variable, or either Web Storage -- and the SPA still reads no `roles` claim from it: `role` keeps
+  coming from the `GET /api/workspaces` row (`components/shell/workspaceRole.ts`'s least-privilege
+  parse, unchanged). `X-Tenant-Id` is unaffected: it continues to be sent as a selector alongside the
+  new `Authorization` header, and the `raffa.signin.currentWorkspace` hint's four-way resolution order
+  survives unchanged (OQ-w15-ca-03). No OpenAPI/contract edit and no CI change -- the generator parses
+  only `responses`, so headers stay hand-written by construction, and `buildLoginRequest` already
+  requested `appConfig.oidcApiScopes` before this task.
 
 - **Task E15/F01/US01/T01 (invitation-lifecycle-api, wave w14; ADR-025/ADR-026)** extended
   `openapi/raffa-api.v1.json` with `DELETE /api/workspaces/{tenantId}/invites/{id}`
@@ -1091,9 +1136,9 @@ web/
   src/
     api/
       generated/schema.ts     # AUTO-GENERATED; do not edit by hand
-      client.ts                # createApiClient(baseUrl, getUserId?) -> { getHealth(), createWorkspace({ name }), uploadDocument(tenantId, file), getDocument(tenantId, id), listDocuments(tenantId, query?), getDocumentPreviewUrl(tenantId, id), reprocessDocument(tenantId, id), deleteDocument(tenantId, id), getPortfolio(tenantId, query?), getContract360(tenantId, id), getRenewals(tenantId), getRenewalPriority(tenantId, contractId), getCorrectionHistory(tenantId, id), correctContract(tenantId, id, request), postRenewalAction(tenantId, contractId, request), askRaffa(tenantId, request), uploadQuote(tenantId, file, fields?), getQuoteAssessment(tenantId, id), recalculateQuoteAssessment(tenantId, id, mappings?), captureNegotiationOutcome(tenantId, request), getSavingsKpis(tenantId), getSavingsOpportunities(tenantId), listConversations(tenantId), createConversation(tenantId, request?), getConversation(tenantId, id), postMessage(tenantId, conversationId, request), getCapabilities(), getMarketRecord(id) } -- every method also sends X-User-Id when getUserId is supplied (task E13/F09/US01/T04, OQ-askv2-005)
+      client.ts                # createApiClient(baseUrl, getAccessToken?) -> { getHealth(), createWorkspace({ name }), uploadDocument(tenantId, file), getDocument(tenantId, id), listDocuments(tenantId, query?), getDocumentPreviewUrl(tenantId, id), reprocessDocument(tenantId, id), deleteDocument(tenantId, id), getPortfolio(tenantId, query?), getContract360(tenantId, id), getRenewals(tenantId), getRenewalPriority(tenantId, contractId), getCorrectionHistory(tenantId, id), correctContract(tenantId, id, request), postRenewalAction(tenantId, contractId, request), askRaffa(tenantId, request), uploadQuote(tenantId, file, fields?), getQuoteAssessment(tenantId, id), recalculateQuoteAssessment(tenantId, id, mappings?), captureNegotiationOutcome(tenantId, request), getSavingsKpis(tenantId), getSavingsOpportunities(tenantId), listConversations(tenantId), createConversation(tenantId, request?), getConversation(tenantId, id), postMessage(tenantId, conversationId, request), getCapabilities(), getMarketRecord(id) } -- every method attaches `Authorization: Bearer <token>` when getAccessToken resolves one (task E18/F01/US02/T01, NW-05), through the one `authHeaders` choke point
     config/appConfig.ts       # fetch + validate runtime config
-    auth/msalConfig.ts        # AppConfig -> MSAL Configuration (no secret, ever)
+    auth/msalConfig.ts        # AppConfig -> MSAL Configuration (no secret, ever); acquireApiAccessToken(instance, appConfig) -- acquireTokenSilent, falling back to acquireTokenPopup (task E18/F01/US02/T01)
     styles/                   # design system (tokens + component catalogue); see below
     routes/
       signin/               # ADR-018 `/signin`; gated on MSAL auth state, not a URL route (see "Screens" above)
@@ -1520,10 +1565,16 @@ verdict is that step's line in the report, not the file's exit code.
 | N3b-6/7/8 | **Remove** -> inline **Yes, remove** -> the row is gone; the invitee's next load no longer offers that workspace; the used link renders "This invitation is no longer valid." | same |
 
 Without the second account the whole group `test.skip`s with the named reason
-*"requires a second Entra account on the pilot tenant"* -- the operator prerequisite
-`reports/audit/w14-hitl.md` records. It need **not** share the Admin's email domain:
-after w14 the cross-domain invite check is a non-blocking warning (ADR-001 w14
-footer; `memberViewModel.ts#inviteDomainWarning`), never a block.
+*"requires reading the invitee's one-time passcode"* -- w15's NW-67 has Raffa
+provision the invitee's second Entra account itself (a B2B guest, created via
+Microsoft Graph at invite time; ADR-025 §J.8b), so a pre-existing second account
+is no longer the operator prerequisite this section originally recorded here for
+w14. There is no mail-catcher this wave to read that emailed passcode
+automatically (a `dev`-only one is bounded future work for NW-50, W18 -- ADR-025
+§J.8c), so `RAFFA_E2E_SECOND_ENTRA_EMAIL` / `_PASSWORD` below still cannot be
+supplied by a script. It need **not** share the Admin's email domain: after w14
+the cross-domain invite check is a non-blocking warning (ADR-001 w14 footer;
+`memberViewModel.ts#inviteDomainWarning`), never a block.
 
 ### Running it
 

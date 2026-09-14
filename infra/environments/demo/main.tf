@@ -91,6 +91,9 @@ module "identity" {
   location            = var.location
   resource_group_name = azurerm_resource_group.this.name
   web_redirect_uri    = "https://${module.staticwebapp.default_host_name}/"
+  # Task E16/F01/US01/T01 (NW-67): demo stays false until its own
+  # post-promotion acceptance (ADR-016 w15 footer clause 14).
+  guest_provisioning_enabled = var.guest_provisioning_enabled
 }
 
 # ADR-005: PostgreSQL Flexible Server, Burstable "B_Standard_B1ms" (module
@@ -114,13 +117,29 @@ module "storage" {
   resource_group_name = azurerm_resource_group.this.name
 }
 
-# ADR-005: Service Bus Standard tier (topics + sessions for extraction
-# events) -- Basic is rejected because it omits topics.
+# ADR-005: Service Bus Standard tier (topics for extraction events) --
+# Basic is rejected because it omits topics. Sessions are deliberately NOT
+# enabled on the document-processing subscription (modules/servicebus);
+# the comment this replaces predates the subscription and was corrected by
+# cloud-architect's ADR-005 w15 footer §6.
 module "servicebus" {
   source = "../../modules/servicebus"
 
   environment         = local.environment
   location            = var.location
+  resource_group_name = azurerm_resource_group.this.name
+  # Task E16/F01/US01/T01 (ADR-011 w15 footer §2a): this root's OWN
+  # identity module instance only -- never dev's -- so the two
+  # topic-scoped role assignments never cross envs.
+  workload_principal_id = module.identity.workload_principal_id
+}
+
+# Task E16/F01/US01/T01 (NW-68, ADR-005/ADR-007 w15 footers): one set of
+# ACS resources per environment, never shared with dev's.
+module "communication" {
+  source = "../../modules/communication"
+
+  environment         = local.environment
   resource_group_name = azurerm_resource_group.this.name
 }
 
@@ -148,6 +167,28 @@ module "containerapps" {
   ai_gateway_project_name                     = module.foundry.foundry_project_name
   ai_gateway_document_intelligence_connection = module.foundry.document_intelligence_connection
   ai_gateway_model_env                        = module.foundry.model_env
+  # Task E16/F01/US01/T01 (NW-27, ADR-007 w15 footer §2): this root's OWN
+  # module.servicebus instance only -- never dev's.
+  servicebus_namespace_name    = module.servicebus.name
+  servicebus_fqdn              = module.servicebus.fqdn
+  servicebus_topic_name        = module.servicebus.topic_name
+  servicebus_subscription_name = module.servicebus.subscription_name
+  # ADR-005 w15 footer §2: pinned explicitly (equals the module default)
+  # so both ceilings are visible at the env root.
+  api_max_replicas    = 3
+  worker_max_replicas = 3
+  # Task E16/F01/US01/T01 (NW-68): this root's OWN module.communication and
+  # module.keyvault instances only -- never dev's.
+  acs_connection_secret_id = module.keyvault.acs_connection_secret_versionless_id
+  acs_sender_address       = module.communication.sender_address
+  invitation_mail_enabled  = var.invitation_mail_enabled
+  # Task E16/F01/US01/T01 (NW-05, NW-67): this root's OWN module.identity
+  # instance only -- never dev's.
+  azuread_authority          = module.identity.issuer
+  azuread_tenant_id          = module.identity.tenant_id
+  azuread_client_id          = module.identity.api_client_id
+  azuread_audience           = module.identity.api_identifier_uri
+  guest_provisioning_enabled = var.guest_provisioning_enabled
 }
 
 # ADR-008 amendment 2026-09-09: demo NEVER creates the shared account (the
@@ -214,6 +255,9 @@ module "keyvault" {
   ci_deploy_principal_id     = data.azuread_service_principal.ci_deploy.object_id
   postgres_connection_string = module.postgres.connection_string
   storage_connection_string  = module.storage.primary_connection_string
+  # Task E16/F01/US01/T01 (NW-68, ADR-011 w15 footer §1): this root's OWN
+  # module.communication instance only -- never dev's.
+  acs_connection_string = module.communication.primary_connection_string
 }
 
 # ADR-005: Container Registry Basic tier, one per environment (isolation

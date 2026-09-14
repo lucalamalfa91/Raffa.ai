@@ -14,3 +14,4 @@ python scripts/check_slice_prereqs.py --slice <id>
 | Slice | Tasks | Tokens | Previous | Epics | Title | Source |
 |-------|-------|--------|----------|-------|-------|--------|
 | `w14` | 11 | 15.8M | e13 | E14, E15 | W14 — workspace is real: membership, discovery, roster, role, profile, invitation lifecycle | inputs/next/next-waves-todo.md |
+| `w15` | 11 | 16.1M | w14 | E16, E17, E18 | W15 — upload feels instant, and inviting a colleague works end to end | inputs/next/w15-todo.md |

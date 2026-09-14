@@ -37,3 +37,19 @@ variable "ai_gateway_extra_env" {
   type        = map(string)
   default     = {}
 }
+
+# Task E16/F01/US01/T01 (NW-68, ADR-005 w15 footer §5 rule 3 / ADR-016 w15
+# footer clause 14): both false at this merge -- flipped by a one-line PR
+# after demo's own post-promotion acceptance (OQ-w15-dm-01: demo's infra
+# moves at this merge even though its code does not).
+variable "invitation_mail_enabled" {
+  description = "Publishes Invitations__Mail__Enabled to the API app (ADR-005 w15 footer). demo: false until its own acceptance."
+  type        = bool
+  default     = false
+}
+
+variable "guest_provisioning_enabled" {
+  description = "Enables the count-gated Graph app-role assignment (modules/identity) and publishes Invitations__GuestProvisioning__Enabled (modules/containerapps). demo: false until its own acceptance."
+  type        = bool
+  default     = false
+}

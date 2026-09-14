@@ -421,7 +421,7 @@
         },
         "responses": {
           "201": {
-            "description": "An invitation was issued (task E15/F01/US01/T01, wave w14; ADR-025 §D.1, ADR-026 §D5). This is an offer, not a grant: no workspace_membership row is written until the invitee calls POST /api/invites/accept. acceptUrl is site-relative (/invite/accept#<token>, ADR-025 Rule C9) and the token appears in this response exactly once -- it is never persisted client-side and never resent. mailDelivered is a server fact (ADR-026 §D6): false in w14 by construction (NullInvitationMailer, OQ-w14-002), so the UI must not claim a mail was sent.",
+            "description": "An invitation was issued (task E15/F01/US01/T01, wave w14; ADR-025 §D.1, ADR-026 §D5). This is an offer, not a grant: no workspace_membership row is written until the invitee calls POST /api/invites/accept. Since task E17/F01/US01/T01 (wave w15, NW-67/NW-68; ADR-026 w15 footers §1/§4/§8, ADR-025 §J): the guest was provisioned in the company directory BEFORE this row was written (a provisioning failure is the 502 below, never a 201); acceptUrl is absolute ({Invitations__AcceptUrlBase}/invite/accept#<token>) when a base is configured and site-relative otherwise -- the token stays after the `#` (ADR-025 Rule C9) and appears in this response exactly once; the mail, when a transport is configured, is the second channel for the same link. `deliveryOutcome` is the one discriminant the pane branches on; `mailDelivered` stays what it always was (the mailer's own bool, accepted for delivery, never a receipt) and `deliveryOutcome == \"sent\"` if and only if `mailDelivered`. A live invitation for the same address is REPLACED by this call (revoked and re-issued in one transaction), so the link the Admin already shared stops working.",
             "content": {
               "application/json": {
                 "schema": {
@@ -454,9 +454,22 @@
                       "type": "string",
                       "description": "Site-relative /invite/accept#<token> -- a URL fragment, never a path or query string (ADR-025 Rule C9)."
                     },
+                    "deliveryOutcome": {
+                      "type": "string",
+                      "enum": [
+                        "sent",
+                        "mail_failed",
+                        "no_transport"
+                      ],
+                      "description": "ADR-026 w15 footer §8: the server's own delivery discriminant -- `sent` (the mail was accepted for delivery), `mail_failed` (a transport is configured and refused; the copyable acceptUrl is the remedy), `no_transport` (no mail transport is configured; the copyable acceptUrl is the only channel). Non-nullable with an enum on purpose (ADR-012 w15 §9): the generator renders a literal union, which is what keeps the pane's three-arm branch exhaustive under tsc. There is no fourth value -- a guest-provisioning failure is the 502 below, not a 201."
+                    },
                     "mailDelivered": {
                       "type": "boolean",
-                      "description": "Whether IInvitationMailer actually sent it. Always false in w14 (no transport, OQ-w14-002) -- the UI shows the copyable acceptUrl instead of claiming a mail was sent."
+                      "description": "IInvitationMailer.TrySendAsync's own return: accepted for delivery, never a delivery receipt (ADR-025 §J.6e). Equals `deliveryOutcome == \"sent\"` by construction; the client branches on `deliveryOutcome` and never combines the two."
+                    },
+                    "identityProvisioned": {
+                      "type": "boolean",
+                      "description": "ADR-026 w15 footer §1: true when the company directory holds a guest for this address after the call -- created by it or already present, deliberately indistinguishable (ADR-025 §J.4a, no directory-enumeration oracle) -- and false when guest provisioning is not configured (Invitations__GuestProvisioning__Enabled). `false` means NOT CONFIGURED, never failed: a failure is the 502 below. The pane keys the one-time-code sentence to this boolean."
                     }
                   },
                   "required": [
@@ -465,7 +478,9 @@
                     "role",
                     "expiresAt",
                     "acceptUrl",
-                    "mailDelivered"
+                    "deliveryOutcome",
+                    "mailDelivered",
+                    "identityProvisioned"
                   ]
                 }
               }
@@ -482,11 +497,35 @@
             }
           },
           "409": {
-            "description": "This email already holds that role, or already has a live (unaccepted, unrevoked) invitation in this workspace -- at most one may exist per email at a time regardless of role (ADR-026 §D4's partial unique index). A removed person (no live membership, and their prior invitation revoked by the removal itself) is not blocked by this -- see DELETE /api/workspaces/{tenantId}/members/{membershipId}.",
+            "description": "This email already holds that role in this workspace (a live MEMBERSHIP is never re-issued), the workspace has reached its cap of live invitations (100 distinct addresses, ADR-025 §J.1c.4), or two concurrent invites for one address raced ADR-026 §D4's partial unique index. Since task E17/F01/US01/T01 (ADR-025 §J.2b) a live (unaccepted, unrevoked) invitation is NOT a 409 any more: it is replaced by the new one in one transaction. A removed person (no live membership, and their prior invitation revoked by the removal itself) is not blocked by this -- see DELETE /api/workspaces/{tenantId}/members/{membershipId}.",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "string"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Task E17/F01/US01/T01 (wave w15; ADR-026 w15 footer §3, ADR-025 §J.2a/§J.4): the company directory did not provision a guest for this address, so the invitation was ABORTED -- no invitation row, no token, no mail; the address slot is free and the Admin may retry at once. `failureReason` is a closed set the pane maps onto ADR-020 w15 §3.5's copy (and a catch-all row for any value outside it); the directory's own error body is never surfaced (§J.4b). Declared inline, non-nullable, with an enum, so the generated client types it and the pane never string-matches server prose (ADR-012 w15 §13.2).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "failureReason"
+                  ],
+                  "properties": {
+                    "failureReason": {
+                      "type": "string",
+                      "enum": [
+                        "consent_missing",
+                        "provisioning_failed",
+                        "directory_unavailable"
+                      ],
+                      "description": "`consent_missing`: the directory answered 401/403 -- the User.Invite.All application permission is not consented or a directory policy forbids invitations. `provisioning_failed`: the directory refused this request (an address it will not add, a refused domain). `directory_unavailable`: the directory could not be reached or failed on its side."
+                    }
+                  }
                 }
               }
             }
@@ -673,8 +712,8 @@
     "/api/documents": {
       "post": {
         "operationId": "uploadDocument",
-        "summary": "Upload a document for processing.",
-        "description": "Maps to the inline handler in Program.cs (task E01/F06/US01/T01 upload; task E02/F06/US01/T01 adds the synchronous parse -> classify -> extract pipeline before responding). Interim X-Tenant-Id header placeholder pending ADR-010 claim-based tenant resolution -- see Program.cs's own comment on this endpoint for why this gap is not yet promoted to reports/open-questions.md.",
+        "summary": "Upload a document; stored at once, processed by the Worker afterwards.",
+        "description": "Maps to Raffa.Api.DocumentsEndpointExtensions.UploadDocumentAsync. Task E16/F02/US03/T01 (ADR-027 §D1): the request returns as soon as the bytes are durable in blob storage and a `document` row plus a queued `extraction_job` exist -- no parse, no classification and no AI-gateway call happen on the request path any more. The Worker (Raffa.Worker, ADR-027 §D2/§D3) claims the job from the durable queue and runs admission + the parse -> classify -> extract pipeline; poll `GET /api/documents/{id}` or `GET /api/documents` to watch `processingStatus` move from `Uploaded` to `Processing` and then to a terminal value (`Completed`, `NeedsReview`, `Failed`, or `Rejected` with a `rejectionReason`). Size (413) and format (415) are still refused on the request path -- they need no AI. Interim X-Tenant-Id header placeholder pending ADR-010 claim-based tenant resolution.",
         "parameters": [
           {
             "name": "X-Tenant-Id",
@@ -707,7 +746,7 @@
         },
         "responses": {
           "201": {
-            "description": "Admitted by the gate, stored, and processed synchronously; `contractId` is null only when the pipeline itself failed after the upload was already durable. `mimeType` is the sniffed canonical type (`application/pdf`, the two OOXML types, `image/png`, `image/jpeg`), never the browser's declared `Content-Type`. `processingStatus` reflects the pipeline's own run (task E02/F06/US01/T01), which reuses the parse and classification the admission gate already computed -- the classify role is called once per upload.",
+            "description": "Stored and queued (ADR-027 §D1). `contractId` is always null here: no contract exists until the Worker has classified and extracted the document. `processingStatus` is always `Uploaded` at this point; the wider enum is the same one every other document surface uses. `mimeType` is the sniffed canonical type (`application/pdf`, the two OOXML types, `image/png`, `image/jpeg`), never the browser's declared `Content-Type`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -737,7 +776,8 @@
                         "Processing",
                         "NeedsReview",
                         "Completed",
-                        "Failed"
+                        "Failed",
+                        "Rejected"
                       ]
                     },
                     "createdAt": {
@@ -790,7 +830,7 @@
             }
           },
           "422": {
-            "description": "Task E13/F04/US01/T01: the admission gate (`DocumentAdmissionGate`) rejected this document *after* parse/OCR and classification but *before* any blob or `document`/`embedding` row was written (ADR-024 \"gate before persistence\") -- ADR-024's own structured body, `inputs/requirements.md` §6. `reason` is `not_a_contract` (classified type is `Other`, or confidence < `Documents:AdmissionThreshold`) or `no_readable_text` (parsed/OCR'd text below `Documents:MinReadableChars`) -- never both. `detectedType` uses the same widened enum GET /api/documents/{id} and GET /api/documents below use. The web client (task E13/F09/US01/T03) maps `reason` onto the requirements' own longer rejection copy for the \"Not added\" card; `hint` is the shorter, backend-owned fragment that copy quotes.",
+            "description": "Retired by task E16/F02/US03/T01 (ADR-027 §D6): the admission gate now runs in the Worker, after the upload has returned, so a document classified as `Other` (or with no readable text) is stored first and then marked `processingStatus: Rejected` with a `rejectionReason` on `GET /api/documents` / `GET /api/documents/{id}`; its blob is deleted at that point. Kept in the document only so older clients' typings still compile; the upload endpoint no longer emits it.",
             "content": {
               "application/json": {
                 "schema": {
@@ -872,10 +912,11 @@
                 "Processing",
                 "NeedsReview",
                 "Completed",
-                "Failed"
+                "Failed",
+                "Rejected"
               ]
             },
-            "description": "Exact match on Document.ProcessingStatus. Omit to return every status (the web client's own default read)."
+            "description": "Exact match on Document.ProcessingStatus (`Rejected` included since task E16/F02/US03/T01, ADR-027 §D6). Omit to return every status (the web client's own default read)."
           },
           {
             "name": "page",
@@ -907,7 +948,8 @@
                     "items",
                     "page",
                     "pageSize",
-                    "totalCount"
+                    "totalCount",
+                    "counts"
                   ],
                   "properties": {
                     "items": {
@@ -924,7 +966,8 @@
                           "stage",
                           "pageCount",
                           "createdAt",
-                          "weakFactCount"
+                          "weakFactCount",
+                          "rejectionReason"
                         ],
                         "properties": {
                           "id": {
@@ -971,7 +1014,8 @@
                               "Processing",
                               "NeedsReview",
                               "Completed",
-                              "Failed"
+                              "Failed",
+                              "Rejected"
                             ]
                           },
                           "stage": {
@@ -995,6 +1039,13 @@
                           "weakFactCount": {
                             "type": "integer",
                             "description": "Fields below the review threshold (spec §7.3), 0 once validated or for a document with none. Drives the row action's real \"Review N fields\" count (screens-v2.md #3)."
+                          },
+                          "rejectionReason": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "ADR-027 §D6: `not_a_contract` or `no_readable_text` while `processingStatus` is `Rejected` (the same reason codes ADR-024's retired 422 body carried); null for every other status. Not declared with `enum` alongside the nullable union -- same generator limitation this document's `stage` property documents."
                           }
                         }
                       }
@@ -1007,6 +1058,39 @@
                     },
                     "totalCount": {
                       "type": "integer"
+                    },
+                    "counts": {
+                      "type": "object",
+                      "description": "ADR-027 §D7 with §C5/§C9: tenant-wide, independent of `status`/`page` -- the same five numbers whichever page or filter was requested, so the rail badge, the segmented toggle and the summary line never disagree with the list. Five overlapping projections of one grouped query, never a partition: `needsAttention` (not `Completed`, not `Rejected`) contains `processing` (`Uploaded` + `Processing`), and `needsReview` sits inside both; `rejected` sits outside `all` altogether (a rejected file was never added). No sum holds, every surface reads exactly one member, and a client must not derive \"askable\" from `all - needsAttention` -- askability is the contract-level number `GET /api/workspaces` already carries.",
+                      "required": [
+                        "all",
+                        "needsAttention",
+                        "needsReview",
+                        "processing",
+                        "rejected"
+                      ],
+                      "properties": {
+                        "all": {
+                          "type": "integer",
+                          "description": "Every document of the tenant except the `Rejected` ones -- the \"All documents · N\" number, which is what makes \"never counted\" a server fact."
+                        },
+                        "needsAttention": {
+                          "type": "integer",
+                          "description": "Documents that are not `Completed` and not `Rejected` -- `Uploaded` + `Processing` + `NeedsReview` + `Failed` (ADR-027 §C9): exactly the set the web's own \"Needs your attention\" filter lists, computed once on the server so the chip's number and the rows it filters to are the same set. Contains `processing`."
+                        },
+                        "needsReview": {
+                          "type": "integer",
+                          "description": "Documents in `NeedsReview` alone (ADR-027 §C5) -- the \"K waiting for your review\" number; inside both `all` and `needsAttention`."
+                        },
+                        "processing": {
+                          "type": "integer",
+                          "description": "Documents in `Uploaded` or `Processing` -- still moving through the Worker."
+                        },
+                        "rejected": {
+                          "type": "integer",
+                          "description": "Documents in `Rejected` (ADR-027 §D6)."
+                        }
+                      }
                     }
                   }
                 }
@@ -1100,7 +1184,8 @@
                         "Processing",
                         "NeedsReview",
                         "Completed",
-                        "Failed"
+                        "Failed",
+                        "Rejected"
                       ]
                     },
                     "createdAt": {
@@ -1221,8 +1306,8 @@
     "/api/documents/{id}/reprocess": {
       "post": {
         "operationId": "reprocessDocument",
-        "summary": "Re-run hybrid parse + embedding (Admin only) so retrieval never cites raw bytes.",
-        "description": "Task E13/F04/US01/T02, documented ahead of that backend task landing in this worktree -- see this document's own top-level provenance note; shape from `inputs/requirements.md` R-DOC-07/§6, mirroring `Raffa.Documents.Contracts.Application.Extraction.DocumentProcessingSummary`'s own real fields (`DocumentReprocessService.ReprocessAsync`'s planned return value, task-02-documents-v2-api.md point 4) rather than an invented response shape. Same interim role posture as `deleteDocument` above.",
+        "summary": "Queue a re-run of hybrid parse + embedding (Admin only) so retrieval never cites raw bytes.",
+        "description": "Maps to Raffa.Api.DocumentsEndpointExtensions' reprocess handler backed by `Raffa.Documents.Contracts.Application.DocumentReprocessService`. Task E16/F02/US03/T01 (ADR-027 §D1): the old page-aware chunks are dropped, the document goes back to `Uploaded`, a fresh classification `extraction_job` is queued and the request returns 202 -- the Worker does the re-parse/re-embed afterwards, exactly like a first upload. Poll `GET /api/documents/{id}` for the terminal status; every new embedding row carries a page number (R-DOC-07 AC-2). Same interim role posture as `deleteDocument` above.",
         "parameters": [
           {
             "name": "X-Tenant-Id",
@@ -1245,44 +1330,26 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": "Re-parsed and re-embedded; every new embedding row carries a page number (R-DOC-07 AC-2).",
+          "202": {
+            "description": "Queued (ADR-027 §D1). `Location` points at `GET /api/documents/{id}`.",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "required": [
                     "documentId",
-                    "contractId",
-                    "documentType",
-                    "processingStatus",
-                    "pagesParsed",
-                    "chunksIndexed"
+                    "extractionJobId",
+                    "processingStatus"
                   ],
                   "properties": {
                     "documentId": {
                       "type": "string",
                       "format": "uuid"
                     },
-                    "contractId": {
+                    "extractionJobId": {
                       "type": "string",
-                      "format": "uuid"
-                    },
-                    "documentType": {
-                      "type": "string",
-                      "enum": [
-                        "Msa",
-                        "OrderForm",
-                        "Sow",
-                        "Amendment",
-                        "RenewalLetter",
-                        "Quote",
-                        "Invoice",
-                        "PriceList",
-                        "Nda",
-                        "Dpa",
-                        "Other"
-                      ]
+                      "format": "uuid",
+                      "description": "The queued classification job the Worker will claim (ADR-027 §D3)."
                     },
                     "processingStatus": {
                       "type": "string",
@@ -1291,14 +1358,10 @@
                         "Processing",
                         "NeedsReview",
                         "Completed",
-                        "Failed"
-                      ]
-                    },
-                    "pagesParsed": {
-                      "type": "integer"
-                    },
-                    "chunksIndexed": {
-                      "type": "integer"
+                        "Failed",
+                        "Rejected"
+                      ],
+                      "description": "Always `Uploaded` at this point; the wider enum is the one every other document surface uses."
                     }
                   }
                 }
@@ -1393,7 +1456,8 @@
                         "Processing",
                         "NeedsReview",
                         "Completed",
-                        "Failed"
+                        "Failed",
+                        "Rejected"
                       ],
                       "description": "Always `Completed` on a 200; the enum is the shared DocumentProcessingStatus vocabulary."
                     },
@@ -1565,7 +1629,8 @@
                     "items",
                     "page",
                     "pageSize",
-                    "totalCount"
+                    "totalCount",
+                    "processingDocumentCount"
                   ],
                   "properties": {
                     "items": {
@@ -1680,6 +1745,10 @@
                     "totalCount": {
                       "type": "integer",
                       "description": "Rows matching every filter including risk, across all pages -- not just items.length."
+                    },
+                    "processingDocumentCount": {
+                      "type": "integer",
+                      "description": "ADR-027 §D9: documents of the tenant still in `Uploaded` or `Processing`, independent of every filter and page -- so an empty portfolio can say \"3 documents are still being processed\" instead of \"no contracts\"."
                     }
                   }
                 }
@@ -1734,6 +1803,7 @@
                   "type": "object",
                   "required": [
                     "contractId",
+                    "readiness",
                     "header",
                     "tabs"
                   ],
@@ -1741,6 +1811,42 @@
                     "contractId": {
                       "type": "string",
                       "format": "uuid"
+                    },
+                    "readiness": {
+                      "type": "object",
+                      "description": "ADR-027 §D9: the one top-level answer to \"can this contract be shown yet?\", derived from the documents linked to the contract (§D8: `ready` = at least one linked document is `Completed`). The screen reads this instead of guessing from empty tabs whether extraction found nothing or has not run.",
+                      "required": [
+                        "state",
+                        "stage",
+                        "documentCount",
+                        "completedDocumentCount"
+                      ],
+                      "properties": {
+                        "state": {
+                          "type": "string",
+                          "enum": [
+                            "ready",
+                            "processing",
+                            "unavailable"
+                          ],
+                          "description": "`ready`: at least one linked document is `Completed`. `processing`: none is, and at least one is still `Uploaded`/`Processing`. `unavailable`: every linked document is terminal without a `Completed` one, or no document is linked at all."
+                        },
+                        "stage": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "description": "The Documents list's live stage string (`Uploading` | `Classifying` | `OCR / text` | `Sections & tables` | `Extracting facts` | `Validating schema`) of the linked document furthest along, present only while `state` is `processing`; null otherwise. Not declared with `enum` alongside the nullable union (ADR-012 w15 §9, generate-api-client.mjs#renderSchemaType)."
+                        },
+                        "documentCount": {
+                          "type": "integer",
+                          "description": "Documents linked to this contract, whatever their status."
+                        },
+                        "completedDocumentCount": {
+                          "type": "integer",
+                          "description": "Of those, how many are `Completed`."
+                        }
+                      }
                     },
                     "header": {
                       "type": "object",
@@ -2370,7 +2476,8 @@
                                   "Processing",
                                   "NeedsReview",
                                   "Completed",
-                                  "Failed"
+                                  "Failed",
+                                  "Rejected"
                                 ]
                               },
                               "createdAt": {
@@ -3414,7 +3521,8 @@
                         "Processing",
                         "NeedsReview",
                         "Completed",
-                        "Failed"
+                        "Failed",
+                        "Rejected"
                       ]
                     },
                     "lineItemCount": {

@@ -169,3 +169,121 @@ that is the whole of its enforcement.
 **Not decided here** (unchanged by this footer): branch protections, the
 promotion mechanism, and the CI credential method, which stay with the body,
 ADR-016 and ADR-015 respectively.
+
+## Amendment (2026-09-13, wave w15)
+
+Items **W15-01**, **NW-27**, **NW-05**, **NW-67**, **NW-68**. Seat:
+delivery-manager, reconciled with cloud-architect (the two HARD configuration
+orderings) and security-architect (NW-05 fails closed). Everything above is
+unchanged, both the body and the w14 footer, and `Status: accepted` stands.
+This footer **sharpens** the wave-base rule of w14 clause 1 and **extends** w14
+clause 2 for a wave whose Terraform is not empty. It relaxes no protection and
+changes no branch model.
+
+**1. The base SHA is read at the gate, never quoted from a wave document.**
+w14 clause 1 fixes the *act* (merge `origin/main` into the process branch) but
+a wave document also names a *commit*, and a commit moves. On this wave it
+already had: `reports/context/waves/w15-requirements.md` records `origin/main`
+as `3c89d35` and is stamped `18:15Z`, while `../.git/refs/remotes/origin/main`
+held **`6ae21b9`** — the ref advanced three times on 2026-09-13 (`6e14b39 →
+adb9ef6 → 3c89d35 → 6ae21b9`, every update a fast-forward). So the rule is: the
+wave base is `origin/main` **as read at the gate**, and W15-A1 records the SHA
+actually merged. Two reading traps, both verified on this checkout and both
+costing an operator a wrong answer rather than an error message:
+`../.git/packed-refs` is stale for **every branch ref this wave touches**
+(`origin/main` `3e1f359`, `integration` `333be648`, `origin/integration`
+`42f1c87a`) — **the loose ref wins**; tags, being immutable, are the one thing
+`packed-refs` may be trusted for.
+
+**2. A behind-base wave's merge must leave a zero product-tree delta.** w14
+clause 3 proves the base *builds*; it does not prove the base *contains* the
+previous wave. Five files differed on w15's base, three of them **shorter on
+the process branch** (`backend/README.md`, `web/README.md`,
+`web/e2e/day1.spec.ts`) and two absent (`docs/waves/w14-acceptance.md`,
+`web/e2e/invite.spec.ts`). A merge that resolves any of the three to the
+process-branch side **silently reverts the previous wave's README sweep and its
+e2e work**, and no build, no test and no deploy notices. The check is therefore
+mechanical and exact: after the merge,
+`git diff --stat origin/main..HEAD -- backend web infra .github docs scripts`
+is **empty**. "The cited files resolve" proves two of five and is not enough.
+
+**3. Green at the base commit means the test job, not the deploy.** w14 clause
+3(d) asks for one green `dev` deploy. The deploy job is `needs: build`
+(`backend.yml:83`), so a **red test job means the deploy never runs at all** —
+the operator sees *no deploy*, which reads as "nothing happened" rather than
+"the base is red". w14 closed blind to exactly this: `main` was red on two
+Testcontainers fixtures, fixed afterwards in PR #97. State it directly: **a red
+`main` is no `dev` deploy, and no `dev` deploy is no wave.** The
+`127.0.0.1:5432 refused` class is a **fixture gap**, never a flake to re-run.
+
+**4. `integration` is re-created from the wave base at the gate, never merged
+into.** w14 clause 2 names it as wave-scoped with no protection of its own, so
+re-creating it is free and reconciling it is not. It is **already diverged** on
+this clone: local `integration` `8ed3af1a`, `origin/integration` `271c3ae1`,
+neither an ancestor of the other by inspection. A wave that starts on a
+diverged `integration` either resurrects a previous wave's commits into its PR
+or loses its own. The operator also confirms no second wave is live against the
+same `integration` (`reports/execution/wave-close-e13.md:84-86`).
+
+**5. A wave that changes `infra/` has two merges to `main`, and the
+infrastructure one goes first.** This extends w14 clause 2; it does not relax
+it. The reason is mechanical, not stylistic: **an HCP apply is triggered by the
+merge**, so a single merge event cannot satisfy an ordering of the form "the
+apply is `CURRENT` before the image that reads it deploys" — and w15 carries
+two such orderings, both from cloud-architect and both fail-fast:
+`ConnectionStrings__Storage` on the worker, and the four `AzureAd__*` keys on
+the API. So:
+
+- **PR 1 — infrastructure only.** Opened from the wave's single `infra/`
+  writer (one task, phase 1), containing **only** files under `infra/` and
+  **no** application code. It is safe by construction: `backend.yml` and
+  `web.yml` are path-filtered to `backend/**` / `web/**` plus their own file
+  and two helper scripts (`backend.yml:16-23`, `web.yml:17-23`) — `infra/**`
+  appears in **neither**, so this merge deploys no image. Every key it adds is
+  either optional or unread by the running image, so the applies are
+  behaviourally inert; the `demo` root's per-environment flags default `false`
+  (ADR-016 w15 clause 14). The operator confirms both HCP workspaces reach
+  `CURRENT` before PR 2.
+- **PR 2 — the wave.** `integration → main`, still the wave's single merge
+  event **for code**, exactly as w14 clause 2 says.
+- It blocks nothing. PR 1 may merge while the later phases are still running:
+  an infra change's effect is not observable by the wave that wrote it
+  (ADR-016 w14 clause 3), so no `depends_on` edge points at it either way.
+- **Fallback if the operator cannot merge mid-wave**: the single-merge path
+  still works and is strictly worse — the worker crash-loops on its fail-fast
+  storage key and the API answers 401 until the apply lands and Terraform rolls
+  a new revision. Bounded, self-healing, and visible; expect it rather than
+  treat it as an incident.
+
+**6. w15's planned CI-YAML set is ZERO files.** w14 clause 4 applies unchanged:
+an unplanned `.github/workflows/**` diff is a defect and the final-integration
+task fails on it (`git diff --stat origin/main -- .github/workflows` must show
+no files). Two temptations are named so they are refused rather than discovered:
+repairing `backend.yml`'s stale "eight"/"six" strings (parked by ADR-016 w14 for
+"the next wave that legitimately opens `backend.yml`" — w15 does not), and
+repairing `reprocess-tenant-documents.yml`, which **NW-05 takes out of service**
+(ADR-016 w15 clause 21). If NW-27 turns out to need a new .NET module with its
+own migration script, or NW-05 a different Entra scope, the set becomes **one
+named file** and that is a table decision, never a task-time discovery.
+
+**7. W15-A1, the gate's content.** On the merged base, before
+`reports/plan/gates/w15.hitl-ok`: (a) `git fetch origin` and
+`git merge-base --is-ancestor origin/main HEAD` exits 0, **with the SHA written
+down** (clause 1); (b) the zero product-tree delta of clause 2; (c)
+`docs/waves/w14-acceptance.md` and `web/e2e/invite.spec.ts` resolve (implied by
+(b), listed because the wave cites them by name); (d) `backend.yml`'s
+**`build + test`** job and `web.yml`'s are green **at the base commit** (clause
+3); (e) one deploy to `dev` from the base is green, reaching "Verify schema
+applied (ADR-021)" (`backend.yml:305`); (f) **one interactive sign-in on
+deployed `dev` returns a token carrying `api://raffa-dev-api/Raffa.Read`**
+(`web.yml:204`) — carried forward from W14-A1 point 5 because **NW-05 makes
+that token load-bearing for the first time**: today the SPA requests the scope
+and discards it, so a mismatch is invisible now and becomes a total `dev`
+outage the moment NW-05 lands. Operator prerequisites recorded beside it in
+`reports/audit/w15-hitl.md`: an external mailbox the tenant has never seen
+(A15-4/A15-5), the apply identity's directory rights (ADR-015 w15 clause 2),
+`integration` re-created (clause 4), and the `demo-v4` decision (ADR-016 w15
+clause 18).
+
+**Not decided here** (unchanged): branch protections, the promotion mechanism
+and the CI credential method stay with the body, ADR-016 and ADR-015.

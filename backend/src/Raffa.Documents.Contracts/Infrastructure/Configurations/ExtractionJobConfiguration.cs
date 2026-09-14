@@ -23,6 +23,13 @@ public sealed class ExtractionJobConfiguration : IEntityTypeConfiguration<Extrac
         builder.Property(e => e.Status).HasConversion<string>().HasMaxLength(30);
         builder.Property(e => e.ModelId).HasMaxLength(200);
 
+        // Task E16/F02/US01/T01 (async-processing-schema, ADR-027 §D3): the claim. AttemptCount
+        // is NOT NULL with a database default so every pre-existing row backfills to 0 with no
+        // manual data migration (AC-1/AC-2); ClaimedAt/ClaimedBy stay nullable — a never-claimed
+        // Queued row needs no sentinel.
+        builder.Property(e => e.AttemptCount).HasDefaultValue(0);
+        builder.Property(e => e.ClaimedBy).HasMaxLength(200);
+
         builder.HasIndex(e => e.TenantId);
         builder.HasIndex(e => e.DocumentId);
         builder.HasIndex(e => e.Status);

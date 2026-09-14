@@ -81,7 +81,12 @@ public static class InvitationsEndpointExtensions
             return Results.NotFound();
         }
 
-        var result = await invitationService.AcceptAsync(token, identity, cancellationToken).ConfigureAwait(false);
+        // Task E17/F01/US01/T01 (ADR-010 w15 §2.3): the token's `email` claim rides along as the
+        // second step of the accept's identity resolution -- the `oid` bound at invite time first,
+        // then this, then refuse. Never the #EXT# UPN.
+        var result = await invitationService
+            .AcceptAsync(token, identity, callerIdentity.ResolveEmail(), cancellationToken)
+            .ConfigureAwait(false);
 
         return result.Status switch
         {

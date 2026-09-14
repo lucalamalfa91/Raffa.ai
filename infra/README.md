@@ -17,22 +17,25 @@ CURRENT run in HCP, do not apply from the laptop against those workspaces.
 infra/
   modules/
     network/          # VNet, subnets
-    identity/         # Entra app registrations + user-assigned workload identity
+    identity/         # Entra app registrations + user-assigned workload identity + Graph guest-invite permission
     postgres/         # PostgreSQL Flexible Server + pgvector (VECTOR extension)
     storage/          # Storage Account (blob + queue)
-    servicebus/       # Service Bus Standard namespace
+    servicebus/       # Service Bus Standard namespace + extraction-events topic + document-processing subscription + RBAC
     containerapps/    # Container Apps Environment + API app + worker app
     keyvault/         # Key Vault + workload identity grant
     acr/              # Azure Container Registry Basic, admin_enabled = false
     monitor/          # Log Analytics (Pay-As-You-Go, daily cap)
     staticwebapp/     # Azure Static Web Apps Free (web SPA; region West US 2)
     foundry/          # shared Azure AI Services account + per-env Foundry project, model deployments, RBAC (ADR-004/008/017)
+    communication/    # Azure Communication Services Email (invitation mail), one set per env (ADR-005/007/011 w15 footers)
   environments/
     dev/              # thin root; HCP workspace raffa-dev
     demo/             # thin root; HCP workspace raffa-demo
   versions.tf         # Terraform + provider pins (mirrored in each env root)
   provider.tf         # azurerm / azuread (also mirrored — Terraform has no include)
 ```
+
+Twelve module directories (`ls infra/modules | wc -l`) — `staticwebapp/`, `foundry/` and `communication/` landed after this tree was first written; keep this count and the one below in `## Resource names` in lockstep with the tree.
 
 Each environment root instantiates the same modules into
 `rg-raffa-<env>` in **North Europe** (Static Web Apps excepted — see
@@ -135,6 +138,9 @@ already proven live, not just described here):
 | AI services account | `aisvc-raffa` (kind `AIServices`, S0, custom subdomain `aisvc-raffa`, keys disabled) |
 | Foundry project | `raffa-<env>` (account-native sub-resource, no hub) |
 | Model deployments | `<model>-<env>` (e.g. `gpt-5.4-nano-dev`, `text-embedding-3-small-dev`, `gpt-5.4-demo`) |
+| Service Bus subscription | `document-processing` on the `extraction-events` topic (one per env; `max_delivery_count = 8`, `lock_duration = PT5M`, `default_message_ttl = P1D`, sessions **not** enabled) |
+| Communication Service | `acs-raffa-<env>` (`data_location = "Europe"`, global resource type — no `location`) |
+| Email Communication Service | `acsemail-raffa-<env>` (`data_location = "Europe"`) + an Azure Managed Domain (`…azurecomm.net`, sender `DoNotReply@…`) |
 
 Container Apps boot from the placeholder image
 `mcr.microsoft.com/k8se/quickstart:latest` until the backend deploy job
@@ -236,6 +242,49 @@ A `401`/`403` right after the apply is RBAC propagation (retry later); a
 `404 DeploymentNotFound` is a deployment name; a `400` naming a parameter
 is a backend compatibility finding for the GPT-5.x request shape.
 
+## Async document processing (Service Bus) + invitation mail (ADR-005/007/011/015/016 w15 footers)
+
+**Service Bus (NW-27).** `modules/servicebus` now creates one subscription,
+`document-processing` on `extraction-events`, plus two **topic-scoped**
+role assignments (`Azure Service Bus Data Sender` / `Data Receiver`) on
+the shared per-environment workload identity — RBAC only, **no Key Vault
+secret** (`grep -R servicebus infra/modules/keyvault/` must stay empty).
+The worker's KEDA `azure-servicebus` scale rule authenticates with that
+same identity (`custom_scale_rule.identity_id`, proved against the pinned
+`azurerm ~> 4.0` schema) — also no secret. `min_replicas` stays `0` on the
+worker; `max_replicas` is `3` on both apps.
+
+**Invitation mail (NW-68).** `modules/communication` creates one Azure
+Communication Services Email set per environment (never shared — mail has
+no fixed cost to amortise), landing the wave's **one** new Key Vault
+secret, `acs-connection` (handle `acs-cs`, API app only). The sender
+address is always the module's own `sender_address` output, never
+hand-composed.
+
+**Guest provisioning (NW-67).** `modules/identity` gains a
+`count`-gated `azuread_app_role_assignment` granting the workload identity
+the Microsoft Graph **application** permission `User.Invite.All`, gated by
+`var.guest_provisioning_enabled` (default `false`). **The apply identity —
+not the GitHub OIDC deploy identity above — needs its own one-time Graph
+grant** (`AppRoleAssignment.ReadWrite.All` + `Application.Read.All`, or
+preferably a Global Administrator performing the single assignment
+out-of-band before the first apply) before this flag can safely flip to
+`true`; until then it stays `false` and the rest of this PR's apply still
+succeeds (ADR-015 w15 footer).
+
+**JWT config (NW-05).** Four non-secret env vars on the API app only —
+`AzureAd__Authority`, `AzureAd__TenantId`, `AzureAd__ClientId`,
+`AzureAd__Audience` — from `modules/identity` outputs that previously had
+no consumer. `ClientId` and `Audience` are deliberately both published and
+must never be swapped (the `aud` on a v2 token is the client id, not the
+identifier URI).
+
+**Per-environment flags**, mirroring `ai_gateway_wired`'s own shape
+(`infra/environments/{dev,demo}/variables.tf`): `invitation_mail_enabled`
+and `guest_provisioning_enabled` are both `true` on `dev` from this apply
+and `false` on `demo` until its own post-promotion acceptance flips them
+in a one-line PR.
+
 ## Known gaps
 
 - **AcrPull is in Terraform.** `modules/acr` grants this env's workload
@@ -289,6 +338,25 @@ is a backend compatibility finding for the GPT-5.x request shape.
   `environments/dev/imports.tf` for the shape) to adopt it, and remove the
   block again once it lands in state — same rule as the Postgres/AcrPull
   gap above.
+- **The apply identity's Graph permission is a manual, out-of-band step,
+  not a Terraform resource.** `var.guest_provisioning_enabled` (default
+  `false`) gates one `count`-gated `azuread_app_role_assignment` in
+  `modules/identity`; while the identity running the HCP apply lacks the
+  directory right to write it, the flag must stay `false` and this whole
+  apply still succeeds (NW-67 degrades, nothing else is blocked). Before
+  flipping it, confirm the apply identity's Graph rights at the plan —
+  either the assignment already exists out-of-band (`count = 0` in the
+  plan) or the apply identity itself holds
+  `AppRoleAssignment.ReadWrite.All` + `Application.Read.All` and the plan
+  shows exactly **one** `azuread_app_role_assignment` (never a second, and
+  never one whose principal is the apply identity itself) — ADR-015 /
+  ADR-011 w15 footers.
+- **`azuread_application.api` must plan as `~`, never `-/+`.** The
+  `optional_claims` block this wave adds is a mutable property; a plan
+  showing replacement instead of an in-place update means something else
+  changed on that resource (`identifier_uris`, `sign_in_audience`, …) and
+  must be investigated before applying — a replacement mints a new client
+  id and breaks every sign-in behind a green CI run.
 
 ## Known gaps — Ask Raffa V2 (epic-13, ADR-024)
 

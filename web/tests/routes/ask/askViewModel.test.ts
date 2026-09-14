@@ -5,6 +5,7 @@ import {
   buildRaffaTurnFromReply,
   buildErrorTurn,
   buildOffCopy,
+  resolveAskOffReason,
   buildScopeLine,
   buildScopedSuggestions,
   buildTenantCitationHref,
@@ -232,17 +233,59 @@ describe("buildYouTurn / buildRaffaTurnFromReply / buildRaffaTurnFromMessage / b
   });
 });
 
+// Task E16/F03/US01/T01 (ADR-020 w15 §2.1, ADR-012 w15 §4): three states, read off the server's
+// `counts`, and the third is never collapsed back into the "still processing" sentence.
 describe("buildOffCopy (R-ASK-10; screens-v2.md #2 off state)", () => {
   it("names the 'upload first' variant when the tenant has no document at all", () => {
-    const copy = buildOffCopy(false);
+    const copy = buildOffCopy("no-documents");
     expect(copy.ctaLabel).toBe("Upload a contract");
-    expect(copy.reason).toMatch(/upload a contract first/i);
+    expect(copy.reason).toBe("Upload a contract first. Raffa.ai extracts the facts, you sign off the weak ones, and Ask switches on.");
   });
 
-  it("names the 'still processing' variant when at least one document exists but none is validated", () => {
-    const copy = buildOffCopy(true);
+  it("names the 'still processing' variant when a document is in flight or waiting for review", () => {
+    const copy = buildOffCopy("processing");
     expect(copy.ctaLabel).toBe("Go to Documents");
-    expect(copy.reason).toMatch(/still processing or waiting for review/i);
+    expect(copy.reason).toBe(
+      "Your document is still processing or waiting for review. Ask only answers from facts that passed validation — so it never guesses.",
+    );
+  });
+
+  it("names the third variant -- 'could not finish' -- when documents are held but none is in flight or validated", () => {
+    const copy = buildOffCopy("stalled");
+    expect(copy.ctaLabel).toBe("Go to Documents");
+    expect(copy.reason).toBe(
+      "Raffa.ai could not finish processing your documents. Ask only answers from facts that passed validation — so it never guesses.",
+    );
+    expect(copy.reason).not.toMatch(/still processing/i);
+  });
+});
+
+describe("resolveAskOffReason (ADR-027 §D7 counts -> the off-copy variant)", () => {
+  const counts = (overrides: Partial<{ all: number; needsAttention: number; needsReview: number; processing: number; rejected: number }>) => ({
+    all: 0,
+    needsAttention: 0,
+    needsReview: 0,
+    processing: 0,
+    rejected: 0,
+    ...overrides,
+  });
+
+  it("is 'no-documents' with no counts yet, or when Raffa.ai holds nothing", () => {
+    expect(resolveAskOffReason(null)).toBe("no-documents");
+    expect(resolveAskOffReason(counts({}))).toBe("no-documents");
+  });
+
+  it("is 'no-documents' for a tenant holding only refused files -- `all` excludes Rejected, and each refusal was explained on its row", () => {
+    expect(resolveAskOffReason(counts({ rejected: 3 }))).toBe("no-documents");
+  });
+
+  it("is 'processing' while at least one document is Uploaded/Processing or waiting for review", () => {
+    expect(resolveAskOffReason(counts({ all: 2, needsAttention: 2, processing: 1 }))).toBe("processing");
+    expect(resolveAskOffReason(counts({ all: 1, needsAttention: 1, needsReview: 1 }))).toBe("processing");
+  });
+
+  it("is 'stalled' when documents are held, none is in flight and none is waiting for review (only Failed)", () => {
+    expect(resolveAskOffReason(counts({ all: 1, needsAttention: 1 }))).toBe("stalled");
   });
 });
 

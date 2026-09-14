@@ -4,6 +4,8 @@
     <ProjectReference Include="..\Raffa.SharedKernel\Raffa.SharedKernel.csproj" />
     <ProjectReference Include="..\Raffa.Identity.Workspace\Raffa.Identity.Workspace.csproj" />
     <ProjectReference Include="..\Raffa.Documents.Contracts\Raffa.Documents.Contracts.csproj" />
+    <!-- Task E16/F02/US03/T01 (ADR-027 D2): the Service Bus publisher behind IExtractionQueuePublisher. -->
+    <ProjectReference Include="..\Raffa.Messaging\Raffa.Messaging.csproj" />
     <ProjectReference Include="..\Raffa.Suppliers.Products\Raffa.Suppliers.Products.csproj" />
     <ProjectReference Include="..\Raffa.Renewals\Raffa.Renewals.csproj" />
     <ProjectReference Include="..\Raffa.Savings\Raffa.Savings.csproj" />
@@ -26,12 +28,58 @@
          (already transitively registered via AddSavingsModule/AddQuotesModule) — the market
          -intelligence feed side of the three-source context pack (ADR-024). -->
     <ProjectReference Include="..\Raffa.Market\Raffa.Market.csproj" />
+    <!-- Task E16/F02/US02/T01 (durable-queue-transport, ADR-027 §D11): the blob adapter moved out
+         of this host's own Infrastructure/ folder into Raffa.Storage so Raffa.Worker can resolve
+         IDocumentStorage too. This host no longer references Azure.Storage.Blobs directly: only
+         Raffa.Storage does. -->
+    <ProjectReference Include="..\Raffa.Storage\Raffa.Storage.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Only the host may reference a cloud storage SDK directly (ADR-002); domain modules see
-         only Raffa.SharedKernel.Storage.IDocumentStorage. -->
-    <PackageReference Include="Azure.Storage.Blobs" Version="12.26.0" />
+    <!-- Only the host may reference a cloud storage/transport SDK directly (ADR-002); domain
+         modules see only the seam (Raffa.SharedKernel.Storage.IDocumentStorage;
+         Raffa.Identity.Workspace.Application.IInvitationMailer). Task E17/F01/US01/T01 (wave w15,
+         NW-68; ADR-005 w15 footer §3, ADR-011 w15 footer §1, ADR-026 w15 footer §7 item 3):
+         AcsInvitationMailer lives here, not in Raffa.Identity.Workspace, for the identical reason
+         AzureBlobDocumentStorage does — DependencyDirectionTests.Domain_module_must_not_reference_provider_sdks
+         forbids any "Azure."-prefixed package on that module by name; NullInvitationMailer (the
+         module's own provider-SDK-free default) is unaffected. Authenticates with a Key
+         Vault-sourced connection string for w15 (ADR-011 w15 footer §1b: the managed-identity/
+         TokenCredential form is a recorded later amendment, not a redesign). -->
+    <PackageReference Include="Azure.Communication.Email" Version="1.1.0" />
+    <!-- Task E17/F01/US01/T01 (wave w15, NW-67; ADR-025 §J.1a, ADR-026 w15 footer §2) and task
+         E16/F02/US02/T01 (durable-queue-transport, ADR-027 §D10, ADR-005 w15 footer §2) share this
+         one declaration: the existing per-environment workload managed identity authenticates both
+         GraphGuestProvisioner's single Graph call site and the Service Bus publisher (below) via
+         DefaultAzureCredential — same package, same credential shape Raffa.AiGateway already uses
+         for Foundry, pinned to the identical version so none of the three diverge. SdkAllowListTests
+         permits Azure.Identity here (and in Raffa.Worker for NW-27's Service Bus RBAC, and in
+         Raffa.AiGateway itself); Azure.AI.* stays Raffa.AiGateway-only. -->
+    <PackageReference Include="Azure.Identity" Version="1.17.1" />
+    <!-- Task E17/F01/US01/T01 (wave w15, NW-67; ADR-025 §J.1, ADR-026 w15 footer §2): the one and
+         only Microsoft.Graph call site in the solution (GraphGuestProvisioner) — a provider SDK,
+         so ADR-002 confines it to a host, never a domain module. SdkAllowListTests permits it in
+         Raffa.Api only; DependencyDirectionTests.ForbiddenSdkPrefixes additionally forbids it in
+         every ADR-002 domain module. -->
+    <PackageReference Include="Microsoft.Graph" Version="6.6.0" />
+    <!-- Task E18/F01/US01/T01 (wave w15, NW-05; ADR-010): JWT bearer validation itself
+         (AddAuthentication/AddJwtBearer, JwtBearerOptions, TokenValidationParameters) is part of
+         the Microsoft.AspNetCore.App shared framework Microsoft.NET.Sdk.Web already references,
+         so no package is needed for that half. Microsoft.Identity.Web supplies the one thing the
+         shared framework does not: ClaimsPrincipal.GetObjectId(), which resolves the validated
+         token's oid claim (Raffa.Api.Infrastructure.TokenCallerIdentity) whether or not JwtBearer's
+         own inbound-claim mapping has renamed it, more robust than a hand-rolled FindFirst call. -->
+    <PackageReference Include="Microsoft.Identity.Web" Version="3.0.1" />
+    <!-- Task E16/F02/US02/T01 (durable-queue-transport, ADR-027 §D10, ADR-005 w15 footer §2):
+         the Service Bus publisher (managed identity, no connection-string secret; ADR-011 w15
+         footer §2a). Its DefaultAzureCredential auth shares the single Azure.Identity declaration
+         above (also used by GraphGuestProvisioner, task E17/F01/US01/T01) rather than a second
+         PackageReference at the same version. Raffa.AiGateway.Tests.SdkAllowListTests' package-scoped
+         map (amended by this same task) allows Azure.Identity here and in Raffa.Worker, in addition
+         to Raffa.AiGateway. Azure.AI.* stays refused everywhere but Raffa.AiGateway. Azure.Storage.Blobs
+         is no longer referenced here directly — this same task moved the only reference to it to
+         Raffa.Storage (see the ProjectReference above and Raffa.Storage.csproj's own doc comment). -->
+    <PackageReference Include="Azure.Messaging.ServiceBus" Version="7.18.0" />
   </ItemGroup>
 
 </Project>

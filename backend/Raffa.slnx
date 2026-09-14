@@ -9,10 +9,12 @@
     <Project Path="src/Raffa.Identity.Workspace/Raffa.Identity.Workspace.csproj" />
     <Project Path="src/Raffa.Insights/Raffa.Insights.csproj" />
     <Project Path="src/Raffa.Market/Raffa.Market.csproj" />
+    <Project Path="src/Raffa.Messaging/Raffa.Messaging.csproj" />
     <Project Path="src/Raffa.Quotes/Raffa.Quotes.csproj" />
     <Project Path="src/Raffa.Renewals/Raffa.Renewals.csproj" />
     <Project Path="src/Raffa.Savings/Raffa.Savings.csproj" />
     <Project Path="src/Raffa.SharedKernel/Raffa.SharedKernel.csproj" />
+    <Project Path="src/Raffa.Storage/Raffa.Storage.csproj" />
     <Project Path="src/Raffa.Suppliers.Products/Raffa.Suppliers.Products.csproj" />
     <Project Path="src/Raffa.Worker/Raffa.Worker.csproj" />
   </Folder>

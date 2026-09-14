@@ -50,3 +50,13 @@ variable "storage_connection_string" {
   type        = string
   sensitive   = true
 }
+
+# Task E16/F01/US01/T01 (w15 Terraform, ADR-011 w15 footer): the wave's ONE
+# new Key Vault secret. The Service Bus module is identity + RBAC instead
+# (its own two role assignments) -- this is deliberately the only new
+# entry, never a namespace connection string.
+variable "acs_connection_string" {
+  description = "Primary connection string of this environment's Azure Communication Service resource (modules/communication primary_connection_string). Written to this vault as acs-connection."
+  type        = string
+  sensitive   = true
+}

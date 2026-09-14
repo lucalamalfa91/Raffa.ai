@@ -2,12 +2,13 @@ import { useCallback, useEffect, useState } from "react";
 import type { ApiClient, WorkspaceMemberBody } from "../../../api/client";
 import { useShellContext } from "../../../components/shell/shellContext";
 import { canManageMembers, type WorkspaceRole } from "../../../components/shell/navItems";
-import InvitePane from "./InvitePane";
+import InvitePane, { type InviteFailure } from "./InvitePane";
 import MembersTable, { type MembersActionError } from "./MembersTable";
 import {
   MEMBERS_TIP,
   formatWorkspaceLine,
   inviteDomainWarning,
+  inviteOutcomeFrom,
   requestAccessMailto,
   validateInviteEmail,
   workspaceDomainFromEmail,
@@ -72,6 +73,7 @@ export default function MembersRoute({ apiClient, userLabel, workspaceId, worksp
   const [email, setEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<Day1InviteRole>("Procurement");
   const [inviteError, setInviteError] = useState<string | null>(null);
+  const [inviteFailure, setInviteFailure] = useState<InviteFailure | null>(null);
   const [outcome, setOutcome] = useState<InviteOutcome | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [pendingActionId, setPendingActionId] = useState<string | null>(null);
@@ -103,6 +105,7 @@ export default function MembersRoute({ apiClient, userLabel, workspaceId, worksp
     if (!workspaceId) return;
 
     setOutcome(null);
+    setInviteFailure(null);
     const validationError = validateInviteEmail(email);
     if (validationError !== null) {
       setInviteError(validationError);
@@ -111,24 +114,30 @@ export default function MembersRoute({ apiClient, userLabel, workspaceId, worksp
 
     setSubmitting(true);
     setInviteError(null);
+    const invitedEmail = email.trim();
 
-    void apiClient.inviteWorkspaceMember(workspaceId, { email: email.trim(), role: inviteRole }).then((result) => {
+    void apiClient.inviteWorkspaceMember(workspaceId, { email: invitedEmail, role: inviteRole }).then((result) => {
       setSubmitting(false);
+
+      // Task E17/F02/US01/T01: the declared 502 -- the directory would not provision the guest and
+      // NO invitation exists. The server's closed-set reason selects the copy; its prose never
+      // reaches the pane.
+      if (result.statusCode === 502 && result.failureReason !== null) {
+        setInviteFailure({ failureReason: result.failureReason, email: invitedEmail });
+        return;
+      }
+
       if (!result.ok || !result.member) {
-        // Task E15/F02/US01/T01: this fallback used to claim a mail had gone out on this same
-        // failure path -- as wrong a claim here as the unconditional success message was on a 201
-        // (this file's own header comment names the defect). No mail is asserted either way.
+        // A 400/409 carries the server's own validation sentence; nothing about a mail is asserted.
         setInviteError(result.error ?? "The invitation could not be created.");
         return;
       }
 
       setEmail("");
       setInviteError(null);
-      setOutcome(
-        result.member.mailDelivered
-          ? { mailDelivered: true, email: result.member.email }
-          : { mailDelivered: false, email: result.member.email, acceptUrl: result.member.acceptUrl, expiresAt: result.member.expiresAt },
-      );
+      // The pane branches on the 201's own `deliveryOutcome` string and renders its own
+      // `identityProvisioned` boolean -- it infers neither (ADR-020 w15 §3.8).
+      setOutcome(inviteOutcomeFrom(result.member));
       // The roster is a re-read, never an optimistic append (AC-1/N3): the new row (and its real
       // server-derived status) comes back the same way every other change to it does.
       loadRoster();
@@ -252,6 +261,7 @@ export default function MembersRoute({ apiClient, userLabel, workspaceId, worksp
             role={inviteRole}
             tenantDomain={tenantDomain}
             error={inviteError}
+            failure={inviteFailure}
             domainWarning={inviteDomainWarning(email, tenantDomain, inviteRole)}
             outcome={outcome}
             submitting={submitting}
@@ -259,6 +269,7 @@ export default function MembersRoute({ apiClient, userLabel, workspaceId, worksp
               setEmail(value);
               setOutcome(null);
               setInviteError(null);
+              setInviteFailure(null);
             }}
             onRoleChange={setInviteRole}
             onSubmit={sendInvite}

@@ -26,35 +26,54 @@
 // already generated (E14/F02/US01/T01 added it to the backend/OpenAPI
 // contract in an earlier wave-w14 task).
 //
-// Task E13/F09/US01/T04 (web-ask-v2, OQ-askv2-005/R-CONV-03/ADR-022): every call this client makes
-// now carries an `X-User-Id` header, resolved lazily via the `getUserId` callback below -- never
-// baked into the client instance at construction time, since `createApiClient` runs in src/main.tsx
-// before MSAL has resolved any account at all (see that file's own call site). Mirrors the identical
-// "resolved per-request, not per-client" shape `X-Tenant-Id` already has everywhere in this file,
-// except the tenant id is a real per-call parameter while the user id is an ambient identity the
-// caller (main.tsx) supplies once, via a closure over `PublicClientApplication.getAllAccounts()`.
-// Uniform across every method (not special-cased per endpoint) for the same reason `X-Tenant-Id`
-// is uniform: today only the `/api/conversations*` endpoints actually read it
-// (ConversationsEndpointExtensions.TryResolveUserId), but a second special-cased header-building
-// path per endpoint is exactly the kind of divergence this file's own header comment already warns
-// against elsewhere. `getUserId` defaults to a function returning `null` (no header sent at all) so
-// every pre-existing call site/test that does not pass one keeps behaving exactly as before this
-// task -- see `userIdHeaders` below for why an absent/blank id omits the header key entirely rather
-// than sending an empty string.
+// Task E18/F01/US02/T01 (wave w15, NW-05; ADR-012 w15 footer clause 1, ADR-010 w14 footer clause 3):
+// every call this client makes now carries an `Authorization: Bearer <token>` header, resolved
+// lazily via the `getAccessToken` callback below -- never baked into the client instance at
+// construction time, since `createApiClient` runs in src/main.tsx before MSAL has resolved any
+// account at all (see that file's own call site). This is the **one** choke point every request
+// goes through for identity (ADR-012 w15 footer clause 1 supersedes exactly one sentence of its own
+// first w14 footer -- "headers are attached per method in client.ts, never by a global wrapper" --
+// which described a mechanism, not a rule; per-call facts like `X-Tenant-Id`/`X-Invitation-Token`
+// stay per-method, only identity moved). `getAccessToken` is asynchronous (token acquisition is:
+// `acquireTokenSilent`, falling back to `acquireTokenPopup` -- see `src/auth/msalConfig.ts`'s
+// `acquireApiAccessToken`), unlike the header literals this replaces, which is exactly why this file
+// could not simply keep spreading a *synchronous* accessor's result inline at 37 separate call
+// sites: 37 literals were 37 chances to omit one, and every one now goes through `authHeaders`
+// instead.
+// `getAccessToken` defaults to a function resolving `null` (no header sent at all) so every
+// pre-existing call site/test that does not pass one keeps behaving exactly as before this task --
+// see `authHeaders` below for why an absent/blank token omits the header key entirely rather than
+// sending a blank `Bearer `.
+//
+// Deleted whole by this task, not made conditional: the synchronous per-caller-identity accessor,
+// its header-building helper, and the interim identity header itself they built (task E13/F09/US01/
+// T04, OQ-askv2-005/ADR-022) -- ADR-010's w14 footer clause 3 required that header stop being *read*
+// server-side; this is the client half, that it stops being *sent* at all.
 import type { paths } from "./generated/schema";
 
-/** See this file's own header comment ("Task E13/F09/US01/T04"). Returns the current caller's
- * identity (the MSAL account username, ADR-022) or `null` before any account is signed in. */
-export type GetUserId = () => string | null;
+/** See this file's own header comment ("Task E18/F01/US02/T01", NW-05). Returns a bearer access
+ * token scoped to `appConfig.oidcApiScopes` (acquired via `acquireTokenSilent`, falling back to
+ * `acquireTokenPopup` on `InteractionRequiredAuthError` -- see `src/auth/msalConfig.ts`'s
+ * `acquireApiAccessToken`, which `src/main.tsx` wires in as this closure), or `null` before any
+ * account is signed in / when acquisition cannot complete without a redirect. Never rejects: a
+ * failed acquisition resolves `null` rather than throwing, so a request this covers proceeds with no
+ * `Authorization` header and gets the server's own honest 401 -- never a redirect from inside a
+ * request (ADR-012 w15 footer clause 1), and never a silent retry loop. */
+export type GetAccessToken = () => Promise<string | null>;
 
-/** `{}` (no key at all) when `getUserId()` is `null`/blank -- spreading `{}` into an existing
- * headers literal is a no-op, so every pre-existing call site's exact-`toEqual` test keeps passing
- * unchanged when no `getUserId` is supplied (the default). Never sends a blank `X-User-Id: ""`:
- * "no evidence (no signed-in account), no claim" is this codebase's own rule (e.g.
- * `WorkspaceSummary.contractCount`'s doc comment), applied here to a header instead of a UI field. */
-function userIdHeaders(getUserId: GetUserId): Record<string, string> {
-  const userId = getUserId();
-  return userId !== null && userId.trim() !== "" ? { "X-User-Id": userId } : {};
+/** `{}` (no key at all) when `getAccessToken()` resolves `null`/blank -- spreading `{}` into an
+ * existing headers literal is a no-op, so every pre-existing call site's exact-`toEqual` test keeps
+ * passing unchanged when no `getAccessToken` is supplied (the default), and a call made before any
+ * account is signed in (e.g. `getHealth`'s reachability probe, App.tsx's own comment: "independent
+ * of sign-in state") omits `Authorization` rather than sending a blank `Bearer `. "No evidence (no
+ * signed-in account), no claim" is this codebase's own rule (e.g. `WorkspaceSummary.contractCount`'s
+ * doc comment), applied here to a header instead of a UI field. This is the **one** internal
+ * attachment point every request in this file goes through (ADR-012 w15 footer clause 1) -- replaces
+ * the interim per-caller-identity header helper this task deletes whole (see this file's own header
+ * comment). */
+async function authHeaders(getAccessToken: GetAccessToken): Promise<Record<string, string>> {
+  const token = await getAccessToken();
+  return token !== null && token.trim() !== "" ? { Authorization: `Bearer ${token}` } : {};
 }
 
 type HealthResponses = paths["/health"]["get"]["responses"];
@@ -147,9 +166,19 @@ export interface GetWorkspaceMembersResult {
 // `expiresAt`/`acceptUrl`/`mailDelivered` straight off the regenerated schema, no hand-written change
 // needed here (see this file's header comment on why response shapes are type-anchored, not
 // hand-declared). `acceptUrl` is the one input getInvitation/acceptInvitation below need.
+//
+// Task E17/F02/US01/T01 (wave w15, NW-69; ADR-026 w15 footer §1/§3/§8, ADR-012 w15 §13.2): the 201
+// gained `deliveryOutcome` (a literal union -- the one discriminant the pane branches on, never a
+// client inference from `mailDelivered` or a status code) and `identityProvisioned`; a guest-
+// provisioning failure is a DECLARED 502 whose `failureReason` is typed straight off the generated
+// `[502]` response below, exactly as `InvitedMemberBody` is anchored to `[201]` -- an undeclared
+// 502 would have left the pane string-matching server prose through `error`.
 type InviteWorkspaceMemberResponses = paths["/api/workspaces/{tenantId}/invites"]["post"]["responses"];
 export type InvitedMemberBody = InviteWorkspaceMemberResponses[201]["content"]["application/json"];
 export type InviteWorkspaceRole = InvitedMemberBody["role"];
+export type InviteDeliveryOutcome = InvitedMemberBody["deliveryOutcome"];
+export type InviteFailureBody = InviteWorkspaceMemberResponses[502]["content"]["application/json"];
+export type InviteFailureReason = InviteFailureBody["failureReason"];
 
 /** `POST /api/workspaces/{tenantId}/invites` request body. Hand-written -- see this file's header comment for why (the generator does not parse `requestBody`). */
 export interface InviteWorkspaceMemberRequest {
@@ -165,7 +194,15 @@ export interface InviteWorkspaceMemberResult {
   /** The issued invitation -- an offer, not a grant, see this method's own doc comment on the
    * ApiClient interface -- present only when `ok` is true. */
   member: InvitedMemberBody | null;
-  /** Plain-language failure reason (400 validation message, 409 duplicate invite/role, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  /**
+   * The 502's machine-readable reason (task E17/F02/US01/T01): the company directory would not
+   * provision a guest, so NO invitation was created. Present only on a real 502 with a parseable
+   * body -- `error` stays `null` in that case; the pane picks its copy from this value's closed set
+   * (`memberViewModel.ts#inviteFailureCopy`) and keeps a catch-all for anything outside it, because
+   * a literal union describes the contract, not the wire.
+   */
+  failureReason: InviteFailureReason | null;
+  /** Plain-language failure reason (400 validation message, 409 held role / cap / concurrent invite, HTTP status text, or network-failure cause), present only when `ok` is false and this was not a structured 502. */
   error: string | null;
 }
 
@@ -220,9 +257,9 @@ export interface GetInvitationResult {
 }
 
 // `acceptInvitation`, wrapping `POST /api/invites/accept`. Same token-in-header discipline as
-// `getInvitation` above, plus the caller's own `X-User-Id` -- this operation requires it (401 if
-// absent/blank), unlike every other call in this file where sending it is merely convention-uniform
-// (see this file's header comment). No request body: the signed-in identity plus the token are the
+// `getInvitation` above, plus the caller's own signed-in identity -- carried, like every other call
+// in this file, by the one `Authorization` attachment point (see this file's header comment). No
+// request body beyond that: the signed-in identity plus the invitation token are the
 // whole input; the invited email is matched server-side, case-insensitively, and never echoed back on
 // a mismatch (Rule D.3b) -- the backend's own 403 carries no body at all, so this method's `error`
 // string for that case is client-authored, not server-echoed.
@@ -266,15 +303,16 @@ export interface UploadDocumentResult {
   ok: boolean;
   /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
   statusCode: number | null;
-  /** The stored document (already processed -- see `ApiClient.uploadDocument`'s own doc comment), present only when `ok` is true. */
+  /** The stored, queued document (`processingStatus: "Uploaded"`, `contractId: null` -- see `ApiClient.uploadDocument`'s own doc comment), present only when `ok` is true. */
   document: UploadedDocument | null;
   /**
-   * The admission gate's own structured rejection, present only on a real `422` (task
-   * E13/F04/US01/T01) -- `error` below stays `null` in that case; a 413/415/generic 400/5xx keeps
-   * using `error` (a plain string) with `rejection: null`, the same split `getQuoteAssessment`'s own
-   * "real body vs bare empty 404" distinction already establishes for a different status pair.
-   * `src/routes/documents/uploadPipeline.ts#getRejectionCopy` maps `reason` onto the requirements'
-   * own longer "Not added" sentence -- this field is never rendered from `hint` directly.
+   * The admission gate's structured rejection, present only on a `422` (task E13/F04/US01/T01) --
+   * `error` below stays `null` in that case; a 413/415/generic 400/5xx keeps using `error` (a plain
+   * string) with `rejection: null`. Since task E16/F02/US03/T01 (ADR-027 §D6) the content gate runs
+   * on the Worker and the upload endpoint no longer emits a 422 at all -- the refusal is a
+   * `Rejected` row with a `rejectionReason` on `listDocuments`, mapped by
+   * `src/routes/documents/uploadPipeline.ts#getRejectionReasonCopy`. The field stays typed off the
+   * still-declared 422 so this shape keeps compiling; it is always `null` on the wire now.
    */
   rejection: RejectedUploadBody | null;
   /** Plain-language failure reason (400/413/415 message, HTTP status text, or network-failure cause), present only when `ok` is false and this was not a structured 422. */
@@ -288,8 +326,8 @@ export interface UploadDocumentResult {
 // yet ... belongs to whichever future task builds ... the document table /
 // status read-back" -- that task is this one. `ReadBackDocument` carries
 // `documentType`, which `UploadedDocument` (the POST response) does not --
-// see src/routes/documents/documentStore.ts for why the document table
-// re-fetches this instead of only trusting the upload response.
+// since wave w15 the 201 carries no verdict at all (the Worker classifies
+// afterwards), so the list/read-back is the only source of the type.
 type GetDocumentResponses = paths["/api/documents/{id}"]["get"]["responses"];
 export type ReadBackDocument = GetDocumentResponses[200]["content"]["application/json"];
 export type DocumentType = ReadBackDocument["documentType"];
@@ -306,8 +344,8 @@ export interface GetDocumentResult {
 }
 
 // Task E13/F09/US01/T03 (web-documents-v2): `listDocuments`, wrapping `GET /api/documents` -- the
-// server-side list that replaces `src/routes/documents/documentStore.ts`'s own `sessionStorage`
-// tracking (R-DOC-06 AC-1 "reloading the browser shows the same list as before"). Documented ahead
+// server-side list that replaced the web's own `sessionStorage` tracking (deleted outright in wave
+// w15, task E16/F03/US01/T01) (R-DOC-06 AC-1 "reloading the browser shows the same list as before"). Documented ahead
 // of the backend counterpart (epic-13/feature-04) landing in this worktree -- see
 // web/openapi/raffa-api.v1.json's own `listDocuments` operation description for the full
 // provenance. `DocumentListItemBody["documentType"]` already carries the widened admitted-type
@@ -367,20 +405,22 @@ export interface GetDocumentPreviewResult {
 }
 
 // Task E13/F09/US01/T03: `reprocessDocument`, wrapping `POST /api/documents/{id}/reprocess`
-// (Admin only, R-DOC-07). Documented ahead of the backend counterpart landing in this worktree --
-// see that operation's own OpenAPI description for why the response mirrors
-// `Raffa.Documents.Contracts.Application.Extraction.DocumentProcessingSummary`'s real fields
-// rather than an invented shape.
+// (Admin only, R-DOC-07). Task E16/F02/US03/T01 (wave w15, ADR-027 §D1) turned the call into a
+// re-enqueue: the backend drops the old chunks, puts the document back to `Uploaded`, queues a fresh
+// classification job for the Worker and answers `202 Accepted` with the job id -- the re-parse and
+// re-embed happen afterwards, exactly like a first upload, and the caller polls `listDocuments` /
+// `getDocument` for the terminal status. There is no summary to render any more; the old
+// `pagesParsed`/`chunksIndexed` numbers were the synchronous pipeline's, which no longer runs here.
 type ReprocessDocumentResponses = paths["/api/documents/{id}/reprocess"]["post"]["responses"];
-export type DocumentReprocessSummaryBody = ReprocessDocumentResponses[200]["content"]["application/json"];
+export type DocumentReprocessQueuedBody = ReprocessDocumentResponses[202]["content"]["application/json"];
 
 export interface ReprocessDocumentResult {
-  /** True only on `200 OK`. */
+  /** True only on `202 Accepted`. */
   ok: boolean;
   /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
   statusCode: number | null;
-  /** The reprocess summary, present only when `ok` is true. */
-  summary: DocumentReprocessSummaryBody | null;
+  /** The queued job receipt (`documentId`, `extractionJobId`, `processingStatus: "Uploaded"`), present only when `ok` is true. */
+  queued: DocumentReprocessQueuedBody | null;
   /** Plain-language failure reason (403 not-admin, 404, or network-failure), present only when `ok` is false. */
   error: string | null;
 }
@@ -903,7 +943,8 @@ export interface GetSavingsOpportunitiesResult {
 // Task E13/F09/US01/T04 (web-ask-v2, ADR-024 §6; requirements.md §5.2/§6): conversations, the
 // reply contract, the capability catalog and one market record -- this task is the phase-4 writer
 // of the OpenAPI contract and this client for these six operations (this file's own header comment
-// has the full X-User-Id provenance every one of them, like every other method here, now sends).
+// has the full provenance of the `Authorization` header every one of them, like every other method
+// here, now sends).
 type ListConversationsResponses = paths["/api/conversations"]["get"]["responses"];
 export type ConversationSummaryBody = ListConversationsResponses[200]["content"]["application/json"][number];
 
@@ -1051,15 +1092,16 @@ export interface ApiClient {
   /**
    * Calls `GET /api/workspaces` (operationId `listWorkspaces`) -- the identity-keyed workspace
    * directory (task E14/F03/US01/T01, wave w14; ADR-026 section D1). No tenant header of any kind,
-   * ever: the response is derived exclusively from the caller's own `X-User-Id`. Same never-throws
-   * shape as `createWorkspace`: an empty array (a caller who belongs to nothing) and a `401` (no
+   * ever: the response is derived exclusively from the caller's own validated identity (the bearer
+   * token). Same never-throws shape as `createWorkspace`: an empty array (a caller who belongs to
+   * nothing) and a `401` (no
    * identity) are both normal, expected outcomes the caller renders inline, never an exception.
    */
   listWorkspaces(): Promise<ListWorkspacesResult>;
   /**
    * Calls `GET /api/workspaces/{tenantId}/members` (operationId `getWorkspaceMembers`) -- the
    * roster of live members plus pending invitations (task E14/F03/US01/T01, wave w14; ADR-026
-   * section D3). The tenant comes from the route; only `X-User-Id` is sent, never `X-Tenant-Id`
+   * section D3). The tenant comes from the route; no `X-Tenant-Id` is sent
    * (ADR-026's own w14 footer -- a second, unvalidated tenant input on an authorization-bearing
    * route is exactly the ambiguity that footer removes). A non-member gets `404`, never `403` and
    * never an empty `200` (ADR-025 Rule D.4b).
@@ -1090,8 +1132,8 @@ export interface ApiClient {
   getInvitation(token: string): Promise<GetInvitationResult>;
   /**
    * Calls `POST /api/invites/accept` (operationId `acceptInvitation`, task E15/F01/US01/T01, wave
-   * w14; ADR-025 Rule D.3a-d) -- binds the signed-in identity (`X-User-Id`, required -- absent is
-   * 401) and grants the membership. Same never-throws shape: a 403 email mismatch, 404, 409
+   * w14; ADR-025 Rule D.3a-d) -- binds the signed-in identity (the validated bearer token, required
+   * -- absent is 401) and grants the membership. Same never-throws shape: a 403 email mismatch, 404, 409
    * already-accepted or 410 expired are all normal, expected outcomes the caller renders inline.
    */
   acceptInvitation(token: string): Promise<AcceptInvitationResult>;
@@ -1104,16 +1146,18 @@ export interface ApiClient {
    * src/routes/signin/workspaceStore.ts's own doc comment, which names this
    * exact call as the reason it keeps the current workspace id available.
    *
-   * The backend runs the whole parse -> classify -> extract pipeline
-   * *synchronously* before responding (task E02/F06/US01/T01's own
-   * description in openapi/raffa-api.v1.json), so a resolved call already
-   * carries a terminal (or near-terminal) `processingStatus` -- see
-   * src/routes/documents/uploadPipeline.ts for how the UI turns that into
-   * the 6-stage pipeline animation + result card. Same never-throws shape as
-   * `createWorkspace`: a 400 (bad file/tenant) is a normal, expected outcome
-   * the caller renders inline, not an exception.
+   * Since task E16/F02/US03/T01 (wave w15, ADR-027 §D1) the request returns the
+   * moment the bytes are stored: the 201 carries `processingStatus: "Uploaded"`
+   * and a null `contractId`, and the Worker runs the content gate and the
+   * parse -> classify -> extract pipeline afterwards -- poll `listDocuments` /
+   * `getDocument` for the terminal status (`src/routes/documents/useDocumentsList.ts`).
+   * `options.signal` is the caller's abort signal (ADR-012 w15 §5: one
+   * client-owned upload deadline, `uploadPipeline.ts#UPLOAD_DEADLINE_MS`); an
+   * abort resolves like any other transport failure (`statusCode: null`).
+   * Same never-throws shape as `createWorkspace`: a 400 (bad file/tenant) is
+   * a normal, expected outcome the caller renders inline, not an exception.
    */
-  uploadDocument(tenantId: string, file: File): Promise<UploadDocumentResult>;
+  uploadDocument(tenantId: string, file: File, options?: { signal?: AbortSignal }): Promise<UploadDocumentResult>;
   /**
    * Calls `GET /api/documents/{id}` (operationId `getDocument`) -- the
    * OpenAPI document's own description is "Read back one document's
@@ -1127,8 +1171,8 @@ export interface ApiClient {
   getDocument(tenantId: string, id: string): Promise<GetDocumentResult>;
   /**
    * Calls `GET /api/documents` (operationId `listDocuments`) -- the server-side list behind
-   * `src/routes/documents/` (R-DOC-06), replacing `documentStore.ts`'s own `sessionStorage`
-   * tracking. Same never-throws shape as every other call here. `query` is optional and, when
+   * `src/routes/documents/` (R-DOC-06) and, since wave w15, the tenant-wide `counts` the rail badge
+   * and every "not ready yet" surface read. Same never-throws shape as every other call here. `query` is optional and, when
    * omitted, fetches the tenant's whole list unfiltered -- see `ListDocumentsQuery`'s own doc
    * comment for why the attention/all toggle is not this parameter.
    */
@@ -1274,8 +1318,9 @@ export interface ApiClient {
 
   /**
    * Calls `GET /api/conversations` (operationId `listConversations`) -- the rail's last-5 resume
-   * list (R-CONV-02). `X-Tenant-Id` and `X-User-Id` both go out (this file's own header comment has
-   * the full provenance); `take` is never sent, always taking the backend's own default (5). Same
+   * list (R-CONV-02). `X-Tenant-Id` goes out alongside the `Authorization` header every method here
+   * sends (this file's own header comment has the full provenance); `take` is never sent, always
+   * taking the backend's own default (5). Same
    * never-throws shape as every other call here: a `400` (missing header) is a normal, expected
    * outcome the caller renders inline.
    */
@@ -1331,17 +1376,20 @@ export interface ApiClient {
  * against it with the platform `URL` parser rather than hand-rolled string
  * concatenation.
  */
-export function createApiClient(baseUrl: string, getUserId: GetUserId = () => null): ApiClient {
+export function createApiClient(
+  baseUrl: string,
+  getAccessToken: GetAccessToken = () => Promise.resolve(null),
+): ApiClient {
   return {
     async getHealth() {
       let response: Response;
       try {
         // getHealth is the one call in this file with no headers at all absent a signed-in user
         // (every other method already sends at least X-Tenant-Id) -- the `headers` key itself is
-        // omitted, not sent empty, when userIdHeaders(getUserId) has nothing to contribute, so this
-        // stays byte-for-byte what it was before task E13/F09/US01/T04 whenever no getUserId is
-        // supplied (the default).
-        const headers = userIdHeaders(getUserId);
+        // omitted, not sent empty, when authHeaders(getAccessToken) has nothing to contribute, so
+        // this stays byte-for-byte what it was before task E18/F01/US02/T01 whenever no
+        // getAccessToken is supplied (the default).
+        const headers = await authHeaders(getAccessToken);
         response = await fetch(new URL("/health", baseUrl), {
           ...(Object.keys(headers).length > 0 ? { headers } : {}),
           cache: "no-store",
@@ -1363,7 +1411,7 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
       try {
         response = await fetch(new URL("/api/workspaces", baseUrl), {
           method: "POST",
-          headers: { "Content-Type": "application/json", ...userIdHeaders(getUserId) },
+          headers: { "Content-Type": "application/json", ...await authHeaders(getAccessToken) },
           body: JSON.stringify(request),
           cache: "no-store",
         });
@@ -1403,7 +1451,7 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
           new URL(`/api/workspaces/${encodeURIComponent(tenantId)}/invites`, baseUrl),
           {
             method: "POST",
-            headers: { "Content-Type": "application/json", ...userIdHeaders(getUserId) },
+            headers: { "Content-Type": "application/json", ...await authHeaders(getAccessToken) },
             body: JSON.stringify(request),
             cache: "no-store",
           },
@@ -1413,13 +1461,29 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
           ok: false,
           statusCode: null,
           member: null,
+          failureReason: null,
           error: `Unable to reach ${baseUrl}/api/workspaces/${tenantId}/invites. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
         };
       }
 
       if (response.status === 201) {
         const member = (await response.json()) as InvitedMemberBody;
-        return { ok: true, statusCode: 201, member, error: null };
+        return { ok: true, statusCode: 201, member, failureReason: null, error: null };
+      }
+
+      // Task E17/F02/US01/T01: the declared 502 -- the directory would not provision the guest and
+      // no invitation exists. Read into `failureReason`, never into `error` prose. A 502 from a
+      // proxy in front of the API carries no such body and falls through to the generic branch.
+      if (response.status === 502) {
+        try {
+          const failure = (await response.json()) as Partial<InviteFailureBody> | null;
+          if (failure && typeof failure.failureReason === "string") {
+            return { ok: false, statusCode: 502, member: null, failureReason: failure.failureReason, error: null };
+          }
+        } catch {
+          // Not the API's own body -- handled as a plain failure below.
+        }
+        return { ok: false, statusCode: 502, member: null, failureReason: null, error: `Request failed with HTTP 502 ${response.statusText}.` };
       }
 
       let error: string;
@@ -1430,14 +1494,14 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
         error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
       }
 
-      return { ok: false, statusCode: response.status, member: null, error };
+      return { ok: false, statusCode: response.status, member: null, failureReason: null, error };
     },
 
     async listWorkspaces() {
       let response: Response;
       try {
         // No X-Tenant-Id, ever -- see this method's own doc comment on the ApiClient interface.
-        const headers = userIdHeaders(getUserId);
+        const headers = await authHeaders(getAccessToken);
         response = await fetch(new URL("/api/workspaces", baseUrl), {
           ...(Object.keys(headers).length > 0 ? { headers } : {}),
           cache: "no-store",
@@ -1471,10 +1535,10 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
     async getWorkspaceMembers(tenantId) {
       let response: Response;
       try {
-        // Only X-User-Id -- see this method's own doc comment on the ApiClient interface for why
-        // X-Tenant-Id is never sent here even though the sibling invite call on this same route
-        // prefix is also tenant-scoped by its path.
-        const headers = userIdHeaders(getUserId);
+        // No X-Tenant-Id here -- see this method's own doc comment on the ApiClient interface for
+        // why, even though the sibling invite call on this same route prefix is also tenant-scoped
+        // by its path.
+        const headers = await authHeaders(getAccessToken);
         response = await fetch(
           new URL(`/api/workspaces/${encodeURIComponent(tenantId)}/members`, baseUrl),
           {
@@ -1519,7 +1583,7 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
           new URL(`/api/workspaces/${encodeURIComponent(tenantId)}/invites/${encodeURIComponent(id)}`, baseUrl),
           {
             method: "DELETE",
-            headers: userIdHeaders(getUserId),
+            headers: await authHeaders(getAccessToken),
             cache: "no-store",
           },
         );
@@ -1564,7 +1628,7 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
           ),
           {
             method: "DELETE",
-            headers: userIdHeaders(getUserId),
+            headers: await authHeaders(getAccessToken),
             cache: "no-store",
           },
         );
@@ -1617,7 +1681,7 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
       let response: Response;
       try {
         response = await fetch(new URL("/api/invites", baseUrl), {
-          headers: { "X-Invitation-Token": token, ...userIdHeaders(getUserId) },
+          headers: { "X-Invitation-Token": token, ...await authHeaders(getAccessToken) },
           cache: "no-store",
         });
       } catch (cause) {
@@ -1655,7 +1719,7 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
       try {
         response = await fetch(new URL("/api/invites/accept", baseUrl), {
           method: "POST",
-          headers: { "X-Invitation-Token": token, ...userIdHeaders(getUserId) },
+          headers: { "X-Invitation-Token": token, ...await authHeaders(getAccessToken) },
           cache: "no-store",
         });
       } catch (cause) {
@@ -1714,7 +1778,7 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
       };
     },
 
-    async uploadDocument(tenantId, file) {
+    async uploadDocument(tenantId, file, options = {}) {
       const formData = new FormData();
       // `file` is already a `File` (extends `Blob` with its own `.name`), so
       // FormData uses that name automatically -- no third `filename` arg
@@ -1725,9 +1789,10 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
       try {
         response = await fetch(new URL("/api/documents", baseUrl), {
           method: "POST",
-          headers: { "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
+          headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           body: formData,
           cache: "no-store",
+          signal: options.signal,
         });
       } catch (cause) {
         return {
@@ -1770,7 +1835,7 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
       let response: Response;
       try {
         response = await fetch(new URL(`/api/documents/${encodeURIComponent(id)}`, baseUrl), {
-          headers: { "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
+          headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           cache: "no-store",
         });
       } catch (cause) {
@@ -1816,7 +1881,7 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
 
       let response: Response;
       try {
-        response = await fetch(url, { headers: { "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) }, cache: "no-store" });
+        response = await fetch(url, { headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) }, cache: "no-store" });
       } catch (cause) {
         return {
           ok: false,
@@ -1846,7 +1911,7 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
       let response: Response;
       try {
         response = await fetch(new URL(`/api/documents/${encodeURIComponent(id)}/preview`, baseUrl), {
-          headers: { "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
+          headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           cache: "no-store",
         });
       } catch (cause) {
@@ -1880,35 +1945,36 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
       try {
         response = await fetch(new URL(`/api/documents/${encodeURIComponent(id)}/reprocess`, baseUrl), {
           method: "POST",
-          headers: { "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
+          headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           cache: "no-store",
         });
       } catch (cause) {
         return {
           ok: false,
           statusCode: null,
-          summary: null,
+          queued: null,
           error: `Unable to reach ${baseUrl}/api/documents/${id}/reprocess. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
         };
       }
 
-      if (response.status === 200) {
-        const summary = (await response.json()) as DocumentReprocessSummaryBody;
-        return { ok: true, statusCode: 200, summary, error: null };
+      // 202, not 200 (ADR-027 §D1): the work is queued for the Worker, not done in the request.
+      if (response.status === 202) {
+        const queued = (await response.json()) as DocumentReprocessQueuedBody;
+        return { ok: true, statusCode: 202, queued, error: null };
       }
 
       if (response.status === 403) {
-        return { ok: false, statusCode: 403, summary: null, error: "Only a Workspace Admin can reprocess a document." };
+        return { ok: false, statusCode: 403, queued: null, error: "Only a Workspace Admin can reprocess a document." };
       }
 
       if (response.status === 404) {
-        return { ok: false, statusCode: 404, summary: null, error: `No document found for id ${id}.` };
+        return { ok: false, statusCode: 404, queued: null, error: `No document found for id ${id}.` };
       }
 
       return {
         ok: false,
         statusCode: response.status,
-        summary: null,
+        queued: null,
         error: `Request failed with HTTP ${response.status} ${response.statusText}.`,
       };
     },
@@ -1918,7 +1984,7 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
       try {
         response = await fetch(new URL(`/api/documents/${encodeURIComponent(id)}`, baseUrl), {
           method: "DELETE",
-          headers: { "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
+          headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           cache: "no-store",
         });
       } catch (cause) {
@@ -1962,7 +2028,7 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
 
       let response: Response;
       try {
-        response = await fetch(url, { headers: { "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) }, cache: "no-store" });
+        response = await fetch(url, { headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) }, cache: "no-store" });
       } catch (cause) {
         return {
           ok: false,
@@ -1995,7 +2061,7 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
       let response: Response;
       try {
         response = await fetch(new URL(`/api/contracts/${encodeURIComponent(id)}`, baseUrl), {
-          headers: { "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
+          headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           cache: "no-store",
         });
       } catch (cause) {
@@ -2033,7 +2099,7 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
       let response: Response;
       try {
         response = await fetch(new URL("/api/renewals", baseUrl), {
-          headers: { "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
+          headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           cache: "no-store",
         });
       } catch (cause) {
@@ -2065,7 +2131,7 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
       let response: Response;
       try {
         response = await fetch(new URL(`/api/renewals/${encodeURIComponent(contractId)}/priority`, baseUrl), {
-          headers: { "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
+          headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           cache: "no-store",
         });
       } catch (cause) {
@@ -2101,7 +2167,7 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
       let response: Response;
       try {
         response = await fetch(new URL(`/api/contracts/${encodeURIComponent(id)}/corrections`, baseUrl), {
-          headers: { "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
+          headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           cache: "no-store",
         });
       } catch (cause) {
@@ -2140,7 +2206,7 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
       try {
         response = await fetch(new URL(`/api/contracts/${encodeURIComponent(id)}`, baseUrl), {
           method: "PATCH",
-          headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
+          headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           body: JSON.stringify(request),
           cache: "no-store",
         });
@@ -2179,7 +2245,7 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
       let response: Response;
       try {
         response = await fetch(new URL(`/api/contracts/${encodeURIComponent(id)}/evidence`, baseUrl), {
-          headers: { "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
+          headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           cache: "no-store",
         });
       } catch (cause) {
@@ -2218,7 +2284,7 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
       try {
         response = await fetch(new URL(`/api/documents/${encodeURIComponent(id)}/validate`, baseUrl), {
           method: "POST",
-          headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
+          headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           body: JSON.stringify(request),
           cache: "no-store",
         });
@@ -2260,7 +2326,7 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
       try {
         response = await fetch(new URL("/api/chat/query", baseUrl), {
           method: "POST",
-          headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
+          headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           body: JSON.stringify(request),
           cache: "no-store",
         });
@@ -2295,7 +2361,7 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
       try {
         response = await fetch(new URL(`/api/renewals/${encodeURIComponent(contractId)}/action`, baseUrl), {
           method: "POST",
-          headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
+          headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           body: JSON.stringify(request),
           cache: "no-store",
         });
@@ -2338,7 +2404,7 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
       try {
         response = await fetch(new URL("/api/quotes", baseUrl), {
           method: "POST",
-          headers: { "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
+          headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           body: formData,
           cache: "no-store",
         });
@@ -2372,7 +2438,7 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
       let response: Response;
       try {
         response = await fetch(new URL(`/api/quotes/${encodeURIComponent(id)}/assessment`, baseUrl), {
-          headers: { "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
+          headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           cache: "no-store",
         });
       } catch (cause) {
@@ -2409,7 +2475,7 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
       try {
         response = await fetch(new URL(`/api/quotes/${encodeURIComponent(id)}/assessment/recalculate`, baseUrl), {
           method: "POST",
-          headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
+          headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           body: JSON.stringify({ mappings }),
           cache: "no-store",
         });
@@ -2446,7 +2512,7 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
       try {
         response = await fetch(new URL("/api/negotiations/outcomes", baseUrl), {
           method: "POST",
-          headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
+          headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           body: JSON.stringify(request),
           cache: "no-store",
         });
@@ -2482,7 +2548,7 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
       let response: Response;
       try {
         response = await fetch(new URL("/api/savings/kpis", baseUrl), {
-          headers: { "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
+          headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           cache: "no-store",
         });
       } catch (cause) {
@@ -2515,7 +2581,7 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
       let response: Response;
       try {
         response = await fetch(new URL("/api/savings", baseUrl), {
-          headers: { "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
+          headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           cache: "no-store",
         });
       } catch (cause) {
@@ -2548,7 +2614,7 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
       let response: Response;
       try {
         response = await fetch(new URL("/api/conversations", baseUrl), {
-          headers: { "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
+          headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           cache: "no-store",
         });
       } catch (cause) {
@@ -2581,7 +2647,7 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
       try {
         response = await fetch(new URL("/api/conversations", baseUrl), {
           method: "POST",
-          headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
+          headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           body: JSON.stringify(request),
           cache: "no-store",
         });
@@ -2614,7 +2680,7 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
       let response: Response;
       try {
         response = await fetch(new URL(`/api/conversations/${encodeURIComponent(id)}`, baseUrl), {
-          headers: { "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
+          headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           cache: "no-store",
         });
       } catch (cause) {
@@ -2654,7 +2720,7 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
           new URL(`/api/conversations/${encodeURIComponent(conversationId)}/messages`, baseUrl),
           {
             method: "POST",
-            headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId, ...userIdHeaders(getUserId) },
+            headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
             body: JSON.stringify(request),
             cache: "no-store",
           },
@@ -2693,8 +2759,8 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
       try {
         // Tenant-agnostic (no X-Tenant-Id) -- see this method's own doc comment on the ApiClient
         // interface. Same conditional-headers shape as getHealth above: no `headers` key at all
-        // when userIdHeaders(getUserId) has nothing to contribute.
-        const headers = userIdHeaders(getUserId);
+        // when authHeaders(getAccessToken) has nothing to contribute.
+        const headers = await authHeaders(getAccessToken);
         response = await fetch(new URL("/api/capabilities", baseUrl), {
           ...(Object.keys(headers).length > 0 ? { headers } : {}),
           cache: "no-store",
@@ -2728,7 +2794,7 @@ export function createApiClient(baseUrl: string, getUserId: GetUserId = () => nu
       try {
         // Tenant-agnostic (no X-Tenant-Id) -- see this method's own doc comment on the ApiClient
         // interface.
-        const headers = userIdHeaders(getUserId);
+        const headers = await authHeaders(getAccessToken);
         response = await fetch(new URL(`/api/market/records/${encodeURIComponent(id)}`, baseUrl), {
           ...(Object.keys(headers).length > 0 ? { headers } : {}),
           cache: "no-store",
