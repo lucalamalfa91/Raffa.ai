@@ -68,13 +68,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Every workspace the caller holds a live workspace_membership in, oldest first. A caller who belongs to nothing gets 200 with an empty array, never 404.",
+            "description": "Every workspace the caller holds a live workspace_membership in, oldest first, plus any tenant where they hold a live invitation but no membership yet. A caller who belongs to nothing gets 200 with both arrays empty, never 404.",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "required": [
-                    "workspaces"
+                    "workspaces",
+                    "pendingInvitations"
                   ],
                   "properties": {
                     "workspaces": {
@@ -121,6 +122,31 @@
                               "null"
                             ],
                             "description": "ISO 4217 alpha-3, derived from country and stored -- or null when country was never set. Never a fabricated default."
+                          }
+                        }
+                      }
+                    },
+                    "pendingInvitations": {
+                      "type": "array",
+                      "description": "Fix 2026-09-14 (WorkspaceDirectoryService.DiscoverForIdentityAsync). Normally empty -- a tenant appears here only when this identity holds no live membership but does hold a live (unaccepted, unrevoked, unexpired) invitation, most often because the token-bearing /invite/accept flow never completed. Never a trust: acceptInvitationForIdentity (POST /api/workspaces/{tenantId}/invites/accept) re-verifies liveness from scratch before granting anything.",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "tenantId",
+                          "workspaceName",
+                          "role"
+                        ],
+                        "properties": {
+                          "tenantId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "workspaceName": {
+                            "type": "string"
+                          },
+                          "role": {
+                            "type": "string",
+                            "description": "The offered role. A plain string, never an enum (ADR-026 Amendment #3)."
                           }
                         }
                       }
@@ -572,6 +598,73 @@
           },
           "404": {
             "description": "Caller is not a live member of this tenant (never 403 for a non-member, ADR-025 Rule B1); or the invitation id does not exist, or is already accepted/revoked, in this tenant."
+          }
+        }
+      }
+    },
+    "/api/workspaces/{tenantId}/invites/accept": {
+      "post": {
+        "operationId": "acceptInvitationForIdentity",
+        "summary": "Accept a live invitation for the signed-in identity, no token required.",
+        "description": "Fix 2026-09-14. The identity-keyed counterpart of acceptInvitation (POST /api/invites/accept): extends ADR-025 §F.3 Exception 2 with a second entry point into the same already-sanctioned shape -- still one tenant, still no membership check (the caller is not a member yet, by definition), still a same-request re-verification before any write, only the evidence changes from 'possession of the 256-bit secret' to 'a live invitation whose email belongs to this signed-in identity'. Exists because the token-bearing accept screen (/invite/accept) must complete inside one browser tab/popup with no page navigation (ADR-025 Rule C10 forbids persisting the token to any browser storage) -- fragile in practice, since a blocked or non-closing loginPopup strands the invitee signed in with no memory of the invitation. The tenantId this runs against always comes from the same identity's own prior GET /api/workspaces call, which surfaces it under pendingInvitations; this endpoint trusts that provenance no more than acceptInvitation trusts a token's tenant prefix -- both re-verify from scratch before granting anything. No body. Deliberately no 409: there is no token to re-present after success, so a second call simply finds no live invitation left and answers 404, not a new outcome to design for.",
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The tenant a prior GET /api/workspaces surfaced under pendingInvitations[].tenantId -- re-verified from scratch, never trusted as a grant."
+          },
+          {
+            "name": "X-User-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The caller's interim identity (ADR-022, ADR-025 §A). Absent or blank -> 401."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Accepted: the caller now holds a live membership at the invited role -- the identical shape acceptInvitation's own 200 returns.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "workspaceId",
+                    "workspaceName",
+                    "role"
+                  ],
+                  "properties": {
+                    "workspaceId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "workspaceName": {
+                      "type": "string"
+                    },
+                    "role": {
+                      "type": "string",
+                      "description": "The invited role, now granted. A plain string, never an enum (ADR-026 Amendment #3)."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity presented (X-User-Id absent or blank) -- ADR-025 §B."
+          },
+          "404": {
+            "description": "No live invitation matches this identity in this tenant -- an unrelated tenant and 'not actually invited' collapse to the same answer (Rule B1)."
+          },
+          "410": {
+            "description": "A live invitation matched, but it has expired."
           }
         }
       }

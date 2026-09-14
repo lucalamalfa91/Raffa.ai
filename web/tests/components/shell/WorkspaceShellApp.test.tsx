@@ -42,6 +42,7 @@ function mockApiClient(): ApiClient {
     removeMember: vi.fn(),
     getInvitation: vi.fn(),
     acceptInvitation: vi.fn(),
+    acceptPendingInvitation: vi.fn(),
     uploadDocument: vi.fn(),
     getDocument: vi.fn(),
     // Task E13/F09/US01/T03 (web-documents-v2): DocumentsRoute (like PortfolioRoute below) calls

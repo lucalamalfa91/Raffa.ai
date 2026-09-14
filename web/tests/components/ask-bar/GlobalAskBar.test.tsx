@@ -31,6 +31,7 @@ function mockApiClient(getCapabilities: ApiClient["getCapabilities"] = vi.fn(() 
     removeMember: vi.fn(),
     getInvitation: vi.fn(),
     acceptInvitation: vi.fn(),
+    acceptPendingInvitation: vi.fn(),
     uploadDocument: vi.fn(),
     getDocument: vi.fn(),
     listDocuments: vi.fn(),

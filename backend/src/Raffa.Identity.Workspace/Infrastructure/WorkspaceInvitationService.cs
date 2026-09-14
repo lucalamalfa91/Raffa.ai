@@ -331,6 +331,116 @@ public sealed class WorkspaceInvitationService(
     }
 
     /// <summary>
+    /// Accept by identity, no token (`POST /api/workspaces/{tenantId}/invites/accept`, fix
+    /// 2026-09-14). Extends ADR-025 §F.3 Exception 2 ("accept enters a scope from a caller-supplied
+    /// tenant id with no membership check — the only place in the product that does so") with a
+    /// second entry point into that <b>same</b> already-sanctioned shape, not a new exception: still
+    /// one tenant, still no membership check (the caller is not a member yet, by definition), still a
+    /// same-request re-verification before any write. Only the evidence changes — from "possession of
+    /// the 256-bit secret" (<see cref="AcceptAsync"/>'s Rule C5 hash match) to "a live invitation
+    /// whose email belongs to this signed-in identity", read as the first statement inside the scope,
+    /// nothing else about the tenant read on a miss, mirroring Rule C5's own discipline.
+    ///
+    /// <para>
+    /// <b>Why this exists.</b> The token-bearing accept screen (<c>/invite/accept</c>) must complete
+    /// inside one browser tab/popup with no page navigation, because Rule C10 forbids persisting the
+    /// token to any browser storage — <c>loginPopup</c> is the only same-page path, and in practice it
+    /// is fragile (a blocked or non-closing popup strands the invitee signed in with no memory of the
+    /// invitation, on a generic sign-in that shows "create a workspace" instead). This method is
+    /// `GET /api/workspaces`'s own follow-up call for exactly that caller: signed in, no live
+    /// membership anywhere, but a live invitation <see cref="WorkspaceDirectoryService.DiscoverForIdentityAsync"/>
+    /// already found for them. It lands them in their workspace regardless of which login path they
+    /// took, with no dependency on the token ever having survived the trip.
+    /// </para>
+    /// <para>
+    /// <b>Never an oracle.</b> "No matching <see cref="WorkspaceUser"/> for this identity" and "a
+    /// matching user but no live invitation" both answer <see cref="MembershipOperationStatus.NotFound"/>
+    /// — identical to a caller-supplied tenant they have no relationship to at all (the same Rule B1
+    /// posture <see cref="WorkspaceInvitesEndpointExtensions"/>'s membership guard already takes). The
+    /// <paramref name="tenantId"/> this runs against is never invented by the caller in a vacuum — the
+    /// client only ever has one because this same identity's own <c>GET /api/workspaces</c> call
+    /// surfaced it moments earlier — but this method trusts that provenance no more than
+    /// <see cref="AcceptAsync"/> trusts a token's tenant prefix: both re-verify from scratch, inside
+    /// the scope, before any write.
+    /// </para>
+    /// <para>
+    /// <b>Deliberately no 409.</b> <see cref="AcceptAsync"/> answers a second accept by the same
+    /// identity with 409 (an idempotency signal a token holder can act on). This method has no token
+    /// to re-present after success — the live-invitation read below simply finds nothing once
+    /// <see cref="WorkspaceInvitation.AcceptedAt"/> is set, so a second call is <see cref="MembershipOperationStatus.NotFound"/>,
+    /// not a new outcome to design for: the client only ever calls this once, immediately after
+    /// discovery, and never retries blindly.
+    /// </para>
+    /// </summary>
+    public async Task<InvitationAcceptResult> AcceptForIdentityAsync(
+        TenantId tenantId, string signedInIdentity, string? signedInEmail = null, CancellationToken cancellationToken = default)
+    {
+        using var _ = tenantContext.BeginScope(tenantId);
+
+        // WorkspaceUser.Email is always stored lower-cased (InviteAsync's own normalization) -- the
+        // email-shaped comparisons below lower-case to match it, the same convention
+        // WorkspaceDirectoryService.DiscoverForIdentityAsync already applies. The ExternalSubjectId
+        // comparison stays ordinal/as-is, mirroring MatchesInvitedPerson's own bound-subject check.
+        var normalizedIdentity = signedInIdentity.Trim().ToLowerInvariant();
+        var normalizedEmail = signedInEmail?.Trim().ToLowerInvariant();
+
+        // The first read inside this tenant's scope, same discipline as AcceptAsync's own hash match:
+        // translates the signed-in identity (an oid, or -- pre-directory-provisioning/legacy rows --
+        // an email) to the WorkspaceUser row InviteAsync wrote at invite time, so the invitation query
+        // below can match on that row's own stored email rather than guessing at casing.
+        var invitedUser = await db.WorkspaceUsers.AsNoTracking()
+            .SingleOrDefaultAsync(
+                u => u.TenantId == tenantId
+                    && (u.ExternalSubjectId == signedInIdentity
+                        || u.Email.ToLower() == normalizedIdentity
+                        || (normalizedEmail != null && u.Email.ToLower() == normalizedEmail)),
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        if (invitedUser is null)
+        {
+            return InvitationAcceptResult.Failure(MembershipOperationStatus.NotFound, null);
+        }
+
+        var invitation = await db.WorkspaceInvitations
+            .SingleOrDefaultAsync(
+                i => i.TenantId == tenantId && i.Email == invitedUser.Email
+                    && i.AcceptedAt == null && i.RevokedAt == null,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        if (invitation is null)
+        {
+            return InvitationAcceptResult.Failure(MembershipOperationStatus.NotFound, null);
+        }
+
+        if (invitation.ExpiresAt <= clock.UtcNow)
+        {
+            return InvitationAcceptResult.Failure(MembershipOperationStatus.Expired, null);
+        }
+
+        // The identical transactional grant AcceptAsync uses -- same audit actions
+        // (workspace.membership.granted, workspace.invitation.accepted), same unique-index race
+        // translated to 409 (unreachable here in practice: this method itself is this identity's only
+        // path to a second acceptance, and it no longer finds a live invitation once the first
+        // succeeds).
+        var acceptResult = await membershipService
+            .AcceptInvitationAsync(tenantId, invitation, signedInIdentity, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (!acceptResult.IsSuccess)
+        {
+            return InvitationAcceptResult.Failure(acceptResult.Status, acceptResult.Error);
+        }
+
+        var workspace = await db.Workspaces.AsNoTracking()
+            .SingleOrDefaultAsync(w => w.TenantId == tenantId, cancellationToken)
+            .ConfigureAwait(false);
+
+        return InvitationAcceptResult.Success(tenantId, workspace?.Name ?? string.Empty, acceptResult.Role!.Value);
+    }
+
+    /// <summary>
     /// Revoke (`DELETE /api/workspaces/{tenantId}/invites/{id}`, ADR-025 §D.5c precedent / AC-11):
     /// stamps <see cref="WorkspaceInvitation.RevokedAt"/> on a still-live invitation. Idempotently
     /// refuses (as <see cref="MembershipOperationStatus.NotFound"/>, mapped to the endpoint's own

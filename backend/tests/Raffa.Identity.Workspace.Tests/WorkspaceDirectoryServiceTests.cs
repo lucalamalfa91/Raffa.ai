@@ -116,6 +116,162 @@ public sealed class WorkspaceDirectoryServiceTests : IAsyncLifetime
         return workspace.TenantId;
     }
 
+    /// <summary>Seeds a workspace and a live (unaccepted, unrevoked) <see cref="WorkspaceInvitation"/>
+    /// for <paramref name="identity"/> at <paramref name="roleName"/>, plus the <see cref="WorkspaceUser"/>
+    /// row <see cref="WorkspaceMembershipService.InviteAsync"/> itself always writes at invite time --
+    /// no membership, so the fix under test (DiscoverForIdentityAsync's own pending-invitation branch)
+    /// is what makes this identity discoverable at all, not the membership join.</summary>
+    private async Task<TenantId> SeedLiveInvitationAsync(
+        string name, DateTimeOffset createdAt, string identity, WorkspaceRoleName roleName, DateTimeOffset expiresAt)
+    {
+        var (workspace, roles) = WorkspaceFactory.CreateWorkspaceWithDefaultRoles(name, new InstantClock(createdAt));
+
+        await using var db = CreateContext();
+        using var _ = _tenantContext.BeginScope(workspace.TenantId);
+
+        db.Workspaces.Add(workspace);
+        db.WorkspaceRoles.AddRange(roles);
+
+        var user = WorkspaceMembershipFactory.CreateInvitedUser(workspace.TenantId, identity, createdAt).Value;
+        db.WorkspaceUsers.Add(user);
+
+        var role = roles.Single(r => r.Name == roleName);
+        db.WorkspaceInvitations.Add(new WorkspaceInvitation
+        {
+            TenantId = workspace.TenantId,
+            Email = user.Email,
+            WorkspaceRoleId = role.Id,
+            TokenHash = "test-hash-" + Guid.NewGuid().ToString("N"),
+            InvitedBy = "admin@acme.example",
+            CreatedAt = createdAt,
+            ExpiresAt = expiresAt,
+        });
+
+        await db.SaveChangesAsync();
+        return workspace.TenantId;
+    }
+
+    [Fact]
+    public async Task A_live_invitation_with_no_membership_is_surfaced_as_pending_not_a_workspace()
+    {
+        const string identity = "invited@acme.example";
+        var tenantId = await SeedLiveInvitationAsync(
+            "Pending Co",
+            new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+            identity,
+            WorkspaceRoleName.Procurement,
+            expiresAt: DateTimeOffset.UtcNow.AddDays(7));
+
+        await using var db = CreateContext();
+        var service = new WorkspaceDirectoryService(db, _tenantContext, new InstantClock(DateTimeOffset.UtcNow), new RecordingAuditWriter());
+
+        var result = await service.DiscoverForIdentityAsync(identity);
+
+        Assert.Empty(result.Workspaces);
+        var pending = Assert.Single(result.PendingInvitations);
+        Assert.Equal(tenantId, pending.TenantId);
+        Assert.Equal("Pending Co", pending.WorkspaceName);
+        Assert.Equal(WorkspaceRoleName.Procurement, pending.Role);
+    }
+
+    [Fact]
+    public async Task An_expired_invitation_is_never_surfaced_as_pending()
+    {
+        const string identity = "too-late@acme.example";
+        await SeedLiveInvitationAsync(
+            "Expired Invite Co",
+            new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+            identity,
+            WorkspaceRoleName.Legal,
+            expiresAt: DateTimeOffset.UtcNow.AddDays(-1));
+
+        await using var db = CreateContext();
+        var service = new WorkspaceDirectoryService(db, _tenantContext, new InstantClock(DateTimeOffset.UtcNow), new RecordingAuditWriter());
+
+        var result = await service.DiscoverForIdentityAsync(identity);
+
+        Assert.Empty(result.Workspaces);
+        Assert.Empty(result.PendingInvitations);
+    }
+
+    [Fact]
+    public async Task A_revoked_invitation_is_never_surfaced_as_pending()
+    {
+        const string identity = "revoked-invite@acme.example";
+        var tenantId = await SeedLiveInvitationAsync(
+            "Revoked Invite Co",
+            new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+            identity,
+            WorkspaceRoleName.Finance,
+            expiresAt: DateTimeOffset.UtcNow.AddDays(7));
+
+        await using (var db = CreateContext())
+        {
+            using var _ = _tenantContext.BeginScope(tenantId);
+            var invitation = await db.WorkspaceInvitations.SingleAsync(i => i.TenantId == tenantId);
+            invitation.RevokedAt = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync();
+        }
+
+        await using var readDb = CreateContext();
+        var service = new WorkspaceDirectoryService(readDb, _tenantContext, new InstantClock(DateTimeOffset.UtcNow), new RecordingAuditWriter());
+
+        var result = await service.DiscoverForIdentityAsync(identity);
+
+        Assert.Empty(result.Workspaces);
+        Assert.Empty(result.PendingInvitations);
+    }
+
+    [Fact]
+    public async Task A_live_membership_in_one_tenant_and_a_pending_invitation_in_another_are_both_reported_correctly_separated()
+    {
+        const string identity = "both@acme.example";
+        var memberOf = await SeedWorkspaceWithMembershipAsync(
+            "Already A Member Of",
+            new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+            identity,
+            [WorkspaceRoleName.Admin]);
+        var invitedTo = await SeedLiveInvitationAsync(
+            "Invited To",
+            new DateTimeOffset(2026, 1, 2, 0, 0, 0, TimeSpan.Zero),
+            identity,
+            WorkspaceRoleName.ReadOnly,
+            expiresAt: DateTimeOffset.UtcNow.AddDays(7));
+
+        await using var db = CreateContext();
+        var service = new WorkspaceDirectoryService(db, _tenantContext, new InstantClock(DateTimeOffset.UtcNow), new RecordingAuditWriter());
+
+        var result = await service.DiscoverForIdentityAsync(identity);
+
+        var workspaceItem = Assert.Single(result.Workspaces);
+        Assert.Equal(memberOf, workspaceItem.TenantId);
+
+        var pending = Assert.Single(result.PendingInvitations);
+        Assert.Equal(invitedTo, pending.TenantId);
+        Assert.Equal(WorkspaceRoleName.ReadOnly, pending.Role);
+    }
+
+    [Fact]
+    public async Task ListForIdentityAsync_stays_workspaces_only_even_when_a_pending_invitation_exists()
+    {
+        const string identity = "wrapper-check@acme.example";
+        await SeedLiveInvitationAsync(
+            "Wrapper Check Co",
+            new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+            identity,
+            WorkspaceRoleName.Admin,
+            expiresAt: DateTimeOffset.UtcNow.AddDays(7));
+
+        await using var db = CreateContext();
+        var service = new WorkspaceDirectoryService(db, _tenantContext, new InstantClock(DateTimeOffset.UtcNow), new RecordingAuditWriter());
+
+        // The pre-fix signature: unaffected by the new pending-invitation branch, exactly like an
+        // identity with no relationship to any tenant at all (An_identity_with_no_membership_anywhere_gets_an_empty_list).
+        var result = await service.ListForIdentityAsync(identity);
+
+        Assert.Empty(result);
+    }
+
     [Fact]
     public async Task A_person_with_two_roles_in_one_tenant_appears_once_at_the_highest_role()
     {

@@ -17,6 +17,7 @@ function mockApiClient(getPortfolio: ApiClient["getPortfolio"] = vi.fn()): ApiCl
     removeMember: vi.fn(),
     getInvitation: vi.fn(),
     acceptInvitation: vi.fn(),
+    acceptPendingInvitation: vi.fn(),
     uploadDocument: vi.fn(),
     getDocument: vi.fn(),
     // Task E16/F03/US01/T01 (ADR-020 w15 §2.2): the zero state reads the server's document counts

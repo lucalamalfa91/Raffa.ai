@@ -78,12 +78,12 @@ public static class WorkspaceEndpointExtensions
         // it (E14/F01/US01/T01 bullet 5) and need it open for none of their own reads.
         using var identityScope = callerIdentityContext.BeginIdentityScope(identity);
 
-        var workspaces = await directoryService
-            .ListForIdentityAsync(identity, cancellationToken)
+        var directoryResult = await directoryService
+            .DiscoverForIdentityAsync(identity, cancellationToken)
             .ConfigureAwait(false);
 
-        var rows = new List<object>(workspaces.Count);
-        foreach (var workspace in workspaces)
+        var rows = new List<object>(directoryResult.Workspaces.Count);
+        foreach (var workspace in directoryResult.Workspaces)
         {
             // ADR-026 §D2: composition happens here, in the host — Raffa.Identity.Workspace may
             // reference only Raffa.SharedKernel (DependencyDirectionTests.cs:62, enforced), so it
@@ -109,7 +109,21 @@ public static class WorkspaceEndpointExtensions
             });
         }
 
-        return Results.Ok(new { workspaces = rows });
+        // Fix 2026-09-14: a tenant where this identity holds no membership yet but does hold a live
+        // invitation (WorkspaceDirectoryService.DiscoverForIdentityAsync) -- normally empty, since
+        // most callers either belong somewhere or nowhere. The client's own follow-up call is
+        // `POST /api/workspaces/{tenantId}/invites/accept`, which re-verifies this from scratch
+        // rather than trusting this row as a grant.
+        var pendingInvitationRows = directoryResult.PendingInvitations
+            .Select(pending => new
+            {
+                tenantId = pending.TenantId.Value,
+                workspaceName = pending.WorkspaceName,
+                role = pending.Role.ToString(),
+            })
+            .ToList();
+
+        return Results.Ok(new { workspaces = rows, pendingInvitations = pendingInvitationRows });
     }
 
     private static async Task<IResult> CreateWorkspaceAsync(

@@ -123,6 +123,13 @@ type ListWorkspacesResponses = paths["/api/workspaces"]["get"]["responses"];
 export type WorkspaceSummaryBody =
   ListWorkspacesResponses[200]["content"]["application/json"]["workspaces"][number];
 
+// Fix 2026-09-14 (WorkspaceDirectoryService.DiscoverForIdentityAsync): a tenant where the caller
+// holds no membership yet but does hold a live invitation -- normally empty, see this type's own
+// generated description. `tenantId` is the input `acceptPendingInvitation` below needs; never a
+// trust by itself -- that call re-verifies liveness from scratch before granting anything.
+export type PendingWorkspaceInvitationBody =
+  ListWorkspacesResponses[200]["content"]["application/json"]["pendingInvitations"][number];
+
 export interface ListWorkspacesResult {
   /** True only on `200 OK`. */
   ok: boolean;
@@ -131,6 +138,9 @@ export interface ListWorkspacesResult {
   /** Every workspace the caller holds a live membership in, oldest first -- an empty array is a
    * valid, non-error outcome (a caller who belongs to nothing), present only when `ok` is true. */
   workspaces: WorkspaceSummaryBody[] | null;
+  /** Fix 2026-09-14: tenants with a live invitation and no membership yet, present only when `ok`
+   * is true (an empty array is the common case, not an omission). */
+  pendingInvitations: PendingWorkspaceInvitationBody[] | null;
   /** Plain-language failure reason (401/network-failure cause), present only when `ok` is false. */
   error: string | null;
 }
@@ -275,6 +285,27 @@ export interface AcceptInvitationResult {
   acceptance: AcceptedInvitationBody | null;
   /** Plain-language failure reason (401/403 email mismatch/404 unknown-or-revoked/409 already
    * accepted/410 expired/network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
+// `acceptPendingInvitation`, wrapping `POST /api/workspaces/{tenantId}/invites/accept` (fix
+// 2026-09-14). The identity-keyed counterpart of `acceptInvitation` above: no
+// `X-Invitation-Token` header, no body -- the caller's own `Authorization` identity plus the
+// `tenantId` a prior `listWorkspaces()` surfaced under `pendingInvitations` are the whole input.
+// Deliberately no 409 case (see `AcceptForIdentityAsync`'s own doc comment, backend): there is no
+// token to re-present after success, so a second call simply finds nothing and answers 404.
+type AcceptInvitationForIdentityResponses = paths["/api/workspaces/{tenantId}/invites/accept"]["post"]["responses"];
+export type AcceptedPendingInvitationBody = AcceptInvitationForIdentityResponses[200]["content"]["application/json"];
+
+export interface AcceptPendingInvitationResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** The now-granted workspace id/name/role, present only when `ok` is true. */
+  acceptance: AcceptedPendingInvitationBody | null;
+  /** Plain-language failure reason (401/404 no live invitation for this identity here/410
+   * expired/network-failure cause), present only when `ok` is false. */
   error: string | null;
 }
 
@@ -1138,6 +1169,14 @@ export interface ApiClient {
    */
   acceptInvitation(token: string): Promise<AcceptInvitationResult>;
   /**
+   * Calls `POST /api/workspaces/{tenantId}/invites/accept` (operationId `acceptInvitationForIdentity`,
+   * fix 2026-09-14) -- the identity-keyed counterpart of `acceptInvitation` above, no token. `tenantId`
+   * comes from `listWorkspaces()`'s own `pendingInvitations`. Same never-throws shape: 404 (no live
+   * invitation for this identity in this tenant) and 410 (expired) are normal, expected outcomes the
+   * caller renders inline, never exceptions.
+   */
+  acceptPendingInvitation(tenantId: string): Promise<AcceptPendingInvitationResult>;
+  /**
    * Calls `POST /api/documents` (operationId `uploadDocument`) as
    * `multipart/form-data` with a single `file` field -- the exact shape
    * `DocumentUploadEndpointTests.cs` (backend) enforces. `tenantId` is sent
@@ -1511,23 +1550,34 @@ export function createApiClient(
           ok: false,
           statusCode: null,
           workspaces: null,
+          pendingInvitations: null,
           error: `Unable to reach ${baseUrl}/api/workspaces. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
         };
       }
 
       if (response.status === 200) {
-        const body = (await response.json()) as { workspaces: WorkspaceSummaryBody[] };
-        return { ok: true, statusCode: 200, workspaces: body.workspaces, error: null };
+        const body = (await response.json()) as {
+          workspaces: WorkspaceSummaryBody[];
+          pendingInvitations: PendingWorkspaceInvitationBody[];
+        };
+        return {
+          ok: true,
+          statusCode: 200,
+          workspaces: body.workspaces,
+          pendingInvitations: body.pendingInvitations,
+          error: null,
+        };
       }
 
       if (response.status === 401) {
-        return { ok: false, statusCode: 401, workspaces: null, error: "Sign-in required." };
+        return { ok: false, statusCode: 401, workspaces: null, pendingInvitations: null, error: "Sign-in required." };
       }
 
       return {
         ok: false,
         statusCode: response.status,
         workspaces: null,
+        pendingInvitations: null,
         error: `Request failed with HTTP ${response.status} ${response.statusText}.`,
       };
     },
@@ -1768,6 +1818,51 @@ export function createApiClient(
           error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
         }
         return { ok: false, statusCode: 409, acceptance: null, error };
+      }
+
+      return {
+        ok: false,
+        statusCode: response.status,
+        acceptance: null,
+        error: `Request failed with HTTP ${response.status} ${response.statusText}.`,
+      };
+    },
+
+    async acceptPendingInvitation(tenantId) {
+      let response: Response;
+      try {
+        response = await fetch(
+          new URL(`/api/workspaces/${encodeURIComponent(tenantId)}/invites/accept`, baseUrl),
+          {
+            method: "POST",
+            headers: await authHeaders(getAccessToken),
+            cache: "no-store",
+          },
+        );
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          acceptance: null,
+          error: `Unable to reach ${baseUrl}/api/workspaces/${tenantId}/invites/accept. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const acceptance = (await response.json()) as AcceptedPendingInvitationBody;
+        return { ok: true, statusCode: 200, acceptance, error: null };
+      }
+
+      if (response.status === 401) {
+        return { ok: false, statusCode: 401, acceptance: null, error: "Sign-in required." };
+      }
+
+      if (response.status === 404) {
+        return { ok: false, statusCode: 404, acceptance: null, error: "No pending invitation found for this identity in this workspace." };
+      }
+
+      if (response.status === 410) {
+        return { ok: false, statusCode: 410, acceptance: null, error: "This invitation has expired." };
       }
 
       return {
