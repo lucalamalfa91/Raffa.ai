@@ -124,7 +124,11 @@ public sealed class WorkspaceBootstrapEndpointTests : IClassFixture<WebApplicati
 
         var user = await db.WorkspaceUsers.SingleAsync(u => u.TenantId == tenant);
         Assert.Equal("founder@acme.example", user.Email);
-        Assert.Null(user.ExternalSubjectId);
+        // Fix 2026-09-14 (NW-05): the creator is signed in -- that is how they reached this endpoint --
+        // so their `oid` is bound at creation, not left for a later first sign-in. In this host the
+        // test scheme's subject is the X-User-Id value itself, hence the address here; on dev it is
+        // the Entra object id. Either way every later membership lookup finds the creator by it.
+        Assert.Equal("founder@acme.example", user.ExternalSubjectId);
 
         var membership = await db.WorkspaceMemberships.SingleAsync(m => m.TenantId == tenant);
         Assert.Equal(user.Id, membership.WorkspaceUserId);

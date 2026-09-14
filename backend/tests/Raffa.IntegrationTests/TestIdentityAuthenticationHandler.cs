@@ -64,6 +64,15 @@ public sealed class TestIdentityAuthenticationHandler(
             // "oid": the exact claim type Microsoft.Identity.Web's ClaimsPrincipal.GetObjectId()
             // resolves, which is TokenCallerIdentity.Resolve()'s own source.
             claims.Add(new Claim("oid", userIdValues.ToString()));
+
+            // Fix 2026-09-14: a real access token also carries `email` (ResolveEmail()'s source),
+            // and POST /api/workspaces needs it for the creator's Email column now that the
+            // subject is an `oid`. An X-User-Id that already is an address doubles as the email,
+            // which keeps every existing R0/R1 flow exactly as it was.
+            if (userIdValues.ToString().Contains('@'))
+            {
+                claims.Add(new Claim("email", userIdValues.ToString()));
+            }
         }
 
         if (Request.Headers.TryGetValue(TestPrincipalStartupFilter.TenantIdHeaderName, out var tenantIdValues) &&
