@@ -99,6 +99,25 @@ public sealed class DocumentQueryService(
 
         var totalCount = await query.CountAsync(cancellationToken).ConfigureAwait(false);
 
+        // ADR-027 §D7 (task E16/F02/US03/T01): the counts are tenant-wide and unfiltered by
+        // `?status=` -- one grouped query over every row of this tenant, never four round trips
+        // and never a page-scoped number (a page-scoped count would be a new lie at page 2).
+        // They are overlapping projections, not a partition: no sum holds, and the client must
+        // not derive "askable" from `all - needsAttention` (ADR-027 §C5/§C9.1).
+        var byStatus = await dbContext.Documents.AsNoTracking()
+            .Where(d => d.TenantId == tenantId)
+            .GroupBy(d => d.ProcessingStatus)
+            .Select(g => new { Status = g.Key, Count = g.Count() })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+        int Of(params DocumentProcessingStatus[] statuses) =>
+            byStatus.Where(b => statuses.Contains(b.Status)).Sum(b => b.Count);
+        var counts = new DocumentCounts(
+            All: byStatus.Where(b => b.Status != DocumentProcessingStatus.Rejected).Sum(b => b.Count),
+            NeedsAttention: Of(DocumentProcessingStatus.NeedsReview, DocumentProcessingStatus.Failed),
+            Processing: Of(DocumentProcessingStatus.Uploaded, DocumentProcessingStatus.Processing),
+            Rejected: Of(DocumentProcessingStatus.Rejected));
+
         var documents = await query
             .OrderByDescending(d => d.CreatedAt)
             .ThenBy(d => d.Id)
@@ -113,13 +132,14 @@ public sealed class DocumentQueryService(
                 d.ProcessingStatus,
                 d.PageCount,
                 d.CreatedAt,
+                d.RejectionReason,
             })
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
         if (documents.Count == 0)
         {
-            return new DocumentListPage([], pageNumber, size, totalCount);
+            return new DocumentListPage([], pageNumber, size, totalCount, counts);
         }
 
         var documentIds = documents.Select(d => d.Id).ToList();
@@ -151,10 +171,68 @@ public sealed class DocumentQueryService(
                     : null,
                 d.PageCount,
                 d.CreatedAt,
-                d.ContractId is { } weakContractId ? weakFactsByContract.GetValueOrDefault(weakContractId) : 0))
+                d.ContractId is { } weakContractId ? weakFactsByContract.GetValueOrDefault(weakContractId) : 0,
+                d.RejectionReason))
             .ToList();
 
-        return new DocumentListPage(items, pageNumber, size, totalCount);
+        return new DocumentListPage(items, pageNumber, size, totalCount, counts);
+    }
+
+    /// <summary>
+    /// ADR-027 §D9 (task E16/F02/US03/T01): how many of this tenant's documents are still
+    /// non-terminal (<c>Uploaded</c> + <c>Processing</c>) — the number <c>GET /api/contracts</c>
+    /// carries as <c>processingDocumentCount</c>, so an empty portfolio can say "3 documents still
+    /// processing" instead of "no contracts". Same definition as <see cref="DocumentCounts.Processing"/>.
+    /// </summary>
+    public async Task<int> CountProcessingDocumentsAsync(TenantId tenantId, CancellationToken cancellationToken = default)
+    {
+        using var tenantScope = tenantContext.BeginScope(tenantId);
+        return await dbContext.Documents.AsNoTracking()
+            .CountAsync(
+                d => d.TenantId == tenantId
+                    && (d.ProcessingStatus == DocumentProcessingStatus.Uploaded
+                        || d.ProcessingStatus == DocumentProcessingStatus.Processing),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// ADR-027 §D9: <see cref="ContractReadiness"/> for one contract, from definition #1 (§D8)
+    /// over its linked documents. <c>Stage</c> is the live stage of the first document still
+    /// <c>Processing</c> (an <c>Uploaded</c> one reports the "uploading" stage), and only while the
+    /// state is <see cref="ContractReadinessState.Processing"/>. A contract with no linked document
+    /// is <see cref="ContractReadinessState.Unavailable"/>, never <c>Processing</c>: nothing is coming.
+    /// </summary>
+    public async Task<ContractReadiness> GetReadinessAsync(
+        TenantId tenantId, EntityId contractId, CancellationToken cancellationToken = default)
+    {
+        using var tenantScope = tenantContext.BeginScope(tenantId);
+
+        var linked = await dbContext.Documents.AsNoTracking()
+            .Where(d => d.TenantId == tenantId && d.ContractId == contractId)
+            .OrderBy(d => d.CreatedAt)
+            .Select(d => new { d.Id, d.ProcessingStatus })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var completed = linked.Count(d => d.ProcessingStatus == DocumentProcessingStatus.Completed);
+        if (completed > 0)
+        {
+            return new ContractReadiness(ContractReadinessState.Ready, null, linked.Count, completed);
+        }
+
+        var inFlight = linked.FirstOrDefault(d =>
+            d.ProcessingStatus is DocumentProcessingStatus.Uploaded or DocumentProcessingStatus.Processing);
+        if (inFlight is null)
+        {
+            return new ContractReadiness(ContractReadinessState.Unavailable, null, linked.Count, 0);
+        }
+
+        var stage = inFlight.ProcessingStatus == DocumentProcessingStatus.Processing
+            ? (await StagesByDocumentAsync(tenantId, [inFlight.Id], cancellationToken).ConfigureAwait(false))
+                .GetValueOrDefault(inFlight.Id, DocumentProcessingStageMap.Uploading)
+            : DocumentProcessingStageMap.Uploading;
+        return new ContractReadiness(ContractReadinessState.Processing, stage, linked.Count, 0);
     }
 
     private async Task<Dictionary<EntityId, string>> StagesByDocumentAsync(

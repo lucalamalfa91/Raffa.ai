@@ -206,20 +206,53 @@ public sealed class DocumentLifecycleTests : IAsyncLifetime
             await db.SaveChangesAsync();
         }
 
-        Result<DocumentProcessingSummary>? result;
+        // Task E16/F02/US03/T01: the request queues; the Worker re-runs. Both halves are proven
+        // here -- the queued contract first, then the pipeline played by hand as the Worker.
+        var queue = new InMemoryExtractionQueue();
+        Result<DocumentReprocessQueued>? result;
         await using (var db = CreateAppContext(tenantContext))
         {
-            var service = CreateReprocessService(db, harness, tenantContext);
+            var service = CreateReprocessService(db, harness, tenantContext, queue);
             result = await service.ReprocessAsync(tenantId, documentId, Actor);
         }
 
         Assert.NotNull(result);
         Assert.True(result!.IsSuccess, result.IsFailure ? result.Error : string.Empty);
-        Assert.Equal(1, result.Value.PagesParsed);
-        Assert.Equal(1, result.Value.ChunksIndexed);
+        Assert.Equal(documentId, result.Value.DocumentId);
+
+        // One pointer, at the job the row says is queued and unclaimed -- the state a fresh claim
+        // requires (claimed_at IS NULL is the compare-and-swap).
+        var published = Assert.Single(queue.Published);
+        Assert.Equal(documentId.Value, published.DocumentId);
+        Assert.Equal(result.Value.ExtractionJobId.Value, published.ExtractionJobId);
+        await using (var db = CreateAppContext(tenantContext))
+        {
+            using var scope = tenantContext.BeginScope(tenantId);
+            var job = await db.ExtractionJobs.SingleAsync(j => j.Id == result.Value.ExtractionJobId);
+            Assert.Equal(ExtractionJobStatus.Queued, job.Status);
+            Assert.Null(job.ClaimedAt);
+            Assert.Null(job.ClaimedBy);
+            Assert.Equal(
+                DocumentProcessingStatus.Uploaded,
+                (await db.Documents.SingleAsync(d => d.Id == documentId)).ProcessingStatus);
+            // R-DOC-07 AC-1: the stale chunks are gone in the request, not at the Worker's leisure.
+            Assert.Empty(await db.Embeddings.Where(e => e.TenantId == tenantId && e.SourceId == documentId).ToListAsync());
+        }
+
         Assert.Contains(
             harness.Audit.Entries,
-            e => e.Action == DocumentReprocessService.ReprocessedAuditAction && e.Actor == Actor);
+            e => e.Action == DocumentReprocessService.ReprocessedAuditAction && e.Actor == Actor
+                && e.Detail != null && e.Detail.Contains("queued", StringComparison.Ordinal));
+
+        // The Worker's half: the same pipeline a first upload goes through.
+        await using (var db = CreateAppContext(tenantContext))
+        {
+            var pipeline = CreatePipeline(db, harness, tenantContext);
+            var rerun = await pipeline.ProcessAsync(tenantId, documentId, "msa.pdf", "application/pdf", BuildPdf(ContractText));
+            Assert.True(rerun.IsSuccess, rerun.IsFailure ? rerun.Error : string.Empty);
+            Assert.Equal(1, rerun.Value.PagesParsed);
+            Assert.Equal(1, rerun.Value.ChunksIndexed);
+        }
 
         await using (var db = CreateAppContext(tenantContext))
         {
@@ -246,7 +279,7 @@ public sealed class DocumentLifecycleTests : IAsyncLifetime
         var documentId = await UploadAndProcessAsync(harness, tenantContext, tenantId, "msa.pdf", Now);
 
         await using var db = CreateAppContext(tenantContext);
-        var service = CreateReprocessService(db, harness, tenantContext);
+        var service = CreateReprocessService(db, harness, tenantContext, new InMemoryExtractionQueue());
 
         Assert.Null(await service.ReprocessAsync(otherTenant, documentId, Actor));
     }
@@ -401,12 +434,16 @@ public sealed class DocumentLifecycleTests : IAsyncLifetime
             harness.Clock,
             new DocumentPreviewService(db, harness.Storage, new PlaceholderDocumentPreviewRenderer(), tenantContext));
 
+    /// <summary>Task E16/F02/US03/T01: the service no longer owns a pipeline — it publishes to
+    /// the queue. The test passes its own <see cref="InMemoryExtractionQueue"/> so it can assert
+    /// the pointer, then plays the Worker itself (<see cref="CreatePipeline"/>), exactly as
+    /// <see cref="UploadAndProcessAsync"/> already does for a first upload.</summary>
     private static DocumentReprocessService CreateReprocessService(
-        DocumentsContractsDbContext db, Harness harness, ITenantContext tenantContext) =>
+        DocumentsContractsDbContext db, Harness harness, ITenantContext tenantContext, InMemoryExtractionQueue queue) =>
         new(
             db,
             harness.Storage,
-            CreatePipeline(db, harness, tenantContext),
+            queue,
             new EmbeddingRetrievalService(db, harness.Gateway, tenantContext, harness.Clock),
             tenantContext,
             harness.Audit,

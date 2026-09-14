@@ -19,6 +19,7 @@ function item(overrides: Partial<DocumentListItemBody> = {}): DocumentListItemBo
     pageCount: 12,
     createdAt: "2026-09-06T08:05:00Z",
     weakFactCount: 0,
+    rejectionReason: null,
     ...overrides,
   };
 }

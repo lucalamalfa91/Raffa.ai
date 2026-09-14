@@ -68,6 +68,8 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
 function contract(overrides: Partial<Contract360Body> = {}): Contract360Body {
   return {
     contractId: CONTRACT_ID,
+    // Task E16/F02/US03/T01 (ADR-027 §D9): a fully extracted fixture is a `ready` one.
+    readiness: { state: "ready", stage: null, documentCount: 1, completedDocumentCount: 1 },
     header: {
       contractId: CONTRACT_ID,
       supplierId: SUPPLIER_ID,

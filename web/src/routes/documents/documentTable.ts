@@ -71,12 +71,14 @@ export function getStagePercent(stage: string | null): number {
   return index === -1 ? 0 : Math.round(((index + 1) / DOCUMENT_PROCESSING_STAGES.length) * 100);
 }
 
-/** The four statuses a real (server-known) row can render (R-DOC-05: no `Rejected` server-side --
- * rejected files are a wholly separate, session-only concept; see `uploadPipeline.ts
- * #RejectedFileOutcome`). `Uploaded` and `Processing` both fold into `"processing"` -- the row grid
- * (screens-v2.md #3) does not distinguish "queued" from "actively processing" visually, only the
- * stage text underneath the tag does that. */
-export type RowStatus = "processing" | "needs_review" | "completed" | "failed";
+/** The five statuses a real (server-known) row can render. `Uploaded` and `Processing` both fold
+ * into `"processing"` -- the row grid (screens-v2.md #3) does not distinguish "queued" from
+ * "actively processing" visually, only the stage text underneath the tag does that. `"rejected"` is
+ * task E16/F02/US03/T01's (wave w15, ADR-027 §D6): the content gate now runs on the Worker after
+ * the upload has returned, so a file that turns out not to be a contract is a *server row* in
+ * `Rejected` with a `rejectionReason`, no longer only the session-local `uploadPipeline.ts
+ * #RejectedFileOutcome` the synchronous 422 used to produce. */
+export type RowStatus = "processing" | "needs_review" | "completed" | "failed" | "rejected";
 
 export function getRowStatus(processingStatus: DocumentListItemBody["processingStatus"]): RowStatus {
   switch (processingStatus) {
@@ -89,12 +91,20 @@ export function getRowStatus(processingStatus: DocumentListItemBody["processingS
       return "completed";
     case "Failed":
       return "failed";
+    case "Rejected":
+      return "rejected";
   }
 }
 
 /** Delegates to `styles/semantics.ts#getStatusTag` (ADR-019's locked mapping) -- never re-derived;
- * `RowStatus`'s four members are each a real `DocumentStatus` value. */
+ * four of `RowStatus`'s members are each a real `DocumentStatus` value. `"rejected"` has no
+ * `DocumentStatus` counterpart (ADR-019 predates ADR-027 §D6) and renders the requirements' own
+ * "Not added" wording -- the same label the session-local rejected card already uses -- with the
+ * `accent` variant a `failed` row uses, since both are "this file needs you to act". */
 export function getRowStatusTag(status: RowStatus): SemanticTag {
+  if (status === "rejected") {
+    return { variant: "accent", label: "Not added" };
+  }
   return getStatusTag(status as DocumentStatus);
 }
 

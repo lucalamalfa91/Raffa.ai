@@ -6,6 +6,8 @@
 using Raffa.Market;
 using Raffa.Worker;
 using Raffa.Worker.Commands;
+using Raffa.Messaging;
+using Raffa.Storage;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -47,6 +49,19 @@ var marketConnectionString = builder.Configuration.GetConnectionString("Market")
 // composition (module registration + queue consumer + hosted service) -- Raffa.Worker.Tests
 // calls the same method to prove the wiring, not a hand-rolled copy of it.
 builder.Services.AddWorkerHost(documentsContractsConnectionString, auditConnectionString, renewalsConnectionString);
+
+// Task E16/F02/US03/T01 (ADR-027 D1-D3): the Worker is where an upload's content gate and
+// pipeline now run. It therefore needs the blob adapter (to read the bytes the API stored) and
+// the extraction-queue consumer; the publisher too, so a reprocess can re-enqueue from either
+// host. infra/modules/containerapps injects ConnectionStrings__Storage and ServiceBus__* into
+// this container (E16/F01/US01/T01); the same fail-fast posture as the connection strings above.
+var storageConnectionString = builder.Configuration.GetConnectionString("Storage")
+    ?? throw new InvalidOperationException(
+        "Missing required configuration 'ConnectionStrings:Storage' " +
+        "(set env var ConnectionStrings__Storage in deployed environments).");
+builder.Services.AddAzureBlobDocumentStorage(storageConnectionString);
+builder.Services.AddExtractionQueuePublisher(builder.Configuration);
+builder.Services.AddExtractionQueueConsumer(builder.Configuration);
 
 // Task E13/F02/US01/T02 (market-index): Raffa.Market's own composition method, called directly
 // here rather than folded into AddWorkerHost -- it is not "the same application services" AC-2

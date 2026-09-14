@@ -1,3 +1,4 @@
+using Raffa.Messaging;
 // Raffa API Host — thin composition root (ADR-002).
 // Wires all modules via DI; contains no business logic.
 using Raffa.Api;
@@ -138,6 +139,11 @@ var storageConnectionString = builder.Configuration.GetConnectionString("Storage
         "(set env var ConnectionStrings__Storage in deployed environments).");
 
 builder.Services.AddAzureBlobDocumentStorage(storageConnectionString);
+// ADR-027 §D2 (task E16/F02/US03/T01): the upload publishes its ExtractionRequested pointer
+// before committing; this picks Service Bus when ServiceBus:FullyQualifiedNamespace is set
+// (every deployed environment, via infra/modules/containerapps) and the in-process channel
+// otherwise (tests). Same selector the Worker uses, so the two can never disagree.
+builder.Services.AddExtractionQueuePublisher(builder.Configuration);
 
 // Audit module (task E01/F06/US02/T02, GET /api/audit). Fails fast with a named error rather
 // than silently falling back when the config is missing (same "fail loud, not silent"

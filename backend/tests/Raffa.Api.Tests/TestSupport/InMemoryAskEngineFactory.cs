@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Text.Encodings.Web;
 using Raffa.AiGateway;
 using Raffa.Chat.Infrastructure;
+using Raffa.Documents.Contracts.Application.Extraction;
 using Raffa.Documents.Contracts.Domain;
 using Raffa.Documents.Contracts.Infrastructure;
 using Raffa.Identity.Workspace.Infrastructure;
@@ -148,6 +149,17 @@ internal static class InMemoryAskEngineFactory
             services.AddSingleton<IAiGateway>(aiGateway);
             services.AddSingleton(auditWriter ?? new NoOpAuditWriter());
 
+            // Task E16/F02/US03/T01 (wave w15, ADR-027 D1-D3): the upload now returns at the store
+            // and the content gate + pipeline run on the Worker. This host has no Worker, so a test
+            // that needs a *processed* document drains the in-process queue itself
+            // (DrainExtractionQueueAsync below) through the real ExtractionRequestedHandler. Two
+            // swaps make that possible on the InMemory provider: the raw-SQL claim store cannot
+            // execute here (no relational provider), and the handler is otherwise only registered by
+            // the Worker's AddExtractionQueueConsumer.
+            services.RemoveAll<IExtractionJobClaimStore>();
+            services.AddScoped<IExtractionJobClaimStore, InMemoryExtractionJobClaimStore>();
+            services.AddScoped<ExtractionRequestedHandler>();
+
             if (documentStorage is not null)
             {
                 services.AddSingleton(documentStorage);
@@ -175,6 +187,33 @@ internal static class InMemoryAskEngineFactory
         var dbContext = scope.ServiceProvider.GetRequiredService<DocumentsContractsDbContext>();
         dbContext.Contracts.Add(contract);
         await dbContext.SaveChangesAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Plays the Worker for this host (task E16/F02/US03/T01): takes every
+    /// <see cref="ExtractionRequested"/> the upload path published to the in-process queue and runs
+    /// the real <see cref="ExtractionRequestedHandler"/> on it — content gate, then pipeline — in
+    /// its own DI scope, in order. Called by a test right after the upload's 201 and before it
+    /// asserts on anything processing produces (document type, contract id, evidence, the
+    /// <c>document.rejected</c> row). Messages are consumed from the channel, so a second drain is
+    /// a no-op, and a message the handler cannot claim (already processed) is skipped by the
+    /// handler itself, never by this helper. Returns how many messages were handled.
+    /// </summary>
+    public static async Task<int> DrainExtractionQueueAsync(this WebApplicationFactory<Program> factory)
+    {
+        ArgumentNullException.ThrowIfNull(factory);
+
+        var queue = factory.Services.GetRequiredService<InMemoryExtractionQueue>();
+        var handled = 0;
+        while (queue.Reader.TryRead(out var message))
+        {
+            using var scope = factory.Services.CreateScope();
+            var handler = scope.ServiceProvider.GetRequiredService<ExtractionRequestedHandler>();
+            await handler.HandleAsync(message).ConfigureAwait(false);
+            handled++;
+        }
+
+        return handled;
     }
 }
 

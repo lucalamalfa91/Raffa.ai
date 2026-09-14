@@ -4,6 +4,8 @@
     <ProjectReference Include="..\Raffa.SharedKernel\Raffa.SharedKernel.csproj" />
     <ProjectReference Include="..\Raffa.Identity.Workspace\Raffa.Identity.Workspace.csproj" />
     <ProjectReference Include="..\Raffa.Documents.Contracts\Raffa.Documents.Contracts.csproj" />
+    <!-- Task E16/F02/US03/T01 (ADR-027 D2): the Service Bus publisher behind IExtractionQueuePublisher. -->
+    <ProjectReference Include="..\Raffa.Messaging\Raffa.Messaging.csproj" />
     <ProjectReference Include="..\Raffa.Suppliers.Products\Raffa.Suppliers.Products.csproj" />
     <ProjectReference Include="..\Raffa.Renewals\Raffa.Renewals.csproj" />
     <ProjectReference Include="..\Raffa.Savings\Raffa.Savings.csproj" />

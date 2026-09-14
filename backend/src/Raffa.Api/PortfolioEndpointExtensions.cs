@@ -46,6 +46,7 @@ public static class PortfolioEndpointExtensions
     private static async Task<IResult> GetPortfolioAsync(
         HttpRequest request,
         PortfolioQueryService portfolioQueryService,
+        DocumentQueryService documentQueryService,
         ISupplierNameLookup supplierNameLookup,
         ITenantContext tenantContext,
         CancellationToken cancellationToken)
@@ -70,6 +71,13 @@ public static class PortfolioEndpointExtensions
 
         var result = await portfolioQueryService
             .GetPortfolioAsync(tenantId, filter, page, cancellationToken)
+            .ConfigureAwait(false);
+
+        // ADR-027 §D9: tenant-wide, independent of the page filter — the number the rail badge
+        // and the "still processing" notice read, so a page that shows nothing yet can still
+        // say why.
+        var processingDocumentCount = await documentQueryService
+            .CountProcessingDocumentsAsync(tenantId, cancellationToken)
             .ConfigureAwait(false);
 
         var supplierNames = await ResolveSupplierNamesAsync(
@@ -101,6 +109,7 @@ public static class PortfolioEndpointExtensions
             page = result.Page,
             pageSize = result.PageSize,
             totalCount = result.TotalCount,
+            processingDocumentCount,
         });
     }
 

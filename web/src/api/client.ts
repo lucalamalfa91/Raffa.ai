@@ -386,20 +386,22 @@ export interface GetDocumentPreviewResult {
 }
 
 // Task E13/F09/US01/T03: `reprocessDocument`, wrapping `POST /api/documents/{id}/reprocess`
-// (Admin only, R-DOC-07). Documented ahead of the backend counterpart landing in this worktree --
-// see that operation's own OpenAPI description for why the response mirrors
-// `Raffa.Documents.Contracts.Application.Extraction.DocumentProcessingSummary`'s real fields
-// rather than an invented shape.
+// (Admin only, R-DOC-07). Task E16/F02/US03/T01 (wave w15, ADR-027 §D1) turned the call into a
+// re-enqueue: the backend drops the old chunks, puts the document back to `Uploaded`, queues a fresh
+// classification job for the Worker and answers `202 Accepted` with the job id -- the re-parse and
+// re-embed happen afterwards, exactly like a first upload, and the caller polls `listDocuments` /
+// `getDocument` for the terminal status. There is no summary to render any more; the old
+// `pagesParsed`/`chunksIndexed` numbers were the synchronous pipeline's, which no longer runs here.
 type ReprocessDocumentResponses = paths["/api/documents/{id}/reprocess"]["post"]["responses"];
-export type DocumentReprocessSummaryBody = ReprocessDocumentResponses[200]["content"]["application/json"];
+export type DocumentReprocessQueuedBody = ReprocessDocumentResponses[202]["content"]["application/json"];
 
 export interface ReprocessDocumentResult {
-  /** True only on `200 OK`. */
+  /** True only on `202 Accepted`. */
   ok: boolean;
   /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
   statusCode: number | null;
-  /** The reprocess summary, present only when `ok` is true. */
-  summary: DocumentReprocessSummaryBody | null;
+  /** The queued job receipt (`documentId`, `extractionJobId`, `processingStatus: "Uploaded"`), present only when `ok` is true. */
+  queued: DocumentReprocessQueuedBody | null;
   /** Plain-language failure reason (403 not-admin, 404, or network-failure), present only when `ok` is false. */
   error: string | null;
 }
@@ -1912,28 +1914,29 @@ export function createApiClient(
         return {
           ok: false,
           statusCode: null,
-          summary: null,
+          queued: null,
           error: `Unable to reach ${baseUrl}/api/documents/${id}/reprocess. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
         };
       }
 
-      if (response.status === 200) {
-        const summary = (await response.json()) as DocumentReprocessSummaryBody;
-        return { ok: true, statusCode: 200, summary, error: null };
+      // 202, not 200 (ADR-027 §D1): the work is queued for the Worker, not done in the request.
+      if (response.status === 202) {
+        const queued = (await response.json()) as DocumentReprocessQueuedBody;
+        return { ok: true, statusCode: 202, queued, error: null };
       }
 
       if (response.status === 403) {
-        return { ok: false, statusCode: 403, summary: null, error: "Only a Workspace Admin can reprocess a document." };
+        return { ok: false, statusCode: 403, queued: null, error: "Only a Workspace Admin can reprocess a document." };
       }
 
       if (response.status === 404) {
-        return { ok: false, statusCode: 404, summary: null, error: `No document found for id ${id}.` };
+        return { ok: false, statusCode: 404, queued: null, error: `No document found for id ${id}.` };
       }
 
       return {
         ok: false,
         statusCode: response.status,
-        summary: null,
+        queued: null,
         error: `Request failed with HTTP ${response.status} ${response.statusText}.`,
       };
     },

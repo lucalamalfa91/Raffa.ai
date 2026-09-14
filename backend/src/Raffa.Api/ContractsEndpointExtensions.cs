@@ -128,6 +128,7 @@ public static class ContractsEndpointExtensions
         string id,
         HttpRequest request,
         Contract360QueryService contract360QueryService,
+        DocumentQueryService documentQueryService,
         ISupplierNameLookup supplierNameLookup,
         ITenantContext tenantContext,
         CancellationToken cancellationToken)
@@ -164,7 +165,14 @@ public static class ContractsEndpointExtensions
                 .GetValueOrDefault(supplierId)
             : null;
 
-        return Results.Ok(ToContract360Response(result, supplierName));
+        // ADR-027 §D9: one top-level answer to "can this contract be shown yet?", computed over
+        // the documents linked to the contract rather than inferred by the screen from the
+        // (possibly still empty) tab tree.
+        var readiness = await documentQueryService
+            .GetReadinessAsync(tenantId, new EntityId(contractGuid), cancellationToken)
+            .ConfigureAwait(false);
+
+        return Results.Ok(ToContract360Response(result, supplierName, readiness));
     }
 
     /// <summary>
@@ -173,9 +181,14 @@ public static class ContractsEndpointExtensions
     /// members and <see cref="EntityId"/>/<see cref="EntityId"/>? wrapper values are projected to
     /// plain strings/GUIDs — the same convention <see cref="PortfolioEndpointExtensions"/> and
     /// <c>Program.cs</c>'s document endpoints already use, since neither has a custom JSON
-    /// converter registered anywhere in this solution.
+    /// converter registered anywhere in this solution. <paramref name="readiness"/> rides at the
+    /// top level next to <c>header</c> (ADR-027 §D9); its <c>stage</c> is nullable on purpose
+    /// and therefore carries no enum on the wire (ADR-012 w15 §9).
     /// </summary>
-    private static object ToContract360Response(Contract360Result result, string? supplierName)
+    private static object ToContract360Response(
+        Contract360Result result,
+        string? supplierName,
+        ContractReadiness readiness)
     {
         var header = result.Header;
         var overview = result.Overview;
@@ -185,6 +198,13 @@ public static class ContractsEndpointExtensions
         return new
         {
             contractId = result.ContractId.Value,
+            readiness = new
+            {
+                state = readiness.StateApiValue,
+                stage = readiness.Stage,
+                documentCount = readiness.DocumentCount,
+                completedDocumentCount = readiness.CompletedDocumentCount,
+            },
             header = new
             {
                 contractId = header.ContractId.Value,

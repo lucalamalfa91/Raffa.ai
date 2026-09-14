@@ -77,7 +77,7 @@ function item(overrides: Partial<PortfolioListItem> = {}): PortfolioListItem {
 }
 
 function page(items: PortfolioListItem[]): PortfolioPageBody {
-  return { items, page: 1, pageSize: 100, totalCount: items.length };
+  return { items, page: 1, pageSize: 100, totalCount: items.length, processingDocumentCount: 0 };
 }
 
 function ok(items: PortfolioListItem[]): GetPortfolioResult {

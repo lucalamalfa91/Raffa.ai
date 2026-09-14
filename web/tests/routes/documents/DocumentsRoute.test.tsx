@@ -87,12 +87,27 @@ function docItem(overrides: Partial<DocumentListItemBody> = {}): DocumentListIte
     pageCount: 12,
     createdAt: "2026-09-06T08:05:00Z",
     weakFactCount: 0,
+    rejectionReason: null,
     ...overrides,
   };
 }
 
+/** Task E16/F02/US03/T01 (ADR-027 §D7): the server's tenant-wide counts, derived here from the
+ * page the way the backend derives them from the table -- `all` excludes `Rejected`,
+ * `needsAttention` is NeedsReview + Failed, `processing` is Uploaded + Processing. */
+function countsOf(items: DocumentListItemBody[]): DocumentListPageBody["counts"] {
+  const of = (...statuses: DocumentListItemBody["processingStatus"][]) =>
+    items.filter((item) => statuses.includes(item.processingStatus)).length;
+  return {
+    all: items.length - of("Rejected"),
+    needsAttention: of("NeedsReview", "Failed"),
+    processing: of("Uploaded", "Processing"),
+    rejected: of("Rejected"),
+  };
+}
+
 function page(items: DocumentListItemBody[]): DocumentListPageBody {
-  return { items, page: 1, pageSize: 100, totalCount: items.length };
+  return { items, page: 1, pageSize: 100, totalCount: items.length, counts: countsOf(items) };
 }
 
 function emptyPage(): ListDocumentsResult {
@@ -150,6 +165,8 @@ function selectFiles(files: File[]) {
 function contract360(overrides: Partial<Contract360Body["header"]> = {}): Contract360Body {
   return {
     contractId: "contract-1",
+    // Task E16/F02/US03/T01 (ADR-027 §D9): a fixture reached from a Completed row is `ready`.
+    readiness: { state: "ready", stage: null, documentCount: 1, completedDocumentCount: 1 },
     header: {
       contractId: "contract-1",
       supplierId: null,

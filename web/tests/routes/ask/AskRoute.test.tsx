@@ -45,13 +45,19 @@ function validatedPortfolio(): GetPortfolioResult {
       page: 1,
       pageSize: 100,
       totalCount: 1,
+      processingDocumentCount: 0,
     },
     error: null,
   };
 }
 
 function emptyDocuments(): ListDocumentsResult {
-  return { ok: true, statusCode: 200, page: { items: [], page: 1, pageSize: 1, totalCount: 0 }, error: null };
+  return {
+    ok: true,
+    statusCode: 200,
+    page: { items: [], page: 1, pageSize: 1, totalCount: 0, counts: { all: 0, needsAttention: 0, processing: 0, rejected: 0 } },
+    error: null,
+  };
 }
 
 function emptyCatalog(): Awaited<ReturnType<ApiClient["getCapabilities"]>> {

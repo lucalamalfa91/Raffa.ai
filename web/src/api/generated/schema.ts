@@ -182,7 +182,7 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": { items: ({ id: string; contractId: string | null; supplierName: string | null; fileName: string; documentType: "Msa" | "OrderForm" | "Sow" | "Amendment" | "RenewalLetter" | "Quote" | "Invoice" | "PriceList" | "Nda" | "Dpa" | "Other"; processingStatus: "Uploaded" | "Processing" | "NeedsReview" | "Completed" | "Failed"; stage: string | null; pageCount: number | null; createdAt: string; weakFactCount: number })[]; page: number; pageSize: number; totalCount: number };
+          "application/json": { items: ({ id: string; contractId: string | null; supplierName: string | null; fileName: string; documentType: "Msa" | "OrderForm" | "Sow" | "Amendment" | "RenewalLetter" | "Quote" | "Invoice" | "PriceList" | "Nda" | "Dpa" | "Other"; processingStatus: "Uploaded" | "Processing" | "NeedsReview" | "Completed" | "Failed" | "Rejected"; stage: string | null; pageCount: number | null; createdAt: string; weakFactCount: number; rejectionReason: string | null })[]; page: number; pageSize: number; totalCount: number; counts: { all: number; needsAttention: number; processing: number; rejected: number } };
         };
       };
       400: {
@@ -196,7 +196,7 @@ export interface operations {
     responses: {
       201: {
         content: {
-          "application/json": { id: string; contractId: string | null; fileName: string; mimeType: string; processingStatus: "Uploaded" | "Processing" | "NeedsReview" | "Completed" | "Failed"; createdAt: string };
+          "application/json": { id: string; contractId: string | null; fileName: string; mimeType: string; processingStatus: "Uploaded" | "Processing" | "NeedsReview" | "Completed" | "Failed" | "Rejected"; createdAt: string };
         };
       };
       400: {
@@ -225,7 +225,7 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": { id: string; contractId: string | null; fileName: string; mimeType: string; documentType: "Msa" | "OrderForm" | "Sow" | "Amendment" | "RenewalLetter" | "Quote" | "Invoice" | "PriceList" | "Nda" | "Dpa" | "Other"; processingStatus: "Uploaded" | "Processing" | "NeedsReview" | "Completed" | "Failed"; createdAt: string };
+          "application/json": { id: string; contractId: string | null; fileName: string; mimeType: string; documentType: "Msa" | "OrderForm" | "Sow" | "Amendment" | "RenewalLetter" | "Quote" | "Invoice" | "PriceList" | "Nda" | "Dpa" | "Other"; processingStatus: "Uploaded" | "Processing" | "NeedsReview" | "Completed" | "Failed" | "Rejected"; createdAt: string };
         };
       };
       400: {
@@ -270,9 +270,9 @@ export interface operations {
   };
   reprocessDocument: {
     responses: {
-      200: {
+      202: {
         content: {
-          "application/json": { documentId: string; contractId: string; documentType: "Msa" | "OrderForm" | "Sow" | "Amendment" | "RenewalLetter" | "Quote" | "Invoice" | "PriceList" | "Nda" | "Dpa" | "Other"; processingStatus: "Uploaded" | "Processing" | "NeedsReview" | "Completed" | "Failed"; pagesParsed: number; chunksIndexed: number };
+          "application/json": { documentId: string; extractionJobId: string; processingStatus: "Uploaded" | "Processing" | "NeedsReview" | "Completed" | "Failed" | "Rejected" };
         };
       };
       403: {
@@ -289,7 +289,7 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": { documentId: string; contractId: string | null; processingStatus: "Uploaded" | "Processing" | "NeedsReview" | "Completed" | "Failed"; validatedAt: string; acceptedFields: (string)[]; alreadyValidated: boolean };
+          "application/json": { documentId: string; contractId: string | null; processingStatus: "Uploaded" | "Processing" | "NeedsReview" | "Completed" | "Failed" | "Rejected"; validatedAt: string; acceptedFields: (string)[]; alreadyValidated: boolean };
         };
       };
       400: {
@@ -312,7 +312,7 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": { items: ({ contractId: string; supplierId: string | null; supplierName: string | null; type: "Msa" | "OrderForm" | "Amendment" | "Sow" | "RenewalLetter" | "Other"; annualSpend: number | null; currency?: string; startDate: string | null; endDate: string | null; renewalDate: string | null; cancellationDeadline: string | null; autoRenewal: boolean; status: string; risk: string | null })[]; page: number; pageSize: number; totalCount: number };
+          "application/json": { items: ({ contractId: string; supplierId: string | null; supplierName: string | null; type: "Msa" | "OrderForm" | "Amendment" | "Sow" | "RenewalLetter" | "Other"; annualSpend: number | null; currency?: string; startDate: string | null; endDate: string | null; renewalDate: string | null; cancellationDeadline: string | null; autoRenewal: boolean; status: string; risk: string | null })[]; page: number; pageSize: number; totalCount: number; processingDocumentCount: number };
         };
       };
       400: {
@@ -326,7 +326,7 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": { contractId: string; header: { contractId: string; supplierId: string | null; supplierName: string | null; type: "Msa" | "OrderForm" | "Amendment" | "Sow" | "RenewalLetter" | "Other"; status: string; annualSpend: number | null; totalContractValue: number | null; startDate: string | null; endDate: string | null; renewalDate: string | null; cancellationDeadline: string | null; autoRenewal: boolean; risk: string | null }; tabs: { overview: { currency: string; effectiveDate: string | null; renewalTermMonths: number | null; paymentTerms: string | null; governingLaw: string | null; parentContractId: string | null; version: number; createdAt: string }; commercials: { annualSpend: number | null; totalContractValue: number | null; currency: string; paymentTerms: string | null; autoRenewal: boolean; renewalTermMonths: number | null; lineItemCount: number; lineItemAnnualCostTotal: number | null; lineItemTotalCostTotal: number | null }; products: ({ lineItemId: string; productId: string | null; sku: string | null; description: string; quantity: number | null; unit: string | null; unitPrice: number | null; listPrice: number | null; discount: number | null; billingPeriod: string | null; annualCost: number | null; totalCost: number | null; sourceDocumentId: string | null; sourceSpan: string | null; sourcePage: number | null; confidence: number | null })[]; clauses: ({ clauseId: string; clauseType: string; rawText: string; normalizedValue: string | null; riskLevel: string | null; sourceDocumentId: string | null; sourceSpan: string | null; sourcePage: number | null; confidence: number | null })[]; obligations: ({ obligationId: string; party: string; obligationType: string; description: string; dueDate: string | null; recurrenceRule: string | null; criticality: string | null; status: string | null; sourceDocumentId: string | null; sourceSpan: string | null; sourcePage: number | null; confidence: number | null })[]; risks: ({ riskId: string; riskType: string; severity: "Low" | "Medium" | "High" | "Critical"; description: string; status: string | null; clauseId: string | null; sourceDocumentId: string | null; sourceSpan: string | null; sourcePage: number | null; confidence: number | null })[]; documents: ({ documentId: string; fileName: string; mimeType: string; documentType: "Msa" | "OrderForm" | "Amendment" | "Sow" | "RenewalLetter" | "Other"; processingStatus: "Uploaded" | "Processing" | "NeedsReview" | "Completed" | "Failed"; createdAt: string })[]; benchmark: (Record<string, never>)[]; renewal: { endDate: string | null; renewalDate: string | null; cancellationDeadline: string | null; autoRenewal: boolean; renewalTermMonths: number | null }; activity: (Record<string, never>)[] } };
+          "application/json": { contractId: string; readiness: { state: "ready" | "processing" | "unavailable"; stage: string | null; documentCount: number; completedDocumentCount: number }; header: { contractId: string; supplierId: string | null; supplierName: string | null; type: "Msa" | "OrderForm" | "Amendment" | "Sow" | "RenewalLetter" | "Other"; status: string; annualSpend: number | null; totalContractValue: number | null; startDate: string | null; endDate: string | null; renewalDate: string | null; cancellationDeadline: string | null; autoRenewal: boolean; risk: string | null }; tabs: { overview: { currency: string; effectiveDate: string | null; renewalTermMonths: number | null; paymentTerms: string | null; governingLaw: string | null; parentContractId: string | null; version: number; createdAt: string }; commercials: { annualSpend: number | null; totalContractValue: number | null; currency: string; paymentTerms: string | null; autoRenewal: boolean; renewalTermMonths: number | null; lineItemCount: number; lineItemAnnualCostTotal: number | null; lineItemTotalCostTotal: number | null }; products: ({ lineItemId: string; productId: string | null; sku: string | null; description: string; quantity: number | null; unit: string | null; unitPrice: number | null; listPrice: number | null; discount: number | null; billingPeriod: string | null; annualCost: number | null; totalCost: number | null; sourceDocumentId: string | null; sourceSpan: string | null; sourcePage: number | null; confidence: number | null })[]; clauses: ({ clauseId: string; clauseType: string; rawText: string; normalizedValue: string | null; riskLevel: string | null; sourceDocumentId: string | null; sourceSpan: string | null; sourcePage: number | null; confidence: number | null })[]; obligations: ({ obligationId: string; party: string; obligationType: string; description: string; dueDate: string | null; recurrenceRule: string | null; criticality: string | null; status: string | null; sourceDocumentId: string | null; sourceSpan: string | null; sourcePage: number | null; confidence: number | null })[]; risks: ({ riskId: string; riskType: string; severity: "Low" | "Medium" | "High" | "Critical"; description: string; status: string | null; clauseId: string | null; sourceDocumentId: string | null; sourceSpan: string | null; sourcePage: number | null; confidence: number | null })[]; documents: ({ documentId: string; fileName: string; mimeType: string; documentType: "Msa" | "OrderForm" | "Amendment" | "Sow" | "RenewalLetter" | "Other"; processingStatus: "Uploaded" | "Processing" | "NeedsReview" | "Completed" | "Failed" | "Rejected"; createdAt: string })[]; benchmark: (Record<string, never>)[]; renewal: { endDate: string | null; renewalDate: string | null; cancellationDeadline: string | null; autoRenewal: boolean; renewalTermMonths: number | null }; activity: (Record<string, never>)[] } };
         };
       };
       400: {
@@ -444,7 +444,7 @@ export interface operations {
     responses: {
       201: {
         content: {
-          "application/json": { id: string; fileName: string; mimeType: string; processingStatus: "Uploaded" | "Processing" | "NeedsReview" | "Completed" | "Failed"; lineItemCount: number; normalizedLineItemCount: number; unresolvedNormalizationCount: number; unmatchedSkuCount: number; supplier: string | null; currency: string | null; geography: string | null; purchaseDate: string | null; createdAt: string };
+          "application/json": { id: string; fileName: string; mimeType: string; processingStatus: "Uploaded" | "Processing" | "NeedsReview" | "Completed" | "Failed" | "Rejected"; lineItemCount: number; normalizedLineItemCount: number; unresolvedNormalizationCount: number; unmatchedSkuCount: number; supplier: string | null; currency: string | null; geography: string | null; purchaseDate: string | null; createdAt: string };
         };
       };
       400: {

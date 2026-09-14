@@ -493,22 +493,21 @@ describe("createApiClient().getDocumentPreviewUrl (task E13/F09/US01/T03, docume
   });
 });
 
-describe("createApiClient().reprocessDocument (task E13/F09/US01/T03, documented ahead of the backend landing)", () => {
+// Task E16/F02/US03/T01 (wave w15, ADR-027 §D1): reprocess is a re-enqueue now -- 202 with the queued
+// job's receipt, not 200 with a synchronous pipeline summary.
+describe("createApiClient().reprocessDocument (task E13/F09/US01/T03; 202 since task E16/F02/US03/T01)", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  const summary = {
+  const queued = {
     documentId: "doc-1",
-    contractId: "contract-1",
-    documentType: "Msa",
-    processingStatus: "Completed",
-    pagesParsed: 12,
-    chunksIndexed: 12,
+    extractionJobId: "job-1",
+    processingStatus: "Uploaded",
   };
 
   it("POSTs <baseUrl>/api/documents/{id}/reprocess with the X-Tenant-Id header, no body", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(summary), { status: 200 }));
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(queued), { status: 202 }));
     vi.stubGlobal("fetch", fetchMock);
 
     await createApiClient("https://api.dev.raffa.example").reprocessDocument("tenant-1", "doc-1");
@@ -519,12 +518,20 @@ describe("createApiClient().reprocessDocument (task E13/F09/US01/T03, documented
     expect(init).toEqual({ method: "POST", headers: { "X-Tenant-Id": "tenant-1" }, cache: "no-store" });
   });
 
-  it("reports ok:true with the summary on 200", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(summary), { status: 200 })));
+  it("reports ok:true with the queued receipt on 202", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(queued), { status: 202 })));
 
     const result = await createApiClient("https://api.dev.raffa.example").reprocessDocument("tenant-1", "doc-1");
 
-    expect(result).toEqual({ ok: true, statusCode: 200, summary, error: null });
+    expect(result).toEqual({ ok: true, statusCode: 202, queued, error: null });
+  });
+
+  it("does not treat a 200 as success: the contract is 202, and a synchronous body is not a receipt", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(queued), { status: 200, statusText: "OK" })));
+
+    const result = await createApiClient("https://api.dev.raffa.example").reprocessDocument("tenant-1", "doc-1");
+
+    expect(result).toEqual({ ok: false, statusCode: 200, queued: null, error: "Request failed with HTTP 200 OK." });
   });
 
   it("reports a named 403 when the caller is not Admin", async () => {
@@ -532,7 +539,7 @@ describe("createApiClient().reprocessDocument (task E13/F09/US01/T03, documented
 
     const result = await createApiClient("https://api.dev.raffa.example").reprocessDocument("tenant-1", "doc-1");
 
-    expect(result).toEqual({ ok: false, statusCode: 403, summary: null, error: "Only a Workspace Admin can reprocess a document." });
+    expect(result).toEqual({ ok: false, statusCode: 403, queued: null, error: "Only a Workspace Admin can reprocess a document." });
   });
 
   it("reports a named 404 without attempting to parse an empty body", async () => {
@@ -540,7 +547,7 @@ describe("createApiClient().reprocessDocument (task E13/F09/US01/T03, documented
 
     const result = await createApiClient("https://api.dev.raffa.example").reprocessDocument("tenant-1", "missing-doc");
 
-    expect(result).toEqual({ ok: false, statusCode: 404, summary: null, error: "No document found for id missing-doc." });
+    expect(result).toEqual({ ok: false, statusCode: 404, queued: null, error: "No document found for id missing-doc." });
   });
 
   it("resolves (does not throw) with statusCode null when the network request fails", async () => {

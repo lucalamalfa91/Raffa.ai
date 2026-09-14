@@ -123,6 +123,7 @@ function portfolioOk(items: Array<{ contractId: string; supplierName: string | n
     totalCount: items.length,
     page: 1,
     pageSize: 100,
+    processingDocumentCount: 0,
   };
   return { ok: true, statusCode: 200, portfolio, error: null };
 }
