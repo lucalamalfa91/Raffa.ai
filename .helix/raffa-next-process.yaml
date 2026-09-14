@@ -82,6 +82,17 @@ models:
   - id: cc-opus
     provider: claude-code
     model: ${ANTHROPIC_DEFAULT_OPUS_MODEL}
+    # Arms the MAF compaction strategy for the turn-taking topologies
+    # (`next-council-close` is a group_chat). Without the pair, compaction is
+    # never armed and the accumulated round history overflows: the w15 council
+    # run 08458ef1 ended `truncated` at turn 33 / 83k tokens with the decision
+    # record still half `pending` (validate.py:_warn_turn_taking_without_context_window
+    # warns about exactly this at every launch). The two fields must be declared
+    # together and max < window (schema.py:170-177). 200k is Opus's window; the
+    # output cap is per turn, and no seat turn here writes anything near it.
+    options:
+      context_window_tokens: 200000
+      max_output_tokens: 32000
 
 # -----------------------------------------------------------------------------
 # Skills -- instructions only on the coding-agent path (folded after the
@@ -335,8 +346,13 @@ orchestrations:
       - next-delivery-manager
       - next-council-gate
     selection: round_robin
-    # 3 table rounds x 8 participants = 24 turns (max_rounds is a raw turn cap).
-    max_rounds: 24
+    # 2 table rounds x 8 participants = 16 turns (max_rounds is a raw turn cap;
+    # selection is round_robin, so the cap must be a multiple of 8 or the gate
+    # never gets its closing turn). Was 24: measured on w15, 33 turns / 112 min
+    # of model work with every seat speaking 5x before the run truncated;
+    # seats converge on the footers already on disk, so two passes suffice
+    # (stakeholder ruling 2026-09-13).
+    max_rounds: 16
     # Marker triad: on_marker + the literal + line-anchored (registry.py on_marker:
     # truthy -> ^COUNCIL_APPROVED: MULTILINE; falsy would be a substring match
     # anywhere in a turn). The literal lives in agents/next-council-gate.md only.
