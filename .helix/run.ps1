@@ -178,5 +178,39 @@ function Invoke-Helix {
     throw "neither a working uv nor helix.exe is available"
 }
 
-$rc = Invoke-Helix
+# Orphan guard (scripts/reap_agents.ps1 carries the full rationale). The engine
+# runs IN this process, so every `claude` it spawns is a descendant of $PID: the
+# watcher accumulates exactly those and collects whatever is still alive once the
+# engine returns. The operator's own Claude Code session is an ancestor of this
+# launcher, never a descendant, so it can never enter the tracked set.
+$reaper = Join-Path $Here "scripts\reap_agents.ps1"
+$reapPidFile = Join-Path $env:TEMP ("helix-agents-{0}.pids" -f $PID)
+$stallMinutes = 45
+if (-not [string]::IsNullOrWhiteSpace($env:HELIX_STALL_ABORT_MINUTES)) {
+    $parsed = 0
+    if ([int]::TryParse($env:HELIX_STALL_ABORT_MINUTES, [ref]$parsed)) { $stallMinutes = $parsed }
+}
+$watcher = $null
+if (Test-Path $reaper) {
+    $watcher = Start-Process -FilePath "pwsh" -PassThru -WindowStyle Hidden -ArgumentList @(
+        "-NoProfile", "-File", $reaper,
+        "-Watch", "-RootPid", $PID,
+        "-RepoRoot", (Resolve-Path (Join-Path $Here "..")).Path,
+        "-StallMinutes", $stallMinutes,
+        "-PidFile", $reapPidFile
+    ) -ErrorAction SilentlyContinue
+}
+
+try {
+    $rc = Invoke-Helix
+}
+finally {
+    # Runs on the normal path, on a throw, and on Ctrl-C.
+    if (Test-Path $reaper) {
+        & pwsh -NoProfile -File $reaper -Reap -PidFile $reapPidFile
+    }
+    if ($null -ne $watcher) {
+        Stop-Process -Id $watcher.Id -Force -ErrorAction SilentlyContinue
+    }
+}
 exit $rc

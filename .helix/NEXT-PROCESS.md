@@ -195,6 +195,31 @@ Markers (line-anchored, last line): `CONTEXT_READY:` / `HALTED:` (intake),
   wave is then executed in order by chaining `./run-next.ps1 -Max` runs
   (w15 → w16 → w17 → w18), each followed by the `dev` deploy and the
   acceptance walk — the loop below.
+- **D-N13 — Agents are collected at the END of a run, never killed during it.**
+  The SDK spawns one `claude` per task and closes it on the ordered path
+  (`query.aclose()` → transport terminate → kill, plus an `atexit` reaper).
+  Both are skipped when the run dies from above: Helix's own
+  `coding_agent/agent_sdk_client.py:388-401` records that a *foreign*
+  `CancelledError` "skips it instead", and the `await query.aclose()` in that
+  same `finally` is itself an await, so inside an already-cancelled coroutine it
+  never reaches the escalation. On Windows a dying parent does not take its
+  children with it, and `atexit` does not run when the process is killed
+  outright. Wave w15 (2026-09-13/14) left 12–16 live agents after each of three
+  launches, every worktree already torn down — unable to deliver anything, still
+  spending tokens; the last stalled 2h30 without writing a file.
+  `scripts/reap_agents.ps1`, started by both launchers, walks the process tree
+  below the launcher's own pid, accumulates the `claude` descendants and
+  collects whatever outlives the engine (normal exit, throw or Ctrl-C). The
+  tracked set comes from **parentage**, never a name filter, so the operator's
+  own Claude Code session — an ancestor of the launcher, never a descendant —
+  can never enter it. It also aborts a run whose progress signal (newest of a
+  `wave/*` commit and a write under `worktrees/`) has not moved for
+  `HELIX_STALL_ABORT_MINUTES` (default 45, `0` = off).
+  What it deliberately does **not** do is kill an agent mid-run: the upstream
+  reliability council rejected thread-level task deadlines because "a fired
+  thread-level timeout cannot kill the worker, so the barrier would proceed
+  while a zombie coder still mutates its worktree; that cure is worse than the
+  hang". Reap only what outlives the run; abort only what is provably idle.
   Mitigations: `run-next.ps1` never overrides it; the intake, decomposer and
   checker halt at once when the cwd is not the artifact folder
   (`cc-passata1-harness`); `next-from-decomposition` re-enters after a
