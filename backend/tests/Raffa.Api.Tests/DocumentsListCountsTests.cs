@@ -127,7 +127,7 @@ public sealed class DocumentsListCountsTests : IClassFixture<RaffaApiFactory>
 
         using var body = await GetAsync("/api/documents", tenantId);
         var order = body.RootElement.GetProperty("items").EnumerateArray()
-            .Select(i => i.GetProperty("fileName").GetString()).ToArray();
+            .Select(i => i.GetProperty("fileName").GetString()!).ToArray();
 
         Assert.Equal(
             ["working-now.pdf", "queued-first.pdf", "queued-last.pdf", "done-new.pdf", "review-new.pdf", "done-old.pdf"],
