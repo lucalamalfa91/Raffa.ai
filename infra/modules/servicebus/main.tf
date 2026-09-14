@@ -62,8 +62,9 @@ resource "azurerm_servicebus_subscription" "document_processing" {
 }
 
 # ADR-011 (owns the secret-versus-identity question, w15 footer): identity +
-# RBAC, never a connection string and never RootManageSharedAccessKey.
-# Topic-scoped (not namespace-wide), so a leaked grant discloses no more
+# RBAC, never a connection string and never the namespace's default
+# full-access shared key. Topic-scoped (not namespace-wide), so a leaked
+# grant discloses no more
 # than this one topic -- and the message itself carries ids only (ADR-009),
 # so even that residual discloses no contract content. NW-27 adds NO Key
 # Vault secret because of these two role assignments.

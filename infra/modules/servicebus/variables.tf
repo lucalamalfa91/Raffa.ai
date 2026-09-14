@@ -25,6 +25,6 @@ variable "resource_group_name" {
 # assignments below never cross the dev/demo isolation boundary (same rule
 # modules/keyvault's workload_principal_id already follows).
 variable "workload_principal_id" {
-  description = "Principal (object) ID of this environment's user-assigned workload identity (modules/identity's `workload_principal_id` output). Granted two topic-scoped roles -- Azure Service Bus Data Sender and Data Receiver -- on the extraction-events topic only (ADR-011: identity + RBAC, never a namespace-wide rule, never RootManageSharedAccessKey, never a Key Vault secret)."
+  description = "Principal (object) ID of this environment's user-assigned workload identity (modules/identity's `workload_principal_id` output). Granted two topic-scoped roles -- Azure Service Bus Data Sender and Data Receiver -- on the extraction-events topic only (ADR-011: identity + RBAC, never a namespace-wide rule, never a shared access key, never a Key Vault secret)."
   type        = string
 }
