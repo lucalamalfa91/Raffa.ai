@@ -137,10 +137,15 @@ public sealed class R1DocumentsV2EndToEndTests : IClassFixture<R1IntegrationFixt
         await SeedMembershipAsync(tenantId, adminEmail, WorkspaceRoleName.Admin);
 
         var response = await SendAsync(client, HttpMethod.Post, $"/api/documents/{documentId}/reprocess", tenantId, adminEmail);
-        await AssertStatusAsync(HttpStatusCode.OK, response);
-        var summary = await R1EndToEndTests.ParseAsync(response);
-        Assert.Equal(2, summary.GetProperty("pagesParsed").GetInt32());
-        Assert.Equal(2, summary.GetProperty("chunksIndexed").GetInt32());
+        // Fix 2026-09-14 (ADR-027 §D1): reprocess is now 202 at the enqueue -- the parse and the
+        // re-index happen on the Worker, so the response carries the job, not a summary of work
+        // that has not run yet. The pagesParsed/chunksIndexed numbers this used to read off the
+        // body are proven below instead, on the rows the drained pipeline actually wrote, which is
+        // the stronger assertion anyway.
+        await AssertStatusAsync(HttpStatusCode.Accepted, response);
+        var accepted = await R1EndToEndTests.ParseAsync(response);
+        Assert.Equal(documentId, accepted.GetProperty("documentId").GetGuid());
+        Assert.Equal(1, await _fixture.DrainExtractionQueueAsync());
 
         using (var scope = _fixture.Services.CreateScope())
         {
