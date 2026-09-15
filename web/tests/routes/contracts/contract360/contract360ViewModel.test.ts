@@ -34,6 +34,7 @@ import {
   resolveBackLink,
   resolveHighlightedClauseId,
   resolveSupplierLabel,
+  ticksFromServer,
   toConfidencePercent,
 } from "../../../../src/routes/contracts/contract360/contract360ViewModel";
 
@@ -321,13 +322,23 @@ describe("answers band", () => {
 
   it("the tracker steps and meta follow the real supplier and deadline", () => {
     expect(buildNegotiationSteps("Salesforce", "17/11/2025")).toEqual([
-      { label: "Notify Salesforce of intent to renegotiate", due: "this week" },
-      { label: "Request revised pricing and licence mix", due: "+10 days" },
-      { label: "Counter with the market benchmark", due: "+20 days" },
-      { label: "Sign, or send non-renewal notice", due: "by 17/11/2025" },
+      { key: "Notify", label: "Notify Salesforce of intent to renegotiate", due: "this week" },
+      { key: "RequestRevisedPricing", label: "Request revised pricing and licence mix", due: "+10 days" },
+      { key: "CounterWithMarketBenchmark", label: "Counter with the market benchmark", due: "+20 days" },
+      { key: "SignOrSendNonRenewalNotice", label: "Sign, or send non-renewal notice", due: "by 17/11/2025" },
     ]);
     const answers = buildAnswers(header(), renewalTab, [], new Date("2025-11-10T00:00:00Z"));
     expect(formatTrackerMeta(answers.save, answers.move)).toBe("target Not yet available · close by 17/11/2025");
+  });
+
+  it("ticksFromServer keeps named keys, ignores unknown names, and treats a missing key as unticked", () => {
+    expect([...ticksFromServer(["Notify", "RequestRevisedPricing"])]).toEqual(["Notify", "RequestRevisedPricing"]);
+    expect([...ticksFromServer(["Notify", "InventedFifthStep", "CounterWithMarketBenchmark"])]).toEqual([
+      "Notify",
+      "CounterWithMarketBenchmark",
+    ]);
+    expect(ticksFromServer(["Notify"]).has("RequestRevisedPricing")).toBe(false);
+    expect(ticksFromServer([]).size).toBe(0);
   });
 });
 

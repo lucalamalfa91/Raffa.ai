@@ -87,6 +87,19 @@ namespace Raffa.Api;
 /// so the join belongs in this composition root, exactly like <see cref="ToCandidate"/>'s own
 /// mapping.
 /// </para>
+///
+/// <para>
+/// Task E19/F01/US01/T01 (renewal-action-api, ADR-028 §D1) adds <c>GET /api/renewals/{id}/action</c>
+/// (<see cref="GetRenewalActionAsync"/>) — the same <c>{id}</c>/contract-id meaning
+/// <see cref="PostRenewalActionAsync"/> already keys on, confirmed against that handler before this
+/// route was written — plus the persisted row embedded in every `GET /api/renewals` item under
+/// <c>savedAction</c>, resolved for the whole page in one call
+/// (<see cref="RenewalActionService.GetActionsAsync"/>) rather than a per-row GET: Renewals and
+/// Savings are list surfaces, so a per-row call would be an N+1 across the portfolio. `savedAction`
+/// sits beside the pre-existing, unchanged <c>action</c> (the calculator's own
+/// <c>RecommendedAction</c>) — reusing that name would overwrite a deterministic calculator's output
+/// with user state on a shipped screen, so the embedded field is deliberately named differently.
+/// </para>
 /// </summary>
 public static class RenewalsEndpointExtensions
 {
@@ -95,6 +108,7 @@ public static class RenewalsEndpointExtensions
         endpoints.MapGet("/api/renewals", GetRenewalsAsync);
         endpoints.MapGet("/api/renewals/{contractId}/priority", GetRenewalPriorityAsync);
         endpoints.MapPost("/api/renewals/{id}/action", PostRenewalActionAsync);
+        endpoints.MapGet("/api/renewals/{id}/action", GetRenewalActionAsync);
         return endpoints;
     }
 
@@ -103,6 +117,7 @@ public static class RenewalsEndpointExtensions
         PortfolioQueryService portfolioQueryService,
         RenewalPipelineBuilder pipelineBuilder,
         ISupplierNameLookup supplierNameLookup,
+        RenewalActionService actionService,
         ITenantContext tenantContext,
         ICallerContext callerContext,
         CancellationToken cancellationToken)
@@ -135,9 +150,16 @@ public static class RenewalsEndpointExtensions
         var candidates = portfolioPage.Items.Select(ToCandidate);
         var pipeline = pipelineBuilder.Build(candidates);
 
+        // ADR-028 §D1 (task E19/F01/US01/T01): the persisted renewal action embedded under
+        // `savedAction` on every row, resolved once for the whole page's contract ids -- a per-row
+        // GET would be an N+1 across the portfolio (RenewalActionService.GetActionsAsync's own doc
+        // comment).
+        var savedActions = await actionService.GetActionsAsync(
+            tenantId, pipeline.Select(item => item.ContractId).ToList(), cancellationToken).ConfigureAwait(false);
+
         return Results.Ok(new
         {
-            items = pipeline.Select(item => ToPipelineResponse(item, supplierNames)),
+            items = pipeline.Select(item => ToPipelineResponse(item, supplierNames, savedActions)),
             totalCount = portfolioPage.TotalCount,
         });
     }
@@ -215,14 +237,21 @@ public static class RenewalsEndpointExtensions
     /// <c>insightCard.recommendations</c>, spec §9.3). Enum members and <c>EntityId</c>/
     /// <c>EntityId?</c> wrapper values are projected to plain strings/GUIDs — the same convention
     /// <see cref="PortfolioEndpointExtensions"/> and <see cref="ContractsEndpointExtensions"/>
-    /// already use.
+    /// already use. Task E19/F01/US01/T01 (ADR-028 §D1) adds <c>savedAction</c> beside the
+    /// pre-existing, unchanged <c>action</c> — <see langword="null"/> when nothing was ever recorded
+    /// for this contract (never a default/placeholder object), otherwise the same shape
+    /// <see cref="GetRenewalActionAsync"/>/<see cref="PostRenewalActionAsync"/> return
+    /// (<see cref="ToActionResponse"/>).
     /// </summary>
     private static object ToPipelineResponse(
-        RenewalPipelineItem item, IReadOnlyDictionary<EntityId, string> supplierNames)
+        RenewalPipelineItem item,
+        IReadOnlyDictionary<EntityId, string> supplierNames,
+        IReadOnlyDictionary<EntityId, RenewalActionResult> savedActions)
     {
         var facts = item.InsightCard.Facts;
         var recommendations = item.InsightCard.Recommendations;
         var supplierName = PortfolioEndpointExtensions.LookupSupplierName(supplierNames, item.SupplierId?.Value);
+        var savedAction = savedActions.TryGetValue(item.ContractId, out var saved) ? ToActionResponse(saved) : null;
 
         return new
         {
@@ -237,6 +266,7 @@ public static class RenewalsEndpointExtensions
             daysUntilCancellationDeadline = item.DaysUntilCancellationDeadline,
             autoRenewal = item.AutoRenewal,
             action = recommendations.RecommendedAction,
+            savedAction,
             insightCard = new
             {
                 facts = new
@@ -383,6 +413,7 @@ public static class RenewalsEndpointExtensions
             request.Owner,
             request.Status,
             request.Action,
+            caller.Identity!,
             cancellationToken).ConfigureAwait(false);
 
         if (result.IsFailure)
@@ -390,14 +421,68 @@ public static class RenewalsEndpointExtensions
             return Results.BadRequest(result.Error);
         }
 
-        var action = result.Value;
-        return Results.Ok(new
-        {
-            contractId = action.ContractId.Value,
-            owner = action.Owner,
-            status = action.Status.ToString(),
-            action = action.Action,
-            updatedAt = action.UpdatedAt,
-        });
+        return Results.Ok(ToActionResponse(result.Value));
     }
+
+    /// <summary>
+    /// `GET /api/renewals/{id}/action` (task E19/F01/US01/T01, renewal-action-api; ADR-028 §D1;
+    /// parent story us-01-renewal-action-api AC-1). <c>{id}</c> carries <b>exactly</b> the same
+    /// meaning as on <see cref="PostRenewalActionAsync"/> above — confirmed against that handler
+    /// before this route was written (ADR-028 assumption 1): the contract id
+    /// <see cref="RenewalActionService"/> keys its row on — so a caller reads back precisely the row
+    /// its own (or a colleague's) earlier POST to the same <c>{id}</c> wrote. Same guard-clause shape
+    /// as <see cref="PostRenewalActionAsync"/>: tenant/identity via <see cref="ICallerContext"/>
+    /// first, then the route id's GUID format. 404 when the id is a well-formed contract id with no
+    /// persisted row — <see cref="RenewalActionService.GetActionAsync"/> cannot and does not
+    /// distinguish "never posted" from "posted by a different tenant" (ADR-009's RLS already makes
+    /// that indistinguishable at the query level), so neither does this handler. Never a 200 with a
+    /// default/placeholder body: absence of a row <b>is</b> the status <c>NotStarted</c> (ADR-028
+    /// §D1) — a fact the caller reconstructs itself, not one this route fabricates.
+    /// </summary>
+    private static async Task<IResult> GetRenewalActionAsync(
+        string id,
+        HttpRequest request,
+        RenewalActionService actionService,
+        ICallerContext callerContext,
+        CancellationToken cancellationToken)
+    {
+        // NW-05 (ADR-010 w15 footer; ADR-022 w15 footer clause 2): identity first, then the tenant
+        // header as an authorized selector, then membership -- 401 / 400 / 404 in that order, all
+        // owned by ICallerContext (acceptance A15-8). The scope it hands back is the tenant scope
+        // this handler runs in; disposing it here is the same lifetime the old BeginScope had.
+        var caller = await callerContext.ResolveTenantAsync(request, cancellationToken);
+        if (caller.Failure is not null)
+        {
+            return caller.Failure;
+        }
+
+        using var callerTenantScope = caller.Scope;
+        var tenantGuid = caller.TenantId.Value;
+
+        if (!Guid.TryParse(id, out var contractGuid))
+        {
+            return Results.BadRequest(
+                "The renewal id in the route must be a GUID (the same 'contractId' GET /api/renewals returns).");
+        }
+
+        var action = await actionService.GetActionAsync(
+            new TenantId(tenantGuid), new EntityId(contractGuid), cancellationToken).ConfigureAwait(false);
+
+        return action is null ? Results.NotFound() : Results.Ok(ToActionResponse(action));
+    }
+
+    /// <summary>
+    /// Wire-shapes a <see cref="RenewalActionResult"/> — the one place <see cref="PostRenewalActionAsync"/>,
+    /// <see cref="GetRenewalActionAsync"/> and the <c>savedAction</c> embedding in
+    /// <see cref="ToPipelineResponse"/> all build this response, so a write and every way of reading
+    /// it back can never drift into different shapes (task E19/F01/US01/T01).
+    /// </summary>
+    private static object ToActionResponse(RenewalActionResult action) => new
+    {
+        contractId = action.ContractId.Value,
+        owner = action.Owner,
+        status = action.Status.ToString(),
+        action = action.Action,
+        updatedAt = action.UpdatedAt,
+    };
 }

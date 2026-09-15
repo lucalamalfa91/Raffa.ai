@@ -322,6 +322,43 @@ namespace Raffa.Documents.Contracts.Migrations
                     b.ToTable("contract_line_item", (string)null);
                 });
 
+            modelBuilder.Entity("Raffa.Documents.Contracts.Domain.ContractNegotiationStep", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ContractId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("contract_id");
+
+                    b.Property<string>("Step")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("step");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset>("TickedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ticked_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_contract_negotiation_step");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_contract_negotiation_step_tenant_id");
+
+                    b.HasIndex("TenantId", "ContractId", "Step")
+                        .IsUnique()
+                        .HasDatabaseName("ix_contract_negotiation_step_tenant_id_contract_id_step");
+
+                    b.ToTable("contract_negotiation_step", (string)null);
+                });
+
             modelBuilder.Entity("Raffa.Documents.Contracts.Domain.ContractVersion", b =>
                 {
                     b.Property<Guid>("Id")

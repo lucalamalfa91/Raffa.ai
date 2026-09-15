@@ -6,6 +6,7 @@ using Raffa.Documents.Contracts.Application.Extraction;
 using Raffa.Documents.Contracts.Domain;
 using Raffa.Documents.Contracts.Infrastructure;
 using Raffa.Identity.Workspace.Infrastructure;
+using Raffa.Renewals.Infrastructure;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Storage;
 using Microsoft.AspNetCore.Authentication;
@@ -91,6 +92,7 @@ internal static class InMemoryAskEngineFactory
         var documentsContractsDbName = $"documents-contracts-{Guid.NewGuid()}";
         var chatDbName = $"chat-{Guid.NewGuid()}";
         var identityDbName = $"identity-workspace-{Guid.NewGuid()}";
+        var renewalsDbName = $"renewals-{Guid.NewGuid()}";
 
         return factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
         {
@@ -126,6 +128,17 @@ internal static class InMemoryAskEngineFactory
             services.RemoveAll<IdentityWorkspaceDbContext>();
             services.AddDbContext<IdentityWorkspaceDbContext>(o => o
                 .UseInMemoryDatabase(identityDbName)
+                .UseInternalServiceProvider(InMemoryProviderServices));
+
+            // Task E19/F01/US01/T01 (ADR-028 §D1): GET /api/renewals now always reads
+            // RenewalActionService.GetActionsAsync for the page's savedAction embedding. Left on
+            // the host's Npgsql registration that query 500s against an unreachable Postgres
+            // (this helper never swapped RenewalsDbContext before -- the pipeline used to return
+            // before that round trip existed).
+            services.RemoveAll<DbContextOptions<RenewalsDbContext>>();
+            services.RemoveAll<RenewalsDbContext>();
+            services.AddDbContext<RenewalsDbContext>(o => o
+                .UseInMemoryDatabase(renewalsDbName)
                 .UseInternalServiceProvider(InMemoryProviderServices));
 
             // Fix 2026-09-14: the X-User-Id -> `oid` bridge and the implicit tenant Admin both moved to

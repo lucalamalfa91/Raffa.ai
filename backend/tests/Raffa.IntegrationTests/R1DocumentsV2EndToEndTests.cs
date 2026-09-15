@@ -200,7 +200,9 @@ public sealed class R1DocumentsV2EndToEndTests : IClassFixture<R1IntegrationFixt
         // need this.
         using var tenantScope = tenantContext.BeginScope(tenant);
 
-        var user = new WorkspaceUser { TenantId = tenant, Email = email, CreatedAt = DateTimeOffset.UtcNow };
+        // ADR-010 w16 footer S16-1: the membership/role predicates match ExternalSubjectId only now
+        // -- set it to the same value presented as X-User-Id (-> the `oid` claim), same as `Email`.
+        var user = new WorkspaceUser { TenantId = tenant, Email = email, ExternalSubjectId = email, CreatedAt = DateTimeOffset.UtcNow };
         // NW-05 (2026-09-14): the implicit tenant Admin the fixture grants to caller-less requests may
         // already have created this role -- ix_workspace_role_tenant_id_name is unique, so reuse it.
         var role = await db.WorkspaceRoles.SingleOrDefaultAsync(r => r.TenantId == tenant && r.Name == roleName)

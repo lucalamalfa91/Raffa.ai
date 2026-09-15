@@ -671,3 +671,214 @@ rather than discovered.
 (ADR-027), the resources and their SKUs (ADR-005 / ADR-007), the Graph
 permission's scope and the credential posture (ADR-025 §J / ADR-011), and when
 NW-50 wires a Playwright runner — still W18.
+
+## Amendment (2026-09-15, wave w16)
+
+Item **NW-31**, plus the process question **OQ-w16-008**. Seat:
+delivery-manager, reconciled with cloud-architect (`PASS` — zero `infra/`
+delta), security-architect (ADR-022 w16 clauses 1–6, ADR-011 w16 clause 19) and
+product-owner (ADR-001 w16 clause 8 — A16-3's wording). Everything above is
+unchanged — the body, both w14 footers and both w15 footers, clauses 1–26 — and
+`Status: accepted` stands. **Nothing is superseded.** No promotion path is
+added and no gate is relaxed. Clause numbering **continues at 27**.
+
+This is the one wave allowed to open
+`.github/workflows/reprocess-tenant-documents.yml` (w15 clause 21).
+
+**27. OQ-w16-004 is answered "neither option", because its premise was false.**
+The assumption in force held that ADR-027's worker-side re-enqueue "needs no new
+identity, no secret and no Terraform". **Refuted on this tree.** Both Service Bus
+role assignments are granted to the *container-apps workload identity only*, and
+topic-scoped (`infra/modules/servicebus/main.tf:71-102`); the module accepts no
+CI input at all; CI logs in as `raffa-sp-<env>`
+(`reprocess-tenant-documents.yml:124-129` → `./.github/actions/azure-login`),
+which holds exactly one Terraform-granted role in this product — `Key Vault
+Secrets User` (`infra/modules/keyvault/main.tf:66-75`). So a runner-side publish
+needs a new `azurerm_role_assignment` (⇒ Terraform ⇒ an infra PR before the wave
+PR, ADR-014 w15 clause 5), and an API call with a token needs an app role on
+`azuread_application.api` (⇒ the one resource clause 25 pins hardest).
+**ADR-027 `:198`'s "reprocess collapses into re-enqueue" is a property of the
+*handler*, not a licence for an operator path** — the re-enqueue runs inside a
+process that already holds the workload identity. **There is no zero-cost
+repair.**
+
+→ **Ruling: w16 buys CI no new credential.** A wave does not acquire a CI
+capability as a side effect. **The wave's Azure/Terraform delta is zero because
+the API steps are deleted — not because re-enqueue was free**, and the record
+must say so, or W17 will re-derive the withdrawn premise. Three seats reached
+this from independent evidence (software-architect from ADR-027's text,
+this seat from the role assignments, security-architect from the identity plane;
+cloud-architect confirmed it from `infra/` itself and **withdrew its own Path B
+recommendation**). Consequence: **no w16 task may open `infra/`**, and no
+decomposer may mint a role-assignment task from the cloud lane draft.
+
+**28. The file is broken on three axes, and a credential repairs one of them.**
+Recorded because "give it a token" is the obvious reading of NW-31 and it
+produces a job that fails differently, or passes wrongly:
+
+1. **Auth** — 401 at the first API call (`GET /api/documents`, `:194-234`) since
+   NW-05. Its own 403 diagnostic (`:274`) is therefore **unreachable dead code**.
+2. **Contract** — the POST loop accepts **only `200`** and reads `.pagesParsed` /
+   `.chunksIndexed` (`:260-270`). Since NW-27 the endpoint returns **202** with
+   `{documentId, extractionJobId, processingStatus}`
+   (`DocumentsEndpointExtensions.cs:523-535`, ADR-027 §D1). Every document would
+   fall to the `*)` branch → `FAILED` → `exit 1`.
+3. **Timing** — the `%PDF` assertion (`:345-366`) runs immediately after the POST
+   loop, but the work is now **asynchronous**. It would assert on a corpus
+   mid-reprocess: a false red, or a false green on a tenant nothing has processed.
+
+**The repair is a rewrite, and the rewrite is what does not fit this wave.**
+
+**29. Disposition — the credential-free half is kept, the rest is deleted.**
+`reprocess-tenant-documents.yml` is **deleted**; `verify-tenant-corpus.yml` is
+**added**. One file-set change, one writer, one task.
+
+- **Keep** (works today, needs no API auth): the OIDC login `:124-129`, RG
+  resolution, the Key Vault fetch `:302-334`, `psql` with the `app.tenant_id`
+  GUC, the `%PDF` assertion (R-DOC-07 AC-1) `:345-366`, the supplier report
+  (R-SUP-03) `:374-387`, the summary. **`environment:` `:104` is kept** — the job
+  still reads a Key Vault secret, so `demo`'s required reviewers still gate it.
+- **Delete**: the three API steps (`:178-290`); all four `X-*` headers
+  (`:204-206`, `:255-257` — verified present on `f0b3436`); `OPERATOR_USER_ID`
+  `:95` (an audit actor for rows it no longer writes, which also keeps NW-32's
+  grep sweep clean); the dead `workflow_call` trigger `:68` (**zero callers** —
+  `backfill-workspace-membership.yml:48` has its own, and the only mentions of
+  this one are comments); the stale "Role posture" header `:38-48`.
+- **Add**: psql enumeration of the tenant's documents and `processing_status`,
+  and a named **worklist** of documents still needing a reprocess. **The job
+  reports; it does not mutate.**
+
+**OQ-w16-dm-01 is ruled: the rename, not the keep-the-filename fallback** — and
+this seat's own published fallback is **refused**, by product-owner (ADR-001 w16
+clause 8) and on its own merits: *a file named `reprocess-*` that never
+reprocesses is a new instance of the stale-record defect NW-31 exists to delete.*
+Nothing `uses:` the old file, so the rename is mechanically safe.
+
+**30. Three shortcuts are named so they are refused rather than discovered.**
+
+- **A Service Bus SAS key in Key Vault** — forbidden by the module's own rule
+  (`servicebus/variables.tf:28`: "never a shared access key, never a Key Vault
+  secret") and by ADR-011.
+- **Re-adding any `X-*` identity header** — nothing reads them after NW-05; it
+  only turns a 401 into a different 401.
+- **Inserting `extraction_job` rows with `status='Queued'` via psql** — the
+  dangerous one, because rows change and it *looks* like it worked. **Nothing
+  sweeps them**: ADR-027 §D3 deliberately has no sweeper and the Worker is
+  message-driven, so a row with no message is a permanently-`Queued` job the UI
+  renders as "processing" **forever**.
+
+**31. The bulk whole-tenant job is designed here and scheduled to W17.**
+Recorded so W17 does not re-derive it, and so this wave's loss is bounded rather
+than silent. Shape: an operator console (`backend/scripts` or a `Raffa.Tools`
+project) referencing `Raffa.Documents.Contracts` + `Raffa.Messaging` and calling
+`DocumentReprocessService.ReprocessAsync` per document — so the `extraction_job`
+row, the `document.reprocessed` audit row and ADR-027 §D5's replace step stay
+**the product's own code, never re-implemented in bash**. Postgres from the Key
+Vault secret CI already reads; publish under `DefaultAzureCredential` with
+**one** topic-scoped `Azure Service Bus Data Sender` for `raffa-sp-<env>` —
+preferred over the API-token shape because it never touches
+`azuread_application.api` and never makes a service principal a workspace Admin.
+**Owed at W17**: security-architect on whether a CI principal may hold a send
+right at all (inclination recorded at this table: *yes — Send only, topic-scoped,
+never `Manage`, never a SAS key*) and what actor an operator console writes
+(NW-32 / ADR-011 w16 clause 16); cloud-architect on the module change.
+
+**32. `demo` is three promotions deep, and the next one is no longer
+apply-free.** `../.git/packed-refs:270-272` lists `demo-v1 a4e564c`, `demo-v2
+22c474f`, `demo-v3 2db5734` and no loose tag ref — so w15 clause 18's ruling
+(cut `demo-v4` at the w15 gate, promote w15 as `demo-v5`) **did not execute**;
+`demo` has run `demo-v3` since 2026-09-04. The rule is unchanged — **the number
+is read at the gate (`git tag -l "demo-v*"`), never assumed**, which is why
+W16-A1 carries it as an item rather than quoting this line.
+
+`demo` therefore owes **w14's three data-plane steps** (clause 19 step 9),
+**w15's flag-flip PR and the invitation walk** (step 5, "the one people will
+skip"), and now w16. **w16's own promotion is deferrable, but it is no longer
+apply-free** — see clause 33. Honest sequence: merge → `dev` deploys →
+acceptance walk on deployed `dev` → *then* the operator decides whether to clear
+the backlog with one promotion **plus one apply**. Unchanged and binding:
+**no w16 task may flip `Invitations__Mail__Enabled` or
+`guest_provisioning_enabled` on `demo`** (`docs/waves/w15-acceptance.md:300`).
+
+**33. The wave base carries an infrastructure delta this wave did not write,
+and confusing the two costs an operator either way.** The baseline moved
+`ff66ee6` → `f0b3436` mid-council; two of those four files are **`infra/`**
+(PR #118, Worker throughput): `infra/environments/dev/main.tf:164` raises
+`worker_max_replicas` 3 → 5, and `infra/modules/containerapps/main.tf` sets
+`ServiceBus__MaxConcurrentCalls = 4` (`:425`) with `max_replicas =
+var.worker_max_replicas` (`:340`) behind a KEDA `custom_scale_rule` (`:473`).
+This is **real Azure revision state, not cosmetics**. Four consequences, none of
+them w16 *work*:
+
+1. **`dev` may be running the previous throughput.** The merge half is done — it
+   *is* the baseline — so the apply is the open half. **W16-A1 gate item (g).**
+   An acceptance walk that judges batch throughput before the apply measures the
+   old config and reads as a regression that does not exist.
+2. **`demo`'s next promotion owes an apply.** `demo` keeps `worker_max_replicas
+   = 3` (`infra/environments/demo/main.tf:182`) but consumes the **same module**,
+   so `MaxConcurrentCalls = 4` reaches it on promotion. This is the first of the
+   three banked promotions that is not flag-only. Cloud-architect's arithmetic,
+   recorded at the table: 12 in flight on `demo` against `gpt-5.4` @ 200k TPM ≈
+   **16.7k TPM per in-flight document**, versus `dev`'s 20 in flight @ 300k =
+   15k — **the promotion does not under-provision `demo` and owes no capacity or
+   SKU change**.
+3. **Phrase the wave's negative assertion as a two-dot diff, never "no infra
+   commits in the range".** `git diff --stat origin/main..HEAD -- infra` is empty
+   for w16; the *log* over the same span is **not**. A reviewer who checks the log
+   attributes the baseline's infra churn to this wave and fails a clean slice.
+4. **The image-revert trap is already closed — do not re-derive or "fix" it.**
+   Both container apps carry `lifecycle { ignore_changes =
+   [template[0].container[0].image] }` (API `:294-296`, worker `:489-491`): CI
+   owns the image tag after the first `az acr build`. The pending apply **cannot**
+   roll API or worker back to the MCR placeholder. Recorded because the opposite
+   assumption is the natural one and would stall the apply indefinitely.
+
+**OQ-w16-dm-03 is asked, not asserted**: HCP run state is not readable from this
+checkout. The apply is **already authorised** by ADR-005's w15 footer §2 — it
+needs no decision from this council — it is an **operator action, never a wave
+task**, and **it does not gate A16-3**: one document reaches a terminal state
+with or without it; the apply only changes how fast twenty do.
+
+**34. What the final-integration task must run** (clause 22's shape, adjusted
+for a zero-infra wave):
+
+- build **and** test both trees; `backend.yml:72-74` is unfiltered, so the
+  Postgres/Testcontainers suites gate here. A `127.0.0.1:5432 refused` is a
+  **fixture gap**, never a flake to re-run (ADR-014 w15 clause 3);
+- **no `terraform fmt/validate`** — instead assert the negative:
+  `git diff --stat origin/main -- infra` is **empty**;
+- **the CI-drift assertion, inverted for this wave**:
+  `git diff --name-only origin/main -- .github/workflows` lists **exactly**
+  `reprocess-tenant-documents.yml` (D) and `verify-tenant-corpus.yml` (A);
+- **the retirement grep, and it is paired** (converging with security S16-7 and
+  the client seat's C4, reached independently): `X-Role` and `X-Workspace-Role`
+  return **nothing** across `backend/src`, `web/`, `web/openapi/` and `.github/`
+  outside historical ADR / acceptance records — **and `X-Tenant-Id` is present
+  and unchanged, asserted positively so the sweep cannot overrun**. `X-Tenant-Id`
+  does **not** retire; it is an authorized selector (w15 clause 2);
+- write **`docs/waves/w16-acceptance.md`** in the w14/w15 shape — a `>`
+  blockquote per item naming id / ADR / task, **Click path** → **Pass when:** →
+  `curl` with exact status codes → `psql` where only SQL proves it →
+  **Automated:** naming test classes → a closing **known gaps** table;
+- **README sweep**: `backend/README.md` (the interim-header section
+  `:213,237,384,390,1160,2690-2693`), the workflow citations across `README.md`,
+  `infra/README.md`, `backend/README.md`, `docs/ask-v2-acceptance.md`,
+  `docs/architecture/ask-raffa-v2-data-flow.md`, `web/e2e/v2.spec.ts`, and
+  **`web/README.md:1166`** — the stale `documentStore.ts` paragraph NW-10 left
+  behind, for which the intake deliberately created no task and named "any task
+  that opens `web/README.md`". **This is that task.**
+
+**35. The acceptance doc's known-gaps table is specified, not left to the
+task.** It **closes** w15's reprocess row (replaced by clause 29's disposition);
+**inherits** w15's other four (the `demo` flags, the Postgres-only suites,
+e2e-not-in-CI, and the verified-domain guest refusal,
+`w15-acceptance.md:301`); and **adds two**: the **bulk whole-tenant reprocess
+deferral** to W17 (clause 31 — product-owner requires this explicitly, so a
+`demo` walker does not read its absence as a regression) and the **baseline's
+pending infra apply** (clause 33) stated as an applied-or-not **fact** rather
+than an assumption.
+
+**Not decided here** (unchanged): the queue contract and the message shape
+(ADR-027), the resources and their SKUs (ADR-005 / ADR-007), the identity plane
+and the CI credential method (ADR-010 / ADR-015 — both explicitly unchanged by
+this wave), and when NW-50 wires a Playwright runner — still W18.

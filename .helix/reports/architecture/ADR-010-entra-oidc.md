@@ -308,3 +308,95 @@ of whoever can run an apply, and it is exactly the "temporary" fallback that is
 never removed. Rollback is an image revert, not a flag. **NW-05 fails closed**: a
 bounded 401 window on `dev` is the correct failure, and no header fallback is
 re-added to shorten it.
+
+## Amendment (2026-09-14, wave w16 — one comparison rule for the identity column)
+
+Seat: security-architect (owner). Serves **NW-07**; cited by **NW-08** and
+**NW-31**. The Decision outcome above is unchanged, and so are the w14 and w15
+footers: per-environment registration pairs, authorization-code + PKCE, no client
+secrets, the §1 validation parameters, **`oid` is the identity**, `tid` never
+selects a tenant, no claim is ever an authorization source. Nothing here weakens
+any of it. This footer closes the one thing w15 decided but did not finish: the
+*predicate* that turns an `oid` into a membership. Rule ids continue as `S16-n`.
+
+### 1. S16-1 — the email leg is deleted from both authorization comparators
+
+w15 §2.1 ruled that `oid` is the standing key and that **email keeps exactly two
+jobs** — the first bind of a subject to an invited address (ADR-025 D.3c step 2)
+and the invitation email match (D.3b). Two authorization comparators never
+implemented it. Verified on `f0b3436`:
+
+| Site | What it gates | Predicate |
+|---|---|---|
+| `Raffa.Api/Infrastructure/CallerContext.cs:143` | membership → **404** | `user.Email == identity \|\| user.ExternalSubjectId == identity` |
+| `Raffa.Api/Infrastructure/WorkspaceRoleResolver.cs:80` | role → **403** | the same two-key disjunct |
+
+**Membership and role can therefore be granted by a match on
+`workspace_user.Email`** — a column an Admin writes at invite time. **This is not
+exploitable on this tree**, and the footer says so plainly: the identity is always
+a GUID-shaped `oid`, and an email address never equals one. It is a *latent*
+divergence, not a live bypass. But it is **one `workspace_user` row carrying a
+GUID-shaped `Email` away from being a grant**, and that row is creatable through
+the ordinary invite path by an ordinary Admin. The email leg is deleted from both
+predicates. Email gains no third job.
+
+**1a — one evidence line in w15 §2.1 is corrected.** It reads *"`WorkspaceRoleResolver.cs:129`
+already matches `ExternalSubjectId`, so the swap needs no query change."* On this
+tree the resolver is `:54-88` and the match is the **two-key disjunct** above. The
+promise was true of the *query* and false of the *predicate*, which is precisely
+the gap this clause closes. The ruling of §2.1 is unchanged.
+
+### 2. S16-2 — the same predicate exists four times and they disagree; fix it at the source
+
+| Site | email leg | `oid` leg |
+|---|---|---|
+| `CallerContext.cs:143` | ordinal | ordinal |
+| `WorkspaceRoleResolver.cs:80` | ordinal | ordinal |
+| `WorkspaceDirectoryService.cs:104,144` (`GET /api/workspaces`) | lower-cased both sides (`:100`) | **`ExternalSubjectId == lower(identity)`** |
+| RLS `identity_self` (`identity-workspace.sql:203-204`) | `lower(email) = lower(guc)` | `external_subject_id = guc` (ordinal) |
+
+Benign while every stored subject is a canonical lowercase GUID — Entra and Graph
+both emit one. It becomes a **user-visible split** the moment one is not, and the
+split is asymmetric in the worst way: *the workspace is listed and every route
+inside it 404s*, or the reverse. Nothing enforces GUID-ness — the column is
+`character varying(200)` (`identity-workspace.sql:42`) and ADR-025 §J.3b binds
+whatever Graph returns.
+
+**The fix is at the source, not per site: `app.identity_subject` and the resolved
+C# identity stop being lower-cased, and each leg normalizes itself** — which is
+already exactly what the shipped RLS policy does. All four comparators then agree
+by construction rather than by four tasks remembering the same convention. **The
+shipped `identity_self` policy text is not rewritten** (it is already correct and
+already applied); ADR-009's w15 clause 5a stands, and so does **5b — the GUC keeps
+its bound parameter**, because an `oid` looks safe to interpolate and that is
+exactly the reasoning that opens the sink.
+
+**2a — and nothing "fixes" this by lower-casing.** `CallerIdentity.cs:60-68`
+records that *not* lower-casing is deliberate: `oid` is an opaque, case-sensitive
+Entra object id. A16-1's original wording ("sign in with different UPN casing") is
+**vacuous for that reason**, and the promoted task's DoD line `:69` must not be
+implemented (product-owner, ADR-001 w16 clause 1). A task that reads "normalization
+mismatch" and reaches for `ToLowerInvariant()` re-introduces exactly what this ADR
+rejected.
+
+### 3. S16-3 — pre-w15 conversation rows are recorded, never re-keyed by an email match
+
+Product-owner ruled the disposition (ADR-001 w16 clause 1: left in place, recorded,
+never remapped, never deleted). **This seat's ruling is narrower and independent of
+which disposition is chosen: one mechanism is forbidden.** A backfill that re-points
+`conversation.user_id` by matching against `workspace_user.Email` would re-point
+ownership **through the very leg clause 1 deletes** — a cross-user data move
+performed by the weakest key in the system, and a breach of R-CONV-01 AC-1 strictly
+worse than the orphaning it repairs. If the history is ever wanted, the only
+acceptable form is an explicit `(old key, oid)` pair supplied at HITL (the ADR-025
+D.2e backfill pattern), one tenant at a time, audited. **Orphaned history is a
+smaller problem than mis-attributed history.**
+
+### 4. The test this wave must carry (S-T24)
+
+(a) A `workspace_user` whose `Email` is set to **another member's `oid` string**
+confers **no** membership (404) and **no** role (403) — the clause 1 proof.
+(b) A subject stored with non-lowercase characters resolves **identically** through
+`GET /api/workspaces`, `CallerContext` and `WorkspaceRoleResolver`: the workspace is
+either listed-and-usable or absent-and-404, **never listed-and-404**.
+(c) ADR-009 w15 5b's injection negative (`'`, `;`, `--` in the identity) stays green.

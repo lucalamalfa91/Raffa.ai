@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { ApiClient, SavingsOpportunityBody } from "../../api/client";
 import { loadCurrentWorkspace } from "../signin/workspaceStore";
-import { loadTrackedRenewalActions } from "../renewals/renewalActionStore";
 import KpiRow from "./KpiRow";
 import OpportunitiesTable from "./OpportunitiesTable";
 import { buildOpportunityRows, buildSupplierNameIndex, formatSavingsSummary, reduceKpiFetch, type KpiFetchState } from "./savingsViewModel";
@@ -26,8 +25,7 @@ type OpportunitiesFetchState =
  * **Three independent fetches, independent degrade states.** `getSavingsKpis` backs the band; its
  * failure degrades the band to a stale-labelled last-known state (`reduceKpiFetch`), never a blank.
  * `getSavingsOpportunities` backs the table; its failure renders the table section's own scoped
- * error + Retry, while this session's tracked renewal actions (sessionStorage-local) still render.
- * `getPortfolio` only supplies supplier *names* for the rows (`SavingsOpportunityResult` carries a
+ * error + Retry. `getPortfolio` only supplies supplier *names* for the rows (`SavingsOpportunityResult` carries a
  * supplier id only); if it fails the rows fall back to the same id-fragment label the Portfolio
  * table uses -- never a fabricated name.
  */
@@ -90,11 +88,8 @@ export default function SavingsRoute({ apiClient }: SavingsRouteProps) {
     );
   }
 
-  // sessionStorage read, not React state: this screen never writes to it (only ../renewals and
-  // Contract 360 do), so re-reading it on every render is all the sync there is to do.
-  const trackedRenewalActions = loadTrackedRenewalActions();
   const opportunityItems = opportunitiesState.phase === "ready" ? opportunitiesState.items : [];
-  const rows = buildOpportunityRows(opportunityItems, trackedRenewalActions, supplierNames);
+  const rows = buildOpportunityRows(opportunityItems, supplierNames);
   const kpis = kpiState.phase === "ready" ? kpiState.kpis : null;
   const summary =
     kpiState.phase === "loading" || opportunitiesState.phase === "loading" ? "Loading savings…" : formatSavingsSummary(kpis, rows.length);

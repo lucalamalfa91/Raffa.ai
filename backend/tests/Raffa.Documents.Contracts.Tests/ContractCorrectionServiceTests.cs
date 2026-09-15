@@ -145,11 +145,13 @@ public sealed class ContractCorrectionServiceTests : IAsyncLifetime
         var auditWriter = new RecordingAuditWriter();
         var service = new ContractCorrectionService(db, tenantContext, new FixedClock(now), auditWriter);
 
+        var actor = "reviewer@example.com";
         var result = await service.CorrectAsync(
             tenantId,
             contractId,
             new Dictionary<string, string?> { ["annualSpend"] = "125000.00" },
-            "Corrected misread OCR amount");
+            "Corrected misread OCR amount",
+            actor);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(2, result.Value.VersionNumber);
@@ -161,6 +163,7 @@ public sealed class ContractCorrectionServiceTests : IAsyncLifetime
         var auditEntry = Assert.Single(auditWriter.Written);
         var auditDetail = auditEntry.Detail ?? throw new InvalidOperationException("expected Detail to be set");
         Assert.Equal(tenantId, auditEntry.TenantId);
+        Assert.Equal(actor, auditEntry.Actor);
         Assert.Equal("contract.corrected", auditEntry.Action);
         Assert.Equal("contract", auditEntry.ResourceType);
         Assert.Equal(contractId.Value.ToString(), auditEntry.ResourceId);
@@ -184,8 +187,10 @@ public sealed class ContractCorrectionServiceTests : IAsyncLifetime
             // column (ContractConfiguration.HasPrecision(18, 2)) as a scale-2 decimal, so both the
             // snapshot and the history's PreviousValue below read back "100000.00", not "100000".
             Assert.Equal("100000.00", SnapshotField(versions[0].SnapshotJson, "AnnualSpend"));
+            Assert.Equal(actor, versions[0].CreatedBy);
             Assert.Equal(2, versions[1].VersionNumber);
             Assert.Equal("125000.00", SnapshotField(versions[1].SnapshotJson, "AnnualSpend"));
+            Assert.Equal(actor, versions[1].CreatedBy);
 
             // AC-1/AC-3: the correction itself is queryable, versioned history — not a silent overwrite.
             var history = await readDb.CorrectionHistories.SingleAsync(h => h.TargetEntityId == contractId);
@@ -194,6 +199,7 @@ public sealed class ContractCorrectionServiceTests : IAsyncLifetime
             Assert.Equal("100000.00", history.PreviousValue);
             Assert.Equal("125000.00", history.NewValue);
             Assert.Equal("Corrected misread OCR amount", history.Reason);
+            Assert.Equal(actor, history.CorrectedBy);
 
             // Live row reflects the corrected value.
             var contract = await readDb.Contracts.SingleAsync(c => c.Id == contractId);
@@ -216,12 +222,13 @@ public sealed class ContractCorrectionServiceTests : IAsyncLifetime
         }
 
         var auditWriter = new RecordingAuditWriter();
+        var actor = "reviewer@example.com";
 
         await using (var db = CreateAppContext(tenantContext))
         {
             var service = new ContractCorrectionService(db, tenantContext, new FixedClock(now), auditWriter);
             var first = await service.CorrectAsync(
-                tenantId, contractId, new Dictionary<string, string?> { ["status"] = "active" }, "First fix");
+                tenantId, contractId, new Dictionary<string, string?> { ["status"] = "active" }, "First fix", actor);
             Assert.True(first.IsSuccess);
             Assert.Equal(2, first.Value.VersionNumber);
         }
@@ -230,7 +237,7 @@ public sealed class ContractCorrectionServiceTests : IAsyncLifetime
         {
             var service = new ContractCorrectionService(db, tenantContext, new FixedClock(now.AddHours(1)), auditWriter);
             var second = await service.CorrectAsync(
-                tenantId, contractId, new Dictionary<string, string?> { ["status"] = "expired" }, "Second fix");
+                tenantId, contractId, new Dictionary<string, string?> { ["status"] = "expired" }, "Second fix", actor);
             Assert.True(second.IsSuccess);
             Assert.Equal(3, second.Value.VersionNumber);
         }
@@ -292,7 +299,8 @@ public sealed class ContractCorrectionServiceTests : IAsyncLifetime
             tenantId,
             contractId,
             new Dictionary<string, string?> { ["status"] = "active", ["startDate"] = "not-a-date" },
-            reason: null);
+            reason: null,
+            actor: "reviewer@example.com");
 
         Assert.True(result.IsFailure);
         Assert.Empty(auditWriter.Written);
@@ -329,7 +337,7 @@ public sealed class ContractCorrectionServiceTests : IAsyncLifetime
         var service = new ContractCorrectionService(db, tenantContext, new FixedClock(now), auditWriter);
 
         var result = await service.CorrectAsync(
-            tenantId, contractId, new Dictionary<string, string?> { ["notAField"] = "x" }, reason: null);
+            tenantId, contractId, new Dictionary<string, string?> { ["notAField"] = "x" }, reason: null, actor: "reviewer@example.com");
 
         Assert.True(result.IsFailure);
         Assert.Contains("notAField", result.Error);
@@ -364,7 +372,8 @@ public sealed class ContractCorrectionServiceTests : IAsyncLifetime
             tenantId,
             contractId,
             new Dictionary<string, string?> { ["status"] = "needs_review" }, // same as seeded value
-            reason: null);
+            reason: null,
+            actor: "reviewer@example.com");
 
         Assert.True(result.IsFailure);
         Assert.Empty(auditWriter.Written);
@@ -389,7 +398,7 @@ public sealed class ContractCorrectionServiceTests : IAsyncLifetime
         var service = new ContractCorrectionService(db, tenantContext, new FixedClock(DateTimeOffset.UtcNow), auditWriter);
 
         var result = await service.CorrectAsync(
-            tenantId, EntityId.New(), new Dictionary<string, string?> { ["status"] = "active" }, reason: null);
+            tenantId, EntityId.New(), new Dictionary<string, string?> { ["status"] = "active" }, reason: null, actor: "reviewer@example.com");
 
         Assert.True(result.IsFailure);
         Assert.Equal(ContractCorrectionService.ContractNotFoundError, result.Error);
@@ -420,7 +429,7 @@ public sealed class ContractCorrectionServiceTests : IAsyncLifetime
         // Postgres RLS independently deny it, so this proves a real cross-tenant guarantee, not a
         // vacuous pass from a superuser connection that unconditionally bypasses row security.
         var result = await service.CorrectAsync(
-            tenantB, contractId, new Dictionary<string, string?> { ["status"] = "active" }, reason: null);
+            tenantB, contractId, new Dictionary<string, string?> { ["status"] = "active" }, reason: null, actor: "tenant-b-reviewer@example.com");
 
         Assert.True(result.IsFailure);
         Assert.Equal(ContractCorrectionService.ContractNotFoundError, result.Error);
@@ -468,6 +477,20 @@ public sealed class ContractCorrectionServiceTests : IAsyncLifetime
 
             return Task.FromResult(names);
         }
+
+        /// <summary>Task E19/F04/US01/T01's own read-only port. This suite never exercises it --
+        /// <see cref="ContractCorrectionService"/>'s own correction flow only ever calls
+        /// <see cref="ResolveAsync"/> -- so this is a minimal, honest implementation satisfying the
+        /// interface: an exact match against the same simplified-name keying
+        /// <see cref="ResolveAsync"/> populates, never a created row.</summary>
+        public Task<EntityId?> FindByNormalizedNameAsync(
+            TenantId tenantId, string normalizedName, CancellationToken cancellationToken)
+        {
+            EntityId? found = _bySimplifiedName.TryGetValue(normalizedName, out var existing)
+                ? existing.Id
+                : null;
+            return Task.FromResult(found);
+        }
     }
 
     [Fact]
@@ -495,7 +518,8 @@ public sealed class ContractCorrectionServiceTests : IAsyncLifetime
             tenantId,
             contractId,
             new Dictionary<string, string?> { ["supplier"] = "Salesforce, Inc." },
-            "Named by the reviewer from the signature block.");
+            "Named by the reviewer from the signature block.",
+            "reviewer@example.com");
 
         Assert.True(result.IsSuccess);
         Assert.Equal(["supplier"], result.Value.CorrectedFields);
@@ -553,20 +577,21 @@ public sealed class ContractCorrectionServiceTests : IAsyncLifetime
         var service = new ContractCorrectionService(
             db, tenantContext, new FixedClock(now), new RecordingAuditWriter(), suppliers, suppliers);
 
+        var actor = "supplier-reviewer@example.com";
         var first = await service.CorrectAsync(
-            tenantId, contractId, new Dictionary<string, string?> { ["supplier"] = "Salesforce, Inc." }, reason: null);
+            tenantId, contractId, new Dictionary<string, string?> { ["supplier"] = "Salesforce, Inc." }, reason: null, actor: actor);
         Assert.True(first.IsSuccess);
 
         // "salesforce" simplifies to the same key the fake resolver already knows, exactly as
         // SupplierNameNormalizer makes it resolve to the same row in production.
         var second = await service.CorrectAsync(
-            tenantId, contractId, new Dictionary<string, string?> { ["supplier"] = "salesforce" }, reason: null);
+            tenantId, contractId, new Dictionary<string, string?> { ["supplier"] = "salesforce" }, reason: null, actor: actor);
 
         Assert.True(second.IsFailure);
         Assert.Equal("None of the supplied values differ from the contract's current values.", second.Error);
 
         var third = await service.CorrectAsync(
-            tenantId, contractId, new Dictionary<string, string?> { ["supplier"] = "Workday, Inc." }, reason: null);
+            tenantId, contractId, new Dictionary<string, string?> { ["supplier"] = "Workday, Inc." }, reason: null, actor: actor);
 
         Assert.True(third.IsSuccess);
 
@@ -607,7 +632,7 @@ public sealed class ContractCorrectionServiceTests : IAsyncLifetime
             db, tenantContext, new FixedClock(now), new RecordingAuditWriter(), suppliers, suppliers);
 
         var result = await service.CorrectAsync(
-            tenantId, contractId, new Dictionary<string, string?> { ["supplier"] = "  " }, reason: null);
+            tenantId, contractId, new Dictionary<string, string?> { ["supplier"] = "  " }, reason: null, actor: "reviewer@example.com");
 
         Assert.True(result.IsFailure);
         Assert.Contains("cannot be cleared", result.Error, StringComparison.Ordinal);
@@ -635,7 +660,7 @@ public sealed class ContractCorrectionServiceTests : IAsyncLifetime
             db, tenantContext, new FixedClock(now), new RecordingAuditWriter());
 
         var result = await service.CorrectAsync(
-            tenantId, contractId, new Dictionary<string, string?> { ["supplier"] = "Salesforce, Inc." }, reason: null);
+            tenantId, contractId, new Dictionary<string, string?> { ["supplier"] = "Salesforce, Inc." }, reason: null, actor: "reviewer@example.com");
 
         Assert.True(result.IsFailure);
         Assert.Equal(ContractCorrectionService.SupplierCorrectionUnavailableError, result.Error);

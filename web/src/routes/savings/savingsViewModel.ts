@@ -1,5 +1,4 @@
 import type { PortfolioPageBody, SavingsKpiSummaryBody, SavingsOpportunityBody } from "../../api/client";
-import type { TrackedRenewalAction } from "../renewals/renewalActionStore";
 import type { SemanticTag, TagVariant } from "../../styles/semantics";
 import { formatSupplier } from "../contracts/portfolioTableFormatters";
 
@@ -32,11 +31,11 @@ function formatCurrencyRange(currency: string, low: number, high: number): strin
   return low === high ? `${currency} ${lowText}` : `${currency} ${lowText}–${highText}`;
 }
 
-const NOT_YET_AVAILABLE = "Not yet available";
-
 // ---------------------------------------------------------------------------------------------
 // KPI band + the "benchmark-provider-unreachable -> KPIs stale-labelled" state
 // ---------------------------------------------------------------------------------------------
+
+/** ADR-012 w16 clause 29: the realized figure in the identified-cell meta is a count, never a money amount. */
 
 /**
  * The KPI band's own fetch state -- deliberately `loading | ready` only, never a blocking `error`:
@@ -90,6 +89,7 @@ export function buildKpiCells(kpis: SavingsKpiSummaryBody | null): readonly KpiC
   }
 
   const spendLines = kpis.annualSpendAnalyzed.map((bucket) => formatCurrencyAmount(bucket.currency, bucket.amount));
+  // Realized KPI stays a count (clause 29) — see the identified-cell meta below.
   return [
     {
       key: "contracts-analyzed",
@@ -145,14 +145,13 @@ export function buildSupplierNameIndex(items: PortfolioPageBody["items"]): Reado
 }
 
 export interface OpportunityRowView {
-  /** Stable id for React keys -- `SavingsOpportunityBody.id` for a real row, `renewal-action-<contractId>` for a tracked one. */
+  /** Stable id for React keys -- `SavingsOpportunityBody.id`. */
   key: string;
   supplierLabel: string;
   supplierTitle: string | undefined;
   /** "Action" column: the opportunity's type (Renewal, Benchmark, …) -- the backend records no free-text action per opportunity. */
   action: string;
   estimate: string;
-  /** `null` -- rendered with no tag -- for a tracked renewal action, which has no confidence score of its own. */
   confidence: SemanticTag | null;
   status: SemanticTag;
   navigation: OpportunityNavigation;
@@ -207,39 +206,9 @@ function buildRealOpportunityRow(item: SavingsOpportunityBody, supplierNames: Re
   };
 }
 
-/**
- * A session-tracked renewal action rendered as its own row (`../renewals/renewalActionStore.ts`
- * names this screen as its consumer). It has no estimate or confidence of its own -- it only ever
- * recorded owner/status/action against a contract, never a `SavingsOpportunity` row -- so those
- * cells say so rather than borrowing a figure.
- */
-function buildTrackedOpportunityRow(tracked: TrackedRenewalAction, supplierNames: ReadonlyMap<string, string>): OpportunityRowView {
-  const supplier = resolveSupplier(tracked.contractId, tracked.supplierId, supplierNames);
-  return {
-    key: `renewal-action-${tracked.contractId}`,
-    supplierLabel: supplier.label,
-    supplierTitle: supplier.title,
-    action: "Renewal",
-    estimate: NOT_YET_AVAILABLE,
-    confidence: null,
-    status: { variant: "accent", label: tracked.action },
-    navigation: getOpportunityNavigation(tracked.contractId),
-  };
-}
-
-/**
- * The whole table: this session's tracked renewal actions first (most-recently-acted first), then
- * every real, persisted `SavingsOpportunity`. No de-duplication between the two: a tracked action
- * never creates a `SavingsOpportunity` row, so there is no shared id, and merging on `contractId`
- * alone would risk silently dropping a row.
- */
 export function buildOpportunityRows(
   opportunities: readonly SavingsOpportunityBody[],
-  trackedRenewalActions: readonly TrackedRenewalAction[],
   supplierNames: ReadonlyMap<string, string> = new Map(),
 ): readonly OpportunityRowView[] {
-  return [
-    ...trackedRenewalActions.map((tracked) => buildTrackedOpportunityRow(tracked, supplierNames)),
-    ...opportunities.map((item) => buildRealOpportunityRow(item, supplierNames)),
-  ];
+  return opportunities.map((item) => buildRealOpportunityRow(item, supplierNames));
 }

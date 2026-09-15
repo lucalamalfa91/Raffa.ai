@@ -2,20 +2,17 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.TestHost;
+using Raffa.Chat.Application.Capabilities;
 
 namespace Raffa.Api.Tests;
 
 /// <summary>
-/// Host-level proof for task E13/F08/US01/T01 (story us-01-capability-catalog AC-1) that
-/// `GET /api/capabilities` is real HTTP behaviour, not just C#. <see cref="CapabilitiesEndpointExtensions"/>
-/// is deliberately unmapped in the real `Program.cs` yet (a later task, named "mapped by F06" in
-/// this story's own Tasks row, adds `app.MapCapabilitiesEndpoints()`) — see that file's own doc
-/// comment — so this test cannot use `WebApplicationFactory&lt;Program&gt;` the way every sibling
-/// `*EndpointTests` class does (that factory boots the real `Program.cs`, which never calls this
-/// extension method, and which also requires several `ConnectionStrings:*` values this endpoint
-/// does not need at all). A bare minimal host built directly in this test — no connection string,
-/// no other module — is enough: the handler under test touches nothing but the in-memory
-/// `CapabilityCatalog` and an `X-Role` header.
+/// Host-level proof for <see cref="CapabilitiesEndpointExtensions"/> (wave w16 NW-31,
+/// task E18/F03/US01/T01; S16-6a / S-T27). <c>GET /api/capabilities</c> returns the whole
+/// static catalog — including Admin-gated rows — and a spoofed role header confers nothing:
+/// the JSON is identical with no header, with a client-asserted Admin header, and with a
+/// client-asserted Procurement header. A bare minimal host is enough: the handler touches
+/// nothing but the in-memory <see cref="CapabilityCatalog"/>.
 /// </summary>
 public sealed class CapabilitiesEndpointTests : IAsyncLifetime
 {
@@ -45,63 +42,33 @@ public sealed class CapabilitiesEndpointTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Returns_the_versioned_catalog()
+    public async Task Returns_the_whole_catalog_including_admin_gated_rows()
     {
         var payload = await _client!.GetFromJsonAsync<JsonElement>("/api/capabilities");
 
-        Assert.Equal("capabilities-v2.0", payload.GetProperty("version").GetString());
-        Assert.True(payload.GetProperty("capabilities").GetArrayLength() > 0);
-    }
-
-    [Fact]
-    public async Task Anonymous_caller_does_not_see_workspace_members()
-    {
-        var payload = await _client!.GetFromJsonAsync<JsonElement>("/api/capabilities");
-
-        Assert.DoesNotContain(
-            payload.GetProperty("capabilities").EnumerateArray(),
-            c => c.GetProperty("key").GetString() == "workspace-members");
-    }
-
-    [Fact]
-    public async Task Procurement_role_header_does_not_see_workspace_members()
-    {
-        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/capabilities");
-        request.Headers.Add("X-Role", "Procurement");
-
-        var response = await _client!.SendAsync(request);
-        response.EnsureSuccessStatusCode();
-        var payload = await response.Content.ReadFromJsonAsync<JsonElement>();
-
-        Assert.DoesNotContain(
-            payload.GetProperty("capabilities").EnumerateArray(),
-            c => c.GetProperty("key").GetString() == "workspace-members");
-    }
-
-    [Fact]
-    public async Task Admin_role_header_sees_workspace_members()
-    {
-        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/capabilities");
-        request.Headers.Add("X-Role", "Admin");
-
-        var response = await _client!.SendAsync(request);
-        response.EnsureSuccessStatusCode();
-        var payload = await response.Content.ReadFromJsonAsync<JsonElement>();
-
+        Assert.Equal(CapabilityCatalog.Version, payload.GetProperty("version").GetString());
+        Assert.Equal(CapabilityCatalog.All.Count, payload.GetProperty("capabilities").GetArrayLength());
         Assert.Contains(
             payload.GetProperty("capabilities").EnumerateArray(),
             c => c.GetProperty("key").GetString() == "workspace-members");
     }
 
     [Fact]
-    public async Task Admin_only_entry_exposes_the_admin_role_gate_and_availability_wire_values()
+    public async Task Spoofed_role_headers_do_not_change_the_response()
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/capabilities");
-        request.Headers.Add("X-Role", "Workspace Admin");
+        var anonymous = await ReadBodyAsync(headers: null);
+        var spoofedAdmin = await ReadBodyAsync(("X-Role", "Admin"), ("X-Workspace-Role", "Admin"));
+        var spoofedProcurement = await ReadBodyAsync(("X-Role", "Procurement"));
 
-        var response = await _client!.SendAsync(request);
-        response.EnsureSuccessStatusCode();
-        var payload = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(anonymous, spoofedAdmin);
+        Assert.Equal(anonymous, spoofedProcurement);
+        Assert.Contains("\"workspace-members\"", anonymous, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Admin_entry_exposes_the_role_gate_as_a_label()
+    {
+        var payload = await _client!.GetFromJsonAsync<JsonElement>("/api/capabilities");
 
         var workspaceMembers = payload.GetProperty("capabilities").EnumerateArray()
             .Single(c => c.GetProperty("key").GetString() == "workspace-members");
@@ -127,5 +94,21 @@ public sealed class CapabilitiesEndpointTests : IAsyncLifetime
             Assert.False(string.IsNullOrWhiteSpace(entry.GetProperty("availability").GetString()));
             Assert.True(entry.GetProperty("howTo").GetArrayLength() > 0);
         }
+    }
+
+    private async Task<string> ReadBodyAsync(params (string Name, string Value)[]? headers)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/capabilities");
+        if (headers is not null)
+        {
+            foreach (var (name, value) in headers)
+            {
+                request.Headers.Add(name, value);
+            }
+        }
+
+        var response = await _client!.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadAsStringAsync();
     }
 }

@@ -263,7 +263,7 @@ public sealed class MembershipRemovalEndpointTests : IClassFixture<MembershipRem
             using var content = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(
                 "The liability cap under this agreement is CHF 1,000,000."));
             var uploadResult = await uploadService.UploadAsync(
-                new TenantId(tenantId), "sample.pdf", "application/pdf", content, CancellationToken.None);
+                new TenantId(tenantId), "sample.pdf", "application/pdf", content, "test-actor@example.com", CancellationToken.None);
             Assert.True(uploadResult.IsSuccess);
             documentId = uploadResult.Value.DocumentId.Value;
         }

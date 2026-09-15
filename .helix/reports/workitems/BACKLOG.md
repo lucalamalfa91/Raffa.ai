@@ -263,3 +263,127 @@ the operator to reconcile in a historical slice this wave.
   hand 2026-09-14), ADR-022, ADR-024, ADR-025 (a new §J), ADR-026.
 - **`none — no change`, with reasons recorded**: ADR-003, ADR-004, ADR-006,
   ADR-008, ADR-013, ADR-017, ADR-021, ADR-023.
+
+## Epics (continued) — wave w16
+
+| ID | Slug | Wave | Status |
+|----|------|------|--------|
+| epic-19 | server-side-state | w16 | active — decomposed (next-wave) |
+
+**No new epic was cut for theme A.** The four carry-over head items (NW-07,
+NW-08, NW-31, NW-32) were already decomposed under **epic-18** in w15 with
+`status: queued`; w16 **promotes them to `live`**. Raw `w16-todo.md` §0.4 forbids
+rewriting their bodies, so each task file keeps its body unchanged (and its
+`wave: w15` line, which records when it was cut) and carries an appended
+`## Wave w16 addendum` section that supersedes the stale lines. epic-18's row in
+the table above therefore still reads `w15`, correctly.
+
+**epic-19 extends**: epic-03 F03 (renewals), epic-04 F03 (savings),
+epic-05 F03 (quotes), epic-07 F02 (Contract 360), epic-08 (web surfaces),
+epic-16 (the Worker, for W16-01).
+
+## ADR → wave coverage (continued) — wave w16
+
+| ADR | Topic | Carried into |
+|-----|-------|--------------|
+| ADR-028 | Server-side state | **new at the w16 table** — epic-19 F01/F02/F03/F04/F06/F07 (§D1 the renewal-action read-back and the binding `savedAction` name; §D2 the quote resource with its outcomes embedded; §D3 `contract_negotiation_step`, keyed by step **name**; §D4 Undo is two idempotent writes, ticks first; §D5 resolved, never guessed; §D6 what this wave does not deliver) |
+| ADR-001 | V1 scope R0–R4 | epic-18 F02/F03 + epic-19 (w16 clauses 0–8: zero new capability; the pre-w15 conversation rows are recorded, not migrated; the four canonical named steps; the Savings **status** move and the money fence; §D5 clause 2 ships; the re-worded A16-1, A16-3, A16-4) |
+| ADR-002 | .NET solution shape | epic-19 F03/F04/F05 + epic-18 F02/F03 (w16 clauses 1–5: `Raffa.Documents.Contracts` owns the ticks; `Raffa.Api` composes the savings link; one read-only supplier lookup; the actor is a signature change not a boundary change; two deletions authorised) |
+| ADR-003 | PostgreSQL + pgvector | epic-19 F03 (w16 clause 1: `contract_negotiation_step`, unique `(tenant_id, contract_id, step)`, **the row's presence is the tick**; three schema changes refused) |
+| ADR-009 | Tenancy / RLS | epic-19 F03 + epic-18 F02 (w16 clauses 1–3b: the wave's entire RLS delta is one table; `ENABLE` **+ `FORCE`** + both `USING` and `WITH CHECK` in the table's own migration; the audit read runs **inside** the verified scope) |
+| ADR-010 | Entra ID / OIDC | epic-18 F02 (w16 clauses 1–4: the email leg is deleted from both authorization comparators; normalization is fixed **at the source**; a re-key by email match is forbidden outright; S-T24) |
+| ADR-011 | Key Vault + RAG isolation | epic-18 F02/F03 (w16 clauses 14–19: who may read the audit trail; the actor as a **required parameter with no default**; the reserved `system:<component>` principal; the append-only trigger is never dropped) |
+| ADR-012 | Web stack | epic-19 F02/F06/F07 + epic-18 F02/F03 (w16 clauses 21–31: the three stores retire **with** their read-backs; `client.ts` is one-writer-per-phase; the wrapper rule; the reverting tick; the paired grep; the pseudo-opportunity row retired) |
+| ADR-014 | Git flow | epic-19 F08 (w16 clauses 1–5: the two-file CI-YAML set; **one** PR; the wave-scoped close record; W16-A1 gains item (g); the corrected wave order) |
+| ADR-016 | Promotion dev→demo | epic-18 F03 + epic-19 F08 (w16 clauses 27–35: OQ-w16-004 answered "neither option"; the workflow's three broken axes; delete/keep/add; three refused shortcuts; the W17 bulk console; the final-integration list and the known-gaps set) |
+| ADR-021 | Schema apply on Azure Postgres | epic-19 F03 (w16: one migration regenerating one byte-compared script; **no `backend.yml` array moves**, and a `backend.yml` diff is a defect) |
+| ADR-022 | Day-1 demo auth + fixture seed | epic-18 F03 (w16 clauses 1–6: the interim **identity** posture is fully retired; the capability catalog is served whole, with the tenant-free rule it now depends on; `roleGate` is presentation; **`X-Tenant-Id` does not retire**) |
+| ADR-024 | Ask Raffa V2 | epic-18 F02/F03 (w16 clauses 1–2: `OQ-askv2-005` retires with NW-07; the capability catalog stops filtering) |
+| ADR-025 | Workspace membership authorization + invitation lifecycle | epic-18 F02 (w16 §K.1–§K.3: the audit read joins the membership-guarded set; `WorkspacePrincipalAuthorization` is **deleted whole**; the deletion proof a ladder test cannot give) |
+| ADR-026 | Workspace discovery, roster, invitations: API contract + data model | epic-18 F02/F03 + epic-19 F06 (w16 clauses 1–6: `/api/audit` in with its prose half; the `X-Role` parameter out; the five theme-B paths; the gate is a **grep**, not a green build) |
+| ADR-027 | Async document processing | epic-18 F03 + epic-19 F05 (w16 clauses 1–2: what `:198`'s "re-enqueue" does **not** license; the R0 placeholder queue deleted) |
+| ADR-005/006/007/008 | Azure SKUs, region, Terraform layout, Foundry | **`none`** — cloud-architect's conditional seat resolved to *not involved*: w16 opens **no `infra/` file**, changes no SKU, env key or apply path. Cost delta **€0.00/month** |
+| ADR-015 | CI → Azure auth | **`none`** — no federated credential, GitHub secret, subject claim or Graph right changes. w16 buys CI **no new credential** |
+| ADR-013/018/019/020 | Mobile, Web IA, design system, screen inventory | **`none`** — ux-ui-designer unseated: no new screen, state or copy. Both conditions that would have seated the designer were tested and did not fire (OQ-w16-003 ruled **no** web audit surface; OQ-w16-ca-03 resolved **server-side**) |
+
+## Wave w16 (2026-09-15) — "Nothing the product knows lives only in a browser tab"
+
+- **Source**: `inputs/next/w16-todo.md`
+  (sha256 `d3518a64062ee1a867b0a6de433820e6dd48e4ea8c8c6b86b0bf84cd47103edc`)
+- **Requirements**: `reports/context/waves/w16-requirements.md`
+- **Council decisions**: `reports/architecture/waves/w16.md` — all nine in-wave
+  item rows filled; six seats involved, ux-ui-designer `PASS` (unseated) and
+  cloud-architect `PASS` (conditional seat resolved to *not involved*)
+- **Wave file**: `reports/plan/slices/w16.yaml` · **HITL**: `reports/audit/w16-hitl.md`
+- **Previous**: `w15` · **Baseline**: `f0b3436` (`helix/w16` == `origin/main`, `0 0`)
+- **New epic**: `epic-19-server-side-state`. **epic-18 F02/F03 promoted**
+  `queued → live` (four tasks, bodies unchanged, each with a w16 addendum)
+- **Caps**: 20 tasks / 5 phases → **13 live tasks in 5 phases, 13 stories across
+  2 epics**, **0 queued**
+
+### Items in the wave
+
+| Item | Title | Task ids | Phase(s) |
+|---|---|---|---|
+| NW-32 | Every write names its actor (nine services, five modules) | `E18/F03/US02/T01` | 1 |
+| NW-13 | Contract 360 step ticks are server state | `E19/F03/US01/T01` (API + the wave's one new table), `E19/F06/US01/T01` (contract + wrappers), `E19/F07/US01/T01` (screen) | 1, 3, 4 |
+| W16-01 | The dead R0 in-process Worker queue is deleted | `E19/F05/US01/T01` | 1 |
+| NW-08 | `GET /api/audit` works for a real Admin | `E18/F02/US02/T01` | 2 |
+| NW-11 | Renewal actions have an HTTP read-back | `E19/F01/US01/T01` (API), `E19/F06/US01/T01` (contract), `E19/F07/US01/T01` (screen) | 2, 3, 4 |
+| NW-12 | Quote GET + negotiation-outcome read-back | `E19/F02/US01/T01` (API), `E19/F06/US01/T01` (contract + `getQuote`), `E19/F02/US02/T01` (screen) | 2, 3, 4 |
+| NW-21 | Quote outcome updates Savings | `E19/F04/US01/T01` — **no column, no migration, no contract delta, no client change** | 2 |
+| NW-07 | Conversation `user_id` is the token subject | `E18/F02/US01/T01` | 3 |
+| NW-31 | Dual role headers retired (+ the reprocess workflow) | `E18/F03/US01/T01` — the wave's **only** task that opens `.github/workflows/**` | 4 |
+| — | Final integration + acceptance runbook | `E19/F08/US01/T01` | 5 |
+
+**NW-10 is not in the wave**: CLOSED-ON-MAIN (`9c4975e`), confirmed with evidence
+per raw §0.5 and deliberately not reopened. Its one documentation residual
+(`web/README.md:1166`) is swept by `E19/F08/US01/T01`.
+
+### Queued for the next wave
+
+**None.** Every item of the raw file's W16 queue fits: 13 live tasks against a cap
+of 20, 5 phases against a cap of 5. **No item is demoted and none is deferred**,
+so W17 keeps its recorded head unchanged (NW-20, NW-22, NW-23, NW-25, NW-26,
+NW-62–NW-66, NW-71).
+
+Three residuals were **ruled into W17 at the table** rather than decomposed here,
+and none of them is a wave item this run created: the realized **amount** in the
+Savings KPI (OQ-w16-po-01 — an unmet AC of the still-`active` `E04/F03/US01`);
+the **bulk whole-tenant reprocess** (ADR-016 w16 clause 31, shape already
+designed); and `roleGate` chip hiding (OQ-w16-sa-02 — presentation, never a
+security fix). A **designed** Savings section for tracked renewal actions
+(OQ-w16-ca-01's product half) seats ux-ui-designer in W17.
+
+### Superseded items
+
+**None.** `w16-requirements.md` §6 records no "cancels / replaces" statement in
+the raw file: **no status banner is written this wave and no `status:` line is
+changed to `superseded`.** What changes is four `status: queued → live` lines on
+the epic-18 F02/F03 task files — a **promotion, not a supersession**.
+
+One existing story is explicitly **re-pointed rather than cancelled**:
+`epic-08 .../us-01-quote-check` **AC-4** is discharged today by a session store;
+ADR-001 w16 clause 2 rules that NW-12 + NW-21 are its honest server-side
+implementation. **The story stays `active`, gets no status banner and no
+`superseded:` line**, with two wording corrections on the record — its surface is
+**Savings**, not "Home", and what updates is the realized **count**, not a money
+tile.
+
+One **oracle assumption** retires rather than a work item: `OQ-askv2-005` closes
+with NW-07 (ADR-024 w16 clause 1), and `inputs/requirements.md` R-CONV-03
+(`:252-256`) is satisfied in substance.
+
+No earlier wave file lists any of these as `live`, so there is nothing for the
+operator to reconcile in a historical slice this wave.
+
+### ADRs touched
+
+- **New**: ADR-028 (server-side state) — the wave's only new ADR.
+- **Amended by w16 footers** (bodies untouched, every `Status: accepted`
+  unchanged, nothing superseded): ADR-001, ADR-002, ADR-003, ADR-009, ADR-010,
+  ADR-011, ADR-012, ADR-014, ADR-016, ADR-021, ADR-022, ADR-024, ADR-025,
+  ADR-026, ADR-027 — **fifteen**.
+- **`none — no change`, with reasons recorded**: ADR-004, ADR-005, ADR-006,
+  ADR-007, ADR-008, ADR-013, ADR-015, ADR-017, ADR-018, ADR-019, ADR-020,
+  ADR-023.

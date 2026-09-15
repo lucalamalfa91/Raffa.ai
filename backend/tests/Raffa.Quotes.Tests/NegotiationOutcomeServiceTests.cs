@@ -122,7 +122,8 @@ public sealed class NegotiationOutcomeServiceTests : IAsyncLifetime
         // Reproduces spec §12.2's own worked example (Original 520k / Target 420k / Final 435k /
         // Saving 85k / Discount ~16.3% / Duration 24 days / Levers "36-month commitment; quarter-end
         // timing" -> Term + QuarterEnd).
-        var result = await service.CaptureAsync(tenantId, ValidRequest(quoteId.Value));
+        var result = await service.CaptureAsync(
+            tenantId, ValidRequest(quoteId.Value), "test-actor@example.com");
 
         Assert.True(result.IsSuccess);
         var outcome = result.Value;
@@ -141,6 +142,7 @@ public sealed class NegotiationOutcomeServiceTests : IAsyncLifetime
 
         var auditEntry = Assert.Single(auditWriter.Written);
         Assert.Equal(tenantId, auditEntry.TenantId);
+        Assert.Equal("test-actor@example.com", auditEntry.Actor);
         Assert.Equal("negotiation_outcome.captured", auditEntry.Action);
         Assert.Equal("negotiation_outcome", auditEntry.ResourceType);
         Assert.Equal(outcome.Id.Value.ToString(), auditEntry.ResourceId);
@@ -169,8 +171,10 @@ public sealed class NegotiationOutcomeServiceTests : IAsyncLifetime
         var service = new NegotiationOutcomeService(
             db, tenantContext, new FixedClock(DateTimeOffset.UtcNow), new RecordingAuditWriter());
 
-        var first = await service.CaptureAsync(tenantId, ValidRequest(quoteId.Value, finalPrice: 435_000m));
-        var second = await service.CaptureAsync(tenantId, ValidRequest(quoteId.Value, finalPrice: 400_000m));
+        var first = await service.CaptureAsync(
+            tenantId, ValidRequest(quoteId.Value, finalPrice: 435_000m), "test-actor@example.com");
+        var second = await service.CaptureAsync(
+            tenantId, ValidRequest(quoteId.Value, finalPrice: 400_000m), "test-actor@example.com");
 
         Assert.True(first.IsSuccess);
         Assert.True(second.IsSuccess);
@@ -197,7 +201,8 @@ public sealed class NegotiationOutcomeServiceTests : IAsyncLifetime
         var service = new NegotiationOutcomeService(
             db, tenantContext, new FixedClock(DateTimeOffset.UtcNow), auditWriter);
 
-        var result = await service.CaptureAsync(tenantId, ValidRequest(Guid.NewGuid()));
+        var result = await service.CaptureAsync(
+            tenantId, ValidRequest(Guid.NewGuid()), "test-actor@example.com");
 
         Assert.True(result.IsFailure);
         Assert.Equal(NegotiationOutcomeService.QuoteNotFoundError, result.Error);
@@ -216,7 +221,8 @@ public sealed class NegotiationOutcomeServiceTests : IAsyncLifetime
         var service = new NegotiationOutcomeService(
             db, tenantContext, new FixedClock(DateTimeOffset.UtcNow), new RecordingAuditWriter());
 
-        var result = await service.CaptureAsync(otherTenant, ValidRequest(quoteId.Value));
+        var result = await service.CaptureAsync(
+            otherTenant, ValidRequest(quoteId.Value), "test-actor@example.com");
 
         Assert.True(result.IsFailure);
         Assert.Equal(NegotiationOutcomeService.QuoteNotFoundError, result.Error);
@@ -233,7 +239,8 @@ public sealed class NegotiationOutcomeServiceTests : IAsyncLifetime
         var service = new NegotiationOutcomeService(
             db, tenantContext, new FixedClock(DateTimeOffset.UtcNow), auditWriter);
 
-        var result = await service.CaptureAsync(tenantId, ValidRequest(quoteId.Value, originalQuoteTotal: 0m));
+        var result = await service.CaptureAsync(
+            tenantId, ValidRequest(quoteId.Value, originalQuoteTotal: 0m), "test-actor@example.com");
 
         Assert.True(result.IsFailure);
         Assert.Equal(NegotiationOutcomeService.OriginalQuoteTotalMustBePositiveError, result.Error);
@@ -250,7 +257,8 @@ public sealed class NegotiationOutcomeServiceTests : IAsyncLifetime
         var service = new NegotiationOutcomeService(
             db, tenantContext, new FixedClock(DateTimeOffset.UtcNow), new RecordingAuditWriter());
 
-        var result = await service.CaptureAsync(tenantId, ValidRequest(quoteId.Value, targetPrice: -1m));
+        var result = await service.CaptureAsync(
+            tenantId, ValidRequest(quoteId.Value, targetPrice: -1m), "test-actor@example.com");
 
         Assert.True(result.IsFailure);
         Assert.Equal(NegotiationOutcomeService.TargetPriceMustBeNonNegativeError, result.Error);
@@ -269,7 +277,8 @@ public sealed class NegotiationOutcomeServiceTests : IAsyncLifetime
         var service = new NegotiationOutcomeService(
             db, tenantContext, new FixedClock(DateTimeOffset.UtcNow), new RecordingAuditWriter());
 
-        var result = await service.CaptureAsync(tenantId, ValidRequest(quoteId.Value, targetPrice: null));
+        var result = await service.CaptureAsync(
+            tenantId, ValidRequest(quoteId.Value, targetPrice: null), "test-actor@example.com");
 
         Assert.True(result.IsSuccess);
         Assert.Null(result.Value.TargetPrice);
@@ -285,7 +294,8 @@ public sealed class NegotiationOutcomeServiceTests : IAsyncLifetime
         var service = new NegotiationOutcomeService(
             db, tenantContext, new FixedClock(DateTimeOffset.UtcNow), new RecordingAuditWriter());
 
-        var result = await service.CaptureAsync(tenantId, ValidRequest(quoteId.Value, finalPrice: 0m));
+        var result = await service.CaptureAsync(
+            tenantId, ValidRequest(quoteId.Value, finalPrice: 0m), "test-actor@example.com");
 
         Assert.True(result.IsFailure);
         Assert.Equal(NegotiationOutcomeService.FinalPriceMustBePositiveError, result.Error);
@@ -302,7 +312,7 @@ public sealed class NegotiationOutcomeServiceTests : IAsyncLifetime
             db, tenantContext, new FixedClock(DateTimeOffset.UtcNow), new RecordingAuditWriter());
 
         var result = await service.CaptureAsync(
-            tenantId, ValidRequest(quoteId.Value, negotiationDurationDays: -1));
+            tenantId, ValidRequest(quoteId.Value, negotiationDurationDays: -1), "test-actor@example.com");
 
         Assert.True(result.IsFailure);
         Assert.Equal(NegotiationOutcomeService.NegotiationDurationDaysMustBeNonNegativeError, result.Error);
@@ -319,7 +329,7 @@ public sealed class NegotiationOutcomeServiceTests : IAsyncLifetime
             db, tenantContext, new FixedClock(DateTimeOffset.UtcNow), new RecordingAuditWriter());
 
         var result = await service.CaptureAsync(
-            tenantId, ValidRequest(quoteId.Value, leversUsed: Array.Empty<string>()));
+            tenantId, ValidRequest(quoteId.Value, leversUsed: Array.Empty<string>()), "test-actor@example.com");
 
         Assert.True(result.IsFailure);
         Assert.Equal(NegotiationOutcomeService.LeversUsedRequiredError, result.Error);
@@ -336,7 +346,7 @@ public sealed class NegotiationOutcomeServiceTests : IAsyncLifetime
             db, tenantContext, new FixedClock(DateTimeOffset.UtcNow), new RecordingAuditWriter());
 
         var result = await service.CaptureAsync(
-            tenantId, ValidRequest(quoteId.Value, leversUsed: ["NotARealLever"]));
+            tenantId, ValidRequest(quoteId.Value, leversUsed: ["NotARealLever"]), "test-actor@example.com");
 
         Assert.True(result.IsFailure);
         Assert.Equal(NegotiationOutcomeService.LeversUsedInvalidError, result.Error);
@@ -352,7 +362,8 @@ public sealed class NegotiationOutcomeServiceTests : IAsyncLifetime
         var service = new NegotiationOutcomeService(
             db, tenantContext, new FixedClock(DateTimeOffset.UtcNow), new RecordingAuditWriter());
 
-        var result = await service.CaptureAsync(tenantId, ValidRequest(quoteId.Value, leversUsed: ["volume"]));
+        var result = await service.CaptureAsync(
+            tenantId, ValidRequest(quoteId.Value, leversUsed: ["volume"]), "test-actor@example.com");
 
         Assert.True(result.IsSuccess);
         Assert.Equal([NegotiationLeverType.Volume], result.Value.LeversUsed);
@@ -380,7 +391,8 @@ public sealed class NegotiationOutcomeServiceTests : IAsyncLifetime
         var savingsOpportunityId = Guid.NewGuid();
 
         var result = await service.CaptureAsync(
-            tenantId, ValidRequest(quoteId.Value, savingsOpportunityId: savingsOpportunityId));
+            tenantId, ValidRequest(quoteId.Value, savingsOpportunityId: savingsOpportunityId),
+            "test-actor@example.com");
 
         Assert.True(result.IsSuccess);
         Assert.Equal(new EntityId(savingsOpportunityId), result.Value.SavingsOpportunityId);
@@ -403,7 +415,8 @@ public sealed class NegotiationOutcomeServiceTests : IAsyncLifetime
         var service = new NegotiationOutcomeService(
             db, tenantContext, new FixedClock(DateTimeOffset.UtcNow), new RecordingAuditWriter());
 
-        var result = await service.CaptureAsync(tenantId, ValidRequest(quoteId.Value, savingsOpportunityId: null));
+        var result = await service.CaptureAsync(
+            tenantId, ValidRequest(quoteId.Value, savingsOpportunityId: null), "test-actor@example.com");
 
         Assert.True(result.IsSuccess);
         Assert.Null(result.Value.SavingsOpportunityId);

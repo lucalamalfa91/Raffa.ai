@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import SavingsRoute from "../../../src/routes/savings";
-import { rememberRenewalAction } from "../../../src/routes/renewals/renewalActionStore";
 import type {
   ApiClient,
   GetPortfolioResult,
@@ -47,6 +46,9 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     getContractEvidence: vi.fn(),
     validateDocument: vi.fn(),
     postRenewalAction: vi.fn(),
+    getQuote: vi.fn(),
+    getNegotiationSteps: vi.fn(),
+    putNegotiationSteps: vi.fn(),
     uploadQuote: vi.fn(),
     getQuoteAssessment: vi.fn(),
     recalculateQuoteAssessment: vi.fn(),
@@ -296,27 +298,15 @@ describe("SavingsRoute (V2, ADR-024 / screens-v2.md #8)", () => {
       expect(within(table).getByRole("link")).toHaveAttribute("href", "/quotes");
     });
 
-    it("this session's own tracked renewal actions render first, alongside the real list", async () => {
-      rememberRenewalAction({
-        contractId: TRACKED_CONTRACT_ID,
-        supplierId: "dddddddd-dddd-dddd-dddd-dddddddddddd",
-        annualSpend: 500_000,
-        owner: "user@example.test",
-        status: "InProgress",
-        action: "In negotiation",
-        updatedAt: "2026-09-06T09:00:00Z",
-      });
-
+    it("does not invent a tracked-action row alongside the real opportunities list", async () => {
       renderPopulated([opportunity()]);
 
       const table = await screen.findByRole("table");
-      await within(table).findByRole("link", { name: "Fabrikam" });
       const bodyRows = within(table).getAllByRole("row").slice(1);
-      expect(bodyRows).toHaveLength(2);
-      expect(bodyRows[0]).toHaveTextContent("Fabrikam");
-      expect(within(bodyRows[0]).getByText("In negotiation")).toHaveClass("tag-accent");
-      expect(bodyRows[0]).toHaveTextContent("Not yet available");
-      expect(screen.getByText("2 opportunities · CHF 410,000–590,000 identified")).toBeInTheDocument();
+      expect(bodyRows).toHaveLength(1);
+      expect(bodyRows[0]).toHaveTextContent("Salesforce");
+      expect(screen.getByText("1 opportunity · CHF 410,000–590,000 identified")).toBeInTheDocument();
+      expect(within(table).queryByText("Not yet available")).not.toBeInTheDocument();
     });
   });
 });

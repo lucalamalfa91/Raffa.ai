@@ -114,7 +114,7 @@ public sealed class ContractCorrectionHistoryQueryServiceTests : IAsyncLifetime
         await using var db = CreateAppContext(tenantContext);
         var service = new ContractCorrectionService(db, tenantContext, new FixedClock(now), new NoOpAuditWriter());
         var result = await service.CorrectAsync(
-            tenantId, contractId, new Dictionary<string, string?> { [field] = value }, reason);
+            tenantId, contractId, new Dictionary<string, string?> { [field] = value }, reason, "reviewer@example.com");
         Assert.True(result.IsSuccess);
     }
 

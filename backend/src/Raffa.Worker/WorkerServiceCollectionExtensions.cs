@@ -1,7 +1,6 @@
 using Raffa.Audit.Infrastructure;
 using Raffa.Documents.Contracts.Infrastructure;
 using Raffa.Renewals.Infrastructure;
-using Raffa.Worker.Queue;
 using Raffa.Worker.Scheduling;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -21,9 +20,11 @@ public static class WorkerServiceCollectionExtensions
 {
     /// <summary>
     /// Wires the Worker host: the same Documents/Contracts application services the API host
-    /// composes (parent story us-04 AC-2 "references the same application services"), plus the
-    /// queue-consumption hosted service (AC-2 "... and consumes the queue"; ADR-002 "queue
-    /// message handlers belong to the worker host, not to domain projects").
+    /// composes (parent story us-04 AC-2 "references the same application services"). The
+    /// ADR-027 extraction-queue consumer is wired separately, by <c>Program.cs</c> calling
+    /// <c>Raffa.Messaging.MessagingServiceCollectionExtensions.AddExtractionQueueConsumer</c> —
+    /// not by this method. (Task E19/F05/US01/T01 deleted the R0 placeholder queue trio this
+    /// method used to register here alongside it — ADR-027 w16 clause 2, ADR-002 w16 clause 5.)
     ///
     /// Also wires the Audit module (task E01/F09/US01/T01, r0-integration): task E01/F06/US01/T01
     /// gave <c>DocumentUploadService</c> a required <c>IAuditWriter</c> dependency, and
@@ -66,10 +67,6 @@ public static class WorkerServiceCollectionExtensions
         services.AddDocumentsContractsModule(documentsContractsConnectionString);
         services.AddAuditModule(auditConnectionString);
         services.AddRenewalsModule(renewalsConnectionString);
-
-        services.AddSingleton<InMemoryQueueConsumer>();
-        services.AddSingleton<IQueueConsumer>(sp => sp.GetRequiredService<InMemoryQueueConsumer>());
-        services.AddHostedService<QueueConsumerHostedService>();
 
         // TryAdd: Raffa.Worker.Tests pre-registers a fake IActiveRenewalContractsSource /
         // millisecond-scale RenewalThresholdSchedulerOptions before calling AddWorkerHost (mirrors

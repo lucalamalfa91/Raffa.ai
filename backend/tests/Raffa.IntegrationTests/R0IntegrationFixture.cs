@@ -167,14 +167,6 @@ public sealed class R0IntegrationFixture : WebApplicationFactory<Program>, IAsyn
             services.AddSingleton<IStartupFilter, ImplicitTenantAdminStartupFilter>();
             services.AddSingleton<IDocumentStorage>(DocumentStorage);
 
-            // Test-only principal simulation (ADR-010 is deliberately not wired into
-            // Program.cs by this task — see WorkspacePrincipalAuthorization's own doc comment:
-            // "A real JWT bearer handler later (or a test today) both work the same way"). An
-            // IStartupFilter wraps the pipeline the host itself builds, so production
-            // composition in Program.cs stays exactly as ADR-010-deferred as it already
-            // documents itself to be — this is test-host-only wiring.
-            services.AddSingleton<IStartupFilter, TestPrincipalStartupFilter>();
-
             // Fix 2026-09-14 (ADR-027 §D1-D3): since wave w15 the upload returns at the store and
             // the pipeline -- including the first-page preview -- runs on the Worker. This host is
             // the API alone, so a test that asserts on anything processing produces plays the
@@ -186,9 +178,9 @@ public sealed class R0IntegrationFixture : WebApplicationFactory<Program>, IAsyn
             // TokenCallerIdentity (the bearer token's `oid`), and this project's hosts never got
             // the bridge Raffa.Api.Tests' shared factory did -- so every request this fixture's
             // tests send arrived anonymous and answered 401. See TestIdentityAuthenticationHandler
-            // for why a test scheme (not a faked ICallerIdentity) is the right substitute, and why
-            // it also carries TestPrincipalStartupFilter's tenant/role claims. AuthenticationSchemeOptions
-            // is fully qualified rather than imported: `using Microsoft.AspNetCore.Authentication`
+            // for why a test scheme (not a faked ICallerIdentity) is the right substitute.
+            // AuthenticationSchemeOptions is fully qualified rather than imported: `using
+            // Microsoft.AspNetCore.Authentication`
             // makes SystemClock ambiguous against Raffa.SharedKernel.SystemClock in this project.
             services.AddAuthentication(TestIdentityAuthenticationHandler.SchemeName)
                 .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, TestIdentityAuthenticationHandler>(

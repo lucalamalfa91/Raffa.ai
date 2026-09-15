@@ -344,3 +344,103 @@ empty-result question.
   to `CreatedBy` / `CorrectedBy` and to audit rows. The constant goes, the resolved
   identity is threaded in, and **an audit row that cannot name its actor becomes
   unwritable rather than unattributed**. ADR-011's audit posture requires it.
+
+## Amendment (2026-09-14, wave w16 — the three forward bullets are discharged, one of them is corrected, and the wave's one new tenant table gets the guard that actually fires)
+
+Seat: security-architect (owner). Serves **NW-07, NW-08, NW-32**; binds **NW-13**'s
+new table. The Decision outcome above is unchanged — RLS on every tenant table,
+application scoping primary, RLS the **non-bypassable backstop**, no `BYPASSRLS`
+in the application path. The w14 footer's eight clauses and the w15 footer's
+clauses 1–5 are unchanged and in force. **No policy text is rewritten by this
+wave.** Rule ids `S16-n` are this seat's w16 lane
+(`reports/architecture/draft/next/security-architect/w16.md`).
+
+### 1. The w15 §6 forward bullets are discharged — and one of them was wrong
+
+§6 was written so W16 would not re-audit. It is now spent, and honesty about it
+is worth more than the convenience of leaving it standing:
+
+- **NW-08 — upheld in full.** The seam swap is ADR-025 §I's, `TenantIdClaimType`
+  dies, and *"a live `Admin` membership in that tenant, and nobody else"* is the
+  ruling. The ladder is ADR-011's w16 footer clause 14 (S16-4); the type is
+  **deleted whole**, not stripped (S16-5, ADR-025 w16 footer).
+- **NW-32 — upheld in full**, with the security framing corrected by the intake
+  and re-verified by this seat: since PR #117 every endpoint reaching the nine
+  services 401s first, so `"unattributed"` is **not** an identity-absent branch —
+  it is an unconditional hardcode that falsifies the trail of an *authenticated*
+  caller. A falsified audit trail, not an authentication bypass. ADR-011 w16
+  clauses 15–18.
+- **NW-07 — the bullet's parenthetical is false on this tree, and this seat wrote
+  it.** §6 states *"`CallerIdentity.cs:71` lower-cases; `ConversationsEndpointExtensions.TryResolveUserId`
+  does not, so one person splits across two keys."* **`TryResolveUserId` does not
+  exist anywhere under `backend/src`** — it was deleted in w15; only a dangling
+  `<see cref="TryResolveUserId"/>` survives at
+  `ConversationsEndpointExtensions.cs:24`. The **conclusion** stands unchanged and
+  is re-derived in ADR-010's w16 footer from the sites that *do* exist
+  (`CallerContext.cs:143`, `WorkspaceRoleResolver.cs:80`,
+  `WorkspaceDirectoryService.cs:100,104,144`, `identity-workspace.sql:203-204`);
+  only its evidence line was stale. Recorded rather than quietly re-worded,
+  because a W16 task sent to `TryResolveUserId` finds nothing, concludes the
+  defect is imaginary, and closes the item — which is the same failure mode as the
+  stale doc comments NW-31 deletes, one level up in our own records.
+
+### 2. NW-13 adds one new tenant table, and clause 4c's free branch is available — take it deliberately
+
+`contract_negotiation_step` (ADR-028 §D3, owned by `Raffa.Documents.Contracts`)
+is an **ordinary tenant table** under w14 clause 8 and w15 clause 4a: `tenant_id`
+not null and indexed, `ENABLE` + `FORCE ROW LEVEL SECURITY`, a `tenant_isolation`
+policy with **both** `USING` and `WITH CHECK`, shipped **in the same migration as
+the table**, and **no identity-keyed policy** (the §F.1 widening stays confined to
+`workspace_user`). The template is three lines away in the file the migration
+regenerates — `documents-contracts.sql:421-423` (`contract`) — and every one of
+that script's eleven tenant tables carries all three statements. A table that
+ships with `ENABLE` but no `FORCE` would be the **only** one, and `FORCE` is the
+clause that binds the table owner.
+
+**The part that is not automatic, and the reason this clause exists.** Clause 4c
+makes the CI guard conditional: `TenantRlsMigrationCheckTests` discovers its table
+list **dynamically from every `TenantScopedEntity` subclass of
+`DocumentsContractsDbContext`**. NW-13's owning module is
+`Raffa.Documents.Contracts` — **so the free branch is available here, and w14's
+`workspace_invitation` escape hatch is not needed.** It is available **only if the
+entity actually subclasses `TenantScopedEntity` in that context**. Therefore:
+
+- **2a.** `ContractNegotiationStep` subclasses `TenantScopedEntity` and is mapped
+  in `DocumentsContractsDbContext`. The existing check then covers it with no new
+  test, and **the proof that it is covered is that the check's table count goes
+  up** — a task claiming coverage without that is claiming it for free.
+- **2b.** If any task instead places it outside that context, clause 4c's second
+  branch fires and it **owes a hand-written per-table RLS test** on the
+  `WorkspaceInvitationRlsTests` pattern — including clause 4d's trap: the test
+  creates its **own unprivileged Postgres role**, because Testcontainers hands you
+  a superuser and RLS constrains neither a superuser nor a table owner. A
+  hand-written RLS test written the obvious way is green and worthless.
+- **2c.** Either way the task carries the negative: **a second tenant's ticks
+  never appear** — same contract id, other tenant, zero rows and no 500.
+
+### 3. Nothing else in the wave touches a policy
+
+NW-07 changes a comparison rule and NW-08 changes where a tenant id comes from;
+**neither edits policy text** (w15 clause 5a is unchanged and still governs).
+NW-11, NW-12 and NW-21 read and write tables that are already
+`ENABLE`+`FORCE`+`tenant_isolation` (`renewals.sql:54`, `quotes.sql:120,336`,
+`savings.sql:61,123`) and NW-21 adds **no column and no migration** (ADR-028 §D5),
+so this wave's entire RLS delta is clause 2's single table.
+
+**3a — the audit read runs inside the verified scope, and this is what the swap
+must preserve.** `audit_event` is already `ENABLE`+`FORCE`+`tenant_isolation`
+(`Raffa.Audit/Migrations/Scripts/audit.sql:54-56`). Today `/api/audit` hands
+`IAuditQueryService` a **claim-derived** tenant; after NW-08 it hands it a
+**membership-verified** one. The scope is entered **after** the membership check
+and the read happens inside it — w15 clause 5c's *verify, then scope, then read*,
+unchanged. RLS is the backstop; membership is the gate; neither substitutes for
+the other.
+
+**3b — NW-21's resolver is a tenant-scoped read and must stay one.** ADR-028 §D5
+clause 2 resolves an outcome to an opportunity through the `(tenant_id,
+normalized_name)` unique index. That index is tenant-keyed by construction and the
+lookup runs inside the request's own scope, so it is an ordinary read, **not** a
+cross-tenant aggregate (w14 clause 8's last sentence). Recorded because "resolve
+the supplier" is the shape of question that invites a global lookup: **there is no
+cross-tenant read in this product, and a resolver that found an opportunity in
+another tenant would be the defect, not the feature.**

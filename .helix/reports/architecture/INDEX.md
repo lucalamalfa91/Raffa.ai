@@ -1326,3 +1326,297 @@ counting 37. Task E16/F03/US02/T01 (raffa-backend) and T02 (raffa-web); no
 council round, no new ADR, no infrastructure change.
 
 `waves/w15.md` carries the per-item rows and the votes.
+
+## Nothing the product knows lives only in a browser tab (wave w16, appended 2026-09-14)
+
+ADR-001…027 keep their original Decision outcomes and their existing footers.
+**No ADR is superseded by wave w16 and no work item is cancelled** (the raw file
+carries no "cancels / replaces" statement; `w16-requirements.md` §6 records
+"none"). Items at this table: NW-07, NW-08, NW-31, NW-32, NW-11, NW-12, NW-13,
+NW-21, W16-01 (`reports/architecture/waves/w16.md`). Baseline `f0b3436`.
+
+**ADR-001 gains a w16 amendment footer** (product-owner, owner of the ADR),
+clauses 0–6, serving NW-07, NW-12, NW-13 and NW-21 with two acceptance rulings
+on NW-32 and NW-08. **Clause 0** records that all four items expose facts the
+product already stores, so **no §1.2 non-goal is touched and no capability is
+added** (NW-52's paid market API stays DEFERRED), and that none of the four
+surfaces is on the pilot script — so none may claim pilot priority or grow a new
+screen. **Clause 1** reduces NW-07 from *migrate* to *record*: pre-w15
+conversation rows keyed by the MSAL username are **left in place, never remapped,
+never deleted**, because a wrong email→`oid` remap would hand one user's threads
+to another — worse than the loss it repairs — and **A16-1 is reworded in four
+clauses** because the published wording (same user, different UPN casing) is
+vacuous against an `oid` key; the promoted task's DoD line `:69` **must not be
+implemented**, since satisfying it re-introduces the normalization ADR-010
+rejected. **Clause 2** fences NW-12 to the read-back of the outcome on the quote
+in front of the user, leaving the history / levers UX to NW-57 (W18), and rules
+that `E08/F03/US01` AC-4 — today discharged by a write-only `sessionStorage`
+mirror, the exact pattern ADR-012 §1 forbids — is **re-pointed** to NW-12 + NW-21
+rather than cancelled: the story stays `active`, with no status banner and no
+`superseded:` line. **Clause 3** makes the four *named* negotiation steps of
+`screens-v2.md:106-108` canonical, stores them by **stable key and never by array
+index** with the parameterized label staying client-side (w14 clause 3), and
+scopes ticks **per contract**, not per renewal cycle. **Clause 4** rules
+OQ-w16-005 on the **status** move — no surface renders a realized money figure,
+the per-opportunity `realizedAmount` is already on the wire, so nothing is
+silently dropped — fences w16 against rendering `SavingsKpiSummary.Realized` as
+money, re-classifies the realized-amount gap as the unmet AC-1 of the `active`
+story `E04/F03/US01` ruled **head of W17** (new **OQ-w16-po-01**) rather than an
+ADR-001 capability change, and rules that an outcome may be *resolved* to an
+opportunity but **never guessed** — no unambiguous match means recorded
+**unlinked**, nothing moved. **Clause 5** ratifies A16-4 for NW-32 (whose
+published wording could not fail: an unsigned POST is already 401) and rules
+**OQ-w16-003 `no`** — the audit read closes through the API and a typed client,
+so **ux-ui-designer stays unseated** and ADR-018 / ADR-020 are untouched.
+**Clause 6** records that every in-wave item is `should` except W16-01 (`could`),
+so no must/should inversion exists and ADR-001 w15 clause 11 does not fire, and
+fixes the release-valve order — W16-01, then NW-12 narrowed, then NW-13 — with
+NW-11, NW-07's isolation clause and NW-21's fence **never narrowed**. No new ADR
+from this seat.
+
+**Clauses 7–8 were appended to the same footer at the table's second round**, for
+two questions that reached this seat after clauses 0–6 were written; nothing above
+them is rewritten. **Clause 7** rules **OQ-w16-sa-01**: ADR-028 §D5's *clause 2*
+(deterministic supplier-name resolution) **ships in w16**, because with
+zero client change the explicit-id path alone is unreachable from the UI, so an
+API-only close would leave the product in exactly the state NW-21 names — with
+two fences: A16-8's deterministic close stays the **explicit-id** path (a decline
+is a pass), and **no surface may present an outcome with `savingsPropagated: null`
+as a realized saving**. **Clause 8** re-words **A16-3**'s workflow half, because
+the table declined *both* of its published branches: the close becomes an **Admin
+resubmitting a document on deployed `dev` through the product's own path**, and
+what w16 does **not** restore — the **bulk whole-tenant** reprocess — is recorded
+as deferred to **W17** with its shape designed, rather than dropped. No capability
+is added, no §1.2 non-goal touched, and no `must` sits behind a `could`.
+
+`waves/w16.md` carries the per-item rows and the votes.
+
+**Six ADRs gain a w16 amendment footer from software-architect (owner of all
+six); their Decision outcomes are unchanged and none is superseded.**
+
+- **ADR-002** — `contract_negotiation_step` is owned by
+  `Raffa.Documents.Contracts` (`Raffa.Renewals`'s allow-list makes it
+  impossible); NW-21's savings resolution is composed in `Raffa.Api`, the only
+  project allowed to reference every module; `Raffa.Suppliers.Products` gains
+  one **read-only** name → id lookup; NW-32's actor is a required positional
+  parameter on nine service types across five modules (no ambient accessor, and
+  caller-less writes take a reserved `system:<component>` principal); two
+  deletions authorised — `WorkspacePrincipalAuthorization` whole, and the R0
+  queue trio in `Raffa.Worker`. No project, host or allow-list moves.
+- **ADR-003** — **one** new tenant table, `contract_negotiation_step`, unique
+  `(tenant_id, contract_id, step)` with the row's **presence as the tick** and
+  its RLS policy in the same migration; plus the three schema changes this wave
+  **refuses**, each with its reason (no `savings_opportunity.quote_id`, no
+  widening of `renewal_action`, no new `negotiation_outcome` column).
+- **ADR-021** — the single regenerated script is `documents-contracts.sql`, and
+  **no CI array moves**: `backend.yml`'s two arrays list modules and that module
+  is already in both, so a `backend.yml` diff this wave is a defect.
+- **ADR-024** — `OQ-askv2-005` **retires** with NW-07 (the conversation key is
+  the token subject; the stale `ConversationsEndpointExtensions.cs:23-37`
+  paragraph is deleted; pre-w15 rows are recorded as retired, never re-keyed);
+  and the capability catalog is **served whole** — the role filter is deleted
+  with `X-Role`, `roleGate` stays on the wire as a presentation signal, with the
+  non-Admin suggestion-chip consequence recorded (**OQ-w16-sa-02**, W17).
+- **ADR-026** — `/api/audit` joins the contract together with the
+  `info.description` sentence that denies it; the route's tenant derivation
+  moves from a claim to a **membership-verified `X-Tenant-Id`** (OQ-w16-002
+  answered, security's 401→400→404→403→200 ladder); the `X-Role` parameter and
+  the stale `X-Workspace-Role` prose leave while **`X-Tenant-Id` stays**; the
+  parameter edit's gate is a **grep, not a green build**; five theme-B
+  read-backs are published (NW-21 adds none); the stale `200`-with-`pagesParsed`
+  reprocess prose is corrected. **Two contract tasks, never six.**
+- **ADR-027** — `:198`'s "reprocess collapses into re-enqueue" is a property of
+  the **handler**, not a licence for a credential-free operator path
+  (OQ-w16-004's zero-cost premise is withdrawn, converging with
+  delivery-manager's D1 and security's identity-plane answer); the **R0
+  placeholder queue is deleted** (W16-01) while `InMemoryExtractionQueue`
+  stays; the reprocess response is **202**, and every stale record must match it.
+
+New ADR from the w16 table:
+
+| ADR | Topic | Seat | One-line decision |
+| --- | --- | --- | --- |
+| ADR-028 | Server-side state for renewal actions, quote outcomes and negotiation steps, and how an outcome finds its savings opportunity | software-architect (+ client-architect on shape, product-owner on scope, security-architect on RLS) | Three browser stores retire against the rows that already exist: the renewal action is read back by `GET /api/renewals/{id}/action` and embedded in list rows as **`savedAction`** (never `action`, which is a calculator's output); the quote becomes a resource (`GET /api/quotes`, `GET /api/quotes/{id}` with its outcomes embedded) without overloading the assessment endpoint; negotiation step ticks become **one** new tenant table owned by `Raffa.Documents.Contracts`, keyed by the four **named** steps and never by array index, with Undo as two idempotent writes rather than a hidden cross-module side effect; and the savings link is **named or deterministically resolved, never guessed** — the product's own supplier-identity rule, exactly one open opportunity or none at all — with **no column, no migration, no contract delta and no client change**. |
+
+ADR-028 is the **state and shape** half of this wave; ADR-026's w16 footer is
+its contract half, and ADR-003's is its schema half.
+
+**ADR-028 gains a round-2 footer** (`## Amendment (2026-09-14, wave w16 — table
+round 2)`, software-architect), after product-owner ruled **OQ-w16-sa-01** in
+ADR-001 w16 clause 7. **§D5 is unchanged** — it already shipped clause 2 — so the
+footer adds mechanism, not a decision: product-owner's *must not* (an outcome
+with `savingsPropagated: null` is never a realized saving, no total absorbs it)
+is made **structural** — a declining resolution never invokes `PropagateAsync`,
+so no opportunity row, status or `RealizedSavings` row is written and the KPI
+**cannot** absorb it, with a byte-identical-KPI test to prove it. Two checks run
+at the table: clause 2 costs **no contract delta** (`savingsPropagated` is
+already a required `["boolean","null"]` property with no description —
+`raffa-api.v1.json:4356,4415-4419`, `schema.ts:504`), so the wave stays at
+**five contract paths and two contract tasks**; and clause 2 **falsifies**
+`backend/README.md:2296-2304`, a correction folded into NW-21's own
+single-writer file so it adds no task — left undone it would re-create, inside
+w16, the stale-record defect NW-31 exists to delete. The footer also records
+that NW-31's header deletion **cannot break** the acceptance path ADR-001 clause
+8 names: `reprocessDocument` sends only `X-Tenant-Id` and the bearer
+(`web/src/api/client.ts:1943-1950`), so the two round-2 rulings are compatible
+and no client task is smuggled in. No ADR is superseded; no Decision outcome is
+touched.
+
+**Five ADRs gain a w16 amendment footer from security-architect (owner of all
+five). No new ADR, none superseded, no Decision outcome or existing clause
+edited** — the wave's identity, authorization and audit delta is entirely in
+footers:
+
+- **ADR-009** — the w15 §6 forward bullets for the W16 head are **discharged**,
+  and the NW-07 bullet's evidence line is **corrected by the seat that wrote it**
+  (`TryResolveUserId` does not exist on this tree; the conclusion stands, re-derived
+  from the sites that do). The wave's **one new tenant table**
+  (`contract_negotiation_step`, NW-13) is bound to w14 clause 8 / w15 clause 4a —
+  `ENABLE` + **`FORCE`** + `tenant_isolation` with `USING` **and** `WITH CHECK`, in
+  the table's own migration — and to the part that is **not** automatic: w15 clause
+  4c's CI guard covers only `TenantScopedEntity` subclasses of
+  `DocumentsContractsDbContext`, which is where SA's module ruling puts it, **so
+  the free branch is available and must be taken deliberately**; placed anywhere
+  else the table owes a hand-written RLS test with its **own unprivileged Postgres
+  role** (clause 4d — Testcontainers hands you a superuser and the obvious test is
+  green and worthless). No policy text is rewritten this wave.
+- **ADR-010** — **one comparison rule for the identity column.** The email leg is
+  deleted from both authorization comparators (`CallerContext.cs:143`,
+  `WorkspaceRoleResolver.cs:80`), which today can grant **membership and role on a
+  match against `workspace_user.Email`** — latent, not exploitable, and one
+  GUID-shaped `Email` row away from being a grant. Normalization is fixed **at the
+  source** so all four implementations of the predicate agree by construction, and
+  the shipped `identity_self` policy is untouched. Pre-w15 conversation rows may be
+  recorded or retired but **never re-keyed by an email match** — that would move
+  ownership through the very leg being deleted.
+- **ADR-011** — clauses 14–19. **Who may read a tenant's audit trail: a live
+  `Admin` membership in that tenant and nobody else**, on the standard ladder with
+  no bespoke version; the "no `?tenantId=`" property survives **strictly stronger**
+  as *authorized selector, never an authorization input*. On the write side, **an
+  audit row that cannot name its actor is not written** (required parameter, no
+  default), non-human writes take the reserved **`system:<component>`** principal
+  already live in the codebase — provably non-colliding with an `oid` and greppable
+  — and the **append-only trigger is never dropped**, so the existing
+  `"unattributed"` rows stay permanent and the gap stays honest and bounded.
+- **ADR-022** — the interim **identity** posture is fully retired; only the fixture
+  seed (data, not identity) remains. The capabilities gate drop is accepted **with
+  the rule it now depends on**: the catalog is served whole to an unauthenticated
+  caller, so it must carry **no tenant data of any kind**, proven by an identical
+  response for no token / non-Admin / Admin. `roleGate` is **presentation, never
+  authorization**. OQ-w16-004's token option is refused on identity-plane grounds
+  independent of the infrastructure evidence. **`X-Tenant-Id` does not retire** and
+  the sweep's grep is **paired** so it cannot overrun.
+- **ADR-025** — **§K**: §I's seam swap fires on the last claims-reading route, and
+  `WorkspacePrincipalAuthorization` is **deleted whole rather than stripped of its
+  constant** (what survives the minimal repair is a working, fail-closed,
+  helpfully-named claims authorizer for the next endpoint to pick up — which is how
+  this defect arrived). §K.3 adds the assertion a green ladder test cannot give:
+  a token carrying `tenant_id` **and** `roles` for a non-member tenant must get
+  **404**, proving the claims path is deleted rather than merely unreachable.
+
+**One ADR gains a w16 amendment footer from client-architect** (owner of ADR-012,
+ADR-013 and ADR-018's route map), seated on NW-08, NW-31, NW-11, NW-12, NW-13 and
+NW-21. **ADR-012's fourth footer, clauses 21–31**; body and §1–§20 unchanged.
+**ADR-013, ADR-018 and ADR-020 are `none`** this wave — no route added, moved or
+removed, no screen, state or copy, mobile scaffold untouched.
+
+- **The three `sessionStorage` stores retire** and §1's disposition table gains
+  their rows: `raffa.renewals.actions`, `raffa.quotes.negotiationOutcomes` and
+  `raffa.contract360.steps.<id>` — all **deleted**, each **with** its read-back
+  and never before it (a deleted store with no GET is a regression, not a step
+  toward one).
+- **When a route gets an `ApiClient` wrapper — re-grounded rather than asserted.**
+  The lane draft claimed a caller-less wrapper is always dead code; the codebase
+  carries a **named counter-convention** (`getQuoteAssessment` is wrapped with no
+  caller "for API-contract completeness", `client.ts:811-813`) alongside the
+  opposite one (`raffa-api.v1.json:6` documents two routes "for completeness, no
+  `client.ts` wrapper"). Restated as a test: **a wrapper is added in the same task
+  as its first caller**; a caller-less route is published and left unwrapped, the
+  omission recorded in `info.description`. Unwrapped in w16: `/api/audit`,
+  `GET /api/renewals/{id}/action`, `GET /api/quotes`.
+- **`web/src/api/client.ts` is a one-writer-per-phase file** — the footer's own
+  correction of the draft, which recorded it as having no writer at all. It gains
+  three hand-written methods across NW-12 and NW-13, it is hand-written glue
+  (`:1-8`) rather than generated, and two tasks editing it in one phase is the
+  defect §3 already prevents for the contract file. ADR-028's single-writer list
+  is backend-only; this file is this seat's.
+- **Two evidence corrections to the seat's own draft**, recorded rather than
+  re-worded: Contract 360 **already** fetches `getRenewals`
+  (`contract360/index.tsx:115`), so NW-11 needs **no new wrapper** and the
+  embedded `savedAction` reaches all three surfaces; and the quote screen's mount
+  call is the **recalculate POST**, not the assessment GET the draft's shape
+  preference assumed (`quotes/index.tsx:91`) — so that preference would have
+  shipped a read-back the screen cannot see, and ADR-028 §D2's decline of it was
+  correct on stronger grounds than it was given.
+- **Fabricated facts and floods.** A tick the server rejected **reverts** and never
+  survives on screen; §D4's two-write Undo is accepted with its ordering ratified
+  (ticks first — an action with no ticks is honest, `NotStarted` with four ticks is
+  a contradiction). **OQ-w16-ca-01 ruled** by this seat because product-owner is
+  unseated on NW-11: Savings' pseudo-opportunity rows are **retired**, since a
+  session-scoped handful becomes every renewal action in the tenant permanently
+  once it is read back. The product half — whether Savings shows tracked actions at
+  all — is deferred to W17 as a **designed** section.
+- **Contract-file discipline.** NW-08's path must land **with** the
+  `info.description` sentence that currently denies documenting it, or the contract
+  contradicts itself — the same stale-record class NW-31 deletes. NW-31's deletion
+  changes **no generated byte** (the generator parses only `responses`), so its
+  gate is a **paired grep**, not a green build. Product-owner's "plus a typed
+  client" is satisfied by the **generated type**, not by a method with no caller.
+
+**Two ADRs gain a w16 amendment footer from delivery-manager** (owner of
+ADR-014, ADR-015 and ADR-016), seated on **NW-31** plus the process question
+**OQ-w16-008**. **ADR-016 clauses 27–35** (numbering continuous, per that ADR's
+own convention) and **ADR-014 w16 clauses 1–5** (numbering restarts, per *that*
+ADR's convention — the lane draft applied ADR-016's rule to ADR-014 and proposed
+"continue at 8"; corrected before promotion). **ADR-015 is `none`** — no
+federated credential, GitHub secret, subject claim or Graph right changes this
+wave. No ADR is superseded and no body or earlier footer is rewritten.
+
+- **OQ-w16-004 answered "neither option", because its premise was false.** The
+  re-enqueue path was assumed to need no identity, secret or Terraform. Both
+  Service Bus roles are granted to the **container-apps workload identity only**,
+  topic-scoped (`modules/servicebus/main.tf:71-102`); CI's `raffa-sp-<env>` holds
+  exactly one Terraform-granted role, `Key Vault Secrets User`. ADR-027 `:198` is
+  a property of the **handler**, not a licence for an operator path. **There is no
+  zero-cost repair** ⇒ **w16 buys CI no new credential**, and the wave's cloud
+  delta is zero **because the API steps are deleted, not because re-enqueue was
+  free**. Three seats converged from independent evidence.
+- **The reprocess workflow is broken on three axes, and a credential repairs
+  one** — 401 since NW-05, a POST loop that accepts only `200` where NW-27 now
+  returns `202`, and a `%PDF` assertion that races asynchronous work. **The repair
+  is a rewrite, and the rewrite is what does not fit this wave.**
+- **Disposition: `reprocess-tenant-documents.yml` deleted,
+  `verify-tenant-corpus.yml` added** — the credential-free half (OIDC login, Key
+  Vault, `psql` with the tenant GUC, the `%PDF` and supplier assertions) kept, the
+  API steps and all four `X-*` headers deleted, a reporting worklist added. **The
+  job reports; it does not mutate.** This seat's own keep-the-filename fallback is
+  **refused**: a file named `reprocess-*` that never reprocesses is a new instance
+  of the stale-record defect NW-31 exists to delete. **The bulk whole-tenant job is
+  designed and deferred to W17**, and must appear in the wave's known-gaps record.
+- **Three shortcuts named so they are refused rather than discovered** — a SAS
+  key in Key Vault, re-adding any `X-*` header, and (the dangerous one) inserting
+  `extraction_job` rows via `psql`: **nothing sweeps them**, so a row with no
+  message is a permanently-`Queued` job the UI renders as "processing" forever.
+- **The close record becomes wave-scoped.** `wave-close.md`'s **generic filename**
+  is what made it a trap — stamped pre-merge, listing 9 of 11 delivered w15 tasks
+  as undelivered, and permanently the newest file with that name. Rule:
+  **`wave-close-<w>.md`, written after the `integration → main` PR merges**, and
+  it states the promotion outcome even when there is none. **OQ-w16-008** has the
+  same root cause and is ruled: the operator stamps the missing `w15.hitl-ok` at
+  the w16 HITL gate — accurate, not a rubber stamp — and **no task is created**.
+- **The baseline carries an infra delta this wave did not write** (PR #118 —
+  `worker_max_replicas 3→5`, `MaxConcurrentCalls = 4`). It is an **operator
+  apply**, not a wave task and not ADR-014 w15 clause 5 firing; it **cannot roll
+  the running image back** (`ignore_changes` on both container apps); it **does not
+  gate A16-3**; and the wave's negative assertion must be a **two-dot diff**, never
+  "no infra commits in the range". `demo` is now **three promotions deep** and its
+  next one is the first that is **not flag-only**.
+- **One PR, two CI-YAML files, and a corrected wave order.** The
+  final-integration task asserts the empty `infra/` diff, the exact two-file
+  workflow diff, and a **paired** retirement grep (`X-Role`/`X-Workspace-Role`
+  gone **and `X-Tenant-Id` present**, so the sweep cannot overrun). **The lane
+  draft's recommended skeleton was wrong and is corrected here**: `NW-11 · NW-12 ·
+  NW-13` in one phase fails `check_single_writer.py` twice — on `client.ts` and on
+  `contract360/index.tsx` — neither collision being in the intake's constraint
+  list. Both came from client-architect, and both live inside the one artefact this
+  seat owns.

@@ -899,3 +899,58 @@ outcome. `ExtractionSettlement` (C6) is read, never edited. Reprocess (`Document
 .RequeueClassificationJobAsync`) resets `PrioritisedAt = null` on the fresh classification job it
 queues — a reprocessed document re-enters the FIFO exactly where a first upload would, never
 carrying a stale priority forward. `waves/w15.md` records this round under NW-27.
+
+## Amendment (2026-09-14, wave w16 — what `:198`'s "re-enqueue" does not license, and the R0 queue is finally deleted)
+
+Written by software-architect (owner) at the w16 council table. Serves
+**NW-31, W16-01**. The **Decision outcome above is unchanged**: the topic and
+its subscription, the ids-only message, the extraction job, the rejection state
+and the completeness contract all stand. **No pipeline stage, no queue topology
+and no message shape changes.** Three clauses.
+
+**1. `:198`'s "reprocess collapses into re-enqueue" is a property of the
+handler, not a licence for an operator path without a caller.** OQ-w16-004's
+assumption in force read it as "the re-enqueue path needs **no new identity, no
+secret and no Terraform**". That does not follow from this ADR, and the council
+must not take the zero-cost reading from this line:
+
+- `:198` describes the **same handler** reached by
+  `POST /api/documents/{id}/reprocess`, which runs inside a caller-authenticated,
+  membership-verified tenant scope;
+- `:719` names the operator this ADR actually sanctions — "**an admin inside
+  that tenant** can drive it without any cross-tenant read";
+- `:720-723` rules that closing the remaining residual any other way needs the
+  **cross-tenant sweep ADR-009 forbids**.
+
+Delivery-manager reached the same conclusion from the infrastructure side
+(**D1**: both Service Bus roles are granted to the container-apps workload
+identity only — `infra/modules/servicebus/main.tf:73-74,91-92` — and CI's
+`raffa-sp-<env>` holds neither), and security-architect from the identity side
+(**no new identity in w16**; an app-only token carries no `oid`, hence no
+membership, hence a second authorization source built for a CI job). **The
+premise is withdrawn, not the ADR.** The workflow's disposition belongs to
+delivery-manager (ADR-016 w16 footer); this clause removes only the false
+justification, and records that **cloud-architect's seat stays inactive because
+the API steps are deleted, not because this ADR made them free**.
+
+**2. The R0 placeholder queue is deleted (W16-01) — the deletion this ADR
+superseded but never performed.**
+`Raffa.Worker/Queue/IQueueConsumer.cs`, `Queue/InMemoryQueueConsumer.cs` and
+`Queue/QueueConsumerHostedService.cs` go, with their registration at
+`WorkerServiceCollectionExtensions.cs:70-72`. Until then it is a **second live
+`IHostedService` in every deployed Worker**, inert only because nothing
+publishes to it, whose own doc (`IQueueConsumer.cs:13-18`) still calls a
+Service Bus implementation "a later task" — false since NW-27 and actively
+misleading to the next reader. **`InMemoryExtractionQueue` is not touched**
+(`Raffa.Messaging`, `MessagingServiceCollectionExtensions.cs:37-41,61-65`): it
+is the documented CI/local transport and it stays. A task that confuses the two
+breaks local and CI processing.
+
+**3. The reprocess response is `202`, and that is the truth every other record
+must match** — `{documentId, extractionJobId, processingStatus}`
+(`DocumentsEndpointExtensions.cs:523-535`). Anything still describing a
+synchronous `200` with `pagesParsed` / `chunksIndexed` — contract prose, the
+retired workflow's parser (delivery-manager D2 axis 2), a README — is w15
+residue; the contract sweep is assigned in the **ADR-026 w16 footer clause 6**.
+
+`waves/w16.md` records this under NW-31 and W16-01.

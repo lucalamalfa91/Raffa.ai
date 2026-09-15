@@ -24,7 +24,13 @@ namespace Raffa.Api;
 /// .SavingsOpportunityId"/> is supplied, <see cref="CaptureOutcomeAsync"/> also calls
 /// <see cref="NegotiationOutcomePropagationService.PropagateAsync"/> right after the capture itself
 /// succeeds, still inside the same request — see that type's own doc comment for why this runs
-/// synchronously here rather than as a separate endpoint/queued job.
+/// synchronously here rather than as a separate endpoint/queued job. Task E19/F04/US01/T01
+/// (outcome-resolves-the-opportunity; ADR-028 §D5 clause 2) fills the gap that left this
+/// unreachable from the product's own single caller: absent an explicit id,
+/// <see cref="CaptureOutcomeAsync"/> asks
+/// <see cref="NegotiationOutcomePropagationService.ResolveSavingsOpportunityIdAsync"/> to resolve
+/// one from the quote's own supplier name before ever calling <c>PropagateAsync</c> — see
+/// <see cref="CaptureOutcomeAsync"/>'s own doc comment for the corrected null/true/false rule.
 /// </para>
 /// </summary>
 public static class NegotiationsEndpointExtensions
@@ -48,14 +54,24 @@ public static class NegotiationsEndpointExtensions
     /// for every other validation failure.
     ///
     /// <para>
-    /// Task E05/F03/US02/T02 (outcome-propagation): a <c>savingsOpportunityId</c> supplied on
-    /// <paramref name="request"/> triggers a second, best-effort step after the capture itself is
-    /// already durable — its own success/failure is reported as <c>savingsPropagated</c>/
+    /// Task E05/F03/US02/T02 (outcome-propagation) plus task E19/F04/US01/T01
+    /// (outcome-resolves-the-opportunity; ADR-028 §D5): after the capture itself is already durable,
+    /// a second, best-effort step tries to link the outcome to a <c>Domain.SavingsOpportunity</c> —
+    /// an explicit <c>savingsOpportunityId</c> on <paramref name="request"/> is used verbatim
+    /// (clause 1, unchanged since task E05/F03/US02/T02); absent one,
+    /// <see cref="NegotiationOutcomePropagationService.ResolveSavingsOpportunityIdAsync"/> resolves
+    /// a link from the product's own supplier-identity rule instead, or declines (clause 2). Either
+    /// way its own success/failure is reported as <c>savingsPropagated</c>/
     /// <c>savingsPropagationError</c> on the <em>same</em> 201 response, never as a distinct HTTP
     /// error: the outcome capture already succeeded and is already audit-tracked (AC-3), so a bad or
-    /// unknown <c>savingsOpportunityId</c> must not turn an already-durable write into a client-visible
-    /// failure (see <see cref="NegotiationOutcomePropagationService"/>'s own "never fails an
-    /// already-durable capture" doc comment).
+    /// unknown <c>savingsOpportunityId</c>, or an ambiguous/absent resolution, must not turn an
+    /// already-durable write into a client-visible failure (see
+    /// <see cref="NegotiationOutcomePropagationService"/>'s own "never fails an already-durable
+    /// capture" doc comment). <b>Corrected rule (ADR-028 w16 round-2 footer)</b>:
+    /// <c>savingsPropagated</c> is <see langword="null"/> exactly when no opportunity was linked —
+    /// because none was named <em>and</em> none resolved unambiguously; it is
+    /// <see langword="true"/>/<see langword="false"/> whenever a link was attempted, by either
+    /// route.
     /// </para>
     /// </summary>
     private static async Task<IResult> CaptureOutcomeAsync(
@@ -81,7 +97,7 @@ public static class NegotiationsEndpointExtensions
 
         var tenantId = new TenantId(tenantGuid);
 
-        var result = await outcomeService.CaptureAsync(tenantId, request, cancellationToken).ConfigureAwait(false);
+        var result = await outcomeService.CaptureAsync(tenantId, request, caller.Identity!, cancellationToken).ConfigureAwait(false);
 
         if (result.IsFailure)
         {
@@ -94,13 +110,36 @@ public static class NegotiationsEndpointExtensions
 
         bool? savingsPropagated = null;
         string? savingsPropagationError = null;
-        if (outcome.SavingsOpportunityId is { } savingsOpportunityId)
-        {
-            var propagationResult = await propagationService.PropagateAsync(
-                tenantId, outcome.Id, savingsOpportunityId, cancellationToken).ConfigureAwait(false);
 
-            savingsPropagated = propagationResult.IsSuccess;
-            savingsPropagationError = propagationResult.IsFailure ? propagationResult.Error : null;
+        // ADR-028 §D5 precedence (task E19/F04/US01/T01): clause 1 (explicit id, verbatim) takes
+        // priority, unchanged since task E05/F03/US02/T02. Absent one, clause 2 asks the resolver
+        // for an unambiguous supplier-name match before ever calling PropagateAsync -- a decline
+        // leaves this null, so PropagateAsync is never invoked and savingsPropagated stays honestly
+        // null (w16 round-2 footer, Fence 2 -- see this method's own doc comment).
+        //
+        // Capture is already durable here. A throw from resolve/propagate (wrong connection
+        // string, missing schema, a suppliers lookup that cannot run) must not turn that write
+        // into a client-visible 500 -- the client would retry and mint a second outcome
+        // (ADR-028: never fail an already-durable capture). Cancellation still flows.
+        try
+        {
+            var savingsOpportunityIdToPropagate = outcome.SavingsOpportunityId
+                ?? await propagationService.ResolveSavingsOpportunityIdAsync(
+                    tenantId, outcome.QuoteId, cancellationToken).ConfigureAwait(false);
+
+            if (savingsOpportunityIdToPropagate is { } savingsOpportunityId)
+            {
+                var propagationResult = await propagationService.PropagateAsync(
+                    tenantId, outcome.Id, savingsOpportunityId, cancellationToken).ConfigureAwait(false);
+
+                savingsPropagated = propagationResult.IsSuccess;
+                savingsPropagationError = propagationResult.IsFailure ? propagationResult.Error : null;
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            savingsPropagated = false;
+            savingsPropagationError = ex.Message;
         }
 
         return Results.Created($"/api/negotiations/outcomes/{outcome.Id.Value}", new

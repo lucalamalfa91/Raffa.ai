@@ -751,4 +751,47 @@ test.describe("V2 pilot path on the fixture-seeded workspace", () => {
       await second.close();
     }
   });
+
+  // -- W16 server-side state (runbook, not CI; E19/F07/US01/T01) ------------
+
+  test("W16 — a posted renewal action and a ticked step survive reload", async () => {
+    test.setTimeout(180_000);
+    await page.goto("/renewals");
+
+    const start = page.getByRole("button", { name: "Start negotiation" });
+    if ((await start.count()) === 0) {
+      test.info().annotations.push({
+        type: "W16",
+        description: "no renewal row with Start negotiation on this tenant — skip rather than invent data",
+      });
+      test.skip(true, "fixture tenant has no determined renewal to action");
+      return;
+    }
+
+    await start.first().click();
+    await expect(page.getByText("In negotiation").first()).toBeVisible({ timeout: 30_000 });
+    const contractHref = await page.getByRole("link", { name: /open contract/i }).getAttribute("href");
+
+    await page.reload();
+    await expect(page.getByText("In negotiation").first()).toBeVisible({ timeout: 30_000 });
+
+    if (contractHref) {
+      await page.goto(contractHref);
+      await expect(page.getByText("In negotiation").first()).toBeVisible({ timeout: 30_000 });
+      const step = page.getByRole("button", { name: /notify .* of intent to renegotiate/i });
+      if ((await step.count()) > 0) {
+        await step.first().click();
+        await expect(step.first()).toHaveAttribute("aria-pressed", "true");
+        await page.reload();
+        await expect(page.getByRole("button", { name: /notify .* of intent to renegotiate/i }).first()).toHaveAttribute(
+          "aria-pressed",
+          "true",
+          { timeout: 30_000 },
+        );
+      }
+    }
+
+    await page.goto("/savings");
+    await expect(page.getByText("Not yet available")).toHaveCount(0);
+  });
 });

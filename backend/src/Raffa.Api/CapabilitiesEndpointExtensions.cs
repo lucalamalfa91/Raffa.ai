@@ -1,71 +1,36 @@
 using Raffa.Chat.Application.Capabilities;
-using Raffa.Identity.Workspace.Domain;
 
 namespace Raffa.Api;
 
 /// <summary>
 /// Maps `GET /api/capabilities` (R-SYS-01; story us-01-capability-catalog AC-1, task
-/// E13/F08/US01/T01). Deliberately **not** called from `Program.cs` by this task — this story's
-/// own Tasks row names it "`CapabilitiesEndpointExtensions.cs` (mapped by F06)"; the same
-/// "endpoint exists, host wiring is a later task's job" shape
-/// `Raffa.Chat.Infrastructure.ServiceCollectionExtensions`'s own doc comment already documents
-/// for `Application.Conversations.ConversationService`. `Raffa.Api.Tests
-/// .CapabilitiesEndpointTests` proves this file's HTTP behaviour with its own standalone minimal
-/// host (`WebApplication.CreateBuilder` + `Microsoft.AspNetCore.TestHost.UseTestServer`) rather
-/// than `WebApplicationFactory&lt;Program&gt;`, precisely because the real `Program.cs` does not
-/// map it yet.
-///
-/// <para>
-/// <b>No tenant header</b>: unlike every other endpoint in this host, the catalog is static,
-/// tenant-agnostic metadata (ten fixed <see cref="Capability"/> rows, R-SYS-01) — a capability's
+/// E13/F08/US01/T01; wave w16 NW-31, task E18/F03/US01/T01). The catalog is static,
+/// tenant-agnostic metadata (ten fixed <see cref="Capability"/> rows) — a capability's
 /// <see cref="CapabilityAvailability"/> is a declarative *condition* like
-/// `needsValidatedContract`, not a resolved per-tenant boolean (resolving it against a real
-/// validated-contract count is <see cref="CapabilityRouting.ResolveActions"/>'s job, a later
-/// task's concern once a real caller assembles a <see cref="RoutingContext"/>). So this endpoint
-/// needs no `X-Tenant-Id` the way `ContractsEndpointExtensions`/`PortfolioEndpointExtensions`/etc.
-/// do.
-/// </para>
+/// `needsValidatedContract`, not a resolved per-tenant boolean. So this endpoint needs
+/// no tenant header the way <c>ContractsEndpointExtensions</c>/<c>PortfolioEndpointExtensions</c>
+/// do, and it is served whole to an unauthenticated caller.
 ///
 /// <para>
-/// <b>Role-aware listing (AC-1 "role-aware: admin-only entries hidden for Procurement")</b>: the
-/// only axis this endpoint does need is "is the caller a Workspace Admin". `Raffa.Chat` cannot
-/// see `Raffa.Identity.Workspace.Domain.WorkspaceRoleName` at all (its own architecture
-/// allow-list is `[SharedKernel, AiGateway]` — see <see cref="CapabilityRoleGate"/>'s own doc
-/// comment), so this composition root — the one project allowed to reference every module, per
-/// `ChatEndpointExtensions`' own doc comment — is where the mapping from a real five-value
-/// <see cref="WorkspaceRoleName"/> down to the catalog's two-value <see cref="CapabilityRoleGate"/>
-/// happens. No host authentication is wired yet (ADR-010 is not in this task's "architecture
-/// decisions in force" list — same gap `Program.cs`'s document endpoints already carry for
-/// `X-Tenant-Id`, not promoted to reports/open-questions.md by this task for the identical
-/// "concurrent appends break a phase-barrier merge" reason those endpoints' own comments already
-/// give), so the interim signal is an `X-Role` header, reusing
-/// <see cref="WorkspaceRoleClaimResolver.TryResolve(string?, out WorkspaceRoleName)"/> verbatim
-/// rather than inventing new parsing (it already accepts `"Admin"`, `"Workspace Admin"`,
-/// `"Raffa.Admin"`, ...). Fails closed on the "show admin entries" axis specifically: a missing,
-/// unparseable, or non-Admin header hides admin-gated entries — the safe default for a visibility
-/// gate, mirroring `WorkspacePrincipalAuthorization`'s own "fail closed, never fail open"
-/// convention — never a hard 401/403 the way `AuditEndpointExtensions` is, since the catalog
-/// itself is not sensitive, tenant data.
+/// Wave w16 (ADR-024 w16 clause 2; ADR-022 w16 clause 2; S16-6a) deleted the server-side
+/// role filter that used to hide <see cref="CapabilityRoleGate.Admin"/> rows. The catalog
+/// discloses *which admin features exist and nothing else* — no tenant data, no count, no
+/// workspace name, nothing caller-derived. <see cref="Capability.RoleGate"/> stays on the
+/// wire as a presentation label, never as authorization: every action behind an admin-gated
+/// entry is enforced server-side by membership on its own endpoint.
 /// </para>
 /// </summary>
 public static class CapabilitiesEndpointExtensions
 {
-    /// <summary>Interim role signal — see the type doc comment's "Role-aware listing" section.</summary>
-    private const string RoleHeaderName = "X-Role";
-
     public static IEndpointRouteBuilder MapCapabilitiesEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapGet("/api/capabilities", GetCapabilities);
         return endpoints;
     }
 
-    private static IResult GetCapabilities(HttpRequest request)
+    private static IResult GetCapabilities()
     {
-        var isAdmin = CallerIsAdmin(request);
-
-        var visible = CapabilityCatalog.All
-            .Where(capability => capability.RoleGate != CapabilityRoleGate.Admin || isAdmin)
-            .Select(ToResponse);
+        var visible = CapabilityCatalog.All.Select(ToResponse);
 
         return Results.Ok(new
         {
@@ -73,11 +38,6 @@ public static class CapabilitiesEndpointExtensions
             capabilities = visible,
         });
     }
-
-    private static bool CallerIsAdmin(HttpRequest request) =>
-        request.Headers.TryGetValue(RoleHeaderName, out var values)
-        && WorkspaceRoleClaimResolver.TryResolve(values.ToString(), out var role)
-        && role == WorkspaceRoleName.Admin;
 
     private static object ToResponse(Capability capability) => new
     {

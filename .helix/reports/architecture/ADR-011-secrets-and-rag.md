@@ -519,3 +519,132 @@ w15 still adds **exactly one Key Vault secret** (`acs-connection`) and **no new 
 Vault permission**. Nothing in clauses 6–12 adds a secret, a vault entry, a client
 credential or a CI credential: the runtime grant stays secret-free managed identity,
 and the apply-plane question is a **directory right**, not a stored credential.
+
+## Amendment (2026-09-14, wave w16 — who may read the audit trail, and an audit row that cannot name its actor is not written)
+
+Seat: security-architect (owner). Serves **NW-08** (the read) and **NW-32** (the
+write). Everything above is unchanged and in force — the body, the four earlier
+amendments and both w15 footers, `Status: accepted`, nothing superseded. Clauses
+are numbered **14–19**, continuing the second w15 footer. This is the wave in which
+the audit trail's two ends are both repaired: today a real Admin **cannot read it**,
+and every authenticated write **lies about who made it**.
+
+### 14. S16-4 — who may read a tenant's audit trail: a live `Admin` membership in that tenant, and nobody else
+
+`GET /api/audit` today reads a `tenant_id` claim
+(`Raffa.Identity.Workspace/Domain/WorkspacePrincipalAuthorization.cs:62-67`) and
+`ClaimTypes.Role` (`:69-74`), while `Program.cs:128` sets `MapInboundClaims = false`
+and registers no `IClaimsTransformation` — so a valid Entra token mints neither and
+a real Admin lands on **403**. **It fails closed, which is correct. The danger is
+the repair, not the defect** (ADR-009 w15 §6, ADR-010 w15 §2.2/§3).
+
+The route adopts the ladder every other tenant-scoped route already uses
+(`DocumentsEndpointExtensions.cs:492-509`), **verbatim and with no bespoke
+version**:
+
+| Situation | Status |
+|---|---|
+| no validated token | **401** |
+| missing or non-GUID `X-Tenant-Id` | **400** |
+| well-formed tenant, **no live membership** | **404** — never 403 (ADR-025 Rule B1: a 403 is a tenant-existence oracle) |
+| member, role is not `Admin` | **403** |
+| live `Admin` membership | **200**, that tenant's rows only |
+
+**14a — the property the old guard defended survives, and is strengthened.** The
+route deliberately forbids a `?tenantId=` query (`AuditEndpointExtensions.cs:25-29`)
+to prevent a cross-tenant read. Under `ICallerContext` the tenant is still never
+trusted: it is a **candidate verified against the token subject's membership before
+the scope opens** (`CallerContext.cs:135-152`). Enforcement moves from *the absence
+of a parameter* to *a membership fact*, which is strictly stronger. Recorded
+explicitly so no reviewer reads "claim → header" as "authorization → client input":
+**`X-Tenant-Id` is an authorized selector, never an assertion** (ADR-022 w15
+clause 2).
+
+**14b — membership is the gate, RLS is the backstop, and the read happens inside
+the verified scope.** `audit_event` is already `ENABLE` + `FORCE ROW LEVEL
+SECURITY` + `tenant_isolation` (`Raffa.Audit/Migrations/Scripts/audit.sql:54-56`).
+That is what makes a mistake in the gate survivable; it is **not** a reason to
+soften the gate. ADR-009 w16 clause 3a carries the ordering.
+
+**14c — the response body is the most sensitive read in the product.** Product-owner
+ruled **no web surface** this wave (OQ-w16-003). If that ever reverses, the screen
+is not "just another screen": it needs its own ADR-020 row and a re-review from this
+seat covering pagination bounds and the rule that it discloses **no actor identifier
+beyond what the member list already shows**. Recorded now so the reversal cannot
+land as a routine addition.
+
+### 15. S16-8 — an audit row that cannot name its actor is not written
+
+Ten declarations of `private const string UnattributedActor = "unattributed"` and
+fourteen runtime write sites across nine service types. Since PR #117 every endpoint
+reaching them sits behind `ICallerContext` and **401s first**, so the placeholder is
+no longer an identity-absent branch: it is an **unconditional hardcode on every
+call, signed or not**. **The defect is a falsified audit trail, not an
+authentication bypass** — an authenticated caller's writes are attributed to nobody
+— and it is a live violation of this ADR's audit posture.
+
+The actor becomes a **required parameter with no default value** on all nine service
+methods, so the placeholder cannot return by omission. `AuditEvent.Actor` stays
+`required string` (`AuditEvent.cs:27`, `maxLength 200`) — **the column was never the
+problem; the placeholder exists precisely because null is impossible.** No ambient
+accessor: an ambient actor lets the two caller-less sites compile and silently write
+nothing, which is this defect with a new name.
+
+### 16. S16-9 — the reserved non-human principal, and the two properties that make it a fact rather than a lie
+
+Two of the fourteen sites have no HTTP caller at all (`RagAnswerService.cs:140`,
+`SavingsOpportunityService.cs:165`). Where a write genuinely originates inside the
+product, the actor is a **reserved, documented principal string** in the form
+`system:<component>` — the convention **already live** in this codebase at
+`NegotiationOutcomePropagationService.cs:97`
+(`"system:negotiation-outcome-propagation"`), so nothing is invented. Two required
+properties:
+
+- **16a — it can never collide with a subject.** The string carries a character no
+  token subject can produce (`:`), while a subject is an Entra object GUID. The two
+  namespaces are provably disjoint, and **the reserved prefix is never accepted as a
+  resolved token subject** — a token presenting one is rejected, not honoured.
+- **16b — it is greppable**, which is what makes A16-4's "`grep` returns nothing"
+  reachable without a vocabulary invented for the occasion.
+
+**A reserved actor is a fact; `"unattributed"` is a lie** — it means "we did not
+know", written by a system that did. W17's operator console inherits this ruling.
+
+**16c — a stale record this clause creates, closed in the same task.** The doc
+comment at `NegotiationOutcomePropagationService.cs:94-96` calls that string "the
+same interim actor placeholder as every other automated write in this host (**ADR-010
+is not wired in yet**)". ADR-010 **was** wired in w15, and after this clause the
+value is not interim — it is the permanent, correct actor for a non-human write. The
+comment is corrected inside NW-32's own file, so it adds no task and no writer.
+Left standing it would be the same class of trap NW-31 spends this wave deleting:
+a comment that tells the next implementer the opposite of the rule.
+
+### 17. S16-10 — the green test pinning the defect is rewritten, never deleted
+
+`backend/tests/Raffa.Chat.Tests/RagAnswerServiceTests.cs:70` asserts
+`Assert.Equal("unattributed", entry.Actor)`. Deleting it removes the only evidence
+the behaviour changed. It is rewritten to assert the resolved actor. Paired
+acceptance (S-T28/S-T29): a **signed** POST on each of the nine paths writes a row
+whose `Actor` is the caller's resolved subject; the two caller-less sites write the
+reserved principal; `grep -r unattributed backend/src` returns nothing outside
+comments the council allows.
+
+### 18. The append-only consequence — this wave stops the bleeding and does not clean history
+
+`audit.sql:76-88` installs a trigger rejecting **UPDATE and DELETE** on
+`audit_event`. Therefore the `"unattributed"` rows already written are
+**permanent and uncorrectable**. That is correct for an audit trail and is not a
+defect to work around. Recorded so that nobody proposes a "tidy the history"
+backfill: **the append-only trigger is never dropped** — not for a backfill, not
+inside a migration, not temporarily. A trail that can be rewritten to look correct
+is worth less than one with an honest gap, and the gap is bounded: it ends the day
+NW-32 lands.
+
+### 19. Unchanged
+
+w16 adds **no Key Vault secret, no vault entry, no new permission, no client
+credential and no CI credential** — OQ-w16-004's token option was refused on the
+identity plane (ADR-022 w16 clause 4) and no other item touches a secret. The
+no-training posture, the RAG authorization-before-retrieval rule and the
+never-logged list are untouched; clause 14c adds one item to what a future surface
+may not disclose, and nothing is removed from it.

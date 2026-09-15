@@ -34,4 +34,12 @@ internal sealed class StubSupplierNameLookup(IReadOnlyDictionary<EntityId, strin
 
         return Task.FromResult(names);
     }
+
+    // Task E19/F04/US01/T01's own read-only port -- none of this stub's own callers (see this
+    // type's own doc comment: PortfolioEndpointExtensions/ContractsEndpointExtensions/
+    // RenewalsEndpointExtensions) resolve a name to an id, only an id to a name (GetNamesAsync
+    // above), so an honest "never resolves" is the correct double here, not a fabricated match.
+    public Task<EntityId?> FindByNormalizedNameAsync(
+        TenantId tenantId, string normalizedName, CancellationToken cancellationToken) =>
+        Task.FromResult<EntityId?>(null);
 }

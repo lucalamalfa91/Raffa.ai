@@ -7,6 +7,7 @@
 #   ./run-next.ps1 -Max -Todo inputs/next/next-waves-todo.md
 #   ./run-next.ps1 -Max -Wave w14 -MaxTasks 12 -Focus "only the Ask items"
 #   ./run-next.ps1 -Max -Wave w14 -o next-from-council        # re-run after editing the normalized file
+#   ./run-next.ps1 -Max -Wave w14 -o next-from-table          # lanes on disk, table never ran
 #   ./run-next.ps1 -Max -Wave w14 -o next-from-decomposition  # council closed on disk: decomposer + checker <-> remediator
 #   ./run-next.ps1 -Max -Wave w14 -o next-plan-close          # checker <-> remediator only
 #   ./run-next.ps1 -LaunchOnly -Wave w14                    # HITL done: prereqs + execution-fanout
@@ -81,7 +82,7 @@ elseif (-not [string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KEY)) {
     throw "ANTHROPIC_API_KEY is set. Passata 1 on Claude Code Opus bills the Max login, not Console API. Unset it or pass -Max."
 }
 
-$allowed = @("next-design", "next-from-council", "next-from-decomposition", "next-plan-close", "next-intake-phase", "next-council", "next-decomposition", "next-check")
+$allowed = @("next-design", "next-from-council", "next-from-table", "next-from-decomposition", "next-plan-close", "next-intake-phase", "next-council", "next-decomposition", "next-check")
 if ($allowed -notcontains $o) { throw "run-next.ps1 only launches next-wave orchestrations ($($allowed -join ', ')); got '$o'" }
 
 Set-Location $Here
@@ -125,9 +126,15 @@ function Invoke-Helix([string[]]$passArgs) {
     }
     Push-Location $backend
     try {
-        if ($uvWorks) { & uv run helix run $Artifact @passArgs; return $LASTEXITCODE }
-        if (Test-Path $helixExe) { & $helixExe run $Artifact @passArgs; return $LASTEXITCODE }
-        throw "neither a working uv nor helix.exe is available under $backend"
+        # Do not `return $LASTEXITCODE` after `& helix`: in PowerShell every
+        # success-stream line from helix becomes the function output, so the
+        # caller `$runRc = Invoke-Helix` captured the concatenated lane
+        # transcripts (w16 printed `rc=I'll start with the cwd guard…` and
+        # exited 0). Capture the integer on the side; helix stdout stays on the host.
+        if ($uvWorks) { & uv run helix run $Artifact @passArgs }
+        elseif (Test-Path $helixExe) { & $helixExe run $Artifact @passArgs }
+        else { throw "neither a working uv nor helix.exe is available under $backend" }
+        $script:HelixExit = $LASTEXITCODE
     }
     finally {
         Pop-Location
@@ -171,7 +178,7 @@ if (-not $LaunchOnly) {
     # Council re-entry: the table's close gate needs reports/architecture/waves/<w>.md
     # with mtime >= run start (NEXT-PROCESS.md D-N2). Touch it so an empty wave,
     # where no seat rewrites the record, still closes.
-    if ($o -eq "next-from-council" -or $o -eq "next-council") {
+    if ($o -eq "next-from-council" -or $o -eq "next-council" -or $o -eq "next-from-table") {
         $record = Join-Path $Here ("reports\architecture\waves\" + $Wave + ".md")
         if (-not (Test-Path $record)) { throw "cannot re-enter the council: $record does not exist (run next-design first)" }
         (Get-Item -LiteralPath $record).LastWriteTime = Get-Date
@@ -179,7 +186,9 @@ if (-not $LaunchOnly) {
     }
 
     $helixInput = "wave=$Wave todo=$Todo max_tasks=$MaxTasks max_phases=$MaxPhases previous=$Previous focus=$Focus"
-    $runRc = Invoke-Helix @("-o", $o, "-i", $helixInput)
+    $script:HelixExit = 1
+    Invoke-Helix @("-o", $o, "-i", $helixInput)
+    $runRc = $script:HelixExit
 
     Set-Location $Here
     & python $protect verify --wave $Wave

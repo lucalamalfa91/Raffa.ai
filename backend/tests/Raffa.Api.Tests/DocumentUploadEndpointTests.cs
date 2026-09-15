@@ -303,6 +303,42 @@ public sealed class DocumentUploadEndpointTests : IClassFixture<RaffaApiFactory>
         Assert.Equal("application/pdf", metadata.RootElement.GetProperty("mimeType").GetString());
     }
 
+    /// <summary>
+    /// S-T28 (task E18/F03/US02/T01, NW-32; ADR-011 w16 clause 15): a signed POST names its actor —
+    /// the resolved token subject, never a placeholder — on both <c>DocumentVersion.CreatedBy</c>
+    /// and the <c>document.uploaded</c> audit row. <see cref="PresentedCallersAsMembersPolicy"/>
+    /// makes the presented caller a member of the tenant it names, so this is a real, non-Admin-
+    /// implicit round trip: <c>X-User-Id</c> becomes the authenticated <c>oid</c>
+    /// (<see cref="TestUserIdAuthenticationHandler"/>), never the retired header, and never the
+    /// deleted <c>"unattributed"</c> literal.
+    /// </summary>
+    [Fact]
+    public async Task Signed_upload_records_the_callers_resolved_subject_never_a_placeholder()
+    {
+        var host = Host.Create(_baseFactory);
+        var client = host.Factory.CreateClient();
+        var tenantId = Guid.NewGuid();
+        const string presentedActor = "reviewer@acme.example";
+        using var content = Multipart(BuildPdf(MsaText), "msa-signed.pdf", "application/pdf");
+        using var request = Upload(content, tenantId.ToString(), userId: presentedActor);
+
+        var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var documentId = body.RootElement.GetProperty("id").GetGuid();
+
+        using (var scope = host.Factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<DocumentsContractsDbContext>();
+            var version = await dbContext.DocumentVersions.SingleAsync(v => v.DocumentId == new EntityId(documentId));
+            Assert.Equal(presentedActor, version.CreatedBy);
+        }
+
+        var audit = Assert.Single(host.Audit.Entries, e => e.Action == "document.uploaded");
+        Assert.Equal(presentedActor, audit.Actor);
+    }
+
     [Fact]
     public async Task Quote_pdf_is_admitted_and_stored_as_its_own_type()
     {

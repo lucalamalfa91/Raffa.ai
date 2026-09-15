@@ -88,7 +88,8 @@ public sealed class QuoteUploadServiceTests : IAsyncLifetime
         var service = new QuoteUploadService(db, storage, tenantContext, new FixedClock(now), auditWriter);
 
         using var content = new MemoryStream(bytes);
-        var result = await service.UploadAsync(tenantId, "quote.pdf", "application/pdf", content);
+        var result = await service.UploadAsync(
+            tenantId, "quote.pdf", "application/pdf", content, "test-actor@example.com");
 
         Assert.True(result.IsSuccess);
         var uploaded = result.Value;
@@ -104,6 +105,7 @@ public sealed class QuoteUploadServiceTests : IAsyncLifetime
 
         var auditEntry = Assert.Single(auditWriter.Written);
         Assert.Equal(tenantId, auditEntry.TenantId);
+        Assert.Equal("test-actor@example.com", auditEntry.Actor);
         Assert.Equal("quote.uploaded", auditEntry.Action);
         Assert.Equal("quote", auditEntry.ResourceType);
         Assert.Equal(uploaded.QuoteId.Value.ToString(), auditEntry.ResourceId);
@@ -138,7 +140,8 @@ public sealed class QuoteUploadServiceTests : IAsyncLifetime
         var service = new QuoteUploadService(db, storage, tenantContext, new FixedClock(DateTimeOffset.UtcNow), auditWriter);
 
         using var emptyContent = new MemoryStream();
-        var result = await service.UploadAsync(tenantId, "empty.pdf", "application/pdf", emptyContent);
+        var result = await service.UploadAsync(
+            tenantId, "empty.pdf", "application/pdf", emptyContent, "test-actor@example.com");
 
         Assert.True(result.IsFailure);
         Assert.Empty(storage.Saved);
@@ -164,7 +167,8 @@ public sealed class QuoteUploadServiceTests : IAsyncLifetime
             var service = new QuoteUploadService(
                 db, storage, tenantContext, new FixedClock(DateTimeOffset.UtcNow), new RecordingAuditWriter());
             using var content = new MemoryStream("owned-by-tenant-a"u8.ToArray());
-            var result = await service.UploadAsync(tenantA, "quote.pdf", "application/pdf", content);
+            var result = await service.UploadAsync(
+                tenantA, "quote.pdf", "application/pdf", content, "test-actor@example.com");
             Assert.True(result.IsSuccess);
         }
 

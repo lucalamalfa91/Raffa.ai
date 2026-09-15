@@ -4,12 +4,12 @@ import type {
   ApiClient,
   NegotiationLeverTypeName,
   NegotiationOutcomeBody,
+  QuoteNegotiationOutcomeBody,
   QuoteRecalculationBody,
   SkuMappingCorrectionInput,
   UploadedQuote,
   UploadQuoteFields,
 } from "../../api/client";
-import { loadCurrentWorkspace } from "../signin/workspaceStore";
 import UploadQuoteForm from "./UploadQuoteForm";
 import QuoteLinesTable from "./QuoteLinesTable";
 import MappingBlock, { type MapDraft } from "./MappingBlock";
@@ -27,7 +27,7 @@ import {
   mergeKnownLineDetails,
   type LineDetail,
 } from "./quoteCheckViewModel";
-import { rememberNegotiationOutcome } from "./quoteOutcomeStore";
+import { loadCurrentWorkspace } from "../signin/workspaceStore";
 import "./quotes.css";
 
 export interface QuoteCheckRouteProps {
@@ -80,9 +80,11 @@ export default function QuoteCheckRoute({ apiClient }: QuoteCheckRouteProps) {
   const [targetPrice, setTargetPrice] = useState("");
   const [walkAway, setWalkAway] = useState("");
   const [targetInitializedFor, setTargetInitializedFor] = useState<string | null>(null);
-  const [outcome, setOutcome] = useState<NegotiationOutcomeBody | null>(null);
+  const [outcome, setOutcome] = useState<QuoteNegotiationOutcomeBody | NegotiationOutcomeBody | null>(null);
   const [outcomeSubmitting, setOutcomeSubmitting] = useState(false);
   const [outcomeError, setOutcomeError] = useState<string | null>(null);
+  const [quoteOutcomeState, setQuoteOutcomeState] = useState<"idle" | "loading" | "error" | "ready">("idle");
+  const [quoteOutcomeError, setQuoteOutcomeError] = useState<string | null>(null);
 
   const load = useCallback(
     (quoteId: string, mappings: readonly SkuMappingCorrectionInput[] = []) => {
@@ -115,14 +117,36 @@ export default function QuoteCheckRoute({ apiClient }: QuoteCheckRouteProps) {
     [apiClient, workspace?.id],
   );
 
+  const loadQuote = useCallback(
+    (quoteId: string) => {
+      if (!workspace) return;
+      setQuoteOutcomeState("loading");
+      setQuoteOutcomeError(null);
+      void apiClient.getQuote(workspace.id, quoteId).then((result) => {
+        if (!result.ok || !result.quote) {
+          setQuoteOutcomeState("error");
+          setQuoteOutcomeError(result.error ?? "The quote could not be loaded.");
+          return;
+        }
+        const newest = result.quote.outcomes[0] ?? null;
+        setOutcome(newest);
+        setQuoteOutcomeState("ready");
+      });
+    },
+    [apiClient, workspace?.id],
+  );
+
   useEffect(() => {
     setLeversStage("hidden");
     setMapDrafts({});
     setApplyError(null);
     setOutcome(null);
     setOutcomeError(null);
+    setQuoteOutcomeState("idle");
+    setQuoteOutcomeError(null);
     if (routeQuoteId) {
       load(routeQuoteId);
+      loadQuote(routeQuoteId);
     } else {
       setFetchState(null);
     }
@@ -287,7 +311,6 @@ export default function QuoteCheckRoute({ apiClient }: QuoteCheckRouteProps) {
           return;
         }
         setOutcome(result.outcome);
-        rememberNegotiationOutcome(result.outcome);
       });
   };
 
@@ -341,7 +364,23 @@ export default function QuoteCheckRoute({ apiClient }: QuoteCheckRouteProps) {
             onChangeWalkAway={setWalkAway}
             onContinue={() => setLeversStage("negotiation")}
           />
-          {leversStage === "negotiation" && (
+          {leversStage === "negotiation" && quoteOutcomeState === "loading" && (
+            <div className="quote-outcome-panel" role="status" aria-live="polite">
+              <div className="skeleton" />
+              <div className="skeleton" />
+              <div className="skeleton" />
+            </div>
+          )}
+          {leversStage === "negotiation" && quoteOutcomeState === "error" && (
+            <div className="error-state" role="alert">
+              <h4>The quote</h4>
+              <p className="micro-meta">{quoteOutcomeError}</p>
+              <button type="button" className="btn btn-secondary" onClick={() => routeQuoteId && loadQuote(routeQuoteId)}>
+                Retry
+              </button>
+            </div>
+          )}
+          {leversStage === "negotiation" && quoteOutcomeState !== "loading" && quoteOutcomeState !== "error" && (
             <NegotiationStep
               aggregate={aggregate}
               targetPrice={targetPrice}

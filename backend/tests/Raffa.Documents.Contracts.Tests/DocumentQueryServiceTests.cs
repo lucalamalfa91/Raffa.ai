@@ -167,7 +167,7 @@ public sealed class DocumentQueryServiceTests : IAsyncLifetime
             new FixedClock(now), new NoOpAuditWriter());
 
         using var content = new MemoryStream(Encoding.UTF8.GetBytes($"%PDF-1.4 {fileName}"));
-        var result = await uploadService.UploadAsync(tenantId, fileName, "application/pdf", content);
+        var result = await uploadService.UploadAsync(tenantId, fileName, "application/pdf", content, "seed-uploader@example.com");
         Assert.True(result.IsSuccess);
         return result.Value.DocumentId;
     }

@@ -56,6 +56,19 @@ namespace Raffa.Api;
 /// field name <see cref="ContractCorrectionService"/> accepts (R-SUP-03), and this endpoint has
 /// always passed the caller's <c>corrections</c> map through untouched.
 /// </para>
+///
+/// <para>
+/// Task E19/F03/US01/T01 (NW-13, story us-01-step-ticks-api; ADR-028 §D3): `GET`/`PUT
+/// /api/contracts/{id}/negotiation-steps` — Contract 360's negotiation tracker "4-step checklist"
+/// ticks, now server-side instead of the retired <c>sessionStorage</c> store. Same guard-clause
+/// shape as <see cref="GetCorrectionHistoryAsync"/> below (<see cref="ICallerContext.ResolveTenantAsync"/>
+/// first, non-GUID id 400, unknown contract 404); the whole-set semantics themselves belong to
+/// <see cref="NegotiationStepService.SetAsync"/>. No host change needed: <c>MapContractsEndpoints</c>
+/// is already called by the API host and <see cref="NegotiationStepService"/> is already registered
+/// through <c>AddDocumentsContractsModule</c>, so both routes arrive with zero edits to
+/// <c>Program.cs</c> — ADR-028 reserved that file for this task; this task finds it does not need
+/// it.
+/// </para>
 /// </summary>
 public static class ContractsEndpointExtensions
 {
@@ -65,6 +78,8 @@ public static class ContractsEndpointExtensions
         endpoints.MapPatch("/api/contracts/{id}", CorrectContractAsync);
         endpoints.MapGet("/api/contracts/{id}/corrections", GetCorrectionHistoryAsync);
         endpoints.MapGet("/api/contracts/{id}/evidence", GetContractEvidenceAsync);
+        endpoints.MapGet("/api/contracts/{id}/negotiation-steps", GetNegotiationStepsAsync);
+        endpoints.MapPut("/api/contracts/{id}/negotiation-steps", PutNegotiationStepsAsync);
         return endpoints;
     }
 
@@ -389,6 +404,7 @@ public static class ContractsEndpointExtensions
             contractId,
             request.Corrections,
             request.Reason,
+            caller.Identity!,
             cancellationToken).ConfigureAwait(false);
 
         if (result.IsFailure)
@@ -470,5 +486,105 @@ public static class ContractsEndpointExtensions
             correctedAt = entry.CorrectedAt,
             reason = entry.Reason,
         }));
+    }
+
+    /// <summary>
+    /// `GET /api/contracts/{id}/negotiation-steps` (task E19/F03/US01/T01, NW-13; parent story
+    /// us-01-step-ticks-api AC-1). Same guard-clause shape as <see cref="GetCorrectionHistoryAsync"/>
+    /// above; 404 when <see cref="NegotiationStepService.GetAsync"/> returns <c>null</c> (no such
+    /// contract for this tenant) — a contract that exists but has ticked nothing yet returns 200
+    /// with an empty array, not 404.
+    /// </summary>
+    private static async Task<IResult> GetNegotiationStepsAsync(
+        string id,
+        HttpRequest httpRequest,
+        NegotiationStepService negotiationStepService,
+        ICallerContext callerContext,
+        CancellationToken cancellationToken)
+    {
+        // NW-05 (ADR-010 w15 footer; ADR-022 w15 footer clause 2): identity first, then the tenant
+        // header as an authorized selector, then membership -- 401 / 400 / 404 in that order, all
+        // owned by ICallerContext (acceptance A15-8). The scope it hands back is the tenant scope
+        // this handler runs in; disposing it here is the same lifetime the old BeginScope had.
+        var caller = await callerContext.ResolveTenantAsync(httpRequest, cancellationToken);
+        if (caller.Failure is not null)
+        {
+            return caller.Failure;
+        }
+
+        using var callerTenantScope = caller.Scope;
+        var tenantGuid = caller.TenantId.Value;
+
+        if (!Guid.TryParse(id, out var contractGuid))
+        {
+            return Results.BadRequest("The contract id in the route must be a GUID.");
+        }
+
+        var steps = await negotiationStepService.GetAsync(
+            new TenantId(tenantGuid), new EntityId(contractGuid), cancellationToken).ConfigureAwait(false);
+
+        if (steps is null)
+        {
+            return Results.NotFound();
+        }
+
+        return Results.Ok(steps);
+    }
+
+    /// <summary>
+    /// `PUT /api/contracts/{id}/negotiation-steps` (task E19/F03/US01/T01, NW-13; parent story
+    /// us-01-step-ticks-api AC-2/AC-3/AC-6). Same guard-clause shape as
+    /// <see cref="GetNegotiationStepsAsync"/> above; an unknown step name or an unknown contract
+    /// both fail before anything is written — see <see cref="NegotiationStepService.SetAsync"/>'s
+    /// own doc comment. <paramref name="request"/> is bound from the JSON body separately from
+    /// <paramref name="httpRequest"/>, which this handler uses only for
+    /// <see cref="ICallerContext.ResolveTenantAsync"/> — the same headers-vs-body split
+    /// <see cref="CorrectContractAsync"/> above already uses.
+    /// </summary>
+    private static async Task<IResult> PutNegotiationStepsAsync(
+        string id,
+        NegotiationStepsRequest request,
+        HttpRequest httpRequest,
+        NegotiationStepService negotiationStepService,
+        ICallerContext callerContext,
+        CancellationToken cancellationToken)
+    {
+        var caller = await callerContext.ResolveTenantAsync(httpRequest, cancellationToken);
+        if (caller.Failure is not null)
+        {
+            return caller.Failure;
+        }
+
+        using var callerTenantScope = caller.Scope;
+        var tenantGuid = caller.TenantId.Value;
+
+        if (!Guid.TryParse(id, out var contractGuid))
+        {
+            return Results.BadRequest("The contract id in the route must be a GUID.");
+        }
+
+        if (request.Steps is null)
+        {
+            return Results.BadRequest("'steps' is required.");
+        }
+
+        // caller.Identity is guaranteed non-null once caller.Failure is null (CallerTenantResult's
+        // own doc comment) -- this is the validated token subject, recorded as the audit actor
+        // (NegotiationStepService.SetAsync's own doc comment on why this task needs no placeholder).
+        var result = await negotiationStepService.SetAsync(
+            new TenantId(tenantGuid),
+            new EntityId(contractGuid),
+            request.Steps,
+            caller.Identity!,
+            cancellationToken).ConfigureAwait(false);
+
+        if (result.IsFailure)
+        {
+            return string.Equals(result.Error, NegotiationStepService.ContractNotFoundError, StringComparison.Ordinal)
+                ? Results.NotFound()
+                : Results.BadRequest(result.Error);
+        }
+
+        return Results.Ok(result.Value);
     }
 }

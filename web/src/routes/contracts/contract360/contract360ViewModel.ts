@@ -203,17 +203,32 @@ export function buildAnswers(
 // ---------------------------------------------------------------------------------------------
 
 export interface NegotiationStep {
+  key: string;
   label: string;
   due: string;
+}
+
+export const NEGOTIATION_STEP_KEYS = [
+  "Notify",
+  "RequestRevisedPricing",
+  "CounterWithMarketBenchmark",
+  "SignOrSendNonRenewalNotice",
+] as const;
+
+const KNOWN_STEP_KEYS = new Set<string>(NEGOTIATION_STEP_KEYS);
+
+/** Wire keys the server returned, minus unknown names (never rendered as a fifth tick). A missing key is unticked. */
+export function ticksFromServer(keys: readonly string[]): ReadonlySet<string> {
+  return new Set(keys.filter((key) => KNOWN_STEP_KEYS.has(key)));
 }
 
 /** `app.jsx` `stepDefs`, with the real supplier and deadline: 4 steps, due "this week" · "+10 days" · "+20 days" · "by {cancel}". */
 export function buildNegotiationSteps(supplierLabel: string, deadlineLabel: string): NegotiationStep[] {
   return [
-    { label: `Notify ${supplierLabel} of intent to renegotiate`, due: "this week" },
-    { label: "Request revised pricing and licence mix", due: "+10 days" },
-    { label: "Counter with the market benchmark", due: "+20 days" },
-    { label: "Sign, or send non-renewal notice", due: `by ${deadlineLabel}` },
+    { key: "Notify", label: `Notify ${supplierLabel} of intent to renegotiate`, due: "this week" },
+    { key: "RequestRevisedPricing", label: "Request revised pricing and licence mix", due: "+10 days" },
+    { key: "CounterWithMarketBenchmark", label: "Counter with the market benchmark", due: "+20 days" },
+    { key: "SignOrSendNonRenewalNotice", label: "Sign, or send non-renewal notice", due: `by ${deadlineLabel}` },
   ];
 }
 

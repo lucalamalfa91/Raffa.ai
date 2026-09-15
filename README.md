@@ -132,12 +132,12 @@ ADR-015).
 | Workflow | Inputs | What it does |
 |----------|--------|--------------|
 | [`.github/workflows/seed-market-intelligence.yml`](.github/workflows/seed-market-intelligence.yml) | `target_environment` (`dev` \| `demo`) | Runs the Worker's `ingest-market` command against that environment's database with the checked-in mock feed (`backend/fixtures/market-intelligence.mock.json`), prints the ingestion summary, **re-runs it and fails unless the second pass reports `0 inserted, 0 updated`** (R-MKT-03 AC-1), then verifies `market_record` / `market_embedding` landed and still carry no `tenant_id`. |
-| [`.github/workflows/reprocess-tenant-documents.yml`](.github/workflows/reprocess-tenant-documents.yml) | `target_environment`, `tenant_id` | Lists that tenant's documents through `GET /api/documents`, calls `POST /api/documents/{id}/reprocess` for each, then verifies by SQL that **no embedding of that tenant starts with `%PDF`** (R-DOC-07 AC-1) and reports the contracts that still have no supplier (R-SUP-03). |
+| [`.github/workflows/verify-tenant-corpus.yml`](.github/workflows/verify-tenant-corpus.yml) | `target_environment`, `tenant_id` | Reports that tenant's documents, `%PDF` embeddings (R-DOC-07 AC-1) and supplier gaps (R-SUP-03). **Does not mutate.** Bulk whole-tenant reprocess is W17; an Admin resubmits one document through the product. |
 
 Order for a fresh environment: deploy (schema apply, ADR-021) → **seed-demo-fixture**
-→ **seed-market-intelligence** → **reprocess-tenant-documents** → walk
-`docs/ask-v2-acceptance.md`. The same order applies to `demo` after a `demo-v*`
-promotion.
+→ **seed-market-intelligence** → **verify-tenant-corpus** → walk
+`docs/ask-v2-acceptance.md` and `docs/waves/w16-acceptance.md`. The same order applies to `demo`
+after a promotion. **No `demo-v*` tag is cut by w16.**
 
 ### Proving it in a browser
 

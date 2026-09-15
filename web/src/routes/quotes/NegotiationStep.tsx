@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import type { NegotiationLeverTypeName, NegotiationOutcomeBody } from "../../api/client";
+import type { NegotiationLeverTypeName, NegotiationOutcomeBody, QuoteNegotiationOutcomeBody } from "../../api/client";
 import {
   NEGOTIATION_LEVER_LABELS,
   formatMoney,
@@ -20,7 +20,7 @@ export interface NegotiationOutcomeInput {
 export interface NegotiationStepProps {
   aggregate: QuoteAggregate;
   targetPrice: string;
-  outcome: NegotiationOutcomeBody | null;
+  outcome: QuoteNegotiationOutcomeBody | NegotiationOutcomeBody | null;
   onSubmit: (input: NegotiationOutcomeInput) => void;
   submitting: boolean;
   submitError: string | null;
@@ -185,8 +185,7 @@ export default function NegotiationStep({ aggregate, targetPrice, outcome, onSub
               </tbody>
             </table>
             <p className="micro-meta" style={{ marginTop: "10px" }}>
-              Saved to this browser's Savings Realized record for this session (see this screen's own outcome-store gap
-              note — no backend list endpoint exists yet).
+              Saved with this quote. Reloading or another browser shows the same recorded outcome.
             </p>
             <Link to="/savings" className="btn btn-secondary">
               See it in Savings →

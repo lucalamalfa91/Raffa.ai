@@ -484,3 +484,304 @@ w15 §3.4 governing clause 8's affordance and their OQ-w15-D2 raising clause 9,
 security-architect owning clause 10's mechanism and audit verb, and — on
 clause 12 — software-architect's ADR-026 §2 supplying the `NotConfigured`
 semantics and delivery-manager's ADR-016 w15 footer the promotion facts.
+
+## Amendment (2026-09-14, wave w16)
+
+Wave w16 ("nothing the product knows lives only in a browser tab") fixes the
+scope boundary of **server-side state for facts the product already stores**.
+The body above is unchanged: the R0–R4 ladder, the §1.2 non-goal list quoted
+verbatim, and the benchmark interface + fixture-adapter rule all stand. The
+epic-12, epic-13, w14 and w15 footers — including the w15 addendum's clauses
+8–12 — stay in force. This footer **supersedes nothing**. Items served: NW-07,
+NW-12, NW-13, NW-21, with acceptance and roster rulings on NW-32 and NW-08 that
+this seat owns by wording even though §3 does not seat it on their mechanism.
+
+**0 — Zero new capability, and that is the reason all four are in scope.** Every
+item exposes a fact already stored under RLS — `renewal_action`,
+`negotiation_outcome`, `RealizedSavings`, `conversation` — or replaces a
+`sessionStorage` mirror of one. None of §1.2's eight non-goals is touched; no
+paid market API enters any environment (NW-52 stays DEFERRED). The items are
+in-wave on **ADR-012 §1's w14 rule** ("a client store never stands in for a
+missing GET"), not on a product expansion. **None of these four surfaces is on
+the pilot script**: all are satellites (`percorso-pilota-v1.md:105-109`), the
+20–25 minute script (`:118-126`) reaches them only as a citation landing, Quote
+check is explicitly non-hero (`:109`, `:147`) and "Home savings come demo" is
+explicitly out (`:148`). **Consequence, binding on the decomposer: no item in
+this footer may claim pilot-script priority, and none grows a new screen.**
+
+**1 — Pre-w15 conversation rows are recorded as retired: never remapped, never
+deleted. A16-1 is reworded because as written it can neither fail nor pass.**
+NW-07's keying seam closed in w15 (`Raffa.Api/Infrastructure/CallerContext.cs`
+resolves identity; absent identity is 401, never 400), so what remains is a
+**data disposition**, and this seat reduces it from *migrate* to *record*.
+Rows created before w15 are keyed by the MSAL username; a returning caller is
+keyed by `oid`; those rows are unreachable. They stay in place because a blind
+email→`oid` remap needs a directory lookup the product has no batch path for
+(`Raffa.Chat/Migrations/` holds only `Initial` and the RLS policy), and a
+*wrong* remap would hand one user's threads to another — a breach of
+`inputs/requirements.md` R-CONV-01 AC-1 (`:241-242`), strictly worse than the
+loss it repairs. Deleting is equally refused: the rows are the customer's, the
+same ground as w15 clause 4. Against **w15 clause 7** ("the system must not
+silently drop a fact the user is entitled to") this is satisfied, not waived:
+the drop is **recorded and bounded, not silent**. One standing constraint falls
+out of it, to preserve rather than to build: **no surface may count a
+conversation it cannot open** — the list filters on the same key, so an orphan
+never appears as a phantom row, and no task may regress that.
+
+A16-1's published wording ("sign in as the same user with different UPN
+casing") is **vacuous**: the key is `oid`, which is invariant under UPN casing,
+and `Infrastructure/CallerIdentity.cs:60-68` records **not** lower-casing as
+deliberate because `oid` is an opaque, case-sensitive object id. The acceptance
+this wave is held to, on `dev`:
+
+> 1. User A creates a conversation, reloads → still readable by A.
+> 2. User B, a member of the same workspace, can neither list nor read it
+>    (R-CONV-01 AC-1).
+> 3. A pre-w15 conversation is not listed and not counted anywhere; opening it
+>    is a clean **404** — never a 500, never another user's thread.
+> 4. The disposition is recorded in the PR description and in
+>    `reports/open-questions.md`.
+
+**The promoted task carries an acceptance line that must not be implemented.**
+`epic-18/.../task-01-conversation-user-is-the-subject.md:69` requires "a
+conversation created under `User@Example.com` is readable by the same subject
+presenting `user@example.com`". Satisfying it forces an implementer to
+**re-introduce the exact normalization ADR-010 rejected** — it is not merely
+vacuous, it is actively harmful. Raw §0.4 forbids rewriting the task body, so
+the corrected wording lives here and in `reports/architecture/waves/w16.md`, and
+**the decomposer must carry clauses 1–4 above into the story row and the slice
+rather than DoD line 69**. Clause 2 of that acceptance is **never narrowed**:
+per-user isolation is a tenancy promise, not a wave preference. `OQ-askv2-005`
+retires with this item; ADR-024 is software-architect's to amend.
+
+**2 — NW-12 is the read-back and nothing more; and an existing AC is
+re-pointed, not cancelled.** W16 renders **the recorded outcome of the quote in
+front of you** — *did my record stick, does a second browser agree*. A
+cross-quote history, levers analytics or an Ask-citable list is **NW-57 (W18)**,
+and the design oracle draws the line itself
+(`inputs/design/prototypes/raffa-v2/screens-v2.md:139-145`, "Target and
+negotiation levers are one step further"). It lands on the existing `/quotes`
+surface; no new screen.
+
+The honest finding this seat owes the record: **`E08/F03/US01` AC-4 is today
+discharged by a session store.** That story is `status: active`, its AC-4 is
+unchecked, and the code standing in for it —
+`web/src/routes/quotes/quoteOutcomeStore.ts` — cites that AC in its own header
+while its `sumRealizedSavings` has **zero production callers**; shipped UI copy
+admits it ("Saved to **this browser's** … record for this session"). AC-4 is
+therefore **not satisfied**; it is stood in for by exactly the pattern ADR-012
+§1 forbids. **Ruling: AC-4 is re-pointed to NW-12 + NW-21 as its honest
+server-side implementation — not cancelled, no status banner, no `superseded:`
+line, the story stays `active`.** Two wording corrections inside it are this
+seat's: (a) the surface is **Savings**, not "Home" — Home savings are out of the
+pilot (`percorso-pilota-v1.md:148`); (b) what updates is the realized **count**,
+not a money tile (clause 4). This *refines* `w16-requirements.md` §6's "none":
+**no work item is cancelled this wave.**
+
+> **A16-6** — on `dev`: upload a quote → record an outcome → reload **and** a
+> second browser → the outcome renders with its server-computed values; clearing
+> `sessionStorage` changes nothing; no production module imports
+> `quoteOutcomeStore`.
+
+**3 — The four named negotiation steps are canonical, the row stores the key and
+never the label, and ticks are per contract.** Ratifies OQ-w16-006's product
+half (the module and the table are software-architect's).
+
+- **Canonical set**: *Notify · Request revised pricing · Counter with the market
+  benchmark · Sign or send non-renewal notice* (`screens-v2.md:106-108`). Four,
+  no more; a fifth step is a product change with its own item.
+- **Keyed by stable step key, never by array index.** The reason is this seat's
+  rather than the architect's: two of the four labels are **parameterized**
+  (`contract360ViewModel.ts:211-218` — the tracker header is literally
+  "close by {{ cancel }}"). The row stores the **key**; the rendered label stays
+  client-side. Freezing a supplier name or a cancellation deadline into a
+  persisted row makes the record assert a fact that later changes — **w14
+  clause 3**.
+- **Per contract, one live negotiation per contract**, matching
+  `renewal_action`'s unique `(tenant_id, contract_id)` and the design, where the
+  tracker appears after "Start negotiation now" and its status is "shared with
+  the Contract 360 tracker (`racts`)" (`screens-v2.md:105,130`). **Not per
+  renewal cycle**: no cycle entity exists, and per-cycle tick *history* would be
+  a new capability — out for V1, and asked for by no oracle.
+
+> **A16-7** — on `dev`: tick 2 of 4 on contract X → reload **and** second
+> browser → the same 2 ticked; contract Y unaffected; the step keys the API
+> returns match the four names; no
+> `sessionStorage["raffa.contract360.steps.*"]` is a source of truth.
+
+**4 — "The Savings KPI moves" means the status move. The realized-amount gap is
+an unmet AC of an existing story, not a new capability — and an outcome may be
+*resolved* to an opportunity but never *guessed*.** Rules OQ-w16-005, which is
+this seat's alone.
+
+- **A16-8 closes on the status move.** The intake's assumption is ratified, but
+  its stated ground (the design column is "Estimate") is not the load-bearing
+  one. The real ground: **no surface renders a realized money figure.** The
+  Savings KPI row builds exactly three cells — Contracts analyzed · Upcoming
+  renewals · Savings **identified** — matching `screens-v2.md:134-135`, which
+  has no realized tile; realized appears only as a **count**. The realized
+  amount is already stored and already on the wire per opportunity
+  (`RealizedSavings`, exposed as `realizedAmount`), so **no fact is dropped from
+  the row** and w15 clause 7 is not engaged. The estimate-summed `Realized`
+  range in `SavingsKpiCalculator` is therefore a latent **API-shape** defect
+  that reaches no screen.
+- **Correction to OQ-w16-005, on the record.** It frames the amount fix as "an
+  ADR-001 capability change and the head of W17". It is **neither a capability
+  change nor a new item**: it is an unmet AC of an existing, still-`active`
+  story — `E04/F03/US01`, whose AC-1 names "realized" and whose implementing
+  code documents the gap and names the record task that did ship. It needs **no
+  ADR-001 amendment and no new epic**; it needs a **priority ruling: head of
+  W17**, recorded here so it is not lost a third time. Spec `:447` defines the
+  tile as "**Verified** negotiated/implemented savings".
+- **Fence binding this wave, at zero cost**: **no w16 task may render
+  `SavingsKpiSummary.Realized` as a money amount.** The only realized figure a
+  w16 surface may show is the per-opportunity `realizedAmount`, which is
+  correct. Ground: **w14 clause 3**. The defect is already live rather than
+  dormant — `PATCH /api/savings/{id}` is routed and already flips status and
+  stores the amount — so **NW-21 widens that path, it does not create it.**
+- **May an outcome be resolved to an opportunity rather than naming one? Yes,
+  but it must never guess.** The link is explicit, or derived from a fact the
+  system holds (the quote's contract / supplier). With **no unambiguous
+  opportunity the outcome is recorded unlinked**, `savingsPropagated` stays
+  `null`, and nothing moves — an honest omission, never a nearest-match. Ground:
+  this ADR's own driver (a fabricated number is not acceptable) and
+  `NegotiationOutcome.cs:127-131`, which already states that no derivable link
+  exists. This fence is **never narrowed**.
+
+> **A16-8** — on `dev`: record an outcome linked to an opportunity → its status
+> is `Realized` and its `realizedAmount` equals the outcome's `realizedSaving`;
+> the Savings realized **count** increments; a second browser agrees; an outcome
+> with no unambiguous opportunity is still recorded, is visibly unlinked, and
+> moves no KPI.
+
+**5 — Two rulings on items this seat does not sit on, because both are acceptance
+wording rather than mechanism.**
+
+- **A16-4 (NW-32) is ratified as the intake reworded it.** The original could not
+  fail — an unsigned POST is 401 today, before the item runs — so "a signed POST
+  on each of the nine paths writes an audit row naming the caller's resolved
+  subject" is the acceptance. Two notes for the decomposer: the promoted task's
+  DoD line "absent identity is 401 on conversations" is **already true** and is
+  not evidence of delivery; the grep DoD is the real gate and must be read with
+  the "outside comments the council allows" caveat, since three doc-comment hits
+  survive by design. No claim is made on the mechanism.
+- **OQ-w16-003 is ruled `no`: there is no web audit surface in W16.** Raw §6
+  A16-2 reads "Admin opens audit **or calls** `GET /api/audit`", audit appears
+  nowhere in the pilot path (§5 lists no audit surface; §7 keeps Swagger and
+  admin chrome out), and a screen would seat ux-ui-designer and add ADR-018 /
+  ADR-020 work the 5-phase cap has no room for. **ux-ui-designer stays
+  unseated**; ADR-020's screen inventory is unchanged. If an audit screen is
+  wanted it returns as its own item.
+
+**6 — Priority, and the release valves in this order and no other.** All nine
+in-wave items are `should` except W16-01 (`could`), so **no must/should
+inversion exists and w15 clause 11 does not fire this wave**. If the 20-task or
+5-phase cap binds:
+
+1. **W16-01** (`could`, intake-originated) → head of W17's `could` tier, never
+   displacing an item already queued for W17.
+2. **NW-12 narrows** to the read-back on the existing `/quotes` surface — never
+   a new screen, never NW-57's history.
+3. **NW-13** — least user-visible of the four and absent from the pilot script.
+
+**Never narrowed**, as a priority ruling and not a claim on mechanism: **NW-11**
+— it is the single shared `racts` fact across Renewals, Contract 360 and Savings
+(`screens-v2.md:130`; `app.jsx:109,166`), so narrowing it re-creates the
+split-brain this wave exists to kill; **NW-07's clause 2**; **NW-21's fence**.
+
+**Not decided here** (recorded so no task reads this footer as authority): the
+routes and their shapes, which module owns the step-tick table, the link column
+and its migration, the stores' retirement mechanics, the contract file's
+one-writer schedule, and anything in NW-08 / NW-31 / NW-32 beyond the wording
+above. Those are software-architect's, client-architect's, security-architect's
+and delivery-manager's.
+
+Deciders: product-owner (owner of this ADR), with software-architect co-deciding
+clause 1's disposition mechanism and clause 3's module and table choice,
+client-architect co-deciding clauses 2 and 3 where a store retires under
+ADR-012 §1, and security-architect cited on clause 1's single comparison rule
+for the identity column. `reports/architecture/waves/w16.md` carries the
+per-item rows and the votes.
+
+### Clauses 7–8, appended at the same table (wave w16, second round)
+
+Clauses 0–6 above are unchanged. Two questions reached this seat **after** they
+were written — `OQ-w16-sa-01` (software-architect, naming product-owner) and
+delivery-manager's **D4** proposal to re-word A16-3 once OQ-w16-004's premise was
+withdrawn. Acceptance wording and the honest recording of a deferral are this
+seat's, so both are ruled here rather than settled inside another seat's draft.
+
+**7 — ADR-028 §D5 clause 2 (deterministic supplier-name resolution) ships in
+w16. Rules `OQ-w16-sa-01`.** The assumption in force is ratified, with the
+reason corrected.
+
+- It is **already sanctioned by clause 4**: a lookup against the
+  `(tenant_id, normalized_name)` unique index that links only on exactly one
+  match and otherwise declines **is** "resolved, never guessed". It adds no
+  capability — it makes an already-built propagation reachable — and touches no
+  §1.2 non-goal, no schema, no contract, no screen.
+- **Without it NW-21 does not change what the user sees.** Software-architect's
+  decision is zero client change, and the one production call site builds six
+  fields and omits `savingsOpportunityId` (`web/src/routes/quotes/index.tsx:274-282`).
+  Clause 1 alone therefore closes A16-8 **by `curl` and by nothing else**, leaving
+  the product in precisely the state the item names: a recorded outcome that never
+  moves Savings. A wave item that closes only on a request no shipped surface
+  makes is not delivered in this product — acceptance is proven **on `dev`**
+  (w15 clause 12's posture), not in a test client.
+- **Fence 1 — the acceptance walk drives clause 1.** A16-8's deterministic close
+  is the **explicit-id** path. Clause 2 is a reachability improvement whose
+  *decline* is a pass, not a failure: software-architect's named risk (the pilot
+  corpus may hold no quote whose free-text supplier resolves) is accepted openly
+  rather than hidden, and no acceptance step may depend on the resolver firing.
+- **Fence 2 — an unlinked outcome must never read as a realized saving.** When
+  `savingsPropagated` is `null` the outcome is recorded and **nothing moved**; no
+  surface may present that as success, and no total may absorb it. This is a
+  *must not*, so it grows no screen and seats no designer — and the copy that
+  today claims the record is kept in "this browser's … record for this session"
+  retires with `quoteOutcomeStore` under clause 2's NW-12 work anyway.
+- **If the council later drops §D5 clause 2**, NW-21 is recorded as **API-only
+  closed with its UI path still open**, and that residual becomes an item at the
+  head of W17. It is never left implicit. `SupplierResolver` is never called on
+  this path (software-architect's, cited not decided here): recording an outcome
+  must not mint a supplier row.
+
+**8 — A16-3's workflow half is re-worded, and what w16 does not restore is
+recorded rather than dropped.** Acceptance wording only; this seat claims nothing
+about the mechanism, the file, or the identity plane.
+
+The published A16-3 offers two closes — "the workflow authenticates **or** is
+replaced by an enqueue that needs no API auth" — and the table took **neither**:
+OQ-w16-004's premise was withdrawn by three seats, and delivery-manager's
+disposition deletes the workflow's API steps. An acceptance whose both branches
+were declined must be re-stated honestly, not quietly narrowed. Held to, on `dev`:
+
+> **A16-3** — no `X-Role` / `X-Workspace-Role` / `X-User-Id` survives in
+> `.github/`, in `web/openapi/raffa-api.v1.json` or in the capabilities endpoint;
+> the Admin catalog rows come from membership; **an Admin resubmits a document on
+> deployed `dev` through the product's own path and the Worker drives it to a
+> terminal state**; the surviving verification job runs green on that tenant.
+
+- **Nothing the product *does* is being removed.** The deleted CI path fails 401
+  at its first API step today, before this wave runs; what is retired is a stale
+  record, which is the defect class NW-31 exists to kill. The in-product path
+  (`POST /api/documents/{id}/reprocess`, membership-derived Admin, 202) is a
+  **stronger** close than the CI job ever was: a real Admin with a real token,
+  which is what the acceptance was trying to prove.
+- **Named so no one reads it as delivered**: w16 does **not** restore the
+  **bulk, whole-tenant** reprocess. It is an operator affordance, not a new
+  capability; it is deferred to **W17** with its shape already designed
+  (delivery-manager's D5), and it must appear in this wave's known-gaps record so
+  a `demo` walker does not read its absence as a w16 regression. Under w15
+  clause 7 a loss is acceptable only when **recorded and bounded**: this one is
+  both. No `must` is postponed behind a `could` — NW-31 is `should` and clause 6's
+  "nothing queued past W17" holds.
+- **Never narrowed — the grep half.** "No `X-Role` anywhere" is what makes the
+  retirement auditable; a replacement file still *named* `reprocess-*` while never
+  reprocessing would re-create the stale record this item deletes, so
+  delivery-manager's primary (replace the file, do not keep the name) is ratified
+  and their own named fallback refused, on product-record grounds.
+
+Deciders on clauses 7–8: product-owner (owner), with software-architect's
+ADR-028 §D5 supplying clause 7's mechanism and raising `OQ-w16-sa-01`, and
+delivery-manager's w16 draft D3–D5 supplying clause 8's disposition and the W17
+successor. Neither clause amends a decision above; both are additive.

@@ -77,7 +77,8 @@ public sealed class SavingsOpportunityServiceTests : IAsyncLifetime
         {
             var service = new SavingsOpportunityService(db, tenantContext, clock, auditWriter);
 
-            var result = await service.CreateAsync(tenantId, ValidRequest(supplierId, contractId));
+            var result = await service.CreateAsync(
+                tenantId, ValidRequest(supplierId, contractId), SavingsOpportunityService.SystemActor);
 
             Assert.True(result.IsSuccess);
             Assert.Equal(supplierId, result.Value.SupplierId);
@@ -114,6 +115,7 @@ public sealed class SavingsOpportunityServiceTests : IAsyncLifetime
         Assert.Equal("savings_opportunity.identified", entry.Action);
         Assert.Equal("savings_opportunity", entry.ResourceType);
         Assert.Equal(opportunityId.Value.ToString(), entry.ResourceId);
+        Assert.Equal(SavingsOpportunityService.SystemActor, entry.Actor);
     }
 
     [Fact]
@@ -134,9 +136,9 @@ public sealed class SavingsOpportunityServiceTests : IAsyncLifetime
             var earlyService = new SavingsOpportunityService(db, tenantContext, earlyClock, auditWriter);
             var lateService = new SavingsOpportunityService(db, tenantContext, lateClock, auditWriter);
 
-            var first = await earlyService.CreateAsync(tenantId, ValidRequest());
-            var second = await lateService.CreateAsync(tenantId, ValidRequest());
-            await lateService.CreateAsync(otherTenantId, ValidRequest());
+            var first = await earlyService.CreateAsync(tenantId, ValidRequest(), SavingsOpportunityService.SystemActor);
+            var second = await lateService.CreateAsync(tenantId, ValidRequest(), SavingsOpportunityService.SystemActor);
+            await lateService.CreateAsync(otherTenantId, ValidRequest(), SavingsOpportunityService.SystemActor);
 
             await using var readDb = CreateContext(tenantContext);
             var readService = new SavingsOpportunityService(readDb, tenantContext, lateClock, auditWriter);
@@ -164,7 +166,7 @@ public sealed class SavingsOpportunityServiceTests : IAsyncLifetime
         await using (var db = CreateContext(tenantContext))
         {
             var createService = new SavingsOpportunityService(db, tenantContext, createClock, auditWriter);
-            var created = await createService.CreateAsync(tenantId, ValidRequest());
+            var created = await createService.CreateAsync(tenantId, ValidRequest(), SavingsOpportunityService.SystemActor);
             opportunityId = created.Value.Id;
         }
 
@@ -174,7 +176,8 @@ public sealed class SavingsOpportunityServiceTests : IAsyncLifetime
 
             // Owner only — status must remain Identified.
             var ownerUpdate = await updateService.UpdateAsync(
-                tenantId, opportunityId, owner: "alice@acme.example", status: null, realizedAmount: null);
+                tenantId, opportunityId, owner: "alice@acme.example", status: null, realizedAmount: null,
+                actor: "test-actor@example.com");
 
             Assert.True(ownerUpdate.IsSuccess);
             Assert.Equal("alice@acme.example", ownerUpdate.Value.Owner);
@@ -183,7 +186,8 @@ public sealed class SavingsOpportunityServiceTests : IAsyncLifetime
 
             // Status only — owner set above must survive untouched.
             var statusUpdate = await updateService.UpdateAsync(
-                tenantId, opportunityId, owner: null, status: "InProgress", realizedAmount: null);
+                tenantId, opportunityId, owner: null, status: "InProgress", realizedAmount: null,
+                actor: "test-actor@example.com");
 
             Assert.True(statusUpdate.IsSuccess);
             Assert.Equal("alice@acme.example", statusUpdate.Value.Owner);
@@ -193,7 +197,11 @@ public sealed class SavingsOpportunityServiceTests : IAsyncLifetime
         Assert.Equal(3, auditWriter.Written.Count); // 1 identify + 2 updates.
         Assert.All(
             auditWriter.Written.Skip(1),
-            entry => Assert.Equal("savings_opportunity.updated", entry.Action));
+            entry =>
+            {
+                Assert.Equal("savings_opportunity.updated", entry.Action);
+                Assert.Equal("test-actor@example.com", entry.Actor);
+            });
     }
 
     [Fact]
@@ -208,12 +216,14 @@ public sealed class SavingsOpportunityServiceTests : IAsyncLifetime
 
         await using var db = CreateContext(tenantContext);
         var service = new SavingsOpportunityService(db, tenantContext, clock, auditWriter);
-        var created = await service.CreateAsync(tenantId, ValidRequest());
+        var created = await service.CreateAsync(tenantId, ValidRequest(), SavingsOpportunityService.SystemActor);
 
         await service.UpdateAsync(
-            tenantId, created.Value.Id, owner: "bob@acme.example", status: "InProgress", realizedAmount: null);
+            tenantId, created.Value.Id, owner: "bob@acme.example", status: "InProgress", realizedAmount: null,
+            actor: "test-actor@example.com");
         var realized = await service.UpdateAsync(
-            tenantId, created.Value.Id, owner: null, status: "Realized", realizedAmount: null);
+            tenantId, created.Value.Id, owner: null, status: "Realized", realizedAmount: null,
+            actor: "test-actor@example.com");
 
         Assert.True(realized.IsSuccess);
         Assert.Equal(SavingsOpportunityStatus.Realized, realized.Value.Status);
@@ -234,7 +244,8 @@ public sealed class SavingsOpportunityServiceTests : IAsyncLifetime
             db, tenantContext, new FixedClock(DateTimeOffset.UtcNow), new RecordingAuditWriter());
 
         var result = await service.UpdateAsync(
-            TenantId.New(), EntityId.New(), owner: "alice", status: null, realizedAmount: null);
+            TenantId.New(), EntityId.New(), owner: "alice", status: null, realizedAmount: null,
+            actor: "test-actor@example.com");
 
         Assert.True(result.IsFailure);
         Assert.Equal(SavingsOpportunityService.NotFoundError, result.Error);
@@ -251,11 +262,12 @@ public sealed class SavingsOpportunityServiceTests : IAsyncLifetime
         await using var db = CreateContext(tenantContext);
         var service = new SavingsOpportunityService(db, tenantContext, new FixedClock(DateTimeOffset.UtcNow), auditWriter);
 
-        var created = await service.CreateAsync(tenantId, ValidRequest());
+        var created = await service.CreateAsync(tenantId, ValidRequest(), SavingsOpportunityService.SystemActor);
         var writesBeforeUpdate = auditWriter.Written.Count;
 
         var result = await service.UpdateAsync(
-            tenantId, created.Value.Id, owner: null, status: null, realizedAmount: null);
+            tenantId, created.Value.Id, owner: null, status: null, realizedAmount: null,
+            actor: "test-actor@example.com");
 
         Assert.True(result.IsFailure);
         Assert.Equal(SavingsOpportunityService.NoFieldsToUpdateError, result.Error);
@@ -275,10 +287,11 @@ public sealed class SavingsOpportunityServiceTests : IAsyncLifetime
         var service = new SavingsOpportunityService(
             db, tenantContext, new FixedClock(DateTimeOffset.UtcNow), new RecordingAuditWriter());
 
-        var created = await service.CreateAsync(tenantId, ValidRequest());
+        var created = await service.CreateAsync(tenantId, ValidRequest(), SavingsOpportunityService.SystemActor);
 
         var result = await service.UpdateAsync(
-            tenantId, created.Value.Id, owner: blankOwner, status: null, realizedAmount: null);
+            tenantId, created.Value.Id, owner: blankOwner, status: null, realizedAmount: null,
+            actor: "test-actor@example.com");
 
         Assert.True(result.IsFailure);
         Assert.Equal(SavingsOpportunityService.OwnerCannotBeBlankError, result.Error);
@@ -295,10 +308,11 @@ public sealed class SavingsOpportunityServiceTests : IAsyncLifetime
         var service = new SavingsOpportunityService(
             db, tenantContext, new FixedClock(DateTimeOffset.UtcNow), new RecordingAuditWriter());
 
-        var created = await service.CreateAsync(tenantId, ValidRequest());
+        var created = await service.CreateAsync(tenantId, ValidRequest(), SavingsOpportunityService.SystemActor);
 
         var result = await service.UpdateAsync(
-            tenantId, created.Value.Id, owner: null, status: "Cancelled", realizedAmount: null);
+            tenantId, created.Value.Id, owner: null, status: "Cancelled", realizedAmount: null,
+            actor: "test-actor@example.com");
 
         Assert.True(result.IsFailure);
         Assert.Equal(SavingsOpportunityService.StatusInvalidError, result.Error);
@@ -318,11 +332,12 @@ public sealed class SavingsOpportunityServiceTests : IAsyncLifetime
 
         await using var db = CreateContext(tenantContext);
         var service = new SavingsOpportunityService(db, tenantContext, clock, auditWriter);
-        var created = await service.CreateAsync(tenantId, ValidRequest());
+        var created = await service.CreateAsync(tenantId, ValidRequest(), SavingsOpportunityService.SystemActor);
         var writesBeforeUpdate = auditWriter.Written.Count;
 
         var result = await service.UpdateAsync(
-            tenantId, created.Value.Id, owner: null, status: "Realized", realizedAmount: 9_500m);
+            tenantId, created.Value.Id, owner: null, status: "Realized", realizedAmount: 9_500m,
+            actor: "test-actor@example.com");
 
         Assert.True(result.IsSuccess);
         Assert.Equal(SavingsOpportunityStatus.Realized, result.Value.Status);
@@ -356,11 +371,12 @@ public sealed class SavingsOpportunityServiceTests : IAsyncLifetime
         await using var db = CreateContext(tenantContext);
         var service = new SavingsOpportunityService(
             db, tenantContext, new FixedClock(DateTimeOffset.UtcNow), auditWriter);
-        var created = await service.CreateAsync(tenantId, ValidRequest());
+        var created = await service.CreateAsync(tenantId, ValidRequest(), SavingsOpportunityService.SystemActor);
 
         // No 'status' at all in this call -- only a realized amount.
         var result = await service.UpdateAsync(
-            tenantId, created.Value.Id, owner: null, status: null, realizedAmount: 1_200m);
+            tenantId, created.Value.Id, owner: null, status: null, realizedAmount: 1_200m,
+            actor: "test-actor@example.com");
 
         Assert.True(result.IsSuccess);
         Assert.Equal(SavingsOpportunityStatus.Realized, result.Value.Status);
@@ -377,10 +393,11 @@ public sealed class SavingsOpportunityServiceTests : IAsyncLifetime
         await using var db = CreateContext(tenantContext);
         var service = new SavingsOpportunityService(
             db, tenantContext, new FixedClock(DateTimeOffset.UtcNow), new RecordingAuditWriter());
-        var created = await service.CreateAsync(tenantId, ValidRequest());
+        var created = await service.CreateAsync(tenantId, ValidRequest(), SavingsOpportunityService.SystemActor);
 
         var result = await service.UpdateAsync(
-            tenantId, created.Value.Id, owner: null, status: null, realizedAmount: 0m);
+            tenantId, created.Value.Id, owner: null, status: null, realizedAmount: 0m,
+            actor: "test-actor@example.com");
 
         Assert.True(result.IsSuccess);
         Assert.Equal(0m, result.Value.RealizedAmount);
@@ -396,11 +413,12 @@ public sealed class SavingsOpportunityServiceTests : IAsyncLifetime
         var auditWriter = new RecordingAuditWriter();
         await using var db = CreateContext(tenantContext);
         var service = new SavingsOpportunityService(db, tenantContext, new FixedClock(DateTimeOffset.UtcNow), auditWriter);
-        var created = await service.CreateAsync(tenantId, ValidRequest());
+        var created = await service.CreateAsync(tenantId, ValidRequest(), SavingsOpportunityService.SystemActor);
         var writesBeforeUpdate = auditWriter.Written.Count;
 
         var result = await service.UpdateAsync(
-            tenantId, created.Value.Id, owner: null, status: null, realizedAmount: -0.01m);
+            tenantId, created.Value.Id, owner: null, status: null, realizedAmount: -0.01m,
+            actor: "test-actor@example.com");
 
         Assert.True(result.IsFailure);
         Assert.Equal(SavingsOpportunityService.RealizedAmountMustBeNonNegativeError, result.Error);
@@ -418,11 +436,12 @@ public sealed class SavingsOpportunityServiceTests : IAsyncLifetime
         var auditWriter = new RecordingAuditWriter();
         await using var db = CreateContext(tenantContext);
         var service = new SavingsOpportunityService(db, tenantContext, new FixedClock(DateTimeOffset.UtcNow), auditWriter);
-        var created = await service.CreateAsync(tenantId, ValidRequest());
+        var created = await service.CreateAsync(tenantId, ValidRequest(), SavingsOpportunityService.SystemActor);
         var writesBeforeUpdate = auditWriter.Written.Count;
 
         var result = await service.UpdateAsync(
-            tenantId, created.Value.Id, owner: null, status: "InProgress", realizedAmount: 500m);
+            tenantId, created.Value.Id, owner: null, status: "InProgress", realizedAmount: 500m,
+            actor: "test-actor@example.com");
 
         Assert.True(result.IsFailure);
         Assert.Equal(SavingsOpportunityService.RealizedAmountConflictsWithStatusError, result.Error);
@@ -444,12 +463,13 @@ public sealed class SavingsOpportunityServiceTests : IAsyncLifetime
         await using var db = CreateContext(tenantContext);
         var service = new SavingsOpportunityService(
             db, tenantContext, new FixedClock(DateTimeOffset.UtcNow), new RecordingAuditWriter());
-        var created = await service.CreateAsync(tenantId, ValidRequest());
+        var created = await service.CreateAsync(tenantId, ValidRequest(), SavingsOpportunityService.SystemActor);
 
         // Explicit status "Realized" together with a realizedAmount is not a conflict -- it is the
         // one status value compatible with recording a realized value.
         var result = await service.UpdateAsync(
-            tenantId, created.Value.Id, owner: null, status: "Realized", realizedAmount: 42m);
+            tenantId, created.Value.Id, owner: null, status: "Realized", realizedAmount: 42m,
+            actor: "test-actor@example.com");
 
         Assert.True(result.IsSuccess);
         Assert.Equal(SavingsOpportunityStatus.Realized, result.Value.Status);
@@ -466,12 +486,14 @@ public sealed class SavingsOpportunityServiceTests : IAsyncLifetime
         await using var db = CreateContext(tenantContext);
         var service = new SavingsOpportunityService(
             db, tenantContext, new FixedClock(DateTimeOffset.UtcNow), new RecordingAuditWriter());
-        var created = await service.CreateAsync(tenantId, ValidRequest());
+        var created = await service.CreateAsync(tenantId, ValidRequest(), SavingsOpportunityService.SystemActor);
 
         await service.UpdateAsync(
-            tenantId, created.Value.Id, owner: null, status: "Realized", realizedAmount: 100m);
+            tenantId, created.Value.Id, owner: null, status: "Realized", realizedAmount: 100m,
+            actor: "test-actor@example.com");
         await service.UpdateAsync(
-            tenantId, created.Value.Id, owner: null, status: "Realized", realizedAmount: 150m);
+            tenantId, created.Value.Id, owner: null, status: "Realized", realizedAmount: 150m,
+            actor: "test-actor@example.com");
 
         // Append-only (see RealizedSavings's own doc comment): a second capture is a second row,
         // never a silent overwrite of the first.
@@ -496,7 +518,7 @@ public sealed class SavingsOpportunityServiceTests : IAsyncLifetime
         var service = new SavingsOpportunityService(db, tenantContext, new FixedClock(DateTimeOffset.UtcNow), auditWriter);
 
         var request = ValidRequest() with { Type = "  " };
-        var result = await service.CreateAsync(TenantId.New(), request);
+        var result = await service.CreateAsync(TenantId.New(), request, SavingsOpportunityService.SystemActor);
 
         Assert.True(result.IsFailure);
         Assert.Equal(SavingsOpportunityService.TypeRequiredError, result.Error);
@@ -517,7 +539,7 @@ public sealed class SavingsOpportunityServiceTests : IAsyncLifetime
             db, tenantContext, new FixedClock(DateTimeOffset.UtcNow), new RecordingAuditWriter());
 
         var request = ValidRequest() with { CurrentSpend = currentSpend };
-        var result = await service.CreateAsync(TenantId.New(), request);
+        var result = await service.CreateAsync(TenantId.New(), request, SavingsOpportunityService.SystemActor);
 
         Assert.True(result.IsFailure);
         Assert.Equal(SavingsOpportunityService.CurrentSpendMustBePositiveError, result.Error);
@@ -534,7 +556,7 @@ public sealed class SavingsOpportunityServiceTests : IAsyncLifetime
             db, tenantContext, new FixedClock(DateTimeOffset.UtcNow), new RecordingAuditWriter());
 
         var request = ValidRequest() with { EstimatedSavingsLow = 10_000m, EstimatedSavingsHigh = 5_000m };
-        var result = await service.CreateAsync(TenantId.New(), request);
+        var result = await service.CreateAsync(TenantId.New(), request, SavingsOpportunityService.SystemActor);
 
         Assert.True(result.IsFailure);
         Assert.Equal(SavingsOpportunityService.EstimatedSavingsRangeInvalidError, result.Error);
@@ -553,7 +575,7 @@ public sealed class SavingsOpportunityServiceTests : IAsyncLifetime
             db, tenantContext, new FixedClock(DateTimeOffset.UtcNow), new RecordingAuditWriter());
 
         var request = ValidRequest() with { Confidence = confidence };
-        var result = await service.CreateAsync(TenantId.New(), request);
+        var result = await service.CreateAsync(TenantId.New(), request, SavingsOpportunityService.SystemActor);
 
         Assert.True(result.IsFailure);
         Assert.Equal(SavingsOpportunityService.ConfidenceOutOfRangeError, result.Error);
@@ -569,6 +591,7 @@ public sealed class SavingsOpportunityServiceTests : IAsyncLifetime
         var service = new SavingsOpportunityService(
             db, tenantContext, new FixedClock(DateTimeOffset.UtcNow), new RecordingAuditWriter());
 
-        await Assert.ThrowsAsync<ArgumentNullException>(() => service.CreateAsync(TenantId.New(), null!));
+        await Assert.ThrowsAsync<ArgumentNullException>(
+            () => service.CreateAsync(TenantId.New(), null!, SavingsOpportunityService.SystemActor));
     }
 }

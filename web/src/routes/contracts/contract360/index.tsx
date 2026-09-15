@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
-import type { ApiClient, Contract360Body, RenewalPipelineItemBody, RenewalPriorityBody } from "../../../api/client";
+import type { ApiClient, Contract360Body, RenewalActionRow, RenewalPipelineItemBody, RenewalPriorityBody } from "../../../api/client";
 import { loadCurrentWorkspace } from "../../signin/workspaceStore";
 import { CHECK_AGAIN_LABEL, UPDATES_PAUSED_NOTICE, usePollBudget } from "../../../components/shell/usePollBudget";
-import { forgetRenewalAction, getTrackedRenewalAction, rememberRenewalAction, type TrackedRenewalAction } from "../../renewals/renewalActionStore";
-import { getRenewalActionPlan, type RenewalActionKind } from "../../renewals/renewalPipelineViewModel";
+import { getRenewalActionPlan, savedActionOnScreen, type RenewalActionKind } from "../../renewals/renewalPipelineViewModel";
 import AnswersBand from "./AnswersBand";
 import Contract360Header from "./Contract360Header";
 import DetailsSection from "./DetailsSection";
@@ -16,8 +15,8 @@ import {
   resolveHighlightedClauseId,
   resolveReadinessCopy,
   resolveSupplierLabel,
+  ticksFromServer,
 } from "./contract360ViewModel";
-import { clearNegotiationSteps, loadNegotiationSteps, saveNegotiationSteps } from "./negotiationStepsStore";
 import "./contract360.css";
 
 export interface Contract360RouteProps {
@@ -54,9 +53,9 @@ type FetchState =
  * its wording is highlighted without a click; `location.state.from` drives the back label.
  *
  * **Actions** are the same real write Renewals makes (`POST /api/renewals/{id}/action`, owner =
- * `userLabel`), mirrored in `renewalActionStore.ts` so the list, pane, Savings and this tracker
- * agree. "Undo" forgets the mirror and re-posts the action as NotStarted / "Open" -- the list's own
- * default label -- so the server is not left saying "In negotiation".
+ * `userLabel`); the tracker and Renewals both read `savedAction` on `GET /api/renewals`. "Undo"
+ * writes ticks empty first, then posts `NotStarted` / "Open". Ticks are named keys on
+ * `GET`/`PUT /api/contracts/{id}/negotiation-steps`.
  */
 export default function Contract360Route({ apiClient, userLabel }: Contract360RouteProps) {
   const { contractId } = useParams<{ contractId: string }>();
@@ -72,10 +71,11 @@ export default function Contract360Route({ apiClient, userLabel }: Contract360Ro
   const [fetchState, setFetchState] = useState<FetchState>({ phase: "loading" });
   const [selectedClauseId, setSelectedClauseId] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [tracked, setTracked] = useState<TrackedRenewalAction | null>(() => (contractId ? getTrackedRenewalAction(contractId) : null));
-  const [stepsDone, setStepsDone] = useState<boolean[]>(() => (contractId ? loadNegotiationSteps(contractId) : []));
+  const [tracked, setTracked] = useState<RenewalActionRow | null>(null);
+  const [tickedKeys, setTickedKeys] = useState<ReadonlySet<string>>(() => new Set());
   const [actionPending, setActionPending] = useState<RenewalActionKind | "undo" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [stepsError, setStepsError] = useState<string | null>(null);
 
   const load = useCallback((silent = false) => {
     if (!workspace || !contractId) return;
@@ -85,9 +85,10 @@ export default function Contract360Route({ apiClient, userLabel }: Contract360Ro
     if (!silent) {
       setFetchState({ phase: "loading" });
       setDetailsOpen(false);
-      setTracked(getTrackedRenewalAction(contractId));
-      setStepsDone(loadNegotiationSteps(contractId));
+      setTracked(null);
+      setTickedKeys(new Set());
       setActionError(null);
+      setStepsError(null);
     }
 
     void apiClient.getContract360(workspace.id, contractId).then(async (result) => {
@@ -111,15 +112,25 @@ export default function Contract360Route({ apiClient, userLabel }: Contract360Ro
       // Citation landing: select the cited clause before the first paint of the ready state.
       setSelectedClauseId(resolveHighlightedClauseId(contract.tabs.clauses, clauseParam, pageParam));
 
-      const [renewalsResult, priorityResult] = await Promise.all([
+      const [renewalsResult, priorityResult, stepsResult] = await Promise.all([
         apiClient.getRenewals(workspace.id),
         apiClient.getRenewalPriority(workspace.id, contractId),
+        apiClient.getNegotiationSteps(workspace.id, contractId),
       ]);
+
+      const items = renewalsResult.ok && renewalsResult.renewals ? renewalsResult.renewals.items : [];
+      setTracked(savedActionOnScreen(items.find((row) => row.contractId === contractId)?.savedAction));
+      setTickedKeys(ticksFromServer(stepsResult.ok && stepsResult.steps ? stepsResult.steps : []));
+      if (!stepsResult.ok && stepsResult.statusCode !== 404) {
+        setStepsError("The negotiation steps could not be loaded.");
+      } else if (!silent) {
+        setStepsError(null);
+      }
 
       setFetchState({
         phase: "ready",
         contract,
-        renewals: renewalsResult.ok && renewalsResult.renewals ? renewalsResult.renewals.items : [],
+        renewals: items,
         priority: priorityResult.ok ? priorityResult.priority : null,
       });
     });
@@ -224,10 +235,9 @@ export default function Contract360Route({ apiClient, userLabel }: Contract360Ro
     );
   }
   const answers = buildAnswers(header, tabs.renewal, renewals);
-  const pipelineItem = renewals.find((r) => r.contractId === contractId) ?? null;
   const steps = buildNegotiationSteps(resolveSupplierLabel(header).label, answers.move.deadline);
 
-  const postAction = (status: TrackedRenewalAction["status"], action: string, pending: RenewalActionKind | "undo") => {
+  const postAction = (status: RenewalActionRow["status"], action: string, pending: RenewalActionKind | "undo") => {
     setActionPending(pending);
     setActionError(null);
     return apiClient.postRenewalAction(workspace.id, contractId, { owner: userLabel, status, action }).then((result) => {
@@ -244,34 +254,52 @@ export default function Contract360Route({ apiClient, userLabel }: Contract360Ro
     const plan = getRenewalActionPlan(kind);
     void postAction(plan.status, plan.action, kind).then((saved) => {
       if (saved === null) return;
-      const next: TrackedRenewalAction = {
-        contractId: saved.contractId,
-        supplierId: pipelineItem?.supplierId ?? header.supplierId,
-        annualSpend: pipelineItem?.annualSpend ?? header.annualSpend,
-        owner: saved.owner,
-        status: saved.status,
-        action: saved.action,
-        updatedAt: saved.updatedAt,
-      };
-      rememberRenewalAction(next);
-      setTracked(next);
+      setTracked(savedActionOnScreen(saved));
+    });
+  };
+
+  const reloadSteps = () => {
+    setStepsError(null);
+    void apiClient.getNegotiationSteps(workspace.id, contractId).then((result) => {
+      if (!result.ok) {
+        setStepsError("The negotiation steps could not be loaded.");
+        return;
+      }
+      setTickedKeys(ticksFromServer(result.steps ?? []));
     });
   };
 
   const handleUndo = () => {
-    void postAction("NotStarted", "Open", "undo").then((saved) => {
-      if (saved === null) return;
-      forgetRenewalAction(contractId);
-      clearNegotiationSteps(contractId);
-      setTracked(null);
-      setStepsDone(loadNegotiationSteps(contractId));
+    setActionPending("undo");
+    setActionError(null);
+    setStepsError(null);
+    void apiClient.putNegotiationSteps(workspace.id, contractId, { steps: [] }).then(async (ticks) => {
+      if (!ticks.ok) {
+        setActionPending(null);
+        setStepsError("The negotiation steps could not be saved.");
+        return;
+      }
+      setTickedKeys(new Set());
+      const saved = await postAction("NotStarted", "Open", "undo");
+      if (saved !== null) setTracked(savedActionOnScreen(saved));
     });
   };
 
-  const handleToggleStep = (index: number) => {
-    setStepsDone((previous) => {
-      const next = previous.map((done, i) => (i === index ? !done : done));
-      return saveNegotiationSteps(contractId, next);
+  const handleToggleStep = (key: string) => {
+    const previous = tickedKeys;
+    const next = new Set(previous);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    setTickedKeys(next);
+    setStepsError(null);
+    void apiClient.putNegotiationSteps(workspace.id, contractId, { steps: [...next] }).then(async (putResult) => {
+      if (!putResult.ok) {
+        setTickedKeys(previous);
+        setStepsError("The negotiation steps could not be saved.");
+        return;
+      }
+      const readBack = await apiClient.getNegotiationSteps(workspace.id, contractId);
+      if (readBack.ok) setTickedKeys(ticksFromServer(readBack.steps ?? []));
     });
   };
 
@@ -283,12 +311,14 @@ export default function Contract360Route({ apiClient, userLabel }: Contract360Ro
         answers={answers}
         tracked={tracked}
         steps={steps}
-        stepsDone={stepsDone}
+        tickedKeys={tickedKeys}
         actionPending={actionPending}
         actionError={actionError}
+        stepsError={stepsError}
         onAction={handleAction}
         onUndo={handleUndo}
         onToggleStep={handleToggleStep}
+        onRetrySteps={reloadSteps}
       />
 
       <WhyClauses

@@ -67,18 +67,17 @@ namespace Raffa.Api;
 /// </para>
 ///
 /// <para>
-/// <b>Interim identity posture</b> (ADR-022, OQ-askv2-005): the tenant comes from
-/// <c>X-Tenant-Id</c> and the audit actor of a rejection from <c>X-User-Id</c> when the web sent
-/// one (it does, for every call — see <c>web/src/api/client.ts</c>), else the same
-/// <c>"unattributed"</c> literal <c>DocumentUploadService</c> records on <c>document.uploaded</c>.
-/// Neither header is validated against an identity provider; both are replaced by token claims
-/// the task that lands the API JWT on this host (ADR-010).
+/// <b>Identity posture</b> (ADR-010; ADR-011 w16 clauses 15–17; ADR-022 w15 footer): every
+/// tenant-scoped route here resolves the caller through <c>ICallerContext</c> first — an absent or
+/// invalid token is 401 before any handler body runs — then <c>X-Tenant-Id</c> as a
+/// membership-verified selector (400/404). The resolved token subject is threaded into every write
+/// this file makes (<see cref="DocumentUploadService.UploadAsync"/>'s own <c>actor</c> parameter,
+/// same shape <see cref="ValidateDocumentAsync"/>/<see cref="ReprocessDocumentAsync"/>/
+/// <see cref="DeleteDocumentAsync"/> already used): no write here can record a placeholder actor.
 /// </para>
 /// </summary>
 public static class DocumentsEndpointExtensions
 {
-    private const string TenantHeaderName = "X-Tenant-Id";
-    private const string UnattributedActor = "unattributed";
     private const string FileFieldName = "file";
 
     /// <summary>Allowance for multipart framing (boundaries, part headers) on top of
@@ -271,7 +270,7 @@ public static class DocumentsEndpointExtensions
         //     fabricated or null-but-meaningful id here is the guessing this task removes.
         using var storageContent = new MemoryStream(fileBytes);
         var result = await uploadService.UploadAsync(
-            tenantId, file.FileName, format.MimeType, storageContent, cancellationToken);
+            tenantId, file.FileName, format.MimeType, storageContent, caller.Identity!, cancellationToken);
         if (result.IsFailure)
         {
             return Results.BadRequest(result.Error);

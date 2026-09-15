@@ -1,8 +1,9 @@
 using Raffa.Documents.Contracts.Infrastructure;
+using Raffa.Messaging;
 using Raffa.Renewals.Application;
 using Raffa.SharedKernel.Tenancy;
-using Raffa.Worker.Queue;
 using Raffa.Worker.Scheduling;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
@@ -10,11 +11,17 @@ namespace Raffa.Worker.Tests;
 
 /// <summary>
 /// Proves the Definition of Done for task E01/F04/US04/T02 (deployable-worker, ADR-002): the
-/// worker host actually boots as a composition root, references the same Documents/Contracts
+/// worker host actually boots as a composition root and references the same Documents/Contracts
 /// application services the API host does (parent story us-04 AC-2 "Worker host references the
-/// same application services"), and its background service really drains a message off the
-/// queue end-to-end (AC-2 "... and consumes the queue") — not just left the "module registration
-/// will go here" placeholder from the solution scaffold (E01/F04/US01/T01).
+/// same application services") — not just left the "module registration will go here"
+/// placeholder from the solution scaffold (E01/F04/US01/T01).
+///
+/// Task E19/F05/US01/T01 deleted this class's own R0 in-process-queue end-to-end proof along
+/// with the dead <c>Raffa.Worker.Queue.QueueConsumerHostedService</c> it drove — a second, inert
+/// <see cref="IHostedService"/> the Worker booted alongside the real ADR-027 extraction consumer
+/// in every deployed process. <see cref="Host_registers_exactly_one_hosted_service_for_document_extraction"/>
+/// proves the replacement at the registration level (AC-2 "... and consumes the queue"); the
+/// end-to-end proof now lives in <c>Raffa.IntegrationTests</c>, against the real consumer.
 /// </summary>
 public sealed class DeployableWorkerTests
 {
@@ -54,18 +61,6 @@ public sealed class DeployableWorkerTests
     }
 
     [Fact]
-    public void Host_registers_the_queue_consumer_hosted_service()
-    {
-        using var host = BuildHost();
-
-        // AC-2 ("... and consumes the queue"): a hosted service is actually registered to drive
-        // the queue, not just the queue port sitting unused.
-        var hostedServices = host.Services.GetServices<IHostedService>();
-
-        Assert.Contains(hostedServices, service => service is QueueConsumerHostedService);
-    }
-
-    [Fact]
     public void Host_composes_the_renewals_module_into_di()
     {
         using var host = BuildHost();
@@ -94,30 +89,38 @@ public sealed class DeployableWorkerTests
     }
 
     [Fact]
-    public async Task Worker_consumes_a_queued_message_end_to_end()
+    public void Host_registers_exactly_one_hosted_service_for_document_extraction()
     {
-        using var host = BuildHost();
-        var queueConsumer = host.Services.GetRequiredService<InMemoryQueueConsumer>();
-        var message = new QueueMessage(Guid.NewGuid().ToString(), "extraction-job-queued");
+        // Task E19/F05/US01/T01 (parent story AC-1): AddWorkerHost used to also register the dead
+        // R0 queue's QueueConsumerHostedService -- a second, inert IHostedService alongside the
+        // real ADR-027 extraction consumer in every deployed Worker process. That whole R0 queue
+        // port and its two implementations are deleted; this wires the host the same way
+        // Program.cs does -- AddWorkerHost, then the extraction-queue publisher/consumer pair
+        // (ADR-027 D2) -- and proves exactly one hosted service resolves for document extraction.
+        var builder = Host.CreateApplicationBuilder();
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection().Build();
+        const string connectionString =
+            "Host=localhost;Port=5432;Database=raffa_dev;Username=raffa;Password=raffa;Include Error Detail=true";
 
-        queueConsumer.Enqueue(message);
+        builder.Services.AddWorkerHost(connectionString, connectionString, connectionString);
+        builder.Services.AddExtractionQueuePublisher(configuration);
+        builder.Services.AddExtractionQueueConsumer(configuration);
 
-        await host.StartAsync();
-        try
-        {
-            // QueueConsumerHostedService polls on a background thread (200ms delay between empty
-            // receives); bound the wait instead of asserting immediately.
-            var deadline = DateTime.UtcNow.AddSeconds(5);
-            while (!queueConsumer.CompletedMessageIds.Contains(message.MessageId) && DateTime.UtcNow < deadline)
-            {
-                await Task.Delay(25);
-            }
+        using var host = builder.Build();
+        var hostedServices = host.Services.GetServices<IHostedService>().ToList();
 
-            Assert.Contains(message.MessageId, queueConsumer.CompletedMessageIds);
-        }
-        finally
-        {
-            await host.StopAsync();
-        }
+        // Exactly two hosted services boot out of this whole composition: the renewal-threshold
+        // scheduler (a different concern this task does not touch) and one document-extraction
+        // consumer. Asserting the total catches any duplicate/dead hosted service coming back --
+        // not just a mismatch against these two names -- the way QueueConsumerHostedService used
+        // to sit here as an uncounted third.
+        Assert.Equal(2, hostedServices.Count);
+        Assert.Contains(hostedServices, service => service is RenewalThresholdSchedulerHostedService);
+
+        // No ServiceBus:FullyQualifiedNamespace configured -> the in-process consumer is the
+        // branch that fires (ExtractionTransportSelectionTests proves the Service Bus branch at
+        // the registration level); either transport is a legitimate single answer here.
+        Assert.Equal(1, hostedServices.Count(service =>
+            service is InMemoryExtractionConsumerHostedService or ServiceBusExtractionConsumerHostedService));
     }
 }

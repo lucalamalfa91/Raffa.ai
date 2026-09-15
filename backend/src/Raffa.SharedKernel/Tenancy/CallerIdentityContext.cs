@@ -19,11 +19,19 @@ public sealed class CallerIdentityContext : ICallerIdentityContext
         ArgumentNullException.ThrowIfNull(identity);
 
         var previousValue = Ambient.Value;
-        // Normalised once, here, so every reader of Current (today: only
-        // TenantRlsConnectionInterceptor) sees exactly the value the `identity_self` policy's own
-        // `lower(email)` comparison expects (ADR-025 §F.1) -- matching
-        // WorkspaceMembershipFactory.CreateInvitedUser's existing trim of the same identity class.
-        Ambient.Value = identity.Trim().ToLowerInvariant();
+        // Trimmed only -- never lower-cased (ADR-010 w16 footer S16-2; task E18/F02/US01/T01,
+        // correcting this method's own pre-w16 shape). This value becomes the `app.identity_subject`
+        // GUC the `identity_self` policy reads (`identity-workspace.sql:198-206`), whose two legs
+        // already normalize themselves rather than sharing one case fold: `lower(email) =
+        // lower(guc)` lower-cases both sides in SQL, so pre-lowering here bought that leg nothing,
+        // while `external_subject_id = guc` is deliberately ordinal -- `oid` is an opaque,
+        // case-sensitive Entra object id (`Raffa.Api.Infrastructure.CallerIdentity.cs:60-68`).
+        // Force-lowering here silently stopped that leg matching any row whose `ExternalSubjectId`
+        // was not itself a canonical lowercase GUID -- benign only while every subject happens to be
+        // one, and nothing enforces that (the column is `character varying(200)`). Only whitespace
+        // is trimmed, still matching WorkspaceMembershipFactory.CreateInvitedUser's own trim of the
+        // same identity class.
+        Ambient.Value = identity.Trim();
         return new ScopePopper(previousValue);
     }
 

@@ -132,3 +132,58 @@ or to this ADR. Identities are normalised to lower-case on write
 (`WorkspaceMembershipFactory.CreateInvitedUser`, which already trims, `:30`);
 `citext` is rejected as a column-type change under a live unique index for no
 benefit once writes are normalised.
+
+## Amendment (2026-09-14, wave w16 — one new table, and the three schema changes this wave refuses)
+
+Written by software-architect (owner) at the w16 council table. Serves
+**NW-13**, and records the negative for **NW-11, NW-12 and NW-21**. The
+**Decision outcome above is unchanged** (PostgreSQL Flexible Server + pgvector
+via EF Core/npgsql, RLS tenancy, one system of record), and the w14 footer's
+five clauses stand. Nothing here relaxes line 53's rule that schema changes are
+EF Core migrations with no hand-edited DDL drift.
+
+**1. One new tenant table — `contract_negotiation_step`**, in
+`Raffa.Documents.Contracts` (ownership: ADR-002 w16 clause 1; routes and wire
+shape: ADR-028 §D3).
+
+| Column | Type | Null | Note |
+|---|---|---|---|
+| `id` | uuid | no | entity id, as every table in this module |
+| `tenant_id` | uuid | no | the RLS column |
+| `contract_id` | uuid | no | the contract the steps belong to; no FK across a module boundary, the `RenewalAction.ContractId` treatment |
+| `step` | varchar(60) | no | the step's **name** — a closed enum serialized as a string, the `NegotiationOutcome.LeversUsed:112-116` convention |
+| `ticked_at` | timestamptz | no | when it was ticked |
+
+- **Unique `(tenant_id, contract_id, step)`**, and **the row's presence is the
+  tick** — there is no `ticked` boolean. An untick deletes the row, so the whole-set
+  `PUT` is idempotent with no nullable third state and no "false" rows to
+  interpret. Per **contract**, not per renewal cycle (ADR-001 w16 clause 3).
+- **Never keyed by array index and never storing the rendered label.** The
+  client's store is a positional `boolean[4]` holding no names
+  (`negotiationStepsStore.ts:11,18,24,31`) and two of the four labels are
+  parameterized (`contract360ViewModel.ts:211-218`): an index key re-points
+  every tick the day a step is inserted, and a stored label would freeze a fact
+  that later changes.
+- **`ENABLE` + `FORCE ROW LEVEL SECURITY` and its `tenant_isolation` policy ship
+  in the same migration as the table** — the w14 footer's clause-2 rule for
+  `workspace_invitation`, applied unchanged (ADR-009).
+
+**2. Three schema changes this wave refuses**, each recorded with its reason so
+no task adds one "while it is in there":
+
+- **no `savings_opportunity.quote_id`** — it would invent the quote-originated
+  opportunity `SavingsOpportunity.cs:23-27` explicitly parks in R4, and nothing
+  in this wave would populate it (ADR-028 §D5);
+- **no widening of `renewal_action`** with `supplier_id` / `annual_spend` — the
+  client already holds both from fetches it has made (ADR-028 §D1,
+  client-architect C9);
+- **no new column on `negotiation_outcome`** — the link field already exists and
+  is already persisted (`NegotiationOutcomeService.cs:173`).
+
+**3. Migration mechanics.** **One** migration this wave, in
+`Raffa.Documents.Contracts`, regenerating the single byte-compared script
+`Migrations/Scripts/documents-contracts.sql` (`dotnet ef migrations script
+--idempotent`). It is never hand-edited and has **one writer** in the
+decomposition. Why no CI workflow edit is owed is in the **ADR-021 w16 footer**.
+
+`waves/w16.md` records this under NW-13.

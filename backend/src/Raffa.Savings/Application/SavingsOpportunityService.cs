@@ -88,11 +88,17 @@ public sealed class SavingsOpportunityService(
 
     private const string AuditResourceType = "savings_opportunity";
 
-    /// <summary>Same interim-actor placeholder as
-    /// <c>Raffa.Renewals.Application.RenewalActionService.UnattributedActor</c> — see that type's
-    /// own doc comment for why: ADR-010 (Entra ID/OIDC) is not wired into this host yet, so there is
-    /// no validated caller identity to record.</summary>
-    private const string UnattributedActor = "unattributed";
+    /// <summary>
+    /// The reserved, documented non-human principal for <see cref="CreateAsync"/> (ADR-011 w16
+    /// clause 16, S-T29): "identify" has no HTTP route and no caller today (see
+    /// <see cref="CreateSavingsOpportunityRequest"/>'s own doc comment), so there is no human actor
+    /// to thread through — the convention already live at
+    /// <c>Raffa.Api.NegotiationOutcomePropagationService.SystemActor</c>
+    /// (<c>"system:negotiation-outcome-propagation"</c>), reused rather than a new one invented.
+    /// The <c>:</c> makes this string provably disjoint from any Entra <c>oid</c> token subject
+    /// (ADR-011 w16 clause 16a) — a reserved, documented principal is a fact, not a placeholder.
+    /// </summary>
+    public const string SystemActor = "system:savings-opportunity-identification";
 
     /// <summary>
     /// "Identify" a new opportunity — validates every field, then persists it with
@@ -100,9 +106,14 @@ public sealed class SavingsOpportunityService(
     /// See <see cref="CreateSavingsOpportunityRequest"/>'s own doc comment for why no HTTP route
     /// calls this yet.
     /// </summary>
+    /// <param name="actor">The resolved actor for the <c>savings_opportunity.identified</c> audit
+    /// row (ADR-011 w16 clause 15) — required, no default. No HTTP route calls this method today
+    /// (see the type doc comment), so a future caller supplies either a caller's resolved token
+    /// subject or, for a system-originated identification, <see cref="SystemActor"/>.</param>
     public async Task<Result<SavingsOpportunityResult>> CreateAsync(
         TenantId tenantId,
         CreateSavingsOpportunityRequest request,
+        string actor,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -162,7 +173,7 @@ public sealed class SavingsOpportunityService(
         await auditWriter.WriteAsync(
             new AuditEntry(
                 tenantId,
-                UnattributedActor,
+                actor,
                 AuditIdentifiedAction,
                 AuditResourceType,
                 opportunity.Id.Value.ToString(),
@@ -220,12 +231,18 @@ public sealed class SavingsOpportunityService(
     /// for that call — still exactly one entry per successful mutation, never two.
     /// </para>
     /// </summary>
+    /// <param name="actor">The caller's resolved token subject (ADR-011 w16 clause 15) — required,
+    /// no default. Called both from `PATCH /api/savings/{id}` (a human's resolved identity) and
+    /// from <c>Raffa.Api.NegotiationOutcomePropagationService.PropagateAsync</c> (its own
+    /// <c>SystemActor</c>) — recorded on the <c>savings_opportunity.updated</c>/
+    /// <c>savings_opportunity.realized</c> audit row either way.</param>
     public async Task<Result<SavingsOpportunityResult>> UpdateAsync(
         TenantId tenantId,
         EntityId id,
         string? owner,
         string? status,
         decimal? realizedAmount,
+        string actor,
         CancellationToken cancellationToken = default)
     {
         if (owner is null && status is null && realizedAmount is null)
@@ -313,7 +330,7 @@ public sealed class SavingsOpportunityService(
         await auditWriter.WriteAsync(
             new AuditEntry(
                 tenantId,
-                UnattributedActor,
+                actor,
                 realized is null ? AuditUpdatedAction : AuditRealizedAction,
                 AuditResourceType,
                 existing.Id.Value.ToString(),

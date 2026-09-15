@@ -1028,6 +1028,73 @@ security half of A15-7 and it binds NW-69: **mail failed → the copyable link i
 shown; identity provisioning failed → the link is suppressed and the named error
 shown**, because a link that cannot be redeemed is worse than no link.
 
+## Amendment (2026-09-14, wave w16 — §I's seam swap fires, and the claims authorizer is deleted rather than disarmed)
+
+Seat: security-architect (owner). Serves **NW-08**. Everything above is unchanged
+and in force — §A…§J, the token design, the lifecycle, the RLS consequences, the
+audit list, §H's tests. **No rule is weakened and no row is edited.** This footer
+records that **§I** — the section written to bind a later wave — is now discharged
+by the last endpoint that was still reading claims.
+
+### §K.1 — the audit read joins the membership-guarded set
+
+`GET /api/audit` was the only tenant-scoped route still deriving both its tenant
+and its role from **claims** (`WorkspacePrincipalAuthorization.cs:62-67`, `:69-74`).
+§I's rule — *"the token carries identity only … a `tenant_id` or `roles` claim is
+**never** the authorization source"* — applies to it verbatim. From w16 the route
+resolves through `ICallerContext.ResolveTenantAsync` and
+`WorkspaceRoleResolver.IsAdminAsync`, exactly as `DocumentsEndpointExtensions.cs:492-509`
+does. **Rule B1's ladder is unchanged and §B's rejection contract gains no new
+row** — the audit read simply stops being an exception to it. Who may read: a live
+`Admin` membership in the selected tenant and nobody else (ADR-011 w16 clause 14).
+
+**Rule F.1d is untouched and is the reason this works:** membership, not
+`workspace_user` existence and not a directory object, is the grant. §J.3a's
+extension (a B2B guest object grants nothing) covers the audit route for free.
+
+### §K.2 — S16-5: `WorkspacePrincipalAuthorization` is deleted whole, not stripped of its constant
+
+The minimal repair — delete `TenantIdClaimType` (`:35`) and keep the type — is
+**refused**. What remains after that edit is a **working, fail-closed,
+claims-based authorizer** sitting in the domain assembly with a helpful name, for
+the next endpoint to pick up. That is not a hypothetical: it is how this defect
+arrived, and ADR-010 w15 §3.1 records the same failure mode one level down (a doc
+comment instructing the next implementer to restore the branch). The type, its two
+claim constants and its `TryAuthorize` entry point are deleted together.
+
+Its only other consumer is test-only — `TestPrincipalStartupFilter.cs:27-42`, whose
+own comment `:11-12` says it is "never registered by production `Raffa.Api.Program`"
+— so the deletion costs the product nothing and costs the test fixture a rewrite
+that is owed anyway.
+
+**K.2a — the two tempting repairs stay forbidden**, restated here because this is
+the file a task will open: mapping `tid` → `tenant_id` is refused by ADR-010 w15
+§2.2 (**both environments share one directory, so `tid` is identical for every
+workspace and can never select a tenant**), and minting a role claim is refused by
+§3. Neither becomes acceptable because the endpoint is "just a read".
+
+### §K.3 — the deletion proof, and why a green ladder test is not enough
+
+The ladder test (S-T25) proves the **new** path works. It does not prove the
+**old** one is gone — an unreachable claims branch passes every test in the suite
+until something reaches it. So the task carries one more assertion:
+
+> A token carrying a `tenant_id` claim **and** a `roles: Admin` claim naming a
+> tenant the caller has **no membership in** receives **404** — not 200, not 403.
+
+That fails loudly if any claims path survives anywhere in the chain. Paired with
+**S-T26** — an Admin of T1 calling `/api/audit` with `X-Tenant-Id: T2` gets 404 and
+**zero T2 rows in any form** — it is the "another tenant never appears" proof this
+route has never had.
+
+### §K.4 — unchanged by this wave
+
+No change to §C (the invitation token), §D (the lifecycle), §F (the RLS
+consequences), §G (the audit verb list — the audit **read** adds no verb), §J
+(guest provisioning). **`guest_provisioning_enabled` stays `false` on `demo`** and
+no w16 task flips it. The invitation cap, the redeem-URL rule and the
+directory-enumeration-oracle rule are all untouched.
+
 ### §J.5 — removal, unchanged and now explicit
 
 **J.5a.** Removing a workspace membership **never deletes or blocks the Entra

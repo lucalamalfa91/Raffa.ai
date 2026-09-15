@@ -1060,3 +1060,310 @@ whose caller ignores the response.
 **What this does not change.** No route, no new ADR, no change to `handleRedirectPromiseOptions`,
 the invite-accept flow, or any earlier clause. `prioritiseDocument` is one more
 row in an existing table, not a new mechanism.
+
+## Amendment (2026-09-14, wave w16 — the three stores retire, and the client file this seat recorded as having no writer)
+
+Wave `w16`, baseline `f0b3436` (`helix/w16` == `origin/main`, `0 0`). Seat
+`client-architect`, seated by `w16-requirements.md` §3 on **NW-08, NW-31, NW-11,
+NW-12, NW-13, NW-21**. The body and §1–§20 are unchanged; clauses continue at 21.
+Companion decisions this footer reconciles with rather than re-decides:
+**ADR-028** §D1–D6 (software-architect — routes, table, resolution),
+**ADR-001** w16 clauses 2–4 and 7 (product-owner — scope and the money fence),
+**ADR-022** w16 clauses 6a/7/11 and **ADR-011** w16 clause 14 (security).
+
+**Two of this footer's clauses correct this seat's own lane draft**
+(`reports/architecture/draft/next/client-architect/w16.md`). Both errors were
+load-bearing: a task implementing the draft as written would have built a
+read-back the screen cannot see, and the decomposer would have scheduled two
+tasks into one phase on a file the draft said nobody writes. They are recorded
+as corrections, not silently re-worded — the same discipline NW-31 spends this
+wave enforcing on stale prose, applied to our own records.
+
+### 21. The three `sessionStorage` stores retire, and §1's disposition table gains their rows
+
+| Key | Module | Stood in for | Disposition |
+|---|---|---|---|
+| `raffa.renewals.actions` | `web/src/routes/renewals/renewalActionStore.ts` | a missing GET of the persisted renewal action | **deleted (NW-11)** |
+| `raffa.quotes.negotiationOutcomes` | `web/src/routes/quotes/quoteOutcomeStore.ts` | a missing read of the recorded negotiation outcome | **deleted (NW-12)** |
+| `raffa.contract360.steps.<id>` | `web/src/routes/contracts/contract360/negotiationStepsStore.ts` | a tick no endpoint recorded | **deleted (NW-13)** |
+
+Each is w14 clause 1's case in its purest form and each store says so in its own
+comment (`renewalActionStore.ts:8-19`, `quoteOutcomeStore.ts`'s read half dead in
+production, `negotiationStepsStore.ts:6-7`). **Ordering, binding**: a store is
+deleted **with** its read-back, never before it — a deleted store with no GET is
+a regression, not a step toward one (ADR-028 assumption 4, this seat's ask,
+ratified). The `sessionStorage` / `localStorage` policy of §1 is otherwise
+unchanged: no new key, no new fragment rule.
+
+### 22. NW-11 closes all three surfaces with **zero** new client methods — correcting this seat's draft
+
+The draft's shape preference asked for the action embedded in `GET /api/renewals`
+"**plus** a per-contract read for Contract 360, **which does not fetch that
+list**". The parenthetical is **false**. `contract360/index.tsx:115` already
+calls `apiClient.getRenewals(workspace.id)` — in the same `Promise.all` as
+`getRenewalPriority` at `:116` — and derives its row at `:227`
+(`renewals.find(r => r.contractId === contractId)`).
+
+Consequences, all reducing work:
+
+- ADR-028 §D1's embedded **`savedAction`** reaches **all three** surfaces
+  (Renewals, Contract 360, Savings) through the **existing** `getRenewals`
+  wrapper. NW-11 adds **no `ApiClient` method at all**.
+- `GET /api/renewals/{id}/action` (§D1, 200/404) is published in the contract and
+  gets **no `client.ts` wrapper** under §24 — it has no caller in this app.
+  Stated so the NW-11 task does not add one out of a sense of completeness.
+- **`savedAction`, never `action`** — §D1 adopted this seat's C9 as binding. The
+  name `action` on `GET /api/renewals` is the deterministic calculator's
+  `RecommendedAction` (`RenewalsEndpointExtensions.cs:239`), rendered on a
+  shipped screen; reusing it would overwrite a calculator's output with user
+  state.
+- **Absence of a row is the status `NotStarted`, not a missing row** (C8, §D1).
+  `handleUndo` (`contract360/index.tsx:261-269`) posts `NotStarted` **and**
+  calls `forgetRenewalAction`; the server row is an upsert on
+  `(tenant_id, contract_id)` and **survives** the undo, so today only the local
+  forget hides it. After the read-back the row returns as `NotStarted` and every
+  surface renders that as "no action taken". `forgetRenewalAction` dies with the
+  store; **no DELETE route is requested**.
+- **The row is not widened** with `supplierId` / `annualSpend` (C9 upheld): the
+  client already holds both from fetches it has made
+  (`contract360/index.tsx:250`, `renewals/index.tsx:104`).
+
+### 23. NW-12: this seat's shape preference was declined — and the premise under it was false
+
+The draft (C10) asked for the recorded outcome to ride the **existing**
+`GET /api/quotes/{id}/assessment`, "which the screen already calls on mount".
+**The screen does not call it, on mount or ever.** The mount effect
+(`quotes/index.tsx:118-132`) calls `load()` → `apiClient.recalculateQuoteAssessment`
+(`:91`), and `client.ts:805-813` records why: the recalculate response is a
+**superset** of the assessment GET's shape, so `src/routes/quotes/` "never calls
+`getQuoteAssessment` directly".
+
+So ADR-028 §D2's decline is correct **on stronger grounds than it was given**:
+the shape the outcome would have ridden is the one this screen never reads, and
+the call it *does* make on mount is precisely the recalculate POST §D2 names as
+the hazard — a recalculation that "would appear to re-report a negotiation
+record it did not touch". A task implementing C10 would have shipped a read-back
+the screen cannot see.
+
+**Decision, adopting §D2:**
+
+- The quote screen gains **one `GET /api/quotes/{id}` call on mount**, alongside
+  the existing recalculate. Two calls on mount is §D2's "cheaper cost", accepted.
+- **New wrapper: `getQuote(tenantId, id)`** — it has a caller in the same task,
+  so §24 permits it.
+- **`GET /api/quotes` (the list) gets no wrapper** — no list screen exists and
+  none is built until NW-57 (W18).
+- **ADR-018 stays `none`.** `/quotes/:quoteId` **already exists**
+  (`WorkspaceShellApp.tsx:90`), the screen already reads it
+  (`useParams`, `quotes/index.tsx:68`), and upload already navigates to it
+  (`:151`). The quote id therefore survives a reload **today** — which is the
+  fact that makes this read-back possible with no routing work at all. Had it
+  not, NW-12 would have needed a route and a designer.
+
+### 24. When a route gets an `ApiClient` wrapper — the rule, re-grounded against the precedent that cuts against it
+
+The draft (C2) asserted flatly that a caller-less `ApiClient` method is dead code
+`tsc` cannot flag. The codebase carries a **counter-example with a named
+convention**: `getQuoteAssessment` is wrapped with no caller "for API-contract
+completeness (the same *wrap the endpoint's full surface even if this app's own
+screen only ever calls it one way* convention `getPortfolio`'s own doc comment
+already follows)" (`client.ts:811-813`). The opposite convention is equally on
+disk: `raffa-api.v1.json:6` documents `/api/insights/criticality` and
+`GET /api/contracts/{id}/strategy` "for completeness, **no `client.ts`
+wrapper**".
+
+Both exist, so the rule is stated as a test rather than a taste:
+
+> **A wrapper is added in the same task as its first caller.** A route with no
+> caller is published in the contract and left **unwrapped**, with the omission
+> recorded in `info.description` so it reads as a decision and not an oversight.
+
+`getQuoteAssessment` is the cost of the other branch, and it is why this is a
+rule: the method outlived its caller, now needs three lines of comment to explain
+why nobody calls it, and a later reader cannot tell dead from load-bearing. A
+wrapper also carries a second writer — its row in the `client.test.ts` surface
+test — which a route with no screen cannot justify.
+
+- **Unwrapped this wave**: `/api/audit` (NW-08), `GET /api/renewals/{id}/action`
+  (NW-11), `GET /api/quotes` (NW-12).
+- **Wrapped this wave**: `getQuote` (NW-12, §23); `getNegotiationSteps` and
+  `putNegotiationSteps` (NW-13, §26).
+
+### 25. `web/src/api/client.ts` is a **multi-writer** file this wave — the draft recorded it as having none
+
+The draft's single-writer table says "**No new `ApiClient` method this wave**
+(C2, C10, C13)". That was wrong on its own terms: NW-13 cannot write a tick
+without a wrapper, and §23 adds one for NW-12. The real count is **three new
+methods across two items**, both in theme B.
+
+`client.ts` is **hand-written** glue, not generated (`client.ts:1-8`: "only the
+fetch() plumbing is hand-written"). Two tasks editing it inside one phase is
+exactly the defect §3 / constraint 1 prevents for the contract file, and
+`check_single_writer.py` would reject the slice.
+
+> **Ruling: one writer per phase for `web/src/api/client.ts`**, the same
+> treatment the contract file already has. Cheapest resolution for the
+> decomposer: the **theme-B contract task also owns the wrapper additions**, or
+> NW-12's and NW-13's web halves land in **different phases**.
+
+Named here because ADR-028's single-writer list (`:231-237`) is backend-only —
+correctly, that is software-architect's lane. This file is this seat's, and it
+was the one the draft left unguarded.
+
+**Still not writers**, re-affirmed: `web/src/components/shell/navItems.ts` (no
+rail entry, no badge — NW-08 is the item that would tempt one), `App.tsx`'s
+router (`:222-236`), and `WorkspaceShellApp.tsx`'s route table (`:81-94`).
+
+### 26. NW-13: named keys, a tick that must not survive a rejection, and two idempotent writes
+
+- **Keys, never indices** (C11, adopted by §D3). The store is a positional,
+  unnamed `boolean[4]` (`negotiationStepsStore.ts:11,18,24,31`); the labels live
+  in `contract360ViewModel.ts:211-218` and **two of four are parameterized**.
+  Client rules: an **unknown step key from the server is ignored**, never
+  rendered as a fifth tick; a **missing key is unticked**; and
+  `NEGOTIATION_STEP_COUNT = 4` stops being a client constant that shapes the
+  wire. The rendered label stays client-side (ADR-001 w16 clause 3).
+- **The optimistic tick reverts** (C12, binding). `handleToggleStep`
+  (`contract360/index.tsx:271-276`) is a pure local toggle today; it becomes
+  write + read-back. On failure the tick **reverts** to the last server-known set
+  — which §D3's whole-set `PUT` makes trivial, since the client already holds it
+  — and the screen shows ADR-018 `:117`'s error state. **A tick the server
+  rejected must never survive on screen**: that is the fabricated-fact class of
+  w15 clause 4, not a cosmetic concern.
+- **§D4's two writes are accepted, and its ordering is ratified from this side.**
+  The draft asked for one composed call so the client would have no
+  partial-failure state to invent. **That ask is withdrawn**: §D4's reason is
+  better than the convenience it refuses — folding the tick-clear into the
+  renewals POST would make a write named "set the renewal action" silently erase
+  another module's rows for any future non-UI caller. The client's real
+  requirement is met by **re-reading, never by a compensating write**: both
+  writes are idempotent, and both facts are already re-read on mount
+  (`contract360/index.tsx:93,115`). **Ticks `PUT` first, then the action
+  `POST`** — an action in progress with no ticks is an honest state a user can
+  reach; `NotStarted` with four ticks is a contradiction no flow produces. The
+  order is load-bearing, not arbitrary.
+
+### 27. NW-08: the contract's prose half, and what "a typed client" means
+
+- **C1, binding: the contract edit has a prose half, and without it the file
+  contradicts itself.** `raffa-api.v1.json:6` (`info.description`) names
+  **`GET /api/audit`** by hand among the backend routes "that this task
+  deliberately did NOT add here". Adding the path and leaving that sentence ships
+  a contract that documents a route and denies documenting it — the exact
+  stale-record class NW-31 spends this wave deleting. **Both halves are one
+  edit, in one task.**
+- **What "a typed client" means** (product-owner, OQ-w16-003, ruling A16-2 closes
+  "through `GET /api/audit` plus a typed client"): under §24 that is the
+  **generated type** — `schema.ts` is regenerated wholesale, so the type arrives
+  with the path at no cost — and **not** an `ApiClient` wrapper, which would have
+  no caller. Recorded so the wording is not read as ordering a method, and so the
+  gate does not read its absence as an unmet ruling.
+- **The declared header is documentation, not a checked fact.** ADR-026 w16
+  clause 2 declares `X-Tenant-Id` on the route so the client does not discover it
+  at runtime. Note for the task: a declared **parameter** never reaches
+  `schema.ts` — the generator parses only `responses`
+  (`generate-api-client.mjs:132-146`, §3 / §9) — so the header's presence in the
+  contract cannot be checked by `tsc`.
+- **No SPA surface**: no route, no rail entry, no fetch, no state. ADR-018 and
+  ADR-020 untouched. A16-2's ladder (401/400/404/403/200 — security S16-4) is
+  proven by backend tests and `curl`; **no e2e and no vitest from this seat**.
+  If OQ-w16-003 is ever reversed the client cost is a route, a rail entry, a
+  wrapper, its surface-test row, a loading and an error state — a wave item, not
+  a task addendum.
+
+### 28. NW-31's client half is contract-only, and its gate is a **paired** grep
+
+- **C3**: `web/src` sends neither retired header — `client.ts:76` attaches
+  `Authorization` and nothing else; re-verified on `f0b3436`. Three contract
+  sites only: the `X-Role` **parameter** (`:5239`), its description (`:5236`),
+  and the stale `X-Workspace-Role` sentence on `deleteDocument`'s description
+  (`:1227`), which `reprocessDocument` (`:1310`) inherits by reference.
+- **C4 — the edit is invisible to every check the build runs.** The generator
+  parses only `responses`, so a `parameters` entry **never reaches `schema.ts`**:
+  deleting `X-Role` changes no generated byte, fails no `tsc --noEmit`, fails no
+  build. This is §10's eighth-site hazard reached from the other end, and §10's
+  ruling stands: **the task's check is a grep of the contract, not a green
+  build.**
+- **The grep is paired** — concurring with security **S16-7** and
+  delivery-manager **D7**, reached independently here: zero
+  `X-Role` / `X-Workspace-Role` across `backend/src`, `web/`, `web/openapi/` and
+  `.github/`, **and `X-Tenant-Id` present and unchanged**, asserted positively so
+  the sweep cannot overrun. `client.ts:1943-1950` — which sends only
+  `X-Tenant-Id` and the bearer — is what the paired assertion protects, and it is
+  the path A16-3's re-worded in-product acceptance runs on.
+- **Regression cover, no edit needed**: the Admin catalog now comes from
+  membership, observable at `/ask`; the existing e2e case **`v2.spec.ts:648`**
+  (A8, "cosa sai fare?" answered from the capability catalog) is the one that
+  would catch a regression. Named so the acceptance walk runs it.
+- **OQ-w16-sa-02 accepted as this seat's, for W17.** A non-Admin can see an
+  admin-gated capability's example question once the catalog is served whole.
+  Per security **S16-11** `roleGate` is **presentation, never authorization** —
+  every action behind it is enforced server-side by membership — so hiding the
+  chip is **client work**, deferred, and it must never be re-described as a
+  security fix.
+
+### 29. NW-21: zero client change, and the client-side half of Fence 2
+
+- **C13 upheld** by §D5 / OQ-w16-ca-03: the link is resolved **server-side**, so
+  `quotes/index.tsx:274-282` is **unchanged**, NW-21's client cost is **zero**,
+  there is no picker control and no new empty state, and **ux-ui-designer stays
+  unseated**. A client that matched an outcome to an opportunity on
+  `contractId`/`supplierId` would be inferring a server fact — w15 clause 4.
+- **Fence 2** (product-owner: when `savingsPropagated` is `null`, no surface may
+  present the outcome as a realized saving and no total may absorb it) holds in
+  the client **structurally**, for the same reason software-architect gave
+  server-side: after §30 the Savings table renders **only real
+  `SavingsOpportunity` rows**, so an unlinked outcome has no row to appear in and
+  no total to enter. Nothing is left to a rendering promise.
+- **Product-owner's money fence is already satisfied, and verified rather than
+  promised**: `savingsViewModel.ts:110` renders the realized KPI as
+  `countOf(kpis.savingsRealized)` — a **count**, in a meta line beside the
+  identified and in-progress counts — and no client surface renders
+  `SavingsKpiSummary.Realized` as money. No w16 client task needs to change it;
+  the fence's whole cost is that **none may**.
+
+### 30. The Savings pseudo-opportunity row is retired (OQ-w16-ca-01) — ruled on client grounds, with the product half named
+
+`buildOpportunityRows` (`savingsViewModel.ts:236-245`) **prepends every tracked
+renewal action** to the opportunities table as a pseudo-opportunity row with
+`estimate: NOT_YET_AVAILABLE` (`:223`), and the code concedes its own premise at
+`:210-214`. Today that set is **this session's** actions — a handful. Read back
+from the server it becomes **every renewal action in the tenant, permanently**:
+the opportunities table fills with rows that are not opportunities and carry no
+estimate. **A naive store→GET swap ships that flood**, and it would ship it as a
+side effect of a read-back nobody asked to change Savings.
+
+> **Decision: `buildTrackedOpportunityRow` is retired. Savings renders only real
+> `SavingsOpportunity` rows** — NW-21 supplies the real link the pseudo-row was
+> standing in for.
+
+**Whose call this is, stated because it is not obvious**: product-owner is seated
+on NW-12, NW-13 and NW-21 but **not on NW-11**, so no seat other than this one
+can rule it, and leaving it unruled means a task decides it by accident. It is
+ruled here as what it is — a **client-rendering defect** that the read-back
+creates. The **product** half is deferred, not answered: whether Savings should
+show tracked renewal actions at all is product-owner's, and if the answer is yes
+it is a **designed section** of that screen — not a pseudo-opportunity row with
+no estimate — which seats ux-ui-designer in W17.
+
+### 31. Checks, and what this footer does not do
+
+**Checks** (per item, owned by the web half of each task): vitest over the three
+view models reading a **server** row (`renewalPipelineViewModel`,
+`contract360ViewModel`, `savingsViewModel`) — CI runs `npm test`; vitest that the
+quote screen renders a server-supplied outcome **with no session write**; one
+`v2.spec.ts` case covering post-an-action → reload → the same action on all three
+surfaces, and tick-a-step → reload → still ticked. Per **§12** the Playwright
+case is **acceptance-runbook evidence, not a CI gate** — no workflow runs
+Playwright (NW-50 is W18) — and it must not be presented as one. Cross-tenant
+negatives on the new routes are ADR-028's, server-side, where they can be
+enforced.
+
+**This footer does not**: add, move or remove a route ⇒ **ADR-018 is `none`** for
+this seat for the whole wave; touch the mobile scaffold ⇒ **ADR-013 `none`**
+(non-gating, ADR-013 unamended); add a screen, state or copy ⇒ **ADR-020
+`none`**, unless OQ-w16-003 or §30's product half is reversed, each of which
+seats the designer; change the storage or fragment rules of §1 beyond the three
+deletions in §21; write **ADR-026** or **ADR-028** (software-architect's — the
+shapes are reconciled here, not re-decided); or rewrite any body or earlier
+footer. It creates **no new ADR** and supersedes nothing.

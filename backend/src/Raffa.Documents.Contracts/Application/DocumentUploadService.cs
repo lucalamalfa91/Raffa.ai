@@ -50,19 +50,15 @@ public sealed class DocumentUploadService(
 {
     private const int InitialVersionNumber = 1;
 
-    /// <summary>
-    /// Placeholder actor recorded on <see cref="DocumentVersion.CreatedBy"/> until the API
-    /// validates a caller identity token. ADR-010 (Entra ID/OIDC) is not listed in this task's
-    /// "Architecture decisions in force" — there is no validated caller principal yet, so there
-    /// is nothing truthful to record here beyond this explicit placeholder.
-    /// </summary>
-    private const string UnattributedActor = "unattributed";
-
+    /// <param name="actor">The caller's resolved token subject (ADR-011 w16 clause 15) — required,
+    /// no default, so a placeholder can never return by omission. Recorded on
+    /// <see cref="DocumentVersion.CreatedBy"/> and on the <c>document.uploaded</c> audit row.</param>
     public async Task<Result<DocumentUploadResult>> UploadAsync(
         TenantId tenantId,
         string fileName,
         string? mimeType,
         Stream content,
+        string actor,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(fileName))
@@ -114,7 +110,7 @@ public sealed class DocumentUploadService(
             VersionNumber = InitialVersionNumber,
             StoragePath = storagePath,
             Checksum = checksum,
-            CreatedBy = UnattributedActor,
+            CreatedBy = actor,
             CreatedAt = now,
         };
 
@@ -157,7 +153,7 @@ public sealed class DocumentUploadService(
         await auditWriter.WriteAsync(
             new AuditEntry(
                 tenantId,
-                UnattributedActor,
+                actor,
                 "document.uploaded",
                 "document",
                 documentId.Value.ToString(),

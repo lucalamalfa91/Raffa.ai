@@ -1,7 +1,11 @@
 using Raffa.Quotes.Infrastructure;
 using Raffa.Savings.Application;
+using Raffa.Savings.Domain;
+using Raffa.Savings.Infrastructure;
 using Raffa.SharedKernel;
+using Raffa.SharedKernel.Suppliers;
 using Raffa.SharedKernel.Tenancy;
+using Raffa.Suppliers.Products.Application;
 using Microsoft.EntityFrameworkCore;
 
 namespace Raffa.Api;
@@ -62,10 +66,30 @@ namespace Raffa.Api;
 /// its own automated caller rather than inventing a new cross-cutting validation rule this codebase
 /// does not have anywhere else (KB contract: "Do not invent extra locked platform rules").
 /// </para>
+///
+/// <para>
+/// <b>Task E19/F04/US01/T01 (outcome-resolves-the-opportunity; ADR-028 §D5 clause 2, ratified by
+/// the w16 round-2 footer)</b>: the single production caller
+/// (<c>web/src/routes/quotes/index.tsx</c>) never supplies a <c>savingsOpportunityId</c> at all, so
+/// clause 1 above (<see cref="PropagateAsync"/>, unchanged by this task) was reachable only from a
+/// test. <see cref="ResolveSavingsOpportunityIdAsync"/> is the missing second route:
+/// <c>Raffa.Suppliers.Products.Application.SupplierNameNormalizer</c> plus
+/// <see cref="ISupplierNameLookup.FindByNormalizedNameAsync"/> resolve the product's own definition
+/// of supplier identity, read-only — never <c>Raffa.Suppliers.Products.Application
+/// .SupplierResolver</c>, which resolves *or creates* and would mint a supplier row as a side
+/// effect of recording an outcome. <see cref="NegotiationsEndpointExtensions"/> calls it only when
+/// the capture request carried no id, and calls <see cref="PropagateAsync"/> on the result only
+/// when it resolved to exactly one open opportunity — an ambiguous or absent match declines
+/// (returns <see langword="null"/>) without ever calling <see cref="PropagateAsync"/> at all (Fence
+/// 2: no opportunity row updates, no <c>RealizedSavings</c> row is inserted, so
+/// <c>SavingsKpiCalculator</c> cannot absorb a write that never happened).
+/// </para>
 /// </summary>
 internal sealed class NegotiationOutcomePropagationService(
     QuotesDbContext quotesDbContext,
+    SavingsDbContext savingsDbContext,
     SavingsOpportunityService savingsOpportunityService,
+    ISupplierNameLookup supplierNameLookup,
     ITenantContext tenantContext,
     IClock clock,
     IAuditWriter auditWriter)
@@ -91,9 +115,15 @@ internal sealed class NegotiationOutcomePropagationService(
     private const string AuditPropagatedAction = "negotiation_outcome.propagated";
     private const string AuditResourceType = "negotiation_outcome";
 
-    /// <summary>Same interim actor placeholder as every other automated write in this host (ADR-010
-    /// is not wired in yet) — see <c>QuoteExtractionPipeline.SystemActor</c>'s own doc comment for
-    /// why.</summary>
+    /// <summary>
+    /// The reserved, documented non-human principal for this service's own writes: this method runs
+    /// as part of the negotiation-outcome capture request, never with a caller a human supplied
+    /// directly, so <c>"system:negotiation-outcome-propagation"</c> is the permanent, correct actor
+    /// for a non-human write (ADR-011 w16 clause 16c) — not an interim placeholder pending ADR-010,
+    /// which landed in wave w15. The convention this constant originated (ADR-011 w16 clause 16) is
+    /// reused, not re-invented, by <c>Raffa.Savings.Application.SavingsOpportunityService
+    /// .SystemActor</c> and <c>Raffa.Chat.Application.RagAnswerService.SystemActor</c>.
+    /// </summary>
     private const string SystemActor = "system:negotiation-outcome-propagation";
 
     /// <summary>
@@ -133,6 +163,7 @@ internal sealed class NegotiationOutcomePropagationService(
             owner: null,
             status: null,
             realizedAmount: outcome.RealizedSaving,
+            actor: SystemActor,
             cancellationToken).ConfigureAwait(false);
 
         if (updateResult.IsFailure)
@@ -168,6 +199,74 @@ internal sealed class NegotiationOutcomePropagationService(
             outcome.RealizedSaving,
             opportunity.Currency,
             now));
+    }
+
+    /// <summary>
+    /// Task E19/F04/US01/T01 (outcome-resolves-the-opportunity; ADR-028 §D5 clause 2). Called by
+    /// <see cref="NegotiationsEndpointExtensions"/> only when the capture request carried no
+    /// <c>savingsOpportunityId</c> at all — clause 1 (<see cref="PropagateAsync"/>) stays untouched
+    /// and takes precedence whenever the caller does supply one. Resolves the product's own
+    /// definition of supplier identity — <c>SupplierNameNormalizer.Normalize</c> against the
+    /// <c>(tenant_id, normalized_name)</c> unique index
+    /// (<see cref="ISupplierNameLookup.FindByNormalizedNameAsync"/>) — then the tenant's own
+    /// <b>open</b> (not yet <see cref="SavingsOpportunityStatus.Realized"/>) <c>SavingsOpportunity</c>
+    /// rows carrying that supplier id.
+    ///
+    /// <para>
+    /// <b>Resolved, never guessed</b> (ADR-001 w16 clause 4): returns <see langword="null"/> —
+    /// asking the caller to leave the capture's own <c>savingsPropagated</c> at its honest
+    /// <see langword="null"/> and never call <see cref="PropagateAsync"/> at all (w16 round-2
+    /// footer, Fence 2) — for every case that is not an exact, unambiguous match: the quote names no
+    /// supplier, the name matches no <c>Supplier</c> this tenant has ever resolved before, or the
+    /// matched supplier's own open opportunities number zero or two-or-more. Only
+    /// <c>Raffa.Suppliers.Products.Application.SupplierResolver</c> creates a row on a miss; this
+    /// method never does (it calls <see cref="ISupplierNameLookup"/>, never that type), so a decline
+    /// here can never mint a supplier as a side effect of recording an outcome.
+    /// </para>
+    /// </summary>
+    public async Task<EntityId?> ResolveSavingsOpportunityIdAsync(
+        TenantId tenantId,
+        EntityId quoteId,
+        CancellationToken cancellationToken = default)
+    {
+        using var tenantScope = tenantContext.BeginScope(tenantId);
+
+        var supplierName = await quotesDbContext.Quotes
+            .AsNoTracking()
+            .Where(q => q.TenantId == tenantId && q.Id == quoteId)
+            .Select(q => q.Supplier)
+            .SingleOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        if (string.IsNullOrWhiteSpace(supplierName))
+        {
+            return null;
+        }
+
+        var normalizedName = SupplierNameNormalizer.Normalize(supplierName);
+
+        var supplierId = await supplierNameLookup
+            .FindByNormalizedNameAsync(tenantId, normalizedName, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (supplierId is not { } resolvedSupplierId)
+        {
+            return null;
+        }
+
+        // At most 2 fetched -- distinguishing "exactly one" from "two or more" never needs the
+        // true count of an ambiguous match.
+        var openOpportunityIds = await savingsDbContext.SavingsOpportunities
+            .AsNoTracking()
+            .Where(o => o.TenantId == tenantId
+                && o.SupplierId == resolvedSupplierId
+                && o.Status != SavingsOpportunityStatus.Realized)
+            .Select(o => o.Id)
+            .Take(2)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return openOpportunityIds.Count == 1 ? openOpportunityIds[0] : null;
     }
 }
 

@@ -8,6 +8,9 @@
 #   inputs/next/<file>.md (+ inputs/design/**, ../<code>, ADRs, BACKLOG, MANIFEST)
 #     -> next-intake-phase    reports/context/waves/<w>-requirements.md (+ decision skeleton)
 #     -> next-council         7 independent lanes (concurrent) then the table (group_chat 8)
+#                             workflow + context_mode: nothing — never sequential-after-concat
+#                             (w16: feeding the concatenated lane transcripts into 8 Claude
+#                             Code table seats aborted the group_chat with a false exit 0)
 #                             ADR-*.md new / footers, INDEX.md, reports/architecture/waves/<w>.md
 #     -> next-decomposition   reports/workitems/epic-NN-*/** (append-only), BACKLOG.md,
 #                             reports/plan/slices/<w>.yaml, MANIFEST row, reports/audit/<w>-hitl.md
@@ -19,8 +22,8 @@
 #   ./run.ps1 -Max -Slice <w> -o execution-fanout   (the same, by hand)
 # Launcher for this document: ./run-next.ps1 -Max -Todo inputs/next/<file>.md
 # (-Check = parse + refs + prompt files; -o next-from-council |
-# next-from-decomposition | next-plan-close re-enter after a HITL edit or a
-# run that failed outside the plan).
+# next-from-table | next-from-decomposition | next-plan-close re-enter after a
+# HITL edit or a run that failed outside the plan).
 # STUDIO: leave the working directory unset (= this folder) or pick .helix.
 # The engine anchors close gates and file checks to the working directory:
 # run f3018639 (2026-09-10) ran with .helix/.git.nest.bak, the council wrote
@@ -290,6 +293,13 @@ orchestrations:
   # --- dynamic council: independent lanes, then the table --------------------
   # One sequential per seat, run concurrently so no one has read the others.
   # An uninvolved seat emits LANE_SKIPPED: at once (skills/next-seats.md).
+  # Lanes -> table MUST NOT be a sequential: sequential feeds concat (seven
+  # full Claude Code transcripts) into the group_chat as the next user turn.
+  # Coding-agent group_chat then dies before the first table turn (w16
+  # 2026-09-14: lanes wrote, votes stayed pending, helix rc looked like 0).
+  # next-council is a workflow whose lanes->table edge uses context_mode
+  # nothing (builders.py: Message "Continue.") so the table reads drafts
+  # from disk — the durable channel (ADR-0050 / phase_context.py).
   - id: next-lane-product-owner
     topology: sequential
     participants: [next-product-owner]
@@ -377,8 +387,13 @@ orchestrations:
     limits: { max_identical_turns: 9 }
 
   - id: next-council
-    topology: sequential
+    topology: workflow
     participants: [next-lanes, next-council-close]
+    start: next-lanes
+    context_mode: nothing
+    edges:
+      - { from: next-lanes, to: next-council-close, context_mode: nothing }
+    limits: { max_steps: 300000, max_iterations: 5, run_timeout_s: 14400 }
 
   # --- decomposition + Pattern F gate loop -----------------------------------
   - id: next-decomposition
@@ -422,7 +437,7 @@ orchestrations:
     start: next-intake-phase
     edges:
       - { from: next-intake-phase, to: next-council, condition: on_marker, marker: "CONTEXT_READY:" }
-      - [next-council, next-decomposition]
+      - { from: next-council, to: next-decomposition, context_mode: nothing }
       - { from: next-decomposition, to: next-check, condition: on_marker, marker: "DECOMPOSITION_DONE:" }
       # needs_remediation = DECOMPOSITION_GAPS: leading a line (registry.py, ADR-0037 F7).
       - [next-check, next-remediation, needs_remediation]
@@ -450,11 +465,31 @@ orchestrations:
       - next-remediation
     start: next-council
     edges:
-      - [next-council, next-decomposition]
+      - { from: next-council, to: next-decomposition, context_mode: nothing }
       - { from: next-decomposition, to: next-check, condition: on_marker, marker: "DECOMPOSITION_DONE:" }
       - [next-check, next-remediation, needs_remediation]
       - [next-remediation, next-check]
       # DECOMPOSITION_OK: no edge -- terminal.
+    limits: { max_steps: 300000, max_iterations: 15, run_timeout_s: 21600 }
+
+  # Re-entry when the lanes are already on disk (LANE_DRAFTS_WRITTEN: /
+  # LANE_SKIPPED:) but the table never ran. Skips next-lanes so the group_chat
+  # is not fed the concatenated lane transcripts. start = next-council-close
+  # receives the launcher -i string (wave=…), not concat. run-next.ps1 still
+  # touches reports/architecture/waves/<w>.md (D-N2 close_requires_glob).
+  - id: next-from-table
+    topology: workflow
+    participants:
+      - next-council-close
+      - next-decomposition
+      - next-check
+      - next-remediation
+    start: next-council-close
+    edges:
+      - { from: next-council-close, to: next-decomposition, context_mode: nothing }
+      - { from: next-decomposition, to: next-check, condition: on_marker, marker: "DECOMPOSITION_DONE:" }
+      - [next-check, next-remediation, needs_remediation]
+      - [next-remediation, next-check]
     limits: { max_steps: 300000, max_iterations: 15, run_timeout_s: 21600 }
 
   # Re-entry when the council closed ON DISK (record filled, gate approved in

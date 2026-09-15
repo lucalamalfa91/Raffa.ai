@@ -34,6 +34,11 @@ public static class QuotesEndpointExtensions
     public static IEndpointRouteBuilder MapQuotesEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapPost("/api/quotes", UploadQuoteAsync);
+        // Task E19/F02/US01/T01 (quote-read-api) AC-1; ADR-028 §D2.
+        endpoints.MapGet("/api/quotes", ListQuotesAsync);
+        // Task E19/F02/US01/T01 (quote-read-api) AC-2/AC-3/AC-4; ADR-028 §D2 — the quote with its
+        // recorded negotiation outcomes embedded, newest first.
+        endpoints.MapGet("/api/quotes/{id}", GetQuoteAsync);
         // Task E05/F02/US01/T01 (market-assessment) AC-3.
         endpoints.MapGet("/api/quotes/{id}/assessment", GetAssessmentAsync);
         // Task E05/F01/US02/T02 (sku-recalculate) AC-2/AC-3.
@@ -120,6 +125,7 @@ public static class QuotesEndpointExtensions
             file.FileName,
             file.ContentType,
             storageContent,
+            caller.Identity!,
             cancellationToken,
             supplier: supplier,
             currency: currency,
@@ -172,6 +178,120 @@ public static class QuotesEndpointExtensions
     }
 
     private static string? NullIfBlank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    /// <summary>
+    /// AC-1 (task E19/F02/US01/T01, quote-read-api; ADR-028 §D2): the tenant's quotes, newest
+    /// first — thin HTTP translation over <see cref="QuoteQueryService.ListAsync"/>, which returns
+    /// stored fields only (no assessment recomputation). Same NW-05 caller ladder as every other
+    /// handler in this file.
+    /// </summary>
+    private static async Task<IResult> ListQuotesAsync(
+        HttpRequest request,
+        QuoteQueryService queryService,
+        ICallerContext callerContext,
+        CancellationToken cancellationToken)
+    {
+        var caller = await callerContext.ResolveTenantAsync(request, cancellationToken);
+        if (caller.Failure is not null)
+        {
+            return caller.Failure;
+        }
+
+        using var callerTenantScope = caller.Scope;
+
+        var quotes = await queryService.ListAsync(caller.TenantId, cancellationToken).ConfigureAwait(false);
+
+        return Results.Ok(new { items = quotes.Select(BuildQuoteListItemResponse) });
+    }
+
+    /// <summary>
+    /// AC-2/AC-3/AC-4 (task E19/F02/US01/T01, quote-read-api; ADR-028 §D2): the quote with its
+    /// recorded negotiation outcomes embedded, newest first — a quote with none returns an empty
+    /// list, not 404 (AC-2). Unknown id (for this tenant, including another tenant's quote — AC-4)
+    /// is 404; a non-GUID id is 400 (AC-3). Thin HTTP translation over
+    /// <see cref="QuoteQueryService.GetAsync"/>, same "tenant-scoped lookup miss is a 404, not an
+    /// error" convention <see cref="GetAssessmentAsync"/> below already uses.
+    /// </summary>
+    private static async Task<IResult> GetQuoteAsync(
+        string id,
+        HttpRequest request,
+        QuoteQueryService queryService,
+        ICallerContext callerContext,
+        CancellationToken cancellationToken)
+    {
+        var caller = await callerContext.ResolveTenantAsync(request, cancellationToken);
+        if (caller.Failure is not null)
+        {
+            return caller.Failure;
+        }
+
+        using var callerTenantScope = caller.Scope;
+
+        if (!Guid.TryParse(id, out var quoteGuid))
+        {
+            return Results.BadRequest("The quote id in the route must be a GUID.");
+        }
+
+        var detail = await queryService
+            .GetAsync(caller.TenantId, new EntityId(quoteGuid), cancellationToken)
+            .ConfigureAwait(false);
+
+        if (detail is null)
+        {
+            return Results.NotFound();
+        }
+
+        return Results.Ok(new
+        {
+            id = detail.Quote.Id.Value,
+            fileName = detail.Quote.FileName,
+            mimeType = detail.Quote.MimeType,
+            processingStatus = detail.Quote.ProcessingStatus.ToString(),
+            supplier = detail.Quote.Supplier,
+            currency = detail.Quote.Currency,
+            geography = detail.Quote.Geography,
+            purchaseDate = detail.Quote.PurchaseDate,
+            createdAt = detail.Quote.CreatedAt,
+            outcomes = detail.Outcomes.Select(BuildOutcomeResponse),
+        });
+    }
+
+    /// <summary>Wire-shapes one <see cref="QuoteListItem"/> row for <see cref="ListQuotesAsync"/> —
+    /// the same field set <see cref="GetQuoteAsync"/> below echoes for the single-quote read, minus
+    /// <c>outcomes</c> (ADR-028 §D2: the list is a tenant-scoped list, never an outcomes feed).
+    /// </summary>
+    private static object BuildQuoteListItemResponse(QuoteListItem quote) => new
+    {
+        id = quote.Id.Value,
+        fileName = quote.FileName,
+        mimeType = quote.MimeType,
+        processingStatus = quote.ProcessingStatus.ToString(),
+        supplier = quote.Supplier,
+        currency = quote.Currency,
+        geography = quote.Geography,
+        purchaseDate = quote.PurchaseDate,
+        createdAt = quote.CreatedAt,
+    };
+
+    /// <summary>Wire-shapes one <see cref="NegotiationOutcomeRecord"/> for <see cref="GetQuoteAsync"/>'s
+    /// <c>outcomes</c> array — the same field set `POST /api/negotiations/outcomes` returns on
+    /// capture (<see cref="NegotiationsEndpointExtensions.CaptureOutcomeAsync"/>), minus the two
+    /// capture-time-only propagation-attempt fields (<c>savingsPropagated</c>/
+    /// <c>savingsPropagationError</c> are not stored facts — see <see cref="NegotiationOutcomeRecord"/>'s
+    /// own doc comment).</summary>
+    private static object BuildOutcomeResponse(NegotiationOutcomeRecord outcome) => new
+    {
+        id = outcome.Id.Value,
+        originalQuoteTotal = outcome.OriginalQuoteTotal,
+        targetPrice = outcome.TargetPrice,
+        finalPrice = outcome.FinalPrice,
+        realizedSaving = outcome.RealizedSaving,
+        discountPercent = outcome.DiscountPercent,
+        negotiationDurationDays = outcome.NegotiationDurationDays,
+        leversUsed = outcome.LeversUsed.Select(l => l.ToString()),
+        capturedAt = outcome.CapturedAt,
+        savingsOpportunityId = outcome.SavingsOpportunityId?.Value,
+    };
 
     /// <summary>
     /// AC-3 ("<c>GET /api/quotes/{id}/assessment</c> returns the assessment with
@@ -343,7 +463,7 @@ public static class QuotesEndpointExtensions
         }
 
         var result = await mappingService.RecalculateAsync(
-                new TenantId(tenantGuid), new EntityId(quoteGuid), request.Mappings, cancellationToken)
+                new TenantId(tenantGuid), new EntityId(quoteGuid), request.Mappings, caller.Identity!, cancellationToken)
             .ConfigureAwait(false);
 
         if (result.IsFailure)

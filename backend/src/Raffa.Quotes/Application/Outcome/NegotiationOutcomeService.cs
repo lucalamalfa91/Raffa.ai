@@ -82,11 +82,6 @@ public sealed class NegotiationOutcomeService(
     /// <c>"savings_opportunity"</c>.</summary>
     private const string AuditResourceType = "negotiation_outcome";
 
-    /// <summary>Same interim-actor placeholder as <c>QuoteUploadService.UnattributedActor</c> — see
-    /// that type's own doc comment for why: ADR-010 (Entra ID/OIDC) is not in this task's
-    /// "Architecture decisions in force" list, so there is no validated caller identity yet.</summary>
-    private const string UnattributedActor = "unattributed";
-
     /// <summary>
     /// Backs `POST /api/negotiations/outcomes` (AC-1). Validates <paramref name="request"/> fully
     /// before any query or write (an invalid request leaves the database untouched), then confirms
@@ -95,9 +90,12 @@ public sealed class NegotiationOutcomeService(
     /// .AssessAsync</c> already performs for the identical id) before computing and persisting the
     /// outcome.
     /// </summary>
+    /// <param name="actor">The caller's resolved token subject (ADR-011 w16 clause 15) — required,
+    /// no default. Recorded on the <c>negotiation_outcome.captured</c> audit row.</param>
     public async Task<Result<NegotiationOutcomeResult>> CaptureAsync(
         TenantId tenantId,
         NegotiationOutcomeCaptureRequest request,
+        string actor,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -187,7 +185,7 @@ public sealed class NegotiationOutcomeService(
         await auditWriter.WriteAsync(
             new AuditEntry(
                 tenantId,
-                UnattributedActor,
+                actor,
                 AuditCapturedAction,
                 AuditResourceType,
                 outcome.Id.Value.ToString(),

@@ -12,10 +12,15 @@ public sealed class Conversation : TenantScopedEntity
 {
     /// <summary>
     /// Scopes this conversation to the caller who started it (R-CONV-01 "keyed by tenant +
-    /// user"). A plain string, not an FK into <c>Raffa.Identity.Workspace</c> — under the
-    /// ADR-022 posture this is the <c>X-User-Id</c> header (MSAL account username),
-    /// non-authoritative until the task that lands the API JWT (ADR-010) replaces it with the
-    /// token subject (OQ-askv2-005). Postgres Row-Level Security (this task's own migration)
+    /// user"). A plain string, not an FK into <c>Raffa.Identity.Workspace</c> — the validated
+    /// token subject (the <c>oid</c> claim, ADR-010; task E18/F02/US01/T01, ADR-010 w16 footer),
+    /// resolved once per request by <c>Raffa.Api.Infrastructure.ICallerContext</c> and passed in
+    /// unchanged. Opaque and case-sensitive, matched ordinally — never lower-cased
+    /// (<c>CallerIdentity.cs:60-68</c> records that as deliberate): two rows differing only in
+    /// case are two different callers, by design. A conversation created under the pre-w15
+    /// <c>X-User-Id</c>/email posture is keyed by that email and is not reachable by any
+    /// <c>oid</c> — left in place, never remapped, never deleted (ADR-001 w16 footer clause 1).
+    /// Postgres Row-Level Security (this task's own migration)
     /// scopes by <see cref="Raffa.SharedKernel.TenantId"/> only — RLS has no notion of a
     /// second, per-user predicate — so "another user of the same workspace cannot list or read
     /// the conversation" (R-CONV-01 AC-1) is enforced in application code

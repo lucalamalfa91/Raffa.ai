@@ -444,7 +444,7 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": { items: ({ contractId: string; supplierId: string | null; supplierName: string | null; status: "Determined" | "NoRenewal" | "CannotDetermine"; renewalDate: string | null; daysUntilRenewal: number | null; annualSpend: number | null; cancellationDeadline: string | null; daysUntilCancellationDeadline: number | null; autoRenewal: boolean; action: string; insightCard: { facts: { supplierId: string | null; supplierName: string | null; renewalDate: string | null; daysUntilRenewal: number | null; annualSpend: number | null; cancellationDeadline: string | null; daysUntilCancellationDeadline: number | null }; recommendations: { recommendedAction: string; explanation: string; annualUpliftPercent: number | null; marketPosition: string | null; potentialSavingsRange: string | null } } })[]; totalCount: number };
+          "application/json": { items: ({ contractId: string; supplierId: string | null; supplierName: string | null; status: "Determined" | "NoRenewal" | "CannotDetermine"; renewalDate: string | null; daysUntilRenewal: number | null; annualSpend: number | null; cancellationDeadline: string | null; daysUntilCancellationDeadline: number | null; autoRenewal: boolean; action: string; savedAction?: { contractId: string; owner: string; status: "NotStarted" | "InProgress" | "Completed"; action: string; updatedAt: string } | null; insightCard: { facts: { supplierId: string | null; supplierName: string | null; renewalDate: string | null; daysUntilRenewal: number | null; annualSpend: number | null; cancellationDeadline: string | null; daysUntilCancellationDeadline: number | null }; recommendations: { recommendedAction: string; explanation: string; annualUpliftPercent: number | null; marketPosition: string | null; potentialSavingsRange: string | null } } })[]; totalCount: number };
         };
       };
       400: {
@@ -472,6 +472,19 @@ export interface operations {
       };
     };
   };
+  getRenewalAction: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { contractId: string; owner: string; status: "NotStarted" | "InProgress" | "Completed"; action: string; updatedAt: string };
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
   postRenewalAction: {
     responses: {
       200: {
@@ -482,6 +495,15 @@ export interface operations {
       400: {
         content: {
           "application/json": string;
+        };
+      };
+    };
+  };
+  listQuotes: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { items: ({ id: string; fileName: string; mimeType: string; processingStatus: string; supplier: string | null; currency: string | null; geography: string | null; purchaseDate: string | null; createdAt: string })[] };
         };
       };
     };
@@ -717,6 +739,77 @@ export interface operations {
       };
     };
   };
+  listAuditEvents: {
+    responses: {
+      200: {
+        content: {
+          "application/json": ({ id: string; actor: string; action: string; resourceType: string; resourceId: string; occurredAt: string; detail: string | null })[];
+        };
+      };
+      400: {
+        content: {
+          "application/json": string;
+        };
+      };
+      403: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  getQuote: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { id: string; fileName: string; mimeType: string; processingStatus: string; supplier: string | null; currency: string | null; geography: string | null; purchaseDate: string | null; createdAt: string; outcomes: ({ id: string; originalQuoteTotal: number; targetPrice: number | null; finalPrice: number; realizedSaving: number; discountPercent: number; negotiationDurationDays: number; leversUsed: ("Volume" | "Term" | "Utilization" | "Alternatives" | "QuarterEnd" | "Bundle" | "PaymentTerms")[]; capturedAt: string; savingsOpportunityId: string | null })[] };
+        };
+      };
+      400: {
+        content: {
+          "application/json": string;
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  getNegotiationSteps: {
+    responses: {
+      200: {
+        content: {
+          "application/json": ("Notify" | "RequestRevisedPricing" | "CounterWithMarketBenchmark" | "SignOrSendNonRenewalNotice")[];
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  putNegotiationSteps: {
+    responses: {
+      200: {
+        content: {
+          "application/json": ("Notify" | "RequestRevisedPricing" | "CounterWithMarketBenchmark" | "SignOrSendNonRenewalNotice")[];
+        };
+      };
+      400: {
+        content: {
+          "application/json": string;
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
 }
 
 export interface paths {
@@ -788,9 +881,11 @@ export interface paths {
     get: operations["getRenewalPriority"];
   };
   "/api/renewals/{id}/action": {
+    get: operations["getRenewalAction"];
     post: operations["postRenewalAction"];
   };
   "/api/quotes": {
+    get: operations["listQuotes"];
     post: operations["uploadQuote"];
   };
   "/api/quotes/{id}/assessment": {
@@ -832,5 +927,15 @@ export interface paths {
   };
   "/api/contracts/{id}/strategy": {
     get: operations["getContractStrategy"];
+  };
+  "/api/audit": {
+    get: operations["listAuditEvents"];
+  };
+  "/api/quotes/{id}": {
+    get: operations["getQuote"];
+  };
+  "/api/contracts/{id}/negotiation-steps": {
+    get: operations["getNegotiationSteps"];
+    put: operations["putNegotiationSteps"];
   };
 }

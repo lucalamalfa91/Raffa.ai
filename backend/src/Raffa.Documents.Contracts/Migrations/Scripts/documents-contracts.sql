@@ -921,3 +921,54 @@ BEGIN
     END IF;
 END $EF$;
 COMMIT;
+
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260915041146_AddContractNegotiationStep') THEN
+    CREATE TABLE contract_negotiation_step (
+        id uuid NOT NULL,
+        contract_id uuid NOT NULL,
+        step character varying(60) NOT NULL,
+        ticked_at timestamp with time zone NOT NULL,
+        tenant_id uuid NOT NULL,
+        CONSTRAINT pk_contract_negotiation_step PRIMARY KEY (id)
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260915041146_AddContractNegotiationStep') THEN
+    CREATE INDEX ix_contract_negotiation_step_tenant_id ON contract_negotiation_step (tenant_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260915041146_AddContractNegotiationStep') THEN
+    CREATE UNIQUE INDEX ix_contract_negotiation_step_tenant_id_contract_id_step ON contract_negotiation_step (tenant_id, contract_id, step);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260915041146_AddContractNegotiationStep') THEN
+    ALTER TABLE "contract_negotiation_step" ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE "contract_negotiation_step" FORCE ROW LEVEL SECURITY;
+    CREATE POLICY tenant_isolation ON "contract_negotiation_step"
+        USING (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid)
+        WITH CHECK (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260915041146_AddContractNegotiationStep') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20260915041146_AddContractNegotiationStep', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+

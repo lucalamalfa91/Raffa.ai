@@ -25,12 +25,10 @@ namespace Raffa.Documents.Contracts.Application;
 /// contract or a later one — only ever appends version N+1; no <see cref="ContractVersion"/> row
 /// is ever mutated or deleted once written.
 ///
-/// Same interim-actor placeholder as <c>DocumentUploadService.UnattributedActor</c> (see that
-/// type's own doc comment): ADR-010 is not in this task's "Architecture decisions in force" list,
-/// so there is no validated caller identity to record on
-/// <see cref="CorrectionHistory.CorrectedBy"/>/<see cref="ContractVersion.CreatedBy"/> yet, and a
-/// client-supplied "correctedBy" on the request body would be an unverified, spoofable identity —
-/// worse than an explicit, honest placeholder.
+/// The caller's resolved token subject (ADR-010) is threaded in as <see cref="CorrectAsync"/>'s own
+/// <c>actor</c> parameter and recorded on <see cref="CorrectionHistory.CorrectedBy"/>/
+/// <see cref="ContractVersion.CreatedBy"/> (ADR-011 w16 clause 15) — never a client-supplied
+/// "correctedBy" on the request body, which would be an unverified, spoofable identity.
 ///
 /// Owns its own tenant scope (<see cref="ITenantContext.BeginScope"/>), same rationale as every
 /// other Application-layer service in this module (ADR-009 belt-and-suspenders: the explicit
@@ -112,11 +110,6 @@ public sealed class ContractCorrectionService(
     /// <see cref="CorrectionHistory.TargetEntityType"/> discriminator, a separate convention).</summary>
     private const string AuditResourceType = "contract";
 
-    /// <summary>Same placeholder actor as <c>DocumentUploadService.UnattributedActor</c> — see
-    /// the type doc comment above for why this task does not accept/trust a caller-supplied
-    /// identity.</summary>
-    private const string UnattributedActor = "unattributed";
-
     /// <summary>The only field names <see cref="CorrectAsync"/> accepts in its <c>corrections</c>
     /// map — every other <see cref="Contract"/> property is either an identity column
     /// (<c>Id</c>/<c>TenantId</c>), a cross-aggregate reference (<c>ParentContractId</c> —
@@ -156,11 +149,16 @@ public sealed class ContractCorrectionService(
     private static bool IsSupplierField(string fieldName) =>
         string.Equals(fieldName, SupplierFieldName, StringComparison.OrdinalIgnoreCase);
 
+    /// <param name="actor">The caller's resolved token subject (ADR-011 w16 clause 15) — required,
+    /// no default, so a placeholder can never return by omission. Recorded on every
+    /// <see cref="CorrectionHistory.CorrectedBy"/>/<see cref="ContractVersion.CreatedBy"/> row this
+    /// call stages and on the <c>contract.corrected</c> audit row.</param>
     public async Task<Result<ContractCorrectionResult>> CorrectAsync(
         TenantId tenantId,
         EntityId contractId,
         IReadOnlyDictionary<string, string?> corrections,
         string? reason,
+        string actor,
         CancellationToken cancellationToken = default)
     {
         if (corrections.Count == 0)
@@ -303,7 +301,7 @@ public sealed class ContractCorrectionService(
                 FieldName = fieldName,
                 PreviousValue = previousValue,
                 NewValue = newValue,
-                CorrectedBy = UnattributedActor,
+                CorrectedBy = actor,
                 CorrectedAt = now,
                 Reason = reason,
             });
@@ -329,7 +327,7 @@ public sealed class ContractCorrectionService(
                 VersionNumber = InitialVersionNumber,
                 SnapshotJson = originalExtractionSnapshotJson!,
                 ChangeReason = OriginalExtractionChangeReason,
-                CreatedBy = UnattributedActor,
+                CreatedBy = actor,
                 CreatedAt = contract.CreatedAt,
             });
             latestVersionNumber = InitialVersionNumber;
@@ -343,7 +341,7 @@ public sealed class ContractCorrectionService(
             VersionNumber = newVersionNumber,
             SnapshotJson = Snapshot(contract),
             ChangeReason = reason,
-            CreatedBy = UnattributedActor,
+            CreatedBy = actor,
             CreatedAt = now,
         });
 
@@ -357,7 +355,7 @@ public sealed class ContractCorrectionService(
         await auditWriter.WriteAsync(
             new AuditEntry(
                 tenantId,
-                UnattributedActor,
+                actor,
                 AuditCorrectedAction,
                 AuditResourceType,
                 contract.Id.Value.ToString(),

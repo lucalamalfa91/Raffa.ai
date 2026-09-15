@@ -253,7 +253,9 @@ internal sealed class AskEvalHost : IAsyncDisposable
 
         // The golden caller is an Admin member of the fixture tenant (NW-05, see the filter above).
         var identity = scope.ServiceProvider.GetRequiredService<IdentityWorkspaceDbContext>();
-        var member = new WorkspaceUser { TenantId = Fixture.TenantId, Email = GoldenSetCallerId, CreatedAt = AiEvalOptions.EvaluationInstant };
+        // ADR-010 w16 footer S16-1: the membership/role predicates match ExternalSubjectId only now
+        // -- set it to the same value presented as X-User-Id (-> the `oid` claim), same as `Email`.
+        var member = new WorkspaceUser { TenantId = Fixture.TenantId, Email = GoldenSetCallerId, ExternalSubjectId = GoldenSetCallerId, CreatedAt = AiEvalOptions.EvaluationInstant };
         var adminRole = new WorkspaceRole { TenantId = Fixture.TenantId, Name = WorkspaceRoleName.Admin, CreatedAt = AiEvalOptions.EvaluationInstant };
         identity.WorkspaceUsers.Add(member);
         identity.WorkspaceRoles.Add(adminRole);

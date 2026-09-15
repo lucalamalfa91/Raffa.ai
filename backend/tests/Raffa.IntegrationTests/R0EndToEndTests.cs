@@ -101,10 +101,14 @@ public sealed class R0EndToEndTests : IClassFixture<R0IntegrationFixture>
         Assert.StartsWith($"{tenantId:D}/", savedPreview.Path, StringComparison.Ordinal);
         Assert.Equal(new byte[] { 0x89, 0x50, 0x4E, 0x47 }, savedPreview.Content[..4]);
 
-        // 5. Read the audit trail as an authenticated Admin (AC-1 "audit event").
+        // 5. Read the audit trail as an authenticated Admin (AC-1 "audit event"). Wave w16's NW-08
+        // swapped the guard from a simulated claims principal to ICallerContext/WorkspaceRoleResolver
+        // (ADR-025 §K): the creator from step 1 is already this tenant's real Admin member, so the
+        // same X-User-Id + X-Tenant-Id pair every other tenant-scoped call in this test already
+        // sends is what reaches it now -- no test-only claim header left to simulate.
         using var auditRequest = new HttpRequestMessage(HttpMethod.Get, "/api/audit");
-        auditRequest.Headers.Add(TestPrincipalStartupFilter.TenantIdHeaderName, tenantId.ToString());
-        auditRequest.Headers.Add(TestPrincipalStartupFilter.RoleHeaderName, "Admin");
+        auditRequest.Headers.Add("X-User-Id", "admin@acme.example");
+        auditRequest.Headers.Add("X-Tenant-Id", tenantId.ToString());
         var auditResponse = await client.SendAsync(auditRequest);
         Assert.Equal(HttpStatusCode.OK, auditResponse.StatusCode);
 

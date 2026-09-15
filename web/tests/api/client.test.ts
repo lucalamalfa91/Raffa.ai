@@ -1325,6 +1325,92 @@ describe("createApiClient().postRenewalAction (task E08/F01/US01/T01)", () => {
   });
 });
 
+describe("createApiClient().getQuote (task E19/F06/US01/T01)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const quoteBody = {
+    id: "quote-1",
+    fileName: "q.pdf",
+    mimeType: "application/pdf",
+    processingStatus: "Completed",
+    supplier: "Acme",
+    currency: "EUR",
+    geography: null,
+    purchaseDate: null,
+    createdAt: "2026-09-15T00:00:00Z",
+    outcomes: [],
+  };
+
+  it("GETs <baseUrl>/api/quotes/{id} with the X-Tenant-Id header, no body", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(quoteBody), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createApiClient("https://api.dev.raffa.example").getQuote("tenant-1", "quote-1");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("https://api.dev.raffa.example/api/quotes/quote-1");
+    expect(init).toEqual({
+      headers: { "X-Tenant-Id": "tenant-1" },
+      cache: "no-store",
+    });
+  });
+
+  it("reports ok:true with the generated quote body on 200", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(quoteBody), { status: 200 })));
+
+    const result = await createApiClient("https://api.dev.raffa.example").getQuote("tenant-1", "quote-1");
+
+    expect(result).toEqual({ ok: true, statusCode: 200, quote: quoteBody, error: null });
+  });
+});
+
+describe("createApiClient().getNegotiationSteps (task E19/F06/US01/T01)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("GETs <baseUrl>/api/contracts/{id}/negotiation-steps with the X-Tenant-Id header", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(["Notify"]), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createApiClient("https://api.dev.raffa.example").getNegotiationSteps("tenant-1", "contract-1");
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("https://api.dev.raffa.example/api/contracts/contract-1/negotiation-steps");
+    expect(init).toEqual({
+      headers: { "X-Tenant-Id": "tenant-1" },
+      cache: "no-store",
+    });
+  });
+});
+
+describe("createApiClient().putNegotiationSteps (task E19/F06/US01/T01)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("PUTs JSON to <baseUrl>/api/contracts/{id}/negotiation-steps with the X-Tenant-Id header", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(["Notify"]), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createApiClient("https://api.dev.raffa.example").putNegotiationSteps("tenant-1", "contract-1", {
+      steps: ["Notify"],
+    });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("https://api.dev.raffa.example/api/contracts/contract-1/negotiation-steps");
+    expect(init).toEqual({
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "X-Tenant-Id": "tenant-1" },
+      body: JSON.stringify({ steps: ["Notify"] }),
+      cache: "no-store",
+    });
+  });
+});
+
 describe("createApiClient().uploadQuote (task E08/F03/US01/T01)", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -2354,6 +2440,9 @@ describe("createApiClient() Authorization header (task E18/F01/US02/T01, NW-05; 
       validateDocument: () => client.validateDocument("tenant-1", "doc-1", { acceptedFields: [] }),
       postRenewalAction: () =>
         client.postRenewalAction("tenant-1", "contract-1", { owner: "buyer@acme.example", status: "InProgress", action: "…" }),
+      getQuote: () => client.getQuote("tenant-1", "quote-1"),
+      getNegotiationSteps: () => client.getNegotiationSteps("tenant-1", "contract-1"),
+      putNegotiationSteps: () => client.putNegotiationSteps("tenant-1", "contract-1", { steps: ["Notify"] }),
       uploadQuote: () => client.uploadQuote("tenant-1", pdfFile()),
       getQuoteAssessment: () => client.getQuoteAssessment("tenant-1", "quote-1"),
       recalculateQuoteAssessment: () => client.recalculateQuoteAssessment("tenant-1", "quote-1"),

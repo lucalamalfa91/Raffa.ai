@@ -26,6 +26,12 @@ public sealed class DocumentsContractsDbContext(DbContextOptions<DocumentsContra
     public DbSet<Embedding> Embeddings => Set<Embedding>();
     public DbSet<ExtractionEvidence> ExtractionEvidences => Set<ExtractionEvidence>();
 
+    // Task E19/F03/US01/T01 (NW-13, ADR-028 §D3): the Contract 360 negotiation tracker's tick
+    // rows. Declared here, on this context, so TenantRlsMigrationCheckTests' dynamic
+    // TenantScopedEntity discovery (ADR-009 w16 clause 2's "free branch") picks it up with no
+    // hand-written per-table RLS test.
+    public DbSet<ContractNegotiationStep> ContractNegotiationSteps => Set<ContractNegotiationStep>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         // Required so migrations emit `CREATE EXTENSION IF NOT EXISTS "vector"` (ADR-003).
@@ -43,6 +49,7 @@ public sealed class DocumentsContractsDbContext(DbContextOptions<DocumentsContra
         modelBuilder.ApplyConfiguration(new CorrectionHistoryConfiguration());
         modelBuilder.ApplyConfiguration(new EmbeddingConfiguration());
         modelBuilder.ApplyConfiguration(new ExtractionEvidenceConfiguration());
+        modelBuilder.ApplyConfiguration(new ContractNegotiationStepConfiguration());
 
         base.OnModelCreating(modelBuilder);
     }

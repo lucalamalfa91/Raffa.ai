@@ -21,19 +21,13 @@ namespace Raffa.Api;
 /// <c>tenantId</c>/<c>userId</c> parameters.
 ///
 /// <para>
-/// <b>Caller identity (AC-3, ADR-022/ADR-010, OQ-askv2-005)</b>: <see cref="TryResolveUserId"/>
-/// prefers the token subject of an already-authenticated <see cref="ClaimsPrincipal"/> — the
-/// ADR-010 end state — and falls back to the required <c>X-User-Id</c> header (the MSAL account
-/// username, per OQ-askv2-005's assumption in force) when no principal is authenticated. Nothing
-/// in this host wires <c>AddAuthentication</c>/<c>AddJwtBearer</c> yet (same gap
-/// <c>Raffa.Identity.Workspace.Domain.WorkspacePrincipalAuthorization</c>'s own doc comment
-/// already documents for `GET /api/audit`), so today <c>HttpContext.User</c> is always the default
-/// anonymous principal and every real caller takes the header branch — this dual-branch shape
-/// exists so the ADR-010 host-auth task can start minting authenticated principals without this
-/// file changing at all. <b>The header is never validated against a real identity provider</b> —
-/// it scopes reads/writes and nothing else; do not trust it for authorization (see
-/// `backend/README.md`'s "Interim auth" section). A missing header with no authenticated principal
-/// is a 400, the same "reject, don't guess" shape as a missing/invalid `X-Tenant-Id`.
+/// <b>Caller identity (AC-3, ADR-010)</b>: every handler below resolves tenant *and* caller in one
+/// call to <see cref="ICallerContext.ResolveTenantAsync"/> (see each handler's own NW-05 comment
+/// for the 401/400/404 order) — <see cref="CallerTenantResult.Identity"/> is the validated token's
+/// <c>oid</c>, never a header. This paragraph used to describe an interim <c>X-User-Id</c> fallback
+/// for a host that authenticated nobody; that gap closed in wave w15 (NW-05) and
+/// <c>OQ-askv2-005</c> retired with task E18/F02/US01/T01 (ADR-024 w16 footer clause 1) — there is
+/// no fallback branch left to document here.
 /// </para>
 ///
 /// <para>
@@ -298,7 +292,7 @@ public static class ConversationsEndpointExtensions
             .ToList();
 
         var reply = await askCopilotService
-            .AskAsync(tenantId, question, recentTurns, cancellationToken)
+            .AskAsync(tenantId, question, recentTurns, userId, cancellationToken)
             .ConfigureAwait(false);
 
         await conversationService.AppendMessageAsync(

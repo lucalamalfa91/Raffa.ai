@@ -362,6 +362,39 @@
       "mode": "next",
       "source": "inputs/next/w15-todo.md",
       "requirements": "reports/context/waves/w15-requirements.md"
+    },
+    {
+      "id": "w16",
+      "title": "W16 \u2014 nothing the product knows lives only in a browser tab",
+      "previous": "w15",
+      "tokens": 16000000,
+      "tasks": 13,
+      "epic": "E18, E19",
+      "integration": false,
+      "checks": [
+        "github_auth",
+        "github_org",
+        "github_repos",
+        "hitl_previous"
+      ],
+      "stories": [
+        "E18/F02/US01",
+        "E18/F02/US02",
+        "E18/F03/US01",
+        "E18/F03/US02",
+        "E19/F01/US01",
+        "E19/F02/US01",
+        "E19/F02/US02",
+        "E19/F03/US01",
+        "E19/F04/US01",
+        "E19/F05/US01",
+        "E19/F06/US01",
+        "E19/F07/US01",
+        "E19/F08/US01"
+      ],
+      "mode": "next",
+      "source": "inputs/next/w16-todo.md",
+      "requirements": "reports/context/waves/w16-requirements.md"
     }
   ]
 }
