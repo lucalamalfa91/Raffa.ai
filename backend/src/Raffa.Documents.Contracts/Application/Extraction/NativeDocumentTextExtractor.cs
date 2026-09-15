@@ -2,44 +2,75 @@ using System.Globalization;
 using System.Text;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
+using UglyToad.PdfPig;
+using UglyToad.PdfPig.Content;
 
 namespace Raffa.Documents.Contracts.Application.Extraction;
 
 /// <summary>
-/// Real (non-AI) text extraction for the two born-digital Office formats spec §4 accepts — DOCX
-/// and XLSX — read via the real <c>DocumentFormat.OpenXml</c> SDK (OOXML is just XML in a zip
-/// archive — not a provider SDK, so this stays clear of ADR-002's "no provider SDK in domain
-/// code" rule the same way <c>EFCore.NamingConventions</c>/<c>Npgsql</c> already do for this
-/// project). A Word/Excel file is never a scanned image, so a successful parse is always
+/// Real (non-AI) text extraction for born-digital document formats spec §4 accepts:
+/// <list type="bullet">
+/// <item><b>DOCX / XLSX</b> — <c>DocumentFormat.OpenXml</c> SDK.</item>
+/// <item><b>PDF</b> — <c>PdfPig</c> for born-digital PDFs that embed their own text streams.
+/// Instant-identity-ingest amendment: PdfPig replaces the OCR path for readable PDFs, so the
+/// 7-page OCR budget is reserved for scanned/image PDFs. If PdfPig extracts fewer than
+/// <see cref="MinPdfChars"/> non-whitespace chars, <see cref="NativeTextExtractionResult.IsSufficient"/>
+/// is <see langword="false"/> and <see cref="HybridDocumentParsingService"/> falls back to OCR.</item>
+/// </list>
+///
+/// A Word/Excel file is never a scanned image, so a successful parse is always
 /// <see cref="NativeTextExtractionResult.IsSufficient"/>, regardless of how much text it actually
 /// contains — an empty document is an honest fact, not a reason to spend an OCR page on it.
-///
-/// <b>PDF is no longer handled here</b> (ADR-017 amendment 2026-09-09). The previous hand-written
-/// content-stream scanner could not read real supplier PDFs (CID fonts, hex strings, object
-/// streams) and silently routed them to a fixture that produced no text; every PDF and image now
-/// goes through the `ocr` gateway role (Azure AI Document Intelligence Read), which returns a
-/// born-digital PDF's embedded text with a uniform page map at the same per-page price. The
-/// scanner survives only as <c>Raffa.AiGateway.Fixtures.FixturePdfTextScanner</c>, the fixture
-/// gateway's provider-free reader for the repo's hand-built test PDFs.
 /// </summary>
 public sealed class NativeDocumentTextExtractor : INativeDocumentTextExtractor
 {
+    private const string PdfMimeType = "application/pdf";
     private const string DocxMimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
     private const string XlsxMimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
+    /// <summary>Minimum non-whitespace character count for a PdfPig result to be considered
+    /// "sufficient" for skipping OCR. Below this the PDF is likely scanned/image-only.</summary>
+    private const int MinPdfChars = 50;
+
     /// <inheritdoc/>
-    public bool CanHandle(string mimeType) => Normalize(mimeType) is DocxMimeType or XlsxMimeType;
+    public bool CanHandle(string mimeType) => Normalize(mimeType) is PdfMimeType or DocxMimeType or XlsxMimeType;
 
     /// <inheritdoc/>
     public NativeTextExtractionResult Extract(string mimeType, ReadOnlyMemory<byte> content) =>
         Normalize(mimeType) switch
         {
+            PdfMimeType => ExtractPdf(content),
             DocxMimeType => ExtractDocx(content),
             XlsxMimeType => ExtractXlsx(content),
             _ => throw new NotSupportedException(
                 $"{nameof(NativeDocumentTextExtractor)} cannot handle mime type '{mimeType}'; " +
                 $"call {nameof(CanHandle)} first."),
         };
+
+    private static NativeTextExtractionResult ExtractPdf(ReadOnlyMemory<byte> content)
+    {
+        try
+        {
+            using var pdf = PdfDocument.Open(content.ToArray());
+            var pages = new List<DocumentPageText>();
+
+            foreach (var page in pdf.GetPages())
+            {
+                var text = page.Text ?? string.Empty;
+                pages.Add(new DocumentPageText(page.Number, text));
+            }
+
+            // IsSufficient = true only when there is enough embedded text to skip OCR.
+            var totalNonWs = pages.Sum(p => p.Text.Count(c => !char.IsWhiteSpace(c)));
+            return new NativeTextExtractionResult(pages, IsSufficient: totalNonWs >= MinPdfChars);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Untrusted bytes: any parse failure degrades to "not sufficient" (HybridDocumentParsingService
+            // will fall through to OCR).
+            return new NativeTextExtractionResult([], IsSufficient: false);
+        }
+    }
 
     /// <summary>Strips a trailing <c>; charset=...</c>-style parameter and normalizes case, so a
     /// caller-declared mime type like <c>"Application/PDF; charset=binary"</c> still matches.</summary>

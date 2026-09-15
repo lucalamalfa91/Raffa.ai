@@ -80,7 +80,8 @@ describe("DocumentProgressPanel", () => {
     expect(prioritiseDocument).toHaveBeenCalledTimes(1);
   });
 
-  it("shows the six-stage checklist with the current stage marked while waiting", () => {
+  // Updated for plan instant-upload-open: the 6-stage checklist is replaced by two quiet chips.
+  it("shows the two processing chips while waiting, with the active chip reflecting the stage", () => {
     render(
       <MemoryRouter>
         <DocumentProgressPanel
@@ -94,13 +95,38 @@ describe("DocumentProgressPanel", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText("OCR / text…")).toBeInTheDocument();
-    expect(screen.getByRole("list", { name: "Processing stages" })).toBeInTheDocument();
+    // Both chips are present; OCR / text is an early stage → Identifying… is active
+    expect(screen.getByText("Identifying…")).toBeInTheDocument();
+    expect(screen.getByText("Enriching…")).toBeInTheDocument();
     expect(screen.getByText("Raffa.ai is giving this document priority over the rest of the queue.")).toBeInTheDocument();
+    // The old 6-stage list is gone
+    expect(screen.queryByRole("list", { name: "Processing stages" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 
-  it("drops the checklist and offers the review link once the document needs review", () => {
+  it("shows Enriching… as active chip for a late-stage ('Extracting facts') document", () => {
+    render(
+      <MemoryRouter>
+        <DocumentProgressPanel
+          apiClient={mockApiClient(vi.fn().mockResolvedValue({ ok: true, statusCode: 204, error: null }))}
+          tenantId="tenant-1"
+          item={item({ processingStatus: "Processing", stage: "Extracting facts" })}
+          onBack={vi.fn()}
+          updatesPaused={false}
+          onResumeUpdates={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+
+    const enrichingChip = screen.getByText("Enriching…");
+    expect(enrichingChip).toBeInTheDocument();
+    expect(enrichingChip.closest(".documents-progress-chip--active")).not.toBeNull();
+    // The headline still shows the stage name as status context; what is gone is the old
+    // 6-stage checklist and the raw stage text in the next-step cell row.
+    expect(screen.queryByRole("list", { name: "Processing stages" })).not.toBeInTheDocument();
+  });
+
+  it("drops the chips and offers the review link once the document needs review", () => {
     render(
       <MemoryRouter>
         <DocumentProgressPanel
@@ -114,7 +140,8 @@ describe("DocumentProgressPanel", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.queryByRole("list", { name: "Processing stages" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Identifying…")).not.toBeInTheDocument();
+    expect(screen.queryByText("Enriching…")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Review now" })).toHaveAttribute("href", "/documents?review=doc-4");
   });
 

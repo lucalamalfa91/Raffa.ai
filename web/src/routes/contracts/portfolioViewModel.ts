@@ -31,14 +31,28 @@ export interface PortfolioRow {
   cancelDays: number | null;
   /** Notice due within the locked 45-day window (`isDeadlineCritical`): accent tint + bar + bold date. */
   isUrgent: boolean;
+  /** True when this row's identity is provisional (headline-pass only) -- shown with a Draft tag, excluded from KPI totals. */
+  isProvisional: boolean;
+}
+
+/**
+ * Whether a row should be shown in the Portfolio. Validated rows are shown as before; provisional
+ * rows (`identityState === 'provisional'`) are also shown so the user can see documents immediately
+ * after upload, before the full enrich completes. Other non-validated statuses (processing, failed,
+ * needs_review) remain hidden -- the identity field is the gate, not the status alone.
+ */
+function isPortfolioVisible(item: PortfolioListItem): boolean {
+  if (item.identityState === "provisional") return true;
+  return isValidatedContractStatus(item.status);
 }
 
 export function buildPortfolioRows(items: readonly PortfolioListItem[], now: Date = new Date()): PortfolioRow[] {
   return items
-    .filter((item) => isValidatedContractStatus(item.status))
+    .filter(isPortfolioVisible)
     .map((item) => {
       const cancelDays = daysUntil(item.cancellationDeadline, now);
-      return { item, cancelDays, isUrgent: cancelDays !== null && isDeadlineCritical(cancelDays) };
+      const isProvisional = item.identityState === "provisional";
+      return { item, cancelDays, isUrgent: !isProvisional && cancelDays !== null && isDeadlineCritical(cancelDays), isProvisional };
     })
     .sort(compareByNoticeDeadline);
 }
@@ -73,8 +87,12 @@ export interface PortfolioSummary {
 }
 
 export function buildPortfolioSummary(rows: readonly PortfolioRow[]): PortfolioSummary {
+  // KPI totals (validated count, annual spend, urgent deadlines) are **official-only** --
+  // provisional rows are shown in the table but must not inflate the summary line.
+  const officialRows = rows.filter((row) => !row.isProvisional);
+
   const totals = new Map<string | null, number>();
-  for (const { item } of rows) {
+  for (const { item } of officialRows) {
     if (item.annualSpend === null) continue;
     const key = item.currency ?? null;
     totals.set(key, (totals.get(key) ?? 0) + item.annualSpend);
@@ -84,9 +102,9 @@ export function buildPortfolioSummary(rows: readonly PortfolioRow[]): PortfolioS
     .sort((a, b) => b.total - a.total);
 
   return {
-    validatedCount: rows.length,
+    validatedCount: officialRows.length,
     annualSpend,
-    urgentCount: rows.filter((row) => row.isUrgent).length,
+    urgentCount: officialRows.filter((row) => row.isUrgent).length,
   };
 }
 

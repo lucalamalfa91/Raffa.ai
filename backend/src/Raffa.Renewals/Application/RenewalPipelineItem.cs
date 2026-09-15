@@ -31,7 +31,16 @@ public sealed record RenewalPipelineItem(
     DateOnly? CancellationDeadline,
     int? DaysUntilCancellationDeadline,
     bool AutoRenewal,
-    RenewalInsightCard InsightCard);
+    RenewalInsightCard InsightCard,
+    /// <summary>The contract's human-readable display name — filename at T+0, document title
+    /// once the headline pass runs. Null for pre-instant-identity-ingest contracts.</summary>
+    string? DisplayName = null,
+    /// <summary>Provisional or official identity state, passed through from the portfolio row.
+    /// The UI uses this to render provisional rows with a muted / Draft chip.</summary>
+    string? IdentityState = null,
+    /// <summary>Raw supplier name from the headline pass — the string to show on provisional
+    /// rows when no canonical <see cref="SupplierId"/> is resolved yet.</summary>
+    string? ProvisionalSupplierName = null);
 
 /// <summary>
 /// The renewal insight card (task E03/F03/US01/T01 AC-2: "Insight card separates facts from

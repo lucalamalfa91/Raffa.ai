@@ -101,15 +101,22 @@ export function isNoticeUrgent(daysUntilCancellationDeadline: number | null): bo
  * "Supplier · contract" column. `RenewalPipelineItemBody` carries no contract name or type at all
  * (unlike `GET /api/contracts`), so the contract half is the same short-id-plus-tooltip treatment
  * `../contracts/portfolioTableFormatters.ts#formatSupplier` established for the identical "no name
- * field" gap, applied to `contractId`.
+ * field" gap, applied to `contractId`. When a `displayName` (filename / LLM title) is available
+ * it takes precedence over the short-id fallback.
  */
-export function formatContractRef(contractId: string): { label: string; title: string } {
+export function formatContractRef(contractId: string, displayName?: string | null): { label: string; title: string } {
+  if (displayName) return { label: displayName, title: contractId };
   return { label: `Contract ${contractId.slice(0, 8)}`, title: contractId };
 }
 
-/** Supplier half of the same column and of the pane's heading: the wire's own name (R-SUP-04), or an honest placeholder -- never an id fragment. */
-export function formatRenewalSupplier(supplierName: string | null): string {
-  return supplierName ?? "Supplier not resolved";
+/**
+ * Supplier half of the "Supplier · contract" column and of the pane's heading.
+ * Priority: `provisionalSupplierName ?? supplierName ?? "—"`. Never shows "Supplier not resolved"
+ * if any string is available (plan instant-identity-ingest: show the raw headline string immediately,
+ * before canonical resolution completes).
+ */
+export function formatRenewalSupplier(provisionalSupplierName: string | null | undefined, supplierName: string | null): string {
+  return provisionalSupplierName ?? supplierName ?? "—";
 }
 
 /** "Status" column default before this browser has acted on a row this session -- `app.jsx`: `st:act||'Open'`. */
@@ -134,8 +141,8 @@ export function getInsightOwner(tracked: RenewalActionRow | null): string {
 }
 
 /** Pane heading (`markup.html`: "{{ rsel.supplier }} — {{ rsel.cancelDays }} days to notice"); without a determined deadline the heading says so rather than counting to nothing. */
-export function formatPaneHeading(supplierName: string | null, daysUntilCancellationDeadline: number | null): string {
-  const supplier = formatRenewalSupplier(supplierName);
+export function formatPaneHeading(provisionalSupplierName: string | null | undefined, supplierName: string | null, daysUntilCancellationDeadline: number | null): string {
+  const supplier = formatRenewalSupplier(provisionalSupplierName, supplierName);
   if (daysUntilCancellationDeadline === null) return `${supplier} — notice date not determined`;
   return `${supplier} — ${daysUntilCancellationDeadline} day${daysUntilCancellationDeadline === 1 ? "" : "s"} to notice`;
 }

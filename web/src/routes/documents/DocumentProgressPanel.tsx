@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import type { ApiClient, DocumentListItemBody } from "../../api/client";
 import { CHECK_AGAIN_LABEL, UPDATES_PAUSED_NOTICE } from "../../components/shell/usePollBudget";
-import { getDocumentTypeLabel, getRowStatus, getRowStatusTag } from "./documentTable";
+import { getDocumentTypeLabel, getRowStatus, getRowStatusTag, PROCESSING_CHIP_LABEL } from "./documentTable";
 import { getProgressView } from "./documentProgress";
 
 export interface DocumentProgressPanelProps {
@@ -77,15 +77,17 @@ export default function DocumentProgressPanel({ apiClient, tenantId, item, onBac
         <>
           <p className="hint">Raffa.ai is giving this document priority over the rest of the queue.</p>
 
-          <ol className="documents-progress-stages" aria-label="Processing stages">
-            {view.stages.map((stage) => (
-              <li key={stage.name} className={`documents-progress-stage documents-progress-stage--${stage.state}`}>
-                <span className="documents-progress-stage-dot" aria-hidden="true" />
-                {stage.name}
-                {stage.state === "current" && <span className="micro-meta"> · in progress</span>}
-              </li>
+          {/* Two quiet chips replace the stuck 6-stage checklist (plan instant-upload-open). */}
+          <div className="documents-progress-chips" aria-label="Processing phase" role="status">
+            {(["identifying", "enriching"] as const).map((chip) => (
+              <span
+                key={chip}
+                className={`documents-progress-chip${view.chip === chip ? " documents-progress-chip--active" : ""}`}
+              >
+                {PROCESSING_CHIP_LABEL[chip]}
+              </span>
             ))}
-          </ol>
+          </div>
 
           {updatesPaused && (
             <div className="documents-updates-paused" role="status">

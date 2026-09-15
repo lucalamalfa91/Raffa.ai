@@ -489,7 +489,8 @@ public sealed class DocumentLifecycleTests : IAsyncLifetime
     // ----- harness -----
 
     /// <summary>The Worker's handler over the real claim store (raw SQL on the app role), the real
-    /// content gate and the same pipeline <see cref="CreatePipeline"/> plays for a first upload.</summary>
+    /// content gate, the headline service, and a no-op enrich publisher (the enrich stage is tested
+    /// separately via <see cref="EnrichRequestedHandler"/>).</summary>
     private static ExtractionRequestedHandler CreateHandler(
         DocumentsContractsDbContext db, Harness harness, ITenantContext tenantContext) =>
         new(
@@ -502,7 +503,8 @@ public sealed class DocumentLifecycleTests : IAsyncLifetime
                 tenantContext,
                 harness.Audit,
                 harness.Clock),
-            CreatePipeline(db, harness, tenantContext),
+            new HeadlineExtractionService(db, harness.Gateway),
+            new NoOpEnrichQueuePublisher(),
             new ExtractionJobClaimStore(db, harness.Clock),
             tenantContext,
             harness.Clock,
@@ -668,6 +670,14 @@ public sealed class DocumentLifecycleTests : IAsyncLifetime
     private sealed class NoOpExtractionQueuePublisher : IExtractionQueuePublisher
     {
         public Task PublishAsync(ExtractionRequested message, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+    }
+
+    /// <summary>Stands in for <see cref="IEnrichQueuePublisher"/> in tests that only exercise
+    /// the intake path; the enrich stage is tested separately.</summary>
+    private sealed class NoOpEnrichQueuePublisher : IEnrichQueuePublisher
+    {
+        public Task PublishAsync(EnrichRequested message, CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
     }
 

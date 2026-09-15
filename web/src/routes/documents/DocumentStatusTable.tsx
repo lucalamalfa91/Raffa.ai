@@ -7,13 +7,15 @@ import {
   formatUploadedAt,
   getDocumentTypeLabel,
   getOpenTarget,
+  getProcessingChip,
   getRowAction,
   getRowStatus,
   getRowStatusTag,
+  PROCESSING_CHIP_LABEL,
   type AttentionFilterValue,
   type RowStatus,
 } from "./documentTable";
-import ProcessingPipeline from "./ProcessingPipeline";
+import { usePdfThumbnail } from "./usePdfThumbnail";
 
 export interface DocumentStatusTableProps {
   /** Already filtered by the caller's current chip. */
@@ -51,6 +53,81 @@ function localRowStatus(phase: LocalUploadEntry["phase"]): RowStatus {
     case "uploading":
       return "uploaded";
   }
+}
+
+/**
+ * Opens a local `File` in a new browser tab using a short-lived `blob:` URL — zero network round
+ * trip (plan instant-upload-open: "click opens the PDF from URL.createObjectURL(file)"). The URL is
+ * revoked after 60 s, well past any reasonable browser open latency.
+ */
+function openLocalFile(file: File): void {
+  const url = URL.createObjectURL(file);
+  window.open(url, "_blank", "noopener,noreferrer");
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+/**
+ * A single local-upload row. Extracted into its own component so `usePdfThumbnail` can be called
+ * at component level (React's hook rules forbid calling hooks inside a `map` callback).
+ */
+interface LocalUploadRowProps {
+  entry: LocalUploadEntry;
+  onRetryLocal: (key: string) => void;
+  isAdmin: boolean;
+}
+
+function LocalUploadRow({ entry, onRetryLocal, isAdmin }: LocalUploadRowProps) {
+  const thumbnail = usePdfThumbnail(entry.file);
+  const tag = getRowStatusTag(localRowStatus(entry.phase));
+  const isClickable = entry.phase === "queued" || entry.phase === "uploading";
+
+  return (
+    <tr>
+      <td>
+        <div className="document-status-table-local-doc">
+          {thumbnail !== null && (
+            <img
+              src={thumbnail}
+              alt=""
+              aria-hidden="true"
+              className="document-status-table-thumbnail"
+            />
+          )}
+          <div>
+            {isClickable ? (
+              <button
+                type="button"
+                className="document-status-table-link"
+                onClick={() => openLocalFile(entry.file)}
+                title="Open file locally (no upload needed)"
+              >
+                {entry.file.name}
+              </button>
+            ) : (
+              <div className="document-status-table-filename">{entry.file.name}</div>
+            )}
+            {entry.errorMessage && <div className="hint">{entry.errorMessage}</div>}
+          </div>
+        </div>
+      </td>
+      <td className="micro-meta">—</td>
+      <td>
+        <span className={`tag tag-${tag.variant}`}>{tag.label}</span>
+      </td>
+      <td className="document-status-table-next-step">
+        {entry.phase === "failed" ? (
+          <button type="button" className="btn btn-secondary" onClick={() => onRetryLocal(entry.key)}>
+            Retry upload
+          </button>
+        ) : entry.phase === "rejected" ? null : (
+          // ADR-020 w15 footer 10: the row already reads "Uploaded" above -- this is the
+          // honest half of that claim, said once, right underneath it.
+          <span className="micro-meta">Processing in the background</span>
+        )}
+      </td>
+      {isAdmin && <td />}
+    </tr>
+  );
 }
 
 /**
@@ -121,33 +198,14 @@ export default function DocumentStatusTable({
             </tr>
           </thead>
           <tbody>
-            {visibleLocalUploads.map((entry) => {
-              const tag = getRowStatusTag(localRowStatus(entry.phase));
-              return (
-                <tr key={entry.key}>
-                  <td>
-                    <div className="document-status-table-filename">{entry.file.name}</div>
-                    {entry.errorMessage && <div className="hint">{entry.errorMessage}</div>}
-                  </td>
-                  <td className="micro-meta">—</td>
-                  <td>
-                    <span className={`tag tag-${tag.variant}`}>{tag.label}</span>
-                  </td>
-                  <td className="document-status-table-next-step">
-                    {entry.phase === "failed" ? (
-                      <button type="button" className="btn btn-secondary" onClick={() => onRetryLocal(entry.key)}>
-                        Retry upload
-                      </button>
-                    ) : entry.phase === "rejected" ? null : (
-                      // ADR-020 w15 footer 10: the row already reads "Uploaded" above -- this is
-                      // the honest half of that claim, said once, right underneath it.
-                      <span className="micro-meta">Processing in the background</span>
-                    )}
-                  </td>
-                  {isAdmin && <td />}
-                </tr>
-              );
-            })}
+            {visibleLocalUploads.map((entry) => (
+              <LocalUploadRow
+                key={entry.key}
+                entry={entry}
+                onRetryLocal={onRetryLocal}
+                isAdmin={isAdmin}
+              />
+            ))}
 
             {documents.map((item) => {
               const rowStatus = getRowStatus(item.processingStatus);
@@ -180,7 +238,6 @@ export default function DocumentStatusTable({
                   </td>
                   <td>
                     <span className={`tag tag-${tag.variant}`}>{tag.label}</span>
-                    {rowStatus === "processing" && <ProcessingPipeline stage={item.stage} />}
                   </td>
                   <td className="document-status-table-next-step">
                     {rowStatus === "uploaded" ? (
@@ -189,9 +246,12 @@ export default function DocumentStatusTable({
                       // report, only that it is on its way.
                       <span className="micro-meta">Processing in the background</span>
                     ) : rowStatus === "processing" ? (
-                      // A `Processing` row reads its real stage string, verbatim -- the Worker has
-                      // genuinely claimed the job by the time this branch renders.
-                      <span className="micro-meta">{(item.stage ?? "Queued") + "…"}</span>
+                      // Quiet chip replaces the stuck "Extracting facts…" 90 s bar (plan
+                      // instant-upload-open): "Identifying…" for early stages, "Enriching…" for
+                      // the AI-heavy pass. The Worker's real stage drives the chip; no client timer.
+                      <span className="micro-meta document-processing-chip">
+                        {PROCESSING_CHIP_LABEL[getProcessingChip(item.stage)]}
+                      </span>
                     ) : action !== null ? (
                       action.kind === "retry" ? (
                         <button type="button" className="btn btn-secondary" onClick={() => onRetryServer(item.id)}>

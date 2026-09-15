@@ -75,6 +75,21 @@ public sealed class ServiceBusExtractionConsumerHostedService(
 
     private async Task OnMessageAsync(ProcessMessageEventArgs args)
     {
+        // Two-queue split (instant-identity-ingest): route by Subject.
+        var subject = args.Message.Subject;
+
+        if (subject == nameof(EnrichRequested))
+        {
+            await HandleEnrichMessageAsync(args).ConfigureAwait(false);
+            return;
+        }
+
+        // Default: ExtractionRequested (intake).
+        await HandleIntakeMessageAsync(args).ConfigureAwait(false);
+    }
+
+    private async Task HandleIntakeMessageAsync(ProcessMessageEventArgs args)
+    {
         ExtractionRequested? message;
         try
         {
@@ -101,16 +116,12 @@ public sealed class ServiceBusExtractionConsumerHostedService(
             switch (ExtractionSettlement.Decide(outcome, args.Message.DeliveryCount))
             {
                 case ExtractionSettlement.Action.Abandon:
-                    // ADR-027 §C6: no row yet inside this tenant's scope on an early delivery -- the
-                    // upload's commit is still landing. Abandon so the redelivery sees it.
                     logger.LogWarning(
                         "No extraction job row for document {DocumentId} yet (delivery {Delivery}); abandoning for redelivery",
                         message.DocumentId, args.Message.DeliveryCount);
                     await args.AbandonMessageAsync(args.Message, cancellationToken: args.CancellationToken).ConfigureAwait(false);
                     break;
                 case ExtractionSettlement.Action.DeadLetter:
-                    // Still no row after the capped redeliveries: an operator's pointer, never a silent
-                    // complete that would strand the document at Uploaded.
                     logger.LogError(
                         "No extraction job row for document {DocumentId} after {Delivery} deliveries; dead-lettering as {Reason}",
                         message.DocumentId, args.Message.DeliveryCount, ExtractionSettlement.JobNotFoundReason);
@@ -135,6 +146,42 @@ public sealed class ServiceBusExtractionConsumerHostedService(
         {
             logger.LogError(
                 exception, "Unhandled failure processing document {DocumentId} (delivery {Delivery}); abandoning",
+                message.DocumentId, args.Message.DeliveryCount);
+            await args.AbandonMessageAsync(args.Message, cancellationToken: args.CancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private async Task HandleEnrichMessageAsync(ProcessMessageEventArgs args)
+    {
+        EnrichRequested? message;
+        try
+        {
+            message = JsonSerializer.Deserialize<EnrichRequested>(args.Message.Body.ToArray(), Json);
+        }
+        catch (JsonException exception)
+        {
+            logger.LogError(exception, "Message {MessageId} is not an EnrichRequested payload; dead-lettering", args.Message.MessageId);
+            await args.DeadLetterMessageAsync(args.Message, "malformed", exception.Message, args.CancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        if (message is null)
+        {
+            await args.DeadLetterMessageAsync(args.Message, "malformed", "empty body", args.CancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        try
+        {
+            using var scope = scopeFactory.CreateScope();
+            var handler = scope.ServiceProvider.GetRequiredService<EnrichRequestedHandler>();
+            await handler.HandleAsync(message, args.CancellationToken).ConfigureAwait(false);
+            await args.CompleteMessageAsync(args.Message, args.CancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogError(
+                exception, "Unhandled failure enriching document {DocumentId} (delivery {Delivery}); abandoning",
                 message.DocumentId, args.Message.DeliveryCount);
             await args.AbandonMessageAsync(args.Message, cancellationToken: args.CancellationToken).ConfigureAwait(false);
         }

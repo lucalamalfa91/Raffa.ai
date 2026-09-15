@@ -6,6 +6,7 @@ using Raffa.Documents.Contracts.Application.Extraction;
 using Raffa.Documents.Contracts.Domain;
 using Raffa.Documents.Contracts.Infrastructure;
 using Raffa.Identity.Workspace.Infrastructure;
+using Raffa.Messaging;
 using Raffa.Renewals.Infrastructure;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Storage;
@@ -218,7 +219,30 @@ internal static class InMemoryAskEngineFactory
             handled++;
         }
 
+        // instant-identity-ingest two-queue split: intake publishes to the enrich queue;
+        // drain it too so callers see the fully-processed (Official) state after each drain.
+        await DrainEnrichQueueAsync(factory).ConfigureAwait(false);
+
         return handled;
+    }
+
+    /// <summary>
+    /// Drains all pending <see cref="EnrichRequested"/> messages from <see cref="InMemoryEnrichQueue"/>,
+    /// running each through <see cref="EnrichRequestedHandler"/>. Called automatically at the end of
+    /// <see cref="DrainExtractionQueueAsync(WebApplicationFactory{Program}, int)"/> to keep the
+    /// two-queue split transparent to callers that only care about fully-processed documents.
+    /// </summary>
+    public static async Task DrainEnrichQueueAsync(this WebApplicationFactory<Program> factory)
+    {
+        ArgumentNullException.ThrowIfNull(factory);
+
+        var enrichQueue = factory.Services.GetRequiredService<InMemoryEnrichQueue>();
+        while (enrichQueue.Reader.TryRead(out var message))
+        {
+            using var scope = factory.Services.CreateScope();
+            var handler = scope.ServiceProvider.GetRequiredService<EnrichRequestedHandler>();
+            await handler.HandleAsync(message).ConfigureAwait(false);
+        }
     }
 }
 

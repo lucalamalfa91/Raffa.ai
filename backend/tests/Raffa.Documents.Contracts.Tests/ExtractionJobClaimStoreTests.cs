@@ -92,6 +92,8 @@ public sealed class ExtractionJobClaimStoreTests : IAsyncLifetime
         Assert.Equal(1, reloaded.AttemptCount);
         Assert.NotNull(reloaded.ClaimedAt);
         Assert.True(reloaded.ClaimedBy is "worker-a" or "worker-b");
+        // instant-identity-ingest: TryClaimAsync now sets status = Running immediately.
+        Assert.Equal(ExtractionJobStatus.Running, reloaded.Status);
     }
 
     [Fact]

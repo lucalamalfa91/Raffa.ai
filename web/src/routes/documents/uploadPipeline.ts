@@ -8,7 +8,7 @@ import type { ApiClient, UploadDocumentResult } from "../../api/client";
  * back as a *server row* in `Rejected` carrying a `rejectionReason` code -- never as a 422 on this
  * call. V1's client-side pacing ticker is long gone (the real stage comes from `GET /api/documents`,
  * polled by `useDocumentsList.ts`). This file owns: multi-file upload limits (R-DOC-01), the
- * concurrency-capped batch runner (up to 20 files, <=3 in flight), the one client-owned upload
+ * concurrency-capped batch runner (up to 20 files, <=8 in flight), the one client-owned upload
  * deadline, and the designed sentences -- for the two refusals that never reach the server
  * (oversize, 413/415) and for the server's own reason codes on a `Rejected` row.
  */
@@ -21,8 +21,9 @@ export const MAX_FILES_PER_BATCH = 20;
  * (413) stays authoritative; see `useDocumentsList.ts#uploadFiles`. */
 export const MAX_FILE_BYTES = 50 * 1024 * 1024;
 
-/** Task's own coding objective: "uploads run with <= 3 in flight." */
-export const MAX_CONCURRENT_UPLOADS = 3;
+/** Raised from 3 → 8 (plan instant-identity-ingest: outbox landed, safe to widen the window for
+ * a 50-file drop without starving the server; ADR-005 container concurrency is comfortably above 8). */
+export const MAX_CONCURRENT_UPLOADS = 8;
 
 /** Widened accept list (PDF/DOCX/XLSX plus PNG/JPG via OCR, D7/ADR-017) -- a soft, OS-level filter
  * only; the server's 415 (extension + magic-byte sniffing) stays authoritative (R-DOC-02 AC-1). */

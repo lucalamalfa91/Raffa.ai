@@ -149,16 +149,30 @@ describe("score and day formatting", () => {
 });
 
 describe("Supplier · contract column", () => {
-  it("shortens the contract id and keeps the full id as the tooltip", () => {
+  it("shortens the contract id and keeps the full id as the tooltip when no displayName is set", () => {
     expect(formatContractRef("22222222-2222-2222-2222-222222222222")).toEqual({
       label: "Contract 22222222",
       title: "22222222-2222-2222-2222-222222222222",
     });
   });
 
-  it("uses the wire's supplier name or an honest placeholder, never an id fragment", () => {
-    expect(formatRenewalSupplier("Salesforce")).toBe("Salesforce");
-    expect(formatRenewalSupplier(null)).toBe("Supplier not resolved");
+  it("uses displayName as the label when available, keeping the full id as tooltip", () => {
+    expect(formatContractRef("22222222-2222-2222-2222-222222222222", "Order_Acme_2026.pdf")).toEqual({
+      label: "Order_Acme_2026.pdf",
+      title: "22222222-2222-2222-2222-222222222222",
+    });
+    // null/undefined displayName falls back to the short-id label
+    expect(formatContractRef("22222222-2222-2222-2222-222222222222", null)).toEqual({
+      label: "Contract 22222222",
+      title: "22222222-2222-2222-2222-222222222222",
+    });
+  });
+
+  it("uses provisionalSupplierName first, then supplierName, then '—' -- never 'Supplier not resolved'", () => {
+    expect(formatRenewalSupplier("Acme (raw)", "Acme")).toBe("Acme (raw)");
+    expect(formatRenewalSupplier(null, "Acme")).toBe("Acme");
+    expect(formatRenewalSupplier(null, null)).toBe("—");
+    expect(formatRenewalSupplier(undefined, null)).toBe("—");
   });
 });
 
@@ -179,12 +193,16 @@ describe("Status column and owner (app.jsx st / stTag)", () => {
 
 describe("formatPaneHeading (markup.html '{{ rsel.supplier }} — {{ rsel.cancelDays }} days to notice')", () => {
   it("counts the days to notice, singular and plural", () => {
-    expect(formatPaneHeading("Salesforce", 14)).toBe("Salesforce — 14 days to notice");
-    expect(formatPaneHeading("Salesforce", 1)).toBe("Salesforce — 1 day to notice");
+    expect(formatPaneHeading(null, "Salesforce", 14)).toBe("Salesforce — 14 days to notice");
+    expect(formatPaneHeading(null, "Salesforce", 1)).toBe("Salesforce — 1 day to notice");
   });
 
-  it("says so when the notice date is not determined, with the supplier placeholder when unresolved", () => {
-    expect(formatPaneHeading(null, null)).toBe("Supplier not resolved — notice date not determined");
+  it("prefers provisionalSupplierName over supplierName", () => {
+    expect(formatPaneHeading("Acme (raw)", "Acme", 14)).toBe("Acme (raw) — 14 days to notice");
+  });
+
+  it("shows '—' when both names are null and notice date is not determined", () => {
+    expect(formatPaneHeading(null, null, null)).toBe("— — notice date not determined");
   });
 });
 

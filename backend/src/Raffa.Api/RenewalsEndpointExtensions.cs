@@ -229,7 +229,10 @@ public static class RenewalsEndpointExtensions
             item.EndDate,
             item.AutoRenewal,
             item.AnnualSpend,
-            item.CancellationDeadline);
+            item.CancellationDeadline,
+            item.DisplayName,
+            item.IdentityState.ToString().ToLowerInvariant(),
+            item.ProvisionalSupplierName);
 
     /// <summary>
     /// Wire-shapes <see cref="RenewalPipelineItem"/> per AC-1 (top-level supplier/renewal/days/
@@ -258,6 +261,10 @@ public static class RenewalsEndpointExtensions
             contractId = item.ContractId.Value,
             supplierId = item.SupplierId?.Value,
             supplierName,
+            // Provisional identity fields — show filename + raw supplier on provisional rows.
+            displayName = item.DisplayName,
+            identityState = item.IdentityState,
+            provisionalSupplierName = item.ProvisionalSupplierName,
             status = item.Status.ToString(),
             renewalDate = item.RenewalDate,
             daysUntilRenewal = item.DaysUntilRenewal,

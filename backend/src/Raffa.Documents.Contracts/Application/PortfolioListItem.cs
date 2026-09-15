@@ -47,4 +47,16 @@ public sealed record PortfolioListItem(
     DateOnly? CancellationDeadline,
     bool AutoRenewal,
     string Status,
-    RiskSeverity? Risk);
+    RiskSeverity? Risk,
+    /// <summary>The contract's human-readable display name (filename at upload, optionally the
+    /// document's own title once the headline pass runs). Null for contracts created before the
+    /// instant-identity-ingest slice; the UI falls back to <see cref="Type"/> in that case.</summary>
+    string? DisplayName = null,
+    /// <summary>Whether this contract's identity is provisional (headline only) or official
+    /// (full 7-stage enrich). Defaults to <see cref="ContractIdentityState.Official"/> for
+    /// backward compatibility with contracts that existed before this feature.</summary>
+    ContractIdentityState IdentityState = ContractIdentityState.Official,
+    /// <summary>Raw supplier name from the headline pass. Always non-null once the headline runs,
+    /// regardless of confidence; null until then. Preferred over a missing <see cref="SupplierId"/>
+    /// for the provisional display: "provisionalSupplierName ?? resolvedSupplierName ?? —".</summary>
+    string? ProvisionalSupplierName = null);

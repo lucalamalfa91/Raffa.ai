@@ -30,8 +30,8 @@ function item(overrides: Partial<PortfolioListItem> = {}): PortfolioListItem {
   };
 }
 
-describe("buildPortfolioRows (validated contracts only, sorted by notice deadline -- app.jsx kbContracts)", () => {
-  it("keeps only validated contracts: processing, failed and needs-review rows never reach the portfolio", () => {
+describe("buildPortfolioRows (validated + provisional, sorted by notice deadline -- app.jsx kbContracts + instant-identity-ingest)", () => {
+  it("keeps validated contracts and provisional rows; processing/failed/needs-review without an identity are hidden", () => {
     const rows = buildPortfolioRows(
       [
         item({ contractId: "ok", status: "active" }),
@@ -39,11 +39,39 @@ describe("buildPortfolioRows (validated contracts only, sorted by notice deadlin
         item({ contractId: "failed", status: "Failed" }),
         item({ contractId: "review", status: "needs_review" }),
         item({ contractId: "blank", status: "  " }),
+        // A provisional row is shown regardless of its status string
+        item({ contractId: "provisional", status: "processing", identityState: "provisional" }),
       ],
       NOW,
     );
 
-    expect(rows.map((row) => row.item.contractId)).toEqual(["ok"]);
+    expect(rows.map((row) => row.item.contractId)).toEqual(["ok", "provisional"]);
+  });
+
+  it("marks provisional rows as isProvisional=true and official rows as isProvisional=false", () => {
+    const rows = buildPortfolioRows(
+      [
+        item({ contractId: "official", status: "active", identityState: "official" }),
+        item({ contractId: "provisional", status: "processing", identityState: "provisional" }),
+        item({ contractId: "legacy", status: "active" }), // no identityState field → official
+      ],
+      NOW,
+    );
+
+    // All three have the same deadline so they sort by contractId; check by id independently of order.
+    const byId = Object.fromEntries(rows.map((row) => [row.item.contractId, row.isProvisional]));
+    expect(byId["official"]).toBe(false);
+    expect(byId["provisional"]).toBe(true);
+    expect(byId["legacy"]).toBe(false);
+  });
+
+  it("provisional rows are never urgent, even with a near deadline", () => {
+    const rows = buildPortfolioRows(
+      [item({ contractId: "prov", status: "processing", identityState: "provisional", cancellationDeadline: "2026-09-10" })],
+      NOW,
+    );
+
+    expect(rows[0].isUrgent).toBe(false);
   });
 
   it("sorts by the soonest notice deadline; rows without a deadline come last, ties break on end date then id", () => {
@@ -116,14 +144,43 @@ describe("buildPortfolioSummary / formatPortfolioSummary (app.jsx pfSummary)", (
     expect(formatPortfolioSummary(summary)).toBe("4 validated contracts · CHF 1.8M + EUR 48k annual · 2 notice deadlines within 45 days");
   });
 
+  it("provisional rows are visible in the table but do NOT inflate validatedCount, annualSpend or urgentCount", () => {
+    const rows = buildPortfolioRows(
+      [
+        item({ contractId: "official", annualSpend: 640_000, currency: "CHF", cancellationDeadline: "2026-10-18", identityState: "official" }),
+        // provisional: same spend, near deadline -- must be excluded from all KPI figures
+        item({ contractId: "prov", status: "processing", identityState: "provisional", annualSpend: 999_000, currency: "CHF", cancellationDeadline: "2026-09-10" }),
+      ],
+      NOW,
+    );
+
+    // Both rows are visible
+    expect(rows).toHaveLength(2);
+
+    const summary = buildPortfolioSummary(rows);
+
+    // Only 1 official row counts in KPIs
+    expect(summary.validatedCount).toBe(1);
+    expect(summary.annualSpend).toEqual([{ currency: "CHF", total: 640_000 }]);
+    expect(summary.urgentCount).toBe(1);
+    expect(formatPortfolioSummary(summary)).toBe("1 validated contract · CHF 640k annual · 1 notice deadline within 45 days");
+  });
+
   it("singularises and drops the deadline clause when nothing is urgent, exactly as the prototype appends it", () => {
     const summary = buildPortfolioSummary(buildPortfolioRows([item({ cancellationDeadline: "2027-03-31" })], NOW));
 
     expect(formatPortfolioSummary(summary)).toBe("1 validated contract · CHF 640k annual");
   });
 
-  it("falls back to the prototype's own off-tier line when no contract is validated", () => {
-    expect(formatPortfolioSummary(buildPortfolioSummary([]))).toBe(PORTFOLIO_SUMMARY_OFF);
+  it("falls back to the prototype's own off-tier line when no official contract is validated (provisional rows alone are not enough)", () => {
+    const rows = buildPortfolioRows(
+      [item({ contractId: "prov", status: "processing", identityState: "provisional", annualSpend: 100_000, currency: "CHF" })],
+      NOW,
+    );
+    // provisional row IS visible
+    expect(rows).toHaveLength(1);
+    // but summary is the off-tier line because no official row exists
+    expect(formatPortfolioSummary(buildPortfolioSummary(rows))).toBe(PORTFOLIO_SUMMARY_OFF);
     expect(PORTFOLIO_SUMMARY_OFF).toBe("Lights up from validated contracts");
   });
 });

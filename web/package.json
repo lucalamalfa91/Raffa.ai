@@ -19,6 +19,7 @@
   "dependencies": {
     "@azure/msal-browser": "^5.21.0",
     "@azure/msal-react": "^5.7.0",
+    "pdfjs-dist": "^6.3.289",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.3"

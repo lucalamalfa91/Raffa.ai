@@ -4,6 +4,11 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import DocumentsRoute from "../../../src/routes/documents";
 import type { WorkspaceRole } from "../../../src/components/shell/navItems";
+
+// Mock usePdfThumbnail so tests don't trigger a pdfjs-dist dynamic import in jsdom.
+vi.mock("../../../src/routes/documents/usePdfThumbnail", () => ({
+  usePdfThumbnail: vi.fn().mockReturnValue(null),
+}));
 import type {
   ApiClient,
   Contract360Body,
@@ -464,11 +469,15 @@ describe("DocumentsRoute (task E13/F09/US01/T03, web-documents-v2)", () => {
     expect(await screen.findByText("Nothing needs you right now.")).toBeInTheDocument();
   });
 
-  it("processing rows show the real stage text from the mocked API, not a client timer", async () => {
+  // Updated for plan instant-upload-open: "Sections & tables" is an early stage → "Identifying…"
+  // chip. The old verbatim stage text in the next-step cell is replaced by the two quiet chips.
+  it("processing rows show the quiet chip label driven by the stage from the API, not a client timer", async () => {
     const items = [docItem({ id: "p", fileName: "Processing.pdf", processingStatus: "Processing", stage: "Sections & tables" })];
     renderDocuments(mockApiClient({ listDocuments: vi.fn().mockResolvedValue(listOk(items)) }));
 
-    expect(await screen.findByText("Sections & tables…")).toBeInTheDocument();
+    expect(await screen.findByText("Identifying…")).toBeInTheDocument();
+    // The raw stage text is no longer rendered in the row
+    expect(screen.queryByText("Sections & tables…")).not.toBeInTheDocument();
   });
 
   it("polls the list every 2s while a row is non-terminal, and stops once it becomes terminal", async () => {

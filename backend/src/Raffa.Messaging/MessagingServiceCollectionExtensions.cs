@@ -43,6 +43,32 @@ public static class MessagingServiceCollectionExtensions
         return services;
     }
 
+    /// <summary>
+    /// The publishing side for enrich messages (API, and the Worker's own re-enqueue path).
+    /// Chooses Service Bus or in-process based on the same predicate as
+    /// <see cref="AddExtractionQueuePublisher"/>.
+    /// </summary>
+    public static IServiceCollection AddEnrichQueuePublisher(
+        this IServiceCollection services, IConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        var options = BindOptions(services, configuration);
+        if (options.UsesServiceBus)
+        {
+            AddServiceBusClient(services, options);
+            services.TryAddSingleton<IEnrichQueuePublisher, ServiceBusEnrichQueuePublisher>();
+        }
+        else
+        {
+            services.TryAddSingleton<InMemoryEnrichQueue>();
+            services.TryAddSingleton<IEnrichQueuePublisher>(sp => sp.GetRequiredService<InMemoryEnrichQueue>());
+        }
+
+        return services;
+    }
+
     /// <summary>The consuming side — the Worker. Registers the handler and the matching hosted service.</summary>
     public static IServiceCollection AddExtractionQueueConsumer(
         this IServiceCollection services, IConfiguration configuration)
@@ -52,16 +78,21 @@ public static class MessagingServiceCollectionExtensions
 
         var options = BindOptions(services, configuration);
         services.AddScoped<ExtractionRequestedHandler>();
+        services.AddScoped<EnrichRequestedHandler>();
 
         if (options.UsesServiceBus)
         {
             AddServiceBusClient(services, options);
+            // Single consumer hosted service routes ExtractionRequested / EnrichRequested by Subject.
             services.AddHostedService<ServiceBusExtractionConsumerHostedService>();
         }
         else
         {
             services.TryAddSingleton<InMemoryExtractionQueue>();
+            services.TryAddSingleton<InMemoryEnrichQueue>();
+            services.TryAddSingleton<IEnrichQueuePublisher>(sp => sp.GetRequiredService<InMemoryEnrichQueue>());
             services.AddHostedService<InMemoryExtractionConsumerHostedService>();
+            services.AddHostedService<InMemoryEnrichConsumerHostedService>();
         }
 
         return services;

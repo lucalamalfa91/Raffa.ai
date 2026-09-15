@@ -7,6 +7,11 @@ import DocumentStatusTable from "../../../src/routes/documents/DocumentStatusTab
 import type { DocumentListItemBody } from "../../../src/api/client";
 import type { LocalUploadEntry } from "../../../src/routes/documents/uploadPipeline";
 
+// Mock usePdfThumbnail so tests don't trigger a pdfjs-dist dynamic import in jsdom.
+vi.mock("../../../src/routes/documents/usePdfThumbnail", () => ({
+  usePdfThumbnail: vi.fn().mockReturnValue(null),
+}));
+
 function item(overrides: Partial<DocumentListItemBody> = {}): DocumentListItemBody {
   return {
     id: "doc-1",
@@ -90,13 +95,18 @@ describe("DocumentStatusTable", () => {
     expect(screen.getByRole("link", { name: "Open Quote check" })).toHaveAttribute("href", "/quotes");
   });
 
-  it("shows the real stage and a progress bar for a processing row, no action button, filename opens the progress panel", () => {
+  // Updated for plan instant-upload-open: "OCR / text" is an early stage → "Identifying…" chip
+  // replaces both the stage text and the progress bar. The filename link to the progress panel is
+  // unchanged (footer 11 of ADR-020 w15).
+  it("shows a quiet chip for a processing row instead of stage text and progress bar", () => {
     renderTable({ documents: [item({ id: "doc-1", processingStatus: "Processing", stage: "OCR / text" })] });
 
-    expect(screen.getByText("OCR / text…")).toBeInTheDocument();
-    expect(screen.getByRole("progressbar")).toBeInTheDocument();
+    expect(screen.getByText("Identifying…")).toBeInTheDocument();
+    // Raw stage text and the 4px bar are gone
+    expect(screen.queryByText("OCR / text…")).not.toBeInTheDocument();
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
     // The only link on the row is the filename, opening the progress panel -- the next-step cell
-    // has the stage text, never an action button, while a Worker is on it.
+    // has the chip label, never an action button, while a Worker is on it.
     expect(screen.getAllByRole("link")).toHaveLength(1);
     expect(screen.getByRole("link", { name: "Salesforce_MSA.pdf" })).toHaveAttribute("href", "/documents?progress=doc-1");
   });

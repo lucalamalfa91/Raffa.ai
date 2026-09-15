@@ -1,6 +1,6 @@
 import type { DocumentListItemBody } from "../../api/client";
 import { getRejectionReasonCopy } from "./uploadPipeline";
-import { DOCUMENT_PROCESSING_STAGES, getOpenTarget, getRowStatus } from "./documentTable";
+import { getOpenTarget, getProcessingChip, getRowStatus, type ProcessingChip } from "./documentTable";
 
 /**
  * View-model for `DocumentProgressPanel.tsx` (`?progress=<id>`; task E16/F03/US02/T02, wave w15,
@@ -14,26 +14,10 @@ import { DOCUMENT_PROCESSING_STAGES, getOpenTarget, getRowStatus } from "./docum
  * `DocumentListItemBody["processingStatus"]`, not only the two that open it.
  */
 
+/** @deprecated Use `getProcessingChip` / `ProcessingChip` instead -- the 6-stage checklist is
+ * replaced by two quiet chips (plan instant-upload-open). Kept for any future backward-compat need;
+ * not used by `DocumentProgressPanel.tsx` any more. */
 export type ProgressStageState = "done" | "current" | "todo";
-
-export interface ProgressStageView {
-  name: string;
-  state: ProgressStageState;
-}
-
-/** The six real stages (R-DOC-09), each marked against `stage`'s own position in
- * `DOCUMENT_PROCESSING_STAGES` -- the same source `documentTable.ts#getStagePercent` reads for the
- * row's own inline bar, so the checklist and the bar can never disagree. A `null` stage (queued,
- * no Worker has claimed the job yet) marks every stage `"todo"`: nothing is `"current"` until a
- * real stage name arrives, the same "0%, an honest just-started reading" `getStagePercent` already
- * chose over a guess. */
-export function getProgressStages(stage: string | null): readonly ProgressStageView[] {
-  const index = stage === null ? -1 : DOCUMENT_PROCESSING_STAGES.indexOf(stage);
-  return DOCUMENT_PROCESSING_STAGES.map((name, position) => ({
-    name,
-    state: index === -1 ? "todo" : position < index ? "done" : position === index ? "current" : "todo",
-  }));
-}
 
 export interface ProgressLink {
   href: string;
@@ -41,11 +25,12 @@ export interface ProgressLink {
 }
 
 export interface DocumentProgressView {
-  /** True while the document is still `Uploaded`/`Processing` -- the panel renders the stage
-   * checklist only in this state. `stages` is still populated (all `"todo"`) for the other states,
-   * so a caller never has to branch on `undefined`. */
+  /** True while the document is still `Uploaded`/`Processing` -- the panel renders the chip pair
+   * only in this state. */
   isWaiting: boolean;
-  stages: readonly ProgressStageView[];
+  /** The active quiet chip while `isWaiting` (replaces the 6-stage checklist, plan
+   * instant-upload-open). `null` when the document has reached a terminal state. */
+  chip: ProcessingChip | null;
   /** What the panel says under the document's name -- one sentence, never a guess: the same "Queued,
    * starting shortly" / real stage name the row's own next-step cell would show, or the exact
    * terminal sentence the row grid already uses (`DocumentStatusTable.tsx`), never a re-derived one. */
@@ -69,18 +54,16 @@ export function getProgressView(
   if (rowStatus === "uploaded" || rowStatus === "processing") {
     return {
       isWaiting: true,
-      stages: getProgressStages(item.stage),
+      chip: getProcessingChip(item.stage),
       headline: item.stage === null ? "Queued, starting shortly" : `${item.stage}…`,
       link: null,
     };
   }
 
-  const stages = getProgressStages(null);
-
   if (rowStatus === "needs_review") {
     return {
       isWaiting: false,
-      stages,
+      chip: null,
       headline: "Ready for a quick review.",
       link: { href: getOpenTarget(item, rowStatus)!, label: "Review now" },
     };
@@ -91,14 +74,14 @@ export function getProgressView(
     const isQuote = item.documentType === "Quote";
     return {
       isWaiting: false,
-      stages,
+      chip: null,
       headline: isQuote ? "Ready in Quote check." : "Done -- it is now askable.",
       link: href !== null ? { href, label: isQuote ? "Open Quote check" : "Open the contract" } : null,
     };
   }
 
   if (rowStatus === "failed") {
-    return { isWaiting: false, stages, headline: FAILED_HEADLINE, link: null };
+    return { isWaiting: false, chip: null, headline: FAILED_HEADLINE, link: null };
   }
 
   // rowStatus === "rejected": the same reason sentence the row's own hint shows -- silent (a plain,
@@ -106,7 +89,7 @@ export function getProgressView(
   // DocumentStatusTable.tsx's "tag, no hint" for the same case.
   return {
     isWaiting: false,
-    stages,
+    chip: null,
     headline: getRejectionReasonCopy(item.rejectionReason) ?? "Raffa.ai did not add this file.",
     link: null,
   };

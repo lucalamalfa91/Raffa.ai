@@ -970,5 +970,34 @@ BEGIN
     VALUES ('20260915041146_AddContractNegotiationStep', '10.0.4');
     END IF;
 END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260915120000_AddContractProvisionalIdentity') THEN
+    ALTER TABLE contract ADD display_name character varying(500) NULL;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260915120000_AddContractProvisionalIdentity') THEN
+    ALTER TABLE contract ADD identity_state character varying(20) NOT NULL DEFAULT 'official';
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260915120000_AddContractProvisionalIdentity') THEN
+    ALTER TABLE contract ADD provisional_supplier_name character varying(500) NULL;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260915120000_AddContractProvisionalIdentity') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20260915120000_AddContractProvisionalIdentity', '10.0.4');
+    END IF;
+END $EF$;
 COMMIT;
 

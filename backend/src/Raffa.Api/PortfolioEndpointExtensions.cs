@@ -104,6 +104,13 @@ public static class PortfolioEndpointExtensions
                 contractId = item.ContractId,
                 supplierId = item.SupplierId,
                 supplierName = LookupSupplierName(supplierNames, item.SupplierId),
+                // Provisional identity fields (instant-identity-ingest): displayName is the
+                // filename at T+0 or the LLM-extracted title; provisionalSupplierName is the
+                // raw supplier string even before canonical resolution. The UI shows these on
+                // provisional rows so the user sees something meaningful immediately.
+                displayName = item.DisplayName,
+                identityState = item.IdentityState.ToString().ToLowerInvariant(),
+                provisionalSupplierName = item.ProvisionalSupplierName,
                 type = item.Type.ToString(),
                 annualSpend = item.AnnualSpend,
                 currency = item.Currency,

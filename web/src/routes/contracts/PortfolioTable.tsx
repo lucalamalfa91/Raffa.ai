@@ -63,15 +63,21 @@ export default function PortfolioTable({ rows, moreColumns }: PortfolioTableProp
           </tr>
         </thead>
         <tbody>
-          {rows.map(({ item, cancelDays, isUrgent }) => {
+          {rows.map(({ item, cancelDays, isUrgent, isProvisional }) => {
             const statusTag = getPortfolioStatusTag(item.status);
             const riskTag = getPortfolioRiskTag(item.risk);
             const contractHref = `/contracts/${item.contractId}`;
+            // Supplier: prefer the raw provisional string over the canonical resolved name, so
+            // a pre-enrich row always shows something meaningful (plan: provisionalSupplierName ?? supplierName ?? "—").
+            const supplierDisplay = item.provisionalSupplierName ?? item.supplierName ?? "—";
+            // Contract link: displayName (filename / LLM title) when present, type label as fallback.
+            const contractLabel = item.displayName ?? getContractTypeLabel(item.type);
+            const typeLabel = item.displayName ? getContractTypeLabel(item.type) : null;
 
             return (
               <tr
                 key={item.contractId}
-                className={`portfolio-row${isUrgent ? " row-critical" : ""}`}
+                className={`portfolio-row${isUrgent ? " row-critical" : ""}${isProvisional ? " row-provisional" : ""}`}
                 onClick={(event) => {
                   // The Contract cell's own <Link> handles its click natively; everywhere else on
                   // the row, follow it (markup.html's `cg-row` row click).
@@ -79,9 +85,13 @@ export default function PortfolioTable({ rows, moreColumns }: PortfolioTableProp
                   navigate(contractHref);
                 }}
               >
-                <td className="portfolio-cell-supplier">{item.supplierName ?? "—"}</td>
+                <td className="portfolio-cell-supplier">
+                  {supplierDisplay}
+                  {isProvisional && <span className="tag tag-neutral portfolio-draft-tag">Draft</span>}
+                </td>
                 <td className="portfolio-cell-contract">
-                  <Link to={contractHref}>{getContractTypeLabel(item.type)}</Link>
+                  <Link to={contractHref}>{contractLabel}</Link>
+                  {typeLabel && <span className="portfolio-contract-type">{typeLabel}</span>}
                 </td>
                 <td className="portfolio-table-numeric portfolio-cell-spend">{formatAnnualSpend(item.annualSpend)}</td>
                 <td>{formatDateOnly(item.endDate)}</td>

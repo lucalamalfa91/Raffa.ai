@@ -71,6 +71,26 @@ export function getStagePercent(stage: string | null): number {
   return index === -1 ? 0 : Math.round(((index + 1) / DOCUMENT_PROCESSING_STAGES.length) * 100);
 }
 
+/**
+ * Two-chip processing label that replaces the stuck "Extracting facts…" 90 s bar (plan
+ * instant-upload-open). The six Worker stages collapse into two human-readable phases:
+ * - `"identifying"` — parse, classify, read text, slice into sections (fast).
+ * - `"enriching"` — extract facts, validate schema (the slower AI pass).
+ * An unrecognised or absent stage defaults to `"identifying"`, the honest "just started" reading.
+ */
+export type ProcessingChip = "identifying" | "enriching";
+
+export const PROCESSING_CHIP_LABEL: Record<ProcessingChip, string> = {
+  identifying: "Identifying…",
+  enriching: "Enriching…",
+};
+
+/** Returns which of the two quiet chips to show for the given Worker stage name. */
+export function getProcessingChip(stage: string | null): ProcessingChip {
+  if (stage === "Extracting facts" || stage === "Validating schema") return "enriching";
+  return "identifying";
+}
+
 /** The six statuses a real (server-known) row can render. `"rejected"` is task E16/F02/US03/T01's
  * (wave w15, ADR-027 §D6): the content gate now runs on the Worker after the upload has returned,
  * so a file that turns out not to be a contract is a *server row* in `Rejected` with a
