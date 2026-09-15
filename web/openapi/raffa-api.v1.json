@@ -1867,6 +1867,20 @@
                               "null"
                             ],
                             "description": "Low, Medium, High, or Critical, or null when the contract has no recorded Risk row. Deliberately not declared as an enum here -- see this operation's own description for why."
+                          },
+                          "fileName": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "w17 immediate-visibility: the filename of the most-recently-created document linked to this contract. Populated from the moment of upload (before any extraction stage runs), so a row with documentProcessingStatus=Uploaded already carries a recognisable filename. Null only for orphaned Contract shells whose last document was deleted."
+                          },
+                          "documentProcessingStatus": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "w17 immediate-visibility: the processing status of the most-recently-created linked document. One of Uploaded|Processing|NeedsReview|Completed|Failed|Rejected, or null for orphaned Contract shells. When Uploaded or Processing the UI renders the row as pending (shows fileName as the primary identifier instead of the contract-type label)."
                           }
                         }
                       }

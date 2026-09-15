@@ -8,12 +8,12 @@ import { daysUntil } from "./portfolioAttention";
  * `raffa-v2/app.jsx` `kbContracts` / `pfSummary` / `moreCols`). No React here -- every rule is
  * unit-testable without rendering (`portfolioViewModel.test.ts`).
  *
- * **Validated contracts only, sorted by the notice deadline.** `app.jsx`: `kbContracts =
- * completedCids.map(...).sort((a,b)=>a.cancelDays-b.cancelDays)` -- the Portfolio "lights up from
- * validated contracts" (V2 principle: only `completed` documents feed Ask, Portfolio and Renewals);
- * a contract still processing or waiting for review lives on the Documents screen, not here. Rows
- * are ordered by how soon notice must be given, soonest first; a row with no deadline sorts after
- * every row that has one, then by end date, then by id for a deterministic tiebreak.
+ * **All uploaded contracts, sorted by the notice deadline (pending rows last).** w17 change: a
+ * contract is visible as soon as its document is uploaded -- no longer waiting for extraction to
+ * complete. Pending rows (documentProcessingStatus = Uploaded or Processing) appear after all
+ * validated rows (sorted by notice deadline), clearly labelled as still-processing via `isPending`.
+ * The summary "validatedCount" and spend totals still count only validated (non-pending) rows so
+ * the headline figure stays accurate.
  *
  * **Urgent = notice due within 45 days.** `app.jsx`: `rowBg: c.cancelDays<=45 ? accent-100 :
  * transparent`, `bar: accent`, `cancelFg: accent-700`, `cancelW: 600` -- the same locked ADR-019
@@ -31,19 +31,45 @@ export interface PortfolioRow {
   cancelDays: number | null;
   /** Notice due within the locked 45-day window (`isDeadlineCritical`): accent tint + bar + bold date. */
   isUrgent: boolean;
+  /**
+   * w17: true when the linked document is still in `Uploaded` or `Processing` state, meaning
+   * extraction has not completed yet. Pending rows show the filename as the primary identifier
+   * instead of the contract-type label, and are sorted after all validated rows.
+   */
+  isPending: boolean;
+}
+
+/**
+ * Returns true when the document linked to this portfolio item is still being processed.
+ * The check is on `documentProcessingStatus` (the new w17 field) so the pending flag is
+ * authoritative even if `Contract.Status` has already been updated by a partial extraction stage.
+ */
+function isDocumentPending(documentProcessingStatus: string | null | undefined): boolean {
+  if (!documentProcessingStatus) return false;
+  const s = documentProcessingStatus.toLowerCase();
+  return s === "uploaded" || s === "processing";
 }
 
 export function buildPortfolioRows(items: readonly PortfolioListItem[], now: Date = new Date()): PortfolioRow[] {
   return items
-    .filter((item) => isValidatedContractStatus(item.status))
+    // w17: include both validated contracts AND freshly-uploaded (pending) ones.
+    // - Pending (documentProcessingStatus = Uploaded|Processing): shown immediately after upload
+    //   so the user sees their document appear at once.
+    // - Validated (isValidatedContractStatus = true): shown with full extracted data.
+    // - needs_review / failed / etc.: still excluded — they have their own Documents screen.
+    .filter((item) => isValidatedContractStatus(item.status) || isDocumentPending(item.documentProcessingStatus))
     .map((item) => {
       const cancelDays = daysUntil(item.cancellationDeadline, now);
-      return { item, cancelDays, isUrgent: cancelDays !== null && isDeadlineCritical(cancelDays) };
+      const isPending = isDocumentPending(item.documentProcessingStatus);
+      return { item, cancelDays, isUrgent: cancelDays !== null && isDeadlineCritical(cancelDays), isPending };
     })
     .sort(compareByNoticeDeadline);
 }
 
 function compareByNoticeDeadline(a: PortfolioRow, b: PortfolioRow): number {
+  // w17: pending rows (still processing) sort after all validated rows regardless of deadline.
+  if (a.isPending !== b.isPending) return a.isPending ? 1 : -1;
+
   if (a.cancelDays !== b.cancelDays) {
     if (a.cancelDays === null) return 1;
     if (b.cancelDays === null) return -1;
@@ -73,8 +99,13 @@ export interface PortfolioSummary {
 }
 
 export function buildPortfolioSummary(rows: readonly PortfolioRow[]): PortfolioSummary {
+  // w17: only validated (non-pending) rows contribute to the summary figures so the headline
+  // "N validated contracts · CHF X annual · K notice deadlines" stays accurate. Pending rows
+  // are shown in the table but not counted here (they have no extracted spend or deadlines yet).
+  const validatedRows = rows.filter((row) => !row.isPending);
+
   const totals = new Map<string | null, number>();
-  for (const { item } of rows) {
+  for (const { item } of validatedRows) {
     if (item.annualSpend === null) continue;
     const key = item.currency ?? null;
     totals.set(key, (totals.get(key) ?? 0) + item.annualSpend);
@@ -84,9 +115,9 @@ export function buildPortfolioSummary(rows: readonly PortfolioRow[]): PortfolioS
     .sort((a, b) => b.total - a.total);
 
   return {
-    validatedCount: rows.length,
+    validatedCount: validatedRows.length,
     annualSpend,
-    urgentCount: rows.filter((row) => row.isUrgent).length,
+    urgentCount: validatedRows.filter((row) => row.isUrgent).length,
   };
 }
 

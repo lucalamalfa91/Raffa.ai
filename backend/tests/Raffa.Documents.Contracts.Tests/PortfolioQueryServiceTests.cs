@@ -450,4 +450,109 @@ public sealed class PortfolioQueryServiceTests : IAsyncLifetime
         Assert.Equal(0, summary.ContractsAnalyzedCount);
         Assert.Empty(summary.AnnualSpendAnalyzed);
     }
+
+    /// <summary>
+    /// w17 immediate-visibility requirement: a document that has just been uploaded
+    /// (<see cref="DocumentProcessingStatus.Uploaded"/>, linked to its bootstrap
+    /// <see cref="Contract"/> shell at upload time by the updated
+    /// <see cref="DocumentUploadService"/>) MUST appear in Portfolio immediately — before the
+    /// extraction worker has had a chance to start. FileName and DocumentProcessingStatus are
+    /// the identifying fields available at upload time.
+    /// </summary>
+    [Fact]
+    public async Task Uploaded_document_appears_in_portfolio_immediately_with_filename_and_status()
+    {
+        var tenantId = TenantId.New();
+        var tenantContext = new TenantContext();
+
+        // Simulate the bootstrap Contract shell that DocumentUploadService now creates at
+        // upload time (before any extraction stage runs).
+        var bootstrapContract = NewContract(tenantId, status: "processing");
+        await SeedContractAsync(tenantContext, bootstrapContract);
+
+        var uploadedDoc = new Document
+        {
+            TenantId = tenantId,
+            ContractId = bootstrapContract.Id, // linked at upload time (w17 fix)
+            FileName = "CT-002_BluePeak_1.pdf",
+            MimeType = "application/pdf",
+            StoragePath = $"{tenantId.Value}/CT-002_BluePeak_1.pdf",
+            Checksum = "abc123",
+            ProcessingStatus = DocumentProcessingStatus.Uploaded,
+            CreatedAt = DateTimeOffset.UtcNow,
+        };
+        await SeedDocumentAsync(tenantContext, uploadedDoc);
+
+        await using var db = CreateAppContext(tenantContext);
+        var service = new PortfolioQueryService(db, tenantContext, new PortfolioAnalysisCalculator());
+
+        var result = await service.GetPortfolioAsync(tenantId, PortfolioFilter.None);
+
+        // The contract must be visible immediately — no waiting for extraction.
+        var item = Assert.Single(result.Items);
+        Assert.Equal(bootstrapContract.Id.Value, item.ContractId);
+        Assert.Equal("processing", item.Status);
+
+        // Identifying info from the upload is surfaced right away.
+        Assert.Equal("CT-002_BluePeak_1.pdf", item.FileName);
+        Assert.Equal(DocumentProcessingStatus.Uploaded, item.DocumentProcessingStatus);
+
+        // Extracted commercial fields are null until extraction runs (no fabrication).
+        Assert.Null(item.AnnualSpend);
+        Assert.Null(item.StartDate);
+        Assert.Null(item.EndDate);
+        Assert.Null(item.SupplierId);
+    }
+
+    /// <summary>
+    /// w17: FileName and DocumentProcessingStatus reflect the most-recently-created document
+    /// per contract, so a re-upload (second document) shows the newer file's name.
+    /// </summary>
+    [Fact]
+    public async Task FileName_reflects_the_most_recently_linked_document()
+    {
+        var tenantId = TenantId.New();
+        var tenantContext = new TenantContext();
+        var now = DateTimeOffset.UtcNow;
+
+        var contract = NewContract(tenantId, status: "Active");
+        await SeedContractAsync(tenantContext, contract);
+
+        // Older document (completed)
+        var olderDoc = new Document
+        {
+            TenantId = tenantId,
+            ContractId = contract.Id,
+            FileName = "contract-v1.pdf",
+            MimeType = "application/pdf",
+            StoragePath = $"{tenantId.Value}/contract-v1.pdf",
+            Checksum = "old",
+            ProcessingStatus = DocumentProcessingStatus.Completed,
+            CreatedAt = now.AddMinutes(-5),
+        };
+        await SeedDocumentAsync(tenantContext, olderDoc);
+
+        // Newer document (just uploaded)
+        var newerDoc = new Document
+        {
+            TenantId = tenantId,
+            ContractId = contract.Id,
+            FileName = "contract-v2.pdf",
+            MimeType = "application/pdf",
+            StoragePath = $"{tenantId.Value}/contract-v2.pdf",
+            Checksum = "new",
+            ProcessingStatus = DocumentProcessingStatus.Uploaded,
+            CreatedAt = now,
+        };
+        await SeedDocumentAsync(tenantContext, newerDoc);
+
+        await using var db = CreateAppContext(tenantContext);
+        var service = new PortfolioQueryService(db, tenantContext, new PortfolioAnalysisCalculator());
+
+        var result = await service.GetPortfolioAsync(tenantId, PortfolioFilter.None);
+
+        var item = Assert.Single(result.Items);
+        Assert.Equal("contract-v2.pdf", item.FileName);
+        Assert.Equal(DocumentProcessingStatus.Uploaded, item.DocumentProcessingStatus);
+    }
 }

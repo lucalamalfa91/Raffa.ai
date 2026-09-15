@@ -114,6 +114,11 @@ public static class PortfolioEndpointExtensions
                 autoRenewal = item.AutoRenewal,
                 status = item.Status,
                 risk = item.Risk?.ToString(),
+                // w17 immediate-visibility: identifying info available from upload alone,
+                // before any extraction stage has run. Null only for orphaned Contract shells
+                // (document was deleted after upload).
+                fileName = item.FileName,
+                documentProcessingStatus = item.DocumentProcessingStatus?.ToString(),
             }),
             page = result.Page,
             pageSize = result.PageSize,

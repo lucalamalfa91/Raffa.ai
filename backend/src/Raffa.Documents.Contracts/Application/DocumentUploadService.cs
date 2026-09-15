@@ -15,6 +15,16 @@ namespace Raffa.Documents.Contracts.Application;
 /// <see cref="ExtractionJob"/> as one unit of work (module-map "Worker responsibilities":
 /// classification is the first extraction stage after upload).
 ///
+/// Immediate Portfolio/Renewals visibility (w17 fix): also creates a minimal <see cref="Contract"/>
+/// shell at upload time and links <see cref="Document.ContractId"/> to it, so the contract appears
+/// in <see cref="PortfolioQueryService.GetPortfolioAsync"/> instantly — the same bootstrap
+/// placeholder (status: "processing", currency: "USD") that
+/// <see cref="Extraction.StagedExtractionService.EnsureContractAsync"/> would otherwise create when
+/// the worker eventually picks up the job. <c>EnsureContractAsync</c> already handles a non-null
+/// <see cref="Document.ContractId"/> (it looks up the existing row and returns it), so there is no
+/// double-create risk: old documents uploaded before this change see the original path; new uploads
+/// use this one.
+///
 /// Owns its own tenant scope (<see cref="ITenantContext.BeginScope"/>) for the duration of the
 /// call instead of relying on the caller to have entered one — every caller (the API endpoint
 /// today, a queue handler later) gets the ADR-009 RLS backstop automatically, and a caller that
@@ -49,6 +59,18 @@ public sealed class DocumentUploadService(
     IAuditWriter auditWriter)
 {
     private const int InitialVersionNumber = 1;
+
+    /// <summary>Bootstrap-only placeholder <see cref="Contract.Status"/> — the same literal
+    /// <see cref="Extraction.StagedExtractionService"/> uses for its own
+    /// <c>BootstrapContractStatus</c> constant so the two are always in sync. Overwritten by the
+    /// metadata stage once extraction runs.</summary>
+    private const string BootstrapContractStatus = "processing";
+
+    /// <summary>Bootstrap-only placeholder <see cref="Contract.Currency"/> — NOT NULL column on
+    /// the contract table (ADR-003); must be set even before extraction determines the real value.
+    /// Same value <see cref="Extraction.StagedExtractionService"/> uses for its own
+    /// <c>BootstrapContractCurrency</c>.</summary>
+    private const string BootstrapContractCurrency = "USD";
 
     /// <param name="actor">The caller's resolved token subject (ADR-011 w16 clause 15) — required,
     /// no default, so a placeholder can never return by omission. Recorded on
@@ -91,6 +113,20 @@ public sealed class DocumentUploadService(
             .SaveAsync(tenantId, documentId, InitialVersionNumber, fileName, buffer, cancellationToken)
             .ConfigureAwait(false);
 
+        // Immediate-visibility bootstrap (w17): create the Contract shell now so the document
+        // appears in Portfolio/Renewals as soon as it is uploaded, without waiting for the
+        // extraction worker to call EnsureContractAsync. The worker's EnsureContractAsync already
+        // handles a non-null ContractId (returns the existing row), so this is safe to do here.
+        var contract = new Contract
+        {
+            TenantId = tenantId,
+            Type = ContractDocumentType.Other, // refined by Classification stage
+            Status = BootstrapContractStatus,
+            Currency = BootstrapContractCurrency,
+            CreatedAt = now,
+        };
+        dbContext.Contracts.Add(contract);
+
         var document = new Document
         {
             Id = documentId,
@@ -101,6 +137,7 @@ public sealed class DocumentUploadService(
             Checksum = checksum,
             ProcessingStatus = DocumentProcessingStatus.Uploaded,
             CreatedAt = now,
+            ContractId = contract.Id, // link immediately so PortfolioQueryService finds it
         };
 
         var version = new DocumentVersion
