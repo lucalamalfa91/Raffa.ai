@@ -53,6 +53,16 @@ namespace Raffa.Api.Infrastructure;
 /// identical tenant a second time. On failure the candidate scope is disposed before the 404 is
 /// returned: nothing this seam does ever leaves a stale scope open past its own call.
 /// </para>
+///
+/// <para>
+/// <b>Membership match, one key only (ADR-010 w16 footer S16-1)</b>: the membership query below
+/// matches <see cref="Raffa.Identity.Workspace.Domain.WorkspaceUser.ExternalSubjectId"/> only. It
+/// used to also match <c>Email</c>, so a <c>workspace_user</c> row whose <c>Email</c> column
+/// happened to equal the caller's identity conferred membership too — not exploitable while every
+/// identity is a GUID-shaped <c>oid</c> (an email never equals one), but one ordinary invite away
+/// from being a grant on a column an Admin writes at invite time. Email keeps only its two other
+/// jobs (the invite bind, the invite-accept match); it plays no part in authorization.
+/// </para>
 /// </summary>
 internal interface ICallerContext
 {
@@ -140,7 +150,7 @@ internal sealed class CallerContext(
                 join membership in dbContext.WorkspaceMemberships on user.Id equals membership.WorkspaceUserId
                 where user.TenantId == tenantId
                     && membership.TenantId == tenantId
-                    && (user.Email == identity || user.ExternalSubjectId == identity)
+                    && user.ExternalSubjectId == identity
                 select membership.Id)
                 .AnyAsync(cancellationToken)
                 .ConfigureAwait(false);

@@ -238,16 +238,19 @@ public sealed class CallerIdentityContextNormalizationTests
     }
 
     [Fact]
-    public void Identity_is_trimmed_and_lower_cased_before_it_reaches_the_context()
+    public void Identity_is_trimmed_but_case_is_preserved_before_it_reaches_the_context()
     {
         ICallerIdentityContext context = new CallerIdentityContext();
 
-        // Matches the identity_self policy's own lower(email) comparison (ADR-025 §F.1) and
-        // WorkspaceMembershipFactory.CreateInvitedUser's existing trim -- this is the single
-        // point that normalises before the value ever reaches the set_config bind parameter.
+        // ADR-010 w16 footer S16-2 (task E18/F02/US01/T01): this used to also lower-case, which
+        // silently broke the `identity_self` policy's ordinal `external_subject_id = guc` leg for
+        // any subject not already a canonical lowercase GUID -- the email leg needed no help, since
+        // `lower(email) = lower(guc)` already lower-cases both sides in SQL. Only whitespace is
+        // trimmed here now, matching WorkspaceMembershipFactory.CreateInvitedUser's own trim of the
+        // same identity class; case is the caller's to keep.
         using (context.BeginIdentityScope("  MixedCase@Example.COM  "))
         {
-            Assert.Equal("mixedcase@example.com", context.Current);
+            Assert.Equal("MixedCase@Example.COM", context.Current);
         }
 
         Assert.Null(context.Current);

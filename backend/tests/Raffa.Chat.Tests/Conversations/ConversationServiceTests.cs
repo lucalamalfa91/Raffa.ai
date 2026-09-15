@@ -209,6 +209,89 @@ public sealed class ConversationServiceTests : IAsyncLifetime
         Assert.Null(detail);
     }
 
+    /// <summary>
+    /// ADR-010 w16 footer S16-2/2a (task E18/F02/US01/T01): the conversation key is the validated
+    /// token's <c>oid</c>, an opaque, case-sensitive Entra object id
+    /// (<c>Raffa.Api.Infrastructure.CallerIdentity.cs:60-68</c>) — matched ordinally, the same way
+    /// <c>ICallerContext</c>/<c>WorkspaceRoleResolver</c> already match <c>ExternalSubjectId</c>.
+    /// A16-1's original wording ("sign in with different UPN casing is still readable") is vacuous
+    /// for exactly this reason and the promoted task's DoD line `:69` asserting it must NOT be
+    /// implemented (product-owner, ADR-001 w16 footer clause 1) — this test pins the corrected,
+    /// opposite behaviour: two strings differing only in case are two different callers, never one
+    /// normalized to the other.
+    /// </summary>
+    [Fact]
+    public async Task GetAsync_treats_the_caller_key_as_case_sensitive_never_normalized()
+    {
+        var tenantId = TenantId.New();
+        var tenantContext = new TenantContext();
+        var auditWriter = new RecordingAuditWriter();
+        var now = new DateTimeOffset(2026, 9, 15, 9, 0, 0, TimeSpan.Zero);
+        const string oid = "AbC-9f2D-Entra-Object-Id";
+
+        ConversationSummaryResult created;
+        {
+            var service = CreateService(tenantContext, new FixedClock(now), auditWriter, out var db);
+            await using var _ = db;
+            created = await service.CreateAsync(tenantId, oid, null);
+        }
+
+        var readService = CreateService(tenantContext, new FixedClock(now), auditWriter, out var readDb);
+        await using var __ = readDb;
+
+        // Same key, same case: readable by the caller who created it.
+        Assert.NotNull(await readService.GetAsync(tenantId, oid, created.ConversationId));
+
+        // Same key, different case: a different caller as far as this seam is concerned -- not a
+        // normalized match onto the same row.
+        Assert.Null(await readService.GetAsync(tenantId, oid.ToLowerInvariant(), created.ConversationId));
+        Assert.Null(await readService.GetAsync(tenantId, oid.ToUpperInvariant(), created.ConversationId));
+    }
+
+    /// <summary>
+    /// ADR-001 w16 footer clause 1 / ADR-010 w16 footer S16-3 (task E18/F02/US01/T01): a
+    /// conversation written under the pre-w15 <c>X-User-Id</c>/email posture is left in place,
+    /// never remapped, never deleted — this task writes no migration and no backfill — so it is
+    /// simply unreachable by any <c>oid</c>-shaped caller. Standing constraint carried into this
+    /// wave: no surface may count a conversation it cannot open, so the row that 404s on
+    /// <see cref="ConversationService.GetAsync"/> must also be absent from
+    /// <see cref="ConversationService.ListRecentAsync"/> — never a phantom row, never a 500, never
+    /// another user's thread.
+    /// </summary>
+    [Fact]
+    public async Task GetAsync_and_ListRecentAsync_never_reach_a_pre_w15_row_keyed_by_the_old_email()
+    {
+        var tenantId = TenantId.New();
+        var tenantContext = new TenantContext();
+        var auditWriter = new RecordingAuditWriter();
+        var now = new DateTimeOffset(2026, 9, 15, 9, 0, 0, TimeSpan.Zero);
+        const string preW15Key = "legacy.user@example.com";
+        const string postW15Oid = "AbC-9f2D-Entra-Object-Id";
+
+        ConversationSummaryResult orphan;
+        {
+            // Stands in for a row a real pre-w15 migration left behind -- created directly under the
+            // old key, since this task writes no migration and no backfill to produce one.
+            var service = CreateService(tenantContext, new FixedClock(now), auditWriter, out var db);
+            await using var _ = db;
+            orphan = await service.CreateAsync(tenantId, preW15Key, null);
+        }
+
+        var readService = CreateService(tenantContext, new FixedClock(now), auditWriter, out var readDb);
+        await using var __ = readDb;
+
+        // A clean, honest "not found" for the new caller -- never a 500, never someone else's thread.
+        Assert.Null(await readService.GetAsync(tenantId, postW15Oid, orphan.ConversationId));
+
+        // Not listed and not counted anywhere the new caller can see.
+        var recent = await readService.ListRecentAsync(tenantId, postW15Oid);
+        Assert.DoesNotContain(recent, r => r.ConversationId == orphan.ConversationId);
+        Assert.Empty(recent);
+
+        // The row itself is untouched, not deleted -- still reachable under its own, original key.
+        Assert.NotNull(await readService.GetAsync(tenantId, preW15Key, orphan.ConversationId));
+    }
+
     [Fact]
     public async Task AppendMessageAsync_derives_the_title_from_the_first_you_message_truncated_to_48_chars()
     {

@@ -101,7 +101,10 @@ public sealed class ImplicitTenantAdminStartupFilter : IStartupFilter
                 db.WorkspaceRoles.Add(roleRow);
             }
 
-            var user = new WorkspaceUser { TenantId = tenant, Email = email, CreatedAt = now };
+            // ADR-010 w16 footer S16-1: CallerContext/WorkspaceRoleResolver match ExternalSubjectId
+            // only now (Email dropped as an authorization leg), so this shim's simulated member must
+            // carry the same value there too -- it is what the X-User-Id -> `oid` bridge presents.
+            var user = new WorkspaceUser { TenantId = tenant, Email = email, ExternalSubjectId = email, CreatedAt = now };
             db.WorkspaceUsers.Add(user);
             db.WorkspaceMemberships.Add(new WorkspaceMembership
             {

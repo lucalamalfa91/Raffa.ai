@@ -221,7 +221,7 @@ request.
 | GET | `/api/contracts` | portfolio list; spec §8.1 columns; `X-Tenant-Id` header; optional filters `supplierId`, `status`, `risk` (Low/Medium/High/Critical), `autoRenewal`, `minAnnualSpend`, `maxAnnualSpend`, `renewalFrom`/`renewalTo` (yyyy-MM-dd) — no `category` filter yet, see `PortfolioFilter`'s doc comment; optional paging `page` (default 1), `pageSize` (default 25, max 100); response is `{ items, page, pageSize, totalCount }`, not a bare array |
 | GET | `/api/contracts/{id}` | Contract 360 aggregate; spec §8.2 header + tabs (overview, commercials, products, clauses, obligations, risks, documents, benchmark, renewal, activity); `X-Tenant-Id` header; 404 when the contract does not exist or belongs to another tenant; `benchmark`/`activity` are always empty arrays — no task has yet mapped a real contract's line items into a `Raffa.Benchmark.Contracts.BenchmarkQuery` (no supplier-name/geography field exists on `Contract` today), so this tab stays empty even though R3's own benchmark comparison is real and provable elsewhere (see "R3 demo smoke test" below); `activity` remains an R4 placeholder — see `Contract360Result`'s doc comment |
 | POST | `/api/chat/query` | Ask Raffa V2 (ADR-024 §6; task E13/F06/US01/T01, ask-engine); `{ question: string }` + `X-Tenant-Id` header + caller identity (see "Interim auth" below). Kept one release as a thin alias: creates a conversation, then delegates into the same `AskCopilotService`/`POST /api/conversations/{id}/messages` pipeline (see "Ask Raffa — conversations store" below) — the old direct `AskRaffaQueryRouter` → `RagAnswerService` → `{ question, intent, canDetermine, answer, citations, message }` shape this route used to return (task E02/F04/US02/T01) no longer exists; that router is now reused *inside* `AskCopilotService` instead. Response is the ADR-024 §6 reply contract, same as the messages endpoint below |
-| GET | `/api/conversations` | Caller's last N conversations, most recently updated first (spec §7; R-CONV-02; story us-01-conversations AC-2, task E13/F05/US01/T02); `X-Tenant-Id` header + caller identity (see "Interim auth" below); optional `take` (default 5, must be a positive integer); response is a bare array of `{ id, title, scopeContractId, updatedAt }`, never an `{ items, totalCount }` envelope — there is no paging concept for "my last N conversations" |
+| GET | `/api/conversations` | Caller's last N conversations, most recently updated first (spec §7; R-CONV-02; story us-01-conversations AC-2, task E13/F05/US01/T02); `X-Tenant-Id` header + caller identity (see "Authentication" below); optional `take` (default 5, must be a positive integer); response is a bare array of `{ id, title, scopeContractId, updatedAt }`, never an `{ items, totalCount }` envelope — there is no paging concept for "my last N conversations" |
 | POST | `/api/conversations` | Creates a conversation (AC-2); `X-Tenant-Id` header + caller identity; body `{ scopeContractId? }` — a GUID naming the contract "Ask about it" (Contract 360) was opened from, or omitted for the global Ask bar (ADR-024: "The global Ask bar always opens a new chat"); 201 with the same `{ id, title, scopeContractId, updatedAt }` shape as the list row above; `title` starts as `ConversationService.DefaultTitle` ("New chat") until the first message lands |
 | GET | `/api/conversations/{id}` | The conversation plus its messages, oldest first (AC-2); `X-Tenant-Id` header + caller identity; 404 when `{id}` does not exist, belongs to another tenant, or belongs to another user of the same tenant — RLS backstops the tenant half (ADR-009), `Raffa.Chat.Application.Conversations.ConversationService` itself is the only thing enforcing the per-user half (RLS has no per-user predicate), and both read back as the identical 404, never a distinguishing 403; response `{ id, title, scopeContractId, createdAt, updatedAt, messages: [{ id, role, kind, markdown, citations, actions, modelId, promptVersion, inputHash, createdAt }] }` — `role` is `you`/`raffa`, `kind` is `answer`/`abstain`/`redirect`/`refusal` (ADR-024 §6 wire literals); `citations`/`actions` are real JSON arrays, never a JSON string nested inside JSON; never the raw retrieval pack (ADR-011) |
 | POST | `/api/conversations/{id}/messages` | Ask Raffa V2 (ADR-024 §6; task E13/F06/US01/T01, ask-engine, AC-8); `{ question: string }` + `X-Tenant-Id` header + caller identity; 400 for a missing/invalid tenant or user header, an invalid `{id}`, or a blank `question` — all before any database call (see `Raffa.Api.Tests.ConversationsEndpointTests`). Runs the full engine (`AskCopilotService`: `Gate.DomainGate` →, for `in_domain` turns, `Planning.IntentPlanner` → per-intent context pack → guarded `answer` call → `Guards.GroundingGuard`/`NumericGuard`/`RegenerateOnce`), appends both the caller's question and Raffa's reply to the conversation via `ConversationService`, then returns the same ADR-024 §6 reply contract `GET /api/conversations/{id}` echoes back for one message: `{ kind, answerMarkdown, citations: [{ n, corpus, title, subtitle, snippet, documentId?, contractId?, page?, section?, previewUrl?, href?, recordId? }], actions: [{ label, href, kind }], provenance: { sources, modelId, promptVersion, inputHash }, followUps }` plus `conversationId`/`messageId` — never engineer chrome (a `Document:` guid, a "Structured query" line) in `answerMarkdown` |
@@ -376,21 +376,40 @@ the existing `IDocumentPreviewRenderer` port — registering one is the only
 change needed; the storage path, the endpoint and the stored `preview_path`
 stay as they are. Until then the card shows the placeholder, not a fake page.
 
-**Admin resolution while ADR-010 is not wired**
-(`Raffa.Api.Infrastructure.WorkspaceRoleResolver`), in order: role claims on
-an authenticated principal → the caller's `workspace_membership` row, looked up
-by the identity `ICallerIdentity` resolves from the `X-User-Id` header — and
-**nothing else**. The **membership row is the role source of truth** (wave w14,
-task E14/F02/US02/T01; ADR-022 w14 footer clause 1, ADR-025 §E): the interim
-`X-Role` / `X-Workspace-Role` header branch that used to sit between those two
-sources is deleted, so a client-declared role is **never the product answer** —
-a header claiming `Admin` never grants, and one claiming `Procurement` never
-revokes a real Admin's rights (ADR-025 Rule E2). No match means no role, and
-every Admin-only endpoint answers 403. The web client sends `X-User-Id` on
-every call and no role header, so the membership branch is the one that decides
-whether its Admin buttons work. The only remaining reader of `X-Role` is the
-tenant-agnostic `GET /api/capabilities`, and it authorizes nothing — it merely
-hides the `workspace-members` catalog entry from a non-Admin.
+**Admin resolution** (`Raffa.Api.Infrastructure.WorkspaceRoleResolver`): a live
+`workspace_membership` row for the caller's validated identity — **and nothing
+else**. Two sources that used to sit ahead of it are both gone: a
+client-declared role header (the interim `X-Role` / `X-Workspace-Role` branch,
+deleted wave w14, task E14/F02/US02/T01; ADR-022 w14 footer clause 1, ADR-025
+§E) and, since wave w15 (NW-06, ADR-010 w15 footer §3), role claims on an
+authenticated principal — deleting that second source is what stops one Entra
+app-role assignment from resolving to that role in *every* workspace the caller
+can name instead of only the ones they hold a real membership in. **The
+membership row is the role source of truth**: a header claiming `Admin` never
+grants, and one claiming `Procurement` never revokes a real Admin's rights
+(ADR-025 Rule E2). The identity itself is the validated bearer token's `oid`
+(see "Authentication" above), never a header. Since wave w16 (ADR-010 w16
+footer S16-1, task E18/F02/US01/T01) the membership match is a single key,
+`ExternalSubjectId` only — it used to also match `Email`, so a `workspace_user`
+row whose `Email` happened to equal the caller's identity conferred a role too;
+not exploitable while every identity is a GUID-shaped `oid`, but `Email` is a
+column an Admin writes at invite time and must never be an authorization input.
+No match means no role, and every Admin-only endpoint answers 403. The only
+remaining reader of `X-Role` is the tenant-agnostic `GET /api/capabilities`,
+and it authorizes nothing — it merely hides the `workspace-members` catalog
+entry from a non-Admin.
+
+**The identity is never lower-cased, anywhere in this chain** (ADR-010 w16
+footer S16-2, task E18/F02/US01/T01): `oid` is an opaque, case-sensitive Entra
+object id, so `Raffa.Api.Infrastructure.CallerContext`/`WorkspaceRoleResolver`
+and `Raffa.Identity.Workspace.Infrastructure.WorkspaceDirectoryService` all
+compare it ordinally, and `Raffa.SharedKernel.Tenancy.CallerIdentityContext`
+(the seam `GET /api/workspaces` uses to set the `app.identity_subject` Postgres
+session GUC the `identity_self` RLS policy reads) only trims it — it used to
+also lower-case it, which silently broke that policy's own `external_subject_id
+= guc` leg for any subject that was not already a canonical lowercase GUID.
+Only the `Email` leg lower-cases (both sides, in SQL), matching how it is
+always stored.
 
 **Audit rows are written inside the tenant scope**, by the services rather than
 by the endpoints: `audit_event` is itself RLS-protected, so a write with no
@@ -1050,12 +1069,15 @@ required connection string in that file — and
 `Raffa.Api.ConversationsEndpointExtensions.MapConversationsEndpoints()`
 maps `GET/POST /api/conversations` and `GET /api/conversations/{id}` (see
 the HTTP surface table above for the exact request/response shapes). The
-composition root resolves caller identity (token subject, else the
-required `X-User-Id` header — see "Interim auth" above) and tenant
-(`X-Tenant-Id`) itself, then calls straight into `ConversationService` —
-that service's own `tenantId`/`userId` parameters already do all the
-RLS/application-level scoping, so this file has no scoping logic of its
-own to get wrong.
+composition root resolves caller identity and tenant through
+`ICallerContext.ResolveTenantAsync` — the validated token's `oid`, never a
+header, with no fallback (NW-05, task E18/F01/US01/T01; see "Authentication"
+above) — then calls straight into `ConversationService`; that service's own
+`tenantId`/`userId` parameters already do all the RLS/application-level
+scoping, so this file has no scoping logic of its own to get wrong. A
+conversation created under the pre-w15 `X-User-Id`/email posture is keyed by
+that email and stays unreachable by any `oid` — recorded, never remapped,
+never deleted (ADR-001 w16 footer clause 1, task E18/F02/US01/T01).
 
 ### The V2 engine (task E13/F06/US01/T01, ask-engine, ADR-024)
 
