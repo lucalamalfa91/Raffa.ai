@@ -420,7 +420,7 @@ public sealed class DocumentLifecycleTests : IAsyncLifetime
             var uploadService = new DocumentUploadService(
                 db, harness.Storage, queue, tenantContext, harness.Clock, harness.Audit);
             using var content = new MemoryStream(bytes);
-            var upload = await uploadService.UploadAsync(tenantId, "carbonara.pdf", "application/pdf", content);
+            var upload = await uploadService.UploadAsync(tenantId, "carbonara.pdf", "application/pdf", content, Actor);
             Assert.True(upload.IsSuccess, upload.IsFailure ? upload.Error : string.Empty);
             documentId = upload.Value.DocumentId;
         }
@@ -533,7 +533,7 @@ public sealed class DocumentLifecycleTests : IAsyncLifetime
                 db, harness.Storage, new NoOpExtractionQueuePublisher(), tenantContext, new FixedClock(now),
                 new NoOpAuditWriter());
             using var content = new MemoryStream(bytes);
-            var upload = await uploadService.UploadAsync(tenantId, fileName, "application/pdf", content);
+            var upload = await uploadService.UploadAsync(tenantId, fileName, "application/pdf", content, Actor);
             Assert.True(upload.IsSuccess, upload.IsFailure ? upload.Error : string.Empty);
             documentId = upload.Value.DocumentId;
         }

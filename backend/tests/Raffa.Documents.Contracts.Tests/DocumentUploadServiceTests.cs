@@ -182,8 +182,9 @@ public sealed class DocumentUploadServiceTests : IAsyncLifetime
         var service = new DocumentUploadService(
             db, storage, new NoOpExtractionQueuePublisher(), tenantContext, new FixedClock(now), auditWriter);
 
+        var actor = "uploader@example.com";
         using var content = new MemoryStream(bytes);
-        var result = await service.UploadAsync(tenantId, "contract.pdf", "application/pdf", content);
+        var result = await service.UploadAsync(tenantId, "contract.pdf", "application/pdf", content, actor);
 
         Assert.True(result.IsSuccess);
         var uploaded = result.Value;
@@ -201,6 +202,7 @@ public sealed class DocumentUploadServiceTests : IAsyncLifetime
         // one audit entry, for this tenant, this document, this action.
         var auditEntry = Assert.Single(auditWriter.Written);
         Assert.Equal(tenantId, auditEntry.TenantId);
+        Assert.Equal(actor, auditEntry.Actor);
         Assert.Equal("document.uploaded", auditEntry.Action);
         Assert.Equal("document", auditEntry.ResourceType);
         Assert.Equal(uploaded.DocumentId.Value.ToString(), auditEntry.ResourceId);
@@ -221,6 +223,7 @@ public sealed class DocumentUploadServiceTests : IAsyncLifetime
             Assert.Equal(1, version.VersionNumber);
             Assert.Equal(saved.Path, version.StoragePath);
             Assert.Equal(expectedChecksum, version.Checksum);
+            Assert.Equal(actor, version.CreatedBy);
 
             var job = await readDb.ExtractionJobs.SingleAsync(j => j.DocumentId == uploaded.DocumentId);
             Assert.Equal(ExtractionStage.Classification, job.Stage);
@@ -241,7 +244,7 @@ public sealed class DocumentUploadServiceTests : IAsyncLifetime
             db, storage, new NoOpExtractionQueuePublisher(), tenantContext, new FixedClock(DateTimeOffset.UtcNow), auditWriter);
 
         using var emptyContent = new MemoryStream();
-        var result = await service.UploadAsync(tenantId, "empty.pdf", "application/pdf", emptyContent);
+        var result = await service.UploadAsync(tenantId, "empty.pdf", "application/pdf", emptyContent, "uploader@example.com");
 
         Assert.True(result.IsFailure);
         Assert.Empty(storage.Saved);
@@ -268,7 +271,7 @@ public sealed class DocumentUploadServiceTests : IAsyncLifetime
                 db, storage, new NoOpExtractionQueuePublisher(), tenantContext, new FixedClock(DateTimeOffset.UtcNow),
                 new RecordingAuditWriter());
             using var content = new MemoryStream("owned-by-tenant-a"u8.ToArray());
-            var result = await service.UploadAsync(tenantA, "contract.pdf", "application/pdf", content);
+            var result = await service.UploadAsync(tenantA, "contract.pdf", "application/pdf", content, "tenant-a-uploader@example.com");
             Assert.True(result.IsSuccess);
         }
 
