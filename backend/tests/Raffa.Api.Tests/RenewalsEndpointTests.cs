@@ -117,12 +117,14 @@ public sealed class RenewalsEndpointTests : IClassFixture<RaffaApiFactory>
 
         // Only auto-renewing contracts reach this endpoint at all (the filter GetRenewalsAsync
         // pushes into PortfolioQueryService), so the row needs both AutoRenewal and an EndDate.
-        await factory.SeedContractAsync(PortfolioEndpointTests.NewContract(
+        var contract = PortfolioEndpointTests.NewContract(
             tenantId,
             now,
             salesforceId,
             autoRenewal: true,
-            endDate: DateOnly.FromDateTime(now.UtcDateTime).AddDays(60)));
+            endDate: DateOnly.FromDateTime(now.UtcDateTime).AddDays(60));
+        await factory.SeedContractAsync(contract);
+        await factory.SeedDocumentAsync(InMemoryAskEngineFactory.NewLinkedDocument(tenantId, contract.Id));
 
         var client = factory.CreateClient();
         using var request = new HttpRequestMessage(HttpMethod.Get, "/api/renewals");

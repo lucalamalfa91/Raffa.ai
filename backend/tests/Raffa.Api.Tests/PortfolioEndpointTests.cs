@@ -111,9 +111,15 @@ public sealed class PortfolioEndpointTests : IClassFixture<RaffaApiFactory>
 
         // Distinct CreatedAt values keep the portfolio's ORDER BY deterministic under the InMemory
         // provider — same reason ChatEndpointTests' own seeded contracts never tie.
-        await factory.SeedContractAsync(NewContract(tenantId, now, salesforceId));
-        await factory.SeedContractAsync(NewContract(tenantId, now.AddSeconds(-1), unknownSupplierId));
-        await factory.SeedContractAsync(NewContract(tenantId, now.AddSeconds(-2), supplierId: null));
+        var salesforce = NewContract(tenantId, now, salesforceId);
+        var unknown = NewContract(tenantId, now.AddSeconds(-1), unknownSupplierId);
+        var unlinkedContract = NewContract(tenantId, now.AddSeconds(-2), supplierId: null);
+        await factory.SeedContractAsync(salesforce);
+        await factory.SeedDocumentAsync(InMemoryAskEngineFactory.NewLinkedDocument(tenantId, salesforce.Id));
+        await factory.SeedContractAsync(unknown);
+        await factory.SeedDocumentAsync(InMemoryAskEngineFactory.NewLinkedDocument(tenantId, unknown.Id));
+        await factory.SeedContractAsync(unlinkedContract);
+        await factory.SeedDocumentAsync(InMemoryAskEngineFactory.NewLinkedDocument(tenantId, unlinkedContract.Id));
 
         var client = factory.CreateClient();
         using var request = new HttpRequestMessage(HttpMethod.Get, "/api/contracts");

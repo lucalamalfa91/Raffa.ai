@@ -223,6 +223,21 @@ public sealed class R2IntegrationFixture : WebApplicationFactory<Program>, IAsyn
             });
         }
 
+        // Portfolio / Renewals omit contracts whose documents have all been deleted
+        // (GetPortfolioAsync). These seeds stand in for already-validated contracts, so they
+        // carry a Completed document the same way a finished extraction would.
+        db.Documents.Add(new Document
+        {
+            TenantId = tenantId,
+            ContractId = contract.Id,
+            FileName = $"{contract.Id.Value}.pdf",
+            MimeType = "application/pdf",
+            StoragePath = $"{tenantId.Value}/{contract.Id.Value}.pdf",
+            Checksum = $"sha256:{contract.Id.Value:N}",
+            ProcessingStatus = DocumentProcessingStatus.Completed,
+            CreatedAt = DateTimeOffset.UtcNow,
+        });
+
         await db.SaveChangesAsync();
         return contract;
     }

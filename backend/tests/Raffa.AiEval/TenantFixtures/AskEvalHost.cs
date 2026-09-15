@@ -4,6 +4,7 @@ using Raffa.AiGateway;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Fixtures;
 using Raffa.Chat.Infrastructure;
+using Raffa.Documents.Contracts.Domain;
 using Raffa.Documents.Contracts.Infrastructure;
 using Raffa.Identity.Workspace.Domain;
 using Raffa.Identity.Workspace.Infrastructure;
@@ -273,6 +274,27 @@ internal sealed class AskEvalHost : IAsyncDisposable
         {
             var documents = scope.ServiceProvider.GetRequiredService<DocumentsContractsDbContext>();
             documents.Contracts.AddRange(Fixture.Contracts);
+            // GetPortfolioAsync hides contracts with no remaining document (dead leftovers after
+            // a delete). Each fixture contract gets a linked row whose processing status matches
+            // the contract's own Status, so the seeded / needs-review packs still see them.
+            foreach (var contract in Fixture.Contracts)
+            {
+                var needsReview = contract.Status.Contains("review", StringComparison.OrdinalIgnoreCase);
+                documents.Documents.Add(new Document
+                {
+                    TenantId = contract.TenantId,
+                    ContractId = contract.Id,
+                    FileName = $"{contract.Id.Value}.pdf",
+                    MimeType = "application/pdf",
+                    StoragePath = $"{contract.TenantId.Value}/{contract.Id.Value}.pdf",
+                    Checksum = $"sha256:{contract.Id.Value:N}",
+                    ProcessingStatus = needsReview
+                        ? DocumentProcessingStatus.NeedsReview
+                        : DocumentProcessingStatus.Completed,
+                    CreatedAt = contract.CreatedAt,
+                });
+            }
+
             await documents.SaveChangesAsync().ConfigureAwait(false);
         }
     }

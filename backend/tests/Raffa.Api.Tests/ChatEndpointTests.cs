@@ -258,8 +258,11 @@ public sealed class ChatEndpointTests : IClassFixture<RaffaApiFactory>
         };
 
         await factory.SeedContractAsync(renewingSoon);
+        await factory.SeedDocumentAsync(InMemoryAskEngineFactory.NewLinkedDocument(tenantId, renewingSoon.Id));
         await factory.SeedContractAsync(alsoRenewingSoon);
+        await factory.SeedDocumentAsync(InMemoryAskEngineFactory.NewLinkedDocument(tenantId, alsoRenewingSoon.Id));
         await factory.SeedContractAsync(notInWindow);
+        await factory.SeedDocumentAsync(InMemoryAskEngineFactory.NewLinkedDocument(tenantId, notInWindow.Id));
 
         var client = factory.CreateClient();
 

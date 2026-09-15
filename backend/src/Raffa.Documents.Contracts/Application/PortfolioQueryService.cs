@@ -44,7 +44,20 @@ public sealed class PortfolioQueryService(
         // first use — i.e. inside this awaited call.
         using var _ = tenantContext.BeginScope(tenantId);
 
-        var query = dbContext.Contracts.AsNoTracking().Where(c => c.TenantId == tenantId);
+        // A Contract row survives the deletion of its last document (DocumentDeleteService
+        // detaches facts and leaves the business object standing). Those leftover shells have
+        // nothing to show on Portfolio or Renewals — both compose this query — so they are
+        // excluded here. A live contract always has at least one linked document: extraction
+        // creates the shell together with the upload, and a still-processing / needs-review
+        // document keeps the row visible to Ask's document-status pack (ADR-027 §D8). Same
+        // EXISTS shape CountValidatedContractsAsync already translates, without requiring
+        // Completed — that narrower definition stays on the validated-count / analysis KPIs.
+        var query = dbContext.Contracts.AsNoTracking().Where(c =>
+            c.TenantId == tenantId
+            && dbContext.Documents.Any(d =>
+                d.TenantId == tenantId
+                && d.ContractId.HasValue
+                && d.ContractId.Value == c.Id));
 
         // Nullable-to-nullable comparison (both sides EntityId?) so EF Core translates this
         // through the same NullableEntityIdConverter the column itself uses.
