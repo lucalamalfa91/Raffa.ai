@@ -298,7 +298,7 @@ public static class ConversationsEndpointExtensions
             .ToList();
 
         var reply = await askCopilotService
-            .AskAsync(tenantId, question, recentTurns, cancellationToken)
+            .AskAsync(tenantId, question, recentTurns, userId, cancellationToken)
             .ConfigureAwait(false);
 
         await conversationService.AppendMessageAsync(

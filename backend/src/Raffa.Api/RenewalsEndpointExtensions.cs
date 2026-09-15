@@ -383,6 +383,7 @@ public static class RenewalsEndpointExtensions
             request.Owner,
             request.Status,
             request.Action,
+            caller.Identity!,
             cancellationToken).ConfigureAwait(false);
 
         if (result.IsFailure)

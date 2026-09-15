@@ -81,7 +81,7 @@ public static class NegotiationsEndpointExtensions
 
         var tenantId = new TenantId(tenantGuid);
 
-        var result = await outcomeService.CaptureAsync(tenantId, request, cancellationToken).ConfigureAwait(false);
+        var result = await outcomeService.CaptureAsync(tenantId, request, caller.Identity!, cancellationToken).ConfigureAwait(false);
 
         if (result.IsFailure)
         {

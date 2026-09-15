@@ -124,6 +124,7 @@ public static class SavingsEndpointExtensions
             request.Owner,
             request.Status,
             request.RealizedAmount,
+            caller.Identity!,
             cancellationToken).ConfigureAwait(false);
 
         if (result.IsFailure)

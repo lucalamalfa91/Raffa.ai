@@ -53,7 +53,7 @@ public sealed class RagAnswerServiceTests
         var auditWriter = new RecordingAuditWriter();
         var service = new RagAnswerService(gateway, auditWriter, new FixedClock(Now), new AbstainGuard());
 
-        var result = await service.AnswerAsync(tenantId, decision, evidence);
+        var result = await service.AnswerAsync(tenantId, decision, evidence, RagAnswerService.SystemActor);
 
         Assert.True(result.IsSuccess);
         Assert.True(result.Value.CanDetermine);
@@ -67,7 +67,10 @@ public sealed class RagAnswerServiceTests
 
         var entry = Assert.Single(auditWriter.Written);
         Assert.Equal(tenantId, entry.TenantId);
-        Assert.Equal("unattributed", entry.Actor);
+        // S16-10 (ADR-011 w16 clauses 15-17): rewritten, never deleted -- this is the evidence the
+        // behaviour changed. RagAnswerService has no HTTP caller (S-T29), so it writes the reserved,
+        // documented system principal, never the retired placeholder literal.
+        Assert.Equal(RagAnswerService.SystemActor, entry.Actor);
         Assert.Equal("chat.answered", entry.Action);
         Assert.Equal("ask_raffa", entry.ResourceType);
         Assert.Equal(metadata.InputHash, entry.ResourceId);
@@ -97,7 +100,7 @@ public sealed class RagAnswerServiceTests
         var auditWriter = new RecordingAuditWriter();
         var service = new RagAnswerService(gateway, auditWriter, new FixedClock(Now), new AbstainGuard());
 
-        var result = await service.AnswerAsync(tenantId, decision, evidence: []);
+        var result = await service.AnswerAsync(tenantId, decision, evidence: [], actor: RagAnswerService.SystemActor);
 
         Assert.True(result.IsSuccess);
         Assert.False(result.Value.CanDetermine);
@@ -132,7 +135,7 @@ public sealed class RagAnswerServiceTests
         var auditWriter = new RecordingAuditWriter();
         var service = new RagAnswerService(gateway, auditWriter, new FixedClock(Now), new AbstainGuard());
 
-        var result = await service.AnswerAsync(tenantId, decision, evidence);
+        var result = await service.AnswerAsync(tenantId, decision, evidence, RagAnswerService.SystemActor);
 
         Assert.True(result.IsSuccess);
         Assert.False(result.Value.CanDetermine);
@@ -163,7 +166,7 @@ public sealed class RagAnswerServiceTests
         var auditWriter = new RecordingAuditWriter();
         var service = new RagAnswerService(gateway, auditWriter, new FixedClock(Now), new AbstainGuard());
 
-        var result = await service.AnswerAsync(tenantId, decision, evidence);
+        var result = await service.AnswerAsync(tenantId, decision, evidence, RagAnswerService.SystemActor);
 
         Assert.True(result.IsSuccess);
         Assert.False(result.Value.CanDetermine);
@@ -182,7 +185,7 @@ public sealed class RagAnswerServiceTests
         var auditWriter = new RecordingAuditWriter();
         var service = new RagAnswerService(gateway, auditWriter, new FixedClock(Now), new AbstainGuard());
 
-        var result = await service.AnswerAsync(tenantId, decision, evidence: []);
+        var result = await service.AnswerAsync(tenantId, decision, evidence: [], actor: RagAnswerService.SystemActor);
 
         Assert.True(result.IsFailure);
         Assert.Equal("gateway exploded", result.Error);
@@ -198,7 +201,7 @@ public sealed class RagAnswerServiceTests
         var service = new RagAnswerService(gateway, new RecordingAuditWriter(), new FixedClock(Now), new AbstainGuard());
 
         await Assert.ThrowsAsync<ArgumentException>(
-            () => service.AnswerAsync(tenantId, structuredDecision, evidence: []));
+            () => service.AnswerAsync(tenantId, structuredDecision, evidence: [], actor: RagAnswerService.SystemActor));
     }
 
     [Fact]
@@ -207,7 +210,7 @@ public sealed class RagAnswerServiceTests
         var service = new RagAnswerService(new StubAnswerGateway(), new RecordingAuditWriter(), new FixedClock(Now), new AbstainGuard());
 
         await Assert.ThrowsAsync<ArgumentNullException>(
-            () => service.AnswerAsync(TenantId.New(), null!, evidence: []));
+            () => service.AnswerAsync(TenantId.New(), null!, evidence: [], actor: RagAnswerService.SystemActor));
     }
 
     [Fact]
@@ -216,7 +219,7 @@ public sealed class RagAnswerServiceTests
         var service = new RagAnswerService(new StubAnswerGateway(), new RecordingAuditWriter(), new FixedClock(Now), new AbstainGuard());
 
         await Assert.ThrowsAsync<ArgumentNullException>(
-            () => service.AnswerAsync(TenantId.New(), SemanticDecision(), evidence: null!));
+            () => service.AnswerAsync(TenantId.New(), SemanticDecision(), evidence: null!, actor: RagAnswerService.SystemActor));
     }
 
     /// <summary>

@@ -389,6 +389,7 @@ public static class ContractsEndpointExtensions
             contractId,
             request.Corrections,
             request.Reason,
+            caller.Identity!,
             cancellationToken).ConfigureAwait(false);
 
         if (result.IsFailure)

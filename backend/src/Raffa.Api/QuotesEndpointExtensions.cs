@@ -120,6 +120,7 @@ public static class QuotesEndpointExtensions
             file.FileName,
             file.ContentType,
             storageContent,
+            caller.Identity!,
             cancellationToken,
             supplier: supplier,
             currency: currency,
@@ -343,7 +344,7 @@ public static class QuotesEndpointExtensions
         }
 
         var result = await mappingService.RecalculateAsync(
-                new TenantId(tenantGuid), new EntityId(quoteGuid), request.Mappings, cancellationToken)
+                new TenantId(tenantGuid), new EntityId(quoteGuid), request.Mappings, caller.Identity!, cancellationToken)
             .ConfigureAwait(false);
 
         if (result.IsFailure)

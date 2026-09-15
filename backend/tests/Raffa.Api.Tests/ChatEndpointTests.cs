@@ -157,6 +157,42 @@ public sealed class ChatEndpointTests : IClassFixture<RaffaApiFactory>
     }
 
     /// <summary>
+    /// S-T28 (task E18/F03/US02/T01, NW-32; ADR-011 w16 clause 15): a signed POST names its actor —
+    /// <c>AskCopilotService.AskAsync</c> writes exactly one audit row per call (R-ASK-09) regardless
+    /// of which reply branch answered it, and that row's <c>Actor</c> is the resolved token subject,
+    /// never a placeholder. "ciao" is the cheapest deterministic branch (the greeting redirect,
+    /// no AI Gateway call — see <see cref="Greeting_question_never_reaches_the_ai_gateway_and_returns_a_redirect"/>),
+    /// reused here only to reach the one audit write every branch shares.
+    /// </summary>
+    [Fact]
+    public async Task Signed_chat_query_records_the_callers_resolved_subject_never_a_placeholder()
+    {
+        var recordingGateway = new RecordingAiGateway(
+            new FixtureAiGateway(new AiGatewayModelOptions(), SystemClock.Instance, new AiGatewayOcrOptions()));
+        var auditWriter = new RecordingAuditWriter();
+        const string presentedActor = "buyer@acme.example";
+
+        var client = _factory.WithInMemoryAskEngine(recordingGateway, auditWriter: auditWriter).CreateClient();
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/chat/query")
+        {
+            Content = JsonContent.Create(new { question = "ciao" }),
+        };
+        request.Headers.Add("X-Tenant-Id", Guid.NewGuid().ToString());
+        request.Headers.Add("X-User-Id", presentedActor);
+
+        var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        // The request also creates a conversation and appends both turns to it
+        // (ConversationService's own "conversation.created"/"conversation.message.appended" rows) --
+        // already correctly attributed, and not this task's own write path. "chat.redirected" is
+        // AskCopilotService.WriteAuditAsync's row, the one this task fixed.
+        var entry = Assert.Single(auditWriter.Entries, e => e.Action == "chat.redirected");
+        Assert.Equal(presentedActor, entry.Actor);
+    }
+
+    /// <summary>
     /// This task's own Definition of Done line, verbatim: "120-day renewal question answered with
     /// per-contract citations; no `Document:` guid and no 'Structured query' substring in any
     /// reply" — the spec §8.3 worked example
