@@ -1037,6 +1037,30 @@ and the resume label are the designer's, requested as OQ-w15-ca-05). It adds no
 CI-YAML file to a wave whose planned set is zero: §15's forced redeploy is a gate
 step and §16's durable repair is explicitly deferred.
 
+## Amendment (2026-09-14, wave w15 round 4 — one more call through the one choke point)
+
+Built by hand, after the first real twenty-file batch on `dev` (task
+E16/F03/US02/T02, the client half of ADR-027 w15 footer C12; ADR-020 w15 round-3
+footer §11.3). Every earlier footer of this ADR stands; numbering continues.
+
+**21. `prioritiseDocument` goes through clause 1's choke point like every other
+call, and clause 12's gate now counts 37.** `ApiClient.prioritiseDocument(tenantId,
+id)` wraps `POST /api/documents/{id}/prioritise` on `reprocessDocument`'s own
+shape (`client.ts`) — `X-Tenant-Id`, `authHeaders(getAccessToken)`, `cache:
+"no-store"`, a `204`/`404`/network-failure result, never a throw. `DocumentProgress
+Panel.tsx` calls it once per document id and never reads the result (ADR-020 w15
+round-3 footer §11.3 states why: priority is an optimisation, not a function this
+screen depends on) — which is exactly the shape clause 12's gate exists to catch
+regardless of whether a caller checks the answer: the vitest completeness case
+(`tests/api/client.test.ts`) now enumerates 37 `ApiClient` methods, `prioritiseDocument`
+among them, and still asserts every one attaches `Authorization`. No new choke
+point, no second place a token is attached, no exception carved out for a call
+whose caller ignores the response.
+
+**What this does not change.** No route, no new ADR, no change to `handleRedirectPromiseOptions`,
+the invite-accept flow, or any earlier clause. `prioritiseDocument` is one more
+row in an existing table, not a new mechanism.
+
 ## Amendment (2026-09-14, wave w16 — the three stores retire, and the client file this seat recorded as having no writer)
 
 Wave `w16`, baseline `f0b3436` (`helix/w16` == `origin/main`, `0 0`). Seat

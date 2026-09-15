@@ -17,6 +17,7 @@ function mockApiClient(getPortfolio: ApiClient["getPortfolio"] = vi.fn()): ApiCl
     removeMember: vi.fn(),
     getInvitation: vi.fn(),
     acceptInvitation: vi.fn(),
+    acceptPendingInvitation: vi.fn(),
     uploadDocument: vi.fn(),
     getDocument: vi.fn(),
     // Task E16/F03/US01/T01 (ADR-020 w15 §2.2): the zero state reads the server's document counts
@@ -31,6 +32,7 @@ function mockApiClient(getPortfolio: ApiClient["getPortfolio"] = vi.fn()): ApiCl
     getDocumentPreviewUrl: vi.fn(),
     reprocessDocument: vi.fn(),
     deleteDocument: vi.fn(),
+    prioritiseDocument: vi.fn(),
     getPortfolio,
     // This suite only exercises /contracts (PortfolioRoute itself) -- every other call is a bare
     // vi.fn(), the same convention every route suite in this folder follows.

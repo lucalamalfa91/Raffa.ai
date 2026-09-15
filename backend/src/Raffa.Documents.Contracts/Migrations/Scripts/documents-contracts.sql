@@ -904,3 +904,20 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260914200000_AddExtractionJobPrioritisedAt') THEN
+    ALTER TABLE extraction_job ADD prioritised_at timestamp with time zone;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260914200000_AddExtractionJobPrioritisedAt') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20260914200000_AddExtractionJobPrioritisedAt', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;

@@ -141,12 +141,14 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     removeMember: vi.fn(),
     getInvitation: vi.fn(),
     acceptInvitation: vi.fn(),
+    acceptPendingInvitation: vi.fn(),
     uploadDocument: vi.fn(),
     getDocument: vi.fn(),
     listDocuments: vi.fn().mockResolvedValue(emptyDocuments()),
     getDocumentPreviewUrl: vi.fn(),
     reprocessDocument: vi.fn(),
     deleteDocument: vi.fn(),
+    prioritiseDocument: vi.fn(),
     getPortfolio: vi.fn().mockResolvedValue(validatedPortfolio()),
     // AC-5's own scoped-new-chat effect (index.tsx) calls this unconditionally whenever `?scope=` is
     // present, so a bare, unresolved vi.fn() would throw the moment that effect calls .then() on it

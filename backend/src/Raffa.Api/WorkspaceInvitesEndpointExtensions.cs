@@ -59,6 +59,16 @@ namespace Raffa.Api;
 /// only, ADR-025 Rule D.5). The guard above — 401 → 404 → 403 — is unchanged; only what happens
 /// once it passes is new.
 /// </para>
+///
+/// <para>
+/// <b>Fix 2026-09-14.</b> This file also gains <see cref="AcceptForIdentityAsync"/>
+/// (`POST /api/workspaces/{tenantId}/invites/accept`) — the identity-keyed counterpart of
+/// <see cref="InvitationsEndpointExtensions.AcceptInvitationAsync"/>'s token-keyed accept, for a
+/// caller with no live membership anywhere but a live invitation their own prior
+/// `GET /api/workspaces` already surfaced (see that method's own doc comment). It takes the
+/// <b>opposite</b> guard from every other route in this file: no membership check at all, because
+/// the caller is definitionally not a member yet.
+/// </para>
 /// </summary>
 public static class WorkspaceInvitesEndpointExtensions
 {
@@ -66,6 +76,7 @@ public static class WorkspaceInvitesEndpointExtensions
     {
         endpoints.MapPost("/api/workspaces/{tenantId}/invites", InviteAsync);
         endpoints.MapDelete("/api/workspaces/{tenantId}/invites/{id}", RevokeInvitationAsync);
+        endpoints.MapPost("/api/workspaces/{tenantId}/invites/accept", AcceptForIdentityAsync);
         return endpoints;
     }
 
@@ -219,6 +230,52 @@ public static class WorkspaceInvitesEndpointExtensions
             .ConfigureAwait(false);
 
         return status == MembershipOperationStatus.Success ? Results.NoContent() : Results.NotFound();
+    }
+
+    /// <summary>
+    /// `POST /api/workspaces/{tenantId}/invites/accept` (fix 2026-09-14) — see
+    /// <see cref="WorkspaceInvitationService.AcceptForIdentityAsync"/>'s own doc comment for the full
+    /// justification (extends ADR-025 §F.3 Exception 2). No body, no token, no membership guard —
+    /// unlike <see cref="InviteAsync"/>/<see cref="RevokeInvitationAsync"/> above, the caller is
+    /// <b>not</b> a member of the route tenant yet, by construction; the only input is the caller's
+    /// own identity. 401 with no identity; 404 for "no live invitation matches this identity here"
+    /// (unknown tenant and "not actually invited" collapse to the same answer, Rule B1); 410 expired;
+    /// 200 <c>{ workspaceId, workspaceName, role }</c> on success — the identical shape
+    /// <see cref="InvitationsEndpointExtensions.AcceptInvitationAsync"/> already returns for the
+    /// token path.
+    /// </summary>
+    private static async Task<IResult> AcceptForIdentityAsync(
+        string tenantId,
+        ICallerIdentity callerIdentity,
+        WorkspaceInvitationService invitationService,
+        CancellationToken cancellationToken)
+    {
+        var identity = callerIdentity.Resolve();
+        if (identity is null)
+        {
+            return Results.Unauthorized();
+        }
+
+        if (!Guid.TryParse(tenantId, out var tenantGuid))
+        {
+            return Results.BadRequest("The tenant id in the route must be a GUID.");
+        }
+
+        var result = await invitationService
+            .AcceptForIdentityAsync(new TenantId(tenantGuid), identity, callerIdentity.ResolveEmail(), cancellationToken)
+            .ConfigureAwait(false);
+
+        return result.Status switch
+        {
+            MembershipOperationStatus.Success => Results.Ok(new
+            {
+                workspaceId = result.WorkspaceId.Value,
+                workspaceName = result.WorkspaceName,
+                role = result.Role!.Value.ToString(),
+            }),
+            MembershipOperationStatus.Expired => Results.StatusCode(StatusCodes.Status410Gone),
+            _ => Results.NotFound(),
+        };
     }
 
     /// <summary>

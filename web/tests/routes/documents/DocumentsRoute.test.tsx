@@ -29,6 +29,7 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     removeMember: vi.fn(),
     getInvitation: vi.fn(),
     acceptInvitation: vi.fn(),
+    acceptPendingInvitation: vi.fn(),
     uploadDocument: vi.fn(),
     getDocument: vi.fn(),
     // Task E13/F09/US01/T04 (web-ask-v2): this suite never reaches conversations/capabilities/
@@ -43,6 +44,7 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     getDocumentPreviewUrl: vi.fn(),
     reprocessDocument: vi.fn(),
     deleteDocument: vi.fn(),
+    prioritiseDocument: vi.fn(),
     getPortfolio: vi.fn(),
     getContract360: vi.fn(),
     getRenewals: vi.fn(),
@@ -365,9 +367,17 @@ describe("DocumentsRoute (task E13/F09/US01/T03, web-documents-v2)", () => {
     selectFiles([pdfFile("A.pdf")]);
 
     expect(screen.getByText("A.pdf")).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByText("Queued…")).toBeInTheDocument());
-    // Exactly one A.pdf: the server row replaced the local one, with no moment in between.
-    expect(screen.getAllByText("A.pdf")).toHaveLength(1);
+    // ADR-020 w15 footer 10 (task E16/F03/US02/T02): the local row and the server row at Uploaded
+    // both read "Processing in the background" now (both "Uploaded"), so a bare row count is
+    // satisfied trivially by the local row alone, before the server row has even arrived -- the
+    // composite check below only passes once the *link* (the server row's own signature; the
+    // local row is never a `<Link>`) exists **and** there is exactly one "A.pdf" left, i.e. the
+    // server row has replaced the local one, with no moment in between.
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name: "A.pdf" })).toBeInTheDocument();
+      expect(screen.getAllByText("A.pdf")).toHaveLength(1);
+    });
+    expect(screen.getByText("Processing in the background")).toBeInTheDocument();
     expect(screen.queryByText("Uploading…")).toBeNull();
   });
 
@@ -386,7 +396,11 @@ describe("DocumentsRoute (task E13/F09/US01/T03, web-documents-v2)", () => {
     await waitFor(() => expect(listDocuments).toHaveBeenCalledTimes(2));
     expect(await screen.findByRole("alert")).toHaveTextContent(/temporarily unavailable/);
     expect(screen.getByText("A.pdf")).toBeInTheDocument();
-    expect(screen.getByText("Uploading…")).toBeInTheDocument();
+    // ADR-020 w15 footer 10: the local row (the reload failed, so it never handed off) still reads
+    // "Uploaded" / "Processing in the background" -- never "Uploading…" any more.
+    expect(screen.getByText("Uploaded")).toHaveClass("tag", "tag-neutral");
+    expect(screen.getByText("Processing in the background")).toBeInTheDocument();
+    expect(screen.queryByText("Uploading…")).toBeNull();
   });
 
   it("stops polling after five minutes without a change, re-labels nothing, and resumes on 'Check again'", async () => {
@@ -399,14 +413,16 @@ describe("DocumentsRoute (task E13/F09/US01/T03, web-documents-v2)", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(await screen.findByText("Queued…")).toBeInTheDocument();
+    // ADR-020 w15 footer 10 (task E16/F03/US02/T02): "Uploaded", never "Queued…" -- the row grid's
+    // own reading of an `Uploaded` document since the perceived-instant batch.
+    expect(await screen.findByText("Processing in the background")).toBeInTheDocument();
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(5 * 60_000);
     });
     expect(await screen.findByText("Nothing has changed for five minutes, so this page stopped checking for updates.")).toBeInTheDocument();
-    expect(screen.getByText("Queued…")).toBeInTheDocument();
-    expect(screen.getByText("Processing")).toHaveClass("tag");
+    expect(screen.getByText("Processing in the background")).toBeInTheDocument();
+    expect(screen.getByText("Uploaded")).toHaveClass("tag");
     expect(screen.queryByText("Failed")).toBeNull();
 
     const callsWhenPaused = listDocuments.mock.calls.length;

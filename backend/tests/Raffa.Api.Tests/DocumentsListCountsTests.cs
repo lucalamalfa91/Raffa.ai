@@ -113,7 +113,7 @@ public sealed class DocumentsListCountsTests : IClassFixture<RaffaApiFactory>
     /// so the top row is the one being worked on now and the first to leave; terminal rows follow,
     /// newest first. A newest-first list changed from the bottom and looked frozen for minutes.</summary>
     [Fact]
-    public async Task The_list_is_in_queue_order_in_flight_oldest_first_then_terminal_newest_first()
+    public async Task The_list_is_actionable_first_terminal_newest_then_processing_then_uploaded_oldest_first()
     {
         var tenantId = TenantId.New();
         Document At(Document d, int minutesAgo) { d.CreatedAt = Now.AddMinutes(-minutesAgo); return d; }
@@ -129,8 +129,12 @@ public sealed class DocumentsListCountsTests : IClassFixture<RaffaApiFactory>
         var order = body.RootElement.GetProperty("items").EnumerateArray()
             .Select(i => i.GetProperty("fileName").GetString()!).ToArray();
 
+        // Terminal (Completed/NeedsReview), newest first; then Processing; then Uploaded,
+        // oldest first within its own bucket (fix 2026-09-14 evening, superseding the same day's
+        // earlier queue-order fix -- ADR-020 w15 footer 10-12 solved the "looks frozen" problem a
+        // different way, so the list answers "what is ready for me" instead of "what is next").
         Assert.Equal(
-            ["working-now.pdf", "queued-first.pdf", "queued-last.pdf", "done-new.pdf", "review-new.pdf", "done-old.pdf"],
+            ["done-new.pdf", "review-new.pdf", "done-old.pdf", "working-now.pdf", "queued-first.pdf", "queued-last.pdf"],
             order);
     }
 

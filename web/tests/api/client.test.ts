@@ -613,6 +613,50 @@ describe("createApiClient().deleteDocument (task E13/F09/US01/T03, documented ah
   });
 });
 
+describe("createApiClient().prioritiseDocument (task E16/F03/US02/T02, wave w15, ADR-027 w15 footer C12)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("POSTs <baseUrl>/api/documents/{id}/prioritise with the X-Tenant-Id header, no body", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createApiClient("https://api.dev.raffa.example").prioritiseDocument("tenant-1", "doc-1");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("https://api.dev.raffa.example/api/documents/doc-1/prioritise");
+    expect(init).toEqual({ method: "POST", headers: { "X-Tenant-Id": "tenant-1" }, cache: "no-store" });
+  });
+
+  it("reports ok:true on 204", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
+
+    const result = await createApiClient("https://api.dev.raffa.example").prioritiseDocument("tenant-1", "doc-1");
+
+    expect(result).toEqual({ ok: true, statusCode: 204, error: null });
+  });
+
+  it("reports a named 404 without attempting to parse an empty body", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
+
+    const result = await createApiClient("https://api.dev.raffa.example").prioritiseDocument("tenant-1", "missing-doc");
+
+    expect(result).toEqual({ ok: false, statusCode: 404, error: "No document found for id missing-doc." });
+  });
+
+  it("resolves (does not throw) with statusCode null when the network request fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
+
+    const result = await createApiClient("https://api.dev.raffa.example").prioritiseDocument("tenant-1", "doc-1");
+
+    expect(result.ok).toBe(false);
+    expect(result.statusCode).toBeNull();
+    expect(result.error).toContain("network down");
+  });
+});
+
 describe("createApiClient().getPortfolio (task E07/F01/US01/T01)", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -2266,7 +2310,7 @@ describe("createApiClient() Authorization header (task E18/F01/US02/T01, NW-05; 
 
     const result = await createApiClient("https://api.dev.raffa.example", getAccessToken).listWorkspaces();
 
-    expect(result).toEqual({ ok: false, statusCode: 401, workspaces: null, error: "Sign-in required." });
+    expect(result).toEqual({ ok: false, statusCode: 401, workspaces: null, pendingInvitations: null, error: "Sign-in required." });
     // Never a silent retry loop: one acquisition, one request, the 401 surfaced as-is.
     expect(getAccessToken).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -2292,12 +2336,14 @@ describe("createApiClient() Authorization header (task E18/F01/US02/T01, NW-05; 
       removeMember: () => client.removeMember("tenant-1", "member-1"),
       getInvitation: () => client.getInvitation("invite-token-1"),
       acceptInvitation: () => client.acceptInvitation("invite-token-1"),
+      acceptPendingInvitation: () => client.acceptPendingInvitation("tenant-1"),
       uploadDocument: () => client.uploadDocument("tenant-1", pdfFile()),
       getDocument: () => client.getDocument("tenant-1", "doc-1"),
       listDocuments: () => client.listDocuments("tenant-1"),
       getDocumentPreviewUrl: () => client.getDocumentPreviewUrl("tenant-1", "doc-1"),
       reprocessDocument: () => client.reprocessDocument("tenant-1", "doc-1"),
       deleteDocument: () => client.deleteDocument("tenant-1", "doc-1"),
+      prioritiseDocument: () => client.prioritiseDocument("tenant-1", "doc-1"),
       getPortfolio: () => client.getPortfolio("tenant-1"),
       getContract360: () => client.getContract360("tenant-1", "contract-1"),
       getRenewals: () => client.getRenewals("tenant-1"),

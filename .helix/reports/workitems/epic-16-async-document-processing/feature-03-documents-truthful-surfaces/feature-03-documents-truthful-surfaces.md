@@ -29,6 +29,7 @@ or a compile failure for no benefit.
 | ID | Title | Wave |
 |----|-------|------|
 | us-01 | Documents, the rail and the downstream screens read the server | w15 |
+| us-02 | A batch reads as loaded, the wait moves to a screen of its own, and the open document goes first (built by hand, 2026-09-14) | w15 |
 
 ## Architecture decisions in force
 

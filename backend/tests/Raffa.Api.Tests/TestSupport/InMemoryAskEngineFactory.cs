@@ -144,6 +144,7 @@ internal static class InMemoryAskEngineFactory
             // the Worker's AddExtractionQueueConsumer.
             services.RemoveAll<IExtractionJobClaimStore>();
             services.AddScoped<IExtractionJobClaimStore, InMemoryExtractionJobClaimStore>();
+            services.AddSingleton<ClaimLog>();
             services.AddScoped<ExtractionRequestedHandler>();
 
             if (documentStorage is not null)
@@ -185,13 +186,18 @@ internal static class InMemoryAskEngineFactory
     /// a no-op, and a message the handler cannot claim (already processed) is skipped by the
     /// handler itself, never by this helper. Returns how many messages were handled.
     /// </summary>
-    public static async Task<int> DrainExtractionQueueAsync(this WebApplicationFactory<Program> factory)
+    public static Task<int> DrainExtractionQueueAsync(this WebApplicationFactory<Program> factory) =>
+        factory.DrainExtractionQueueAsync(int.MaxValue);
+
+    /// <summary>Same, but stops after <paramref name="maxMessages"/> messages -- a priority test drains ONE
+    /// message and looks at what that single delivery did before the rest of the channel runs.</summary>
+    public static async Task<int> DrainExtractionQueueAsync(this WebApplicationFactory<Program> factory, int maxMessages)
     {
         ArgumentNullException.ThrowIfNull(factory);
 
         var queue = factory.Services.GetRequiredService<InMemoryExtractionQueue>();
         var handled = 0;
-        while (queue.Reader.TryRead(out var message))
+        while (handled < maxMessages && queue.Reader.TryRead(out var message))
         {
             using var scope = factory.Services.CreateScope();
             var handler = scope.ServiceProvider.GetRequiredService<ExtractionRequestedHandler>();

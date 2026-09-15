@@ -1301,6 +1301,30 @@ changed a config-borne value would leave an outage **behind no run at all** —
 the next wave that touches `infra/` rather than inherited. No new ADR from this
 seat; w15's CI-YAML set stays **zero files**.
 
+**ADR-027 (C12–C13) and ADR-020 (10–12) gain a further w15 footer** (built by
+hand, 2026-09-14, after the first real twenty-file batch on `dev` measured
+~100 s/document against ~30 s cold start and found a UX failure no council
+lane had modelled: twenty rows reading "Processing" with a bar stuck at 0% for
+minutes, honest and still indistinguishable from broken). **ADR-027 §C12**
+adds priority by claim — one nullable column (`extraction_job.prioritised_at`),
+`POST /api/documents/{id}/prioritise`, and four lines inside the Worker's
+existing handler that let one delivery claim a prioritised job in its own
+tenant ahead of its own, bounded to one per delivery — with **no second Service
+Bus subscription** (OQ-w15-012 stays exactly one) and **no new settlement
+outcome** (a superseded message's own delivery loses its claim to a row that
+already exists, which is C6's `ClaimLost` unchanged). **ADR-020 §10–12** moves
+the fix to where the batch-drop failure actually lives: a document reads
+**"Uploaded"**, never a stalled bar, from the instant its row appears (a local
+pre-201 row included, the one declared and bounded exception to "screens never
+infer"); the six-stage checklist and the "Queued…" reading move into a fourth
+state of Documents (`?progress=<id>`, the same "state of the screen, never a
+route" idiom as `?review=`) opened from the row's own filename, which also
+fires the priority call. **ADR-012 gains a short fourth footer** (§21) for the
+one new client method: `prioritiseDocument` through the same one
+`Authorization` choke point as the other 36, the completeness gate now
+counting 37. Task E16/F03/US02/T01 (raffa-backend) and T02 (raffa-web); no
+council round, no new ADR, no infrastructure change.
+
 `waves/w15.md` carries the per-item rows and the votes.
 
 ## Nothing the product knows lives only in a browser tab (wave w16, appended 2026-09-14)

@@ -746,6 +746,10 @@ namespace Raffa.Documents.Contracts.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("model_id");
 
+                    b.Property<DateTimeOffset?>("PrioritisedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("prioritised_at");
+
                     b.Property<DateTimeOffset>("QueuedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("queued_at");

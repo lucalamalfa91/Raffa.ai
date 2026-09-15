@@ -69,9 +69,15 @@ function AuthenticatedGate({ account, instance, appConfig, apiClient }: Authenti
   const [resolution, setResolution] = useState<AppResolution>({ phase: "resolving" });
   const [hasResolvedOnce, setHasResolvedOnce] = useState(false);
 
-  const runResolution = useCallback(() => {
-    setResolution({ phase: "resolving" });
-    void apiClient.listWorkspaces().then((result) => {
+  // Fix 2026-09-14: split into a zero-arg public callback and this internal, guarded resolver. Kept
+  // separate on purpose -- `runResolution` is passed straight into JSX as `onRetry={runResolution}`
+  // and DOM event handlers call their callback WITH the click event as the first argument; had the
+  // auto-join guard below been `runResolution`'s own first parameter, a manual Retry click would have
+  // passed a truthy MouseEvent into it and silently skipped auto-join on every retry.
+  const resolveWorkspaces = useCallback(
+    async (alreadyTriedAutoJoin: boolean): Promise<void> => {
+      setResolution({ phase: "resolving" });
+      const result = await apiClient.listWorkspaces();
       setHasResolvedOnce(true);
 
       if (!result.ok || result.workspaces === null) {
@@ -82,6 +88,25 @@ function AuthenticatedGate({ account, instance, appConfig, apiClient }: Authenti
       const decision = resolveWorkspaceSelection(result.workspaces, loadCurrentWorkspace());
 
       if (decision.kind === "empty") {
+        // (fix 2026-09-14) A signed-in identity with no live membership anywhere may still hold a
+        // live invitation this same call already found (WorkspaceDirectoryService's own
+        // DiscoverForIdentityAsync, surfaced here as `pendingInvitations`) -- most often because the
+        // token-bearing /invite/accept flow never completed: a blocked or non-closing loginPopup
+        // strands the invitee signed in with no memory of the invitation (ADR-025 Rule C10 forbids
+        // persisting that token to any browser storage, so there is nothing left to resume). One
+        // silent, identity-keyed accept attempt here lands the invitee directly in their workspace --
+        // no picker, no "create a workspace" screen -- with no dependency on that token ever having
+        // survived the trip. Guarded to run at most once per resolution (`alreadyTriedAutoJoin`), so
+        // an identity truly invited nowhere still settles on the empty create-workspace screen
+        // instead of retrying forever.
+        const pending = result.pendingInvitations?.[0] ?? null;
+        if (pending && !alreadyTriedAutoJoin) {
+          const joinResult = await apiClient.acceptPendingInvitation(pending.tenantId);
+          if (joinResult.ok) {
+            await resolveWorkspaces(true);
+            return;
+          }
+        }
         setResolution({ phase: "empty" });
         return;
       }
@@ -95,8 +120,13 @@ function AuthenticatedGate({ account, instance, appConfig, apiClient }: Authenti
 
       selectCurrentWorkspace({ id: decision.workspace.id, name: decision.workspace.name });
       setResolution({ phase: "resolved", workspace: decision.workspace });
-    });
-  }, [apiClient]);
+    },
+    [apiClient],
+  );
+
+  const runResolution = useCallback(() => {
+    void resolveWorkspaces(false);
+  }, [resolveWorkspaces]);
 
   useEffect(() => {
     if (!account) return;

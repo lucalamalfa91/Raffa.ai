@@ -13,7 +13,7 @@ namespace Raffa.Api.Tests.TestSupport;
 /// drain the tests perform, and deliberately <em>not</em> a claim the concurrency proof relies on
 /// (<c>Raffa.Documents.Contracts.Tests</c>' claim-race tests keep that on real Postgres).
 /// </summary>
-internal sealed class InMemoryExtractionJobClaimStore(DocumentsContractsDbContext dbContext, IClock clock)
+internal sealed class InMemoryExtractionJobClaimStore(DocumentsContractsDbContext dbContext, IClock clock, ClaimLog claimLog)
     : IExtractionJobClaimStore
 {
     public async Task<int> TryClaimAsync(EntityId jobId, string claimedBy, CancellationToken cancellationToken)
@@ -30,6 +30,7 @@ internal sealed class InMemoryExtractionJobClaimStore(DocumentsContractsDbContex
         job.ClaimedAt = clock.UtcNow;
         job.ClaimedBy = claimedBy;
         job.AttemptCount += 1;
+        claimLog.Record(jobId);
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         return 1;
     }

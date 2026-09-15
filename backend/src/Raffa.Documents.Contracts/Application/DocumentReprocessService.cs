@@ -167,6 +167,9 @@ public sealed class DocumentReprocessService(
             classificationJob.ErrorDetail = null;
             classificationJob.ClaimedAt = null;
             classificationJob.ClaimedBy = null;
+            // ADR-027 w15 footer C12: a re-run is a fresh job nobody has opened yet -- it must not
+            // inherit the queue-jump the previous run was given.
+            classificationJob.PrioritisedAt = null;
         }
 
         return classificationJob;
