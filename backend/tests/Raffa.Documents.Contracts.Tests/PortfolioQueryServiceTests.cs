@@ -169,9 +169,11 @@ public sealed class PortfolioQueryServiceTests : IAsyncLifetime
             cancellationDeadline: new DateOnly(2026, 10, 1),
             autoRenewal: true);
         await SeedContractAsync(tenantContext, autoRenewing, RiskSeverity.High);
+        await SeedDocumentAsync(tenantContext, NewDocument(tenantId, autoRenewing.Id, DocumentProcessingStatus.Completed));
 
         var expiring = NewContract(tenantId, endDate: new DateOnly(2026, 12, 31), autoRenewal: false);
         await SeedContractAsync(tenantContext, expiring); // no risk seeded
+        await SeedDocumentAsync(tenantContext, NewDocument(tenantId, expiring.Id, DocumentProcessingStatus.Completed));
 
         await using var db = CreateAppContext(tenantContext);
         var service = new PortfolioQueryService(db, tenantContext, new PortfolioAnalysisCalculator());
@@ -206,7 +208,9 @@ public sealed class PortfolioQueryServiceTests : IAsyncLifetime
         var tenantB = TenantId.New();
         var tenantContext = new TenantContext();
 
-        await SeedContractAsync(tenantContext, NewContract(tenantA));
+        var tenantAContract = NewContract(tenantA);
+        await SeedContractAsync(tenantContext, tenantAContract);
+        await SeedDocumentAsync(tenantContext, NewDocument(tenantA, tenantAContract.Id, DocumentProcessingStatus.Completed));
 
         await using var db = CreateAppContext(tenantContext);
         var service = new PortfolioQueryService(db, tenantContext, new PortfolioAnalysisCalculator());
@@ -217,6 +221,36 @@ public sealed class PortfolioQueryServiceTests : IAsyncLifetime
 
         Assert.Empty(result.Items);
         Assert.Equal(0, result.TotalCount);
+    }
+
+    [Fact]
+    public async Task Excludes_contracts_whose_documents_are_gone()
+    {
+        var tenantId = TenantId.New();
+        var tenantContext = new TenantContext();
+
+        var live = NewContract(tenantId, status: "Active");
+        await SeedContractAsync(tenantContext, live);
+        await SeedDocumentAsync(tenantContext, NewDocument(tenantId, live.Id, DocumentProcessingStatus.Completed));
+
+        var stillProcessing = NewContract(tenantId, status: "processing");
+        await SeedContractAsync(tenantContext, stillProcessing);
+        await SeedDocumentAsync(
+            tenantContext, NewDocument(tenantId, stillProcessing.Id, DocumentProcessingStatus.Processing));
+
+        // DocumentDeleteService leaves the Contract standing after the last document is removed.
+        // That leftover must not appear on Portfolio or Renewals (both compose this query).
+        var orphan = NewContract(tenantId, status: "Active");
+        await SeedContractAsync(tenantContext, orphan);
+
+        await using var db = CreateAppContext(tenantContext);
+        var service = new PortfolioQueryService(db, tenantContext, new PortfolioAnalysisCalculator());
+
+        var result = await service.GetPortfolioAsync(tenantId, PortfolioFilter.None);
+
+        Assert.Equal(2, result.TotalCount);
+        Assert.Equivalent(new[] { live.Id.Value, stillProcessing.Id.Value }, result.Items.Select(i => i.ContractId));
+        Assert.DoesNotContain(result.Items, i => i.ContractId == orphan.Id.Value);
     }
 
     [Fact]
@@ -239,8 +273,11 @@ public sealed class PortfolioQueryServiceTests : IAsyncLifetime
             endDate: new DateOnly(2027, 6, 30), autoRenewal: true);
 
         await SeedContractAsync(tenantContext, c1, RiskSeverity.Low);
+        await SeedDocumentAsync(tenantContext, NewDocument(tenantId, c1.Id, DocumentProcessingStatus.Completed));
         await SeedContractAsync(tenantContext, c2, RiskSeverity.Critical);
+        await SeedDocumentAsync(tenantContext, NewDocument(tenantId, c2.Id, DocumentProcessingStatus.Completed));
         await SeedContractAsync(tenantContext, c3);
+        await SeedDocumentAsync(tenantContext, NewDocument(tenantId, c3.Id, DocumentProcessingStatus.Completed));
 
         await using var db = CreateAppContext(tenantContext);
         var service = new PortfolioQueryService(db, tenantContext, new PortfolioAnalysisCalculator());
@@ -287,6 +324,7 @@ public sealed class PortfolioQueryServiceTests : IAsyncLifetime
         foreach (var contract in contracts)
         {
             await SeedContractAsync(tenantContext, contract);
+            await SeedDocumentAsync(tenantContext, NewDocument(tenantId, contract.Id, DocumentProcessingStatus.Completed));
         }
 
         await using var db = CreateAppContext(tenantContext);
@@ -336,8 +374,11 @@ public sealed class PortfolioQueryServiceTests : IAsyncLifetime
         var noRisk = NewContract(tenantId);
 
         await SeedContractAsync(tenantContext, highRisk1, RiskSeverity.High);
+        await SeedDocumentAsync(tenantContext, NewDocument(tenantId, highRisk1.Id, DocumentProcessingStatus.Completed));
         await SeedContractAsync(tenantContext, highRisk2, RiskSeverity.High);
+        await SeedDocumentAsync(tenantContext, NewDocument(tenantId, highRisk2.Id, DocumentProcessingStatus.Completed));
         await SeedContractAsync(tenantContext, noRisk); // excluded by the Risk filter below
+        await SeedDocumentAsync(tenantContext, NewDocument(tenantId, noRisk.Id, DocumentProcessingStatus.Completed));
 
         await using var db = CreateAppContext(tenantContext);
         var service = new PortfolioQueryService(db, tenantContext, new PortfolioAnalysisCalculator());

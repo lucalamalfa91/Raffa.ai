@@ -189,6 +189,41 @@ internal static class InMemoryAskEngineFactory
         await dbContext.SaveChangesAsync().ConfigureAwait(false);
     }
 
+    /// <summary>Writes <paramref name="document"/> straight into the InMemory
+    /// <see cref="DocumentsContractsDbContext"/>, same shape as <see cref="SeedContractAsync"/>.
+    /// Portfolio / Renewals only list contracts that still have a linked document
+    /// (<see cref="Raffa.Documents.Contracts.Application.PortfolioQueryService.GetPortfolioAsync"/>),
+    /// so list-surface tests seed one next to the contract.</summary>
+    public static async Task SeedDocumentAsync(this WebApplicationFactory<Program> factory, Document document)
+    {
+        ArgumentNullException.ThrowIfNull(factory);
+        ArgumentNullException.ThrowIfNull(document);
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<DocumentsContractsDbContext>();
+        dbContext.Documents.Add(document);
+        await dbContext.SaveChangesAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>A linked document row so a seeded contract is not a dead leftover
+    /// (no documents pointing at it). Defaults to <see cref="DocumentProcessingStatus.Completed"/>
+    /// — the state Portfolio/Renewals/Ask's validated surfaces expect.</summary>
+    public static Document NewLinkedDocument(
+        TenantId tenantId,
+        EntityId contractId,
+        DocumentProcessingStatus processingStatus = DocumentProcessingStatus.Completed) =>
+        new()
+        {
+            TenantId = tenantId,
+            ContractId = contractId,
+            FileName = $"{contractId.Value}.pdf",
+            MimeType = "application/pdf",
+            StoragePath = $"{tenantId.Value}/{contractId.Value}.pdf",
+            Checksum = $"sha256:{contractId.Value:N}",
+            ProcessingStatus = processingStatus,
+            CreatedAt = DateTimeOffset.UtcNow,
+        };
+
     /// <summary>
     /// Plays the Worker for this host (task E16/F02/US03/T01): takes every
     /// <see cref="ExtractionRequested"/> the upload path published to the in-process queue and runs
