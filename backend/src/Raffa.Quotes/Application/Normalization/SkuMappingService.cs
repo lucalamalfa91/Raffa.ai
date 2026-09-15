@@ -83,12 +83,6 @@ public sealed class SkuMappingService(
     private const string AuditRecalculatedAction = "quote.sku_mapping_recalculated";
     private const string AuditResourceType = "quote";
 
-    /// <summary>Same interim-actor placeholder as <c>QuoteUploadService.UnattributedActor</c>/
-    /// <c>NegotiationOutcomeService.UnattributedActor</c> — ADR-010 (Entra ID/OIDC) is not in this
-    /// task's "Architecture decisions in force" list, so there is no validated caller identity
-    /// yet.</summary>
-    private const string UnattributedActor = "unattributed";
-
     /// <summary>
     /// Backs `POST /api/quotes/{id}/assessment/recalculate`. Validates every <paramref name="corrections"/>
     /// entry fully before any query or write (an invalid request leaves the database untouched — same
@@ -107,10 +101,13 @@ public sealed class SkuMappingService(
     /// same normalized SKU), then re-runs <see cref="MarketAssessmentService.AssessAsync"/> (AC-3) so
     /// the returned assessment reflects the just-corrected match state.
     /// </summary>
+    /// <param name="actor">The caller's resolved token subject (ADR-011 w16 clause 15) — required,
+    /// no default. Recorded on the <c>quote.sku_mapping_recalculated</c> audit row.</param>
     public async Task<Result<QuoteRecalculationResult>> RecalculateAsync(
         TenantId tenantId,
         EntityId quoteId,
         IReadOnlyList<SkuMappingCorrection>? corrections,
+        string actor,
         CancellationToken cancellationToken = default)
     {
         var validatedCorrections = corrections ?? [];
@@ -202,7 +199,7 @@ public sealed class SkuMappingService(
         await auditWriter.WriteAsync(
             new AuditEntry(
                 tenantId,
-                UnattributedActor,
+                actor,
                 AuditRecalculatedAction,
                 AuditResourceType,
                 quoteId.Value.ToString(),

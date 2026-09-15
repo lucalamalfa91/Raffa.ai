@@ -59,12 +59,19 @@ namespace Raffa.Chat.Application;
 public sealed class RagAnswerService(
     IAiGateway aiGateway, IAuditWriter auditWriter, IClock clock, AbstainGuard abstainGuard)
 {
-    /// <summary>Same interim-actor placeholder as <c>Raffa.Documents.Contracts.Application
-    /// .DocumentUploadService.UnattributedActor</c>: ADR-010 (Entra ID/OIDC) is not in this task's
-    /// "Architecture decisions in force" list, so there is no validated caller identity to record
-    /// yet, and a client-supplied actor would be an unverified, spoofable identity — worse than an
-    /// explicit, honest placeholder.</summary>
-    private const string UnattributedActor = "unattributed";
+    /// <summary>
+    /// The reserved, documented non-human principal for <see cref="AnswerAsync"/> (ADR-011 w16
+    /// clause 16, S-T29). This service has no database dependency and no caller-identity concept
+    /// of its own (see the type doc comment) — its V1 `Structured`/`Semantic` pipeline call site is
+    /// superseded by <c>Raffa.Api.AskCopilotService</c>'s own pack-composition answer path (see
+    /// <c>Raffa.Api.ChatEndpointExtensions</c>'s own doc comment), so it stays registered and
+    /// independently tested rather than reachable from any HTTP route today. The convention is
+    /// already live at <c>Raffa.Api.NegotiationOutcomePropagationService.SystemActor</c>
+    /// (<c>"system:negotiation-outcome-propagation"</c>), reused rather than a new one invented.
+    /// The <c>:</c> makes this string provably disjoint from any Entra <c>oid</c> token subject
+    /// (ADR-011 w16 clause 16a) — a reserved, documented principal is a fact, not a placeholder.
+    /// </summary>
+    public const string SystemActor = "system:rag-answer";
 
     /// <summary><see cref="AuditEntry.Action"/> for every answered Ask Raffa semantic query.
     /// Past-tense, matching this codebase's established convention (<c>DocumentUploadService</c>'s
@@ -93,6 +100,10 @@ public sealed class RagAnswerService(
     /// <param name="evidence">Already-retrieved, already-authorized evidence (ADR-011). An empty
     /// list is valid input, not an error — see <see cref="AiAnswerRequest.Evidence"/>'s own doc
     /// comment.</param>
+    /// <param name="actor">The resolved actor for the <c>chat.answered</c> audit row (ADR-011 w16
+    /// clause 15) — required, no default. This service has no HTTP caller today (see
+    /// <see cref="SystemActor"/>'s own doc comment), so callers pass <see cref="SystemActor"/>
+    /// unless a future caller resolves a real human identity.</param>
     /// <exception cref="ArgumentNullException"><paramref name="decision"/> or
     /// <paramref name="evidence"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="decision"/>'s
@@ -101,6 +112,7 @@ public sealed class RagAnswerService(
         TenantId tenantId,
         QueryRouteDecision decision,
         IReadOnlyList<AiEvidenceSnippet> evidence,
+        string actor,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(decision);
@@ -137,7 +149,7 @@ public sealed class RagAnswerService(
         await auditWriter.WriteAsync(
             new AuditEntry(
                 tenantId,
-                UnattributedActor,
+                actor,
                 AuditAnsweredAction,
                 AuditResourceType,
                 guarded.Result.Metadata.InputHash,

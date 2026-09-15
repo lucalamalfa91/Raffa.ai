@@ -100,7 +100,6 @@ internal sealed class AskCopilotService(
     private const string AuditRefusedAction = "chat.refused";
     private const string AuditAbstainedAction = "chat.abstained";
     private const string AuditResourceType = "ask_raffa_v2";
-    private const string UnattributedActor = "unattributed";
 
     /// <summary>The tenant scope <see cref="AskAsync"/> already opened for this call
     /// (<see cref="ITenantContext.BeginScope"/>) — every private helper below reads this instead
@@ -118,12 +117,16 @@ internal sealed class AskCopilotService(
     /// <param name="question">The user's question, in its own language.</param>
     /// <param name="recentTurns">The conversation's last N turns (oldest first) — empty for a new
     /// chat.</param>
+    /// <param name="actor">The caller's resolved token subject (ADR-011 w16 clause 15) — required,
+    /// no default, so a placeholder can never return by omission. Recorded on the one audit row
+    /// this call writes (R-ASK-09).</param>
     /// <exception cref="ArgumentException"><paramref name="question"/> is null/blank.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="recentTurns"/> is <see langword="null"/>.</exception>
     public async Task<CopilotReply> AskAsync(
         TenantId tenantId,
         string question,
         IReadOnlyList<(string Role, string Markdown)> recentTurns,
+        string actor,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(question);
@@ -164,7 +167,7 @@ internal sealed class AskCopilotService(
             _ => throw new ArgumentOutOfRangeException(nameof(gate), gate.Label, "Unknown GateLabel."),
         };
 
-        await WriteAuditAsync(tenantId, reply, guardIntervened, cancellationToken).ConfigureAwait(false);
+        await WriteAuditAsync(tenantId, reply, guardIntervened, actor, cancellationToken).ConfigureAwait(false);
 
         return reply;
     }
@@ -971,7 +974,7 @@ internal sealed class AskCopilotService(
             item.AutoRenewal);
 
     private async Task WriteAuditAsync(
-        TenantId tenantId, CopilotReply reply, bool guardIntervened, CancellationToken cancellationToken)
+        TenantId tenantId, CopilotReply reply, bool guardIntervened, string actor, CancellationToken cancellationToken)
     {
         var action = reply.Kind switch
         {
@@ -992,7 +995,7 @@ internal sealed class AskCopilotService(
         await auditWriter.WriteAsync(
             new AuditEntry(
                 tenantId,
-                UnattributedActor,
+                actor,
                 action,
                 AuditResourceType,
                 packHash,

@@ -143,11 +143,10 @@ public sealed class StagedExtractionService(
         NumberHandling = JsonNumberHandling.AllowReadingFromString,
     };
 
-    /// <summary>Recorded actor for the audit entry this pipeline writes (Appendix C rule 9).
-    /// Distinct from <c>DocumentUploadService.UnattributedActor</c>: that placeholder means "an
-    /// HTTP caller with no validated identity yet" (ADR-010 not wired); this one means "no human
-    /// caller at all" — the pipeline runs as automation, honestly labelled as such rather than
-    /// borrowing the HTTP-request placeholder for a non-HTTP-triggered action.</summary>
+    /// <summary>Recorded actor for the audit entry this pipeline writes (Appendix C rule 9) — the
+    /// reserved, documented non-human principal (ADR-011 w16 clause 16 convention): this pipeline
+    /// runs as automation, with no human caller at all, honestly labelled as such rather than
+    /// borrowing a caller-identity placeholder for a non-HTTP-triggered action.</summary>
     private const string SystemActor = "system:staged-extraction";
 
     /// <summary>Bootstrap-only placeholder <see cref="Contract.Status"/> for a contract shell

@@ -38,10 +38,10 @@ namespace Raffa.AiGateway.Logging;
 public sealed class LoggingAiGateway : IAiGateway
 {
     /// <summary>
-    /// Placeholder actor for an automated AI Gateway call. Deliberately not
-    /// <c>DocumentUploadService.UnattributedActor</c>'s <c>"unattributed"</c> value: that constant
-    /// means "a human caller exists but ADR-010 auth is not wired yet to name them" — here there
-    /// is no human caller to attribute in the first place, the gateway itself is the actor.
+    /// The reserved, documented non-human principal for an automated AI Gateway call (ADR-011 w16
+    /// clause 16 convention: a <c>system:&lt;component&gt;</c>-shaped string an authenticated
+    /// caller's token subject can never produce) — there is no human caller to attribute in the
+    /// first place, the gateway itself is the actor.
     /// </summary>
     private const string SystemActor = "ai-gateway";
 

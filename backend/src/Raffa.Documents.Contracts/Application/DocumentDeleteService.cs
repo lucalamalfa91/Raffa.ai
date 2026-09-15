@@ -57,8 +57,8 @@ public sealed class DocumentDeleteService(
     /// Deletes the document, or returns <see langword="null"/> when no such document exists for
     /// this tenant (the endpoint turns that into a 404).
     /// </summary>
-    /// <param name="actor">Who asked for the deletion, for the audit row (the caller's
-    /// <c>X-User-Id</c>, or the unattributed placeholder while ADR-010 is not wired).</param>
+    /// <param name="actor">Who asked for the deletion, for the audit row — the caller's resolved
+    /// token subject (ADR-010; ADR-011 w16 clause 15).</param>
     public async Task<Result<DocumentDeleteResult>?> DeleteAsync(
         TenantId tenantId, EntityId documentId, string actor, CancellationToken cancellationToken = default)
     {

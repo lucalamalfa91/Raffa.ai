@@ -46,16 +46,6 @@ public sealed class RenewalActionService(
     /// <c>"contract"</c> convention.</summary>
     private const string AuditResourceType = "renewal";
 
-    /// <summary>Same interim-actor placeholder as <c>DocumentUploadService.UnattributedActor</c> /
-    /// <c>ContractCorrectionService.UnattributedActor</c> — see either type's own doc comment for
-    /// why: ADR-010 (Entra ID/OIDC) is not in this task's "Architecture decisions in force" list,
-    /// so there is no validated caller identity to record, and a client-supplied "actor" on the
-    /// request body would be an unverified, spoofable identity — worse than an explicit, honest
-    /// placeholder. Distinct from <see cref="RenewalAction.Owner"/>, which the caller sets on
-    /// purpose as free-text "who is tracking this renewal" — this constant is only ever the audit
-    /// entry's own actor, never persisted onto the row itself.</summary>
-    private const string UnattributedActor = "unattributed";
-
     public static string StatusRequiredError { get; } =
         $"'status' is required and must be one of: {string.Join(", ", Enum.GetNames<RenewalActionStatus>())}.";
 
@@ -69,12 +59,17 @@ public sealed class RenewalActionService(
     /// untouched (same "phase 1: validate everything, phase 2: mutate" discipline
     /// <c>ContractCorrectionService.CorrectAsync</c> already follows).
     /// </summary>
+    /// <param name="actor">The caller's resolved token subject (ADR-011 w16 clause 15) — required,
+    /// no default, so a placeholder can never return by omission. Recorded only on the
+    /// <c>renewal.action_updated</c> audit entry, distinct from <paramref name="owner"/> (the
+    /// caller-supplied "who is tracking this renewal" free text).</param>
     public async Task<Result<RenewalActionResult>> SetActionAsync(
         TenantId tenantId,
         EntityId contractId,
         string? owner,
         string? status,
         string? action,
+        string actor,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(owner))
@@ -135,7 +130,7 @@ public sealed class RenewalActionService(
         await auditWriter.WriteAsync(
             new AuditEntry(
                 tenantId,
-                UnattributedActor,
+                actor,
                 AuditUpdatedAction,
                 AuditResourceType,
                 contractId.Value.ToString(),

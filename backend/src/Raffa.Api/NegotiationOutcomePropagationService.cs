@@ -91,9 +91,15 @@ internal sealed class NegotiationOutcomePropagationService(
     private const string AuditPropagatedAction = "negotiation_outcome.propagated";
     private const string AuditResourceType = "negotiation_outcome";
 
-    /// <summary>Same interim actor placeholder as every other automated write in this host (ADR-010
-    /// is not wired in yet) — see <c>QuoteExtractionPipeline.SystemActor</c>'s own doc comment for
-    /// why.</summary>
+    /// <summary>
+    /// The reserved, documented non-human principal for this service's own writes: this method runs
+    /// as part of the negotiation-outcome capture request, never with a caller a human supplied
+    /// directly, so <c>"system:negotiation-outcome-propagation"</c> is the permanent, correct actor
+    /// for a non-human write (ADR-011 w16 clause 16c) — not an interim placeholder pending ADR-010,
+    /// which landed in wave w15. The convention this constant originated (ADR-011 w16 clause 16) is
+    /// reused, not re-invented, by <c>Raffa.Savings.Application.SavingsOpportunityService
+    /// .SystemActor</c> and <c>Raffa.Chat.Application.RagAnswerService.SystemActor</c>.
+    /// </summary>
     private const string SystemActor = "system:negotiation-outcome-propagation";
 
     /// <summary>
@@ -133,6 +139,7 @@ internal sealed class NegotiationOutcomePropagationService(
             owner: null,
             status: null,
             realizedAmount: outcome.RealizedSaving,
+            actor: SystemActor,
             cancellationToken).ConfigureAwait(false);
 
         if (updateResult.IsFailure)

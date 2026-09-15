@@ -29,14 +29,6 @@ public sealed class QuoteUploadService(
 {
     private const int InitialVersionNumber = 1;
 
-    /// <summary>Placeholder actor recorded on the audit entry until the API validates a caller
-    /// identity token — same interim gap as
-    /// <c>Raffa.Documents.Contracts.Application.DocumentUploadService.UnattributedActor</c>
-    /// (ADR-010 is not listed in this task's "Architecture decisions in force"), for the identical
-    /// reason: there is no validated caller principal yet, so there is nothing truthful to record
-    /// here beyond this explicit placeholder.</summary>
-    private const string UnattributedActor = "unattributed";
-
     /// <summary>
     /// Task E05/F02/US01/T01 (market-assessment) added the four trailing optional parameters —
     /// <paramref name="supplier"/>/<paramref name="currency"/>/<paramref name="geography"/>/
@@ -53,6 +45,7 @@ public sealed class QuoteUploadService(
         string fileName,
         string? mimeType,
         Stream content,
+        string actor,
         CancellationToken cancellationToken = default,
         string? supplier = null,
         string? currency = null,
@@ -132,7 +125,7 @@ public sealed class QuoteUploadService(
         await auditWriter.WriteAsync(
             new AuditEntry(
                 tenantId,
-                UnattributedActor,
+                actor,
                 "quote.uploaded",
                 "quote",
                 quoteId.Value.ToString(),
