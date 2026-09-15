@@ -140,6 +140,20 @@ describe("getRowAction", () => {
     expect(getRowAction(item({ processingStatus: "Processing" }))).toBeNull();
   });
 
+  it("returns null for a freshly uploaded document (the background-processing sentence renders instead)", () => {
+    const now = Date.parse("2026-09-15T18:00:00Z");
+    expect(
+      getRowAction(item({ processingStatus: "Uploaded", createdAt: "2026-09-15T17:58:00Z" }), now),
+    ).toBeNull();
+  });
+
+  it("offers Retry upload once an Uploaded document has sat for five minutes", () => {
+    const now = Date.parse("2026-09-15T18:00:00Z");
+    expect(
+      getRowAction(item({ processingStatus: "Uploaded", createdAt: "2026-09-15T17:55:00Z" }), now),
+    ).toEqual({ kind: "retry", label: "Retry upload" });
+  });
+
   // ADR-020 w15 §1.4: a refused file offers no next step -- nothing to review, ask or retry.
   it("returns null for a rejected document", () => {
     expect(getRowAction(item({ processingStatus: "Rejected", contractId: null }))).toBeNull();

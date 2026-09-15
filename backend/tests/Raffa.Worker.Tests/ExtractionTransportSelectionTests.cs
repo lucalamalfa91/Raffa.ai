@@ -1,4 +1,5 @@
 using Raffa.Messaging;
+using Raffa.Documents.Contracts.Application.Extraction;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -21,6 +22,7 @@ public sealed class ExtractionTransportSelectionTests
 
         Assert.Contains(services, d => d.ServiceType == typeof(IHostedService) && d.ImplementationType == typeof(InMemoryExtractionConsumerHostedService));
         Assert.DoesNotContain(services, d => d.ImplementationType == typeof(ServiceBusExtractionConsumerHostedService));
+        Assert.Contains(services, d => d.ServiceType == typeof(IExtractionDeadLetterResubmitter));
     }
 
     [Fact]
@@ -33,9 +35,11 @@ public sealed class ExtractionTransportSelectionTests
         var services = new ServiceCollection();
         services.AddLogging();
 
+        services.AddExtractionQueuePublisher(configuration);
         services.AddExtractionQueueConsumer(configuration);
 
         Assert.Contains(services, d => d.ServiceType == typeof(IHostedService) && d.ImplementationType == typeof(ServiceBusExtractionConsumerHostedService));
         Assert.DoesNotContain(services, d => d.ImplementationType == typeof(InMemoryExtractionConsumerHostedService));
+        Assert.Contains(services, d => d.ImplementationType == typeof(ServiceBusExtractionDeadLetterResubmitter));
     }
 }

@@ -6,7 +6,8 @@ namespace Raffa.Messaging;
 /// The <c>ServiceBus</c> configuration section, bound from the environment variables
 /// <c>infra/modules/containerapps</c> injects into both containers (task E16/F01/US01/T01):
 /// <c>ServiceBus__FullyQualifiedNamespace</c>, <c>ServiceBus__TopicName</c>,
-/// <c>ServiceBus__SubscriptionName</c> (Worker only), <c>ServiceBus__MaxAutoLockRenewalMinutes</c>.
+/// <c>ServiceBus__SubscriptionName</c> (Worker consumer and API dead-letter resubmit),
+/// <c>ServiceBus__MaxAutoLockRenewalMinutes</c>.
 /// An absent namespace is the switch that selects the in-process channel instead — a deliberate
 /// local/test posture, logged at startup, never a silent fallback in a deployed environment.
 /// </summary>

@@ -296,6 +296,33 @@ public sealed class DocumentLifecycleTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Reprocess_resubmits_a_dead_lettered_pointer_instead_of_publishing_a_second_copy()
+    {
+        var tenantId = TenantId.New();
+        var tenantContext = new TenantContext();
+        var harness = CreateHarness(tenantContext);
+        var documentId = await UploadAndProcessAsync(harness, tenantContext, tenantId, "msa.pdf", Now);
+
+        var queue = new InMemoryExtractionQueue();
+        var deadLetter = new StubDeadLetterResubmitter(resubmitted: true);
+        await using (var db = CreateAppContext(tenantContext))
+        {
+            var service = CreateReprocessService(db, harness, tenantContext, queue, deadLetter);
+            var result = await service.ReprocessAsync(tenantId, documentId, Actor);
+            Assert.NotNull(result);
+            Assert.True(result!.IsSuccess, result.IsFailure ? result.Error : string.Empty);
+        }
+
+        Assert.Empty(queue.Published);
+        Assert.NotNull(deadLetter.LastPointer);
+        Assert.Equal(documentId.Value, deadLetter.LastPointer!.DocumentId);
+        Assert.Contains(
+            harness.Audit.Entries,
+            e => e.Action == DocumentReprocessService.ReprocessedAuditAction
+                && e.Detail != null && e.Detail.Contains("deadLetter", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Delete_removes_objects_rows_and_chunks_and_leaves_the_contract_standing()
     {
         var tenantId = TenantId.New();
@@ -565,11 +592,16 @@ public sealed class DocumentLifecycleTests : IAsyncLifetime
     /// the pointer, then plays the Worker itself (<see cref="CreatePipeline"/>), exactly as
     /// <see cref="UploadAndProcessAsync"/> already does for a first upload.</summary>
     private static DocumentReprocessService CreateReprocessService(
-        DocumentsContractsDbContext db, Harness harness, ITenantContext tenantContext, InMemoryExtractionQueue queue) =>
+        DocumentsContractsDbContext db,
+        Harness harness,
+        ITenantContext tenantContext,
+        InMemoryExtractionQueue queue,
+        IExtractionDeadLetterResubmitter? deadLetter = null) =>
         new(
             db,
             harness.Storage,
             queue,
+            deadLetter ?? queue,
             new EmbeddingRetrievalService(db, harness.Gateway, tenantContext, harness.Clock),
             tenantContext,
             harness.Audit,
@@ -669,6 +701,17 @@ public sealed class DocumentLifecycleTests : IAsyncLifetime
     {
         public Task PublishAsync(ExtractionRequested message, CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
+    }
+
+    private sealed class StubDeadLetterResubmitter(bool resubmitted) : IExtractionDeadLetterResubmitter
+    {
+        public ExtractionRequested? LastPointer { get; private set; }
+
+        public Task<bool> TryResubmitAsync(ExtractionRequested pointer, CancellationToken cancellationToken = default)
+        {
+            LastPointer = pointer;
+            return Task.FromResult(resubmitted);
+        }
     }
 
     private sealed class StubSupplierNameLookup(EntityId supplierId, string name) : ISupplierNameLookup

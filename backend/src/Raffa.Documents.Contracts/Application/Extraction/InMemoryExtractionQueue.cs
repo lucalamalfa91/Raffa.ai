@@ -21,7 +21,7 @@ namespace Raffa.Documents.Contracts.Application.Extraction;
 /// it silently in a deployed environment would be the "queue that goes nowhere" ADR-027 §D2
 /// refuses — <c>MessagingServiceCollectionExtensions</c> logs which one it picked at startup.
 /// </summary>
-public sealed class InMemoryExtractionQueue : IExtractionQueuePublisher
+public sealed class InMemoryExtractionQueue : IExtractionQueuePublisher, IExtractionDeadLetterResubmitter
 {
     private readonly Channel<ExtractionRequested> _channel = Channel.CreateUnbounded<ExtractionRequested>(
         new UnboundedChannelOptions { SingleReader = false, SingleWriter = false });
@@ -41,5 +41,12 @@ public sealed class InMemoryExtractionQueue : IExtractionQueuePublisher
         // TryWrite never fails on an unbounded channel that is not completed.
         _channel.Writer.TryWrite(message);
         return Task.CompletedTask;
+    }
+
+    /// <summary>No broker, no dead-letter — the caller publishes a fresh pointer instead.</summary>
+    public Task<bool> TryResubmitAsync(ExtractionRequested pointer, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(pointer);
+        return Task.FromResult(false);
     }
 }

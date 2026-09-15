@@ -33,11 +33,13 @@ public static class MessagingServiceCollectionExtensions
         {
             AddServiceBusClient(services, options);
             services.TryAddSingleton<IExtractionQueuePublisher, ServiceBusExtractionQueuePublisher>();
+            services.TryAddSingleton<IExtractionDeadLetterResubmitter, ServiceBusExtractionDeadLetterResubmitter>();
         }
         else
         {
             services.TryAddSingleton<InMemoryExtractionQueue>();
             services.TryAddSingleton<IExtractionQueuePublisher>(sp => sp.GetRequiredService<InMemoryExtractionQueue>());
+            services.TryAddSingleton<IExtractionDeadLetterResubmitter>(sp => sp.GetRequiredService<InMemoryExtractionQueue>());
         }
 
         return services;
