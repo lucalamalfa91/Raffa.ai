@@ -69,6 +69,17 @@ jobs:
         working-directory: backend
         run: dotnet build Raffa.slnx --configuration Release --no-restore
 
+      # Pre-pull the Testcontainers base image so that individual test fixtures do not race to
+      # pull it from Docker Hub simultaneously and hit rate-limit / transient 502 errors.
+      # Three attempts with a short back-off are enough to survive transient registry blips.
+      - name: pre-pull pgvector image
+        run: |
+          for i in 1 2 3; do
+            docker pull pgvector/pgvector:pg16 && break
+            echo "Pull attempt $i failed — retrying in 15 s..."
+            sleep 15
+          done
+
       - name: dotnet test
         working-directory: backend
         run: dotnet test Raffa.slnx --configuration Release --no-build

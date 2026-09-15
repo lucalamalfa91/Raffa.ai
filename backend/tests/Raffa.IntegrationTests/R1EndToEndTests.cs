@@ -60,10 +60,13 @@ public sealed class R1EndToEndTests : IClassFixture<R1IntegrationFixture>
         var documentBody = await ParseAsync(documentResponse);
         Assert.Equal("Msa", documentBody.GetProperty("documentType").GetString());
         Assert.Equal(contractId.ToString(), documentBody.GetProperty("contractId").GetString());
-        // CommercialTerms' own annualSpend fact is deliberately low-confidence (see
-        // R1ExtractionFixtures.PayloadsByStage) so the document lands in NeedsReview, not
-        // Completed — a real signal AC-2's correction step below responds to, not a fabricated one.
-        Assert.Equal("NeedsReview", documentBody.GetProperty("processingStatus").GetString());
+        // B2 (PR #137): the Metadata payload's supplier fact is high-confidence (0.95 ≥ 0.8),
+        // so identityAccepted=true.  The B2 fast-path auto-completes the document even though
+        // CommercialTerms' annualSpend is low-confidence (0.35) — the weak spend fact is still
+        // persisted as ExtractionEvidence and visible on the review screen (proved below), but it
+        // no longer blocks Portfolio/Renewals membership.  AC-2's correction step below still
+        // validates that the human can refine the extracted value and that history is preserved.
+        Assert.Equal("Completed", documentBody.GetProperty("processingStatus").GetString());
 
         // 3. Portfolio: the newly-extracted contract is listed (AC-1 "portfolio").
         var portfolioResponse = await GetAsync(client, "/api/contracts", tenantId);
@@ -178,17 +181,19 @@ public sealed class R1EndToEndTests : IClassFixture<R1IntegrationFixture>
             Assert.Equal(0.35, evidence.Confidence);
         }
 
-        // 6b. Review sign-off: with the weak annualSpend corrected, the reviewer marks the document
-        //     validated (POST /api/documents/{id}/validate) — the one write that moves it from
-        //     needs_review to completed, so Ask/Portfolio/Renewals start reading it. Before this
-        //     endpoint existed the screen's "Mark as validated" was a client-side navigation only.
+        // 6b. Review sign-off: with B2 the document is already Completed (see step 2 above), so
+        //     POST /api/documents/{id}/validate is an idempotent no-op — it returns 200 with
+        //     alreadyValidated=true and the status stays Completed.  The validate endpoint is still
+        //     exercised here to confirm the idempotency contract (README: "already Completed
+        //     document answers 200 with alreadyValidated: true") rather than a NeedsReview ->
+        //     Completed transition (which B2 made unnecessary for this fixture).
         var validateResponse = await PostAsync(
             client, $"/api/documents/{documentId}/validate", tenantId,
             new { acceptedFields = new[] { "currency", "autoRenewal" } });
         Assert.Equal(HttpStatusCode.OK, validateResponse.StatusCode);
         var validateBody = await ParseAsync(validateResponse);
         Assert.Equal("Completed", validateBody.GetProperty("processingStatus").GetString());
-        Assert.False(validateBody.GetProperty("alreadyValidated").GetBoolean());
+        Assert.True(validateBody.GetProperty("alreadyValidated").GetBoolean());
 
         var validatedDocumentResponse = await GetAsync(client, $"/api/documents/{documentId}", tenantId);
         Assert.Equal(
