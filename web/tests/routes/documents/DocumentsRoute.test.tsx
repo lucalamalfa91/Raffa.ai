@@ -356,7 +356,14 @@ describe("DocumentsRoute (task E13/F09/US01/T03, web-documents-v2)", () => {
   });
 
   it("hands the optimistic row off only once the server list carries its id -- never a gap between drop and reload", async () => {
-    const stored = docItem({ id: "id-A.pdf", fileName: "A.pdf", processingStatus: "Uploaded", stage: null, contractId: null });
+    const stored = docItem({
+      id: "id-A.pdf",
+      fileName: "A.pdf",
+      processingStatus: "Uploaded",
+      stage: null,
+      contractId: null,
+      createdAt: new Date().toISOString(),
+    });
     let listCalls = 0;
     const listDocuments = vi.fn().mockImplementation(async () => {
       listCalls += 1;
@@ -406,11 +413,12 @@ describe("DocumentsRoute (task E13/F09/US01/T03, web-documents-v2)", () => {
     expect(screen.queryByText("Uploading…")).toBeNull();
   });
 
-  it("stops polling after five minutes without a change, re-labels nothing, and resumes on 'Check again'", async () => {
+  it("stops polling after five minutes without a change, offers Retry upload on the still-Uploaded row, and resumes on 'Check again'", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
+    const createdAt = new Date().toISOString();
     const listDocuments = vi
       .fn<ApiClient["listDocuments"]>()
-      .mockResolvedValue(listOk([docItem({ id: "p", fileName: "Stuck.pdf", processingStatus: "Uploaded", stage: null, contractId: null })]));
+      .mockResolvedValue(listOk([docItem({ id: "p", fileName: "Stuck.pdf", processingStatus: "Uploaded", stage: null, contractId: null, createdAt })]));
     renderDocuments(mockApiClient({ listDocuments }));
 
     await act(async () => {
@@ -424,7 +432,8 @@ describe("DocumentsRoute (task E13/F09/US01/T03, web-documents-v2)", () => {
       await vi.advanceTimersByTimeAsync(5 * 60_000);
     });
     expect(await screen.findByText("Nothing has changed for five minutes, so this page stopped checking for updates.")).toBeInTheDocument();
-    expect(screen.getByText("Processing in the background")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry upload" })).toBeInTheDocument();
+    expect(screen.queryByText("Processing in the background")).not.toBeInTheDocument();
     expect(screen.getByText("Uploaded")).toHaveClass("tag");
     expect(screen.queryByText("Failed")).toBeNull();
 

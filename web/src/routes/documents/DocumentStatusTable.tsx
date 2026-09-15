@@ -183,21 +183,22 @@ export default function DocumentStatusTable({
                     {rowStatus === "processing" && <ProcessingPipeline stage={item.stage} />}
                   </td>
                   <td className="document-status-table-next-step">
-                    {rowStatus === "uploaded" ? (
+                    {action !== null && action.kind === "retry" ? (
+                      <button type="button" className="btn btn-secondary" onClick={() => onRetryServer(item.id)}>
+                        {action.label}
+                      </button>
+                    ) : rowStatus === "uploaded" ? (
                       // ADR-020 w15 footer 10 (task E16/F03/US02/T02): the row already reads
                       // "Uploaded" -- no Worker has claimed it yet, so there is no real stage to
-                      // report, only that it is on its way.
+                      // report, only that it is on its way. After five minutes that claim is
+                      // overdue and the retry branch above offers Retry upload instead.
                       <span className="micro-meta">Processing in the background</span>
                     ) : rowStatus === "processing" ? (
                       // A `Processing` row reads its real stage string, verbatim -- the Worker has
                       // genuinely claimed the job by the time this branch renders.
                       <span className="micro-meta">{(item.stage ?? "Queued") + "…"}</span>
                     ) : action !== null ? (
-                      action.kind === "retry" ? (
-                        <button type="button" className="btn btn-secondary" onClick={() => onRetryServer(item.id)}>
-                          {action.label}
-                        </button>
-                      ) : action.kind === "ask" ? (
+                      action.kind === "ask" ? (
                         // `raffa-v2/app.jsx`'s own "Ask about it" handler both opens a new chat
                         // *and* pre-asks "When does {supplier} expire?" -- `state.query` is the same
                         // seed mechanism `components/ask-bar/GlobalAskBar.tsx` already establishes

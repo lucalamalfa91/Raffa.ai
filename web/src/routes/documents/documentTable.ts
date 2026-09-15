@@ -133,6 +133,12 @@ export interface RowAction {
   label: string;
 }
 
+/** How long an `Uploaded` row may sit with "Processing in the background" before the next-step
+ * cell becomes Retry upload. After this the Worker has had a fair chance to claim the job; staying
+ * `Uploaded` means the pointer is gone (dead-lettered or never delivered) and the only recovery
+ * is `POST /api/documents/{id}/reprocess`. */
+export const STUCK_REPROCESS_AFTER_MS = 5 * 60 * 1000;
+
 /**
  * Next-step action per row (`raffa-v2/app.jsx`'s own `docRows` action ternary; screens-v2.md #3
  * "Review N fields / Ask about it / Retry upload"). A `Quote`-typed document is routed to Quote
@@ -140,9 +146,14 @@ export interface RowAction {
  * force: "no automatic Quote record; the result card and Ask route to Quote check (/quotes) where
  * the user uploads the quote" -- there is nothing to review or ask about inside Documents for a
  * Quote, only a hand-off. `null` for a still-processing row (the stage text is the only thing shown
- * there, not an action button -- see `DocumentStatusTable.tsx`).
+ * there, not an action button -- see `DocumentStatusTable.tsx`), except an `Uploaded` row older
+ * than `STUCK_REPROCESS_AFTER_MS`, which offers the same Retry upload Failed already uses
+ * (`POST .../reprocess`).
  */
-export function getRowAction(item: Pick<DocumentListItemBody, "processingStatus" | "documentType" | "weakFactCount">): RowAction | null {
+export function getRowAction(
+  item: Pick<DocumentListItemBody, "processingStatus" | "documentType" | "weakFactCount" | "createdAt">,
+  nowMs: number = Date.now(),
+): RowAction | null {
   const status = getRowStatus(item.processingStatus);
 
   if (item.documentType === "Quote" && (status === "completed" || status === "needs_review")) {
@@ -157,6 +168,12 @@ export function getRowAction(item: Pick<DocumentListItemBody, "processingStatus"
   }
   if (status === "failed") {
     return { kind: "retry", label: "Retry upload" };
+  }
+  if (status === "uploaded") {
+    const created = Date.parse(item.createdAt);
+    if (Number.isFinite(created) && nowMs - created >= STUCK_REPROCESS_AFTER_MS) {
+      return { kind: "retry", label: "Retry upload" };
+    }
   }
   return null;
 }

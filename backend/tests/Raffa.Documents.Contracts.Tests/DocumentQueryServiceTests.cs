@@ -189,7 +189,10 @@ public sealed class DocumentQueryServiceTests : IAsyncLifetime
 
         Assert.NotNull(metadata);
         Assert.Equal(documentId, metadata!.DocumentId);
-        Assert.Null(metadata.ContractId);
+        // DocumentUploadService now creates a bootstrap Contract shell at upload time and links
+        // document.ContractId to it immediately (w17 immediate-visibility fix), so ContractId
+        // is non-null from the moment of upload. Do NOT revert to Assert.Null here.
+        Assert.NotNull(metadata.ContractId);
         Assert.Equal("contract.pdf", metadata.FileName);
         Assert.Equal("application/pdf", metadata.MimeType);
         Assert.Equal(ContractDocumentType.Other, metadata.DocumentType);

@@ -134,12 +134,25 @@ public sealed class PortfolioQueryService(
         // (w17 immediate-visibility requirement). "Most recently created" is chosen so that a
         // re-uploaded contract shows the newest file's name and status, matching the upload
         // timestamp ordering already established for the outer contracts query.
+        //
+        // IMPORTANT: do NOT use contractIds.Contains(d.ContractId!.Value) here.
+        // d.ContractId is EntityId? (nullable) and contractIds is List<EntityId> (non-nullable).
+        // Npgsql's NpgsqlArrayConverter tries to build an EntityId?[] array parameter, but the
+        // list elements are EntityId — the type mismatch throws at runtime. Instead, use a
+        // correlated subquery (IQueryable<EntityId>.Contains): the inner query filters on the
+        // non-nullable c.Id (contractIds.Contains(c.Id) works fine there) and produces an
+        // IN (SELECT …) clause rather than an array ANY() parameter, sidestepping the converter.
+        var contractIdSubquery = dbContext.Contracts
+            .AsNoTracking()
+            .Where(c => c.TenantId == tenantId && contractIds.Contains(c.Id))
+            .Select(c => c.Id); // IQueryable<EntityId> — non-nullable, no converter clash
+
         var documentMetaByContract = await dbContext.Documents
             .AsNoTracking()
             .Where(d =>
                 d.TenantId == tenantId
                 && d.ContractId.HasValue
-                && contractIds.Contains(d.ContractId!.Value))
+                && contractIdSubquery.Contains(d.ContractId!.Value))
             .Select(d => new { d.ContractId, d.FileName, d.ProcessingStatus, d.CreatedAt })
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);

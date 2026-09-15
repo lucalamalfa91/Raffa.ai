@@ -838,4 +838,70 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
 
         Assert.True(result.IsFailure);
     }
+
+    /// <summary>
+    /// Regression test for the w17 bootstrap-contract type promotion fix: when
+    /// <c>DocumentUploadService</c> creates a Contract shell at upload time with
+    /// <see cref="ContractDocumentType.Other"/> as a placeholder, <see cref="StagedExtractionService"/>
+    /// must promote that placeholder to the classified type (e.g. <c>Msa</c>) once
+    /// <c>DocumentProcessingPipeline</c> has classified the document and flushed
+    /// <see cref="Document.DocumentType"/> before calling <see cref="StagedExtractionService.RunAsync"/>.
+    /// Without this, the portfolio/360 type stays "Other" even after extraction completes (the
+    /// E2E assertion at <c>R1EndToEndTests.cs:92</c> would fail with Expected "Msa"/Actual "Other").
+    /// </summary>
+    [Fact]
+    public async Task Bootstrap_contract_type_is_promoted_from_Other_to_classified_type_after_extraction()
+    {
+        var tenantId = TenantId.New();
+        var tenantContext = new TenantContext();
+
+        // Seed: document classified as Msa (DocumentProcessingPipeline has already set
+        // DocumentType and flushed it before calling RunAsync) plus a bootstrap Contract shell
+        // with the upload-time placeholder Type = Other — exactly the state the pipeline hands
+        // to StagedExtractionService after classification.
+        await using var seedDb = CreateContext(tenantContext);
+        using var seedScope = tenantContext.BeginScope(tenantId);
+
+        var bootstrapContract = new Contract
+        {
+            TenantId = tenantId,
+            Type = ContractDocumentType.Other,  // upload-time bootstrap placeholder
+            Status = "processing",
+            Currency = "USD",
+            CreatedAt = Now,
+        };
+        seedDb.Contracts.Add(bootstrapContract);
+
+        var document = new Document
+        {
+            TenantId = tenantId,
+            FileName = "msa.pdf",
+            MimeType = "application/pdf",
+            StoragePath = $"{tenantId.Value:D}/documents/msa.pdf",
+            Checksum = "test-checksum-msa",
+            ProcessingStatus = DocumentProcessingStatus.Uploaded,
+            DocumentType = ContractDocumentType.Msa,   // classification already ran
+            ContractId = bootstrapContract.Id,          // linked at upload time
+            CreatedAt = Now,
+        };
+        seedDb.Documents.Add(document);
+        await seedDb.SaveChangesAsync();
+
+        // Run extraction with minimal payloads (type promotion is in EnsureContractAsync,
+        // before any stage runs, so stage content does not affect this assertion).
+        await using var runDb = CreateContext(tenantContext);
+        var service = new StagedExtractionService(
+            runDb, new ScriptedAiGateway(new Dictionary<string, string>()), tenantContext, new FixedClock(Now), new RecordingAuditWriter());
+
+        var result = await service.RunAsync(tenantId, document.Id, [new DocumentPageText(1, "MSA contract text.")]);
+
+        Assert.True(result.IsSuccess);
+
+        // The contract row must now reflect the classified type, not the upload placeholder.
+        await using var readDb = CreateContext(tenantContext);
+        using var readScope = tenantContext.BeginScope(tenantId);
+        var contract = await readDb.Contracts.FindAsync(bootstrapContract.Id);
+        Assert.NotNull(contract);
+        Assert.Equal(ContractDocumentType.Msa, contract.Type);
+    }
 }

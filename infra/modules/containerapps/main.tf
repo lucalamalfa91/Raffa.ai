@@ -201,6 +201,15 @@ resource "azurerm_container_app" "api" {
         value = var.servicebus_topic_name
       }
 
+      # The API reads the same subscription's dead-letter subqueue on Reprocess
+      # (stranded Uploaded recovery). Default in ExtractionQueueOptions is
+      # document-processing; injecting the module output keeps API and Worker
+      # aligned if the subscription name ever changes.
+      env {
+        name  = "ServiceBus__SubscriptionName"
+        value = var.servicebus_subscription_name
+      }
+
       # Task E16/F01/US01/T01 (NW-68, ADR-005 w15 footer §5 rule 3):
       # Enabled is a PRODUCT switch, not a provisioning gate -- a working
       # connection string behind Enabled = false is harmless, so resources,

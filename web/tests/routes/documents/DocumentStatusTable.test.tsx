@@ -105,13 +105,43 @@ describe("DocumentStatusTable", () => {
   // reads "Uploaded", not "Queued…" and not a bar -- the perceived-instant batch. Its filename
   // still opens the progress panel (footer 11), which is where the real stage checklist lives.
   it("reads 'Uploaded' with no bar for a server row at Uploaded, filename opens the progress panel", () => {
-    renderTable({ documents: [item({ id: "doc-1", processingStatus: "Uploaded", stage: null, contractId: null })] });
+    renderTable({
+      documents: [
+        item({
+          id: "doc-1",
+          processingStatus: "Uploaded",
+          stage: null,
+          contractId: null,
+          createdAt: new Date().toISOString(),
+        }),
+      ],
+    });
 
     expect(screen.getByText("Uploaded")).toHaveClass("tag", "tag-neutral");
     expect(screen.getByText("Processing in the background")).toBeInTheDocument();
     expect(screen.queryByText("Queued…")).not.toBeInTheDocument();
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Salesforce_MSA.pdf" })).toHaveAttribute("href", "/documents?progress=doc-1");
+  });
+
+  it("offers Retry upload for an Uploaded row older than five minutes, calling onRetryServer", async () => {
+    const onRetryServer = vi.fn();
+    renderTable({
+      documents: [
+        item({
+          id: "doc-stuck",
+          processingStatus: "Uploaded",
+          stage: null,
+          contractId: null,
+          createdAt: new Date(Date.now() - 6 * 60_000).toISOString(),
+        }),
+      ],
+      onRetryServer,
+    });
+
+    expect(screen.queryByText("Processing in the background")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Retry upload" }));
+    expect(onRetryServer).toHaveBeenCalledWith("doc-stuck");
   });
 
   it("offers Retry upload for a server-known failed row, calling onRetryServer with its id", async () => {
@@ -226,7 +256,11 @@ describe("DocumentStatusTable", () => {
   // the one control resumes the poll.
   it("renders the stopped-updates notice below the grid with 'Check again', leaving every row as it was", async () => {
     const onResumeUpdates = vi.fn();
-    renderTable({ documents: [item({ processingStatus: "Uploaded", stage: null, contractId: null })], updatesPaused: true, onResumeUpdates });
+    renderTable({
+      documents: [item({ processingStatus: "Uploaded", stage: null, contractId: null, createdAt: new Date().toISOString() })],
+      updatesPaused: true,
+      onResumeUpdates,
+    });
 
     expect(screen.getByText("Nothing has changed for five minutes, so this page stopped checking for updates.")).toHaveClass("hint");
     expect(screen.getByText("Processing in the background")).toBeInTheDocument();
@@ -236,7 +270,9 @@ describe("DocumentStatusTable", () => {
   });
 
   it("renders no notice while updates are running", () => {
-    renderTable({ documents: [item({ processingStatus: "Uploaded", stage: null, contractId: null })] });
+    renderTable({
+      documents: [item({ processingStatus: "Uploaded", stage: null, contractId: null, createdAt: new Date().toISOString() })],
+    });
 
     expect(screen.queryByText(/stopped checking for updates/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Check again" })).not.toBeInTheDocument();

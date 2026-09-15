@@ -38,6 +38,7 @@ public sealed class DocumentReprocessService(
     DocumentsContractsDbContext dbContext,
     IDocumentStorage storage,
     IExtractionQueuePublisher extractionQueuePublisher,
+    IExtractionDeadLetterResubmitter deadLetterResubmitter,
     EmbeddingRetrievalService embeddingRetrievalService,
     ITenantContext tenantContext,
     IAuditWriter auditWriter,
@@ -104,16 +105,26 @@ public sealed class DocumentReprocessService(
             .ConfigureAwait(false);
         document.ProcessingStatus = DocumentProcessingStatus.Uploaded;
 
-        // Publish before commit, exactly as DocumentUploadService does: a publish failure fails the
-        // request with nothing changed; a commit failure leaves a pointer the Worker's claim answers
-        // with zero rows.
-        await extractionQueuePublisher.PublishAsync(
-            new ExtractionRequested(
-                tenantId.Value, documentId.Value, job.Id.Value, ExtractionRequested.CurrentSchemaVersion),
-            cancellationToken).ConfigureAwait(false);
+        var pointer = new ExtractionRequested(
+            tenantId.Value, documentId.Value, job.Id.Value, ExtractionRequested.CurrentSchemaVersion);
+
+        // Dead-letter first: a stranded Uploaded row is usually a pointer that the Worker dead-lettered
+        // (job-not-found, max delivery) while the row stayed Queued. Resubmitting that message puts
+        // work back on the topic without a second copy. No match (or no broker) → publish a fresh
+        // pointer, the same path a first upload uses. Publish-before-commit in both branches, as
+        // DocumentUploadService does: a send failure fails the request with nothing durable; a
+        // commit failure leaves a pointer the Worker's claim answers with zero rows.
+        var resubmittedFromDeadLetter = await deadLetterResubmitter
+            .TryResubmitAsync(pointer, cancellationToken)
+            .ConfigureAwait(false);
+        if (!resubmittedFromDeadLetter)
+        {
+            await extractionQueuePublisher.PublishAsync(pointer, cancellationToken).ConfigureAwait(false);
+        }
 
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
+        var origin = resubmittedFromDeadLetter ? "deadLetter" : "queued";
         await auditWriter.WriteAsync(
             new AuditEntry(
                 tenantId,
@@ -122,7 +133,7 @@ public sealed class DocumentReprocessService(
                 "document",
                 documentId.Value.ToString(),
                 clock.UtcNow,
-                $"queued; extractionJobId={job.Id.Value}; attempt={job.AttemptCount + 1}"),
+                $"{origin}; extractionJobId={job.Id.Value}; attempt={job.AttemptCount + 1}"),
             cancellationToken).ConfigureAwait(false);
 
         return Result<DocumentReprocessQueued>.Success(new DocumentReprocessQueued(documentId, job.Id));
