@@ -81,9 +81,8 @@ builder.Services.AddDocumentsContractsModule(documentsContractsConnectionString)
 // Task E13/F04/US01/T02 (documents-v2-api), narrowed by task E14/F02/US02/T01 (wave w14, ADR-022
 // w14 footer / ADR-025 §E): resolves the caller's workspace role for the Admin-only document
 // endpoints (reprocess, delete). Lives in the host because it reads the Identity/Workspace
-// membership table AND the request's own claims -- see Raffa.Api.Infrastructure.WorkspaceRoleResolver
-// for the two-source order (claims, then membership) and why a client-declared X-Role/
-// X-Workspace-Role header is no longer one of them.
+// membership table — see Raffa.Api.Infrastructure.WorkspaceRoleResolver for the membership-only
+// source of a workspace role. A client-declared role header is not one of the inputs.
 builder.Services.AddScoped<WorkspaceRoleResolver>();
 
 // Task E14/F02/US01/T01 (wave w14 "workspace is real", ADR-025 §A1), retired to the validated token
@@ -363,8 +362,8 @@ app.MapWorkspaceEndpoints();
 // DocumentsEndpointExtensions and reordered the upload: size (413) -> format by extension and
 // magic bytes (415) -> DocumentAdmissionGate (422, nothing persisted, one audit row) -> only then
 // DocumentUploadService + the pipeline, reusing the gate's own parse and classification. See that
-// file's own doc comment, including the interim X-Tenant-Id / X-User-Id posture (ADR-022,
-// OQ-askv2-005) every tenant-scoped endpoint in this host still shares.
+// file's own doc comment, including the membership-verified X-Tenant-Id selector (ADR-022,
+// ADR-010) every tenant-scoped endpoint in this host still shares.
 app.MapDocumentsEndpoints();
 
 // Task E02/F05/US01/T01 (us-01-correction-history, AC-1): versioned PATCH /api/contracts/{id}.
@@ -425,8 +424,7 @@ app.MapChatEndpoints();
 // POST /api/conversations/{id}/messages to the same call — list/create/get-with-messages/ask over
 // the conversations store task E13/F05/US01/T01 added (ADR-024 "Conversations (D5)"). See
 // ConversationsEndpointExtensions for the endpoints themselves and their own doc comment for the
-// caller-identity rule (token subject when an authenticated principal is present, else the
-// required X-User-Id header — ADR-022 posture, non-authoritative, OQ-askv2-005).
+// caller-identity rule (the validated token subject — ADR-010).
 app.MapConversationsEndpoints();
 
 // Task E13/F08/US01/T01 (story us-01-capability-catalog, AC-1): GET /api/capabilities — the

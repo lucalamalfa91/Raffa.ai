@@ -32,15 +32,13 @@ namespace Raffa.Api.Infrastructure;
 /// in <b>every</b> workspace the caller can name, bypassing <c>workspace_membership</c> entirely —
 /// and this type's own <see cref="IsAdminAsync"/> gates <c>DELETE /api/documents/{id}</c> and
 /// <c>POST …/reprocess</c>, so the failure would have been cross-tenant <b>destructive</b> access,
-/// not merely visibility. A client-declared role header (the interim <c>X-Role</c>/
-/// <c>X-Workspace-Role</c> signal) was already demoted out of this decision one wave earlier
-/// (ADR-022 w14 footer clause 1; ADR-025 §E; Rule E2 "membership wins in both directions") and had
-/// zero call sites left in this type even before this edit — this task removes the one authorization
-/// source ADR-025 §I never sanctioned in the first place: "a <c>tenant_id</c> or <c>roles</c> claim
-/// is never the authorization source." <c>GET /api/capabilities</c>'s own, separate, non-authoritative
-/// use of the same two retired header names for UI affordance only is untouched by this task — that
-/// endpoint's own doc comment already draws the line; <c>NW-31</c> (W16) is what eventually removes
-/// it.
+/// not merely visibility. A client-declared role header was already demoted out of this decision
+/// one wave earlier (ADR-022 w14 footer clause 1; ADR-025 §E; Rule E2 "membership wins in both
+/// directions") and had zero call sites left in this type even before this edit — this task removes
+/// the one authorization source ADR-025 §I never sanctioned in the first place: "a <c>tenant_id</c>
+/// or <c>roles</c> claim is never the authorization source." <c>GET /api/capabilities</c> used to
+/// read a separate, non-authoritative header for UI affordance only; wave w16 NW-31 (task
+/// E18/F03/US01/T01) deleted that reader and the server-side catalog filter with it.
 /// </para>
 ///
 /// <para>

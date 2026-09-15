@@ -33,9 +33,9 @@ namespace Raffa.Api;
 ///
 /// <para>
 /// This guard deliberately does not call <see cref="WorkspaceRoleResolver.ResolveAsync"/>: that
-/// method tries an authenticated principal's claims, then the interim `X-Role`/`X-Workspace-Role`
-/// header, <i>before</i> it ever reaches its own membership branch — a caller with no relationship
-/// to the route tenant could set a static `X-Role: Admin` header and be treated as Admin, reopening
+/// method used to try an authenticated principal's claims, then a client-declared role header,
+/// <i>before</i> it ever reached its own membership branch — a caller with no relationship
+/// to the route tenant could assert Admin and be treated as Admin, reopening
 /// the exact hole this task exists to close (ADR-025 §D.1a; the non-negotiable §H spoofed-header
 /// test). <see cref="WorkspaceRoleResolver"/>'s membership branch is <see langword="private"/>, and
 /// that file is this task's own "do not touch" (its header branch is deleted by

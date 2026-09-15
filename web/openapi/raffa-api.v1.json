@@ -1317,7 +1317,7 @@
       "delete": {
         "operationId": "deleteDocument",
         "summary": "Delete a document (Admin only): blob, preview, row, embeddings; detaches the contract link.",
-        "description": "Task E13/F04/US01/T02 (documents-v2-api), documented ahead of that backend task landing in this worktree -- see this document's own top-level provenance note; shape from `inputs/requirements.md` R-DOC-10/§6. Audits `document.deleted`. Same interim `X-Tenant-Id`/role posture as every other operation above (ADR-022) -- role is carried as `X-Workspace-Role` the same way the existing admin-only member-management checks already read it (`RequireRole.tsx` on the web side; no header is added here beyond what those checks already assume).",
+        "description": "Task E13/F04/US01/T02 (documents-v2-api), documented ahead of that backend task landing in this worktree -- see this document's own top-level provenance note; shape from `inputs/requirements.md` R-DOC-10/§6. Audits `document.deleted`. Admin-only: a live workspace_membership row for the caller's validated identity (WorkspaceRoleResolver). Missing/non-GUID X-Tenant-Id -> 400; a well-formed tenant with no live membership -> 404; a live member who is not Admin -> 403.",
         "parameters": [
           {
             "name": "X-Tenant-Id",
@@ -1400,7 +1400,7 @@
       "post": {
         "operationId": "reprocessDocument",
         "summary": "Queue a re-run of hybrid parse + embedding (Admin only) so retrieval never cites raw bytes.",
-        "description": "Maps to Raffa.Api.DocumentsEndpointExtensions' reprocess handler backed by `Raffa.Documents.Contracts.Application.DocumentReprocessService`. Task E16/F02/US03/T01 (ADR-027 §D1): the old page-aware chunks are dropped, the document goes back to `Uploaded`, a fresh classification `extraction_job` is queued and the request returns 202 -- the Worker does the re-parse/re-embed afterwards, exactly like a first upload. Poll `GET /api/documents/{id}` for the terminal status; every new embedding row carries a page number (R-DOC-07 AC-2). Same interim role posture as `deleteDocument` above.",
+        "description": "Maps to Raffa.Api.DocumentsEndpointExtensions' reprocess handler backed by `Raffa.Documents.Contracts.Application.DocumentReprocessService`. Task E16/F02/US03/T01 (ADR-027 §D1): the old page-aware chunks are dropped, the document goes back to `Uploaded`, a fresh classification `extraction_job` is queued and the request returns 202 with `{documentId, extractionJobId, processingStatus}` -- the Worker does the re-parse/re-embed afterwards, exactly like a first upload. Poll `GET /api/documents/{id}` for the terminal status; every new embedding row carries a page number (R-DOC-07 AC-2). Admin-only via membership, same ladder as `deleteDocument`.",
         "parameters": [
           {
             "name": "X-Tenant-Id",
@@ -5914,21 +5914,10 @@
       "get": {
         "operationId": "getCapabilities",
         "summary": "The versioned, static capability catalog.",
-        "description": "Maps to GetCapabilities in backend/src/Raffa.Api/CapabilitiesEndpointExtensions.cs, backed by the static Raffa.Chat.Application.Capabilities.CapabilityCatalog (task E13/F08/US01/T01, story us-01-capability-catalog AC-1; R-SYS-01). No X-Tenant-Id: the catalog is static, tenant-agnostic metadata, the same 'no tenant boundary to enforce' reasoning GET /api/market/records/{id} below shares. Role-aware: an admin-gated entry (Workspace & members) is hidden unless the optional X-Role header resolves to Admin (WorkspaceRoleClaimResolver.TryResolve, accepts 'Admin'/'Workspace Admin'/'Raffa.Admin'/...); a missing/unparseable/non-Admin header fails closed (hides it), never a 401/403 -- the catalog itself is not sensitive. web/src/routes/ask/index.tsx / web/src/components/ask-bar/askSuggestions.ts (task E13/F09/US01/T04) read only `capabilities[].exampleQuestions` for the two-chip suggestions this task adds; `CapabilityCatalog.SuggestionsFor`'s own richer per-screen/supplier-templated chip copy (app.jsx `chipsFor`/`c360Chips`) is a backend-internal helper with no HTTP surface at all -- this task reproduces the two prototype-verbatim supplier-templated strings client-side for the Contract-360-scoped case (askViewModel.ts) rather than inventing a new endpoint for them.",
-        "parameters": [
-          {
-            "name": "X-Role",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Optional. Gates the one Admin-only catalog entry. This client (web/src/api/client.ts#getCapabilities) never sends it -- suggestion chips only read exampleQuestions, which every capability carries regardless of roleGate."
-          }
-        ],
+        "description": "Maps to GetCapabilities in backend/src/Raffa.Api/CapabilitiesEndpointExtensions.cs, backed by the static Raffa.Chat.Application.Capabilities.CapabilityCatalog (task E13/F08/US01/T01, story us-01-capability-catalog AC-1; R-SYS-01; wave w16 NW-31, task E18/F03/US01/T01). No tenant header: the catalog is static, tenant-agnostic metadata, the same 'no tenant boundary to enforce' reasoning GET /api/market/records/{id} below shares. Served whole to an unauthenticated caller -- every row carries its own `roleGate` as a presentation label, never as authorization (ADR-024 w16 clause 2). The server-side role filter is deleted; hiding an admin-gated chip from a non-Admin is client work deferred to W17. web/src/routes/ask/index.tsx / web/src/components/ask-bar/askSuggestions.ts (task E13/F09/US01/T04) read only `capabilities[].exampleQuestions` for the two-chip suggestions this task adds; `CapabilityCatalog.SuggestionsFor`'s own richer per-screen/supplier-templated chip copy (app.jsx `chipsFor`/`c360Chips`) is a backend-internal helper with no HTTP surface at all -- this task reproduces the two prototype-verbatim supplier-templated strings client-side for the Contract-360-scoped case (askViewModel.ts) rather than inventing a new endpoint for them.",
         "responses": {
           "200": {
-            "description": "The full, role-filtered catalog.",
+            "description": "The full catalog. Every row carries its own roleGate label; the server does not filter.",
             "content": {
               "application/json": {
                 "schema": {

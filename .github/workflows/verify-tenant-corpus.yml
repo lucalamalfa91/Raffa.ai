@@ -1,0 +1,224 @@
+name: verify-tenant-corpus
+
+# Task E18/F03/US01/T01 (wave w16, NW-31). Replaces reprocess-tenant-documents.yml:
+# that job called the API with client-asserted role headers, accepted only HTTP 200
+# with pagesParsed/chunksIndexed, and raced work that is now asynchronous. After
+# NW-05 those API steps 401'd before any write. There is no zero-cost repair
+# (CI holds no Service Bus role; a SAS key is forbidden; inserting extraction_job
+# rows via psql leaves permanently-Queued jobs). This job reports; it does not
+# mutate. Bulk whole-tenant reprocess is deferred to W17 (ADR-016 w16 clause 31).
+# An Admin resubmits a document through the product path
+# (POST /api/documents/{id}/reprocess → 202 → Worker).
+#
+# KEEP from the predecessor: OIDC login, RG resolution, Key Vault fetch, psql with
+# the app.tenant_id GUC, the %PDF assertion (R-DOC-07 AC-1), the supplier report
+# (R-SUP-03), the summary, and `environment:` so demo's required reviewers still
+# gate a job that reads a Key Vault secret.
+on:
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: >-
+          GitHub Environment (and Postgres database, raffa_<env>) whose
+          tenant corpus is verified.
+        required: true
+        type: choice
+        options: [dev, demo]
+        default: dev
+      tenant_id:
+        description: >-
+          The workspace/tenant UUID whose documents and embeddings are
+          reported (the same value the SPA sends as X-Tenant-Id). The
+          ADR-022 demo fixture tenant is
+          00000000-0000-0000-0000-000000000001.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-tenant-corpus-${{ inputs.target_environment }}-${{ inputs.tenant_id }}
+  cancel-in-progress: false
+
+env:
+  TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
+  TENANT_ID: ${{ inputs.tenant_id }}
+
+jobs:
+  verify:
+    name: verify tenant corpus (${{ inputs.target_environment }})
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.target_environment }}
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate tenant id
+        run: |
+          set -euo pipefail
+          if ! printf '%s' "$TENANT_ID" | grep -Eiq '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'; then
+            echo "::error::tenant_id '$TENANT_ID' is not a UUID. Pass the workspace id the SPA sends as X-Tenant-Id."
+            exit 1
+          fi
+
+      - name: Azure login (OIDC)
+        uses: ./.github/actions/azure-login
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Ensure containerapp CLI extension
+        run: az extension add --name containerapp --upgrade -y
+
+      - name: Resolve resource group
+        run: echo "RESOURCE_GROUP=rg-raffa-${TARGET_ENVIRONMENT}" >> "$GITHUB_ENV"
+
+      - name: Detect the AI gateway this environment runs
+        run: |
+          set -euo pipefail
+          API_NAME="ca-raffa-${TARGET_ENVIRONMENT}-api"
+          ENDPOINT=$(az containerapp show --name "$API_NAME" --resource-group "$RESOURCE_GROUP" \
+            --query "properties.template.containers[0].env[?name=='AiGateway__Endpoint'].value | [0]" -o tsv 2>/dev/null | tr -d '\r' || true)
+          if [ -n "$ENDPOINT" ] && [ "$ENDPOINT" != "None" ]; then
+            echo "LIVE_FOUNDRY=1" >> "$GITHUB_ENV"
+            echo "AiGateway__Endpoint is set on $API_NAME -- OCR placeholders will be treated as a failure."
+          else
+            echo "LIVE_FOUNDRY=0" >> "$GITHUB_ENV"
+            echo "::notice::AiGateway__Endpoint is not set on $API_NAME: this environment runs the fixture gateway (ADR-004 / R-AI-01), so scanned pages re-embed as the honest '[fixture-ocr: ...]' placeholder. That is reported below, not failed."
+          fi
+
+      - name: Install postgresql-client
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends postgresql-client
+          fi
+
+      - name: Fetch Postgres connection string (ADR-021)
+        run: |
+          set -euo pipefail
+          HCP_RUNS="https://app.terraform.io/app/raffa-platform/workspaces/raffa-${TARGET_ENVIRONMENT}/runs"
+          KV_NAME=$(az keyvault list --resource-group "$RESOURCE_GROUP" --query "[0].name" -o tsv)
+          if [ -z "$KV_NAME" ]; then
+            echo "::error::no Key Vault found in resource group $RESOURCE_GROUP. Confirm the HCP VCS apply at $HCP_RUNS, then re-run this job."
+            exit 1
+          fi
+          set +e
+          RAW_CONN=$(az keyvault secret show --vault-name "$KV_NAME" --name postgres-connection --query value -o tsv 2>/tmp/kv_secret_show.err)
+          KV_STATUS=$?
+          set -e
+          if [ $KV_STATUS -ne 0 ] || [ -z "$RAW_CONN" ]; then
+            echo "::error::could not read secret 'postgres-connection' from $KV_NAME. Either the HCP VCS apply at $HCP_RUNS has not created it yet, or this environment's CI deploy principal (raffa-sp-${TARGET_ENVIRONMENT}) is missing the 'Key Vault Secrets User' role on $KV_NAME. Azure CLI said: $(tail -c 500 /tmp/kv_secret_show.err | tr '\n' ' ')"
+            exit 1
+          fi
+          echo "::add-mask::$RAW_CONN"
+          PG_EXPORTS=$(printf '%s' "$RAW_CONN" | python3 scripts/pg_connection_string_env.py)
+          eval "$PG_EXPORTS"
+          echo "::add-mask::$PGPASSWORD"
+          if [ -z "${PGHOST:-}" ] || [ -z "${PGPASSWORD:-}" ]; then
+            echo "::error::scripts/pg_connection_string_env.py produced an incomplete environment from the postgres-connection secret"
+            exit 1
+          fi
+          {
+            echo "PGHOST=$PGHOST"
+            echo "PGPORT=$PGPORT"
+            echo "PGDATABASE=$PGDATABASE"
+            echo "PGUSER=$PGUSER"
+            echo "PGPASSWORD=$PGPASSWORD"
+            echo "PGSSLMODE=$PGSSLMODE"
+          } >> "$GITHUB_ENV"
+
+      - name: Enumerate the tenant's documents
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -Atqc "SET app.tenant_id = '${TENANT_ID}';" >/dev/null
+          TOTAL=$(psql -Atqc "SET app.tenant_id = '${TENANT_ID}'; SELECT count(*) FROM document;")
+          echo "DOCUMENT_COUNT=$TOTAL" >> "$GITHUB_ENV"
+          echo "::group::documents of tenant ${TENANT_ID} (id / file / type / processing_status)"
+          psql -Atqc "SET app.tenant_id = '${TENANT_ID}'; SELECT id || E'\t' || file_name || E'\t' || document_type || E'\t' || processing_status FROM document ORDER BY created_at DESC;"
+          echo "::endgroup::"
+          echo "Found $TOTAL document(s)."
+
+      - name: Named worklist of documents still needing a reprocess
+        run: |
+          set -euo pipefail
+          echo "::group::worklist (Failed, or at least one embedding still starts with %PDF)"
+          WORKLIST=$(psql -Atqc "SET app.tenant_id = '${TENANT_ID}';
+            SELECT d.id || E'\t' || d.file_name || E'\t' || d.processing_status
+            FROM document d
+            WHERE d.processing_status = 'Failed'
+               OR EXISTS (
+                 SELECT 1 FROM embedding e
+                 WHERE e.source_id = d.id
+                   AND left(e.chunk_text, 4) = '%PDF'
+               )
+            ORDER BY d.file_name;")
+          if [ -z "$WORKLIST" ]; then
+            echo "(empty — no document of this tenant is Failed or still carries a raw-byte embedding)"
+            echo "WORKLIST_COUNT=0" >> "$GITHUB_ENV"
+          else
+            printf '%s\n' "$WORKLIST"
+            echo "WORKLIST_COUNT=$(printf '%s\n' "$WORKLIST" | grep -c .)" >> "$GITHUB_ENV"
+            echo "::notice::This job does not mutate. An Admin resubmits each listed document in the product (Documents → Retry) so the Worker drives it to a terminal state."
+          fi
+          echo "::endgroup::"
+
+      - name: Verify no embedding is raw bytes (R-DOC-07 AC-1)
+        run: |
+          set -euo pipefail
+          TOTAL=$(psql -Atqc "SET app.tenant_id = '${TENANT_ID}'; SELECT count(*) FROM embedding;")
+          RAW=$(psql -Atqc "SET app.tenant_id = '${TENANT_ID}'; SELECT count(*) FROM embedding WHERE left(chunk_text, 4) = '%PDF';")
+          PLACEHOLDER=$(psql -Atqc "SET app.tenant_id = '${TENANT_ID}'; SELECT count(*) FROM embedding WHERE position('[fixture-ocr:' in chunk_text) > 0;")
+          echo "Tenant ${TENANT_ID}: $TOTAL embedding row(s), $RAW starting with %PDF, $PLACEHOLDER carrying the fixture OCR placeholder."
+          if [ "$RAW" != "0" ]; then
+            echo "::group::sample raw-byte chunks"
+            psql -Atqc "SET app.tenant_id = '${TENANT_ID}'; SELECT source_type || ' ' || source_id || ' #' || chunk_index FROM embedding WHERE left(chunk_text, 4) = '%PDF' LIMIT 20;"
+            echo "::endgroup::"
+            echo "::error::$RAW embedding row(s) of tenant ${TENANT_ID} still start with %PDF (R-DOC-07 AC-1). Ask would cite raw bytes as evidence. Reprocess those documents in the product as a live Admin, then re-run this job."
+            exit 1
+          fi
+          if [ "$PLACEHOLDER" != "0" ]; then
+            if [ "$LIVE_FOUNDRY" = "1" ]; then
+              echo "::error::$PLACEHOLDER embedding row(s) carry the fixture OCR placeholder although this environment has AiGateway__Endpoint configured -- the ocr role fell back to the fixture (R-AI-01). Check the API's Foundry/Document Intelligence wiring."
+              exit 1
+            fi
+            echo "::warning::$PLACEHOLDER embedding row(s) carry the '[fixture-ocr: ...]' placeholder. Expected on a fixture-gateway environment (no AiGateway__Endpoint); re-run after Foundry is wired to turn scanned pages into real text."
+          fi
+
+      - name: Report contracts still without a supplier (R-SUP-03)
+        run: |
+          set -euo pipefail
+          CONTRACTS=$(psql -Atqc "SET app.tenant_id = '${TENANT_ID}'; SELECT count(*) FROM contract;")
+          MISSING=$(psql -Atqc "SET app.tenant_id = '${TENANT_ID}'; SELECT count(*) FROM contract WHERE supplier_id IS NULL;")
+          echo "Tenant ${TENANT_ID}: $CONTRACTS contract(s), $MISSING without a supplier."
+          if [ "$MISSING" != "0" ]; then
+            echo "::group::contracts without a supplier"
+            psql -Atqc "SET app.tenant_id = '${TENANT_ID}'; SELECT id || ' | ' || type || ' | ' || status FROM contract WHERE supplier_id IS NULL ORDER BY id;"
+            echo "::endgroup::"
+            echo "::warning::$MISSING contract(s) of tenant ${TENANT_ID} still have no supplier (R-SUP-03). Ask will not resolve them by name; name the supplier through the review screen (/documents?review=<documentId>) for each one whose document does state it."
+          else
+            echo "Every contract of this tenant resolves to a supplier -- Ask can name them (R-SUP-04)."
+          fi
+
+      - name: Summary
+        run: |
+          set -euo pipefail
+          {
+            echo "### verify-tenant-corpus"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Environment | \`${TARGET_ENVIRONMENT}\` (\`raffa_${TARGET_ENVIRONMENT}\`) |"
+            echo "| Tenant | \`${TENANT_ID}\` |"
+            echo "| Documents | ${DOCUMENT_COUNT} |"
+            echo "| Reprocess worklist | ${WORKLIST_COUNT:-0} |"
+            echo "| Live Foundry gateway | $([ "$LIVE_FOUNDRY" = "1" ] && echo yes || echo "no (fixture)") |"
+            echo
+            echo "This job reports; it does not mutate. Bulk whole-tenant reprocess is W17."
+            echo "Next: \`docs/ask-v2-acceptance.md\` A1-A14 against this environment."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -78,7 +78,6 @@ namespace Raffa.Api;
 /// </summary>
 public static class DocumentsEndpointExtensions
 {
-    private const string TenantHeaderName = "X-Tenant-Id";
     private const string FileFieldName = "file";
 
     /// <summary>Allowance for multipart framing (boundaries, part headers) on top of
