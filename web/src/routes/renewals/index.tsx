@@ -32,9 +32,9 @@ type FetchState =
  * dates yet · Renewals are computed from validated end dates and notice periods. Upload a contract
  * to start. · Upload a contract".
  *
- * **Fetch order.** `getRenewals` first -- a non-2xx there is this screen's own error state. Then
- * every row's `GET /api/renewals/{contractId}/priority` score together via `Promise.all` before
- * declaring `"ready"` (the Score column is the list's own sort key). No bulk priority endpoint
+ * **Fetch order.** `getRenewals` first -- a non-2xx there is this screen's own error state. The
+ * pipeline paints as soon as that list returns; each row's `GET /api/renewals/{contractId}/priority`
+ * score fills in after (the Score column is the list's own sort key). No bulk priority endpoint
  * exists, so this is N calls, bounded by the underlying portfolio page ceiling; one row's fetch
  * failing degrades only that row's score to "—" (it then sorts last), never the whole screen.
  *
@@ -60,8 +60,6 @@ export default function RenewalsRoute({ apiClient, userLabel }: RenewalsRoutePro
         setFetchState({
           phase: "error",
           statusCode: result.statusCode,
-          // Same 503-vs-other split as ../contracts/index.tsx (ADR-019 accessibility baseline:
-          // "names the failing job, never a raw stack trace").
           message:
             result.statusCode === 503 || result.statusCode === null
               ? "Raffa.ai's renewal engine is temporarily unavailable. Try again in a moment."
@@ -71,6 +69,11 @@ export default function RenewalsRoute({ apiClient, userLabel }: RenewalsRoutePro
       }
 
       const items = result.renewals.items;
+      // Paint the pipeline as soon as the list is back -- waiting on N priority calls kept the
+      // screen on "Loading renewals…" for the whole fan-out (the same stall Portfolio hits when
+      // GET /api/contracts hangs). Scores fill in after; a failed row stays "—".
+      setFetchState({ phase: "ready", items, scores: {} });
+
       const scoreEntries = await Promise.all(
         items.map((item) =>
           apiClient
@@ -82,7 +85,9 @@ export default function RenewalsRoute({ apiClient, userLabel }: RenewalsRoutePro
         ),
       );
 
-      setFetchState({ phase: "ready", items, scores: Object.fromEntries(scoreEntries) });
+      setFetchState((current) =>
+        current.phase === "ready" ? { ...current, scores: Object.fromEntries(scoreEntries) } : current,
+      );
     });
     // Depends on workspace?.id (a primitive), not workspace itself: loadCurrentWorkspace() returns a
     // fresh object every call, the same convention every other route's own load() callback follows.

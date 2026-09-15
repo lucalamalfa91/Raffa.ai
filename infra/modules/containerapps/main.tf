@@ -469,7 +469,9 @@ resource "azurerm_container_app" "worker" {
     # three options. min_replicas stays 0 (unchanged) -- KEDA raises the
     # worker off zero as the queue fills. messageCount is the scale
     # trigger's own threshold, independent of the subscription's
-    # max_delivery_count.
+    # max_delivery_count. 1 (not 4): a leftover handful of extraction
+    # messages must still wake a replica -- at 4, 1-3 stuck Uploaded
+    # documents never left "Processing in the background".
     custom_scale_rule {
       name             = "servicebus-document-processing"
       custom_rule_type = "azure-servicebus"
@@ -479,7 +481,7 @@ resource "azurerm_container_app" "worker" {
         namespace        = var.servicebus_namespace_name
         topicName        = var.servicebus_topic_name
         subscriptionName = var.servicebus_subscription_name
-        messageCount     = "4"
+        messageCount     = "1"
       }
     }
   }

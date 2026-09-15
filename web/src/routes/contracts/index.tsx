@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import type { ApiClient, DocumentListPageBody, PortfolioListItem } from "../../api/client";
+import type { ApiClient, DocumentListPageBody, GetPortfolioResult, PortfolioListItem } from "../../api/client";
 import { loadCurrentWorkspace } from "../signin/workspaceStore";
 import { CHECK_AGAIN_LABEL, UPDATES_PAUSED_NOTICE, usePollBudget } from "../../components/shell/usePollBudget";
 import PortfolioTable from "./PortfolioTable";
@@ -13,6 +13,10 @@ export interface PortfolioRouteProps {
 
 /** Matches `PortfolioPageRequest.MaxPageSize` (backend) -- the largest single page the endpoint allows. */
 const PORTFOLIO_PAGE_SIZE = 100;
+
+/** GET /api/contracts can hang (auth refresh, a stalled API replica) while GET /api/workspaces
+ * already painted the rail badge -- leave loading for this long, then the error/Retry path. */
+const PORTFOLIO_LOAD_TIMEOUT_MS = 15_000;
 
 type FetchState =
   | { phase: "loading" }
@@ -54,37 +58,51 @@ export function getPortfolioZeroCopy(variant: PortfolioZeroVariant): { sentence:
  * be given, urgent rows tinted, rows opening Contract 360 -- and, while no contract is validated,
  * the tier's reroute state (R-WEB-02): "Nothing to triage yet" with one of the three sentences above.
  *
- * **Fetch-once, derive client-side.** One `GET /api/contracts` call per mount (and per Retry) for
- * the tenant's first page (`PORTFOLIO_PAGE_SIZE`, the backend's own ceiling); validated-only
- * filtering, ordering, urgency and the summary are all `portfolioViewModel.ts` over that page --
- * the same architecture the Day-1 screen already used, minus the client-side filter chips the V2
- * design does not have. "Validated" is `contractStatus.ts`'s one shared predicate, so this screen
- * can never show a contract the rail's own "From your contracts" count excludes.
- *
- * **While the zero state shows** (task E16/F03/US01/T01), the same one-row `listDocuments` read
- * Ask's off state makes says whether documents are in flight; while they are, both reads repeat on
- * the shared 2 s cadence under the five-minute no-change budget (ADR-020 w15 §8.3), and once the
- * budget is spent the block keeps its sentence and adds "Check again" beside its CTA.
+ * **Fetch, derive client-side, re-read while ingest is in flight.** One `GET /api/contracts` call
+ * per mount (and per Retry) for the tenant's first page (`PORTFOLIO_PAGE_SIZE`); validated-only
+ * filtering, ordering, urgency and the summary are all `portfolioViewModel.ts` over that page.
+ * "Validated" is `contractStatus.ts`'s one shared predicate, so this screen can never show a
+ * contract the rail's own "From your contracts" count excludes. A hung fetch leaves loading for
+ * `PORTFOLIO_LOAD_TIMEOUT_MS` then the error/Retry path -- the rail badge can be live while this
+ * call is not. While documents are still `Uploaded`/`Processing`, both the list and the document
+ * counts re-read on the shared 2 s cadence (also when rows are already on screen, so later
+ * completions appear without a remount); the five-minute no-change budget still applies.
  */
 export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
   const workspace = loadCurrentWorkspace();
   const [fetchState, setFetchState] = useState<FetchState>({ phase: "loading" });
   const [moreColumns, setMoreColumns] = useState(false);
   const [documentCounts, setDocumentCounts] = useState<DocumentListPageBody["counts"] | null>(null);
+  const loadGeneration = useRef(0);
 
   const loadPortfolio = useCallback(
     (silent = false) => {
       if (!workspace) return;
 
+      const generation = ++loadGeneration.current;
       if (!silent) setFetchState({ phase: "loading" });
-      void apiClient.getPortfolio(workspace.id, { pageSize: PORTFOLIO_PAGE_SIZE }).then((result) => {
+      const request = apiClient.getPortfolio(workspace.id, { pageSize: PORTFOLIO_PAGE_SIZE });
+      let timeoutId: number | undefined;
+      const timedOut: Promise<GetPortfolioResult> = new Promise((resolve) => {
+        timeoutId = window.setTimeout(() => {
+          resolve({
+            ok: false,
+            statusCode: null,
+            portfolio: null,
+            error: "The portfolio request timed out.",
+          });
+        }, PORTFOLIO_LOAD_TIMEOUT_MS);
+      });
+      // Silent re-reads keep the last good page if the API is slow; only the first paint / Retry
+      // may fall through to the error state after the timeout.
+      void Promise.race(silent ? [request] : [request, timedOut]).then((result) => {
+        if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+        if (generation !== loadGeneration.current) return;
         if (!result.ok || !result.portfolio) {
+          if (silent) return;
           setFetchState({
             phase: "error",
             statusCode: result.statusCode,
-            // A 503 (or a proxy/gateway response the API handler never ran) gets a plain-language,
-            // service-shaped message; anything else surfaces the API's own reason (ADR-019
-            // accessibility baseline: "names the failing job, never a raw stack trace").
             message:
               result.statusCode === 503 || result.statusCode === null
                 ? "Raffa.ai's portfolio service is temporarily unavailable. Try again in a moment."
@@ -94,8 +112,6 @@ export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
         }
         setFetchState({ phase: "ready", items: result.portfolio.items });
       });
-      // Depends on workspace?.id (a primitive), not workspace itself: loadCurrentWorkspace() returns a
-      // fresh object every call, the same convention every other route's own load() callback follows.
     },
     [apiClient, workspace?.id],
   );
@@ -118,10 +134,11 @@ export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
   const lit = ready && rows.length > 0;
   const zero = ready && rows.length === 0;
 
-  // The zero state's own read: which of the three sentences applies is a server fact.
+  // Counts drive both the zero-state sentence and the in-flight poll, including when rows are
+  // already on screen (later Completions must be able to appear without a remount).
   useEffect(() => {
-    if (zero) loadDocumentCounts();
-  }, [zero, loadDocumentCounts]);
+    if (ready) loadDocumentCounts();
+  }, [ready, loadDocumentCounts]);
 
   const zeroVariant = resolvePortfolioZeroVariant(documentCounts);
   const countsFingerprint = useMemo(
@@ -136,7 +153,7 @@ export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
     loadPortfolio(true);
   }, [loadDocumentCounts, loadPortfolio]);
   const { paused: updatesPaused, resume: resumeUpdates } = usePollBudget({
-    active: zero && zeroVariant === "processing",
+    active: ready && documentCounts !== null && documentCounts.processing > 0,
     fingerprint: countsFingerprint,
     onTick: tick,
   });

@@ -703,6 +703,97 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
         Assert.Equal(12, await readDb.ExtractionEvidences.CountAsync(e => e.ContractId == result.Value.ContractId));
     }
 
+    /// <summary>
+    /// B2 identity-trusted auto-Complete: a supplier accepted at the critical confidence bar (≥ 0.8)
+    /// means the contract is clearly identified. Non-critical weak facts (status, dates, spend) that
+    /// would normally route the document to NeedsReview are waived — the document counts as Completed
+    /// so it appears in Portfolio/Renewals/contractCount without waiting for HITL on every weak field.
+    /// The weak evidence rows are still persisted and visible on the review screen.
+    /// </summary>
+    [Fact]
+    public async Task B2_strong_supplier_auto_completes_even_when_non_critical_facts_are_weak()
+    {
+        var tenantId = TenantId.New();
+        var tenantContext = new TenantContext();
+
+        await using var seedDb = CreateContext(tenantContext);
+        var (_, document) = await SeedDocumentAsync(seedDb, tenantId);
+
+        var payloads = HighConfidencePayloads();
+        // Supplier at critical threshold (0.9 ≥ 0.8 ✓) but status/currency confidence is low (0.31).
+        payloads["Metadata"] = $$"""
+            {"facts":[
+                {"field":"supplier","value":"{{SupplierLegalName}}","sourcePage":1,"sourceSpan":"between Salesforce, Inc. and Contoso Ltd","confidence":0.9},
+                {"field":"status","value":"active","sourcePage":1,"sourceSpan":"Status: Active","confidence":0.31}
+            ]}
+            """;
+
+        await using var runDb = CreateContext(tenantContext);
+        var service = new StagedExtractionService(
+            runDb, new ScriptedAiGateway(payloads), tenantContext, new FixedClock(Now), new RecordingAuditWriter());
+
+        var result = await service.RunAsync(tenantId, document.Id, [new DocumentPageText(1, "some contract text")]);
+
+        Assert.True(result.IsSuccess);
+        var summary = result.Value;
+
+        // B2: supplier was accepted — document is Completed despite the weak status fact.
+        Assert.Equal(DocumentProcessingStatus.Completed, summary.DocumentProcessingStatus);
+        Assert.Equal(SupplierLegalName, summary.AcceptedSupplierName);
+
+        // The metadata stage itself still reports NeedsReview (the weak status fact lives there);
+        // the document-level gate is lifted by identity, not by erasing the stage result.
+        var metadataStage = summary.Stages.Single(s => s.Stage == ExtractionStage.Metadata);
+        Assert.Equal(ExtractionJobStatus.NeedsReview, metadataStage.Status);
+
+        // Weak evidence row is still persisted — it reaches the review screen.
+        await using var readDb = CreateContext(tenantContext);
+        using var tenantScope = tenantContext.BeginScope(tenantId);
+        var statusEvidence = await readDb.ExtractionEvidences
+            .SingleAsync(e => e.ContractId == summary.ContractId && e.FieldName == "status");
+        Assert.Equal(0.31, statusEvidence.Confidence);
+    }
+
+    /// <summary>
+    /// B2 safety rail: a stage that fails entirely (model/network error) is a missing signal —
+    /// identity strength does not compensate for absent data, so the document still needs review.
+    /// </summary>
+    [Fact]
+    public async Task B2_strong_supplier_still_needs_review_when_a_stage_fails()
+    {
+        var tenantId = TenantId.New();
+        var tenantContext = new TenantContext();
+
+        await using var seedDb = CreateContext(tenantContext);
+        var (_, document) = await SeedDocumentAsync(seedDb, tenantId);
+
+        var payloads = HighConfidencePayloads();
+        // Supplier is strong (identity trusted), but CommercialTerms fails entirely.
+        payloads["Metadata"] = $$"""
+            {"facts":[
+                {"field":"supplier","value":"{{SupplierLegalName}}","sourcePage":1,"confidence":0.92},
+                {"field":"currency","value":"USD","sourcePage":1,"confidence":0.95}
+            ]}
+            """;
+        var failStages = new HashSet<string> { "CommercialTerms" };
+
+        await using var runDb = CreateContext(tenantContext);
+        var service = new StagedExtractionService(
+            runDb, new ScriptedAiGateway(payloads, failStages), tenantContext, new FixedClock(Now), new RecordingAuditWriter());
+
+        var result = await service.RunAsync(tenantId, document.Id, [new DocumentPageText(1, "some contract text")]);
+
+        Assert.True(result.IsSuccess);
+        var summary = result.Value;
+
+        // Stage failure = missing signal: NeedsReview even though supplier was accepted.
+        Assert.Equal(DocumentProcessingStatus.NeedsReview, summary.DocumentProcessingStatus);
+        Assert.Equal(SupplierLegalName, summary.AcceptedSupplierName);
+
+        var commercialStage = summary.Stages.Single(s => s.Stage == ExtractionStage.CommercialTerms);
+        Assert.Equal(ExtractionJobStatus.Failed, commercialStage.Status);
+    }
+
     [Fact]
     public async Task Unknown_document_fails_without_running_any_stage()
     {

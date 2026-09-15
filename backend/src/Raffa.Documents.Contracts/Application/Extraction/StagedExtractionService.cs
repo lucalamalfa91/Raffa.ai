@@ -233,7 +233,7 @@ public sealed class StagedExtractionService(
             acceptedSupplierName ??= stageSupplierName;
         }
 
-        document.ProcessingStatus = DetermineDocumentStatus(stageResults, classificationConfidence);
+        document.ProcessingStatus = DetermineDocumentStatus(stageResults, classificationConfidence, identityAccepted: acceptedSupplierName is not null);
 
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
@@ -860,15 +860,57 @@ public sealed class StagedExtractionService(
     private static bool TryParseDate(string? value, out DateOnly result) =>
         DateOnly.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out result);
 
+    /// <summary>
+    /// Decides the final <see cref="DocumentProcessingStatus"/> for the document once all seven
+    /// stages have run.
+    ///
+    /// <para>
+    /// <b>B2 identity-trusted fast path</b> (<paramref name="identityAccepted"/> = <see langword="true"/>):
+    /// when the <c>supplier</c> fact was accepted at the critical confidence bar (≥ 0.8 —
+    /// <see cref="CriticalConfidenceThreshold"/>), the contract is clearly identified and its
+    /// supplier is linked by <see cref="DocumentProcessingPipeline.LinkSupplierAsync"/>. Keeping
+    /// such a contract hidden from Portfolio/Renewals/<c>contractCount</c> because a non-critical
+    /// fact (status, dates, spend figures) or even classification confidence is weak is the wrong
+    /// trade-off: the HITL queue fills with reviews a human cannot meaningfully resolve until the
+    /// contract is already visible. Non-critical weak facts are still written as
+    /// <see cref="ExtractionEvidence"/> rows and visible on the review screen; they do not
+    /// disappear — only the document-level gate that blocks Portfolio membership is lifted. Stage
+    /// <em>failures</em> (model/network error, malformed payload) still require human review even
+    /// when identity is trusted: a low-confidence fact is a "weak signal"; a failed stage is a
+    /// "missing signal" that identity strength does not compensate for.
+    /// </para>
+    ///
+    /// <para>
+    /// When identity is absent or weak (<paramref name="identityAccepted"/> = <see langword="false"/>),
+    /// the original posture applies: any NeedsReview stage or a weak classification routes the
+    /// document to human review.
+    /// </para>
+    /// </summary>
     private static DocumentProcessingStatus DetermineDocumentStatus(
-        IReadOnlyList<StagedExtractionStageResult> stages, double? classificationConfidence)
+        IReadOnlyList<StagedExtractionStageResult> stages, double? classificationConfidence,
+        bool identityAccepted)
     {
         if (stages.All(s => s.Status == ExtractionJobStatus.Failed))
         {
             return DocumentProcessingStatus.Failed;
         }
 
-        if (stages.Any(s => s.Status is ExtractionJobStatus.Failed or ExtractionJobStatus.NeedsReview))
+        // A stage that failed entirely (model/network error, malformed payload) means a person
+        // should inspect, even when identity is trusted — a failed stage is a missing signal,
+        // not a weak one, and identity strength does not compensate for absent data.
+        if (stages.Any(s => s.Status == ExtractionJobStatus.Failed))
+        {
+            return DocumentProcessingStatus.NeedsReview;
+        }
+
+        // B2: supplier was accepted at the critical confidence bar — non-critical weak facts and
+        // even an uncertain classification do not block Portfolio/Renewals/contractCount membership.
+        if (identityAccepted)
+        {
+            return DocumentProcessingStatus.Completed;
+        }
+
+        if (stages.Any(s => s.Status == ExtractionJobStatus.NeedsReview))
         {
             return DocumentProcessingStatus.NeedsReview;
         }
