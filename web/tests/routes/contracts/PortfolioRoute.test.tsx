@@ -248,6 +248,25 @@ describe("PortfolioRoute (V2, screens-v2.md #6 / markup.html PORTFOLIO block)", 
     });
   });
 
+  it("error state: a hung getPortfolio leaves loading, then the unavailable/Retry path", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const getPortfolio = vi.fn().mockReturnValue(new Promise(() => {}));
+      renderPortfolio(mockApiClient(getPortfolio));
+
+      expect(await screen.findByRole("status")).toHaveTextContent(/Loading portfolio/);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15_000);
+      });
+
+      expect(await screen.findByText(/temporarily unavailable/i)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("error state: a 503 renders a plain-language message with a Retry that re-fetches", async () => {
     const getPortfolio = vi
       .fn()

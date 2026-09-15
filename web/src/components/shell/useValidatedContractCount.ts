@@ -41,17 +41,17 @@ const INITIAL_STATE: ValidatedContractCountState = { count: 0, kbReady: false };
 
 /**
  * Fetched once by the shell (`AppShell.tsx`), then passed down to `RailNav`/`GlobalAskBar` as plain
- * props -- this hook does not re-poll on navigation (matching this task's own text, "fetched once by
- * the shell"); a contract that becomes validated mid-session only updates the rail on the next full
- * shell mount, the same interim every other session-scoped read in this app already accepts
- * (`documentStore.ts`, `workspaceStore.ts`). `routes/ask/index.tsx` calls this same hook a second
+ * props. The shell now re-reads while documents are still processing (shared 2 s poll budget) and
+ * on navigation, so a contract that becomes validated mid-session updates the rail without a full
+ * remount. `routes/ask/index.tsx` calls this same hook a second
  * time, independently -- both call sites end up reading the identical server field, so the picker
  * and the rail (and Ask) cannot disagree about what "validated" means (N8's "rail matches").
  *
  * `refreshKey` (task E16/F03/US01/T01, wave w15; ADR-012 w15 §4 "Ask must re-read while it is
  * off"): a caller that legitimately waits for this number to flip -- Ask's off state, re-reading
  * on the shared poll budget -- passes a value that changes per tick, and the same server field is
- * fetched again. The shell passes nothing and keeps its fetch-once behaviour.
+ * fetched again. The shell now passes the same kind of key while documents are still processing
+ * (and on navigation), so the rail badges move with ingest instead of freezing at first mount.
  */
 export function useValidatedContractCount(apiClient: ApiClient, refreshKey: unknown = null): ValidatedContractCountState {
   const [state, setState] = useState<ValidatedContractCountState>(INITIAL_STATE);

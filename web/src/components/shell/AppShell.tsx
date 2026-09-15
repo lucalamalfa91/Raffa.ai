@@ -1,8 +1,10 @@
-import { Outlet } from "react-router-dom";
+import { useMemo, useState } from "react";
+import { Outlet, useLocation } from "react-router-dom";
 import RailNav from "./RailNav";
 import GlobalAskBar from "../ask-bar/GlobalAskBar";
 import { useValidatedContractCount } from "./useValidatedContractCount";
 import { useDocumentCounts } from "./useDocumentCounts";
+import { usePollBudget } from "./usePollBudget";
 import type { WorkspaceRole } from "./navItems";
 import type { ApiClient } from "../../api/client";
 import "./shell.css";
@@ -20,7 +22,7 @@ export interface AppShellProps {
   onSignOut: () => void;
   /**
    * Task E13/F09/US01/T01 (web-shell-v2): threaded through so this shell can fetch `kbReady` /
-   * the validated-contract count once (`useValidatedContractCount`) and pass it to both the rail
+   * the validated-contract count (`useValidatedContractCount`) and pass it to both the rail
    * (greyed secondary tier, count badges) and the global Ask bar (off placeholder) -- the same
    * generated-client instance every routed screen already shares (`WorkspaceShellApp.tsx`).
    */
@@ -36,12 +38,33 @@ export interface AppShellProps {
  * field instead of a client-side portfolio scan (see that hook's own header comment) -- this
  * component's own call site is unchanged, because the one resolved workspace it renders for is
  * exactly what makes that field meaningful.
+ *
+ * While documents are still `Uploaded`/`Processing` or waiting in Needs review, both rail counts
+ * re-read on the shared 2 s poll budget (and on every navigation) so "N to review" / Portfolio /
+ * Renewals move with ingest instead of freezing at the first shell mount.
  */
 export default function AppShell({ workspaceId, workspaceName, role, userLabel, onSignOut, apiClient }: AppShellProps) {
-  const { count, kbReady } = useValidatedContractCount(apiClient);
-  // Task E16/F03/US01/T01 (wave w15, NW-10): the rail's Documents badge reads the server's own
-  // `counts`, fetched once here beside the validated-contract count and handed down the same way.
-  const documentCounts = useDocumentCounts(apiClient);
+  const location = useLocation();
+  const [pollTick, setPollTick] = useState(0);
+  const refreshKey = `${location.pathname}:${pollTick}`;
+  const documentCounts = useDocumentCounts(apiClient, refreshKey);
+  const { count, kbReady } = useValidatedContractCount(apiClient, refreshKey);
+
+  const fingerprint = useMemo(
+    () =>
+      documentCounts === null
+        ? "pending"
+        : `${documentCounts.all}/${documentCounts.needsAttention}/${documentCounts.needsReview}/${documentCounts.processing}/${documentCounts.rejected}`,
+    [documentCounts],
+  );
+  usePollBudget({
+    active:
+      documentCounts === null ||
+      documentCounts.processing > 0 ||
+      documentCounts.needsReview > 0,
+    fingerprint,
+    onTick: () => setPollTick((current) => current + 1),
+  });
 
   return (
     <div className="shell-layout">

@@ -1,6 +1,7 @@
 using Raffa.Documents.Contracts.Infrastructure;
 using Raffa.Messaging;
 using Raffa.Renewals.Application;
+using Raffa.SharedKernel.Suppliers;
 using Raffa.SharedKernel.Tenancy;
 using Raffa.Worker.Scheduling;
 using Microsoft.Extensions.Configuration;
@@ -58,6 +59,7 @@ public sealed class DeployableWorkerTests
 
         Assert.NotNull(dbContext);
         Assert.NotNull(tenantContext);
+        Assert.NotNull(scope.ServiceProvider.GetService<ISupplierResolver>());
     }
 
     [Fact]

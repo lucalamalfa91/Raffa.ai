@@ -1,6 +1,7 @@
 using Raffa.Audit.Infrastructure;
 using Raffa.Documents.Contracts.Infrastructure;
 using Raffa.Renewals.Infrastructure;
+using Raffa.Suppliers.Products.Infrastructure;
 using Raffa.Worker.Scheduling;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -52,8 +53,11 @@ public static class WorkerServiceCollectionExtensions
     /// Task E03/F03/US01/T02 (renewal-action): <c>AddRenewalsModule</c> now takes a connection
     /// string (this module's first <c>DbContext</c>) — <paramref name="renewalsConnectionString"/>
     /// is that parameter, threaded through the same way <paramref name="documentsContractsConnectionString"/>/
-    /// <paramref name="auditConnectionString"/> already are. No worker job resolves
-    /// <c>RenewalActionService</c> today (only <c>Raffa.Api</c>'s `POST /api/renewals/{id}/action`
+    /// <paramref name="auditConnectionString"/> already are. Also wires Suppliers/Products so
+    /// <c>DocumentProcessingPipeline</c> can resolve <c>Contract.SupplierId</c> during extraction
+    /// (the API host already did; this host did not, and every Worker-processed contract landed
+    /// without a supplier). No worker job resolves <c>RenewalActionService</c> today (only
+    /// <c>Raffa.Api</c>'s `POST /api/renewals/{id}/action`
     /// does), but this host must still supply a valid connection string the moment
     /// <c>AddDbContext</c>'s eager <c>UseNpgsql()</c> parsing runs during <c>AddRenewalsModule</c>
     /// itself, not lazily on first use.
@@ -67,6 +71,10 @@ public static class WorkerServiceCollectionExtensions
         services.AddDocumentsContractsModule(documentsContractsConnectionString);
         services.AddAuditModule(auditConnectionString);
         services.AddRenewalsModule(renewalsConnectionString);
+        // Same shared Postgres as Documents/Contracts (ADR-003). The API already composes this
+        // module; the Worker did not, so DocumentProcessingPipeline.LinkSupplierAsync ran with a
+        // null ISupplierResolver and left every extracted supplier name unlinked.
+        services.AddSuppliersProductsModule(documentsContractsConnectionString);
 
         // TryAdd: Raffa.Worker.Tests pre-registers a fake IActiveRenewalContractsSource /
         // millisecond-scale RenewalThresholdSchedulerOptions before calling AddWorkerHost (mirrors
