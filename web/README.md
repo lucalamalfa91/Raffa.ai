@@ -556,7 +556,7 @@ of backend state (AC-6) -- once the real backend lands, only its own
 response shapes need reconciling against what is already documented here,
 never the other way around.
 
-**`documentStore.ts` is gone** (task E16/F03/US01/T01, wave w15): the
+The session-backed document tracker is gone (task E16/F03/US01/T01, wave w15): the
 rail badge reads `useDocumentCounts.ts` -- see "App shell, navigation, and
 the role guard" above -- and no client store stands in for
 `GET /api/documents` anywhere.
@@ -613,10 +613,11 @@ tabs held is still on the page, inside the drawer.
   for this contract"). The last cell carries **Start negotiation** / **Assign to me** -- the same real
   `POST /api/renewals/{id}/action` the Renewals screen makes, owner = the signed-in `userLabel` --
   or, once acted, the tracker: "{action} · owner {user}", "target … · close by …", the four-step
-  checklist (`buildNegotiationSteps`, ticks kept per contract in `negotiationStepsStore.ts`),
-  **Track it in Renewals →** and **Undo** (forgets the local mirror and re-posts NotStarted / "Open").
-  The recorded action is the same `renewalActionStore.ts` row the Renewals list, its pane and Savings
-  read, so all four agree.
+  checklist (`buildNegotiationSteps`, ticks keyed by the four named steps and persisted through
+  `GET`/`PUT /api/contracts/{id}/negotiation-steps`),
+  **Track it in Renewals →** and **Undo** (PUT empty ticks, then POST `NotStarted`).
+  The recorded action is the same `savedAction` on `GET /api/renewals` that the Renewals list, its
+  pane and Contract 360 read, so all three agree. `NotStarted` renders as no action taken.
 - **Why — the clauses behind it** (`WhyClauses.tsx`, `ClauseHighlight.tsx`) -- one native button
   row per clause (type · normalised value · "p.N · §span" · risk tag · confidence tag); the selected
   clause opens the evidence card: "{file} · page N · §span" over the original wording with the
@@ -780,8 +781,8 @@ gone with V2.
   carries the neutral-200 background + accent bar; selection is a native button in the Score cell,
   the row click a convenience on top. Supplier is the wire's name or "Supplier not resolved";
   `GET /api/renewals` carries no contract name, so the contract half is "Contract {short id}" with the
-  full id as tooltip. Status is "Open" until this browser acts, then the acted label from
-  `renewalActionStore.ts` (no server read-back exists yet).
+  full id as tooltip. Status is "Open" until a persisted `savedAction` exists on the list row
+  (`NotStarted` is treated as no action taken). A reload or a second browser shows the same status.
 - **Why it is here** (`InsightCard.tsx`) -- "{supplier} — N days to notice", the contract line, the
   accent "Recommended action" kicker, the Renewals module's own deterministic action + rationale,
   **Start negotiation** (primary → InProgress / "In negotiation") and **Assign to me** (NotStarted /
@@ -800,9 +801,9 @@ gone; the same real calls remain.
 
 - **Real backend, not the prototype's fixture** -- `POST /api/quotes`,
   `POST /api/quotes/{id}/assessment/recalculate` (called with an empty `mappings` array as the
-  documented "pure refresh" read; it is the only call that also returns `unmatchedLines`) and
-  `POST /api/negotiations/outcomes`. Two named gaps: no `GET /api/quotes/{id}` to re-read upload
-  metadata after this session (the header meta line falls back to the quote id), and no HTTP endpoint
+  documented "pure refresh" read; it is the only call that also returns `unmatchedLines`),
+  `GET /api/quotes/{id}` (the quote plus recorded outcomes, newest first) and
+  `POST /api/negotiations/outcomes`. One named gap remains: no HTTP endpoint
   for `NegotiationStrategyService`'s lever recommendations (`NegotiationStep.tsx`).
 - **Landing** (`UploadQuoteForm.tsx`, `sampleQuote.ts`) -- the dashed card: **Upload a quote**
   (file picker; drag-and-drop on the card) uploads straight away, "or use the sample: Databricks
@@ -847,9 +848,8 @@ six-cell row and eight-column table are gone with V2.
 - **Opportunities** (`OpportunitiesTable.tsx`, `buildOpportunityRows`) -- Supplier · Action (the
   opportunity type) · Estimate (+ confidence tag "High · 92%") · Status; the Supplier cell is a real
   `<Link>` to Contract 360 (`state.from = "savings"` drives its back label), the row click a
-  convenience on top; an opportunity with no `contractId` opens `/quotes`. This session's tracked
-  renewal actions (`renewalActionStore.ts`) render first with honest gaps ("Not yet available"
-  estimate, no confidence, the acted label as status); no de-duplication with real rows (no shared id).
+  convenience on top; an opportunity with no `contractId` opens `/quotes`. Only real
+  `SavingsOpportunity` rows render (a session-tracked renewal action is no longer prepended).
 - **Reroute** -- "No savings opportunities yet · Opportunities appear once a renewal is actioned or a
   saving is identified from validated contracts." → **Open renewals**.
 
@@ -1181,7 +1181,6 @@ web/
         ReviewState.tsx       # review as a state of Documents (?review=<id>); wraps ../contracts/review/* unmodified
         DocumentStatusTable.tsx # the row grid: Document/Supplier·Type/Status/Next step/Admin-only Delete (with confirm/cancel)
         documentTable.ts      # pure helpers: type-label mapping, status/action derivation, attention-filter bucketing, kb summary
-        documentStore.ts      # DEPRECATED for this route (V2 reads GET /api/documents instead) -- kept only because RailNav.tsx's badge still reads it; see "Documents" above
         documents.css         # this route's styles (V2: stacked single-column layout, no more the V1 two-column grid)
       contracts/            # Portfolio, V2 (see "Portfolio" above)
         index.tsx             # PortfolioRoute -- fetch-once state machine, header summary, More columns, reroute
@@ -1199,7 +1198,6 @@ web/
           ClauseHighlight.tsx    # the serif evidence card: "{file} · page N · §span" + <mark>ed wording
           DetailsSection.tsx     # "Details ▾": key terms, documents, facts to decide, priority score, Products/Obligations/Risks
           FactTable.tsx          # Term/Value/Source/Confidence list for the extracted rows inside Details
-          negotiationStepsStore.ts # sessionStorage ticks of the 4-step tracker, per contract
           contract360ViewModel.ts # pure helpers: answers, recommendation, clause rows/evidence, key terms, attention, priority rows
           contract360.css        # this screen's styles
         review/                # task E07/F03/US01/T01 -- ADR-020 screen 6 (see "Review / correction" above)
@@ -1223,7 +1221,6 @@ web/
         RenewalTable.tsx          # the priority list (Score · Supplier · contract · Renews in · Notice in · Status)
         InsightCard.tsx           # the "Why it is here" pane: action + rationale, Start negotiation / Assign to me, acted box
         renewalPipelineViewModel.ts # pure helpers: rows sorted by score, summary, formatting, the two action plans
-        renewalActionStore.ts     # sessionStorage-scoped mirror of this session's renewal actions (shared with Contract 360 and Savings)
         renewals.css              # this screen's styles
       quotes/                 # Quote check, V2 (see "Quote check" above)
         index.tsx               # QuoteCheckRoute -- header, landing, band + lines + footer, one-step-further reveal
@@ -1234,7 +1231,6 @@ web/
         TargetStep.tsx           # one step further: price ladder + editable target
         NegotiationStep.tsx      # one step further: outcome capture
         quoteCheckViewModel.ts   # pure helpers: aggregate, band, line rows, unit-price/P50 formatting
-        quoteOutcomeStore.ts     # sessionStorage-scoped outcomes
         quotes.css               # this screen's styles
       savings/                 # Savings, V2 (see "Savings" above)
         index.tsx                # SavingsRoute -- three independent fetches (KPIs, opportunities, portfolio names), independent degrade states

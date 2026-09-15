@@ -318,8 +318,7 @@ builder.Services.AddQuotesModule(quotesConnectionString);
 // doc comment: "the one place in the solution that calls both Raffa.AiGateway and
 // Raffa.Quotes"), not a domain module's own AddXxxModule — so, unlike every registration above,
 // it is registered directly here rather than inside AddQuotesModule (mirrors
-// Raffa.Worker.WorkerServiceCollectionExtensions' own direct registration of
-// QueueConsumerHostedService/IQueueConsumer for the identical "host-only wiring" reason). Scoped:
+// Raffa.Worker's own host-only wiring of the extraction consumer for the identical reason). Scoped:
 // shares this request's own QuotesDbContext/DocumentsContractsDbContext instances (both Scoped)
 // rather than a second, independently-tracked context of either.
 builder.Services.AddScoped<QuoteExtractionPipeline>();
