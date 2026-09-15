@@ -107,6 +107,9 @@ function mockApiClient(): ApiClient {
     // in this suite triggers an insight-card action, so a bare vi.fn() is enough here -- see
     // tests/routes/renewals/*.test.tsx for that screen's own fetch/action coverage.
     postRenewalAction: vi.fn(),
+    getQuote: vi.fn(),
+    getNegotiationSteps: vi.fn(),
+    putNegotiationSteps: vi.fn(),
     // Task E08/F03/US01/T01 (quote-check-ui): QuoteCheckRoute (like PortfolioRoute/Contract360Route
     // above) will call these on mount once a quote id is present, but every test in this suite that
     // reaches /quotes/:quoteId only asserts routing/guards without a real id -- bare vi.fn() is
