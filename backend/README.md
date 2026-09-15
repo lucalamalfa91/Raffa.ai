@@ -2319,12 +2319,17 @@ flywheel).
   Response `{ id, quoteId, originalQuoteTotal, targetPrice, finalPrice,
   realizedSaving, discountPercent, negotiationDurationDays, leversUsed,
   capturedAt, savingsOpportunityId, savingsPropagated,
-  savingsPropagationError }` — the last three are `null`/absent-equivalent
-  together whenever the caller supplied no `savingsOpportunityId`;
-  otherwise `savingsPropagated` is always `true`/`false` and
-  `savingsPropagationError` is set only when it is `false` — never a
-  distinct HTTP status for a propagation failure (see the propagation
-  bullet below).
+  savingsPropagationError }` — `savingsOpportunityId` on the response
+  echoes only what the caller supplied (`null` when they supplied none,
+  even when task E19/F04/US01/T01's own server-side resolution below
+  links the outcome anyway: no column and no contract write that fact
+  back onto the persisted `NegotiationOutcome` row). **Corrected rule
+  (ADR-028 w16 round-2 footer)**: `savingsPropagated` is `null` exactly
+  when no opportunity was linked — because none was named **and** none
+  resolved unambiguously; it is always `true`/`false` whenever a link was
+  attempted, by either route (see the propagation bullet below), and
+  `savingsPropagationError` is set only when `savingsPropagated` is
+  `false` — never a distinct HTTP status for a propagation failure.
 - **`Raffa.Quotes.Application.Outcome.NegotiationOutcomeCalculator`** is a
   pure, synchronous calculator (no database/HTTP/LLM call, Appendix C rule
   6) — `realizedSaving = originalQuoteTotal - finalPrice`,
@@ -2398,6 +2403,34 @@ flywheel).
   savings dashboard" (AC-2) today means the opportunity's own `status` and
   realized-value row are real and queryable, not yet that every KPI number
   reflects them.
+- **Server-side resolution when no id is supplied (task E19/F04/US01/T01,
+  outcome-resolves-the-opportunity; ADR-028 §D5 clause 2, ratified by the
+  w16 round-2 footer)**: the single production caller
+  (`web/src/routes/quotes/index.tsx`) never sends `savingsOpportunityId`
+  at all, so clause 1 alone left this path unreachable from the UI.
+  `Raffa.Api.NegotiationOutcomePropagationService
+  .ResolveSavingsOpportunityIdAsync` normalizes the captured outcome's own
+  quote's `Supplier` name
+  (`Raffa.Suppliers.Products.Application.SupplierNameNormalizer
+  .Normalize`), looks it up **read-only** against the
+  `(tenant_id, normalized_name)` unique index
+  (`Raffa.Suppliers.Products.Application.ISupplierNameLookup
+  .FindByNormalizedNameAsync` — the module's existing `SupplierResolver`,
+  which resolves *or creates*, is never called on this path: recording an
+  outcome must never mint a supplier row), then the tenant's own **open**
+  (not yet `Realized`) `SavingsOpportunity` rows carrying that supplier
+  id. **Exactly one is linked**, the same way an explicit id is; **zero or
+  two-or-more declines** — `PropagateAsync` is never called at all, so no
+  opportunity row updates, `status` stays `Identified`/`InProgress` and no
+  `RealizedSavings` row is inserted (Fence 2, structural by construction,
+  not a rendering promise: `SavingsKpiCalculator` reads opportunity rows,
+  so a total cannot absorb a write that never happened). The quote naming
+  no supplier, or naming one this tenant has never resolved before, is an
+  equally honest decline — resolved, never guessed (ADR-001 w16 clause 4).
+  A16-8's own acceptance walk still depends only on the explicit-id path
+  (Fence 1): the pilot corpus may contain no quote whose supplier name
+  resolves unambiguously, and that is expected and harmless, never a
+  failed acceptance.
 - Proved directly by `Raffa.Quotes.Tests.NegotiationOutcomeCalculatorTests`
   (pure, no database — the spec §12.2 worked example, the negative-saving
   honesty case, determinism) and end to end by
@@ -2417,7 +2450,19 @@ flywheel).
   entry, and all three response fields) and an unknown
   `savingsOpportunityId` (the outcome still persists and the call still
   returns 201; `savingsPropagated: false` + `savingsPropagationError`
-  reported honestly instead of an HTTP failure).
+  reported honestly instead of an HTTP failure). The clause-2 resolution
+  path (task E19/F04/US01/T01) is proved end to end by
+  `Raffa.IntegrationTests.NegotiationOutcomeResolutionTests` against that
+  same real, composed host — now also migrated with `Raffa.Suppliers
+  .Products`'s own schema — over all three shapes: explicit id (clause 1,
+  unchanged), one unambiguous supplier-name match (clause 2, linked), and
+  zero/two-or-more matches (clause 2, declined — including the
+  byte-identical `GET /api/savings` assertion that proves Fence 2 and a
+  cross-tenant negative that an opportunity of tenant B is never linked to
+  an outcome of tenant A). The name → id lookup itself
+  (`SupplierNameLookup.FindByNormalizedNameAsync`) is proved read-only —
+  a miss creates no `Supplier` row — by
+  `Raffa.Suppliers.Products.Tests.SupplierNameLookupTests`.
 
 ## Insights — criticality score, priced-line negotiation, strategy pack
 
