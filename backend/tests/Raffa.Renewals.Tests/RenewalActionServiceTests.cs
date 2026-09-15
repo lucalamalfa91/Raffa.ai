@@ -61,7 +61,8 @@ public sealed class RenewalActionServiceTests : IAsyncLifetime
             var service = new RenewalActionService(db, tenantContext, clock, auditWriter);
 
             var result = await service.SetActionAsync(
-                tenantId, contractId, "alice@acme.example", "InProgress", "Started negotiation");
+                tenantId, contractId, "alice@acme.example", "InProgress", "Started negotiation",
+                "test-actor@example.com");
 
             Assert.True(result.IsSuccess);
             Assert.Equal(contractId, result.Value.ContractId);
@@ -88,6 +89,7 @@ public sealed class RenewalActionServiceTests : IAsyncLifetime
         Assert.Equal("renewal.action_updated", entry.Action);
         Assert.Equal("renewal", entry.ResourceType);
         Assert.Equal(contractId.Value.ToString(), entry.ResourceId);
+        Assert.Equal("test-actor@example.com", entry.Actor);
     }
 
     [Fact]
@@ -104,7 +106,9 @@ public sealed class RenewalActionServiceTests : IAsyncLifetime
         {
             var service = new RenewalActionService(
                 db, tenantContext, new FixedClock(new DateTimeOffset(2026, 9, 1, 0, 0, 0, TimeSpan.Zero)), auditWriter);
-            await service.SetActionAsync(tenantId, contractId, "alice@acme.example", "NotStarted", "Reviewing terms");
+            await service.SetActionAsync(
+                tenantId, contractId, "alice@acme.example", "NotStarted", "Reviewing terms",
+                "test-actor@example.com");
         }
 
         var secondClock = new FixedClock(new DateTimeOffset(2026, 9, 4, 0, 0, 0, TimeSpan.Zero));
@@ -112,7 +116,8 @@ public sealed class RenewalActionServiceTests : IAsyncLifetime
         {
             var service = new RenewalActionService(db, tenantContext, secondClock, auditWriter);
             var updated = await service.SetActionAsync(
-                tenantId, contractId, "bob@acme.example", "Completed", "Renewed at same terms");
+                tenantId, contractId, "bob@acme.example", "Completed", "Renewed at same terms",
+                "test-actor@example.com");
 
             Assert.True(updated.IsSuccess);
             Assert.Equal("bob@acme.example", updated.Value.Owner);
@@ -160,7 +165,8 @@ public sealed class RenewalActionServiceTests : IAsyncLifetime
         await using var db = CreateContext(tenantContext);
         var service = new RenewalActionService(db, tenantContext, new FixedClock(DateTimeOffset.UtcNow), auditWriter);
 
-        var result = await service.SetActionAsync(TenantId.New(), EntityId.New(), owner, status, action);
+        var result = await service.SetActionAsync(
+            TenantId.New(), EntityId.New(), owner, status, action, "test-actor@example.com");
 
         Assert.True(result.IsFailure);
         Assert.Equal(RenewalActionService.OwnerRequiredError, result.Error);
@@ -178,7 +184,8 @@ public sealed class RenewalActionServiceTests : IAsyncLifetime
         await using var db = CreateContext(tenantContext);
         var service = new RenewalActionService(db, tenantContext, new FixedClock(DateTimeOffset.UtcNow), auditWriter);
 
-        var result = await service.SetActionAsync(TenantId.New(), EntityId.New(), "alice@acme.example", "InProgress", " ");
+        var result = await service.SetActionAsync(
+            TenantId.New(), EntityId.New(), "alice@acme.example", "InProgress", " ", "test-actor@example.com");
 
         Assert.True(result.IsFailure);
         Assert.Equal(RenewalActionService.ActionRequiredError, result.Error);
@@ -200,7 +207,7 @@ public sealed class RenewalActionServiceTests : IAsyncLifetime
         var service = new RenewalActionService(db, tenantContext, new FixedClock(DateTimeOffset.UtcNow), auditWriter);
 
         var result = await service.SetActionAsync(
-            TenantId.New(), EntityId.New(), "alice@acme.example", status, "Some action");
+            TenantId.New(), EntityId.New(), "alice@acme.example", status, "Some action", "test-actor@example.com");
 
         Assert.True(result.IsFailure);
         Assert.Equal(RenewalActionService.StatusRequiredError, result.Error);
@@ -218,7 +225,8 @@ public sealed class RenewalActionServiceTests : IAsyncLifetime
         await using var db = CreateContext(tenantContext);
         var service = new RenewalActionService(db, tenantContext, new FixedClock(DateTimeOffset.UtcNow), new RecordingAuditWriter());
 
-        var result = await service.SetActionAsync(tenantId, EntityId.New(), "alice@acme.example", "completed", "Renewed");
+        var result = await service.SetActionAsync(
+            tenantId, EntityId.New(), "alice@acme.example", "completed", "Renewed", "test-actor@example.com");
 
         Assert.True(result.IsSuccess);
         Assert.Equal(RenewalActionStatus.Completed, result.Value.Status);

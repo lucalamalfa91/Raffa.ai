@@ -69,16 +69,20 @@ public sealed class SavingsKpiQueryServiceTests : IAsyncLifetime
 
             // Two Identified/USD opportunities for this tenant — must be summed together, not
             // reported as two separate rows.
-            await service.CreateAsync(tenantId, ValidRequest("USD", low: 1_000m, high: 2_000m, confidence: 0.4));
-            await service.CreateAsync(tenantId, ValidRequest("USD", low: 3_000m, high: 4_000m, confidence: 0.6));
+            await service.CreateAsync(
+                tenantId, ValidRequest("USD", low: 1_000m, high: 2_000m, confidence: 0.4), SavingsOpportunityService.SystemActor);
+            await service.CreateAsync(
+                tenantId, ValidRequest("USD", low: 3_000m, high: 4_000m, confidence: 0.6), SavingsOpportunityService.SystemActor);
 
             // One Identified/CHF opportunity for this tenant — must not conflate with the USD sum
             // above (no currency-conversion service anywhere in this codebase).
-            await service.CreateAsync(tenantId, ValidRequest("CHF", low: 900m, high: 1_000m));
+            await service.CreateAsync(
+                tenantId, ValidRequest("CHF", low: 900m, high: 1_000m), SavingsOpportunityService.SystemActor);
 
             // One InProgress/USD opportunity for this tenant — must land in a different bucket
             // than the Identified/USD rows above, even though it shares their currency.
-            var inProgress = await service.CreateAsync(tenantId, ValidRequest("USD", low: 500m, high: 800m));
+            var inProgress = await service.CreateAsync(
+                tenantId, ValidRequest("USD", low: 500m, high: 800m), SavingsOpportunityService.SystemActor);
             // realizedAmount: null -- this call only advances status, same shape
             // SavingsOpportunityServiceTests' own status-only UpdateAsync calls use. Pre-existing gap
             // fixed in passing by task E04/F03/US01/T02 (savings-list): SavingsOpportunityService
@@ -87,12 +91,15 @@ public sealed class SavingsKpiQueryServiceTests : IAsyncLifetime
             // own task E04/F03/US01/T01), so the two branches' non-conflicting textual diffs still
             // left this call site failing to compile once merged -- restoring the build all of this
             // module's tests (including this task's own) depend on, not a behavior change.
-            await service.UpdateAsync(tenantId, inProgress.Value.Id, owner: null, status: "InProgress", realizedAmount: null);
+            await service.UpdateAsync(
+                tenantId, inProgress.Value.Id, owner: null, status: "InProgress", realizedAmount: null,
+                actor: "test-actor@example.com");
 
             // Another tenant's own opportunity — must never leak into the first tenant's summary
             // (ADR-009 RLS + the application-level tenant filter, same guarantee
             // SavingsOpportunityRlsCrossTenantIsolationTests already pins for ListAsync).
-            await service.CreateAsync(otherTenantId, ValidRequest("USD", low: 999_999m, high: 999_999m));
+            await service.CreateAsync(
+                otherTenantId, ValidRequest("USD", low: 999_999m, high: 999_999m), SavingsOpportunityService.SystemActor);
         }
 
         await using var readDb = CreateContext(tenantContext);
