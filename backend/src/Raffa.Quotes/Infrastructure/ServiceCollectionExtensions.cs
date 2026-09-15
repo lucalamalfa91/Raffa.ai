@@ -95,6 +95,10 @@ public static class ServiceCollectionExtensions
         // MarketAssessmentService (both registered above) plus IAuditWriter — same landmine as
         // NegotiationOutcomeService immediately above.
         services.AddScoped<SkuMappingService>();
+        // Task E19/F02/US01/T01 (quote-read-api; ADR-028 §D2): shares this request's own
+        // QuotesDbContext. Unlike NegotiationOutcomeService/QuoteUploadService above, this is a
+        // pure read side — no IAuditWriter dependency, so it adds no new host-wiring requirement.
+        services.AddScoped<QuoteQueryService>();
 
         return services;
     }
