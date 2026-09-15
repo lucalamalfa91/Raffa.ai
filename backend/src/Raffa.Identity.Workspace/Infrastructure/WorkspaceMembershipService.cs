@@ -602,9 +602,11 @@ public sealed class WorkspaceMembershipService(
 /// <summary>
 /// Shared outcome status for the write operations <see cref="WorkspaceMembershipService"/> and
 /// <see cref="WorkspaceInvitationService"/> perform on behalf of the invitation lifecycle endpoints
-/// (ADR-025 §B): the endpoint maps each status to its own HTTP code, the same "small reason type,
-/// no behavior" shape <see cref="Domain.WorkspaceAuthorizationFailure"/> already establishes
-/// alongside <see cref="Domain.WorkspacePrincipalAuthorization.TryAuthorize"/>.
+/// (ADR-025 §B): the endpoint maps each status to its own HTTP code -- a small, behavior-free
+/// reason type, the same shape a domain check hands the HTTP layer whenever a bare
+/// <see langword="bool"/> is not enough (wave w16's NW-08, ADR-025 §K.2, retired this paragraph's
+/// former example of that shape, <c>WorkspacePrincipalAuthorization</c>'s paired
+/// <c>WorkspaceAuthorizationFailure</c> enum, along with the claims-based guard it served).
 /// </summary>
 public enum MembershipOperationStatus
 {
