@@ -675,12 +675,26 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
         seedDb.ExtractionJobs.Add(classificationJob);
         await seedDb.SaveChangesAsync();
 
+        // B2 (PR #137): a high-confidence supplier (≥ 0.8) triggers identityAccepted=true and
+        // overrides any weak fact, including a weak classification.  To isolate the test's own
+        // intent — "weak classification alone routes to NeedsReview when no supplier is accepted" —
+        // we strip the supplier fact from the Metadata payload so identityAccepted stays false and
+        // the B2 fast-path never fires.
+        var payloads = HighConfidencePayloads();
+        payloads["Metadata"] = """
+            {"facts":[
+                {"field":"currency","value":"USD","sourcePage":1,"sourceSpan":"Currency: USD","confidence":0.95},
+                {"field":"governingLaw","value":"State of Delaware","sourcePage":1,"sourceSpan":"Governing law: Delaware","confidence":0.9},
+                {"field":"status","value":"Active","sourcePage":1,"sourceSpan":"Status: Active","confidence":0.9}
+            ]}
+            """;
+
         await using var runDb = CreateContext(tenantContext);
         var service = new StagedExtractionService(
-            runDb, new ScriptedAiGateway(HighConfidencePayloads()), tenantContext, new FixedClock(Now), new RecordingAuditWriter());
+            runDb, new ScriptedAiGateway(payloads), tenantContext, new FixedClock(Now), new RecordingAuditWriter());
 
-        // Every staged fact is high-confidence, so only the weak classification can send this
-        // document to review.
+        // All staged facts are high-confidence and no supplier is accepted (identityAccepted=false),
+        // so the weak classification (0.5 < 0.6 low-confidence bar) is the sole trigger for NeedsReview.
         var result = await service.RunAsync(
             tenantId, document.Id, [new DocumentPageText(1, "text")], classificationConfidence: 0.5);
 
@@ -699,8 +713,9 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
         Assert.Null(typeEvidence.SourcePage);
         Assert.Null(typeEvidence.SourceSpan);
 
-        // 11 staged facts + the type row: the overload without a verdict writes no type row at all.
-        Assert.Equal(12, await readDb.ExtractionEvidences.CountAsync(e => e.ContractId == result.Value.ContractId));
+        // 10 staged facts (supplier removed from Metadata payload above) + the type row = 11.
+        // The overload without a verdict writes no type row at all.
+        Assert.Equal(11, await readDb.ExtractionEvidences.CountAsync(e => e.ContractId == result.Value.ContractId));
     }
 
     /// <summary>
