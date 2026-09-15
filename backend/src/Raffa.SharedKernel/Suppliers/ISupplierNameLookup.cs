@@ -19,4 +19,28 @@ public interface ISupplierNameLookup
         TenantId tenantId,
         IReadOnlyCollection<EntityId> supplierIds,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Task E19/F04/US01/T01 (outcome-resolves-the-opportunity; ADR-028 §D5 clause 2). The
+    /// reverse of <see cref="GetNamesAsync"/>: resolves an already-normalized name (
+    /// <c>Raffa.Suppliers.Products.Application.SupplierNameNormalizer.Normalize</c>'s own output)
+    /// to the single <c>Raffa.Suppliers.Products.Domain.Supplier</c> id it names for
+    /// <paramref name="tenantId"/>, via the <c>(tenant_id, normalized_name)</c> unique index
+    /// (<c>Raffa.Suppliers.Products.Infrastructure.Configurations.SupplierConfiguration</c>) —
+    /// never <c>Supplier.Aliases</c>, so this is a strict, deterministic lookup against the one
+    /// column the index actually enforces uniqueness on, not the broader alias-matching
+    /// <see cref="ISupplierResolver.ResolveAsync"/> performs.
+    ///
+    /// <para>
+    /// <b>Read-only, on purpose</b>: unlike <see cref="ISupplierResolver.ResolveAsync"/> (which
+    /// resolves *or creates*), this method never inserts a row. A name that matches no known
+    /// supplier returns <see langword="null"/> — never a fabricated id and never a new
+    /// <c>Supplier</c> row — so a caller resolving a negotiation outcome's link (never a guess,
+    /// ADR-001 w16 clause 4) cannot mint a supplier as a side effect of recording an outcome.
+    /// </para>
+    /// </summary>
+    Task<EntityId?> FindByNormalizedNameAsync(
+        TenantId tenantId,
+        string normalizedName,
+        CancellationToken cancellationToken);
 }

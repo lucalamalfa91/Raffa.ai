@@ -8,6 +8,7 @@ using Raffa.Quotes.Infrastructure;
 using Raffa.Savings.Infrastructure;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Storage;
+using Raffa.Suppliers.Products.Infrastructure;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -45,6 +46,17 @@ namespace Raffa.IntegrationTests;
 /// type's own <see cref="ConfigureWebHost"/> already anticipated (its <c>ConnectionStrings:Savings</c>
 /// setting pointed at <see cref="_appConnectionString"/> from this fixture's first version onward,
 /// but nothing had migrated that schema onto it until now).
+/// </para>
+///
+/// <para>
+/// Task E19/F04/US01/T01 (outcome-resolves-the-opportunity) is, identically, this fixture's first
+/// scenario that actually exercises <c>Raffa.Suppliers.Products</c>
+/// (<see cref="Raffa.Api.NegotiationOutcomePropagationService.ResolveSavingsOpportunityIdAsync"/>
+/// calls <c>ISupplierNameLookup.FindByNormalizedNameAsync</c>): <see cref="InitializeAsync"/> now
+/// also migrates <see cref="SuppliersDbContext"/> onto this same Postgres instance and
+/// <see cref="ConfigureWebHost"/> now also points <c>ConnectionStrings:Suppliers</c> at
+/// <see cref="_appConnectionString"/> — the same "close the gap Program.cs's own fail-fast check
+/// papered over" shape as the Savings paragraph above.
 /// </para>
 /// </summary>
 public sealed class QuoteIntegrationFixture : WebApplicationFactory<Program>, IAsyncLifetime
@@ -103,6 +115,18 @@ public sealed class QuoteIntegrationFixture : WebApplicationFactory<Program>, IA
             await db.Database.MigrateAsync();
         }
 
+        // Task E19/F04/US01/T01 (outcome-resolves-the-opportunity) -- this fixture's first scenario
+        // to actually need Raffa.Suppliers.Products's own schema: NegotiationOutcomeResolutionTests'
+        // own no-id resolution path reads the (tenant_id, normalized_name) unique index for real
+        // through NegotiationOutcomePropagationService.ResolveSavingsOpportunityIdAsync, unlike
+        // every other scenario in this fixture, which never actually dials Raffa.Suppliers.Products.
+        var suppliersOptions = new DbContextOptionsBuilder<SuppliersDbContext>();
+        SuppliersDbContextOptions.Configure(suppliersOptions, superuserConnectionString);
+        await using (var db = new SuppliersDbContext(suppliersOptions.Options))
+        {
+            await db.Database.MigrateAsync();
+        }
+
         var auditOptions = new DbContextOptionsBuilder<AuditDbContext>();
         AuditDbContextOptions.Configure(auditOptions, superuserConnectionString);
         await using (var db = new AuditDbContext(auditOptions.Options))
@@ -144,6 +168,11 @@ public sealed class QuoteIntegrationFixture : WebApplicationFactory<Program>, IA
         // InitializeAsync above.
         builder.UseSetting("ConnectionStrings:Renewals", _appConnectionString);
         builder.UseSetting("ConnectionStrings:Savings", _appConnectionString);
+        // Task E19/F04/US01/T01 (outcome-resolves-the-opportunity) — Suppliers *is* now exercised
+        // too (the no-id resolution path), same "point every dialled module at this run's own
+        // Testcontainers instance" rationale as Savings above; its schema is migrated onto this same
+        // instance in InitializeAsync above.
+        builder.UseSetting("ConnectionStrings:Suppliers", _appConnectionString);
         // Never actually dialled — IDocumentStorage is replaced with an in-memory fake below.
         builder.UseSetting("ConnectionStrings:Storage", "UseDevelopmentStorage=true");
 
