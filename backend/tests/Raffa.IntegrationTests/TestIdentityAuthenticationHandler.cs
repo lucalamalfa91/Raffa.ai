@@ -1,6 +1,5 @@
 using System.Security.Claims;
 using System.Text.Encodings.Web;
-using Raffa.Identity.Workspace.Domain;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -26,17 +25,7 @@ namespace Raffa.IntegrationTests;
 /// </para>
 ///
 /// <para>
-/// It also carries <see cref="TestPrincipalStartupFilter"/>'s two authorization headers
-/// (<c>X-Test-Tenant-Id</c>/<c>X-Test-Role</c>) into the same principal. That filter runs as an
-/// <see cref="Microsoft.AspNetCore.Hosting.IStartupFilter"/>, so its middleware sets
-/// <c>HttpContext.User</c> <b>before</b> <c>UseAuthentication</c> runs; without merging the claims
-/// here, a request carrying both that pair and <c>X-User-Id</c> would have its tenant/role claims
-/// overwritten by this handler's result and lose the <c>GET /api/audit</c> authorization it came
-/// with. Merging keeps both paths true at once, in either order.
-/// </para>
-///
-/// <para>
-/// A request with none of the three headers is <see cref="AuthenticateResult.NoResult"/>, never
+/// A request with no <c>X-User-Id</c> header is <see cref="AuthenticateResult.NoResult"/>, never
 /// <see cref="AuthenticateResult.Fail(string)"/>: the "no identity" tests expect to reach the
 /// endpoint unauthenticated and be turned into 401 by <c>ICallerIdentity.Resolve()</c> itself --
 /// the same path a missing or invalid bearer token takes in production -- not short-circuited by
@@ -81,13 +70,6 @@ public sealed class TestIdentityAuthenticationHandler(
             {
                 claims.Add(new Claim("email", userIdValues.ToString()));
             }
-        }
-
-        if (Request.Headers.TryGetValue(TestPrincipalStartupFilter.TenantIdHeaderName, out var tenantIdValues) &&
-            Request.Headers.TryGetValue(TestPrincipalStartupFilter.RoleHeaderName, out var roleValues))
-        {
-            claims.Add(new Claim(WorkspacePrincipalAuthorization.TenantIdClaimType, tenantIdValues.ToString()));
-            claims.Add(new Claim(ClaimTypes.Role, roleValues.ToString()));
         }
 
         if (claims.Count == 0)

@@ -717,6 +717,28 @@ export interface operations {
       };
     };
   };
+  listAuditEvents: {
+    responses: {
+      200: {
+        content: {
+          "application/json": ({ id: string; actor: string; action: string; resourceType: string; resourceId: string; occurredAt: string; detail: string | null })[];
+        };
+      };
+      400: {
+        content: {
+          "application/json": string;
+        };
+      };
+      403: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
 }
 
 export interface paths {
@@ -832,5 +854,8 @@ export interface paths {
   };
   "/api/contracts/{id}/strategy": {
     get: operations["getContractStrategy"];
+  };
+  "/api/audit": {
+    get: operations["listAuditEvents"];
   };
 }

@@ -375,9 +375,11 @@ app.MapDocumentsEndpoints();
 // aggregation for the GET (ADR-009).
 app.MapContractsEndpoints();
 
-// Task E01/F06/US02/T02 (us-02-audit-baseline, AC-2): authorized, tenant-scoped GET /api/audit.
-// See AuditEndpointExtensions for the endpoint itself and WorkspacePrincipalAuthorization for
-// the authorization decision (401 vs 403 vs the tenant-scoped read).
+// Task E01/F06/US02/T02 (us-02-audit-baseline, AC-2), guard swapped from claims to membership by
+// wave w16's NW-08 (task E18/F02/US02/T01, ADR-025 §K): authorized, tenant-scoped GET /api/audit.
+// See AuditEndpointExtensions for the endpoint itself -- ICallerContext resolves identity and the
+// tenant selector, WorkspaceRoleResolver resolves the Admin gate, the same ladder every other
+// tenant-scoped route below already uses.
 app.MapAuditEndpoints();
 
 // Task E02/F03/US01/T01 (us-01-portfolio-list-filters, AC-1/AC-2/AC-3): GET /api/contracts, the

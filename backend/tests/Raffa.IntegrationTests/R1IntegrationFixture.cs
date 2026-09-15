@@ -198,9 +198,9 @@ public sealed class R1IntegrationFixture : WebApplicationFactory<Program>, IAsyn
             // TokenCallerIdentity (the bearer token's `oid`), and this project's hosts never got
             // the bridge Raffa.Api.Tests' shared factory did -- so every request this fixture's
             // tests send arrived anonymous and answered 401. See TestIdentityAuthenticationHandler
-            // for why a test scheme (not a faked ICallerIdentity) is the right substitute, and why
-            // it also carries TestPrincipalStartupFilter's tenant/role claims. AuthenticationSchemeOptions
-            // is fully qualified rather than imported: `using Microsoft.AspNetCore.Authentication`
+            // for why a test scheme (not a faked ICallerIdentity) is the right substitute.
+            // AuthenticationSchemeOptions is fully qualified rather than imported: `using
+            // Microsoft.AspNetCore.Authentication`
             // makes SystemClock ambiguous against Raffa.SharedKernel.SystemClock in this project.
             services.AddAuthentication(TestIdentityAuthenticationHandler.SchemeName)
                 .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, TestIdentityAuthenticationHandler>(

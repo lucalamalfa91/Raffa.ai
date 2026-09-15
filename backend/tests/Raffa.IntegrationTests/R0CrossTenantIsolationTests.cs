@@ -26,8 +26,8 @@ public sealed class R0CrossTenantIsolationTests : IClassFixture<R0IntegrationFix
     {
         var client = _fixture.CreateClient();
 
-        var tenantA = await CreateWorkspaceAsync(client, "Tenant A Co");
-        var tenantB = await CreateWorkspaceAsync(client, "Tenant B Co");
+        var (tenantA, adminA) = await CreateWorkspaceAsync(client, "Tenant A Co");
+        var (tenantB, adminB) = await CreateWorkspaceAsync(client, "Tenant B Co");
 
         using var uploadContent = new MultipartFormDataContent
         {
@@ -60,10 +60,13 @@ public sealed class R0CrossTenantIsolationTests : IClassFixture<R0IntegrationFix
         Assert.Equal(HttpStatusCode.OK, getAsTenantAResponse.StatusCode);
 
         // AC-2: tenant B's own (real, authenticated) Admin sees an empty audit trail -- tenant
-        // A's upload event never crosses the boundary.
+        // A's upload event never crosses the boundary. Wave w16's NW-08 swapped the guard from a
+        // simulated claims principal to ICallerContext/WorkspaceRoleResolver (ADR-025 §K): each
+        // tenant's own creator is already its real Admin member (CreateWorkspaceAsync below), so
+        // X-User-Id + X-Tenant-Id is what reaches it now.
         using var auditAsTenantB = new HttpRequestMessage(HttpMethod.Get, "/api/audit");
-        auditAsTenantB.Headers.Add(TestPrincipalStartupFilter.TenantIdHeaderName, tenantB.ToString());
-        auditAsTenantB.Headers.Add(TestPrincipalStartupFilter.RoleHeaderName, "Admin");
+        auditAsTenantB.Headers.Add("X-User-Id", adminB);
+        auditAsTenantB.Headers.Add("X-Tenant-Id", tenantB.ToString());
         var auditAsTenantBResponse = await client.SendAsync(auditAsTenantB);
         Assert.Equal(HttpStatusCode.OK, auditAsTenantBResponse.StatusCode);
 
@@ -74,8 +77,8 @@ public sealed class R0CrossTenantIsolationTests : IClassFixture<R0IntegrationFix
         // AC-2, other direction: tenant A's own Admin *does* see its own upload event -- proves
         // the empty result above is isolation, not a broken audit-write path.
         using var auditAsTenantA = new HttpRequestMessage(HttpMethod.Get, "/api/audit");
-        auditAsTenantA.Headers.Add(TestPrincipalStartupFilter.TenantIdHeaderName, tenantA.ToString());
-        auditAsTenantA.Headers.Add(TestPrincipalStartupFilter.RoleHeaderName, "Admin");
+        auditAsTenantA.Headers.Add("X-User-Id", adminA);
+        auditAsTenantA.Headers.Add("X-Tenant-Id", tenantA.ToString());
         var auditAsTenantAResponse = await client.SendAsync(auditAsTenantA);
         Assert.Equal(HttpStatusCode.OK, auditAsTenantAResponse.StatusCode);
 
@@ -84,7 +87,10 @@ public sealed class R0CrossTenantIsolationTests : IClassFixture<R0IntegrationFix
         Assert.Contains(tenantAEvents, e => e.GetProperty("resourceId").GetString() == documentId.ToString());
     }
 
-    private static async Task<Guid> CreateWorkspaceAsync(HttpClient client, string name)
+    /// <summary>Returns the new tenant's id and the creator's identity -- the creator becomes that
+    /// tenant's real Admin member by virtue of creating it (ADR-025 Rule D.2b), which is what makes
+    /// the caller usable for the audit-read assertions above under wave w16's NW-08 guard.</summary>
+    private static async Task<(Guid TenantId, string AdminIdentity)> CreateWorkspaceAsync(HttpClient client, string name)
     {
         // Task E14/F02/US01/T01 (wave w14, ADR-025 §D.2a): POST /api/workspaces now requires a
         // presented identity -- each call here is a distinct creator, matching two genuinely
@@ -99,6 +105,7 @@ public sealed class R0CrossTenantIsolationTests : IClassFixture<R0IntegrationFix
 
         var response = await client.SendAsync(request);
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        return await R0EndToEndTests.ReadGuidPropertyAsync(response, "id");
+        var tenantId = await R0EndToEndTests.ReadGuidPropertyAsync(response, "id");
+        return (tenantId, identity);
     }
 }

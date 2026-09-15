@@ -87,6 +87,35 @@ public sealed class TokenIdentityRetirementTests : IClassFixture<RaffaApiFactory
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
+    [Fact] // NW-08 (wave w16): GET /api/audit's own deletion proof (ADR-025 §K.3, S-T25).
+    public async Task S_T25_a_token_carrying_tenant_and_admin_claims_with_no_real_membership_gets_404_on_audit()
+    {
+        var factory = WithInMemoryIdentityAndTestToken();
+        var client = factory.CreateClient();
+        var tenantId = Guid.NewGuid();
+        // No membership is ever seeded for this tenant -- the whole point is that the claims below
+        // must not substitute for one.
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/audit");
+        // The token carries an authenticated subject plus tenant_id/roles:Admin claims naming this
+        // tenant -- exactly the shape the deleted WorkspacePrincipalAuthorization used to accept.
+        request.Headers.Add(TestTokenStartupFilter.TokenSubjectHeaderName, "stranger@acme.example");
+        request.Headers.Add(TestTokenStartupFilter.TokenRoleHeaderName, "Admin");
+        request.Headers.Add(TestTokenStartupFilter.TokenTenantIdHeaderName, tenantId.ToString());
+        // ICallerContext reads the tenant from this header, never from a claim -- send the real
+        // selector too, or the request would 400 before ever reaching the membership check this
+        // test exists to prove.
+        request.Headers.Add("X-Tenant-Id", tenantId.ToString());
+
+        var response = await client.SendAsync(request);
+
+        // ADR-025 §K.3: a token claiming tenant_id + roles:Admin for a tenant with no live
+        // membership must still be 404, never 200 and never 403 -- proof that
+        // WorkspacePrincipalAuthorization's claims path is gone, not merely unreachable from this
+        // route's own normal traffic.
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
     private WebApplicationFactory<Program> WithInMemoryIdentityAndTestToken()
     {
         var gateway = new RecordingAiGateway(
@@ -127,15 +156,14 @@ public sealed class TokenIdentityRetirementTests : IClassFixture<RaffaApiFactory
         SeedMembershipAsync(factory, tenantId, email, Raffa.Identity.Workspace.Domain.WorkspaceRoleName.Admin);
 
     /// <summary>
-    /// Simulates "a validated token present" for this file's two skipped tests only — never
-    /// registered by production <c>Raffa.Api.Program</c>, the same <see cref="IStartupFilter"/>
-    /// shape <c>Raffa.IntegrationTests.TestPrincipalStartupFilter</c> already establishes for
-    /// <c>WorkspacePrincipalAuthorization</c>'s own claim shape. Reads three test-only headers and
-    /// synthesizes an authenticated <see cref="ClaimsPrincipal"/> carrying a <c>sub</c> claim plus,
-    /// optionally, <c>roles</c>/<c>tenant_id</c> — the exact shape a real ADR-010 bearer token would
-    /// carry. Nothing in production code reads this principal yet (see this class's own doc
-    /// comment); it exists so the two tests above already exercise the right HTTP shape and need no
-    /// further change once <c>HeaderCallerIdentity</c> is rewritten to consult it.
+    /// Simulates "a validated token present" for this file's tests — never registered by
+    /// production <c>Raffa.Api.Program</c>. Reads three test-only headers and synthesizes an
+    /// authenticated <see cref="ClaimsPrincipal"/> carrying a <c>sub</c> claim plus, optionally,
+    /// <c>roles</c>/<c>tenant_id</c> — the exact shape a real ADR-010 bearer token would carry, and
+    /// also the shape wave w16's NW-08 deletion proof needs (S-T25, ADR-025 §K.3): those two claims
+    /// must grant nothing now that the claims-based <c>WorkspacePrincipalAuthorization</c> guard is
+    /// gone. Nothing in production code reads this principal's <c>roles</c>/<c>tenant_id</c> claims
+    /// — <c>TokenCallerIdentity</c> reads only <c>oid</c>.
     /// </summary>
     private sealed class TestTokenStartupFilter : IStartupFilter
     {
