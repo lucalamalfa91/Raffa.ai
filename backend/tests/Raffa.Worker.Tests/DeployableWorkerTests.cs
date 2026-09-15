@@ -107,7 +107,15 @@ public sealed class DeployableWorkerTests
         builder.Services.AddExtractionQueueConsumer(configuration);
 
         using var host = builder.Build();
-        var hostedServices = host.Services.GetServices<IHostedService>();
+        var hostedServices = host.Services.GetServices<IHostedService>().ToList();
+
+        // Exactly two hosted services boot out of this whole composition: the renewal-threshold
+        // scheduler (a different concern this task does not touch) and one document-extraction
+        // consumer. Asserting the total catches any duplicate/dead hosted service coming back --
+        // not just a mismatch against these two names -- the way QueueConsumerHostedService used
+        // to sit here as an uncounted third.
+        Assert.Equal(2, hostedServices.Count);
+        Assert.Contains(hostedServices, service => service is RenewalThresholdSchedulerHostedService);
 
         // No ServiceBus:FullyQualifiedNamespace configured -> the in-process consumer is the
         // branch that fires (ExtractionTransportSelectionTests proves the Service Bus branch at
