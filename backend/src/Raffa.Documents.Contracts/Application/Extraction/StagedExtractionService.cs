@@ -267,6 +267,19 @@ public sealed class StagedExtractionService(
     /// <see cref="BootstrapContractCurrency"/>) is honest about "extraction ran before
     /// classification finished", not a silent guess presented as a real extracted fact — the
     /// `metadata` stage overwrites status/currency the moment it finds a real value.
+    ///
+    /// <para>
+    /// When an existing bootstrap contract is found (created by <c>DocumentUploadService</c> at
+    /// upload time with <see cref="ContractDocumentType.Other"/> as a placeholder), its
+    /// <see cref="Contract.Type"/> is promoted to <see cref="Document.DocumentType"/> the moment
+    /// classification has resolved a specific type. <see cref="DocumentProcessingPipeline"/> flushes
+    /// <see cref="Document.DocumentType"/> via <c>SaveChangesAsync</c> <em>before</em> calling
+    /// <see cref="RunAsync(TenantId, EntityId, IReadOnlyList{DocumentPageText}, double?, CancellationToken)"/>,
+    /// so by the time this method runs the in-memory document already carries the real classified
+    /// type and the promotion is safe. The promotion is guarded to only fire while the contract is
+    /// still at the bootstrap placeholder (<c>Other</c>) and the document has been classified as a
+    /// more specific type — this preserves any human correction a reviewer may already have applied.
+    /// </para>
     /// </summary>
     private async Task<Contract> EnsureContractAsync(
         TenantId tenantId, Document document, DateTimeOffset now, CancellationToken cancellationToken)
@@ -279,6 +292,17 @@ public sealed class StagedExtractionService(
 
             if (existing is not null)
             {
+                // Promote the upload-time bootstrap placeholder (Other) to the now-classified
+                // type. document.DocumentType has been set by the pipeline's ClassifyAsync and
+                // flushed before RunAsync was called, so it already reflects the real classified
+                // type for this run. Only fires while the contract is still at the bootstrap
+                // default — preserves any human correction a reviewer may already have applied.
+                if (existing.Type == ContractDocumentType.Other
+                    && document.DocumentType != ContractDocumentType.Other)
+                {
+                    existing.Type = document.DocumentType;
+                }
+
                 return existing;
             }
 
