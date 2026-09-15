@@ -231,4 +231,74 @@ public sealed class RenewalActionServiceTests : IAsyncLifetime
         Assert.True(result.IsSuccess);
         Assert.Equal(RenewalActionStatus.Completed, result.Value.Status);
     }
+
+    /// <summary>
+    /// Proves the Definition of Done for task E19/F01/US01/T01 (renewal-action-api; ADR-028 §D1)'s
+    /// batch read: <c>GET /api/renewals</c> resolves the whole page's <c>savedAction</c> column
+    /// through <see cref="RenewalActionService.GetActionsAsync"/> in one query, so this asserts that
+    /// call returns exactly one entry per contract id that actually has a persisted row, and no
+    /// entry at all — never a default/placeholder <see cref="RenewalActionResult"/> — for a
+    /// requested id with nothing recorded or one the caller never even asked about.
+    /// </summary>
+    [Fact]
+    public async Task GetActionsAsync_returns_one_row_per_matching_contract_id_and_nothing_for_the_rest()
+    {
+        await MigrateAsync();
+
+        var tenantId = TenantId.New();
+        var contractWithAction = EntityId.New();
+        var contractAlsoWithAction = EntityId.New();
+        var contractWithoutAction = EntityId.New();
+        var contractNeverAsked = EntityId.New();
+        var tenantContext = new TenantContext();
+        var clock = new FixedClock(new DateTimeOffset(2026, 9, 4, 12, 0, 0, TimeSpan.Zero));
+        var auditWriter = new RecordingAuditWriter();
+
+        await using (var db = CreateContext(tenantContext))
+        {
+            var service = new RenewalActionService(db, tenantContext, clock, auditWriter);
+            await service.SetActionAsync(
+                tenantId, contractWithAction, "alice@acme.example", "InProgress", "Started negotiation",
+                "test-actor@example.com");
+            await service.SetActionAsync(
+                tenantId, contractAlsoWithAction, "bob@acme.example", "Completed", "Renewed at same terms",
+                "test-actor@example.com");
+            // A row for a contract id the batch call below never asks about -- proves the query is
+            // scoped to the requested ids, not "every row this tenant has".
+            await service.SetActionAsync(
+                tenantId, contractNeverAsked, "carol@acme.example", "NotStarted", "Reviewing terms",
+                "test-actor@example.com");
+        }
+
+        await using var readDb = CreateContext(tenantContext);
+        var readService = new RenewalActionService(readDb, tenantContext, clock, auditWriter);
+
+        var results = await readService.GetActionsAsync(
+            tenantId, [contractWithAction, contractAlsoWithAction, contractWithoutAction]);
+
+        Assert.Equal(2, results.Count);
+        Assert.Equal(RenewalActionStatus.InProgress, results[contractWithAction].Status);
+        Assert.Equal("Started negotiation", results[contractWithAction].Action);
+        Assert.Equal(RenewalActionStatus.Completed, results[contractAlsoWithAction].Status);
+        // Asked-about-but-nothing-recorded, and never-asked-about, both simply have no entry (ADR-028
+        // §D1: absence of a row is the status NotStarted, reconstructed by the caller, never
+        // fabricated by this service).
+        Assert.False(results.ContainsKey(contractWithoutAction));
+        Assert.False(results.ContainsKey(contractNeverAsked));
+    }
+
+    [Fact]
+    public async Task GetActionsAsync_returns_an_empty_map_for_an_empty_request()
+    {
+        await MigrateAsync();
+
+        var tenantContext = new TenantContext();
+        await using var db = CreateContext(tenantContext);
+        var service = new RenewalActionService(
+            db, tenantContext, new FixedClock(DateTimeOffset.UtcNow), new RecordingAuditWriter());
+
+        var results = await service.GetActionsAsync(TenantId.New(), []);
+
+        Assert.Empty(results);
+    }
 }

@@ -144,11 +144,12 @@ public sealed class RenewalActionService(
 
     /// <summary>
     /// Reads back the current owner/status/action for one renewal, or <see langword="null"/> when
-    /// none has ever been recorded for this (tenant, contract) pair — no HTTP route calls this yet
-    /// (the spec's own Appendix A API table names only the POST), but it exists for the same
-    /// "prove persistence really happened" reason <c>Raffa.Audit.Application.IAuditQueryService</c>
-    /// existed before its own first route, and so a future `GET /api/renewals` can merge this in
-    /// without this module needing a second write path.
+    /// none has ever been recorded for this (tenant, contract) pair. Task E19/F01/US01/T01
+    /// (renewal-action-api; ADR-028 §D1) gave this its first HTTP caller:
+    /// <c>Raffa.Api.RenewalsEndpointExtensions.GetRenewalActionAsync</c> calls this directly for
+    /// `GET /api/renewals/{id}/action`'s single-row read; <see cref="GetActionsAsync"/> below is the
+    /// batch counterpart the same task added so the sibling `GET /api/renewals` list can embed this
+    /// fact under `savedAction` on every row without paying an N+1 for it.
     /// </summary>
     public async Task<RenewalActionResult?> GetActionAsync(
         TenantId tenantId, EntityId contractId, CancellationToken cancellationToken = default)
@@ -163,5 +164,46 @@ public sealed class RenewalActionService(
         return existing is null
             ? null
             : new RenewalActionResult(existing.ContractId, existing.Owner, existing.Status, existing.Action, existing.UpdatedAt);
+    }
+
+    /// <summary>
+    /// Batch counterpart to <see cref="GetActionAsync"/> (task E19/F01/US01/T01; ADR-028 §D1):
+    /// `GET /api/renewals` embeds this fact under `savedAction` in every row, and Renewals/Savings
+    /// are list surfaces, so a per-row <see cref="GetActionAsync"/> call would be an N+1 across the
+    /// portfolio (§D1's own words) — one query for the whole page's worth of contract ids instead,
+    /// the same batch-by-page shape
+    /// <c>Raffa.Api.PortfolioEndpointExtensions.ResolveSupplierNamesAsync</c> already uses for
+    /// supplier names. Opens its own tenant scope exactly like <see cref="GetActionAsync"/> (nothing
+    /// upstream in `Raffa.Api` has one open when this composition root calls in).
+    /// </summary>
+    /// <returns>
+    /// A map keyed by contract id, containing an entry only for a contract id that actually has a
+    /// persisted row. A requested id with nothing recorded simply has no entry — never a
+    /// default/placeholder <see cref="RenewalActionResult"/> — so the caller renders the absent case
+    /// as the status `NotStarted` (ADR-028 §D1) instead of a fabricated one.
+    /// </returns>
+    public async Task<IReadOnlyDictionary<EntityId, RenewalActionResult>> GetActionsAsync(
+        TenantId tenantId,
+        IReadOnlyCollection<EntityId> contractIds,
+        CancellationToken cancellationToken = default)
+    {
+        // Skips the round trip entirely for a page with no candidates at all — the same
+        // short-circuit ResolveSupplierNamesAsync uses for the identical reason.
+        if (contractIds.Count == 0)
+        {
+            return new Dictionary<EntityId, RenewalActionResult>();
+        }
+
+        using var _ = tenantContext.BeginScope(tenantId);
+
+        var rows = await dbContext.RenewalActions
+            .AsNoTracking()
+            .Where(a => a.TenantId == tenantId && contractIds.Contains(a.ContractId))
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return rows.ToDictionary(
+            a => a.ContractId,
+            a => new RenewalActionResult(a.ContractId, a.Owner, a.Status, a.Action, a.UpdatedAt));
     }
 }
