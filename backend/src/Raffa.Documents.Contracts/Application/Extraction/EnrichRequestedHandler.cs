@@ -67,7 +67,9 @@ public sealed class EnrichRequestedHandler(
         if (bytes is null || bytes.Length == 0)
         {
             logger.LogWarning(
-                "Enrich: bytes for document {DocumentId} could not be loaded; skipping enrich", documentId.Value);
+                "Enrich: bytes for document {DocumentId} could not be loaded; routing to manual review",
+                documentId.Value);
+            await MarkNeedsReviewAsync(document, cancellationToken).ConfigureAwait(false);
             return;
         }
 
@@ -82,7 +84,9 @@ public sealed class EnrichRequestedHandler(
         if (parseResult.IsFailure)
         {
             logger.LogWarning(
-                "Enrich: parse failed for document {DocumentId}: {Error}", documentId.Value, parseResult.Error);
+                "Enrich: parse failed for document {DocumentId}: {Error}; routing to manual review",
+                documentId.Value, parseResult.Error);
+            await MarkNeedsReviewAsync(document, cancellationToken).ConfigureAwait(false);
             return;
         }
 
@@ -90,6 +94,40 @@ public sealed class EnrichRequestedHandler(
 
         document.ProcessingStatus = DocumentProcessingStatus.Processing;
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        // Bug fix: if a human already corrected this contract (Version > 1), skip the 7-stage
+        // extraction so we do not clobber their edits. Promote to Official and route to manual
+        // review so the user can validate their own corrections through the review flow.
+        // This is checked after re-parse (pages are needed for retrieval indexing) but before
+        // RunAsync, which is the only call that would overwrite human-edited field values.
+        if (document.ContractId is { } humanEditedContractId)
+        {
+            var humanEditedContract = await dbContext.Contracts
+                .SingleOrDefaultAsync(
+                    c => c.TenantId == tenantId && c.Id == humanEditedContractId, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (humanEditedContract is not null && humanEditedContract.Version > 1)
+            {
+                logger.LogInformation(
+                    "Enrich: contract {ContractId} for document {DocumentId} was already human-edited " +
+                    "(Version {Version}); skipping extraction clobber and promoting to Official",
+                    humanEditedContractId.Value, documentId.Value, humanEditedContract.Version);
+
+                humanEditedContract.IdentityState = ContractIdentityState.Official;
+                document.ProcessingStatus = DocumentProcessingStatus.NeedsReview;
+                await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+                // Index whatever pages we have so Ask Raffa can still search the document text.
+                await IndexForRetrievalAsync(tenantId, document.Id, pages, cancellationToken)
+                    .ConfigureAwait(false);
+
+                logger.LogInformation(
+                    "Enrich: document {DocumentId} preserved human edits → NeedsReview / Official",
+                    documentId.Value);
+                return;
+            }
+        }
 
         // Run the 7-stage pipeline. Pass null for classificationConfidence so the pipeline uses
         // the document's already-set DocumentType (from the intake classify step) without a second
@@ -100,9 +138,14 @@ public sealed class EnrichRequestedHandler(
 
         if (extractionResult.IsFailure)
         {
+            // RunAsync returns IsFailure only for structural failures (e.g. document deleted
+            // mid-flight). Stage-level failures are surfaced as NeedsReview/Failed status inside
+            // an IsSuccess result, so this branch is rare. Either way: do not leave the document
+            // stuck in Processing — route to manual review.
             logger.LogWarning(
-                "Enrich: staged extraction failed for document {DocumentId}: {Error}",
+                "Enrich: staged extraction failed for document {DocumentId}: {Error}; routing to manual review",
                 documentId.Value, extractionResult.Error);
+            await MarkNeedsReviewAsync(document, cancellationToken).ConfigureAwait(false);
             return;
         }
 
@@ -139,13 +182,31 @@ public sealed class EnrichRequestedHandler(
         }
 
         // Never clobber human corrections: Version > 1 means someone edited this contract.
-        if (contract.Version > 1 && contract.IdentityState == ContractIdentityState.Official)
+        // (Human edits that arrived before RunAsync are handled earlier in HandleAsync; this
+        // guard is a safety net for corrections that race with the extraction run itself.)
+        if (contract.Version > 1)
         {
-            return; // already official and human-edited — leave it alone
+            return; // human-edited — leave the identity state and fields as the user left them
         }
 
         contract.IdentityState = ContractIdentityState.Official;
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Terminates the enrich run as <see cref="DocumentProcessingStatus.NeedsReview"/> so the
+    /// document is surfaced to the user for manual data entry, rather than being left stuck in
+    /// <see cref="DocumentProcessingStatus.Processing"/> indefinitely. The provisional identity
+    /// set by the intake headline pass (filename / provisional supplier name) remains intact so
+    /// the row is never a blank "unknown document" in the Documents list.
+    /// </summary>
+    private async Task MarkNeedsReviewAsync(Document document, CancellationToken cancellationToken)
+    {
+        document.ProcessingStatus = DocumentProcessingStatus.NeedsReview;
+        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        logger.LogInformation(
+            "Enrich: document {DocumentId} marked NeedsReview for manual data entry",
+            document.Id.Value);
     }
 
     private async Task LinkSupplierAsync(
