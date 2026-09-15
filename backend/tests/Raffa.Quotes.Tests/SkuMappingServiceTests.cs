@@ -210,7 +210,8 @@ public sealed class SkuMappingServiceTests : IAsyncLifetime
         await using var db = CreateAppContext(tenantContext);
         var service = CreateService(db, tenantContext, auditWriter);
 
-        var result = await service.RecalculateAsync(tenantId, EntityId.New(), corrections: null);
+        var result = await service.RecalculateAsync(
+            tenantId, EntityId.New(), corrections: null, actor: "test-actor@example.com");
 
         Assert.True(result.IsFailure);
         Assert.Equal(SkuMappingService.QuoteNotFoundError, result.Error);
@@ -228,7 +229,8 @@ public sealed class SkuMappingServiceTests : IAsyncLifetime
         await using var db = CreateAppContext(tenantContext);
         var service = CreateService(db, tenantContext, new RecordingAuditWriter());
 
-        var result = await service.RecalculateAsync(otherTenant, quoteId, corrections: null);
+        var result = await service.RecalculateAsync(
+            otherTenant, quoteId, corrections: null, actor: "test-actor@example.com");
 
         Assert.True(result.IsFailure);
         Assert.Equal(SkuMappingService.QuoteNotFoundError, result.Error);
@@ -245,7 +247,8 @@ public sealed class SkuMappingServiceTests : IAsyncLifetime
 
         // No quote seeded at all -- validation must fail before any existence check/query.
         var result = await service.RecalculateAsync(
-            tenantId, EntityId.New(), [new SkuMappingCorrection("  ", null, "SKU-100", null, null)]);
+            tenantId, EntityId.New(), [new SkuMappingCorrection("  ", null, "SKU-100", null, null)],
+            "test-actor@example.com");
 
         Assert.True(result.IsFailure);
         Assert.Equal(SkuMappingService.SkuRequiredError, result.Error);
@@ -262,7 +265,8 @@ public sealed class SkuMappingServiceTests : IAsyncLifetime
         var service = CreateService(db, tenantContext, auditWriter);
 
         var result = await service.RecalculateAsync(
-            tenantId, EntityId.New(), [new SkuMappingCorrection("SKU-100", null, "   ", null, null)]);
+            tenantId, EntityId.New(), [new SkuMappingCorrection("SKU-100", null, "   ", null, null)],
+            "test-actor@example.com");
 
         Assert.True(result.IsFailure);
         Assert.Equal(SkuMappingService.CanonicalSkuRequiredError, result.Error);
@@ -284,7 +288,8 @@ public sealed class SkuMappingServiceTests : IAsyncLifetime
 
         var result = await service.RecalculateAsync(
             tenantId, quoteId,
-            [new SkuMappingCorrection("SKU-200", "Enterprise", "SKU-200", "Enterprise", "Widget Pro")]);
+            [new SkuMappingCorrection("SKU-200", "Enterprise", "SKU-200", "Enterprise", "Widget Pro")],
+            "test-actor@example.com");
 
         Assert.True(result.IsSuccess);
         var recalculation = result.Value;
@@ -296,6 +301,7 @@ public sealed class SkuMappingServiceTests : IAsyncLifetime
 
         var auditEntry = Assert.Single(auditWriter.Written);
         Assert.Equal(tenantId, auditEntry.TenantId);
+        Assert.Equal("test-actor@example.com", auditEntry.Actor);
         Assert.Equal("quote.sku_mapping_recalculated", auditEntry.Action);
         Assert.Equal("quote", auditEntry.ResourceType);
         Assert.Equal(quoteId.Value.ToString(), auditEntry.ResourceId);
@@ -330,7 +336,8 @@ public sealed class SkuMappingServiceTests : IAsyncLifetime
         {
             var firstService = CreateService(firstDb, tenantContext, new RecordingAuditWriter());
             var firstResult = await firstService.RecalculateAsync(
-                tenantId, quoteId, [new SkuMappingCorrection("SKU-300", null, "SKU-300", null, "First Name")]);
+                tenantId, quoteId, [new SkuMappingCorrection("SKU-300", null, "SKU-300", null, "First Name")],
+                "test-actor@example.com");
             Assert.True(firstResult.IsSuccess);
         }
 
@@ -341,7 +348,8 @@ public sealed class SkuMappingServiceTests : IAsyncLifetime
             // already on file, never attempt a second insert -- the unique (tenant_id,
             // normalized_sku) index (SkuProductMappingConfiguration) would otherwise reject it.
             var secondResult = await secondService.RecalculateAsync(
-                tenantId, quoteId, [new SkuMappingCorrection("sku-300", null, "SKU-300", null, "Corrected Name")]);
+                tenantId, quoteId, [new SkuMappingCorrection("sku-300", null, "SKU-300", null, "Corrected Name")],
+                "test-actor@example.com");
             Assert.True(secondResult.IsSuccess);
         }
 
@@ -366,7 +374,8 @@ public sealed class SkuMappingServiceTests : IAsyncLifetime
         await using var db = CreateAppContext(tenantContext);
         var service = CreateService(db, tenantContext, auditWriter);
 
-        var result = await service.RecalculateAsync(tenantId, quoteId, corrections: null);
+        var result = await service.RecalculateAsync(
+            tenantId, quoteId, corrections: null, actor: "test-actor@example.com");
 
         Assert.True(result.IsSuccess);
         Assert.Equal(0, result.Value.MappingsAppliedCount);
@@ -399,7 +408,8 @@ public sealed class SkuMappingServiceTests : IAsyncLifetime
         var service = CreateService(db, tenantContext, new RecordingAuditWriter());
 
         var result = await service.RecalculateAsync(
-            tenantId, quoteId, [new SkuMappingCorrection("SKU-500", null, "SKU-500", null, null)]);
+            tenantId, quoteId, [new SkuMappingCorrection("SKU-500", null, "SKU-500", null, null)],
+            "test-actor@example.com");
 
         Assert.True(result.IsSuccess);
         var stillUnmatched = Assert.Single(result.Value.UnmatchedLines);
@@ -425,7 +435,8 @@ public sealed class SkuMappingServiceTests : IAsyncLifetime
         {
             var serviceForA = CreateService(dbForA, tenantContext, new RecordingAuditWriter());
             var resultForA = await serviceForA.RecalculateAsync(
-                tenantId, quoteA, [new SkuMappingCorrection("SKU-600", null, "SKU-600", null, null)]);
+                tenantId, quoteA, [new SkuMappingCorrection("SKU-600", null, "SKU-600", null, null)],
+                "test-actor@example.com");
             Assert.True(resultForA.IsSuccess);
         }
 
@@ -433,7 +444,8 @@ public sealed class SkuMappingServiceTests : IAsyncLifetime
         {
             var serviceForB = CreateService(dbForB, tenantContext, new RecordingAuditWriter());
             // Pure refresh for quote B -- no corrections of its own.
-            var resultForB = await serviceForB.RecalculateAsync(tenantId, quoteB, corrections: null);
+            var resultForB = await serviceForB.RecalculateAsync(
+                tenantId, quoteB, corrections: null, actor: "test-actor@example.com");
 
             Assert.True(resultForB.IsSuccess);
             Assert.Equal(0, resultForB.Value.MappingsAppliedCount);
@@ -471,7 +483,8 @@ public sealed class SkuMappingServiceTests : IAsyncLifetime
         var service = CreateService(db, tenantContext, new RecordingAuditWriter());
 
         var result = await service.RecalculateAsync(
-            tenantId, quoteId, [new SkuMappingCorrection("SKU-700", null, "SKU-700", null, "Sales Cloud Enterprise")]);
+            tenantId, quoteId, [new SkuMappingCorrection("SKU-700", null, "SKU-700", null, "Sales Cloud Enterprise")],
+            "test-actor@example.com");
 
         Assert.True(result.IsSuccess);
         var assessedLine = Assert.Single(result.Value.Assessment.Lines);
