@@ -3,7 +3,7 @@ id: E18/F02/US02/T01
 type: task
 story: us-02-audit-read-for-a-real-admin
 wave: w15
-status: queued
+status: live
 target_repo: raffa-backend
 ---
 
@@ -89,3 +89,133 @@ unblocks it is `reports/architecture/waves/w15.md` **NW-05**.
   layer: backend
   status: live
 ```
+
+---
+
+## Wave w16 addendum (2026-09-15) — promoted to `live`, phase 2
+
+**Appended by `next-decomposer`; the body above is unchanged (raw §0.4).** Where
+this section and the body disagree, **this section wins.**
+
+**Scheduled**: `reports/plan/slices/w16.yaml`, **phase 2**. Artifact
+`audit-read-api`; `E18/F03/US01/T01` (phase 4) depends on it, because both edit
+`web/openapi/raffa-api.v1.json` and that file takes one writer per phase.
+
+**Decision row**: `reports/architecture/waves/w16.md`, **NW-08**
+(security-architect, software-architect, client-architect).
+
+### The contract half stays here, and it has a prose half
+
+The body's file table is right that this task edits
+`web/openapi/raffa-api.v1.json` — and it is the **only** task of phase 2 that
+does. Two corrections:
+
+- **The path count is 34, not 34-minus-audit-is-33**: the document has **34
+  `paths` entries** today (`/health` + 33 `/api/*`) and **none** is `/api/audit`.
+- **C1, binding — the contract edit has a prose half** (ADR-012 w16 clause 27).
+  `web/openapi/raffa-api.v1.json:6` (`info.description`) names **`GET /api/audit`
+  by hand** among the backend routes "that this task deliberately did NOT add
+  here". Adding the path and leaving that sentence ships a contract that
+  **documents a route and denies documenting it** — the exact stale-record class
+  this wave is spending NW-31 on. **Both halves are one edit, in this task.**
+- **`web/src/api/client.ts` gains NO method.** `/api/audit` has no caller, so it
+  joins the documented-but-unwrapped set the contract file already names
+  (`/api/insights/criticality`, `GET /api/contracts/{id}/strategy`). Product-owner's
+  "A16-2 closes through `GET /api/audit` **plus a typed client**" is satisfied by
+  the **generated type** — `schema.ts` is regenerated wholesale, so the type
+  arrives with the path at zero cost (ADR-012 w16 clauses 24, 27). **Do not add a
+  wrapper with no call site**, and do not read its absence as an unmet ruling.
+- **No SPA surface**: no route, no rail entry, no fetch, no state.
+  `web/src/components/shell/navItems.ts` and `web/src/App.tsx` are untouched;
+  **ADR-018 and ADR-020 are `none`** (OQ-w16-003 ruled **no web audit surface**).
+  A16-2's ladder is proven by backend tests and `curl` — **no e2e, no vitest**.
+
+### The tenant derivation changes — this is a contract change, not a drop-in
+
+Today the route derives the tenant **from a `tenant_id` claim** and deliberately
+forbids a `?tenantId=` query
+(`backend/src/Raffa.Api/AuditEndpointExtensions.cs:25-29`). After this task it
+derives it from an **`X-Tenant-Id` header verified against membership**
+(`backend/src/Raffa.Api/Infrastructure/CallerContext.cs:135-152`). **Declare
+`X-Tenant-Id` as a required header on this route in the contract** (ADR-026 w16
+clause 2) — a route that gains a required header silently is a runtime discovery.
+
+> The "no `?tenantId=`" property **survives in a stronger form**: the header is a
+> **selector, never an authorization input**. Enforcement moves from *the absence
+> of a parameter* to *a membership fact*. Recorded so no reviewer reads
+> "claim → header" as "authorization → client input".
+>
+> Note the declared header is **documentation `tsc` cannot check**: the generator
+> parses only `responses` (`web/scripts/generate-api-client.mjs:132-146`), so a
+> declared *parameter* never reaches `schema.ts`.
+
+### The ladder is S16-4, verbatim, with no bespoke version
+
+Adopt the shape `backend/src/Raffa.Api/DocumentsEndpointExtensions.cs:492-499`
+then `:506-509` already uses — `ICallerContext.ResolveTenantAsync` then
+`WorkspaceRoleResolver.IsAdminAsync`:
+
+| Situation | Status |
+|---|---|
+| no validated token | **401** |
+| missing or non-GUID `X-Tenant-Id` | **400** |
+| well-formed tenant, **no live membership** | **404** — never 403 (ADR-025 Rule B1: a 403 is a tenant-existence oracle) |
+| member, role is not `Admin` | **403** |
+| live `Admin` membership | **200**, that tenant's rows only |
+
+**RLS is the backstop, membership is the gate.** `audit_event` is already
+`ENABLE` + `FORCE` + `tenant_isolation`
+(`backend/src/Raffa.Audit/Migrations/Scripts/audit.sql:54-56`) and the read runs
+**inside** the verified scope — that is what makes a mistake survivable, never a
+reason to soften the gate.
+
+### `WorkspacePrincipalAuthorization` is deleted WHOLE — and its blast radius is real
+
+The body says "if its last caller disappears, retire it". **S16-5 / ADR-025 §K.2
+make that unconditional**: the minimal repair leaves a working, fail-closed,
+helpfully-named claims authorizer in the domain assembly for the next endpoint to
+pick up — *which is how this defect arrived*. The type, its two claim constants
+and `TryAuthorize` go together.
+
+**Verified references on `f0b3436`, so the deletion is not discovered at compile
+time** (this task owns every one of them):
+
+| File | What it is |
+|---|---|
+| `backend/src/Raffa.Api/AuditEndpointExtensions.cs:10,30` | the doc `<see cref>` and the **only production call** |
+| `backend/src/Raffa.Identity.Workspace/Domain/WorkspaceAuthorizationFailure.cs` | the paired reason enum — its only consumer disappears; delete it with the type, or its `<see cref>`s dangle |
+| `backend/src/Raffa.Identity.Workspace/Infrastructure/WorkspaceMembershipService.cs:607` | a `<see cref="Domain.WorkspacePrincipalAuthorization.TryAuthorize"/>` in a doc comment — **a real cref, retire it in the same edit** |
+| `backend/src/Raffa.Api/Program.cs:379-380` | the comment above `app.MapAuditEndpoints()` citing the type for "the authorization decision"; retire it |
+| `backend/src/Raffa.Api/CapabilitiesEndpointExtensions.cs:46`, `backend/src/Raffa.Api/ConversationsEndpointExtensions.cs:29`, `backend/src/Raffa.Api/ContractsEndpointExtensions.cs:38` | plain-text mentions in doc comments — **not this task's**; they belong to `E18/F03/US01/T01`, `E18/F02/US01/T01` and phase 1's contracts task respectively, all in other phases. **Do not open these three files.** |
+| `backend/tests/Raffa.Identity.Workspace.Tests/WorkspacePrincipalAuthorizationTests.cs` | deleted with the type it tests |
+| `backend/tests/Raffa.IntegrationTests/TestPrincipalStartupFilter.cs:39`, `TestIdentityAuthenticationHandler.cs:89` | **real code** using `TenantIdClaimType`; rewrite the test fixtures to mint the token-plus-membership shape the new ladder needs |
+| `backend/tests/Raffa.IntegrationTests/R0IntegrationFixture.cs:171`, `backend/tests/Raffa.Api.Tests/TokenIdentityRetirementTests.cs:133` | comments citing the type; retire them |
+
+**Two repairs stay forbidden** (ADR-025 §K.2a): mapping `tid` → `tenant_id` (one
+directory serves both environments, so `tid` is identical for every workspace and
+can never select a tenant) and minting a role claim. **Neither becomes acceptable
+because the endpoint is "just a read".**
+
+### Named tests this task carries
+
+| Id | What it must prove |
+|---|---|
+| **S-T25** | the ladder **in order**, plus the **deletion proof**: a token carrying `tenant_id` **and** `roles: Admin` naming a tenant the caller has **no membership in** gets **404**, not 200 and not 403. *A ladder test alone proves the new path works; it does not prove the old one is gone.* |
+| **S-T26** | *another tenant never appears* — an Admin of T1 calling `/api/audit` with `X-Tenant-Id: T2` gets **404** and **zero T2 rows in any form** |
+
+### Reworded acceptance (A16-2)
+
+> A signed-in Admin reads the tenant's audit on `dev`; a Procurement member gets
+> 403; a non-member gets 404; no token gets 401; OpenAPI lists `/api/audit`.
+> *(Raw §6's "Admin opens audit **or calls** `GET /api/audit`" is what makes an
+> API-only close legitimate.)*
+
+### Single writer, phase 2
+
+This task is phase 2's only writer of `web/openapi/raffa-api.v1.json`,
+`web/src/api/generated/schema.ts` and `web/src/api/client.ts`. **Do not touch**
+`backend/src/Raffa.Api/QuotesEndpointExtensions.cs`,
+`backend/src/Raffa.Api/RenewalsEndpointExtensions.cs`,
+`backend/src/Raffa.Api/NegotiationsEndpointExtensions.cs` or
+`backend/src/Raffa.Api/NegotiationOutcomePropagationService.cs` — those belong to
+the three sibling tasks of this phase.

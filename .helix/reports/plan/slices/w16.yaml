@@ -1,0 +1,48 @@
+waveId: wave-next-w16
+status: planned
+# title: W16 — nothing the product knows lives only in a browser tab
+# source: inputs/next/w16-todo.md
+# requirements: reports/context/waves/w16-requirements.md
+# decisions: reports/architecture/waves/w16.md (all nine item rows filled; ADR-028 new, 15 ADRs amended)
+# caps: 20 tasks / 5 phases (reports/plan/next-run.json) -> 13 live tasks / 5 phases, 0 queued
+# Phase shape is forced, not chosen. The four promoted epic-18 tasks each claim
+#   `backend/tests/Raffa.Api.Tests/` in their bodies, which raw w16-todo.md §0.4
+#   forbids rewriting, so no two of them may share a phase (proved with
+#   `check_single_writer.py`). They therefore occupy phases 1-4, one each, and
+#   every other task is scheduled around them. See reports/audit/w16-hitl.md §3.
+# `web/openapi/raffa-api.v1.json` writers: E18/F02/US02/T01 (p2), E19/F06/US01/T01 (p3),
+#   E18/F03/US01/T01 (p4) -- one per phase, in that order. `web/src/api/client.ts`:
+#   E18/F02/US02/T01 (p2) and E19/F06/US01/T01 (p3) only.
+# NW-32 runs first: it changes the signatures of the same five services NW-11,
+#   NW-12 and NW-21 modify (w16-requirements.md §5 order constraint 1).
+# Launch: ./run.ps1 -Max -Slice w16 -o execution-fanout
+phases:
+  - id: 1
+    name: phase-1
+    tasks:
+      - {id: E18/F03/US02/T01, prompt: reports/workitems/epic-18-api-authentication/feature-03-interim-posture-retirement/us-02-every-write-names-its-actor/tasks/task-01-every-write-names-its-actor.md, produces: [actor-on-every-write], depends_on: [], effort: L, layer: backend, status: live}
+      - {id: E19/F03/US01/T01, prompt: reports/workitems/epic-19-server-side-state/feature-03-negotiation-step-ticks/us-01-step-ticks-api/tasks/task-01-step-ticks-api.md, produces: [negotiation-steps-api], depends_on: [], effort: L, layer: backend, status: live}
+      - {id: E19/F05/US01/T01, prompt: reports/workitems/epic-19-server-side-state/feature-05-worker-r0-queue-deleted/us-01-dead-r0-queue-deleted/tasks/task-01-dead-r0-queue-deleted.md, produces: [worker-r0-queue-deleted], depends_on: [], effort: S, layer: backend, status: live}
+  - id: 2
+    name: phase-2
+    tasks:
+      - {id: E18/F02/US02/T01, prompt: reports/workitems/epic-18-api-authentication/feature-02-identity-residuals/us-02-audit-read-for-a-real-admin/tasks/task-01-audit-read-for-a-real-admin.md, produces: [audit-read-api], depends_on: [], effort: M, layer: backend, status: live}
+      - {id: E19/F01/US01/T01, prompt: reports/workitems/epic-19-server-side-state/feature-01-renewal-action-read-back/us-01-renewal-action-api/tasks/task-01-renewal-action-api.md, produces: [renewal-action-api], depends_on: [actor-on-every-write], effort: M, layer: backend, status: live}
+      - {id: E19/F02/US01/T01, prompt: reports/workitems/epic-19-server-side-state/feature-02-quote-and-outcome-read-back/us-01-quote-read-api/tasks/task-01-quote-read-api.md, produces: [quote-read-api], depends_on: [actor-on-every-write], effort: M, layer: backend, status: live}
+      - {id: E19/F04/US01/T01, prompt: reports/workitems/epic-19-server-side-state/feature-04-outcome-links-savings/us-01-outcome-resolves-the-opportunity/tasks/task-01-outcome-resolves-the-opportunity.md, produces: [outcome-savings-link], depends_on: [actor-on-every-write], effort: M, layer: backend, status: live}
+  - id: 3
+    name: phase-3
+    tasks:
+      - {id: E18/F02/US01/T01, prompt: reports/workitems/epic-18-api-authentication/feature-02-identity-residuals/us-01-conversation-user-is-the-subject/tasks/task-01-conversation-user-is-the-subject.md, produces: [conversation-subject-keying], depends_on: [], effort: M, layer: backend, status: live}
+      - {id: E19/F06/US01/T01, prompt: reports/workitems/epic-19-server-side-state/feature-06-contract-and-client-publication/us-01-theme-b-contract-and-client/tasks/task-01-theme-b-contract-and-client.md, produces: [theme-b-contract-and-client], depends_on: [renewal-action-api, quote-read-api, negotiation-steps-api], effort: M, layer: frontend, status: live}
+  - id: 4
+    name: phase-4
+    tasks:
+      - {id: E18/F03/US01/T01, prompt: reports/workitems/epic-18-api-authentication/feature-03-interim-posture-retirement/us-01-role-headers-retired/tasks/task-01-role-headers-retired.md, produces: [role-headers-retired], depends_on: [audit-read-api, theme-b-contract-and-client], effort: L, layer: backend, status: live}
+      - {id: E19/F07/US01/T01, prompt: reports/workitems/epic-19-server-side-state/feature-07-session-stores-retired/us-01-actions-and-ticks-on-screen/tasks/task-01-actions-and-ticks-on-screen.md, produces: [renewal-and-steps-on-screen], depends_on: [theme-b-contract-and-client], effort: L, layer: frontend, status: live}
+      - {id: E19/F02/US02/T01, prompt: reports/workitems/epic-19-server-side-state/feature-02-quote-and-outcome-read-back/us-02-quote-outcome-on-screen/tasks/task-01-quote-outcome-on-screen.md, produces: [quote-outcome-on-screen], depends_on: [theme-b-contract-and-client], effort: S, layer: frontend, status: live}
+  - id: 5
+    name: phase-5
+    tasks:
+      - {id: E19/F08/US01/T01, prompt: reports/workitems/epic-19-server-side-state/feature-08-w16-integration/us-01-final-integration/tasks/task-01-w16-integration.md, produces: [w16-integration], depends_on: [worker-r0-queue-deleted, outcome-savings-link, conversation-subject-keying, role-headers-retired, renewal-and-steps-on-screen, quote-outcome-on-screen], effort: L, layer: backend, status: live}
+forks: []

@@ -195,3 +195,63 @@ is **still correct and now known to be insufficient**; ADR-026's second w15 foot
 
 No module boundary, project layout, dependency direction or host count changes.
 **`waves/w15.md` records this under NW-67.**
+
+## Amendment (2026-09-14, wave w16 — where the new state lives, where two modules are composed, and one dead host service is removed)
+
+Written by software-architect (owner) at the w16 council table. Serves
+**NW-13, NW-21, NW-32, NW-08, W16-01**. The **Decision outcome above is
+unchanged** — modular monolith, one project per bounded context, shared kernel,
+thin API/worker hosts, allow-listed dependency direction — and so are both w15
+footers. **No project is added, no host is added, and no module's allow-list
+moves.** Five clauses.
+
+**1. `contract_negotiation_step` is owned by `Raffa.Documents.Contracts`**
+(OQ-w16-006's module half; its product half is ADR-001's w16 clause 3).
+`Raffa.Renewals` is the tempting owner — the ticks sit beside a renewal action
+on the same screen — and it is **structurally impossible**: that module's
+allow-list is `[SharedKernel, Benchmark]` (`RenewalActionService.cs:23`),
+enforced by `DependencyDirectionTests`, so it cannot reference a contract. The
+table, the keys and the routes are **ADR-028 §D3**.
+
+**2. NW-21's savings resolution is composed in `Raffa.Api`** — the one project
+allowed to reference every module, and where `NegotiationOutcomePropagationService`
+already sits. `Raffa.Quotes` cannot see `Raffa.Savings`, and `Raffa.Savings`
+cannot see suppliers or contracts; `SavingsOpportunity.cs:19-22` says exactly
+that and names `Raffa.Api` as the place such a cross-module check belongs. No
+allow-list is widened to make the link work. **ADR-028 §D5.**
+
+**3. `Raffa.Suppliers.Products` gains one read-only lookup** (normalized name →
+supplier id). No module gains a dependency — `Raffa.Api` already references the
+module — and the lookup **never writes**: `SupplierResolver`'s resolve-or-create
+path is off-limits to the outcome flow, because recording a negotiation outcome
+must not mint a supplier row as a side effect.
+
+**4. NW-32's actor is a signature change across five modules, not a boundary
+change.** Nine service types take a **required `string` actor, positionally
+after the entity id** — the shape the three already-correct document paths use
+(`DocumentsEndpointExtensions.cs:147,512,576`, all passing `caller.Identity!`).
+**No new type and no ambient accessor**: an ambient actor would let the two
+caller-less sites compile and silently write nothing, which is the defect under
+a new name. Caller-less writes take a reserved **`system:<component>`**
+principal (security-architect S16-9) — the convention already live at
+`NegotiationOutcomePropagationService.cs:97` and `QuoteExtractionPipeline.SystemActor`.
+No module's allow-list changes; the five modules keep their dependencies.
+
+**5. Two deletions this ADR authorises.**
+
+- **`WorkspacePrincipalAuthorization` is deleted whole**, not merely stripped of
+  its `tenant_id` constant — adopting security-architect **S16-5**. Its only
+  non-test consumer is the audit route NW-08 re-guards; leaving the type behind
+  leaves a working claims-based authorizer for the next endpoint to pick up,
+  which is precisely how this defect arrived. `TestPrincipalStartupFilter.cs:27-42`
+  is test-only and its own comment `:11-12` says it is never registered by
+  production `Program`.
+- **`Raffa.Worker` drops the R0 queue trio** — `Queue/IQueueConsumer.cs`,
+  `Queue/InMemoryQueueConsumer.cs`, `Queue/QueueConsumerHostedService.cs` and
+  their registration at `WorkerServiceCollectionExtensions.cs:70-72` (W16-01), a
+  second live `IHostedService` in every deployed Worker. **`InMemoryExtractionQueue`
+  (`Raffa.Messaging`, `MessagingServiceCollectionExtensions.cs:37-41,61-65`)
+  stays** — it is the documented CI/local transport. The two must not be
+  confused; see the ADR-027 w16 footer.
+
+`waves/w16.md` records this under NW-13, NW-21, NW-32 and W16-01.

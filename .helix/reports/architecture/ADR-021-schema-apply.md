@@ -76,3 +76,28 @@ and `ConnectionStrings__Quotes` (Terraform git has Renewals only).
 
 Epic-09 / slice e09 only. Do not inject into a running e05. Do not rewrite
 e01–e08 or `wave-spec.execution.yaml`.
+
+## Amendment (2026-09-14, wave w16 — one regenerated script, and why the CI arrays do not move)
+
+Written by software-architect (owner) at the w16 council table. Serves
+**NW-13**. The **Decision outcome above is unchanged**: CI applies the
+checked-in idempotent EF SQL after the container update, and the API never calls
+`MigrateAsync`. Four clauses, all mechanical.
+
+1. **w16's only schema change is `contract_negotiation_step`** (ADR-003 w16
+   footer clause 1). It regenerates **one** existing script,
+   `backend/src/Raffa.Documents.Contracts/Migrations/Scripts/documents-contracts.sql`.
+2. **No workflow edit is owed, and one would be a defect.** The two script
+   arrays in `.github/workflows/backend.yml` (`:277-285` and `:309-317`) list
+   **modules**, and `Raffa.Documents.Contracts` is already in both. A new
+   migration inside an already-listed module therefore moves no CI YAML — this
+   wave's CI-YAML set stays exactly the NW-31 workflow pair delivery-manager
+   owns (their D7), and any `backend.yml` diff in this wave fails the
+   final-integration check.
+3. **The script is byte-compared** against an in-process regeneration by its
+   stale-check test. Hand-editing it, or letting two tasks regenerate it inside
+   one phase, are both failures: **one writer**.
+4. Nothing about the apply order, the `--idempotent` flag, the psql invocation
+   or the Terraform-injected connection strings changes.
+
+`waves/w16.md` records this under NW-13.

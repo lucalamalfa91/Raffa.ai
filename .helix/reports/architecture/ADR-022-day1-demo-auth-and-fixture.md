@@ -172,3 +172,114 @@ seed job (Decision outcome, third bullet) are untouched: they are data, not
 identity. Delivery-manager's ADR-016 w15 footer carries the consequence that
 matters operationally — **web must deploy before backend**, or `dev` locks every
 user out for the length of the gap.
+
+## Amendment (2026-09-14, wave w16 — the last interim *reader* retires, and the one header that does not)
+
+Seat: security-architect (owner). Serves **NW-31, NW-32**. The Decision outcome
+above is unchanged as the historical record of how `demo` ran from e10 to w14; the
+w14 and w15 footers are unchanged. This footer fires the **last two rows** of the
+w15 clause 4 retirement schedule and names, once, what must **not** retire with
+them. Rule ids `S16-n` are this seat's w16 lane.
+
+### 1. The schedule's remaining rows fire
+
+| Mechanism | After w16 | Removed by | Proof |
+|---|---|---|---|
+| `X-Role` / `X-Workspace-Role` | **gone** — read nowhere in `backend/src`, declared nowhere in `web/openapi/`, sent nowhere in `.github/` | NW-31 | S-T27 |
+| `"unattributed"` actor | **gone** — the constant is deleted; every row names a subject or a reserved principal | NW-32 | S-T28, S-T29 (ADR-011 w16 clauses 15–17) |
+| `X-User-Id` as identity | already gone in w15 | NW-05 | re-verified on `f0b3436`: zero reads in `backend/src` |
+| `X-Tenant-Id` as a **selector** | **stays** — see clause 5 | — | asserted positively, not swept |
+| Fixture / seeded `demo` data | unchanged — data, not identity | out of scope | — |
+
+**After this wave the interim *identity* posture is fully retired.** What remains
+under this ADR is the fixture seed, which is data.
+
+### 2. S16-6 — retiring `X-Role` must not turn `/api/capabilities` into a tenant-scoped route
+
+The live reader is `CapabilitiesEndpointExtensions.cs:54` (`RoleHeaderName =
+"X-Role"`), consumed at `:77-80`, gating the catalog at `:64-67`. Its own doc
+comment `:44-48` is load-bearing: the endpoint **deliberately never 401s**, "since
+the catalog itself is not sensitive, tenant data", and it takes no tenant at all.
+
+This seat's lane draft proposed membership-gating as the primary and named
+**dropping the admin gate entirely** as an acceptable alternative. The table took
+the alternative, and this seat **accepts it on verified grounds rather than
+deferring**: `GetCapabilities(HttpRequest)` (`:62`) takes no tenant and no caller,
+`CapabilityCatalog.All` is a **static, tenant-free** list, the client sends no
+`X-Tenant-Id` to this route, and `ICallerContext`'s ladder cannot express "200
+without a token" — so membership-gating would 400 every call from a shell
+component. **Not acceptable, then or now: keeping any client-asserted role.**
+
+**2a — the rule the alternative needs, and it is now load-bearing.** After this
+change the catalog is served **whole to an unauthenticated caller**. That is
+acceptable **only because the catalog discloses which admin features exist and
+nothing else**. Therefore: `CapabilityCatalog` carries **no tenant data, no
+per-tenant entry, no count, no workspace name and nothing derived from a caller**,
+and the task carries that as a test — the same response for no token, a non-Admin
+token and an Admin token. The property was previously protected by accident (the
+gate hid half the list); from w16 it is protected by the rule.
+
+### 3. S16-11 — `roleGate` on the wire is presentation, never authorization
+
+`roleGate` stays in the response as a label. It is not a control, and the client
+hiding an entry is not a control either: **every action behind an admin-gated entry
+is enforced server-side by membership on its own endpoint** (`WorkspaceRoleResolver.IsAdminAsync`,
+the 401→404→403 ladder of ADR-011 w16 clause 14). Recorded because OQ-w16-sa-02
+defers hiding admin-gated suggestion chips from non-Admins to W17 as **client
+presentation work** — this clause is the reason that deferral is safe, and the
+reason it must never be re-described as a security fix.
+
+### 4. OQ-w16-004 — w16 buys CI no new credential, and this seat reaches that from the identity plane
+
+Three seats converged from independent evidence (software-architect on ADR-027's
+text, delivery-manager's D1 on the Service Bus role assignments, cloud-architect on
+`infra/` itself). **The token option also fails on this lane's own ground, whatever
+the infrastructure says:**
+
+- An **app role on `azuread_application.api` plus an app-only token** is precisely
+  the token ADR-010 w15 §1.1 rejects by design — *"this API defines no application
+  role, so no app-only token should exist, and the rejection is what keeps it that
+  way."* Such a token carries **no `oid`**, therefore no membership, therefore no
+  tenant, so it would *also* need a bypass of `CallerContext`'s gate. That is a
+  **second authorization source, built for a CI job.** Refused.
+- The alternative — a **`workspace_membership` row making a service principal a
+  workspace Admin** — is worse: it puts a non-human principal in the table that
+  grants humans, where ADR-025's last-Admin guard and the member list both count it.
+
+**→ no new identity, no federated credential, no app role and no secret in w16**
+(ADR-010 and ADR-015 unchanged; ADR-011 w16 clause 19). **Owed to W17** with
+delivery-manager's bulk operator console, recorded so it is not re-derived: may a
+CI principal hold a topic-scoped **Send** right? This seat's inclination is **yes —
+Send only, topic-scoped, never `Manage`, never a SAS key** — and the actor such a
+path would write is already ruled by ADR-011 w16 clause 16.
+
+### 5. S16-7 — `X-Tenant-Id` does not retire, and the sweep must prove it did not
+
+The wave's shorthand is "retire the headers". `X-Tenant-Id` is **not** one of them:
+w15 clause 2 demoted it to a membership-verified **authorized selector**, which is
+what every tenant-scoped route depends on. A sweep that deletes it breaks the
+product. The grep assertion is therefore **paired** (S-T27): zero
+`X-Role`/`X-Workspace-Role` across `backend/src`, `web/`, `web/openapi/` and
+`.github/` outside historical ADR and acceptance records, **and `X-Tenant-Id`
+present and unchanged, asserted positively so the sweep cannot overrun.** This
+concurs with delivery-manager's D7 and client-architect's contract row, reached
+independently.
+
+### 6. The stale prose retires in the same task, because it is the thing that fakes the verdict
+
+`CapabilitiesEndpointExtensions.cs:41-48` still claims "No host authentication is
+wired yet"; `DocumentsEndpointExtensions.cs:80` holds a `TenantHeaderName` constant
+with zero usages; a dozen doc comments still assert the retired posture
+(`DocumentsEndpointExtensions.cs:69-76`, `ConversationsEndpointExtensions.cs:26`,
+`Program.cs:366,427`, `WorkspaceInvitesEndpointExtensions.cs:36,38`,
+`WorkspaceMembersEndpointExtensions.cs:28,30`). These are not cosmetic: **they are
+exactly what makes a grep-based audit return a false verdict**, in both directions —
+a reviewer greps `X-Role`, hits a comment, and re-opens a closed item; or greps
+`unattributed`, hits three doc comments, and reports a defect that no longer exists.
+They go in the same task as the mechanism they describe. ADR-011 w16 clause 16c
+carries the one instance of this trap that NW-32 creates and closes itself.
+
+**Unretired, and named so no task assumes otherwise:** `demo`'s fixture seed and the
+operator seed job are untouched, and **no w16 task flips `Invitations__Mail__Enabled`
+or `guest_provisioning_enabled` on `demo`** (`docs/waves/w15-acceptance.md:300`,
+`waves/w16.md` constraint 4).

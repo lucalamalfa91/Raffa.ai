@@ -287,3 +287,168 @@ clause 18).
 
 **Not decided here** (unchanged): branch protections, the promotion mechanism
 and the CI credential method stay with the body, ADR-016 and ADR-015.
+
+## Amendment (2026-09-15, wave w16)
+
+Item **NW-31**, plus the process question **OQ-w16-008** and this wave's order.
+Seat: delivery-manager, reconciled with cloud-architect (`PASS` — zero `infra/`
+delta), client-architect (`ADR-012` w16 clauses 25, 30 — two single-writer
+collisions this seat's draft did not carry) and product-owner (`ADR-001` w16
+clause 8). Everything above is unchanged — the body, the w14 footer and the w15
+footer — and `Status: accepted` stands. **Nothing is superseded.** No branch
+model changes and no protection is relaxed.
+
+**Clause numbering restarts at 1**, which is this ADR's own convention (w14
+clauses 1–5, w15 clauses 1–7, every cross-reference wave-qualified as "w14
+clause 4" / "w15 clause 5"). Recorded because this seat's lane draft proposed
+"continue at **8**" — carried over from ADR-016, which numbers **continuously**
+and says so in its own text ("Clause numbering continues at 23"). **The two
+ADRs use different conventions and the draft applied the wrong one**; a footer
+numbered 8–12 here would have produced citations ("ADR-014 w16 clause 8") that
+match nothing a reader can locate by wave. Corrected before promotion, not after.
+
+**1. w16's planned CI-YAML set is exactly TWO files, and it is a file-set
+change with a single writer.** w14 clause 4 applies unchanged: an unplanned
+`.github/workflows/**` diff is a defect, not a convenience, and the
+final-integration task fails on it. For w16 the set is
+`reprocess-tenant-documents.yml` (**deleted**) and `verify-tenant-corpus.yml`
+(**added**) — ADR-016 w16 clause 29. Verified on baseline `f0b3436`: that file
+is the **only** one under `.github/workflows` carrying any retired identity
+header (`X-Role` `:205`/`:256`, `X-Workspace-Role` `:206`/`:257`, `X-User-Id`
+`:204`/`:255`, `OPERATOR_USER_ID` `:95`). **`X-Tenant-Id` is not retired** and
+must survive the sweep (security S16-7). One temptation is named and refused
+again: `backend.yml`'s stale "eight"/"six" strings, parked since w14 for "the
+next wave that legitimately opens `backend.yml`" — **w16 does not**.
+
+**ADR-016 w15 clause 26's inherited question is asked and answered**: w16
+changes **no `infra/` file**, so nothing `dist/config.json` is built from moves
+— **no forced SPA redeploy is owed, and no `workflow_dispatch` is added to
+`web.yml`.** Recorded as a negative result rather than omitted, exactly as
+clause 26 requires of the wave that inherits it.
+
+**2. One PR this wave, and the two-merge shape must not be re-derived.**
+w15 clause 5 splits a wave into PR 1 (infrastructure) + PR 2 (the wave) **only
+when the wave changes `infra/`**. w16's `infra/` delta is **zero**, so clause 5
+does not apply: the wave is a single `integration → main` PR, exactly as w14
+clause 2 says. It cuts **no `demo-v*` tag** (ADR-016 w16 clause 32).
+
+**The trap this clause exists to close**: the wave *base* carries an unapplied
+`infra/` change it did not write (PR #118 — ADR-016 w16 clause 33). That apply
+is an **operator action on an already-authorised ADR-005 decision**; it is
+**not** a second PR, **not** a wave task, and **not** clause 5 firing. A
+reviewer who sees `infra/` in the recent *log* and reaches for the two-merge
+shape is reading the baseline as the wave. The assertion is a **two-dot diff** —
+`git diff --stat origin/main..HEAD -- infra` is empty — never "no infra commits
+in the range".
+
+**3. The close record is wave-scoped, and it is written after the merge.**
+`reports/execution/wave-close.md` is stamped `2026-09-14T02:53:30Z` — **before**
+PR #103 (`e52f663`) merged `integration` into `main`, and before #111–#117 — and
+it lists **9 of 11 w15 tasks as undelivered for a wave that is fully
+delivered**. Its **generic filename is what made it a trap**: it is the newest
+file with that name, so it reads as current forever. It cost this wave a
+seven-line banner at the top of `w16-requirements.md` to neutralise, and w15's
+gate stamp was never written either.
+
+**Rule**: the close record is **`reports/execution/wave-close-<w>.md`**, never
+the generic name, and it is written or refreshed **after** the
+`integration → main` PR merges. For w16 that is `wave-close-w16.md`, and per
+ADR-016 clause 18 it **states the promotion outcome even when there is none**.
+
+**OQ-w16-008 is ruled, and it is the same root cause.**
+`reports/plan/gates/` holds `e01…e13`, `readiness-gaps` and `w14` — **no
+`w15.hitl-ok`** — while `scripts/check_slice_prereqs.py:332` requires
+`<previous>.hitl-ok`. With `previous: w15`, `run.ps1 -Slice w16` **fails its
+prerequisites before fan-out**. **The operator stamps it at the w16 HITL gate**
+— `python scripts/check_slice_prereqs.py --record-hitl w15` — which is
+**accurate, not a rubber stamp**: w15 merged as PR #103 plus #111–#117 and every
+w15 area was re-verified against this checkout. **No task is created**; it
+belongs in `reports/audit/w16-hitl.md` as an operator prerequisite.
+
+**4. W16-A1, the gate's content.** Short, because the base is clean. On the wave
+base, before `reports/plan/gates/w16.hitl-ok` is created:
+
+(a) `git fetch origin`; **the base SHA is read at the gate, never quoted from a
+wave document** (w15 clause 1) — expect `origin/main == helix/w16 == f0b3436`;
+if it moved, merge and re-check. *This clause just proved itself twice: the SHA
+this wave's own documents quoted went stale **inside one wave, between two
+passes of the same council** (`ff66ee6` → `f0b3436`). Read it, never quote it.*
+(b) zero product-tree delta —
+`git diff --stat origin/main..HEAD -- backend web infra .github docs scripts`
+is empty (w15 clause 2);
+(c) `integration` **re-created** from the wave base, never merged into (w15
+clause 4); no second wave live against it;
+(d) `backend.yml`'s **build + test** job green **at the base commit** (w15
+clause 3 — a red `main` is no `dev` deploy, and no `dev` deploy is no wave).
+**Actually run it this wave**: the base is two merges newer than the green state
+first cited, and PR #119 changed `DocumentQueryService.cs` *together with*
+`DocumentsListCountsTests.cs` — the exact shape that produces a Testcontainers
+fixture gap;
+(e) `python scripts/check_slice_prereqs.py --record-hitl w15` (clause 3);
+(f) `git tag -l "demo-v*"` read and **written down** (ADR-016 w16 clause 32);
+(g) **the baseline's infra apply is confirmed landed on `dev`** before any
+acceptance walk, and **the running image tag is checked against `main`** — a
+skipped deploy behind a red test job is silent, and a throughput judgement taken
+before the apply measures the previous config (ADR-016 w16 clause 33).
+
+W15-A1's interactive-sign-in item is **not** carried forward as a gate item —
+NW-05 has landed and the token path is in daily use; it becomes an acceptance
+step for NW-08 instead.
+
+**5. The wave's order, and a correction to this seat's own published skeleton.**
+Binding constraints (the intake's §5 six, plus this seat's):
+
+1. **The workflow task is independent and stands alone** — it deletes API calls,
+   so nothing depends on it and it depends on nothing. Its own task, so a phase
+   boundary never blocks it and **exactly one task in the wave claims
+   `.github/workflows/**`** (`check_single_writer.py`).
+2. **Theme A strictly before theme B** — NW-32 edits the same five services
+   NW-11/NW-12/NW-21 modify; sharing a phase fails `check_single_writer.py`.
+3. **Two contract tasks, never six** (ADR-012 §3) — one theme-A
+   (NW-08 + NW-31), one theme-B — in **different phases**.
+4. **`web/src/api/client.ts` is a one-writer-per-phase file** —
+   client-architect's ADR-012 w16 clause 25. It is hand-written glue, not
+   generated, and gains **three** methods (`getQuote` from NW-12;
+   `getNegotiationSteps` + `putNegotiationSteps` from NW-13).
+5. **NW-11 and NW-13 collide inside `web/src/routes/contracts/contract360/index.tsx`**
+   (`:6`, `:20`, shared `handleUndo` `:261-269`) ⇒ **one task, or different
+   phases** (ADR-012 w16 clause 30).
+6. **NW-12 with or before NW-21**; **W16-01 last and first to cut**; **the
+   final-integration task is alone in the last phase**.
+7. **No task opens `infra/`, and no task opens a workflow other than the NW-31
+   pair.**
+
+**The correction.** This seat's lane draft recommended
+`P3 = NW-11 · NW-12 · NW-13`. **That skeleton fails `check_single_writer.py`
+twice** — on `client.ts` (NW-12's wrapper against NW-13's two) and on
+`contract360/index.tsx` (NW-11 and NW-13 both retiring a store and both touching
+`handleUndo`). **Neither collision was in the intake's constraint list**; both
+came from client-architect at the table, and both are inside the one artefact
+this seat owns — the wave's order. Recorded as a correction rather than quietly
+re-worded, because a decomposer reads the draft.
+
+**Corrected skeleton (a hint for the decomposer, not a ruling — ≤ 5 phases,
+≤ 20 tasks; ≈ 13 tasks):**
+
+- **P1** — NW-07 · NW-08 backend · NW-31 capabilities + tests · **NW-31 workflow**
+- **P2** — NW-32 (nine services, five modules) · **contract-A** (`/api/audit`
+  path **with** the `info.description` sentence that currently denies it, delete
+  the `X-Role` parameter `:5239`/`:5236` and the stale `X-Workspace-Role` prose
+  `:1227`, regenerate `schema.ts`)
+- **P3** — NW-12 **full stack** (sole writer of the contract file *and*
+  `client.ts` this phase) · NW-11 **backend** · NW-13 **backend** (table +
+  migration + endpoints) · NW-21 (backend only — zero contract, zero client) ·
+  W16-01
+- **P4** — **one combined web task**: NW-11's and NW-13's read-back halves, sole
+  writer of `contract360/index.tsx`, `client.ts`, the contract file and
+  `schema.ts` (this is constraint 5 resolved as "one task")
+- **P5** — final integration, alone
+
+Every phase has **at most one** writer of the contract file, at most one of
+`client.ts`, and at most one of `contract360/index.tsx`; theme A completes in
+P1–P2 before theme B opens in P3.
+
+**Not decided here** (unchanged): branch protections, the promotion mechanism
+and the CI credential method stay with the body, ADR-016 and ADR-015 — and
+**ADR-015 is explicitly untouched by w16**: no federated credential, no GitHub
+secret, no subject claim and no Graph right changes.

@@ -262,3 +262,79 @@ payload, and the compliance test on the fake HTTP handler still asserts it.
 4. Every other ADR-024 instruction — market rows never in the tenant index, the
    provenance label on market numbers, the golden set, the no-tools compliance
    test, the V2 e2e path — is **unchanged and still required**.
+
+## Amendment (2026-09-14, wave w16 — `OQ-askv2-005` retires with the conversation key, and the capability catalog is served whole)
+
+Written by software-architect at the w16 council table. Serves **NW-07,
+NW-31**. The **Decision outcome above is unchanged and still in force**: the
+three sources, the one-rule citation contract, the no-tools `answer` role with
+its grounding and numeric guards, the conversations model, the deterministic
+strategies and the V2 IA are all untouched. Two clauses.
+
+### 1. `OQ-askv2-005` retires with NW-07
+
+The conversation key **is** the token subject (`oid`) on this tree:
+`TryResolveUserId` exists nowhere under `backend/src`, all five
+conversation/chat handlers resolve through `ICallerContext`
+(`ConversationsEndpointExtensions.cs:100→111`, `:142→153`, `:188→199`,
+`:237→248`; `ChatEndpointExtensions.cs:56→67`), absent identity is **401**
+(`CallerContext.cs:117-120`, never the 400 the old prose promises), and
+`X-User-Id` is read nowhere. `inputs/requirements.md` R-CONV-03 (`:252-256`) is
+satisfied in substance.
+
+Two things the NW-07 task must still do, and one it must not:
+
+- **Delete the stale paragraph at `ConversationsEndpointExtensions.cs:23-37`**,
+  which still asserts an `X-User-Id` fallback, a 400, and a
+  `<see cref="TryResolveUserId"/>` that no longer resolves. A doc comment that
+  contradicts the code beneath it is what makes a grep-based audit return a
+  false verdict — the same class NW-31 and NW-32 are sweeping.
+- **Record the pre-w15 rows as retired; never re-key them** (product-owner,
+  ADR-001 w16 clause 1). Security-architect **S16-3** binds the mechanism: a
+  backfill that re-points `conversation.user_id` by matching
+  `workspace_user.Email` would move ownership through the weakest key in the
+  system. Orphaned history is a smaller harm than mis-attributed history.
+- **Do not implement the promoted task's DoD line `:69`** (product-owner,
+  ADR-001 w16 clause 1): normalizing the subject re-introduces exactly what
+  ADR-010 rejected — `oid` is opaque and case-sensitive
+  (`CallerIdentity.cs:60-68,80-81`).
+
+The one-comparison-rule ruling for `ExternalSubjectId` is **ADR-010's**
+(security-architect S16-1/S16-2), cited here and **not** decided here.
+
+### 2. The capability catalog is served whole; the role filter is deleted with `X-Role` (NW-31)
+
+`GET /api/capabilities` stops reading a client-asserted role **and stops
+filtering**: it returns every catalog row, each carrying its own `roleGate`.
+
+Evidence, gathered because the alternative was the tempting one:
+
+- the endpoint takes **no tenant and no caller** (`CapabilitiesEndpointExtensions.cs:62`),
+  and its own doc `:44-48` records that it deliberately never 401s "since the
+  catalog itself is not sensitive, tenant data";
+- the catalog is **static** (`Raffa.Chat/Application/Capabilities/CapabilityCatalog.cs:31`)
+  and contains no tenant fact;
+- **Ask's own routing already reads it in-process with no gate at all**
+  (`AskCopilotService.cs:181-206`, `:900`) — so the HTTP filter never governed
+  the answer a user actually receives;
+- **nothing in `web/src` reads `roleGate`**: the SPA consumes the catalog only
+  to pick suggestion chips (`askSuggestions.ts:85-94`, `askViewModel.ts:384-390`).
+
+This adopts **security-architect S16-6's named-acceptable alternative** rather
+than its primary form. The primary form — membership-derived admin rows —
+requires "no token ⇒ 200 non-admin catalog, never 401", which `ICallerContext`'s
+ladder cannot express; it would need a bespoke soft-auth path on a route that
+takes no tenant, and because the client sends no `X-Tenant-Id` on this call
+(`client.ts:2760-2765`) a tenant-scoped version returns **400 on every request**
+from a shell component rendered on every screen. `roleGate` **stays on the
+wire** as the presentation signal ADR-012's w14 footer makes the client's
+business.
+
+**Consequence, recorded rather than discovered**: an admin-gated capability's
+example questions may now surface as a suggestion chip for a non-Admin. That is
+a **label, never an authorization** — every admin action behind it is enforced
+server-side by membership (NW-08's ladder, ADR-025), and the catalog discloses
+only *which admin features exist*. Hiding them is client presentation work, not
+a server gate: **OQ-w16-sa-02**, W17.
+
+`waves/w16.md` records this under NW-07 and NW-31.
