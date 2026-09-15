@@ -399,6 +399,18 @@ remaining reader of `X-Role` is the tenant-agnostic `GET /api/capabilities`,
 and it authorizes nothing — it merely hides the `workspace-members` catalog
 entry from a non-Admin.
 
+**The identity is never lower-cased, anywhere in this chain** (ADR-010 w16
+footer S16-2, task E18/F02/US01/T01): `oid` is an opaque, case-sensitive Entra
+object id, so `Raffa.Api.Infrastructure.CallerContext`/`WorkspaceRoleResolver`
+and `Raffa.Identity.Workspace.Infrastructure.WorkspaceDirectoryService` all
+compare it ordinally, and `Raffa.SharedKernel.Tenancy.CallerIdentityContext`
+(the seam `GET /api/workspaces` uses to set the `app.identity_subject` Postgres
+session GUC the `identity_self` RLS policy reads) only trims it — it used to
+also lower-case it, which silently broke that policy's own `external_subject_id
+= guc` leg for any subject that was not already a canonical lowercase GUID.
+Only the `Email` leg lower-cases (both sides, in SQL), matching how it is
+always stored.
+
 **Audit rows are written inside the tenant scope**, by the services rather than
 by the endpoints: `audit_event` is itself RLS-protected, so a write with no
 ambient tenant is rejected by Postgres (ADR-009/ADR-011).

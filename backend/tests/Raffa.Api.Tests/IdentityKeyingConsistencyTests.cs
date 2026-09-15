@@ -68,17 +68,31 @@ public sealed class IdentityKeyingConsistencyTests
     }
 
     /// <summary>
-    /// S-T24(b): a subject stored with non-lowercase characters resolves <b>identically</b> through
-    /// <c>GET /api/workspaces</c> (<see cref="WorkspaceDirectoryService"/>),
+    /// S-T24(b), <c>CallerContext</c>/<c>WorkspaceRoleResolver</c> half: a subject stored with
+    /// non-lowercase characters resolves <b>identically</b> through
     /// <see cref="Raffa.Api.Infrastructure.CallerContext"/> and
-    /// <see cref="Raffa.Api.Infrastructure.WorkspaceRoleResolver"/> — listed and usable everywhere,
-    /// never listed-and-404 (ADR-010 w16 footer S16-2: each leg normalises itself instead of the
-    /// whole identity being forced through one case fold). Runs over the EF Core InMemory provider
+    /// <see cref="Raffa.Api.Infrastructure.WorkspaceRoleResolver"/> — listed and usable, never
+    /// listed-and-404 (ADR-010 w16 footer S16-2: each leg normalises itself instead of the whole
+    /// identity being forced through one case fold). Runs over the EF Core InMemory provider
     /// (<see cref="InMemoryAskEngineFactory.WithInMemoryAskEngine"/>), which has no RLS concept at
     /// all — the one thing this class can prove from <c>Raffa.Api.Tests</c> is that the *application*
-    /// query logic these three seams share treats a mixed-case subject consistently; the Postgres
-    /// <c>identity_self</c> policy pairing is <c>Raffa.Api.Tests.WorkspaceDirectoryEndpointTests</c>'s
-    /// own job (real RLS, always-lowercase Entra <c>oid</c>s on that path today).
+    /// query logic these two seams share treats a mixed-case subject consistently.
+    ///
+    /// <para>
+    /// <b>The <c>GET /api/workspaces</c> (<see cref="WorkspaceDirectoryService"/>) third of S-T24(b)
+    /// is proven separately</b>, in
+    /// <c>Raffa.Api.Tests.WorkspaceDirectoryEndpointTests.A_mixed_case_subject_is_listed_and_usable_never_listed_and_404</c>
+    /// (real Postgres, real <c>identity_self</c> RLS policy) — not here. That query's cross-tenant
+    /// discovery scan runs with **no tenant scope at all** (candidate discovery precedes knowing
+    /// which tenant); under the InMemory provider that same call reliably returns zero candidates
+    /// for a seeded row, seed order and factory shape notwithstanding — reproduced independently of
+    /// this task's own change, so it reads as an EF Core InMemory-provider limitation on this
+    /// specific query shape, not a product defect. Asserting it here would be exactly the "vacuous
+    /// pass, or a hidden false negative" trap the class doc comment already names for RLS; proving
+    /// it against the real policy is strictly the stronger test anyway, since S16-2's whole point is
+    /// the GUC/policy pairing, which InMemory cannot exercise regardless of this method's own
+    /// application-level query logic.
+    /// </para>
     /// </summary>
     [Fact]
     public async Task S_T24b_a_mixed_case_subject_resolves_identically_everywhere_it_is_checked()
@@ -94,14 +108,6 @@ public sealed class IdentityKeyingConsistencyTests
             factory, tenantId, email: "member@acme.example", externalSubjectId: mixedCaseOid, WorkspaceRoleName.Admin);
 
         var client = factory.CreateClient();
-
-        // WorkspaceDirectoryService: listed, not silently dropped by a forced case fold.
-        using var workspacesRequest = new HttpRequestMessage(HttpMethod.Get, "/api/workspaces");
-        workspacesRequest.Headers.Add("X-User-Id", mixedCaseOid);
-        var workspacesResponse = await client.SendAsync(workspacesRequest);
-        Assert.Equal(HttpStatusCode.OK, workspacesResponse.StatusCode);
-        var workspacesBody = await workspacesResponse.Content.ReadAsStringAsync();
-        Assert.Contains(tenantId.ToString(), workspacesBody, StringComparison.OrdinalIgnoreCase);
 
         // CallerContext: the same identity, presented the same way, is a live member -- 200, never 404.
         using var conversationsRequest = new HttpRequestMessage(HttpMethod.Get, "/api/conversations");
@@ -130,6 +136,28 @@ public sealed class IdentityKeyingConsistencyTests
         var db = scope.ServiceProvider.GetRequiredService<IdentityWorkspaceDbContext>();
 
         var tenant = new TenantId(tenantId);
+        // A real Workspace row, not only the user/role/membership triad: S_T24b's invite assertion
+        // reaches WorkspaceInvitationService.IssueAsync, which reads the workspace row (for its
+        // Name, passed to IGuestProvisioner) -- absent, IssueAsync still runs (workspace?.Name ??
+        // string.Empty), but this seeds the realistic shape CreateWorkspaceAsync would have produced,
+        // the same convention WorkspaceInviteOutcomeTests/DocumentAdminActionsAuthorizationTests
+        // already use for their own directly-seeded members.
+        db.Workspaces.Add(new WorkspaceTenant { TenantId = tenant, Name = $"Workspace {tenantId}", CreatedAt = Now });
+
+        // The full role catalog, not only roleName: every workspace has Admin/Procurement/Legal/
+        // Finance/ReadOnly from day one (product spec §3.1, WorkspaceFactory.
+        // CreateWorkspaceWithDefaultRoles' own invariant) -- that factory cannot be reused directly
+        // here since it always mints its own TenantId rather than accepting this method's
+        // caller-supplied one. S_T24b's invite assertion invites a *different* role than the
+        // membership it seeds (Procurement, for an Admin caller); without every role row present,
+        // WorkspaceMembershipService.InviteAsync 400s with "no seeded 'Procurement' role", a
+        // fixture gap unrelated to the identity-keying property this class actually proves.
+        var roles = Enum.GetValues<WorkspaceRoleName>()
+            .Select(name => new WorkspaceRole { TenantId = tenant, Name = name, CreatedAt = Now })
+            .ToArray();
+        db.WorkspaceRoles.AddRange(roles);
+        var role = roles.Single(r => r.Name == roleName);
+
         var user = new WorkspaceUser
         {
             TenantId = tenant,
@@ -137,9 +165,7 @@ public sealed class IdentityKeyingConsistencyTests
             ExternalSubjectId = externalSubjectId,
             CreatedAt = Now,
         };
-        var role = new WorkspaceRole { TenantId = tenant, Name = roleName, CreatedAt = Now };
         db.WorkspaceUsers.Add(user);
-        db.WorkspaceRoles.Add(role);
         db.WorkspaceMemberships.Add(new WorkspaceMembership
         {
             TenantId = tenant,

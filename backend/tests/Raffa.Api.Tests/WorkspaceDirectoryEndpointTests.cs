@@ -462,6 +462,52 @@ public sealed class WorkspaceDirectoryEndpointTests : IClassFixture<WorkspaceDir
         Assert.Equal(JsonValueKind.Null, only.GetProperty("currency").ValueKind);
     }
 
+    /// <summary>
+    /// S-T24(b), <c>GET /api/workspaces</c> third (ADR-010 w16 footer S16-2; task
+    /// E18/F02/US01/T01): a subject stored with non-lowercase characters is listed and usable —
+    /// never listed-and-404 — proven here against the <b>real</b> <c>identity_self</c> RLS policy
+    /// (<c>identity-workspace.sql:198-206</c>), which is what makes this the stronger half of
+    /// S-T24(b) (<c>Raffa.Api.Tests.IdentityKeyingConsistencyTests.S_T24b_...</c>'s own doc comment
+    /// explains why the EF Core InMemory provider cannot stand in for it here). Before this task,
+    /// <c>Raffa.SharedKernel.Tenancy.CallerIdentityContext.BeginIdentityScope</c> force-lower-cased
+    /// every identity before it reached <c>app.identity_subject</c>, so the policy's ordinal
+    /// <c>external_subject_id = guc</c> leg silently stopped matching any row whose
+    /// <c>ExternalSubjectId</c> was not itself a canonical lowercase GUID — this test is what that
+    /// regressed. <see cref="CreateWorkspaceAsync"/> cannot seed this scenario (it needs an
+    /// email-shaped identity — <c>WorkspaceProvisioningService.CreateWorkspaceAsync</c> requires
+    /// one), so this test builds its own requests with an explicit
+    /// <see cref="TestUserIdAuthenticationHandler.UserEmailHeaderName"/> header, modelling the real
+    /// shape of an Entra token: a GUID-shaped, case-sensitive <c>oid</c> plus a separate address.
+    /// </summary>
+    [Fact]
+    public async Task A_mixed_case_subject_is_listed_and_usable_never_listed_and_404()
+    {
+        var client = _fixture.CreateClient();
+        const string mixedCaseOid = "AbC-9f2D-Entra-Object-Id";
+        const string email = "mixed-case-owner@acme.example";
+
+        using var createRequest = new HttpRequestMessage(HttpMethod.Post, "/api/workspaces")
+        {
+            Content = JsonContent.Create(new { name = "Mixed Case Co" }),
+        };
+        createRequest.Headers.Add("X-User-Id", mixedCaseOid);
+        createRequest.Headers.Add(TestUserIdAuthenticationHandler.UserEmailHeaderName, email);
+        var createResponse = await client.SendAsync(createRequest);
+        await AssertStatusAsync(HttpStatusCode.Created, createResponse);
+        using var createBody = JsonDocument.Parse(await createResponse.Content.ReadAsStringAsync());
+        var tenantId = createBody.RootElement.GetProperty("id").GetGuid();
+
+        using var listRequest = new HttpRequestMessage(HttpMethod.Get, "/api/workspaces");
+        listRequest.Headers.Add("X-User-Id", mixedCaseOid);
+        var response = await client.SendAsync(listRequest);
+        await AssertStatusAsync(HttpStatusCode.OK, response);
+
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var only = Assert.Single(EnumerateArray(body.RootElement.GetProperty("workspaces")));
+        Assert.Equal(tenantId, only.GetProperty("id").GetGuid());
+        Assert.Equal("Admin", only.GetProperty("role").GetString());
+    }
+
     [Fact]
     public async Task ContractCount_reflects_real_validated_contract_data()
     {
