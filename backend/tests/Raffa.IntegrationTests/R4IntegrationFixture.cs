@@ -7,6 +7,7 @@ using Raffa.Identity.Workspace.Infrastructure;
 using Raffa.Quotes.Infrastructure;
 using Raffa.Savings.Infrastructure;
 using Raffa.SharedKernel;
+using Raffa.Suppliers.Products.Infrastructure;
 using Raffa.SharedKernel.Storage;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -108,6 +109,18 @@ public sealed class R4IntegrationFixture : WebApplicationFactory<Program>, IAsyn
             await db.Database.MigrateAsync();
         }
 
+        // Task E19/F04/US01/T01 (outcome-resolves-the-opportunity): POST /api/negotiations/outcomes
+        // with no savingsOpportunityId now always dials ISupplierNameLookup against this schema
+        // (ResolveSavingsOpportunityIdAsync). QuoteIntegrationFixture already migrated it for the
+        // same reason; left on appsettings.Development.json's localhost string the lookup 500s
+        // in CI after the capture itself is already durable.
+        var suppliersOptions = new DbContextOptionsBuilder<SuppliersDbContext>();
+        SuppliersDbContextOptions.Configure(suppliersOptions, superuserConnectionString);
+        await using (var db = new SuppliersDbContext(suppliersOptions.Options))
+        {
+            await db.Database.MigrateAsync();
+        }
+
         var auditOptions = new DbContextOptionsBuilder<AuditDbContext>();
         AuditDbContextOptions.Configure(auditOptions, superuserConnectionString);
         await using (var db = new AuditDbContext(auditOptions.Options))
@@ -143,6 +156,7 @@ public sealed class R4IntegrationFixture : WebApplicationFactory<Program>, IAsyn
         builder.UseSetting("ConnectionStrings:Audit", _appConnectionString);
         builder.UseSetting("ConnectionStrings:Quotes", _appConnectionString);
         builder.UseSetting("ConnectionStrings:Savings", _appConnectionString);
+        builder.UseSetting("ConnectionStrings:Suppliers", _appConnectionString);
         // No R4 scenario exercises Renewals, but Program.cs's own fail-fast connection string check
         // requires it regardless (same "point every module at this run's own Testcontainers instance"
         // rationale every prior R*IntegrationFixture gives).
