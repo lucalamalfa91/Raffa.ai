@@ -53,7 +53,8 @@ public sealed class R3CrossTenantIsolationTests : IClassFixture<R3IntegrationFix
                     Currency: "USD",
                     EstimatedSavingsLow: 4_000m,
                     EstimatedSavingsHigh: 9_000m,
-                    Confidence: 0.85));
+                    Confidence: 0.85),
+                SavingsOpportunityService.SystemActor);
 
             Assert.True(created.IsSuccess);
             opportunityIdForA = created.Value.Id;

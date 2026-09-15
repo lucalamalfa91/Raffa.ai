@@ -254,7 +254,8 @@ public sealed class R3EndToEndTests : IClassFixture<R3IntegrationFixture>
                     Currency: "USD",
                     EstimatedSavingsLow: comparison.TotalSavingsRangeLow!.Value,
                     EstimatedSavingsHigh: comparison.TotalSavingsRangeHigh!.Value,
-                    Confidence: comparison.Benchmark.Confidence));
+                    Confidence: comparison.Benchmark.Confidence),
+                SavingsOpportunityService.SystemActor);
 
             Assert.True(created.IsSuccess);
             Assert.Equal(SavingsOpportunityStatus.Identified, created.Value.Status);

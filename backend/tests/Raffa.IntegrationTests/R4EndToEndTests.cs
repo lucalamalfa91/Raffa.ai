@@ -304,7 +304,8 @@ public sealed class R4EndToEndTests : IClassFixture<R4IntegrationFixture>
                     Currency: "USD",
                     EstimatedSavingsLow: 40_000m,
                     EstimatedSavingsHigh: 70_000m,
-                    Confidence: confidenceScore));
+                    Confidence: confidenceScore),
+                SavingsOpportunityService.SystemActor);
 
             Assert.True(created.IsSuccess);
             Assert.Equal(SavingsOpportunityStatus.Identified, created.Value.Status);
