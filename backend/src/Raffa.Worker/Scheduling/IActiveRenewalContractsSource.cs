@@ -14,8 +14,7 @@ namespace Raffa.Worker.Scheduling;
 /// by design <c>Raffa.Renewals</c> never receives from this port directly (it only ever sees the
 /// <see cref="ContractRenewalTerms"/> the host already assembled for one tenant at a time).
 ///
-/// R0/R2 placeholder for the concrete adapter, same shape as the
-/// <c>Raffa.Worker.Queue.IQueueConsumer</c> "R0 placeholder" pattern: enumerating every tenant's
+/// R0/R2 placeholder for the concrete adapter: enumerating every tenant's
 /// active contracts requires a cross-tenant workspace listing (<c>Raffa.Identity.Workspace</c>)
 /// plus a per-tenant, RLS-scoped contract query (<c>Raffa.Documents.Contracts</c>) — the former
 /// is not referenced by <c>Raffa.Worker.csproj</c> today, so wiring a real implementation is

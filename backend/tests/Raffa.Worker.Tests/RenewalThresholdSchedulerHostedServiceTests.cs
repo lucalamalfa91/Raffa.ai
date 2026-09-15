@@ -8,8 +8,7 @@ namespace Raffa.Worker.Tests;
 /// Proves task E03/F02/US01/T01's own "daily scheduler" claim (parent story
 /// us-01-threshold-scheduler: "a daily scheduler that fires renewal/cancellation threshold
 /// events") actually runs as a real, recurring background loop inside the deployable Worker host —
-/// not just that <c>RenewalThresholdScheduler</c> is registered and unused. Mirrors
-/// <see cref="DeployableWorkerTests.Worker_consumes_a_queued_message_end_to_end"/>'s realtime-wait
+/// not just that <c>RenewalThresholdScheduler</c> is registered and unused. Same realtime-wait
 /// style for the identical reason: a <see cref="BackgroundService"/>'s loop can only be observed by
 /// actually letting it run for a bounded amount of wall-clock time.
 ///
