@@ -287,4 +287,46 @@ public sealed class DocumentUploadServiceTests : IAsyncLifetime
             Assert.Empty(await dbAsTenantB.ExtractionJobs.ToListAsync());
         }
     }
+
+    /// <summary>
+    /// w17 immediate-visibility: verifies that uploading a document creates a linked
+    /// <see cref="Contract"/> shell immediately, so <see cref="PortfolioQueryService"/>
+    /// can return the row without waiting for the extraction worker. The document's
+    /// <see cref="Document.ContractId"/> must be set to the newly-created contract's id,
+    /// and the contract's <see cref="Contract.Status"/> must be the bootstrap placeholder.
+    /// </summary>
+    [Fact]
+    public async Task Upload_creates_a_linked_contract_shell_for_immediate_portfolio_visibility()
+    {
+        var tenantId = TenantId.New();
+        var storage = new RecordingDocumentStorage();
+        var auditWriter = new RecordingAuditWriter();
+        var tenantContext = new TenantContext();
+        var now = new DateTimeOffset(2026, 9, 15, 12, 0, 0, TimeSpan.Zero);
+
+        await using var db = CreateAppContext(tenantContext);
+        var service = new DocumentUploadService(
+            db, storage, new NoOpExtractionQueuePublisher(), tenantContext, new FixedClock(now), auditWriter);
+
+        using var content = new MemoryStream("sample pdf bytes"u8.ToArray());
+        var result = await service.UploadAsync(tenantId, "CT-002_BluePeak_1.pdf", "application/pdf", content, "uploader@example.com");
+
+        Assert.True(result.IsSuccess);
+        var uploaded = result.Value;
+
+        using (tenantContext.BeginScope(tenantId))
+        {
+            await using var readDb = CreateAppContext(tenantContext);
+
+            // The document is linked to a contract immediately — ContractId is not null.
+            var document = await readDb.Documents.SingleAsync(d => d.Id == uploaded.DocumentId);
+            Assert.NotNull(document.ContractId);
+
+            // The bootstrap contract shell exists and its status is the "processing" placeholder.
+            var contract = await readDb.Contracts.SingleAsync(c => c.Id == document.ContractId!.Value);
+            Assert.Equal(tenantId, contract.TenantId);
+            Assert.Equal("processing", contract.Status);
+            Assert.Equal(ContractDocumentType.Other, contract.Type);
+        }
+    }
 }

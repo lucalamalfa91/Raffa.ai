@@ -2,6 +2,17 @@ import { Link, useNavigate } from "react-router-dom";
 import { formatAnnualSpend, formatAutoRenewal, formatDateOnly, getContractTypeLabel, getPortfolioRiskTag, getPortfolioStatusTag } from "./portfolioTableFormatters";
 import type { PortfolioRow } from "./portfolioViewModel";
 
+/**
+ * w17 immediate-visibility: returns the label to show in the "Contract" column. For validated
+ * contracts, this is the contract-type label (same as before). For pending contracts (still
+ * uploading / processing), the filename is the only identifying information available, so it is
+ * shown instead. A missing filename (orphaned shell) falls back to the type label.
+ */
+function getContractLabel(isPending: boolean, fileName: string | null | undefined, type: import("../../api/client").PortfolioContractType): string {
+  if (isPending && fileName) return fileName;
+  return getContractTypeLabel(type);
+}
+
 export interface PortfolioTableProps {
   /** Already validated-only and sorted by notice deadline (`portfolioViewModel.ts#buildPortfolioRows`). */
   rows: readonly PortfolioRow[];
@@ -63,15 +74,16 @@ export default function PortfolioTable({ rows, moreColumns }: PortfolioTableProp
           </tr>
         </thead>
         <tbody>
-          {rows.map(({ item, cancelDays, isUrgent }) => {
+          {rows.map(({ item, cancelDays, isUrgent, isPending }) => {
             const statusTag = getPortfolioStatusTag(item.status);
             const riskTag = getPortfolioRiskTag(item.risk);
             const contractHref = `/contracts/${item.contractId}`;
+            const contractLabel = getContractLabel(isPending, item.fileName, item.type);
 
             return (
               <tr
                 key={item.contractId}
-                className={`portfolio-row${isUrgent ? " row-critical" : ""}`}
+                className={`portfolio-row${isUrgent ? " row-critical" : ""}${isPending ? " row-pending" : ""}`}
                 onClick={(event) => {
                   // The Contract cell's own <Link> handles its click natively; everywhere else on
                   // the row, follow it (markup.html's `cg-row` row click).
@@ -81,7 +93,10 @@ export default function PortfolioTable({ rows, moreColumns }: PortfolioTableProp
               >
                 <td className="portfolio-cell-supplier">{item.supplierName ?? "—"}</td>
                 <td className="portfolio-cell-contract">
-                  <Link to={contractHref}>{getContractTypeLabel(item.type)}</Link>
+                  {/* w17: pending rows link to contract 360 but show the filename as the label */}
+                  <Link to={contractHref} title={isPending ? item.fileName ?? undefined : undefined}>
+                    {contractLabel}
+                  </Link>
                 </td>
                 <td className="portfolio-table-numeric portfolio-cell-spend">{formatAnnualSpend(item.annualSpend)}</td>
                 <td>{formatDateOnly(item.endDate)}</td>

@@ -358,7 +358,7 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": { items: ({ contractId: string; supplierId: string | null; supplierName: string | null; type: "Msa" | "OrderForm" | "Amendment" | "Sow" | "RenewalLetter" | "Other"; annualSpend: number | null; currency?: string; startDate: string | null; endDate: string | null; renewalDate: string | null; cancellationDeadline: string | null; autoRenewal: boolean; status: string; risk: string | null })[]; page: number; pageSize: number; totalCount: number; processingDocumentCount: number };
+          "application/json": { items: ({ contractId: string; supplierId: string | null; supplierName: string | null; type: "Msa" | "OrderForm" | "Amendment" | "Sow" | "RenewalLetter" | "Other"; annualSpend: number | null; currency?: string; startDate: string | null; endDate: string | null; renewalDate: string | null; cancellationDeadline: string | null; autoRenewal: boolean; status: string; risk: string | null; fileName?: string | null; documentProcessingStatus?: string | null })[]; page: number; pageSize: number; totalCount: number; processingDocumentCount: number };
         };
       };
       400: {

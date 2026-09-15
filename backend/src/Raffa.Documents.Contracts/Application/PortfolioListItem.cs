@@ -35,6 +35,16 @@ namespace Raffa.Documents.Contracts.Application;
 /// <param name="Currency">The contract's own ISO currency code (<see cref="Contract.Currency"/>) —
 /// the V2 Portfolio screen sums <see cref="AnnualSpend"/> across rows for its summary line
 /// ("N validated contracts · CHF 4.2M annual"), which is only meaningful per currency.</param>
+/// <param name="FileName">The filename of the most-recently-linked document for this contract (the
+/// one that seeded the bootstrap shell at upload time, or the latest re-upload). Null only for
+/// leftover Contract shells whose last document was deleted. Used by Portfolio to show an
+/// identifying name before extraction completes — the UI shows this instead of the contract type
+/// label when <see cref="DocumentProcessingStatus"/> is still <c>Uploaded</c> or
+/// <c>Processing</c>.</param>
+/// <param name="DocumentProcessingStatus">The processing status of the most-recently-linked
+/// document. Null for orphaned Contract shells (no surviving document). When
+/// <c>Uploaded</c> or <c>Processing</c>, the Portfolio row is considered "pending" and the UI
+/// renders the filename as the primary identifier rather than an extracted type label.</param>
 public sealed record PortfolioListItem(
     Guid ContractId,
     Guid? SupplierId,
@@ -47,4 +57,6 @@ public sealed record PortfolioListItem(
     DateOnly? CancellationDeadline,
     bool AutoRenewal,
     string Status,
-    RiskSeverity? Risk);
+    RiskSeverity? Risk,
+    string? FileName,
+    DocumentProcessingStatus? DocumentProcessingStatus);

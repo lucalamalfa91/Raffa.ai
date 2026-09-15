@@ -128,21 +128,54 @@ public sealed class PortfolioQueryService(
             .GroupBy(r => r.ContractId)
             .ToDictionary(g => g.Key, g => g.Max(r => r.Severity));
 
+        // Bulk-load the most-recently-created document per contract (one extra query, not N+1)
+        // to surface the filename and document processing status — the identifying info needed
+        // to display pending (Uploaded / Processing) rows in Portfolio before extraction runs
+        // (w17 immediate-visibility requirement). "Most recently created" is chosen so that a
+        // re-uploaded contract shows the newest file's name and status, matching the upload
+        // timestamp ordering already established for the outer contracts query.
+        var documentMetaByContract = await dbContext.Documents
+            .AsNoTracking()
+            .Where(d =>
+                d.TenantId == tenantId
+                && d.ContractId.HasValue
+                && contractIds.Contains(d.ContractId!.Value))
+            .Select(d => new { d.ContractId, d.FileName, d.ProcessingStatus, d.CreatedAt })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        // Pick the most-recently-created document per contract (same "newest first" convention
+        // used for the outer contracts query). GroupBy + MaxBy is in-memory, so the already-
+        // materialized list avoids a second round trip. ContractId is non-null here because the
+        // WHERE clause above required HasValue — .Value unwraps EntityId? to EntityId so the
+        // Dictionary<EntityId, …> key satisfies the notnull constraint.
+        var latestDocByContract = documentMetaByContract
+            .GroupBy(d => d.ContractId!.Value)
+            .ToDictionary(
+                g => g.Key,
+                g => g.OrderByDescending(d => d.CreatedAt).First());
+
         // Preserves `contracts`' own order (LINQ-to-Objects Select is order-preserving), so the
         // deterministic ORDER BY above still holds after this projection.
-        IEnumerable<PortfolioListItem> items = contracts.Select(c => new PortfolioListItem(
-            c.Id.Value,
-            c.SupplierId?.Value,
-            c.Type,
-            c.AnnualSpend,
-            c.Currency,
-            c.StartDate,
-            c.EndDate,
-            c.AutoRenewal ? c.EndDate : null,
-            c.CancellationDeadline,
-            c.AutoRenewal,
-            c.Status,
-            maxSeverityByContract.TryGetValue(c.Id, out var severity) ? severity : null));
+        IEnumerable<PortfolioListItem> items = contracts.Select(c =>
+        {
+            latestDocByContract.TryGetValue(c.Id, out var doc);
+            return new PortfolioListItem(
+                c.Id.Value,
+                c.SupplierId?.Value,
+                c.Type,
+                c.AnnualSpend,
+                c.Currency,
+                c.StartDate,
+                c.EndDate,
+                c.AutoRenewal ? c.EndDate : null,
+                c.CancellationDeadline,
+                c.AutoRenewal,
+                c.Status,
+                maxSeverityByContract.TryGetValue(c.Id, out var severity) ? severity : null,
+                doc?.FileName,
+                doc?.ProcessingStatus);
+        });
 
         // Risk severity filters the *computed* column above, so — unlike every other filter —
         // it is applied in-memory after the join rather than translated to SQL against the

@@ -26,24 +26,66 @@ function item(overrides: Partial<PortfolioListItem> = {}): PortfolioListItem {
     autoRenewal: true,
     status: "active",
     risk: "High",
+    fileName: null,
+    documentProcessingStatus: "Completed",
     ...overrides,
   };
 }
 
-describe("buildPortfolioRows (validated contracts only, sorted by notice deadline -- app.jsx kbContracts)", () => {
-  it("keeps only validated contracts: processing, failed and needs-review rows never reach the portfolio", () => {
+describe("buildPortfolioRows (all contracts including pending, sorted -- app.jsx kbContracts)", () => {
+  it("w17: includes validated contracts AND freshly-uploaded pending contracts; needs_review/failed are still excluded", () => {
     const rows = buildPortfolioRows(
       [
-        item({ contractId: "ok", status: "active" }),
-        item({ contractId: "processing", status: "processing" }),
-        item({ contractId: "failed", status: "Failed" }),
-        item({ contractId: "review", status: "needs_review" }),
-        item({ contractId: "blank", status: "  " }),
+        item({ contractId: "ok", status: "active", documentProcessingStatus: "Completed" }),
+        item({ contractId: "uploading", status: "processing", documentProcessingStatus: "Uploaded", fileName: "CT-002_BluePeak_1.pdf" }),
+        item({ contractId: "inprogress", status: "processing", documentProcessingStatus: "Processing", fileName: "CT-003_CobaltBridge_1.pdf" }),
+        item({ contractId: "failed", status: "Failed", documentProcessingStatus: "Failed" }),
+        item({ contractId: "review", status: "needs_review", documentProcessingStatus: "NeedsReview" }),
+        item({ contractId: "blank", status: "  ", documentProcessingStatus: "Completed" }),
       ],
       NOW,
     );
 
-    expect(rows.map((row) => row.item.contractId)).toEqual(["ok"]);
+    const ids = rows.map((row) => row.item.contractId);
+    // Validated and pending rows are included
+    expect(ids).toContain("ok");
+    expect(ids).toContain("uploading");
+    expect(ids).toContain("inprogress");
+    // needs_review, failed, and blank-status are still excluded (they have their own screen)
+    expect(ids).not.toContain("review");
+    expect(ids).not.toContain("failed");
+    expect(ids).not.toContain("blank");
+  });
+
+  it("w17: marks Uploaded and Processing documents as isPending=true; Completed rows as isPending=false", () => {
+    const rows = buildPortfolioRows(
+      [
+        item({ contractId: "uploaded", status: "processing", documentProcessingStatus: "Uploaded" }),
+        item({ contractId: "inprogress", status: "processing", documentProcessingStatus: "Processing" }),
+        item({ contractId: "done", status: "active", documentProcessingStatus: "Completed" }),
+        // needs_review / failed are excluded from the table entirely (not present in rows)
+      ],
+      NOW,
+    );
+
+    const byId = Object.fromEntries(rows.map((r) => [r.item.contractId, r.isPending]));
+    expect(byId["uploaded"]).toBe(true);
+    expect(byId["inprogress"]).toBe(true);
+    expect(byId["done"]).toBe(false);
+  });
+
+  it("w17: pending rows sort after all validated rows regardless of deadline", () => {
+    const rows = buildPortfolioRows(
+      [
+        item({ contractId: "pending-early", documentProcessingStatus: "Uploaded", cancellationDeadline: "2026-10-01" }),
+        item({ contractId: "validated-late", documentProcessingStatus: "Completed", cancellationDeadline: "2027-06-30" }),
+        item({ contractId: "validated-soon", documentProcessingStatus: "Completed", cancellationDeadline: "2026-10-18" }),
+      ],
+      NOW,
+    );
+
+    // validated rows come first (by deadline), pending row is last even with earlier deadline
+    expect(rows.map((r) => r.item.contractId)).toEqual(["validated-soon", "validated-late", "pending-early"]);
   });
 
   it("sorts by the soonest notice deadline; rows without a deadline come last, ties break on end date then id", () => {
@@ -125,6 +167,25 @@ describe("buildPortfolioSummary / formatPortfolioSummary (app.jsx pfSummary)", (
   it("falls back to the prototype's own off-tier line when no contract is validated", () => {
     expect(formatPortfolioSummary(buildPortfolioSummary([]))).toBe(PORTFOLIO_SUMMARY_OFF);
     expect(PORTFOLIO_SUMMARY_OFF).toBe("Lights up from validated contracts");
+  });
+
+  it("w17: pending contracts are excluded from validatedCount and spend totals even though they appear in the table", () => {
+    const rows = buildPortfolioRows(
+      [
+        item({ contractId: "validated", annualSpend: 100_000, currency: "CHF", documentProcessingStatus: "Completed" }),
+        item({ contractId: "uploading", annualSpend: null, currency: "CHF", documentProcessingStatus: "Uploaded", status: "processing", fileName: "CT-002_BluePeak_1.pdf" }),
+        item({ contractId: "in-progress", annualSpend: null, currency: "CHF", documentProcessingStatus: "Processing", status: "processing", fileName: "CT-003_CobaltBridge_1.pdf" }),
+      ],
+      NOW,
+    );
+
+    // All three rows appear in the table
+    expect(rows).toHaveLength(3);
+
+    // But only the validated contract is counted in the summary
+    const summary = buildPortfolioSummary(rows);
+    expect(summary.validatedCount).toBe(1);
+    expect(summary.annualSpend).toEqual([{ currency: "CHF", total: 100_000 }]);
   });
 });
 
