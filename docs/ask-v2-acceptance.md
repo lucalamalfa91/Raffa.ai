@@ -31,7 +31,7 @@ them is a side effect of a push (ADR-021 / ADR-022).
 | 1 | Deploy + apply the schema | merge to `main` (auto `dev`), or `git tag demo-v<N> <sha> && git push origin demo-v<N>` for `demo` (`.github/workflows/demo-promote.yml`; runbook: `infra/README.md` "Promotion to `demo`" and `.helix/reports/execution/demo-v-promotion-runbook.md`) |
 | 2 | Seed the demo fixture (savings/benchmark rows) | Actions → **seed-demo-fixture** → `target_environment: <env>` |
 | 3 | Seed the market corpus | Actions → **seed-market-intelligence** → `target_environment: <env>` |
-| 4 | Re-OCR / re-embed the tenant and back-fill suppliers | Actions → **reprocess-tenant-documents** → `target_environment: <env>`, `tenant_id: <tenant>` |
+| 4 | Verify the tenant corpus (report; does not mutate) | Actions → **verify-tenant-corpus** → `target_environment: <env>`, `tenant_id: <tenant>` |
 | 5 | Walk A1–A14 | this document |
 
 Step 3 asserts its own idempotency (a second ingestion pass must report
@@ -64,11 +64,12 @@ USER=acceptance@raffa.test          # X-User-Id, non-authoritative (ADR-022)
 curl -sS "$API/health" | jq .
 ```
 
-Every API call in this document carries `-H "X-Tenant-Id: $TENANT"`. The
-conversation endpoints also need `-H "X-User-Id: $USER"` (R-CONV-03); the
-Admin-gated document endpoints additionally take a role header (see
-[Known gaps](#known-gaps-that-shape-acceptance-today)); `GET /api/capabilities`
-takes `X-Role` and no tenant; `GET /api/market/records/{id}` takes neither.
+Every API call in this document carries `-H "X-Tenant-Id: $TENANT"` plus
+`Authorization: Bearer $TOKEN` on a deployed host. Conversation endpoints
+are keyed by the validated token subject; Admin-gated document endpoints
+(`DELETE` / `reprocess`) follow membership on that same token.
+`GET /api/capabilities` takes no tenant and no role header — the catalog is
+served whole; `GET /api/market/records/{id}` takes neither.
 
 ### 0.3 Direct database access (only where the UI cannot show it)
 
@@ -354,9 +355,10 @@ chat, `Come faccio a rivedere i campi deboli?`.
   **Documents › Review** capability (R-SYS-03 AC-1).
 
 ```bash
-curl -sS "$API/api/capabilities" -H "X-Role: Admin" \
+curl -sS "$API/api/capabilities" \
   | jq -r '.capabilities[] | [.key, .routePattern, .roleGate] | @tsv'
 # Every action href a reply returns must match one of these routePatterns.
+# The catalog is served whole; roleGate is a label, never a filter.
 ```
 
 **Automated:** `v2.spec.ts` → *"A8 …"* (follows the first action link and
@@ -595,7 +597,7 @@ document; each one changes what a given row can honestly prove.
 |---|---|---|
 | 1 | **`ConnectionStrings__Suppliers` is not injected into the API Container App.** `backend/src/Raffa.Api/Program.cs` fail-fasts on it; `infra/modules/containerapps/main.tf` sets `IdentityWorkspace`, `DocumentsContracts`, `Audit`, `Renewals`, `Savings`, `Quotes`, `Chat`, `Storage` — not `Suppliers`. | The deployed API does not boot. **Blocks every row.** Fix in `infra/modules/containerapps/main.tf` (same `pg-cs` secret as its neighbours) before the first V2 promotion. |
 | 2 | **The API composes `AddMarketModule()` without a connection string.** The market module then keeps its in-memory mock projection, so the API never reads the `market_record` / `market_embedding` rows `seed-market-intelligence.yml` writes. | A5's numbers come from the in-process mock, not from the seeded corpus. The seed job is still the right pre-step (it is what R-MKT-03 specifies and what the live provider will feed), but "the API reads the seeded corpus" is not yet true. |
-| 3 | **Foundry is wired per environment by `ai_gateway_wired`** (ADR-008 amendment 2026-09-09: the shared `aisvc-raffa` account, the per-environment projects and the model deployments are Terraform-managed; `infra/README.md` "AI Gateway / Foundry + Document Intelligence"). | Where the flag is still `false` A2 and A5–A7 cannot be walked. `reprocess-tenant-documents.yml` detects the absent endpoint and downgrades its OCR-placeholder check to a warning; `v2.spec.ts` skips those rows with a named reason. |
+| 3 | **Foundry is wired per environment by `ai_gateway_wired`** (ADR-008 amendment 2026-09-09: the shared `aisvc-raffa` account, the per-environment projects and the model deployments are Terraform-managed; `infra/README.md` "AI Gateway / Foundry + Document Intelligence"). | Where the flag is still `false` A2 and A5–A7 cannot be walked. `verify-tenant-corpus.yml` detects the absent endpoint and downgrades its OCR-placeholder check to a warning; `v2.spec.ts` skips those rows with a named reason. |
 | 4 | **`POST /api/conversations` and `POST /api/conversations/{id}/messages` have no `requestBody` in `web/openapi/raffa-api.v1.json`.** The real bodies are `{"scopeContractId": "<uuid>"}` (optional) and `{"question": "…"}` — verified against `Raffa.Api.ConversationsEndpointExtensions` and `web/src/api/client.ts`. | The `curl` commands above are correct; the OpenAPI is incomplete. Owned by the task that owns that file, not by this runbook. |
-| 5 | **The role signal for the Admin-gated document endpoints is not a declared parameter.** `X-Role` is what `GET /api/capabilities` parses; `X-Workspace-Role` is what the OpenAPI's `deleteDocument` / `reprocessDocument` descriptions name. | `reprocess-tenant-documents.yml` sends **both**. When testing `DELETE`/`reprocess` by hand, send both too — and expect both to disappear when ADR-010's API JWT lands. |
-| 6 | **`GET /api/audit` needs an authenticated `ClaimsPrincipal`** (`Raffa.Api.AuditEndpointExtensions` authorizes a real Workspace Admin identity), which the ADR-022 header posture does not provide — and it is the one mapped route with no entry in `web/openapi/raffa-api.v1.json`. | Audit checks in A1, A9 and A12 are SQL against `audit_event`, not API calls. It is the only `/api/...` path in this document that does not resolve to a documented operation; every other one does. |
+| 5 | **Bulk whole-tenant reprocess is W17.** Wave w16 deleted `reprocess-tenant-documents.yml` and added `verify-tenant-corpus.yml`, which reports and does not mutate. | Walk A16-3 by resubmitting one document as a live Admin in the product; use the verification job to assert `%PDF` is gone. |
+| 6 | **`GET /api/audit` is documented** in `web/openapi/raffa-api.v1.json` (NW-08, w16) and authorizes a live Workspace Admin via membership, not a role claim. There is no SPA wrapper — A16-2 is a `curl` walk. | Audit checks that need the trail still prefer SQL against `audit_event` when proving *absence*; a 200 from `GET /api/audit` is the Admin read. |

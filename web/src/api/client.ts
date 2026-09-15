@@ -724,8 +724,42 @@ export interface ValidateDocumentResult {
 // cannot 404 -- never special-cased here the way getContract360/getRenewalPriority special-case 404.
 type PostRenewalActionResponses = paths["/api/renewals/{id}/action"]["post"]["responses"];
 export type RenewalActionBody = PostRenewalActionResponses[200]["content"]["application/json"];
+/** Generated persisted renewal-action row (GET/POST `/api/renewals/{id}/action` and `savedAction` on GET `/api/renewals`). Re-export so screens replace the hand-written session DTO. */
+export type RenewalActionRow = RenewalActionBody;
 /** The closed three-state vocabulary (`RenewalActionStatus.ToString()`), read off the generated response type rather than hand-duplicated -- see `RenewalActionBody`'s own provenance above. */
 export type RenewalActionStatusValue = RenewalActionBody["status"];
+
+type GetQuoteResponses = paths["/api/quotes/{id}"]["get"]["responses"];
+export type QuoteDetailBody = GetQuoteResponses[200]["content"]["application/json"];
+export type QuoteNegotiationOutcomeBody = QuoteDetailBody["outcomes"][number];
+
+export interface GetQuoteResult {
+  ok: boolean;
+  statusCode: number | null;
+  quote: QuoteDetailBody | null;
+  error: string | null;
+}
+
+type NegotiationStepsResponses = paths["/api/contracts/{id}/negotiation-steps"]["get"]["responses"];
+export type NegotiationStepsBody = NegotiationStepsResponses[200]["content"]["application/json"];
+
+export interface PutNegotiationStepsRequest {
+  steps: string[];
+}
+
+export interface GetNegotiationStepsResult {
+  ok: boolean;
+  statusCode: number | null;
+  steps: NegotiationStepsBody | null;
+  error: string | null;
+}
+
+export interface PutNegotiationStepsResult {
+  ok: boolean;
+  statusCode: number | null;
+  steps: NegotiationStepsBody | null;
+  error: string | null;
+}
 
 /**
  * `POST /api/renewals/{id}/action` request body. Hand-written, not generated -- see this file's
@@ -1329,6 +1363,25 @@ export interface ApiClient {
     contractId: string,
     request: PostRenewalActionRequest,
   ): Promise<PostRenewalActionResult>;
+  /**
+   * Calls `GET /api/quotes/{id}` (operationId `getQuote`) -- the quote with recorded negotiation
+   * outcomes newest first. Never throws; a `404` is a normal, expected outcome.
+   */
+  getQuote(tenantId: string, id: string): Promise<GetQuoteResult>;
+  /**
+   * Calls `GET /api/contracts/{id}/negotiation-steps` (operationId `getNegotiationSteps`).
+   * Never throws; a `404` is a normal, expected outcome (no such contract).
+   */
+  getNegotiationSteps(tenantId: string, contractId: string): Promise<GetNegotiationStepsResult>;
+  /**
+   * Calls `PUT /api/contracts/{id}/negotiation-steps` (operationId `putNegotiationSteps`) with
+   * the whole ticked-key set. Never throws; `400` (unknown step) and `404` are expected outcomes.
+   */
+  putNegotiationSteps(
+    tenantId: string,
+    contractId: string,
+    request: PutNegotiationStepsRequest,
+  ): Promise<PutNegotiationStepsResult>;
   /**
    * Calls `POST /api/quotes` (operationId `uploadQuote`) as `multipart/form-data` -- the Quote
    * Check stepper's own upload entry point (there is no separate "new quote" screen; ADR-018 names
@@ -2536,6 +2589,136 @@ export function createApiClient(
       }
 
       return { ok: false, statusCode: response.status, action: null, error };
+    },
+
+    async getQuote(tenantId, id) {
+      let response: Response;
+      try {
+        response = await fetch(new URL(`/api/quotes/${encodeURIComponent(id)}`, baseUrl), {
+          headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          quote: null,
+          error: `Unable to reach ${baseUrl}/api/quotes/${id}. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const quote = (await response.json()) as QuoteDetailBody;
+        return { ok: true, statusCode: 200, quote, error: null };
+      }
+
+      if (response.status === 404) {
+        return { ok: false, statusCode: 404, quote: null, error: `No quote found for id ${id}.` };
+      }
+
+      let error: string;
+      try {
+        const errorBody: unknown = await response.json();
+        error = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, quote: null, error };
+    },
+
+    async getNegotiationSteps(tenantId, contractId) {
+      let response: Response;
+      try {
+        response = await fetch(
+          new URL(`/api/contracts/${encodeURIComponent(contractId)}/negotiation-steps`, baseUrl),
+          {
+            headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
+            cache: "no-store",
+          },
+        );
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          steps: null,
+          error: `Unable to reach ${baseUrl}/api/contracts/${contractId}/negotiation-steps. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const steps = (await response.json()) as NegotiationStepsBody;
+        return { ok: true, statusCode: 200, steps, error: null };
+      }
+
+      if (response.status === 404) {
+        return {
+          ok: false,
+          statusCode: 404,
+          steps: null,
+          error: `No contract found for id ${contractId}.`,
+        };
+      }
+
+      let error: string;
+      try {
+        const errorBody: unknown = await response.json();
+        error = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, steps: null, error };
+    },
+
+    async putNegotiationSteps(tenantId, contractId, request) {
+      let response: Response;
+      try {
+        response = await fetch(
+          new URL(`/api/contracts/${encodeURIComponent(contractId)}/negotiation-steps`, baseUrl),
+          {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Tenant-Id": tenantId,
+              ...await authHeaders(getAccessToken),
+            },
+            body: JSON.stringify(request),
+            cache: "no-store",
+          },
+        );
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          steps: null,
+          error: `Unable to reach ${baseUrl}/api/contracts/${contractId}/negotiation-steps. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const steps = (await response.json()) as NegotiationStepsBody;
+        return { ok: true, statusCode: 200, steps, error: null };
+      }
+
+      if (response.status === 404) {
+        return {
+          ok: false,
+          statusCode: 404,
+          steps: null,
+          error: `No contract found for id ${contractId}.`,
+        };
+      }
+
+      let error: string;
+      try {
+        const errorBody: unknown = await response.json();
+        error = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, steps: null, error };
     },
 
     async uploadQuote(tenantId, file, fields = {}) {

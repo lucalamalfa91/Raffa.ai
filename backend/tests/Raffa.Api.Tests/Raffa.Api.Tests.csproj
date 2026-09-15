@@ -45,6 +45,9 @@
     <!-- Task E13/F04/US01/T02: the in-memory host swaps IdentityWorkspaceDbContext so
          WorkspaceRoleResolver's membership branch is exercised without a real Postgres. -->
     <ProjectReference Include="..\..\src\Raffa.Identity.Workspace\Raffa.Identity.Workspace.csproj" />
+    <!-- Task E19/F01/US01/T01: GET /api/renewals now embeds savedAction via RenewalsDbContext,
+         so InMemoryAskEngineFactory must swap that context too (same as DocumentsContracts). -->
+    <ProjectReference Include="..\..\src\Raffa.Renewals\Raffa.Renewals.csproj" />
     <ProjectReference Include="..\..\src\Raffa.SharedKernel\Raffa.SharedKernel.csproj" />
   </ItemGroup>
 

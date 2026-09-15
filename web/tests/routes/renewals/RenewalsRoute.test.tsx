@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import RenewalsRoute from "../../../src/routes/renewals";
-import { loadTrackedRenewalActions } from "../../../src/routes/renewals/renewalActionStore";
 import type {
   ApiClient,
   GetRenewalsResult,
@@ -48,6 +47,9 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     getContractEvidence: vi.fn(),
     validateDocument: vi.fn(),
     postRenewalAction: vi.fn(),
+    getQuote: vi.fn(),
+    getNegotiationSteps: vi.fn(),
+    putNegotiationSteps: vi.fn(),
     uploadQuote: vi.fn(),
     getQuoteAssessment: vi.fn(),
     recalculateQuoteAssessment: vi.fn(),
@@ -322,20 +324,22 @@ describe("RenewalsRoute (V2, ADR-024 / screens-v2.md #7)", () => {
 
     it("an action posts the real write with the signed-in owner, then the pane and the Status column show the acted state", async () => {
       const item = pipelineItem({ contractId: "contract-x", supplierName: "Salesforce" });
+      const saved = {
+        contractId: "contract-x",
+        owner: USER_LABEL,
+        status: "InProgress" as const,
+        action: "In negotiation",
+        updatedAt: "2026-09-06T09:00:00Z",
+      };
       const postRenewalAction = vi.fn().mockResolvedValue({
         ok: true,
         statusCode: 200,
-        action: {
-          contractId: "contract-x",
-          owner: USER_LABEL,
-          status: "InProgress",
-          action: "In negotiation",
-          updatedAt: "2026-09-06T09:00:00Z",
-        },
+        action: saved,
         error: null,
       } satisfies PostRenewalActionResult);
+      const getRenewals = vi.fn().mockResolvedValueOnce(ok([item])).mockResolvedValue(ok([{ ...item, savedAction: saved }]));
 
-      renderPopulated([item], { postRenewalAction });
+      renderPopulated([item], { postRenewalAction, getRenewals });
       await screen.findByRole("table");
 
       fireEvent.click(screen.getByRole("button", { name: "Start negotiation" }));
@@ -357,21 +361,35 @@ describe("RenewalsRoute (V2, ADR-024 / screens-v2.md #7)", () => {
       const table = screen.getByRole("table");
       expect(within(table).getByText("In negotiation")).toHaveClass("tag-accent");
       expect(within(table).queryByText("Open")).not.toBeInTheDocument();
-
-      // Recorded in the session store Contract 360's tracker reads too.
-      const tracked = loadTrackedRenewalActions();
-      expect(tracked).toHaveLength(1);
-      expect(tracked[0]).toMatchObject({ contractId: "contract-x", owner: USER_LABEL, action: "In negotiation", status: "InProgress" });
+      expect(window.sessionStorage.getItem("raffa.renewals.actions")).toBeNull();
     });
 
     it("'Assign to me' claims ownership without starting work (NotStarted / Assigned)", async () => {
+      const item = pipelineItem({ contractId: "contract-y" });
       const postRenewalAction = vi.fn().mockResolvedValue({
         ok: true,
         statusCode: 200,
         action: { contractId: "contract-y", owner: USER_LABEL, status: "NotStarted", action: "Assigned", updatedAt: "2026-09-06T09:00:00Z" },
         error: null,
       } satisfies PostRenewalActionResult);
-      renderPopulated([pipelineItem({ contractId: "contract-y" })], { postRenewalAction });
+      const getRenewals = vi
+        .fn()
+        .mockResolvedValueOnce(ok([item]))
+        .mockResolvedValue(
+          ok([
+            {
+              ...item,
+              savedAction: {
+                contractId: "contract-y",
+                owner: USER_LABEL,
+                status: "NotStarted",
+                action: "Assigned",
+                updatedAt: "2026-09-06T09:00:00Z",
+              },
+            },
+          ]),
+        );
+      renderPopulated([item], { postRenewalAction, getRenewals });
       await screen.findByRole("table");
 
       fireEvent.click(screen.getByRole("button", { name: "Assign to me" }));
@@ -381,7 +399,8 @@ describe("RenewalsRoute (V2, ADR-024 / screens-v2.md #7)", () => {
         status: "NotStarted",
         action: "Assigned",
       });
-      expect(await screen.findByRole("status")).toHaveTextContent("Assigned");
+      expect(await screen.findByRole("button", { name: "Start negotiation" })).toBeInTheDocument();
+      expect(within(screen.getByRole("table")).getByText("Open")).toBeInTheDocument();
     });
 
     it("shows an inline error and records nothing when the write fails", async () => {
@@ -395,7 +414,7 @@ describe("RenewalsRoute (V2, ADR-024 / screens-v2.md #7)", () => {
 
       expect(await screen.findByRole("alert")).toHaveTextContent("'owner' is required.");
       expect(screen.getByRole("button", { name: "Start negotiation" })).toBeEnabled();
-      expect(loadTrackedRenewalActions()).toEqual([]);
+      expect(window.sessionStorage.getItem("raffa.renewals.actions")).toBeNull();
     });
   });
 });

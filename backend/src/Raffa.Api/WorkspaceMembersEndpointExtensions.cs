@@ -24,10 +24,10 @@ namespace Raffa.Api;
 /// <see cref="WorkspaceMembershipService.ListMembersAsync"/> opens a second one to build the
 /// roster. This deliberately duplicates the shape of
 /// <see cref="WorkspaceInvitesEndpointExtensions.ResolveMembershipRoleAsync"/> rather than calling
-/// <c>WorkspaceRoleResolver.ResolveAsync</c>: that method tries an authenticated principal's
-/// claims, then the interim <c>X-Role</c>/<c>X-Workspace-Role</c> header, before it ever reaches
-/// its own membership branch — a caller with no relationship to the route tenant could set a
-/// static <c>X-Role: Admin</c> header and be treated as a member, reopening the class of hole
+/// <c>WorkspaceRoleResolver.ResolveAsync</c>: that method used to try an authenticated principal's
+/// claims, then a client-declared role header, before it ever reached
+/// its own membership branch — a caller with no relationship to the route tenant could assert
+/// Admin and be treated as a member, reopening the class of hole
 /// <c>WorkspaceInvitesEndpointExtensions</c> already exists to close (ADR-025 §H's non-negotiable
 /// spoofed-header test, T2). Unlike that guard, this check never resolves *which* role the caller
 /// holds — ADR-025 Rule D.4a grants read to <b>any</b> live member, so existence is the whole

@@ -210,7 +210,7 @@ request.
 | GET | `/api/documents/{id}` | metadata/status; same header; `documentType` is the widened `ContractDocumentType` (`Msa`, `OrderForm`, `Amendment`, `Sow`, `RenewalLetter`, `Quote`, `Invoice`, `PriceList`, `Nda`, `Dpa`, `Other`) — task E13/F04/US01/T01 added the last five so “the documents around a contract” keep their own kind |
 | GET | `/api/documents` | Server-side Documents list (R-DOC-06/09; task E13/F04/US01/T02); `X-Tenant-Id` header; optional `status` (exact `DocumentProcessingStatus`, `Rejected` included since wave w15), `page` (default 1), `pageSize` (default 25, max 100); response `{ items, page, pageSize, totalCount, counts }`, each item `{ id, contractId, supplierName, fileName, documentType, processingStatus, stage, pageCount, createdAt, weakFactCount, rejectionReason }` — `stage` is one of R-DOC-09's six real names and is present **only** while `processingStatus` is `Processing`; `rejectionReason` is `not_a_contract` \| `no_readable_text` on a `Rejected` row and `null` otherwise; `supplierName` is resolved through `ISupplierNameLookup` when the Suppliers module is registered, `null` otherwise (never a raw id); `weakFactCount` counts this contract's distinct extracted fields whose latest evidence is missing or below 0.6. **`counts` (task E16/F02/US03/T01, ADR-027 §D7/§C5/§C9)** is tenant-wide and independent of `status`/`page`: `{ all, needsAttention, needsReview, processing, rejected }` — `all` excludes `Rejected`, `needsAttention` is *not Completed and not Rejected* (so it contains `processing`), `needsReview` is `NeedsReview` alone; five overlapping projections of one grouped query, never a partition |
 | GET | `/api/documents/{id}/preview` | First-page preview as `image/png` (R-DOC-08); `X-Tenant-Id` header; 404 when the document does not exist for this tenant **or** has no stored preview — the client never receives a blob URL, the bytes are streamed under the caller's own tenant scope (ADR-009). See “Documents V2” below for what the preview actually contains today |
-| POST | `/api/documents/{id}/reprocess` | **Admin only** (403 otherwise). **Wave w15 (ADR-027 §D1): a re-enqueue, `202 Accepted`** — drops the old page-aware chunks, puts the document back to `Uploaded`, queues a fresh classification `extraction_job` for the Worker and answers `{ documentId, extractionJobId, processingStatus: "Uploaded" }` with `Location: /api/documents/{id}`; the re-parse → page-aware embedding → staged extraction (R-DOC-07) happens on the Worker exactly like a first upload, and one `document.reprocessed` audit row records the queueing. Role resolution: the validated token's membership, and nothing else — the interim `X-Role`/`X-Workspace-Role` header branch was deleted in wave w14 (task E14/F02/US02/T01, ADR-025 §E); see `Raffa.Api.Infrastructure.WorkspaceRoleResolver` and "Admin resolution" below |
+| POST | `/api/documents/{id}/reprocess` | **Admin only** (403 otherwise). **Wave w15 (ADR-027 §D1): a re-enqueue, `202 Accepted`** — drops the old page-aware chunks, puts the document back to `Uploaded`, queues a fresh classification `extraction_job` for the Worker and answers `{ documentId, extractionJobId, processingStatus: "Uploaded" }` with `Location: /api/documents/{id}`; the re-parse → page-aware embedding → staged extraction (R-DOC-07) happens on the Worker exactly like a first upload, and one `document.reprocessed` audit row records the queueing. Role resolution: the validated token's membership, and nothing else (task E14/F02/US02/T01, ADR-025 §E); see `Raffa.Api.Infrastructure.WorkspaceRoleResolver` and "Admin resolution" below |
 | POST | `/api/documents/{id}/prioritise` | **Any live member** (not Admin-only — whoever opened the document is the one waiting for it). **Wave w15, built by hand 2026-09-14 (task E16/F03/US02/T01, ADR-027 w15 footer C12).** Stamps `extraction_job.prioritised_at` on the document's queued, unclaimed classification job(s); the next delivery any Worker replica handles in this tenant runs that job before its own — one per delivery, bounded by `ExtractionRequestedHandler.MaxPrioritisedPerDelivery`. Service Bus stays at **exactly one** subscription (OQ-w15-012 unchanged): there is no second message, the reordering happens entirely on the row. Idempotent — a job already claimed, already prioritised, or already terminal is a no-op that still answers `204`; one `document.prioritised` audit row only when something changed. `caller.Identity` is the audit actor. **204** always when the document exists; **404** when it does not exist for this tenant; **400** for a non-GUID id — never 403 (ADR-025 Rule B1). The web calls this once, blindly, every time a user opens a document that is not yet terminal (`web/README.md`'s own "Documents" section, Progress state) |
 | DELETE | `/api/documents/{id}` | **Admin only** (403 otherwise): deletes every stored object (each version plus the preview), the retrieval chunks, the version and extraction-job rows and the document row, detaches the contract link and clears every `source_document_id` on the facts that survive; writes one `document.deleted` audit row; 204 (R-DOC-10). The contract and its extracted facts are deliberately kept |
 | POST | `/api/documents/{id}/validate` | Review sign-off (product spec §7.1 "needs review → completed", ADR-020 screen 6 "Mark as validated"): optional body `{ acceptedFields: string[] }` + `X-Tenant-Id` header (`X-User-Id` names the actor); moves a `NeedsReview` document to `Completed` and writes one `document.validated` audit row naming the accepted fields (`Raffa.Documents.Contracts.Application.DocumentValidationService`); never rewrites the extraction evidence. Not Admin-only — reviewing is the Procurement role's own job, same posture as `PATCH /api/contracts/{id}`. 404 unknown/cross-tenant document; **409** with a named reason for a document still `Uploaded`/`Processing` or `Failed`; idempotent — an already `Completed` document answers 200 with `alreadyValidated: true`. Response `{ documentId, contractId, processingStatus, validatedAt, acceptedFields, alreadyValidated }` |
@@ -241,7 +241,7 @@ request.
 | GET | `/api/quotes/{id}/assessment` | Quote assessment (spec §4.4/§11.2, Appendix A "Quote assessment"; module-map.md "Quotes \| Quote, QuoteLine, Assessment... \| /api/quotes"; story us-01-market-assessment AC-1/AC-2 (both the "flag" half, task E05/F02/US01/T01, and the "recommended target range + potential saving" half, task E05/F02/US01/T02)/AC-3); `X-Tenant-Id` header; 404 when `{id}` does not name a quote for this tenant; one assessment per `Raffa.Quotes.Domain.QuoteLine` on the quote (creation order) — `{ quoteId, lines: [{ quoteLineId, status, position, unitPrice, quantity, benchmark, confidence, targetSaving, explanation }] }`. `status` is `Assessed`/`QuoteDataUnresolved`/`InsufficientBenchmarkData` (`Raffa.Quotes.Domain.MarketAssessmentStatus`); `position` (`BelowMarket`/`InLine`/`AboveMarket`) is populated only when `status` is `Assessed` — the market band is `[P25, P75]` of the matched `Raffa.Benchmark.Contracts.BenchmarkResult.Distribution`, `InLine` otherwise (see `MarketAssessmentCalculator`'s own doc comment); `benchmark`/`confidence`/`targetSaving` are `null` exactly when no Benchmark Service call was even attempted (`QuoteDataUnresolved`: the quote is missing `supplier`/`currency`/`geography`/`purchaseDate`, or the line itself has no usable product/quantity/term/price), never withheld just because the comparison itself abstained (spec §11.3's benchmark-trust rule — `InsufficientBenchmarkData` still carries real `source`/`sampleSize`/`comparisonDimensions` provenance, and a real `targetSaving` object whose `recommendedTargetLow`/`recommendedTargetHigh`/`savingsRangeLow`/`savingsRangeHigh`/`totalSavingsRangeLow`/`totalSavingsRangeHigh` are honestly `null` with a named `explanation` — see `TargetSavingCalculator`'s own doc comment) |
 | POST | `/api/quotes/{id}/assessment/recalculate` | Manual product-mapping correction + recalculate (spec Appendix A "Re-run after product mapping correction"; story us-02-sku-normalization AC-2's "...and allow manual product mapping" half, AC-3, task E05/F01/US02/T02, sku-recalculate); `X-Tenant-Id` header; body `{ mappings?: [{ sku, edition?, canonicalSku, canonicalEdition?, canonicalProductName? }] }` — `mappings` may be omitted/empty (`{}` is a valid body) for a pure "what's still unmatched" refresh with no new correction. 404 when `{id}` does not name a quote for this tenant; 400 when a supplied correction's `sku`/`canonicalSku` is blank — validated before any write. For each valid correction, upserts (never duplicates) one tenant-scoped `Raffa.Quotes.Domain.SkuProductMapping` row keyed on the normalized SKU (`Raffa.Quotes.Application.Normalization.SkuNormalizer.Normalize` — same case/whitespace rule `POST /api/quotes`'s own upload-time normalization uses), then re-runs `SkuNormalizationService.NormalizeAsync` for every line on the quote (not just the corrected one — a mapping learned here also resolves any other quote for this tenant sharing the same normalized SKU, the next time that quote is itself (re)normalized) and `MarketAssessmentService.AssessAsync`; response `{ quoteId, mappingsAppliedCount, normalization: { lineCount, matchedCount, unmatchedCount, notApplicableCount }, unmatchedLines: [{ quoteLineId, sku, normalizedSku, edition, description }], assessment: { ...same shape as GET .../assessment... } }` — `unmatchedLines` is AC-2's "Show unmatched SKUs" half made queryable over HTTP (deliberately not a field on the `GET .../assessment` response itself, see `SkuMappingService`'s own doc comment for why); writes one `IAuditWriter` entry (`quote.sku_mapping_recalculated`) per successful call, even a pure refresh. |
 | GET | `/api/savings/kpis` | Procurement-homepage KPI row (spec §4.3/§10.1; story us-01-savings-kpis AC-1, task E04/F03/US01/T01); `X-Tenant-Id` header; response `{ annualSpendAnalyzed: [{ currency, amount, contractCount }], contractsAnalyzedCount, savingsIdentified/savingsInProgress/savingsRealized: [{ currency, low, high, count, averageConfidence }], upcomingRenewalsCount }` — every money value is grouped by currency, never summed across currencies (no exchange-rate service exists anywhere in this codebase); `contractsAnalyzedCount` counts contracts whose linked document reached `DocumentProcessingStatus.Completed` (a `Contract` row can exist before that — see `Raffa.Documents.Contracts.Application.PortfolioAnalysisCalculator`'s own doc comment); `savingsRealized` reflects each opportunity's own estimated range, not yet the separate, audit-tracked `RealizedSavings` value (task E04/F02/US02/T02's own gap, see `SavingsOpportunityStatus.Realized`'s doc comment); `upcomingRenewalsCount` is the same auto-renewing-contract count `GET /api/renewals`'s own `totalCount` already reports (same 100-contract-per-tenant cap) — see `Raffa.Api.SavingsKpiEndpointExtensions`'s own comment for why it is not a second, independently-computed number |
-| GET | `/api/capabilities` | The versioned V2 capability catalog (R-SYS-01; story us-01-capability-catalog, task E13/F08/US01/T01; mapped by task E13/F06/US01/T01, ask-engine); no `X-Tenant-Id` — static, tenant-agnostic metadata, not a per-tenant read; optional `X-Role` header (resolved through `WorkspaceRoleClaimResolver`) hides `workspace-members` unless the caller resolves to `Admin` — a display hint over static metadata, and since wave w14 the **only** endpoint that still reads that header at all: no tenant-scoped endpoint above accepts a client-declared role any more (task E14/F02/US02/T01, ADR-025 §E; see "Admin resolution" below); see "Ask Raffa — capability catalog" below |
+| GET | `/api/capabilities` | The versioned V2 capability catalog (R-SYS-01; story us-01-capability-catalog, task E13/F08/US01/T01; mapped by task E13/F06/US01/T01, ask-engine; wave w16 NW-31, task E18/F03/US01/T01 deleted the server-side role filter): no tenant header — static, tenant-agnostic metadata, not a per-tenant read; served whole, every row carrying its own `roleGate` as a presentation label, never as authorization; see "Ask Raffa — capability catalog" below |
 | GET | `/api/insights/criticality` | Portfolio-wide criticality ranking (story insights-calculators, task E13/F07/US01/T01; mapped by task E13/F06/US01/T01); `X-Tenant-Id` header; the same `Raffa.Insights.Criticality.CriticalityScoreCalculator` output `AskCopilotService`'s own `PortfolioStrategy` intent narrates — see "Insights" below |
 | GET | `/api/contracts/{id}/strategy` | One contract's renewal-strategy pack (when you must move, where you can push, targets, next steps; task E13/F07/US01/T01; mapped by task E13/F06/US01/T01); `X-Tenant-Id` header; 404 when the contract does not exist or belongs to another tenant; the same `Raffa.Insights.Strategy.StrategyPackBuilder` output `AskCopilotService`'s own `RenewalStrategy` intent narrates — see "Insights" below |
 | GET | `/api/market/records/{id}` | One market-feed record, for the citation panel (R-EVD-02; task E13/F06/US01/T01, ask-engine); no `X-Tenant-Id` — shared, tenant-agnostic market data (ADR-024); 404 when `{id}` does not name a record in the mock feed; response `{ recordId, supplier, category, product, geography, currency, title, snippet, provenance, updatedAt, unitPriceP25, unitPriceP50, unitPriceP75, sampleSize, source, representative }` — see `Raffa.Api.MarketEndpointExtensions` |
@@ -385,25 +385,24 @@ stay as they are. Until then the card shows the placeholder, not a fake page.
 **Admin resolution** (`Raffa.Api.Infrastructure.WorkspaceRoleResolver`): a live
 `workspace_membership` row for the caller's validated identity — **and nothing
 else**. Two sources that used to sit ahead of it are both gone: a
-client-declared role header (the interim `X-Role` / `X-Workspace-Role` branch,
-deleted wave w14, task E14/F02/US02/T01; ADR-022 w14 footer clause 1, ADR-025
-§E) and, since wave w15 (NW-06, ADR-010 w15 footer §3), role claims on an
-authenticated principal — deleting that second source is what stops one Entra
-app-role assignment from resolving to that role in *every* workspace the caller
-can name instead of only the ones they hold a real membership in. **The
-membership row is the role source of truth**: a header claiming `Admin` never
-grants, and one claiming `Procurement` never revokes a real Admin's rights
-(ADR-025 Rule E2). The identity itself is the validated bearer token's `oid`
-(see "Authentication" above), never a header. Since wave w16 (ADR-010 w16
-footer S16-1, task E18/F02/US01/T01) the membership match is a single key,
-`ExternalSubjectId` only — it used to also match `Email`, so a `workspace_user`
-row whose `Email` happened to equal the caller's identity conferred a role too;
-not exploitable while every identity is a GUID-shaped `oid`, but `Email` is a
-column an Admin writes at invite time and must never be an authorization input.
-No match means no role, and every Admin-only endpoint answers 403. The only
-remaining reader of `X-Role` is the tenant-agnostic `GET /api/capabilities`,
-and it authorizes nothing — it merely hides the `workspace-members` catalog
-entry from a non-Admin.
+client-declared role header (deleted wave w14, task E14/F02/US02/T01; ADR-022
+w14 footer clause 1, ADR-025 §E) and, since wave w15 (NW-06, ADR-010 w15 footer
+§3), role claims on an authenticated principal — deleting that second source is
+what stops one Entra app-role assignment from resolving to that role in *every*
+workspace the caller can name instead of only the ones they hold a real
+membership in. **The membership row is the role source of truth**: a client-
+asserted `Admin` never grants, and an asserted `Procurement` never revokes a
+real Admin's rights (ADR-025 Rule E2). The identity itself is the validated
+bearer token's `oid` (see "Authentication" above), never a header. Since wave
+w16 (ADR-010 w16 footer S16-1, task E18/F02/US01/T01) the membership match is a
+single key, `ExternalSubjectId` only — it used to also match `Email`, so a
+`workspace_user` row whose `Email` happened to equal the caller's identity
+conferred a role too; not exploitable while every identity is a GUID-shaped
+`oid`, but `Email` is a column an Admin writes at invite time and must never be
+an authorization input. No match means no role, and every Admin-only endpoint
+answers 403. Wave w16 (NW-31, task E18/F03/US01/T01) also deleted the last
+non-authoritative catalog filter on `GET /api/capabilities`: that route now
+returns every catalog row, each carrying its own `roleGate` label.
 
 **The identity is never lower-cased, anywhere in this chain** (ADR-010 w16
 footer S16-2, task E18/F02/US01/T01): `oid` is an opaque, case-sensitive Entra
@@ -1186,15 +1185,13 @@ feature-card shape (`corpus: raffa`); `CapabilityCatalog.SuggestionsFor`
 reproduces `app.jsx`'s per-screen `chipsFor`/`c360Chips` suggestion chips.
 
 `Raffa.Api.CapabilitiesEndpointExtensions` maps `GET /api/capabilities`
-(role-aware: an `X-Role` header, resolved through
-`Raffa.Identity.Workspace.Domain.WorkspaceRoleClaimResolver` — same
-interim-header posture as every `X-Tenant-Id` endpoint below, ADR-010 not
-yet on this host — hides `workspace-members` unless the caller resolves to
-`Admin`). Task E13/F06/US01/T01 (ask-engine) is this endpoint's first-mapped
+(wave w16 NW-31, task E18/F03/US01/T01: the catalog is served whole; each
+row carries its own `roleGate` as a presentation label, never as
+authorization). Task E13/F06/US01/T01 (ask-engine) is this endpoint's first-mapped
 caller in `Program.cs`, the same "endpoint exists, host wiring is a later
 task's job" shape already used above for `AddChatModule`'s
 `chatConnectionString` overload. Unlike every other endpoint in this file,
-it takes no `X-Tenant-Id` — the catalog is static, tenant-agnostic
+it takes no tenant header — the catalog is static, tenant-agnostic
 metadata, not a per-tenant read.
 
 ## Renewal Intelligence — deterministic renewal engine
@@ -2717,7 +2714,7 @@ exact command or click-path and one observable pass condition per row).
 | 1 | Deploy + apply schema (ADR-021) | merge to `main` (`dev`), or `git tag demo-v<N> && git push` (`demo`) |
 | 2 | Seed the Day-1 fixture rows | Actions → **seed-demo-fixture** (`target_environment`) |
 | 3 | Seed the shared market corpus | Actions → **seed-market-intelligence** (`target_environment`) |
-| 4 | Re-OCR / re-embed a tenant, back-fill suppliers | Actions → **reprocess-tenant-documents** (`target_environment`, `tenant_id`) |
+| 4 | Verify a tenant's corpus (report; does not mutate) | Actions → **verify-tenant-corpus** (`target_environment`, `tenant_id`) |
 | 5 | Walk A1–A14 | `docs/ask-v2-acceptance.md`, plus `web/e2e/v2.spec.ts` |
 
 ### `seed-market-intelligence` — the market feed ingestion job (R-MKT-03)
@@ -2763,58 +2760,41 @@ free, and the numbers the job seeds (`market_record`) never come from a model
 anyway. Set `AiGateway__Endpoint` / `AiGateway__ProjectName` on the job to embed
 the market notes with Foundry instead.
 
-### `reprocess-tenant-documents` — re-OCR, re-embed, back-fill (R-DOC-07, R-SUP-03)
+### `verify-tenant-corpus` — report documents, %PDF embeddings, supplier gaps (R-DOC-07, R-SUP-03)
 
-`.github/workflows/reprocess-tenant-documents.yml`, `workflow_dispatch` /
-`workflow_call`, inputs `target_environment` and `tenant_id`.
-
-**It calls the API, not a `backend/scripts/` helper**, and this is deliberate.
-The parent story allowed either; the API wins because (a) the API host is
-reachable from a GitHub runner — `web.yml` already resolves that same
-`ca-raffa-<env>-api` ingress FQDN and bakes it into the SPA's `config.json`,
-so the "API host is not reachable from CI" branch simply does not apply, and
-(b) `POST /api/documents/{id}/reprocess` *is* the R-DOC-07 seam: it re-runs the
-real `DocumentProcessingPipeline` (load → hybrid parse/OCR → page-aware
-re-embed → supplier resolution) and writes the `document.reprocessed` audit
-row. A Python helper would have to re-implement that pipeline against the
-database, would drift from it on the first pipeline change, and could not write
-the same audit trail. There is therefore **no** `backend/scripts/reprocess_tenant.py`.
+`.github/workflows/verify-tenant-corpus.yml`, `workflow_dispatch` only, inputs
+`target_environment` and `tenant_id`. Wave w16 (NW-31, task E18/F03/US01/T01)
+deleted `reprocess-tenant-documents.yml`: that job called the API with
+client-asserted role headers, accepted only HTTP 200 with `pagesParsed` /
+`chunksIndexed`, and raced work that is now asynchronous. After NW-05 those
+API steps 401'd before any write. There is no zero-cost repair (CI holds no
+Service Bus role). This job **reports; it does not mutate**. Bulk whole-tenant
+reprocess is W17. An Admin resubmits a document through the product
+(`POST /api/documents/{id}/reprocess` → `202` → Worker).
 
 What the job does, in order:
 
-1. Resolves the API ingress FQDN and health-checks it.
-2. Detects whether that environment runs a live Foundry gateway (reads
+1. Detects whether that environment runs a live Foundry gateway (reads
    `AiGateway__Endpoint` off the Container App) — this decides how strict the
-   OCR check in step 5 can be.
-3. Pages through `GET /api/documents?page=&pageSize=100` for the tenant (no
-   `status` filter — the operator job reprocesses *every* document, not only
-   the ones needing attention).
-4. `POST /api/documents/{id}/reprocess` per document, attempting all of them and
-   failing at the end if any did not return `200`, so one bad document never
-   hides the rest. It prints `pagesParsed` / `chunksIndexed` per document.
-5. Verifies by SQL, with `SET app.tenant_id` (RLS stays on — the same session
-   claim `TenantRlsConnectionInterceptor` sets, never a disabled policy):
+   OCR check can be.
+2. Enumerates the tenant's `document` rows (`id`, `file_name`, `document_type`,
+   `processing_status`) over psql with `SET app.tenant_id` (RLS stays on).
+3. Prints a **named worklist** of documents still needing a reprocess (`Failed`,
+   or at least one embedding still starting with `%PDF`). The operator acts on
+   that list in the product; the job does not POST.
+4. Verifies by SQL:
    - **`left(chunk_text, 4) = '%PDF'` must be 0** — R-DOC-07 AC-1. This is a
      hard failure: an embedding that is raw bytes means Ask would cite bytes as
      evidence.
    - The `[fixture-ocr: …]` placeholder count is a **failure** when the
      environment has `AiGateway__Endpoint` set (the `ocr` role fell back), and a
      **warning** otherwise (expected fixture behaviour).
-6. Reports the tenant's contracts that still have `supplier_id IS NULL`
+5. Reports the tenant's contracts that still have `supplier_id IS NULL`
    (R-SUP-03). A *report*, not a gate: SQL cannot know whether a given document
    actually names a supplier, so failing here would fail honestly supplier-less
    contracts (an unsigned SOW, a price list). Name the supplier through the
    review screen (`/documents?review=<documentId>`) for each one that should
    have had one.
-
-**Role headers.** Reprocess is Admin-only and no host authentication is wired
-yet (ADR-022), so the job sends **both** `X-Workspace-Role: Admin` and
-`X-Role: Admin` — two spellings are in flight in this codebase
-(`CapabilitiesEndpointExtensions` parses `X-Role`; the OpenAPI's
-`reprocessDocument` / `deleteDocument` descriptions name `X-Workspace-Role`) and
-neither is a declared parameter of the operation. A `403` is surfaced as a named
-error, never a silent skip. Both headers disappear with `X-Tenant-Id` when
-ADR-010's API JWT lands.
 
 ### AI golden set (`Raffa.AiEval`) — how it runs and how to filter it
 

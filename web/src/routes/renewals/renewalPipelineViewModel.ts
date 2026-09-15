@@ -1,7 +1,6 @@
-import type { RenewalActionStatusValue, RenewalPipelineItemBody } from "../../api/client";
+import type { RenewalActionRow, RenewalActionStatusValue, RenewalPipelineItemBody } from "../../api/client";
 import type { SemanticTag } from "../../styles/semantics";
 import { isDeadlineCritical } from "../../styles/semantics";
-import type { TrackedRenewalAction } from "./renewalActionStore";
 
 /**
  * Pure view-model helpers for the V2 Renewals screen (route `/renewals`; ADR-024 V2 IA amending
@@ -16,12 +15,18 @@ import type { TrackedRenewalAction } from "./renewalActionStore";
  */
 
 /** One row of the priority list: the pipeline item, its own `GET /api/renewals/{id}/priority` score
- * (`null` while unresolved or failed -- rendered "—", never fabricated), and this browser's own
- * session-local action state (`./renewalActionStore.ts`). */
+ * (`null` while unresolved or failed -- rendered "—", never fabricated), and the persisted
+ * `savedAction` from the same list row (`null` when none was recorded, or when status is NotStarted). */
 export interface RenewalTableRow {
   item: RenewalPipelineItemBody;
   score: number | null;
-  tracked: TrackedRenewalAction | null;
+  tracked: RenewalActionRow | null;
+}
+
+/** `NotStarted` is "no action taken" everywhere (ADR-012 w16 clause 22). */
+export function savedActionOnScreen(saved: RenewalActionRow | null | undefined): RenewalActionRow | null {
+  if (saved == null || saved.status === "NotStarted") return null;
+  return saved;
 }
 
 /**
@@ -33,10 +38,13 @@ export interface RenewalTableRow {
 export function buildRenewalRows(
   items: readonly RenewalPipelineItemBody[],
   scores: Readonly<Record<string, number | null>>,
-  trackedByContract: ReadonlyMap<string, TrackedRenewalAction>,
 ): RenewalTableRow[] {
   return items
-    .map((item) => ({ item, score: scores[item.contractId] ?? null, tracked: trackedByContract.get(item.contractId) ?? null }))
+    .map((item) => ({
+      item,
+      score: scores[item.contractId] ?? null,
+      tracked: savedActionOnScreen(item.savedAction),
+    }))
     .sort(compareByPriority);
 }
 
@@ -114,12 +122,12 @@ export function formatRenewalSupplier(provisionalSupplierName: string | null | u
 /** "Status" column default before this browser has acted on a row this session -- `app.jsx`: `st:act||'Open'`. */
 export const DEFAULT_RENEWAL_STATUS_LABEL = "Open";
 
-export function getRenewalStatusLabel(tracked: TrackedRenewalAction | null): string {
+export function getRenewalStatusLabel(tracked: RenewalActionRow | null): string {
   return tracked?.action ?? DEFAULT_RENEWAL_STATUS_LABEL;
 }
 
 /** `stTag:act?'tag-accent':'tag-neutral'` -- an acted-on row gets the accent emphasis, an un-acted "Open" row stays neutral. */
-export function getRenewalStatusTag(tracked: TrackedRenewalAction | null): SemanticTag {
+export function getRenewalStatusTag(tracked: RenewalActionRow | null): SemanticTag {
   return tracked === null
     ? { variant: "neutral", label: DEFAULT_RENEWAL_STATUS_LABEL }
     : { variant: "accent", label: tracked.action };
@@ -128,7 +136,7 @@ export function getRenewalStatusTag(tracked: TrackedRenewalAction | null): Seman
 /** Pane owner before this browser has acted on the selected row this session -- the wire carries no owner until a human sets one via `POST /api/renewals/{id}/action`, so this is an honest "nobody yet", never a fabricated name. */
 export const UNASSIGNED_OWNER_LABEL = "Unassigned";
 
-export function getInsightOwner(tracked: TrackedRenewalAction | null): string {
+export function getInsightOwner(tracked: RenewalActionRow | null): string {
   return tracked?.owner ?? UNASSIGNED_OWNER_LABEL;
 }
 

@@ -5,7 +5,6 @@ import { loadCurrentWorkspace } from "../signin/workspaceStore";
 import RenewalTable from "./RenewalTable";
 import InsightCard from "./InsightCard";
 import { buildRenewalRows, formatRenewalsSummary, getRenewalActionPlan, RENEWALS_SUMMARY_OFF, type RenewalActionKind } from "./renewalPipelineViewModel";
-import { loadTrackedRenewalActions, rememberRenewalAction, type TrackedRenewalAction } from "./renewalActionStore";
 import "./renewals.css";
 
 export interface RenewalsRouteProps {
@@ -40,14 +39,13 @@ type FetchState =
  * failing degrades only that row's score to "—" (it then sorts last), never the whole screen.
  *
  * **Status shared with the Contract 360 tracker** (`racts`): the real write is
- * `POST /api/renewals/{id}/action`; this browser remembers it in `renewalActionStore.ts` so the list's
- * Status column, the pane's acted state and Contract 360 read the same decision.
+ * `POST /api/renewals/{id}/action`; every surface reads `savedAction` on the same
+ * `GET /api/renewals` row.
  */
 export default function RenewalsRoute({ apiClient, userLabel }: RenewalsRouteProps) {
   const workspace = loadCurrentWorkspace();
   const [fetchState, setFetchState] = useState<FetchState>({ phase: "loading" });
   const [selectedContractId, setSelectedContractId] = useState<string | null>(null);
-  const [trackedActions, setTrackedActions] = useState<readonly TrackedRenewalAction[]>(() => loadTrackedRenewalActions());
   const [actionPending, setActionPending] = useState<RenewalActionKind | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -94,15 +92,9 @@ export default function RenewalsRoute({ apiClient, userLabel }: RenewalsRoutePro
     load();
   }, [load]);
 
-  const trackedByContract = useMemo(() => {
-    const map = new Map<string, TrackedRenewalAction>();
-    for (const tracked of trackedActions) map.set(tracked.contractId, tracked);
-    return map;
-  }, [trackedActions]);
-
   const rows = useMemo(
-    () => (fetchState.phase === "ready" ? buildRenewalRows(fetchState.items, fetchState.scores, trackedByContract) : []),
-    [fetchState, trackedByContract],
+    () => (fetchState.phase === "ready" ? buildRenewalRows(fetchState.items, fetchState.scores) : []),
+    [fetchState],
   );
 
   if (!workspace) {
@@ -141,17 +133,7 @@ export default function RenewalsRoute({ apiClient, userLabel }: RenewalsRoutePro
           return;
         }
 
-        setTrackedActions(
-          rememberRenewalAction({
-            contractId: result.action.contractId,
-            supplierId: selected.supplierId,
-            annualSpend: selected.annualSpend,
-            owner: result.action.owner,
-            status: result.action.status,
-            action: result.action.action,
-            updatedAt: result.action.updatedAt,
-          }),
-        );
+        load();
       });
   };
 

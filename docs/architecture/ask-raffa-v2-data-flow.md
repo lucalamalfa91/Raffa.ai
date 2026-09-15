@@ -418,7 +418,7 @@ flowchart LR
   subgraph GH["GitHub — lucalamalfa91/raffa"]
     direction TB
     CI["CI — build, test, golden set<br/>schema apply on deploy (ADR-021)"]
-    SEED["seed-market-intelligence.yml<br/>reprocess-tenant-documents.yml"]
+    SEED["seed-market-intelligence.yml<br/>verify-tenant-corpus.yml"]
   end
 
   subgraph ENV["One Azure environment — dev, and demo as its isolated twin (North Europe)"]

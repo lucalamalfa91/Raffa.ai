@@ -116,17 +116,30 @@ public static class NegotiationsEndpointExtensions
         // for an unambiguous supplier-name match before ever calling PropagateAsync -- a decline
         // leaves this null, so PropagateAsync is never invoked and savingsPropagated stays honestly
         // null (w16 round-2 footer, Fence 2 -- see this method's own doc comment).
-        var savingsOpportunityIdToPropagate = outcome.SavingsOpportunityId
-            ?? await propagationService.ResolveSavingsOpportunityIdAsync(
-                tenantId, outcome.QuoteId, cancellationToken).ConfigureAwait(false);
-
-        if (savingsOpportunityIdToPropagate is { } savingsOpportunityId)
+        //
+        // Capture is already durable here. A throw from resolve/propagate (wrong connection
+        // string, missing schema, a suppliers lookup that cannot run) must not turn that write
+        // into a client-visible 500 -- the client would retry and mint a second outcome
+        // (ADR-028: never fail an already-durable capture). Cancellation still flows.
+        try
         {
-            var propagationResult = await propagationService.PropagateAsync(
-                tenantId, outcome.Id, savingsOpportunityId, cancellationToken).ConfigureAwait(false);
+            var savingsOpportunityIdToPropagate = outcome.SavingsOpportunityId
+                ?? await propagationService.ResolveSavingsOpportunityIdAsync(
+                    tenantId, outcome.QuoteId, cancellationToken).ConfigureAwait(false);
 
-            savingsPropagated = propagationResult.IsSuccess;
-            savingsPropagationError = propagationResult.IsFailure ? propagationResult.Error : null;
+            if (savingsOpportunityIdToPropagate is { } savingsOpportunityId)
+            {
+                var propagationResult = await propagationService.PropagateAsync(
+                    tenantId, outcome.Id, savingsOpportunityId, cancellationToken).ConfigureAwait(false);
+
+                savingsPropagated = propagationResult.IsSuccess;
+                savingsPropagationError = propagationResult.IsFailure ? propagationResult.Error : null;
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            savingsPropagated = false;
+            savingsPropagationError = ex.Message;
         }
 
         return Results.Created($"/api/negotiations/outcomes/{outcome.Id.Value}", new

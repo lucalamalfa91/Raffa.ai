@@ -5,6 +5,7 @@ import QuoteCheckRoute from "../../../src/routes/quotes";
 import type {
   ApiClient,
   CaptureNegotiationOutcomeResult,
+  QuoteDetailBody,
   QuoteLineAssessmentBody,
   QuoteRecalculationBody,
   RecalculateQuoteAssessmentResult,
@@ -14,6 +15,22 @@ import type {
 
 const WORKSPACE_ID = "11111111-1111-1111-1111-111111111111";
 const QUOTE_ID = "22222222-2222-2222-2222-222222222222";
+
+function quoteDetail(overrides: Partial<QuoteDetailBody> = {}): QuoteDetailBody {
+  return {
+    id: QUOTE_ID,
+    fileName: "quote.pdf",
+    mimeType: "application/pdf",
+    processingStatus: "Completed",
+    supplier: "Databricks",
+    currency: "CHF",
+    geography: "CH",
+    purchaseDate: null,
+    createdAt: "2026-09-06T00:00:00Z",
+    outcomes: [],
+    ...overrides,
+  };
+}
 
 function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
   return {
@@ -49,6 +66,9 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     getCapabilities: vi.fn(),
     getMarketRecord: vi.fn(),
     postRenewalAction: vi.fn(),
+    getQuote: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, quote: quoteDetail(), error: null }),
+    getNegotiationSteps: vi.fn(),
+    putNegotiationSteps: vi.fn(),
     uploadQuote: vi.fn(),
     getQuoteAssessment: vi.fn(),
     recalculateQuoteAssessment: vi.fn(),
@@ -380,6 +400,7 @@ describe("QuoteCheckRoute (V2, ADR-024 / screens-v2.md #9)", () => {
       expect(await screen.findByText("Negotiation outcome")).toBeInTheDocument();
       expect(screen.getByText("CHF 50 · 5.0%")).toBeInTheDocument();
       expect(screen.getByRole("link", { name: "See it in Savings →" })).toHaveAttribute("href", "/savings");
+      expect(window.sessionStorage.getItem("raffa.quotes.negotiationOutcomes")).toBeNull();
     });
 
     it("disables Record outcome until at least one lever is selected (backend LeversUsedRequiredError)", async () => {
@@ -406,6 +427,49 @@ describe("QuoteCheckRoute (V2, ADR-024 / screens-v2.md #9)", () => {
 
       expect(await screen.findByRole("alert")).toHaveTextContent(/leversUsed/i);
       expect(screen.getByLabelText("Final price")).toHaveValue(950);
+    });
+
+    it("renders a server-supplied outcome on mount and writes nothing to sessionStorage", async () => {
+      const recorded: QuoteDetailBody["outcomes"][number] = {
+        id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
+        originalQuoteTotal: 1000,
+        targetPrice: 900,
+        finalPrice: 950,
+        realizedSaving: 50,
+        discountPercent: 5,
+        negotiationDurationDays: 10,
+        leversUsed: ["Term"],
+        capturedAt: "2026-09-06T00:00:00Z",
+        savingsOpportunityId: null,
+      };
+      const getQuote = vi.fn().mockResolvedValue({ ok: true, statusCode: 200, quote: quoteDetail({ outcomes: [recorded] }), error: null });
+      renderRoute(mockApiClient({ recalculateQuoteAssessment: vi.fn().mockResolvedValue(recalcOk([assessedLine()], [])), getQuote }));
+      await screen.findByText(LEVERS_FOOTER);
+      fireEvent.click(screen.getByRole("button", { name: "Show target and levers →" }));
+      fireEvent.click(await screen.findByRole("button", { name: /build negotiation strategy/i }));
+
+      expect(getQuote).toHaveBeenCalledWith(WORKSPACE_ID, QUOTE_ID);
+      expect(await screen.findByText("Negotiation outcome")).toBeInTheDocument();
+      expect(screen.getByText("CHF 50 · 5.0%")).toBeInTheDocument();
+      expect(window.sessionStorage.getItem("raffa.quotes.negotiationOutcomes")).toBeNull();
+    });
+
+    it("a failed getQuote shows the ADR-018 error state naming the quote, with a Retry", async () => {
+      const getQuote = vi
+        .fn()
+        .mockResolvedValueOnce({ ok: false, statusCode: 500, quote: null, error: "The quote could not be loaded." })
+        .mockResolvedValueOnce({ ok: true, statusCode: 200, quote: quoteDetail(), error: null });
+      renderRoute(mockApiClient({ recalculateQuoteAssessment: vi.fn().mockResolvedValue(recalcOk([assessedLine()], [])), getQuote }));
+      await screen.findByText(LEVERS_FOOTER);
+      fireEvent.click(screen.getByRole("button", { name: "Show target and levers →" }));
+      fireEvent.click(await screen.findByRole("button", { name: /build negotiation strategy/i }));
+
+      const alert = await screen.findByRole("alert");
+      expect(within(alert).getByRole("heading", { level: 4, name: "The quote" })).toBeInTheDocument();
+      fireEvent.click(within(alert).getByRole("button", { name: "Retry" }));
+
+      await waitFor(() => expect(getQuote).toHaveBeenCalledTimes(2));
+      expect(await screen.findByText("Record the outcome")).toBeInTheDocument();
     });
   });
 });
