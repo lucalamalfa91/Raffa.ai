@@ -1,4 +1,5 @@
 using Raffa.Documents.Contracts.Application.Admission;
+using Raffa.Documents.Contracts.Application.Preview;
 using Raffa.Documents.Contracts.Domain;
 using Raffa.Documents.Contracts.Infrastructure;
 using Raffa.SharedKernel;
@@ -18,42 +19,38 @@ namespace Raffa.Documents.Contracts.Application.Extraction;
 public sealed class ExtractionTransientException(string message) : Exception(message);
 
 /// <summary>
-/// The Worker's half of an upload (task E16/F02/US03/T01 with the transport it depends on; ADR-027
-/// §D1–§D3, §D6). One <see cref="ExtractionRequested"/> pointer in, one durable outcome out:
+/// The Worker's <b>intake</b> handler (instant-identity-ingest, ADR-027 §D1–§D3, §D6).
+/// One <see cref="ExtractionRequested"/> pointer in; outcome:
 /// <list type="number">
-/// <item><b>Claim.</b> <see cref="IExtractionJobClaimStore.TryClaimAsync"/> is the compare-and-swap
-/// that turns at-least-once delivery into exactly-once work. Zero rows means a duplicate, a
-/// redelivery racing the original, a second replica, or a job that is no longer queued — and
-/// the correct response to all four is the same: do nothing, complete the message.</item>
-/// <item><b>Content gate.</b> <see cref="DocumentAdmissionGate.EvaluateAsync"/> — parse/OCR, the
-/// readable-text floor, the Foundry <c>classify</c> call and the threshold — is exactly the work
-/// the request used to wait minutes for. A refusal is now a <b>row</b>:
-/// <see cref="DocumentProcessingStatus.Rejected"/> with its reason <em>code</em>, the detected type
-/// and the confidence, the blob deleted, the classification job completed. The gate's own
-/// <c>document.rejected</c> audit row is written where it always was.</item>
-/// <item><b>Pipeline.</b> An admitted document goes through
-/// <see cref="DocumentProcessingPipeline"/>'s pages-and-classification overload — the model is
-/// still called once per upload, the parse and the verdict are reused — which advances the
-/// classification job and the document's status exactly as it did in-request.</item>
+/// <item><b>Claim.</b> Compare-and-swap via <see cref="IExtractionJobClaimStore.TryClaimAsync"/>.</item>
+/// <item><b>Content gate.</b> Parse/OCR + classify + threshold. Refusals are recorded as
+/// <see cref="DocumentProcessingStatus.Rejected"/>; admitted documents continue below.</item>
+/// <item><b>Headline pass.</b> ONE <see cref="IAiGateway.ExtractAsync"/> call for
+/// supplier/type/status/dates — sets provisional identity on the contract shell within seconds.
+/// <see cref="HeadlineExtractionService"/> always persists <c>ProvisionalSupplierName</c>
+/// regardless of confidence.</item>
+/// <item><b>Enqueue enrich.</b> Publishes <see cref="EnrichRequested"/> so the slow 7-stage
+/// <see cref="StagedExtractionService"/> run happens under its own Service Bus lock, not this
+/// message's lock (two-queue split).</item>
 /// </list>
 /// <para>
-/// <b>Transient vs terminal.</b> A gateway that could not be reached is transient: the claim is
-/// released (so the redelivery can claim), and <see cref="ExtractionTransientException"/> tells the
-/// consumer to abandon. <see cref="MaxAttempts"/> deliveries later the row itself goes
-/// <see cref="DocumentProcessingStatus.Failed"/> — the database, not the dead-letter queue, owns the
-/// terminal state (ADR-027 §D3). A document the pipeline genuinely cannot read is terminal on the
-/// first attempt.
+/// <b>Transient vs terminal.</b> A gateway that could not be reached is transient:
+/// <see cref="ExtractionTransientException"/> tells the consumer to abandon.
+/// <see cref="MaxAttempts"/> deliveries later the row goes
+/// <see cref="DocumentProcessingStatus.Failed"/> (ADR-027 §D3).
 /// </para>
 /// </summary>
 public sealed class ExtractionRequestedHandler(
     DocumentsContractsDbContext dbContext,
     IDocumentStorage storage,
     DocumentAdmissionGate admissionGate,
-    DocumentProcessingPipeline processingPipeline,
+    HeadlineExtractionService headlineService,
+    IEnrichQueuePublisher enrichQueuePublisher,
     IExtractionJobClaimStore claimStore,
     ITenantContext tenantContext,
     IClock clock,
-    ILogger<ExtractionRequestedHandler> logger)
+    ILogger<ExtractionRequestedHandler> logger,
+    DocumentPreviewService? previewService = null)
 {
     /// <summary>Deliveries a job may consume before its row is marked terminal (ADR-027 §D3).</summary>
     public const int MaxAttempts = 3;
@@ -236,25 +233,61 @@ public sealed class ExtractionRequestedHandler(
                 return ExtractionHandleOutcome.Handled;
         }
 
-        var result = await processingPipeline
-            .ProcessAsync(
-                tenantId,
-                documentId,
-                decision.Pages,
-                decision.Classification!,
-                bytes,
-                document.FileName,
-                document.MimeType,
-                cancellationToken)
+        // Admitted. Advance the classification job now (mirroring the former pipeline path).
+        var classificationJob = await dbContext.ExtractionJobs
+            .Where(j => j.TenantId == tenantId
+                && j.DocumentId == document.Id
+                && j.Stage == ExtractionStage.Classification
+                && j.Status == ExtractionJobStatus.Running)
+            .OrderByDescending(j => j.QueuedAt)
+            .FirstOrDefaultAsync(cancellationToken)
             .ConfigureAwait(false);
 
-        if (result.IsFailure)
+        var now = clock.UtcNow;
+        document.DocumentType = decision.Classification!.DocumentType;
+        document.PageCount = decision.Pages.Count;
+
+        if (classificationJob is not null)
         {
-            // The pipeline records its own stage failure on the job and the document; this log line
-            // is the operator's pointer to it, not a second write.
-            logger.LogWarning(
-                "Pipeline reported a failure for document {DocumentId}: {Error}", documentId.Value, result.Error);
+            classificationJob.StartedAt ??= now;
+            classificationJob.ModelId = decision.Classification.Metadata.ModelId;
+            classificationJob.Status = decision.Classification.Confidence < 0.6
+                ? ExtractionJobStatus.NeedsReview
+                : ExtractionJobStatus.Completed;
+            classificationJob.CompletedAt = now;
         }
+
+        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        // Fast headline pass: one LLM call that sets provisional supplier/type/status/dates.
+        // Non-fatal: if this fails, the contract stays provisional with the filename as identity.
+        await headlineService
+            .RunAsync(tenantId, document, decision.Pages, decision.Classification.DocumentType, cancellationToken)
+            .ConfigureAwait(false);
+
+        // R-DOC-08: render and store the first-page preview from the bytes we already hold.
+        // Best-effort (non-fatal) — DocumentPreviewService returns null instead of throwing;
+        // a document with no preview simply answers 404 on its preview endpoint.
+        if (previewService is not null && bytes.Length > 0)
+        {
+            var previewPath = await previewService
+                .RenderAndStoreAsync(tenantId, documentId, document.FileName, document.MimeType, bytes, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (previewPath is not null)
+            {
+                document.PreviewPath = previewPath;
+                await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        // Publish enrich so the 7-stage StagedExtractionService runs under its own lock.
+        await enrichQueuePublisher.PublishAsync(
+            new EnrichRequested(tenantId.Value, documentId.Value, EnrichRequested.CurrentSchemaVersion),
+            cancellationToken).ConfigureAwait(false);
+
+        logger.LogInformation(
+            "Intake complete for document {DocumentId}; EnrichRequested published", documentId.Value);
 
         return ExtractionHandleOutcome.Handled;
     }

@@ -33,6 +33,14 @@ public sealed class ContractConfiguration : IEntityTypeConfiguration<Contract>
         builder.Property(e => e.AnnualSpend).HasPrecision(18, 2);
         builder.Property(e => e.TotalContractValue).HasPrecision(18, 2);
 
+        // Provisional identity fields (instant-identity-ingest slice):
+        builder.Property(e => e.DisplayName).HasMaxLength(500);
+        builder.Property(e => e.IdentityState)
+            .HasConversion<string>()
+            .HasMaxLength(20)
+            .HasDefaultValueSql("'official'");
+        builder.Property(e => e.ProvisionalSupplierName).HasMaxLength(500);
+
         // Optimistic-concurrency guard (Appendix C rule 5) — see Contract.Version.
         builder.Property(e => e.Version).HasDefaultValue(1).IsConcurrencyToken();
 

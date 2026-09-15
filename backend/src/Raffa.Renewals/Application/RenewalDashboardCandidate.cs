@@ -46,4 +46,13 @@ public sealed record RenewalDashboardCandidate(
     DateOnly? EndDate,
     bool AutoRenewal,
     decimal? AnnualSpend,
-    DateOnly? CancellationDeadline);
+    DateOnly? CancellationDeadline,
+    /// <summary>The contract's human-readable display name (filename at upload, then document
+    /// title). Null for pre-instant-identity-ingest contracts.</summary>
+    string? DisplayName = null,
+    /// <summary>Provisional or official identity state — passed through to the pipeline row so
+    /// the UI can render provisional rows differently.</summary>
+    string? IdentityState = null,
+    /// <summary>Raw supplier name from the headline pass — shown on provisional rows before a
+    /// canonical supplier is resolved.</summary>
+    string? ProvisionalSupplierName = null);

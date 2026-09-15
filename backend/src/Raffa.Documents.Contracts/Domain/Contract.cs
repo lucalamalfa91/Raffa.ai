@@ -36,6 +36,33 @@ public sealed class Contract : TenantScopedEntity
 
     public required DateTimeOffset CreatedAt { get; set; }
 
+    /// <summary>
+    /// Human-readable name for this contract — set to the uploaded file name at T+0, then
+    /// optionally overwritten by the headline LLM if it finds a better title in the document text.
+    /// Never null once the contract is created by <c>DocumentUploadService</c>; nullable only for
+    /// contracts created before this feature (those row-migrated rows will still show the contract
+    /// type as a fallback on the portfolio list).
+    /// </summary>
+    public string? DisplayName { get; set; }
+
+    /// <summary>
+    /// Whether this contract's identity fields (supplier, type, status, dates) have been set by
+    /// the fast headline pass (<see cref="ContractIdentityState.Provisional"/>) or the full
+    /// 7-stage enrich pipeline (<see cref="ContractIdentityState.Official"/>). Defaults to
+    /// <see cref="ContractIdentityState.Official"/> for backward-compatibility: all contracts that
+    /// existed before this feature are already fully extracted.
+    /// </summary>
+    public ContractIdentityState IdentityState { get; set; } = ContractIdentityState.Official;
+
+    /// <summary>
+    /// The raw supplier name string extracted by the headline pass, always persisted regardless of
+    /// confidence (plan: "always persist provisional_supplier_name even below 0.8 confidence").
+    /// Separate from <see cref="SupplierId"/>: the enrich pass resolves a canonical supplier from
+    /// this raw string and sets <see cref="SupplierId"/>, but the raw string stays visible on
+    /// the portfolio row even when no canonical match is found.
+    /// </summary>
+    public string? ProvisionalSupplierName { get; set; }
+
     /// <summary>Optimistic-concurrency guard (Appendix C rule 5 — never destructively overwrite
     /// contract history or human corrections). EF Core includes this in the WHERE clause of
     /// every UPDATE/DELETE (<see cref="Infrastructure.Configurations.ContractConfiguration"/>),

@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { DocumentListItemBody } from "../../../src/api/client";
-import { getProgressStages, getProgressView } from "../../../src/routes/documents/documentProgress";
-import { DOCUMENT_PROCESSING_STAGES } from "../../../src/routes/documents/documentTable";
+import { getProgressView } from "../../../src/routes/documents/documentProgress";
+
+/**
+ * Updated for plan instant-upload-open: `getProgressStages` / the 6-stage checklist is replaced
+ * by a two-chip model (`chip: ProcessingChip | null`). The `getProgressView` tests that previously
+ * accessed `view.stages` now verify `view.chip` instead.
+ */
 
 function item(overrides: Partial<DocumentListItemBody> = {}): DocumentListItemBody {
   return {
@@ -20,53 +25,36 @@ function item(overrides: Partial<DocumentListItemBody> = {}): DocumentListItemBo
   };
 }
 
-// Task E16/F03/US02/T02 (wave w15, ADR-020 w15 footer 11): the checklist reads the same source
-// documentTable.ts#getStagePercent reads for the row's own inline bar, so the two can never
-// disagree on where a document is.
-describe("getProgressStages", () => {
-  it("marks every stage 'todo' for a null stage -- queued, nothing started yet", () => {
-    const stages = getProgressStages(null);
-    expect(stages.map((s) => s.name)).toEqual(DOCUMENT_PROCESSING_STAGES);
-    expect(stages.every((s) => s.state === "todo")).toBe(true);
-  });
-
-  it("marks earlier stages 'done', the real stage 'current', later ones 'todo'", () => {
-    const stages = getProgressStages("OCR / text"); // index 2 of 6
-    expect(stages.map((s) => s.state)).toEqual(["done", "done", "current", "todo", "todo", "todo"]);
-  });
-
-  it("marks the final stage 'current' with nothing left 'todo'", () => {
-    const stages = getProgressStages("Validating schema");
-    expect(stages.map((s) => s.state)).toEqual(["done", "done", "done", "done", "done", "current"]);
-  });
-
-  it("treats an unrecognised stage the same as null -- all 'todo', an honest just-started reading", () => {
-    expect(getProgressStages("Some future stage").every((s) => s.state === "todo")).toBe(true);
-  });
-});
-
 describe("getProgressView", () => {
-  it("reads 'Queued, starting shortly' for Uploaded with no stage yet, waiting, no link", () => {
+  it("reads 'Queued, starting shortly' for Uploaded with no stage yet, isWaiting, chip=identifying, no link", () => {
     const view = getProgressView(item({ processingStatus: "Uploaded", stage: null }));
 
     expect(view.isWaiting).toBe(true);
+    expect(view.chip).toBe("identifying");
     expect(view.headline).toBe("Queued, starting shortly");
     expect(view.link).toBeNull();
   });
 
-  it("reads the real stage name for Processing, waiting, no link", () => {
+  it("reads the real stage name in headline for Processing, chip reflects stage, no link", () => {
     const view = getProgressView(item({ processingStatus: "Processing", stage: "Extracting facts" }));
 
     expect(view.isWaiting).toBe(true);
     expect(view.headline).toBe("Extracting facts…");
-    expect(view.stages.find((s) => s.name === "Extracting facts")?.state).toBe("current");
+    // 'Extracting facts' is the slow AI pass → enriching chip
+    expect(view.chip).toBe("enriching");
     expect(view.link).toBeNull();
   });
 
-  it("offers a review link for NeedsReview, no longer waiting", () => {
+  it("early stages produce identifying chip", () => {
+    const view = getProgressView(item({ processingStatus: "Processing", stage: "OCR / text" }));
+    expect(view.chip).toBe("identifying");
+  });
+
+  it("offers a review link for NeedsReview, no longer waiting, chip null", () => {
     const view = getProgressView(item({ id: "doc-7", processingStatus: "NeedsReview" }));
 
     expect(view.isWaiting).toBe(false);
+    expect(view.chip).toBeNull();
     expect(view.link).toEqual({ href: "/documents?review=doc-7", label: "Review now" });
   });
 

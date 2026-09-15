@@ -33,16 +33,20 @@ public sealed class ExtractionJobClaimStore(DocumentsContractsDbContext dbContex
     {
         var now = clock.UtcNow;
         var queuedStatus = ExtractionJobStatus.Queued.ToString();
+        var runningStatus = ExtractionJobStatus.Running.ToString();
 
         // Raw, parameterised SQL — not a tracked-entity SaveChanges — because atomicity here comes
         // from Postgres's own row lock on the UPDATE, not from EF's optimistic concurrency. The
         // "claimed_at IS NULL" guard is what makes this a compare-and-swap: the first concurrent
         // caller to commit flips it away from NULL, so a second caller's WHERE re-evaluates false
-        // and it affects zero rows, even though this statement never touches `status` itself.
+        // and it affects zero rows. Setting status = Running immediately makes the document show
+        // "Processing" from the first second; ReleaseOrFailAsync resets it back to Queued on a
+        // transient failure so a redelivery can reclaim (ADR-027 §D3 / instant-identity-ingest).
         return dbContext.Database.ExecuteSqlInterpolatedAsync(
             $"""
             UPDATE extraction_job
-               SET claimed_at = {now}, claimed_by = {claimedBy}, attempt_count = attempt_count + 1
+               SET claimed_at = {now}, claimed_by = {claimedBy}, attempt_count = attempt_count + 1,
+                   status = {runningStatus}
              WHERE id = {jobId.Value} AND status = {queuedStatus} AND claimed_at IS NULL
             """,
             cancellationToken);

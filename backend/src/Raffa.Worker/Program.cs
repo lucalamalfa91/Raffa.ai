@@ -61,6 +61,8 @@ var storageConnectionString = builder.Configuration.GetConnectionString("Storage
         "(set env var ConnectionStrings__Storage in deployed environments).");
 builder.Services.AddAzureBlobDocumentStorage(storageConnectionString);
 builder.Services.AddExtractionQueuePublisher(builder.Configuration);
+// Instant-identity-ingest: the intake handler publishes EnrichRequested after the headline pass.
+builder.Services.AddEnrichQueuePublisher(builder.Configuration);
 builder.Services.AddExtractionQueueConsumer(builder.Configuration);
 
 // Task E13/F02/US01/T02 (market-index): Raffa.Market's own composition method, called directly

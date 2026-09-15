@@ -20,16 +20,17 @@ public sealed class ExtractionSettlementTests
     [Theory]
     [InlineData(0)]
     [InlineData(1)]
-    public void An_absent_row_below_two_deliveries_abandons_for_redelivery(long deliveryCount)
+    [InlineData(2)]
+    public void An_absent_row_below_three_deliveries_abandons_for_redelivery(long deliveryCount)
     {
         Assert.Equal(ExtractionSettlement.Action.Abandon, ExtractionSettlement.Decide(ExtractionHandleOutcome.JobNotFound, deliveryCount));
     }
 
     [Theory]
-    [InlineData(2)]
     [InlineData(3)]
+    [InlineData(4)]
     [InlineData(8)]
-    public void An_absent_row_from_two_deliveries_dead_letters_as_job_not_found(long deliveryCount)
+    public void An_absent_row_from_three_or_more_deliveries_dead_letters_as_job_not_found(long deliveryCount)
     {
         Assert.Equal(ExtractionSettlement.Action.DeadLetter, ExtractionSettlement.Decide(ExtractionHandleOutcome.JobNotFound, deliveryCount));
         Assert.Equal("job-not-found", ExtractionSettlement.JobNotFoundReason);

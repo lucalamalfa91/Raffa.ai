@@ -48,7 +48,8 @@ describe("limits (R-DOC-01, task's own coding objective; ADR-012 w15 §5 deadlin
   it("names the requirements' own multi-file limits and the one client-owned upload deadline", () => {
     expect(MAX_FILES_PER_BATCH).toBe(20);
     expect(MAX_FILE_BYTES).toBe(50 * 1024 * 1024);
-    expect(MAX_CONCURRENT_UPLOADS).toBe(3);
+    // Raised to 8 (plan instant-identity-ingest): outbox landed, safe for a 50-file drop.
+    expect(MAX_CONCURRENT_UPLOADS).toBe(8);
     expect(ACCEPTED_EXTENSIONS).toBe(".pdf,.docx,.xlsx,.png,.jpg,.jpeg");
     expect(UPLOAD_DEADLINE_MS).toBe(120_000);
   });

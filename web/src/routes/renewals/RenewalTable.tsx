@@ -51,8 +51,9 @@ export default function RenewalTable({ rows, selectedContractId, onSelect }: Ren
         </thead>
         <tbody>
           {rows.map(({ item, score, tracked }) => {
-            const supplier = formatRenewalSupplier(item.supplierName);
-            const contractRef = formatContractRef(item.contractId);
+            const supplier = formatRenewalSupplier(item.provisionalSupplierName, item.supplierName);
+            const contractRef = formatContractRef(item.contractId, item.displayName);
+            const isProvisional = item.identityState === "provisional";
             const statusTag = getRenewalStatusTag(tracked);
             const isSelected = item.contractId === selectedContractId;
             const urgentScore = score !== null && isHighPriorityScore(score);

@@ -12,8 +12,13 @@ namespace Raffa.Documents.Contracts.Application;
 /// Implements task E01/F06/US01/T01 (us-01-document-upload, AC-1/AC-2): stores the uploaded
 /// bytes in tenant-scoped object storage (no cross-tenant path) and persists the
 /// <see cref="Document"/> + initial <see cref="DocumentVersion"/> + a queued classification
-/// <see cref="ExtractionJob"/> as one unit of work (module-map "Worker responsibilities":
-/// classification is the first extraction stage after upload).
+/// <see cref="ExtractionJob"/> + a <b>provisional</b> <see cref="Contract"/> shell as one unit of
+/// work (module-map "Worker responsibilities": classification is the first extraction stage after upload).
+///
+/// <b>Instant identity:</b> a provisional <see cref="Contract"/> shell is created at upload time
+/// with <see cref="Contract.DisplayName"/> = <paramref name="fileName"/> and
+/// <see cref="Contract.IdentityState"/> = <see cref="ContractIdentityState.Provisional"/>. This
+/// makes the contract visible on Portfolio and Renewals immediately, before any LLM extraction runs.
 ///
 /// Owns its own tenant scope (<see cref="ITenantContext.BeginScope"/>) for the duration of the
 /// call instead of relying on the caller to have entered one — every caller (the API endpoint
@@ -31,14 +36,13 @@ namespace Raffa.Documents.Contracts.Application;
 /// itself opened, so the audit row's RLS `WITH CHECK` is satisfied by the identical ambient
 /// tenant claim (see <see cref="Raffa.Audit.Infrastructure.AuditWriter"/>'s own doc comment).
 ///
-/// Task E16/F02/US02/T01 (durable-queue-transport, ADR-027 §D2): also publishes an
-/// <see cref="ExtractionRequested"/> pointer through <see cref="IExtractionQueuePublisher"/> —
-/// <b>before</b> <see cref="Microsoft.EntityFrameworkCore.DbContext.SaveChangesAsync(CancellationToken)"/>
-/// commits the three rows below, never after. That ordering is not incidental: <c>extraction_job</c>
-/// carries <c>FORCE ROW LEVEL SECURITY</c>, so a poller or a sweeper over it is a cross-tenant read
-/// ADR-009 forbids, which makes "commit, then publish, with a recovery sweep for a lost publish" an
-/// unavailable design here — the ordering below is the only one whose failure mode (a phantom
-/// message when the commit that follows fails) needs no such sweep.
+/// Task E16/F02/US02/T01 (durable-queue-transport): publishes an <see cref="ExtractionRequested"/>
+/// pointer through <see cref="IExtractionQueuePublisher"/> <b>after</b>
+/// <see cref="Microsoft.EntityFrameworkCore.DbContext.SaveChangesAsync(CancellationToken)"/>
+/// commits all rows. Commit-then-publish (instant-identity-ingest): the contract shell is created
+/// at upload time and visible immediately, so a lost publish only delays the headline/enrich pass —
+/// the contract still appears on Portfolio with its filename as the provisional identity. A failed
+/// publish makes the upload fail; the committed rows are orphaned but the contract is still visible.
 /// </summary>
 public sealed class DocumentUploadService(
     DocumentsContractsDbContext dbContext,
@@ -91,6 +95,21 @@ public sealed class DocumentUploadService(
             .SaveAsync(tenantId, documentId, InitialVersionNumber, fileName, buffer, cancellationToken)
             .ConfigureAwait(false);
 
+        // Provisional Contract shell — created at upload time so the contract appears on Portfolio
+        // and Renewals immediately with the filename as display name (instant-identity-ingest).
+        // StagedExtractionService.EnsureContractAsync finds this existing contract and re-uses it
+        // rather than creating a second shell, so no duplicate rows arise.
+        var contract = new Contract
+        {
+            TenantId = tenantId,
+            DisplayName = fileName,
+            IdentityState = ContractIdentityState.Provisional,
+            Type = ContractDocumentType.Other,   // overwritten by classify / headline
+            Status = "processing",               // overwritten by headline
+            Currency = "USD",                    // overwritten by staged extraction
+            CreatedAt = now,
+        };
+
         var document = new Document
         {
             Id = documentId,
@@ -101,6 +120,7 @@ public sealed class DocumentUploadService(
             Checksum = checksum,
             ProcessingStatus = DocumentProcessingStatus.Uploaded,
             CreatedAt = now,
+            ContractId = contract.Id,
         };
 
         var version = new DocumentVersion
@@ -127,15 +147,17 @@ public sealed class DocumentUploadService(
             QueuedAt = now,
         };
 
+        dbContext.Contracts.Add(contract);
         dbContext.Documents.Add(document);
         dbContext.DocumentVersions.Add(version);
         dbContext.ExtractionJobs.Add(classificationJob);
 
-        // Publish before commit (ADR-027 §D2, see the type doc comment): the ids are already known
-        // because ExtractionJob.Id is ValueGeneratedNever (client-generated, TenantScopedEntity), so
-        // the message can be built before SaveChangesAsync ever runs. If the commit below then
-        // fails, the message is a harmless phantom — the Worker's claim finds no such job and
-        // completes it (ADR-027 §D3/§C6).
+        // Commit-then-publish (instant-identity-ingest): the contract shell is committed first so
+        // the provisional identity is immediately visible on Portfolio/Renewals. A publish failure
+        // fails the upload API response; the committed rows remain but the worker never picks them
+        // up — acceptable because the contract is already visible with its filename identity.
+        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
         await extractionQueuePublisher.PublishAsync(
             new ExtractionRequested(
                 tenantId.Value,
@@ -143,8 +165,6 @@ public sealed class DocumentUploadService(
                 classificationJob.Id.Value,
                 ExtractionRequested.CurrentSchemaVersion),
             cancellationToken).ConfigureAwait(false);
-
-        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
         // AC-1 "upload document -> audit event": recorded only once the upload itself is
         // durable, still inside this call's own tenant scope (see the type doc comment). A

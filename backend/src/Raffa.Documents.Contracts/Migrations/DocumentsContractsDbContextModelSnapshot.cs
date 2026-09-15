@@ -130,6 +130,11 @@ namespace Raffa.Documents.Contracts.Migrations
                         .HasColumnType("character varying(3)")
                         .HasColumnName("currency");
 
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("display_name");
+
                     b.Property<DateOnly?>("EffectiveDate")
                         .HasColumnType("date")
                         .HasColumnName("effective_date");
@@ -143,6 +148,13 @@ namespace Raffa.Documents.Contracts.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("governing_law");
 
+                    b.Property<string>("IdentityState")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValueSql("'official'")
+                        .HasColumnName("identity_state");
+
                     b.Property<Guid?>("ParentContractId")
                         .HasColumnType("uuid")
                         .HasColumnName("parent_contract_id");
@@ -151,6 +163,11 @@ namespace Raffa.Documents.Contracts.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)")
                         .HasColumnName("payment_terms");
+
+                    b.Property<string>("ProvisionalSupplierName")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("provisional_supplier_name");
 
                     b.Property<int?>("RenewalTermMonths")
                         .HasColumnType("integer")

@@ -105,22 +105,24 @@ public sealed class DeployableWorkerTests
         builder.Services.AddWorkerHost(connectionString, connectionString, connectionString);
         builder.Services.AddExtractionQueuePublisher(configuration);
         builder.Services.AddExtractionQueueConsumer(configuration);
+        builder.Services.AddEnrichQueuePublisher(configuration);
 
         using var host = builder.Build();
         var hostedServices = host.Services.GetServices<IHostedService>().ToList();
 
-        // Exactly two hosted services boot out of this whole composition: the renewal-threshold
-        // scheduler (a different concern this task does not touch) and one document-extraction
-        // consumer. Asserting the total catches any duplicate/dead hosted service coming back --
-        // not just a mismatch against these two names -- the way QueueConsumerHostedService used
-        // to sit here as an uncounted third.
-        Assert.Equal(2, hostedServices.Count);
+        // Exactly three hosted services boot out of this whole composition (instant-identity-ingest
+        // ADR-027 §D two-queue split): the renewal-threshold scheduler, one extraction-intake
+        // consumer, and one enrich consumer. Asserting the total catches any duplicate/dead service
+        // coming back -- not just a mismatch against these three names.
+        Assert.Equal(3, hostedServices.Count);
         Assert.Contains(hostedServices, service => service is RenewalThresholdSchedulerHostedService);
 
-        // No ServiceBus:FullyQualifiedNamespace configured -> the in-process consumer is the
-        // branch that fires (ExtractionTransportSelectionTests proves the Service Bus branch at
-        // the registration level); either transport is a legitimate single answer here.
+        // No ServiceBus:FullyQualifiedNamespace configured -> the in-process consumers fire for
+        // both the intake and enrich queues (ExtractionTransportSelectionTests proves the Service
+        // Bus branch at the registration level).
         Assert.Equal(1, hostedServices.Count(service =>
             service is InMemoryExtractionConsumerHostedService or ServiceBusExtractionConsumerHostedService));
+        Assert.Equal(1, hostedServices.Count(service =>
+            service is InMemoryEnrichConsumerHostedService));
     }
 }

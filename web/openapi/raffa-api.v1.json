@@ -1867,6 +1867,27 @@
                               "null"
                             ],
                             "description": "Low, Medium, High, or Critical, or null when the contract has no recorded Risk row. Deliberately not declared as an enum here -- see this operation's own description for why."
+                          },
+                          "displayName": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "Human-readable name for this contract: filename at T+0, document title once the headline pass runs. Null for contracts created before the instant-identity-ingest slice; the UI falls back to the type label in that case."
+                          },
+                          "identityState": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "provisional: headline-pass only; shown in Portfolio/Renewals but excluded from KPI totals and Ask. official: full 7-stage enrich done; counted in validated totals. Null only for pre-instant-identity-ingest rows (treat as official for backward compat)."
+                          },
+                          "provisionalSupplierName": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "Raw supplier string from the headline pass, regardless of confidence threshold. Always populated once the headline pass runs. UI priority: provisionalSupplierName ?? supplierName ?? null."
                           }
                         }
                       }
@@ -3118,6 +3139,27 @@
                               "null"
                             ],
                             "description": "The supplier's display name, resolved from `supplierId` through `ISupplierNameLookup` over the same portfolio page this pipeline is built from -- never a raw supplier id (R-SUP-04, ADR-024). Null when the contract has no supplier or the id no longer resolves for this tenant. Projected by RenewalsEndpointExtensions.ToPipelineResponse (task E13/F03/US01/T02). See getPortfolio's identical supplierName property above for the full ISupplierNameLookup provenance."
+                          },
+                          "displayName": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "Human-readable name for this contract: filename at T+0, document title once the headline pass runs. Null for contracts created before the instant-identity-ingest slice."
+                          },
+                          "identityState": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "provisional: headline-pass only; shown in Renewals but excluded from KPI totals. official: full 7-stage enrich done. Null only for pre-instant-identity-ingest rows (treat as official for backward compat)."
+                          },
+                          "provisionalSupplierName": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "Raw supplier string from the headline pass, regardless of confidence threshold. UI priority: provisionalSupplierName ?? supplierName ?? null."
                           },
                           "status": {
                             "type": "string",

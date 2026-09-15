@@ -8,10 +8,12 @@ namespace Raffa.Messaging;
 /// three branches are unit-tested without a broker.
 /// <list type="bullet">
 /// <item>row present (handled, or the claim lost to a duplicate) => <b>Complete</b>;</item>
-/// <item>row absent and <c>DeliveryCount</c> below two => <b>Abandon</b>: the upload's commit may
-/// simply be slower than its publish, and the redelivery will see the row;</item>
-/// <item>row absent and <c>DeliveryCount</c> two or more => <b>DeadLetter</b> with reason
-/// <see cref="JobNotFoundReason"/>: two abandons, capped, no handler state. Never a silent complete,
+/// <item>row absent and <c>DeliveryCount</c> below three => <b>Abandon</b>: with commit-then-publish
+/// ordering the commit is always durable before the message arrives, but Service Bus can redeliver
+/// very fast and the row is always findable by the time the first delivery fires. Three abandons
+/// instead of two gives a wider window for any infra-level timing jitter.</item>
+/// <item>row absent and <c>DeliveryCount</c> three or more => <b>DeadLetter</b> with reason
+/// <see cref="JobNotFoundReason"/>: three abandons, capped, no handler state. Never a silent complete,
 /// which would strand a document at <c>Uploaded</c> on a POST that returned 201.</item>
 /// </list>
 /// </summary>
@@ -28,7 +30,7 @@ public static class ExtractionSettlement
 
     public static Action Decide(ExtractionHandleOutcome outcome, long deliveryCount) => outcome switch
     {
-        ExtractionHandleOutcome.JobNotFound when deliveryCount < 2 => Action.Abandon,
+        ExtractionHandleOutcome.JobNotFound when deliveryCount < 3 => Action.Abandon,
         ExtractionHandleOutcome.JobNotFound => Action.DeadLetter,
         _ => Action.Complete,
     };

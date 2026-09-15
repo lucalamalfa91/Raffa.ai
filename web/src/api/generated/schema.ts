@@ -358,7 +358,7 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": { items: ({ contractId: string; supplierId: string | null; supplierName: string | null; type: "Msa" | "OrderForm" | "Amendment" | "Sow" | "RenewalLetter" | "Other"; annualSpend: number | null; currency?: string; startDate: string | null; endDate: string | null; renewalDate: string | null; cancellationDeadline: string | null; autoRenewal: boolean; status: string; risk: string | null })[]; page: number; pageSize: number; totalCount: number; processingDocumentCount: number };
+          "application/json": { items: ({ contractId: string; supplierId: string | null; supplierName: string | null; type: "Msa" | "OrderForm" | "Amendment" | "Sow" | "RenewalLetter" | "Other"; annualSpend: number | null; currency?: string; startDate: string | null; endDate: string | null; renewalDate: string | null; cancellationDeadline: string | null; autoRenewal: boolean; status: string; risk: string | null; displayName?: string | null; identityState?: string | null; provisionalSupplierName?: string | null })[]; page: number; pageSize: number; totalCount: number; processingDocumentCount: number };
         };
       };
       400: {
@@ -444,7 +444,7 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": { items: ({ contractId: string; supplierId: string | null; supplierName: string | null; status: "Determined" | "NoRenewal" | "CannotDetermine"; renewalDate: string | null; daysUntilRenewal: number | null; annualSpend: number | null; cancellationDeadline: string | null; daysUntilCancellationDeadline: number | null; autoRenewal: boolean; action: string; insightCard: { facts: { supplierId: string | null; supplierName: string | null; renewalDate: string | null; daysUntilRenewal: number | null; annualSpend: number | null; cancellationDeadline: string | null; daysUntilCancellationDeadline: number | null }; recommendations: { recommendedAction: string; explanation: string; annualUpliftPercent: number | null; marketPosition: string | null; potentialSavingsRange: string | null } } })[]; totalCount: number };
+          "application/json": { items: ({ contractId: string; supplierId: string | null; supplierName: string | null; displayName?: string | null; identityState?: string | null; provisionalSupplierName?: string | null; status: "Determined" | "NoRenewal" | "CannotDetermine"; renewalDate: string | null; daysUntilRenewal: number | null; annualSpend: number | null; cancellationDeadline: string | null; daysUntilCancellationDeadline: number | null; autoRenewal: boolean; action: string; insightCard: { facts: { supplierId: string | null; supplierName: string | null; renewalDate: string | null; daysUntilRenewal: number | null; annualSpend: number | null; cancellationDeadline: string | null; daysUntilCancellationDeadline: number | null }; recommendations: { recommendedAction: string; explanation: string; annualUpliftPercent: number | null; marketPosition: string | null; potentialSavingsRange: string | null } } })[]; totalCount: number };
         };
       };
       400: {

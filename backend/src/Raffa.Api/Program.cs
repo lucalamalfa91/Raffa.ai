@@ -177,6 +177,10 @@ builder.Services.AddAzureBlobDocumentStorage(storageConnectionString);
 // (every deployed environment, via infra/modules/containerapps) and the in-process channel
 // otherwise (tests). Same selector the Worker uses, so the two can never disagree.
 builder.Services.AddExtractionQueuePublisher(builder.Configuration);
+// Instant-identity-ingest: the intake handler (on the Worker) publishes EnrichRequested. The API
+// host also needs the enrich publisher registered so the DI graph resolves in the in-process
+// dev/test posture (where API and Worker share one process via InMemory* channels).
+builder.Services.AddEnrichQueuePublisher(builder.Configuration);
 
 // Audit module (task E01/F06/US02/T02, GET /api/audit). Fails fast with a named error rather
 // than silently falling back when the config is missing (same "fail loud, not silent"

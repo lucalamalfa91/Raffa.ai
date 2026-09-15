@@ -101,7 +101,10 @@ public sealed class RenewalPipelineBuilder(RenewalEngine renewalEngine, IClock c
             candidate.CancellationDeadline,
             daysUntilCancellationDeadline,
             candidate.AutoRenewal,
-            new RenewalInsightCard(facts, recommendations));
+            new RenewalInsightCard(facts, recommendations),
+            candidate.DisplayName,
+            candidate.IdentityState,
+            candidate.ProvisionalSupplierName);
     }
 
     /// <summary><paramref name="target"/> minus "today" (<c>clock</c>), in days — negative

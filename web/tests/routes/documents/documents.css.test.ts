@@ -54,9 +54,15 @@ describe("documents.css (task E13/F09/US01/T03, web-documents-v2)", () => {
     expect(body).not.toMatch(/accent|background|border/);
   });
 
-  it("the row progress bar is a bare 4px fill, no label baked into the bar itself", () => {
-    expect(ruleBodyFor(css, ".document-row-progress")).toMatch(/height:\s*4px/);
-    expect(ruleBodyFor(css, ".document-row-progress-fill")).toMatch(/background:\s*var\(--color-accent\)/);
+  // Plan instant-upload-open: the 4px bar is gone, replaced by quiet chips. Verify the chip CSS
+  // exists and the old bar selector is absent.
+  it("carries no .document-row-progress rule -- the bar is replaced by quiet chips", () => {
+    expect(css).not.toMatch(/\.document-row-progress[^-]/);
+  });
+
+  it("processing chips have a pill shape (border-radius: 99px) and use accent colour when active", () => {
+    expect(ruleBodyFor(css, ".documents-progress-chip")).toMatch(/border-radius:\s*99px/);
+    expect(ruleBodyFor(css, ".documents-progress-chip--active")).toMatch(/border-color:\s*var\(--color-accent\)/);
   });
 
   it("the row grid's Next-step column is right-aligned, matching the export's own flex-end action cell", () => {

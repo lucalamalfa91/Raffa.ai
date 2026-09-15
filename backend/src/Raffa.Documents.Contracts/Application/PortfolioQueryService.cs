@@ -117,6 +117,9 @@ public sealed class PortfolioQueryService(
 
         // Preserves `contracts`' own order (LINQ-to-Objects Select is order-preserving), so the
         // deterministic ORDER BY above still holds after this projection.
+        // Provisional contracts (IdentityState == Provisional) are included in the list —
+        // they show with their filename display name and provisional supplier string so the user
+        // sees them immediately. KPI counts stay official-only (CountValidatedContractsAsync).
         IEnumerable<PortfolioListItem> items = contracts.Select(c => new PortfolioListItem(
             c.Id.Value,
             c.SupplierId?.Value,
@@ -129,7 +132,10 @@ public sealed class PortfolioQueryService(
             c.CancellationDeadline,
             c.AutoRenewal,
             c.Status,
-            maxSeverityByContract.TryGetValue(c.Id, out var severity) ? severity : null));
+            maxSeverityByContract.TryGetValue(c.Id, out var severity) ? severity : null,
+            c.DisplayName,
+            c.IdentityState,
+            c.ProvisionalSupplierName));
 
         // Risk severity filters the *computed* column above, so — unlike every other filter —
         // it is applied in-memory after the join rather than translated to SQL against the

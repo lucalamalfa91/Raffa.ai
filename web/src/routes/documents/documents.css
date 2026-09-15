@@ -300,18 +300,55 @@
   gap: var(--space-1);
 }
 
-/* Bare progress bar under the status tag (raffa-v2/markup.html row template: 4px, neutral-200
-   track, accent fill) -- the stage *label* renders as plain text in the "next step" cell instead
-   (DocumentStatusTable.tsx), not inside this component. */
-.document-row-progress {
-  height: 4px;
-  background: var(--color-neutral-200);
-  margin-top: 6px;
+/* ---- Local-upload doc cell layout (thumbnail + filename, plan instant-upload-open) ---------- */
+
+.document-status-table-local-doc {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
 }
 
-.document-row-progress-fill {
-  height: 4px;
-  background: var(--color-accent);
+/* First-page thumbnail rendered by PDF.js; 72 px wide, height from page aspect ratio. */
+.document-status-table-thumbnail {
+  width: 72px;
+  flex-shrink: 0;
+  border: 1px solid var(--color-divider);
+  border-radius: 2px;
+  background: var(--color-neutral-100);
+  display: block;
+}
+
+/* ---- Processing chips (replace 90 s "Extracting facts…" bar, plan instant-upload-open) ------ */
+
+/* Inline chip in the row's "next step" cell. Quiet: same micro-meta colour, no border or fill. */
+.document-processing-chip {
+  color: var(--color-neutral-600);
+  font-style: italic;
+}
+
+/* Progress-panel chip pair (DocumentProgressPanel.tsx). */
+.documents-progress-chips {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.documents-progress-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 99px;
+  font-size: 12px;
+  border: 1px solid var(--color-divider);
+  color: var(--color-neutral-500);
+  background: transparent;
+}
+
+.documents-progress-chip--active {
+  border-color: var(--color-accent);
+  color: var(--color-accent-700);
+  font-weight: var(--weight-body-strong);
 }
 
 .documents-legend {

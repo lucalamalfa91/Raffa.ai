@@ -10,9 +10,10 @@ namespace Raffa.Documents.Contracts.Tests;
 /// Proves <see cref="NativeDocumentTextExtractor"/> — the concrete, real native-text half of task
 /// E02/F01/US02/T02's hybrid pre-pass. DOCX/XLSX round-trip through the real
 /// <c>DocumentFormat.OpenXml</c> SDK (no hand-rolled binary — the SDK's own writer builds the test
-/// fixtures). PDF is deliberately <em>not</em> handled here since the ADR-017 amendment of
-/// 2026-09-09: every PDF goes to the `ocr` role (Document Intelligence Read on a live deployment,
-/// <c>FixturePdfTextScanner</c> under the fixture gateway — see <c>FixturePdfTextScannerTests</c>).
+/// fixtures). PDF is now handled via <c>PdfPig</c> (instant-identity-ingest amendment):
+/// born-digital PDFs that have enough embedded text skip OCR entirely; scanned/image PDFs
+/// degrade to <see cref="NativeTextExtractionResult.IsSufficient"/> = false and fall through
+/// to OCR in <see cref="HybridDocumentParsingService"/>.
 /// </summary>
 public sealed class NativeDocumentTextExtractorTests
 {
@@ -21,14 +22,16 @@ public sealed class NativeDocumentTextExtractorTests
     private const string XlsxMimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
     [Fact]
-    public void CanHandle_recognizes_docx_and_xlsx_but_neither_pdf_nor_an_image_mime_type()
+    public void CanHandle_recognizes_pdf_docx_and_xlsx_but_not_images()
     {
         var extractor = new NativeDocumentTextExtractor();
 
+        // instant-identity-ingest: PDF is now handled via PdfPig.
+        Assert.True(extractor.CanHandle(PdfMimeType));
         Assert.True(extractor.CanHandle(DocxMimeType));
         Assert.True(extractor.CanHandle(XlsxMimeType));
-        Assert.False(extractor.CanHandle(PdfMimeType));
         Assert.False(extractor.CanHandle("image/png"));
+        Assert.False(extractor.CanHandle("image/tiff"));
     }
 
     [Fact]
@@ -40,14 +43,17 @@ public sealed class NativeDocumentTextExtractorTests
     }
 
     [Fact]
-    public void A_pdf_handed_to_extract_anyway_is_refused_rather_than_scanned()
+    public void A_corrupt_pdf_is_insufficient_not_a_crash()
     {
-        // CanHandle is the contract; a caller that skips it gets a loud NotSupportedException, never
-        // a silent "insufficient" that would quietly re-route a PDF through a native path again.
+        // Untrusted bytes that are not a valid PDF: PdfPig catches the parse error internally
+        // and the extractor degrades to IsSufficient = false, letting HybridDocumentParsingService
+        // fall back to OCR — same graceful-degrade posture as corrupt DOCX/XLSX.
         var extractor = new NativeDocumentTextExtractor();
 
-        Assert.Throws<NotSupportedException>(
-            () => extractor.Extract(PdfMimeType, "%PDF-1.4\n1 0 obj << /Type /Page >> endobj\n"u8.ToArray()));
+        var result = extractor.Extract(PdfMimeType, "not a real pdf"u8.ToArray());
+
+        Assert.False(result.IsSufficient);
+        Assert.Empty(result.Pages);
     }
 
     // ---- DOCX ------------------------------------------------------------------------------

@@ -39,13 +39,13 @@ export interface InsightCardProps {
  */
 export default function InsightCard({ item, tracked, actionPending, actionError, onAction }: InsightCardProps) {
   const { recommendations } = item.insightCard;
-  const contractRef = formatContractRef(item.contractId);
+  const contractRef = formatContractRef(item.contractId, item.displayName);
   const contractHref = `/contracts/${item.contractId}`;
 
   return (
     <aside className="renewal-pane" aria-label="Why it is here">
       <span className="card-kicker">Why it is here</span>
-      <h3 className="renewal-pane-heading">{formatPaneHeading(item.supplierName, item.daysUntilCancellationDeadline)}</h3>
+      <h3 className="renewal-pane-heading">{formatPaneHeading(item.provisionalSupplierName, item.supplierName, item.daysUntilCancellationDeadline)}</h3>
       <p className="renewal-pane-contract" title={contractRef.title}>
         {contractRef.label}
       </p>
