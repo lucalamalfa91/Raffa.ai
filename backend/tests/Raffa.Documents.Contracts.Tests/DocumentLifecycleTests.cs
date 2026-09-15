@@ -681,6 +681,12 @@ public sealed class DocumentLifecycleTests : IAsyncLifetime
                 : new Dictionary<EntityId, string>();
             return Task.FromResult(names);
         }
+
+        // Task E19/F04/US01/T01's own read-only port -- this suite never exercises a name-to-id
+        // resolution, only the id-to-name direction GetNamesAsync above already covers.
+        public Task<EntityId?> FindByNormalizedNameAsync(
+            TenantId tenantId, string normalizedName, CancellationToken cancellationToken) =>
+            Task.FromResult<EntityId?>(null);
     }
 
     private sealed class RecordingDocumentStorage : IDocumentStorage

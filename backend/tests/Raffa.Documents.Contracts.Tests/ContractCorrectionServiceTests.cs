@@ -477,6 +477,20 @@ public sealed class ContractCorrectionServiceTests : IAsyncLifetime
 
             return Task.FromResult(names);
         }
+
+        /// <summary>Task E19/F04/US01/T01's own read-only port. This suite never exercises it --
+        /// <see cref="ContractCorrectionService"/>'s own correction flow only ever calls
+        /// <see cref="ResolveAsync"/> -- so this is a minimal, honest implementation satisfying the
+        /// interface: an exact match against the same simplified-name keying
+        /// <see cref="ResolveAsync"/> populates, never a created row.</summary>
+        public Task<EntityId?> FindByNormalizedNameAsync(
+            TenantId tenantId, string normalizedName, CancellationToken cancellationToken)
+        {
+            EntityId? found = _bySimplifiedName.TryGetValue(normalizedName, out var existing)
+                ? existing.Id
+                : null;
+            return Task.FromResult(found);
+        }
     }
 
     [Fact]
