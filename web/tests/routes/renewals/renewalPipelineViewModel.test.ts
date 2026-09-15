@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { RenewalPipelineItemBody } from "../../../src/api/client";
-import type { TrackedRenewalAction } from "../../../src/routes/renewals/renewalActionStore";
+import type { RenewalActionRow, RenewalPipelineItemBody } from "../../../src/api/client";
 import {
   DEFAULT_RENEWAL_STATUS_LABEL,
   RENEWALS_SUMMARY_OFF,
@@ -56,10 +55,8 @@ function item(overrides: Partial<RenewalPipelineItemBody> = {}): RenewalPipeline
   };
 }
 
-const tracked: TrackedRenewalAction = {
+const tracked: RenewalActionRow = {
   contractId: "c-1",
-  supplierId: "s-1",
-  annualSpend: 500_000,
   owner: "user@example.test",
   status: "InProgress",
   action: "In negotiation",
@@ -67,11 +64,10 @@ const tracked: TrackedRenewalAction = {
 };
 
 describe("buildRenewalRows (app.jsx: sorted by score, highest first)", () => {
-  it("orders by score descending, puts unscored rows last, and attaches each row's own tracked action", () => {
+  it("orders by score descending, puts unscored rows last, and attaches each row's own savedAction", () => {
     const rows = buildRenewalRows(
-      [item({ contractId: "low" }), item({ contractId: "none" }), item({ contractId: "high" })],
+      [item({ contractId: "low" }), item({ contractId: "none" }), item({ contractId: "high", savedAction: { ...tracked, contractId: "high" } })],
       { low: 40, high: 91, none: null },
-      new Map([["high", { ...tracked, contractId: "high" }]]),
     );
 
     expect(rows.map((row) => row.item.contractId)).toEqual(["high", "low", "none"]);
@@ -81,7 +77,7 @@ describe("buildRenewalRows (app.jsx: sorted by score, highest first)", () => {
   });
 
   it("treats a contract missing from the score map as unscored, not as zero", () => {
-    const rows = buildRenewalRows([item({ contractId: "a" }), item({ contractId: "b" })], { a: 0 }, new Map());
+    const rows = buildRenewalRows([item({ contractId: "a" }), item({ contractId: "b" })], { a: 0 });
 
     expect(rows.map((row) => row.item.contractId)).toEqual(["a", "b"]);
     expect(rows[1].score).toBeNull();
@@ -96,7 +92,6 @@ describe("buildRenewalRows (app.jsx: sorted by score, highest first)", () => {
         item({ contractId: "w", daysUntilCancellationDeadline: 5 }),
       ],
       { z: 70, y: 70, x: 70, w: 70 },
-      new Map(),
     );
 
     expect(rows.map((row) => row.item.contractId)).toEqual(["w", "y", "z", "x"]);
@@ -104,8 +99,16 @@ describe("buildRenewalRows (app.jsx: sorted by score, highest first)", () => {
 
   it("does not mutate the input array", () => {
     const items = [item({ contractId: "a" }), item({ contractId: "b" })];
-    buildRenewalRows(items, { a: 1, b: 2 }, new Map());
+    buildRenewalRows(items, { a: 1, b: 2 });
     expect(items.map((entry) => entry.contractId)).toEqual(["a", "b"]);
+  });
+
+  it("treats NotStarted as no action taken, never as a visible status", () => {
+    const rows = buildRenewalRows(
+      [item({ savedAction: { ...tracked, status: "NotStarted", action: "Open" } })],
+      { "c-1": 50 },
+    );
+    expect(rows[0].tracked).toBeNull();
   });
 });
 

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import type { SavingsKpiSummaryBody, SavingsOpportunityBody } from "../../../src/api/client";
-import type { TrackedRenewalAction } from "../../../src/routes/renewals/renewalActionStore";
 import {
   SAVINGS_SUMMARY_OFF,
   buildKpiCells,
@@ -47,18 +46,40 @@ function opportunity(overrides: Partial<SavingsOpportunityBody> = {}): SavingsOp
   };
 }
 
-function tracked(overrides: Partial<TrackedRenewalAction> = {}): TrackedRenewalAction {
-  return {
-    contractId: "44444444-4444-4444-4444-444444444444",
-    supplierId: "55555555-5555-5555-5555-555555555555",
-    annualSpend: 500_000,
-    owner: "user@example.test",
-    status: "InProgress",
-    action: "In negotiation",
-    updatedAt: "2026-09-06T08:00:00Z",
-    ...overrides,
-  };
-}
+describe("buildOpportunityRows (Supplier · Action · Estimate · Status)", () => {
+  it("an empty tenant is an honestly empty list", () => {
+    expect(buildOpportunityRows([])).toEqual([]);
+  });
+
+  it("uses the portfolio's supplier name for the contract, else the id fragment, else an honest placeholder", () => {
+    const names = new Map([[opportunity().contractId!, "Salesforce"]]);
+    const [named] = buildOpportunityRows([opportunity()], names);
+    expect(named.supplierLabel).toBe("Salesforce");
+    expect(named.supplierTitle).toBe(opportunity().supplierId);
+
+    const [fragment] = buildOpportunityRows([opportunity()]);
+    expect(fragment.supplierLabel).toBe("Supplier 22222222");
+
+    const [placeholder] = buildOpportunityRows([opportunity({ supplierId: null, contractId: null })]);
+    expect(placeholder.supplierLabel).toBe("Supplier not resolved");
+    expect(placeholder.navigation).toEqual({ kind: "quote" });
+  });
+
+  it("a real row carries type as the action, the estimate range, the confidence tag and the status tag", () => {
+    const [row] = buildOpportunityRows([opportunity()]);
+    expect(row.action).toBe("Renewal");
+    expect(row.estimate).toBe("CHF 80,000–120,000");
+    expect(row.confidence).toEqual({ variant: "neutral", label: "High · 92%" });
+    expect(row.status).toEqual({ variant: "neutral", label: "Identified" });
+    expect(row.navigation).toEqual({ kind: "contract", contractId: opportunity().contractId });
+  });
+
+  it("does not invent a tracked-action row — only real SavingsOpportunity payloads render", () => {
+    const rows = buildOpportunityRows([opportunity()]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].key).toBe(opportunity().id);
+  });
+});
 
 describe("reduceKpiFetch ('benchmark-provider-unreachable -> KPIs stale-labelled')", () => {
   it("a successful fetch replaces the summary and clears stale", () => {
@@ -174,48 +195,5 @@ describe("buildSupplierNameIndex", () => {
       { contractId: "c-3", supplierName: "  " },
     ] as never);
     expect([...index.entries()]).toEqual([["c-1", "Salesforce"]]);
-  });
-});
-
-describe("buildOpportunityRows (Supplier · Action · Estimate · Status)", () => {
-  it("an empty tenant (no real opportunities, nothing tracked this session) is an honestly empty list", () => {
-    expect(buildOpportunityRows([], [])).toEqual([]);
-  });
-
-  it("tracked renewal actions render first, then the real list", () => {
-    const rows = buildOpportunityRows([opportunity()], [tracked()]);
-    expect(rows.map((row) => row.key)).toEqual([`renewal-action-${tracked().contractId}`, opportunity().id]);
-  });
-
-  it("uses the portfolio's supplier name for the contract, else the id fragment, else an honest placeholder", () => {
-    const names = new Map([[opportunity().contractId!, "Salesforce"]]);
-    const [named] = buildOpportunityRows([opportunity()], [], names);
-    expect(named.supplierLabel).toBe("Salesforce");
-    expect(named.supplierTitle).toBe(opportunity().supplierId);
-
-    const [fragment] = buildOpportunityRows([opportunity()], []);
-    expect(fragment.supplierLabel).toBe("Supplier 22222222");
-
-    const [placeholder] = buildOpportunityRows([opportunity({ supplierId: null, contractId: null })], []);
-    expect(placeholder.supplierLabel).toBe("Supplier not resolved");
-    expect(placeholder.navigation).toEqual({ kind: "quote" });
-  });
-
-  it("a real row carries type as the action, the estimate range, the confidence tag and the status tag", () => {
-    const [row] = buildOpportunityRows([opportunity()], []);
-    expect(row.action).toBe("Renewal");
-    expect(row.estimate).toBe("CHF 80,000–120,000");
-    expect(row.confidence).toEqual({ variant: "neutral", label: "High · 92%" });
-    expect(row.status).toEqual({ variant: "neutral", label: "Identified" });
-    expect(row.navigation).toEqual({ kind: "contract", contractId: opportunity().contractId });
-  });
-
-  it("a tracked row's honest gaps: no confidence, 'Not yet available' estimate, its own action as the status", () => {
-    const [row] = buildOpportunityRows([], [tracked()]);
-    expect(row.action).toBe("Renewal");
-    expect(row.confidence).toBeNull();
-    expect(row.estimate).toBe("Not yet available");
-    expect(row.status).toEqual({ variant: "accent", label: "In negotiation" });
-    expect(row.navigation).toEqual({ kind: "contract", contractId: tracked().contractId });
   });
 });

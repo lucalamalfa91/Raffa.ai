@@ -7,12 +7,12 @@ import {
   getRenewalActionPlan,
   type RenewalActionKind,
 } from "./renewalPipelineViewModel";
-import type { TrackedRenewalAction } from "./renewalActionStore";
+import type { RenewalActionRow } from "../../api/client";
 
 export interface InsightCardProps {
   item: RenewalPipelineItemBody;
   /** This session's own recorded action for `item.contractId`, or `null` before anything has been actioned. */
-  tracked: TrackedRenewalAction | null;
+  tracked: RenewalActionRow | null;
   /** Which action (if any) is mid-flight -- disables both buttons while any one is pending, so a second click cannot race the first. */
   actionPending: RenewalActionKind | null;
   /** The last action attempt's own failure message, or `null`. Never silently swallowed. */

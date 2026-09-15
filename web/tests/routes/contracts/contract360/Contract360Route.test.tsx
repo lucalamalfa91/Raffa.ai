@@ -2,8 +2,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import Contract360Route from "../../../../src/routes/contracts/contract360";
-import { loadNegotiationSteps } from "../../../../src/routes/contracts/contract360/negotiationStepsStore";
-import { loadTrackedRenewalActions, rememberRenewalAction } from "../../../../src/routes/renewals/renewalActionStore";
 import { formatDateOnly } from "../../../../src/routes/contracts/portfolioTableFormatters";
 import type { ApiClient, Contract360Body, GetContract360Result, RenewalPipelineItemBody, RenewalPriorityBody } from "../../../../src/api/client";
 
@@ -57,8 +55,8 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     validateDocument: vi.fn(),
     postRenewalAction: vi.fn(),
     getQuote: vi.fn(),
-    getNegotiationSteps: vi.fn(),
-    putNegotiationSteps: vi.fn(),
+    getNegotiationSteps: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, steps: [], error: null }),
+    putNegotiationSteps: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, steps: [], error: null }),
     uploadQuote: vi.fn(),
     getQuoteAssessment: vi.fn(),
     recalculateQuoteAssessment: vi.fn(),
@@ -519,7 +517,14 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
           action: { contractId: CONTRACT_ID, owner: USER_LABEL, status: "NotStarted", action: "Open", updatedAt: "2026-09-06T09:05:00Z" },
           error: null,
         });
-      renderContract360(populatedClient({ postRenewalAction }));
+      const putNegotiationSteps = vi.fn().mockImplementation((_workspaceId: string, _contractId: string, body: { steps: string[] }) =>
+        Promise.resolve({ ok: true, statusCode: 200, steps: body.steps, error: null }),
+      );
+      const getNegotiationSteps = vi
+        .fn()
+        .mockResolvedValueOnce({ ok: true, statusCode: 200, steps: [], error: null })
+        .mockResolvedValue({ ok: true, statusCode: 200, steps: ["Notify"], error: null });
+      renderContract360(populatedClient({ postRenewalAction, putNegotiationSteps, getNegotiationSteps }));
       await screen.findByRole("heading", { level: 2, name: "MSA" });
 
       fireEvent.click(screen.getByRole("button", { name: "Start negotiation" }));
@@ -541,19 +546,44 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
       ]);
 
       fireEvent.click(steps[0]);
+      await waitFor(() => expect(putNegotiationSteps).toHaveBeenCalledWith(WORKSPACE_ID, CONTRACT_ID, { steps: ["Notify"] }));
       expect(steps[0]).toHaveAttribute("aria-pressed", "true");
-      expect(loadNegotiationSteps(CONTRACT_ID)).toEqual([true, false, false, false]);
 
       expect(within(tracker).getByRole("link", { name: "Track it in Renewals →" })).toHaveAttribute("href", "/renewals");
-      expect(loadTrackedRenewalActions()).toHaveLength(1);
-      expect(loadTrackedRenewalActions()[0]).toMatchObject({ contractId: CONTRACT_ID, action: "In negotiation", supplierId: SUPPLIER_ID, annualSpend: 500_000 });
+      expect(window.sessionStorage.getItem("raffa.renewals.actions")).toBeNull();
+      expect(window.sessionStorage.getItem(`raffa.contract360.steps.${CONTRACT_ID}`)).toBeNull();
 
       fireEvent.click(within(tracker).getByRole("button", { name: "Undo" }));
 
+      await waitFor(() => expect(putNegotiationSteps).toHaveBeenCalledWith(WORKSPACE_ID, CONTRACT_ID, { steps: [] }));
       await waitFor(() => expect(postRenewalAction).toHaveBeenNthCalledWith(2, WORKSPACE_ID, CONTRACT_ID, { owner: USER_LABEL, status: "NotStarted", action: "Open" }));
+      expect(putNegotiationSteps.mock.invocationCallOrder[putNegotiationSteps.mock.calls.length - 1]).toBeLessThan(
+        postRenewalAction.mock.invocationCallOrder[1],
+      );
       expect(await screen.findByRole("button", { name: "Start negotiation" })).toBeInTheDocument();
-      expect(loadTrackedRenewalActions()).toEqual([]);
-      expect(loadNegotiationSteps(CONTRACT_ID)).toEqual([false, false, false, false]);
+    });
+
+    it("a failed tick PUT reverts the optimistic tick and names the negotiation steps in the error state", async () => {
+      const postRenewalAction = vi.fn().mockResolvedValue({
+        ok: true,
+        statusCode: 200,
+        action: { contractId: CONTRACT_ID, owner: USER_LABEL, status: "InProgress", action: "In negotiation", updatedAt: "2026-09-06T09:00:00Z" },
+        error: null,
+      });
+      const putNegotiationSteps = vi.fn().mockResolvedValue({ ok: false, statusCode: 500, steps: null, error: "write failed" });
+      renderContract360(populatedClient({ postRenewalAction, putNegotiationSteps }));
+      await screen.findByRole("heading", { level: 2, name: "MSA" });
+
+      fireEvent.click(screen.getByRole("button", { name: "Start negotiation" }));
+      const tracker = await screen.findByRole("status");
+      const steps = within(tracker).getAllByRole("button", { pressed: false });
+      fireEvent.click(steps[0]);
+
+      await waitFor(() => expect(putNegotiationSteps).toHaveBeenCalled());
+      expect(steps[0]).toHaveAttribute("aria-pressed", "false");
+      const alert = await screen.findByRole("alert");
+      expect(within(alert).getByRole("heading", { level: 4, name: "Negotiation steps unavailable" })).toBeInTheDocument();
+      expect(within(alert).getByRole("button", { name: "Retry" })).toBeInTheDocument();
     });
 
     it("'Assign to me' posts NotStarted / Assigned", async () => {
@@ -569,20 +599,33 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
       fireEvent.click(screen.getByRole("button", { name: "Assign to me" }));
 
       expect(postRenewalAction).toHaveBeenCalledWith(WORKSPACE_ID, CONTRACT_ID, { owner: USER_LABEL, status: "NotStarted", action: "Assigned" });
-      expect(await screen.findByRole("status")).toHaveTextContent("Assigned");
+      expect(await screen.findByRole("button", { name: "Start negotiation" })).toBeInTheDocument();
     });
 
-    it("shows the tracker straight away when this session already acted on the contract (shared with Renewals)", async () => {
-      rememberRenewalAction({
-        contractId: CONTRACT_ID,
-        supplierId: SUPPLIER_ID,
-        annualSpend: 500_000,
-        owner: USER_LABEL,
-        status: "InProgress",
-        action: "In negotiation",
-        updatedAt: "2026-09-06T09:00:00Z",
-      });
-      renderContract360(populatedClient());
+    it("shows the tracker straight away when the server already recorded an in-progress action", async () => {
+      renderContract360(
+        populatedClient({
+          getRenewals: vi.fn().mockResolvedValue({
+            ok: true,
+            statusCode: 200,
+            renewals: {
+              items: [
+                renewalPipelineItem({
+                  savedAction: {
+                    contractId: CONTRACT_ID,
+                    owner: USER_LABEL,
+                    status: "InProgress",
+                    action: "In negotiation",
+                    updatedAt: "2026-09-06T09:00:00Z",
+                  },
+                }),
+              ],
+              totalCount: 1,
+            },
+            error: null,
+          }),
+        }),
+      );
       await screen.findByRole("heading", { level: 2, name: "MSA" });
 
       expect(screen.getByRole("status")).toHaveTextContent("In negotiation");
@@ -598,7 +641,7 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
 
       expect(await screen.findByRole("alert")).toHaveTextContent("'owner' is required.");
       expect(screen.getByRole("button", { name: "Start negotiation" })).toBeEnabled();
-      expect(loadTrackedRenewalActions()).toEqual([]);
+      expect(window.sessionStorage.getItem("raffa.renewals.actions")).toBeNull();
     });
   });
 

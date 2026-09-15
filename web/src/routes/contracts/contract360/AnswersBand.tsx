@@ -1,19 +1,21 @@
 import { Link } from "react-router-dom";
-import type { TrackedRenewalAction } from "../../renewals/renewalActionStore";
+import type { RenewalActionRow } from "../../../api/client";
 import { RENEWAL_ACTION_KINDS, getRenewalActionPlan, type RenewalActionKind } from "../../renewals/renewalPipelineViewModel";
 import { formatTrackerMeta, type AnswersBand as AnswersBandModel, type NegotiationStep } from "./contract360ViewModel";
 
 export interface AnswersBandProps {
   answers: AnswersBandModel;
   /** This session's recorded action for this contract, or `null` while it is still open. */
-  tracked: TrackedRenewalAction | null;
+  tracked: RenewalActionRow | null;
   steps: readonly NegotiationStep[];
-  stepsDone: readonly boolean[];
+  tickedKeys: ReadonlySet<string>;
   actionPending: RenewalActionKind | "undo" | null;
   actionError: string | null;
+  stepsError: string | null;
   onAction: (kind: RenewalActionKind) => void;
   onUndo: () => void;
-  onToggleStep: (index: number) => void;
+  onToggleStep: (key: string) => void;
+  onRetrySteps: () => void;
 }
 
 /**
@@ -36,12 +38,14 @@ export default function AnswersBand({
   answers,
   tracked,
   steps,
-  stepsDone,
+  tickedKeys,
   actionPending,
   actionError,
+  stepsError,
   onAction,
   onUndo,
   onToggleStep,
+  onRetrySteps,
 }: AnswersBandProps) {
   const { save, move, act } = answers;
 
@@ -101,15 +105,15 @@ export default function AnswersBand({
               <span className="contract360-tracker-meta">{formatTrackerMeta(save, move)}</span>
             </div>
             <div className="contract360-tracker-steps">
-              {steps.map((step, index) => {
-                const done = stepsDone[index] === true;
+              {steps.map((step) => {
+                const done = tickedKeys.has(step.key);
                 return (
                   <button
-                    key={step.label}
+                    key={step.key}
                     type="button"
                     className={`contract360-step${done ? " is-done" : ""}`}
                     aria-pressed={done}
-                    onClick={() => onToggleStep(index)}
+                    onClick={() => onToggleStep(step.key)}
                   >
                     <span className="contract360-step-box" aria-hidden="true" />
                     <span className="contract360-step-label">{step.label}</span>
@@ -126,6 +130,16 @@ export default function AnswersBand({
                 {actionPending === "undo" ? "Undoing…" : "Undo"}
               </button>
             </div>
+          </div>
+        )}
+
+        {stepsError !== null && (
+          <div className="error-state" role="alert">
+            <h4>Negotiation steps unavailable</h4>
+            <p className="micro-meta">{stepsError}</p>
+            <button type="button" className="btn btn-secondary" onClick={onRetrySteps}>
+              Retry
+            </button>
           </div>
         )}
 
