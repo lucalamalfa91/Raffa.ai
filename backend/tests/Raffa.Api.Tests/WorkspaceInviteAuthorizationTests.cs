@@ -238,7 +238,9 @@ public sealed class WorkspaceInviteAuthorizationTests : IClassFixture<RaffaApiFa
         var db = scope.ServiceProvider.GetRequiredService<IdentityWorkspaceDbContext>();
 
         var tenant = new TenantId(tenantId);
-        var user = new WorkspaceUser { TenantId = tenant, Email = email, CreatedAt = Now };
+        // ADR-010 w16 footer S16-1: the membership/role predicates match ExternalSubjectId only now
+        // -- set it to the same value presented as X-User-Id (-> the `oid` claim), same as `Email`.
+        var user = new WorkspaceUser { TenantId = tenant, Email = email, ExternalSubjectId = email, CreatedAt = Now };
         var role = new WorkspaceRole { TenantId = tenant, Name = roleName, CreatedAt = Now };
         db.WorkspaceUsers.Add(user);
         db.WorkspaceRoles.Add(role);

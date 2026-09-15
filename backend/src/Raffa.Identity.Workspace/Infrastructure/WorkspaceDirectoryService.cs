@@ -125,15 +125,25 @@ public sealed class WorkspaceDirectoryService(
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(identity);
 
-        // Normalised the same way CallerIdentityContext.BeginIdentityScope normalises the GUC value
-        // itself (trim + lower), so this method's own belt-and-suspenders comparisons below match
-        // the identity_self policy's `lower(email)` comparison regardless of what a future caller
-        // passes in.
-        var normalizedIdentity = identity.Trim().ToLowerInvariant();
+        // ADR-010 w16 footer S16-2: each leg normalises itself, instead of the whole identity being
+        // forced through one case fold the way this method used to. `oid` is an opaque,
+        // case-sensitive Entra object id (`CallerIdentity.cs:60-68` records that as deliberate),
+        // matched ordinally everywhere else `ExternalSubjectId` is compared
+        // (`Raffa.Api.Infrastructure.CallerContext`, `Raffa.Api.Infrastructure.WorkspaceRoleResolver`);
+        // only the email leg lower-cases both sides — the same shape the shipped `identity_self` RLS
+        // policy already uses (`lower(email) = lower(guc)` OR an ordinal `external_subject_id = guc`,
+        // `identity-workspace.sql:198-206`). Lower-casing the whole value here (the pre-w16 shape)
+        // silently stopped matching a row whose `ExternalSubjectId` was not itself a canonical
+        // lowercase GUID — benign only while every subject happens to be one, and nothing enforces
+        // that (the column is `character varying(200)`). Only whitespace is trimmed up front,
+        // mirroring the write side's own trim (`WorkspaceProvisioningService.CreateWorkspaceAsync`,
+        // `WorkspaceMembershipFactory.CreateInvitedUser`).
+        var trimmedIdentity = identity.Trim();
+        var trimmedIdentityLower = trimmedIdentity.ToLowerInvariant();
 
         var discovered = await db.WorkspaceUsers
             .AsNoTracking()
-            .Where(u => u.Email.ToLower() == normalizedIdentity || u.ExternalSubjectId == normalizedIdentity)
+            .Where(u => u.Email.ToLower() == trimmedIdentityLower || u.ExternalSubjectId == trimmedIdentity)
             .Select(u => u.TenantId)
             .Take(MaxCandidates + 1)
             .ToListAsync(cancellationToken)
@@ -160,7 +170,7 @@ public sealed class WorkspaceDirectoryService(
                 await auditWriter.WriteAsync(
                     new AuditEntry(
                         candidateTenantId,
-                        normalizedIdentity,
+                        trimmedIdentity,
                         "workspace.list.truncated",
                         "Workspace",
                         MaxCandidates.ToString(CultureInfo.InvariantCulture),
@@ -175,7 +185,7 @@ public sealed class WorkspaceDirectoryService(
                 where user.TenantId == candidateTenantId
                     && membership.TenantId == candidateTenantId
                     && workspaceRole.TenantId == candidateTenantId
-                    && (user.Email.ToLower() == normalizedIdentity || user.ExternalSubjectId == normalizedIdentity)
+                    && (user.Email.ToLower() == trimmedIdentityLower || user.ExternalSubjectId == trimmedIdentity)
                 select workspaceRole.Name)
                 .ToListAsync(cancellationToken)
                 .ConfigureAwait(false);
@@ -200,7 +210,7 @@ public sealed class WorkspaceDirectoryService(
                     where user.TenantId == candidateTenantId
                         && invitation.TenantId == candidateTenantId
                         && invitationRole.TenantId == candidateTenantId
-                        && (user.Email.ToLower() == normalizedIdentity || user.ExternalSubjectId == normalizedIdentity)
+                        && (user.Email.ToLower() == trimmedIdentityLower || user.ExternalSubjectId == trimmedIdentity)
                         && invitation.AcceptedAt == null && invitation.RevokedAt == null && invitation.ExpiresAt > now
                     select invitationRole.Name)
                     .Take(1)

@@ -42,6 +42,15 @@ namespace Raffa.Api.Infrastructure;
 /// endpoint's own doc comment already draws the line; <c>NW-31</c> (W16) is what eventually removes
 /// it.
 /// </para>
+///
+/// <para>
+/// <b>Membership match, one key only (ADR-010 w16 footer S16-1)</b>: the role query below matches
+/// <see cref="Raffa.Identity.Workspace.Domain.WorkspaceUser.ExternalSubjectId"/> only — it used to
+/// also match <c>Email</c>, so a role could be granted by a match on a column an Admin writes at
+/// invite time. Not exploitable while every identity is a GUID-shaped <c>oid</c>, but the same
+/// latent gap <see cref="CallerContext"/>'s own membership check had; both are fixed together.
+/// Email keeps only its two other jobs.
+/// </para>
 /// </summary>
 internal sealed class WorkspaceRoleResolver(
     IdentityWorkspaceDbContext dbContext, ITenantContext tenantContext, ICallerIdentity callerIdentity)
@@ -77,7 +86,7 @@ internal sealed class WorkspaceRoleResolver(
             where user.TenantId == tenantId
                 && membership.TenantId == tenantId
                 && role.TenantId == tenantId
-                && (user.Email == identity || user.ExternalSubjectId == identity)
+                && user.ExternalSubjectId == identity
             select role.Name)
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
