@@ -145,3 +145,41 @@ describe("ReplyBody (task E13/F09/US01/T02, AC-3)", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Raffa.ai's Q&A service is temporarily unavailable. Try again in a moment.");
   });
 });
+
+// Task E25/F05/US02/T01 (abstain-recovery-web; parent story us-02-abstain-recovery-web
+// AC-1/AC-2/AC-3; ADR-024 "every abstain has a clickable next step", ADR-019 native link). The
+// abstain test above (AC-3, "the only place that block appears") predates the recovery action and
+// already proves the no-`actions`-field shape renders no link; these prove the two shapes
+// `askViewModel.ts#buildReply` can now additionally produce once it maps `turn.actions`.
+describe("ReplyBody abstain recovery action (task E25/F05/US02/T01)", () => {
+  it("AC-1/AC-2: renders the recovery action as a secondary ActionRow -- never primary, even when the mapper marked it primary", () => {
+    const { container } = renderReply({
+      kind: "abstain",
+      reason: "Nothing in the 2 validated contract(s) supports a reliable answer.",
+      // `askViewModel.ts#buildReply` maps this through the same `mapConversationAction` the
+      // answer/redirect/refusal branches use, which marks the first (and only) action "primary"
+      // (`toReplyActionKind(0)`, see `mapConversationAction` test above) -- this proves ReplyBody
+      // itself, not the mapper, enforces "never primary" for abstain (ADR-024).
+      actions: [{ label: "Upload a contract", href: "/documents", kind: "primary" }],
+    });
+
+    expect(container.querySelectorAll(".abstain-block")).toHaveLength(1);
+    const action = screen.getByRole("link", { name: "Upload a contract" });
+    expect(action).toHaveAttribute("href", "/documents");
+    expect(action).toHaveClass("btn-secondary");
+    expect(action).not.toHaveClass("btn-primary");
+  });
+
+  it("AC-3: an abstain with an explicit empty actions array still renders just the block, never an empty screen", () => {
+    const { container } = renderReply({
+      kind: "abstain",
+      reason: "Nothing in the 0 validated contract(s) supports a reliable answer.",
+      actions: [],
+    });
+
+    const blocks = container.querySelectorAll(".abstain-block");
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].textContent).toContain("Nothing in the 0 validated contract(s) supports a reliable answer.");
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+});

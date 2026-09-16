@@ -740,7 +740,10 @@ per-user conversations.
   onto it -- `askViewModel.ts#mapConversationReplyToReply`/`mapConversationMessageToReply` -- but
   does not modify that renderer itself): `answer` gets markdown + numbered citation cards + actions +
   follow-up chips, `redirect`/`refusal` share warm prose + one CTA, `abstain` is the accent-left
-  block, `error` is a transport/400 failure -- never confused with an abstain. Citation clicks
+  block plus, when the server selected one, a **secondary** recovery-action `ActionRow` -- never
+  primary (ADR-024 "every abstain has a clickable next step", task E25/F05/US02/T01; an abstain
+  with no action still renders just the block, never an empty screen), `error` is a transport/400
+  failure -- never confused with an abstain. Citation clicks
   resolve by corpus (`resolveCitationOpenAction`): a **tenant** citation navigates to
   `/contracts/<contractId>?page=<n>` (the real backend never sends `?clause=` yet -- confirmed
   against `AskCopilotService.cs`'s own `PackItem` constructions, a documented, honest gap, not a
