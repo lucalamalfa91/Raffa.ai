@@ -135,6 +135,9 @@ module "servicebus" {
   # identity module instance only -- never dev's -- so the two
   # topic-scoped role assignments never cross envs.
   workload_principal_id = module.identity.workload_principal_id
+  # Task E20/F02/US01/T01 (ADR-005 w17 §15, ADR-022 w17 clause 1): the CI
+  # deploy principal already looked up above -- no new data source needed.
+  ci_deploy_principal_id = data.azuread_service_principal.ci_deploy.object_id
 }
 
 # Task E16/F01/US01/T01 (NW-68, ADR-005/ADR-007 w15 footers): one set of
