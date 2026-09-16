@@ -846,8 +846,18 @@ six-cell row and eight-column table are gone with V2.
   `<Link>` to Contract 360 (`state.from = "savings"` drives its back label), the row click a
   convenience on top; an opportunity with no `contractId` opens `/quotes`. Only real
   `SavingsOpportunity` rows render (a session-tracked renewal action is no longer prepended).
+- **Filters** (task-01-savings-filters, ADR-020; `savingsFilters.ts`, `filterOpportunityRows`) --
+  three native `<select>`s anchored above the table restrict it by supplier / status / currency, the
+  council's exact set (AC-2); "Estimate" stays a sort/numeric column, never a filter. Options are
+  derived from whichever opportunities are already loaded (supplier labels resolved the same way the
+  table itself resolves them), never a hardcoded or fabricated list, and never shrink each other --
+  each dropdown's own options always come from the full, unfiltered list. Pure client-side view
+  state: filtering never re-fetches and is never written to storage; "Clear filters" (disabled while
+  no filter is active) restores the full list (AC-3), and a filtered-to-empty result gets its own
+  "No opportunities match the selected filters" message rather than the reroute below.
 - **Reroute** -- "No savings opportunities yet · Opportunities appear once a renewal is actioned or a
-  saving is identified from validated contracts." → **Open renewals**.
+  saving is identified from validated contracts." → **Open renewals**. (Only for a genuinely empty
+  opportunities list -- a filter narrowing a non-empty list to zero rows never reaches this state.)
 
 ### Workspace & members (ADR-024 V2, `raffa-v2/screens-v2.md` #10; ADR-020 w14 design footer screen 10; task E15/F02/US01/T01, wave w14)
 
@@ -1229,10 +1239,11 @@ web/
         quoteCheckViewModel.ts   # pure helpers: aggregate, band, line rows, unit-price/P50 formatting
         quotes.css               # this screen's styles
       savings/                 # Savings, V2 (see "Savings" above)
-        index.tsx                # SavingsRoute -- three independent fetches (KPIs, opportunities, portfolio names), independent degrade states
+        index.tsx                # SavingsRoute -- three independent fetches (KPIs, opportunities, portfolio names), independent degrade states; renders the supplier/status/currency filter bar above the table
         KpiRow.tsx               # the three KPI cells + the stale-labelled notice
         OpportunitiesTable.tsx   # Supplier · Action · Estimate · Status, rows open Contract 360
-        savingsViewModel.ts      # pure helpers: reduceKpiFetch, buildKpiCells, formatSavingsSummary, buildOpportunityRows, buildSupplierNameIndex
+        savingsViewModel.ts      # pure helpers: reduceKpiFetch, buildKpiCells, formatSavingsSummary, buildOpportunityRows, buildSupplierNameIndex, filterOpportunityRows
+        savingsFilters.ts        # pure supplier/status/currency filter predicates + option lists (task-01-savings-filters, ADR-020; tested in savingsFilters.test.ts)
         savings.css              # this screen's styles
     components/
       shell/                  # task E06/F03/US02/T01 -- app shell, router, role guard; V2 two-tier rail by E13/F09/US01/T01 (see "App shell" above)
