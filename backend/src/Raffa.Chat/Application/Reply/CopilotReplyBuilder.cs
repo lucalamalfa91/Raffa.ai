@@ -25,14 +25,28 @@ public static class CopilotReplyBuilder
     /// <see cref="AiAnswerResult.CitationKeys"/> entry back to its full citation card.</param>
     /// <param name="actions">Already-resolved actions for this turn's
     /// <see cref="AiAnswerResult.ActionKeys"/> (via <c>CapabilityRouting.ResolveActions</c> in the
-    /// composition root — this builder never resolves an action key itself).</param>
+    /// composition root — this builder never resolves an action key itself). Used only for
+    /// <see cref="ReplyKind.Answer"/> — see <paramref name="recoveryActions"/> for the abstain
+    /// reply's own actions.</param>
+    /// <param name="recoveryActions">A non-empty, already-resolved recovery action for
+    /// <see cref="ReplyKind.Abstain"/> (task E25/F05/US01/T01; ADR-024 "every abstain has a
+    /// clickable next step"; parent story's council decision: "the server selects the action from
+    /// the catalog that unblocks this failure"). Resolved by the composition root via
+    /// <c>CapabilityRouting.ResolveActions</c> against deterministic routing facts — never from
+    /// <see cref="AiAnswerResult.ActionKeys"/>, because an abstaining model has nothing grounded to
+    /// suggest and AC-2 forbids a model-authored action regardless. Ignored when
+    /// <see cref="AiAnswerResult.CanDetermine"/> is <see langword="true"/>.</param>
     /// <exception cref="ArgumentNullException">Any argument is <see langword="null"/>.</exception>
     public static CopilotReply FromGuardedResult(
-        AiAnswerResult guarded, IReadOnlyList<PackItem> pack, IReadOnlyList<CopilotAction> actions)
+        AiAnswerResult guarded,
+        IReadOnlyList<PackItem> pack,
+        IReadOnlyList<CopilotAction> actions,
+        IReadOnlyList<CopilotAction> recoveryActions)
     {
         ArgumentNullException.ThrowIfNull(guarded);
         ArgumentNullException.ThrowIfNull(pack);
         ArgumentNullException.ThrowIfNull(actions);
+        ArgumentNullException.ThrowIfNull(recoveryActions);
 
         if (!guarded.CanDetermine)
         {
@@ -40,7 +54,7 @@ public static class CopilotReplyBuilder
                 ReplyKind.Abstain,
                 guarded.AbstainReason ?? "Nothing in the validated contracts supports a reliable answer.",
                 [],
-                [],
+                recoveryActions,
                 new ReplyProvenance([], guarded.Metadata.ModelId, guarded.Metadata.PromptVersion, guarded.Metadata.InputHash),
                 []);
         }
