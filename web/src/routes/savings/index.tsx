@@ -4,7 +4,22 @@ import type { ApiClient, SavingsOpportunityBody } from "../../api/client";
 import { loadCurrentWorkspace } from "../signin/workspaceStore";
 import KpiRow from "./KpiRow";
 import OpportunitiesTable from "./OpportunitiesTable";
-import { buildOpportunityRows, buildSupplierNameIndex, formatSavingsSummary, reduceKpiFetch, type KpiFetchState } from "./savingsViewModel";
+import {
+  EMPTY_SAVINGS_FILTERS,
+  getCurrencyFilterOptions,
+  getSupplierFilterOptions,
+  SAVINGS_STATUS_FILTER_OPTIONS,
+  type SavingsFilterState,
+} from "./savingsFilters";
+import {
+  buildOpportunityRows,
+  buildSupplierNameIndex,
+  filterOpportunityRows,
+  formatSavingsSummary,
+  getSavingsStatusTag,
+  reduceKpiFetch,
+  type KpiFetchState,
+} from "./savingsViewModel";
 import "./savings.css";
 
 export interface SavingsRouteProps {
@@ -34,6 +49,10 @@ export default function SavingsRoute({ apiClient }: SavingsRouteProps) {
   const [kpiState, setKpiState] = useState<KpiFetchState>({ phase: "loading" });
   const [opportunitiesState, setOpportunitiesState] = useState<OpportunitiesFetchState>({ phase: "loading" });
   const [supplierNames, setSupplierNames] = useState<ReadonlyMap<string, string>>(new Map());
+  // Supplier / status / currency (task-01-savings-filters, ADR-020: presentation only, no client
+  // store). Pure view state over the already-loaded rows below -- never written to storage, and
+  // never touched by the three fetches' own load/retry callbacks.
+  const [filters, setFilters] = useState<SavingsFilterState>(EMPTY_SAVINGS_FILTERS);
 
   const loadKpis = useCallback(() => {
     if (!workspace) return;
@@ -94,6 +113,14 @@ export default function SavingsRoute({ apiClient }: SavingsRouteProps) {
   const summary =
     kpiState.phase === "loading" || opportunitiesState.phase === "loading" ? "Loading savings…" : formatSavingsSummary(kpis, rows.length);
 
+  // Filter options always come from the full, unfiltered `rows` -- so picking a currency never
+  // makes the supplier list (or vice versa) shrink out from under the user.
+  const visibleRows = filterOpportunityRows(rows, filters);
+  const supplierFilterOptions = getSupplierFilterOptions(rows);
+  const currencyFilterOptions = getCurrencyFilterOptions(rows);
+  const filtersActive = filters.supplier !== null || filters.status !== null || filters.currency !== null;
+  const clearFilters = () => setFilters(EMPTY_SAVINGS_FILTERS);
+
   return (
     <div className="savings-screen">
       <header className="screen-header">
@@ -139,7 +166,88 @@ export default function SavingsRoute({ apiClient }: SavingsRouteProps) {
           </div>
         )}
 
-        {opportunitiesState.phase !== "loading" && rows.length > 0 && <OpportunitiesTable rows={rows} />}
+        {opportunitiesState.phase === "ready" && rows.length > 0 && (
+          <>
+            {/* Anchored above the opportunities table (screens-v2.md #8; task-01-savings-filters,
+                ADR-020). Supplier / status / currency -- the council's exact filter set (AC-2);
+                "Estimate" stays a sort/numeric column, never a filter. Pure client-side view state:
+                filtering never re-fetches and never writes to storage (AC-3). */}
+            <div
+              role="group"
+              aria-label="Filter opportunities"
+              style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: "var(--space-4)" }}
+            >
+              <div className="field" style={{ marginBottom: 0, minWidth: "160px" }}>
+                <label htmlFor="savings-filter-supplier">Supplier</label>
+                <select
+                  id="savings-filter-supplier"
+                  className="input"
+                  value={filters.supplier ?? ""}
+                  onChange={(event) => setFilters((previous) => ({ ...previous, supplier: event.target.value === "" ? null : event.target.value }))}
+                >
+                  <option value="">All suppliers</option>
+                  {supplierFilterOptions.map((supplier) => (
+                    <option key={supplier} value={supplier}>
+                      {supplier}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="field" style={{ marginBottom: 0, minWidth: "160px" }}>
+                <label htmlFor="savings-filter-status">Status</label>
+                <select
+                  id="savings-filter-status"
+                  className="input"
+                  value={filters.status ?? ""}
+                  onChange={(event) =>
+                    setFilters((previous) => ({
+                      ...previous,
+                      status: event.target.value === "" ? null : (event.target.value as SavingsOpportunityBody["status"]),
+                    }))
+                  }
+                >
+                  <option value="">All statuses</option>
+                  {SAVINGS_STATUS_FILTER_OPTIONS.map((status) => (
+                    <option key={status} value={status}>
+                      {getSavingsStatusTag(status).label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="field" style={{ marginBottom: 0, minWidth: "160px" }}>
+                <label htmlFor="savings-filter-currency">Currency</label>
+                <select
+                  id="savings-filter-currency"
+                  className="input"
+                  value={filters.currency ?? ""}
+                  onChange={(event) => setFilters((previous) => ({ ...previous, currency: event.target.value === "" ? null : event.target.value }))}
+                >
+                  <option value="">All currencies</option>
+                  {currencyFilterOptions.map((currency) => (
+                    <option key={currency} value={currency}>
+                      {currency}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <button type="button" className="btn-ghost" onClick={clearFilters} disabled={!filtersActive}>
+                Clear filters
+              </button>
+            </div>
+
+            {visibleRows.length === 0 ? (
+              <div className="empty-state" role="status">
+                <h3>No opportunities match the selected filters</h3>
+                <p className="micro-meta">Clear a filter above to see the full list.</p>
+              </div>
+            ) : (
+              <OpportunitiesTable rows={visibleRows} />
+            )}
+          </>
+        )}
       </section>
     </div>
   );
