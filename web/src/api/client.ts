@@ -532,6 +532,13 @@ export interface PortfolioQueryParams {
   renewalFrom?: string;
   /** `yyyy-MM-dd`, matching the backend's `DateOnly` parameter. */
   renewalTo?: string;
+  /**
+   * Exact-match `Supplier.Category`, resolved by a host join in `PortfolioEndpointExtensions`
+   * (task E24/F01/US01/T01, story us-01-portfolio-category-backend; closes NW-23/OQ-w17-007).
+   * Blank/omitted leaves the full tenant-scoped portfolio (AC-2); a category no supplier carries
+   * narrows to an empty `items` array, never a fabricated one (AC-3).
+   */
+  category?: string;
   /** 1-based; omit for page 1. */
   page?: number;
   /** Omit for the backend's own default (25); `PortfolioPageRequest.MaxPageSize` caps it at 100. */
@@ -2260,6 +2267,7 @@ export function createApiClient(
       if (query.maxAnnualSpend !== undefined) url.searchParams.set("maxAnnualSpend", String(query.maxAnnualSpend));
       if (query.renewalFrom !== undefined) url.searchParams.set("renewalFrom", query.renewalFrom);
       if (query.renewalTo !== undefined) url.searchParams.set("renewalTo", query.renewalTo);
+      if (query.category !== undefined) url.searchParams.set("category", query.category);
       if (query.page !== undefined) url.searchParams.set("page", String(query.page));
       if (query.pageSize !== undefined) url.searchParams.set("pageSize", String(query.pageSize));
 
