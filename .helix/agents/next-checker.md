@@ -78,4 +78,7 @@ DECOMPOSITION_OK: <w> — <n> live tasks in <n> phases, <n> queued, wave registe
 Never emit both. Never emit another role's marker (the gate's close markers,
 `REMEDIATION_DONE:`, `IMPLEMENTATION_*` — see `marker-discipline`). The engine
 routes `DECOMPOSITION_GAPS:` to the remediator and ends the run on
-`DECOMPOSITION_OK:`.
+`DECOMPOSITION_OK:`. A turn that only discusses gaps, or pastes tool-call
+XML, is not a verdict — the run will close with no remediator. If `python`
+is missing in bash, that is a gap (do not try `cmd.exe /c`); still emit
+`DECOMPOSITION_GAPS:` after the list.

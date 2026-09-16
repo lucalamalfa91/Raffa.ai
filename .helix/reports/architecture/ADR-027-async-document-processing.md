@@ -954,3 +954,41 @@ retired workflow's parser (delivery-manager D2 axis 2), a README — is w15
 residue; the contract sweep is assigned in the **ADR-026 w16 footer clause 6**.
 
 `waves/w16.md` records this under NW-31 and W16-01.
+
+## Amendment (2026-09-15, wave w17 — rasterisation is pipeline work, and re-derivation never overrides a human)
+
+Serves **NW-26**, **NW-71** and **NW-73**. Nothing above is rewritten; the queue,
+the claim, the priority-by-claim rule and the `202` contract all stand.
+
+**1. Page rasterisation is a Worker pipeline stage** (NW-26). A synchronous
+rasterise inside `GET /api/documents/{id}/preview` would put unbounded CPU on the
+API request path, which is the premise this ADR exists to defend. The stage runs
+**after admission** and is **independent of extraction success** — a document
+whose extraction failed must still be viewable, because that is exactly the
+document a human needs to look at, and it is what makes NW-73's bulk reprocess
+reviewable at all. Rasterisation failing does not fail the document; the
+placeholder stays. Full decision in **ADR-029**.
+
+**2. Re-derivation never overrides a human correction** (NW-71). Reprocessing
+re-runs extraction and therefore **re-derives** the per-field decision. It must
+**not** silently re-auto-accept a field a human has already corrected or
+accepted. This is not a nicety: it is the rule that keeps ADR-001 w17 clause 8's
+three states — `auto_accepted`, `human_accepted`, `review_required` — from collapsing
+into two the first time a document is reprocessed, and a user who corrected a
+value would otherwise find the machine's value back with an "accepted" badge on
+it. The precedent is already in this module's own reprocess path, which
+deliberately **preserves** `AttemptCount` and nulls only `ClaimedAt`
+(`DocumentReprocessService.cs:135-136,168`): reprocess resets what must be redone
+and preserves what was earned.
+
+**3. The bulk console calls this pipeline; it does not reimplement it** (NW-73).
+`Raffa.Tools` invokes `DocumentReprocessService.ReprocessAsync` per document
+(**ADR-002 w17 clause 1**) and lets the queue absorb the work — bounded
+concurrency, continue-on-error, one document's failure never ending the run.
+**Re-runs are safe**: `MessageId` already collapses duplicate publishes
+(`ServiceBusExtractionQueuePublisher.cs:50`), so a console run that overlaps a
+previous one does not double-process. Each call does a blob load (`:88`), a chunk
+delete (`:99-101`), a publish (`:110`), a save and an audit write, so the cost is
+real per document and the concurrency bound is not optional.
+
+`waves/w17.md` records this under NW-26, NW-71 and NW-73.

@@ -20,7 +20,7 @@
 # raffa-process.yaml `execution-fanout`, launched by the operator after HITL:
 #   ./run-next.ps1 -LaunchOnly -Wave <w>            (check_slice_prereqs.py + execution-fanout)
 #   ./run.ps1 -Max -Slice <w> -o execution-fanout   (the same, by hand)
-# Launcher for this document: ./run-next.ps1 -Max -Todo inputs/next/<file>.md
+# Launcher for this document: ./run-next.ps1 -Todo inputs/next/<file>.md
 # (-Check = parse + refs + prompt files; -o next-from-council |
 # next-from-table | next-from-decomposition | next-plan-close re-enter after a
 # HITL edit or a run that failed outside the plan).
@@ -33,16 +33,12 @@
 # Run parameters travel in reports/plan/next-run.json + the -i input string
 # (Helix has no per-run variables -- NEXT-PROCESS.md D-N3).
 #
-# MODEL (operator decision 2026-09-08): every agent runs on Claude Code Opus
-# through the external-coding-agent harness (Pattern E). provider claude-code
-# is lineage only (coding_agent/binding.py reads models[].model and nothing
-# else); the id comes from .env ANTHROPIC_DEFAULT_OPUS_MODEL and -Max blanks
-# the Hub token so Claude Code bills the Max login. cwd = this folder (no
-# workspace_dir; product code is read at ../). Coding agents own their tools,
-# governed by permission_mode + allowed_tools + disallowed_tools; Helix native
-# tools are NOT bound on this path, so no tools[] block is declared -- a
-# tools[] nobody references would only describe a chat-model fallback this
-# document does not have. Turn deadline: .env HELIX_CODING_AGENT_TURN_*.
+# MODEL (operator decision 2026-09-15): every agent runs on DeepSeek chat
+# (openai-compatible, raffa-process.yaml passata-1 path). Not Claude Code.
+# extra_body.thinking.type=disabled (PROCESS.md D8); normalize_turns and
+# tool_turn_cue off (D10). Native Helix tools cannot read `../` so product
+# code is reached via plugins/product_fs.py (read_product / grep_product /
+# glob_product). cwd = this folder. Passata 2 is unchanged (run.ps1 -Max).
 #
 # MARKERS (line-anchored, last line of the turn -- skills/marker-discipline.md):
 #   CONTEXT_READY: | HALTED:                 next-intake     (CONTEXT_READY: read by the edge)
@@ -52,12 +48,6 @@
 #   DECOMPOSITION_DONE: | HALTED:            next-decomposer (DECOMPOSITION_DONE: read by the edge)
 #   DECOMPOSITION_OK: | DECOMPOSITION_GAPS:  next-checker    (GAPS routes to the remediator)
 #   REMEDIATION_DONE:                        next-remediator (informational)
-#
-# KNOWN ADVISORY at -Check: validate_references warns that the 8 group_chat
-# participants' model omits context_window_tokens. On the coding-agent path
-# nothing reads it (the Claude Code SDK manages its own context; Helix
-# compaction is a chat-client feature), so a value here would be a number
-# invented to silence a warning. Left undeclared on purpose.
 # =============================================================================
 
 version: "0.1"
@@ -75,33 +65,71 @@ defaults:
       # Verification section of NEXT-PROCESS.md for its reach on the
       # coding-agent bind path.
       policy:
-        model_allowlist: [cc-opus]
+        model_allowlist: [deepseek-reasoning, deepseek-fast]
 
 # -----------------------------------------------------------------------------
-# Models -- one lineage-only id. Unset ${VAR} is a hard bind error
-# (run-next.ps1 throws before helix run when it is blank).
+# Models -- DeepSeek chat. Unset ${VAR} is a hard bind error.
+# extra_body.thinking.type=disabled: V4 (and deepseek-chat) enables thinking
+# by default; after a tool call the API requires reasoning_content and Helix
+# does not echo it (PROCESS.md D8). normalize_turns / tool_turn_cue off (D10).
 # -----------------------------------------------------------------------------
 models:
-  - id: cc-opus
-    provider: claude-code
-    model: ${ANTHROPIC_DEFAULT_OPUS_MODEL}
-    # Arms the MAF compaction strategy for the turn-taking topologies
-    # (`next-council-close` is a group_chat). Without the pair, compaction is
-    # never armed and the accumulated round history overflows: the w15 council
-    # run 08458ef1 ended `truncated` at turn 33 / 83k tokens with the decision
-    # record still half `pending` (validate.py:_warn_turn_taking_without_context_window
-    # warns about exactly this at every launch). The two fields must be declared
-    # together and max < window (schema.py:170-177). 200k is Opus's window; the
-    # output cap is per turn, and no seat turn here writes anything near it.
+  - id: deepseek-reasoning
+    provider: openai
+    model: ${DEEPSEEK_REASONING_MODEL}
     options:
-      context_window_tokens: 200000
-      max_output_tokens: 32000
+      base_url: ${DEEPSEEK_BASE_URL}
+      api_key: ${DEEPSEEK_API_KEY}
+      api: chat_completions
+      context_window_tokens: 786432
+      max_output_tokens: 65536
+      tool_call_content: ensure
+      normalize_turns: false
+      tool_turn_cue: false
+      timeout: 900
+      max_retries: 2
+      extra_body:
+        thinking:
+          type: disabled
+
+  - id: deepseek-fast
+    provider: openai
+    model: ${DEEPSEEK_FAST_MODEL}
+    options:
+      base_url: ${DEEPSEEK_BASE_URL}
+      api_key: ${DEEPSEEK_API_KEY}
+      api: chat_completions
+      context_window_tokens: 786432
+      max_output_tokens: 65536
+      tool_call_content: ensure
+      normalize_turns: false
+      tool_turn_cue: false
+      timeout: 900
+      max_retries: 2
+      extra_body:
+        thinking:
+          type: disabled
 
 # -----------------------------------------------------------------------------
-# Skills -- instructions only on the coding-agent path (folded after the
-# prompt, in declaration order). The five *-lane skills are the initial
-# council's lanes: their locked rules still bind, their greenfield questions
-# are answered by the ADRs (each seat prompt says so).
+# Tools -- native registry is artifact-relative; `..` is refused. Product
+# clone (parent of this folder) is reached via plugins/product_fs.py.
+# -----------------------------------------------------------------------------
+tools:
+  - { id: read-file,    kind: function, ref: read_file }
+  - { id: read-files,   kind: function, ref: read_files }
+  - { id: list-dir,     kind: function, ref: list_dir }
+  - { id: glob-files,   kind: function, ref: glob }
+  - { id: grep-files,   kind: function, ref: grep }
+  - { id: write-file,   kind: function, ref: write_file }
+  - { id: shell,        kind: function, ref: bash }
+  - { id: read-product, kind: plugin, path: plugins/product_fs.py, ref: read_product }
+  - { id: grep-product, kind: plugin, path: plugins/product_fs.py, ref: grep_product }
+  - { id: glob-product, kind: plugin, path: plugins/product_fs.py, ref: glob_product }
+
+# -----------------------------------------------------------------------------
+# Skills -- folded after the prompt, in declaration order. The five *-lane
+# skills are the initial council's lanes: their locked rules still bind, their
+# greenfield questions are answered by the ADRs (each seat prompt says so).
 # -----------------------------------------------------------------------------
 skills:
   - { id: kb-contract-next,         instructions_file: skills/kb-contract-next.md }
@@ -118,167 +146,97 @@ skills:
   - { id: delivery-lane,            instructions_file: skills/delivery-lane.md }
 
 # -----------------------------------------------------------------------------
-# Agents -- all Claude Code Opus, harness.backend external-coding-agent.
-# allowed_tools = auto-approved tools; under permission_mode acceptEdits the
-# SDK ALSO auto-accepts Write/Edit, so a read-only role additionally lists
-# them in disallowed_tools (wired: binding.py -> ClaudeAgentSdkConfig ->
-# ClaudeAgentOptions.disallowed_tools). Seats deny Bash the same way.
+# Agents -- DeepSeek chat + native tools. Product clone via *-product plugins.
+# Producers get write-file. Decomposer / remediator / intake / checker get
+# bash (scripts + read-only git). Gate and seats have no bash. Vocabulary
+# degrades Read/Write/Grep/Glob/Bash -> read_file/write_file/grep/glob/bash
+# (skills/cc-passata1-harness.md).
 # -----------------------------------------------------------------------------
 agents:
 
-  # Producer of the process oracle. Bash = read-only git on ../, sha256 of the
+  # Producer of the process oracle. Bash = read-only git, sha256 of the
   # raw file, `python scripts/register_wave.py --next-id`. Writes only under
   # reports/context/waves/, reports/architecture/waves/, reports/open-questions.md.
   - id: next-intake
-    model: cc-opus
+    model: deepseek-reasoning
     skills: [kb-contract-next, cc-passata1-harness, marker-discipline, next-seats]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, write-file, shell, read-product, grep-product, glob-product]
     instructions_file: agents/next-intake.md
-    harness:
-      backend: { kind: external-coding-agent, provider: claude-code, mode: harness, transport: agent-sdk }
-      coding_agent:
-        permission_mode: acceptEdits
-        allowed_tools: [Read, Write, Edit, Grep, Glob, Bash]
-        max_turns: 150
 
-  # --- the seven seats (lane + table). No Bash: they read code with
-  # Read/Grep/Glob and write ADR footers, INDEX rows and draft files. ---------
+  # --- the seven seats (lane + table). No bash: they read code with
+  # grep_product/read_product and write ADR footers, INDEX rows and drafts. ---
   - id: next-product-owner
-    model: cc-opus
+    model: deepseek-reasoning
     skills: [kb-contract-next, cc-passata1-harness, marker-discipline, council-protocol-next, next-seats]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, write-file, read-product, grep-product, glob-product]
     instructions_file: agents/next-product-owner.md
-    harness:
-      backend: { kind: external-coding-agent, provider: claude-code, mode: harness, transport: agent-sdk }
-      coding_agent:
-        permission_mode: acceptEdits
-        allowed_tools: [Read, Write, Edit, Grep, Glob]
-        disallowed_tools: [Bash]
-        max_turns: 80
 
   - id: next-software-architect
-    model: cc-opus
+    model: deepseek-reasoning
     skills: [kb-contract-next, cc-passata1-harness, marker-discipline, council-protocol-next, next-seats, architect-lane]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, write-file, read-product, grep-product, glob-product]
     instructions_file: agents/next-software-architect.md
-    harness:
-      backend: { kind: external-coding-agent, provider: claude-code, mode: harness, transport: agent-sdk }
-      coding_agent:
-        permission_mode: acceptEdits
-        allowed_tools: [Read, Write, Edit, Grep, Glob]
-        disallowed_tools: [Bash]
-        max_turns: 80
 
   - id: next-cloud-architect
-    model: cc-opus
+    model: deepseek-reasoning
     skills: [kb-contract-next, cc-passata1-harness, marker-discipline, council-protocol-next, next-seats, cloud-architect-lane]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, write-file, read-product, grep-product, glob-product]
     instructions_file: agents/next-cloud-architect.md
-    harness:
-      backend: { kind: external-coding-agent, provider: claude-code, mode: harness, transport: agent-sdk }
-      coding_agent:
-        permission_mode: acceptEdits
-        allowed_tools: [Read, Write, Edit, Grep, Glob]
-        disallowed_tools: [Bash]
-        max_turns: 80
 
   - id: next-security-architect
-    model: cc-opus
+    model: deepseek-reasoning
     skills: [kb-contract-next, cc-passata1-harness, marker-discipline, council-protocol-next, next-seats, security-architect-lane]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, write-file, read-product, grep-product, glob-product]
     instructions_file: agents/next-security-architect.md
-    harness:
-      backend: { kind: external-coding-agent, provider: claude-code, mode: harness, transport: agent-sdk }
-      coding_agent:
-        permission_mode: acceptEdits
-        allowed_tools: [Read, Write, Edit, Grep, Glob]
-        disallowed_tools: [Bash]
-        max_turns: 80
 
   - id: next-client-architect
-    model: cc-opus
+    model: deepseek-reasoning
     skills: [kb-contract-next, cc-passata1-harness, marker-discipline, council-protocol-next, next-seats, client-architect-lane]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, write-file, read-product, grep-product, glob-product]
     instructions_file: agents/next-client-architect.md
-    harness:
-      backend: { kind: external-coding-agent, provider: claude-code, mode: harness, transport: agent-sdk }
-      coding_agent:
-        permission_mode: acceptEdits
-        allowed_tools: [Read, Write, Edit, Grep, Glob]
-        disallowed_tools: [Bash]
-        max_turns: 80
 
   - id: next-ux-ui-designer
-    model: cc-opus
+    model: deepseek-reasoning
     skills: [kb-contract-next, cc-passata1-harness, marker-discipline, council-protocol-next, next-seats]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, write-file, read-product, grep-product, glob-product]
     instructions_file: agents/next-ux-ui-designer.md
-    harness:
-      backend: { kind: external-coding-agent, provider: claude-code, mode: harness, transport: agent-sdk }
-      coding_agent:
-        permission_mode: acceptEdits
-        allowed_tools: [Read, Write, Edit, Grep, Glob]
-        disallowed_tools: [Bash]
-        max_turns: 80
 
   - id: next-delivery-manager
-    model: cc-opus
+    model: deepseek-reasoning
     skills: [kb-contract-next, cc-passata1-harness, marker-discipline, council-protocol-next, next-seats, delivery-lane]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, write-file, read-product, grep-product, glob-product]
     instructions_file: agents/next-delivery-manager.md
-    harness:
-      backend: { kind: external-coding-agent, provider: claude-code, mode: harness, transport: agent-sdk }
-      coding_agent:
-        permission_mode: acceptEdits
-        allowed_tools: [Read, Write, Edit, Grep, Glob]
-        disallowed_tools: [Bash]
-        max_turns: 80
 
   # Critic only. Sole emitter of COUNCIL_FILES_WRITTEN: + COUNCIL_APPROVED:.
-  # Read-only is enforced by disallowed_tools, not only by the prompt.
+  # No write-file, no bash.
   - id: next-council-gate
-    model: cc-opus
+    model: deepseek-fast
     skills: [kb-contract-next, cc-passata1-harness, marker-discipline, council-protocol-next, next-seats]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, read-product, grep-product, glob-product]
     instructions_file: agents/next-council-gate.md
-    harness:
-      backend: { kind: external-coding-agent, provider: claude-code, mode: harness, transport: agent-sdk }
-      coding_agent:
-        permission_mode: acceptEdits
-        allowed_tools: [Read, Grep, Glob]
-        disallowed_tools: [Write, Edit, MultiEdit, NotebookEdit, Bash]
-        max_turns: 40
 
-  # Pattern E producer of the whole new-epic tree + the wave file. Bash =
-  # `python scripts/register_wave.py --wave <w>` + check_single_writer.py.
+  # Chat + native write_file (PROCESS.md D9). Bash = register_wave.py +
+  # check_single_writer.py.
   - id: next-decomposer
-    model: cc-opus
+    model: deepseek-reasoning
     skills: [kb-contract-next, cc-passata1-harness, marker-discipline, decompose-next-workitems, wavespec-next]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, write-file, shell, read-product, grep-product, glob-product]
     instructions_file: agents/next-decomposer.md
-    harness:
-      backend: { kind: external-coding-agent, provider: claude-code, mode: harness, transport: agent-sdk }
-      coding_agent:
-        permission_mode: acceptEdits
-        allowed_tools: [Read, Write, Edit, Bash, Grep, Glob]
-        max_turns: 250
 
-  # Read-only checker WITH Bash (NEXT-PROCESS.md D-N5): register_wave.py
+  # Read-only checker WITH bash (NEXT-PROCESS.md D-N5): register_wave.py
   # --check, check_single_writer.py, assert_next_plan_untouched.py verify.
-  # Write/Edit are denied by the harness; a write through Bash (>, sed -i,
-  # tee) cannot be denied by Helix and is forbidden by the prompt only.
+  # write_file is not bound; a write through bash is forbidden by the prompt.
   - id: next-checker
-    model: cc-opus
+    model: deepseek-reasoning
     skills: [kb-contract-next, cc-passata1-harness, marker-discipline, decompose-next-workitems, wavespec-next]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, shell, read-product, grep-product, glob-product]
     instructions_file: agents/next-checker.md
-    harness:
-      backend: { kind: external-coding-agent, provider: claude-code, mode: harness, transport: agent-sdk }
-      coding_agent:
-        permission_mode: acceptEdits
-        allowed_tools: [Read, Grep, Glob, Bash]
-        disallowed_tools: [Write, Edit, MultiEdit, NotebookEdit]
-        max_turns: 80
 
   - id: next-remediator
-    model: cc-opus
+    model: deepseek-reasoning
     skills: [kb-contract-next, cc-passata1-harness, marker-discipline, decompose-next-workitems, wavespec-next]
+    tools: [read-file, read-files, list-dir, glob-files, grep-files, write-file, shell, read-product, grep-product, glob-product]
     instructions_file: agents/next-remediator.md
-    harness:
-      backend: { kind: external-coding-agent, provider: claude-code, mode: harness, transport: agent-sdk }
-      coding_agent:
-        permission_mode: acceptEdits
-        allowed_tools: [Read, Write, Edit, Bash, Grep, Glob]
-        max_turns: 150
 
 # -----------------------------------------------------------------------------
 # Orchestrations
@@ -356,13 +314,13 @@ orchestrations:
       - next-delivery-manager
       - next-council-gate
     selection: round_robin
-    # 2 table rounds x 8 participants = 16 turns (max_rounds is a raw turn cap;
+    # 3 table rounds x 8 participants = 24 turns (max_rounds is a raw turn cap;
     # selection is round_robin, so the cap must be a multiple of 8 or the gate
-    # never gets its closing turn). Was 24: measured on w15, 33 turns / 112 min
-    # of model work with every seat speaking 5x before the run truncated;
-    # seats converge on the footers already on disk, so two passes suffice
-    # (stakeholder ruling 2026-09-13).
-    max_rounds: 16
+    # never gets its closing turn). Was 16: DeepSeek w18 burned two rounds of
+    # talk without write_file on the decision record, then the gate correctly
+    # refused. A third round is the write+re-check pass. Was 24 on Opus w15
+    # (33 turns / 112 min); DeepSeek table turns are shorter.
+    max_rounds: 24
     # Marker triad: on_marker + the literal + line-anchored (registry.py on_marker:
     # truthy -> ^COUNCIL_APPROVED: MULTILINE; falsy would be a substring match
     # anywhere in a turn). The literal lives in agents/next-council-gate.md only.
@@ -393,7 +351,7 @@ orchestrations:
     context_mode: nothing
     edges:
       - { from: next-lanes, to: next-council-close, context_mode: nothing }
-    limits: { max_steps: 300000, max_iterations: 5, run_timeout_s: 14400 }
+    limits: { max_steps: 500000, max_iterations: 5, run_timeout_s: 14400 }
 
   # --- decomposition + Pattern F gate loop -----------------------------------
   - id: next-decomposition
@@ -448,7 +406,7 @@ orchestrations:
     # check <-> remediation LAPS (ADR-0120, le=25); the MAF superstep ceiling is
     # derived from it (builders.py: depth x max_iterations + 1). run_timeout_s
     # = 6 h wall clock for intake + council + decomposition + the loop.
-    limits: { max_steps: 300000, max_iterations: 15, run_timeout_s: 21600 }
+    limits: { max_steps: 500000, max_iterations: 15, run_timeout_s: 21600 }
 
   # Re-entry after the operator edited reports/context/waves/<w>-requirements.md
   # by hand: skips the intake. close_requires_glob needs
@@ -470,7 +428,7 @@ orchestrations:
       - [next-check, next-remediation, needs_remediation]
       - [next-remediation, next-check]
       # DECOMPOSITION_OK: no edge -- terminal.
-    limits: { max_steps: 300000, max_iterations: 15, run_timeout_s: 21600 }
+    limits: { max_steps: 500000, max_iterations: 15, run_timeout_s: 21600 }
 
   # Re-entry when the lanes are already on disk (LANE_DRAFTS_WRITTEN: /
   # LANE_SKIPPED:) but the table never ran. Skips next-lanes so the group_chat
@@ -490,7 +448,7 @@ orchestrations:
       - { from: next-decomposition, to: next-check, condition: on_marker, marker: "DECOMPOSITION_DONE:" }
       - [next-check, next-remediation, needs_remediation]
       - [next-remediation, next-check]
-    limits: { max_steps: 300000, max_iterations: 15, run_timeout_s: 21600 }
+    limits: { max_steps: 500000, max_iterations: 15, run_timeout_s: 21600 }
 
   # Re-entry when the council closed ON DISK (record filled, gate approved in
   # the transcript) but the run ended for a reason outside the plan -- run
@@ -510,7 +468,7 @@ orchestrations:
       - [next-check, next-remediation, needs_remediation]
       - [next-remediation, next-check]
       # DECOMPOSITION_OK: no edge -- terminal.
-    limits: { max_steps: 300000, max_iterations: 15, run_timeout_s: 18000 }
+    limits: { max_steps: 500000, max_iterations: 15, run_timeout_s: 18000 }
 
   # Re-entry after the operator edited a task / the wave file: checker <->
   # remediator only. Does not re-run the decomposer or the council.
@@ -524,4 +482,4 @@ orchestrations:
       - [next-check, next-remediation, needs_remediation]
       - [next-remediation, next-check]
       # DECOMPOSITION_OK: no edge -- terminal.
-    limits: { max_steps: 300000, max_iterations: 15, run_timeout_s: 14400 }
+    limits: { max_steps: 500000, max_iterations: 15, run_timeout_s: 14400 }

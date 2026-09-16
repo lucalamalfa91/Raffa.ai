@@ -1,0 +1,81 @@
+waveId: wave-next-w17
+status: planned
+# title: W17 — the product officializes what it knows, shows the page it read it from, and answers where you can save
+# source: inputs/next/w17-todo.md
+# requirements: reports/context/waves/w17-requirements.md
+# decisions: reports/architecture/waves/w17.md (APPROVED, 11 item rows; ADR-029 new, 19 ADRs amended, 6 no-change)
+# caps: 20 tasks / 5 phases (reports/plan/next-run.json) -> 14 live tasks / 5 phases, 0 queued tasks
+# Phase shape follows ADR-014 w17 clause 7's skeleton with two forced deviations, both
+#   recorded in reports/audit/w17-hitl.md section 3:
+#   (a) NW-22 and NW-62's server half sit in phase 2, not phase 1 -- both depend on
+#       `benchmark-key-resolver`, which NW-20's task produces, and a depends_on must be
+#       strictly earlier (ADR-024 w17 clause 7: one resolution per screen, not two).
+#   (b) NW-72 sits in phase 4, not phase 2 -- it consumes `api-contract-a` (phase 2) and
+#       it claims `web/tests/api/client.test.ts`, which NW-63's viewer task also claims in
+#       phase 3. Same phase => check_single_writer.py rejects.
+# ADR-014 w17 clauses 7.1/7.2 are honoured literally: E20/F02/US02/T01 (the console)
+#   `depends_on: []` -- it compiles and tests without the role assignment, and NOTHING in
+#   the wave depends on E20/F02/US01/T01 (Terraform) at build time. It sits in phase 2 for
+#   legibility of the PR1 -> PR2 split, not because of a build edge, and phase 2 carries no
+#   web task, so "do not chain it behind a web phase" holds.
+# Leaf artifacts (produced, consumed by no other task) all terminate on final integration:
+#   servicebus-ci-send-grant, bulk-reprocess-console, auto-accept-server,
+#   savings-verified-kpi, contract360-officialized-facts, review-unrecovered-fields.
+#   `servicebus-ci-send-grant` is a leaf BY DESIGN (clause 7.1) and A17-S2 depends on its
+#   *apply*, not on its build -- which is why the final-integration task, which runs the
+#   acceptance walk, is the one task that depends on it.
+# One-writer-per-phase, verified with check_single_writer.py:
+#   web/openapi/raffa-api.v1.json  -> E22/F01/US01/T01 (p2, contract-A: NW-71 + NW-20 + NW-26/63)
+#                                     E20/F01/US01/T01 (p4, contract-B: savingsRealized)
+#   web/src/api/client.ts          -> E21/F03/US01/T01 (p2), E22/F03/US01/T01 (p3)
+#   web/src/styles/semantics.ts    -> E22/F01/US02/T01 (p3) only
+#   .../review/reviewViewModel.ts  -> E22/F01/US02/T01 (p3), E22/F05/US01/T01 (p4)
+#   .../contract360ViewModel.ts    -> E21/F03/US02/T01 (p3), E22/F04/US01/T01 (p4)
+#   documents-contracts.sql        -> E22/F01/US01/T01 only (ADR-003 w17 clause 2 refuses
+#                                     NW-63's geometry, so constraint 9 dissolves)
+#   .github/workflows/**           -> E20/F02/US02/T01 only (ADR-014 w17 clause 1)
+#   web/e2e/w17-viewer.spec.ts     -> created p3 by E22/F03/US01/T01, extended p4 by E22/F04/US01/T01
+#   web/e2e/w17-answers.spec.ts    -> created p3 by E21/F03/US02/T01 only (N16)
+#   web/e2e/w17-savings.spec.ts    -> created p4 by E20/F01/US01/T01 only (A17-S1)
+#   web/e2e/w17-review.spec.ts     -> created p4 by E22/F05/US01/T01 only (N18)
+#   web/e2e/v2.spec.ts             -> p2 E20/F02/US02/T01 only (NW-73's stale-prose sweep)
+# ADR-012 w17 clause 39 forbids a second writer on v2.spec.ts and lands every new W17
+#   case in a per-theme spec; clause 41 assigns the cases. All four specs are distinct
+#   files, so no phase carries two writers of one spec. They are acceptance-runbook
+#   evidence, NOT a CI gate -- no workflow runs Playwright (clause 31, ADR-012 §12).
+# Two PRs (ADR-014 w17 clause 2): PR 1 is E20/F02/US01/T01 (Terraform) ALONE -> merge ->
+#   HCP VCS applies raffa-dev AND raffa-demo -> PR 2 is the rest of the wave.
+#   A17-S2 cannot pass before that apply, and ADR-016 w17 clause 44 forbids dispatching
+#   the console even once before the raffa-dev apply is confirmed in the HCP UI.
+# Launch: ./run.ps1 -Max -Slice w17 -o execution-fanout
+phases:
+  - id: 1
+    name: phase-1
+    tasks:
+      - {id: E20/F02/US01/T01, prompt: reports/workitems/epic-20-w16-residuals/feature-02-bulk-reprocess-console/us-01-servicebus-send-grant/tasks/task-01-servicebus-send-grant.md, produces: [servicebus-ci-send-grant], depends_on: [], effort: M, layer: backend, status: live}
+      - {id: E21/F01/US01/T01, prompt: reports/workitems/epic-21-contract-360-answers/feature-01-benchmark-and-activity-payload/us-01-contract360-benchmark-and-activity/tasks/task-01-contract360-benchmark-and-activity.md, produces: [contract360-benchmark-activity, benchmark-key-resolver], depends_on: [], effort: L, layer: backend, status: live}
+      - {id: E22/F02/US01/T01, prompt: reports/workitems/epic-22-officialized-facts-and-viewer/feature-02-document-page-rendering/us-01-rasterised-pages/tasks/task-01-rasterised-pages.md, produces: [document-page-render], depends_on: [], effort: L, layer: backend, status: live}
+  - id: 2
+    name: phase-2
+    tasks:
+      - {id: E20/F02/US02/T01, prompt: reports/workitems/epic-20-w16-residuals/feature-02-bulk-reprocess-console/us-02-tenant-reprocess-console/tasks/task-01-tenant-reprocess-console.md, produces: [bulk-reprocess-console], depends_on: [], effort: L, layer: backend, status: live}
+      - {id: E21/F02/US01/T01, prompt: reports/workitems/epic-21-contract-360-answers/feature-02-renewal-market-position/us-01-renewal-market-position/tasks/task-01-renewal-market-position.md, produces: [renewal-market-position], depends_on: [benchmark-key-resolver], effort: M, layer: backend, status: live}
+      - {id: E21/F03/US01/T01, prompt: reports/workitems/epic-21-contract-360-answers/feature-03-answers-band/us-01-strategy-benchmark-wired/tasks/task-01-strategy-benchmark-wired.md, produces: [strategy-benchmark-wired], depends_on: [benchmark-key-resolver], effort: M, layer: backend, status: live}
+      - {id: E22/F01/US01/T01, prompt: reports/workitems/epic-22-officialized-facts-and-viewer/feature-01-auto-accept-decision/us-01-auto-accept-server/tasks/task-01-auto-accept-server.md, produces: [auto-accept-server, api-contract-a], depends_on: [contract360-benchmark-activity, document-page-render], effort: L, layer: backend, status: live}
+  - id: 3
+    name: phase-3
+    tasks:
+      - {id: E21/F03/US02/T01, prompt: reports/workitems/epic-21-contract-360-answers/feature-03-answers-band/us-02-answers-band-web/tasks/task-01-answers-band-web.md, produces: [contract360-answers-web], depends_on: [strategy-benchmark-wired, renewal-market-position], effort: M, layer: frontend, status: live}
+      - {id: E22/F01/US02/T01, prompt: reports/workitems/epic-22-officialized-facts-and-viewer/feature-01-auto-accept-decision/us-02-review-renders-the-decision/tasks/task-01-review-renders-the-decision.md, produces: [auto-accept-web], depends_on: [api-contract-a], effort: M, layer: frontend, status: live}
+      - {id: E22/F03/US01/T01, prompt: reports/workitems/epic-22-officialized-facts-and-viewer/feature-03-document-viewer/us-01-document-viewer-route/tasks/task-01-document-viewer-route.md, produces: [document-viewer], depends_on: [document-page-render, api-contract-a], effort: L, layer: frontend, status: live}
+  - id: 4
+    name: phase-4
+    tasks:
+      - {id: E20/F01/US01/T01, prompt: reports/workitems/epic-20-w16-residuals/feature-01-savings-verified-kpi/us-01-savings-verified-kpi/tasks/task-01-savings-verified-kpi.md, produces: [savings-verified-kpi], depends_on: [api-contract-a], effort: L, layer: backend, status: live}
+      - {id: E22/F04/US01/T01, prompt: reports/workitems/epic-22-officialized-facts-and-viewer/feature-04-officialized-facts/us-01-details-and-why/tasks/task-01-details-and-why.md, produces: [contract360-officialized-facts], depends_on: [document-viewer, auto-accept-web, contract360-answers-web], effort: L, layer: frontend, status: live}
+      - {id: E22/F05/US01/T01, prompt: reports/workitems/epic-22-officialized-facts-and-viewer/feature-05-unrecovered-fields/us-01-not-found-in-the-document/tasks/task-01-not-found-in-the-document.md, produces: [review-unrecovered-fields], depends_on: [auto-accept-web], effort: M, layer: frontend, status: live}
+  - id: 5
+    name: phase-5
+    tasks:
+      - {id: E22/F06/US01/T01, prompt: reports/workitems/epic-22-officialized-facts-and-viewer/feature-06-w17-integration/us-01-final-integration/tasks/task-01-w17-integration.md, produces: [w17-integration], depends_on: [servicebus-ci-send-grant, bulk-reprocess-console, auto-accept-server, savings-verified-kpi, contract360-officialized-facts, review-unrecovered-fields], effort: L, layer: backend, status: live}
+forks: []

@@ -785,3 +785,435 @@ Deciders on clauses 7–8: product-owner (owner), with software-architect's
 ADR-028 §D5 supplying clause 7's mechanism and raising `OQ-w16-sa-01`, and
 delivery-manager's w16 draft D3–D5 supplying clause 8's disposition and the W17
 successor. Neither clause amends a decision above; both are additive.
+
+## Amendment (2026-09-15, wave w17)
+
+Wave w17 ("the product officializes what it knows, shows the page it read it
+from, and answers where you can save") fixes the scope boundary of **what the
+product may assert on screen once a fact has been decided**. The body above is
+unchanged: the R0–R4 ladder, the §1.2 non-goal list quoted verbatim, and the
+benchmark-interface + fixture-adapter rule all stand. The epic-12, epic-13, w14,
+w15 and w16 footers — including w16's clauses 7–8 — stay in force. **This footer
+supersedes nothing in this ADR.** What it supersedes are **five product-oracle
+lines and one Appendix C rule**, on the record only (`inputs/**` is never
+edited), listed in clauses 2 and 6. Items served: NW-72, NW-71, NW-20, NW-22,
+NW-62, NW-64, NW-66, plus rulings on NW-75, NW-23 and NW-25, which are not at
+this table. Baseline `d3d2d24`.
+
+**0 — Zero new capability; three w16 forward promises discharged; and, unlike
+w16, this wave stands on the pilot script.**
+
+- Every in-wave item **renders or decides a fact the product already extracts
+  and stores** under RLS — `extraction_evidence` confidences, `ContractClause`
+  rows, `RealizedSavings` rows, the persisted notice/term columns. None of
+  §1.2's eight non-goals is touched and **NW-52 stays DEFERRED**: the market
+  band in NW-22 and NW-62 comes from `IBenchmarkService`'s existing fixture /
+  market-feed adapter and this tenant's own corpus, **labelled representative**
+  (this ADR `:47-50`, `:90-93`), never a paid market API, in any environment.
+- **w16 clause 4** ruled the realized-amount gap "a priority ruling: head of
+  W17". **Discharged** — NW-72 is row 1 of the wave (`w17-requirements.md:752`).
+- **w16 clause 8** deferred the bulk whole-tenant reprocess to W17 "with its
+  shape already designed". **Discharged** — NW-73 is row 2, in wave, and §5
+  records it as deliberately not cut.
+- **w16 clause 6, valve 1** sent **W16-01** to "the head of W17's `could` tier".
+  **It is not owed, and that is verified rather than assumed**: W16-01 shipped in
+  w16 (`w17-requirements.md:700` and `:784` — `d3d2d24`, PR #129). A valve
+  promise that silently evaporates between waves is exactly the drop w15 clause 7
+  forbids, so it is checked and closed here rather than left to lapse.
+- **Unlike w16 clause 0, this wave is on the pilot script**, and that changes a
+  priority rather than a scope. `percorso-pilota-v1.md:121-122` is the upload →
+  HITL act of the 20–25 minute demo, and NW-71 rewrites the very rule that act
+  demonstrates. The consequence is clause 2's fixture fence, and it is the one
+  thing in this wave that can break the demo while every test stays green.
+
+**1 — NW-72. The w16 money fence is lifted and *replaced*, not deleted; the
+story is completed, not cancelled.** Rules the product half of **OQ-w17-006**.
+
+- **In scope as an unmet acceptance criterion, not as a new promise.** This
+  ratifies w16 clause 4's own correction: it is "neither a capability change nor
+  a new item". `E04/F03/US01` AC-1 stays **`active`** — **no status banner, no
+  `superseded:` line** — and NW-72 discharges its realized half. This is the
+  whole of `w17-requirements.md` §6's "no work item is cancelled this wave", and
+  this seat confirms it: **nothing is cancelled in w17.**
+- **The fence itself.** w16 clause 4 bound that wave with "no w16 task may render
+  `SavingsKpiSummary.Realized` as a money amount". W17 lifts it **and replaces
+  it**, because its ground — **w14 clause 3**, never assert a fact the system
+  does not hold — is untouched. The replacement, binding on the decomposer:
+  1. A realized money figure is read from **`RealizedSavings` rows**, the
+     audit-tracked record, **grouped by currency and never summed across
+     currencies**.
+  2. The **estimate-summed `Realized` range** in `SavingsKpiCalculator` remains a
+     defect **to fix, never to render**. Lifting the fence does not promote it.
+  3. An outcome with `savingsPropagated: null` is recorded, visibly unlinked,
+     and **enters no total**. This restates w16 clause 7 fence 2, which is
+     **never narrowed**.
+- **The slot must be designed, not assumed.** `screens-v2.md:134-135` carries no
+  realized tile at all — the same anchor that justified w16's fence. The cell is
+  **ux-ui-designer's**; this seat constrains only its meaning: it is labelled
+  **Verified** (spec `:447`, "**Verified** negotiated/implemented savings") and
+  **never implies a single currency**.
+
+> **A17-S1** — on `dev`: record an outcome that realizes an opportunity → the
+> Savings KPI band shows a money figure for realized, **one line per currency**,
+> labelled Verified; reload **and** a second browser agree; an unlinked outcome
+> moves no figure; the pre-negotiation estimate appears nowhere in that cell.
+
+**2 — NW-71. One bar at 90 %, for every field, including the five critical ones
+— and a percentage on screen is floored, never rounded up across it.**
+
+- **A codification, not an expansion.** One threshold, **90 %**, every field, the
+  five critical fields included, **no always-review list**. No §1.2 non-goal
+  moves and no capability is added; the pilot loop keeps its shape and only the
+  number changes.
+- **Superseded on the record — five oracle lines, not one.** `w17-requirements.md`
+  §6 names `product-spec.md:333-335` and `percorso-pilota-v1.md:46`. Three more
+  carry the same retired bands and are superseded with them:
+  `percorso-pilota-v1.md:32` (the first-field tooltip, ">95% / 80–95% / <80%"),
+  **`:55`** (the review queue defined as "solo campi **<80%**") and **`:122`**
+  (the demo script's "due campi <80%"). `product-spec.md:341`'s *stricter
+  validation for critical fields* is superseded **in its threshold half only**.
+- **Not superseded, and both matter.** (a) The **criticality** of contract value,
+  cancellation, termination, renewal date and price uplift — they keep every
+  other privilege they hold (clause 5's always-shown rule; `screens-v2.md:92`);
+  only their *threshold* goes. (b) `percorso-pilota-v1.md:65` (`needs_review` =
+  "almeno un campo sotto soglia") and `:55`'s unlock rule ("**Mark as validated**
+  only when the weak fields are decided") are **threshold-relative** and survive
+  verbatim, re-parameterized by the new bar.
+- **The consequential-use fence moves with the bar.** Spec `:337` and
+  `screens-v2.md:90` fence consequential use below 80 %; the fence becomes **"not
+  accepted — whether by the rule or by a human"**. The unusable set therefore
+  *grows* for a `needs_review` document, and after "Mark as validated" nothing
+  changes. This is a tightening, and it is deliberate.
+- **Display corollary, this seat's addition to OQ-w17-002.** That question
+  reconciles server and web at the boundary but says nothing about the *label*.
+  The operator stash compares a **rounded** percentage, so `0.895` would render
+  "90 % · Review" — the screen printing the threshold number beside the word that
+  denies it. **Rule: a percentage displayed beside a decision is floored, never
+  rounded up across the bar** (`0.895` → "89 % · Review"), **or omitted.** A
+  rendering that rounds *up* to the bar asserts a reliability the fact does not
+  hold — w14 clause 3 again.
+- **⚠ Correction to ADR-019's w14 footer, clause 6 (`ADR-019:224-230`).** It
+  defers the three confidence rows on the ground that `semantics.ts:9-13` "cites
+  a HITL decision of 2026-09-10 (≥ 90 % is auto-accepted…)". **On `d3d2d24` it
+  does not**: that docstring carries spec §7.3's *old* bands verbatim and
+  `isConfidenceBlocking` is still `< 80`. The staleness the footer asserts is
+  real; the evidence it cites is not on `main` — the 90 % comment exists only in
+  the uncommitted operator stash. **W17 is the wave that puts the ruling on the
+  record**, and no seat may treat it as already decided. Recorded here rather
+  than by editing ADR-019, which is ux-ui-designer's.
+- **The fixture fence — OQ-w17-po-01, and it can break the demo while CI stays
+  green.** At a single bar of 90 %, a seeded field at exactly `0.9` flips from
+  *Flagged* to **Accepted**. `percorso-pilota-v1.md:122` requires **two fields
+  below the bar** on the live-uploaded MSA or the pilot's HITL act has nothing to
+  review. **Ruling: the fixture changes, never the threshold.** No task may soften
+  the 90 % rule to keep a seed interesting.
+
+> **A17-1…A17-4** — on `dev`: upload a document with fields on both sides of the
+> bar → every field ≥ 0.90 is **already accepted** on first open of Review, with
+> no click, **including a critical one**; every field below is queued; reload
+> **and** a second browser agree (a server decision, not session state); one
+> audit row per document names the auto-accepted **fields, never their values**;
+> and no screen shows a percentage that contradicts its own decision state.
+
+**3 — NW-20. "Activity" is the provenance timeline of events already persisted,
+and an empty array is not a decision.**
+
+- Both `benchmark` and `activity` are spec §8.2 (`:367`) tab names, so neither is
+  a new capability; what is missing is a **definition**, which is this seat's.
+- **Activity for V1** is drawn **only** from events the system already persists:
+  uploaded / processing completed / `document.validated` / `document.reprocessed`,
+  a contract correction, a renewal action started or assigned, a negotiation step
+  ticked, a savings outcome recorded. Each entry carries **when**, **actor**
+  (ADR-011's convention, `system:<component>` for pipeline events) and **what
+  changed** — and **never the value of an extracted fact**.
+- **Out**: supplier communication or outreach (§1.2 non-goal, and
+  `percorso-pilota-v1.md:153`), notes and comments, and anything that would need
+  a new table.
+- **The honest alternative, if that projection does not fit the wave**: **remove
+  `activity` from the payload and delete the memberless record type**, rather
+  than ship an array that can never fill. A named tab that never lights up is w14
+  clause 3 inverted. **What is not acceptable is leaving an unconditional `[]`
+  with no decision.** `benchmark` has no such option — NW-62 consumes it.
+
+**4 — NW-22 and NW-62. A market claim has exactly two honest shapes, and "Not yet
+available" is not one of them.** Rules the product half of **OQ-w17-004**.
+
+- This ADR `:94-96` binds unchanged: a confident answer **with provenance**, or
+  an explicit insufficient-data result — "never a bare precise-looking number
+  without provenance". Spec `:538` says the same ("do not present a provider
+  percentile without provenance/confidence") and `:496` explains why. Therefore a
+  market position or savings band may render as **either**:
+  1. a **representative** position — above / in line with / below market —
+     carrying its **adapter, sample size and as-of date**; or
+  2. the explicit **"insufficient market data"** result.
+  **Never a percentile alone, never "market" unqualified, never "Not
+  determined".**
+- **A fixture-derived figure is never presented as live market truth.** This
+  ADR's own "Bad" consequence (`:57-60`) is the reason this seat sits on NW-62 at
+  all.
+- **The steady state must stop reading as a defect.** "Not yet available" /
+  "Not determined" (`contract360ViewModel.ts:150-152`) is a placeholder, not an
+  answer. A missing fact is **named**, together with the way to obtain it (a link
+  into Review); thin market data **says so**. Spec §8.4 `:392` is the fence, and
+  the fence is a labelled answer, not silence.
+- **OQ-w17-004, product half**: geography is the **workspace country** (the w14
+  profile field) used as the contract's market and **labelled representative**. A
+  per-contract geography field is a new capability plus a migration and is **not
+  this wave**; a paid lookup is §1.2.
+
+> **N16** — on `dev`: a renewal row with a validated price, and a contract with a
+> validated end date and a processed document, each return one of the two shapes
+> above; `benchmark` is non-empty or carries the explicit insufficient-data
+> marker; every `activity` entry traces to a persisted event, or there is no
+> `activity` member at all; **no screen shows a market claim without its
+> source**; and neither 360 answer reads "Not yet available" while the facts it
+> needs are in the file.
+
+**5 — NW-64. A field extraction did not recover is shown empty and fillable, not
+hidden.**
+
+- Review's promise is that you **see** the facts and decide them
+  (`percorso-pilota-v1.md:55`, `screens-v2.md:81-93`). Hiding a field because
+  extraction returned nothing asserts a completeness the system does not have —
+  w14 clause 3, and the exact inverse of the fence clause 2 tightens.
+- **Always shown, recovered or not**, mapping spec `:341`'s five critical fields
+  onto the Review model: **`annualSpend`, `totalContractValue`,
+  `cancellationDeadline`, `endDate`, `renewalTermMonths`** — plus `supplier`,
+  `type`, `status`, `currency`, `autoRenewal`, which are already required. Empty,
+  **fillable** rows. Other optional fields keep today's behaviour.
+- **Two of the five critical fields have no correctable field at all** —
+  *termination* and *price uplift*. They are **not invented this wave**: that is
+  a schema and extraction change, not a rendering fix. Recorded here as a known
+  gap and a W18 candidate, so their absence is bounded rather than silent.
+
+> **N18** — on `dev`: a document where OCR misses end date and cancellation
+> deadline → both appear as **empty fillable rows**; filling one persists across
+> a reload **and** a second browser; "Mark as validated" still reflects the
+> decided set; the test that asserts today's hiding behaviour is **rewritten,
+> not deleted**.
+
+**6 — NW-66. Confidence never appears on Contract 360; the Why row carries
+leverage instead — and Appendix C `:954` is superseded in its rendering half
+only.**
+
+- **A deliberate divergence from the design oracle, recorded as one.**
+  `screens-v2.md:101` puts **confidence** on the Why row. W17 removes it. The
+  reason is clause 2: after NW-71 confidence is a **decision**, not a score, and
+  360 becomes the surface of *officialized* facts (NW-65) — so a percentage there
+  re-opens a decision Review has already closed.
+- **One rule binds NW-65 and NW-66, stated once so they cannot drift:
+  confidence lives in Review; Contract 360 never renders it.**
+- **The Appendix C question, which this seat raises rather than waits to be
+  caught on.** `product-spec.md:954` reads "**Never show a consequential
+  extracted fact without source evidence and confidence metadata**", and a Why
+  clause is consequential. It is therefore superseded **in its rendering half,
+  on Contract 360 only**, by NW-71 + NW-65 + NW-66 together: every fact 360
+  displays is **officialized** (auto-accepted at ≥ 90 % or signed by a human) and
+  carries **page · section** evidence, which is a *stronger* reliability signal
+  than a score the user cannot act on. The rule stands **verbatim everywhere
+  else** — in **Review**, where the confidence *is* what the user decides on, and
+  in **Ask**, where a consequential answer still carries source and confidence.
+  **The storage half is never touched**: spec `:127` (every critical fact
+  preserves document, page/section and confidence) stands, confidence stays
+  persisted on `extraction_evidence`, and it remains the input to the decision.
+  A rule that is met by a better signal is superseded honestly, not ignored.
+- **Leverage vocabulary — this seat's words.** The raw enum
+  (`ContractRiskLevel` = Low/Medium/High/Critical) **never reaches the screen**.
+  The row reads **"Push to change"** (Critical, High) · **"Worth raising"**
+  (Medium) · **"Standard terms"** (Low). Never colour-only (ADR-019), never a
+  percentage. The original quote leaves the row.
+
+> **N20** — on `dev`: a Why row shows type, normalized value, page · section and
+> exactly one leverage tag in those words; **no percentage and no raw enum string
+> anywhere on Contract 360**; the full quote is one click away and is never
+> rendered untruncated in the row.
+
+**7 — Priority, the release valves, and the two items that leave the live set.**
+
+- **NW-75 is ruled OUT for V1** — the ruling `w17-requirements.md:767-768`
+  explicitly reserves for this council ("if the council rules it **OUT**, it
+  leaves the live set entirely and is recorded, not queued"). Four grounds:
+  1. **No estimate exists to show.** The oracle's table is Supplier · Action ·
+     **Estimate** (`screens-v2.md:135`), and a tracked action holds no
+     system-held estimate until an opportunity exists. The row would either
+     invent a number — against `E04/F03/US01` AC-3's "never fabricated
+     precision" and w14 clause 3 — or ship an undefined blank column. This is
+     why w16 retired `buildTrackedOpportunityRow` in the first place.
+  2. **Two homes already exist** — Renewals (`screens-v2.md:127-130`) and the
+     360 tracker (`:105-108`). A third surface adds no user-visible outcome
+     (this ADR `:84-85`).
+  3. **The pilot puts this surface out of the demo**
+     (`percorso-pilota-v1.md:148`, "Home savings come demo" explicitly out).
+     NW-72 is already this wave's Savings work, and it closes a real AC.
+  4. **It is `could`, and it is overflow.** OUT removes it from the live set
+     instead of parking it, which frees W18's head for NW-63's deferred half.
+  **Re-entry condition, so this is a ruling and not a refusal**: it returns as a
+  **new item** once a tracked action can carry a system-held estimate — i.e.
+  after NW-62's benchmark join (OQ-w17-004). Not before, and never as a
+  pseudo-row. **No task, no story, no ADR-020 change.**
+- **NW-23 and NW-25 are queued to W18 — queuing, not demotion.** Both are
+  `could` and both sit last in the raw file's overflow order. **OQ-w17-007's
+  product half travels with NW-23**: Portfolio filters by **supplier category**
+  (spec §8.1 `:358` lists Category among the required filters) while
+  `screens-v2.md:119`'s "Type" column stays the *document* type — two dimensions,
+  never merged. **NW-25, recorded so W18 does not re-litigate it**: the filters
+  are the oracle's own columns, **supplier** and **status**; Estimate is a
+  **sort**, not a filter, because a range control over a representative band
+  implies a precision the band does not have.
+- **OQ-w17-001 — the NW-63 split is ratified, on one condition.** A reduced
+  `must` is honest; a silently deferred one is not. The split holds **only**
+  because `w17-requirements.md:811-813` already makes the remainder the **head of
+  W18, ahead of this run's four overflow items**. If the council instead rejects
+  the split it must cut **two `should` items** and say which — it may not absorb
+  the difference by narrowing a `must`.
+- **Priority this seat defends**: NW-72 head (w16 clause 4 already ruled it
+  there); **NW-71 before NW-64 / NW-65 / NW-66**, which is a single-writer
+  constraint and not a preference; and **no `must` is demoted or queued past the
+  next wave** — NW-71, NW-62 and NW-63 all stay in wave.
+- **If the cap binds further, the cut order is the raw file's and no other**:
+  NW-75 (now OUT), NW-23, NW-25, NW-74 — **NW-74 keeps `should` while queued**.
+  **Never narrowed**: NW-71's single bar, NW-72's currency grouping, NW-62's
+  provenance rule, and clause 5's always-shown critical fields.
+
+**Not decided here** (recorded so no task reads this footer as authority): the
+per-field decision's storage shape and its migration, the payload shapes of
+`benchmark` / `activity` / the 360 answers, the rasteriser and the viewer, the
+confidence-row treatment and the risk→label table, the screens and their copy,
+the console's identity and its Terraform grant, and the contract-file schedule.
+Those are software-architect's, ux-ui-designer's, client-architect's,
+security-architect's, cloud-architect's and delivery-manager's.
+
+Deciders: product-owner (owner of this ADR), with software-architect co-deciding
+clauses 1, 3 and 4 on mechanism and OQ-w17-003/004/006, ux-ui-designer owning the
+ADR-019 / ADR-020 half of clauses 1, 2, 5 and 6, client-architect co-deciding the
+read-back in clauses 1 and 5, and delivery-manager cited on clause 2's fixture
+fence. `reports/architecture/waves/w17.md` carries the per-item rows and the
+votes.
+
+### Clauses 8–9, appended at the same table (wave w17)
+
+Clauses 0–7 above are unchanged. Two questions reached this seat **at the
+table** rather than in its lane — ux-ui-designer's three-state finding and
+delivery-manager's `demo` question, which that seat records as declining to
+defer a fourth time. Both are acceptance wording and priority, so both are ruled
+here rather than left in another seat's draft. An unrecorded table ruling is not
+a ruling.
+
+**8 — "Accepted by the rule" and "accepted by you" are different facts and must
+never render alike.** Raised by ux-ui-designer against clause 2.
+
+- After NW-71 a field is in one of **three** states — **auto-accepted**,
+  **accepted by a human**, **pending a decision** — and they carry different
+  authority: one is the product's judgement, one is the user's signature, one is
+  nobody's. Painting the first two identically tells the user they signed
+  something they did not. That is **w15 clause 7** (the system must not silently
+  drop a fact the user is entitled to) and **w14 clause 3** in the same breath.
+- **Ruling: the three states stay distinguishable on every surface that shows an
+  acceptance**, in words and not by colour alone (ADR-019). "Accepted
+  automatically · NN %" and "Accepted by you" are the *product's* distinction;
+  the exact strings and treatment are **ux-ui-designer's** (ADR-019 / ADR-020).
+- **Consequence this seat does own**: the wire must be able to carry the
+  distinction. A **boolean** collapses two of the three and makes the rule
+  unimplementable — but the shape is **software-architect's** and is not decided
+  here; what is decided is that the contract may not make the three states
+  indistinguishable.
+- **A decision is server-computed and read-only to the client** (cited from
+  security-architect, not owned): a client-supplied decision is refused, never
+  persisted. A display band must never become an authorization or a record.
+
+> **A17-5** — on `dev`: a document with fields on both sides of the bar → a
+> field the rule accepted and a field the user accepted are **told apart on
+> screen without hovering**; reload and a second browser agree; nothing on screen
+> claims the user decided a field the rule decided.
+
+**9 — `demo` is not dormant, and the promotion is not deferred a fourth time.**
+Answers delivery-manager's direct ask. Priority ruling only; the mechanism,
+the tag and the ordering stay ADR-016's and that seat's.
+
+- **`demo` cannot be declared dormant**, because the pilot path is the
+  product's own client-facing acceptance surface and `percorso-pilota-v1.md` is
+  run from `demo`. w15 clause 12 already ratified the `demo-v4` cut **as a
+  product requirement** on exactly that ground.
+- **What changes with w17, and why this is no longer a satellite question.**
+  w15's and w16's gaps were the workspace/invite half and satellite surfaces.
+  **w17's two flagship items are pilot-script surfaces** — the Review HITL act
+  (`percorso-pilota-v1.md:121-122`) and the Contract 360 answers. Shipping w17 to
+  `dev` alone therefore leaves `demo` behind on the **hero loop**, not on
+  satellites. That is a materially worse state than the one this question was
+  deferred in three times.
+- **Ruling**: the `demo` backlog is cleared by an **operator promotion decision
+  at the w17 HITL gate**. **No wave task promotes** and this clause mints none —
+  promotion is a human-gated act (ADR-016). **If that decision is not taken at
+  the w17 gate, then W18 opens with the promotion as its head item, ahead of
+  every feature**, including this run's overflow. A deferral that never costs a
+  slot is what let this reach a fourth wave.
+- **Not decided here**: the tag, the approval chain, the seed/flag posture per
+  environment and whether w17's two flags default `false` on `demo` — all
+  delivery-manager's and cloud-architect's.
+
+Deciders on clauses 8–9: product-owner (owner), with ux-ui-designer raising
+clause 8 and owning its copy and treatment, software-architect owning the wire
+shape clause 8 constrains, security-architect cited on the read-only rule, and
+delivery-manager raising clause 9 and owning its mechanism. Neither clause
+amends a decision above; both are additive.
+
+### Clause 10, appended at the same table (wave w17)
+
+Clauses 0–9 above are unchanged. **OQ-w17-ux-04** was raised by ux-ui-designer
+at this table **against clause 1 and owed back to this seat**, and it is the
+last open question of the w17 table. It is acceptance wording, so it is ruled
+here rather than left in another seat's draft.
+
+**10 — the realized-money KPI cell is labelled "Savings verified", and the
+screen word is not the domain word.**
+
+- **Correction to this seat's own clause 1, on the record.** Clause 1 requires
+  the cell to be "labelled **Verified** (spec `:447`)". Re-read first-hand,
+  `product-spec.md:447` is a **two-column** row: the **label** column reads
+  **"Savings Realized"**, and "**Verified** negotiated/implemented savings" is
+  its **meaning** column. Clause 1 cited the meaning as though it were the
+  label. What clause 1 actually carries is the **evidence standard** that word
+  states — not the bare string — and this clause says so before anyone
+  implements the narrower reading.
+- **Ruling: "Savings verified".** ux-ui-designer's proposal is adopted whole,
+  for its own structural reason and for one product reason it did not have to
+  make:
+  1. **Parallelism** (ux-ui-designer's, adopted): the band's other three labels
+     are noun phrases naming a thing counted — "Contracts analyzed", "Upcoming
+     renewals", "Savings identified" (`savingsViewModel.ts:85-87`). In a row of
+     **equal** cells (`design-system.md:45`) a bare "Verified" would be the only
+     cell naming a **status**, and would read as a filter or a state rather than
+     as money.
+  2. **"Realized" is the word attached to the defect.** The bucket that sums
+     estimates today is called `Realized` (`SavingsKpiCalculator.cs:86`,
+     `:103-104`). NW-72's point is the **evidence** difference between the two
+     money cells — a pre-negotiation estimate versus a recorded outcome — not a
+     lifecycle step. Labelling the repaired cell with the defective bucket's own
+     word leaves the screen reading exactly as it did before the fix; "verified"
+     states the standard the number now meets, which is the half of spec `:447`
+     that matters.
+- **Fence — the screen word and the domain word are allowed to differ, and
+  nothing is renamed to "align" them.** `RealizedSavings`
+  (`RealizedSavings.cs:26`), `realizedAmount`
+  (`SavingsEndpointExtensions.cs:169-171`) and the domain bucket keep their
+  names; software-architect's **declared** break on `SavingsKpiSummary.Realized`
+  (ADR-028 w17 footer) stays the **only** rename this wave, and no task may
+  widen it into a vocabulary sweep on the strength of this label.
+- **Deliberate divergence from the spec's label column, recorded as one.** It
+  joins the divergence already ratified for this cell — `screens-v2.md:134-135`
+  carries no realized-money slot at all (ADR-020 w17 §17). The spec's **meaning**
+  column is honoured verbatim; its label column is not.
+- **Unchanged by this clause**: the whole of clause 1 — money only from
+  `RealizedSavings` rows, **grouped by currency, never summed across them**; an
+  outcome with `savingsPropagated: null` enters no total; absent → the existing
+  `—` idiom, never a fabricated `0`; provenance in the cell's `meta`.
+
+> **A17-S1 gains one check**: the cell is labelled **"Savings verified"**, and
+> the estimate's word never labels it; the pre-negotiation estimate appears
+> nowhere in that cell.
+
+Deciders on clause 10: product-owner (owner and ruler), ux-ui-designer (raised
+it, owns the treatment and the `meta` copy), software-architect (cited on the
+declared wire break the fence bounds). The clause **amends no decision above**:
+it corrects a citation inside clause 1 and fixes the string clause 1 left
+ambiguous. Clause 1's substance is untouched.

@@ -187,3 +187,111 @@ no task adds one "while it is in there":
 decomposition. Why no CI workflow edit is owed is in the **ADR-021 w16 footer**.
 
 `waves/w16.md` records this under NW-13.
+
+## Amendment (2026-09-15, wave w17 — two columns on an existing table, and the geometry this wave refuses)
+
+Serves **NW-71** (auto-accept a field at ≥ 90 %) and **NW-63** (document viewer).
+Nothing above is rewritten.
+
+**1. The per-field decision lands on `extraction_evidence` — no new table.** The
+table is already **one row per (contract, field) carrying `Confidence`**
+(`ExtractionEvidence.cs:38,48`) and is explicitly the extraction-time sibling of
+`CorrectionHistory` (`:14-19`). It gains two nullable columns:
+
+| Column | Type | Meaning |
+|---|---|---|
+| `decision` | `text`, nullable | `auto_accepted` \| `review_required`; **NULL = not yet decided** |
+| `decided_at` | `timestamptz`, nullable | when the server decided |
+
+- **No SQL enum.** `FieldName` is deliberately not an enum (`:36-37`) and
+  `decision` follows it: a text column with the vocabulary checked in code.
+- **Three seats reached this table independently and that is why it is the right
+  one.** Isolation: it is already `ENABLE` + `FORCE ROW LEVEL SECURITY`
+  (`documents-contracts.sql:798-800`), so the wave adds **zero new isolation
+  surface** (security-architect S17-3). Read-back: `useReviewSession.ts:124`
+  already calls `getContractEvidence` on every load, so the flagship read-back
+  needs **no new endpoint and no new fetch** (client-architect). Shape: it is
+  already keyed exactly per (contract, field).
+- **If it had been a new table instead**, it would have had to derive from
+  `TenantScopedEntity`, carry `tenant_id`, and get `ENABLE` + `FORCE` + policy in
+  the same migration — because `TenantRlsMigrationCheckTests.cs:37-44` discovers
+  its table list **from the EF model**, so a non-deriving entity is never checked
+  and the suite stays green. Recorded because it is the trap avoided, not a
+  hypothetical.
+- **Two columns, three states.** The stored `decision` is the **server's**
+  decision; human acceptance remains the existing correction/accept path. The
+  wire therefore composes **three** field states, each derived rather than stored
+  a second time:
+
+  | Wire state | Derived from |
+  |---|---|
+  | `auto_accepted` | `decision = 'auto_accepted'` and no human correction on this field |
+  | `human_accepted` | a correction/acceptance exists for this field (the existing path) |
+  | `review_required` | `decision = 'review_required'`, or `decision IS NULL` (not yet decided) |
+
+  This is what ADR-001 w17 clause 8 requires to stay distinguishable, and
+  **`review_required` is that clause's "pending"** — named for what it needs
+  rather than for what it lacks, reusing the stored vocabulary instead of
+  inventing a fourth word. **A boolean would collapse two of them** and make that
+  clause unimplementable. The rule that keeps states 1 and 2 apart across a
+  reprocess is in the **ADR-027 w17 footer clause 2**.
+- `ContractEvidenceSchemaTests.cs:49-76` is a deliberate column-by-column proof
+  ("complete proof, not just a diff", `:47-48`) and **must gain both columns**.
+
+**2. The geometry columns NW-63 would need are refused this wave.** There is
+zero `bbox` / `bounding` / `polygon` in any `*.sql` on `d3d2d24`, and none is
+added here. Page-level anchoring is already derivable from the existing
+`SourcePage` + `SourceSpan` (`ExtractionEvidence.cs:46-47`) over Document
+Intelligence's utf16 spans — see the **ADR-017 w17 footer** and **ADR-029**.
+Bounding boxes, and the schema to hold them, are W18. This refusal is what makes
+clause 3 possible.
+
+**3. Migration mechanics.** **One** migration this wave, in
+`Raffa.Documents.Contracts`, regenerating the single byte-compared script
+`Migrations/Scripts/documents-contracts.sql`. Because clause 2 refuses NW-63's
+geometry, **NW-71 is the only writer of that script this wave** — the wave
+record's single-writer constraint 5 (NW-71 vs NW-63) therefore **dissolves**
+rather than needing two phases. Why no CI workflow edit is owed, and one
+citation the wave record compresses wrongly, are in the **ADR-021 w17 footer**.
+
+`waves/w17.md` records this under NW-71 and NW-63.
+
+## Amendment (2026-09-16, wave w18 — the geometry this wave refused lands, in the shape ADR-029 pre-decided)
+
+Serves **NW-63r** (bounding-box overlay + phrase-edit — the W18 remainder). **The
+w17 footer's clause 2 refusal is ended, not reversed**: it refused geometry *for
+w17* because w17 shipped text-level `SourceSpan` highlighting over real pages and
+needed no migration; w18 ships the box overlay, which needs the geometry the
+refusal named. Nothing above is rewritten; `decision` / `decided_at` and the
+three-state derivation are untouched.
+
+**1. Geometry lands as columns on the existing evidence tables, not as a new
+table.** The box a phrase occupies is a property of that phrase's evidence row,
+so it joins `extraction_evidence` (and, where an OCR-derived structure carries
+its own box, the matching wire shape named in ADR-017 w18) as **nullable geometry
+columns** — every existing row predates the columns and must stay renderable with
+a `SourceSpan` highlight, not break on a null box.
+
+**2. What is stored, and how to read it.** The columns carry the `words` /
+`polygon` geometry the widened wire supplies (`DocumentIntelligenceContracts.cs`,
+ADR-017 w18), normalized so a box overlays the same page the `SourcePage` names.
+A **null** box means "text-level highlight only" — which is exactly w17's shipped
+state and must stay reachable for any document rasterized before this lands, not
+silently upgraded or errored.
+
+**3. The phrase-edit write path touches the same table, and it obeys the
+proposal-vs-override rule of ADR-029.** An edited phrase writes an **override**
+beside the proposal (`ExtractionEvidence.cs:14-19`), never rewrites the proposal
+in place; the geometry columns are read from the overridden phrase's evidence the
+same way they are from the original. This footer records that the geometry and the
+override live on the same evidence row family; the write path's exact shape and
+the provenance fence are ADR-029's and ADR-027's.
+
+**4. Migration mechanics.** **One** migration, in `Raffa.Documents.Contracts`,
+regenerating the single byte-compared `Migrations/Scripts/documents-contracts.sql`
+(`dotnet ef migrations script --idempotent`). It is never hand-edited and has
+**one writer** in the decomposition — the geometry columns and the phrase-edit
+write land in the same module, so the contract file stays single-owner. No CI
+workflow edit (ADR-021).
+
+`waves/w18.md` records this under NW-63r.

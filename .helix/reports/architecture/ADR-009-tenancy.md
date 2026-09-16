@@ -444,3 +444,286 @@ cross-tenant aggregate (w14 clause 8's last sentence). Recorded because "resolve
 the supplier" is the shape of question that invites a global lookup: **there is no
 cross-tenant read in this product, and a resolver that found an opportunity in
 another tenant would be the defect, not the feature.**
+
+## Amendment (2026-09-15, wave w17 — the first tenant read with no HTTP caller, and the trap that makes it fail silently green)
+
+Seat: security-architect (owner). Serves **NW-73** (the bulk reprocess console)
+and **NW-71** (the per-field decision state); ratifies one clause of **ADR-029**
+(NW-26's per-page preview objects). The Decision outcome above is unchanged — RLS
+on every tenant table, application scoping primary, RLS the **non-bypassable
+backstop**, no `BYPASSRLS` in the application path. The w14, w15 and w16 footers
+are unchanged and in force. **This wave creates no new tenant table and rewrites
+no policy text.** Rule ids `S17-n` are this seat's w17 lane
+(`reports/architecture/draft/next/security-architect/w17.md`).
+
+### 1. S17-3 — a host with no HTTP caller must bind the tenant explicitly, and the product's own API makes the wrong way the easy way
+
+NW-73's console is the **first product code path that enumerates a tenant with no
+HTTP request**. Half of it is already safe by construction:
+`DocumentReprocessService.ReprocessAsync` opens its own tenant scope (`:67`).
+**The worklist query is not** — it lives in the console, outside any scope the
+product opens, and nothing in the existing code covers it.
+
+**The trap is in the signature, not in the implementer.**
+`DocumentsContractsDbContextOptions.Configure(builder, connectionString,
+ITenantContext? tenantContext = null)` wires `TenantRlsConnectionInterceptor`
+**only when the third argument is supplied** (`:50-66`). The two-argument form is
+what migrations and tests legitimately use, and is exactly what a reader copies
+from `TenantRlsMigrationCheckTests.cs:32`.
+
+Take the two-argument form and `app.tenant_id` is never set, so the policy's
+`nullif(current_setting('app.tenant_id', true), '')::uuid` is NULL, every
+comparison against it is NULL, and **every query returns zero rows**. It fails
+**closed** — this ADR working exactly as designed. But on this path the failure is
+**indistinguishable from an empty worklist**: the console reports "nothing to
+reprocess" and **exits green having done nothing**. That is the same class of
+honest-looking lie ADR-016 §30 names for psql-inserted jobs, and
+`verify-tenant-corpus.yml` would not catch it, because a correct binding and a
+missing one differ only in row count — and row count is data.
+
+**Five rules bind any host that reads a tenant table without an HTTP caller:**
+
+1. the DbContext is built with the **three-argument** `Configure`, and the
+   worklist runs inside `tenantContext.BeginScope(tenantId)`;
+2. **never** a raw `NpgsqlConnection`, a hand-written `SET app.tenant_id`, or
+   `psql` — the GUC is the interceptor's to write
+   (`TenantRlsConnectionInterceptor.cs:40`). A second writer of that setting is a
+   second tenancy implementation;
+3. **one tenant per run**, from an explicit `--tenant <guid>` parsed as a GUID.
+   **No all-tenants mode, no wildcard, no "every tenant in the table" loop** — the
+   process never holds more than one tenant's scope in a run, so a scoping bug
+   cannot become a cross-tenant one;
+4. **zero rows under a syntactically valid tenant is an error, not a success**:
+   exit **non-zero** with "no documents visible for this tenant; check the tenant
+   id and the RLS scope". This is the clause that converts a silent misbinding
+   into a failed run, and it is the one a task is most likely to drop as
+   over-strict;
+5. the credential is the **same `postgres-connection` secret the application uses**
+   (`verify-tenant-corpus.yml:112`) and nothing more privileged. `FORCE ROW LEVEL
+   SECURITY` binds the table owner but **not** a `BYPASSRLS` role — the only
+   remaining way to escape this ADR. **No superuser and no `BYPASSRLS` in any
+   environment**, which is the body's rule restated for a host the body did not
+   contemplate.
+
+**1a — the test that pins it.** A test that builds the DbContext **the way the
+console builds it** and asserts `app.tenant_id` **is set** on the open connection.
+Asserting "the console returned rows" does not pin it, for the reason above.
+
+**1b — the standing generalisation.** Every future non-HTTP host — a second
+console, a Container Apps Job, a scheduled task — inherits clauses 1–5. The
+product now has a named answer to "how does a process without a request bind a
+tenant", so the question is not re-derived per tool.
+
+### 2. S17-6 — NW-71's per-field decision adds **zero** new isolation surface, and the alternative shape is where the silent escape lives
+
+ADR-003's w17 clause 1 lands `decision` + `decided_at` as two nullable columns on
+the **existing** `extraction_evidence`. That table is already `ENABLE` + `FORCE
+ROW LEVEL SECURITY` + `tenant_isolation` (`documents-contracts.sql:798-800`) and
+already keyed per field (`ix_extraction_evidence_contract_id_field_name`, `:770`).
+**A nullable column on an already-protected table needs no new policy, no new
+guard, no new test and no new migration ordering.** Three seats reached this table
+independently — this one from isolation, software-architect from the wire,
+client-architect from the read-back — and that convergence is the reason it is
+recorded rather than assumed.
+
+**2a — the branch that did not fire, recorded as a standing rule because it is
+one assertion away from being invisible.** Had a **new table** been chosen, w16
+clause 2's requirements bind in the same migration — `tenant_id`,
+`TenantScopedEntity`, `ENABLE`+`FORCE`+policy with both `USING` and `WITH CHECK`.
+W17 adds the sharper half of clause 2a: `TenantRlsMigrationCheckTests.cs:37-44`
+discovers its table list **from the EF model, by `TenantScopedEntity` subclass**,
+and the "guards the guard" assert at `:46-49` only catches an **empty** list — not
+a **missing member**. So an entity that does not derive from the base type is
+**never checked and the suite stays green**. w16 clause 2a stated the positive
+proof (the table count goes up); this clause states the failure mode it defends
+against, which is the one a reviewer would otherwise have to infer.
+
+### 3. NW-26's per-page objects stay inside the tenant prefix, and the page number is caller input
+
+ADR-029 gives `DocumentStoragePath` a `BuildPreviewPage(tenantId, documentId,
+page)` under the **same tenant prefix** and the **same `EnsureWithinTenant` guard**
+(`:28-38`). **Ratified** — a per-page object is an ordinary tenant-scoped blob and
+needs no new rule. One consequence is this seat's and is added rather than assumed:
+
+- the page number reaches that path from `?page=n` on the URL, so it is
+  **caller-influenced input entering a storage path**. It is parsed as a
+  **positive integer** and bounded by the persisted `document.page_count`
+  **before** any path is built; it is **never string-concatenated** into a blob
+  path. ADR-029 already rules out-of-range **404 rather than a silent page 1**;
+  this clause is why that ruling is an isolation rule and not only a correctness
+  one.
+
+### 4. The wave's RLS delta, stated so it can be checked
+
+**Zero new tenant tables, zero policy edits, zero new guard tests, no `BYPASSRLS`
+anywhere.** Every table NW-71, NW-72, NW-20, NW-22, NW-62 and NW-63 read or write
+is already `ENABLE`+`FORCE`+`tenant_isolation`. The wave's entire isolation delta
+is clause 1's binding rule for a new kind of host and clause 3's bounded path
+input — neither of which changes a policy, and both of which change how a process
+**enters** a scope. That is the part of this ADR the body always delegated to the
+application, and w17 is the wave that writes it down for a host with no request.
+
+### 5. Round 2 — clause 1's trap is not one context's, and this wave opens a second one on the item this seat itself permitted
+
+Clause 1 named the optional-third-argument trap on
+`DocumentsContractsDbContextOptions.Configure` and bound it to NW-73's console.
+**Verified this round: the identical signature exists on the audit store.**
+`AuditDbContextOptions.Configure(builder, connectionString, ITenantContext?
+tenantContext = null)` (`:24-27`) wires `TenantRlsConnectionInterceptor` **only
+when the third argument is supplied** (`:35-38`), and its own docstring offers the
+two-argument form to "design-time tooling (migrations) and tests that do not
+exercise tenancy" (`:18-19`) — the same legitimate escape, in a second module.
+
+This matters now because **this seat permitted NW-20's `activity` projection
+(ADR-011 clause 22) after writing clause 1, and did not notice the permitted
+projection lands on the second context.** Software-architect then ruled the
+projection is filled by **host composition in `Raffa.Api`** — a *new* composition,
+which is precisely where the trap bites. The confirming fact arrived from another
+seat: cloud-architect verified `ConnectionStrings__Audit` is **already bound** on
+the API (`containerapps/main.tf:90`), so the API can already open that store with
+no new key, and nothing external gates the wrong wiring.
+
+**The audit store is genuinely protected** — `audit_event` carries `tenant_id uuid
+NOT NULL` (`audit.sql:20`), `ENABLE` + `FORCE ROW LEVEL SECURITY` (`:54-55`) and
+`tenant_isolation` with the same
+`nullif(current_setting('app.tenant_id', true), '')::uuid` shape (`:56-58`). So it
+fails **closed**, exactly as clause 1 describes: a mis-composed read returns
+**zero rows**.
+
+**5a — and on this surface the fail-closed result is the one three seats already
+refused by name.** A mis-bound projection renders an **empty activity tab**, which
+is indistinguishable from "nothing has happened to this contract" — the
+unconditional `[]` that product-owner (clause 3), software-architect and this seat
+each refused independently, because an empty array is a claim that nothing
+happened. **The RLS misbinding and the forbidden `[]` are the same defect wearing
+two names**, and that is what makes this checkable: the projection must be able to
+tell "no whitelisted events" from "not wired", and only the first may render.
+
+**5b — the binding rule, which resolves to an existing safe path rather than a new
+one.** The activity read is a **method on `AuditQueryService`**, never a
+host-composed query against `AuditDbContext`. Three reasons, all on the code:
+
+1. `AuditQueryService` opens its **own** scope per call —
+   `using var _ = tenantContext.BeginScope(tenantId)` (`:75`) — so it is safe by
+   construction rather than by the caller's discipline;
+2. the ordering it documents is subtle and a host composition would have to
+   rediscover it: the interceptor reads `ITenantContext.Current` **only when the
+   connection opens**, which EF Core does **lazily on first use**, so the scope
+   must be open **before** the query is awaited (`:71-74`). A host that opens a
+   scope after materialising a context has a scope that never applied;
+3. the type already carries a bound — `MaxResults = 200` (`:66`). A hand-written
+   host query inherits no bound at all, and an unbounded read behind a 360 tab is
+   a second defect riding in on the first.
+
+**This refines software-architect's composition ruling; it does not contradict
+it.** The host still composes — it calls the audit module's service and merges the
+result into the 360 payload, which is what `DependencyDirectionTests.cs:63`
+requires, since `Raffa.Documents.Contracts` may not reference Audit. What the host
+must not do is **author the query**. Clause 22's conditions 1 and 2
+(contract-scoped, closed allow-list) are query predicates: they belong where they
+can be tested, next to the scope that makes them safe.
+
+### 6. Round 2 — a correction against this seat's own clause 3: the bound belongs in the builder, because the console has no endpoint
+
+Clause 3 rules that `page` is "parsed as a positive integer and bounded by the
+persisted `document.page_count` **before any path is built**", and cites ADR-029's
+404. **Both of those are endpoint rules, and this wave ships a caller with no
+endpoint.** NW-73's console re-runs the pipeline directly; after NW-26 the
+pipeline rasterises; so `BuildPreviewPage` is reached on a path where no route,
+no model binder and no 404 exist. An endpoint-side bound is not a bound on that
+path — it is a bound on one of two callers.
+
+**Rule**: `BuildPreviewPage` **validates `page >= 1` itself and throws**, exactly
+as `DocumentStoragePath.Build` already does for `versionNumber`
+(`ArgumentOutOfRangeException`, `:42-46`). The precedent is four lines away in the
+same file and costs nothing; clause 3's endpoint bound stays, as the first of two
+checks rather than the only one.
+
+**6a — why the type of `page` is an isolation question and not a style one.**
+`EnsureWithinTenant` is a **prefix test with no canonicalisation**:
+`storagePath.StartsWith(TenantPrefix(tenantId), StringComparison.Ordinal)`
+(`:32`). The `../` case in `DocumentStorageContractTests.cs:40` throws only
+because `"../" + ownPath` fails that prefix test — a path shaped
+`<tenantA>/../<tenantB>/…` **starts with** tenant A's prefix and would pass. On
+Azure Blob that is harmless today because blob keys are opaque strings and `..` is
+a literal segment, not a traversal. **The guard's safety therefore rests on no
+path component ever carrying a separator** — and `Sanitize` (`:59-75`) is applied
+to `fileName` in `Build` and to **nothing in the preview path**, because
+`BuildPreview` has no caller-controlled component at all (`page-1.png` is a
+literal, `:21`). `BuildPreviewPage` is the **first** caller-influenced component
+in a preview path, so: `page` is an **`int`**, never a string, and never
+interpolated from raw request text. Recorded because a later "just take the page
+label as a string" change would be invisible to every existing test.
+
+### 7. Round 2 — the deterministic-overwrite rule already has a home in this ADR's path contract
+
+Corroborating cloud-architect's ADR-005 w17 §23 from the seat that owns the path,
+and **without editing ADR-005 or ADR-029**. That seat's finding is that the
+overwrite rule lives in the *cost* ADR while the render loop is written by someone
+reading the *rendering* ADR, which accepts "storage grows per page per document"
+with no overwrite rule attached.
+
+**There is a third, closer home, and it is already written.** `BuildPreview`'s own
+docstring states the property as the preview path's defining characteristic: a
+preview is "a derived rendering, **replaced in place** whenever the document is
+reprocessed, and must never be served as if it were the document"
+(`DocumentStoragePath.cs:16-18`). The engineer writing `BuildPreviewPage` opens
+that file — the new method goes *in* it — and the rule is four lines above the
+method being copied.
+
+**So the rule binds by construction if the key is deterministic**:
+`BuildPreviewPage(tenantId, documentId, page)` derives its key from three
+server-held values with no timestamp, no run id and no suffix, exactly as
+`BuildPreview` does, and a reprocess therefore **overwrites**. This is an
+isolation clause as well as a capacity one: a suffixed key would leave a
+**previous tenant-scoped rendering of a document that has since been corrected**
+readable at a path nothing reaps — `infra/modules/storage` has no lifecycle rule
+(cloud-architect, verified) — which is stale tenant content surviving its own
+correction. Same rule, two reasons, and now reachable from the file that builds
+the path.
+
+### 8. Round 3 — the reap software-architect adopted needs a boundary this ADR's own guard cannot give it
+
+ADR-029's round-3 clause 2 closes the gap clause 7 left open: determinism
+overwrites pages 1…N and **reaps nothing beyond N**, so a re-uploaded document
+with fewer pages leaves surplus pages at exactly the keys the viewer serves. That
+ruling — the render stage deletes `n > pageCount` in the same stage that writes
+1…N — is **adopted whole, and ADR-029 is not edited**; it is software-architect's.
+What this seat owes it is the **boundary**, because the guard an engineer would
+reach for does not supply one.
+
+**`EnsureWithinTenant` cannot bound this delete.** Its own docstring offers itself
+as the "fail-closed guard for the read/**delete** side of `IDocumentStorage`"
+(`DocumentStoragePath.cs:24-26`) — so the engineer writing a reap will read it as
+*the* check. It is a **tenant** prefix test and nothing more (`:32`,
+`StartsWith(TenantPrefix(tenantId))`): every key under `{tenant}/documents/**`
+passes it. A reap that used the wrong document id, or enumerated the **tenant**
+prefix instead of the **document's**, is therefore **legal under ADR-009's own
+guard** — same tenant, wrong document, guard silent. This is **not** a cross-tenant
+defect and must not be written up as one; it is the class of defect that guard is
+routinely assumed to cover and does not.
+
+**Rule — the reap is bounded by two things, and the guard is only the outer one:**
+
+1. **prefix** — keys under `{TenantPrefix}documents/{documentId}/preview/` only,
+   derived from `BuildPreviewPage`'s own inputs; never from a listing of a wider
+   prefix, and never from a key echoed back by a caller;
+2. **page number** — delete only `n > pageCount`, where `pageCount` is a
+   **confirmed positive render result of this run**. A null, zero, defaulted or
+   exception-path `pageCount` deletes **nothing**. Fail-closed, because the
+   arithmetic that reaps "everything above 0" is the arithmetic that reaps the
+   whole document.
+
+**The precedent software-architect cites already obeys this**, which makes the
+rule a ratification rather than an imposition: the chunk delete it points at is
+`RemoveChunksAsync(tenantId, DocumentSourceType, documentId)`
+(`DocumentReprocessService.cs:99-101`; signature
+`EmbeddingRetrievalService.cs:163-167`) — **three** arguments, tenant *and* source
+type *and* document. The blob reap carries the same scoping or it is a weaker copy
+of its own precedent.
+
+⚠ **Why this is an ADR clause and not a task note**: NW-73 multiplies it. A
+single-document reprocess with a bad bound damages the one document an Admin is
+looking at; the same code under a **whole-tenant loop** reaches every document in
+the tenant from one operator dispatch — and clause 1's RLS scope, which is this
+ADR's primary control, **does not see blob keys at all**.

@@ -101,3 +101,52 @@ checked-in idempotent EF SQL after the container update, and the API never calls
    or the Terraform-injected connection strings changes.
 
 `waves/w16.md` records this under NW-13.
+
+## Amendment (2026-09-15, wave w17 — one writer again, a compressed citation corrected, and two stale CI claims)
+
+Serves **NW-71**. Nothing above is rewritten; clauses 1–4 of the w16 footer stand
+verbatim and this wave changes nothing about the apply order or the mechanism.
+
+**1. `documents-contracts.sql` has exactly one writer this wave, and the wave
+record's constraint 5 dissolves.** That constraint lists **NW-71** (per-field
+decision columns) and **NW-63** (geometry columns) contending for one
+byte-compared script, resolved by "one writer per phase, or one task owns both".
+**ADR-003 w17 clause 2 refuses NW-63's geometry this wave**, so the contention
+does not exist: NW-71 is the only migration, and the decomposer does **not** need
+to spend a phase boundary separating them. The w16 rule stands unchanged —
+hand-editing the script, or two tasks regenerating it inside one phase, are both
+failures.
+
+**2. No `backend.yml` edit is owed, and one would still be a defect** —
+`Raffa.Documents.Contracts` is already in both arrays, so a new migration inside
+an already-listed module moves no CI YAML.
+
+**⚠ A citation the wave record compresses wrongly.** This footer's clause 2 above
+cites the arrays as **ranges** — `:277-285` and `:309-317` — and those ranges are
+correct: each lists **nine** module scripts. `w17-requirements.md` §5 and the w17
+decision record compress them to the point citations "`:277`, `:309`", which is
+where the error enters: **`:277` and `:309` are `identity-workspace.sql`**.
+`documents-contracts.sql` is **`:278` and `:310`** (verified on `d3d2d24`). A task
+told to "check line 277" reads the wrong module's row and may edit it. Cite the
+range, or cite `:278`/`:310`.
+
+**3. Two stale prose claims inside the same step, assigned rather than left.**
+Both are in `.github/workflows/backend.yml` and both miscount the arrays they
+describe:
+
+- `:289` — the failure message reads *"ADR-021 requires all **eight** module
+  scripts to be checked in"*, but each array lists **nine** (identity-workspace,
+  documents-contracts, audit, renewals, savings, quotes, chat, suppliers,
+  market).
+- `:297-304` — the explanatory comment above "Verify schema applied" says the
+  check reads the expected ids *"straight out of the same **six** checked-in
+  files"*. Also nine.
+
+These are **not NW-71's to fix**. `.github/workflows/**` is **NW-73's alone**
+(wave-record constraint 6, ADR-014 w16 clause 4), so they are recorded here for
+the NW-73 CI sweep to pick up — and recorded so that a migration task does **not**
+"helpfully" correct them, which would produce exactly the `backend.yml` diff
+clause 2 calls a defect. Neither claim affects behaviour: the loop iterates the
+array, not the number in the message.
+
+`waves/w17.md` records this under NW-71 and NW-73.

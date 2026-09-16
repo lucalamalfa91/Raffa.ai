@@ -1620,3 +1620,413 @@ wave. No ADR is superseded and no body or earlier footer is rewritten.
   `contract360/index.tsx` — neither collision being in the intake's constraint
   list. Both came from client-architect, and both live inside the one artefact this
   seat owns.
+
+## The product officializes what it knows (wave w17, appended 2026-09-15)
+
+ADR-001…028 keep their original Decision outcomes and their existing footers.
+**No ADR is superseded by wave w17 and no work item is cancelled** — the raw
+file carries no "cancels / replaces" statement and `w17-requirements.md` §6
+records "none"; `E04/F03/US01` is *completed in part*, not cancelled, and keeps
+`status: active` with no banner. Items at this table: NW-72, NW-73, NW-71,
+NW-20, NW-22, NW-62, NW-26, NW-63, NW-64, NW-65, NW-66
+(`reports/architecture/waves/w17.md`). Baseline `d3d2d24`. New ADRs written at
+this table are listed by the seats that author them (next free number at the
+time of this row: **ADR-029**).
+
+**ADR-001 gains a w17 amendment footer** (product-owner, owner of the ADR),
+clauses 0–7, serving NW-72, NW-71, NW-20, NW-22, NW-62, NW-64 and NW-66, plus
+rulings on NW-75, NW-23 and NW-25, which are not at this table. **Clause 0**
+records that every in-wave item renders or decides a fact the product already
+extracts and stores, so **no §1.2 non-goal is touched and NW-52 stays
+DEFERRED**; it **discharges three w16 forward promises** — clause 4's "head of
+W17" (NW-72 is row 1), clause 8's deferred bulk reprocess (NW-73 is row 2) and
+clause 6 valve 1's W16-01 slot, which is **not owed** because W16-01 shipped in
+w16 (`d3d2d24`, PR #129, verified rather than assumed) — and notes that, unlike
+w16, **this wave stands on the pilot script**. **Clause 1** lifts *and replaces*
+w16 clause 4's money fence: realized money renders only from `RealizedSavings`
+rows **grouped by currency, never summed**, the estimate-summed range stays a
+defect to fix rather than to render, and an unlinked outcome enters no total.
+**Clause 2** sets **one bar at 90 % for every field including the five critical
+ones, with no always-review list**, supersedes **five** oracle lines on the
+record (spec `:333-335` and `:341`'s threshold half; pilot `:32`, `:46`, `:55`,
+`:122`) while preserving the *criticality* of those fields and the
+threshold-relative rules at pilot `:65`/`:55`, moves the consequential-use fence
+from "< 80 %" to **"not accepted"**, adds the display rule that **a percentage
+beside a decision is floored, never rounded up across the bar**, corrects
+**ADR-019's w14 footer §6** (its cited evidence for the 90 % ruling is not on
+`main`, so W17 is the wave that puts it on the record), and fences the pilot
+fixture — **the fixture changes, never the threshold**. **Clause 3** defines
+NW-20's `activity` as the provenance timeline of already-persisted events,
+never an extracted value, with the honest alternative of deleting the member
+rather than shipping an array that can never fill. **Clause 4** gives a market
+claim exactly **two** honest shapes — a representative position with adapter,
+sample size and as-of date, or an explicit "insufficient market data" — rules
+OQ-w17-004's product half (geography = workspace country, labelled
+representative), and rules that **"Not yet available" is a placeholder, not an
+answer**. **Clause 5** makes the five critical fields **always shown, recovered
+or not**, as empty fillable rows, and records termination and price uplift as a
+bounded gap this wave does not invent. **Clause 6** removes confidence from the
+Why row as a **deliberate divergence** from `screens-v2.md:101`, binds NW-65 and
+NW-66 with one rule (**confidence lives in Review; Contract 360 never renders
+it**), and supersedes Appendix C **`product-spec.md:954`** in its **rendering
+half on 360 only** — the rule stands verbatim in Review and Ask and its
+**storage half (`:127`) is untouched**. **Clause 7** rules **NW-75 OUT for V1**
+with a re-entry condition, queues NW-23 / NW-25 with OQ-w17-007's product half
+recorded so W18 does not re-litigate it, **ratifies the NW-63 split** only
+because the remainder is already the head of W18 ahead of the overflow, and
+fixes the release-valve order. No new ADR from this seat.
+
+**Clauses 8–9 were appended to the same footer at the table**, for two questions
+that reached this seat from other seats rather than from its lane; nothing above
+them is rewritten. **Clause 8** (raised by ux-ui-designer) rules that after
+NW-71 a field is in one of **three** states — auto-accepted, accepted by a
+human, pending — carrying three different authorities, and that they **must stay
+distinguishable in words and not by colour alone**, because painting the first
+two alike tells a user they signed something they did not (w15 clause 7 and w14
+clause 3 together); the consequence this seat owns is that **the contract may
+not make the three states indistinguishable**, while the wire shape stays
+software-architect's and a decision stays server-computed and read-only to the
+client. **Clause 9** (raised by delivery-manager, who records declining to defer
+it a fourth time) rules that **`demo` is not dormant** — the pilot path is the
+product's client-facing acceptance surface and w15 clause 12 already ratified
+the `demo-v4` cut as a product requirement — and notes that **w17 is the wave
+where the gap stops being a satellite question**, since both flagship items are
+pilot-script surfaces. The backlog is cleared by an **operator promotion
+decision at the w17 HITL gate**; **no wave task promotes**; and if that decision
+is not taken, **W18 opens with the promotion as its head item, ahead of every
+feature**, because a deferral that never costs a slot is what let this reach a
+fourth wave.
+
+**One new ADR at this table — ADR-029** (software-architect, owner; deciders also
+cloud-architect, client-architect, ux-ui-designer, product-owner):
+
+| ADR | Topic | Seat | One-line decision |
+| --- | --- | --- | --- |
+| ADR-029 | Document page rendering + the preview contract | software-architect | Rasterise per page **in the Worker at pipeline time, never on the API request path**; the stage runs after admission and is independent of extraction success, so a failed document is still viewable; pages persist per-page under the tenant prefix behind `EnsureWithinTenant`; the route gains 1-based `?page=n` bounded by the persisted `page_count`, out of range **404**; `pageCount` joins the document read model; the page budget is a stated cap, never a silent truncation. Records the **NW-63 split** and defers bounding boxes, the widened `AiOcrPage` and the phrase-edit write path to W18. |
+
+**Seven ADRs gain a w17 amendment footer from this seat**; every body and every
+earlier footer is untouched and **none is superseded**. **ADR-002** — `Raffa.Tools`
+is a **third composition root** holding no business rule (it *calls*
+`DocumentReprocessService`, never re-implements its requeue), it joins the
+all-projects array and **not** the domain-module allow-list, and a calculator
+stays pure: `IBenchmarkService` is **not** injected into `RenewalPipelineBuilder`
+(the host resolves the band and passes it in on the DTO), plus the rule that the
+360 composes in `Raffa.Api` because `Raffa.Documents.Contracts` is fenced to
+`[SharedKernel, AiGateway]`. **ADR-003** — the per-field decision lands as two
+nullable columns on the **existing** `extraction_evidence` (no new table, so zero
+new isolation surface; three seats reached that table independently), no SQL
+enum, and **NW-63's geometry columns are refused this wave**, which leaves
+`documents-contracts.sql` a single writer. **ADR-017** — `prebuilt-layout` stays
+uncalled, and page-level anchoring is shown to be derivable from the spans
+already stored, so **bounding boxes are the only gap** and they are W18.
+**ADR-021** — one writer again (so the wave record's single-writer constraint 5
+**dissolves**), plus a corrected citation: the arrays are ranges `:277-285` /
+`:309-317`, and the compressed `:277`/`:309` point at *identity-workspace.sql*
+while `documents-contracts.sql` is `:278`/`:310`; two stale CI prose counts
+("eight", "six" against **nine** scripts) are assigned to NW-73's sweep, the only
+task allowed to open CI YAML. **ADR-024** — one review bar decided server-side on
+the **raw** double (`>= 0.90`, no rounding before the compare), one
+`ExtractionConfidencePolicy` consumed by both deciders so the badge cannot
+desync from `needs_review`, an explicit retire/stay table for the other five
+thresholds, the **`OpenWeakFacts` collision** (filtered at 0.8 while Review moves
+to 0.90) ruled, a decision that is **read-only on the wire and not a boolean**
+(three states, answering ADR-001 w17 clause 8), and the market claim's single
+wire shape with **one resolution per screen**. **ADR-027** — rasterisation is
+pipeline work, **re-derivation never overrides a human correction** (the rule
+that stops the three states collapsing on reprocess), and the bulk console calls
+the pipeline rather than reimplementing it. **ADR-028** — realized money is read
+from the `RealizedSavings` rows that already exist but had no reader, as a new
+per-currency shape that is a **deliberate wire break on one field**, with the
+calculator kept pure and no cross-currency total.
+
+**Two ADRs gain a w17 amendment footer from cloud-architect**, and **two record
+`none` as a decision rather than as silence**. **The wave's entire Azure delta is
+one RBAC row, and its fixed-cost delta is $0.00 on both `dev` and `demo`** — no
+resource created or destroyed, no SKU, capacity or model deployment moved, no
+region change, no Key Vault secret, no new container app and no new environment
+key. **ADR-005** (clauses **15–22**, continuing from w15 round 3's §14) adds a
+**third topic-scoped `azurerm_role_assignment`** on `modules/servicebus` granting
+the CI deploy principal **`Azure Service Bus Data Sender` and nothing else**, with
+the `lifecycle { ignore_changes = … }` block both existing grants carry — ARM
+rejects in-place updates to a role assignment, so omitting it plans clean and
+fails a *later, unrelated* apply. It rules **OQ-w17-ca-01** in favour of the
+**GitHub runner (A)** on a ground that **inverts the "zero new rights" argument
+for a Container Apps Job**: the workload identity holds **Sender *and* Receiver**,
+so running the console under it would grant the **wider** capability — the power
+to receive from the one subscription the Worker depends on — while (A) grants
+**Send only** to a principal that exists only inside CI. It also fixes the NW-26
+envelope without moving a SKU: **render page-by-page and dispose**, because both
+apps share **one** 0.25 vCPU / 0.5 GiB pair and Consumption's ladder means memory
+cannot be raised alone; a **pre-authorised contingency with a named ceiling**
+(Worker only, 0.5 / 1.0 GiB) removes the need for a further council round; and it
+prices the constraint **no seat had seen — the Worker *image***, whose
+`dotnet/runtime:10.0` base carries no fontconfig/freetype, so a native rasteriser
+needs an `apt-get` layer **above `USER $APP_UID` and above `COPY --from=build`**
+or it fails permission-denied inside ACR Tasks and re-stores itself on every
+commit. **ADR-007** (clauses **5–8**) records that `modules/servicebus` gains a
+**second principal input** under the same per-root isolation rule as the first —
+**required**, both roots wired in the same PR, named `ci_deploy_principal_id` to
+match `modules/keyvault` — that a role assignment **cannot carry tags**, so the
+mandatory-tagging implication is not violated by its absence, and that
+**`infra/README.md`'s role inventory joins the w15 "two files, one edit" rule**:
+`:417-421` currently asserts that operator workflows "need no new Azure grant",
+which NW-73 falsifies exactly. **ADR-006 `none`** (North Europe, both
+environments) and **ADR-008 `none`** (no Foundry change). **No new ADR from this
+seat — ADR-029 is ratified, not competed with.**
+
+**Three ADRs gain a w17 amendment footer from security-architect**, and **two
+record `none` as a decision rather than as silence**. **No ADR body is rewritten,
+none is superseded, and this seat writes no new ADR.** The wave's entire identity
+delta is **one topic-scoped Send assignment**, and its entire RLS delta is a
+binding rule for a new kind of host — **no new tenant table, no policy edit, no
+new secret**.
+
+**ADR-009** (w17 clauses **1–4**) rules that a host with **no HTTP caller** must
+bind the tenant explicitly, and names the trap that makes the wrong way the easy
+way: `DocumentsContractsDbContextOptions.Configure` wires the RLS interceptor
+**only when its optional third argument is supplied**, so the two-argument form —
+the one tests and migrations use — leaves `app.tenant_id` unset, which makes
+**every query return zero rows**. It fails *closed*, but on NW-73's path that is
+**indistinguishable from an empty worklist**, so the console would **exit green
+having done nothing**. Five rules follow (three-argument `Configure` inside
+`BeginScope`; never a raw connection, hand-written `SET` or `psql`; **one tenant
+per run with no all-tenants mode**; **zero rows under a valid tenant exits
+non-zero**; the application's own credential, never a superuser or `BYPASSRLS`),
+plus the test that pins it — assert `app.tenant_id` **is set**, because a correct
+binding and a missing one differ only in row count. Clause 2 records that NW-71's
+per-field decision as a **column on the already-`FORCE`d `extraction_evidence`**
+adds **zero new isolation surface**, and sharpens w16 clause 2a with the failure
+mode it defends against: the RLS guard discovers tables **from the EF model by
+`TenantScopedEntity` subclass**, and its "guards the guard" assert catches only an
+**empty** list, never a **missing member** — so a non-deriving entity is never
+checked **and the suite stays green**. Clause 3 ratifies ADR-029's per-page
+objects under the same tenant prefix and adds that `?page=n` is **caller input
+entering a storage path**: parsed as a positive integer, bounded by the persisted
+`page_count`, **never string-concatenated** into a blob path.
+
+**ADR-011** (clauses **20–24**, continuing w16's 19) fixes the console's actor as
+`system:bulk-reprocess` and forbids **any CI-controlled string in
+`AuditEvent.Actor`** — the table's UPDATE/DELETE trigger makes a wrong actor a
+**falsified trail forever** — while ruling **OQ-w17-sec-01**: human attribution is
+required and rides in `Detail` (`requestedBy=…; run=…`), because `Detail` asserts
+no identity and `Actor` does. NW-71's auto-accept writes **one row per document**,
+actor `system:extraction`, carrying **field names and confidence numbers, never a
+field value** (append-only means a value written once cannot be removed), and the
+trail must always distinguish an auto-accept from a human acceptance — the audit
+half of ADR-001 w17 clause 8. **Clause 22 is the re-review clause 14c reserved**,
+and it rules **OQ-w17-sa-03**: the 360 `activity` member is **permitted as a
+contract-scoped provenance projection and refused as an audit reader**, because
+`/api/audit` is **Admin-only** while `GET /api/contracts/{id}` is gated by
+**membership with no Admin check** — so a naive projection moves an Admin-only
+read onto an any-member surface. Five conditions make it a different read
+(contract-scoped and never tenant-wide; a **default-deny allow-list** of actions,
+never a blocklist; names never values; no actor identifier beyond what the member
+list already shows; the Admin ladder untouched), pinned by one test — a **non-Admin
+member sees the timeline and still gets 403 from `/api/audit`**. Clause 23 extends
+the never-logged list to **GitHub Actions logs**, a retained sink readable by an
+audience that is not the tenant.
+
+**ADR-022** (w17 clauses **1–5**) **discharges the "Owed to W17" left at w16 §4**:
+a CI principal **may** hold a topic-scoped **Send** right, with a six-row refusal
+table, because the message is a **pointer, not content** — the Worker re-reads all
+authority under RLS and `MessageId` collapses duplicates — so **Send crosses no
+confidentiality boundary while Receive would**. Clause 2 records that this ruling
+**corrects this seat's own lane**: the lane preferred a Container Apps Job on
+"zero new rights", and the workload identity holds **Sender *and* Receiver**
+(`modules/servicebus/main.tf:71-87`, `:89-102`, verified first-hand), so (C) would
+grant the **wider** capability — the error was counting rights added instead of
+measuring what the principal can do. Clause 3 rules **OQ-w17-sa-02**: the Admin
+gate is **relocated to the CI plane, not bypassed**, with the four-plane chain
+named, the security property stated as *no wider than the Admins it replaces*, and
+the finding that **NW-73 is the product's first *mutating* operator workflow** —
+its predecessor's own comment says *"this job reports; it does not mutate"* — so
+its controls must be **at least** those of the read-only one it copies. Clause 4
+records that queuing **NW-74** to W18 carries **no security debt** by this ADR's
+own §3, re-verified on the code (`GetCapabilities()` takes no parameters and
+returns the catalog unfiltered), with its two conditions travelling unchanged and
+the rule that it **must never be written as a security fix**. **ADR-010 `none`** —
+no token, claim, app registration or federated credential changes; the console
+reuses the deploy principal's existing federated credential. **ADR-025 `none`** —
+no membership, role or invitation change, and the service principal explicitly
+gets **no `workspace_membership` row**.
+
+**Two ADRs gain a w17 amendment footer from client-architect**, and **one records
+`none` as a decision**. No body is rewritten and nothing is superseded.
+
+**ADR-012** (w17 clauses **32–41**, continuing the w16 footer's 21–31) rules that
+**the web renders the server's persisted decision and never recomputes it**. It
+retires `acceptedThisSession` (`useReviewSession.ts:92`) against the finding that
+`accept()` already has **two unequal branches** — `:177-182` writes and reads
+back, `:184` is React state with **no network** — so NW-71 would have made **one
+screen carry three durabilities under one paint**. It records a **correction
+against this seat's own lane**: the lane proposed a two-value wire enum, which
+would have forced the retired session store to survive in order to represent a
+human acceptance; software-architect's **three** states are adopted. Clause 32
+rules that **NW-63 adds no runtime dependency** — because ADR-029 rasterises
+server-side the viewer renders PNG pages, so `web/package.json` stays at **five**
+runtime dependencies and the dependency fence is never breached, this wave or in
+the W18 remainder. Clause 33 binds the **object-URL lifecycle** on its first-ever
+consumer (`client.ts:418-426` documents it; a grep finds **zero callers today**).
+Clause 35 rules **one answer source per screen**; clause 36 finds that the 360's
+attention gate infers a decision from a **tag colour**
+(`contract360ViewModel.ts:575`) and will flip meaning when NW-71 lands with nobody
+editing the line; clause 37 records that a declared wire break on a **generated**
+type cannot land silently because `package.json:13` regenerates then typechecks;
+clause 39 resolves the `client.ts` and `web/e2e/v2.spec.ts` writer contention;
+clause 40 records the client decision for the three items **queued to W18** so W18
+re-deliberates nothing.
+
+**ADR-018** (w17 clauses **9–11**) adds **one route** — the first since w14 — to
+the locked map: `/documents/:documentId/viewer?page=<n>&clause=<clauseId>`. The
+page lives **in the URL, not React state**, so a reload and a deep link land on
+the same page; the `?clause=&page=` pair **already is** this product's
+citation-landing convention (`contract360/index.tsx:52,65-67,113`) and is reused
+rather than re-invented; and the viewer is a **citation-reached state, not a rail
+row**, so **`navItems.ts` gains no row and has zero writers** — the same call the
+V2 IA already made for Review. This ADR is **shared**: client-architect owns its
+route half and wrote this footer; **ux-ui-designer owns its IA, states and copy
+half, and clauses 1–8 are untouched**.
+
+**ADR-013 `none`** — the mobile scaffold is not touched, remains non-gating, and
+the ADR is unamended.
+
+### w17 — ux-ui-designer (2026-09-15)
+
+**ADR-019** (w17 clauses **7–12**) carries the wave's design core. Clause 7 is the
+**first change to the Semantic mapping's confidence rows since this ADR was
+accepted**: the three bands (`:100-102`) become **two treatments over three
+server-persisted decisions** — `auto_accepted` "Accepted automatically · NN%" and
+`human_accepted` "Accepted by you" both `.tag-neutral`, `review_required`
+"Review · NN%" `.tag-outline` — with the two accepted states distinguished **by
+the label, never by the variant**, because a variant that encodes a decision is
+the defect OQ-w17-cl-02 has just found live at `contract360ViewModel.ts:575`.
+**`.tag-accent` leaves confidence entirely** and stays reserved for `failed`, High
+risk and the critical markers; it was the retired middle band's treatment on four
+surfaces, so the one-accent rule gets stronger. Clause 8 rules that **every
+displayed confidence floors, never rounds** — `Math.round` at `semantics.ts:33`
+renders a `review_required` field at `0.895` as "Review · 90 %", the bar's own
+number beside the word denying it. Clause 9 relabels the clause risk enum into
+product-owner's three words as a **label-only** change: mapping row `:106` is
+unchanged, `getClauseRiskTag` already computes the variants, and the relabel is
+**fenced to `contract360ViewModel.ts`** so `semantics.ts:getRiskTag` — a different
+function on Portfolio and Renewals — is untouched and `semantics.ts` stays
+NW-71's. Clause 10 **corrects the w14 footer §6**: its conclusion was right and
+its cited evidence is not on `d3d2d24`. Clause 11 fences where each treatment may
+appear now that two screens share `.tag-neutral` for two meanings.
+
+**ADR-020** (w17 sections **13–19**) is the screen half. §13 — Review's legend
+drops to **two** server-fed items, the title stops naming a threshold, and the
+field list gains a fourth row state plus the **"Not found in the document"**
+section, which renders **only fields that have a correctable target** and **does
+not render at all** when nothing is missing. §14 — Contract 360: the "facts you
+still need to decide" block is deleted and replaced by one count line; the
+officialized gate **keeps every row** and shows the em-dash placeholder, because
+the sparse-column risk is the *filter*, not the deletion; the Why row loses the
+quote and the confidence tag, with the quote moving into the **existing**
+`ClauseHighlight`; the answers band gets three real states per cell. §15 — a
+**fourth** KPI cell, "Savings verified", with no new component and no new token.
+§16 — the document viewer's chrome, decided from the locked catalogue because no
+export exists, and the **copy rule that it must not promise a bounding box** the
+wave cannot draw. §17 ratifies **five** deliberate divergences from the prototype
+and forbids a task from "restoring" the export. §18 records **five** design
+exports owed, none of which blocks the wave.
+
+**ADR-018** (w17 clauses **12–14**) is this seat's **states and copy** half,
+written as a separate footer so client-architect's route clauses 9–11 stay
+byte-identical. Clause 12 binds the viewer to the states contract and gives it
+**four** states — including a **not-found** state that the route owns rather than
+the shell's `*` catch-all, which would otherwise turn a broken citation into the
+Ask screen with no error at all. Clause 13 records a **correction against this
+seat's own lane**: the lane ruled the viewer "a state, not a route";
+client-architect owns that half and ruled otherwise, and is right.
+
+**No new ADR and no supersession from this seat.** **No new token and no new
+component** in the wave: the "specchietto" is the existing `ClauseHighlight`, the
+fourth KPI cell is the existing cell shape, and the viewer is composed from
+`.btn-ghost`, `.table` and surface tokens.
+
+### w17 — delivery-manager (2026-09-15)
+
+**Two ADRs gain a w17 amendment footer from delivery-manager** (owner of ADR-014,
+ADR-015 and ADR-016), seated on **NW-73** plus the wave's **order**. **ADR-016
+clauses 36–42** (numbering continuous, per that ADR's own convention) and
+**ADR-014 w17 clauses 1–7** (numbering restarts, per *that* ADR's convention).
+Both conventions are restated inside the footers because this seat applied them
+the wrong way round in w16; the correction is recorded once and not re-earned.
+
+**ADR-016** discharges clause 31's "owed at W17". **Clause 36** puts the console
+on the **GitHub runner** (`dotnet run`): `backend.yml:66-74` already builds and
+tests `Raffa.slnx`, and `:130-144` builds exactly two Dockerfiles, so the wave
+adds **no image, no deploy path and no environment key**. The Container Apps Job
+is refused with its attraction inverted — the workload identity holds Sender
+**and Receiver**, so the Job would grant the **wider** capability. **Clause 37**
+fixes the grant as a **four-file** change with a **required** variable and **both
+roots wired in the same PR**, because `demo-promote.yml:128-136` calls `infra.yml`
+for `demo` and a dev-only wiring breaks the promotion path a tag later; it adopts
+cloud-architect's **`lifecycle { ignore_changes }`**, absent from this seat's
+draft. **Clause 38** records the gate no other seat carried:
+`AuthenticationSeamAbsenceTests` scans **`.github/workflows/**`** from inside
+`backend.yml`'s `dotnet test`, so **this seat's file set sits inside a backend
+test** and a careless workflow line turns `main` red — which is no `dev` deploy
+and therefore no wave; the workflow copies `verify-tenant-corpus.yml`'s
+credential idiom **verbatim** because that idiom is proven green against the
+scanner today. **Clause 39** makes the two operator jobs share **one** worklist
+predicate, which is what makes A17-S2 self-proving.
+
+**Clause 40 rules the `demo` promotion** product-owner routed back here, and
+carries the wave's sharpest delivery finding: **the promotion job does not
+apply.** `demo-promote.yml` → `infra.yml`, whose apply job is a **step-summary
+echo** named *"terraform apply skipped (demo)"* (`:114-136`), with
+`promote-backend`/`promote-web` gated only on a green infra **plan** — so **a
+`demo-v*` tag can go green end to end while `demo` lacks the new role
+assignment.** Clearing the backlog is therefore **two acts in order**: the HCP
+VCS apply confirmed in the UI, *then* the tag. This corrects cloud-architect's
+"`demo` applies at its next promotion". The clause also corrects the **flags**:
+they are **w15's, not w17's**, they are **Terraform variables** rather than
+application flags, they **already default `false`** on `demo`, and there are
+**three** — the third because the Graph grant is written out of band after
+`Authorization_RequestDenied` **failed an entire `dev` run**. w17 flips none, so
+**clearing the promotion backlog does not clear the invitation walk**.
+**Clauses 41–42** invert w16's zero-infra final-integration list (`fmt`/`validate`
+on **both** roots, the four-file `infra/` diff, exactly one added workflow) and
+specify the known-gaps table.
+
+**ADR-014** carries the process half. **Clause 2** fires the **two-PR shape** for
+the first time since w15 defined it, and states the trap plainly: **merged is not
+applied** — A17-S2 cannot pass before HCP runs, and the gate confirms **two**
+applies, this wave's and PR #118's. **Clause 3** ends a rule that has been
+rediscovered three waves running by making the previous wave's gate stamp a
+**standing closing line** of every `reports/audit/<w>-hitl.md`. **Clause 5 is a
+correction against this seat's own w16 clause 3**, which **did not execute**:
+that clause renamed a file written by the **execution engine**, and *a council
+rule cannot rename an engine artefact*, so it bound nobody. The enforceable
+replacement binds **readers** — the engine's generic `wave-close.md` is a
+fan-out delivery report, never cited as current, and the wave record is
+`docs/waves/<w>-acceptance.md` plus `reports/audit/<w>-hitl.md`. **Clause 7**
+carries the order and a **second correction to this seat's own skeleton**:
+constraint 4 is **withdrawn** (software-architect ruled NW-63 needs no
+migration), `reviewViewModel.ts` is a **two-item file** needing two phases or one
+task, **NW-66 must follow NW-63** because e2e N20 asserts the link *lands*, and
+⚠ **`FactTable.tsx` still has no assigned writer** — reached independently by
+three seats and **the only finding of this table that no ADR closes**.
+
+**ADR-015 `none`** — the new right is an Azure **data-plane role** on an existing
+principal, so no federated credential, GitHub secret, subject claim or Graph
+right changes. **No new ADR and no supersession from this seat.** The wave's
+entire CI delta is **one added workflow file**.
+
+**Round 3 extends both footers** (same seat, same wave, no new ADR and still no
+supersession): **ADR-016 w17 clauses 43–45** and **ADR-014 w17 clauses 8–9**, so
+the ranges above read **36–45** and **1–9**. Three of the five clauses are
+corrections against this seat's own w17 text. **ADR-016 clause 43** corrects
+clause 40's mechanism — `scripts/hcp_vcs_wiring.py:104-106` wires **both**
+workspaces to `main` + `infra/`, so **`demo`'s infra moves at the merge, never at
+the promotion tag**, and clause 37's stated reason ("breaks the promotion path
+one tag later") is wrong while its ruling is strengthened. **Clause 44** records
+that a dispatch before the `raffa-dev` apply is **destructive, not merely
+failed** (ADR-011 clause 26), which falsifies ADR-014 w17 clause 2's own wording.
+**Clause 45** adopts ADR-022 clause 6b's `dev`-only narrowing and carries its
+three delivery consequences. **ADR-014 clause 8** adds W17-A1 (h) and corrects
+clause 4(g) from "two applies" to **three runs across two workspaces, not
+interchangeable**; **clause 9** records that the **phase graph is unchanged** by
+round 3, checked item by item, with `FactTable.tsx` still unowned.

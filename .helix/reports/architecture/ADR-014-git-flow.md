@@ -452,3 +452,264 @@ P1–P2 before theme B opens in P3.
 and the CI credential method stay with the body, ADR-016 and ADR-015 — and
 **ADR-015 is explicitly untouched by w16**: no federated credential, no GitHub
 secret, no subject claim and no Graph right changes.
+
+## Amendment (2026-09-15, wave w17)
+
+Item **NW-73**'s CI-YAML set, the wave's **order**, and three process residuals
+that did not execute. Seat: delivery-manager, reconciled with client-architect
+(ADR-012 w17 clauses 37–45 — three single-writer findings this seat's draft did
+not carry), software-architect (ADR-002 w17 clause 1; ADR-029 — NW-63 needs no
+migration, which **dissolves** one of this seat's own constraints), cloud-architect
+(ADR-005 w17 §24 — an ordering constraint that is an acceptance rule, not a build
+one) and product-owner (ADR-001 w17 clause 9). Everything above is unchanged —
+the body and the w14, w15 and w16 footers — and `Status: accepted` stands.
+**Nothing is superseded.** No branch model changes and no protection is relaxed.
+**Clause numbering restarts at 1** (w16 clause at `:301-308`), this ADR's own
+convention and the opposite of ADR-016's.
+
+**1. The CI-YAML set is exactly ONE added file, with a single writer.** w14
+clause 4 applies unchanged: an unplanned `.github/workflows/**` diff is a defect,
+not a convenience, and the final-integration task fails on it. For w17 the set is
+**the NW-73 console workflow (added)** and nothing else — `backend.yml`,
+`web.yml`, `infra.yml`, `demo-promote.yml` and the seed/backfill jobs are
+untouched. **Exactly one task in the wave claims `.github/workflows/**`**
+(`check_single_writer.py`), and it is the same task that adds the console
+project, because the two are one operator surface.
+
+**2. The two-PR shape fires this wave — and "merged" is not "applied".** w15
+clause 5 splits a wave that changes `infra/` into **PR 1 (infrastructure) → PR 2
+(the wave)**. w16 escaped it on a zero `infra/` delta (w16 clause 2); **w17 does
+not**: ADR-016 w17 clause 37 is a real four-file `infra/` change and the wave's
+only one.
+
+1. **PR 1** — the Terraform task **alone**. Merge to `main`.
+2. **HCP applies it.** `infra.yml`'s apply job deliberately does not
+   (`:114-136`, "Apply not allowed for workspaces with a VCS connection") —
+   HCP's VCS run does. **CI green is not the role existing.**
+3. **PR 2** — the rest of the wave.
+
+⚠ **A17-S2 cannot pass before step 2.** The console will authenticate and then
+fail to send. That is an **operator sequencing fact, not a task**: it is recorded
+in `reports/audit/w17-hitl.md` and in the acceptance doc, or the first run reads
+as a broken console. **And the w17 gate confirms TWO applies, not one** — this
+wave's, and ADR-016 w16 clause 33's still-outstanding PR #118 (OQ-w17-dm-03,
+unclosed one wave later because HCP state is not readable from this checkout).
+This is also why ADR-016 w17 clause 40 separates the `demo` apply from the `demo`
+tag: **the promotion job plans, it does not apply.**
+
+**3. The gate stamp stops being a per-wave rediscovery.** Verified:
+`reports/plan/gates/` holds `e01…e13`, `readiness-gaps`, `w14`, `w15` — **no
+`w16`**. `check_slice_prereqs.py` requires `<previous>.hitl-ok` and `previous:
+w16`, so **`run.ps1 -Slice w17` fails its prerequisites before fan-out**. The
+remedy is unchanged and is **never a task**:
+`python scripts/check_slice_prereqs.py --record-hitl w16`.
+
+**But this is the third wave in a row** (w15 missing → stamped at the w16 gate;
+w16 missing → stamped here). **A rule re-applied three times is an unowned step,
+not a ruling.** Rule: the stamp for the *previous* wave is a **standing closing
+line of every `reports/audit/<w>-hitl.md`**, so the next wave's gate document
+carries it by construction instead of the next intake rediscovering it from a
+failed prereq check.
+
+**4. W17-A1, the gate's content.** On the wave base, before
+`reports/plan/gates/w17.hitl-ok` is created:
+
+(a) `git fetch origin`; **the base SHA is read at the gate, never quoted from a
+wave document** (w15 clause 1) — expect `origin/main == helix/w17 == d3d2d24`;
+if it moved, merge and re-check;
+(b) `git diff --stat origin/main..HEAD -- backend web infra .github docs scripts`
+empty (w15 clause 2) — **stated as a two-dot diff**, never "no infra commits in
+the range" (w16 clause 2's trap);
+(c) `integration` **re-created** from the wave base, never merged into;
+(d) `backend.yml`'s **build + test** job green **at the base commit** (w15 clause
+3 — a red `main` is no `dev` deploy, and no `dev` deploy is no wave);
+(e) `python scripts/check_slice_prereqs.py --record-hitl w16` (clause 3);
+(f) `git tag -l "demo-v*"` read and **written down** (ADR-016 w17 clause 40);
+(g) **both** outstanding HCP applies confirmed landed — PR #118's and this
+wave's — **and the running image tag checked against `main`**, because a skipped
+deploy behind a red test job is silent (w16 clause 4(g), which this wave
+inherits rather than closes).
+
+**5. A correction against this seat's own w16 clause 3 — it did not execute, and
+it was unenforceable as written.** w16 clause 3 ruled that the close record is
+`wave-close-<w>.md`, written after the merge. **On disk `reports/execution/`
+holds `wave-close-e13.md`, `wave-close-r0-a.md` and `wave-close.md` — there is no
+`wave-close-w16.md`**, and `wave-close.md:1-3` is still the **w15** file stamped
+`2026-09-14T02:53:30Z` listing delivered tasks as undelivered. w16 merged (PR
+#129, `d3d2d24`) and the record was never written; the w17 intake needed a banner
+to neutralise it (`w17-requirements.md` §1) — **exactly the cost clause 3 existed
+to remove.**
+
+**Root cause, stated against this seat's own clause**: that file is written by the
+**execution engine**, not by an agent or a wave task — its shape
+(`wave-close.md:1-8`: generated header, `Product repo`, `Origin`, a per-task
+delivery table) is engine output. **A council rule cannot rename an engine
+artefact**, so clause 3 bound nobody. Renaming it is a process/engine change and
+belongs in its own PR, **never mixed into a wave PR**.
+
+**Enforceable replacement**: the engine's generic `wave-close.md` is a **fan-out
+delivery report, not the wave record**. It is **never cited as current**, and its
+staleness is **expected rather than a defect to banner**. **The wave record is
+`docs/waves/<w>-acceptance.md`** (product tree, written by final integration — it
+exists for w14, w15 and w16) plus `reports/audit/<w>-hitl.md`. That binds
+**readers**, which the process can actually enforce, instead of binding a writer
+that is not an agent.
+
+**6. `backend.yml` stays closed, and its stale counts stay parked — third
+wave.** Nothing in w17 legitimately opens it. NW-71's migration regenerates
+`documents-contracts.sql`, which is **already** in both arrays, and the console
+needs no YAML change (ADR-016 w17 clause 36).
+
+⚠ **Correction for the decomposer**: `w17-requirements.md` §5 constraint 9 cites
+`:277`/`:309` for `documents-contracts.sql` — **those lines are
+`identity-workspace.sql`**. The correct lines are **`:278`** and **`:310`**. The
+claim is right and the cites are off by one; **a task that "fixes" line 277 edits
+the wrong migration.**
+
+Still stale, still parked (w16 clause 1): the arrays hold **nine** scripts while
+`:289` says "all **eight** module scripts" and `:214` / `:302` both say
+"**six**" — **three** wrong counts, not two. Parked again, for the next wave
+that legitimately opens the file.
+
+**7. The wave's order, and a second correction to this seat's own published
+skeleton.** The intake's §5 constraints stand; these are the deltas the table
+produced, three of them against this seat's draft.
+
+1. **The Terraform task is alone and is PR 1** (clause 2). Nothing in the wave
+   `depends_on` it at build time; **A17-S2 depends on its *apply*.**
+2. **NW-73 console + workflow is one task** — sole claimant of
+   `.github/workflows/**` *and* of the new console project. It `depends_on`
+   nothing in the wave; do not chain it behind a web phase.
+3. ⚠ **Constraint 9 dissolves.** Software-architect ruled NW-63 needs **no
+   migration** (ADR-029: it anchors on the existing `SourcePage`/`SourceSpan`),
+   so **`documents-contracts.sql` has a single writer, NW-71** — and this seat's
+   draft constraint 4, which phase-separated two migrations, **is withdrawn**.
+4. ⚠ **`reviewViewModel.ts` is a two-item file and the draft did not carry it**
+   (client-architect, ADR-012 w17 clause 38): NW-71 at `:282`/`:294` and NW-64 at
+   `:244`. Constraint 1 *orders* them, but **order is not a phase** and
+   `check_single_writer.py` rejects on the file. **Two phases, or one task** —
+   and the same holds for `ReviewFieldList.tsx` and `reviewViewModel.test.ts`.
+5. ⚠ **NW-66 after NW-63** (client-architect): NW-66's row links to NW-63's
+   route, and e2e **N20** asserts the link **lands** — which needs the route
+   registered, not merely ADR-decided. The draft put both in P4; **they are now
+   phase-separated.**
+6. **NW-65 + NW-66 are one task** — both write `contract360ViewModel.ts`
+   (constraint 3, whose other contender NW-62 is phase-separated). NW-71 **need
+   not open that file at all** (ADR-012 clause 36), and NW-20 gets **no client
+   task** (clause 45), so the contender set is exactly three.
+7. ⚠ **`FactTable.tsx` is claimed by no task** — reached independently by this
+   seat, client-architect and ux-ui-designer. **It needs an owner before
+   fan-out** (it belongs with NW-65 + NW-66) or NW-65's officialized gate ships
+   on part of screen 5.
+8. **Final integration alone in the last phase.**
+
+**An acceptance-ordering constraint that is not a build dependency**
+(cloud-architect, ADR-005 w17 §24): **w17 ships a page renderer and a bulk
+whole-tenant re-render trigger in the same wave**, so NW-26's **20-file
+measurement on `dev` runs BEFORE the first whole-tenant reprocess**, never after.
+A bulk run is not a substitute for it. This constrains the **acceptance walk**,
+not the phase graph, and belongs in `reports/audit/w17-hitl.md`.
+
+**Corrected skeleton (a hint for the decomposer, not a ruling — ≤ 5 phases,
+≤ 20 tasks; ≈ 14, leaving headroom if NW-63 splits under OQ-w17-001):**
+
+- **P1** — **NW-73 Terraform (alone → PR 1)** · **NW-26** (ADR-029: the renderer,
+  `?page=n`, `pageCount`) · NW-20 backend · NW-22 backend
+- **P2** — **NW-73 console + workflow** · NW-71 server rule + migration (sole
+  writer of `documents-contracts.sql`) · **NW-72 full-stack** (contract-A folds
+  in: sole writer of `raffa-api.v1.json` this phase)
+- **P3** — NW-71 web (sole writer of `semantics.ts`, `reviewViewModel.ts`) ·
+  NW-62 web (sole writer of `contract360ViewModel.ts`) · **NW-63 viewer web**
+  (sole writer of `client.ts`; **registers the route**) · **contract-B**
+- **P4** — **NW-65 + NW-66 combined** (sole writer of `contract360ViewModel.ts`;
+  **owns `FactTable.tsx`**) · NW-64 (sole writer of `reviewViewModel.ts` this
+  phase)
+- **P5** — final integration, alone
+
+**Two contract tasks, not five** (§5 constraint 6). Every phase has at most one
+writer of the contract file, of `client.ts`, of `semantics.ts`, of
+`reviewViewModel.ts`, of `contract360ViewModel.ts` and of
+`documents-contracts.sql`. NW-26 (P1) precedes NW-63 (P3); NW-71 web (P3)
+precedes NW-64/65/66 (P4); NW-63 (P3) precedes NW-66 (P4) — **each satisfied by
+phase rather than by hope.**
+
+**Not decided here** (unchanged): branch protections, the promotion mechanism and
+the CI credential method stay with the body, ADR-016 and ADR-015 — and **ADR-015
+is explicitly untouched by w17**: the new right is an Azure **data-plane role**
+on an existing principal, not a federated credential, a GitHub secret, a subject
+claim or a Graph right.
+
+### Round 3 (2026-09-15) — clauses 8–9
+
+Clauses 1–7 above are unchanged and byte-identical. No branch model changes, no
+protection is relaxed, nothing is superseded, and **ADR-015 stays `none`** for a
+third time — re-verified against every round-3 ruling: no federated credential,
+GitHub secret, subject claim or Graph right is touched by a queued VCS run, a
+narrowed `workflow_dispatch` input, or a reap of surplus blobs.
+
+**8. W17-A1 gains one line, and clause 2's sequencing fact is promoted from a
+note to a gate.**
+
+- **Clause 4 gains (h)**: the **`raffa-dev` HCP VCS apply of ADR-016 w17 clause
+  37 confirmed landed in the HCP UI**, and confirmed **before the NW-73 workflow
+  is dispatched even once**. The reason is ADR-016 w17 round-3 clause 44 and is
+  not repeated here: under security-architect's ADR-011 clause 26 a dispatch
+  against a missing Send grant **deletes and commits chunks before the publish
+  that fails**, requeues nothing and writes no audit row — so clause 2's *"the
+  console will authenticate and then fail to send"* describes the wrong event.
+  ⚠ **That is a correction against this seat's own clause 2**, recorded there and
+  enforced here.
+- ⚠ **Clause 4(g) is corrected in count and in kind.** It reads "**both**
+  outstanding HCP applies confirmed landed — PR #118's and this wave's". After
+  ADR-016 round-3 clause 43 the wave's own PR 1 merge queues **two** runs, on
+  `raffa-dev` **and** `raffa-demo`, so the gate confirms **three runs across two
+  workspaces**, not two applies. **They are not interchangeable and must be
+  written down separately**: the `raffa-dev` run is a **destruction guard**
+  (clause 44, blocks the first dispatch); the `raffa-demo` run is a **promotion
+  precondition** (clause 43, blocks the tag); PR #118's is an **inherited
+  unknown** (OQ-w17-dm-03, unclosed one wave later). A single tick against "the
+  applies" satisfies none of the three.
+- Clause 4(a)–(f) are unchanged. The `--record-hitl w16` stamp (clause 3) and its
+  standing-closing-line rule stand as written.
+
+**9. The phase graph is UNCHANGED by round 3 — stated rather than assumed,
+because five seats appended footers to it.**
+
+Round 3 produced ADR-029 clauses 1–2 (software-architect), ADR-005 §27 and
+ADR-007 §9 (cloud-architect), ADR-009 clause 8, ADR-011 clause 26 and ADR-022
+clause 6 (security-architect), ADR-012 §46–§48 with ADR-018 clause 15
+(client-architect), and ADR-020 §24–§26 (ux-ui-designer). **None moves a phase or
+adds a writer.** Checked against clause 7's skeleton one by one, because a
+decomposer reading five footers will otherwise re-derive the graph:
+
+- **ADR-029 clause 2**'s reap of `n > pageCount` is a **DoD line on NW-26** (P1),
+  in the stage that already writes those keys; it adds no file and no task.
+- **ADR-012 §47**'s 404 repair is explicitly *inside NW-63's existing `client.ts`
+  edit* — `client.ts` keeps **one writer in P3**, as clause 7's skeleton has it.
+- **ADR-018 clause 15** adds **no route** and **ADR-020 §24** adds **no export and
+  no component** — both seats say so in their own words, so NW-63 gains no
+  dependency and still does not stall on a Claude Design round-trip.
+- **ADR-011 clause 26** and **ADR-022 clause 6** are DoD lines on the **single**
+  NW-73 task, which already claims both the console project and
+  `.github/workflows/**` (clause 1). The CI-YAML set is **still exactly one added
+  file**.
+- **ADR-012 §48** rules **no client task** for NW-62, so constraint 3's contender
+  set for `contract360ViewModel.ts` stays at three and clause 7.6 is unaffected.
+- **ADR-009 clause 8** binds the reap's key prefix — backend, inside NW-26.
+
+⚠ **One new-file writer question the round did open, and it is already answered
+by phase.** Client-architect's §48 puts two e2e checks in **`w17-viewer.spec.ts`**
+— verified: that file **does not exist on this base** (`web/e2e/` holds
+`day1.spec.ts`, `invite.spec.ts`, `v2.spec.ts`), so it is a new file — while
+NW-66's **N20** asserts its deep link lands. Clause 7.5 already phase-separates
+NW-63 (P3) from NW-66 (P4), so `check_single_writer.py` is satisfied **by phase**.
+Recorded because the tempting repair is to **merge NW-63 and NW-66 into one task
+so they can share the spec file** — which would re-collide
+`contract360ViewModel.ts` against clause 7.6 and undo the separation clause 7.5
+was written to create. **Two tasks, two phases, one spec file created in P3 and
+extended in P4.**
+
+**`FactTable.tsx` is still the one finding of this table that no ADR closes**
+(clause 7.7): it belongs with NW-65 + NW-66 and **needs an owner before
+fan-out**, or NW-65's gate ships on part of screen 5. Round 3 changed nothing
+about it, and no seat claimed it.

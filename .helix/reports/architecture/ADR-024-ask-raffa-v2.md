@@ -338,3 +338,170 @@ only *which admin features exist*. Hiding them is client presentation work, not
 a server gate: **OQ-w16-sa-02**, W17.
 
 `waves/w16.md` records this under NW-07 and NW-31.
+
+## Amendment (2026-09-15, wave w17 — the review bar is not the admission gate, and the two shapes a market claim may take)
+
+Serves **NW-71**, **NW-20**, **NW-22** and **NW-62**. Nothing above is rewritten;
+the two-corpus rule, the admission gate in the Worker and the capability catalog
+all stand. This ADR is the home of the market corpus because **ADR-023 is
+superseded by this one** and its `IBenchmarkService` principle survives here
+(`ADR-023:83-92`).
+
+### A. One review bar, decided by the server (NW-71)
+
+**1. The server decides on the raw stored double: `confidence >= 0.90`, no
+rounding** (OQ-w17-002, software-architect half). Rounding *before* comparing is
+the one variant that must not ship: it makes `0.895` accept in the payload and
+review in the audit row — the record disagreeing with itself. Presentation
+rounding is a separate, later step and is floored, never rounded up across the
+bar (ADR-001 w17 clause 2).
+
+**2. One policy type, consumed by both deciders.** `ExtractionConfidencePolicy`
+lives in `Raffa.Documents.Contracts` and is consumed by **both**
+`StagedExtractionService.DetermineDocumentStatus` (`:863`, applied `:236`) **and**
+`DocumentQueryService.IsWeak` (`:46-52`). Today these are **duplicated pairs**
+(`StagedExtractionService.cs:78,88` vs `DocumentQueryService.cs:33,42`) — which is
+raw-file correction 4 on the wave record — so changing one **desyncs the badge
+from `needs_review`**. `StagedExtractionService.cs:76-77` already calls its bar
+"a config knob, not a hard-coded business rule"; this discharges that note.
+
+**3. Which sites retire and which explicitly stay** (OQ-w17-003,
+software-architect half — the scope fence):
+
+| Site | Ruling |
+|---|---|
+| `StagedExtractionService.cs:78,88` + `DocumentQueryService.cs:33,42` | **retire** into the one policy |
+| `DocumentAdmissionOptions.AdmissionThreshold` (`:33`) | **stays** — "is this file admitted at all" is a different decision (this ADR's w15 footer, ADR-027) |
+| `Raffa.Quotes`' own bar | **stays** — separate domain (spec §11) |
+| `SavingsProvenanceClassifier.cs:37,46` (0.7 / 0.4) | **stays** — provenance banding, not a review decision |
+| `CriticalityScoreCalculator.cs:35` (0.8) | **stays this wave**, but see clause 4 |
+
+**4. ⚠ The collision no lane owned: NW-71 × NW-62 meet inside
+`StrategyPack.OpenWeakFacts`.** That collection is filtered at **0.8**
+(`CriticalityScoreCalculator.cs:35`, `StrategyPack.cs:23-25`) and feeds the very
+payload NW-62 is told to consume — while Review moves to **0.90**. If the 360
+renders `OpenWeakFacts` as a review statement, two screens carry two definitions
+of "weak" on the same contract. **Ruling: `OpenWeakFacts` is a *criticality*
+input, not a review decision, and NW-62 renders the strategy sections but not
+`OpenWeakFacts` as a review statement this wave.** The two bars reconcile in W18
+(**OQ-w17-sa-01**).
+
+**5. On the wire.** Each evidence row carries `decision` and `decidedAt`
+(ADR-003 w17 clause 1), and **the threshold is exposed once** so the web never
+hardcodes 90 and the review legend is server-fed — the legend at
+`ReviewHeader.tsx:87-97` goes from three items to two. Two binding shapes:
+
+- **The decision is read-only to the client.** A client-supplied `decision` is
+  rejected **400** and never persisted. Letting a displayed band become an
+  authorization-relevant input is the error §3 of this ADR's lineage forbids, and
+  security-architect requires it.
+- **It is not a boolean.** The contract must express **three** field states —
+  `auto_accepted`, `human_accepted`, `review_required` (the derivation table is
+  in the **ADR-003 w17 footer clause 1**) — because ADR-001 w17 clause 8
+  requires them to stay distinguishable; a boolean collapses two of them. This is
+  the wire shape product-owner asked this seat to name.
+
+### B. A market claim has one wire shape and one resolution (NW-22, NW-62, NW-20)
+
+**6. Two honest shapes, one payload.** ADR-001 w17 clause 4 gives a market claim
+exactly two forms — a **representative position** carrying adapter, sample size
+and as-of date, or an explicit **"insufficient market data"**. On the wire that is
+one nullable structure `{position, adapter, sampleSize, asOf}` plus an explicit
+absent state. Never a percentile alone, never "market" unqualified, never "Not
+determined". No band → the abstain path, never a fabricated number.
+
+**7. One resolution per screen, not two.** NW-20's 360 `benchmark` and NW-62's
+"where you can save" must use the **same** `IBenchmarkService` call against the
+**same** resolved `(supplier name, geography)` key. Resolving twice and getting
+two answers on one screen is the defect this clause exists to prevent. The name
+half is already solved (`ISupplierNameLookup`, registered
+`ServiceCollectionExtensions.cs:41`); **geography is the workspace country,
+resolved in the host** and passed into `StrategyInputs` (OQ-w17-004), because
+`Raffa.Insights` is fenced to `[SharedKernel, Benchmark]` and cannot read the
+workspace itself. With both resolved, `ToPricedLines`' hardcoded
+`Benchmark: null` (`:47-48`) becomes a real call — that file names this method as
+the place (`:50-51`).
+
+**8. No per-contract geography column this wave.** It is a new capability plus a
+migration, and the cap does not afford it; the workspace country is the honest
+default, labelled representative. A paid feed stays an ADR-001 §1.2 non-goal
+(NW-52 DEFERRED).
+
+**9. The 360 consumes `GET /api/contracts/{id}/strategy`** (OQ-w17-005,
+software-architect half). It **already** returns both `WhenYouMustMove` and
+`WhereYouCanPush` (`StrategyPack.cs:26-32,51-56`) and is **already in the
+generated client** (`schema.ts:724`) with no consumer. Computing a second answer
+in the view model would be exactly the divergence ADR-012 forbids. "When you must
+move" is additionally answerable from persisted columns today
+(`Contract360QueryService.cs:94,96`) — raw-file correction 2.
+
+**10. Both empty 360 members gain real shapes** (NW-20). `benchmark` and
+`activity` are memberless records reserved for R3/R4
+(`Contract360Result.cs:209-223`) and are filled by **host composition in
+`Raffa.Api`**, not by `Contract360QueryService` (ADR-002 w17 clause 3). For
+`activity` this seat will not invent a domain concept: the only honest existing
+source is the **audit trail**, projected read-only through the host with an
+action whitelist — and that is a **security question before it is an
+architecture one**, since a 360 tab is a wider audience than ADR-011's w16 reader
+ruling contemplated (**OQ-w17-sa-03**). If security refuses, the member is
+removed and the record type deleted, per ADR-001 w17 clause 3 — **an
+unconditional `[]` with no decision is not acceptable**. `benchmark` has no such
+option: NW-62 consumes it.
+
+`waves/w17.md` records this under NW-71, NW-20, NW-22 and NW-62.
+
+**11. OQ-w17-sa-03 is ruled, so clause 10's conditional resolves: both members
+land, and their shapes are named here** (NW-20, round 2). Security permitted
+`activity` as a **contract-scoped provenance projection** and refused it as an
+**audit reader**, under five conditions (ADR-011 w17 clause 22). Clause 10 said
+"if security refuses, the member is removed"; security did not refuse, so the
+member lands — and the two memberless record types (`Contract360Result.cs:216`,
+`:223`) gain exactly the members below. A permitted member with no named shape is
+still a guess, and this seat owns the payload.
+
+**11a. `Contract360ActivityEntry(OccurredAt, Action, ActorLabel)` — three
+members, each from a bounded column.** `OccurredAt` is `AuditEvent.Timestamp`;
+`Action` is the audit action constant admitted only from the **closed allow-list**
+(condition 2, default-deny), `varchar(100)` (`AuditEventConfiguration.cs:21`);
+`ActorLabel` is `Actor` (`varchar(200)`, `:20`) **resolved to a display label** —
+`system:<component>` verbatim, a human event as the display name the member list
+already discloses, an unresolvable subject as "removed member", **never a raw
+GUID** (condition 4). This is exactly ADR-001 w17 clause 3's *when · actor · what
+changed*: that clause's own list — upload, processing completed, validated,
+reprocessed, correction, renewal action, negotiation tick, savings outcome — **is
+a list of action names**, so the action constant *is* the "what changed" at the
+granularity V1 promises.
+
+**11b. `AuditEvent.Detail` is never projected — this is the clause that keeps
+condition 3 true.** It is the trail's only human-readable column, so it is what an
+implementer reaches for, and it is `text` with **deliberately no `HasMaxLength`**
+— *"unbounded free-form context"* (`AuditEventConfiguration.cs:24`): no schema, no
+vocabulary, no length bound. **Verified rather than feared**: writers already
+interpolate **contract-derived dates** into it —
+`Detail: "milestone=…; thresholdDays=…; milestoneDate={…:yyyy-MM-dd}"`
+(`RenewalAlertService.cs:254-255`, again `RenewalThresholdScheduler.cs:148-149`)
+— on a `Contract` resource. Projecting `Detail` would break security's *names,
+never values* **on day one**, not hypothetically, and the table is **append-only**,
+so the leak would be permanent and uncorrectable. **A per-action exception is
+refused too**: `document.validated` happens to write only field names there
+(`DocumentValidationService.cs:124-135`), but whitelisting a free-text column
+breaks the first time a writer adds context, in a task that never mentions
+security. If an entry ever needs more than *when · who · what*, it gets a
+**structured** source — a column or a typed detail contract — in a later wave,
+never by reading this one.
+
+**11c. `Contract360BenchmarkEntry(Metric, Status, Position?, AdapterName?,
+SampleSize?, AsOf?)`, and an empty array is refused.** ADR-001 w17 clause 4 gives a
+market claim exactly two honest shapes, so the entry carries either a
+**representative** position with its **adapter, sample size and as-of date**, or
+`Status = insufficient_data` with the band fields null. **The abstain is an entry,
+not an empty list**: `[]` is precisely today's defect
+(`Contract360QueryService.cs:211`) and a client cannot tell "the adapter
+abstained" from "nobody ever wired this" — the unconditional `[]` ADR-001 w17
+clause 3 refuses. Same resolved `(supplier name, geography)` key and the **same
+single call** as NW-62 (clause 7): one resolution, two consumers.
+
+**11d. Contract delta.** Both records gain members ⇒ `raffa-api.v1.json` moves in
+the **epic-21 contract task** (single-writer constraint 2), and the five
+conditions travel into that task's DoD together with the pinning test ADR-011 w17
+clause 22 names.

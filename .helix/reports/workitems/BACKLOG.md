@@ -387,3 +387,230 @@ operator to reconcile in a historical slice this wave.
 - **`none — no change`, with reasons recorded**: ADR-004, ADR-005, ADR-006,
   ADR-007, ADR-008, ADR-013, ADR-015, ADR-017, ADR-018, ADR-019, ADR-020,
   ADR-023.
+
+## Epics (continued) — wave w17
+
+| ID | Slug | Wave | Status |
+|----|------|------|--------|
+| epic-20 | w16-residuals | w17 | active — decomposed (next-wave) |
+| epic-21 | contract-360-answers | w17 | active — decomposed (next-wave) |
+| epic-22 | officialized-facts-and-viewer | w17 | active — decomposed (next-wave) |
+
+**epic-23 (`portfolio-and-savings-filters`) was NOT minted.** `w17-requirements.md`
+§4 makes it conditional on its items surviving the cap; both NW-23 and NW-25 are
+`could` and both overflow to W18, so the epic is not created. The next intake takes
+the number that is free at that time.
+
+**epic-20 extends**: epic-04 F02/F03 (savings engine + dashboard), epic-13 F03
+(supplier identity), epic-18 F03 (the CI-YAML set).
+**epic-21 extends**: epic-02 (extraction / 360), epic-03 (renewals), epic-04 F01
+(benchmark), epic-07 F02 (Contract 360 web).
+**epic-22 extends**: epic-02 (extraction / evidence), epic-07 F01/F02/F03 (360,
+Review), epic-16 (the Worker and the reprocess path).
+
+## ADR → wave coverage (continued) — wave w17
+
+| ADR | Topic | Carried into |
+|-----|-------|--------------|
+| ADR-029 | Document page rendering and the preview contract | **new at the w17 table** — epic-22 F02/F03 (clauses 1–7: rasterise in the Worker after admission, independent of extraction success; the real renderer registers ahead of the placeholder; `BuildPreviewPage` under the same tenant guard; `?page=n` bounded by `page_count` with **404**, never a silent page 1; `pageCount` on the read model; a stated page cap; round-3: the deterministic key replaced in place, and a shorter re-render reaps `n > pageCount`) |
+| ADR-001 | V1 scope R0–R4 | epic-20 F01 (w17 clauses 1, 10 — the money fence lifted and replaced; the cell is labelled **"Savings verified"**), epic-22 F01/F04/F05 (clauses 2, 5, 6, 8 — one bar at 90 % with no always-review list; the always-shown critical fields; confidence leaves Contract 360; three acceptance states stay distinguishable), epic-21 (clauses 3, 4 — what "activity" means, and the two honest shapes of a market claim); clause 7 rules **NW-75 OUT** and clause 9 routes the `demo` promotion to the HITL gate |
+| ADR-002 | .NET solution shape | epic-20 F02 (w17 clause 1 — `Raffa.Tools` is a **third composition root**, joins `AllRaffaProjects` only), epic-21 F02 (clause 2 — `RenewalPipelineBuilder` **stays pure**; the host resolves the band), epic-21 F01/F03 (clause 3 — the 360 composes in `Raffa.Api`, never in the module) |
+| ADR-003 | PostgreSQL + pgvector | epic-22 F01 (w17 clause 1 — `decision` + `decided_at` on the **existing** `extraction_evidence`, two nullable columns, **no SQL enum, no new table**, and the three-state derivation table; clause 2 — geometry columns **refused** this wave) |
+| ADR-005 | Azure SKUs | epic-20 F02 (w17 §15–§18, §22, §27 — one topic-scoped `azurerm_role_assignment`, **$0.00/month**), epic-22 F02 (§19–§21, §23–§25 — render page-by-page disposing each bitmap, the conditional Dockerfile layer above `USER $APP_UID`, ACR stays Basic, the deterministic overwrite, the **20-file measurement before any bulk run**) |
+| ADR-007 | Terraform layout | epic-20 F02 (w17 §5–§9 — the required `ci_deploy_principal_id`, both env roots in the same PR, the `lifecycle { ignore_changes }` line, and **§9: `demo`'s infra moves at the merge, never at the promotion tag**) |
+| ADR-009 | Tenancy / RLS | epic-20 F02 (w17 clauses 1, 4 — five binding rules for the first non-HTTP host: three-argument `Configure` inside `BeginScope`, one tenant per run, **zero rows exits non-zero**), epic-22 F01 (clause 2 — zero new isolation surface), epic-22 F02 (clauses 3, 6–8 — the page bound lives in the builder, `page` is an `int`, and the reap is bounded by prefix **and** a confirmed positive `pageCount`) |
+| ADR-011 | Key Vault + RAG isolation | epic-20 F02 (w17 clauses 20, 23, 26 — actor `system:bulk-reprocess`, **no CI-controlled string in `Actor`**, the log rule, and **stop at the first publish failure**), epic-22 F01 (clause 21 — one audit row per document per run, actor `system:extraction`, **names and confidences, never values**), epic-21 F01 (clauses 22, 25 — the activity projection's five conditions as **query predicates**, `Detail` never projected) |
+| ADR-012 | Web stack | epic-22 F01/F03/F04/F05 (w17 clauses 32–48 — **zero** new runtime dependencies, the object-URL revoke rule, the client renders the server's decision and `acceptedThisSession` retires, one answer source per screen, the `getConfidenceTag` writer math, the 404 that names the wrong thing, **no page cache across a navigation**), epic-20 F01 (clauses 37, 39, §42–§44 — the declared wire break names its call sites; `lines: []` means "no figure" and the reason rides `meta`) |
+| ADR-014 | Git flow | epic-22 F06 (w17 clauses 1–9 — the one-file CI set, the **two-PR shape**, the standing `--record-hitl` stamp, W17-A1 (a)–(h), the close-record replacement, `backend.yml` parked, and the phase skeleton) |
+| ADR-016 | Promotion dev→demo | epic-20 F02 (w17 clauses 36–45 — the console runs on the GitHub runner, the four-file `infra/` set, the workflow's gating idiom and the CI scanner gate, the composed worklist, the `demo` ruling, and **clause 44: not dispatched until the `raffa-dev` apply is confirmed**), epic-22 F06 (clauses 41, 42 — the final-integration list and the known-gaps table) |
+| ADR-017 | OCR in V1 | epic-22 F03 (w17 footer — `prebuilt-layout` stays **available and uncalled**; page-level anchoring is derivable from the stored `SourcePage` + `SourceSpan`; bounding boxes are W18) |
+| ADR-018 | Web IA | epic-22 F03 (w17 clauses 9–11, 15 — **one route added**, the first since w14: `/documents/:documentId/viewer?page=<n>&clause=<clauseId>`; `navItems.ts` gains **no row**; a 404 does not rewrite the URL), epic-22 F03/F04 (clauses 12–14 — the viewer's **four** states, not-found is the route's own state and never the shell's catch-all) |
+| ADR-019 | Web design system | epic-22 F01 (w17 clauses 7, 8, 10 — the first change to the confidence rows since the ADR was accepted: two treatments over three decisions, **floor never round**, and the w14 §6 evidence correction), epic-22 F04 (clauses 9, 11 — the three leverage words, label-only; **no confidence tag on Contract 360 at all**), clause 12 — **no new token and no new component** anywhere in the wave |
+| ADR-020 | Web screen inventory | epic-20 F01 (w17 §15, §17, §20–§21 — a **fourth equal cell** in every state), epic-22 F01/F03/F04/F05 (§13, §14, §16, §18, §24–§26 — the two-item legend, the "Not found in the document" section, the viewer chrome and its not-found copy, and the five ratified divergences from the export) |
+| ADR-021 | Schema apply on Azure Postgres | epic-22 F01 (w17 clauses 1–3 — one migration regenerating one byte-compared script, **no `backend.yml` array moves**, and the stale array counts assigned to the NW-73 sweep) |
+| ADR-022 | Day-1 demo auth + fixture seed | epic-20 F02 (w17 clauses 1–3, 6 — the "owed to W17" ruling is **discharged**: a CI principal may hold **Send only**, topic-scoped; the Admin gate is **relocated to the CI plane**; `environment:` sits on the job that acts; `target_environment` ships **`dev` only**) |
+| ADR-024 | Ask Raffa V2 | epic-22 F01 (w17 §A — raw `>= 0.90`, **one** `ExtractionConfidencePolicy`, three wire states, the threshold exposed once, a client-supplied decision is **400**), epic-21 (clauses 6–11 — the market-claim shape, one benchmark resolution per screen, the 360 consumes `/strategy`, and the two 360 record shapes) |
+| ADR-027 | Async document processing | epic-22 F02 (w17 clause 1 — rasterisation is a Worker stage), epic-22 F01 (clause 2 — **a reprocess never silently re-auto-accepts a field a human decided**), epic-20 F02 (clause 3 — the console calls the pipeline and never reimplements it) |
+| ADR-028 | Server-side state | epic-20 F01 (w17 footer + clauses 6, 7 — `RealizedSavingsByCurrency(Currency, Amount, Count)` replaces `SavingsRangeByCurrency` on one member: a **declared type change, not a rename**; the wire key stays **`savingsRealized`**; **nothing is renamed this wave**) |
+| ADR-006/ADR-008/ADR-010/ADR-013/ADR-015/ADR-025/ADR-026 | Region, Foundry, Entra, mobile, CI→Azure auth, membership, workspace contract | **`none`** — recorded as decisions, not silence: no region, Foundry account/deployment/capacity, token/claim/app-registration/federated-credential, mobile, GitHub-secret, membership or invitation change. The wave's entire identity delta is **one Azure data-plane role on an existing principal** |
+
+## Wave w17 (2026-09-15) — "The product officializes what it knows, shows the page it read it from, and answers where you can save"
+
+- **Source**: `inputs/next/w17-todo.md`
+  (sha256 `8afa1243587461327dfec6e0eafa3003d676345c0b8c9b9aed5edaa8b8de9275`)
+- **Requirements**: `reports/context/waves/w17-requirements.md`
+- **Council decisions**: `reports/architecture/waves/w17.md` — **APPROVED**, eleven
+  in-wave item rows, **all seven seats involved** (the first wave since w14 where that
+  is true). One new ADR (**ADR-029**), 19 amended, 6 `none`.
+- **Wave file**: `reports/plan/slices/w17.yaml` · **HITL**: `reports/audit/w17-hitl.md`
+- **Previous**: `w16` · **Baseline at intake**: `d3d2d24` (`helix/w17` == `origin/main`,
+  `0 0`). ⚠ **`origin/main` has since moved** — see the hitl doc's prerequisites.
+- **New epics**: `epic-20-w16-residuals`, `epic-21-contract-360-answers`,
+  `epic-22-officialized-facts-and-viewer`
+- **Caps**: 20 tasks / 5 phases → **14 live tasks in 5 phases, 14 stories across
+  3 epics**, **0 queued tasks** (three items queued, none decomposed — see below)
+
+### Items in the wave
+
+| Item | Title | Task ids | Phase(s) |
+|---|---|---|---|
+| NW-73 | Bulk whole-tenant reprocess console | `E20/F02/US01/T01` (Terraform — **PR 1, alone**), `E20/F02/US02/T01` (console + the wave's one added workflow) | 1, 2 |
+| NW-20 | Contract 360 `benchmark` / `activity` stop being `[]` | `E21/F01/US01/T01` (also produces the shared benchmark key resolver) | 1 |
+| NW-26 | Preview stops being a placeholder PNG | `E22/F02/US01/T01` | 1 |
+| NW-22 | Renewal insight `MarketPosition` is filled | `E21/F02/US01/T01` | 2 |
+| NW-71 | A field extracted at ≥ 90 % is accepted automatically | `E22/F01/US01/T01` (server rule + the wave's one migration + contract-A), `E22/F01/US02/T01` (Review renders the server's decision) | 2, 3 |
+| NW-62 | Contract 360 answers "where you can save" and "when you must move" | `E21/F03/US01/T01` (strategy + benchmark wired), `E21/F03/US02/T01` (the answers band) | 2, 3 |
+| NW-63 | Document viewer over the uploaded pages | `E22/F03/US01/T01` — **split** per OQ-w17-001: real pages + text-level highlight ship; bounding boxes and editable OCR phrases are the **head of W18** | 3 |
+| NW-72 | Savings KPI shows verified money | `E20/F01/US01/T01` (calculator + contract-B + the fourth KPI cell) | 4 |
+| NW-64 | Unrecovered fields get a fillable section | `E22/F05/US01/T01` | 4 |
+| NW-65 | Details: only officialized facts | `E22/F04/US01/T01` (one task with NW-66 — both write `contract360ViewModel.ts`) | 4 |
+| NW-66 | Why-clauses: no quote, leverage not confidence | `E22/F04/US01/T01` | 4 |
+| — | Final integration + the `dev` acceptance walk | `E22/F06/US01/T01` | 5 |
+
+### Queued for the next wave
+
+**No task files were minted for the queued items**, and that is deliberate: the
+council did not rule on them (`waves/w17.md` header — "not decided here, not
+decomposed, and not demoted"), so there is no decision row, no ADR action and no file
+set to write a task against. They are the **head of W18** in the raw file's own
+overflow order, and the next intake picks them up first.
+
+1. **NW-63's W18 remainder** — the bounding-box overlay, `prebuilt-layout` with the
+   widened gateway contract and `AiOcrPage`, the geometry columns ADR-003 w17 clause 2
+   refuses, and the phrase-edit write path. It heads W18 **ahead of** the overflow
+   items: a `must`'s remainder outranks a `should`/`could` overflow. Its shape is
+   pre-decided in ADR-029 so it is not re-litigated.
+2. **NW-23** (`could`) — portfolio category filter. OQ-w17-007 travels with it
+   (supplier category joined in the host; `screens-v2.md`'s "Type" column stays the
+   document type).
+3. **NW-25** (`could`) — savings list filters (supplier and status; Estimate is a
+   sort, not a filter).
+4. **NW-74** (`should`) — hide admin-gated Ask chips from a non-Admin. **Not demoted**:
+   it keeps `should` and heads W18 behind the three `could`s only because the raw
+   file fixes that sequence. Its shape is recorded in ADR-012 w17 clause 40 (one
+   server-derived `role` prop into two renderers), and ADR-022 S16-11 stands —
+   **presentation, never a security fix**, and `GET /api/capabilities` stays un-gated.
+
+**NW-75 is not queued — it is OUT.** Product-owner ruled it out for V1 at the table
+(ADR-001 w17 clause 7): the oracle's opportunities table is Supplier · Action ·
+**Estimate**, and a tracked action holds no system-held estimate, so the row would
+either invent a number or ship an undefined column — which is why `buildTrackedOpportunityRow`
+was retired in w16. **No task, no story, no ADR-020 change, and no work item is
+cancelled.** It returns as a *new* item once a tracked action can carry a system-held
+estimate, i.e. after NW-62's benchmark join.
+
+### Superseded items
+
+**None.** `w17-requirements.md` §6 records no "cancels / replaces" statement in the
+raw file: **no status banner is written this wave and no `status:` line is changed to
+`superseded`.**
+
+`E04/F03/US01` AC-1 (`epic-04-savings-intelligence/.../us-01-savings-kpis.md:19`) is
+**completed, not superseded** — NW-72 discharges its realized half. The story stays
+`active` with **no banner and no `superseded:` line**.
+
+What *is* superseded is **two product oracles, on the record only** (`inputs/**` is
+never edited by this process — the same treatment ADR-001's w15 footer used):
+
+| Oracle | Line | Superseded by | Note |
+|---|---|---|---|
+| `inputs/product-spec.md` §7.3 confidence table | `:333-335` (and `:341`'s threshold half) | **NW-71** | One threshold, 90 %, every field, no always-review list. The **criticality** of the five fields is **not** superseded — only their threshold |
+| `inputs/percorso-pilota-v1.md` "Soglia HITL" | `:32`, `:46`, `:55`, `:122` | **NW-71** | The "critical stricter" clause is removed. `:65` and `:55`'s unlock rule are **threshold-relative and survive**, re-parameterized |
+| `inputs/product-spec.md` Appendix C | `:954` | **NW-66** | Superseded in its **rendering half, on Contract 360 only**. It stands verbatim in Review and in Ask, and its **storage half is untouched** |
+
+**Design-oracle staleness this wave creates** (recorded, never edited):
+`screens-v2.md:83`, `:87`, `:89-91`, `:101-102`, `:103-104`, `:134-135` — five
+ratified divergences (ADR-020 w17 §17) plus a sixth surface (the viewer) absent from
+every export. Five re-exports are requested and **none blocks a task**.
+
+No earlier wave file lists any in-wave item as `live`, so there is nothing for the
+operator to reconcile in a historical slice this wave.
+
+### ADRs touched
+
+- **New**: ADR-029 (document page rendering and the preview contract) — the wave's
+  only new ADR, with a round-3 footer (deterministic key, and the reap of
+  `n > pageCount`).
+- **Amended by w17 footers** (bodies untouched, every `Status: accepted` unchanged,
+  nothing superseded): ADR-001, ADR-002, ADR-003, ADR-005, ADR-007, ADR-009, ADR-011,
+  ADR-012, ADR-014, ADR-016, ADR-017, ADR-018, ADR-019, ADR-020, ADR-021, ADR-022,
+  ADR-024, ADR-027, ADR-028 — **nineteen**.
+- **`none — no change`, with reasons recorded**: ADR-004, ADR-006, ADR-008, ADR-010,
+  ADR-013, ADR-015, ADR-023, ADR-025, ADR-026.
+
+## Epics (continued) — wave w18
+
+| ID | Slug | Wave | Status |
+|----|------|------|--------|
+| epic-23 | viewer-bounding-boxes-and-phrase-edit | w18 | active — decomposed (next-wave) |
+| epic-24 | portfolio-and-savings-filters | w18 | active — decomposed (next-wave) |
+| epic-25 | ask-and-quote-product-completeness | w18 | active — decomposed (next-wave) |
+| epic-26 | contract-and-ops-residuals | w18 | active — decomposed (next-wave) |
+
+**epic-23 extends**: epic-22 (the w17 viewer).
+**epic-24 extends**: epic-02 F03, epic-04 F03, epic-07 F01, epic-08 F02.
+**epic-25 extends**: epic-13, epic-07 F02, epic-08 F03.
+**epic-26 extends**: epic-13 F05, epic-01 F03, epic-10.
+
+## ADR → wave coverage (continued) — wave w18
+
+| ADR | Topic | Carried into |
+|-----|-------|--------------|
+| ADR-029 | Document page rendering and the preview contract | epic-23 F01/F04 (w18 footer: phrase-edit provenance — override beside proposal, never in-place; the box and its wording ship together, clause 2) |
+| ADR-017 | OCR in V1 | epic-23 F01 (w18 footer: `prebuilt-layout` is now called behind the gateway; the wire widens to carry `words`/`polygon`; `AiOcrPage` grows geometry) |
+| ADR-003 | PostgreSQL + pgvector | epic-23 F02 (w18 footer: geometry + override columns on `extraction_evidence`, one migration; clause 2 discharged) |
+| ADR-027 | Async document processing | epic-23 F03 (w18: a reprocess never silently overrides a human correction) |
+| ADR-002 | .NET solution shape | epic-24 F01 (w18: the portfolio supplier-category join composes in the host `Raffa.Api`, never in the module) |
+| ADR-024 | Ask Raffa V2 | epic-25 F02/F03/F04/F05 (w18: citation deep-link, scoped-chat entry, quote job-to-be-done, abstain recovery) |
+| ADR-012 | Web stack | epic-25 F01/F02/F03/F06 + epic-26 F01 (w18: the generated client wrappers, the citation deep-link, the scoped entry, the role-gated chip presentation, the swept prose) |
+| ADR-018 | Web IA | epic-25 F02/F06 + epic-24 F01/F02 (w18: the viewer deep-link route is consumed, the global Ask bar is suppressed on `/ask`, the portfolio/savings query-param controls) |
+| ADR-019 | Web design system | epic-25 F02/F05 (w18: native-button citation CTA, secondary action reuse — no new token or component) |
+| ADR-020 | Web screen inventory | epic-24 F02/F01 + epic-25 F05/F06 (w18: the portfolio category and savings filter controls, the abstain recovery copy, the suppressed duplicate bar) |
+| ADR-022 | Day-1 demo auth + fixture seed | epic-25 F01 (w18: S16-11 stands — chip hiding is presentation, never a security fix) |
+| ADR-028 | Server-side state | epic-25 F04 (w18: quote history is durable server state, never a client store) |
+| ADR-001 | V1 scope R0–R4 | epic-25 F04 (w18: the quote benchmark is fixture-adapter fenced, never a paid external API) |
+| ADR-016 | Promotion dev→demo | epic-26 F02 (w18: the e2e walk is a runbook spec, never CI — no workflow runs Playwright) |
+| ADR-005 | Azure SKUs | epic-26 F01 + epic-23 F01 (w18: `none` — the ops walks are confirm-only and `prebuilt-layout` needs no new role/SKU) |
+| ADR-026 | Workspace discovery, roster, invitations: API contract + data model | epic-26 F01 (w18: `none` — the OpenAPI residual is a prose sweep) |
+
+## Wave w18 (2026-09-16) — "the viewer draws the box, the cited phrase is editable, and the lists/Ask/Quote surfaces stop dead-ending"
+
+- **Source**: `inputs/next/w18-todo.md`
+  (sha256 `unavailable — no sha256sum/python in this harness at intake`)
+- **Requirements**: `reports/context/waves/w18-requirements.md`
+- **Council decisions**: `reports/architecture/waves/w18.md` — APPROVED, all seven seats involved (security-architect confirm-only on NW-74)
+- **Wave file**: `reports/plan/slices/w18.yaml` · **HITL**: `reports/audit/w18-hitl.md`
+- **Previous**: `w17`
+- **New epics**: `epic-23-viewer-bounding-boxes-and-phrase-edit` (extends epic-22), `epic-24-portfolio-and-savings-filters` (extends epic-02 F03, epic-04 F03, epic-07 F01, epic-08 F02), `epic-25-ask-and-quote-product-completeness` (extends epic-13, epic-07 F02, epic-08 F03), `epic-26-contract-and-ops-residuals` (extends epic-13 F05, epic-01 F03, epic-10)
+- **Caps**: 20 tasks / 5 phases → **20 live tasks in 5 phases, 0 queued tasks**
+
+### Items in the wave
+
+| Item | Title | Task ids | Phase(s) |
+|---|---|---|---|
+| NW-63r | Bounding-box overlay + phrase-edit (W18 remainder, must) | `E23/F01/US01/T01`, `E23/F02/US01/T01`, `E23/F03/US01/T01`, `E23/F04/US01/T01` | 1, 2, 3, 4 |
+| NW-23 | Portfolio supplier-category filter | `E24/F01/US01/T01`, `E24/F01/US02/T01` | 1, 2 |
+| NW-25 | Savings list filters | `E24/F02/US01/T01` | 1 |
+| NW-74 | Hide admin-gated Ask chips | `E25/F01/US01/T01` | 1 |
+| NW-55 | Ask citation cards: preview or deep-link | `E25/F02/US01/T01`, `E25/F02/US02/T01` | 1, 3 |
+| NW-56 | 360 "Ask about it" briefs | `E25/F03/US01/T01`, `E25/F03/US02/T01` | 2, 3 |
+| NW-57 | Quote check: market benchmark + history | `E25/F04/US01/T01`, `E25/F04/US02/T01` | 2, 4 |
+| NW-59 | Ask never dead-ends (abstain recovery) | `E25/F05/US01/T01`, `E25/F05/US02/T01` | 3, 4 |
+| NW-60 | Hide global Ask bar on Ask screens | `E25/F06/US01/T01` | 2 |
+| NW-30 | OpenAPI prose sweep | `E26/F01/US01/T01` | 4 |
+| NW-50 | day1.spec.ts reconcile | `E26/F02/US01/T01` | 1 |
+| NW-40 / NW-41 | HCP + market walk (runbook) | **no task** — recorded in `E23/F05/US01/T01` + `docs/waves/w18-acceptance.md` | phase 5 |
+| — | Final integration + acceptance runbook | `E23/F05/US01/T01` | 5 |
+
+### Queued for the next wave
+
+**None.** All 13 items fit within the 20-task cap; NW-40/NW-41 are runbook walks (no task, ride final integration). **NW-75 stays OUT** (ADR-001 w17 clause 7) — recorded, not queued.
+
+### Superseded items
+
+**None.** `w18-requirements.md` §6 records no "cancels / replaces" statement; no status banner and no `status: superseded` line is written.
+
+### ADRs touched
+
+- **Amended by w18 footers** (bodies untouched): ADR-029 (phrase-edit provenance + box/wording), ADR-017 (`prebuilt-layout` called), ADR-003 (geometry + override columns).
+- **`none — no change`, with reasons recorded**: ADR-001, ADR-002, ADR-005, ADR-012, ADR-016, ADR-018, ADR-019, ADR-020, ADR-022, ADR-024, ADR-026, ADR-027, ADR-028.

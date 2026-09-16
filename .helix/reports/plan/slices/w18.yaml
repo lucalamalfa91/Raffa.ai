@@ -1,0 +1,57 @@
+waveId: wave-next-w18
+status: planned
+# title: W18 — the viewer draws the box, the cited phrase is editable, and the lists/Ask/Quote surfaces stop dead-ending
+# source: inputs/next/w18-todo.md
+# requirements: reports/context/waves/w18-requirements.md
+# decisions: reports/architecture/waves/w18.md (ADR-029/003/017 amended; 23/25/30/40/41/50/55/56/57/59/60 `none` or carried)
+# caps: 20 tasks / 5 phases (reports/plan/next-run.json) -> 20 live tasks / 5 phases, 0 queued; NW-40/NW-41 are runbook walks in the final-integration task
+# Single-writer notes:
+#   web/openapi/raffa-api.v1.json + web/src/api/client.ts + generated/schema.ts writers:
+#     E24/F01/US01/T01 (p1), E23/F02/US01/T01 (p2), E23/F03/US01/T01 (p3),
+#     E25/F04/US01/T01 + E26/F01/US01/T01 (p4) -- E25/F04 touches raffa-api.v1.json/client.ts,
+#     E26/F01 sweeps them; both are in p4 but E25/F04 writes a new wrapper while E26/F01 only
+#     sweeps prose. Kept distinct to avoid a same-phase collision (E26/F01 is prose-only, no
+#     new wrapper, so check_single_writer treats its client.ts claim vs E25/F04's as a conflict
+#     unless separated -- both touch client.ts). SEE the final note below.
+#   AskCopilotService.cs writers: E25/F02/US01/T01 (p1), E25/F03/US01/T01 (p2), E25/F05/US01/T01 (p3).
+#   AppShell.tsx writers: E25/F01/US01/T01 (p1), E25/F06/US01/T01 (p2).
+#   ContractsEndpointExtensions.cs writers: E23/F02/US01/T01 (p2, evidence box read),
+#     E23/F03/US01/T01 (p3, phrase-edit MapPatch) -- different phases.
+# Launch: ./run.ps1 -Max -Slice w18 -o execution-fanout
+phases:
+  - id: 1
+    name: phase-1
+    tasks:
+      - {id: E23/F01/US01/T01, prompt: reports/workitems/epic-23-viewer-bounding-boxes-and-phrase-edit/feature-01-gateway-geometry/us-01-ocr-geometry-wire/tasks/task-01-ocr-geometry-wire.md, produces: [ocr-geometry-wire], depends_on: [], effort: L, layer: backend, status: live}
+      - {id: E24/F01/US01/T01, prompt: reports/workitems/epic-24-portfolio-and-savings-filters/feature-01-portfolio-category-filter/us-01-portfolio-category-backend/tasks/task-01-portfolio-category-backend.md, produces: [portfolio-category-filter], depends_on: [], effort: M, layer: backend, status: live}
+      - {id: E24/F02/US01/T01, prompt: reports/workitems/epic-24-portfolio-and-savings-filters/feature-02-savings-filters/us-01-savings-filters/tasks/task-01-savings-filters.md, produces: [savings-filters], depends_on: [], effort: S, layer: frontend, status: live}
+      - {id: E25/F01/US01/T01, prompt: reports/workitems/epic-25-ask-and-quote-product-completeness/feature-01-ask-chip-role-gate/us-01-ask-chip-role-gate/tasks/task-01-ask-chip-role-gate.md, produces: [ask-chip-role-gate], depends_on: [], effort: S, layer: frontend, status: live}
+      - {id: E25/F02/US01/T01, prompt: reports/workitems/epic-25-ask-and-quote-product-completeness/feature-02-citation-cards/us-01-citation-card-backend/tasks/task-01-citation-card-backend.md, produces: [citation-viewer-deeplink], depends_on: [], effort: M, layer: backend, status: live}
+      - {id: E26/F02/US01/T01, prompt: reports/workitems/epic-26-contract-and-ops-residuals/feature-02-e2e-reconcile/us-01-e2e-reconcile/tasks/task-01-e2e-reconcile.md, produces: [e2e-reconciled], depends_on: [], effort: M, layer: frontend, status: live}
+  - id: 2
+    name: phase-2
+    tasks:
+      - {id: E23/F02/US01/T01, prompt: reports/workitems/epic-23-viewer-bounding-boxes-and-phrase-edit/feature-02-evidence-geometry-and-override/us-01-evidence-geometry-schema/tasks/task-01-evidence-geometry-and-override.md, produces: [evidence-geometry-schema], depends_on: [ocr-geometry-wire], effort: L, layer: backend, status: live}
+      - {id: E24/F01/US02/T01, prompt: reports/workitems/epic-24-portfolio-and-savings-filters/feature-01-portfolio-category-filter/us-02-portfolio-category-web/tasks/task-01-portfolio-category-web.md, produces: [portfolio-category-control], depends_on: [portfolio-category-filter], effort: S, layer: frontend, status: live}
+      - {id: E25/F03/US01/T01, prompt: reports/workitems/epic-25-ask-and-quote-product-completeness/feature-03-scoped-ask-brief/us-01-scoped-ask-backend/tasks/task-01-scoped-ask-backend.md, produces: [scoped-ask-planner], depends_on: [], effort: M, layer: backend, status: live}
+      - {id: E25/F04/US01/T01, prompt: reports/workitems/epic-25-ask-and-quote-product-completeness/feature-04-quote-benchmark/us-01-quote-benchmark-backend/tasks/task-01-quote-benchmark-backend.md, produces: [quote-benchmark-history], depends_on: [], effort: M, layer: backend, status: live}
+      - {id: E25/F06/US01/T01, prompt: reports/workitems/epic-25-ask-and-quote-product-completeness/feature-06-hide-global-ask-bar/us-01-hide-global-ask-bar/tasks/task-01-hide-global-ask-bar.md, produces: [global-bar-suppressed], depends_on: [], effort: S, layer: frontend, status: live}
+  - id: 3
+    name: phase-3
+    tasks:
+      - {id: E23/F03/US01/T01, prompt: reports/workitems/epic-23-viewer-bounding-boxes-and-phrase-edit/feature-03-phrase-edit-write/us-01-phrase-edit-write/tasks/task-01-phrase-edit-write.md, produces: [phrase-edit-endpoint], depends_on: [evidence-geometry-schema], effort: M, layer: backend, status: live}
+      - {id: E25/F02/US02/T01, prompt: reports/workitems/epic-25-ask-and-quote-product-completeness/feature-02-citation-cards/us-02-citation-card-web/tasks/task-01-citation-card-web.md, produces: [citation-card-treatments], depends_on: [citation-viewer-deeplink], effort: S, layer: frontend, status: live}
+      - {id: E25/F03/US02/T01, prompt: reports/workitems/epic-25-ask-and-quote-product-completeness/feature-03-scoped-ask-brief/us-02-scoped-ask-web/tasks/task-01-scoped-ask-web.md, produces: [scoped-ask-brief], depends_on: [scoped-ask-planner], effort: S, layer: frontend, status: live}
+      - {id: E25/F05/US01/T01, prompt: reports/workitems/epic-25-ask-and-quote-product-completeness/feature-05-abstain-recovery/us-01-abstain-recovery-backend/tasks/task-01-abstain-recovery-backend.md, produces: [abstain-recovery-action], depends_on: [], effort: M, layer: backend, status: live}
+  - id: 4
+    name: phase-4
+    tasks:
+      - {id: E23/F04/US01/T01, prompt: reports/workitems/epic-23-viewer-bounding-boxes-and-phrase-edit/feature-04-viewer-box-and-edit/us-01-viewer-box-overlay/tasks/task-01-viewer-box-and-edit.md, produces: [viewer-box-overlay], depends_on: [phrase-edit-endpoint, evidence-geometry-schema], effort: L, layer: frontend, status: live}
+      - {id: E25/F04/US02/T01, prompt: reports/workitems/epic-25-ask-and-quote-product-completeness/feature-04-quote-benchmark/us-02-quote-benchmark-web/tasks/task-01-quote-benchmark-web.md, produces: [quote-benchmark-ux], depends_on: [quote-benchmark-history], effort: M, layer: frontend, status: live}
+      - {id: E25/F05/US02/T01, prompt: reports/workitems/epic-25-ask-and-quote-product-completeness/feature-05-abstain-recovery/us-02-abstain-recovery-web/tasks/task-01-abstain-recovery-web.md, produces: [abstain-recovery-render], depends_on: [abstain-recovery-action], effort: S, layer: frontend, status: live}
+      - {id: E26/F01/US01/T01, prompt: reports/workitems/epic-26-contract-and-ops-residuals/feature-01-openapi-sweep/us-01-openapi-sweep/tasks/task-01-openapi-sweep.md, produces: [openapi-swept], depends_on: [], effort: S, layer: backend, status: live}
+  - id: 5
+    name: phase-5
+    tasks:
+      - {id: E23/F05/US01/T01, prompt: reports/workitems/epic-23-viewer-bounding-boxes-and-phrase-edit/feature-05-w18-final-integration/us-01-w18-final-integration/tasks/task-01-w18-final-integration.md, produces: [w18-integration], depends_on: [ocr-geometry-wire, evidence-geometry-schema, phrase-edit-endpoint, viewer-box-overlay, portfolio-category-filter, portfolio-category-control, savings-filters, ask-chip-role-gate, citation-viewer-deeplink, citation-card-treatments, scoped-ask-planner, scoped-ask-brief, quote-benchmark-history, quote-benchmark-ux, abstain-recovery-action, abstain-recovery-render, global-bar-suppressed, openapi-swept, e2e-reconciled], effort: L, layer: backend, status: live}
+forks: []

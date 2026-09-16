@@ -882,3 +882,357 @@ than an assumption.
 (ADR-027), the resources and their SKUs (ADR-005 / ADR-007), the identity plane
 and the CI credential method (ADR-010 / ADR-015 — both explicitly unchanged by
 this wave), and when NW-50 wires a Playwright runner — still W18.
+
+## Amendment (2026-09-15, wave w17)
+
+Item **NW-73** (the bulk whole-tenant reprocess console this ADR's w16 clause 31
+designed and scheduled here), the **`demo` promotion** question product-owner
+ruled back to this seat, and this wave's final-integration list. Seat:
+delivery-manager, reconciled with cloud-architect (ADR-005 w17 §15–§18, §22 —
+the module change and the runner ruling), security-architect (ADR-022 w17
+clauses 1–3, 5 — the Send right and the workflow's gating idiom),
+software-architect (ADR-002 w17 clause 1 — the console project) and
+product-owner (ADR-001 w17 clause 9 — `demo` is not dormant). Everything above
+is unchanged — the body and the w14, w15 and w16 footers — and `Status:
+accepted` stands. **Nothing is superseded.** **Clause numbering continues at
+36** (w16 ended at 35), which is this ADR's own convention and the opposite of
+ADR-014's; both are restated here because this seat got them the wrong way round
+in w16 and the correction is not re-earned per wave.
+
+**36. Clause 31's "owed at W17" is discharged, and the console runs on the
+GitHub runner — `dotnet run`, never a Container Apps Job.** Clause 31 left the
+shape and owed three rulings; all three landed at this table (security on the
+Send right, cloud on the module change, software on the project). This clause
+records only what is this seat's: **where it runs, and what that costs the CI
+set.**
+
+- `backend.yml:66-74` runs `dotnet restore/build/test` on **`Raffa.slnx`**, so a
+  console registered there is built and tested with **no `backend.yml` edit**.
+  (The solution file is `.slnx` — XML — so a `*.sln` glob finds nothing.)
+- `backend.yml:130-144` builds exactly **two** Dockerfiles (Api, Worker). A
+  console is not containerised, not pushed to ACR, not a Container App: **zero
+  deploy-path change, zero new environment key, zero new image.**
+- **The refused alternative is recorded so W18 does not re-open it as "the
+  cheaper option".** A Container Apps Job needs **no new role** — the workload
+  identity already holds Send — which is its one genuine attraction. It is
+  refused because it costs a new Terraform resource, a third image, a third
+  deploy path, and leaves a **permanently triggerable mutation surface** in
+  Azure. ⚠ **And the "no new role" attraction is exactly backwards**, which
+  cloud-architect and security-architect reached independently and this seat
+  adopts: the workload identity holds Sender **and Receiver**
+  (`modules/servicebus/main.tf:71-87`, `:89-102`), so the Job would let the
+  console **receive from the one subscription the Worker depends on**. Counting
+  *rights added* is the wrong measure; the runner adds one right and grants the
+  **narrower** capability.
+
+**37. The Send grant is a four-file `infra/` change, the variable is required,
+and both roots are wired in the same PR.** Cloud-architect owns the module and
+has written it; this clause records the two constraints that are the *promotion
+path's*, not the module's.
+
+- The files: `modules/servicebus/variables.tf` (new `ci_deploy_principal_id`),
+  `modules/servicebus/main.tf` (a **third** assignment), and **both** env roots.
+  Both roots already resolve the object id and already pass it to
+  `modules/keyvault` (`environments/dev/main.tf:223-225,236`;
+  `environments/demo/main.tf:245-247,258`), so each root gains **one line** and
+  no new data source.
+- **Required, not optional, and both roots in the same change.** If the variable
+  is required and only `dev` is wired, `demo`'s root fails `validate`/`plan` —
+  and `demo-promote.yml:128-136` calls `infra.yml` with `target_environment:
+  demo`, so **a dev-only wiring breaks the promotion path**. That failure
+  surfaces one tag later, in the job nobody runs weekly.
+- **Sender only, never Receiver** (clause 31 said "Send"; this records *why*): a
+  CI principal with Data Receiver could take messages off the subscription the
+  Worker needs.
+- ⚠ **Adopted from cloud-architect, and this seat's draft did not carry it**:
+  the new assignment carries the **same `lifecycle { ignore_changes = … }`** both
+  existing grants carry — verified first-hand at `modules/servicebus/main.tf:80-86`
+  and `:95-101`. ARM rejects in-place updates to a role assignment, so omitting
+  it plans clean today and fails a *later, unrelated* apply. This is the same
+  class of trap as w16 clause 33 note 4, one resource type over.
+
+**38. The console workflow is `workflow_dispatch`-only, it never joins
+promotion, and it is bound by a CI gate clause 31 could not have known.**
+
+- **It is not added to `demo-promote.yml`**, which calls only `infra.yml`,
+  `backend.yml`, `web.yml` (`:128-158`) and whose header (`:43-50`) forbids
+  adding steps that move data. It is an operator job: `workflow_dispatch` with
+  `target_environment` (`dev`/`demo`) + a **required** `tenant_id`, `environment:`
+  set so `demo`'s required reviewers gate it — the idiom
+  `verify-tenant-corpus.yml:17-52` already establishes. Security-architect's
+  additions (top-level `permissions: contents: read`, a concurrency group keyed
+  by environment+tenant, never `push`, never `schedule`) are adopted whole; on
+  `dev` the gate is repository write plus an explicit dispatch, **recorded
+  honestly rather than described as reviewer-gated**.
+- ⚠ **The gate this seat owes the wave**:
+  `AuthenticationSeamAbsenceTests.cs:62-68` scans **`.github/workflows/**`**
+  alongside `backend/src`, `web/src` and `infra` — and it runs inside
+  `backend.yml`'s `dotnet test`, the required check on `main`. **This seat's
+  file set is inside a backend test.** A red `main` is no `dev` deploy (ADR-014
+  w15 clause 3), so a careless workflow line kills the **wave's** deploy, not
+  just its own job. What the scanner flags
+  (`AuthenticationSeamAbsenceSelfTests.cs:113-128`): a key that **disables
+  authentication**, a path returning a **fixed passcode/token**, and a **branch
+  keyed on an environment name that skips a credential check**. It does **not**
+  flag connection strings — `:146` asserts a Postgres string *with a password*
+  clean.
+- **Rule**: the console workflow **copies `verify-tenant-corpus.yml`'s credential
+  idiom verbatim** — `./.github/actions/azure-login` (`:67-72`) → `az keyvault
+  secret show` (`:112`) → `scripts/pg_connection_string_env.py` → masked `PG*`
+  (`:119-134`). That idiom is **proven green against this scanner today**. Any
+  `if [ "$TARGET_ENVIRONMENT" = … ]` branch that skips a credential step is
+  shape 3 and turns `main` red.
+
+**39. The two operator jobs compose; the worklist predicate is not duplicated.**
+`verify-tenant-corpus.yml:147-169` already computes the set — `Failed`, or an
+`embedding` still starting with `%PDF`. **That is the console's input set, and
+the console must run the same predicate, not a second one**, or "what needs
+reprocessing" and "what got reprocessed" drift apart silently. This makes A17-S2
+self-proving: run verify → console → verify again and the worklist goes to 0
+with `%PDF` gone (`:171-184`) — which is the acceptance sentence already
+written. Unchanged from clause 31 and restated as binding: the console calls
+`DocumentReprocessService.ReprocessAsync` and **never** replicates
+`RequeueClassificationJobAsync`'s reuse-and-reset (`:161-173`); the three
+shortcuts of clause 30 stay refused.
+
+**40. The `demo` promotion is ruled — and the promotion job does not apply.**
+Product-owner's ADR-001 w17 clause 9 **overrules this seat's draft assumption**
+("not cleared this wave; record a four-wave known gap") and routes the mechanism
+back here by name. The ruling is accepted without reservation: `demo` cannot be
+dormant, w17's flagship items are **pilot-script surfaces**, and a deferral that
+never costs a slot is what let this reach a fourth wave. What follows is the
+mechanism, which is this seat's.
+
+1. ⚠ **The finding no seat carried, and it changes what "promotion" means.**
+   `demo-promote.yml:128-136` calls `infra.yml` with `target_environment: demo`
+   — and `infra.yml`'s apply job **applies nothing**: it is a step-summary echo
+   (`:114-136`) whose own job name is **"terraform apply skipped (demo)"** and
+   whose body prints *"Do not run `terraform apply` from GitHub Actions against
+   a VCS-connected workspace"* (`:123-135`). `promote-backend` and `promote-web`
+   then `needs: promote-infra` (`:140`, `:151`), and the file's own comment
+   (`:123-127`) is explicit that this makes promotion wait on a **green infra
+   plan** — a plan, never an apply. **So a `demo-v*` tag can go green end to end
+   while `demo` lacks the role assignment of clause 37.** This *corrects
+   cloud-architect's framing* that `demo` "applies at its next promotion": the
+   promotion **plans**; **HCP VCS applies**, and nothing in the tag push
+   guarantees it has.
+2. **Therefore clearing the backlog is two acts, in this order**: (a) the **HCP
+   VCS apply on the `raffa-demo` workspace, confirmed in the HCP UI** — never
+   inferred from a green `promote-infra`; then (b) the **`demo-v*` tag push**.
+   The number is **read at the gate** (`git tag -l "demo-v*"`), never assumed —
+   clause 32 unchanged, and still unexecuted: `demo` has run `demo-v3` since
+   2026-09-04.
+3. **No wave task promotes and this clause mints none.** Promotion is a
+   human-gated operator act. Per product-owner's clause 9, if the decision is
+   **not** taken at the w17 gate, **W18 opens with the promotion as its head
+   item, ahead of every feature** — including this run's overflow.
+4. ⚠ **The flags: a correction, and the answer is already on disk.**
+   Product-owner's clause 9 leaves "whether **w17's two flags** default `false`
+   on `demo`" to this seat. Verified first-hand: they are **not w17's** — they
+   are **w15's**, inherited and still unflipped — they are **Terraform
+   variables, not application feature flags**, and they **already default
+   `false` on `demo`**: `invitation_mail_enabled`
+   (`infra/environments/demo/variables.tf:45-49`) and
+   `guest_provisioning_enabled` (`:51-55`). **There are three, not two** — 
+   `guest_role_assignment_managed` (`:65-67`) is also `false`, and `:57-64`
+   records why: the Graph `User.Invite.All` grant is written **out of band by a
+   Global Administrator**, never by the apply, because on `dev` it returned
+   `Authorization_RequestDenied` **and failed the whole run, Service Bus and ACS
+   included**.
+5. **Ruling: w17 flips none of the three.** They stay `false` on `demo`, exactly
+   as `demo/variables.tf:41-44` already prescribes — flipped by a **one-line PR
+   after `demo`'s own post-promotion acceptance**. w16 clause 32's binding line
+   carries forward verbatim: **no w17 task may flip
+   `Invitations__Mail__Enabled` or `guest_provisioning_enabled` on `demo`.**
+   Consequence to state in the acceptance doc rather than discover: **clearing
+   the promotion backlog does not clear the invitation walk** — that walk stays
+   owed until its own flip PR, and a `demo` walker must not read the promotion
+   as having delivered it.
+
+**41. What the final-integration task must run** (clause 34's shape, **inverted
+for a wave that does touch `infra/`**):
+
+- build **and** test both trees; `backend.yml:72-74` is unfiltered, so the
+  Postgres/Testcontainers suites gate here — **and so does
+  `AuthenticationSeamAbsenceTests` over this wave's new workflow** (clause 38).
+  A `127.0.0.1:5432 refused` is a **fixture gap**, never a re-run (ADR-014 w15
+  clause 3);
+- **`terraform fmt -check -recursive` + `validate` on *both* roots** — this is
+  the exact inverse of w16, which asserted an empty `infra/` diff.
+  `infra.yml:65-75` validates only the changed root's path filter, so **a
+  dev-only wiring passes `dev` and breaks `demo`** (clause 37). Assert both;
+- **the `infra/` diff is exactly the four files of clause 37** — module
+  `main.tf` + `variables.tf` + both env roots. Anything else is scope creep into
+  `infra/`;
+- **CI-drift assertion**: `git diff --name-only origin/main -- .github/workflows`
+  lists **exactly one added file** (the console workflow) — `backend.yml`,
+  `web.yml`, `infra.yml`, `demo-promote.yml` and the seed/backfill jobs
+  unchanged;
+- **no SAS/shortcut grep**: no `authorization-rule`, `SharedAccessKey` or
+  `ServiceBus__ConnectionString` anywhere under `.github/` or `backend/src`
+  (clause 30);
+- write **`docs/waves/w17-acceptance.md`** in the w14/w15/w16 shape — a `>`
+  blockquote per item (id / ADR / task), **Click path** → **Pass when:** →
+  `curl` with exact status codes → `psql` where only SQL proves it →
+  **Automated:** naming test classes → a closing **known gaps** table;
+- **README sweep**: `backend/README.md`; ⚠ **`infra/README.md:319-336` and
+  `:417-421`, which clause 37 falsifies** — the latter asserts that "the two new
+  V2 operator workflows need **no new Azure grant**", which is precisely what
+  NW-73 is, and the former states the CI principal holds *only* Key Vault
+  Secrets User; **both are updated in the infra PR itself**, not later. Plus the
+  stale `reprocess-tenant-documents.yml` citations still in **executable test
+  text** — `web/e2e/v2.spec.ts:117` and `:431` — and in `docs/ask-v2-acceptance.md`
+  and `.github/workflows/backfill-workspace-membership.yml`.
+
+**42. The acceptance doc's known-gaps table** (clause 35's shape). It **closes**
+w16's bulk-reprocess deferral row (NW-73 lands) and **carries**: the `demo`
+promotion outcome stated as an executed-or-not **fact** with the tag actually
+read (clause 40), **the invitation walk as still owed even if the promotion
+happens** (clause 40.5), the **two** outstanding HCP applies — clause 33's PR
+#118 and clause 37's — stated as applied-or-not facts rather than assumptions,
+the **W18 remainder of NW-63** (the bounding-box overlay, the widened gateway
+contract, the phrase-edit write path), the inherited w15/w16 rows that have not
+closed, and — from cloud-architect's ADR-005 w17 §24 — the fact that **w17 ships
+a page renderer and a bulk whole-tenant re-render trigger in the same wave**.
+
+**Not decided here** (unchanged): the queue contract and the message shape
+(ADR-027), the resources, SKUs and the module body (ADR-005 / ADR-007 —
+cloud-architect's), the RLS rules binding the console and the audit actor
+(ADR-009 / ADR-011 / ADR-022 — security-architect's), the console project's
+references (ADR-002 — software-architect's), and the identity plane and CI
+credential method (ADR-010 / ADR-015, **both explicitly unchanged by w17**: the
+new right is an Azure **data-plane role** on an existing principal, not a
+federated credential, a GitHub secret, a subject claim or a Graph right).
+
+### Round 3 (2026-09-15) — clauses 43–45
+
+Three round-3 footers landed on this seat's plane after it spoke:
+cloud-architect's **ADR-007 §9** (the HCP trigger), security-architect's
+**ADR-011 clause 26** (the destructive publish window) and **ADR-022 clause 6b**
+(`target_environment` narrowed to `dev`). All three are adopted. **Two of them
+correct this seat's own clauses**, and neither correction is softened here.
+Clauses 36–42 above are unchanged and byte-identical; nothing is superseded;
+ADR-005, ADR-007, ADR-011 and ADR-022 are **not edited** — they are their seats'.
+
+**43. Clause 40's mechanism is corrected: `demo`'s infra moves at the MERGE, not
+at the promotion — and clause 37's stated reason was wrong while its ruling
+stands.**
+
+Adopted from cloud-architect's ADR-007 §9 and **verified first-hand rather than
+taken on report**: `scripts/hcp_vcs_wiring.py:104-106` wires **both**
+workspaces — `WORKSPACE_NAMES = ("raffa-dev", "raffa-demo")` — to
+`EXPECTED_BRANCH = "main"` with `EXPECTED_TRIGGER_PREFIX = "infra/"`, and the
+comment above it (`:101-103`) names ADR-014 as the reason: *"the one mainline
+branch every workspace must track"*.
+
+- **What survives.** Clause 40.1's conclusion — *a `demo-v*` tag can go green end
+  to end while `demo` lacks clause 37's role assignment* — is **still true, and
+  true across a longer window**. Clause 40.2's ordering (apply, then tag) is
+  still right. Clauses 40.3–40.5 are untouched.
+- ⚠ **What is corrected, and it is this seat's own model.** Clause 40.1 recorded
+  that it *"corrects cloud-architect's framing that `demo` applies at its next
+  promotion"*. The correction was right and **incomplete**: this seat still
+  reasoned as though `demo`'s apply were an act *near* the promotion. It is not
+  triggered by the promotion at all. **PR 1's merge queues a VCS run on
+  `raffa-demo` at the same instant as on `raffa-dev`.**
+- ⚠ **The consequence that is this seat's**: the window in which `demo` is
+  green-but-ungranted **opens at PR 1's merge**, days before any promotion
+  decision, and it is **silent** — OQ-w17-ca-05 leaves `raffa-demo`'s auto-apply
+  unread (live HCP state, not in this tree) with `off` assumed, so the run sits
+  **queued** while every workflow on every branch is green. Saving the `demo`
+  confirm for the gate is precisely what makes it invisible.
+- **Corrected sequence, replacing clause 40.2's two acts with three, two of them
+  at PR 1**: (a) PR 1 merges → **two** queued VCS runs; (b) **both confirmed in
+  the HCP UI** — `raffa-dev` before NW-73 is dispatched even once (clause 44),
+  `raffa-demo` before the tag; (c) the `demo-v*` tag push, its number **read**
+  (`git tag -l "demo-v*"`), never assumed.
+- ⚠ **Clause 37's reason is corrected; its ruling is strengthened.** Clause 37
+  argued required-variable-plus-both-roots because *"a dev-only wiring breaks the
+  promotion path… one tag later, in the job nobody runs weekly."* **False.** A
+  dev-only wiring queues a **failing plan on `raffa-demo` in the same merge** —
+  sooner and quieter than this seat argued. Required + both roots is **more**
+  necessary, not less. The four files of clause 37 are unchanged.
+
+**44. ⚠ A premature dispatch is DESTRUCTIVE, not merely failed — and this
+falsifies this seat's own ADR-014 w17 clause 2.**
+
+Security-architect's ADR-011 clause 26 establishes that `RemoveChunksAsync`
+opens its own scope and commits its **own** `SaveChangesAsync`
+(`EmbeddingRetrievalService.cs:169`, `:181-182`) **before** `PublishAsync`
+(`DocumentReprocessService.cs:110-113`); on a publish failure the chunks are
+**gone and committed**, `SaveChangesAsync` (`:115`) never runs so nothing is
+requeued, and `auditWriter.WriteAsync` (`:117-126`) is past that commit, so **no
+`document.reprocessed` row is written at all**.
+
+- ⚠ **ADR-014 w17 clause 2 reads**: *"A17-S2 cannot pass before step 2. The
+  console will authenticate and then fail to send… or the first run reads as a
+  broken console."* The first run against a missing Send grant does **not** read
+  as a broken console. It **destroys a document's corpus, commits, and leaves no
+  trail** — and a loop that logs-and-continues destroys the **tenant's**.
+- **Security's clause 26 bounds the blast radius to one document** by ruling
+  stop-at-first-publish-failure. ⚠ **That bound is a property of an
+  implementation that does not exist yet**, so the sequencing note may not lean
+  on it: on the day of the first dispatch, the guard and the grant are both
+  unproven.
+- **Rule: the NW-73 workflow is not dispatched even once until the `raffa-dev`
+  VCS apply of clause 37 is confirmed landed in the HCP UI.** This leaves the
+  acceptance doc and becomes **gate content** (ADR-014 w17 round-3 clause 8). It
+  is not operator etiquette; it is a **data-destruction guard**.
+- Consequence for the acceptance walk: its first act is **the confirm**, not the
+  console. A17-S2's "run verify → console → verify again" (clause 39) begins one
+  step earlier than clause 39 states.
+
+**45. Clause 6b's `dev`-only narrowing is adopted; three delivery consequences it
+does not carry.**
+
+Security-architect's ADR-022 clause 6b ships `target_environment` **`dev` only**,
+narrowing the `options: [dev, demo]` this seat's clause 38 inherited. Adopted
+whole — the reasoning (a destructive 403 window is the moment the SAS shortcut
+clause 30 refuses looks like unblocking a pilot) is stronger than the symmetry it
+costs, and it costs the wave nothing because A17-S2 runs on `dev`.
+
+**(a) ⚠ The inherited `environment:` line's stated purpose is void on day one.**
+`verify-tenant-corpus.yml:52` is `environment: ${{ inputs.target_environment }}`
+— an **expression over the input**, not a literal — and the file's own header
+says why it exists: *"`environment:` so demo's required reviewers still gate a
+job that reads a Key Vault secret"* (`:15-16`). With `options: [dev]` that
+expression **can only resolve to `dev`**. The line **stays** — it binds the Key
+Vault secret read, it is the seam the widening needs, and clause 6a places it on
+the job holding `id-token: write`. But ⚠ **no task, DoD, runbook or acceptance
+line may describe it as a reviewer gate.** That is exactly the defect
+security-architect's own clause 6a filed against `infra.yml:121` — a recorded
+approval that attests to nothing — reappearing one file over, in the workflow
+NW-73 copies, with the false reason **written in its comment**. Clause 38 already
+recorded the honest `dev` gate ("repository write plus an explicit dispatch");
+**clause 6b makes that the only case**, so the honest wording is now the whole
+wording, and the copied comment is edited, not inherited.
+
+**(b) ⚠ Clause 6a's behavioural test has no reachable state under clause 6b.**
+6a rightly demands a **behavioural** assertion — *approval pending ⇒ zero
+messages on `extraction-events` and zero chunks deleted* — because a test
+asserting the key merely appears in the YAML **passes on the `infra.yml` shape**.
+On `dev` there is no "approval pending" state to enter unless `dev` carries
+required reviewers, and **environment protection rules are GitHub settings, not
+in this tree**: unreadable from this checkout, and this seat asserts nothing
+about them. Consequence for the decomposer: **do not write a DoD line for a test
+that cannot be run this wave.** When it cannot be made to pass, the reflexive
+repair is the YAML-shape assertion 6a exists to forbid — the clause would produce
+the defect it was written against. The behavioural test is a **W18 condition on
+the widening**, recorded with it in (c).
+
+**(c) The widening has an artefact, and it is one line of this seat's.** Clause 6b
+and ux-ui-designer's **OQ-w17-ux-05** (a corpus-health signal before NW-73
+widens) land on the same place: the console workflow's `options:` list. **Rule:
+widening it to `[dev, demo]` is a one-line PR**, gated on **three** things, none
+of which w17 delivers — the `raffa-demo` apply confirmed (clause 43), ux-05's
+corpus-health signal, and 6a's behavioural approval test made runnable (b).
+⚠ **And from PR 1's merge, `demo` holds a Send grant nothing can target**: clause
+37 keeps both roots wired because the variable is **required** and `raffa-demo`'s
+plan must stay green (clause 43), **not** because `demo` has a consumer. The
+acceptance doc states that as a fact, so no reader infers the console works on
+`demo` from the grant existing.
+
+**Still not decided here** (clause 42's list unchanged), and added to it: the
+console's loop semantics and its audit actor are **ADR-011 / ADR-022** —
+security-architect's — and clause 44 cites clause 26 as a **premise**, never
+restating or amending it.

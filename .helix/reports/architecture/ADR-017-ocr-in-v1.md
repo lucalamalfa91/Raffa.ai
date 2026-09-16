@@ -110,3 +110,78 @@ The account and the per-environment projects are Terraform-managed
 (ADR-008 amendment, same date); the "per-project connection" is an
 informational header value, not a resource. The fixture gateway keeps a copy
 of the retired scanner so CI stays provider-free.
+
+## Amendment (2026-09-15, wave w17 — `prebuilt-layout` stays uncalled, and why page anchoring already works)
+
+Serves **NW-63** (document viewer, highlighted OCR — server half). Nothing above
+is rewritten and **no model role changes**: `ocr` stays `prebuilt-read` /
+`2024-11-30` from Terraform, and the page budget is untouched.
+
+**1. `:103`'s rule is reaffirmed for w17, not weakened.** `prebuilt-layout`
+remains available on the account and **is not called**. NW-63's viewer needs no
+gateway change at all this wave.
+
+**2. Why the viewer can anchor today.** The amendment above already derives the
+page map from `pages[].spans` over the concatenated `content`
+(`stringIndexType=utf16CodeUnit`), and `DocumentIntelligencePage` carries those
+`Spans` on the wire (`DocumentIntelligenceContracts.cs:15-26,28-33`). Combined
+with the persisted `SourcePage` + `SourceSpan` on each evidence row
+(`ExtractionEvidence.cs:46-47`), **page-level anchoring is derivable from what is
+already stored** — the viewer can open the right page and highlight the right
+span without a new OCR call.
+
+**3. What is genuinely missing is bounding boxes, and only boxes.** A pixel-exact
+overlay needs `words` / `polygon` geometry, which `prebuilt-read` does not return
+in the shape we consume and which `AiOcrPage` (`:13`, page + text only) cannot
+carry. That is a **W18** decision with three parts, pre-shaped here so it is not
+re-litigated: (a) call `prebuilt-layout` and widen the wire contract and
+`AiOcrPage`; (b) the geometry columns **ADR-003 w17 clause 2 refuses this wave**;
+(c) the phrase-edit write path, which **ADR-029** declines to improvise.
+
+**4. Cost note for W18, not a decision here.** `prebuilt-layout` is the more
+expensive model and would apply per document, so the W18 decision is a cost
+decision as well as a contract one, and belongs at a table with cloud-architect
+seated.
+
+`waves/w17.md` records this under NW-63.
+
+## Amendment (2026-09-16, wave w18 — `prebuilt-layout` is called, the wire widens, and `AiOcrPage` grows geometry)
+
+Serves **NW-63r** (bounding-box overlay + phrase-edit — the W18 remainder). The
+split was pre-decided in ADR-029 and is not re-litigated; this footer discharges
+the **gateway-model half** that ADR-029 deferred with its shape fixed. The
+`ocr` role, the Terraform binding and the page budget are unchanged; **what
+changes is which model is called and what the wire carries.**
+
+**1. `prebuilt-layout` is now called, in addition to `prebuilt-read`.** The w17
+footer's clause 1 ("`prebuilt-layout` … is not called") is **ended**, not
+weakened: w17 shipped the viewer over real pages with text-level `SourceSpan`
+highlight, and a pixel-exact box overlay needs geometry that `prebuilt-read`
+does not return in the shape consumed. **`prebuilt-layout` supplies the
+`words` / `polygon` geometry**, while `prebuilt-read` remains the text path —
+the hybrid model the body already chose (Option 1). Both stay behind the AI
+Gateway on the same account; no new role, no new SKU (cloud-architect confirms
+the account already holds `prebuilt-layout`; no provisioning change).
+
+**2. The wire contract widens.** `DocumentIntelligencePage` gains
+`Words`/`Polygon` (geometry) beside its existing `Spans`
+(`DocumentIntelligenceContracts.cs:15-26,28-33`), and `AiOcrPage` (`:13`,
+page + text only) grows the matching geometry so the evidence rows can carry a
+pixel box, not just a utf16 span. The page map and `source.page` / `source.span`
+resolution are untouched.
+
+**3. Cost consequence, stated at the table with cloud-architect seated (the w17
+footer's clause-4 point).** `prebuilt-layout` is the more expensive model and
+applies **per document, only for the pages that need a box** — i.e. the box
+overlay is an **opt-in** render, not a default render of every page of every
+document. The per-document page budget (`AiGateway:Ocr:MaxPagesPerDocument`)
+cannot be silently widened to absorb it; cost stays metered by the existing
+page-count logging.
+
+**4. What this footer does not decide.** The geometry **columns** are ADR-003's
+(clause below), the phrase-edit **write path** and its provenance are ADR-029's
+(and ADR-027's re-derivation fence), the **overlay** is client-architect's, and
+the **affordance** is ux-ui-designer's. This footer owns only *"which model,
+what wire, on which account."*
+
+`waves/w18.md` records this under NW-63r.

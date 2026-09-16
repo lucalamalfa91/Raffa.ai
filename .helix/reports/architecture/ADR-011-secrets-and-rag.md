@@ -648,3 +648,251 @@ identity plane (ADR-022 w16 clause 4) and no other item touches a secret. The
 no-training posture, the RAG authorization-before-retrieval rule and the
 never-logged list are untouched; clause 14c adds one item to what a future surface
 may not disclose, and nothing is removed from it.
+
+## Amendment (2026-09-15, wave w17 — the trail gains a non-human writer and its first proposed reader outside the Admin ladder)
+
+Seat: security-architect (owner). Serves **NW-73** (the bulk console's rows and
+its log), **NW-71** (the auto-accept row) and **NW-20** (the 360 `activity`
+member, ruling OQ-w17-sa-03). Everything above is unchanged and in force — the
+body, the four early amendments, both w15 footers and the w16 footer,
+`Status: accepted`, nothing superseded. Clauses are numbered **20–24**, continuing
+the w16 footer. **Clause 14c reserved a re-review by this seat for any web surface
+onto the audit trail; NW-20 is that surface, and clause 22 is that re-review.**
+
+### 20. S17-2 — the console's actor, and the one string CI must never control
+
+Per-document rows carry the fixed literal **`system:bulk-reprocess`**, inheriting
+clause 16 — which already says so by name (`:611`, "W17's operator console
+inherits this ruling"). The form satisfies 16a (`:` cannot occur in an Entra
+`oid`, so the namespaces stay provably disjoint) and 16b (greppable).
+
+**20a — no CI-controlled string is ever interpolated into `AuditEvent.Actor`.**
+Not `github.actor`, not a run id, not a workflow input. `Actor` is `varchar(200)`
+(`AuditEventConfiguration.cs:20`) on a table whose UPDATE/DELETE trigger makes
+every row **permanent and uncorrectable** (clause 18). A wrong actor string is not
+a defect you fix next wave; it is a **falsified trail forever**. The console cannot
+omit the value by accident either — `actor` is a required positional parameter
+guarded by `ArgumentException.ThrowIfNullOrWhiteSpace`
+(`DocumentReprocessService.cs:62-65`) — so the only real risk is supplying a
+*plausible* wrong one.
+
+**20b — OQ-w17-sec-01 is ruled: human attribution is recorded, and it rides in
+`Detail`.** `system:bulk-reprocess` is correct and **loses who asked for it**,
+which for a privileged bulk mutation is a real gap. The console therefore writes
+**one run-scoped row before the loop** — actor `system:bulk-reprocess`, detail
+`requestedBy=<triggering actor>; run=<run-id>; tenant=<id>; count=<n>` — so the
+trail answers "a human asked, here is which run" without any identity being
+**asserted** by a field that means "this principal did it". `Detail` is free text
+and asserts no identity; `Actor` asserts one. The distinction is the whole rule.
+The action constant follows the existing `document.*` vocabulary and its placement
+is the task's; **the requirement — attribution present, and never in `Actor` — is
+this seat's and is not optional.** If a council later refuses the extra row, the
+fallback is the CI run record alone, recorded here as the **weaker** option
+because it lives outside the tenant's own trail.
+
+### 21. S17-5 — the auto-accept row names fields, never values
+
+NW-71's decision is written by the pipeline with no HTTP caller, so the actor is
+**`system:extraction`** under clause 16. **One row per document per extraction
+run, not one per field** — a per-field row turns a routine extraction into
+dozens of permanent rows and buys nothing the document-level row does not carry.
+
+**21a — the content rule.** Field **names** and confidence **numbers** are
+permitted; **a field's value never enters the audit trail.** The precedent is
+already in the product: `DocumentValidationService.cs:124-135` comma-joins field
+names. Confidence is quality metadata *about* an extraction, not contract content;
+a value is contract content. Clause 18 is why this is absolute rather than
+preferred — the table is append-only, so **a value written once cannot be
+removed**, and the customer-content posture in the body above would be permanently
+breached by a single careless interpolation.
+
+**21b — the trail must always distinguish the two acceptances.** An auto-accept
+carries `system:extraction`; a human validation carries the caller's resolved
+subject (clauses 15–16). This is the audit-plane half of ADR-001 w17 clause 8's
+three states: if the trail cannot tell them apart, "accepted" stops meaning
+anything the day someone asks who accepted it.
+
+### 22. OQ-w17-sa-03 — the 360 `activity` member: **permitted as a contract-scoped provenance projection, refused as an audit reader**, and clause 14c is the reason the distinction must be structural
+
+Software-architect raised this correctly as *"a security question before it is an
+architecture one"*. The concern is verified, not inferred:
+
+- `GET /api/audit` is **live `Admin` membership only** (clause 14's ladder).
+- `GET /api/contracts/{id}` — the 360 — is gated by
+  `ICallerContext.ResolveTenantAsync`: identity, then the tenant header as an
+  authorized selector, then **membership**, 401/400/404
+  (`ContractsEndpointExtensions.cs:77`, `:101-105`). **There is no Admin check.**
+
+So a 360 tab is readable by **any live member of any role**. Projecting the audit
+trail there, naively, moves an **Admin-only** read onto an **any-member** surface.
+That is the widening, stated as a fact rather than a worry, and it is exactly the
+reversal clause 14c said must not land as a routine addition.
+
+**Ruling.** The `activity` member is permitted **only** in the following shape,
+and the shape is what makes it a different read rather than the same read with a
+filter:
+
+1. **Contract-scoped, never tenant-wide.** The query is keyed by the contract id,
+   inside the request's already-verified tenant scope. No `?tenantId=`, no "all
+   activity" mode, no pagination over the trail. A tenant-wide activity feed is
+   the audit reader and stays Admin-only.
+2. **A closed allow-list of action constants — default-deny.** Only the whitelisted
+   actions are projected; **an audit action added later is invisible until
+   explicitly added.** A blocklist is refused: with a blocklist every future action
+   leaks by default, and the leak arrives in a task that never mentions security.
+3. **Names, never values** — clause 21a, same rule, so the two items cannot drift
+   apart. The timeline answers *when* and *by whom* and *what changed*; it never
+   carries the value of an extracted fact.
+4. **Actor rendering is bounded by clause 14c's own test — no actor identifier
+   beyond what the member list already shows.** `system:<component>` renders
+   verbatim; a human event renders as the display name the member list already
+   discloses; a **raw subject GUID is never rendered**, and an unresolvable actor
+   (a removed member) renders as a removed member, never as an identifier.
+5. **The Admin ladder is not touched.** `/api/audit` keeps clause 14's ladder
+   unchanged, and this projection does not become a second route into it.
+
+**22a — the test that keeps the two reads apart, and it is the one that matters.**
+A **non-Admin member** sees the contract's activity **and still receives 403 from
+`GET /api/audit`**. That single test states as a fact what this clause states as a
+rule; without it, "these are different reads" is a claim in a document. The task
+also carries: another tenant's events never appear for the same contract id (zero
+rows, no 500), and an audit action **not** on the whitelist never appears.
+
+**22b — what is not granted.** This is not the reversal clause 14c contemplated.
+An actual audit **screen** — a general trail reader — remains Admin-only and still
+owes its own ADR-020 row and a fresh re-review from this seat. Nothing here
+reduces that.
+
+**22c — the honest alternative stands.** If the projection does not fit the wave,
+ADR-001 w17 clause 3's instruction holds: **remove the member and delete the
+record type.** This seat prefers a deleted member to a rushed one, and explicitly
+refuses the third option — an unconditional `[]` — because an empty array is a
+claim that nothing happened.
+
+### 23. S17-4 — what the console may print, because a CI log is a retained disclosure surface
+
+Permitted: tenant id, document ids, counts, processing statuses, job ids — and
+file names **only** because `verify-tenant-corpus.yml:143` already prints them for
+the same tenant into the same sink, so nothing new is disclosed and the precedent
+is the product's own. **Never**: chunk text, extracted field values, document
+bytes, prompt or model output, or any Key Vault value — the `::add-mask::`
+discipline at `:122` stays. This extends the never-logged list of the w15 footer
+to a sink that list did not contemplate: **GitHub Actions logs, which are retained
+and readable by everyone with repository access — an audience that is not the
+tenant.**
+
+### 24. Unchanged, and the wave's secret delta
+
+w17 adds **no Key Vault secret, no vault entry, no new client credential and no
+new CI credential**: the console reuses the `postgres-connection` secret the
+application already uses (ADR-009 w17 clause 1, rule 5) and the deploy principal's
+**existing** federated credential. The **no-training** posture, the **RAG
+authorization-before-retrieval** rule and the never-logged list are untouched;
+clause 23 adds a sink to the last of these and clause 22 adds one permitted
+projection under five conditions. **Nothing is removed from any of the three.**
+
+### 25. Round 2 — clause 22's conditions need a query that does not exist yet, and the existing reader cannot be narrowed into it
+
+Clause 22 permitted the `activity` projection under five conditions. This round
+verified **where those conditions have to be implemented**, because an unbuildable
+condition is a wish.
+
+**The existing reader cannot serve this projection, and it is important that it
+cannot.** `IAuditQueryService` exposes exactly one method —
+`GetEventsAsync(TenantId, CancellationToken)` (`AuditQueryService.cs:68-69`) —
+which returns the **200 most recent events for the whole tenant**
+(`MaxResults = 200`, `:66`; `.Where(e => e.TenantId == tenantId)`,
+`OrderByDescending`, `.Take`, `:77-80`), with **no contract filter and no action
+filter**. That is the Admin-only tenant-wide feed clause 22 explicitly **refuses**
+to put on a 360 tab. So NW-20 cannot reuse it, cannot parameterise it into
+serving both, and must add a **new, separate method**.
+
+**That new method is the single moment conditions 1 and 2 are either implemented
+or silently lost**, and both belong in it as query predicates, not in the host
+projection that consumes it:
+
+- **condition 1 — contract-scoped**: the query filters on the resource
+  (`ResourceType`/`ResourceId`) for one contract id. There is **no `tenantId`
+  parameter that widens it**, no "all activity" mode and no pagination over the
+  trail; a caller cannot reach the tenant-wide shape by passing a different
+  argument. The two methods stay **two methods** — the Admin feed keeps its ladder
+  (condition 5) and this one has no way to become it;
+- **condition 2 — closed allow-list, default-deny**: the permitted `Action`
+  constants are a `static readonly` set applied **inside** the query, so an audit
+  action added by a later, unrelated task is **invisible here until someone adds
+  it deliberately**. A blocklist is refused for the reason clause 22 gives: with
+  one, every future action leaks by default.
+
+**Condition 3 keeps the mechanism software-architect supplied** — `AuditEvent.Detail`
+is never projected at all, because it is unbounded `text` that already carries
+contract-derived values. Recorded together here so the three conditions that are
+*query shape* are read as one rule rather than three preferences.
+
+**Why this is an ADR clause and not a task note**: the obvious implementation of
+"show this contract's activity" is to call the reader that already exists and
+filter its 200 rows in memory. That version is **tenant-wide at the database**,
+returns whatever the last 200 tenant events happened to be, silently drops a
+contract's older events, and has no allow-list — it satisfies none of the five
+conditions while looking exactly like the feature. **The isolation half of the
+same decision is ADR-009 w17 clause 5b**, which rules the method lands on
+`AuditQueryService` rather than in a host-composed query, so the scope that makes
+it safe and the predicates that make it permitted live in one place.
+
+### 26. Round 3 — the chunk delete commits on its own, so a failed publish is destructive; under NW-73 it is destructive tenant-wide, and it leaves no trail
+
+Raised by re-reading the path NW-73 drives **after** ADR-007 w17 §9 moved *when*
+the `demo` grant lands. **Verified first-hand, and it corrects a comment in the
+product's own source.**
+
+`DocumentReprocessService.cs:107-109` states the safety property a bulk console
+would inherit: *"Publish before commit … a publish failure fails the request with
+nothing changed."* **True of the DbContext, false of the embeddings.**
+`RemoveChunksAsync` runs **first** (`:99-101`), opens **its own** tenant scope
+(`EmbeddingRetrievalService.cs:169`) and calls **its own** `SaveChangesAsync`
+(`:181-182`). So when `PublishAsync` (`:110-113`) throws:
+
+- the document's chunks are **already deleted and committed** — Ask can no longer
+  cite the document;
+- `SaveChangesAsync` (`:115`) never runs, so the job is **not** requeued and the
+  status is **not** persisted — nothing will re-index it;
+- `auditWriter.WriteAsync` (`:117-126`) sits **after** that commit, so **no
+  `document.reprocessed` row is written at all**.
+
+A destructive act, no recovery path, and **no trail** — the last of which is this
+ADR's own subject. Clause 15 rules that an audit row which cannot name its actor
+is not written; here there is **no row to name anything**.
+
+**The failure is reachable in exactly the window this table just created.**
+ADR-007 w17 §9 rules that `demo`'s role assignment lands on the **merge**, and
+OQ-w17-ca-05 leaves `raffa-demo`'s auto-apply **unread, with `off` assumed** — so
+`demo` can sit green with **no topic-scoped Send grant**, and the first publish
+there returns **403**, per document, for as long as that state lasts.
+
+**Three rules, and the third is the one an implementer will want to break:**
+
+1. **The console stops at the first publish failure.** Not "log it and continue to
+   the next document" — the obvious shape, and the one that turns a single 403
+   into the tenant's entire corpus. Stopping is not tidiness: past the first
+   failure every iteration **destroys and repairs nothing**.
+2. **It exits non-zero and prints processed/total** — OQ-w17-sec-04 unchanged: a
+   partial run must never read as a completed one.
+3. **The delete-before-publish order is not reversed.** Deleting *after* a
+   successful re-index would make the loop safer and would leave **superseded text
+   citable by Ask** in the window — precisely what clause 3 (authz before
+   retrieval) and the code's own `:95-98` ("Replace, never merge … honest rather
+   than wrong") exist to prevent. The failure is made **rarer and louder, never
+   reordered.**
+
+**A correction against this seat's own round-1 ruling.** OQ-w17-sec-04 said
+re-runs are "safe by construction" because `ReprocessAsync` requeues idempotently
+and `MessageId` collapses duplicates. That holds against **partial completion**,
+which is what that OQ asked about. It does **not** hold against a **missing Send
+grant**: there the re-run cannot reach the publish at all, so each attempt deletes
+another document's chunks and repairs none. The ruling stands **with its scope
+named**, which it did not have.
+
+**No application code is prescribed and no defect is filed against the existing
+single-document endpoint**: its blast radius is one document an Admin is watching,
+and the comment's inaccuracy is recorded here rather than repaired by this
+council. What binds is that **NW-73 may not inherit that comment as if it were
+true** — the bulk task's DoD carries rules 1–3 in its own words.

@@ -335,3 +335,150 @@ satisfied by the sentence itself.
 **6. Unchanged.** `## Token set (locked)`, `## Type scale (app)`,
 `## Component catalogue (locked)`, `## Accessibility baseline (locked)`, the three
 confidence rows, the w14 footer, and w15 clauses 1–3.
+
+## Amendment (2026-09-15, wave w17 — one bar, three decisions, and an accent released from confidence)
+
+Continues the **w15 re-entry footer** above (`:296-337`, clauses 4–6), the w15
+footer (`:232-294`, clauses 1–3) and the w14 footer (`:146-230`), every clause of
+which stays in force **except the evidence claim corrected in clause 10**;
+numbering continues from them. Written by **ux-ui-designer**, owner of this ADR
+(`INDEX.md:52`). Serves **NW-71, NW-66, NW-65, NW-64, NW-62, NW-72, NW-63**.
+Baseline `d3d2d24`.
+
+This is the **first footer since this ADR was accepted that changes the Semantic
+mapping's confidence rows**; every earlier one stated explicitly that it did not,
+and the w14 footer's §6 deferred them to this wave by name. **No token, no
+type-scale row and no component changes here**: the whole wave is assembled from
+the locked catalogue.
+
+**7. The three confidence rows become two bands and a decision vocabulary.** The
+screen no longer renders a *band it computed*; it renders the **server's
+persisted decision** (ADR-003 w17 clause 1; ADR-012 w17 clause 34 — the web never
+recomputes it). Rows `:100-102` are replaced by:
+
+| Server decision | Treatment | Label |
+|---|---|---|
+| `auto_accepted` | `.tag-neutral` | `Accepted automatically · NN%` |
+| `human_accepted` | `.tag-neutral` | `Accepted by you` — **no percentage** |
+| `review_required` | `.tag-outline` | `Review · NN%` — blocks consequential use |
+
+- **`human_accepted` carries no percentage.** A human decision has no confidence.
+  Printing the model's score beside a person's judgement asserts that the
+  judgement is itself uncertain, which is false, and it is the same class of
+  error as clause 8's rounding: a figure placed next to a word that denies it.
+- **The two accepted states are distinguished by the label, never by the
+  variant.** They share `.tag-neutral` deliberately. ADR-001 w17 clause 8 requires
+  them to stay distinguishable; `## Accessibility baseline` (`:124-125`) requires
+  the **text** to be the carrier; and OQ-w17-cl-02 has just found a live defect
+  (`contract360ViewModel.ts:575`) where a screen infers a *decision* from a
+  *variant*. Minting a third variant to separate them would build the next
+  instance of that defect into the system on purpose.
+- **`.tag-accent` leaves confidence entirely.** Row `:101` ("Flagged · 88%") is
+  retired, so accent is reserved for `failed` (`:105`), High risk (`:106`), the
+  invited/critical markers — and nothing else. The one-accent rule
+  (`design-system.md:9`, w15 clause 5) gets **stronger**, not weaker: the middle
+  band was accent's largest consumer, on four surfaces (`WhyClauses.tsx:56`,
+  `FactTable.tsx:35`, `contract360ViewModel.ts:574`, `reviewViewModel.ts:282`).
+  Retiring it is the whole point of moving to one bar.
+- **Blocking**: `isConfidenceBlocking` (`semantics.ts:48-49`, `< 80`) is replaced
+  by **"not accepted"** (ADR-001 w17 clause 2). The design-system consequence is
+  only that the disabled CTA keeps its **visible reason** (`:119-121`), and that
+  reason now counts `review_required` fields instead of naming a threshold.
+- **Vocabulary fence**: `officialized` is an **ADR word** and never appears on a
+  screen. The screen says accepted, you decide, or nothing.
+
+**8. Every displayed confidence floors; it never rounds.** `semantics.ts:33`
+currently applies `Math.round` before building **every** label. At one bar that
+is not a cosmetic choice: a `review_required` field at `0.895` renders
+**`Review · 90%`** — the bar's own number printed beside the word that denies it.
+A tag that contradicts itself inside one string is not a rounding artefact; it is
+the product telling the user two things at once.
+
+- Rule: `0.895 → 89%`, `0.90 → 90%`, `0.999 → 99%`. **A figure is never rounded
+  up to a value the fact does not hold.**
+- This is **presentation only** — the decision stays the server's, taken on the
+  raw stored double with no rounding before the compare (ADR-024 w17 clause A1).
+  The two rulings compose: the server decides unrounded, the screen floors.
+- It is a **one-line code change in `semantics.ts`**, which single-writer
+  constraint 2 gives **NW-71** — not a copy note. Recorded as a token-level rule
+  because two seats found the same line from two directions in the same round
+  (this seat from the semantic mapping, client-architect from the call site,
+  OQ-w17-002 / ADR-001 w17 clause 2).
+- Test-locked: `tests/styles/semantics.test.ts:15-37` is rewritten by that task.
+
+**9. The clause risk enum is relabelled into product words — and it is a
+label-only change, on one function.** Product-owner's clause 6 supplies the
+words: Critical/High → **Push to change**, Medium → **Worth raising**, Low →
+**Standard terms**. This seat's lane proposed a different four-word set; **the
+words are product-owner's and the lane's set is withdrawn**. What this seat rules
+is the treatment, and the answer is *nothing moves*:
+
+- **Semantic-mapping row `:106` is unchanged** (Risk High `.tag-accent`;
+  Medium/Low `.tag-neutral`). `getClauseRiskTag`
+  (`contract360ViewModel.ts:255-259`) **already** computes `High || Critical →
+  accent`, everything else → `neutral`, with the **label** carrying the meaning,
+  and its own docstring (`:254`) already says *"Text first, colour only as
+  emphasis."* The variant expression stays byte-identical; only the strings
+  change. Medium and Low keep sharing `.tag-neutral`, distinguished by their
+  words — the precedent is already in the file, and `:124-125` requires exactly
+  that.
+- **Scope fence, and it dissolves a collision.** The relabel touches
+  `getClauseRiskTag` in `contract360ViewModel.ts` **only**.
+  `semantics.ts:getRiskTag` (`:91-96` — "High risk" / "Medium risk" / "Low risk")
+  is a **different function on different surfaces** and is **not** renamed:
+  renaming it would silently change Portfolio and Renewals rows that no item in
+  this wave touches, **and** it would put NW-66 into `semantics.ts`, which
+  constraint 2 reserves for NW-71. The fence is what keeps that file
+  single-writer without spending a phase.
+- **A null risk level stays null.** `:256` returns `null` when the clause carries
+  no risk level and **must keep doing so**: "Standard terms" is a statement about
+  the clause, so synthesising it for a clause whose risk was never determined
+  invents precisely the kind of fact this wave exists to stop (w14 clause 3,
+  ADR-001 w17 clause 5).
+- **Legend**: the three words are stated once as `.micro-meta` in the hint slot
+  the component already has (`WhyClauses.tsx:29`). Because the words no longer
+  name a risk level, the screen must say what they mean; a vocabulary the user
+  has to infer is a vocabulary that means nothing.
+
+**10. Correction — the w14 footer §6 reached the right conclusion on evidence
+that is not on main.** §6 (`:224-230`) declines to ratify the three confidence
+rows on the grounds that *"`semantics.ts:9-13` cites a HITL decision of
+2026-09-10 ('≥90% is auto-accepted … Supersedes the earlier §7.3 bands')"*.
+
+**On `d3d2d24` that docstring says no such thing**, verified first-hand at this
+table: `semantics.ts:9-13` cites this ADR's *"Semantic mapping (locked)"* and
+`design-system.md`'s, and states that **both carry spec §7.3's thresholds** (>95
+accept, 80–95 flag, <80 review). There is **no `90`**, no HITL date and no
+supersession sentence anywhere in the file. The 90 % comment exists only in an
+uncommitted operator stash, which is not an oracle.
+
+- **§6's conclusion was right and its evidence was not.** The bands *were* stale;
+  the authority is the **2026-09-10 HITL ruling itself**, carried by the raw file
+  and `w17-requirements.md`, not by a code comment.
+- The body is **not edited** (append-only): §6's text stands and a reader is sent
+  here. Recorded because an implementer following §6's citation would find no such
+  line and could reasonably conclude the staleness claim was invented — and then
+  "restore" the three bands.
+- §6 also names **NW-65** as the item that would reconcile them. The
+  reconciliation is delivered by **NW-71** (the threshold and the vocabulary) and
+  **NW-65** (the layout that stops rendering the tag on Contract 360), so the
+  trace from §6 lands on real tasks.
+
+**11. Where each treatment may appear after this wave.** **No confidence tag
+renders on Contract 360 at all** (ADR-001 w17 clause 6): every fact that screen
+shows is officialized and carries page · section. So on a 360 fact row
+`.tag-neutral` means **leverage**, and on Review it means **accepted** — one
+treatment, two screens, two meanings, and **no screen where both meanings are in
+play at once**. That last clause is the load-bearing one: a shared treatment
+across screens is safe only while it holds, so the next item that puts a
+confidence tag back on Contract 360 must return to this clause first.
+`.tag-outline` keeps `needs_review` (`:104`), `Not added` (w15 clause 1) and now
+`review_required` (clause 7).
+
+**12. Unchanged.** `## Token set (locked)`, `## Type scale (app)`,
+`## Component catalogue (locked)` — **no new component this wave**: the clause
+"specchietto" is the existing `ClauseHighlight`, the fourth KPI cell is the
+existing cell shape, and the viewer is composed from `.btn-ghost`, `.table` and
+surface tokens — `## Accessibility baseline (locked)`, rows `:103-108`, the w14
+footer apart from clause 10's correction, and w15 clauses 1–6. This footer
+creates **no new ADR** and supersedes nothing.

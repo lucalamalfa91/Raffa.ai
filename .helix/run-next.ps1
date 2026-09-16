@@ -67,19 +67,13 @@ if ($Check) {
     exit $LASTEXITCODE
 }
 
-# Passata 1 runs on Claude Code Opus (operator decision 2026-09-08), billed to
-# the Max login (PROCESS.md D11): blank the Hub/Console variables with -Max.
-$opus = $env:ANTHROPIC_DEFAULT_OPUS_MODEL
+# Passata 1 runs on DeepSeek chat (operator 2026-09-15), not Claude Code.
+# Passata 2 (-Launch / -LaunchOnly) still bills Claude Code Max via run.ps1 -Max.
 if (-not $LaunchOnly) {
-    if ([string]::IsNullOrWhiteSpace($opus)) { throw "unset ANTHROPIC_DEFAULT_OPUS_MODEL in .env (Claude Code Opus id, e.g. claude-opus-5)" }
-    if ($opus -match '^claude-opus-4') { Write-Warning "ANTHROPIC_DEFAULT_OPUS_MODEL=$opus looks stale; the current Opus id is claude-opus-5" }
-}
-if ($Max) {
-    Write-Host "[run-next.ps1] -Max: blanking Hub URL/token so Claude Code uses Max login"
-    foreach ($name in @("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL")) { Set-Item -Path ("Env:" + $name) -Value "" }
-}
-elseif (-not [string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KEY)) {
-    throw "ANTHROPIC_API_KEY is set. Passata 1 on Claude Code Opus bills the Max login, not Console API. Unset it or pass -Max."
+    foreach ($name in @("DEEPSEEK_BASE_URL", "DEEPSEEK_API_KEY", "DEEPSEEK_REASONING_MODEL", "DEEPSEEK_FAST_MODEL")) {
+        $val = [Environment]::GetEnvironmentVariable($name)
+        if ([string]::IsNullOrWhiteSpace($val)) { throw "unset $name in .env (DeepSeek passata 1)" }
+    }
 }
 
 $allowed = @("next-design", "next-from-council", "next-from-table", "next-from-decomposition", "next-plan-close", "next-intake-phase", "next-council", "next-decomposition", "next-check")

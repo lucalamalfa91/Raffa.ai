@@ -331,3 +331,104 @@ path; the client cost of NW-21 is still **zero**, so **ux-ui-designer stays
 unseated**. Assumption 2 above is now **Fence 1** rather than a risk: A16-8's
 deterministic close is the explicit-id path, and a resolver that never fires on
 the pilot corpus is a **pass**, never a failed acceptance.
+
+## Amendment (2026-09-15, wave w17 — realized money is read from the record that already exists)
+
+Serves **NW-72** (Savings KPI realized amount). Nothing above is rewritten; §D1–D6
+stand, and the money-rendering fence is **lifted and replaced**, not deleted, by
+ADR-001 w17 clause 1 — this footer is the server half of that replacement.
+
+**1. `Realized` stops summing estimates and reads the verified record.** Today
+`SavingsKpiCalculator.cs:103-104` sums `EstimatedSavingsLow/High` and calls the
+result "realized"; the file's own comment at `:46-54` already names this a gap.
+The new source is the **`RealizedSavings`** rows — the audit-tracked record that
+**exists and is written** (`RealizedSavings.cs:26`, written
+`SavingsOpportunityService.cs:325`) but has had **no reader anywhere** (raw-file
+correction 1: the item's status is PARTIAL, not missing).
+
+**2. The shape changes because a verified figure is not a band.**
+`SavingsRangeByCurrency` is wrong here: an estimate is a range, a realized amount
+is **one number** (`RealizedSavings.cs:45`). A new
+`RealizedSavingsByCurrency(Currency, Amount, Count)` replaces it, and
+`SavingsKpiSummary.Realized` (`:59`) therefore **changes type**. That is a
+**deliberate wire break on one field** — flagged to client-architect rather than
+smuggled through, and the reason NW-72 appears in the OpenAPI constraint list.
+`Count` is carried because "€X verified across N outcomes" is the honest label;
+a bare total invites the question the row cannot otherwise answer.
+
+**3. Grouped by currency, never summed across them.** No conversion service
+exists (`RealizedSavings.cs:40-44`), so a cross-currency total would be an
+invented number. Per-currency grouping is the only honest aggregate, and the
+client already renders exactly this shape — `savingsViewModel.ts:91` formats one
+line per currency via `lines[]`, so **no new cell shape is owed**.
+
+**4. Three fences carried forward unchanged.** An outcome with
+`savingsPropagated: null` contributes to **no** total (§D5 fence 2 already
+binds). `RealizedAmount` stays **PATCH-only** and is never a KPI source. And the
+calculator **stays pure** (Appendix C rule 6, `:64-67`): it takes a **second
+input sequence** rather than a service, with `SavingsKpiQueryService.cs:32-36`
+projecting `RealizedSavings` alongside `SavingsOpportunities`.
+
+**5. Stale-comment sweep travels with the task**, because both comments assert
+the gap this clause closes: `SavingsKpiCalculator.cs:46-54` and
+`SavingsOpportunityStatus.cs:37-44`. A comment that still says "no reader exists"
+after this wave is a false statement in the tree.
+
+`waves/w17.md` records this under NW-72.
+
+**6. `Realized` keeps its name; only its type changes — nothing is renamed this
+wave** (round 2, after ADR-001 w17 clause 10). Product-owner's fence — the screen
+word and the domain word may differ, and nothing is renamed to align them — is
+adopted whole, with one precision this seat owes because the wire is its own:
+clause 10 calls the break declared in clause 2 above "the only **rename** this
+wave", and it is **not a rename**. The member keeps the identifier `Realized` and
+the wire keeps the property key `realized`; what changes is the **type** behind
+that key (`SavingsRangeByCurrency` → `RealizedSavingsByCurrency`). Stated as a
+rename it invites the opposite error: an implementer renaming the wire field to
+`verified` to match the new screen label would ship a **second, undeclared** break
+on top of the declared one — and it would break `client.ts:985-987`, which derives
+`SavingsKpiSummaryBody` from the generated `GetSavingsKpisResponses` **by that
+key**, so the failure would surface as a typecheck error in an unrelated file.
+**Nothing is renamed this wave**: `RealizedSavings`, `RealizedAmount`,
+`realizedAmount`, `Realized` and `realized` all keep their names. **"Savings
+verified" is a presentation string** (ADR-001 w17 clause 10, ADR-020 w17 §15) and
+stops at the view model: it must not appear as a DTO member, a wire property, a
+column or a domain type. Clause 10's ruling is otherwise unchanged — this corrects
+one word of its fence, not its decision.
+
+**7. Correction to clause 6: the wire key is `savingsRealized`, not `realized`**
+(round 3). Clause 6 fenced "the member keeps the identifier `Realized` and the
+wire keeps the property key `realized`". The first half is right; **the second
+half names a key that does not exist.** Raised by client-architect (ADR-012 w17
+§42) and *offered* to this seat rather than asserted over it; verified
+first-hand before adopting:
+
+- `web/openapi/raffa-api.v1.json:4960-4962` lists **`savingsIdentified`** and
+  **`savingsRealized`** in the response's required array, and `:4991` / `:5051`
+  define them. There is **no `realized` property** on this payload.
+- `client.ts:987` derives `SavingsRangeByCurrencyBody` from
+  `SavingsKpiSummaryBody["savingsIdentified"]`, and `savingsViewModel.ts:110`
+  reads `kpis.savingsRealized`.
+- The error was assuming the serialized key equals the C# member name. It does
+  not: the payload prefixes the whole family — `annualSpendAnalyzed`,
+  `savingsIdentified`, `savingsInProgress`, `savingsRealized`.
+
+**Corrected fence**: the member keeps the identifier `Realized`
+(`SavingsKpiSummary.cs:59`), **the wire keeps the property key `savingsRealized`**,
+and only the **type** behind that key changes (`SavingsRangeByCurrency` →
+`RealizedSavingsByCurrency`). Clause 6's decision is unchanged — this corrects
+one key name inside it.
+
+**Why a wrong key in a fence is not cosmetic.** Clause 6 exists to stop an
+*undeclared second break*. As written it hands an implementer two ways to cause
+one: rename `savingsRealized` → `realized` **to comply with the fence**, or find
+no `realized` key, conclude the fence does not apply here, and rename freely
+toward the new screen label. Both end exactly where clause 6 was written to
+stop. A fence naming a key that is not in the contract is worse than no fence.
+
+**One citation inside clause 6 is also corrected**: `client.ts:985-987` does not
+index the realized key at all (`:987` indexes `savingsIdentified`), so the break
+does **not** surface there. It surfaces at the **call site** —
+`savingsViewModel.ts:110` — and client-architect's ADR-012 w17 §43 already puts
+that line in NW-72's DoD, which is the operative instruction; this clause does
+not restate it. **Nothing is renamed this wave** still stands, unqualified.

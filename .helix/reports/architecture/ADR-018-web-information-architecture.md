@@ -502,3 +502,175 @@ Raffa.ai kept a record of; the local row is a file the product never stored.
 treatments and CTAs of the two states added by clause 1, the counting table of
 clause 2 and clause 2b's `needsAttention` definition, clause 3's resolution, and
 the badge rule of clause 4.
+
+## Amendment (2026-09-15, wave w17 — the document viewer joins the route map as a citation-reached state)
+
+Continues the **w15 re-entry footer** above (`:456-505`, clauses 6–8) and the
+w15 footer before it (`:301-455`, clauses 1–5), every clause of which stays in
+force; numbering continues from them. Written by **client-architect**, which owns
+this ADR's **route** half (`skills/next-seats.md`); ux-ui-designer owns its
+**IA, states and copy** half and its clauses 1–8 are untouched here. Serves
+**NW-63** and **NW-66**. Baseline `d3d2d24`.
+
+Every w14, w15 and w16 footer of this ADR recorded that **no route was added,
+moved or removed**. **This one adds a route** — the first since w14's public
+route — so it is stated plainly rather than buried in a consequence.
+
+**9. The document viewer is a route, and it is a state reached from a citation —
+not a rail destination.** The V2 map (`:89-103`) gains exactly one line:
+
+> `/documents/:documentId/viewer?page=<n>&clause=<clauseId>` — the page image of
+> an uploaded document, with `page` 1-based and `clause` optional.
+
+Three decisions are folded into that line and each is load-bearing.
+
+**(a) The current page lives in the URL, not in React state.** A reload and a
+deep link must land on the **same page**, which is this ADR's own persistence
+posture and ADR-012 §1's: a screen's position in a document is a fact the user
+can share and return to, not a value that exists only while a component is
+mounted. A viewer that holds the page in `useState` silently resets to page 1 on
+every reload, and the citation that sent the user there stops being reproducible.
+
+**(b) It reuses the citation-landing convention that already exists.** The pair
+`?clause=<id>&page=<n>` is **already** how this product lands a citation, on
+`/contracts/:contractId` (`contract360/index.tsx:52`, `:65-67`, `:113`). NW-63
+adopts it **verbatim** rather than inventing a second scheme. Two spellings for
+one idea is how a convention stops being one, and a citation deep-link is
+precisely the surface where the two would be compared side by side.
+
+**(c) `navItems.ts` gains no row and has zero writers this wave.** The viewer is
+reached from a citation — from Contract 360's Why clauses (NW-66), from Ask, and
+from the Documents row — never from the left rail. This is the **same call the V2
+IA already made for Review** (`navItems.ts:18`, where Review is a *state of
+Documents*, `/documents?review=:id`, and not a rail row), so it is consistent
+rather than novel. Recorded explicitly because the decomposer needs to know the
+file is uncontended: a task that "adds the viewer to the nav" contradicts this
+clause and the IA it continues.
+
+Note for the implementer: the map has **no `documents/:documentId` segment
+today** (`WorkspaceShellApp.tsx:81-94` mounts `documents` as a flat list), so this
+is a new nesting level and one new `<Route>` line above the `*` catch-all at
+`:94`. The catch-all redirects unknown paths to `/`, so a malformed viewer URL
+must be handled by the **route's own not-found state**, not left to the catch-all,
+or a bad `documentId` silently becomes the Ask screen.
+
+**10. Three surfaces link to the viewer, which is why the route is decided in the
+wave whose overlay half is deferred.** NW-66's Why-clause rows link to
+`?page=<sourcePage>&clause=<clauseId>`; Ask citations land the same way; the
+Documents row opens it without a clause. Deferring the **bounding-box overlay** to
+W18 (OQ-w17-001) does **not** defer the route: a link target that changes shape
+between waves breaks every surface that already points at it. **The route is
+stable from w17; only what is drawn on top of the page grows.** Ordering
+consequence: **NW-66 lands after NW-63**, because the link needs the target.
+
+Two states this route owes, under clause 1's states contract (ux-ui-designer's
+half, cited not amended): a document with **no rendered page yet** shows the
+existing honest fallback rather than a broken image — `DocumentPreviewService`
+already degrades to "no preview" — and a document whose **`pageCount` is null**
+shows page 1 and **says the count is unknown**, never a guessed total
+(OQ-w17-sa-04, software-architect's second half, adopted here as the client rule
+it implies).
+
+**11. What this footer does not change.** The Roles section (`:104-111`); the
+states contract of `:112-119` and every state added by clauses 1–8; the counting
+table of clause 2 and clause 2b's `needsAttention` definition; clause 6's bounded
+re-read rule; clause 7's local refusal row; any existing route in the map
+(`:89-103`) — **one route is added, none is moved and none is removed**; and any
+screen, copy or token, which are **ADR-019 / ADR-020**, ux-ui-designer's. This
+footer creates **no new ADR** and supersedes nothing.
+
+## Amendment (2026-09-15, wave w17 — the viewer's states, and a correction this seat owes its own lane)
+
+Continues the **w17 route footer immediately above** (`:506-581`, clauses 9–11),
+written by **client-architect**, which owns this ADR's **route** half. This footer
+is **ux-ui-designer's**, which owns its **IA, states and copy** half; clauses 9–11
+are **cited, not amended**, and numbering continues from them. Serves **NW-63**
+and **NW-66**. Baseline `d3d2d24`.
+
+**12. The viewer is bound by the states contract, and it owes four states — not
+the three the contract names, and not the two clause 10 could name.** Clause 9
+makes the viewer a route; `:112-119` binds every route, so the contract applies
+unchanged and without an exception. Clause 10 named two of the states this surface
+owes and explicitly cited this half without amending it; this clause discharges
+that citation and adds the two it could not name. Treatments are ADR-019's, copy
+is ADR-020 w17 §16, and the four are:
+
+- **loading** — a skeleton block at the page's aspect ratio, occupying the **same
+  footprint as the image** (`design-system.md:64`), so the page does not jump when
+  the render arrives;
+- **empty** — no page image yet: `h3` + one sentence + one action. This is the
+  honest fallback the server **already** degrades to (`DocumentPreviewService`),
+  never a broken image element;
+- **error** — 2 px accent left rule, `h4`, the plain service name, a secondary
+  **Retry** (`design-system.md:66`);
+- **not found** — a `documentId` that resolves to nothing, or a `?page=` outside
+  the document's range (**404**, ADR-029). **This is the route's own state and
+  never the shell's `*` catch-all.** `WorkspaceShellApp.tsx:94` redirects unknown
+  paths to `/`, so without this state a broken citation link lands the user on
+  **Ask**, with nothing saying anything went wrong. A wrong destination with no
+  error is worse than an error: the user believes the link worked and that the
+  clause simply is not there.
+
+And the `pageCount`-null rule as its own reading of the page state: **page 1 with
+"total unknown"**, never a guessed total (OQ-w17-sa-04).
+
+**13. A correction against this seat's own lane.** This seat's lane
+(`reports/architecture/draft/next/ux-ui-designer/w17.md` §5) ruled that the viewer
+was *"a state of screens 4/5, **not a route**"*, and that this ADR's route map was
+therefore unchanged. **Client-architect owns the route half and ruled otherwise;
+it is right.** A full-page surface with a shareable, deep-linkable URL is a route,
+and the page number must live in the URL or a citation stops being reproducible —
+which is the whole purpose of the surface.
+
+What survives from the lane is the **IA** half, and it survives intact: the viewer
+is **citation-reached** and takes **no rail row**, which client-architect reached
+independently from `navItems.ts:18` (where Review is already a *state of
+Documents* rather than a rail destination). The two seats agreed on the IA and
+disagreed on the vocabulary; recorded here because the lane is on disk and a
+reader comparing it with clause 9 would otherwise find an unresolved contradiction
+between two seats and not know which one the council took.
+
+**14. What this footer does not change.** The route map (`:89-103`) — clause 9's
+single added line is client-architect's, and **this footer adds, moves and removes
+no route**; the Roles section (`:104-111`); the three original states of
+`:112-119` and every state added by clauses 1–8; the counting table of clause 2
+and clause 2b's `needsAttention` definition; clause 3's resolution; clause 4's
+badge rule; clause 6's bounded re-read rule; clause 7's local refusal row. Screens,
+copy and tokens are **ADR-019 / ADR-020**, where this wave's design decisions
+live. This footer creates **no new ADR** and supersedes nothing.
+
+## Amendment (2026-09-15, wave w17 round 3 — a failed page keeps its URL)
+
+Written by **client-architect**, which owns this ADR's **route** half, after
+ADR-029's round-3 footer made a page's absence an **ordinary** outcome rather than
+an error. Numbering continues this ADR's two w17 footers — clauses 9–11 (this
+seat's routes) and clauses 12–14 (ux-ui-designer's IA, states and copy) — and
+**neither is edited**: clause 12's four states are cited and relied on, not
+amended. Serves **NW-63** and **NW-66**. Baseline `d3d2d24`.
+
+**15. The viewer route keeps the page it was asked for, including when that page
+is gone.** Clause 12 gives the surface a **not found** state for "a `?page=`
+outside the document's range" and binds it to render **in place**, never through
+the shell's `*` catch-all (`WorkspaceShellApp.tsx:94`). This clause adds the route
+half that makes that state reachable: **a 404 does not rewrite the URL.** The
+address bar still reads `/documents/:documentId/viewer?page=N&clause=<id>` while
+the not-found state is on screen — no clamp into range, no redirect, no
+substitution of page 1.
+
+Two reasons, and the second is new this round. **(a)** Clause 9 put the page
+number in the URL so a citation is **reproducible**; a URL that silently repairs
+itself is not, and the same link then shows two different things to two people.
+**(b)** After ADR-029's round-3 clause 2, a re-render that yields fewer pages
+**reaps** the surplus — so a link made when the document had ten pages can address
+a page that no longer exists. With NW-73 re-rendering a whole tenant in this same
+wave that is an ordinary outcome, not a corner case, and the user must be told
+*this page is gone* **on the URL that proves which page they asked for**. The
+client mechanics of the prohibition — no `onError` fallback, no clamp — are
+ADR-012 w17 clause 47.
+
+**What this footer does not change.** The route map (`:89-103`): **no route is
+added, moved or removed** — clause 9's single line remains this wave's only route
+change. Clauses 9–11 and 12–14 stay byte-identical; the Roles section
+(`:104-111`); the states contract of `:112-119` and every state added by clauses
+1–8 and 12. Treatments and copy stay **ADR-019 / ADR-020**. This footer creates
+**no new ADR** and supersedes nothing.
