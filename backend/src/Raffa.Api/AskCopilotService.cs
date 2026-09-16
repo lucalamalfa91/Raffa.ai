@@ -54,6 +54,16 @@ namespace Raffa.Api;
 /// </para>
 ///
 /// <para>
+/// <b>Scoped entries (task E25/F03/US01/T01, NW-56; ADR-024)</b>: <see cref="AskAsync"/>'s own
+/// <c>scopeContractId</c> parameter — the conversation's persisted
+/// <c>Conversation.ScopeContractId</c>, threaded in by <see cref="ConversationsEndpointExtensions"/>
+/// — resolves to a known supplier name and overrides the domain gate's own free-text extraction
+/// before the reply switch decides, so a turn opened from Contract 360's "Ask about it" is always
+/// about that one contract, never a generic gate/hello, regardless of whether the question itself
+/// names the supplier. See <see cref="AskAsync"/>'s own scope-resolution step for the mechanism.
+/// </para>
+///
+/// <para>
 /// <b>Known gaps, honestly scoped</b>: <c>Raffa.Documents.Contracts.Domain.Contract</c> has no
 /// geography/product-category field, so a <see cref="BenchmarkQuery"/> built here uses
 /// <c>GoverningLaw</c> as an imperfect geography proxy (documented on
@@ -120,6 +130,12 @@ internal sealed class AskCopilotService(
     /// <param name="actor">The caller's resolved token subject (ADR-011 w16 clause 15) — required,
     /// no default, so a placeholder can never return by omission. Recorded on the one audit row
     /// this call writes (R-ASK-09).</param>
+    /// <param name="scopeContractId">The conversation's own persisted
+    /// <c>Conversation.ScopeContractId</c> (task E25/F03/US01/T01, NW-56; ADR-024 "the gate
+    /// resolves the scope id before the R-ASK-10 check") — set when this conversation was opened
+    /// from Contract 360's "Ask about it" (ADR-024 "citation landing... → /ask?scope="), null for
+    /// the global Ask bar's always-unscoped new chat. See the scope-resolution step below (right
+    /// after <c>gate</c> is classified) for what this does to the turn.</param>
     /// <exception cref="ArgumentException"><paramref name="question"/> is null/blank.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="recentTurns"/> is <see langword="null"/>.</exception>
     public async Task<CopilotReply> AskAsync(
@@ -127,6 +143,7 @@ internal sealed class AskCopilotService(
         string question,
         IReadOnlyList<(string Role, string Markdown)> recentTurns,
         string actor,
+        EntityId? scopeContractId = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(question);
@@ -149,6 +166,45 @@ internal sealed class AskCopilotService(
             : new Dictionary<EntityId, string>();
 
         var gate = domainGate.Classify(question, supplierNames.Values.ToList());
+
+        // AC-1/AC-2 (ADR-024 "the gate resolves the scope id before the R-ASK-10 check"; task
+        // E25/F03/US01/T01, NW-56): a conversation opened from Contract 360's "Ask about it"
+        // carries its own persisted Conversation.ScopeContractId — ConversationsEndpointExtensions
+        // .AskAndAppendAsync threads it into scopeContractId above — naming one contract this
+        // tenant already validated. Resolving its supplier name and folding it into the gate's own
+        // NamedSupplier BEFORE the reply switch below ever runs is what scopes every downstream
+        // consumer (IntentPlanner.Plan, and every BuildXxxPackAsync that resolves
+        // `namedContractItem` from it) "via the existing namedSupplier/scope path" (this task's own
+        // coding objective) with no further change to any of them — and what keeps a scoped turn
+        // from ever landing on the generic GateLabel.NeedsDocument redirect (some unrelated
+        // capitalized word the question happens to contain) or an unscoped GateLabel.InDomain (no
+        // supplier named at all, so a downstream pack would otherwise fall back to a portfolio-wide
+        // answer instead of this contract's own — AC-3). Only the gate's own supplier-resolution
+        // rule is affected this way; Greeting/OffDomain/Legal/Capability do not key off a named
+        // supplier and still win outright, exactly as DomainGate.Classify's own deterministic-first
+        // ordering already intends. A scope id that does not resolve to a portfolio row, or
+        // resolves to one with no known supplier name yet (SupplierId unset, or the lookup has no
+        // name for it), changes nothing here: the gate's own free-text extraction still decides,
+        // same as before this task.
+        var scopedContractItem = scopeContractId is { } scopedContractIdValue
+            ? portfolio.Items.FirstOrDefault(item => item.ContractId == scopedContractIdValue.Value)
+            : null;
+
+        var scopedSupplierName = scopedContractItem?.SupplierId is { } scopedSupplierId &&
+            supplierNames.TryGetValue(new EntityId(scopedSupplierId), out var resolvedScopedSupplierName)
+                ? resolvedScopedSupplierName
+                : null;
+
+        if (scopedSupplierName is not null && gate.Label is GateLabel.NeedsDocument or GateLabel.InDomain)
+        {
+            gate = gate with
+            {
+                Label = GateLabel.InDomain,
+                Reason = $"scoped entry resolved to known supplier '{scopedSupplierName}' before the " +
+                    "gate's own free-text extraction decided (ADR-024, task E25/F03/US01/T01).",
+                NamedSupplier = scopedSupplierName,
+            };
+        }
 
         // AC-7 / R-ASK-09: the audit row must distinguish "guard caught a violation and downgraded
         // to abstain" from every other abstain path (empty pack, gateway call failed) — so every
