@@ -731,9 +731,16 @@ per-user conversations.
   carries in router state, `newChat: true`) runs `createConversationAndAsk`:
   `POST /api/conversations` (with `scopeContractId` when `?scope=` is present) then
   `POST /api/conversations/{id}/messages`, then the URL becomes `/ask/<conversationId>`
-  (`navigate(..., { replace: true })`). `?scope=<contractId>` templates the two chips with the real
-  supplier name instead (`buildScopedSuggestions`, read off `GET /api/contracts/{id}`'s typed
-  `supplierName`; "this supplier" when it is null or blank).
+  (`navigate(..., { replace: true })`). `?scope=<contractId>` (Contract 360's "Ask about it") templates
+  the two chips with the real supplier name instead (`buildScopedSuggestions`, read off
+  `GET /api/contracts/{id}`'s typed `supplierName`; "this supplier" when it is null or blank) **and**
+  briefs the contract instead of rendering the generic hello/scope line (task E25/F03/US02/T01,
+  NW-56, `askViewModel.ts#buildScopedBrief`): a `.screen-kicker` naming the supplier ("this contract"
+  while the name is still loading or unknown), a heading "Ask about {supplier}", and a one-line
+  contract-specific scope ("Answers cite this contract's pages.") in place of the N-validated-
+  contracts sentence, which would otherwise misdescribe a chat scoped to one contract. The off-state
+  gate above is unaffected -- a scoped link into a tenant with zero validated contracts still renders
+  the generic `AskOffState`, never a briefed-but-off face.
 - **Conversation** -- header shows the derived title (`deriveConversationTitle`, collapsed
   whitespace, hard-truncated at 48 chars, no ellipsis) + "+ New chat"; every turn renders through the
   phase-2 `ReplyBody` (task E13/F09/US01/T02, `routes/ask/reply/*`, this task maps the wire reply

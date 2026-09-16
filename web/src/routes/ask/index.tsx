@@ -18,6 +18,7 @@ import {
   buildRaffaTurnFromReply,
   buildErrorTurn,
   buildOffCopy,
+  buildScopedBrief,
   buildScopeLine,
   buildYouTurn,
   createConversationAndAsk,
@@ -72,6 +73,13 @@ interface CitationNoticeState {
  * Task E25/F06/US01/T01 (NW-60, wave w18): `AppShell.tsx` stops mounting `GlobalAskBar` on this
  * route (it duplicated this screen's own input), so this component now also owns the Cmd/Ctrl+K
  * shortcut for its composer -- see `composerInputRef`'s own comment below.
+ *
+ * Task E25/F03/US02/T01 (NW-56, wave w18): a scoped entry (`?scope=<contractId>`, from Contract
+ * 360's "Ask about it") now briefs the contract in the new-chat block instead of rendering the
+ * generic `ASK_HELLO` + scope line -- see `scopedBrief`/`askViewModel.ts#buildScopedBrief` below.
+ * The off-state-first gate above is untouched (no scoped override of R-ASK-10, ux-ui-designer's own
+ * w18 ruling for this gap): a scoped link into a tenant with zero validated contracts still lands on
+ * the generic `AskOffState`, never a briefed-but-off face.
  */
 export default function AskRoute({ apiClient }: AskRouteProps) {
   const location = useLocation();
@@ -175,6 +183,11 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   }, [apiClient]);
 
   const suggestions = scopeContractId !== undefined ? suggestionsFor(capabilities, scopedSupplierName) : suggestionsFor(capabilities);
+
+  // NW-56: the brief that replaces ASK_HELLO + the generic scope line in the new-chat block below,
+  // read only while scopeContractId !== undefined. Cheap and pure, so (like `suggestions` above)
+  // this is recomputed every render rather than memoized.
+  const scopedBrief = buildScopedBrief(scopedSupplierName);
 
   // Resuming (or navigating back to a fresh /ask) seeds/clears this screen's own turn list.
   useEffect(() => {
@@ -366,10 +379,23 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
           <div className="ask-chat-log" role="log" aria-live="polite">
             {!hasTurns && (
               <div className="ask-new-chat">
-                <h3 className="ask-new-chat-hello">{ASK_HELLO}</h3>
-                <p className="micro-meta ask-new-chat-scope">
-                  {buildScopeLine(validatedContractCount, [])}. {NEW_CHAT_TRAILER}
-                </p>
+                {scopeContractId !== undefined ? (
+                  // NW-56/AC-1/AC-3: a scoped entry briefs the contract -- supplier kicker + a
+                  // heading naming it -- instead of the generic hello, and a contract-specific
+                  // one-line scope instead of the "N validated contracts" sentence below.
+                  <>
+                    <p className="screen-kicker">{scopedBrief.kicker}</p>
+                    <h3 className="ask-new-chat-hello">{scopedBrief.heading}</h3>
+                    <p className="micro-meta ask-new-chat-scope">{scopedBrief.scopeLine}</p>
+                  </>
+                ) : (
+                  <>
+                    <h3 className="ask-new-chat-hello">{ASK_HELLO}</h3>
+                    <p className="micro-meta ask-new-chat-scope">
+                      {buildScopeLine(validatedContractCount, [])}. {NEW_CHAT_TRAILER}
+                    </p>
+                  </>
+                )}
                 <div className="ask-new-chat-chips">
                   {suggestions.map((suggestion) => (
                     <button key={suggestion} type="button" className="ask-suggestion" aria-label={suggestion} onClick={() => ask(suggestion)}>

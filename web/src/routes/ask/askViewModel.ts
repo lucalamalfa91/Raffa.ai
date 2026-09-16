@@ -346,6 +346,43 @@ export const NEW_CHAT_TRAILER =
 /** screens-v2.md #2 "New chat": `askHello`, quoted verbatim. */
 export const ASK_HELLO = "What do you want to know?";
 
+/**
+ * NW-56 (ADR-020 heading copy; ADR-024 scoped entry): `Contract360Header.tsx`'s "Ask about it"
+ * (`/ask?scope=<contractId>`) used to open an empty chat headed by the generic `ASK_HELLO` -- a
+ * scoped entry from a live contract must instead **brief** that contract. `screens-v2.md` has no
+ * literal scoped-brief copy of its own (the export predates this gap; §5's Contract 360 header --
+ * "supplier, name" -- is the closest anchor, reused below rather than invented, the same divergence
+ * `Contract360Header.tsx`'s own header comment already takes for that screen's kicker); requirements
+ * win over a silent prototype (ADR-024's own rule). Three strings replace, together,
+ * `ASK_HELLO` + the generic `buildScopeLine` sentence in the new-chat block:
+ *
+ * - `kicker` -- the same `.screen-kicker` shape `Contract360Header.tsx:41-44`
+ *   (`resolveSupplierLabel`) already renders over its own heading;
+ * - `heading` -- "Ask about {supplier}", replacing `ASK_HELLO`;
+ * - `scopeLine` -- a one-line, contract-specific scope, replacing the "Answers only from N
+ *   validated contracts…" sentence, which would otherwise mis-describe a chat about one contract.
+ *
+ * `supplierName` is `index.tsx`'s already-fetched `scopedSupplierName` (`getContract360`), `null`
+ * until that fetch resolves (or when the contract truly has none). The "this contract" fallback --
+ * deliberately not `buildScopedSuggestions`' own mid-sentence "this supplier" -- keeps `heading` a
+ * complete, honest sentence ("Ask about this contract") through that window, the same fallback
+ * discipline `resolveSupplierLabel` already applies to the 360 kicker.
+ */
+export interface ScopedAskBrief {
+  kicker: string;
+  heading: string;
+  scopeLine: string;
+}
+
+export function buildScopedBrief(supplierName: string | null): ScopedAskBrief {
+  const name = supplierName !== null && supplierName.trim() !== "" ? supplierName.trim() : "this contract";
+  return {
+    kicker: name,
+    heading: `Ask about ${name}`,
+    scopeLine: "Answers cite this contract's pages.",
+  };
+}
+
 /** ADR-024 §6 / screens-v2.md #2: the same placeholder the global Ask bar uses
  * (`components/ask-bar/askSuggestions.ts` READY_PLACEHOLDER). */
 export const ASK_INPUT_PLACEHOLDER = "Ask Raffa — spend, dates, clauses, liability…";
