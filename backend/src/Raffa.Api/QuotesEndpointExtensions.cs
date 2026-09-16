@@ -43,6 +43,13 @@ public static class QuotesEndpointExtensions
         endpoints.MapGet("/api/quotes/{id}/assessment", GetAssessmentAsync);
         // Task E05/F01/US02/T02 (sku-recalculate) AC-2/AC-3.
         endpoints.MapPost("/api/quotes/{id}/assessment/recalculate", RecalculateAssessmentAsync);
+        // Task E25/F04/US01/T01 (quote-benchmark-backend) AC-2; ADR-028 (history is server state);
+        // closes NW-57. A literal path segment beside the "/api/quotes/{id}" route above — ASP.NET
+        // Core's routing precedence always prefers the more-specific literal match for a request
+        // path that is actually "/api/quotes/benchmark-history", so this never collides with
+        // GetQuoteAsync's {id} route (the same "literal sibling of a {id} route" shape
+        // "/api/savings/kpis" already establishes beside "/api/savings").
+        endpoints.MapGet("/api/quotes/benchmark-history", GetBenchmarkHistoryAsync);
         return endpoints;
     }
 
@@ -350,71 +357,126 @@ public static class QuotesEndpointExtensions
     /// (task E05/F01/US02/T02, sku-recalculate) so <see cref="RecalculateAssessmentAsync"/> below
     /// returns the exact same per-line assessment shape rather than a second, drifting copy of this
     /// projection — both endpoints describe "the current assessment for this quote", just reached
-    /// differently (a plain read versus a read after a correction+recalculate).
+    /// differently (a plain read versus a read after a correction+recalculate). Task E25/F04/US01/T01
+    /// (quote-benchmark-backend) extracted the per-line half as <see cref="BuildLineAssessmentResponse"/>
+    /// so <see cref="GetBenchmarkHistoryAsync"/>'s own <see cref="BuildHistoryEntryResponse"/> reuses
+    /// the identical per-line shape rather than a third, drifting copy.
     /// </summary>
     private static object BuildAssessmentResponse(QuoteMarketAssessment assessment) => new
     {
         quoteId = assessment.QuoteId.Value,
-        lines = assessment.Lines.Select(line => new
+        lines = assessment.Lines.Select(BuildLineAssessmentResponse),
+    };
+
+    /// <summary>One <see cref="LineMarketAssessment"/>'s wire shape — see
+    /// <see cref="BuildAssessmentResponse"/>'s own doc comment for why this is its own method.</summary>
+    private static object BuildLineAssessmentResponse(LineMarketAssessment line) => new
+    {
+        quoteLineId = line.QuoteLineId.Value,
+        status = line.Status.ToString(),
+        position = line.Position?.ToString(),
+        unitPrice = line.UnitPrice,
+        // Task E05/F04/US01/T01 (r4-integration) fix: LineMarketAssessment.Quantity has
+        // existed since task E05/F02/US01/T02 (target-saving) specifically so a caller never
+        // has to re-fetch the line (see that record's own doc comment) — and the HTTP surface
+        // table in backend/README.md has documented `quantity` as part of this response's own
+        // shape since that same task — but this handler never actually serialized it. Adding
+        // it now aligns the wire response with its own already-published contract.
+        quantity = line.Quantity,
+        benchmark = line.Benchmark is null
+            ? null
+            : new
+            {
+                hasSufficientData = line.Benchmark.HasSufficientData,
+                distribution = line.Benchmark.Distribution is null
+                    ? null
+                    : new
+                    {
+                        p25 = line.Benchmark.Distribution.P25,
+                        p50 = line.Benchmark.Distribution.P50,
+                        p75 = line.Benchmark.Distribution.P75,
+                    },
+                metric = line.Benchmark.Metric,
+                currency = line.Benchmark.Currency,
+            },
+        confidence = line.Provenance is null
+            ? null
+            : new
+            {
+                level = line.Provenance.ConfidenceLevel.ToString(),
+                score = line.Provenance.ConfidenceScore,
+                source = line.Provenance.Source,
+                sampleSize = line.Provenance.SampleSize,
+                comparisonDimensions = line.Provenance.ComparisonDimensions.Select(d => d.ToString()),
+                updatedAt = line.Provenance.UpdatedAt,
+                summary = line.Provenance.Summary,
+            },
+        // Task E05/F02/US01/T02 (target-saving), AC-2's "recommended target range +
+        // potential saving" half: null exactly when TargetSaving itself is (no benchmark
+        // call was made); still populated — with every numeric field null plus a named
+        // reason — when a call was made but returned no usable distribution (spec §11.3's
+        // benchmark-trust rule, see LineTargetSaving's own doc comment).
+        targetSaving = line.TargetSaving is null
+            ? null
+            : new
+            {
+                recommendedTargetLow = line.TargetSaving.RecommendedTargetLow,
+                recommendedTargetHigh = line.TargetSaving.RecommendedTargetHigh,
+                savingsRangeLow = line.TargetSaving.SavingsRangeLow,
+                savingsRangeHigh = line.TargetSaving.SavingsRangeHigh,
+                totalSavingsRangeLow = line.TargetSaving.TotalSavingsRangeLow,
+                totalSavingsRangeHigh = line.TargetSaving.TotalSavingsRangeHigh,
+                explanation = line.TargetSaving.Explanation,
+            },
+        explanation = line.Explanation,
+    };
+
+    /// <summary>
+    /// AC-2 (task E25/F04/US01/T01, quote-benchmark-backend; ADR-028 — history is server state;
+    /// closes NW-57): the tenant's quotes, newest first, each carrying a freshly-recomputed
+    /// per-line market-benchmark assessment — thin HTTP translation over
+    /// <see cref="QuoteBenchmarkHistoryService.GetHistoryAsync"/>, same division every other handler
+    /// in this file already uses. Never 404s: a tenant with no quotes yet gets <c>200</c> with an
+    /// empty <c>items</c> array, the same "empty list is an honest answer" convention
+    /// <see cref="ListQuotesAsync"/> above already follows.
+    /// </summary>
+    private static async Task<IResult> GetBenchmarkHistoryAsync(
+        HttpRequest request,
+        QuoteBenchmarkHistoryService historyService,
+        ICallerContext callerContext,
+        CancellationToken cancellationToken)
+    {
+        var caller = await callerContext.ResolveTenantAsync(request, cancellationToken);
+        if (caller.Failure is not null)
         {
-            quoteLineId = line.QuoteLineId.Value,
-            status = line.Status.ToString(),
-            position = line.Position?.ToString(),
-            unitPrice = line.UnitPrice,
-            // Task E05/F04/US01/T01 (r4-integration) fix: LineMarketAssessment.Quantity has
-            // existed since task E05/F02/US01/T02 (target-saving) specifically so a caller never
-            // has to re-fetch the line (see that record's own doc comment) — and the HTTP surface
-            // table in backend/README.md has documented `quantity` as part of this response's own
-            // shape since that same task — but this handler never actually serialized it. Adding
-            // it now aligns the wire response with its own already-published contract.
-            quantity = line.Quantity,
-            benchmark = line.Benchmark is null
-                ? null
-                : new
-                {
-                    hasSufficientData = line.Benchmark.HasSufficientData,
-                    distribution = line.Benchmark.Distribution is null
-                        ? null
-                        : new
-                        {
-                            p25 = line.Benchmark.Distribution.P25,
-                            p50 = line.Benchmark.Distribution.P50,
-                            p75 = line.Benchmark.Distribution.P75,
-                        },
-                    metric = line.Benchmark.Metric,
-                    currency = line.Benchmark.Currency,
-                },
-            confidence = line.Provenance is null
-                ? null
-                : new
-                {
-                    level = line.Provenance.ConfidenceLevel.ToString(),
-                    score = line.Provenance.ConfidenceScore,
-                    source = line.Provenance.Source,
-                    sampleSize = line.Provenance.SampleSize,
-                    comparisonDimensions = line.Provenance.ComparisonDimensions.Select(d => d.ToString()),
-                    updatedAt = line.Provenance.UpdatedAt,
-                    summary = line.Provenance.Summary,
-                },
-            // Task E05/F02/US01/T02 (target-saving), AC-2's "recommended target range +
-            // potential saving" half: null exactly when TargetSaving itself is (no benchmark
-            // call was made); still populated — with every numeric field null plus a named
-            // reason — when a call was made but returned no usable distribution (spec §11.3's
-            // benchmark-trust rule, see LineTargetSaving's own doc comment).
-            targetSaving = line.TargetSaving is null
-                ? null
-                : new
-                {
-                    recommendedTargetLow = line.TargetSaving.RecommendedTargetLow,
-                    recommendedTargetHigh = line.TargetSaving.RecommendedTargetHigh,
-                    savingsRangeLow = line.TargetSaving.SavingsRangeLow,
-                    savingsRangeHigh = line.TargetSaving.SavingsRangeHigh,
-                    totalSavingsRangeLow = line.TargetSaving.TotalSavingsRangeLow,
-                    totalSavingsRangeHigh = line.TargetSaving.TotalSavingsRangeHigh,
-                    explanation = line.TargetSaving.Explanation,
-                },
-            explanation = line.Explanation,
-        }),
+            return caller.Failure;
+        }
+
+        using var callerTenantScope = caller.Scope;
+
+        var history = await historyService
+            .GetHistoryAsync(caller.TenantId, cancellationToken)
+            .ConfigureAwait(false);
+
+        return Results.Ok(new { items = history.Select(BuildHistoryEntryResponse) });
+    }
+
+    /// <summary>Wire-shapes one <see cref="QuoteBenchmarkHistoryEntry"/> — the same field set
+    /// <see cref="BuildQuoteListItemResponse"/> above echoes for the plain quote list, plus
+    /// <c>lines</c> (<see cref="BuildLineAssessmentResponse"/>, reused verbatim from the assessment
+    /// endpoints rather than a third copy).</summary>
+    private static object BuildHistoryEntryResponse(QuoteBenchmarkHistoryEntry entry) => new
+    {
+        id = entry.Quote.Id.Value,
+        fileName = entry.Quote.FileName,
+        mimeType = entry.Quote.MimeType,
+        processingStatus = entry.Quote.ProcessingStatus.ToString(),
+        supplier = entry.Quote.Supplier,
+        currency = entry.Quote.Currency,
+        geography = entry.Quote.Geography,
+        purchaseDate = entry.Quote.PurchaseDate,
+        createdAt = entry.Quote.CreatedAt,
+        lines = entry.Lines.Select(BuildLineAssessmentResponse),
     };
 
     /// <summary>

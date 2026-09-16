@@ -99,6 +99,11 @@ public static class ServiceCollectionExtensions
         // QuotesDbContext. Unlike NegotiationOutcomeService/QuoteUploadService above, this is a
         // pure read side — no IAuditWriter dependency, so it adds no new host-wiring requirement.
         services.AddScoped<QuoteQueryService>();
+        // Task E25/F04/US01/T01 (quote-benchmark-backend; NW-57): shares this request's own
+        // QuotesDbContext and composes on top of MarketAssessmentService registered above (same
+        // "compose, do not re-resolve IBenchmarkService directly" posture NegotiationStrategyService
+        // already takes) — another pure read side, so it too adds no new host-wiring requirement.
+        services.AddScoped<QuoteBenchmarkHistoryService>();
 
         return services;
     }
