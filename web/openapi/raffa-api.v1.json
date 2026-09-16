@@ -6976,6 +6976,318 @@
           }
         }
       }
+    },
+    "/api/quotes/benchmark-history": {
+      "get": {
+        "operationId": "getQuoteBenchmarkHistory",
+        "summary": "Tenant-wide quote history, each quote carrying its own market-benchmark position.",
+        "description": "Maps to GetBenchmarkHistoryAsync in backend/src/Raffa.Api/QuotesEndpointExtensions.cs (task E25/F04/US01/T01, quote-benchmark-backend AC-2; ADR-028 -- history is server state; closes NW-57). The tenant's quotes, newest first, each carrying a freshly-recomputed per-line market-benchmark assessment -- the identical per-line shape getQuoteAssessment returns (status/position/benchmark/confidence/targetSaving/explanation), reused rather than duplicated. A first-of-type quote (no fixture comparable exists yet for its supplier/product) reports the honest InsufficientBenchmarkData cold start on its own lines, never a fabricated position (ADR-001). Nothing new is persisted: every row here is read fresh from the same Quote/QuoteLine tables GET /api/quotes already lists -- see backend/src/Raffa.Quotes/Application/QuoteBenchmarkHistoryService.cs's own doc comment for why 'history' means durable server state, not a snapshot frozen at upload time. Never 404s: a tenant with no quotes yet gets 200 with an empty items array. Same interim X-Tenant-Id header placeholder as every other operation in this document.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The tenant's quotes, newest first, each with its own per-line market-benchmark assessment. Empty items when the tenant has no quotes yet.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "fileName",
+                          "mimeType",
+                          "processingStatus",
+                          "supplier",
+                          "currency",
+                          "geography",
+                          "purchaseDate",
+                          "createdAt",
+                          "lines"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "fileName": {
+                            "type": "string"
+                          },
+                          "mimeType": {
+                            "type": "string"
+                          },
+                          "processingStatus": {
+                            "type": "string"
+                          },
+                          "supplier": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "currency": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "geography": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "purchaseDate": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "format": "date"
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "lines": {
+                            "type": "array",
+                            "description": "Same per-line shape getQuoteAssessment's own 'lines' array returns -- see this operation's own description for why 'position' is not declared with 'enum' here (web/scripts/generate-api-client.mjs#renderSchemaType drops a nullable union's null member whenever the schema also declares enum).",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "quoteLineId",
+                                "status",
+                                "position",
+                                "unitPrice",
+                                "quantity",
+                                "benchmark",
+                                "confidence",
+                                "targetSaving",
+                                "explanation"
+                              ],
+                              "properties": {
+                                "quoteLineId": {
+                                  "type": "string",
+                                  "format": "uuid"
+                                },
+                                "status": {
+                                  "type": "string",
+                                  "enum": [
+                                    "Assessed",
+                                    "QuoteDataUnresolved",
+                                    "InsufficientBenchmarkData"
+                                  ]
+                                },
+                                "position": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ],
+                                  "description": "BelowMarket | InLine | AboveMarket when present."
+                                },
+                                "unitPrice": {
+                                  "type": [
+                                    "number",
+                                    "null"
+                                  ]
+                                },
+                                "quantity": {
+                                  "type": [
+                                    "number",
+                                    "null"
+                                  ]
+                                },
+                                "benchmark": {
+                                  "type": [
+                                    "object",
+                                    "null"
+                                  ],
+                                  "required": [
+                                    "hasSufficientData",
+                                    "distribution",
+                                    "metric",
+                                    "currency"
+                                  ],
+                                  "properties": {
+                                    "hasSufficientData": {
+                                      "type": "boolean"
+                                    },
+                                    "distribution": {
+                                      "type": [
+                                        "object",
+                                        "null"
+                                      ],
+                                      "required": [
+                                        "p25",
+                                        "p50",
+                                        "p75"
+                                      ],
+                                      "properties": {
+                                        "p25": {
+                                          "type": "number"
+                                        },
+                                        "p50": {
+                                          "type": "number"
+                                        },
+                                        "p75": {
+                                          "type": "number"
+                                        }
+                                      }
+                                    },
+                                    "metric": {
+                                      "type": "string"
+                                    },
+                                    "currency": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                "confidence": {
+                                  "type": [
+                                    "object",
+                                    "null"
+                                  ],
+                                  "required": [
+                                    "level",
+                                    "score",
+                                    "source",
+                                    "sampleSize",
+                                    "comparisonDimensions",
+                                    "updatedAt",
+                                    "summary"
+                                  ],
+                                  "properties": {
+                                    "level": {
+                                      "type": "string",
+                                      "enum": [
+                                        "Low",
+                                        "Medium",
+                                        "High"
+                                      ]
+                                    },
+                                    "score": {
+                                      "type": "number"
+                                    },
+                                    "source": {
+                                      "type": "string"
+                                    },
+                                    "sampleSize": {
+                                      "type": [
+                                        "integer",
+                                        "null"
+                                      ]
+                                    },
+                                    "comparisonDimensions": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "updatedAt": {
+                                      "type": "string",
+                                      "format": "date-time"
+                                    },
+                                    "summary": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                "targetSaving": {
+                                  "type": [
+                                    "object",
+                                    "null"
+                                  ],
+                                  "required": [
+                                    "recommendedTargetLow",
+                                    "recommendedTargetHigh",
+                                    "savingsRangeLow",
+                                    "savingsRangeHigh",
+                                    "totalSavingsRangeLow",
+                                    "totalSavingsRangeHigh",
+                                    "explanation"
+                                  ],
+                                  "properties": {
+                                    "recommendedTargetLow": {
+                                      "type": [
+                                        "number",
+                                        "null"
+                                      ]
+                                    },
+                                    "recommendedTargetHigh": {
+                                      "type": [
+                                        "number",
+                                        "null"
+                                      ]
+                                    },
+                                    "savingsRangeLow": {
+                                      "type": [
+                                        "number",
+                                        "null"
+                                      ]
+                                    },
+                                    "savingsRangeHigh": {
+                                      "type": [
+                                        "number",
+                                        "null"
+                                      ]
+                                    },
+                                    "totalSavingsRangeLow": {
+                                      "type": [
+                                        "number",
+                                        "null"
+                                      ]
+                                    },
+                                    "totalSavingsRangeHigh": {
+                                      "type": [
+                                        "number",
+                                        "null"
+                                      ]
+                                    },
+                                    "explanation": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                "explanation": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid X-Tenant-Id header.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   }
 }

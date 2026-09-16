@@ -241,6 +241,7 @@ request.
 | GET | `/api/quotes/{id}` | One quote for this tenant, with every recorded `NegotiationOutcome` embedded, newest first (parent story us-01-quote-read-api AC-2/AC-3/AC-4, task E19/F02/US01/T01, quote-read-api; wave w16 NW-12, ADR-028 §D2); `X-Tenant-Id` header; 404 when `{id}` does not name a quote for this tenant — including another tenant's quote (cross-tenant read is a 404 with zero leaked tenant-A fields anywhere in the body, never a 403 tenant-existence oracle); 400 for a non-GUID `{id}`. Response is the same quote shape as the `GET /api/quotes` row above plus `outcomes: [{ id, originalQuoteTotal, targetPrice, finalPrice, realizedSaving, discountPercent, negotiationDurationDays, leversUsed, capturedAt, savingsOpportunityId }]` — the same fields `POST /api/negotiations/outcomes` itself returns on capture, minus that call's own two capture-time-only propagation-attempt fields (`savingsPropagated`/`savingsPropagationError` report whether *that call's* propagation attempt succeeded, not a stored fact). A quote with no recorded outcome returns `outcomes: []`, never 404 (AC-2). `NegotiationOutcome` is keyed by `QuoteId` and is append-only, so its outcomes are a property of the quote, not a tenant-wide feed — **there is no `GET /api/negotiations/outcomes`** (ADR-028 §D2: no caller until NW-57, W18) and **the assessment endpoint below is deliberately not overloaded with this** either (`.../assessment/recalculate` returns that identical shape, so carrying the outcome there would make a recalculation appear to re-report a negotiation it never touched — one extra GET on mount is the cheaper of the two costs). Backed by `Raffa.Quotes.Application.QuoteQueryService.GetAsync` — stored fields only, same "computes nothing" posture as the list above |
 | GET | `/api/quotes/{id}/assessment` | Quote assessment (spec §4.4/§11.2, Appendix A "Quote assessment"; module-map.md "Quotes \| Quote, QuoteLine, Assessment... \| /api/quotes"; story us-01-market-assessment AC-1/AC-2 (both the "flag" half, task E05/F02/US01/T01, and the "recommended target range + potential saving" half, task E05/F02/US01/T02)/AC-3); `X-Tenant-Id` header; 404 when `{id}` does not name a quote for this tenant; one assessment per `Raffa.Quotes.Domain.QuoteLine` on the quote (creation order) — `{ quoteId, lines: [{ quoteLineId, status, position, unitPrice, quantity, benchmark, confidence, targetSaving, explanation }] }`. `status` is `Assessed`/`QuoteDataUnresolved`/`InsufficientBenchmarkData` (`Raffa.Quotes.Domain.MarketAssessmentStatus`); `position` (`BelowMarket`/`InLine`/`AboveMarket`) is populated only when `status` is `Assessed` — the market band is `[P25, P75]` of the matched `Raffa.Benchmark.Contracts.BenchmarkResult.Distribution`, `InLine` otherwise (see `MarketAssessmentCalculator`'s own doc comment); `benchmark`/`confidence`/`targetSaving` are `null` exactly when no Benchmark Service call was even attempted (`QuoteDataUnresolved`: the quote is missing `supplier`/`currency`/`geography`/`purchaseDate`, or the line itself has no usable product/quantity/term/price), never withheld just because the comparison itself abstained (spec §11.3's benchmark-trust rule — `InsufficientBenchmarkData` still carries real `source`/`sampleSize`/`comparisonDimensions` provenance, and a real `targetSaving` object whose `recommendedTargetLow`/`recommendedTargetHigh`/`savingsRangeLow`/`savingsRangeHigh`/`totalSavingsRangeLow`/`totalSavingsRangeHigh` are honestly `null` with a named `explanation` — see `TargetSavingCalculator`'s own doc comment) |
 | POST | `/api/quotes/{id}/assessment/recalculate` | Manual product-mapping correction + recalculate (spec Appendix A "Re-run after product mapping correction"; story us-02-sku-normalization AC-2's "...and allow manual product mapping" half, AC-3, task E05/F01/US02/T02, sku-recalculate); `X-Tenant-Id` header; body `{ mappings?: [{ sku, edition?, canonicalSku, canonicalEdition?, canonicalProductName? }] }` — `mappings` may be omitted/empty (`{}` is a valid body) for a pure "what's still unmatched" refresh with no new correction. 404 when `{id}` does not name a quote for this tenant; 400 when a supplied correction's `sku`/`canonicalSku` is blank — validated before any write. For each valid correction, upserts (never duplicates) one tenant-scoped `Raffa.Quotes.Domain.SkuProductMapping` row keyed on the normalized SKU (`Raffa.Quotes.Application.Normalization.SkuNormalizer.Normalize` — same case/whitespace rule `POST /api/quotes`'s own upload-time normalization uses), then re-runs `SkuNormalizationService.NormalizeAsync` for every line on the quote (not just the corrected one — a mapping learned here also resolves any other quote for this tenant sharing the same normalized SKU, the next time that quote is itself (re)normalized) and `MarketAssessmentService.AssessAsync`; response `{ quoteId, mappingsAppliedCount, normalization: { lineCount, matchedCount, unmatchedCount, notApplicableCount }, unmatchedLines: [{ quoteLineId, sku, normalizedSku, edition, description }], assessment: { ...same shape as GET .../assessment... } }` — `unmatchedLines` is AC-2's "Show unmatched SKUs" half made queryable over HTTP (deliberately not a field on the `GET .../assessment` response itself, see `SkuMappingService`'s own doc comment for why); writes one `IAuditWriter` entry (`quote.sku_mapping_recalculated`) per successful call, even a pure refresh. |
+| GET | `/api/quotes/benchmark-history` | Tenant-wide quote benchmark history (parent story us-01-quote-benchmark-backend AC-1/AC-2, task E25/F04/US01/T01, quote-benchmark-backend; ADR-024, ADR-028, ADR-001; closes NW-57); `X-Tenant-Id` header; the tenant's quotes, newest first (same order `GET /api/quotes` above uses), each carrying a freshly-recomputed per-line market-benchmark assessment; never 404s — a tenant with no quotes yet gets `200` with an empty `items` array. Response `{ items: [{ id, fileName, mimeType, processingStatus, supplier, currency, geography, purchaseDate, createdAt, lines }] }` — `lines` is the exact same per-line shape `GET /api/quotes/{id}/assessment` above returns, reused verbatim (`QuotesEndpointExtensions.BuildLineAssessmentResponse`), so a first-of-type quote reports the same honest `InsufficientBenchmarkData` cold start here as it does there — never a fabricated position (ADR-001). Backed by `Raffa.Quotes.Application.QuoteBenchmarkHistoryService.GetHistoryAsync`, which composes `MarketAssessmentService.AssessAsync` per quote rather than re-deriving it; nothing new is persisted — see "Quote benchmark history" below |
 | GET | `/api/savings/kpis` | Procurement-homepage KPI row (spec §4.3/§10.1; story us-01-savings-kpis AC-1, task E04/F03/US01/T01; **wave w17 NW-72, task E20/F01/US01/T01**); `X-Tenant-Id` header; response `{ annualSpendAnalyzed: [{ currency, amount, contractCount }], contractsAnalyzedCount, savingsIdentified/savingsInProgress: [{ currency, low, high, count, averageConfidence }], savingsRealized: [{ currency, amount, count }], upcomingRenewalsCount }` — every money value is grouped by currency, never summed across currencies (no exchange-rate service exists anywhere in this codebase); `contractsAnalyzedCount` counts contracts whose linked document reached `DocumentProcessingStatus.Completed`; **`savingsRealized` is verified money from `RealizedSavings` rows** (currency / amount / count) — never the opportunity's pre-negotiation estimate band, and an outcome with `savingsPropagated: null` enters no total; `upcomingRenewalsCount` is the same auto-renewing-contract count `GET /api/renewals`'s own `totalCount` already reports — see `Raffa.Api.SavingsKpiEndpointExtensions` |
 | GET | `/api/capabilities` | The versioned V2 capability catalog (R-SYS-01; story us-01-capability-catalog, task E13/F08/US01/T01; mapped by task E13/F06/US01/T01, ask-engine; wave w16 NW-31, task E18/F03/US01/T01 deleted the server-side role filter): no tenant header — static, tenant-agnostic metadata, not a per-tenant read; served whole, every row carrying its own `roleGate` as a presentation label, never as authorization; see "Ask Raffa — capability catalog" below |
 | GET | `/api/insights/criticality` | Portfolio-wide criticality ranking (story insights-calculators, task E13/F07/US01/T01; mapped by task E13/F06/US01/T01); `X-Tenant-Id` header; the same `Raffa.Insights.Criticality.CriticalityScoreCalculator` output `AskCopilotService`'s own `PortfolioStrategy` intent narrates — see "Insights" below |
@@ -2503,10 +2504,14 @@ colleague opening the same quote had no way to see what was already recorded.
 - **The outcome is a property of the quote, not a tenant-wide feed.**
   `NegotiationOutcome` is keyed by `QuoteId` and is append-only (see that type's own
   doc comment), so this task deliberately does **not** add a
-  `GET /api/negotiations/outcomes`: a bare tenant-wide list has no caller until
-  NW-57 (W18) builds the cross-quote history/levers/Ask-citable surface
-  (`inputs/design/prototypes/raffa-v2/screens-v2.md:139-145`), and publishing one
-  now would pre-empt that item's own product shape.
+  `GET /api/negotiations/outcomes`: a bare tenant-wide *outcome* list still has no
+  caller. **Update (task E25/F04/US01/T01, W18):** NW-57 landed instead as a
+  narrower, different surface — `GET /api/quotes/benchmark-history` (see "Quote
+  benchmark history" below) — the market-*benchmark* half of NW-57's ask, not a
+  negotiation-outcome list. The cross-quote levers/Ask-citable outcome feed
+  (`inputs/design/prototypes/raffa-v2/screens-v2.md:139-145`) remains unbuilt with
+  no scheduled closer, and publishing `GET /api/negotiations/outcomes` now would
+  still pre-empt that item's own product shape.
 - **Why `GET /api/quotes/{id}/assessment` is not overloaded with the outcome**
   instead (ADR-028 D2, declining an earlier client-architect shape preference):
   `POST /api/quotes/{id}/assessment/recalculate` returns that exact same assessment
@@ -2525,6 +2530,50 @@ colleague opening the same quote had no way to see what was already recorded.
   and the real host: the embedding order, a second-caller read-back (record in one
   session, read in a different one), the cross-tenant negative on both routes, and
   the 404/400 id-validation ladder.
+
+## Quote benchmark history
+
+Task E25/F04/US01/T01 (quote-benchmark-backend; parent story
+us-01-quote-benchmark-backend AC-1/AC-2; ADR-024, ADR-028, ADR-001; closes NW-57)
+re-focuses Quote check's assessment on the market-benchmark job itself: a
+tenant's quotes read back as durable server state, each carrying its
+market-benchmark position, so the job-to-be-done is a comparison a colleague can
+reopen later, not a worksheet that lives only in one browser tab. AC-3 ("every
+request is kept") needed no code change — this task adds a read, and the
+existing "See it in Savings →" CTA already never replaced the benchmark result.
+
+- **`GET /api/quotes/benchmark-history`** — the tenant's quotes, newest first,
+  each carrying a freshly-recomputed per-line market-benchmark assessment;
+  documented in the HTTP surface table above.
+- **New `Raffa.Quotes.Application.QuoteBenchmarkHistoryService.GetHistoryAsync`**
+  composes rather than re-derives: for every quote this tenant has, it calls the
+  already-accepted `MarketAssessmentService.AssessAsync` — the same cold-start
+  rule governs both routes, so a first-of-type quote (no fixture comparable yet
+  for its supplier/product) reports the honest `InsufficientBenchmarkData` status
+  here exactly as it does on `GET /api/quotes/{id}/assessment` — never a
+  fabricated position (ADR-001, Appendix C rule 10).
+- **Nothing new is persisted and no migration exists for this task.** Like
+  `MarketAssessmentService` itself, every line's assessment is computed fresh on
+  every call; "history" means the `Quote`/`QuoteLine` rows themselves are the
+  durable server state (already RLS-enabled) — a prior quote's benchmark "reads
+  back" because the quote that produced it is still in the database, not because
+  a computed position was snapshotted at upload time (ADR-028).
+- **What this does and does not close**, relative to the "Quote and outcome
+  read-back" section above: NW-57 asked for the *benchmark* half (history +
+  benchmark-first UX); the *negotiation-outcome* half that section describes —
+  `GET /api/negotiations/outcomes` — stays open; see that section's own updated
+  note.
+- `QuotesEndpointExtensions.BuildAssessmentResponse`'s per-line projection was
+  extracted into a standalone `BuildLineAssessmentResponse` so this route's own
+  `BuildHistoryEntryResponse` reuses the identical shape rather than a third,
+  drifting copy — `GetAssessmentAsync`/`RecalculateAssessmentAsync` still call
+  `BuildAssessmentResponse` exactly as before and are otherwise unchanged.
+- Proved by `Raffa.Api.Tests.QuoteBenchmarkHistoryEndpointTests` over a real HTTP
+  round trip (`InMemoryQuotesFactory`, an InMemory-swapped `QuotesDbContext`, same
+  shape `InMemoryAskEngineFactory` already establishes): the tenant-header guard
+  clauses, an empty-tenant `200`, the honest `InsufficientBenchmarkData` cold
+  start, a prior quote's benchmark reading back identically across two separate
+  requests/`HttpClient`s, and newest-first ordering.
 
 ## Insights — criticality score, priced-line negotiation, strategy pack
 
