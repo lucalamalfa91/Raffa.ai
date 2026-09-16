@@ -328,13 +328,17 @@ holds the directory right, not which environment wants the feature.
   hosts managed Functions / staging, which we disable.
 - **GHA `terraform plan` on push to `main`** is redundant with the HCP VCS
   run. Ignore/discard the CLI plan; the VCS run is authoritative.
-- **CI deploy principal Key Vault grant is in Terraform.** `backend.yml`
-  reads `postgres-connection` as `raffa-sp-<env>`. Each env root looks
-  that SP up by the GitHub Environment `AZURE_CLIENT_ID` (display name
+- **CI deploy principal grants are in Terraform — two of them as of w17.**
+  `backend.yml` reads `postgres-connection` as `raffa-sp-<env>`. Each env root
+  looks that SP up by the GitHub Environment `AZURE_CLIENT_ID` (display name
   is not unique in this tenant) and `modules/keyvault` grants it
   `Key Vault Secrets User` on that vault only
-  (`azurerm_role_assignment.ci_secrets_user`). Confirm the HCP VCS apply
-  before re-running the backend deploy job.
+  (`azurerm_role_assignment.ci_secrets_user`). As of w17 `E20/F02/US01/T01`,
+  `modules/servicebus` additionally grants it `Azure Service Bus Data Sender`
+  on the `extraction-events` topic only
+  (`azurerm_role_assignment.ci_deploy_servicebus_sender`). Confirm the HCP VCS
+  apply before re-running the backend deploy job or dispatching
+  `reprocess-tenant-documents.yml`.
 - **Foundry wiring is two-phase.** The account, projects, deployments and
   RBAC are Terraform-managed (`modules/foundry`); `AiGateway__Endpoint` and
   the `AiGateway__Models__*` env vars are published only where the root sets
@@ -414,14 +418,21 @@ file scope; these are findings, not fixes.
   is still the right pre-step (it is what R-MKT-03 specifies and what a live
   provider will feed), but "the deployed API serves the seeded corpus" is not
   yet true. Wiring it is an API composition change plus one env block here.
-- **The two new V2 operator workflows need no new Azure grant.**
-  `seed-market-intelligence.yml` and `reprocess-tenant-documents.yml` reuse the
-  per-environment OIDC deploy principal (`raffa-sp-<env>`) that already holds
-  `Key Vault Secrets User` on that vault via
-  `modules/keyvault`'s `azurerm_role_assignment.ci_secrets_user`, and they read
+- **`seed-market-intelligence.yml` needs no new Azure grant.**
+  It reuses the per-environment OIDC deploy principal (`raffa-sp-<env>`) that
+  already holds `Key Vault Secrets User` on that vault via
+  `modules/keyvault`'s `azurerm_role_assignment.ci_secrets_user`, and reads
   the same `postgres-connection` secret `backend.yml` and
   `seed-demo-fixture.yml` already read. No secret was added, so no
-  `modules/keyvault` change is required for them.
+  `modules/keyvault` change is required for it.
+- **`reprocess-tenant-documents.yml` requires one new Azure grant (w17).**
+  `E20/F02/US01/T01` adds `azurerm_role_assignment.ci_deploy_servicebus_sender`
+  in `modules/servicebus` — scoped to the `extraction-events` topic, role
+  `Azure Service Bus Data Sender`, principal `raffa-sp-<env>`. Monthly cost
+  delta: **$0.00 on both dev and demo** (a role assignment carries no Azure
+  charge). Apply is HCP VCS on merge to `main`; do not run `terraform apply`
+  from Actions. No `modules/keyvault` change is required (ADR-005 w17 §18:
+  zero new environment keys).
 - **`reprocess-tenant-documents.yml` depends on public API ingress.** It calls
   `POST /api/documents/{id}/reprocess` on `ca-raffa-<env>-api` from a GitHub
   runner, resolving the FQDN exactly as `web.yml` already does for the SPA's

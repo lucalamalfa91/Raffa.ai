@@ -100,3 +100,25 @@ resource "azurerm_role_assignment" "workload_servicebus_receiver" {
     ]
   }
 }
+
+# Task E20/F02/US01/T01 (ADR-005 w17 §15): the wave's entire Azure delta is
+# exactly this one RBAC row. Topic-scoped, Sender only -- the workload identity
+# already holds Sender+Receiver; a Container Apps Job would grant the wider
+# capability, so the runner (option A) was chosen and recorded here to prevent
+# re-opening (ADR-005 w17 §16). ARM rejects in-place role-assignment updates,
+# so the lifecycle block is required; omitting it plans clean today and fails a
+# later, unrelated apply.
+resource "azurerm_role_assignment" "ci_deploy_servicebus_sender" {
+  scope                            = azurerm_servicebus_topic.extraction_events.id
+  role_definition_name             = "Azure Service Bus Data Sender"
+  principal_id                     = var.ci_deploy_principal_id
+  skip_service_principal_aad_check = true
+
+  lifecycle {
+    ignore_changes = [
+      skip_service_principal_aad_check,
+      principal_type,
+      name,
+    ]
+  }
+}
