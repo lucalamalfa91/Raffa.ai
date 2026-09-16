@@ -1367,3 +1367,449 @@ seats the designer; change the storage or fragment rules of §1 beyond the three
 deletions in §21; write **ADR-026** or **ADR-028** (software-architect's — the
 shapes are reconciled here, not re-decided); or rewrite any body or earlier
 footer. It creates **no new ADR** and supersedes nothing.
+
+## Amendment (2026-09-15, wave w17 — the client renders the server's decision, and the viewer costs no dependency)
+
+Continues the **w16 footer** above (`:1064-1369`, clauses 21–31), every clause of
+which stays in force; numbering continues from it. Written by client-architect,
+owner of this ADR. Serves **NW-63, NW-71, NW-62, NW-72, NW-64, NW-65, NW-66** and
+records the client half of the three items queued to W18. Baseline `d3d2d24`.
+
+**32. NW-63 adds no runtime dependency, and the reason must be written down
+rather than merely acted on.** `OQ-w17-001` and this seat's own lane priced the
+viewer as *"the first new runtime dependency since ADR-012"*. **It is not one.**
+Because ADR-029 rasterises **server-side**, the viewer renders **PNG pages**, so
+no PDF library is needed this wave — and **none for the W18 remainder either**,
+since a bounding-box overlay is absolutely-positioned DOM over an `<img>`.
+Verified: `web/package.json:19-25` carries exactly **five** runtime dependencies
+(`@azure/msal-browser`, `@azure/msal-react`, `react`, `react-dom`,
+`react-router-dom`) and **must still carry five** when NW-63 lands. **ADR-012's
+dependency fence is not breached and no council round is owed to breach it.**
+
+This is recorded as a **rule, not an observation**, because the failure mode is
+social rather than technical: an implementer handed a work item called "document
+viewer" reaches for `react-pdf` reflexively, and nothing in the task text would
+stop them. A task that adds a rendering dependency to `web/package.json` is
+**rejected at review** and the reviewer is pointed at this clause. If a future
+wave genuinely needs client-side rasterisation, that is an ADR-012 amendment with
+its own bundle-size and licence argument — not a line in a `package.json` diff.
+
+**33. The object-URL lifecycle binds on its first consumer, and the viewer is
+it.** `getDocumentPreviewUrl` performs an **authenticated** `fetch` (`X-Tenant-Id`
++ bearer, `client.ts:2086`) and returns `URL.createObjectURL(blob)` (`:2100`), so
+**a plain `<img src="/api/…">` cannot work at all** — the header cannot ride on an
+`<img>`. The file already states the contract (`:418-426`): *"The caller owns
+`URL.revokeObjectURL(objectUrl)` once done (e.g. a `useEffect` cleanup) … this
+client does not track outstanding object URLs itself."* A repository-wide grep
+finds **zero callers today**, so that contract has never once been exercised.
+
+Rule, binding on NW-63 and on every later consumer:
+
+> Every `getDocumentPreviewUrl` result is revoked in the `useEffect` cleanup that
+> owns it. A viewer holds **at most the current page** (plus, optionally, its
+> immediate neighbours) alive at one time, and revokes on page change, on
+> unmount, and on a failed re-fetch.
+
+Without it a 40-page document paged end to end leaks **one blob per page** in a
+long-lived SPA tab. This is not a style note: it is the difference between a
+documented contract and an honoured one, and NW-63 is the wave that decides which
+this is.
+
+**34. The web renders the server's persisted decision and never recomputes it —
+and this seat's own lane proposed a wire shape that would have defeated the very
+defect it found.** `semantics.ts` becomes **label-only**: `getConfidenceTag`
+paints a confidence *label*, it no longer decides acceptance, and
+`isConfidenceBlocking` (`reviewViewModel.ts:294`) reads the **server's decision**
+instead of `< 80`. The threshold number never becomes a client rule — the web
+learns the **outcome**, and the legend is server-fed (ADR-024 w17 clause A1).
+
+*The store this retires, and the endpoint that replaces it.* `acceptedThisSession`
+— `useReviewSession.ts:92`, a `useState<ReadonlySet<CorrectableFieldName>>` folded
+into the rows at `:145`. Verified first-hand at this table: **`accept()` already
+has two branches and they are not equal.** `:177-182` routes a pending proposal
+through `correct()`, a **real `PATCH` plus a `load()` read-back**; `:184` is
+`setAcceptedThisSession(...)` with **no network call at all**. Two kinds of
+"accepted", painted identically, and on reload the second kind silently vanishes.
+NW-71 adds a **third** (server auto-accept). **One screen, three durabilities, one
+paint** — the precise shape of "a client cache standing in for a missing GET"
+that §1 of this ADR exists to forbid. The product has retired one of these
+before: `navItems.ts:85-90` records NW-10's `sessionStorage` tracker replaced by a
+server count.
+
+*The correction against this seat's own lane, recorded because it matters more
+than the ruling.* The lane proposed the wire carry **two** values,
+`"auto_accepted" | "needs_review"`. Software-architect ruled **three**
+(`auto_accepted` / `human_accepted` / `review_required`, ADR-003 w17 clause 1).
+**Software-architect is right and the lane was wrong in a way that would have
+re-created the exact defect the lane had just diagnosed**: with only two values a
+human acceptance has nowhere to live on the wire, so it would have had to be
+either painted as `auto_accepted` — telling a user the machine accepted what they
+personally signed off, which ADR-001 w17 clause 8 forbids — or **left in
+`acceptedThisSession`**, which is the store the clause was retiring. A two-value
+enum does not simplify this design; it **forces the session store to survive**.
+Three states are the minimum that lets the store go. Adopted verbatim.
+
+*Binding rule.* A row's accepted state renders from the **server's** decision. A
+session-only acceptance may exist for a decision not yet written, but it is
+**visibly distinct** (the pending treatment) and is **never** painted as a
+persisted one. The read-back costs nothing new: `useReviewSession.ts:124` already
+calls `getContractEvidence` on every `load()`, so a decision stored on
+`extraction_evidence` is read back with **zero new endpoints and zero new
+fetches** — the same table security-architect reached from isolation and
+software-architect from the wire.
+
+**35. One answer source per screen (NW-62).** `buildAnswers`
+(`contract360ViewModel.ts:160-199`) **maps** a server answer; it does not compute
+one. The 360 consumes `GET /api/contracts/{id}/strategy` (already generated,
+`schema.ts:724`, no consumer) per OQ-w17-005, and the cost is already paid:
+`contract360/index.tsx:115-119` already runs parallel GETs after the 360 and
+`:48-50` already documents the degrade rule — an optional source that fails
+*"degrades its own answer to an honest 'not yet' rather than failing the
+screen"*. Adding one more call to that `Promise.all` needs **no new loading
+architecture**. If software-architect instead composes the answer into the 360
+payload, the band reads **that** and does not call `/strategy`. Either shape is
+acceptable; **two sources for one question on one screen is not.**
+
+The line that matters for acceptance: `SAVINGS_NOT_YET_AVAILABLE` /
+`LEVER_NOT_YET_AVAILABLE` (`contract360ViewModel.ts:150-152`) survive **only** as
+the absent-or-failed state of a source that was really called — **never as the
+steady state of a source that is never called**. That standing state is the whole
+defect NW-62 closes, and a task that leaves the constants reachable by default has
+not closed it.
+
+**36. `getConfidenceTag`'s consumers: the writer math, and a colour check that
+will flip on its own.** Verified by grep at this table: **four** call sites
+(`contract360ViewModel.ts:574`, `FactTable.tsx:35`, `WhyClauses.tsx:40`,
+`reviewViewModel.ts:282`) plus one `isConfidenceBlocking` site
+(`reviewViewModel.ts:294`) — **five consumers in four modules**, exactly as the
+decision record's constraint 1 lists. `memberViewModel.ts:113` is a **comment**
+reference, not a call.
+
+Two consequences the constraint list does not draw. **(a) NW-71 need not open
+`contract360ViewModel.ts` at all.** Its consumer there, `:574`, sits **inside
+`computeNeedsAttention`** (`:568-583`) — a function constraint 3 already assigns
+to **NW-65**, which rewrites it. So if NW-71 keeps `getConfidenceTag`'s
+**signature** unchanged (`(confidencePct: number) => SemanticTag`) and changes
+only the band mapping, all three 360 call sites still compile, and the two that
+must disappear are deleted by the items that own them. That takes
+`contract360ViewModel.ts` from four contending items to **three**, and with
+NW-65+NW-66 as one task, to **two writers in two phases**.
+
+**(b) The 360's attention gate reads a colour, and NW-71 changes colours.**
+`computeNeedsAttention` decides membership with `if (tag.variant !== "neutral")`
+(`:575`) — it infers a decision from the tag's **presentation variant**, which is
+the one thing `semantics.ts:45-46` tells screens not to do (*"Screens gate CTAs on
+this function, not on inspecting the tag's colour/variant"*). Today
+`variant !== "neutral"` happens to mean "at or below 95 %". The moment NW-71
+collapses three bands to two, **that expression silently changes meaning with
+nobody editing the line**, and the "facts you still need to decide" list changes
+size for a reason no diff explains. NW-65 rewrites this function anyway, so the
+fix is free — but it must be **named**, or it will be preserved verbatim as
+working code. Ruled as **OQ-w17-cl-02**.
+
+**37. NW-72's client half: no new cell shape, no cross-currency sum, and a wire
+break the build catches.** The KPI renders **currency-grouped money from the
+server** and the client **never sums across currencies** — a cross-currency total
+is a fabricated number, and no conversion service exists. Absent → the existing
+`—` idiom (`KpiRow.tsx:49`), never a fabricated `0`. **No new cell shape is
+owed**: `KpiCellView.lines` is already `string[]` and `savingsViewModel.ts:91`
+already renders one formatted line per currency for `annualSpendAnalyzed`.
+Realized money follows that exact idiom; whether it is a fourth cell or a second
+line is ux-ui-designer's.
+
+Software-architect **declared** a wire break on `SavingsKpiSummary.Realized`
+rather than smuggling it. The client consequence is smaller than a declared break
+usually is, and it is verifiable: `client.ts:985` derives
+`SavingsKpiSummaryBody` from the **generated** `GetSavingsKpisResponses`, not from
+a hand-declared interface, so the new shape propagates on regeneration; and
+`package.json:13` runs **`npm run generate:api && tsc --noEmit && vite build`** —
+regeneration *then* typecheck, in one command. **A wire break on a generated type
+therefore cannot land silently; it fails the build.** That is the property that
+makes a declared break safe, and it is why `client.ts:986-987`'s derived aliases
+are indexed off the generated type rather than restated.
+
+**38. NW-64 is a pure-web change with a real read-back and no new endpoint.**
+`reviewViewModel.ts:244` currently **drops** a row whose `currentValue` is null
+with no proposal; under NW-64 the row survives in a **`missing`** state. The fill
+reuses the existing `PATCH /api/contracts/{id}` (`client.ts:2403-2411` via
+`useReviewSession.ts:159-162`), so the item stays pure-web. **The test is the
+task**: `reviewViewModel.test.ts:347` locks the current skip and must be
+**rewritten to assert the new row**, never deleted — a deleted test is how a
+behaviour change becomes unobservable.
+
+**39. `web/src/api/client.ts` and `web/e2e/` writer rules (OQ-w17-cl-01).**
+`client.ts` has **two** contending items, not one: NW-63 adds a **page parameter**
+to `getDocumentPreviewUrl` (today `(tenantId, id)`, `:2082`) and its result type,
+and NW-72 wants at most a **one-line derived alias** beside `:986-987`. Clause 25's
+rule applies unchanged — **different phases, or one task**. The free escape, with
+its cost named: NW-72's alias is *optional*, since `savingsViewModel.ts` can index
+the generated body inline; **drop the alias and `client.ts` has exactly one
+writer**. That trades a naming convention for a phase, and the decomposer — not
+this ADR — should decide which it needs.
+
+`web/e2e/v2.spec.ts` has up to **four** contending items: NW-73's stale-prose
+sweep edits it (`:117`, `:431`) while NW-62, NW-63, NW-71 and NW-72 all want new
+cases. Rule: **`v2.spec.ts` is opened by NW-73's sweep alone**, and every new W17
+case lands in a **per-theme spec** — `w17-savings.spec.ts`, `w17-review.spec.ts`,
+`w17-answers.spec.ts`, `w17-viewer.spec.ts`. The collision disappears and no task
+waits on another task's test file. Per clause 31 and §12 these remain
+**acceptance-runbook evidence, not a CI gate** — no workflow runs Playwright — and
+no task may present them as one.
+
+**40. The three items queued to W18 get a recorded client decision now, so W18
+re-deliberates nothing.** **No task is minted for any of them this wave.**
+**NW-74**: pass the **server-derived** role (`workspaceRole.ts:37-39`, already held
+at `AppShell.tsx:40`) into both chip renderers — `GlobalAskBar.tsx:7-19` gains a
+`role` member (`AppShell.tsx:59` omits it today) and `routes/ask/index.tsx:351-357`
+— both filtering on the already-generated `roleGate` (`schema.ts:692`).
+Presentation, never a control; `GET /api/capabilities` stays un-gated and
+byte-identical; **one prop, two components, no contract change, no ADR change**
+(ADR-022 w17 clause 4 carries the security conditions). **NW-23 / NW-25**: filter
+state is **query-param state on the existing routes** — the `/documents?filter=…`
+idiom already in the map (`WorkspaceShellApp.tsx:92`) — **never a store**, so a
+filtered list is shareable and survives reload. OQ-w17-007 travels with NW-23.
+**NW-75** is ruled **OUT** by product-owner and reaches this seat not at all.
+
+**41. Checks, and what this footer does not do.** **Checks** (per item, owned by
+the web half of each task): vitest that `reviewViewModel` renders a **server**
+decision and that no row is accepted without one; vitest that `buildAnswers` maps
+and never computes; vitest on the rewritten `reviewViewModel.test.ts:347` case;
+vitest that `computeNeedsAttention` gates on a decision, not on `tag.variant`. E2E
+in the per-theme specs: **A17-1…A17-4** (a ≥ 90 % field reads Accepted **without a
+click** and **survives reload**); **N17** (open a validated PDF's viewer, see *that
+file's* page rather than the placeholder, page forward, and **deep-link `?page=3`
+into page 3 after a reload**); **N18** (a field whose OCR missed renders fillable,
+and the fill survives reload); **N16** (both answer cells concrete with citations,
+**and** an explicit case that the "not yet available" constants appear **only**
+when a real source is genuinely absent); **A17-S1** (realized money grouped by
+currency, agreeing after a reload and in a second browser).
+
+**This footer does not**: name a rendering package (clause 32 forbids adding one
+at all); touch the mobile scaffold ⇒ **ADR-013 `none`** this wave, unamended and
+still non-gating; add a screen, state or copy ⇒ **ADR-019 / ADR-020 are
+ux-ui-designer's**, and the three deliberate divergences from the design export
+are ratified there, not here; decide an endpoint shape, a column or a threshold
+number (**software-architect's** — ADR-003 / ADR-024 / ADR-029, consumed here, not
+re-decided); change §1's storage rules beyond retiring `acceptedThisSession`; or
+rewrite any body or earlier footer. **Unlike clause 31, ADR-018 is *not* `none`
+this wave** — NW-63 adds the first route since w14, recorded in ADR-018's own w17
+footer. This footer creates **no new ADR** and supersedes nothing.
+
+### Round 2 — four clauses, three of them corrections against this seat's own round-1 rulings
+
+Clauses 32–41 stand unchanged and nothing above this line is edited. These four
+were written after re-verifying what this seat had already permitted, plus one
+member that reached the generated client from an item this seat is not rostered on.
+
+**42. The free escape in clause 39 names a key the generated body does not have —
+and this seat's own w16 clause 29 has the right one.** Clause 39 offered
+`SavingsKpiSummaryBody["realized"][number]` as the way to take `client.ts` down to
+**one** writer. Verified on `d3d2d24`: the member is **`savingsRealized`** —
+`savingsViewModel.ts:110` reads `countOf(kpis.savingsRealized)`, and **w16 clause
+29 (`:1319-1320`) already quotes that exact expression**, so this footer
+contradicted an earlier clause of the same ADR. The correct idiom is
+`SavingsKpiSummaryBody["savingsRealized"][number]`. The *shape* was right and is
+the file's own convention, not an invention: `client.ts:986-987` derive
+`SavingsSpendByCurrencyBody` and `SavingsRangeByCurrencyBody` by `[number]`
+indexing of the generated body, so an element-type alias is how this file already
+works. **Why a wrong key is more than a typo here**: the escape exists to save a
+phase on a two-writer file. An implementer who types `["realized"]` gets a type
+error with no obvious cause, and the cheapest-looking repair is to restore the
+alias in `client.ts` — putting the file back to two writers and spending exactly
+the phase clause 39 gave up the alias to save.
+
+**Offered to software-architect, not asserted over it — the wire is that seat's.**
+ADR-028 w17 clause 6 fences the declared break with "the wire keeps the property
+key `realized`". The key the **generated client indexes** is `savingsRealized`. If
+clause 6's `realized` names the .NET member, nothing moves and this is a note. If
+it is read as the JSON key, an implementer honouring the fence would rename
+`savingsRealized` → `realized` and ship the **undeclared second break clause 6
+exists to prevent**, breaking `savingsViewModel.ts:110` and any derived alias. The
+fence is right; it needs the key the client actually reads.
+
+**43. The declared break does not fail the build at the one site that reads it.**
+This seat's NW-72 row argued that because `client.ts:985` derives from the
+**generated** response and `package.json:13` runs `generate:api && tsc --noEmit &&
+vite build` in one command, a break on a generated type "fails the build rather
+than reaching a screen". That is true **where a removed member is read**, and
+**false at `savingsViewModel.ts:110`**. `countOf` (`:72`) is typed
+`ReadonlyArray<{ count: number }>` — **structural, not nominal** — so
+`SavingsRangeByCurrency` → `RealizedSavingsByCurrency(Currency, Amount, Count)`
+keeps `Count` and the call site **compiles unchanged**, while the population behind
+the number moves from *opportunities in realized status* to *`RealizedSavings`
+rows*. The typecheck is silent exactly where the meaning changes. **Binding**:
+NW-72's DoD **names `savingsViewModel.ts:110` as a site to change** and does not
+rely on `tsc` to surface it. The cost is nil — ADR-020 w17 §15 already moves the
+`· N realized` fragment out of the identified cell — so the site is edited by
+intent instead of being discovered. **General rule, for the next declared break**:
+a wire break is caught by the typecheck only where the **removed** member is read;
+where a structural helper reads only a **surviving** member it is silent. **A
+declared break names its call sites.**
+
+**44. After NW-72, `lines: []` stops being a discriminator — and the one the type
+already has is `meta`.** `KpiCellView.lines` carries its own invariant at
+`savingsViewModel.ts:63`: "empty **only** when `kpis` is `null`, rendered as `—` by
+`KpiRow.tsx`, never a fabricated number". That sentence is what a reader uses to
+tell *not loaded* from *loaded and nothing to show*. ADR-020 w17 §15's zero state —
+`lines: []` with meta "no verified savings recorded yet" — **makes it false**, and
+`—` then means two different things in one row of equal cells. **No new field is
+needed**: `buildKpiCells`'s null branch (`:83-88`) gives every cell `meta: null`,
+so `meta === null && lines.length === 0` is *not loaded* and `meta !== null &&
+lines.length === 0` is *loaded and empty*. **Binding**: NW-72 rewrites the `:63`
+docstring **with** the code, and the absent/empty distinction rides `meta`, never
+`lines`. A docstring asserting an invariant the code no longer holds is worse than
+no docstring — it is the sentence the next reader trusts instead of reading
+`buildKpiCells`.
+
+**45. Three surfaces, one rule: absent is not empty — and NW-20's members reach the
+generated client with no consumer.** w17 now carries three payload members whose
+empty value is indistinguishable from *never wired*: NW-62's strategy answers
+(clause 35), NW-72's verified-money cell (clause 44), and NW-20's `activity`
+(security-architect, ADR-009 w17 §5 / ADR-011 w17 §25). One is already solved by
+construction and by another seat — software-architect carries the benchmark abstain
+**as an entry** (`Status = insufficient_data`), never `[]` (ADR-024 w17 clause 11).
+**Verified from the client side**: `activity` appears **nowhere in `web/src`** —
+there is no occurrence in `contract360ViewModel.ts` — and NW-20 rosters **no client
+and no UX seat**. Adding members to a response type is **additive**, so the web
+build stays green and the member lands **silently**: this is the same shape as the
+defect NW-62 exists to repair in this very wave (`getContractStrategy`, generated
+at `schema.ts:724`, **no consumer**). **Ruling for this seat's lane**: w17 ships
+`activity` and `benchmark` on the wire with **no web consumer and no client task**
+— honest, and it keeps `contract360ViewModel.ts` at the **three** contenders of
+constraint 3 (NW-62/65/66) rather than adding a fourth to a file the cap already
+strains. **The rule travels with the item to W18**: whichever task builds the
+surface must distinguish *called-and-empty* from *never called* exactly as clause
+35 requires of the answers band — an empty `activity` renders "no recorded activity
+yet" **only** when the call succeeded, never as the default paint. Recorded here
+rather than as a decision row because this seat is **not rostered on NW-20**; the
+payload shape is software-architect's and the tab's design will be
+ux-ui-designer's.
+
+### Round 3 — the copy the reap does not reach, and a 404 that names the wrong thing
+
+Clauses 32–45 stand unchanged and nothing above this line is edited. These three
+were written because **software-architect's ADR-029 round-3 footer landed on the
+one surface this seat owns** — the viewer — and its two clauses carry a client
+consequence that ADR itself cannot bind. **ADR-029 is consumed, not edited**: it
+is software-architect's, exactly as cloud-architect and security-architect treated
+theirs.
+
+**46. The deterministic key reaps the stale page in the container; the tab keeps
+its own copy, and `cache: "no-store"` is what hides it.** ADR-029 round-3 clause 1
+derives the page key from `(tenantId, documentId, page)` and **nothing else** — no
+render id, no timestamp, no hash, no attempt counter — so a re-render
+**overwrites**. Its correctness half, security's, is that a suffixed key would
+leave "a prior rendering of a **since-corrected** document readable where nothing
+reaps it" (`ADR-029:204-206`). That reap is real **in the container**. It does not
+cross into the browser: `getDocumentPreviewUrl` materialises the page into the tab
+with `URL.createObjectURL(blob)` (`client.ts:2100`), and a `blob:` URL is a **copy
+in memory** on an opaque handle with no relation to the storage key and **nothing
+to revalidate against** — there is no request to revalidate. The since-corrected
+rendering stays readable for as long as the viewer holds the handle.
+
+⚠ **`cache: "no-store"` (`client.ts:2087`) is what makes this invisible.** It is
+correct and it should stay — and it means the **HTTP** layer provably never serves
+stale bytes, so the next reader concludes the **paint** is fresh. It is not: the
+paint comes from a blob the tab already holds, which no fetch directive governs.
+w17 is the wave that makes it reachable — NW-73 re-renders a **whole tenant**
+(software-architect's own stated reason for writing clause 1) while NW-63 ships
+the first surface that holds pages open.
+
+**The client cannot detect it, and that is a consequence of a decision this seat
+agrees with, not an oversight.** Verified at this table: the key carries no
+discriminator **by design** (clause 1); `pageCount` (ADR-029 clause 6) is
+unchanged by a same-length re-render; and the document read model offers no other
+candidate — `documentProgress.ts:65` and `documentTable.ts:145` show `id`,
+`processingStatus`, `stage`, `contractId`, `documentType`, `weakFactCount`,
+`rejectionReason`, and the generated schema's only `versionNumber` sits on the
+**contract-corrections** body (`schema.ts:393`), not on a document. There is
+nothing to key a cache on.
+
+⚠ **Nor does the existing poll rescue it** — named so the answer "the poll will
+tell us" is not proposed and then found false in implementation.
+`useDocumentsList.ts:148` polls only while some row is `Uploaded` or `Processing`,
+and the poll budget stops it after five minutes without a change (`:55`). In the
+steady state in which a reviewer opens a viewer — everything `Completed` — **no
+poll is running**, so a reprocess started from NW-73's console is invisible to
+this tab.
+
+**Rule** — it extends clause 33 rather than replacing it, and the point is that
+the memory rule and the correctness rule turn out to be **one rule**:
+
+> The viewer holds **no page cache that survives a page navigation**. Every page
+> view is a fetch; every result is revoked in the `useEffect` cleanup that owns it
+> (clause 33). A `Map<page, objectUrl>` kept "so paging back is instant" is
+> **forbidden** — it is §1's defect (a client store standing in for a GET) with a
+> **correctness** cost, not merely a memory one.
+
+Because the fetch already carries `no-store`, a refetch is always current, and the
+staleness window shrinks to *the page you are looking at while you look at it* —
+which no viewer can avoid and which is honest.
+
+**No contract member is asked for.** This seat deliberately does **not** ask
+software-architect for a render discriminator: the rule above costs nothing, and
+the ask would widen a read model in a wave whose cap already binds. **The W18
+condition is recorded instead**: the deferred bbox overlay pins coordinates to
+bytes, and any surface that caches pages across navigation — or pins an overlay to
+a page it is not refetching — **does** need a discriminator. W18 asks then, with
+the cost known, rather than discovering it.
+
+**47. The 404 branch names the wrong thing, and NW-63's own `client.ts` edit is
+where it is repaired.** `client.ts:2103-2104` special-cases exactly one status and
+returns a hard-coded `No document found for id ${id}.`. Under ADR-029 body clause
+5 a 404 is now also **page out of range**, and under round-3 clause 2 it can mean
+**that page no longer exists** — the re-render was shorter and the surplus was
+reaped. ux-ui-designer's ADR-018 w17 clause 12 requires the viewer's **not found**
+state to tell a `documentId` that resolves to nothing from a `?page=` outside the
+range; as written, the data layer hands that surface one status code and one
+sentence naming the **document**. A viewer wired to it says *"No document found"*
+about a document that is open in front of the user.
+
+**Rule**: NW-63's edit stops the 404 branch asserting which of the two it is, and
+the viewer discriminates from `pageCount` — which ADR-029 clause 6 puts on the
+read model and which the viewer already holds. `page > pageCount` is answered
+**with no fetch at all**; `page ≤ pageCount` with a 404 is *that page is not
+rendered* — clause 7's stated budget cap, or clause 2's rasterisation failure,
+which by that clause does not fail the document. **No contract change and no
+ask**: the discrimination is derivable client-side. This discharges ADR-018 clause
+12 at the layer that supplies its data, and it lands **inside NW-63's existing
+edit**, so clause 39's writer count is unchanged.
+
+⚠ **The mechanic that must never be written.** No `onError` swap to the page-1
+URL, no silent clamp of `?page=` into range, no retry at a neighbouring page.
+ADR-029 clause 5 refuses exactly this at the route — *"silently serving the wrong
+page to a citation deep-link is how a viewer lies about where a clause came
+from"* — and the client can recreate that same lie **above a correct server**, in
+three lines, as the reflexive repair for a broken image element. A server rule
+cannot bind a client mechanic; this clause does.
+
+**48. What else round 3 moves, the checks, and what this footer does not do.**
+
+**NW-62 needs no change, and that is a ruling rather than silence.**
+security-architect's ADR-011 w17 clause 26 can leave a document whose chunks were
+deleted and committed while the publish 403s — no corpus, no requeue, no audit
+row. On the 360 that contract's answers then render `SAVINGS_NOT_YET_AVAILABLE` /
+`LEVER_NOT_YET_AVAILABLE` (`contract360ViewModel.ts:150-152`), which is **correct
+under clause 35**: the source was genuinely called and genuinely has nothing. **No
+special case, no client task, no new state** — and the screen's honesty is what
+makes a silent server-side failure legible instead of invisible. Recorded so
+nobody adds a "reprocess failed" branch the client cannot substantiate.
+
+**Checks**, added to the per-theme specs of clause 39 and still
+acceptance-runbook evidence rather than a CI gate (`w17-viewer.spec.ts`): **(a)** a
+document reprocessed while its viewer is open does not keep painting the
+pre-reprocess page once that page is navigated away from and back; **(b)** a deep
+link to `?page=N` beyond the document's `pageCount` renders ADR-018 clause 12's
+**not found** state **and the URL still reads `?page=N`** — never rewritten, never
+clamped, never redirected to `/`. (b) is the executable form of clause 47's
+prohibition and the one a reviewer can check by eye.
+
+**This footer does not**: edit **ADR-029** (software-architect's — both round-3
+clauses adopted whole); ask for a contract member (named and declined above); add
+a runtime dependency (clause 32 stands, `package.json` at five); replace clause
+33's revoke rule (extended); reopen NW-71, NW-64, NW-65, NW-66, NW-72 or the
+queued items, whose rulings stand as clauses 34–40 and 42–45 wrote them; or change
+clause 39's writer rules. **ADR-013 `none`** re-verified a third time — the mobile
+scaffold is untouched and still non-gating. **ADR-018 is amended in its own
+round-3 footer** (clause 15, this seat's route half). This footer creates **no new
+ADR**, supersedes nothing, and writes no application code.

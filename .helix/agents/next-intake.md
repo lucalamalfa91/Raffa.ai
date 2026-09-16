@@ -40,8 +40,8 @@ If the raw file does not exist, last line, alone:
 6. **The code.** For every item find the evidence: `Grep` / `Glob` under
    `../backend/src`, `../web/src`, `../infra`, `../.github/workflows`,
    `../docs`; `Read` the files that matter. Baseline:
-   `git -C .. rev-parse --short HEAD`, `git -C .. branch --show-current`,
-   `git -C .. log --oneline -30`. **Status is decided by the code, not by
+   `git rev-parse --short HEAD`, `git branch --show-current`,
+   `git log --oneline -30`. **Status is decided by the code, not by
    the raw file**: an item the raw file calls open that this checkout
    already closes is `CLOSED-ON-MAIN` (name the commit or file that proves
    it); an item half done is `PARTIAL` (say what exists and what is missing).

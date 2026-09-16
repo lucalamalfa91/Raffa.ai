@@ -395,6 +395,80 @@
       "mode": "next",
       "source": "inputs/next/w16-todo.md",
       "requirements": "reports/context/waves/w16-requirements.md"
+    },
+    {
+      "id": "w17",
+      "title": "W17 \u2014 the product officializes what it knows, shows the page it read it from, and answers where you can save",
+      "previous": "w16",
+      "tokens": 20400000,
+      "tasks": 14,
+      "epic": "E20, E21, E22",
+      "integration": false,
+      "checks": [
+        "github_auth",
+        "github_org",
+        "github_repos",
+        "hitl_previous"
+      ],
+      "stories": [
+        "E20/F01/US01",
+        "E20/F02/US01",
+        "E20/F02/US02",
+        "E21/F01/US01",
+        "E21/F02/US01",
+        "E21/F03/US01",
+        "E21/F03/US02",
+        "E22/F01/US01",
+        "E22/F01/US02",
+        "E22/F02/US01",
+        "E22/F03/US01",
+        "E22/F04/US01",
+        "E22/F05/US01",
+        "E22/F06/US01"
+      ],
+      "mode": "next",
+      "source": "inputs/next/w17-todo.md",
+      "requirements": "reports/context/waves/w17-requirements.md"
+    },
+    {
+      "id": "w18",
+      "title": "W18 \u2014 the viewer draws the box, the cited phrase is editable, and the lists/Ask/Quote surfaces stop dead-ending",
+      "previous": "w17",
+      "tokens": 19200000,
+      "tasks": 20,
+      "epic": "E23, E24, E25, E26",
+      "integration": false,
+      "checks": [
+        "github_auth",
+        "github_org",
+        "github_repos",
+        "hitl_previous"
+      ],
+      "stories": [
+        "E23/F01/US01",
+        "E24/F01/US01",
+        "E24/F02/US01",
+        "E25/F01/US01",
+        "E25/F02/US01",
+        "E26/F02/US01",
+        "E23/F02/US01",
+        "E24/F01/US02",
+        "E25/F03/US01",
+        "E25/F04/US01",
+        "E25/F06/US01",
+        "E23/F03/US01",
+        "E25/F02/US02",
+        "E25/F03/US02",
+        "E25/F05/US01",
+        "E23/F04/US01",
+        "E25/F04/US02",
+        "E25/F05/US02",
+        "E26/F01/US01",
+        "E23/F05/US01"
+      ],
+      "mode": "next",
+      "source": "inputs/next/w18-todo.md",
+      "requirements": "reports/context/waves/w18-requirements.md"
     }
   ]
 }

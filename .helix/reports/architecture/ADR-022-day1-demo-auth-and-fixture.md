@@ -283,3 +283,209 @@ carries the one instance of this trap that NW-32 creates and closes itself.
 operator seed job are untouched, and **no w16 task flips `Invitations__Mail__Enabled`
 or `guest_provisioning_enabled` on `demo`** (`docs/waves/w15-acceptance.md:300`,
 `waves/w16.md` constraint 4).
+
+## Amendment (2026-09-15, wave w17 — §4's question is answered, and an Admin action moves to the CI plane)
+
+Seat: security-architect (owner). Serves **NW-73**; records the disposition of
+**NW-74**, which this table queued to W18. The Decision outcome above is unchanged
+as the historical record of how `demo` ran from e10 to w14; the w14, w15 and w16
+footers are unchanged and none is superseded. **This footer discharges the "Owed
+to W17" left at §4 `:250-254`.** Rule ids `S17-n` are this seat's w17 lane.
+
+### 1. S17-1 — §4's question, answered: **yes — a CI principal may hold a topic-scoped Send right, and nothing else**
+
+w16 recorded this seat's inclination and deliberately left the ruling to this
+wave. **Adopted**: `data.azuread_service_principal.ci_deploy` (`raffa-sp-<env>`)
+holds **`Azure Service Bus Data Sender`**, scoped to the **extraction topic only**.
+
+**The warrant is not "it is only one verb".** The message is a **pointer, not
+content** — `ExtractionRequested(tenantId, documentId, jobId, schemaVersion)`
+(`ServiceBusExtractionQueuePublisher.cs:24`) — and the Worker **re-reads all
+authority from the database under RLS** when it claims the job, with `MessageId`
+collapsing duplicates (`:50`). A forged or replayed message therefore cannot make
+the Worker read a document the sender could not already reach, and cannot make it
+do anything twice. **Send crosses no confidentiality boundary here. Receive
+would** — a receiver drains the Worker's own deliveries (denial of processing)
+*and* reads tenant and document ids straight out of the envelope. That asymmetry
+is the ruling; it is not a general licence for messaging rights.
+
+**Refused, each for its own reason and not as a list of things we happened not to
+need:**
+
+| Refused | Why |
+|---|---|
+| `Azure Service Bus Data Receiver` | drains the Worker's deliveries and reads ids from the envelope — the asymmetry above |
+| `Data Owner` / `Manage` | creates and deletes entities; ADR-016 §30 already refuses it |
+| namespace-scoped anything | reaches every topic and queue; the grant must not exceed the one topic |
+| SAS key / connection string | `servicebus/variables.tf:28` and this ADR's identity posture forbid it; `DefaultAzureCredential` only (`MessagingServiceCollectionExtensions.cs:84-87`) |
+| an app role on `azuread_application.api` + app-only token | refused at w16 §4 `:239-244`; nothing in w17 changes it |
+| a `workspace_membership` row for the SP | refused at w16 §4 `:245-248`; it would put a non-human in ADR-025's last-Admin count and in the member list |
+
+### 2. OQ-w17-008, this seat's third — and the ruling corrects **this seat's own lane**
+
+This lane's draft preferred a **Container Apps Job under the workload identity**,
+on the ground that it needs **no role assignment at all** — "the wave buys zero new
+rights". Cloud-architect ruled **(A), the GitHub runner**, and produced the fact
+that settles it. **Verified first-hand rather than adopted on trust:**
+`infra/modules/servicebus/main.tf` grants `var.workload_principal_id` **both**
+`Azure Service Bus Data Sender` (`:71-87`) **and** `Azure Service Bus Data
+Receiver` (`:89-102`), at **topic** scope.
+
+So under (C) the console would inherit **Receive** on `extraction-events` — the
+one capability clause 1 refuses by name. **This seat's own asymmetry rule
+therefore condemns this seat's own preference.** The error was counting *rights
+added* instead of measuring *what the principal can do*: (C) adds zero rights and
+grants the **wider** capability; (A) adds one right and grants the **narrower**
+one, to a principal that exists only inside CI. **(A) is adopted, and the
+correction is recorded rather than quietly dropped**, because "zero new rights" is
+a seductive argument that will be made again.
+
+### 3. OQ-w17-sa-02 — the Admin gate is not bypassed; it is **relocated to the CI plane**, and the relocation is named
+
+`DocumentReprocessService` is role-blind by design — `:30-31` says *"the endpoint
+enforces Admin before calling"* — so a console calling it directly **never passes**
+`DocumentsEndpointExtensions.cs:506-509`. Left there, that sentence describes an
+Admin-only capability with no Admin check. It is acceptable **only** because the
+authorization is replaced, in full, by a chain that is written down:
+
+| Plane | What authorizes the console |
+|---|---|
+| **Trigger** | who may dispatch the workflow (repository / GitHub Environment permissions) |
+| **Azure** | the deploy principal's federated credential + clause 1's topic-scoped Send |
+| **Database** | the `postgres-connection` secret, reached through the principal's existing `Key Vault Secrets User` |
+| **Tenant** | RLS, bound explicitly per ADR-009 w17 clause 1 — the gate that does not depend on any of the above being right |
+
+**3a — the security property, stated so it can be checked rather than felt.** The
+set of humans who can trigger a bulk reprocess must be **no wider than the set who
+could perform the same action as tenant Admins through the API**. The mechanism is
+delivery-manager's; the property is this seat's, and it is **already satisfied by
+the existing operator-workflow idiom**, which w17 requires NW-73 to inherit rather
+than reinvent: `workflow_dispatch` **only** — never `push`, never `schedule` —
+with `tenant_id` a **required** input, a closed `target_environment` choice, a
+top-level `permissions: contents: read`, and **`environment: ${{
+inputs.target_environment }}` on the job** (`verify-tenant-corpus.yml:17-35`,
+`:37-38`, `:52`). That file states the reason in its own words at `:15-16`:
+*"`environment:` so demo's required reviewers still gate a job that reads a Key
+Vault secret."* On `demo` the gate is therefore required reviewers; on `dev` it is
+repository write plus an explicit dispatch — graduated, and recorded honestly as
+such rather than described as if `dev` were reviewer-gated.
+
+**3b — the finding that changes NW-73's risk class, and it is in the predecessor's
+own comment.** `verify-tenant-corpus.yml:8` says *"This job reports; it does not
+mutate."* **NW-73 is the first *mutating* operator workflow in this product.** The
+controls it carries must therefore be **at least** those of the read-only one it
+copies — never fewer on the grounds that it is "the same kind of job". Two
+additions follow: a **concurrency group keyed by environment and tenant**
+(`:40-42`'s idiom), since two concurrent bulk runs against one tenant publish the
+same work twice — bounded by `MessageId` but pointless; and clause 20b of ADR-011,
+so a privileged mutation is never anonymous.
+
+**3c — the ceiling.** The console must **never acquire a capability the Admin
+endpoint does not have**: no cross-tenant mode (ADR-009 w17 clause 1, rule 3), no
+direct SQL mutation, no path that skips the audit row. It replaces an Admin's
+reach; it does not exceed it.
+
+### 4. NW-74 is queued to W18, and the deferral carries **no security debt** — by this ADR's own §3
+
+w16 §3 `:227-230` deferred hiding admin-gated chips to W17 as **client
+presentation work** and recorded why that is safe. W17's table queued the item
+again, to W18. **The same clause makes the second deferral safe, and this seat
+re-verified it on the code rather than re-citing itself:** `GetCapabilities()`
+takes **no parameters at all** and returns `CapabilityCatalog.All` **unfiltered**
+(`CapabilitiesEndpointExtensions.cs:31-33`), so the response is provably identical
+for no token, a non-Admin and an Admin — exactly the property §2a made
+load-bearing. **Every action behind an admin-gated entry is enforced server-side on
+its own endpoint.** Deferring a change that hides an entry therefore leaves **no
+control unenforced**, in this wave or the next.
+
+**Two conditions travel with the item to W18, unchanged:** the role passed to the
+renderers is the **server-derived** membership role
+(`web/src/.../workspaceRole.ts:37-39`) — never client-asserted, never read from
+`localStorage`, never an `X-Role` revival (clause 1 of the w16 footer is not
+reopened); and `GET /api/capabilities` is **not** membership-gated, because w16
+took that alternative deliberately. **The item must not be written as a security
+fix** — §3's last sentence, restated because a year from now the title alone will
+invite it.
+
+### 5. Interim mechanisms — w17 neither revives nor retires any
+
+The interim **identity** posture is already fully retired (`:194-195`); what
+remains under this ADR is the fixture seed, which is **data** and is untouched by
+this wave — though ADR-001 w17 clause 2 fences its **values** (the pilot fixture
+keeps fields below the 90 % bar; **the fixture changes, never the threshold**).
+`X-Tenant-Id` remains a **membership-verified authorized selector, never an
+assertion** (w15 clause 2, w16 §5): **NW-73 must not reintroduce it as a console
+argument** — the console takes a tenant GUID as an explicit operator input bound
+through RLS, which is a different mechanism with a different gate — and **NW-74
+must not reintroduce `X-Role`**. **Nothing interim is scheduled for removal by
+w17, and nothing revives.** The wave's entire identity delta is **one topic-scoped
+Send assignment**: no new identity, no federated credential, no app role, no
+client secret and no Key Vault entry.
+
+### 6. Round 3 — the Trigger plane after ADR-007 §9: where `environment:` sits, and why `demo` is not on the console's menu this wave
+
+Clause 3 rests a whole plane of the relocated Admin gate on **who may dispatch the
+workflow**. Cloud-architect's round-3 ruling changed two facts underneath it.
+Neither weakens the chain; both make it depend on a **placement** rather than on a
+presence — and a placement is what a task gets wrong while looking right.
+
+**6a — `environment:` must sit on the job that acts.** This repo contains a
+counter-example, and it is **deliberate rather than accidental**: `infra.yml`'s
+`apply` job carries `environment:` at `:121` while its only step writes to
+`$GITHUB_STEP_SUMMARY` (`:122-135`), and the file **says so in its own words** —
+"*The job is still gated on push to main / workflow_call and still sets
+`environment:` so AC-2 and demo-promote's environment: demo approval keep
+working*" (`:110-112`). Approving it authorizes a summary write; the Terraform it
+is named after was queued to HCP by the merge (ADR-007 w17 §9).
+
+⚠ **The security consequence is not the missing pause** — cloud-architect recorded
+that, and this seat does not restate another seat's finding as its own. **It is the
+record the approval leaves.** GitHub stores a reviewer's click on `demo` as a
+deployment approval, and a later auditor — or this council in W18 — will read it as
+*a human approved this infra change*. **It attests to nothing.** No task, runbook
+or acceptance doc may cite that approval as the control over `demo`'s infra. **This
+council does not move the gate this wave**; it refuses the false reading of it.
+
+The sound idiom is in the very workflow NW-73 inherits: `verify-tenant-corpus.yml`
+puts `environment:` at `:52` on the **`verify` job** — the same job that holds
+`id-token: write` (`:53-55`) and reads the Key Vault secret — and states the reason
+at `:15-16` ("*so demo's required reviewers still gate a job that reads a Key Vault
+secret*").
+
+**Rule**: NW-73's `environment:` sits on the job that performs the Azure login and
+publishes to the topic — never on a preflight, a plan, a summary or a report job.
+**The test is behavioural, not structural: with the approval pending, zero messages
+reach `extraction-events` and zero chunks are deleted.** A test that asserts only
+that the key `environment:` appears in the YAML **passes on the `infra.yml`
+shape**, which is why the property is written here as an observable one.
+
+**6b — `demo` is not on the console's `target_environment` this wave.** The
+inherited workflow's closed choice is `options: [dev, demo]`
+(`verify-tenant-corpus.yml:26`), so copying the idiom verbatim offers `demo` on day
+one. Under ADR-007 w17 §9 the `demo` Send assignment lands at the **merge**, and
+OQ-w17-ca-05 leaves auto-apply **unread with `off` assumed** — so `demo` can be
+green with **no grant**, and the console's first publish there returns **403**.
+
+Two consequences, which is why this is a rule and not an operator note:
+
+- **403 is where the refused shortcut gets reached for.** Clause 1's table refuses
+  the SAS key and the connection string **by name**, and delivery-manager's third
+  of OQ-w17-008 records that `az servicebus namespace authorization-rule keys list`
+  is **already mechanically available** to a Contributor. An operator facing a 403
+  during a client pilot is exactly the person who takes it — believing they are
+  unblocking a deployment, not defeating a control.
+- **Each attempt is destructive.** ADR-011 w17 clause 26: the chunk delete has
+  already committed before the publish that 403s, and no audit row is written.
+
+**Rule**: NW-73 ships with `target_environment` offering **`dev` only**. `demo` is
+added by a one-line follow-up once the `raffa-demo` apply is **confirmed** — the
+same operator read OQ-w17-ca-05 and OQ-w17-dm-03 already owe, reached here from the
+**authorization** plane rather than from cost or CI. **This costs the wave
+nothing** (A17-S2 runs on `dev`) and removes the only window in which the console
+can fail in the way that invites the forbidden path.
+
+**Unchanged**: clause 1's grant and its refusals, clause 3's four planes, clause 5's
+interim posture, and **the wave's identity delta — still one topic-scoped Send
+assignment**. 6a and 6b add no right, no secret and no identity: they bind *where* a
+gate sits and *which environment is reachable*, which is the Trigger plane doing its
+job rather than a new control.

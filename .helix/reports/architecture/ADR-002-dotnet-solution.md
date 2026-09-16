@@ -255,3 +255,71 @@ No module's allow-list changes; the five modules keep their dependencies.
   confused; see the ADR-027 w16 footer.
 
 `waves/w16.md` records this under NW-13, NW-21, NW-32 and W16-01.
+
+## Amendment (2026-09-15, wave w17 — a third composition root, and the purity rule that keeps a calculator pure)
+
+Serves **NW-73** (bulk whole-tenant reprocess console) and **NW-22** (renewal
+insight `MarketPosition` stays null). Nothing above is rewritten; the module map
+and the allow-list discipline stand unchanged.
+
+**1. `Raffa.Tools` — a third composition root, holding no business rule.** NW-73
+adds a console project under `backend/src/`, registered in `Raffa.slnx` (XML
+`<Solution>`, 17 `src` projects — a `*.sln` glob finds nothing). It is a **host**,
+like `Raffa.Api` and `Raffa.Worker`: no table, no endpoint, no domain rule, and
+**nothing references it**.
+
+- It **calls `DocumentReprocessService.ReprocessAsync`** (`:62`) per document and
+  does nothing else. Re-implementing `RequeueClassificationJobAsync` (`:138-176`)
+  is **forbidden**: the `ClaimedAt = null` reset (`:168`) is what lets the
+  Worker's `claimed_at IS NULL` claim re-deliver, and `AttemptCount` is
+  deliberately preserved (`:135-136`). A psql equivalent silently drops both —
+  this is raw-file correction 5 on the wave record.
+- It composes the service's **seven** dependencies (`:37-44`) by calling the
+  owning modules' own `ServiceCollectionExtensions`, **never hand-building them**,
+  and therefore references `Raffa.Messaging` and `Raffa.Storage`.
+- **Where it goes in `DependencyDirectionTests`, precisely**: it joins the
+  all-projects array (`:39-53`, where `Raffa.Api` and `Raffa.Worker` already sit
+  at `:49-50`) and **must not** be added to the domain-module array (`:20-33`) or
+  to the allow-list dictionary (`:62-69`). Adding it there would assert it is a
+  module with a dependency budget, which is exactly what it is not.
+
+**2. A calculator stays pure: do not inject `IBenchmarkService` into
+`RenewalPipelineBuilder`.** This **corrects the intake's framing** ("inject and
+wire") and it is the clause a later task is most likely to undo.
+
+- `Raffa.Renewals/Application/RenewalPipelineBuilder.cs:9-11` states the contract
+  in the type's own doc comment: *"Pure and synchronous — no database call, no
+  HTTP call, no LLM call (Appendix C rule 6)"*. `IBenchmarkService` is async and
+  adapter-backed (`MarketFeedBenchmarkAdapter.cs:98-102` reads `market_record`).
+  Injecting it breaks a stated purity contract to save one parameter.
+- **Permission was never the blocker — a resolved key was.** Verified on
+  `d3d2d24`: `DependencyDirectionTests.cs:65` gives `Raffa.Renewals` exactly
+  `["Raffa.SharedKernel", "Raffa.Benchmark"]`, and `IBenchmarkService` lives in
+  its own `Raffa.Benchmark` project. So the **port** is allow-listed — while the
+  **adapter** (`MarketFeedBenchmarkAdapter`, in `Raffa.Market`) is **not**. The
+  module may depend on the port; only the host may compose the adapter.
+- **Ruling**: the host (`RenewalsEndpointExtensions`) resolves the band per
+  candidate and passes it **into** the builder on `RenewalDashboardCandidate` —
+  the DTO that exists precisely so the builder never sees a real `Contract`
+  (`:16-20`). Same `ToCandidate` / `ComputePriority` pattern, same reason
+  (`InsightsEndpointExtensions.cs:33-36`). The builder then fills `MarketPosition`
+  (and `AnnualUpliftPercent` where the band supports it) instead of the hardcoded
+  nulls at `:91-92`, and the stale comment at `:89-90` is swept.
+- Consequence for tests: `Raffa.Renewals.Tests` stay unit tests with **no new
+  fake service**. That is the point of keeping the builder pure.
+
+**3. The 360 composes in the host, not in the module** (NW-20, NW-62).
+`DependencyDirectionTests.cs:63` gives `Raffa.Documents.Contracts` exactly
+`["Raffa.SharedKernel", "Raffa.AiGateway"]` — no Audit, no Benchmark, no
+Suppliers, no Insights. So every "read X inside the 360 service" idea this wave
+is a **host composition in `Raffa.Api`** (`PortfolioEndpointExtensions.cs:133-146`
+is the existing precedent, where `supplierName` is already joined that way), and
+`Contract360QueryService` gains no new module reference. `Raffa.Insights` is
+likewise fenced to `[SharedKernel, Benchmark]`
+(`InsightsEndpointExtensions.cs:34-35`), so it cannot read the workspace itself —
+NW-62's geography is resolved in the host and passed into `StrategyInputs`.
+
+**Unchanged by this footer**: the modular-monolith decision, the w15 SDK
+allow-list clauses, and the w16 clauses in full. **No ADR is superseded.**
+
+`waves/w17.md` records this under NW-73, NW-22, NW-20 and NW-62.

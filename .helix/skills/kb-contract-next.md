@@ -3,10 +3,12 @@
 The next-wave process (`raffa-next-process.yaml`, launcher `run-next.ps1`)
 does **not** start from scratch. It starts from the code on the current
 checkout (normally `origin/main`), the accepted ADRs, and the full backlog,
-and it adds **one wave at a time**. Every agent runs as Claude Code with
-cwd = `.helix` (this artifact folder). Product code is one level up:
-`../backend`, `../web`, `../infra`, `../.github`, `../docs`, `../scripts`.
-Read it, never edit it. Passata 1 writes **no application code**.
+and it adds **one wave at a time**. Every agent runs as a DeepSeek chat
+model with Helix native tools; cwd = `.helix` (this artifact folder).
+Product code is one level up (`backend`, `web`, `infra`, `.github`,
+`docs`, `scripts`) and is read with `read_product` / `grep_product` /
+`glob_product` — native `read_file` refuses `..`. Never edit it. Passata 1
+writes **no application code**.
 
 ## Run parameters (who is this wave)
 
@@ -114,16 +116,21 @@ Output path of N = input path of N+1. An artefact nothing reads, or a read
 with no writer, is a broken chain. Prove delivery on disk: a later phase
 reads **files**, not your reasoning.
 
-## Bash allowed (Claude Code `Bash`, read-only on the product tree)
+## Bash allowed (native `bash`, read-only on the product tree)
+
+`.helix` is a subdirectory of the product clone — do not pass `-C ..`
+(native bash refuses `..`).
 
 ```
-git -C .. rev-parse --short HEAD ; git -C .. branch --show-current
-git -C .. log --oneline -40 ; git -C .. log --since=<date> --oneline -- <path>
-git -C .. diff --stat <sha>..HEAD -- <path> ; git -C .. show --stat <tag>
+git rev-parse --short HEAD ; git branch --show-current
+git log --oneline -40 ; git log --since=<date> --oneline -- <path>
+git diff --stat <sha>..HEAD -- <path> ; git show --stat <tag>
 python scripts/register_wave.py --next-id | --wave <w> [--check]
 python scripts/check_single_writer.py --slice <w>
 python scripts/assert_next_plan_untouched.py verify
 ```
 
+Product file contents: `read_product` / `grep_product` / `glob_product`
+(`backend/src/...`, not `../backend/...` unless the plugin strips it).
 Never `git add`, `commit`, `checkout`, `push`, `worktree`, or edit anything
-under `..`.
+outside `reports/` / this artifact.

@@ -878,3 +878,367 @@ static half must say explicitly that **zero replicas at rest is a pass**. The
 wording is delivery-manager's; the constraint is this seat's, because
 `min_replicas = 0` is this seat's decision and the ~$14/env/month it saves is why
 it is not negotiable.
+
+## Amendment (2026-09-15, wave w17 — one topic-scoped role assignment, and the Worker *image* is where a rasteriser lands)
+
+**Items served**: NW-73, NW-26. **Owner**: cloud-architect. Clauses continue at
+**15** (w15 round 3 ended at §14). **No Azure resource is created or destroyed,
+no SKU changes in either environment, no capacity or model deployment moves, and
+the wave's fixed-cost delta is $0.00 on both `dev` and `demo`.** The entire cloud
+delta of w17 is **one RBAC row**. Everything above stands verbatim; the SKU table
+at `:34-57` is untouched.
+
+### 15. NW-73 — one topic-scoped `Azure Service Bus Data Sender` for the CI deploy principal
+
+`modules/servicebus` gains a **third** `azurerm_role_assignment`, alongside the
+two of the w15 footer §2:
+
+```
+resource "azurerm_role_assignment" "ci_servicebus_sender" {
+  scope                            = azurerm_servicebus_topic.extraction_events.id
+  role_definition_name             = "Azure Service Bus Data Sender"
+  principal_id                     = var.ci_deploy_principal_id
+  skip_service_principal_aad_check = true
+
+  lifecycle {
+    ignore_changes = [skip_service_principal_aad_check, principal_type, name]
+  }
+}
+```
+
+**The `lifecycle` block is not decoration and is the one line a task will drop.**
+Both existing assignments carry it (`modules/servicebus/main.tf:80-86`, `:95-101`)
+for the reason `modules/acr` documents: **ARM rejects in-place updates to a role
+assignment**. Omit it and the resource plans clean today, then fails a *later,
+unrelated* apply — a trap that surfaces in someone else's wave.
+
+**Send only.** Never `Data Receiver`, never `Manage`, never namespace scope, never
+an `azurerm_servicebus_namespace_authorization_rule`, never a SAS key in Key
+Vault. `modules/servicebus/main.tf:64-70` is the module's own standing rule
+("identity + RBAC, never a connection string and never the namespace's default
+full-access shared key") and this clause does not weaken it.
+
+**Two peers supplied the warrant and both are recorded rather than paraphrased.**
+Security-architect (S17-1): the message is a **pointer**, not content — the Worker
+re-reads all authority from the database under RLS when it claims the job, and
+`MessageId` collapses duplicates — so a forged or replayed message cannot make the
+Worker read anything the sender could not already read; **Receive** would be
+different, because a Receiver drains the deliveries the Worker depends on.
+Delivery-manager (D2): `raffa-sp-<env>` already holds **Contributor on the
+resource group** (`backend.yml:251`), and Contributor can call `az servicebus
+namespace authorization-rule keys list` — so the SAS shortcut ADR-016 clause 30
+forbids is **mechanically available today**. An explicit, topic-scoped, auditable
+Send right is therefore *narrower* than the capability the principal already
+carries ambiently, and it makes the forbidden path the anomalous one.
+
+**Cost: $0.00.** Role assignments are free; no resource, SKU or capacity moves.
+
+### 16. OQ-w17-ca-01 — the console runs on the GitHub runner (A), and the reason inverts the "zero new rights" argument
+
+Three shapes were priced in this seat's lane: **(A)** a GitHub Actions runner as
+`raffa-sp-<env>`, **(B)** an operator laptop, **(C)** a Container Apps Job under
+the existing workload identity. Security-architect prefers **(C)** on the ground
+that it needs **no new role assignment at all** — the workload identity already
+holds Send — so "the wave buys zero new rights". **That is true and it is not the
+whole measure**, and the missing half is in this seat's file:
+
+> `modules/servicebus/main.tf` grants the workload identity **both**
+> `Azure Service Bus Data Sender` (`:71-87`) **and** `Azure Service Bus Data
+> Receiver` (`:89-102`) on `extraction-events`.
+
+So under **(C)** the console would run as an identity that can **receive** from
+the `document-processing` subscription — the one subscription the Worker depends
+on, where a stray receive takes a message the Worker needed
+(`main.tf:53-62`: a topic with no live consumer discards, and this is the only
+subscription). Under **(A)** the console is granted **Send and nothing else**, on
+a principal that exists only inside CI.
+
+**The question is not how many rights the wave adds; it is what the console can
+do.** (C) adds zero rights and gives the console the **wider** capability. (A)
+adds one right and gives it the **narrower** one. **Ruling: (A).**
+Delivery-manager's independent reason (D3) agrees and is adopted: (C) also costs a
+new Terraform resource, a third image in ACR Basic, a third deploy path and a
+**permanently triggerable mutation surface in Azure**, where a CI-scoped role is
+reachable only through a workflow with an approval gate. **(B) is refused** — the
+human principal holds no Send right, and granting one means either an out-of-band
+assignment invisible to Terraform or a person's object id in source.
+
+This clause, not the module, is where a future council re-opens the choice: **if
+(C) is ever taken, §15 is dropped entirely** and the role assignment is not needed.
+
+### 17. The variable is **required** and both roots are wired in the same change
+
+Answering delivery-manager's D1 ask directly.
+
+- **Name: `ci_deploy_principal_id`** — this seat's lane proposed
+  `ci_publisher_principal_id` and **yields**. `modules/keyvault/variables.tf:34`
+  already uses `ci_deploy_principal_id` for the same principal, so one grep finds
+  every grant to it; a second spelling for one identity is how an inventory goes
+  stale.
+- **Required, not optional** — delivery-manager's reason is the correct one and is
+  adopted: `demo-promote.yml:128-136` calls `infra.yml` with
+  `target_environment: demo`, and `infra.yml` validates only the changed root's
+  path filter, so a **dev-only wiring passes `dev` and breaks `demo`** — one tag
+  later, in the job nobody runs weekly.
+- **One line per root, no new data source.** Both roots already resolve the object
+  id and already feed it to `modules/keyvault`: `environments/dev/main.tf:223-225`
+  → `:236`, `environments/demo/main.tf:245-247` → `:258`. The module call sites are
+  `dev/main.tf:106` and `demo/main.tf:128`.
+- The new variable's description carries the **per-root isolation rule verbatim**
+  from the sibling it copies (`modules/servicebus/variables.tf:22-30`): each root
+  passes **its own** environment's principal, never the other's.
+
+**Wiring is not applying, and conflating them is the error this clause prevents.**
+Both roots are wired in the **same PR** (source symmetry, so `validate` is green
+for both); the **apply** reaches `dev` on merge and reaches `demo` only at its
+**next promotion**. This seat's lane said "demo gets the grant at its next
+promotion" and delivery-manager said "wire both roots now" — those are statements
+about different things and **both hold**.
+
+### 18. Config keys per environment — w17 adds **none**
+
+The console is **not** a container app, so `modules/containerapps` gains no `env`
+block and no variable this wave. It binds the section names the deployed apps
+already bind: `ServiceBus__FullyQualifiedNamespace`
+(`containerapps/main.tf:195-199` ← `module.servicebus.fqdn`),
+`ServiceBus__TopicName` (`:200-204`), `ConnectionStrings__DocumentsContracts` and
+`ConnectionStrings__Audit` (Key Vault `postgres-connection`,
+`keyvault/main.tf:81-90`). `ServiceBus__SubscriptionName` is **not needed** — the
+console publishes and never receives; only the Worker carries it (`:408`).
+
+**`AZURE_CLIENT_ID` must not be set on the runner.** It selects the user-assigned
+managed identity for container apps (`containerapps/variables.tf:35`, `:159`,
+`:433`); on a runner `DefaultAzureCredential` resolves through the `azure/login`
+leg, and an MI client id there aims the chain at an identity absent from that
+host — a failure that reads as a broken credential rather than a wrong one.
+
+### 19. NW-26 — no Azure resource; the shared `cpu`/`memory` pair is the live risk
+
+- **Nothing on the AI account renders a page.** Document Intelligence is attached
+  as a connection (`containerapps/main.tf:174`, `:448`) and returns **geometry,
+  not pixels**. **No model deployment, no capacity change, no Foundry change, no
+  new resource.** If a renderer calls an Azure API for the raster it must **name
+  the operation** and this seat re-prices.
+- **The rasteriser is in-process and Worker-only**, so pressure lands on
+  `ca-raffa-<env>-worker`, not the API.
+- **The number that decides it: both apps run at 0.25 vCPU / 0.5 GiB per replica**
+  (`containerapps/variables.tf:70-80`). An A4 page at 150 DPI is ≈ 1240×1754×4 B ≈
+  **8.4 MB per bitmap** before allocator overhead, and the Worker runs
+  **`ServiceBus__MaxConcurrentCalls = 4`** per replica (`:424-427`).
+- **Binding task constraint, because it decides whether the SKU moves: render and
+  store page-by-page, disposing each bitmap, never materialising a document's
+  pages as a set.** Multi-page then multiplies the *work*, not the *peak*.
+- **If a bump is needed it is a pair and it is shared.** Consumption accepts only a
+  fixed ladder (0.25↔0.5Gi, 0.5↔1.0Gi, 0.75↔1.5Gi, 1.0↔2.0Gi) — **memory cannot be
+  raised alone** — and the module exposes **one** `cpu`/`memory` pair consumed by
+  *both* apps, so bumping the Worker bumps the API.
+- **Pre-authorised contingency, with a named ceiling, so no new council round is
+  needed if measurement disagrees**: split `modules/containerapps` into
+  `worker_cpu` / `worker_memory` and raise **the Worker only to 0.5 vCPU /
+  1.0 GiB**, leaving the API at the floor. Recorded then as an ADR-005 amendment
+  plus an operator HCP apply. **Expected $0.00** either way: `min_replicas = 0` on
+  both apps means an idle environment bills nothing, and a bump changes only the
+  *rate* while a replica is alive. Retail lookups (Container Apps Consumption
+  vCPU-second and GiB-second, North Europe) are owed **only if the bump is taken**.
+- **Storage.** Per-page previews turn one object per document into N. On
+  **StorageV2 / Standard / LRS**, 1,000 documents × 20 pages × ~200 KB ≈ **4 GB ≈
+  $0.07/month** — immaterial. One rule: reprocessing **overwrites by deterministic
+  path**, never accumulates a suffix, or the `documents` container grows unbounded
+  and nothing deletes it today.
+- **Acceptance, because a memory question answered by hope is not answered**: a
+  renderer that *throws* is absorbed (`DocumentPreviewService:56-61` degrades to
+  "no preview"), but one that *OOMs* kills the replica and the message is
+  redelivered up to `max_delivery_count = 8` (`main.tf:53-62`) before
+  dead-lettering. **NW-26's acceptance includes one 20-file batch on `dev` with
+  zero Worker restarts.**
+
+### 20. The Worker **image** — the constraint no seat had priced (the cloud half of OQ-w17-sa-04)
+
+ADR-029 places a rasteriser in the Worker. That is not only a memory question; it
+is an **image** question, and the image is this seat's.
+
+- **Base is `mcr.microsoft.com/dotnet/runtime:10.0`**
+  (`backend/src/Raffa.Worker/Dockerfile:29`), chosen over `aspnet` **deliberately**
+  (`:25-28`: Generic Host, no Kestrel, "smaller, cheaper runtime image"). It is a
+  **slim Debian** layer: **no `libfontconfig1`, `libfreetype6`, `libjpeg`,
+  `libpng`, no `libgdiplus`**. A managed-only rasteriser needs none of them; a
+  SkiaSharp/PDFium-class one does not start without them. **This decides whether
+  the Dockerfile changes at all, and it is invisible from the SKU table.**
+- **`USER $APP_UID` at `:34` is a hard ordering constraint**: any `apt-get` layer
+  must sit **above** that line or the build fails permission-denied — and it fails
+  inside **ACR Tasks** (`backend.yml:130-144`, `az acr build`), not on a runner
+  where someone would see it locally.
+- **Layer placement is a cost decision**: the native `RUN` sits **above** `COPY
+  --from=build /app .` (`:31`) so it lands in a layer **shared by every `:<sha>`
+  tag**. Below it, the libraries are re-stored on every commit.
+- **ACR stays `Basic`** (`modules/acr/main.tf:24`). Native dependencies add tens of
+  MB **once** to a shared layer, so **NW-26 does not move the ACR SKU**: the image
+  ruling is **$0.00** too.
+- **Software-architect's rule is adopted verbatim** (OQ-w17-sa-04): this council
+  does **not** name the renderer package; the task's Definition of Done names the
+  package, its **licence** and its **Linux native-dependency list**, and **if that
+  list is non-empty the Dockerfile layer lands in the same task as the renderer** —
+  never a later one, because a missing native layer fails at **runtime** with
+  `Unable to load shared library`, not at build.
+- **Config keys: zero.** A render knob (DPI, max pages) belongs in `appsettings` as
+  `Preview__*` with a shipped default, **not** a Terraform-managed env var: a
+  render default is not environment-specific, and putting it in the module would
+  make every change a Terraform apply.
+
+### 21. Recorded and deliberately **not** fixed this wave — nothing prunes ACR (OQ-w17-ca-04)
+
+`modules/acr` declares **no `retention_policy`** (untagged-manifest retention is a
+**Premium** feature and the registry is **Basic**, `main.tf:24`) and **no workflow
+purges** — zero `acr purge` / `acr repository delete` across `.github/workflows` —
+while `backend.yml:134,142` pushes `raffa-api:<sha>` **and** `raffa-worker:<sha>`
+on every commit against Basic's included 10 GB. Growth is slow because tags share
+base layers, but it is **unbounded and nothing reclaims it**. This is a
+**pre-existing condition, not NW-26's to absorb**: it is recorded here so it is
+not rediscovered as a surprise, no task is minted, and it is revisited when the
+registry approaches its included storage.
+
+### 22. What this wave does not change
+
+No region change (**ADR-006 `none`** — North Europe, both environments). No
+Foundry account, project, model deployment or capacity change (**ADR-008
+`none`**). No Key Vault secret, no Postgres SKU or firewall rule, no storage
+account change, no new container app, no new environment key, no promotion-path
+change. `Invitations__Mail__Enabled` and `guest_provisioning_enabled` stay
+`false` on `demo`. **Postgres reach for the console needs no firewall change**:
+the only rule is `AllowAzureServices` (`postgres/main.tf:72-77`), no workflow
+creates one, and four operator workflows reach it successfully today.
+
+**Two applies, not one, are confirmed at the w17 gate** (delivery-manager's D7 and
+OQ-w17-dm-03): §15's assignment, **and** ADR-016 clause 33's outstanding apply
+from PR #118. HCP state is not in this tree, so this seat **asks rather than
+asserts** whether the latter has landed — it is read in the HCP UI at the gate.
+SKUs named for the price researcher, all **unchanged**: Service Bus **Standard**,
+Postgres **B_Standard_B1ms**, Storage **StorageV2 / Standard / LRS**, Key Vault
+**standard**, Container Apps **Consumption 0.25 vCPU / 0.5 GiB**, ACR **Basic**,
+Static Web Apps **Free**. **No retail lookup is owed by w17.**
+
+### 23. Where the two clauses that stop an OOM and an unbounded container actually live (round 2)
+
+This seat's round-1 vote ratified **ADR-029** *"on condition it carries the four
+clauses this lane owns"*. Verified by **reading ADR-029 in full** rather than by
+trusting the ratification: **one of the four is in it** — the image layer
+(`ADR-029:121-129`), attributed to this seat by name. The other three are
+**here**, in §19–§20. Nothing is missing on disk and the condition holds.
+
+**The placement is the finding.** The two clauses that decide whether the Worker
+OOMs and whether the `documents` container grows forever —
+
+- *render and store page-by-page, disposing each bitmap, never materialising a
+  document's pages as a set* (§19), and
+- *reprocessing overwrites by deterministic path, never accumulates a suffix* (§19)
+
+— live in the **Azure SKU ADR**. The engineer who writes the render loop opens
+**ADR-029**, the *document page rendering* ADR, whose "Implications for the
+decomposition" (`:148-162`) lists the files to touch and says **nothing** about
+the shape of the render loop or the overwrite path. Read alone, ADR-029 points
+the other way: its Consequences record "**storage grows per page per document**"
+(`:142-144`) as an accepted cost, with no overwrite rule attached to it.
+
+**Binding on the decomposer**: both clauses are copied into **NW-26's Definition
+of Done**, beside the renderer package / licence / native-dependency list that
+ADR-029 already requires there — **as the task's own words, not as a citation to
+ADR-005**. A capacity rule reachable only from the cost ADR is a rule that gets
+discovered by an incident.
+
+This seat does **not** edit ADR-029: it is software-architect's, the protocol
+gives the owning seat the pen, and the clause is not in dispute — only its
+**reachability** is.
+
+### 24. NW-26 × NW-73 — this wave ships a page renderer and a bulk re-render trigger together
+
+Neither item's row carries this, because it exists only in the composition of the
+two.
+
+**NW-73 is a whole-tenant reprocess console. A reprocess re-runs the pipeline,
+and after NW-26 the pipeline rasterises.** So w17 ships, in one wave, the thing
+that writes pages and the thing that rewrites all of them at once — and the
+second is the **largest concurrent render this product will ever have run**.
+
+**Verified, not assumed**: `infra/modules/storage` declares **no
+`management_policy`, no lifecycle rule, no `delete_retention`, no versioning** —
+zero matches across the module. Nothing prunes blob storage, and unlike ACR (§21)
+there is not even a Premium feature being declined: the policy simply does not
+exist. So §19's overwrite rule is not a tidiness preference — **a
+non-deterministic page key turns one bulk reprocess into a permanent doubling of
+the container, reclaimable only by hand.** At pilot scale the money is still
+cents, which is the point: the cost of getting this wrong is **operational, not
+financial**, and that is exactly why a cost ADR is the wrong and currently only
+place it lives (§23).
+
+**Order constraint, this seat's because it is a capacity question**: §19's
+measurement — one 20-file batch on `dev` with zero Worker restarts — runs
+**before** the first whole-tenant reprocess on `dev`, never after. A bulk run is
+**not** a substitute for the measurement: `MaxConcurrentCalls = 4` per replica
+with `min_replicas = 0` means a tenant-sized queue scales replicas out and
+multiplies the concurrent bitmaps, so a bulk run that survives proves less than
+it appears to, and one that fails burns `max_delivery_count = 8` across every
+document of the tenant at once.
+
+### 25. `demo` under product-owner's clause 9 — what the promotion carries for this seat
+
+ADR-001 w17 clause 9 rules that **`demo` is not dormant and its promotion is not
+deferred a fourth time**. That is a priority ruling and the mechanism stays
+ADR-016's. Its consequences on this seat's plane:
+
+- **§17 is unchanged and is now load-bearing rather than theoretical**: both roots
+  are wired in the same PR, `dev` applies on merge, **`demo` applies at its
+  promotion** — which clause 9 makes *this* wave's business rather than an
+  indefinite "next time".
+- **The renderer reaches `demo` at that same promotion**, onto the **same shared
+  0.25 vCPU / 0.5 GiB pair** and the same unpruned storage account. `demo` is
+  where `percorso-pilota-v1.md` is run **for a client**, so it is the worst place
+  to discover the memory question.
+- **If §19's contingency bump is taken, it is wired in both roots in the same
+  PR** — §17's rule applied to `worker_cpu` / `worker_memory` instead of to a
+  principal id. A bump wired only in `dev` passes `dev` and leaves `demo` running
+  the pilot at the floor with a renderer already measured as needing more: the
+  same failure shape as §17's, one variable later.
+- **Still $0.00**: `min_replicas = 0` on both environments, and a bump changes
+  only the *rate* while a replica is alive.
+
+### 26. §18 re-verified against an item that arrived after it was written
+
+§18 ruled **w17 adds no environment key**, reasoning from NW-73 and NW-26.
+Security then permitted NW-20's `activity` projection (OQ-w17-sa-03), which makes
+`Raffa.Api` read the **audit trail** — the one round-2 decision that could have
+added a key to `modules/containerapps`. **It does not**:
+`ConnectionStrings__Audit` is already bound on the API
+(`containerapps/main.tf:90`) and on the Worker (`:354`), from the same
+`postgres-connection` secret. **§18 stands — zero new environment keys in w17**,
+now verified against every item at this table rather than against the two this
+seat was rostered on.
+
+### 27. Correction (round 3) — §25's "`demo` applies at its promotion" is wrong
+
+§25 `:1189-1190` reads "`dev` applies on merge, **`demo` applies at its
+promotion**". **The second half is false.** Delivery-manager raised it (round 2,
+finding (i)); it was verified first-hand and the corrected rule is written in
+**ADR-007 w17 §9**, which owns the apply path. In one line: *one merge to `main`
+touching `infra/` queues a VCS run on **both** `raffa-dev` and `raffa-demo`; no
+promotion and no `demo-v*` tag applies any Terraform* (`infra.yml:114-136`,
+`demo-promote.yml:123-127`, `hcp_vcs_wiring.py:104-106`).
+
+What it changes on **this** ADR's plane — cost and SKUs — and what it does not:
+
+- **The cost line does not move: still $0.00/month on both environments.** The
+  wave's delta is one RBAC row, and a role assignment is free wherever and whenever
+  it applies. **No SKU, region, Foundry or environment-key ruling in this footer
+  depends on the apply path**, which is why this is a correction of record and not
+  a re-pricing.
+- **§17's "both roots in the same PR" is reinforced**, not weakened — see ADR-007
+  §9: a dev-only wiring fails *sooner and more quietly* than §25 assumed.
+- ⚠ **§25's contingency bullet is the one that actually changes.** The renderer
+  reaches `demo` in the **promotion** (that is `backend.yml` pushing an image, which
+  the promotion really does do), but a **`worker_cpu` / `worker_memory` bump is
+  Terraform**, so it lands on `demo` **at the merge** — *ahead of* the image that
+  needs it. The contingency's two halves therefore reach `demo` **at different
+  moments, in that order**, which is the **reverse of `dev`**, where one merge
+  carries both. Harmless in money (`min_replicas = 0`; a bump changes only the
+  *rate* while a replica is alive) but it must not be discovered as a surprise
+  during the client pilot: the raised SKU sits on `demo` first, doing nothing, and
+  that is expected rather than a failed apply.
