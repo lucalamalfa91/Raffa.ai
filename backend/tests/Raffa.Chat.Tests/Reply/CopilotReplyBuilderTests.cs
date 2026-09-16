@@ -63,7 +63,10 @@ public sealed class CopilotReplyBuilderTests
 
         var actions = new[] { new CopilotAction("Open Contract 360", "/contracts/1", CopilotActionKind.Navigate) };
 
-        var reply = CopilotReplyBuilder.FromGuardedResult(guarded, [TenantItem], actions);
+        // Ignored by the Answer branch (only the abstain branch ever reads recoveryActions) — a
+        // non-empty, deliberately different list here would prove nothing extra this test doesn't
+        // already prove via Assert.Same(actions, ...) below.
+        var reply = CopilotReplyBuilder.FromGuardedResult(guarded, [TenantItem], actions, []);
 
         Assert.Equal(ReplyKind.Answer, reply.Kind);
         Assert.Equal("Liability is capped at CHF 1,000,000 [1].", reply.AnswerMarkdown);
@@ -92,12 +95,23 @@ public sealed class CopilotReplyBuilderTests
             AbstainReason: "Nothing in the validated contracts supports a reliable answer.",
             FollowUps: []);
 
-        var reply = CopilotReplyBuilder.FromGuardedResult(guarded, [TenantItem], []);
+        // E25/F05/US01/T01 (ADR-024 "every abstain has a clickable next step"; AC-1/AC-2): the
+        // abstain branch's own actions[] come from recoveryActions, resolved here the same
+        // production way (CapabilityRouting.ResolveActions, not a hand-typed fake) — never from
+        // the model's own (empty, above) ActionKeys.
+        var routing = new CapabilityRouting();
+        var recoveryActions = routing.ResolveActions(
+            [CapabilityIntent.HowTo(CapabilityCatalog.AskKey)],
+            new RoutingContext(ValidatedContractCount: 1, Role: CapabilityCallerRole.Standard));
+
+        var reply = CopilotReplyBuilder.FromGuardedResult(guarded, [TenantItem], [], recoveryActions);
 
         Assert.Equal(ReplyKind.Abstain, reply.Kind);
         Assert.Equal("Nothing in the validated contracts supports a reliable answer.", reply.AnswerMarkdown);
         Assert.Empty(reply.Citations);
-        Assert.Empty(reply.Actions);
+        Assert.NotEmpty(reply.Actions);
+        Assert.Equal(recoveryActions, reply.Actions);
+        Assert.All(reply.Actions, action => Assert.DoesNotContain('{', action.Href));
         Assert.Empty(reply.FollowUps);
 
         // Unlike RedirectReplyBuilder's deterministic replies (which never call the model at all —
@@ -106,6 +120,37 @@ public sealed class CopilotReplyBuilderTests
         // than nulled out (ADR-011 — see RegenerateOnce.DowngradeToAbstain's own doc comment).
         Assert.Equal("fixture-answer-model", reply.Provenance.ModelId);
         Assert.Equal("answer-v2.1", reply.Provenance.PromptVersion);
+    }
+
+    /// <summary>
+    /// AC-2, concretely: even when the caller resolved a non-empty <c>actions</c> list from the
+    /// model's own <see cref="AiAnswerResult.ActionKeys"/> (the shape the Answer branch would use),
+    /// the abstain branch must ignore it entirely and surface only <c>recoveryActions</c> — an
+    /// abstaining model has nothing grounded to suggest, so its action keys, resolved or not, must
+    /// never reach the user.
+    /// </summary>
+    [Fact]
+    public void An_abstain_reply_never_surfaces_the_answer_branchs_actions()
+    {
+        var guarded = new AiAnswerResult(
+            CanDetermine: false,
+            Answer: null,
+            Citations: [],
+            Metadata,
+            AnswerMarkdown: null,
+            CitationKeys: [],
+            ActionKeys: ["quote-check"],
+            AbstainReason: "Nothing in the validated contracts supports a reliable answer.",
+            FollowUps: []);
+
+        var modelAuthoredActions = new[] { new CopilotAction("Quote check →", "/quotes", CopilotActionKind.Navigate) };
+        var recoveryActions = new[] { new CopilotAction("Upload a contract", "/documents", CopilotActionKind.Upload) };
+
+        var reply = CopilotReplyBuilder.FromGuardedResult(guarded, [TenantItem], modelAuthoredActions, recoveryActions);
+
+        Assert.Equal(ReplyKind.Abstain, reply.Kind);
+        Assert.Same(recoveryActions, reply.Actions);
+        Assert.DoesNotContain(modelAuthoredActions[0], reply.Actions);
     }
 
     [Fact]
@@ -122,7 +167,7 @@ public sealed class CopilotReplyBuilderTests
             AbstainReason: null,
             FollowUps: []);
 
-        var reply = CopilotReplyBuilder.FromGuardedResult(guarded, [TenantItem, MarketItem], []);
+        var reply = CopilotReplyBuilder.FromGuardedResult(guarded, [TenantItem, MarketItem], [], []);
 
         Assert.Equal(2, reply.Citations.Count);
         Assert.Equal(1, reply.Citations[0].N);
@@ -165,7 +210,7 @@ public sealed class CopilotReplyBuilderTests
             AbstainReason: null,
             FollowUps: []);
 
-        var reply = CopilotReplyBuilder.FromGuardedResult(guarded, [TenantItem], actions);
+        var reply = CopilotReplyBuilder.FromGuardedResult(guarded, [TenantItem], actions, []);
 
         Assert.NotEmpty(reply.Actions);
         Assert.All(reply.Actions, action => Assert.DoesNotContain('{', action.Href));
@@ -176,8 +221,9 @@ public sealed class CopilotReplyBuilderTests
     {
         var guarded = new AiAnswerResult(false, null, [], Metadata);
 
-        Assert.Throws<ArgumentNullException>(() => CopilotReplyBuilder.FromGuardedResult(null!, [], []));
-        Assert.Throws<ArgumentNullException>(() => CopilotReplyBuilder.FromGuardedResult(guarded, null!, []));
-        Assert.Throws<ArgumentNullException>(() => CopilotReplyBuilder.FromGuardedResult(guarded, [], null!));
+        Assert.Throws<ArgumentNullException>(() => CopilotReplyBuilder.FromGuardedResult(null!, [], [], []));
+        Assert.Throws<ArgumentNullException>(() => CopilotReplyBuilder.FromGuardedResult(guarded, null!, [], []));
+        Assert.Throws<ArgumentNullException>(() => CopilotReplyBuilder.FromGuardedResult(guarded, [], null!, []));
+        Assert.Throws<ArgumentNullException>(() => CopilotReplyBuilder.FromGuardedResult(guarded, [], [], null!));
     }
 }
