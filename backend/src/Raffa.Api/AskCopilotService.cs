@@ -475,6 +475,7 @@ internal sealed class AskCopilotService(
         foreach (var hit in searchResult.Value)
         {
             var clause = contract360?.Clauses.FirstOrDefault(c => c.ClauseId == hit.SourceId);
+            var (href, previewUrl) = ResolveTenantClauseLinks(clause, hit.SourceId, namedContractItem?.ContractId);
 
             items.Add(new PackItem(
                 $"fact:{hit.SourceId}:chunk[{hit.ChunkIndex}]",
@@ -484,14 +485,55 @@ internal sealed class AskCopilotService(
                 clause?.SourcePage,
                 clause?.SourceSpan ?? $"chunk {hit.ChunkIndex}",
                 hit.ChunkText,
-                namedContractItem is not null ? $"/contracts/{namedContractItem.ContractId}" : null,
-                null,
+                href,
+                previewUrl,
                 null,
                 "validated contract",
                 []));
         }
 
         return items;
+    }
+
+    /// <summary>
+    /// Task E25/F02/US01/T01 (NW-55; ADR-024; ADR-018 w17 clause 9 viewer route): the tenant
+    /// citation card's real deep-link and page preview -- <c>/documents/:documentId/viewer?page=
+    /// &amp;clause=</c> and the existing <c>/api/documents/{id}/preview?page=</c> route -- replacing
+    /// the bare <c>/contracts/{id}</c> CTA whenever this hit actually resolves to one real page of
+    /// one real document. Same shape, and the same fallback rule, as the Contract 360 client's own
+    /// <c>contract360ViewModel.ts</c> <c>resolveViewerHref</c> ("No document or no sourcePage -&gt;
+    /// no link"): only when <paramref name="clause"/> carries both a
+    /// <see cref="Contract360Clause.SourceDocumentId"/> and a <see cref="Contract360Clause.SourcePage"/>
+    /// does this return the viewer pair; otherwise it falls back to the pre-existing contract route
+    /// (or <see langword="null"/> with no named contract) -- never a dead viewer link.
+    ///
+    /// <para>
+    /// Honest gap (R-EVD-01 "citations resolve to Clause.SourcePage/SourceSpan when the hit is a
+    /// clause, else to the page"): when the embedded chunk's own source is the whole Document rather
+    /// than one extracted <c>Clause</c> row (<c>Embedding.SourceType == "Document"</c>),
+    /// <paramref name="clause"/> never resolves and this falls back to the contract route even
+    /// though <paramref name="sourceId"/>/the hit's own page could, in principle, still resolve a
+    /// document-level viewer link. This task's own coding objective and Definition of Done line
+    /// ("a tenant clause pack item carries a viewer href + real previewUrl") scope the fix to the
+    /// clause-resolved case only; the Document-sourced-chunk branch is not attempted here.
+    /// </para>
+    /// </summary>
+    /// <param name="sourceId">The cited chunk's own source id (<see cref="EmbeddingSearchResult.SourceId"/>)
+    /// -- the clause id when <paramref name="clause"/> resolved it -- echoed into the viewer's
+    /// optional <c>?clause=</c> query parameter (ADR-018).</param>
+    /// <param name="namedContractId">The named contract's id, when the caller asked about one
+    /// contract by name -- the pre-existing fallback CTA target.</param>
+    internal static (string? Href, string? PreviewUrl) ResolveTenantClauseLinks(
+        Contract360Clause? clause, EntityId sourceId, Guid? namedContractId)
+    {
+        if (clause is { SourceDocumentId: { } sourceDocumentId, SourcePage: { } sourcePage })
+        {
+            return (
+                $"/documents/{sourceDocumentId.Value}/viewer?page={sourcePage}&clause={sourceId.Value}",
+                $"/api/documents/{sourceDocumentId.Value}/preview?page={sourcePage}");
+        }
+
+        return (namedContractId is { } contractId ? $"/contracts/{contractId}" : null, null);
     }
 
     private async Task<IReadOnlyList<PackItem>> BuildMarketComparePackAsync(
@@ -823,6 +865,18 @@ internal sealed class AskCopilotService(
 
     // ----- Shared helpers -----
 
+    /// <summary>
+    /// Task E25/F02/US01/T01 (NW-55): still the pre-existing <c>/contracts/{id}</c> CTA and a
+    /// <see langword="null"/> <see cref="PackItem.PreviewUrl"/> -- deliberately untouched by this
+    /// task. A contract-level fact (e.g. "ends on 2027-01-01") has no single source page: it is
+    /// computed from <see cref="PortfolioListItem"/> columns, which name no
+    /// <c>SourceDocumentId</c>/<c>SourcePage</c> at all, so there is nothing here for
+    /// <see cref="ResolveTenantClauseLinks"/>'s viewer link to resolve against. AC-3 ("PreviewUrl is
+    /// set only for tenant <em>pages</em>") already reads this item as correctly page-less, not as a
+    /// gap: a contract route is still a valid <see cref="PackItem.Href"/> shape for
+    /// <see cref="PackCorpus.Tenant"/> per that field's own doc comment ("a document/contract route
+    /// for PackCorpus.Tenant").
+    /// </summary>
     private PackItem BuildContractFactItem(PortfolioListItem item, string displayName)
     {
         var values = new List<PackValue>();
