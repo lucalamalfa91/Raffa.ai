@@ -306,9 +306,7 @@ public sealed class R3EndToEndTests : IClassFixture<R3IntegrationFixture>
         Assert.Empty(kpisBody.GetProperty("savingsInProgress").EnumerateArray());
         var realizedBucket = Assert.Single(kpisBody.GetProperty("savingsRealized").EnumerateArray());
         Assert.Equal("USD", realizedBucket.GetProperty("currency").GetString());
-        Assert.Equal(15_000m, realizedBucket.GetProperty("low").GetDecimal());
-        Assert.Equal(45_000m, realizedBucket.GetProperty("high").GetDecimal());
+        Assert.Equal(20_000m, realizedBucket.GetProperty("amount").GetDecimal());
         Assert.Equal(1, realizedBucket.GetProperty("count").GetInt32());
-        Assert.Equal(1.0, realizedBucket.GetProperty("averageConfidence").GetDouble());
     }
 }

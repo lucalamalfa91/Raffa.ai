@@ -164,8 +164,8 @@ jobs:
 
       # Parse + validate every pair before touching the database -- a
       # malformed line fails the whole run, never silently skips one tenant
-      # while granting the rest (same "no half-migrated tenant" posture
-      # reprocess-tenant-documents.yml uses for its own per-item loop).
+      # while granting the rest (same "stop at first failure" posture
+      # reprocess-tenant-documents.yml uses for its own per-document loop).
       # Emails are folded to lowercase here (and compared case-insensitively
       # in SQL below): WorkspaceMembershipFactory.CreateInvitedUser does not
       # lower-case on invite, so an existing app-created row can carry mixed

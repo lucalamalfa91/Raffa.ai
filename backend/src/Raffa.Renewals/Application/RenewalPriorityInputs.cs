@@ -13,12 +13,11 @@ namespace Raffa.Renewals.Application;
 /// second, possibly-inconsistent copy of that arithmetic.
 ///
 /// <para>
-/// Deliberately does not reference <c>Raffa.Documents.Contracts.Domain.Contract</c> or call
-/// <c>Raffa.Benchmark.IBenchmarkService</c> (still an R0 placeholder with no query operations —
-/// see <see cref="BenchmarkMarketPositionPercent"/>) — the same ADR-002 dependency-direction
-/// reason and the same "small DTO a composition root maps onto later" pattern
-/// <see cref="ContractRenewalTerms"/> already documents for this module. A caller supplies these
-/// values however it likes today (a test's fixture data); mapping real
+/// Deliberately does not reference <c>Raffa.Documents.Contracts.Domain.Contract</c> or look
+/// up a benchmark itself (see <see cref="BenchmarkMarketPositionPercent"/>) — the same ADR-002
+/// dependency-direction reason and the same "small DTO a composition root maps onto later"
+/// pattern <see cref="ContractRenewalTerms"/> already documents for this module. A caller
+/// supplies these values however it likes today (a test's fixture data); mapping real
 /// <c>Contract</c>/<c>Risk</c> rows and a real R3 Benchmark Service result onto this DTO is
 /// follow-up composition work, out of this task's file scope the same way
 /// <see cref="ContractRenewalTerms"/>'s own gap is.
@@ -39,8 +38,8 @@ namespace Raffa.Renewals.Application;
 /// Service's market rate for the same category (spec §9.3's own example:
 /// <c>"Market position: 18% above benchmark"</c> is <c>18m</c>) — feeds the benchmark-opportunity
 /// component. Null when the R3 Benchmark Service has not produced a comparison for this contract —
-/// today that is always, since <c>Raffa.Benchmark.IBenchmarkService</c> is still an R0
-/// placeholder with no query operations (parent story AC-3: "Benchmark-opportunity component reads
+/// today that is always on this path, because the priority composition still supplies
+/// <see langword="null"/> here (parent story AC-3: "Benchmark-opportunity component reads
 /// the R3 benchmark only when available (else neutral)").
 /// </param>
 public sealed record RenewalPriorityInputs(

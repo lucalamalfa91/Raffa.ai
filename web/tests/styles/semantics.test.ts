@@ -3,38 +3,46 @@ import {
   getConfidenceTag,
   getRiskTag,
   getStatusTag,
-  isConfidenceBlocking,
   isDeadlineCritical,
 } from "../../src/styles/semantics";
 
-// ADR-019 "Semantic mapping (locked)" / design-system.md "Semantic mapping" --
-// this is the single source of truth every screen renders confidence/status/
-// risk/deadline from (AC-2, "not colour-only"). Boundary values are asserted
-// explicitly because the thresholds carry spec §7.3's confidence bands.
+// ADR-019 w17 clause 7 — confidence is label-only over the server's three
+// decisions. Percentages are floored (clause 8). The two accepted states share
+// `.tag-neutral` and differ only in text.
 
 describe("getConfidenceTag", () => {
-  it("maps >95% to an accepted neutral tag", () => {
-    expect(getConfidenceTag(97)).toEqual({ variant: "neutral", label: "Accepted · 97%" });
-    expect(getConfidenceTag(95.1)).toEqual({ variant: "neutral", label: "Accepted · 95%" });
+  it("maps auto_accepted to a neutral 'Accepted automatically · NN%' tag", () => {
+    expect(getConfidenceTag(97, "auto_accepted")).toEqual({
+      variant: "neutral",
+      label: "Accepted automatically · 97%",
+    });
+    expect(getConfidenceTag(90, "auto_accepted")).toEqual({
+      variant: "neutral",
+      label: "Accepted automatically · 90%",
+    });
   });
 
-  it("maps the 80-95% band (inclusive of both ends) to a flagged accent tag", () => {
-    expect(getConfidenceTag(95)).toEqual({ variant: "accent", label: "Flagged · 95%" });
-    expect(getConfidenceTag(88)).toEqual({ variant: "accent", label: "Flagged · 88%" });
-    expect(getConfidenceTag(80)).toEqual({ variant: "accent", label: "Flagged · 80%" });
+  it("maps human_accepted to a neutral 'Accepted by you' tag with no percentage", () => {
+    expect(getConfidenceTag(97, "human_accepted")).toEqual({ variant: "neutral", label: "Accepted by you" });
+    expect(getConfidenceTag(12, "human_accepted")).toEqual({ variant: "neutral", label: "Accepted by you" });
   });
 
-  it("maps <80% to a blocking review outline tag", () => {
-    expect(getConfidenceTag(79.9)).toEqual({ variant: "outline", label: "Review · 80%" });
-    expect(getConfidenceTag(71)).toEqual({ variant: "outline", label: "Review · 71%" });
+  it("distinguishes the two accepted states by label, never by variant", () => {
+    const automatic = getConfidenceTag(94, "auto_accepted");
+    const human = getConfidenceTag(94, "human_accepted");
+    expect(automatic.variant).toBe("neutral");
+    expect(human.variant).toBe("neutral");
+    expect(automatic.label).not.toBe(human.label);
+    expect(human.label).not.toMatch(/%/);
   });
-});
 
-describe("isConfidenceBlocking", () => {
-  it("blocks consequential use strictly under 80%", () => {
-    expect(isConfidenceBlocking(79.99)).toBe(true);
-    expect(isConfidenceBlocking(80)).toBe(false);
-    expect(isConfidenceBlocking(95)).toBe(false);
+  it("maps review_required to an outline 'Review · NN%' tag and floors the percentage", () => {
+    expect(getConfidenceTag(89.5, "review_required")).toEqual({ variant: "outline", label: "Review · 89%" });
+    expect(getConfidenceTag(71, "review_required")).toEqual({ variant: "outline", label: "Review · 71%" });
+  });
+
+  it("keeps a one-argument call compiling: a missing decision is painted as review_required", () => {
+    expect(getConfidenceTag(97)).toEqual({ variant: "outline", label: "Review · 97%" });
   });
 });
 

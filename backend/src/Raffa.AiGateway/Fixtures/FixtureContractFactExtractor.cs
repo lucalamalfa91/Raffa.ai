@@ -45,17 +45,21 @@ public static class FixtureContractFactExtractor
     public const double StrongConfidence = 0.96;
 
     /// <summary>A clear cue that still involves a reading (an "effective" clause read as status
-    /// "active", a preamble "dated" date read as the effective date). Flagged, never blocking.</summary>
-    public const double GoodConfidence = 0.9;
+    /// "active", a preamble "dated" date read as the effective date). Kept strictly below the
+    /// auto-accept bar and not adjacent to it, so the pilot's HITL act has fields to review —
+    /// the bar itself is never softened to keep a seed interesting.</summary>
+    public const double GoodConfidence = 0.85;
 
     /// <summary>A value computed from other explicit facts rather than read directly (the end date
-    /// from start + initial term, the cancellation deadline from end − notice period).</summary>
-    public const double DerivedConfidence = 0.86;
+    /// from start + initial term, the cancellation deadline from end − notice period). Strictly
+    /// below the 90 % auto-accept bar and not adjacent to it, so at least two of the pilot's
+    /// critical fields stay reviewable.</summary>
+    public const double DerivedConfidence = 0.85;
 
     /// <summary>An ambiguous or conflicting reading: two different amounts for the same field, a
     /// renewal clause that both affirms and denies auto-renewal, a party named without a role.
-    /// Below every review bar in the pipeline (0.6 ordinary, 0.8 critical) and the screen (80%),
-    /// so the document lands in <c>needs_review</c> with this fact in the list.</summary>
+    /// Below the single 90 % auto-accept bar, so the document lands in <c>needs_review</c> with
+    /// this fact in the list.</summary>
     public const double WeakConfidence = 0.52;
 
     private const RegexOptions Options = RegexOptions.CultureInvariant | RegexOptions.IgnoreCase;

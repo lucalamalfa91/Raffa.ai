@@ -121,10 +121,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<DocumentAdmissionGate>();
 
         // Task E13/F04/US01/T02 (documents-v2-api): preview rendering + the reprocess/delete units
-        // of work. The renderer is a TryAdd, so a host that registers a rasteriser-backed
-        // IDocumentPreviewRenderer of its own (Raffa.Api infrastructure - ADR-002 keeps the
-        // native SDK out of this module) wins over the built-in placeholder renderer.
-        services.TryAddSingleton<IDocumentPreviewRenderer, PlaceholderDocumentPreviewRenderer>();
+        // of work. Task E22/F02/US01/T01: PdfPageDocumentPreviewRenderer (Docnet.Core/pdfium) is
+        // registered ahead of PlaceholderDocumentPreviewRenderer via TryAdd — the real renderer wins
+        // for PDFs, and the placeholder stays the honest fallback for everything it cannot draw.
+        // A host that registers its own IDocumentPreviewRenderer before calling this extension still
+        // wins (TryAdd is first-registration-wins).
+        services.TryAddSingleton<IDocumentPreviewRenderer, PdfPageDocumentPreviewRenderer>();
         services.AddScoped<DocumentPreviewService>();
         services.AddScoped<DocumentReprocessService>();
         services.AddScoped<DocumentPriorityService>();

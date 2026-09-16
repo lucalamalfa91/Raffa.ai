@@ -6,9 +6,10 @@ using Microsoft.EntityFrameworkCore;
 namespace Raffa.Savings.Application;
 
 /// <summary>
-/// Implements task E04/F03/US01/T01 (savings-kpis)'s database-facing half: fetches every
-/// tenant-scoped <see cref="Domain.SavingsOpportunity"/> row, reduces each to a
-/// <see cref="SavingsOpportunitySnapshot"/>, and hands the batch to <see cref="SavingsKpiCalculator"/>
+/// Implements task E04/F03/US01/T01 (savings-kpis)'s database-facing half, plus task
+/// E20/F01/US01/T01's verified-money read: fetches every tenant-scoped
+/// <see cref="Domain.SavingsOpportunity"/> row and every <see cref="Domain.RealizedSavings"/> row,
+/// reduces each to a snapshot, and hands both sequences to <see cref="SavingsKpiCalculator"/>
 /// (the pure half — see that type's own doc comment) — the same "thin EF fetch, then a pure
 /// calculator" split <c>Raffa.Api.RenewalsEndpointExtensions.GetRenewalsAsync</c> +
 /// <c>Raffa.Renewals.Application.RenewalPipelineBuilder</c> already establish, collapsed into one
@@ -23,7 +24,9 @@ public sealed class SavingsKpiQueryService(
     SavingsDbContext dbContext, ITenantContext tenantContext, SavingsKpiCalculator calculator)
 {
     /// <summary>Backs the "Savings Identified"/"Savings In Progress"/"Savings Realized" thirds of
-    /// `GET /api/savings/kpis` (product spec §10.1; parent story us-01-savings-kpis AC-1).</summary>
+    /// `GET /api/savings/kpis` (product spec §10.1; parent story us-01-savings-kpis AC-1). Verified
+    /// money is projected from <see cref="SavingsDbContext.RealizedSavingsRecords"/>, never from an
+    /// opportunity's estimate range.</summary>
     public async Task<SavingsKpiSummary> GetSummaryAsync(
         TenantId tenantId, CancellationToken cancellationToken = default)
     {
@@ -37,6 +40,13 @@ public sealed class SavingsKpiQueryService(
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
-        return calculator.Summarize(snapshots);
+        var realized = await dbContext.RealizedSavingsRecords
+            .AsNoTracking()
+            .Where(r => r.TenantId == tenantId)
+            .Select(r => new RealizedSavingsSnapshot(r.Currency, r.Amount))
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return calculator.Summarize(snapshots, realized);
     }
 }

@@ -65,13 +65,14 @@ public sealed class RenewalPipelineBuilderTests
         Assert.Equal(44, facts.DaysUntilCancellationDeadline);
 
         // Recommendations: derived/suggested values (spec §9.3 "Annual uplift", "Market position",
-        // "Potential savings", "Recommended action"). The three benchmark/savings-derived fields
-        // are honestly null this wave (neither module is wired to this task's dependency) --
-        // never fabricated.
+        // "Potential savings", "Recommended action").
+        // MarketBand is null on this candidate (default) → MarketPosition is the explicit
+        // abstention string "insufficient market data" (task E21/F02/US01/T01, ADR-001 w17 clause 4).
+        // AnnualUpliftPercent and PotentialSavingsRange remain null — honest gaps, not fabricated.
         Assert.Equal("Start negotiation now", recommendations.RecommendedAction);
         Assert.False(string.IsNullOrWhiteSpace(recommendations.Explanation));
         Assert.Null(recommendations.AnnualUpliftPercent);
-        Assert.Null(recommendations.MarketPosition);
+        Assert.Equal("insufficient market data", recommendations.MarketPosition);
         Assert.Null(recommendations.PotentialSavingsRange);
     }
 
@@ -256,5 +257,105 @@ public sealed class RenewalPipelineBuilderTests
         var candidates = new List<RenewalDashboardCandidate> { null! };
 
         Assert.Throws<ArgumentNullException>(() => _builder.Build(candidates));
+    }
+
+    // ── Market position (task E21/F02/US01/T01, NW-22) ─────────────────────
+
+    /// <summary>
+    /// A candidate carrying a <see cref="ResolvedMarketBand"/> produces a non-null
+    /// <c>MarketPosition</c> that contains the position label, the word "representative",
+    /// the adapter name, the sample size and the as-of date — the two honest shapes from
+    /// ADR-001 w17 clause 4. No fake benchmark service is introduced: the band is a plain
+    /// value supplied to the candidate, so the builder stays pure and the test needs only
+    /// a constructor call.
+    /// </summary>
+    [Fact]
+    public void Candidate_with_resolved_band_fills_market_position_as_representative_string()
+    {
+        var asOf = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var band = new ResolvedMarketBand("above market", "fixture", SampleSize: 12, AsOf: asOf);
+        var candidate = new RenewalDashboardCandidate(
+            EntityId.New(), EntityId.New(), AsOf.AddDays(134), AutoRenewal: true,
+            AnnualSpend: 640_000m, CancellationDeadline: AsOf.AddDays(44),
+            MarketBand: band);
+
+        var item = Assert.Single(_builder.Build([candidate]));
+        var marketPosition = item.InsightCard.Recommendations.MarketPosition;
+
+        Assert.NotNull(marketPosition);
+        Assert.Contains("above market", marketPosition, StringComparison.Ordinal);
+        Assert.Contains("representative", marketPosition, StringComparison.Ordinal);
+        Assert.Contains("fixture", marketPosition, StringComparison.Ordinal);
+        Assert.Contains("n=12", marketPosition, StringComparison.Ordinal);
+        Assert.Contains("2026-01-01", marketPosition, StringComparison.Ordinal);
+        Assert.DoesNotContain("Not determined", marketPosition, StringComparison.Ordinal);
+        Assert.Null(item.InsightCard.Recommendations.AnnualUpliftPercent);
+    }
+
+    /// <summary>
+    /// Sample size is optional (spec §10.3 "If available"). When the band does not report one,
+    /// the formatted string still carries adapter and as-of, and does not invent an <c>n=</c>.
+    /// </summary>
+    [Fact]
+    public void Candidate_with_band_omits_sample_size_when_adapter_did_not_report_one()
+    {
+        var band = new ResolvedMarketBand(
+            "below market", "market-feed", SampleSize: null,
+            AsOf: new DateTimeOffset(2026, 3, 15, 0, 0, 0, TimeSpan.Zero));
+        var candidate = new RenewalDashboardCandidate(
+            EntityId.New(), EntityId.New(), AsOf.AddDays(134), AutoRenewal: true,
+            AnnualSpend: 640_000m, CancellationDeadline: AsOf.AddDays(44),
+            MarketBand: band);
+
+        var item = Assert.Single(_builder.Build([candidate]));
+        var marketPosition = item.InsightCard.Recommendations.MarketPosition;
+
+        Assert.NotNull(marketPosition);
+        Assert.Contains("below market", marketPosition, StringComparison.Ordinal);
+        Assert.Contains("representative", marketPosition, StringComparison.Ordinal);
+        Assert.Contains("market-feed", marketPosition, StringComparison.Ordinal);
+        Assert.Contains("2026-03-15", marketPosition, StringComparison.Ordinal);
+        Assert.DoesNotContain("n=", marketPosition, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A candidate without a <see cref="ResolvedMarketBand"/> (null, the abstention path —
+    /// incomplete key or thin sample) produces <c>"insufficient market data"</c> — never null,
+    /// never "Not determined" (AC-3). The builder introduces no fake service to make this work.
+    /// </summary>
+    [Fact]
+    public void Candidate_without_band_emits_insufficient_market_data()
+    {
+        // MarketBand = null is the default; explicit here for clarity.
+        var candidate = new RenewalDashboardCandidate(
+            EntityId.New(), EntityId.New(), AsOf.AddDays(134), AutoRenewal: true,
+            AnnualSpend: 640_000m, CancellationDeadline: AsOf.AddDays(44),
+            MarketBand: null);
+
+        var item = Assert.Single(_builder.Build([candidate]));
+
+        Assert.Equal("insufficient market data", item.InsightCard.Recommendations.MarketPosition);
+    }
+
+    /// <summary>
+    /// <c>PotentialSavingsRange</c> stays <see langword="null"/> regardless of whether a band
+    /// was resolved — the Savings module is not wired to this task's dependency (AC-6;
+    /// an honest null is not a defect and must not be filled with a guess, Appendix C rule 10).
+    /// </summary>
+    [Fact]
+    public void Potential_savings_range_stays_null_regardless_of_band()
+    {
+        var band = new ResolvedMarketBand(
+            "above market", "fixture", SampleSize: 7,
+            AsOf: new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        var candidate = new RenewalDashboardCandidate(
+            EntityId.New(), EntityId.New(), AsOf.AddDays(134), AutoRenewal: true,
+            AnnualSpend: 640_000m, CancellationDeadline: AsOf.AddDays(44),
+            MarketBand: band);
+
+        var item = Assert.Single(_builder.Build([candidate]));
+
+        Assert.Null(item.InsightCard.Recommendations.PotentialSavingsRange);
+        Assert.Null(item.InsightCard.Recommendations.AnnualUpliftPercent);
     }
 }

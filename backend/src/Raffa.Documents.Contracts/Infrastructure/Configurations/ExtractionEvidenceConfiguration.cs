@@ -25,6 +25,9 @@ public sealed class ExtractionEvidenceConfiguration : IEntityTypeConfiguration<E
 
         builder.Property(e => e.FieldName).HasMaxLength(200);
         builder.Property(e => e.SourceSpan).HasMaxLength(500);
+        // character varying, not a SQL enum: FieldName is deliberately not one either.
+        builder.Property(e => e.Decision).HasMaxLength(40).HasColumnType("character varying");
+        builder.Property(e => e.DecidedAt).HasColumnType("timestamp with time zone");
 
         builder.HasIndex(e => e.TenantId);
         builder.HasIndex(e => new { e.ContractId, e.FieldName });

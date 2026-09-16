@@ -5,13 +5,16 @@ import {
   blockedReason,
   buildReviewFields,
   computeReviewProgress,
+  CORRECTABLE_FIELDS,
   fieldTag,
   formatCorrectableValue,
   indexEvidence,
   isFieldBlocking,
   isValidationBlocked,
+  legendThresholdPct,
   readCorrectableValue,
   resolveReviewDocument,
+  reviewTitle,
   splitPassage,
   type ReviewFieldRow,
 } from "../../../../src/routes/contracts/review/reviewViewModel";
@@ -128,18 +131,21 @@ describe("formatCorrectableValue", () => {
 });
 
 describe("buildReviewFields", () => {
-  it("builds one row per correctable field that has a value, skipping never-extracted optional fields", () => {
+  it("builds a missing row for a never-extracted canonical field, regardless of required", () => {
     const noGoverningLaw = contract({ tabs: { ...contract().tabs, overview: { ...contract().tabs.overview, governingLaw: null } } });
 
-    const rows = buildReviewFields(noGoverningLaw, [], new Set());
+    const rows = buildReviewFields(noGoverningLaw, []);
+    const law = rows.find((row) => row.name === "governingLaw")!;
 
-    expect(rows.some((row) => row.name === "governingLaw")).toBe(false);
-    expect(rows.some((row) => row.name === "annualSpend")).toBe(true);
-    expect(rows.some((row) => row.name === "type")).toBe(true);
+    expect(law.missing).toBe(true);
+    expect(law.rawValue).toBe("");
+    expect(law.confidencePct).toBeNull();
+    expect(rows.some((row) => row.name === "annualSpend" && !row.missing)).toBe(true);
+    expect(rows.some((row) => row.name === "type" && !row.missing)).toBe(true);
   });
 
-  it("marks a field pending when it has no correction history entry and was not accepted this session", () => {
-    const rows = buildReviewFields(contract(), [], new Set());
+  it("marks a field pending when it has no correction history entry and the server has not accepted it", () => {
+    const rows = buildReviewFields(contract(), []);
     const annualSpend = rows.find((row) => row.name === "annualSpend")!;
 
     expect(annualSpend.decision).toBe("pending");
@@ -147,15 +153,24 @@ describe("buildReviewFields", () => {
     expect(annualSpend.rawValue).toBe("500000");
   });
 
-  it("marks a field accepted when it is in the accepted-this-session set (and has no history entry)", () => {
-    const rows = buildReviewFields(contract(), [], new Set(["annualSpend"]));
+  it("marks a field accepted from the server's human_accepted decision -- no session set", () => {
+    const rows = buildReviewFields(
+      contract(),
+      [],
+      indexEvidence([evidence({ fieldName: "annualSpend", decision: "human_accepted" })]),
+    );
     const annualSpend = rows.find((row) => row.name === "annualSpend")!;
 
     expect(annualSpend.decision).toBe("accepted");
+    expect(annualSpend.evidenceDecision).toBe("human_accepted");
   });
 
-  it("marks a field corrected when correction history has an entry for it -- history wins over an accepted-this-session flag", () => {
-    const rows = buildReviewFields(contract(), [correction()], new Set(["annualSpend"]));
+  it("marks a field corrected when correction history has an entry for it -- history wins over the server's accepted decision", () => {
+    const rows = buildReviewFields(
+      contract(),
+      [correction()],
+      indexEvidence([evidence({ fieldName: "annualSpend", decision: "human_accepted" })]),
+    );
     const annualSpend = rows.find((row) => row.name === "annualSpend")!;
 
     expect(annualSpend.decision).toBe("corrected");
@@ -167,7 +182,7 @@ describe("buildReviewFields", () => {
     const newer = correction({ newValue: "520000", correctedAt: "2026-09-06T08:00:00Z" });
 
     // Newest-first, matching the real endpoint's own OrderByDescending(CorrectedAt).
-    const rows = buildReviewFields(contract(), [newer, older], new Set());
+    const rows = buildReviewFields(contract(), [newer, older]);
     const annualSpend = rows.find((row) => row.name === "annualSpend")!;
 
     expect(annualSpend.latestCorrection?.newValue).toBe("520000");
@@ -175,24 +190,40 @@ describe("buildReviewFields", () => {
 });
 
 function row(
-  overrides: Partial<Pick<ReviewFieldRow, "decision" | "confidencePct">> = {},
-): Pick<ReviewFieldRow, "decision" | "confidencePct"> {
-  return { decision: "pending", confidencePct: null, ...overrides };
+  overrides: Partial<Pick<ReviewFieldRow, "decision" | "confidencePct" | "evidenceDecision">> = {},
+): Pick<ReviewFieldRow, "decision" | "confidencePct" | "evidenceDecision"> {
+  return { decision: "pending", confidencePct: null, evidenceDecision: null, ...overrides };
 }
 
-describe("fieldTag (AC-2 confidence -> tag mapping, generalised for decision state)", () => {
+describe("fieldTag (AC-2 server decision -> tag mapping)", () => {
   it("shows a real, non-fabricated result for a corrected field", () => {
     expect(fieldTag(row({ decision: "corrected" }))).toEqual({ variant: "neutral", label: "Corrected" });
   });
 
-  it("shows a real, non-fabricated result for an accepted field", () => {
-    expect(fieldTag(row({ decision: "accepted" }))).toEqual({ variant: "neutral", label: "Accepted by you" });
+  it("shows 'Accepted by you' with no percentage for a human_accepted field", () => {
+    expect(fieldTag(row({ decision: "accepted", evidenceDecision: "human_accepted", confidencePct: 71 }))).toEqual({
+      variant: "neutral",
+      label: "Accepted by you",
+    });
   });
 
-  it("delegates to styles/semantics.ts#getConfidenceTag verbatim once a real score exists (>95/80-95/<80 thresholds)", () => {
-    expect(fieldTag(row({ confidencePct: 97 }))).toEqual({ variant: "neutral", label: "Accepted · 97%" });
-    expect(fieldTag(row({ confidencePct: 88 }))).toEqual({ variant: "accent", label: "Flagged · 88%" });
-    expect(fieldTag(row({ confidencePct: 71 }))).toEqual({ variant: "outline", label: "Review · 71%" });
+  it("reads the server decision, not the percentage: auto_accepted / human_accepted / review_required", () => {
+    expect(fieldTag(row({ decision: "accepted", evidenceDecision: "auto_accepted", confidencePct: 97 }))).toEqual({
+      variant: "neutral",
+      label: "Accepted automatically · 97%",
+    });
+    expect(fieldTag(row({ decision: "accepted", evidenceDecision: "human_accepted", confidencePct: 88 }))).toEqual({
+      variant: "neutral",
+      label: "Accepted by you",
+    });
+    expect(fieldTag(row({ evidenceDecision: "review_required", confidencePct: 89.5 }))).toEqual({
+      variant: "outline",
+      label: "Review · 89%",
+    });
+    expect(fieldTag(row({ evidenceDecision: "review_required", confidencePct: 71 }))).toEqual({
+      variant: "outline",
+      label: "Review · 71%",
+    });
   });
 
   it("shows a plain, honest 'Needs review' label -- never a fabricated percentage -- for a pending field with no score", () => {
@@ -200,25 +231,37 @@ describe("fieldTag (AC-2 confidence -> tag mapping, generalised for decision sta
   });
 });
 
-describe("isFieldBlocking (AC-4 gate predicate)", () => {
+describe("isFieldBlocking (AC-4/AC-6 gate predicate)", () => {
   it("a resolved field never blocks, regardless of confidence", () => {
     expect(isFieldBlocking(row({ decision: "corrected", confidencePct: 12 }))).toBe(false);
-    expect(isFieldBlocking(row({ decision: "accepted", confidencePct: 12 }))).toBe(false);
+    expect(isFieldBlocking(row({ decision: "accepted", evidenceDecision: "human_accepted", confidencePct: 12 }))).toBe(
+      false,
+    );
   });
 
-  it("a pending field with a real score blocks only under 80%, matching spec §7.3 exactly", () => {
-    expect(isFieldBlocking(row({ confidencePct: 79.9 }))).toBe(true);
-    expect(isFieldBlocking(row({ confidencePct: 80 }))).toBe(false);
+  it("a field the server auto-accepted does not block, even when the percentage is below any historical band", () => {
+    expect(
+      isFieldBlocking(row({ decision: "accepted", evidenceDecision: "auto_accepted", confidencePct: 71 })),
+    ).toBe(false);
   });
 
-  it("a pending field with no score blocks by conservative default (no live evidence endpoint yet)", () => {
+  it("a pending review_required field blocks, including a score that used to sit in a middle band", () => {
+    expect(isFieldBlocking(row({ evidenceDecision: "review_required", confidencePct: 88 }))).toBe(true);
+    expect(isFieldBlocking(row({ evidenceDecision: "review_required", confidencePct: 80 }))).toBe(true);
+  });
+
+  it("a pending field with no score blocks by conservative default", () => {
     expect(isFieldBlocking(row())).toBe(true);
+  });
+
+  it("a missing field never blocks — it is not part of the decided set", () => {
+    expect(isFieldBlocking({ ...row(), missing: true })).toBe(false);
   });
 });
 
 describe("computeReviewProgress / isValidationBlocked / blockedReason", () => {
   it("blocks and names a visible reason when at least one field is pending (AC-4 'visible reason, not a hidden control')", () => {
-    const rows = buildReviewFields(contract(), [], new Set());
+    const rows = buildReviewFields(contract(), []);
     const progress = computeReviewProgress(rows);
 
     expect(isValidationBlocked(progress)).toBe(true);
@@ -226,10 +269,12 @@ describe("computeReviewProgress / isValidationBlocked / blockedReason", () => {
     expect(blockedReason(progress)).toBe(`${progress.blockingCount} fields still need review before this contract can be marked validated.`);
   });
 
-  it("is not blocked once every field is resolved", () => {
-    const rows = buildReviewFields(contract(), [], new Set());
-    const acceptedAll = new Set(rows.map((r) => r.name));
-    const progress = computeReviewProgress(buildReviewFields(contract(), [], acceptedAll));
+  it("is not blocked once every field is resolved by the server's decision", () => {
+    const pending = buildReviewFields(contract(), []);
+    const allAccepted = indexEvidence(
+      pending.map((r) => evidence({ fieldName: r.name, decision: "auto_accepted", value: r.rawValue })),
+    );
+    const progress = computeReviewProgress(buildReviewFields(contract(), [], allAccepted));
 
     expect(isValidationBlocked(progress)).toBe(false);
     expect(progress.blockingCount).toBe(0);
@@ -237,8 +282,10 @@ describe("computeReviewProgress / isValidationBlocked / blockedReason", () => {
   });
 
   it("singularises both 'field' and 'needs' for exactly one blocking field", () => {
-    const rows = buildReviewFields(contract(), [], new Set());
-    const allButOne = new Set(rows.slice(1).map((r) => r.name));
+    const pending = buildReviewFields(contract(), []);
+    const allButOne = indexEvidence(
+      pending.slice(1).map((r) => evidence({ fieldName: r.name, decision: "auto_accepted", value: r.rawValue })),
+    );
     const progress = computeReviewProgress(buildReviewFields(contract(), [], allButOne));
 
     expect(progress.blockingCount).toBe(1);
@@ -251,6 +298,7 @@ function evidence(overrides: Partial<ContractFieldEvidenceBody> = {}): ContractF
     fieldName: "annualSpend",
     value: "500000",
     confidence: 0.96,
+    decision: "auto_accepted",
     sourcePage: 2,
     sourceSpan: "EUR 500,000 per year",
     sourceDocumentId: "44444444-4444-4444-4444-444444444444",
@@ -266,24 +314,24 @@ function evidence(overrides: Partial<ContractFieldEvidenceBody> = {}): ContractF
 
 describe("buildReviewFields with real evidence (GET /api/contracts/{id}/evidence)", () => {
   it("carries the field's real confidence (0..1 -> 0..100) and evidence row, so the tag and gate use a real score", () => {
-    const rows = buildReviewFields(contract(), [], new Set(), indexEvidence([evidence()]));
+    const rows = buildReviewFields(contract(), [], indexEvidence([evidence()]));
     const annualSpend = rows.find((row) => row.name === "annualSpend")!;
 
     expect(annualSpend.confidencePct).toBe(96);
     expect(annualSpend.evidence?.sourcePage).toBe(2);
-    expect(fieldTag(annualSpend)).toEqual({ variant: "neutral", label: "Accepted · 96%" });
+    expect(fieldTag(annualSpend)).toEqual({ variant: "neutral", label: "Accepted automatically · 96%" });
     expect(isFieldBlocking(annualSpend)).toBe(false);
     expect(annualSpend.proposalPending).toBe(false);
   });
 
   it("matches evidence to fields case-insensitively (the backend compares field names that way)", () => {
-    const rows = buildReviewFields(contract(), [], new Set(), indexEvidence([evidence({ fieldName: "AnnualSpend", confidence: 0.5 })]));
+    const rows = buildReviewFields(contract(), [], indexEvidence([evidence({ fieldName: "AnnualSpend", confidence: 0.5, decision: "review_required" })]));
 
     expect(rows.find((row) => row.name === "annualSpend")!.confidencePct).toBe(50);
   });
 
   it("keeps the conservative 'Needs review' posture for a field with no evidence row -- never an invented score", () => {
-    const rows = buildReviewFields(contract(), [], new Set(), indexEvidence([evidence()]));
+    const rows = buildReviewFields(contract(), [], indexEvidence([evidence()]));
     const currency = rows.find((row) => row.name === "currency")!;
 
     expect(currency.confidencePct).toBeNull();
@@ -297,15 +345,18 @@ describe("buildReviewFields with real evidence (GET /api/contracts/{id}/evidence
       fieldName: "supplier",
       value: "Fabrikam Software GmbH",
       confidence: 0.52,
+      decision: "review_required",
       sourcePage: 1,
       sourceSpan: "between Raffa Demo AG and Fabrikam Software GmbH",
     });
-    // contract() has no linked supplier (supplierName null) -- without evidence there would be no row.
-    expect(buildReviewFields(contract(), [], new Set()).some((row) => row.name === "supplier")).toBe(false);
+    const unrecovered = buildReviewFields(contract(), []).find((row) => row.name === "supplier")!;
+    expect(unrecovered.missing).toBe(true);
+    expect(unrecovered.confidencePct).toBeNull();
 
-    const rows = buildReviewFields(contract(), [], new Set(), indexEvidence([weakSupplier]));
+    const rows = buildReviewFields(contract(), [], indexEvidence([weakSupplier]));
     const supplier = rows.find((row) => row.name === "supplier")!;
 
+    expect(supplier.missing).toBe(false);
     expect(supplier.rawValue).toBe("Fabrikam Software GmbH");
     expect(supplier.displayValue).toBe("Fabrikam Software GmbH");
     expect(supplier.proposalPending).toBe(true);
@@ -319,7 +370,7 @@ describe("buildReviewFields with real evidence (GET /api/contracts/{id}/evidence
   it("reads a linked supplier's name from the header, as an ordinary (applied) value", () => {
     const linked = contract({ header: { ...contract().header, supplierName: "Northwind Traders SA" } });
 
-    const rows = buildReviewFields(linked, [], new Set());
+    const rows = buildReviewFields(linked, []);
     const supplier = rows.find((row) => row.name === "supplier")!;
 
     expect(readCorrectableValue(linked, "supplier")).toBe("Northwind Traders SA");
@@ -335,8 +386,7 @@ describe("buildReviewFields with real evidence (GET /api/contracts/{id}/evidence
     const rows = buildReviewFields(
       withProposal,
       [],
-      new Set(),
-      indexEvidence([evidence({ fieldName: "governingLaw", value: "  Switzerland ", confidence: 0.9 })]),
+      indexEvidence([evidence({ fieldName: "governingLaw", value: "  Switzerland ", confidence: 0.9, decision: "auto_accepted" })]),
     );
 
     const law = rows.find((row) => row.name === "governingLaw")!;
@@ -344,19 +394,66 @@ describe("buildReviewFields with real evidence (GET /api/contracts/{id}/evidence
     expect(law.proposalPending).toBe(true);
   });
 
-  it("a proposal with an empty value does not create a row (nothing to review)", () => {
-    const noLaw = contract({ tabs: { ...contract().tabs, overview: { ...contract().tabs.overview, governingLaw: null } } });
-    const rows = buildReviewFields(noLaw, [], new Set(), indexEvidence([evidence({ fieldName: "governingLaw", value: "" })]));
+  it("a proposal with an empty value creates a missing row (nothing to review as extracted)", () => {
+    const noEnd = contract({ header: { ...contract().header, endDate: null } });
+    const rows = buildReviewFields(noEnd, [], indexEvidence([evidence({ fieldName: "endDate", value: "" })]));
+    const endDate = rows.find((row) => row.name === "endDate")!;
 
-    expect(rows.some((row) => row.name === "governingLaw")).toBe(false);
+    expect(endDate.missing).toBe(true);
+    expect(endDate.rawValue).toBe("");
+    expect(endDate.confidencePct).toBeNull();
+    expect(endDate.proposalPending).toBe(false);
+    expect(isFieldBlocking(endDate)).toBe(false);
+  });
+
+  it("a recovered field produces no missing row", () => {
+    const rows = buildReviewFields(contract(), []);
+    const endDate = rows.find((row) => row.name === "endDate")!;
+
+    expect(endDate.missing).toBe(false);
+    expect(endDate.rawValue).toBe("2026-01-01");
+  });
+
+  it("a field with no correctable target never appears in the missing set", () => {
+    const missed = contract({
+      header: { ...contract().header, endDate: null, cancellationDeadline: null, annualSpend: null, totalContractValue: null },
+      tabs: { ...contract().tabs, overview: { ...contract().tabs.overview, renewalTermMonths: null } },
+    });
+    const missingNames = buildReviewFields(missed, [])
+      .filter((row) => row.missing)
+      .map((row) => row.name);
+
+    expect(missingNames.length).toBeGreaterThan(0);
+    expect(missingNames).not.toEqual(expect.arrayContaining(["termination", "priceUplift", "priceUpliftPercent"]));
+    expect(missingNames.every((name) => CORRECTABLE_FIELDS.some((def) => def.name === name))).toBe(true);
   });
 });
 
 describe("acceptedFieldNames", () => {
-  it("lists exactly the fields the reviewer Accepted -- corrected rows are already durable, pending ones are not decisions", () => {
-    const rows = buildReviewFields(contract(), [correction()], new Set(["currency", "type"]));
+  it("lists only human_accepted fields -- auto_accepted and corrected rows are not restamped", () => {
+    const rows = buildReviewFields(
+      contract(),
+      [correction()],
+      indexEvidence([
+        evidence({ fieldName: "currency", decision: "human_accepted" }),
+        evidence({ fieldName: "type", decision: "human_accepted" }),
+        evidence({ fieldName: "status", decision: "auto_accepted" }),
+      ]),
+    );
 
     expect(acceptedFieldNames(rows)).toEqual(["type", "currency"]);
+  });
+});
+
+describe("reviewTitle / legendThresholdPct", () => {
+  it("names the count, never a threshold", () => {
+    expect(reviewTitle(3)).toBe("3 facts need you — you decide");
+    expect(reviewTitle(0)).toBe("0 facts need you — you decide");
+  });
+
+  it("floors the server threshold for the legend and never hardcodes it", () => {
+    expect(legendThresholdPct(0.87)).toBe(87);
+    expect(legendThresholdPct(0.9)).toBe(90);
   });
 });
 

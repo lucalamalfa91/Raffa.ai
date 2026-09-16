@@ -61,16 +61,13 @@ public sealed record RenewalInsightFacts(
 /// The insight card's recommendations group (spec §9.3 rows "Annual uplift", "Market position",
 /// "Potential savings", "Recommended action"). <see cref="RecommendedAction"/>/
 /// <see cref="Explanation"/> are real, computed by <see cref="RenewalPipelineBuilder"/>'s own
-/// deterministic urgency rule (Appendix C rule 6 — code, not an LLM). <see cref="AnnualUpliftPercent"/>/
-/// <see cref="MarketPosition"/>/<see cref="PotentialSavingsRange"/> are always <see langword="null"/>
-/// in this wave: they need the Benchmark Service (<c>Raffa.Benchmark</c>, "IBenchmarkService only
-/// — fixture adapter is later (R3)" per <c>backend/README.md</c>'s solution layout) and the Savings
-/// module (<c>Raffa.Savings</c>, scaffold, R3), neither wired to this task's own dependency
-/// (<c>renewal-engine</c> only). Present as explicit <see langword="null"/> fields rather than
-/// omitted or fabricated — the same "honestly absent, not guessed" convention
-/// <c>Contract360Result.Benchmark</c>/<c>.Activity</c> already use for their own R3/R4 gaps
-/// (Appendix C rule 10) — so a caller can tell "not known yet" apart from "known to be zero" and
-/// the wire shape does not have to change again once a later task fills them in.
+/// deterministic urgency rule (Appendix C rule 6 — code, not an LLM).
+/// <see cref="MarketPosition"/> is filled from the candidate's already-resolved band (task
+/// E21/F02/US01/T01, NW-22) as one of two honest shapes: a representative position, or the
+/// explicit <c>"insufficient market data"</c> abstention (ADR-001 w17 clause 4).
+/// <see cref="AnnualUpliftPercent"/> and <see cref="PotentialSavingsRange"/> stay
+/// <see langword="null"/> unless a later producer actually yields them — an honest null is not a
+/// defect and must not be filled with a guess (Appendix C rule 10; AC-6).
 /// </summary>
 public sealed record RenewalInsightRecommendations(
     string RecommendedAction,

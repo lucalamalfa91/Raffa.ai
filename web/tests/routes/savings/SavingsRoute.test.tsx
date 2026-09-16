@@ -44,6 +44,7 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     getCorrectionHistory: vi.fn(),
     correctContract: vi.fn(),
     getContractEvidence: vi.fn(),
+    getContractStrategy: vi.fn(),
     validateDocument: vi.fn(),
     postRenewalAction: vi.fn(),
     getQuote: vi.fn(),
@@ -72,7 +73,7 @@ function kpiSummary(overrides: Partial<SavingsKpiSummaryBody> = {}): SavingsKpiS
     contractsAnalyzedCount: 9,
     savingsIdentified: [{ currency: "CHF", low: 410_000, high: 590_000, count: 6, averageConfidence: 0.82 }],
     savingsInProgress: [{ currency: "CHF", low: 240_000, high: 240_000, count: 2, averageConfidence: 0.75 }],
-    savingsRealized: [{ currency: "CHF", low: 85_000, high: 85_000, count: 1, averageConfidence: 0.91 }],
+    savingsRealized: [{ currency: "CHF", amount: 85_000, count: 1 }],
     upcomingRenewalsCount: 4,
     ...overrides,
   };
@@ -165,7 +166,7 @@ describe("SavingsRoute (V2, ADR-024 / screens-v2.md #8)", () => {
     expect(getPortfolio).not.toHaveBeenCalled();
   });
 
-  it("shows a KPI skeleton while the request is in flight, then the three V2 cells with their meta lines", async () => {
+  it("shows a KPI skeleton while the request is in flight, then the four V2 cells with their meta lines", async () => {
     let resolveFetch!: (value: GetSavingsKpisResult) => void;
     const pending = new Promise<GetSavingsKpisResult>((resolve) => {
       resolveFetch = resolve;
@@ -187,7 +188,7 @@ describe("SavingsRoute (V2, ADR-024 / screens-v2.md #8)", () => {
     expect(container.querySelector(".savings-kpi-skeleton")).not.toBeInTheDocument();
     const band = screen.getByRole("group", { name: "Savings KPIs" });
     const cells = band.querySelectorAll(".savings-kpi-cell");
-    expect(cells).toHaveLength(3);
+    expect(cells).toHaveLength(4);
     expect(cells[0]).toHaveTextContent("Contracts analyzed");
     expect(cells[0]).toHaveTextContent("9");
     expect(cells[0]).toHaveTextContent("CHF 6,270,000 annual spend");
@@ -195,7 +196,11 @@ describe("SavingsRoute (V2, ADR-024 / screens-v2.md #8)", () => {
     expect(cells[1]).toHaveTextContent("4");
     expect(cells[2]).toHaveTextContent("Savings identified");
     expect(cells[2]).toHaveTextContent("CHF 410,000–590,000");
-    expect(cells[2]).toHaveTextContent("6 identified · 2 in progress · 1 realized");
+    expect(cells[2]).toHaveTextContent("6 identified · 2 in progress");
+    expect(cells[2]).not.toHaveTextContent("realized");
+    expect(cells[3]).toHaveTextContent("Savings verified");
+    expect(cells[3]).toHaveTextContent("CHF 85,000");
+    expect(cells[3]).toHaveTextContent("from 1 recorded outcome");
   });
 
   it("benchmark-provider-unreachable -> KPIs stale-labelled, and Retry recovers", async () => {
@@ -208,8 +213,9 @@ describe("SavingsRoute (V2, ADR-024 / screens-v2.md #8)", () => {
 
     expect(await screen.findByText("Benchmark provider unreachable")).toBeInTheDocument();
     expect(screen.getByRole("alert")).toBeInTheDocument();
-    expect(screen.getAllByText("—")).toHaveLength(3);
-    expect(screen.getAllByText("Stale")).toHaveLength(3);
+    expect(screen.getAllByText("—")).toHaveLength(4);
+    expect(screen.getAllByText("Stale")).toHaveLength(4);
+    expect(screen.getByText("Savings verified")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /retry refresh/i }));
 

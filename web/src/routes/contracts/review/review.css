@@ -61,10 +61,9 @@
   margin: 0;
 }
 
-/* Confidence legend: three tag+caption pairs, copied verbatim from the export ("auto-accepted" /
- * "flagged" / "review required" next to the >95% / 80-95% / <80% thresholds design-system.md's own
- * semantic-mapping table already locks) -- a key to the same tags the list below renders, not a
- * fourth tag variant. */
+/* Confidence legend: two tag+caption pairs (auto-accepted / review required), fed from the
+ * response's autoAcceptThreshold -- a key to the same tags the list below renders, not a
+ * third tag variant. */
 .review-legend {
   display: flex;
   align-items: center;
@@ -88,10 +87,22 @@
   margin: 0 -32px 0 0;
 }
 
-.review-field-table {
+.review-field-column {
   flex: 1 1 520px;
   min-width: 0;
   padding: 0 32px 32px 0;
+}
+
+.review-field-table {
+  width: 100%;
+}
+
+.review-missing-fields {
+  margin-top: var(--space-6);
+}
+
+.review-missing-fields h3 {
+  margin-bottom: var(--space-2);
 }
 
 /* Fixed-layout column widths (`.table` sets `table-layout:fixed`, components.css) -- narrow Field,
@@ -240,7 +251,7 @@
     margin-right: 0;
   }
 
-  .review-field-table {
+  .review-field-column {
     padding: 0 0 24px;
   }
 

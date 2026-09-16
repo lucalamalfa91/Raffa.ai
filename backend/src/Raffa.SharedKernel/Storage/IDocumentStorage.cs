@@ -68,4 +68,18 @@ public interface IDocumentStorage
         EntityId documentId,
         Stream content,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Persists one rendered page of <paramref name="documentId"/>'s preview and returns its
+    /// tenant-prefixed path (<see cref="DocumentStoragePath.BuildPreviewPage"/>). Used by the
+    /// multi-page rasteriser (task E22/F02/US01/T01, ADR-029): one call per page, one page in
+    /// memory at a time (ADR-005 w17 §19). <paramref name="page"/> is 1-based; the path is
+    /// deterministic and replaced in place on every reprocess (ADR-029 round-3 clause 1).
+    /// </summary>
+    Task<string> SavePreviewPageAsync(
+        TenantId tenantId,
+        EntityId documentId,
+        int page,
+        Stream content,
+        CancellationToken cancellationToken = default);
 }

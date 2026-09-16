@@ -416,14 +416,16 @@ export interface ListDocumentsResult {
 }
 
 // Task E13/F09/US01/T03: `getDocumentPreviewUrl`, wrapping `GET /api/documents/{id}/preview`.
-// Documented ahead of the backend counterpart (epic-13/feature-04) landing in this worktree -- see
-// that operation's own OpenAPI description. Unlike every other read call in this file, the response
-// is a binary `image/png`, not JSON -- a plain `<img src="...">` cannot carry the `X-Tenant-Id`
-// header every other call here requires, so this method performs the authenticated `fetch()` itself
-// and hands back a browser object URL (`URL.createObjectURL`, never the Storage URL -- ADR-009
-// "never a raw blob URL") the caller renders as `<img src={objectUrl}>`. The caller owns
-// `URL.revokeObjectURL(objectUrl)` once done (e.g. a `useEffect` cleanup), the same lifecycle any
-// `URL.createObjectURL` caller owns -- this client does not track outstanding object URLs itself.
+// Task E22/F03/US01/T01 (document viewer) is this method's first caller
+// (`src/routes/documents/viewer`): it passes the 1-based `page` query (ADR-029 clause 5) and
+// revokes the object URL in the `useEffect` cleanup that owns it, holding at most the current
+// page. Unlike every other read call in this file, the response is a binary `image/png`, not
+// JSON -- a plain `<img src="...">` cannot carry the `X-Tenant-Id` header every other call here
+// requires, so this method performs the authenticated `fetch()` itself and hands back a browser
+// object URL (`URL.createObjectURL`, never the Storage URL -- ADR-009 "never a raw blob URL")
+// the caller renders as `<img src={objectUrl}>`. The caller owns `URL.revokeObjectURL(objectUrl)`
+// once done; this client does not track outstanding object URLs itself. A 404 *with* `page` is a
+// missing page (reaped after re-process, or never stored), not a missing document.
 export interface GetDocumentPreviewResult {
   /** True only on `200 OK`. */
   ok: boolean;
@@ -673,7 +675,8 @@ export interface CorrectContractResult {
 // confidence, the passage around the span, the model) the review screen's evidence pane and
 // confidence tags read; until this operation existed the pane could only say "not yet available".
 type GetContractEvidenceResponses = paths["/api/contracts/{id}/evidence"]["get"]["responses"];
-export type ContractEvidenceBody = GetContractEvidenceResponses[200]["content"]["application/json"];
+type ContractEvidenceResponseBody = GetContractEvidenceResponses[200]["content"]["application/json"];
+export type ContractEvidenceBody = ContractEvidenceResponseBody["fields"];
 export type ContractFieldEvidenceBody = ContractEvidenceBody[number];
 
 export interface GetContractEvidenceResult {
@@ -683,6 +686,25 @@ export interface GetContractEvidenceResult {
   statusCode: number | null;
   /** Latest evidence per field, alphabetical by fieldName (possibly empty -- a contract with no evidence yet is still `ok: true`), present only when `ok` is true. */
   evidence: ContractEvidenceBody | null;
+  /** The bar the server used for this response (`0..1`). `null` when `ok` is false or the body was a legacy array. */
+  autoAcceptThreshold?: number | null;
+  /** Plain-language failure reason (400/404 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
+// Answers band (ADR-020 screen 5; task E21/F03/US01/T01, NW-62). getContractStrategy wraps
+// `GET /api/contracts/{id}/strategy` -- the same pack Ask narrates. This task is the phase-2
+// writer of this glue (ADR-012 w16 clause 25); the operation already exists in schema.ts.
+type GetContractStrategyResponses = paths["/api/contracts/{id}/strategy"]["get"]["responses"];
+export type ContractStrategyBody = GetContractStrategyResponses[200]["content"]["application/json"];
+
+export interface GetContractStrategyResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** The strategy pack (when-you-must-move, where-you-can-push, targets, next-steps), present only when `ok` is true. */
+  strategy: ContractStrategyBody | null;
   /** Plain-language failure reason (400/404 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
   error: string | null;
 }
@@ -1270,9 +1292,11 @@ export interface ApiClient {
   /**
    * Calls `GET /api/documents/{id}/preview` (operationId `getDocumentPreview`) and turns the PNG
    * response into a browser object URL -- see `GetDocumentPreviewResult`'s own doc comment for why
-   * this is not a bare `<img src>`. Same never-throws shape; a `404` is a normal, expected outcome.
+   * this is not a bare `<img src>`. Optional 1-based `page` is forwarded as `?page=n` (absent means
+   * the server default, page 1). Same never-throws shape; a `404` with `page` set is a missing
+   * *page*, not a missing document.
    */
-  getDocumentPreviewUrl(tenantId: string, id: string): Promise<GetDocumentPreviewResult>;
+  getDocumentPreviewUrl(tenantId: string, id: string, page?: number): Promise<GetDocumentPreviewResult>;
   /**
    * Calls `POST /api/documents/{id}/reprocess` (operationId `reprocessDocument`, Admin only,
    * R-DOC-07). Same never-throws shape as every other call here; a `403` (Procurement) is a normal,
@@ -1344,6 +1368,13 @@ export interface ApiClient {
    * failures surface as `ok: false` with a plain-language `error`.
    */
   getContractEvidence(tenantId: string, id: string): Promise<GetContractEvidenceResult>;
+
+  /**
+   * `GET /api/contracts/{id}/strategy` -- the renewal-strategy pack (when you must move, where
+   * you can push, priced-line targets) for the Answers band. Never throws; 404 and network
+   * failures surface as `ok: false` with a plain-language `error`.
+   */
+  getContractStrategy(tenantId: string, id: string): Promise<GetContractStrategyResult>;
 
   /**
    * `POST /api/documents/{id}/validate` -- the review sign-off that moves a document from
@@ -2079,10 +2110,13 @@ export function createApiClient(
       return { ok: false, statusCode: response.status, page: null, error };
     },
 
-    async getDocumentPreviewUrl(tenantId, id) {
+    async getDocumentPreviewUrl(tenantId, id, page) {
+      const url = new URL(`/api/documents/${encodeURIComponent(id)}/preview`, baseUrl);
+      if (page !== undefined) url.searchParams.set("page", String(page));
+
       let response: Response;
       try {
-        response = await fetch(new URL(`/api/documents/${encodeURIComponent(id)}/preview`, baseUrl), {
+        response = await fetch(url, {
           headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           cache: "no-store",
         });
@@ -2101,7 +2135,11 @@ export function createApiClient(
       }
 
       if (response.status === 404) {
-        return { ok: false, statusCode: 404, objectUrl: null, error: `No document found for id ${id}.` };
+        const error =
+          page !== undefined
+            ? `No preview for page ${page} of document ${id}.`
+            : `No document found for id ${id}.`;
+        return { ok: false, statusCode: 404, objectUrl: null, error };
       }
 
       return {
@@ -2457,8 +2495,11 @@ export function createApiClient(
       }
 
       if (response.status === 200) {
-        const evidence = (await response.json()) as ContractEvidenceBody;
-        return { ok: true, statusCode: 200, evidence, error: null };
+        const body = (await response.json()) as ContractEvidenceResponseBody | ContractEvidenceBody;
+        // The wire is `{ autoAcceptThreshold, fields }`; unwrap so routes keep seeing an array.
+        const evidence = Array.isArray(body) ? body : body.fields;
+        const autoAcceptThreshold = Array.isArray(body) ? null : body.autoAcceptThreshold;
+        return { ok: true, statusCode: 200, evidence, autoAcceptThreshold, error: null };
       }
 
       // Same empty-body 404 shape as getContract360's own 404 above (Results.NotFound()).
@@ -2476,6 +2517,44 @@ export function createApiClient(
       }
 
       return { ok: false, statusCode: response.status, evidence: null, error };
+    },
+
+    async getContractStrategy(tenantId, id) {
+      let response: Response;
+      try {
+        response = await fetch(new URL(`/api/contracts/${encodeURIComponent(id)}/strategy`, baseUrl), {
+          headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          strategy: null,
+          error: `Unable to reach ${baseUrl}/api/contracts/${id}/strategy. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const strategy = (await response.json()) as ContractStrategyBody;
+        return { ok: true, statusCode: 200, strategy, error: null };
+      }
+
+      // Same empty-body 404 shape as getContract360's own 404 above (Results.NotFound()).
+      if (response.status === 404) {
+        return { ok: false, statusCode: 404, strategy: null, error: `No contract found for id ${id}.` };
+      }
+
+      // Same Results.BadRequest(string) shape as the other calls' 400s above.
+      let error: string;
+      try {
+        const errorBody: unknown = await response.json();
+        error = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, strategy: null, error };
     },
 
     async validateDocument(tenantId, id, request) {

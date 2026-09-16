@@ -3,7 +3,7 @@
  * `kpis` / `opps`). Component classes (.screen-header, .screen-title, .screen-header-summary,
  * .screen-reroute, .table, .tag, .btn, .skeleton, .empty-state, .error-state, .micro-meta) come from
  * ../../styles/components.css (ADR-019) -- this file adds only this screen's own composites, in the
- * same band/table idiom the prototype uses for its other three-cell bands (Quote check, Contract 360):
+ * same band/table idiom the prototype uses for its other equal-cell bands (Quote check, Contract 360):
  * 11px uppercase kicker label, 22px heading-face value, 12px muted meta, 2px rules above and below.
  */
 
@@ -23,7 +23,7 @@
 
 .savings-kpi-row {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   border-top: 2px solid var(--color-divider);
   border-bottom: 2px solid var(--color-divider);
 }

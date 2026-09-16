@@ -86,10 +86,16 @@ public sealed class RenewalPipelineBuilder(RenewalEngine renewalEngine, IClock c
             candidate.CancellationDeadline,
             daysUntilCancellationDeadline);
 
-        // Benchmark/Savings fields are always null this wave — see RenewalInsightRecommendations's
-        // own doc comment for why (neither module is wired to this task's dependency).
+        // MarketPosition: carry the resolved band from the candidate (task E21/F02/US01/T01, NW-22).
+        // The host resolved it before calling Build(), so the builder stays pure (ADR-002 w17 clause 2).
+        // AnnualUpliftPercent stays null: the band is a labelled position, not a % uplift, so there
+        // is nothing honest to fill (filled only where the band supports it).
+        // PotentialSavingsRange stays null: the band does not yield a savings range (AC-6).
         var recommendations = new RenewalInsightRecommendations(
-            action, explanation, AnnualUpliftPercent: null, MarketPosition: null, PotentialSavingsRange: null);
+            action, explanation,
+            AnnualUpliftPercent: null,
+            MarketPosition: FormatMarketPosition(candidate.MarketBand),
+            PotentialSavingsRange: null);
 
         return new RenewalPipelineItem(
             candidate.ContractId,
@@ -102,6 +108,28 @@ public sealed class RenewalPipelineBuilder(RenewalEngine renewalEngine, IClock c
             daysUntilCancellationDeadline,
             candidate.AutoRenewal,
             new RenewalInsightCard(facts, recommendations));
+    }
+
+    /// <summary>
+    /// Formats a <see cref="ResolvedMarketBand"/> into the <c>MarketPosition</c> string that
+    /// <see cref="RenewalInsightRecommendations.MarketPosition"/> carries on the wire.
+    ///
+    /// <para>
+    /// Two honest shapes (ADR-001 w17 clause 4): a <b>representative position</b> string when the
+    /// band is present, or <c>"insufficient market data"</c> when it is
+    /// <see langword="null"/> (incomplete key or adapter abstention — AC-3). "Representative" is
+    /// spelled out in every non-null output so a reader can always tell this comes from a fixture
+    /// or market-feed sample, never from live verified market truth.
+    /// </para>
+    /// </summary>
+    private static string FormatMarketPosition(ResolvedMarketBand? band)
+    {
+        if (band is null)
+            return "insufficient market data";
+
+        // Sample size is optional — spec §10.3 "Sample size — If available".
+        var samplePart = band.SampleSize is { } n ? $"; n={n}" : string.Empty;
+        return $"{band.Position} — representative (source: {band.Adapter}{samplePart}; as of {band.AsOf:yyyy-MM-dd})";
     }
 
     /// <summary><paramref name="target"/> minus "today" (<c>clock</c>), in days — negative

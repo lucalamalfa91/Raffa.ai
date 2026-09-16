@@ -1,21 +1,27 @@
 using Raffa.Api.Tests.TestSupport;
 using System.Net;
+using System.Text.Json;
+using Raffa.Documents.Contracts.Infrastructure;
+using Raffa.Savings.Domain;
+using Raffa.Savings.Infrastructure;
+using Raffa.SharedKernel;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Raffa.Api.Tests;
 
 /// <summary>
-/// Host-level proof for task E04/F03/US01/T01 (savings-kpis) that `GET /api/savings/kpis` is
-/// actually mapped in <c>Program.cs</c> and enforces its request-shape guard clause — mirrors
-/// <see cref="SavingsEndpointTests"/>/<see cref="RenewalsEndpointTests"/>'s own "not just a
-/// placeholder" purpose. Only exercises the tenant-header check, which returns before either
-/// <c>Raffa.Documents.Contracts.Application.PortfolioQueryService</c> or
-/// <c>Raffa.Savings.Application.SavingsKpiQueryService</c> is ever called, so this needs no
-/// running Postgres. The success path (real per-currency grouping, real "completed processing"
-/// filtering, real tenant scoping) is proven at the plain-unit-test level instead —
-/// <c>Raffa.Savings.Tests.SavingsKpiCalculatorTests</c> and
-/// <c>Raffa.Documents.Contracts.Tests.PortfolioAnalysisCalculatorTests</c> — per this task's own
-/// "Tests required" level (unit, no database).
+/// Host-level proof for task E04/F03/US01/T01 (savings-kpis) and task E20/F01/US01/T01 (NW-72)
+/// that `GET /api/savings/kpis` is mapped, enforces its request-shape guard clause, and emits
+/// verified money as <c>savingsRealized[].amount</c> while <c>savingsIdentified</c> stays a
+/// range. Guard-clause cases return before either query service is called, so they need no
+/// running Postgres. The success path swaps Documents/Contracts and Savings onto the EF
+/// InMemory provider — the same "HTTP round trip without a Testcontainer" shape
+/// <see cref="ChatEndpointTests"/> already uses; tenant isolation of the realized rows is
+/// application-level here (the RLS backstop stays in <c>Raffa.Savings.Tests</c>).
 /// </summary>
 public sealed class SavingsKpiEndpointTests : IClassFixture<RaffaApiFactory>
 {
@@ -54,5 +60,93 @@ public sealed class SavingsKpiEndpointTests : IClassFixture<RaffaApiFactory>
         var response = await client.SendAsync(request);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task SavingsRealized_carries_amount_and_count_and_a_second_tenant_sees_none()
+    {
+        var factory = WithInMemoryStores();
+        var tenantA = TenantId.New();
+        var tenantB = TenantId.New();
+        var now = DateTimeOffset.UtcNow;
+        var opportunityId = EntityId.New();
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SavingsDbContext>();
+            db.SavingsOpportunities.Add(new SavingsOpportunity
+            {
+                TenantId = tenantA,
+                Type = "price-renegotiation",
+                CurrentSpend = 50_000m,
+                Currency = "CHF",
+                EstimatedSavingsLow = 80_000m,
+                EstimatedSavingsHigh = 120_000m,
+                Confidence = 0.82,
+                Status = SavingsOpportunityStatus.Identified,
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+            db.RealizedSavingsRecords.Add(new RealizedSavings
+            {
+                TenantId = tenantA,
+                SavingsOpportunityId = opportunityId,
+                Amount = 85_000m,
+                Currency = "CHF",
+                RealizedAt = now,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var client = factory.CreateClient();
+
+        using var requestA = new HttpRequestMessage(HttpMethod.Get, "/api/savings/kpis");
+        requestA.Headers.Add("X-Tenant-Id", tenantA.Value.ToString());
+        var responseA = await client.SendAsync(requestA);
+        Assert.Equal(HttpStatusCode.OK, responseA.StatusCode);
+
+        using var bodyA = JsonDocument.Parse(await responseA.Content.ReadAsStringAsync());
+        var realized = Assert.Single(bodyA.RootElement.GetProperty("savingsRealized").EnumerateArray());
+        Assert.Equal("CHF", realized.GetProperty("currency").GetString());
+        Assert.Equal(85_000m, realized.GetProperty("amount").GetDecimal());
+        Assert.Equal(1, realized.GetProperty("count").GetInt32());
+        Assert.False(realized.TryGetProperty("low", out _));
+        Assert.False(realized.TryGetProperty("high", out _));
+        Assert.False(realized.TryGetProperty("averageConfidence", out _));
+
+        var identified = Assert.Single(bodyA.RootElement.GetProperty("savingsIdentified").EnumerateArray());
+        Assert.Equal("CHF", identified.GetProperty("currency").GetString());
+        Assert.Equal(80_000m, identified.GetProperty("low").GetDecimal());
+        Assert.Equal(120_000m, identified.GetProperty("high").GetDecimal());
+
+        using var requestB = new HttpRequestMessage(HttpMethod.Get, "/api/savings/kpis");
+        requestB.Headers.Add("X-Tenant-Id", tenantB.Value.ToString());
+        var responseB = await client.SendAsync(requestB);
+        Assert.Equal(HttpStatusCode.OK, responseB.StatusCode);
+
+        using var bodyB = JsonDocument.Parse(await responseB.Content.ReadAsStringAsync());
+        Assert.Empty(bodyB.RootElement.GetProperty("savingsRealized").EnumerateArray());
+        Assert.Empty(bodyB.RootElement.GetProperty("savingsIdentified").EnumerateArray());
+    }
+
+    private WebApplicationFactory<Program> WithInMemoryStores()
+    {
+        var documentsDb = $"documents-contracts-{Guid.NewGuid()}";
+        var savingsDb = $"savings-{Guid.NewGuid()}";
+
+        return _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+        {
+            services.RemoveAll<DbContextOptions<DocumentsContractsDbContext>>();
+            services.RemoveAll<DocumentsContractsDbContext>();
+            services.AddDbContext<DocumentsContractsDbContext>(o => o
+                .UseInMemoryDatabase(documentsDb)
+                .UseInternalServiceProvider(InMemoryAskEngineFactory.InMemoryProviderServices));
+
+            services.RemoveAll<DbContextOptions<SavingsDbContext>>();
+            services.RemoveAll<SavingsDbContext>();
+            services.AddDbContext<SavingsDbContext>(o => o
+                .UseInMemoryDatabase(savingsDb)
+                .UseInternalServiceProvider(InMemoryAskEngineFactory.InMemoryProviderServices));
+        }));
     }
 }

@@ -101,6 +101,7 @@ function mockApiClient(): ApiClient {
     getCorrectionHistory: vi.fn(),
     correctContract: vi.fn(),
     getContractEvidence: vi.fn(),
+    getContractStrategy: vi.fn(),
     validateDocument: vi.fn(),
     // Task E08/F01/US01/T01 (renewal-pipeline): RenewalsRoute (like Contract360Route above) calls
     // getRenewals unconditionally on mount, already covered by the resolved default above; no test

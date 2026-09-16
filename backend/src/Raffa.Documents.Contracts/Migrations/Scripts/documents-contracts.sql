@@ -972,3 +972,28 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260916122955_AddExtractionEvidenceDecision') THEN
+    ALTER TABLE extraction_evidence ADD decided_at timestamp with time zone;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260916122955_AddExtractionEvidenceDecision') THEN
+    ALTER TABLE extraction_evidence ADD decision character varying;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260916122955_AddExtractionEvidenceDecision') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20260916122955_AddExtractionEvidenceDecision', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+

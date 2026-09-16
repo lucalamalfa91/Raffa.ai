@@ -99,6 +99,7 @@ export default function ReviewRoute({ apiClient }: ReviewRouteProps) {
         validationError={session.validationError}
         alreadyValidated={session.alreadyValidated}
         canValidate={session.reviewDocumentId !== null}
+        autoAcceptThreshold={session.autoAcceptThreshold}
       />
 
       {fetchState.historyDegraded && (
@@ -113,11 +114,16 @@ export default function ReviewRoute({ apiClient }: ReviewRouteProps) {
       )}
 
       <div className="review-body">
+        {/* Field list (recovered table + unrecovered fill-ins) stays beside the evidence pane,
+         * never inside it -- the pane's job is the page a value came from (design-system 340–400px). */}
         <ReviewFieldList
           rows={session.rows}
           selectedField={session.selectedField}
           onSelect={session.selectField}
           onAccept={(name) => void session.accept(name)}
+          onCorrect={(name, value, reason) => void session.correct(name, value, reason)}
+          submitting={session.submitting}
+          error={session.correctionError}
         />
         <EvidencePane
           row={session.selectedRow}

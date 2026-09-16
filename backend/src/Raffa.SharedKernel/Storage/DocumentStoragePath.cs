@@ -21,6 +21,29 @@ public static class DocumentStoragePath
         $"{TenantPrefix(tenantId)}documents/{documentId.Value:D}/preview/page-1.png";
 
     /// <summary>
+    /// The per-page preview path for one page of one document (task E22/F02/US01/T01, ADR-029
+    /// round-3 clause 1). Deterministic from <c>(tenantId, documentId, page)</c> and nothing else
+    /// — no render id, no timestamp, no content hash, no attempt counter. Two renders of the same
+    /// page of the same document produce the <b>same key</b>; the second overwrites the first
+    /// ("replaced in place whenever the document is reprocessed").
+    /// <br/>
+    /// <paramref name="page"/> is 1-based. Passing <c>page &lt; 1</c> throws
+    /// <see cref="ArgumentOutOfRangeException"/> — the same guard <see cref="Build"/> applies for
+    /// <c>versionNumber</c> (ADR-009 w17 clause 6): NW-73 reaches this path with no route, no
+    /// model binder and no 404, so an endpoint-only bound is not a bound.
+    /// </summary>
+    public static string BuildPreviewPage(TenantId tenantId, EntityId documentId, int page)
+    {
+        if (page < 1)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(page), page, "Page number must be 1 or greater.");
+        }
+
+        return $"{TenantPrefix(tenantId)}documents/{documentId.Value:D}/preview/page-{page}.png";
+    }
+
+    /// <summary>
     /// Fail-closed guard for the read/delete side of <see cref="IDocumentStorage"/>: a path that
     /// does not start with this tenant's own prefix throws rather than being read, deleted, or
     /// quietly reported as "not found" (ADR-009 — a cross-tenant path is a defect, not a miss).

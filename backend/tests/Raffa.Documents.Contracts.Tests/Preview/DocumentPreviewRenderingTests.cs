@@ -1,13 +1,25 @@
 using System.Buffers.Binary;
+using Raffa.AiGateway.Configuration;
 using Raffa.Documents.Contracts.Application.Admission;
 using Raffa.Documents.Contracts.Application.Preview;
+using Raffa.Documents.Contracts.Infrastructure;
+using Raffa.SharedKernel;
+using Raffa.SharedKernel.Storage;
+using Raffa.SharedKernel.Tenancy;
+using Microsoft.EntityFrameworkCore;
 
 namespace Raffa.Documents.Contracts.Tests.Preview;
 
 /// <summary>
-/// Task E13/F04/US01/T02 (R-DOC-08): the built-in renderer really produces a PNG a browser can
-/// decode — signature, IHDR geometry, IEND — and takes the honest branches: a PNG upload is its own
-/// preview, everything else gets a typed placeholder.
+/// Tasks E13/F04/US01/T02 (R-DOC-08) and E22/F02/US01/T01 (ADR-029):
+/// <list type="bullet">
+/// <item>E13: the built-in renderer really produces a PNG a browser can decode — signature, IHDR
+/// geometry, IEND — and takes the honest branches: a PNG upload is its own preview, everything else
+/// gets a typed placeholder.</item>
+/// <item>E22: pages render one at a time; a throwing renderer degrades to "no preview"; the reap
+/// deletes only <c>n &gt; pageCount</c> and only under this document's prefix; a null or zero
+/// <c>pageCount</c> deletes nothing.</item>
+/// </list>
 /// </summary>
 public sealed class DocumentPreviewRenderingTests
 {
@@ -96,5 +108,257 @@ public sealed class DocumentPreviewRenderingTests
         Assert.Equal(PngSignature, bytes[..8]);
         Assert.Equal("IHDR"u8.ToArray(), bytes[12..16]);
         Assert.Equal("IEND"u8.ToArray(), bytes[^8..^4]);
+    }
+
+    // ---- Task E22/F02/US01/T01 (ADR-029 clause 3-4 / round-3 clause 1-2) ----
+
+    [Fact]
+    public void Pdf_page_renderer_does_not_unload_pdfium_between_calls()
+    {
+        // DocLib.Instance is a process-wide singleton. `using` it after the first page
+        // calls FPDF_DestroyLibrary; the next LoadMemDocument then access-violates
+        // (0xC0000005) — a managed catch cannot absorb that, and the unfiltered
+        // slnx run aborts. Two sequential calls must both complete.
+        var renderer = new PdfPageDocumentPreviewRenderer();
+        var bytes = "%PDF-1.4\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n%%EOF\n"u8.ToArray();
+
+        var first = renderer.Render("a.pdf", DocumentFormatSniffer.PdfMimeType, bytes);
+        var second = renderer.Render("a.pdf", DocumentFormatSniffer.PdfMimeType, bytes);
+
+        Assert.Equal(first is null, second is null);
+        if (first is not null)
+        {
+            AssertIsPng(first);
+            AssertIsPng(second!);
+        }
+    }
+
+    [Fact]
+    public async Task Service_stores_one_page_per_call_and_returns_the_page1_path()
+    {
+        // ADR-005 w17 §19: never materialise a document's pages as a set.
+        // ADR-029 clause 4: one SavePreviewPageAsync per page, bitmap discarded between calls.
+        var storage = new RecordingStorage();
+        var renderer = new PageCountingRenderer();
+        var service = BuildService(storage, renderer);
+
+        var tenantId   = TenantId.New();
+        var documentId = EntityId.New();
+
+        var page1Path = await service.RenderAndStoreAsync(
+            tenantId, documentId, "contract.pdf", "application/pdf",
+            new byte[] { 1, 2, 3 }, pageCount: 3);
+
+        Assert.NotNull(page1Path);
+        Assert.EndsWith("/preview/page-1.png", page1Path, StringComparison.Ordinal);
+        Assert.Equal(3, storage.Saved.Count);
+        Assert.Equal(3, renderer.PagesRendered.Count);
+        // Each page is rendered once, in order.
+        Assert.Equal([1, 2, 3], renderer.PagesRendered);
+    }
+
+    [Fact]
+    public async Task A_throwing_renderer_leaves_PreviewPath_unset_and_does_not_fail_the_document()
+    {
+        // ADR-029 clause 3: a renderer that throws must not take an admitted upload down.
+        var storage  = new RecordingStorage();
+        var service  = BuildService(storage, new ThrowingRenderer());
+
+        var tenantId   = TenantId.New();
+        var documentId = EntityId.New();
+
+        var result = await service.RenderAndStoreAsync(
+            tenantId, documentId, "contract.pdf", "application/pdf",
+            new byte[] { 1, 2 }, pageCount: 1);
+
+        Assert.Null(result);
+        Assert.Empty(storage.Saved);
+    }
+
+    [Fact]
+    public async Task Reap_deletes_pages_beyond_the_new_pageCount_when_previous_was_larger()
+    {
+        // ADR-029 round-3 clause 2: a shorter reprocess deletes page-{n}.png for n > pageCount.
+        var storage  = new RecordingStorage();
+        var renderer = new PageCountingRenderer();
+        var service  = BuildService(storage, renderer);
+
+        var tenantId   = TenantId.New();
+        var documentId = EntityId.New();
+
+        // Simulate: first run produced 5 pages.
+        for (var p = 1; p <= 5; p++)
+        {
+            var bytes = PlaceholderDocumentPreviewRenderer.RenderPlaceholder($"P{p}");
+            using var s = new MemoryStream(bytes, writable: false);
+            await storage.SavePreviewPageAsync(tenantId, documentId, p, s);
+        }
+
+        storage.Saved.Clear();
+
+        // Reprocess with only 3 pages → pages 4 and 5 must be deleted.
+        await service.RenderAndStoreAsync(
+            tenantId, documentId, "contract.pdf", "application/pdf",
+            new byte[] { 1 }, pageCount: 3, previousPageCount: 5);
+
+        // 3 new pages saved + 2 old pages deleted.
+        Assert.Equal(3, storage.Saved.Count);
+        Assert.Equal(2, storage.Deleted.Count);
+        Assert.All(storage.Deleted, p => Assert.Contains("/preview/page-", p, StringComparison.Ordinal));
+        Assert.Contains(storage.Deleted, p => p.EndsWith("/page-4.png", StringComparison.Ordinal));
+        Assert.Contains(storage.Deleted, p => p.EndsWith("/page-5.png", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Reap_deletes_nothing_when_pageCount_is_zero_or_below()
+    {
+        // ADR-029 round-3 clause 2: "reap everything above 0" is the arithmetic that reaps
+        // the document; a zero or negative pageCount deletes nothing.
+        var storage = new RecordingStorage();
+        var service = BuildService(storage, new PageCountingRenderer());
+
+        var tenantId   = TenantId.New();
+        var documentId = EntityId.New();
+
+        await service.RenderAndStoreAsync(
+            tenantId, documentId, "contract.pdf", "application/pdf",
+            new byte[] { 1 }, pageCount: 0, previousPageCount: 5);
+
+        Assert.Empty(storage.Deleted);
+    }
+
+    [Fact]
+    public async Task Reap_paths_are_under_this_document_prefix_only_never_another_document()
+    {
+        // ADR-009 w17 clause 8: the reap is bounded by (tenant, document) — never an
+        // enumeration of the tenant prefix, which EnsureWithinTenant would not catch
+        // (same tenant, wrong document, guard silent).
+        var storage   = new RecordingStorage();
+        var renderer  = new PageCountingRenderer();
+        var service   = BuildService(storage, renderer);
+        var tenantId  = TenantId.New();
+        var docA      = EntityId.New();
+        var docB      = EntityId.New();
+
+        // docB has 5 pages already "in storage".
+        for (var p = 1; p <= 5; p++)
+        {
+            using var s = new MemoryStream(PlaceholderDocumentPreviewRenderer.RenderPlaceholder($"P{p}"), writable: false);
+            await storage.SavePreviewPageAsync(tenantId, docB, p, s);
+        }
+
+        storage.Saved.Clear();
+
+        // Reprocessing docA (3 pages, was 5) must NOT delete anything from docB's prefix.
+        await service.RenderAndStoreAsync(
+            tenantId, docA, "a.pdf", "application/pdf",
+            new byte[] { 1 }, pageCount: 3, previousPageCount: 5);
+
+        foreach (var deleted in storage.Deleted)
+        {
+            // Every deleted path must contain docA's id, never docB's.
+            Assert.Contains(docA.Value.ToString("D"), deleted, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(docB.Value.ToString("D"), deleted, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task Budget_cap_limits_rendered_pages_and_leaves_surplus_pages_unrendered()
+    {
+        // ADR-029 clause 7: pages beyond MaxPagesPerDocument are not rendered, and the
+        // read model says so (IsPageCountLimited).
+        var storage   = new RecordingStorage();
+        var renderer  = new PageCountingRenderer();
+        var ocrOptions = new AiGatewayOcrOptions { MaxPagesPerDocument = 2 };
+        var service   = BuildService(storage, renderer, ocrOptions);
+
+        var tenantId   = TenantId.New();
+        var documentId = EntityId.New();
+
+        await service.RenderAndStoreAsync(
+            tenantId, documentId, "big.pdf", "application/pdf",
+            new byte[] { 1 }, pageCount: 10); // 10 pages, cap = 2
+
+        Assert.Equal(2, storage.Saved.Count);
+        Assert.Equal([1, 2], renderer.PagesRendered);
+    }
+
+    // ---- helpers ----
+
+    private static DocumentPreviewService BuildService(
+        RecordingStorage storage,
+        IDocumentPreviewRenderer renderer,
+        AiGatewayOcrOptions? ocrOptions = null)
+    {
+        var dbCtxOptions = new DbContextOptionsBuilder<DocumentsContractsDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        var dbCtx = new DocumentsContractsDbContext(dbCtxOptions);
+        return new DocumentPreviewService(dbCtx, storage, renderer, new NullTenantContext(), ocrOptions);
+    }
+
+    /// <summary>Renderer that records which pages were requested, returning a placeholder PNG for each.</summary>
+    private sealed class PageCountingRenderer : IDocumentPreviewRenderer
+    {
+        public List<int> PagesRendered { get; } = [];
+
+        public byte[]? Render(string fileName, string mimeType, ReadOnlyMemory<byte> content, int page = 1)
+        {
+            PagesRendered.Add(page);
+            return PlaceholderDocumentPreviewRenderer.RenderPlaceholder($"P{page}");
+        }
+    }
+
+    private sealed class ThrowingRenderer : IDocumentPreviewRenderer
+    {
+        public byte[]? Render(string fileName, string mimeType, ReadOnlyMemory<byte> content, int page = 1) =>
+            throw new InvalidOperationException("Simulated renderer crash.");
+    }
+
+    private sealed class RecordingStorage : IDocumentStorage
+    {
+        public List<(string Path, byte[] Content)> Saved { get; } = [];
+        public List<string> Deleted { get; } = [];
+        private readonly Dictionary<string, byte[]> _objects = new(StringComparer.Ordinal);
+
+        public async Task<string> SaveAsync(TenantId t, EntityId d, int v, string f, Stream s, CancellationToken ct = default)
+            => await StoreAsync(DocumentStoragePath.Build(t, d, v, f), s, ct);
+
+        public async Task<string> SavePreviewAsync(TenantId t, EntityId d, Stream s, CancellationToken ct = default)
+            => await StoreAsync(DocumentStoragePath.BuildPreview(t, d), s, ct);
+
+        public async Task<string> SavePreviewPageAsync(TenantId t, EntityId d, int p, Stream s, CancellationToken ct = default)
+            => await StoreAsync(DocumentStoragePath.BuildPreviewPage(t, d, p), s, ct);
+
+        public Task<byte[]?> LoadAsync(TenantId t, string path, CancellationToken ct = default)
+        {
+            DocumentStoragePath.EnsureWithinTenant(t, path);
+            return Task.FromResult(_objects.TryGetValue(path, out var b) ? (byte[]?)b : null);
+        }
+
+        public Task DeleteAsync(TenantId t, string path, CancellationToken ct = default)
+        {
+            DocumentStoragePath.EnsureWithinTenant(t, path);
+            Deleted.Add(path);
+            _objects.Remove(path);
+            return Task.CompletedTask;
+        }
+
+        private async Task<string> StoreAsync(string path, Stream s, CancellationToken ct)
+        {
+            using var buf = new MemoryStream();
+            await s.CopyToAsync(buf, ct);
+            var bytes = buf.ToArray();
+            Saved.Add((path, bytes));
+            _objects[path] = bytes;
+            return path;
+        }
+    }
+
+    private sealed class NullTenantContext : ITenantContext
+    {
+        public TenantId? Current => null;
+        public IDisposable BeginScope(TenantId tenantId) => new NullScope();
+        private sealed class NullScope : IDisposable { public void Dispose() { } }
     }
 }

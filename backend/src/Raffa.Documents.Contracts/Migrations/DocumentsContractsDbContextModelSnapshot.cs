@@ -696,6 +696,15 @@ namespace Raffa.Documents.Contracts.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<DateTimeOffset?>("DecidedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("decided_at");
+
+                    b.Property<string>("Decision")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying")
+                        .HasColumnName("decision");
+
                     b.Property<Guid?>("ExtractionJobId")
                         .HasColumnType("uuid")
                         .HasColumnName("extraction_job_id");

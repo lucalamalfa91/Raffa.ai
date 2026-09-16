@@ -6,18 +6,19 @@ export interface KpiRowProps {
 }
 
 /**
- * The V2 three-cell KPI band (screens-v2.md #8: "Contracts analyzed · Upcoming renewals · Savings
- * identified (with meta lines)") plus the "benchmark-provider-unreachable → KPIs stale-labelled"
- * state. Cells always render from `kpiState.kpis` (`buildKpiCells` -- an empty `lines` array is an
- * honest "—", never a fabricated number); the notice above them renders only while `kpiState.stale`
- * is true, through the shared `.error-state` every other screen's error uses.
+ * The V2 four-cell KPI band (screens-v2.md #8's triple plus the ADR-020 w17 §15/§17 verified-money
+ * cell: "Contracts analyzed · Upcoming renewals · Savings identified · Savings verified") plus the
+ * "benchmark-provider-unreachable → KPIs stale-labelled" state. Cells always render from
+ * `kpiState.kpis` (`buildKpiCells` -- an empty `lines` array is an honest "—", never a fabricated
+ * number); the notice above them renders only while `kpiState.stale` is true, through the shared
+ * `.error-state` every other screen's error uses.
  */
 export default function KpiRow({ kpiState, onRetry }: KpiRowProps) {
   if (kpiState.phase === "loading") {
     return (
       <div className="savings-kpi-skeleton" role="status" aria-live="polite">
         <p className="micro-meta">Loading savings KPIs…</p>
-        {Array.from({ length: 3 }, (_, index) => (
+        {Array.from({ length: 4 }, (_, index) => (
           <div key={index} className="skeleton savings-kpi-skeleton-cell" />
         ))}
       </div>
@@ -51,7 +52,7 @@ export default function KpiRow({ kpiState, onRetry }: KpiRowProps) {
             {cell.meta !== null && <span className="savings-kpi-meta">{cell.meta}</span>}
             {kpiState.stale && (
               // Text, not colour, carries the meaning (ADR-019 accessibility baseline); applied to
-              // every cell because GET /api/savings/kpis returns all three in one response.
+              // every cell because GET /api/savings/kpis returns all four in one response.
               <span className="tag tag-outline savings-kpi-stale-tag">Stale</span>
             )}
           </div>

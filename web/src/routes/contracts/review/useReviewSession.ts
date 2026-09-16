@@ -33,6 +33,8 @@ export type ReviewFetchState =
       /** Same degradation for `getContractEvidence`: every field falls back to the conservative
        * "Needs review" tag with no source passage, and a banner says why. */
       evidenceDegraded: boolean;
+      /** The bar the server used, from the evidence wrap; `null` when evidence degraded. */
+      autoAcceptThreshold: number | null;
     };
 
 export interface ReviewSession {
@@ -43,9 +45,11 @@ export interface ReviewSession {
   selectedField: CorrectableFieldName | null;
   selectField: (name: CorrectableFieldName) => void;
   selectedRow: ReviewFieldRow | null;
-  /** "Accept" for one field: a client-side acknowledgement for a value the contract already holds,
-   * a real `correctContract` write for a proposal the pipeline did not apply (`proposalPending`). */
+  /** "Accept" for one field: a real `correctContract` write for a proposal the pipeline did not
+   * apply (`proposalPending`). Already-applied values take their decision from the server. */
   accept: (name: CorrectableFieldName) => Promise<void>;
+  /** The bar the server used for auto-accept, for the legend. `null` until evidence is ready. */
+  autoAcceptThreshold: number | null;
   /** "Save correction": `PATCH /api/contracts/{id}` then a full re-fetch (reload, never a locally
    * patched copy -- the same "reload, don't guess" convention `../contract360/index.tsx` follows). */
   correct: (name: CorrectableFieldName, newValue: string | null, reason: string) => Promise<void>;
@@ -74,12 +78,11 @@ export interface ReviewSession {
  * `getCorrectionHistory` (the durable "which fields has a human already corrected" signal) and
  * `getContractEvidence` (per-field confidence + source) together; each degrades independently.
  *
- * **Decision state has two sources, one durable and one not.** A field with a correction-history
- * entry is `"corrected"` -- persists across reloads, came from a real `PATCH`. A field the user
- * clicks "Accept" for is `"accepted"` -- session state, because the backend rejects a no-op
- * correction; it becomes durable when "Mark as validated" sends the accepted field names to
- * `POST /api/documents/{id}/validate`, which records them on the `document.validated` audit row and
- * moves the document to `Completed`.
+ * **Decision state is the server's.** A field with a correction-history entry is `"corrected"` --
+ * persists across reloads, came from a real `PATCH`. A field the evidence row marks
+ * `auto_accepted` or `human_accepted` is `"accepted"` -- also durable, painted from the GET.
+ * `accept()` for an unapplied proposal is a real `PATCH` plus `load()`; there is no session-only
+ * acceptance store (ADR-012 w17 clause 36).
  */
 export function useReviewSession(
   apiClient: ApiClient,
@@ -89,7 +92,6 @@ export function useReviewSession(
 ): ReviewSession {
   const [fetchState, setFetchState] = useState<ReviewFetchState>({ phase: "loading" });
   const [selectedField, setSelectedField] = useState<CorrectableFieldName | null>(null);
-  const [acceptedThisSession, setAcceptedThisSession] = useState<ReadonlySet<CorrectableFieldName>>(new Set());
   const [correctionError, setCorrectionError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [validating, setValidating] = useState(false);
@@ -131,6 +133,7 @@ export function useReviewSession(
         evidence: evidenceResult?.ok && evidenceResult.evidence ? evidenceResult.evidence : [],
         historyDegraded: !historyResult?.ok,
         evidenceDegraded: !evidenceResult?.ok,
+        autoAcceptThreshold: evidenceResult?.ok ? (evidenceResult.autoAcceptThreshold ?? null) : null,
       });
     });
   }, [apiClient, workspaceId, contractId]);
@@ -142,9 +145,9 @@ export function useReviewSession(
   const rows = useMemo(
     () =>
       fetchState.phase === "ready"
-        ? buildReviewFields(fetchState.contract, fetchState.history, acceptedThisSession, indexEvidence(fetchState.evidence))
+        ? buildReviewFields(fetchState.contract, fetchState.history, indexEvidence(fetchState.evidence))
         : [],
-    [fetchState, acceptedThisSession],
+    [fetchState],
   );
   const progress = useMemo(() => computeReviewProgress(rows), [rows]);
   const selectedRow = rows.find((row) => row.name === selectedField) ?? null;
@@ -179,10 +182,7 @@ export function useReviewSession(
         // bar): accepting it *is* the correction the backend is waiting for -- a real write that
         // links the supplier, which is what makes it show on the Documents row and in Ask.
         await correct(name, row.rawValue, "Accepted as extracted.");
-        return;
       }
-      setAcceptedThisSession((previous) => new Set(previous).add(name));
-      setSelectedField(name);
     },
     [rows, correct],
   );
@@ -214,6 +214,7 @@ export function useReviewSession(
     selectField: setSelectedField,
     selectedRow,
     accept,
+    autoAcceptThreshold: fetchState.phase === "ready" ? fetchState.autoAcceptThreshold : null,
     correct,
     correctionError,
     submitting,

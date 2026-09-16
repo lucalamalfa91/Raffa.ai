@@ -36,6 +36,19 @@ public interface IAuditQueryService
     /// </summary>
     Task<IReadOnlyList<AuditEventRecord>> GetEventsAsync(
         TenantId tenantId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Task E21/F01/US01/T01 (ADR-011 w17 clause 25, ADR-001 w17 clause 3): returns the subset
+    /// of audit events for <paramref name="tenantId"/> that match <paramref name="resourceId"/>
+    /// and whose <c>Action</c> is in <paramref name="allowedActions"/> (the Contract 360 activity
+    /// projection). <b>Default-deny</b>: an event whose <c>Action</c> is not in the allow-list
+    /// is excluded even when it matches <paramref name="resourceId"/>. Newest first.
+    /// </summary>
+    Task<IReadOnlyList<AuditEventRecord>> GetContractEventsAsync(
+        TenantId tenantId,
+        string resourceId,
+        IReadOnlyCollection<string> allowedActions,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -78,6 +91,31 @@ public sealed class AuditQueryService(AuditDbContext dbContext, ITenantContext t
             .Where(e => e.TenantId == tenantId)
             .OrderByDescending(e => e.OccurredAt)
             .Take(MaxResults)
+            .Select(e => new AuditEventRecord(
+                e.Id.Value, e.Actor, e.Action, e.ResourceType, e.ResourceId, e.OccurredAt, e.Detail))
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Task E21/F01/US01/T01: contract-scoped activity projection. Filters by
+    /// <paramref name="resourceId"/> and the caller's <paramref name="allowedActions"/>
+    /// allow-list, ordered newest-first. RLS (from the scope opened here) is the non-bypassable
+    /// backstop; the explicit <c>Where</c> predicates are the application-level guard on top.
+    /// </summary>
+    public async Task<IReadOnlyList<AuditEventRecord>> GetContractEventsAsync(
+        TenantId tenantId,
+        string resourceId,
+        IReadOnlyCollection<string> allowedActions,
+        CancellationToken cancellationToken = default)
+    {
+        using var _ = tenantContext.BeginScope(tenantId);
+
+        return await dbContext.AuditEvents
+            .Where(e => e.TenantId == tenantId
+                && e.ResourceId == resourceId
+                && allowedActions.Contains(e.Action))
+            .OrderByDescending(e => e.OccurredAt)
             .Select(e => new AuditEventRecord(
                 e.Id.Value, e.Actor, e.Action, e.ResourceType, e.ResourceId, e.OccurredAt, e.Detail))
             .ToListAsync(cancellationToken)

@@ -22,33 +22,29 @@ namespace Raffa.Documents.Contracts.Application;
 public sealed class DocumentQueryService(
     DocumentsContractsDbContext dbContext,
     ITenantContext tenantContext,
-    ISupplierNameLookup? supplierNameLookup = null)
+    ISupplierNameLookup? supplierNameLookup = null,
+    Raffa.AiGateway.Configuration.AiGatewayOcrOptions? ocrOptions = null)
 {
     /// <summary>
-    /// Confidence at or above which an extracted fact is treated as trustworthy. Same value and
-    /// same reasoning as <c>StagedExtractionService.LowConfidenceThreshold</c> and
-    /// <c>DocumentProcessingPipeline</c>'s own classification threshold — repeated rather than
-    /// shared because each governs an independent decision (see those types' doc comments).
+    /// Weak-fact counting and document <c>needs_review</c> share
+    /// <see cref="ExtractionConfidencePolicy"/> — one bar, every field. Changing only this site
+    /// or only <c>StagedExtractionService</c> desyncs the Documents badge from the document's
+    /// status. A human acceptance is never weak even when the model's score sits below the bar.
     /// </summary>
-    private const double WeakFactThreshold = 0.6;
-
-    /// <summary>
-    /// The stricter bar a <b>critical</b> field is judged against — the same 0.8
-    /// <c>StagedExtractionService.CriticalConfidenceThreshold</c> applies to the <c>supplier</c>
-    /// fact (requirements R-SUP-01, spec §7.3). A supplier fact between the two bars is exactly the
-    /// one the pipeline refused to link, so it must count towards "Review N fields" or the row
-    /// would announce nothing to review for a document that is in <c>needs_review</c> because of it.
-    /// </summary>
-    private const double CriticalWeakFactThreshold = 0.8;
-
-    private const string SupplierFieldName = "supplier";
-
-    private static bool IsWeak(string fieldName, double? confidence)
+    private static bool IsWeak(double? confidence, string? decision)
     {
-        var threshold = string.Equals(fieldName, SupplierFieldName, StringComparison.OrdinalIgnoreCase)
-            ? CriticalWeakFactThreshold
-            : WeakFactThreshold;
-        return confidence is null || confidence < threshold;
+        if (string.Equals(decision, ExtractionConfidencePolicy.HumanAccepted, StringComparison.Ordinal)
+            || string.Equals(decision, ExtractionConfidencePolicy.AutoAccepted, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if (string.Equals(decision, ExtractionConfidencePolicy.ReviewRequired, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return ExtractionConfidencePolicy.RequiresReview(confidence);
     }
 
     public async Task<DocumentMetadataResult?> GetByIdAsync(
@@ -61,16 +57,24 @@ public sealed class DocumentQueryService(
             .SingleOrDefaultAsync(d => d.TenantId == tenantId && d.Id == documentId, cancellationToken)
             .ConfigureAwait(false);
 
-        return document is null
-            ? null
-            : new DocumentMetadataResult(
-                document.Id,
-                document.ContractId,
-                document.FileName,
-                document.MimeType,
-                document.DocumentType,
-                document.ProcessingStatus,
-                document.CreatedAt);
+        if (document is null)
+        {
+            return null;
+        }
+
+        var budget = ocrOptions?.MaxPagesPerDocument ?? 300;
+        var isLimited = document.PageCount.HasValue && document.PageCount.Value > budget;
+
+        return new DocumentMetadataResult(
+            document.Id,
+            document.ContractId,
+            document.FileName,
+            document.MimeType,
+            document.DocumentType,
+            document.ProcessingStatus,
+            document.CreatedAt,
+            PageCount: document.PageCount,
+            IsPageCountLimited: isLimited);
     }
 
     /// <summary>
@@ -288,7 +292,7 @@ public sealed class DocumentQueryService(
     /// <summary>
     /// Per contract, how many extracted fields a human should still confirm: the latest
     /// <see cref="ExtractionEvidence"/> row per field name whose confidence is missing or below
-    /// <see cref="WeakFactThreshold"/> (R-DOC-06's <c>weakFactCount</c>, the number the row's
+    /// <see cref="ExtractionConfidencePolicy"/> (R-DOC-06's <c>weakFactCount</c>, the number the row's
     /// "Review N fields" action shows). Counted per field, never per evidence row, so a field
     /// re-extracted three times still counts once.
     /// </summary>
@@ -303,7 +307,7 @@ public sealed class DocumentQueryService(
         var evidence = await dbContext.ExtractionEvidences
             .AsNoTracking()
             .Where(e => e.TenantId == tenantId && contractIds.Contains(e.ContractId))
-            .Select(e => new { e.ContractId, e.FieldName, e.Confidence, e.CreatedAt })
+            .Select(e => new { e.ContractId, e.FieldName, e.Confidence, e.Decision, e.CreatedAt })
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
@@ -314,7 +318,7 @@ public sealed class DocumentQueryService(
                 byContract => byContract
                     .GroupBy(e => e.FieldName, StringComparer.OrdinalIgnoreCase)
                     .Select(byField => byField.OrderByDescending(e => e.CreatedAt).First())
-                    .Count(latest => IsWeak(latest.FieldName, latest.Confidence)));
+                    .Count(latest => IsWeak(latest.Confidence, latest.Decision)));
     }
 
     private async Task<Dictionary<EntityId, string>> SupplierNamesByContractAsync(

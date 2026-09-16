@@ -1,10 +1,10 @@
 import { Link } from "react-router-dom";
-import type { Contract360Body, RenewalPriorityBody } from "../../../api/client";
+import type { Contract360Body, ContractFieldEvidenceBody, RenewalPriorityBody } from "../../../api/client";
 import FactTable from "./FactTable";
 import {
+  AUTO_ACCEPT_THRESHOLD,
   DETAILS_LABEL_CLOSED,
   DETAILS_LABEL_OPEN,
-  NO_ATTENTION_MESSAGE,
   buildDocumentRows,
   buildKeyTerms,
   buildObligationsRows,
@@ -13,32 +13,42 @@ import {
   buildRisksRows,
   computeNeedsAttention,
   formatPriorityFact,
+  formatReviewCountLine,
 } from "./contract360ViewModel";
 
 export interface DetailsSectionProps {
   contract: Contract360Body;
   priority: RenewalPriorityBody | null;
+  evidence: readonly ContractFieldEvidenceBody[];
+  autoAcceptThreshold: number;
   open: boolean;
   onToggle: () => void;
 }
 
 /**
- * "Details ▾" (`raffa-v2/markup.html` "CONTRACT 360" block, bottom; screens-v2.md #5 "Details ▾
- * ('All terms, documents and open facts ▾'): key terms table, documents in family, facts still to
- * decide"). Closed by default; open, it holds what the Day-1 tabs used to hold: key terms, the
- * documents, the facts still to decide (with "Review all →"), the explainable priority score, and
- * the extracted Products / Obligations / Risks lists when the contract has any. Every row is a
- * deterministic fact -- the recommendation never appears here (ADR-019 facts vs AI).
+ * "Details ▾" (`raffa-v2/markup.html` "CONTRACT 360" block, bottom; screens-v2.md #5). Closed by
+ * default; open, it holds key terms, the documents, a trailing count line to Review when facts
+ * still need a decision, the explainable priority score, and the extracted Products / Obligations
+ * / Risks lists when the contract has any. Every row stays; unofficialized values are the em-dash.
+ * No "facts still to decide" list and no confidence tag (ADR-020 w17 §14, ADR-019 w17 clause 11).
  */
-export default function DetailsSection({ contract, priority, open, onToggle }: DetailsSectionProps) {
+export default function DetailsSection({
+  contract,
+  priority,
+  evidence,
+  autoAcceptThreshold,
+  open,
+  onToggle,
+}: DetailsSectionProps) {
   const { tabs } = contract;
-  const keyTerms = buildKeyTerms(contract);
+  const threshold = autoAcceptThreshold > 0 ? autoAcceptThreshold : AUTO_ACCEPT_THRESHOLD;
+  const keyTerms = buildKeyTerms(contract, evidence);
   const documents = buildDocumentRows(tabs.documents);
-  const attention = computeNeedsAttention(tabs);
+  const reviewCount = computeNeedsAttention(evidence);
   const priorityRows = buildPriorityComponentRows(priority);
-  const products = buildProductsRows(tabs.products);
-  const obligations = buildObligationsRows(tabs.obligations);
-  const risks = buildRisksRows(tabs.risks);
+  const products = buildProductsRows(tabs.products, threshold);
+  const obligations = buildObligationsRows(tabs.obligations, threshold);
+  const risks = buildRisksRows(tabs.risks, threshold);
 
   return (
     <section className="contract360-details" aria-label="Details">
@@ -73,23 +83,10 @@ export default function DetailsSection({ contract, priority, open, onToggle }: D
                   </div>
                 ))
               )}
-
-              <div className="contract360-detail-heading-row">
-                <h6>Facts you still need to decide</h6>
+              {reviewCount > 0 && (
                 <Link to={`/contracts/${contract.contractId}/review`} className="btn btn-ghost contract360-detail-link">
-                  Review all →
+                  {formatReviewCountLine(reviewCount)}
                 </Link>
-              </div>
-              {attention.length === 0 ? (
-                <p className="contract360-detail-empty">{NO_ATTENTION_MESSAGE}</p>
-              ) : (
-                attention.map((term) => (
-                  <div key={term.key} className="contract360-detail-row">
-                    <span className="contract360-detail-label">{term.term}</span>
-                    <strong className="contract360-detail-value">{term.value}</strong>
-                    <span className={`tag tag-${term.tag.variant} contract360-detail-tag`}>{term.tag.label}</span>
-                  </div>
-                ))
               )}
             </div>
 

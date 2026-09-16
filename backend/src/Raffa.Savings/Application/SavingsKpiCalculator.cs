@@ -19,9 +19,18 @@ public sealed record SavingsOpportunitySnapshot(
     double Confidence);
 
 /// <summary>
+/// One tenant-scoped <see cref="Domain.RealizedSavings"/> row, reduced to the two fields
+/// <see cref="SavingsKpiCalculator"/> needs for the verified-money KPI (task E20/F01/US01/T01,
+/// NW-72). A thin projection, not the real entity, so the calculator stays a pure unit — the
+/// second input sequence to <see cref="SavingsKpiCalculator.Summarize"/>, never a service
+/// (Appendix C rule 6).
+/// </summary>
+public sealed record RealizedSavingsSnapshot(string Currency, decimal Amount);
+
+/// <summary>
 /// One currency's worth of a savings KPI bucket — spec §10.1's own "potential range" wording for
-/// "Savings Identified" (and, by the same shape, "Savings In Progress"/"Savings Realized"): never
-/// a single collapsed number, always the <see cref="Low"/>/<see cref="High"/> range
+/// "Savings Identified" (and, by the same shape, "Savings In Progress"): never a single collapsed
+/// number, always the <see cref="Low"/>/<see cref="High"/> range
 /// <see cref="Domain.SavingsOpportunity.EstimatedSavingsLow"/>/<see cref="Domain.SavingsOpportunity.EstimatedSavingsHigh"/>
 /// already carry. Grouped by <see cref="Currency"/> rather than summed into one bare decimal —
 /// this codebase has no currency-conversion service anywhere (same reasoning
@@ -31,6 +40,7 @@ public sealed record SavingsOpportunitySnapshot(
 /// <see cref="Domain.SavingsOpportunity.Confidence"/>) are the honest "how much should this range be
 /// trusted" signal the parent story's AC-3 ("never fabricated precision") asks for at the
 /// aggregate level — a bare sum with no confidence indicator would itself overstate certainty.
+/// Verified money is a different kind of figure and uses <see cref="RealizedSavingsByCurrency"/>.
 /// </summary>
 public sealed record SavingsRangeByCurrency(
     string Currency,
@@ -40,28 +50,38 @@ public sealed record SavingsRangeByCurrency(
     double AverageConfidence);
 
 /// <summary>
+/// One currency's worth of verified savings — a single <see cref="Amount"/> summed from
+/// <see cref="Domain.RealizedSavings.Amount"/> rows, never an estimate band. Grouped by
+/// <see cref="Currency"/> rather than summed across them (no conversion service exists).
+/// <see cref="Count"/> is the number of recorded outcomes in that currency, so the label can
+/// honestly say "€X verified across N outcomes".
+/// </summary>
+public sealed record RealizedSavingsByCurrency(
+    string Currency,
+    decimal Amount,
+    int Count);
+
+/// <summary>
 /// The three spec §10.1 savings dashboard buckets — "Savings Identified" (potential range or
 /// approved opportunity), "Savings In Progress" (approved/negotiating opportunities) and "Savings
-/// Realized" (verified negotiated/implemented savings) — each grouped by currency (see
-/// <see cref="SavingsRangeByCurrency"/>'s own doc comment). <see cref="Realized"/> reflects every
-/// <see cref="Domain.SavingsOpportunity"/> whose <see cref="Domain.SavingsOpportunityStatus"/> is
-/// <see cref="SavingsOpportunityStatus.Realized"/> using that row's own estimated range — the same
-/// honest, documented gap <see cref="SavingsOpportunityStatus.Realized"/>'s own doc comment names:
-/// a distinct, audit-tracked verified realized-value record
-/// (<c>Domain.RealizedSavings</c>, module-map.md's own second named entity for this module) is task
-/// E04/F02/US02/T02's deliverable, not a dependency this task declares
-/// (this task's wave-spec entry depends only on <c>savings-opportunity</c>), so this bucket is not
-/// silently held back waiting for it.
+/// Realized" (verified negotiated/implemented savings) — each grouped by currency.
+/// <see cref="Identified"/> and <see cref="InProgress"/> stay estimate bands
+/// (<see cref="SavingsRangeByCurrency"/>). <see cref="Realized"/> is verified money from
+/// <see cref="Domain.RealizedSavings"/> rows (<see cref="RealizedSavingsByCurrency"/>), not the
+/// estimate range of opportunities whose status happens to be Realized — an opportunity with no
+/// realized row contributes nothing, and an outcome that did not propagate a realized value
+/// (<c>savingsPropagated: null</c>) never reaches this member.
 /// </summary>
 public sealed record SavingsKpiSummary(
     IReadOnlyList<SavingsRangeByCurrency> Identified,
     IReadOnlyList<SavingsRangeByCurrency> InProgress,
-    IReadOnlyList<SavingsRangeByCurrency> Realized);
+    IReadOnlyList<RealizedSavingsByCurrency> Realized);
 
 /// <summary>
 /// Implements task E04/F03/US01/T01 (savings-kpis)'s "Savings Identified"/"Savings In
 /// Progress"/"Savings Realized" procurement-homepage KPIs (product spec §10.1; parent story
-/// us-01-savings-kpis AC-1). Pure and synchronous — no database call, no HTTP call, no LLM call
+/// us-01-savings-kpis AC-1), with the verified-money read from task E20/F01/US01/T01 (NW-72).
+/// Pure and synchronous — no database call, no HTTP call, no LLM call
 /// (Appendix C rule 6) — same convention <c>Raffa.Renewals.Application.RenewalPipelineBuilder</c>/
 /// <c>PriorityScoreCalculator</c> and <c>Raffa.Savings.Application.PriceNormalizationCalculator</c>
 /// already follow for this codebase's other deterministic aggregations.
@@ -69,21 +89,26 @@ public sealed record SavingsKpiSummary(
 public sealed class SavingsKpiCalculator
 {
     /// <summary>
-    /// Buckets <paramref name="opportunities"/> by <see cref="Domain.SavingsOpportunityStatus"/>,
-    /// then by <see cref="SavingsOpportunitySnapshot.Currency"/> within each bucket. A tenant with
-    /// no opportunities at all (or none in a given status) gets an honestly empty list for that
-    /// bucket, never a fabricated zero-currency row (Appendix C rule 10).
+    /// Buckets <paramref name="opportunities"/> by <see cref="Domain.SavingsOpportunityStatus"/>
+    /// into Identified/InProgress estimate ranges, then groups <paramref name="realizedSavings"/>
+    /// by currency into verified amounts. A tenant with no opportunities (or none in a given
+    /// status) and no realized rows gets an honestly empty list for that bucket, never a
+    /// fabricated zero-currency row (Appendix C rule 10). Realized opportunity status does not
+    /// feed <see cref="SavingsKpiSummary.Realized"/> — only the second sequence does.
     /// </summary>
-    public SavingsKpiSummary Summarize(IEnumerable<SavingsOpportunitySnapshot> opportunities)
+    public SavingsKpiSummary Summarize(
+        IEnumerable<SavingsOpportunitySnapshot> opportunities,
+        IEnumerable<RealizedSavingsSnapshot> realizedSavings)
     {
         ArgumentNullException.ThrowIfNull(opportunities);
+        ArgumentNullException.ThrowIfNull(realizedSavings);
 
         var materialized = opportunities.ToList();
 
         return new SavingsKpiSummary(
             Bucket(materialized, SavingsOpportunityStatus.Identified),
             Bucket(materialized, SavingsOpportunityStatus.InProgress),
-            Bucket(materialized, SavingsOpportunityStatus.Realized));
+            BucketRealized(realizedSavings));
     }
 
     private static IReadOnlyList<SavingsRangeByCurrency> Bucket(
@@ -104,5 +129,16 @@ public sealed class SavingsKpiCalculator
                 g.Sum(o => o.EstimatedSavingsHigh),
                 g.Count(),
                 g.Average(o => o.Confidence)))
+            .ToList();
+
+    private static IReadOnlyList<RealizedSavingsByCurrency> BucketRealized(
+        IEnumerable<RealizedSavingsSnapshot> realizedSavings) =>
+        realizedSavings
+            .GroupBy(r => r.Currency, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new RealizedSavingsByCurrency(
+                g.Key,
+                g.Sum(r => r.Amount),
+                g.Count()))
             .ToList();
 }

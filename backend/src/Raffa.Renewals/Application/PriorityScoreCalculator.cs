@@ -227,9 +227,8 @@ public sealed class PriorityScoreCalculator(PriorityScoreWeightsOptions? weights
         if (marketPositionPercent is null)
         {
             return new PriorityScoreComponent(neutral,
-                "R3 benchmark data is not available for this contract (Raffa.Benchmark." +
-                "IBenchmarkService has no query operations yet): benchmark opportunity defaults " +
-                $"to neutral ({Fmt(neutral)}) rather than assuming an opportunity " +
+                "R3 benchmark data is not available for this contract: benchmark opportunity " +
+                $"defaults to neutral ({Fmt(neutral)}) rather than assuming an opportunity " +
                 "or its absence (parent story AC-3).");
         }
 

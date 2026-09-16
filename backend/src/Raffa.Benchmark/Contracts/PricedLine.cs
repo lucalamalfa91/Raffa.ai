@@ -40,6 +40,11 @@ namespace Raffa.Benchmark.Contracts;
 /// <param name="SampleSize">Number of comparables behind <see cref="Benchmark"/>, when the adapter
 /// can report one (mirrors <see cref="BenchmarkResult.SampleSize"/>) — provenance only, not read by
 /// the pure stepping math below.</param>
+/// <param name="AdapterName">Adapter/source identifier the band came from (e.g. <c>"fixture"</c>,
+/// <c>"market-feed (representative, mock)"</c>), when the host filled a sufficient result —
+/// provenance only, so the pack can label the band representative (ADR-001 w17 clause 4).</param>
+/// <param name="AsOf">When the underlying comparable data was last refreshed, when the host filled
+/// a sufficient result — provenance only, paired with <see cref="AdapterName"/>.</param>
 public sealed record PricedLine(
     string? Sku,
     string Description,
@@ -48,7 +53,9 @@ public sealed record PricedLine(
     string? Currency,
     int? TermMonths,
     BenchmarkDistribution? Benchmark,
-    int? SampleSize);
+    int? SampleSize,
+    string? AdapterName = null,
+    DateTimeOffset? AsOf = null);
 
 /// <summary>
 /// The one piece of negotiation-target arithmetic <c>Raffa.Quotes.Application.Strategy

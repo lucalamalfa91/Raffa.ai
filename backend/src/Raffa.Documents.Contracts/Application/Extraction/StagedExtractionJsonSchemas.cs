@@ -80,9 +80,8 @@ internal static class StagedExtractionJsonSchemas
     /// The `metadata` stage's allow-list includes <c>supplier</c> (requirements R-SUP-01): the
     /// supplier's legal name <em>as written in the document</em>, carrying the same evidence tail
     /// as every other fact. Nothing about this schema marks it as a critical field — that is a
-    /// confidence bar the caller applies to the returned fact
-    /// (<c>StagedExtractionService.CriticalConfidenceThreshold</c>), not a constraint a model can
-    /// be asked to honour.
+    /// confidence bar the caller applies via <c>ExtractionConfidencePolicy</c>, not a constraint
+    /// a model can be asked to honour.
     /// </para>
     /// </summary>
     public static string Facts(IReadOnlyList<string> allowedFieldNames)

@@ -102,7 +102,7 @@ public static class SavingsKpiEndpointExtensions
             contractsAnalyzedCount = analysisSummary.ContractsAnalyzedCount,
             savingsIdentified = savingsSummary.Identified.Select(ToSavingsRangeResponse),
             savingsInProgress = savingsSummary.InProgress.Select(ToSavingsRangeResponse),
-            savingsRealized = savingsSummary.Realized.Select(ToSavingsRangeResponse),
+            savingsRealized = savingsSummary.Realized.Select(ToRealizedSavingsResponse),
             upcomingRenewalsCount = renewalCandidates.TotalCount,
         });
     }
@@ -121,5 +121,12 @@ public static class SavingsKpiEndpointExtensions
         high = item.High,
         count = item.Count,
         averageConfidence = item.AverageConfidence,
+    };
+
+    private static object ToRealizedSavingsResponse(RealizedSavingsByCurrency item) => new
+    {
+        currency = item.Currency,
+        amount = item.Amount,
+        count = item.Count,
     };
 }

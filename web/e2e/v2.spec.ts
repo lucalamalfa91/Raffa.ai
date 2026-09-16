@@ -114,8 +114,8 @@ const MISSING_TENANT_ENV =
   "RAFFA_E2E_TENANT_ID is not set — the V2 pilot path needs the fixture-seeded workspace " +
   "(the one with validated contracts). A self-created, empty workspace turns Ask off by design " +
   "(R-ASK-10), so walking it would prove nothing. Seed one with " +
-  "`.github/workflows/seed-demo-fixture.yml` + `.github/workflows/reprocess-tenant-documents.yml` " +
-  "and pass its id.";
+  "`.github/workflows/seed-demo-fixture.yml` + `.github/workflows/verify-tenant-corpus.yml` " +
+  "(then use `reprocess-tenant-documents.yml` if the worklist is non-empty) and pass its id.";
 
 const LIVE_FOUNDRY_REASON =
   "requires live Foundry (OQ-askv2-009; inputs/requirements.md §13 A9) — set E2E_LIVE_FOUNDRY=1 " +
@@ -428,7 +428,7 @@ test.describe("V2 pilot path on the fixture-seeded workspace", () => {
     await expect(
       page.getByRole("heading", { name: "Ask needs at least one validated contract." }),
       `RAFFA_E2E_TENANT_ID=${FIXTURE_TENANT_ID} has no validated contract — run ` +
-        "`.github/workflows/reprocess-tenant-documents.yml` and validate one document first.",
+        "`.github/workflows/reprocess-tenant-documents.yml` (bulk reprocess) and validate one document first.",
     ).toHaveCount(0);
   });
 

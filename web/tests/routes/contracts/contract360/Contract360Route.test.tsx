@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import Contract360Route from "../../../../src/routes/contracts/contract360";
 import { formatDateOnly } from "../../../../src/routes/contracts/portfolioTableFormatters";
-import type { ApiClient, Contract360Body, GetContract360Result, RenewalPipelineItemBody, RenewalPriorityBody } from "../../../../src/api/client";
+import type { ApiClient, Contract360Body, ContractFieldEvidenceBody, ContractStrategyBody, GetContract360Result, RenewalPipelineItemBody, RenewalPriorityBody } from "../../../../src/api/client";
 
 const WORKSPACE_ID = "11111111-1111-1111-1111-111111111111";
 const CONTRACT_ID = "22222222-2222-2222-2222-222222222222";
@@ -51,7 +51,8 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     getMarketRecord: vi.fn(),
     getCorrectionHistory: vi.fn(),
     correctContract: vi.fn(),
-    getContractEvidence: vi.fn(),
+    getContractEvidence: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, evidence: [], autoAcceptThreshold: 0.9, error: null }),
+    getContractStrategy: vi.fn().mockResolvedValue({ ok: false, statusCode: 503, strategy: null, error: "unavailable" }),
     validateDocument: vi.fn(),
     postRenewalAction: vi.fn(),
     getQuote: vi.fn(),
@@ -256,6 +257,35 @@ function priorityFixture(overrides: Partial<RenewalPriorityBody> = {}): RenewalP
   };
 }
 
+function strategyPack(overrides: Partial<ContractStrategyBody> = {}): ContractStrategyBody {
+  return {
+    contractId: CONTRACT_ID,
+    whenYouMustMove: {
+      renewalDate: TERM_END,
+      cancellationDeadline: CANCEL_DEADLINE,
+      daysLeft: 14,
+      passedDeadline: false,
+      explanation: "14 day(s) until the cancellation deadline.",
+    },
+    whereYouCanPush: [
+      { leverType: "Volume", rationale: "This line orders 120,000 — cite the order size.", citationKeys: [] },
+    ],
+    targets: [
+      {
+        description: "Premium DBU",
+        openingTarget: 1500,
+        acceptableRangeLow: 1500,
+        acceptableRangeHigh: 1800,
+        walkAwayThreshold: 2100,
+        explanation: "Recommended target range [1500, 1800]. representative (source: A; n=214; as of 2026-01-01)",
+      },
+    ],
+    nextSteps: [{ label: "Notify the supplier of intent to renegotiate", dueHint: "this week" }],
+    openWeakFacts: [],
+    ...overrides,
+  };
+}
+
 function renderContract360(apiClient: ApiClient, contractId = CONTRACT_ID, state?: unknown, search = "") {
   return render(
     <MemoryRouter initialEntries={[{ pathname: `/contracts/${contractId}`, search, state }]}>
@@ -270,11 +300,50 @@ function renderContract360(apiClient: ApiClient, contractId = CONTRACT_ID, state
   );
 }
 
+function fieldEvidence(overrides: Partial<ContractFieldEvidenceBody> = {}): ContractFieldEvidenceBody {
+  return {
+    fieldName: "annualSpend",
+    value: "500000",
+    confidence: 0.96,
+    decision: "auto_accepted",
+    sourcePage: 2,
+    sourceSpan: "CHF 500,000 per year",
+    sourceDocumentId: "doc-1",
+    sourceFileName: "Acme_MSA.pdf",
+    passage: null,
+    highlightStart: null,
+    highlightLength: null,
+    modelId: "fixture-extract-model",
+    extractedAt: "2026-09-09T10:00:00Z",
+    ...overrides,
+  };
+}
+
+function acceptedEvidence(): ContractFieldEvidenceBody[] {
+  return [
+    fieldEvidence({ fieldName: "annualSpend" }),
+    fieldEvidence({ fieldName: "totalContractValue", value: "1500000" }),
+    fieldEvidence({ fieldName: "startDate", value: "2025-01-01" }),
+    fieldEvidence({ fieldName: "endDate", value: TERM_END }),
+    fieldEvidence({ fieldName: "cancellationDeadline", value: CANCEL_DEADLINE }),
+    fieldEvidence({ fieldName: "autoRenewal", value: "true" }),
+    fieldEvidence({ fieldName: "renewalTermMonths", value: "12" }),
+    fieldEvidence({ fieldName: "paymentTerms", value: "Net 45" }),
+    fieldEvidence({ fieldName: "governingLaw", value: "Switzerland, Zürich" }),
+    fieldEvidence({ fieldName: "effectiveDate", value: "2025-01-01" }),
+  ];
+}
+
+function evidenceOk(fields: ContractFieldEvidenceBody[], autoAcceptThreshold = 0.9) {
+  return { ok: true as const, statusCode: 200, evidence: fields, autoAcceptThreshold, error: null };
+}
+
 function populatedClient(overrides: Partial<ApiClient> = {}): ApiClient {
   return mockApiClient({
     getContract360: vi.fn().mockResolvedValue(ok(contract())),
     getRenewals: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, renewals: { items: [renewalPipelineItem()], totalCount: 1 }, error: null }),
     getRenewalPriority: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, priority: priorityFixture(), error: null }),
+    getContractEvidence: vi.fn().mockResolvedValue(evidenceOk(acceptedEvidence())),
     ...overrides,
   });
 }
@@ -464,9 +533,12 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
   });
 
   describe("answers band", () => {
-    it("renders Where you can save · When you must move · What to do from real fields, with honest gaps", async () => {
-      renderContract360(populatedClient());
+    it("renders Where you can save · When you must move · What to do; a failed strategy call degrades those answers only", async () => {
+      const client = populatedClient();
+      renderContract360(client);
       await screen.findByRole("heading", { level: 2, name: "MSA" });
+
+      expect(client.getContractStrategy).toHaveBeenCalledWith(WORKSPACE_ID, CONTRACT_ID);
 
       const band = screen.getByRole("region", { name: "Answers" });
       const cells = band.querySelectorAll(".contract360-answer");
@@ -477,10 +549,8 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
       expect(cells[0]).toHaveTextContent(/Benchmark Service/);
 
       expect(cells[1]).toHaveTextContent("When you must move");
-      expect(within(cells[1] as HTMLElement).getByText(formatDateOnly(CANCEL_DEADLINE))).toHaveClass("deadline-critical");
-      expect(cells[1]).toHaveTextContent("in 14 days");
-      expect(cells[1]).toHaveTextContent("last day to give notice");
-      expect(cells[1]).toHaveTextContent(`Term ends ${formatDateOnly(TERM_END)} and auto-renews for 12 months.`);
+      expect(cells[1]).toHaveTextContent("Not yet available");
+      expect(cells[1]).toHaveTextContent(/could not be loaded/i);
 
       expect(cells[2]).toHaveTextContent("What to do");
       expect(within(cells[2] as HTMLElement).getByText("Start renewal negotiation now")).toBeInTheDocument();
@@ -490,6 +560,71 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
 
       // The recommendation never leaks into a fact table (ADR-019 facts vs AI).
       expect(band.querySelector("table")).toBeNull();
+    });
+
+    it("maps a successful strategy pack onto both answer cells with provenance, and does not render OpenWeakFacts", async () => {
+      const pack = strategyPack();
+      renderContract360(
+        populatedClient({
+          getContractStrategy: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, strategy: pack, error: null }),
+        }),
+      );
+      await screen.findByRole("heading", { level: 2, name: "MSA" });
+
+      const band = screen.getByRole("region", { name: "Answers" });
+      const cells = band.querySelectorAll(".contract360-answer");
+
+      expect(cells[0]).toHaveTextContent("1,500–1,800");
+      expect(cells[0]).toHaveTextContent("representative · adapter A, n = 214");
+      expect(cells[0]).not.toHaveTextContent("Not yet available");
+
+      expect(within(cells[1] as HTMLElement).getByText(formatDateOnly(CANCEL_DEADLINE))).toHaveClass("deadline-critical");
+      expect(cells[1]).toHaveTextContent("in 14 days");
+      expect(cells[1]).toHaveTextContent("last day to give notice");
+      expect(cells[1]).toHaveTextContent(`Term ends ${formatDateOnly(TERM_END)} and auto-renews for 12 months.`);
+
+      expect(band).not.toHaveTextContent(/weak/i);
+      expect(screen.queryByText(/open weak facts/i)).toBeNull();
+    });
+
+    it("a missing end date reads Add the end date and links to Review, never Not determined", async () => {
+      const pack = strategyPack({
+        whenYouMustMove: {
+          renewalDate: null,
+          cancellationDeadline: null,
+          daysLeft: null,
+          passedDeadline: false,
+          explanation: "No renewal date or cancellation deadline could be determined for this contract.",
+        },
+      });
+      renderContract360(
+        populatedClient({
+          getContractStrategy: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, strategy: pack, error: null }),
+        }),
+      );
+      await screen.findByRole("heading", { level: 2, name: "MSA" });
+
+      expect(screen.getByRole("link", { name: "Add the end date" })).toHaveAttribute("href", `/contracts/${CONTRACT_ID}/review`);
+      expect(screen.queryByText("Not determined")).toBeNull();
+    });
+
+    it("a rejected strategy fetch degrades that one answer and still renders the header, Why and Details", async () => {
+      const getContractStrategy = vi.fn().mockResolvedValue({ ok: false, statusCode: 503, strategy: null, error: "strategy down" });
+      renderContract360(populatedClient({ getContractStrategy }));
+      await screen.findByRole("heading", { level: 2, name: "MSA" });
+
+      expect(getContractStrategy).toHaveBeenCalledWith(WORKSPACE_ID, CONTRACT_ID);
+      expect(screen.getByRole("heading", { level: 2, name: "MSA" })).toBeInTheDocument();
+      expect(screen.getByText("Supplier 33333333")).toBeInTheDocument();
+
+      const saveCell = screen.getByRole("region", { name: "Answers" }).querySelectorAll(".contract360-answer")[0];
+      expect(saveCell).toHaveTextContent("Not yet available");
+      expect(saveCell).toHaveTextContent(/Benchmark Service/);
+
+      expect(screen.getByRole("region", { name: "Why — the clauses behind it" })).toBeInTheDocument();
+      expect(screen.getByText("Liability cap")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "All terms, documents and open facts ▾" })).toBeInTheDocument();
+      expect(screen.queryByText(/contract unavailable/i)).toBeNull();
     });
 
     it("names an honest gap instead of a recommendation when this contract has no renewal-pipeline entry", async () => {
@@ -534,7 +669,7 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
       const tracker = await screen.findByRole("status");
       expect(tracker).toHaveTextContent("In negotiation");
       expect(tracker).toHaveTextContent(`owner ${USER_LABEL}`);
-      expect(tracker).toHaveTextContent(`target Not yet available · close by ${formatDateOnly(CANCEL_DEADLINE)}`);
+      expect(tracker).toHaveTextContent(`target Not yet available · close by Not yet available`);
       expect(screen.queryByRole("button", { name: "Start negotiation" })).not.toBeInTheDocument();
 
       const steps = within(tracker).getAllByRole("button", { pressed: false });
@@ -542,7 +677,7 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
         "Notify Supplier 33333333 of intent to renegotiatethis week",
         "Request revised pricing and licence mix+10 days",
         "Counter with the market benchmark+20 days",
-        `Sign, or send non-renewal noticeby ${formatDateOnly(CANCEL_DEADLINE)}`,
+        `Sign, or send non-renewal noticeby Not yet available`,
       ]);
 
       fireEvent.click(steps[0]);
@@ -646,27 +781,41 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
   });
 
   describe("why — the clauses behind it", () => {
-    it("lists the clauses (type · normalised · page § · risk · confidence) and opens the original wording on click", async () => {
+    it("lists the clauses (type · accepted value · leverage · why · viewer) and opens the original wording on click", async () => {
       renderContract360(populatedClient());
       await screen.findByRole("heading", { level: 2, name: "MSA" });
 
       const why = screen.getByRole("region", { name: "Why — the clauses behind it" });
+      expect(within(why).getByText("Push to change · Worth raising · Standard terms")).toBeInTheDocument();
       const rows = within(why).getAllByRole("listitem");
       expect(rows).toHaveLength(2);
       expect(rows[0]).toHaveTextContent("Liability cap");
-      expect(rows[0]).toHaveTextContent("12 months fees");
-      expect(rows[0]).toHaveTextContent("p.27 · §17.2");
-      expect(within(rows[0]).getByText("Medium")).toHaveClass("tag-neutral");
-      expect(within(rows[1]).getByText("High")).toHaveClass("tag-accent");
+      expect(rows[0]).toHaveTextContent("—");
+      expect(rows[0]).not.toHaveTextContent("12 months fees");
+      expect(rows[0]).not.toHaveTextContent("p.27");
+      expect(within(rows[0]).getByText("Worth raising")).toHaveClass("tag-neutral");
+      expect(within(rows[0]).getByText("Worth raising in negotiation.")).toBeInTheDocument();
+      expect(within(rows[0]).getByRole("link", { name: "Open in document viewer" })).toHaveAttribute(
+        "href",
+        "/documents/doc-1/viewer?page=27&clause=cl-1",
+      );
+      expect(within(rows[1]).getByText("Push to change")).toHaveClass("tag-accent");
       expect(screen.queryByTestId("clause-highlight")).toBeNull();
+      expect(why.textContent).not.toMatch(/%/);
+      expect(why.textContent).not.toMatch(/\bMedium\b/);
+      expect(why.textContent).not.toMatch(/\bHigh\b/);
 
-      fireEvent.click(rows[0]);
+      fireEvent.click(within(rows[0]).getByRole("button"));
 
       const evidence = screen.getByTestId("clause-highlight");
-      expect(within(evidence).getByText("Acme_MSA.pdf · page 27 · §17.2")).toBeInTheDocument();
+      expect(within(evidence).getByText("Acme_MSA.pdf · p.27 · §17.2")).toBeInTheDocument();
       expect(within(evidence).getByText("12 months fees").tagName).toBe("MARK");
       expect(evidence).toHaveTextContent("Each party's aggregate liability is capped at 12 months fees, save for confidentiality and IP.");
-      expect(rows[0]).toHaveAttribute("aria-pressed", "true");
+      expect(within(evidence).getByRole("link", { name: "Open in document viewer" })).toHaveAttribute(
+        "href",
+        "/documents/doc-1/viewer?page=27&clause=cl-1",
+      );
+      expect(within(rows[0]).getByRole("button")).toHaveAttribute("aria-pressed", "true");
     });
 
     it("R-EVD-02 citation landing: ?clause=<id> highlights the cited wording without a click", async () => {
@@ -680,7 +829,7 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
       renderContract360(populatedClient(), CONTRACT_ID, undefined, "?page=12");
       await screen.findByRole("heading", { level: 2, name: "MSA" });
 
-      expect(within(screen.getByTestId("clause-highlight")).getByText("Acme_MSA.pdf · page 12 · §8.4")).toBeInTheDocument();
+      expect(within(screen.getByTestId("clause-highlight")).getByText("Acme_MSA.pdf · p.12 · §8.4")).toBeInTheDocument();
     });
 
     it("an unmatched clause param highlights nothing rather than fabricating a match", async () => {
@@ -700,7 +849,7 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
   });
 
   describe("details ▾", () => {
-    it("is closed by default and opens to key terms, documents, facts to decide, the priority score and the extracted lists", async () => {
+    it("is closed by default and opens to key terms, documents, the priority score and the extracted lists", async () => {
       renderContract360(populatedClient());
       await screen.findByRole("heading", { level: 2, name: "MSA" });
 
@@ -717,34 +866,50 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
       expect(within(details).getByText("Renewal term").closest(".contract360-detail-row")).toHaveTextContent("12 months");
       expect(within(details).getByText("Documents")).toBeInTheDocument();
       expect(within(details).getByText("Acme_MSA.pdf")).toBeInTheDocument();
-      expect(within(details).getByText("Facts you still need to decide")).toBeInTheDocument();
-      expect(within(details).getByText("Liability cap").closest(".contract360-detail-row")).toHaveTextContent("12 months fees");
-      expect(within(details).getByRole("link", { name: "Review all →" })).toHaveAttribute("href", `/contracts/${CONTRACT_ID}/review`);
+      expect(within(details).queryByText("Facts you still need to decide")).not.toBeInTheDocument();
+      expect(within(details).queryByText(/signed off by you/i)).not.toBeInTheDocument();
+      expect(within(details).queryByRole("link", { name: /facts still need you/i })).not.toBeInTheDocument();
       expect(within(details).getByText("priority 72/100")).toBeInTheDocument();
       expect(within(details).getByText("Spend weight")).toBeInTheDocument();
       expect(within(details).getByText("Products")).toBeInTheDocument();
-      expect(within(details).getByText("Premium DBU")).toBeInTheDocument();
+      expect(within(details).getAllByText("Premium DBU").length).toBeGreaterThan(0);
       expect(within(details).getByText("Obligations")).toBeInTheDocument();
       expect(within(details).getByText("Risks")).toBeInTheDocument();
+      expect(within(details).queryByText("Confidence")).not.toBeInTheDocument();
+      expect(details.textContent).not.toMatch(/Review · \d+%/);
+      expect(details.textContent).not.toMatch(/Accepted automatically/);
 
-      // Every table in the drawer is deterministic facts; the recommendation text is never in one.
       details.querySelectorAll("table").forEach((table) => {
         expect(table.textContent).not.toContain("Start renewal negotiation now");
       });
     });
 
-    it("says 'None — …' when every fact is above the threshold, and names the missing priority score honestly", async () => {
-      const allConfident = contract();
-      allConfident.tabs.clauses = allConfident.tabs.clauses.map((c) => ({ ...c, confidence: 0.99 }));
-      allConfident.tabs.obligations = allConfident.tabs.obligations.map((o) => ({ ...o, confidence: 0.99 }));
-      renderContract360(populatedClient({ getContract360: vi.fn().mockResolvedValue(ok(allConfident)), getRenewalPriority: vi.fn().mockResolvedValue({ ok: false, statusCode: 404, priority: null, error: "x" }) }));
+    it("the trailing count line is absent at N = 0 and names N when review_required decisions exist", async () => {
+      const twoPending = [
+        ...acceptedEvidence().filter((row) => row.fieldName !== "endDate" && row.fieldName !== "paymentTerms"),
+        fieldEvidence({ fieldName: "endDate", decision: "review_required", confidence: 0.99 }),
+        fieldEvidence({ fieldName: "paymentTerms", decision: "review_required", confidence: 0.4 }),
+      ];
+      renderContract360(populatedClient({ getContractEvidence: vi.fn().mockResolvedValue(evidenceOk(twoPending)) }));
       await screen.findByRole("heading", { level: 2, name: "MSA" });
+      fireEvent.click(screen.getByRole("button", { name: "All terms, documents and open facts ▾" }));
+      const countLink = screen.getByRole("link", { name: "2 facts still need you — Review all →" });
+      expect(countLink).toHaveAttribute("href", `/contracts/${CONTRACT_ID}/review`);
+    });
 
+    it("an unofficialized key term keeps its row as an em-dash and never drops it", async () => {
+      const pendingSpend = [
+        ...acceptedEvidence().filter((row) => row.fieldName !== "annualSpend"),
+        fieldEvidence({ fieldName: "annualSpend", decision: "review_required", confidence: 0.71 }),
+      ];
+      renderContract360(populatedClient({ getContractEvidence: vi.fn().mockResolvedValue(evidenceOk(pendingSpend)) }));
+      await screen.findByRole("heading", { level: 2, name: "MSA" });
       fireEvent.click(screen.getByRole("button", { name: "All terms, documents and open facts ▾" }));
 
-      expect(screen.getByText("None — every fact is above 95% or signed off by you.")).toBeInTheDocument();
-      expect(screen.getByText("priority not yet available")).toBeInTheDocument();
-      expect(screen.getByText(/has not been computed for this contract yet/i)).toBeInTheDocument();
+      const spendRow = screen.getByText("Annual spend").closest(".contract360-detail-row");
+      expect(spendRow).toHaveTextContent("—");
+      expect(spendRow).not.toHaveTextContent("500,000");
+      expect(screen.getByText("Total contract value").closest(".contract360-detail-row")).toHaveTextContent("CHF 1,500,000");
     });
   });
 });

@@ -23,4 +23,6 @@ namespace Raffa.Documents.Contracts.Application;
 /// </summary>
 public sealed record ContractCorrectionRequest(
     Dictionary<string, string?>? Corrections,
-    string? Reason);
+    string? Reason,
+    /// <summary>Rejected if present: the decision is server-computed (ADR-022 w17 clause 5).</summary>
+    string? Decision = null);

@@ -276,6 +276,14 @@ var renewalsConnectionString = builder.Configuration.GetConnectionString("Renewa
 
 builder.Services.AddRenewalsModule(renewalsConnectionString);
 
+// Task E21/F01/US01/T01 (benchmark-key-resolver, ADR-002 w17 clause 3, ADR-024 w17 clause 10):
+// BenchmarkKeyResolution is host-composition wiring — the one place that resolves the
+// (supplier name, geography) pair a BenchmarkQuery requires. Two consumers in this wave:
+// E21/F02/US01/T01 (GET /api/renewals market band) and E21/F03/US01/T01 (strategy benchmark).
+// Scoped: reads IdentityWorkspaceDbContext (Scoped) and ISupplierNameLookup (Singleton) — the
+// same lifetime pattern AskCopilotService already uses for its cross-module composition.
+builder.Services.AddScoped<BenchmarkKeyResolution>();
+
 // Task E03/F02/US01/T02 (renewal-alerts, parent story us-01-threshold-scheduler AC-3):
 // RenewalAlertRecomputeService is host-composition wiring, the same kind as
 // NegotiationOutcomePropagationService below ("the one place... that calls both

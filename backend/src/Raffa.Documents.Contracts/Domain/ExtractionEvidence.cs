@@ -47,5 +47,17 @@ public sealed class ExtractionEvidence : TenantScopedEntity
     public int? SourcePage { get; set; }
     public double? Confidence { get; set; }
 
+    /// <summary>
+    /// Server-computed acceptance of this proposal: <c>auto_accepted</c>,
+    /// <c>human_accepted</c>, or <c>review_required</c>. Not an enum column — new extractable
+    /// fields must not require a migration here, and neither must a new decision literal
+    /// (same reason <see cref="FieldName"/> is a string). Null only on rows written before
+    /// this column existed; a reprocess re-derives it.
+    /// </summary>
+    public string? Decision { get; set; }
+
+    /// <summary>When <see cref="Decision"/> was written for this row.</summary>
+    public DateTimeOffset? DecidedAt { get; set; }
+
     public required DateTimeOffset CreatedAt { get; set; }
 }

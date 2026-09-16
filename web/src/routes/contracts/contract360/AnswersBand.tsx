@@ -60,7 +60,7 @@ export default function AnswersBand({
       <div className="contract360-answer">
         <p className="contract360-answer-label">When you must move</p>
         <p className={answerDisplayClass("contract360-answer-value", move.deadline, move.isUrgent ? " deadline-critical" : "")}>
-          {move.deadline}
+          {move.deadlineHref !== null ? <Link to={move.deadlineHref}>{move.deadline}</Link> : move.deadline}
         </p>
         <p className="contract360-answer-detail">
           {move.cancelDays !== null && move.cancelDays >= 0 ? (

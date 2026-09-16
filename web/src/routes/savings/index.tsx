@@ -19,7 +19,7 @@ type OpportunitiesFetchState =
 /**
  * Route `/savings` -- Savings, V2 (ADR-024 V2 IA amendment "No Home item": reached from Ask
  * actions, Renewals and Contract 360, not the rail; screens-v2.md #8; `app.jsx` `kpis` / `opps`).
- * Header ("Savings" + summary), the three-cell KPI band, the opportunities table (Supplier · Action
+ * Header ("Savings" + summary), the four-cell KPI band, the opportunities table (Supplier · Action
  * · Estimate · Status, rows open Contract 360), and the reroute state while nothing feeds it.
  *
  * **Three independent fetches, independent degrade states.** `getSavingsKpis` backs the band; its

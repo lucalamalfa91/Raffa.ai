@@ -60,13 +60,18 @@ public sealed class R1EndToEndTests : IClassFixture<R1IntegrationFixture>
         var documentBody = await ParseAsync(documentResponse);
         Assert.Equal("Msa", documentBody.GetProperty("documentType").GetString());
         Assert.Equal(contractId.ToString(), documentBody.GetProperty("contractId").GetString());
-        // B2 (PR #137): the Metadata payload's supplier fact is high-confidence (0.95 ≥ 0.8),
-        // so identityAccepted=true.  The B2 fast-path auto-completes the document even though
-        // CommercialTerms' annualSpend is low-confidence (0.35) — the weak spend fact is still
-        // persisted as ExtractionEvidence and visible on the review screen (proved below), but it
-        // no longer blocks Portfolio/Renewals membership.  AC-2's correction step below still
-        // validates that the human can refine the extracted value and that history is preserved.
-        Assert.Equal("Completed", documentBody.GetProperty("processingStatus").GetString());
+        // B2 (PR #137) used to auto-complete on a strong supplier even when a commercial
+        // field was weak. Wave w17 (NW-71) retired that fast-path: every field uses the
+        // same raw 0.90 bar, so annualSpend at 0.35 leaves the document in NeedsReview.
+        Assert.Equal("NeedsReview", documentBody.GetProperty("processingStatus").GetString());
+
+        var earlyValidateResponse = await PostAsync(
+            client, $"/api/documents/{documentId}/validate", tenantId,
+            new { acceptedFields = new[] { "annualSpend", "currency", "autoRenewal" } });
+        Assert.Equal(HttpStatusCode.OK, earlyValidateResponse.StatusCode);
+        var earlyValidateBody = await ParseAsync(earlyValidateResponse);
+        Assert.Equal("Completed", earlyValidateBody.GetProperty("processingStatus").GetString());
+        Assert.False(earlyValidateBody.GetProperty("alreadyValidated").GetBoolean());
 
         // 3. Portfolio: the newly-extracted contract is listed (AC-1 "portfolio").
         var portfolioResponse = await GetAsync(client, "/api/contracts", tenantId);
@@ -181,12 +186,9 @@ public sealed class R1EndToEndTests : IClassFixture<R1IntegrationFixture>
             Assert.Equal(0.35, evidence.Confidence);
         }
 
-        // 6b. Review sign-off: with B2 the document is already Completed (see step 2 above), so
-        //     POST /api/documents/{id}/validate is an idempotent no-op — it returns 200 with
-        //     alreadyValidated=true and the status stays Completed.  The validate endpoint is still
-        //     exercised here to confirm the idempotency contract (README: "already Completed
-        //     document answers 200 with alreadyValidated: true") rather than a NeedsReview ->
-        //     Completed transition (which B2 made unnecessary for this fixture).
+        // 6b. Review sign-off was already taken in step 2 (NeedsReview → Completed). A second
+        //     POST /api/documents/{id}/validate is the idempotent no-op: 200 with
+        //     alreadyValidated=true and the status stays Completed.
         var validateResponse = await PostAsync(
             client, $"/api/documents/{documentId}/validate", tenantId,
             new { acceptedFields = new[] { "currency", "autoRenewal" } });
@@ -205,7 +207,7 @@ public sealed class R1EndToEndTests : IClassFixture<R1IntegrationFixture>
         var evidenceResponse = await GetAsync(client, $"/api/contracts/{contractId}/evidence", tenantId);
         Assert.Equal(HttpStatusCode.OK, evidenceResponse.StatusCode);
         var annualSpendEvidence = Assert.Single(
-            (await ParseAsync(evidenceResponse)).EnumerateArray(),
+            (await ParseAsync(evidenceResponse)).GetProperty("fields").EnumerateArray(),
             e => e.GetProperty("fieldName").GetString() == "annualSpend");
         Assert.Equal(R1ExtractionFixtures.OriginalAnnualSpend, annualSpendEvidence.GetProperty("value").GetString());
         Assert.Equal(0.35, annualSpendEvidence.GetProperty("confidence").GetDouble());

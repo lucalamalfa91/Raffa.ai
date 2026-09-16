@@ -173,9 +173,10 @@ public sealed class DocumentLifecycleTests : IAsyncLifetime
             db.ExtractionEvidences.Add(Evidence(tenantId, contractId, documentId, "annualSpend", 0.2, Now.AddMinutes(2)));
             db.ExtractionEvidences.Add(Evidence(tenantId, contractId, documentId, "annualSpend", 0.95, Now.AddMinutes(3)));
             // One weak field and one field with no confidence at all: both turn a strong baseline
-            // field weak, so both count.
-            db.ExtractionEvidences.Add(Evidence(tenantId, contractId, documentId, "cancellationDeadline", 0.35, Now.AddMinutes(2)));
-            db.ExtractionEvidences.Add(Evidence(tenantId, contractId, documentId, "endDate", null, Now.AddMinutes(2)));
+            // field weak, so both count. currency and autoRenewal are explicit high-confidence
+            // facts in ContractText; the derived dates already sit below the 90 % bar.
+            db.ExtractionEvidences.Add(Evidence(tenantId, contractId, documentId, "currency", 0.35, Now.AddMinutes(2)));
+            db.ExtractionEvidences.Add(Evidence(tenantId, contractId, documentId, "autoRenewal", null, Now.AddMinutes(2)));
             await db.SaveChangesAsync();
         }
 
@@ -753,6 +754,10 @@ public sealed class DocumentLifecycleTests : IAsyncLifetime
         public async Task<string> SavePreviewAsync(
             TenantId tenantId, EntityId documentId, Stream content, CancellationToken cancellationToken = default) =>
             await StoreAsync(DocumentStoragePath.BuildPreview(tenantId, documentId), content, cancellationToken);
+
+        public async Task<string> SavePreviewPageAsync(
+            TenantId tenantId, EntityId documentId, int page, Stream content, CancellationToken cancellationToken = default) =>
+            await StoreAsync(DocumentStoragePath.BuildPreviewPage(tenantId, documentId, page), content, cancellationToken);
 
         public Task<byte[]?> LoadAsync(
             TenantId tenantId, string storagePath, CancellationToken cancellationToken = default)

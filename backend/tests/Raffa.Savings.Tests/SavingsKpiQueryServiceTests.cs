@@ -127,6 +127,61 @@ public sealed class SavingsKpiQueryServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GetSummaryAsync_projects_realized_rows_and_an_opportunity_with_no_row_contributes_nothing()
+    {
+        await MigrateAsync();
+
+        var tenantId = TenantId.New();
+        var otherTenantId = TenantId.New();
+        var tenantContext = new TenantContext();
+        var clock = new FixedClock(DateTimeOffset.UtcNow);
+        var auditWriter = new RecordingAuditWriter();
+
+        await using (var db = CreateContext(tenantContext))
+        {
+            var service = new SavingsOpportunityService(db, tenantContext, clock, auditWriter);
+
+            var first = await service.CreateAsync(
+                tenantId, ValidRequest("CHF", low: 80_000m, high: 120_000m), SavingsOpportunityService.SystemActor);
+            var second = await service.CreateAsync(
+                tenantId, ValidRequest("CHF", low: 10_000m, high: 20_000m), SavingsOpportunityService.SystemActor);
+            var statusOnly = await service.CreateAsync(
+                tenantId, ValidRequest("USD", low: 999m, high: 1_999m), SavingsOpportunityService.SystemActor);
+            var otherTenant = await service.CreateAsync(
+                otherTenantId, ValidRequest("CHF", low: 1m, high: 2m), SavingsOpportunityService.SystemActor);
+
+            await service.UpdateAsync(
+                tenantId, first.Value.Id, owner: null, status: "Realized", realizedAmount: 40_000m,
+                actor: "test-actor@example.com");
+            await service.UpdateAsync(
+                tenantId, second.Value.Id, owner: null, status: "Realized", realizedAmount: 45_000m,
+                actor: "test-actor@example.com");
+            await service.UpdateAsync(
+                tenantId, statusOnly.Value.Id, owner: null, status: "Realized", realizedAmount: null,
+                actor: "test-actor@example.com");
+            await service.UpdateAsync(
+                otherTenantId, otherTenant.Value.Id, owner: null, status: "Realized", realizedAmount: 999_999m,
+                actor: "test-actor@example.com");
+        }
+
+        await using var readDb = CreateContext(tenantContext);
+        var queryService = new SavingsKpiQueryService(readDb, tenantContext, new SavingsKpiCalculator());
+
+        var summary = await queryService.GetSummaryAsync(tenantId);
+
+        var realized = Assert.Single(summary.Realized);
+        Assert.Equal("CHF", realized.Currency);
+        Assert.Equal(85_000m, realized.Amount);
+        Assert.Equal(2, realized.Count);
+        Assert.DoesNotContain(summary.Realized, b => b.Currency == "USD");
+
+        var otherSummary = await queryService.GetSummaryAsync(otherTenantId);
+        var otherRealized = Assert.Single(otherSummary.Realized);
+        Assert.Equal(999_999m, otherRealized.Amount);
+        Assert.Equal(1, otherRealized.Count);
+    }
+
+    [Fact]
     public async Task GetSummaryAsync_returns_honestly_empty_buckets_for_a_tenant_with_no_opportunities()
     {
         await MigrateAsync();

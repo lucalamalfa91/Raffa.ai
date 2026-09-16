@@ -30,11 +30,10 @@ export interface ReviewStateProps {
  * URL param `:contractId` and navigates to Contract 360 on validation; this state returns to the
  * Documents list with the validated hook.
  *
- * **"Mark as validated" is a real write.** The hook posts every Accepted field's name to
+ * **"Mark as validated" is a real write.** The hook posts human-accepted field names to
  * `POST /api/documents/{id}/validate`; the backend moves the document to `Completed` and audits the
- * sign-off, and only a 200 fires `onValidated`. Corrections are already durable through `PATCH
- * /api/contracts/{id}` by then. A reload before that click re-asks any field that was only
- * Accepted -- the session-only half of the decision state, see the hook's own doc comment.
+ * sign-off, and only a 200 fires `onValidated`. Auto-accepted fields arrive already decided from
+ * the evidence GET. Corrections are already durable through `PATCH /api/contracts/{id}` by then.
  */
 export default function ReviewState({ apiClient, contractId, documentId, onBack, onValidated }: ReviewStateProps) {
   const workspace = loadCurrentWorkspace();
@@ -104,6 +103,7 @@ export default function ReviewState({ apiClient, contractId, documentId, onBack,
         validationError={session.validationError}
         alreadyValidated={session.alreadyValidated}
         canValidate={session.reviewDocumentId !== null}
+        autoAcceptThreshold={session.autoAcceptThreshold}
       />
 
       {fetchState.historyDegraded && (
@@ -123,6 +123,9 @@ export default function ReviewState({ apiClient, contractId, documentId, onBack,
           selectedField={session.selectedField}
           onSelect={session.selectField}
           onAccept={(name) => void session.accept(name)}
+          onCorrect={(name, value, reason) => void session.correct(name, value, reason)}
+          submitting={session.submitting}
+          error={session.correctionError}
         />
         <EvidencePane
           row={session.selectedRow}
