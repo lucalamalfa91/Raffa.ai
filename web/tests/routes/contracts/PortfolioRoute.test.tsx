@@ -61,6 +61,11 @@ function mockApiClient(getPortfolio: ApiClient["getPortfolio"] = vi.fn()): ApiCl
     postMessage: vi.fn(),
     getCapabilities: vi.fn(),
     getMarketRecord: vi.fn(),
+    // Task E25/F04/US01/T01 (quote-benchmark-backend) added this member to `ApiClient` after this
+    // helper was written; stubbed here (unrelated to this task's own scope) purely so this file's
+    // own mock object satisfies the interface under `tsc --noEmit` again, the same "bare vi.fn(),
+    // every other call is unused by this suite" convention every other entry above already follows.
+    getQuoteBenchmarkHistory: vi.fn(),
   };
 }
 
@@ -98,9 +103,9 @@ function ok(items: PortfolioListItem[]): GetPortfolioResult {
   return { ok: true, statusCode: 200, portfolio: page(items), error: null };
 }
 
-function renderPortfolio(apiClient: ApiClient) {
+function renderPortfolio(apiClient: ApiClient, initialPath = "/contracts") {
   return render(
-    <MemoryRouter initialEntries={["/contracts"]}>
+    <MemoryRouter initialEntries={[initialPath]}>
       <Routes>
         <Route path="/contracts" element={<PortfolioRoute apiClient={apiClient} />} />
         <Route path="/contracts/:contractId" element={<div>CONTRACT_360_SCREEN</div>} />
@@ -375,5 +380,55 @@ describe("PortfolioRoute (V2, screens-v2.md #6 / markup.html PORTFOLIO block)", 
     const table = await screen.findByRole("table");
     expect(within(table).getByText("—")).toBeInTheDocument();
     expect(within(table).queryByText(/^Supplier [0-9a-f]{8}$/)).toBeNull();
+  });
+});
+
+// Task E24/F01/US02/T01 (story us-02-portfolio-category-web; closes NW-23). Proves the whole
+// screen's own contract, not just the control's (`PortfolioFilterControl.test.tsx`): applying
+// issues `GET /api/contracts` with `?category=` via the `getPortfolio` wrapper (AC-1), the filter
+// is the router's own query parameter and nothing else (AC-2), and clearing re-loads the full,
+// unfiltered portfolio (AC-3).
+describe("PortfolioRoute -- category filter (task E24/F01/US02/T01, closes NW-23)", () => {
+  beforeEach(() => {
+    window.sessionStorage.clear();
+    window.sessionStorage.setItem(
+      "raffa.signin.currentWorkspace",
+      JSON.stringify({ id: WORKSPACE_ID, name: "Acme Procurement" }),
+    );
+  });
+
+  it("AC-1/AC-2: loads unfiltered, then applying a category re-issues getPortfolio with ?category=", async () => {
+    const getPortfolio = vi.fn().mockResolvedValue(ok([]));
+    renderPortfolio(mockApiClient(getPortfolio));
+
+    await screen.findByLabelText("Category");
+    expect(getPortfolio).toHaveBeenNthCalledWith(1, WORKSPACE_ID, expect.objectContaining({ category: undefined }));
+
+    fireEvent.change(screen.getByLabelText("Category"), { target: { value: "Software" } });
+    fireEvent.click(screen.getByRole("button", { name: /^apply$/i }));
+
+    expect(getPortfolio).toHaveBeenCalledTimes(2);
+    expect(getPortfolio).toHaveBeenNthCalledWith(2, WORKSPACE_ID, expect.objectContaining({ category: "Software" }));
+  });
+
+  it("AC-3: clearing an applied filter re-loads the full portfolio (no category)", async () => {
+    const getPortfolio = vi.fn().mockResolvedValue(ok([]));
+    renderPortfolio(mockApiClient(getPortfolio), "/contracts?category=Software");
+
+    const clearButton = await screen.findByRole("button", { name: /clear filter/i });
+    expect(getPortfolio).toHaveBeenNthCalledWith(1, WORKSPACE_ID, expect.objectContaining({ category: "Software" }));
+
+    fireEvent.click(clearButton);
+
+    expect(getPortfolio).toHaveBeenCalledTimes(2);
+    expect(getPortfolio).toHaveBeenNthCalledWith(2, WORKSPACE_ID, expect.objectContaining({ category: undefined }));
+  });
+
+  it("stays visible (and clearable) when a category matches nothing, alongside the zero-state reroute", async () => {
+    renderPortfolio(mockApiClient(vi.fn().mockResolvedValue(ok([]))), "/contracts?category=NoSuchCategory");
+
+    expect(await screen.findByRole("button", { name: /clear filter/i })).toBeInTheDocument();
+    expect(screen.getByLabelText("Category")).toHaveValue("NoSuchCategory");
+    expect(screen.getByText("Nothing to triage yet")).toBeInTheDocument();
   });
 });
