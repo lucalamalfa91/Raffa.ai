@@ -68,6 +68,10 @@ interface CitationNoticeState {
  * the other source -- resuming a link/rail click. `currentConversationId` is whichever is set;
  * `resumeTargetId` is the route id *only* when it is not the one this screen already created, which
  * is what actually tells `useConversation` whether to fetch at all.
+ *
+ * Task E25/F06/US01/T01 (NW-60, wave w18): `AppShell.tsx` stops mounting `GlobalAskBar` on this
+ * route (it duplicated this screen's own input), so this component now also owns the Cmd/Ctrl+K
+ * shortcut for its composer -- see `composerInputRef`'s own comment below.
  */
 export default function AskRoute({ apiClient }: AskRouteProps) {
   const location = useLocation();
@@ -268,6 +272,24 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     [navigate],
   );
 
+  // Task E25/F06/US01/T01 (NW-60; AC-2): `AppShell.tsx` no longer mounts `GlobalAskBar` on this
+  // route, so this screen's own composer input takes over the Cmd/Ctrl+K shortcut GlobalAskBar.tsx
+  // used to own here -- same self-contained pattern (own ref, own window listener, no context).
+  // `composerInputRef.current` is only non-null while the composer is actually on screen (the final
+  // render below, past the off/loading/not-found/error returns), so the shortcut is a safe no-op
+  // otherwise -- nothing else on those other faces claims the input.
+  const composerInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    function handleGlobalShortcut(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        composerInputRef.current?.focus();
+      }
+    }
+    window.addEventListener("keydown", handleGlobalShortcut);
+    return () => window.removeEventListener("keydown", handleGlobalShortcut);
+  }, []);
+
   if (!workspace) {
     return (
       <div className="empty-state" role="status">
@@ -394,6 +416,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
 
           <div className="ask-input-row">
             <input
+              ref={composerInputRef}
               className="input"
               placeholder={ASK_INPUT_PLACEHOLDER}
               aria-label="Ask Raffa a question"
