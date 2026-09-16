@@ -102,6 +102,10 @@ public sealed class DocumentStorageContractTests
             TenantId tenantId, EntityId documentId, Stream content, CancellationToken cancellationToken = default) =>
             await StoreAsync(DocumentStoragePath.BuildPreview(tenantId, documentId), content, cancellationToken);
 
+        public async Task<string> SavePreviewPageAsync(
+            TenantId tenantId, EntityId documentId, int page, Stream content, CancellationToken cancellationToken = default) =>
+            await StoreAsync(DocumentStoragePath.BuildPreviewPage(tenantId, documentId, page), content, cancellationToken);
+
         public Task<byte[]?> LoadAsync(
             TenantId tenantId, string storagePath, CancellationToken cancellationToken = default)
         {

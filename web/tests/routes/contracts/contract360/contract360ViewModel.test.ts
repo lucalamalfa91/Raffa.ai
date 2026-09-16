@@ -7,14 +7,23 @@ import type {
   Contract360ObligationBody,
   Contract360ProductBody,
   Contract360RiskBody,
+  ContractFieldEvidenceBody,
+  ContractStrategyBody,
   RenewalPipelineItemBody,
   RenewalPriorityBody,
 } from "../../../../src/api/client";
 import {
+  ADD_THE_END_DATE,
+  AUTO_ACCEPT_THRESHOLD,
   DETAILS_LABEL_CLOSED,
   DETAILS_LABEL_OPEN,
+  LEVERAGE_LEGEND,
+  LEVERAGE_PUSH_TO_CHANGE,
+  LEVERAGE_STANDARD_TERMS,
+  LEVERAGE_WORTH_RAISING,
   LEVER_NOT_YET_AVAILABLE,
-  NO_ATTENTION_MESSAGE,
+  SAVINGS_NOT_YET_AVAILABLE,
+  UNOFFICIALIZED_PLACEHOLDER,
   buildAnswers,
   buildClauseEvidence,
   buildClauseRows,
@@ -26,11 +35,15 @@ import {
   buildProductsRows,
   buildRecommendation,
   buildRisksRows,
+  clauseViewerHref,
   computeNeedsAttention,
   formatHeaderMeta,
   formatPriorityFact,
+  formatReviewCountLine,
+  formatShortReference,
   formatTrackerMeta,
   getClauseRiskTag,
+  leverageWhy,
   resolveBackLink,
   resolveHighlightedClauseId,
   resolveSupplierLabel,
@@ -130,6 +143,40 @@ function risk(overrides: Partial<Contract360RiskBody> = {}): Contract360RiskBody
   };
 }
 
+function fieldEvidence(overrides: Partial<ContractFieldEvidenceBody> = {}): ContractFieldEvidenceBody {
+  return {
+    fieldName: "annualSpend",
+    value: "500000",
+    confidence: 0.96,
+    decision: "auto_accepted",
+    sourcePage: 2,
+    sourceSpan: "CHF 500,000 per year",
+    sourceDocumentId: "doc-1",
+    sourceFileName: "MSA.pdf",
+    passage: null,
+    highlightStart: null,
+    highlightLength: null,
+    modelId: "fixture-extract-model",
+    extractedAt: "2026-09-09T10:00:00Z",
+    ...overrides,
+  };
+}
+
+function acceptedEvidence(): ContractFieldEvidenceBody[] {
+  return [
+    fieldEvidence({ fieldName: "annualSpend" }),
+    fieldEvidence({ fieldName: "totalContractValue", value: "1500000" }),
+    fieldEvidence({ fieldName: "startDate", value: "2025-01-01" }),
+    fieldEvidence({ fieldName: "endDate", value: "2026-01-01" }),
+    fieldEvidence({ fieldName: "cancellationDeadline", value: "2025-11-17" }),
+    fieldEvidence({ fieldName: "autoRenewal", value: "true" }),
+    fieldEvidence({ fieldName: "renewalTermMonths", value: "12" }),
+    fieldEvidence({ fieldName: "paymentTerms", value: "Net 45" }),
+    fieldEvidence({ fieldName: "governingLaw", value: "Switzerland, Zürich" }),
+    fieldEvidence({ fieldName: "effectiveDate", value: "2025-01-01" }),
+  ];
+}
+
 function renewalItem(overrides: Partial<RenewalPipelineItemBody> = {}): RenewalPipelineItemBody {
   return {
     contractId: CONTRACT_ID,
@@ -187,6 +234,38 @@ const renewalTab: Contract360Body["tabs"]["renewal"] = {
   autoRenewal: true,
   renewalTermMonths: 12,
 };
+
+function strategyPack(overrides: Partial<ContractStrategyBody> = {}): ContractStrategyBody {
+  return {
+    contractId: CONTRACT_ID,
+    whenYouMustMove: {
+      renewalDate: "2026-01-01",
+      cancellationDeadline: "2025-11-17",
+      daysLeft: 7,
+      passedDeadline: false,
+      explanation: "7 day(s) until the cancellation deadline.",
+    },
+    whereYouCanPush: [
+      { leverType: "Volume", rationale: "This line orders 120,000 — cite the order size.", citationKeys: ["fact:volume"] },
+    ],
+    targets: [
+      {
+        description: "Premium DBU",
+        openingTarget: 1500,
+        acceptableRangeLow: 1500,
+        acceptableRangeHigh: 1800,
+        walkAwayThreshold: 2100,
+        explanation: "Recommended target range [1500, 1800]. representative (source: A; n=214; as of 2026-01-01)",
+      },
+    ],
+    nextSteps: [{ label: "Notify Salesforce of intent to renegotiate", dueHint: "this week" }],
+    openWeakFacts: [],
+    ...overrides,
+  };
+}
+
+const strategyCalled = (pack: ContractStrategyBody | null) => ({ called: true as const, pack });
+const strategyNotCalled = { called: false as const };
 
 function contractBody(overrides: Partial<Contract360Body["tabs"]> = {}): Contract360Body {
   return {
@@ -285,50 +364,134 @@ describe("answers band", () => {
     expect(buildRecommendation(header(), []).rationale).toMatch(/did not appear in the current renewal pipeline yet/i);
   });
 
-  it("Where you can save renders the pipeline's own figures, or honest 'not yet' copy", () => {
-    const unknown = buildAnswers(header(), renewalTab, [renewalItem()], new Date("2025-11-10T00:00:00Z"));
-    expect(unknown.save).toEqual({ estimate: "Not yet available", lever: LEVER_NOT_YET_AVAILABLE });
-
-    const uplift = renewalItem();
-    uplift.insightCard.recommendations.annualUpliftPercent = 7;
-    expect(buildAnswers(header(), renewalTab, [uplift]).save.lever).toBe("A 7% uplift clause applies at renewal.");
-
-    const known = renewalItem();
-    known.insightCard.recommendations.potentialSavingsRange = "CHF 80–120k / yr";
-    known.insightCard.recommendations.marketPosition = "9% above market";
-    expect(buildAnswers(header(), renewalTab, [known]).save).toEqual({ estimate: "CHF 80–120k / yr", lever: "9% above market" });
+  it("state (i): a figure and its lever map from the strategy pack, never from the pipeline uplift chain", () => {
+    const pack = strategyPack({
+      targets: [
+        {
+          description: "Premium DBU",
+          openingTarget: 1500,
+          acceptableRangeLow: null,
+          acceptableRangeHigh: null,
+          walkAwayThreshold: null,
+          explanation: "Opening target 1500 from this line's own unit price.",
+        },
+      ],
+    });
+    const save = buildAnswers(header(), renewalTab, [renewalItem()], strategyCalled(pack)).save;
+    expect(save).toEqual({ estimate: "1,500", lever: "This line orders 120,000 — cite the order size." });
   });
 
-  it("When you must move: deadline, days left, urgency, term end and auto-renewal", () => {
-    const soon = buildAnswers(header(), renewalTab, [], new Date("2025-11-10T00:00:00Z")).move;
+  it("state (ii): a representative band renders with adapter and sample size on the detail line, never bare", () => {
+    const save = buildAnswers(header(), renewalTab, [], strategyCalled(strategyPack())).save;
+    expect(save.estimate).toBe("1,500–1,800");
+    expect(save.lever).toBe("representative · adapter A, n = 214 · as of 2026-01-01");
+    expect(save.lever).toMatch(/adapter .+ n = /);
+    expect(save.lever.toLowerCase()).toContain("representative");
+  });
+
+  it("state (iii): a missing end date names the way to get the fact and never says Not determined", () => {
+    const pack = strategyPack({
+      whenYouMustMove: {
+        renewalDate: null,
+        cancellationDeadline: null,
+        daysLeft: null,
+        passedDeadline: false,
+        explanation: "No renewal date or cancellation deadline could be determined for this contract.",
+      },
+    });
+    const move = buildAnswers(header({ cancellationDeadline: null, endDate: null }), renewalTab, [], strategyCalled(pack)).move;
+    expect(move.deadline).toBe(ADD_THE_END_DATE);
+    expect(move.deadlineHref).toBe(`/contracts/${CONTRACT_ID}/review`);
+    expect(move.detail).toMatch(/Add it on Review/i);
+    expect(JSON.stringify(move)).not.toMatch(/Not determined/);
+  });
+
+  it("the two constants appear only when the strategy source was called and returned nothing — not when it was never called", () => {
+    const neverCalled = buildAnswers(header(), renewalTab, [renewalItem()], strategyNotCalled);
+    expect(neverCalled.save.estimate).not.toBe(SAVINGS_NOT_YET_AVAILABLE);
+    expect(neverCalled.save.lever).not.toBe(LEVER_NOT_YET_AVAILABLE);
+    expect(neverCalled.save).toEqual({ estimate: "", lever: "" });
+
+    const calledEmpty = buildAnswers(
+      header(),
+      renewalTab,
+      [renewalItem()],
+      strategyCalled(
+        strategyPack({
+          whereYouCanPush: [],
+          targets: [
+            {
+              description: "Premium DBU",
+              openingTarget: null,
+              acceptableRangeLow: null,
+              acceptableRangeHigh: null,
+              walkAwayThreshold: null,
+              explanation: "insufficient market data for this line.",
+            },
+          ],
+        }),
+      ),
+    );
+    expect(calledEmpty.save).toEqual({ estimate: SAVINGS_NOT_YET_AVAILABLE, lever: LEVER_NOT_YET_AVAILABLE });
+
+    const calledFailed = buildAnswers(header(), renewalTab, [renewalItem()], strategyCalled(null));
+    expect(calledFailed.save).toEqual({ estimate: SAVINGS_NOT_YET_AVAILABLE, lever: LEVER_NOT_YET_AVAILABLE });
+  });
+
+  it("When you must move maps the pack's notice deadline, days left and auto-renewal", () => {
+    const soon = buildAnswers(header(), renewalTab, [], strategyCalled(strategyPack())).move;
     expect(soon.deadline).toBe("17/11/2025");
+    expect(soon.deadlineHref).toBeNull();
     expect(soon.cancelDays).toBe(7);
     expect(soon.isUrgent).toBe(true);
     expect(soon.detail).toBe("in 7 days — last day to give notice. Term ends 01/01/2026 and auto-renews for 12 months.");
 
-    const far = buildAnswers(header({ cancellationDeadline: "2026-06-01", endDate: "2026-09-01" }), { ...renewalTab, renewalTermMonths: null }, [], new Date("2025-11-10T00:00:00Z")).move;
+    const farPack = strategyPack({
+      whenYouMustMove: {
+        renewalDate: "2026-09-01",
+        cancellationDeadline: "2026-06-01",
+        daysLeft: 203,
+        passedDeadline: false,
+        explanation: "203 day(s) until the cancellation deadline.",
+      },
+    });
+    const far = buildAnswers(
+      header({ cancellationDeadline: "2026-06-01", endDate: "2026-09-01" }),
+      { ...renewalTab, renewalTermMonths: null },
+      [],
+      strategyCalled(farPack),
+    ).move;
     expect(far.isUrgent).toBe(false);
     expect(far.detail).toBe("in 203 days — last day to give notice. Term ends 01/09/2026 and auto-renews.");
 
-    const past = buildAnswers(header({ autoRenewal: false }), { ...renewalTab, autoRenewal: false }, [], new Date("2025-12-01T00:00:00Z")).move;
+    const pastPack = strategyPack({
+      whenYouMustMove: {
+        renewalDate: "2026-01-01",
+        cancellationDeadline: "2025-11-17",
+        daysLeft: -14,
+        passedDeadline: true,
+        explanation: "The cancellation deadline passed 14 day(s) ago — stated as passed, not hidden (AC-4).",
+      },
+    });
+    const past = buildAnswers(
+      header({ autoRenewal: false }),
+      { ...renewalTab, autoRenewal: false },
+      [],
+      strategyCalled(pastPack),
+    ).move;
     expect(past.detail).toBe("14 days ago — the notice window has closed. Term ends 01/01/2026.");
-
-    const none = buildAnswers(header({ cancellationDeadline: null, endDate: null }), renewalTab, []).move;
-    expect(none.deadline).toBe("Not determined");
-    expect(none.cancelDays).toBeNull();
-    expect(none.isUrgent).toBe(false);
-    expect(none.detail).toBe("No notice deadline determined. Term end not recorded and auto-renews for 12 months.");
+    expect(past.isUrgent).toBe(false);
   });
 
-  it("the tracker steps and meta follow the real supplier and deadline", () => {
+  it("the tracker steps and meta follow the real supplier and mapped deadline", () => {
     expect(buildNegotiationSteps("Salesforce", "17/11/2025")).toEqual([
       { key: "Notify", label: "Notify Salesforce of intent to renegotiate", due: "this week" },
       { key: "RequestRevisedPricing", label: "Request revised pricing and licence mix", due: "+10 days" },
       { key: "CounterWithMarketBenchmark", label: "Counter with the market benchmark", due: "+20 days" },
       { key: "SignOrSendNonRenewalNotice", label: "Sign, or send non-renewal notice", due: "by 17/11/2025" },
     ]);
-    const answers = buildAnswers(header(), renewalTab, [], new Date("2025-11-10T00:00:00Z"));
-    expect(formatTrackerMeta(answers.save, answers.move)).toBe("target Not yet available · close by 17/11/2025");
+    const answers = buildAnswers(header(), renewalTab, [], strategyCalled(strategyPack()));
+    expect(formatTrackerMeta(answers.save, answers.move)).toBe("target 1,500–1,800 · close by 17/11/2025");
   });
 
   it("ticksFromServer keeps named keys, ignores unknown names, and treats a missing key as unticked", () => {
@@ -343,34 +506,87 @@ describe("answers band", () => {
 });
 
 describe("why — the clauses behind it", () => {
-  it("getClauseRiskTag emphasises High/Critical only, text first; null without a level", () => {
-    expect(getClauseRiskTag("High")).toEqual({ variant: "accent", label: "High" });
-    expect(getClauseRiskTag("Critical")).toEqual({ variant: "accent", label: "Critical" });
-    expect(getClauseRiskTag("Medium")).toEqual({ variant: "neutral", label: "Medium" });
+  it("getClauseRiskTag returns the three leverage labels; High/Critical stay accent; null stays null", () => {
+    expect(getClauseRiskTag("High")).toEqual({ variant: "accent", label: LEVERAGE_PUSH_TO_CHANGE });
+    expect(getClauseRiskTag("Critical")).toEqual({ variant: "accent", label: LEVERAGE_PUSH_TO_CHANGE });
+    expect(getClauseRiskTag("Medium")).toEqual({ variant: "neutral", label: LEVERAGE_WORTH_RAISING });
+    expect(getClauseRiskTag("Low")).toEqual({ variant: "neutral", label: LEVERAGE_STANDARD_TERMS });
     expect(getClauseRiskTag(null)).toBeNull();
     expect(getClauseRiskTag("  ")).toBeNull();
+    expect(getClauseRiskTag("Unknown")).toBeNull();
   });
 
-  it("buildClauseRows carries type · normalised · source · risk · confidence", () => {
-    const [row] = buildClauseRows([clause()]);
+  it("the raw ContractRiskLevel enum never becomes a label", () => {
+    expect(getClauseRiskTag("High")?.label).not.toBe("High");
+    expect(getClauseRiskTag("Medium")?.label).not.toBe("Medium");
+    expect(getClauseRiskTag("Low")?.label).not.toBe("Low");
+    expect(getClauseRiskTag("Critical")?.label).not.toBe("Critical");
+  });
+
+  it("leverageWhy is null when risk was never determined", () => {
+    expect(leverageWhy("High")).toContain("costs money");
+    expect(leverageWhy("Medium")).toContain("Worth raising");
+    expect(leverageWhy("Low")).toContain("Usual language");
+    expect(leverageWhy(null)).toBeNull();
+    expect(LEVERAGE_LEGEND).toBe("Push to change · Worth raising · Standard terms");
+  });
+
+  it("buildClauseRows carries type · accepted value · leverage · why · viewer href; unofficialized values stay as a dashed row", () => {
+    const documents: Contract360DocumentBody[] = [
+      { documentId: "doc-1", fileName: "MSA.pdf", mimeType: "application/pdf", documentType: "Msa", processingStatus: "Completed", createdAt: "x" },
+    ];
+    const [row] = buildClauseRows([clause()], documents, AUTO_ACCEPT_THRESHOLD);
     expect(row).toEqual({
       clauseId: "cl-1",
       type: "Liability cap",
-      normalized: "12 months fees",
-      source: "p.27 · §17.2",
-      risk: { variant: "neutral", label: "Medium" },
-      confidencePct: 78,
+      normalized: UNOFFICIALIZED_PLACEHOLDER,
+      risk: { variant: "neutral", label: LEVERAGE_WORTH_RAISING },
+      why: "Worth raising in negotiation.",
+      viewerHref: "/documents/doc-1/viewer?page=27&clause=cl-1",
     });
-    expect(buildClauseRows([clause({ normalizedValue: null, sourceDocumentId: null })])[0]).toMatchObject({
+
+    const accepted = buildClauseRows([clause({ confidence: 0.97 })], documents)[0];
+    expect(accepted.normalized).toBe("12 months fees");
+    expect(accepted.viewerHref).toBe("/documents/doc-1/viewer?page=27&clause=cl-1");
+
+    expect(buildClauseRows([clause({ normalizedValue: null, sourceDocumentId: null, confidence: 0.97 })], documents)[0]).toMatchObject({
       normalized: "Liability is capped at 12 months fees, save for confidentiality.",
-      source: null,
+      viewerHref: null,
     });
+    expect(buildClauseRows([clause({ sourcePage: null, confidence: 0.97 })], documents)[0].viewerHref).toBeNull();
   });
 
-  it("buildClauseEvidence marks the normalised value inside the raw text, else the whole wording, and cites file · page · §", () => {
+  it("clauseViewerHref needs both a family document and a source page", () => {
+    const documents: Contract360DocumentBody[] = [
+      { documentId: "doc-1", fileName: "MSA.pdf", mimeType: "application/pdf", documentType: "Msa", processingStatus: "Completed", createdAt: "x" },
+    ];
+    expect(clauseViewerHref(clause(), documents)).toBe("/documents/doc-1/viewer?page=27&clause=cl-1");
+    expect(clauseViewerHref(clause({ sourceDocumentId: "missing" }), documents)).toBeNull();
+    expect(clauseViewerHref(clause({ sourcePage: null }), documents)).toBeNull();
+  });
+
+  it("the short reference is capped at 60 characters and the untruncated quote never reaches the citation", () => {
+    const longSpan = `§${"A".repeat(80)}`;
+    const documents: Contract360DocumentBody[] = [
+      { documentId: "doc-1", fileName: "MSA.pdf", mimeType: "application/pdf", documentType: "Msa", processingStatus: "Completed", createdAt: "x" },
+    ];
+    const short = formatShortReference({ sourcePage: 27, sourceSpan: longSpan });
+    expect(short).not.toBeNull();
+    expect(short!.length).toBeLessThanOrEqual("p.27 · ".length + 60);
+    expect(short).toContain("…");
+    expect(short).not.toContain("A".repeat(80));
+
+    const evidence = buildClauseEvidence(clause({ sourceSpan: longSpan }), documents);
+    expect(evidence.citation).toContain("p.27");
+    expect(evidence.citation).toContain("…");
+    expect(evidence.citation).not.toContain("A".repeat(80));
+    expect(evidence.quote).toBe("12 months fees");
+  });
+
+  it("buildClauseEvidence marks the normalised value inside the raw text, else the whole wording, and cites file · p.N · §", () => {
     const documents: Contract360DocumentBody[] = [{ documentId: "doc-1", fileName: "MSA.pdf", mimeType: "application/pdf", documentType: "Msa", processingStatus: "Completed", createdAt: "x" }];
     expect(buildClauseEvidence(clause(), documents)).toEqual({
-      citation: "MSA.pdf · page 27 · §17.2",
+      citation: "MSA.pdf · p.27 · §17.2",
       before: "Liability is capped at ",
       quote: "12 months fees",
       after: ", save for confidentiality.",
@@ -399,11 +615,12 @@ describe("details ▾", () => {
   it("labels", () => {
     expect(DETAILS_LABEL_CLOSED).toBe("All terms, documents and open facts ▾");
     expect(DETAILS_LABEL_OPEN).toBe("Hide details");
-    expect(NO_ATTENTION_MESSAGE).toBe("None — every fact is above 95% or signed off by you.");
+    expect(formatReviewCountLine(2)).toBe("2 facts still need you — Review all →");
+    expect(formatReviewCountLine(1)).toBe("1 facts still need you — Review all →");
   });
 
-  it("buildKeyTerms reads the real contract-level fields, with no borrowed source or confidence", () => {
-    const rows = buildKeyTerms(contractBody());
+  it("buildKeyTerms reads the real contract-level fields; unofficialized values keep the row as an em-dash", () => {
+    const rows = buildKeyTerms(contractBody(), acceptedEvidence());
     const byKey = Object.fromEntries(rows.map((row) => [row.key, row.value]));
     expect(byKey).toMatchObject({
       annualSpend: "CHF 500,000",
@@ -417,17 +634,32 @@ describe("details ▾", () => {
       effectiveDate: "01/01/2025",
       lineItemCount: "1",
     });
-    expect(rows.every((row) => row.source === null && row.confidencePct === null)).toBe(true);
+    expect(rows.every((row) => row.source === null)).toBe(true);
     expect(rows.some((row) => row.key === "parentContractId")).toBe(false);
+    expect(rows).toHaveLength(10);
+
+    const mixed = buildKeyTerms(contractBody(), [
+      ...acceptedEvidence().filter((row) => row.fieldName !== "annualSpend"),
+      fieldEvidence({ fieldName: "annualSpend", decision: "review_required", confidence: 0.71 }),
+    ]);
+    expect(mixed.find((row) => row.key === "annualSpend")?.value).toBe(UNOFFICIALIZED_PLACEHOLDER);
+    expect(mixed.find((row) => row.key === "totalContractValue")?.value).toBe("CHF 1,500,000");
+    expect(mixed).toHaveLength(10);
   });
 
-  it("extracted rows carry real confidence (as a percentage) and a formatted source", () => {
+  it("extracted rows keep unofficialized values as an em-dash and never drop a row", () => {
     const [productRow] = buildProductsRows([product()]);
-    expect(productRow).toMatchObject({ term: "Premium DBU — committed", confidencePct: 97, source: "p.9 · §6.2" });
+    expect(productRow).toMatchObject({ term: "Premium DBU — committed", value: expect.stringContaining("120,000"), source: "p.9 · §6.2" });
     expect(buildProductsRows([product({ sourceSpan: null, sourcePage: null })])[0].source).toBe("Linked document");
     expect(buildProductsRows([product({ sourceDocumentId: null })])[0].source).toBeNull();
 
-    expect(buildObligationsRows([obligation()])[0].value).toBe("Annual true-up of committed DBU · due 15/01/2026 · high");
+    const unofficial = buildProductsRows([product({ lineItemId: "p-low", confidence: 0.71 })]);
+    expect(unofficial).toHaveLength(1);
+    expect(unofficial[0].value).toBe(UNOFFICIALIZED_PLACEHOLDER);
+    expect(unofficial[0].term).toBe("Premium DBU — committed");
+
+    expect(buildObligationsRows([obligation({ confidence: 0.97 })])[0].value).toBe("Annual true-up of committed DBU · due 15/01/2026 · high");
+    expect(buildObligationsRows([obligation()])[0].value).toBe(UNOFFICIALIZED_PLACEHOLDER);
     expect(buildRisksRows([risk({ severity: "Critical" })])[0].value).toContain("Critical risk");
   });
 
@@ -449,19 +681,16 @@ describe("details ▾", () => {
     expect(formatPriorityFact(null)).toBe("priority not yet available");
   });
 
-  it("computeNeedsAttention lists every sub-95% fact with its value, lowest confidence first, skipping accepted and unscored ones", () => {
-    const tabs = contractBody({
-      products: [product({ lineItemId: "p-accepted", confidence: 0.99 }), product({ lineItemId: "p-flagged", confidence: 0.88, description: "SQL Serverless DBU" })],
-      clauses: [clause({ clauseId: "c-review", confidence: 0.71, clauseType: "Termination for convenience", normalizedValue: "Not permitted during the term." })],
-      obligations: [obligation({ obligationId: "o-no-confidence", confidence: null })],
-    }).tabs;
-
-    const attention = computeNeedsAttention(tabs);
-    expect(attention.map((a) => a.term)).toEqual(["Termination for convenience", "SQL Serverless DBU"]);
-    expect(attention[0].value).toBe("Not permitted during the term.");
-    expect(attention[0].confidencePct).toBe(71);
-    expect(attention[0].tag.variant).toBe("outline");
-    expect(attention[1].tag.variant).toBe("accent");
-    expect(attention.some((a) => a.key === "obligation-o-no-confidence")).toBe(false);
+  it("computeNeedsAttention counts review_required decisions, not a tag variant or a percentage", () => {
+    const evidence = [
+      fieldEvidence({ fieldName: "annualSpend", decision: "auto_accepted", confidence: 0.71 }),
+      fieldEvidence({ fieldName: "paymentTerms", decision: "human_accepted", confidence: 0.4 }),
+      fieldEvidence({ fieldName: "endDate", decision: "review_required", confidence: 0.99 }),
+      fieldEvidence({ fieldName: "governingLaw", decision: "review_required", confidence: 0.2 }),
+    ];
+    expect(computeNeedsAttention(evidence)).toBe(2);
+    expect(computeNeedsAttention(evidence.filter((row) => row.decision !== "review_required"))).toBe(0);
+    expect(computeNeedsAttention([])).toBe(0);
+    expect(formatReviewCountLine(2)).toBe("2 facts still need you — Review all →");
   });
 });

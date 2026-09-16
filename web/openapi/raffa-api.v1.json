@@ -1284,6 +1284,17 @@
                     "createdAt": {
                       "type": "string",
                       "format": "date-time"
+                    },
+                    "pageCount": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "description": "Persisted document.page_count; null until the Worker has parsed the file. 1-based page count the viewer uses with GET /api/documents/{id}/preview?page=n."
+                    },
+                    "isPageCountLimited": {
+                      "type": "boolean",
+                      "description": "True when pageCount exceeds the OCR budget and only MaxPagesPerDocument pages were rendered."
                     }
                   },
                   "required": [
@@ -1293,7 +1304,9 @@
                     "mimeType",
                     "documentType",
                     "processingStatus",
-                    "createdAt"
+                    "createdAt",
+                    "pageCount",
+                    "isPageCountLimited"
                   ]
                 }
               }
@@ -1355,8 +1368,8 @@
     "/api/documents/{id}/preview": {
       "get": {
         "operationId": "getDocumentPreview",
-        "summary": "First-page preview PNG (or an honest placeholder for DOCX/XLSX), tenant-scoped.",
-        "description": "Task E13/F04/US01/T02, documented ahead of that backend task landing in this worktree -- see this document's own top-level provenance note; shape from `inputs/requirements.md` R-DOC-08/§6. Always `image/png` on 200 regardless of source document type (ADR-009 \"never a raw blob URL\" -- always proxied through this endpoint, never a Storage URL). The web client (`getDocumentPreviewUrl`) fetches this with the `X-Tenant-Id` header (a plain `<img src>` cannot carry a custom header) and turns the response into a browser object URL -- see `src/api/client.ts`'s own doc comment on that method.",
+        "summary": "Page preview PNG (or an honest placeholder for DOCX/XLSX), tenant-scoped.",
+        "description": "Task E13/F04/US01/T02, documented ahead of that backend task landing in this worktree -- see this document's own top-level provenance note; shape from `inputs/requirements.md` R-DOC-08/§6. Always `image/png` on 200 regardless of source document type (ADR-009 \"never a raw blob URL\" -- always proxied through this endpoint, never a Storage URL). Optional 1-based `page` query (NW-26 / E22/F02): absent means page 1; out of range is 404. The web client (`getDocumentPreviewUrl`) fetches this with the `X-Tenant-Id` header (a plain `<img src>` cannot carry a custom header) and turns the response into a browser object URL -- see `src/api/client.ts`'s own doc comment on that method.",
         "parameters": [
           {
             "name": "X-Tenant-Id",
@@ -1376,6 +1389,16 @@
               "format": "uuid"
             },
             "description": "Document.Id."
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "description": "1-based page to rasterise. Absent means page 1. Out of range is 404, never a silent page 1."
           }
         ],
         "responses": {
@@ -2640,9 +2663,45 @@
                           "type": "array",
                           "items": {
                             "type": "object",
-                            "properties": {}
+                            "required": [
+                              "metric",
+                              "status"
+                            ],
+                            "properties": {
+                              "metric": {
+                                "type": "string"
+                              },
+                              "status": {
+                                "type": "string"
+                              },
+                              "position": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "adapterName": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "sampleSize": {
+                                "type": [
+                                  "integer",
+                                  "null"
+                                ]
+                              },
+                              "asOf": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ],
+                                "format": "date"
+                              }
+                            }
                           },
-                          "description": "Always empty this wave -- Raffa.Benchmark has no provider adapter until R3 (Contract360BenchmarkEntry has no members yet)."
+                          "description": "Contract360BenchmarkEntry (Metric, Status, Position?, AdapterName?, SampleSize?, AsOf?) as shipped by E21/F01/US01/T01."
                         },
                         "renewal": {
                           "type": "object",
@@ -2690,9 +2749,25 @@
                           "type": "array",
                           "items": {
                             "type": "object",
-                            "properties": {}
+                            "required": [
+                              "occurredAt",
+                              "action",
+                              "actorLabel"
+                            ],
+                            "properties": {
+                              "occurredAt": {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              "action": {
+                                "type": "string"
+                              },
+                              "actorLabel": {
+                                "type": "string"
+                              }
+                            }
                           },
-                          "description": "Always empty this wave -- no activity/timeline source is wired yet (R3/R4)."
+                          "description": "Contract360ActivityEntry (OccurredAt, Action, ActorLabel) as shipped by E21/F01/US01/T01."
                         }
                       }
                     }
@@ -2923,7 +2998,7 @@
       "get": {
         "operationId": "getContractEvidence",
         "summary": "Latest extraction evidence per contract field: page, span, confidence, quoted passage, model.",
-        "description": "Maps to GetContractEvidenceAsync in backend/src/Raffa.Api/ContractsEndpointExtensions.cs, backed by Raffa.Documents.Contracts.Application.ContractEvidenceQueryService. Exposes the ExtractionEvidence trail the staged extraction pipeline has written since task E02/F01/US02/T01 (product spec §7.3 \"every extracted fact carries source span + confidence\") -- one entry per field, the newest evidence row winning, alphabetical by fieldName. `fieldName` is the same key PATCH /api/contracts/{id} accepts (currency, annualSpend, supplier, ...), plus `type` for the classification verdict (no page/span: it reads the whole document). `passage` is the sentence of the indexed page text around `sourceSpan` with the span's offsets, present only when the page text still contains the span -- never an approximated context. The review screen's evidence pane and per-field confidence tags read this. A contract that exists but has no evidence returns 200 with an empty array.",
+        "description": "Maps to GetContractEvidenceAsync in backend/src/Raffa.Api/ContractsEndpointExtensions.cs, backed by Raffa.Documents.Contracts.Application.ContractEvidenceQueryService. Exposes the ExtractionEvidence trail the staged extraction pipeline has written since task E02/F01/US02/T01 (product spec §7.3 \"every extracted fact carries source span + confidence\") -- one entry per field, the newest evidence row winning, alphabetical by fieldName. `fieldName` is the same key PATCH /api/contracts/{id} accepts (currency, annualSpend, supplier, ...), plus `type` for the classification verdict (no page/span: it reads the whole document). `passage` is the sentence of the indexed page text around `sourceSpan` with the span's offsets, present only when the page text still contains the span -- never an approximated context. Each field carries a server-computed `decision` (`auto_accepted` | `human_accepted` | `review_required`). `autoAcceptThreshold` is emitted once per response so the web never hardcodes 90. The review screen's evidence pane and per-field confidence tags read this. A contract that exists but has no evidence returns 200 with `fields: []`.",
         "parameters": [
           {
             "name": "X-Tenant-Id",
@@ -2947,17 +3022,29 @@
         ],
         "responses": {
           "200": {
-            "description": "Contract found for this tenant (possibly with zero evidence rows).",
+            "description": "Contract found for this tenant (possibly with zero evidence rows). autoAcceptThreshold is emitted once; fields may be empty.",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
+                  "type": "object",
+                  "required": [
+                    "autoAcceptThreshold",
+                    "fields"
+                  ],
+                  "properties": {
+                    "autoAcceptThreshold": {
+                      "type": "number",
+                      "description": "The raw confidence bar the server applied (0.90). Once per response so the web never hardcodes 90."
+                    },
+                    "fields": {
+                      "type": "array",
+                      "items": {
                     "type": "object",
                     "required": [
                       "fieldName",
                       "value",
                       "confidence",
+                      "decision",
                       "sourcePage",
                       "sourceSpan",
                       "sourceDocumentId",
@@ -2985,6 +3072,15 @@
                           "null"
                         ],
                         "description": "0..1 as the model reported it; null when it reported none."
+                      },
+                      "decision": {
+                        "type": "string",
+                        "enum": [
+                          "auto_accepted",
+                          "human_accepted",
+                          "review_required"
+                        ],
+                        "description": "Server-computed acceptance of this field. Never supplied by a caller."
                       },
                       "sourcePage": {
                         "type": [
@@ -3045,6 +3141,8 @@
                       "extractedAt": {
                         "type": "string",
                         "format": "date-time"
+                      }
+                    }
                       }
                     }
                   }
@@ -4935,7 +5033,7 @@
       "get": {
         "operationId": "getSavingsKpis",
         "summary": "Procurement-homepage KPI row: spend/contracts/renewals plus the three savings buckets.",
-        "description": "Maps to GetSavingsKpisAsync in backend/src/Raffa.Api/SavingsKpiEndpointExtensions.cs (task E04/F03/US01/T01, us-01-savings-kpis AC-1; product spec section 10.1's six-row KPI table). Task E08/F02/US01/T01 (savings-home, ADR-020 screen 9) adds this operation -- the fifth web epic to extend this document (see this document's own info.description 'repeating chore' provenance paragraph). 'Annual spend analyzed'/'Contracts analyzed' come from Raffa.Documents.Contracts (PortfolioQueryService.GetAnalysisSummaryAsync); 'Savings identified'/'Savings in progress'/'Savings realized' come from Raffa.Savings (SavingsKpiQueryService.GetSummaryAsync); 'Upcoming renewals' reuses GET /api/renewals's own auto-renewing candidate query rather than rebuilding the full pipeline just to count it (see that endpoint's own C# doc comment for the full reasoning) -- this operation never calls Raffa.Benchmark directly, so a benchmark-provider outage cannot surface as a distinct HTTP status here; the web client's own 'benchmark provider unreachable' Home-screen state (screens.md #9) is this call failing for any reason, not a status code this endpoint reserves for that cause specifically. Each spend/savings figure is grouped by currency, never summed across currencies (this codebase has no currency-conversion service) -- an empty array is the honest zero-contracts/zero-opportunities answer, never a fabricated zero-currency row.",
+        "description": "Maps to GetSavingsKpisAsync in backend/src/Raffa.Api/SavingsKpiEndpointExtensions.cs (task E04/F03/US01/T01, us-01-savings-kpis AC-1; product spec section 10.1's six-row KPI table; task E20/F01/US01/T01, NW-72, verified-money read). Task E08/F02/US01/T01 (savings-home, ADR-020 screen 9) adds this operation -- the fifth web epic to extend this document (see this document's own info.description 'repeating chore' provenance paragraph). 'Annual spend analyzed'/'Contracts analyzed' come from Raffa.Documents.Contracts (PortfolioQueryService.GetAnalysisSummaryAsync); 'Savings identified'/'Savings in progress' come from Raffa.Savings opportunity estimate ranges (SavingsKpiQueryService.GetSummaryAsync); 'Savings realized' is verified money grouped by currency from RealizedSavings rows (currency/amount/count), never the estimate band; 'Upcoming renewals' reuses GET /api/renewals's own auto-renewing candidate query rather than rebuilding the full pipeline just to count it (see that endpoint's own C# doc comment for the full reasoning) -- this operation never calls Raffa.Benchmark directly, so a benchmark-provider outage cannot surface as a distinct HTTP status here; the web client's own 'benchmark provider unreachable' Home-screen state (screens.md #9) is this call failing for any reason, not a status code this endpoint reserves for that cause specifically. Each spend/savings figure is grouped by currency, never summed across currencies (this codebase has no currency-conversion service) -- an empty array is the honest zero-contracts/zero-opportunities answer, never a fabricated zero-currency row.",
         "parameters": [
           {
             "name": "X-Tenant-Id",
@@ -5054,26 +5152,18 @@
                         "type": "object",
                         "required": [
                           "currency",
-                          "low",
-                          "high",
-                          "count",
-                          "averageConfidence"
+                          "amount",
+                          "count"
                         ],
                         "properties": {
                           "currency": {
                             "type": "string"
                           },
-                          "low": {
-                            "type": "number"
-                          },
-                          "high": {
+                          "amount": {
                             "type": "number"
                           },
                           "count": {
                             "type": "integer"
-                          },
-                          "averageConfidence": {
-                            "type": "number"
                           }
                         }
                       }

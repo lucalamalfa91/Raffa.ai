@@ -57,6 +57,9 @@ public sealed class DocumentsContractsMigrationScriptTests : IAsyncLifetime
     {
         var script = await ReadScriptAsync();
         Assert.Contains("CREATE EXTENSION IF NOT EXISTS vector", script, StringComparison.Ordinal);
+        Assert.Contains("ADD decision character varying", script, StringComparison.Ordinal);
+        Assert.Contains("ADD decided_at timestamp with time zone", script, StringComparison.Ordinal);
+        Assert.Contains("AddExtractionEvidenceDecision", script, StringComparison.Ordinal);
 
         await using var connection = new NpgsqlConnection(_postgres.GetConnectionString());
         await connection.OpenAsync();

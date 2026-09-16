@@ -19,9 +19,10 @@ namespace Raffa.Documents.Contracts.Application.Preview;
 /// </para>
 ///
 /// <para>
-/// A real first-page raster of a PDF needs a PDF rasteriser and is therefore NOT done here — see
-/// <see cref="IDocumentPreviewRenderer"/> for the seam a pdfium/Skia-backed renderer plugs into
-/// inside <c>Raffa.Api</c> without any caller changing.
+/// A real per-page raster of a PDF is produced by
+/// <see cref="PdfPageDocumentPreviewRenderer"/> (task E22/F02/US01/T01), which uses the
+/// hand-rolled <see cref="BgraToPng"/> helper below to convert the pdfium BGRA output into a
+/// compliant PNG without introducing a second imaging dependency.
 /// </para>
 /// </summary>
 public sealed class PngImage
@@ -101,6 +102,36 @@ public sealed class PngImage
     /// <summary>Width in pixels <see cref="DrawText"/> will occupy — for centring a label.</summary>
     public static int MeasureText(string text, int scale) =>
         text.Length == 0 ? 0 : (((BitmapFont5x7.GlyphWidth + 1) * text.Length) - 1) * scale;
+
+    /// <summary>
+    /// Converts a raw BGRA pixel buffer (as produced by Docnet.Core / pdfium) into a PNG byte
+    /// array without allocating a second imaging library (task E22/F02/US01/T01, ADR-029 clause 4).
+    /// The BGRA → RGB channel swap happens inline; the PNG is encoded by the same hand-rolled
+    /// deflate path <see cref="ToPng"/> uses, keeping the module's managed-only footprint.
+    /// </summary>
+    /// <param name="width">Pixel width of the rendered page.</param>
+    /// <param name="height">Pixel height of the rendered page.</param>
+    /// <param name="bgra">
+    /// Raw pdfium BGRA output (4 bytes per pixel, row-major). The array is consumed and then
+    /// released by the caller; it must not be held after this call returns.
+    /// </param>
+    /// <returns>PNG-encoded bytes, ready to store or stream.</returns>
+    internal static byte[] BgraToPng(int width, int height, byte[] bgra)
+    {
+        // Convert BGRA → RGB in a new buffer, then reuse ToPng() infrastructure.
+        var rgb = new byte[width * height * 3];
+        for (int i = 0, j = 0; i < bgra.Length; i += 4, j += 3)
+        {
+            rgb[j]     = bgra[i + 2]; // R ← B channel index 2 in BGRA
+            rgb[j + 1] = bgra[i + 1]; // G ← G channel index 1 in BGRA
+            rgb[j + 2] = bgra[i];     // B ← B channel index 0 in BGRA
+        }
+
+        // Wrap the converted buffer as a PngImage and encode — avoids duplicating the PNG writer.
+        var img = new PngImage(width, height, default);
+        Array.Copy(rgb, img._pixels, rgb.Length);
+        return img.ToPng();
+    }
 
     /// <summary>Encodes the raster as a PNG (8-bit RGB, no interlacing, filter type 0).</summary>
     public byte[] ToPng()

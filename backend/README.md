@@ -1,10 +1,10 @@
 # Raffa backend
 
 .NET 10 modular monolith + background worker (ADR-002). One class-library
-project per bounded context, a shared kernel, and two thin hosts. Domain
-modules never reference a provider SDK or another domain's internals —
-`Raffa.ArchitectureTests` fails the build if a project reference points
-the wrong way.
+project per bounded context, a shared kernel, and three composition roots
+(`Raffa.Api`, `Raffa.Worker`, `Raffa.Tools`). Domain modules never reference
+a provider SDK or another domain's internals — `Raffa.ArchitectureTests`
+fails the build if a project reference points the wrong way.
 
 Honours ADR-003 (Postgres + pgvector, EF Core), ADR-009 (RLS as the
 non-bypassable backstop), and ADR-005 (API + worker as Container Apps).
@@ -18,6 +18,7 @@ backend/
   src/
     Raffa.Api/                 # thin HTTP composition root (port 8080 in containers)
     Raffa.Worker/              # thin worker composition root
+    Raffa.Tools/               # operator console (wave w17, NW-73, task E20/F02/US02/T01): third composition root, no table, no endpoint, no business rule; `dotnet run` on the GitHub runner via reprocess-tenant-documents.yml — see "Bulk whole-tenant reprocess" below
     Raffa.SharedKernel/        # TenantId, EntityId, Result<T>, IClock, IAuditWriter, IDocumentStorage
     Raffa.Identity.Workspace/  # workspace, membership, roles (live)
     Raffa.Documents.Contracts/ # upload + admission gate (task E13/F04/US01/T01), metadata, hybrid OCR pre-pass, staged extraction, portfolio list, Contract 360, contract correction + history (live)
@@ -209,20 +210,20 @@ request.
 | POST | `/api/documents` | multipart `file` + `X-Tenant-Id` header. **Wave w15 (task E16/F02/US03/T01, ADR-027 §D1): the request returns at the store.** Size → **413** and format by extension *and* magic bytes → **415** are still refused in-request (they need no AI); everything else is `201 { id, contractId: null, fileName, mimeType, processingStatus: "Uploaded", createdAt }` the moment the bytes are durable in blob storage and a `document` row plus a queued `extraction_job` exist — **no parse, no classification and no AI-gateway call on the request path**. The Worker (`Raffa.Worker`, ADR-027 §D2/§D3) claims the job from the Service Bus topic and runs the admission gate (parse/OCR → readable-text floor → `classify`) and then `DocumentProcessingPipeline` (staged extraction → RAG indexing), reusing the gate's own parse and classification so the `classify` role is still called once per upload. A content refusal is no longer a 422: it is a **`Rejected` row** with a `rejectionReason` code (`not_a_contract` \| `no_readable_text`) on `GET /api/documents`, its blob deleted, one `document.rejected` audit row attributed to `system:worker`. Poll `GET /api/documents/{id}` or `GET /api/documents` for the terminal status. See “Documents — admission gate” below |
 | GET | `/api/documents/{id}` | metadata/status; same header; `documentType` is the widened `ContractDocumentType` (`Msa`, `OrderForm`, `Amendment`, `Sow`, `RenewalLetter`, `Quote`, `Invoice`, `PriceList`, `Nda`, `Dpa`, `Other`) — task E13/F04/US01/T01 added the last five so “the documents around a contract” keep their own kind |
 | GET | `/api/documents` | Server-side Documents list (R-DOC-06/09; task E13/F04/US01/T02); `X-Tenant-Id` header; optional `status` (exact `DocumentProcessingStatus`, `Rejected` included since wave w15), `page` (default 1), `pageSize` (default 25, max 100); response `{ items, page, pageSize, totalCount, counts }`, each item `{ id, contractId, supplierName, fileName, documentType, processingStatus, stage, pageCount, createdAt, weakFactCount, rejectionReason }` — `stage` is one of R-DOC-09's six real names and is present **only** while `processingStatus` is `Processing`; `rejectionReason` is `not_a_contract` \| `no_readable_text` on a `Rejected` row and `null` otherwise; `supplierName` is resolved through `ISupplierNameLookup` when the Suppliers module is registered, `null` otherwise (never a raw id); `weakFactCount` counts this contract's distinct extracted fields whose latest evidence is missing or below 0.6. **`counts` (task E16/F02/US03/T01, ADR-027 §D7/§C5/§C9)** is tenant-wide and independent of `status`/`page`: `{ all, needsAttention, needsReview, processing, rejected }` — `all` excludes `Rejected`, `needsAttention` is *not Completed and not Rejected* (so it contains `processing`), `needsReview` is `NeedsReview` alone; five overlapping projections of one grouped query, never a partition |
-| GET | `/api/documents/{id}/preview` | First-page preview as `image/png` (R-DOC-08); `X-Tenant-Id` header; 404 when the document does not exist for this tenant **or** has no stored preview — the client never receives a blob URL, the bytes are streamed under the caller's own tenant scope (ADR-009). See “Documents V2” below for what the preview actually contains today |
+| GET | `/api/documents/{id}/preview` | Page preview as `image/png` (R-DOC-08; wave w17 NW-26, task E22/F02/US01/T01, ADR-029); `X-Tenant-Id` header; optional 1-based `?page=n` (absent means page 1); 404 when the document does not exist for this tenant, has no stored preview, **or** `page` is out of the persisted `pageCount` — never a silent page 1. The client never receives a blob URL; the bytes are streamed under the caller's own tenant scope (ADR-009). See “Documents V2” below |
 | POST | `/api/documents/{id}/reprocess` | **Admin only** (403 otherwise). **Wave w15 (ADR-027 §D1): a re-enqueue, `202 Accepted`** — drops the old page-aware chunks, puts the document back to `Uploaded`, queues a fresh classification `extraction_job` for the Worker and answers `{ documentId, extractionJobId, processingStatus: "Uploaded" }` with `Location: /api/documents/{id}`; the re-parse → page-aware embedding → staged extraction (R-DOC-07) happens on the Worker exactly like a first upload, and one `document.reprocessed` audit row records the queueing. Role resolution: the validated token's membership, and nothing else (task E14/F02/US02/T01, ADR-025 §E); see `Raffa.Api.Infrastructure.WorkspaceRoleResolver` and "Admin resolution" below |
 | POST | `/api/documents/{id}/prioritise` | **Any live member** (not Admin-only — whoever opened the document is the one waiting for it). **Wave w15, built by hand 2026-09-14 (task E16/F03/US02/T01, ADR-027 w15 footer C12).** Stamps `extraction_job.prioritised_at` on the document's queued, unclaimed classification job(s); the next delivery any Worker replica handles in this tenant runs that job before its own — one per delivery, bounded by `ExtractionRequestedHandler.MaxPrioritisedPerDelivery`. Service Bus stays at **exactly one** subscription (OQ-w15-012 unchanged): there is no second message, the reordering happens entirely on the row. Idempotent — a job already claimed, already prioritised, or already terminal is a no-op that still answers `204`; one `document.prioritised` audit row only when something changed. `caller.Identity` is the audit actor. **204** always when the document exists; **404** when it does not exist for this tenant; **400** for a non-GUID id — never 403 (ADR-025 Rule B1). The web calls this once, blindly, every time a user opens a document that is not yet terminal (`web/README.md`'s own "Documents" section, Progress state) |
 | DELETE | `/api/documents/{id}` | **Admin only** (403 otherwise): deletes every stored object (each version plus the preview), the retrieval chunks, the version and extraction-job rows and the document row, detaches the contract link and clears every `source_document_id` on the facts that survive; writes one `document.deleted` audit row; 204 (R-DOC-10). The contract and its extracted facts are deliberately kept |
 | POST | `/api/documents/{id}/validate` | Review sign-off (product spec §7.1 "needs review → completed", ADR-020 screen 6 "Mark as validated"): optional body `{ acceptedFields: string[] }` + `X-Tenant-Id` header (`X-User-Id` names the actor); moves a `NeedsReview` document to `Completed` and writes one `document.validated` audit row naming the accepted fields (`Raffa.Documents.Contracts.Application.DocumentValidationService`); never rewrites the extraction evidence. Not Admin-only — reviewing is the Procurement role's own job, same posture as `PATCH /api/contracts/{id}`. 404 unknown/cross-tenant document; **409** with a named reason for a document still `Uploaded`/`Processing` or `Failed`; idempotent — an already `Completed` document answers 200 with `alreadyValidated: true`. Response `{ documentId, contractId, processingStatus, validatedAt, acceptedFields, alreadyValidated }` |
 | PATCH | `/api/contracts/{id}` | `{ corrections: { <field>: <string\|null> }, reason? }` + `X-Tenant-Id` header; versioned correction (ADR-003 `ContractVersion`/`CorrectionHistory`, ADR-009 RLS) — see `Raffa.Documents.Contracts.Application.ContractCorrectionService.CorrectableFieldNames` for the accepted field list; also writes one `IAuditWriter` entry (`contract.corrected`) |
-| GET | `/api/contracts/{id}/evidence` | `X-Tenant-Id` header; the latest `ExtractionEvidence` row per field for one contract (`Raffa.Documents.Contracts.Application.ContractEvidenceQueryService`), alphabetical by `fieldName`: `{ fieldName, value, confidence, sourcePage, sourceSpan, sourceDocumentId, sourceFileName, passage, highlightStart, highlightLength, modelId, extractedAt }` — `fieldName` is the same key `PATCH /api/contracts/{id}` accepts, plus `type` for the classification verdict (no page/span); `passage` is the sentence of the indexed page text (the document's own `embedding` chunk) around the span with the span's offsets, present only when the page text still contains it. The review screen's evidence pane and per-field confidence tags read this. 404 when the contract does not exist for the tenant, `[]` when it exists but has no evidence |
+| GET | `/api/contracts/{id}/evidence` | `X-Tenant-Id` header; the latest `ExtractionEvidence` row per field for one contract (`Raffa.Documents.Contracts.Application.ContractEvidenceQueryService`), alphabetical by `fieldName`: `{ fieldName, value, confidence, decision, sourcePage, sourceSpan, sourceDocumentId, sourceFileName, passage, highlightStart, highlightLength, modelId, extractedAt }` plus once-per-response `autoAcceptThreshold` (0.90). **Wave w17 (NW-71):** `decision` is the server's persisted state (`auto_accepted` / `human_accepted` / `review_required`); the web renders it and never recomputes it. A client-supplied decision on validate/PATCH is 400 and never persisted. 404 when the contract does not exist for the tenant, `{ autoAcceptThreshold, fields: [] }` when it exists but has no evidence |
 | GET | `/api/contracts/{id}/corrections` | `X-Tenant-Id` header; field-level correction history for one contract, newest first (`Raffa.Documents.Contracts.Application.ContractCorrectionHistoryQueryService`) — 404 if the contract does not exist for the tenant, `[]` if it exists but was never corrected |
 | GET | `/api/audit` | Tenant audit trail, newest first, Admin only (story us-02-audit-read-for-a-real-admin AC-1..AC-5, task E01/F06/US02/T02; wave w16 NW-08, task E18/F02/US02/T01, ADR-025 §K). `X-Tenant-Id` header now required — the same `ICallerContext` → `WorkspaceRoleResolver` ladder `POST /api/documents/{id}/reprocess`/`DELETE /api/documents/{id}` already use: missing/non-GUID header → 400, a well-formed tenant with no live membership → 404 (never 403 — ADR-025 Rule B1, a 403 there would be a tenant-existence oracle), a live member who is not Admin → 403, a live Admin membership → 200, that tenant's own rows only. Bare array response, each row `{ id, actor, action, resourceType, resourceId, occurredAt, detail }`, capped at `AuditQueryService.MaxResults` (200), no caller-supplied paging/filters yet. The claims-based guard this route used before wave w16 (`WorkspacePrincipalAuthorization` — a `tenant_id` claim plus a `ClaimTypes.Role` claim, forbidden as an authorization source by ADR-010's w14 footer and unreachable by any real client since nothing in this host ever minted either claim) is deleted whole, not merely bypassed (ADR-025 §K.2) |
 | GET | `/api/contracts/{id}/negotiation-steps` | `X-Tenant-Id` header; the ticked steps of Contract 360's negotiation tracker "4-step checklist" (task E19/F03/US01/T01, NW-13, us-01-step-ticks-api; ADR-028 §D3), as a bare array of step keys in canonical checklist order — `Raffa.Documents.Contracts.Domain.NegotiationStep`'s four members, `Notify`/`RequestRevisedPricing`/`CounterWithMarketBenchmark`/`SignOrSendNonRenewalNotice` (the design oracle's own order), never an array index and never the rendered label (that stays entirely client-side, two of the four parameterized). The row's presence **is** the tick — no `ticked` boolean exists to read. 404 when the contract does not exist for the tenant, `[]` when it exists but nothing has been ticked yet |
 | PUT | `/api/contracts/{id}/negotiation-steps` | Writes the whole ticked-step set (task E19/F03/US01/T01, NW-13); `X-Tenant-Id` header; body `{ steps: string[] }` — a key absent from `steps` unticks it (the row is deleted, there is no boolean to flip), so sending the same set twice is a true no-op; no merge semantics. 400 for an unknown step name, with nothing written (`Raffa.Documents.Contracts.Application.NegotiationStepService.SetAsync` validates every name before it queries or mutates anything); 404 for an unknown contract. Response is the resulting set, same shape as the `GET` above; also writes one `IAuditWriter` entry (`contract.negotiation_steps_set`) with the validated caller identity as actor |
 | GET | `/api/audit` | tenant-scoped; expects a claims principal (integration tests inject one) |
 | GET | `/api/contracts` | portfolio list; spec §8.1 columns; `X-Tenant-Id` header; optional filters `supplierId`, `status`, `risk` (Low/Medium/High/Critical), `autoRenewal`, `minAnnualSpend`, `maxAnnualSpend`, `renewalFrom`/`renewalTo` (yyyy-MM-dd) — no `category` filter yet, see `PortfolioFilter`'s doc comment; optional paging `page` (default 1), `pageSize` (default 25, max 100); response is `{ items, page, pageSize, totalCount }`, not a bare array |
-| GET | `/api/contracts/{id}` | Contract 360 aggregate; spec §8.2 header + tabs (overview, commercials, products, clauses, obligations, risks, documents, benchmark, renewal, activity); `X-Tenant-Id` header; 404 when the contract does not exist or belongs to another tenant; `benchmark`/`activity` are always empty arrays — no task has yet mapped a real contract's line items into a `Raffa.Benchmark.Contracts.BenchmarkQuery` (no supplier-name/geography field exists on `Contract` today), so this tab stays empty even though R3's own benchmark comparison is real and provable elsewhere (see "R3 demo smoke test" below); `activity` remains an R4 placeholder — see `Contract360Result`'s doc comment |
+| GET | `/api/contracts/{id}` | Contract 360 aggregate; spec §8.2 header + tabs (overview, commercials, products, clauses, obligations, risks, documents, benchmark, renewal, activity); `X-Tenant-Id` header; 404 when the contract does not exist or belongs to another tenant. **Wave w17 (NW-20, task E21/F01/US01/T01):** `tabs.benchmark` is host-composed from the same resolved `(supplier name, geography)` key NW-22 uses — a representative position or an explicit `insufficient_data` entry, never `[]`; `tabs.activity` is a contract-scoped provenance projection of allow-listed audit actions (`occurredAt`, `action`, `actorLabel`), never `AuditEvent.Detail`. Both members are filled in `Raffa.Api`, never inside `Contract360QueryService` |
 | POST | `/api/chat/query` | Ask Raffa V2 (ADR-024 §6; task E13/F06/US01/T01, ask-engine); `{ question: string }` + `X-Tenant-Id` header + caller identity (see "Interim auth" below). Kept one release as a thin alias: creates a conversation, then delegates into the same `AskCopilotService`/`POST /api/conversations/{id}/messages` pipeline (see "Ask Raffa — conversations store" below) — the old direct `AskRaffaQueryRouter` → `RagAnswerService` → `{ question, intent, canDetermine, answer, citations, message }` shape this route used to return (task E02/F04/US02/T01) no longer exists; that router is now reused *inside* `AskCopilotService` instead. Response is the ADR-024 §6 reply contract, same as the messages endpoint below |
 | GET | `/api/conversations` | Caller's last N conversations, most recently updated first (spec §7; R-CONV-02; story us-01-conversations AC-2, task E13/F05/US01/T02); `X-Tenant-Id` header + caller identity (see "Authentication" below); optional `take` (default 5, must be a positive integer); response is a bare array of `{ id, title, scopeContractId, updatedAt }`, never an `{ items, totalCount }` envelope — there is no paging concept for "my last N conversations" |
 | POST | `/api/conversations` | Creates a conversation (AC-2); `X-Tenant-Id` header + caller identity; body `{ scopeContractId? }` — a GUID naming the contract "Ask about it" (Contract 360) was opened from, or omitted for the global Ask bar (ADR-024: "The global Ask bar always opens a new chat"); 201 with the same `{ id, title, scopeContractId, updatedAt }` shape as the list row above; `title` starts as `ConversationService.DefaultTitle` ("New chat") until the first message lands |
@@ -240,7 +241,7 @@ request.
 | GET | `/api/quotes/{id}` | One quote for this tenant, with every recorded `NegotiationOutcome` embedded, newest first (parent story us-01-quote-read-api AC-2/AC-3/AC-4, task E19/F02/US01/T01, quote-read-api; wave w16 NW-12, ADR-028 §D2); `X-Tenant-Id` header; 404 when `{id}` does not name a quote for this tenant — including another tenant's quote (cross-tenant read is a 404 with zero leaked tenant-A fields anywhere in the body, never a 403 tenant-existence oracle); 400 for a non-GUID `{id}`. Response is the same quote shape as the `GET /api/quotes` row above plus `outcomes: [{ id, originalQuoteTotal, targetPrice, finalPrice, realizedSaving, discountPercent, negotiationDurationDays, leversUsed, capturedAt, savingsOpportunityId }]` — the same fields `POST /api/negotiations/outcomes` itself returns on capture, minus that call's own two capture-time-only propagation-attempt fields (`savingsPropagated`/`savingsPropagationError` report whether *that call's* propagation attempt succeeded, not a stored fact). A quote with no recorded outcome returns `outcomes: []`, never 404 (AC-2). `NegotiationOutcome` is keyed by `QuoteId` and is append-only, so its outcomes are a property of the quote, not a tenant-wide feed — **there is no `GET /api/negotiations/outcomes`** (ADR-028 §D2: no caller until NW-57, W18) and **the assessment endpoint below is deliberately not overloaded with this** either (`.../assessment/recalculate` returns that identical shape, so carrying the outcome there would make a recalculation appear to re-report a negotiation it never touched — one extra GET on mount is the cheaper of the two costs). Backed by `Raffa.Quotes.Application.QuoteQueryService.GetAsync` — stored fields only, same "computes nothing" posture as the list above |
 | GET | `/api/quotes/{id}/assessment` | Quote assessment (spec §4.4/§11.2, Appendix A "Quote assessment"; module-map.md "Quotes \| Quote, QuoteLine, Assessment... \| /api/quotes"; story us-01-market-assessment AC-1/AC-2 (both the "flag" half, task E05/F02/US01/T01, and the "recommended target range + potential saving" half, task E05/F02/US01/T02)/AC-3); `X-Tenant-Id` header; 404 when `{id}` does not name a quote for this tenant; one assessment per `Raffa.Quotes.Domain.QuoteLine` on the quote (creation order) — `{ quoteId, lines: [{ quoteLineId, status, position, unitPrice, quantity, benchmark, confidence, targetSaving, explanation }] }`. `status` is `Assessed`/`QuoteDataUnresolved`/`InsufficientBenchmarkData` (`Raffa.Quotes.Domain.MarketAssessmentStatus`); `position` (`BelowMarket`/`InLine`/`AboveMarket`) is populated only when `status` is `Assessed` — the market band is `[P25, P75]` of the matched `Raffa.Benchmark.Contracts.BenchmarkResult.Distribution`, `InLine` otherwise (see `MarketAssessmentCalculator`'s own doc comment); `benchmark`/`confidence`/`targetSaving` are `null` exactly when no Benchmark Service call was even attempted (`QuoteDataUnresolved`: the quote is missing `supplier`/`currency`/`geography`/`purchaseDate`, or the line itself has no usable product/quantity/term/price), never withheld just because the comparison itself abstained (spec §11.3's benchmark-trust rule — `InsufficientBenchmarkData` still carries real `source`/`sampleSize`/`comparisonDimensions` provenance, and a real `targetSaving` object whose `recommendedTargetLow`/`recommendedTargetHigh`/`savingsRangeLow`/`savingsRangeHigh`/`totalSavingsRangeLow`/`totalSavingsRangeHigh` are honestly `null` with a named `explanation` — see `TargetSavingCalculator`'s own doc comment) |
 | POST | `/api/quotes/{id}/assessment/recalculate` | Manual product-mapping correction + recalculate (spec Appendix A "Re-run after product mapping correction"; story us-02-sku-normalization AC-2's "...and allow manual product mapping" half, AC-3, task E05/F01/US02/T02, sku-recalculate); `X-Tenant-Id` header; body `{ mappings?: [{ sku, edition?, canonicalSku, canonicalEdition?, canonicalProductName? }] }` — `mappings` may be omitted/empty (`{}` is a valid body) for a pure "what's still unmatched" refresh with no new correction. 404 when `{id}` does not name a quote for this tenant; 400 when a supplied correction's `sku`/`canonicalSku` is blank — validated before any write. For each valid correction, upserts (never duplicates) one tenant-scoped `Raffa.Quotes.Domain.SkuProductMapping` row keyed on the normalized SKU (`Raffa.Quotes.Application.Normalization.SkuNormalizer.Normalize` — same case/whitespace rule `POST /api/quotes`'s own upload-time normalization uses), then re-runs `SkuNormalizationService.NormalizeAsync` for every line on the quote (not just the corrected one — a mapping learned here also resolves any other quote for this tenant sharing the same normalized SKU, the next time that quote is itself (re)normalized) and `MarketAssessmentService.AssessAsync`; response `{ quoteId, mappingsAppliedCount, normalization: { lineCount, matchedCount, unmatchedCount, notApplicableCount }, unmatchedLines: [{ quoteLineId, sku, normalizedSku, edition, description }], assessment: { ...same shape as GET .../assessment... } }` — `unmatchedLines` is AC-2's "Show unmatched SKUs" half made queryable over HTTP (deliberately not a field on the `GET .../assessment` response itself, see `SkuMappingService`'s own doc comment for why); writes one `IAuditWriter` entry (`quote.sku_mapping_recalculated`) per successful call, even a pure refresh. |
-| GET | `/api/savings/kpis` | Procurement-homepage KPI row (spec §4.3/§10.1; story us-01-savings-kpis AC-1, task E04/F03/US01/T01); `X-Tenant-Id` header; response `{ annualSpendAnalyzed: [{ currency, amount, contractCount }], contractsAnalyzedCount, savingsIdentified/savingsInProgress/savingsRealized: [{ currency, low, high, count, averageConfidence }], upcomingRenewalsCount }` — every money value is grouped by currency, never summed across currencies (no exchange-rate service exists anywhere in this codebase); `contractsAnalyzedCount` counts contracts whose linked document reached `DocumentProcessingStatus.Completed` (a `Contract` row can exist before that — see `Raffa.Documents.Contracts.Application.PortfolioAnalysisCalculator`'s own doc comment); `savingsRealized` reflects each opportunity's own estimated range, not yet the separate, audit-tracked `RealizedSavings` value (task E04/F02/US02/T02's own gap, see `SavingsOpportunityStatus.Realized`'s doc comment); `upcomingRenewalsCount` is the same auto-renewing-contract count `GET /api/renewals`'s own `totalCount` already reports (same 100-contract-per-tenant cap) — see `Raffa.Api.SavingsKpiEndpointExtensions`'s own comment for why it is not a second, independently-computed number |
+| GET | `/api/savings/kpis` | Procurement-homepage KPI row (spec §4.3/§10.1; story us-01-savings-kpis AC-1, task E04/F03/US01/T01; **wave w17 NW-72, task E20/F01/US01/T01**); `X-Tenant-Id` header; response `{ annualSpendAnalyzed: [{ currency, amount, contractCount }], contractsAnalyzedCount, savingsIdentified/savingsInProgress: [{ currency, low, high, count, averageConfidence }], savingsRealized: [{ currency, amount, count }], upcomingRenewalsCount }` — every money value is grouped by currency, never summed across currencies (no exchange-rate service exists anywhere in this codebase); `contractsAnalyzedCount` counts contracts whose linked document reached `DocumentProcessingStatus.Completed`; **`savingsRealized` is verified money from `RealizedSavings` rows** (currency / amount / count) — never the opportunity's pre-negotiation estimate band, and an outcome with `savingsPropagated: null` enters no total; `upcomingRenewalsCount` is the same auto-renewing-contract count `GET /api/renewals`'s own `totalCount` already reports — see `Raffa.Api.SavingsKpiEndpointExtensions` |
 | GET | `/api/capabilities` | The versioned V2 capability catalog (R-SYS-01; story us-01-capability-catalog, task E13/F08/US01/T01; mapped by task E13/F06/US01/T01, ask-engine; wave w16 NW-31, task E18/F03/US01/T01 deleted the server-side role filter): no tenant header — static, tenant-agnostic metadata, not a per-tenant read; served whole, every row carrying its own `roleGate` as a presentation label, never as authorization; see "Ask Raffa — capability catalog" below |
 | GET | `/api/insights/criticality` | Portfolio-wide criticality ranking (story insights-calculators, task E13/F07/US01/T01; mapped by task E13/F06/US01/T01); `X-Tenant-Id` header; the same `Raffa.Insights.Criticality.CriticalityScoreCalculator` output `AskCopilotService`'s own `PortfolioStrategy` intent narrates — see "Insights" below |
 | GET | `/api/contracts/{id}/strategy` | One contract's renewal-strategy pack (when you must move, where you can push, targets, next steps; task E13/F07/US01/T01; mapped by task E13/F06/US01/T01); `X-Tenant-Id` header; 404 when the contract does not exist or belongs to another tenant; the same `Raffa.Insights.Strategy.StrategyPackBuilder` output `AskCopilotService`'s own `RenewalStrategy` intent narrates — see "Insights" below |
@@ -366,21 +367,32 @@ then the rows. Clauses, obligations, risks, line items and evidence are
 those columns is an `ON DELETE RESTRICT` foreign key, and a fact whose source
 file is gone is still a fact. The contract itself always survives.
 
-**Preview — what it is today, honestly.** `DocumentPreviewService` renders a
-PNG at upload and stores it under the tenant prefix
-(`{tenant}/documents/{id}/preview/page-1.png`). The built-in
-`PlaceholderDocumentPreviewRenderer` is pure managed code (a small PNG encoder
-plus a 5x7 bitmap font, no native dependency):
+**Preview — rasterised at pipeline time (wave w17 NW-26, task E22/F02/US01/T01,
+ADR-029).** `DocumentPreviewService` renders **page by page** in the Worker after
+admission (independent of extraction success) and stores each PNG under the
+tenant prefix (`{tenant}/documents/{id}/preview/page-{n}.png`). Reprocessing
+overwrites by that deterministic path; it never accumulates a suffix.
+`PdfPageDocumentPreviewRenderer` (Docnet.Core / pdfium, MIT + BSD-3-Clause;
+Linux native-dependency list: **empty**, so no Dockerfile `apt-get` layer) is
+registered ahead of `PlaceholderDocumentPreviewRenderer`, which stays the
+honest fallback for JPEG/DOCX/XLSX and for a renderer that returns null.
+`GET /api/documents/{id}/preview?page=n` is bounded by the persisted
+`document.page_count`: out of range is **404**, never a silent page 1. One
+bitmap is disposed before the next is materialised (0.25 vCPU / 0.5 GiB shared
+pair; `MaxConcurrentCalls = 4`).
 
-- a **PNG** upload is its own preview — a real page-1 image;
-- a **PDF, JPEG, DOCX or XLSX** gets a generated placeholder that names the
-  format and says “preview not rendered”.
-
-A true first-page raster of a PDF needs a rasteriser (pdfium/Skia), which is a
-native provider dependency and belongs in `Raffa.Api`'s infrastructure behind
-the existing `IDocumentPreviewRenderer` port — registering one is the only
-change needed; the storage path, the endpoint and the stored `preview_path`
-stay as they are. Until then the card shows the placeholder, not a fake page.
+**Per-field decision (wave w17 NW-71, task E22/F01/US01/T01).** One
+`ExtractionConfidencePolicy` in `Raffa.Documents.Contracts` (raw stored
+`confidence >= 0.90`, no rounding before the compare) is consumed by both
+`StagedExtractionService.DetermineDocumentStatus` and
+`DocumentQueryService.IsWeak`, so the Documents-row badge and `needs_review`
+cannot disagree. The decision lands on the existing `extraction_evidence` row
+as `decision` + `decided_at` (`auto_accepted` / `human_accepted` /
+`review_required` — three states, no SQL enum, no new table). One audit row
+per document per extraction run, actor `system:extraction`, names **field
+names and confidence numbers, never a field value**. Critical fields use the
+same bar; there is no always-review list. The word `officialized` is an ADR
+word and never appears on a screen.
 
 **Admin resolution** (`Raffa.Api.Infrastructure.WorkspaceRoleResolver`): a live
 `workspace_membership` row for the caller's validated identity — **and nothing
@@ -2689,7 +2701,7 @@ Allowed Raffa project references (enforced by
 |--------|----------------|
 | Domain modules | `SharedKernel` only, plus `AiGateway` (Documents, Chat, Market) or `Benchmark` (Renewals, Savings, Quotes, Insights); `Market` is the one module allowed both `AiGateway` and `Benchmark` |
 | `AiGateway` / `Benchmark` implementations | provider SDKs — when they exist; domain modules see the interface only |
-| `Raffa.Api` / `Raffa.Worker` | all modules (composition roots). Azure Blob SDK is host-only |
+| `Raffa.Api` / `Raffa.Worker` / `Raffa.Tools` | all modules (composition roots). Azure Blob SDK is host-only. `Raffa.Tools` joins `AllRaffaProjects` so a later domain module referencing the console is a violation, not silently legal; it is **not** in the domain-module array or the allow-list dictionary |
 
 Do not add a domain → domain or domain → Azure SDK project/package
 reference to make a task compile. Put the adapter in the host or behind
@@ -2764,12 +2776,11 @@ the market notes with Foundry instead.
 
 `.github/workflows/verify-tenant-corpus.yml`, `workflow_dispatch` only, inputs
 `target_environment` and `tenant_id`. Wave w16 (NW-31, task E18/F03/US01/T01)
-deleted `reprocess-tenant-documents.yml`: that job called the API with
-client-asserted role headers, accepted only HTTP 200 with `pagesParsed` /
-`chunksIndexed`, and raced work that is now asynchronous. After NW-05 those
-API steps 401'd before any write. There is no zero-cost repair (CI holds no
-Service Bus role). This job **reports; it does not mutate**. Bulk whole-tenant
-reprocess is W17. An Admin resubmits a document through the product
+deleted the previous mutating `reprocess-tenant-documents.yml` (it called the
+API with client-asserted role headers and 401'd after NW-05). This job
+**reports; it does not mutate**. Wave w17 (NW-73) **re-adds**
+`reprocess-tenant-documents.yml` as a runner console — see the next section.
+An Admin can still resubmit **one** document through the product
 (`POST /api/documents/{id}/reprocess` → `202` → Worker).
 
 What the job does, in order:
@@ -2780,8 +2791,8 @@ What the job does, in order:
 2. Enumerates the tenant's `document` rows (`id`, `file_name`, `document_type`,
    `processing_status`) over psql with `SET app.tenant_id` (RLS stays on).
 3. Prints a **named worklist** of documents still needing a reprocess (`Failed`,
-   or at least one embedding still starting with `%PDF`). The operator acts on
-   that list in the product; the job does not POST.
+   or at least one embedding still starting with `%PDF`). That predicate is
+   **also** the console's input set — the two jobs must not drift.
 4. Verifies by SQL:
    - **`left(chunk_text, 4) = '%PDF'` must be 0** — R-DOC-07 AC-1. This is a
      hard failure: an embedding that is raw bytes means Ask would cite bytes as
@@ -2795,6 +2806,34 @@ What the job does, in order:
    contracts (an unsigned SOW, a price list). Name the supplier through the
    review screen (`/documents?review=<documentId>`) for each one that should
    have had one.
+
+### Bulk whole-tenant reprocess (`Raffa.Tools`, wave w17 NW-73)
+
+`.github/workflows/reprocess-tenant-documents.yml`, `workflow_dispatch` only,
+required `tenant_id`, `target_environment` **`dev` only** (ADR-022 w17 clause
+6b). It runs `dotnet run --project backend/src/Raffa.Tools` on the GitHub
+runner — not a Container Apps Job, not an API POST loop. The console is a
+**third composition root**: no table, no endpoint, no business rule,
+referenced by nothing. It calls `DocumentReprocessService.ReprocessAsync` per
+document on the **same worklist predicate** `verify-tenant-corpus` already
+computes (`Failed`, or an embedding still starting with `%PDF`).
+
+Credential and tenancy rules (ADR-009 w17 clause 1): three-argument
+`DocumentsContractsDbContextOptions.Configure` inside `BeginScope` so
+`app.tenant_id` is set; never a raw `NpgsqlConnection` or a hand-written
+`SET`; one tenant per run from an explicit GUID; zero rows under a valid
+tenant exits non-zero; the application's own `postgres-connection` secret,
+never a superuser or `BYPASSRLS`. Actor is the fixed literal
+`system:bulk-reprocess`; `--requested-by` rides in `Detail`, never in
+`Actor`. `AZURE_CLIENT_ID` must **not** be set on the runner.
+
+⚠ Confirm the `raffa-dev` HCP VCS apply of the topic-scoped
+`Azure Service Bus Data Sender` grant (PR #141) **in the HCP UI** before the
+first dispatch. A run against a missing Send grant deletes chunks, commits,
+requeues nothing and writes no audit row (ADR-016 w17 clause 44). Walk
+A17-S2 in `docs/waves/w17-acceptance.md`. The 20-file page-render
+measurement on `dev` runs **before** the first whole-tenant reprocess
+(ADR-005 w17 §24).
 
 ### AI golden set (`Raffa.AiEval`) — how it runs and how to filter it
 

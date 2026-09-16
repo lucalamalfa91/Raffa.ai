@@ -14,6 +14,7 @@ import type {
   ValidateDocumentResult,
 } from "../../../../src/api/client";
 
+const REVIEW_READY = /facts need you/;
 const WORKSPACE_ID = "11111111-1111-1111-1111-111111111111";
 const CONTRACT_ID = "22222222-2222-2222-2222-222222222222";
 const DOCUMENT_ID = "55555555-5555-5555-5555-555555555555";
@@ -47,7 +48,8 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     correctContract: vi.fn(),
     // No evidence by default: every field keeps the conservative "Needs review" posture, which is
     // what the AC-4 gating tests below rely on; the evidence-pane tests pass real rows explicitly.
-    getContractEvidence: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, evidence: [], error: null }),
+    getContractEvidence: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, evidence: [], autoAcceptThreshold: 0.87, error: null }),
+    getContractStrategy: vi.fn(),
     validateDocument: vi.fn().mockResolvedValue({
       ok: true,
       statusCode: 200,
@@ -161,8 +163,8 @@ function minimalContract(overrides: Partial<Contract360Body> = {}): Contract360B
   };
 }
 
-function evidenceOk(rows: ContractFieldEvidenceBody[]): GetContractEvidenceResult {
-  return { ok: true, statusCode: 200, evidence: rows, error: null };
+function evidenceOk(rows: ContractFieldEvidenceBody[], autoAcceptThreshold = 0.87): GetContractEvidenceResult {
+  return { ok: true, statusCode: 200, evidence: rows, autoAcceptThreshold, error: null };
 }
 
 function evidenceRow(overrides: Partial<ContractFieldEvidenceBody> = {}): ContractFieldEvidenceBody {
@@ -170,6 +172,7 @@ function evidenceRow(overrides: Partial<ContractFieldEvidenceBody> = {}): Contra
     fieldName: "paymentTerms",
     value: "Net 45",
     confidence: 0.96,
+    decision: "auto_accepted",
     sourcePage: 2,
     sourceSpan: "payable within forty-five (45) days",
     sourceDocumentId: DOCUMENT_ID,
@@ -181,6 +184,10 @@ function evidenceRow(overrides: Partial<ContractFieldEvidenceBody> = {}): Contra
     extractedAt: "2026-09-09T10:00:00Z",
     ...overrides,
   };
+}
+
+function autoAcceptedEvidence(names: readonly string[] = ["type", "status", "currency", "autoRenewal"]): ContractFieldEvidenceBody[] {
+  return names.map((fieldName) => evidenceRow({ fieldName, decision: "auto_accepted", confidence: 0.96 }));
 }
 
 function fullContract(overrides: Partial<Contract360Body> = {}): Contract360Body {
@@ -204,6 +211,18 @@ function fullContract(overrides: Partial<Contract360Body> = {}): Contract360Body
         paymentTerms: "Net 45",
         governingLaw: "Switzerland, Zürich",
       },
+    },
+    ...overrides,
+  };
+}
+
+function recoveredContract(overrides: Partial<Contract360Body> = {}): Contract360Body {
+  const base = fullContract();
+  return {
+    ...base,
+    header: {
+      ...base.header,
+      supplierName: "Northwind Traders SA",
     },
     ...overrides,
   };
@@ -267,7 +286,7 @@ describe("ReviewRoute", () => {
 
     resolveFetch(ok(minimalContract()));
 
-    expect(await screen.findByText("Review extraction")).toBeInTheDocument();
+    expect(await screen.findByText(REVIEW_READY)).toBeInTheDocument();
     expect(container.querySelector(".review-skeleton")).not.toBeInTheDocument();
   });
 
@@ -276,7 +295,7 @@ describe("ReviewRoute", () => {
     const getCorrectionHistory = vi.fn().mockResolvedValue(historyOk([]));
     renderReview(mockApiClient({ getContract360, getCorrectionHistory }));
 
-    await screen.findByText("Review extraction");
+    await screen.findByText(REVIEW_READY);
 
     expect(getContract360).toHaveBeenCalledWith(WORKSPACE_ID, CONTRACT_ID);
     expect(getCorrectionHistory).toHaveBeenCalledWith(WORKSPACE_ID, CONTRACT_ID);
@@ -300,14 +319,14 @@ describe("ReviewRoute", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /retry/i }));
 
-    expect(await screen.findByText("Review extraction")).toBeInTheDocument();
+    expect(await screen.findByText(REVIEW_READY)).toBeInTheDocument();
     expect(getContract360).toHaveBeenCalledTimes(2);
   });
 
   describe("once populated (AC-1/AC-2)", () => {
     it("renders the 4 column headers and one row per correctable field that has a value", async () => {
       renderReview(mockApiClient({ getContract360: vi.fn().mockResolvedValue(ok(fullContract())) }));
-      await screen.findByText("Review extraction");
+      await screen.findByText(REVIEW_READY);
 
       const headerRow = screen.getAllByRole("columnheader").map((cell) => cell.textContent);
       expect(headerRow).toEqual(["Field", "Extracted value", "Confidence", "Decision"]);
@@ -319,14 +338,15 @@ describe("ReviewRoute", () => {
       expect(screen.getByText("Yes")).toBeInTheDocument();
     });
 
-    it("does not render a row for a correctable field that was never extracted (null on the contract)", async () => {
+    it("renders never-extracted canonical fields as empty fillable inputs, not table rows", async () => {
       renderReview(mockApiClient({ getContract360: vi.fn().mockResolvedValue(ok(minimalContract())) }));
-      await screen.findByText("Review extraction");
+      await screen.findByText(REVIEW_READY);
 
-      // minimalContract() leaves governingLaw/paymentTerms/dates/spend null -- absent, never a "—" row.
       expect(screen.queryByRole("button", { name: "Governing law" })).toBeNull();
       expect(screen.queryByRole("button", { name: "Payment terms" })).toBeNull();
-      // The four required fields still render.
+      expect(screen.queryByRole("button", { name: "End date" })).toBeNull();
+      expect(screen.getByLabelText("Governing law")).toHaveValue("");
+      expect(screen.getByLabelText("End date")).toHaveValue("");
       expect(screen.getByRole("button", { name: "Contract type" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Status" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Currency" })).toBeInTheDocument();
@@ -335,12 +355,11 @@ describe("ReviewRoute", () => {
 
     it("shows an honest 'Needs review' tag for a pending field, never a fabricated confidence percentage", async () => {
       renderReview(mockApiClient({ getContract360: vi.fn().mockResolvedValue(ok(minimalContract())) }));
-      await screen.findByText("Review extraction");
+      await screen.findByText(REVIEW_READY);
 
       expect(screen.getAllByText("Needs review").length).toBeGreaterThan(0);
-      // Scoped to the field table, not the whole screen: task E11/F07/US01/T01's header legend
-      // legitimately shows the static >95%/80-95%/<80% thresholds (design-system.md's own semantic
-      // mapping, not a per-field score) right next to the progress line -- this assertion's real
+      // Scoped to the field table, not the whole screen: the header legend paints the server's
+      // threshold (not a per-field score) next to the progress line -- this assertion's real
       // intent is that no *row* ever shows a fabricated per-field percentage.
       expect(within(screen.getByRole("table")).queryByText(/%/)).toBeNull();
     });
@@ -354,7 +373,7 @@ describe("ReviewRoute", () => {
           getCorrectionHistory: vi.fn().mockResolvedValue(historyOk([correctionEntry()])),
         }),
       );
-      await screen.findByText("Review extraction");
+      await screen.findByText(REVIEW_READY);
 
       expect(screen.getByText("Corrected → 500000")).toBeInTheDocument();
       expect(screen.getAllByText("Corrected").length).toBeGreaterThan(0);
@@ -364,31 +383,29 @@ describe("ReviewRoute", () => {
   describe("AC-4: gated 'Mark as validated'", () => {
     it("is disabled with a visible reason while any field is pending", async () => {
       renderReview(mockApiClient({ getContract360: vi.fn().mockResolvedValue(ok(minimalContract())) }));
-      await screen.findByText("Review extraction");
+      await screen.findByText(REVIEW_READY);
 
       const cta = screen.getByRole("button", { name: /mark as validated/i });
       expect(cta).toBeDisabled();
       expect(screen.getByText(/still needs? review before this contract can be marked validated/i)).toBeInTheDocument();
     });
 
-    it("becomes enabled once every field is Accepted, writes the sign-off with the accepted field names, then navigates to Contract 360", async () => {
-      const client = mockApiClient({ getContract360: vi.fn().mockResolvedValue(ok(minimalContract())) });
+    it("becomes enabled when the server has already accepted every field, writes the sign-off, then navigates to Contract 360", async () => {
+      const client = mockApiClient({
+        getContract360: vi.fn().mockResolvedValue(ok(minimalContract())),
+        getContractEvidence: vi.fn().mockResolvedValue(evidenceOk(autoAcceptedEvidence())),
+      });
       renderReview(client);
-      await screen.findByText("Review extraction");
+      await screen.findByText(REVIEW_READY);
 
-      for (const button of screen.getAllByRole("button", { name: "Accept" })) {
-        fireEvent.click(button);
-      }
-
+      expect(screen.getByRole("heading", { name: "Not found in the document" })).toBeInTheDocument();
       const cta = screen.getByRole("button", { name: /mark as validated/i });
       expect(cta).toBeEnabled();
 
       fireEvent.click(cta);
       expect(await screen.findByText("CONTRACT_360_SCREEN")).toBeInTheDocument();
-      // The document resolved from the contract's own documents tab, every Accepted field named --
-      // this is the write that moves the document to Completed (DocumentValidationService).
       expect(client.validateDocument).toHaveBeenCalledWith(WORKSPACE_ID, DOCUMENT_ID, {
-        acceptedFields: ["type", "status", "currency", "autoRenewal"],
+        acceptedFields: [],
       });
     });
 
@@ -399,15 +416,12 @@ describe("ReviewRoute", () => {
           getCorrectionHistory: vi
             .fn()
             .mockResolvedValue(historyOk([correctionEntry({ fieldName: "type", previousValue: "Sow", newValue: "Msa" })])),
+          getContractEvidence: vi
+            .fn()
+            .mockResolvedValue(evidenceOk(autoAcceptedEvidence(["status", "currency", "autoRenewal"]))),
         }),
       );
-      await screen.findByText("Review extraction");
-
-      // 3 of the 4 fields (status/currency/autoRenewal) are still pending -- the 4th (type) is
-      // resolved by real history, so accepting only those three should unblock the gate.
-      for (const button of screen.getAllByRole("button", { name: "Accept" })) {
-        fireEvent.click(button);
-      }
+      await screen.findByText(REVIEW_READY);
 
       expect(screen.getByRole("button", { name: /mark as validated/i })).toBeEnabled();
     });
@@ -416,7 +430,7 @@ describe("ReviewRoute", () => {
   describe("AC-3: evidence pane + correction form", () => {
     it("selecting a field opens the evidence pane pre-filled with its current value", async () => {
       renderReview(mockApiClient({ getContract360: vi.fn().mockResolvedValue(ok(fullContract())) }));
-      await screen.findByText("Review extraction");
+      await screen.findByText(REVIEW_READY);
 
       fireEvent.click(screen.getByRole("button", { name: "Payment terms" }));
 
@@ -436,7 +450,7 @@ describe("ReviewRoute", () => {
       const getContract360 = vi.fn().mockResolvedValue(ok(fullContract()));
 
       renderReview(mockApiClient({ getContract360, correctContract }));
-      await screen.findByText("Review extraction");
+      await screen.findByText(REVIEW_READY);
 
       fireEvent.click(screen.getByRole("button", { name: "Payment terms" }));
       fireEvent.change(await screen.findByLabelText("Correct value"), { target: { value: "Net 60" } });
@@ -464,7 +478,7 @@ describe("ReviewRoute", () => {
         error: "None of the supplied values differ from the contract's current values.",
       });
       renderReview(mockApiClient({ getContract360: vi.fn().mockResolvedValue(ok(fullContract())), correctContract }));
-      await screen.findByText("Review extraction");
+      await screen.findByText(REVIEW_READY);
 
       fireEvent.click(screen.getByRole("button", { name: "Payment terms" }));
       fireEvent.click(screen.getByRole("button", { name: /save correction/i }));
@@ -473,25 +487,62 @@ describe("ReviewRoute", () => {
       expect(screen.getByLabelText("Correct value")).toHaveValue("Net 45");
     });
 
-    it("Accept requires no form -- it is a direct, one-click decision from the list", async () => {
-      renderReview(mockApiClient({ getContract360: vi.fn().mockResolvedValue(ok(minimalContract())) }));
-      await screen.findByText("Review extraction");
-
-      const acceptButtons = within(screen.getByRole("table")).getAllByRole("button", { name: "Accept" });
-      fireEvent.click(acceptButtons[0]);
+    it("paints human_accepted from the server as 'Accepted by you' with no click and no session store", async () => {
+      renderReview(
+        mockApiClient({
+          getContract360: vi.fn().mockResolvedValue(ok(minimalContract())),
+          getContractEvidence: vi.fn().mockResolvedValue(
+            evidenceOk([
+              evidenceRow({ fieldName: "type", decision: "human_accepted", confidence: 0.71 }),
+              ...autoAcceptedEvidence(["status", "currency", "autoRenewal"]),
+            ]),
+          ),
+        }),
+      );
+      await screen.findByText(REVIEW_READY);
 
       expect(screen.getAllByText("Accepted by you").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("Accepted automatically · 96%").length).toBeGreaterThan(0);
+    });
+
+    it("paints the same tags on remount with the same server payload — nothing is session-held", async () => {
+      const client = mockApiClient({
+        getContract360: vi.fn().mockResolvedValue(ok(minimalContract())),
+        getContractEvidence: vi.fn().mockResolvedValue(
+          evidenceOk([
+            evidenceRow({ fieldName: "type", decision: "human_accepted", confidence: 0.71 }),
+            ...autoAcceptedEvidence(["status", "currency", "autoRenewal"]),
+          ]),
+        ),
+      });
+      const first = renderReview(client);
+      await screen.findByText(REVIEW_READY);
+      expect(screen.getAllByText("Accepted by you").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("Accepted automatically · 96%").length).toBeGreaterThan(0);
+
+      first.unmount();
+      renderReview(client);
+      await screen.findByText(REVIEW_READY);
+      expect(screen.getAllByText("Accepted by you").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("Accepted automatically · 96%").length).toBeGreaterThan(0);
     });
   });
 
   describe("Visual fidelity (E11/F07/US01/T01, gap G-REV)", () => {
-    it("shows the confidence legend next to the progress line, copied verbatim from the export", async () => {
-      renderReview(mockApiClient({ getContract360: vi.fn().mockResolvedValue(ok(minimalContract())) }));
-      await screen.findByText("Review extraction");
+    it("shows a two-item, server-fed legend and a title that names no threshold", async () => {
+      renderReview(
+        mockApiClient({
+          getContract360: vi.fn().mockResolvedValue(ok(minimalContract())),
+          getContractEvidence: vi.fn().mockResolvedValue(evidenceOk([], 0.87)),
+        }),
+      );
+      expect(await screen.findByRole("heading", { level: 2, name: "4 facts need you — you decide" })).toBeInTheDocument();
 
-      expect(screen.getByText("auto-accepted")).toBeInTheDocument();
-      expect(screen.getByText("flagged")).toBeInTheDocument();
-      expect(screen.getByText("review required")).toBeInTheDocument();
+      const legend = screen.getByText("auto-accepted").closest(".review-legend") as HTMLElement;
+      expect(legend.querySelectorAll(".review-legend-item")).toHaveLength(2);
+      expect(within(legend).getByText("≥87%")).toBeInTheDocument();
+      expect(within(legend).getByText("<87%")).toBeInTheDocument();
+      expect(within(legend).queryByText(/flagged/i)).toBeNull();
     });
 
     it("shows a one-line header summary built from the real supplier id and contract type, never fabricated", async () => {
@@ -513,7 +564,7 @@ describe("ReviewRoute", () => {
           getContractEvidence: vi.fn().mockResolvedValue(evidenceOk([evidenceRow()])),
         }),
       );
-      await screen.findByText("Review extraction");
+      await screen.findByText(REVIEW_READY);
 
       fireEvent.click(screen.getByRole("button", { name: "Payment terms" }));
 
@@ -525,7 +576,7 @@ describe("ReviewRoute", () => {
       expect(screen.getByText("Extracted by fixture-extract-model · confidence 96%")).toBeInTheDocument();
       // The list row carries the same provenance and a real, non-fabricated confidence tag.
       expect(screen.getByText("p. 2 · “payable within forty-five (45) days”")).toBeInTheDocument();
-      expect(screen.getByText("Accepted · 96%")).toBeInTheDocument();
+      expect(screen.getByText("Accepted automatically · 96%")).toBeInTheDocument();
     });
 
     it("shows the quote alone when the page text could not be located, and says so when no source was recorded at all", async () => {
@@ -537,7 +588,7 @@ describe("ReviewRoute", () => {
           ),
         }),
       );
-      await screen.findByText("Review extraction");
+      await screen.findByText(REVIEW_READY);
 
       fireEvent.click(screen.getByRole("button", { name: "Payment terms" }));
       expect(await screen.findByText("payable within forty-five (45) days", { selector: "mark" })).toBeInTheDocument();
@@ -555,7 +606,7 @@ describe("ReviewRoute", () => {
           ),
         }),
       );
-      await screen.findByText("Review extraction");
+      await screen.findByText(REVIEW_READY);
 
       fireEvent.click(screen.getByRole("button", { name: "Contract type" }));
 
@@ -575,12 +626,12 @@ describe("ReviewRoute", () => {
         mockApiClient({
           getContract360: vi.fn().mockResolvedValue(ok(minimalContract())),
           getContractEvidence: vi.fn().mockResolvedValue(
-            evidenceOk([evidenceRow({ fieldName: "supplier", value: "Fabrikam Software GmbH", confidence: 0.52, sourcePage: 1, sourceSpan: "between Raffa Demo AG and Fabrikam Software GmbH", passage: null, highlightStart: null, highlightLength: null })]),
+            evidenceOk([evidenceRow({ fieldName: "supplier", value: "Fabrikam Software GmbH", confidence: 0.52, decision: "review_required", sourcePage: 1, sourceSpan: "between Raffa Demo AG and Fabrikam Software GmbH", passage: null, highlightStart: null, highlightLength: null })]),
           ),
           correctContract,
         }),
       );
-      await screen.findByText("Review extraction");
+      await screen.findByText(REVIEW_READY);
 
       const supplierRow = screen.getByRole("button", { name: "Supplier" }).closest("tr")!;
       expect(supplierRow).toHaveTextContent("Fabrikam Software GmbH");
@@ -604,7 +655,7 @@ describe("ReviewRoute", () => {
           getContractEvidence: vi.fn().mockResolvedValue({ ok: false, statusCode: 503, evidence: null, error: "Service Unavailable" }),
         }),
       );
-      await screen.findByText("Review extraction");
+      await screen.findByText(REVIEW_READY);
 
       expect(screen.getByText(/extraction evidence could not be loaded/i)).toBeInTheDocument();
       expect(screen.getAllByText("Needs review").length).toBeGreaterThan(0);
@@ -619,12 +670,15 @@ describe("ReviewRoute", () => {
         validation: null,
         error: "This document is still being processed; wait for extraction to finish before validating it.",
       } satisfies ValidateDocumentResult);
-      renderReview(mockApiClient({ getContract360: vi.fn().mockResolvedValue(ok(minimalContract())), validateDocument }));
-      await screen.findByText("Review extraction");
+      renderReview(
+        mockApiClient({
+          getContract360: vi.fn().mockResolvedValue(ok(minimalContract())),
+          getContractEvidence: vi.fn().mockResolvedValue(evidenceOk(autoAcceptedEvidence())),
+          validateDocument,
+        }),
+      );
+      await screen.findByText(REVIEW_READY);
 
-      for (const button of screen.getAllByRole("button", { name: "Accept" })) {
-        fireEvent.click(button);
-      }
       fireEvent.click(screen.getByRole("button", { name: /mark as validated/i }));
 
       expect(await screen.findByRole("alert")).toHaveTextContent(/still being processed/i);
@@ -637,11 +691,7 @@ describe("ReviewRoute", () => {
       validated.tabs.documents[0].processingStatus = "Completed";
       const validateDocument = vi.fn();
       renderReview(mockApiClient({ getContract360: vi.fn().mockResolvedValue(ok(validated)), validateDocument }));
-      await screen.findByText("Review extraction");
-
-      for (const button of screen.getAllByRole("button", { name: "Accept" })) {
-        fireEvent.click(button);
-      }
+      await screen.findByText(REVIEW_READY);
 
       expect(screen.getByRole("button", { name: "Validated" })).toBeDisabled();
       expect(screen.getByText(/this document is already validated/i)).toBeInTheDocument();
@@ -651,10 +701,95 @@ describe("ReviewRoute", () => {
     it("explains when the contract has no document to validate", async () => {
       const noDocuments = minimalContract({ tabs: { ...minimalContract().tabs, documents: [] } });
       renderReview(mockApiClient({ getContract360: vi.fn().mockResolvedValue(ok(noDocuments)) }));
-      await screen.findByText("Review extraction");
+      await screen.findByText(REVIEW_READY);
 
       expect(screen.getByRole("button", { name: /mark as validated/i })).toBeDisabled();
       expect(screen.getByText(/no document to validate/i)).toBeInTheDocument();
+    });
+  });
+
+  describe("NW-64: Not found in the document", () => {
+    it("renders the section with its heading and sentence at the end of the field-list column", async () => {
+      const { container } = renderReview(mockApiClient({ getContract360: vi.fn().mockResolvedValue(ok(minimalContract())) }));
+      await screen.findByText(REVIEW_READY);
+
+      const heading = screen.getByRole("heading", { name: "Not found in the document" });
+      expect(heading).toBeInTheDocument();
+      expect(
+        screen.getByText("Raffa could not find these in the file. Type the value if you have it — it is saved as your correction."),
+      ).toBeInTheDocument();
+
+      const column = container.querySelector(".review-field-column");
+      const pane = container.querySelector(".review-evidence-pane");
+      expect(column).not.toBeNull();
+      expect(pane).not.toBeNull();
+      expect(column!.contains(heading)).toBe(true);
+      expect(pane!.contains(heading)).toBe(false);
+      expect(screen.getByLabelText("End date")).toHaveValue("");
+      expect(screen.getByLabelText("Cancellation deadline")).toHaveValue("");
+    });
+
+    it("does not render the section when every canonical field was recovered", async () => {
+      renderReview(mockApiClient({ getContract360: vi.fn().mockResolvedValue(ok(recoveredContract())) }));
+      await screen.findByText(REVIEW_READY);
+
+      expect(screen.queryByRole("heading", { name: "Not found in the document" })).toBeNull();
+      expect(screen.queryByText(/Raffa could not find these in the file/)).toBeNull();
+      expect(screen.getByRole("button", { name: "End date" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Supplier" })).toBeInTheDocument();
+    });
+
+    it("never gives a missing field a confidence tag", async () => {
+      renderReview(mockApiClient({ getContract360: vi.fn().mockResolvedValue(ok(minimalContract())) }));
+      await screen.findByText(REVIEW_READY);
+
+      const heading = screen.getByRole("heading", { name: "Not found in the document" });
+      const section = heading.closest("section");
+      expect(section).not.toBeNull();
+      expect(section!.querySelector(".tag")).toBeNull();
+      expect(within(section!).queryByText(/%/)).toBeNull();
+      expect(within(section!).queryByText("Needs review")).toBeNull();
+    });
+
+    it("filling a missing row calls the existing correction path and the value comes back from load(), not local state", async () => {
+      let current = minimalContract();
+      const getContract360 = vi.fn().mockImplementation(async () => ok(current));
+      const correctContract = vi.fn().mockImplementation(
+        async (_tenant: string, _id: string, payload: { corrections: Record<string, string | null>; reason: string | null }) => {
+          current = {
+            ...current,
+            header: { ...current.header, endDate: payload.corrections.endDate ?? null },
+          };
+          return {
+            ok: true,
+            statusCode: 200,
+            correction: {
+              contractId: CONTRACT_ID,
+              versionNumber: 2,
+              correctedFields: ["endDate"],
+              correctedAt: "2026-09-16T10:00:00Z",
+            },
+            error: null,
+          } satisfies CorrectContractResult;
+        },
+      );
+
+      renderReview(mockApiClient({ getContract360, correctContract }));
+      await screen.findByText(REVIEW_READY);
+
+      const endDate = screen.getByLabelText("End date");
+      fireEvent.change(endDate, { target: { value: "2026-12-31" } });
+      fireEvent.blur(endDate);
+
+      await waitFor(() =>
+        expect(correctContract).toHaveBeenCalledWith(WORKSPACE_ID, CONTRACT_ID, {
+          corrections: { endDate: "2026-12-31" },
+          reason: null,
+        }),
+      );
+      await waitFor(() => expect(getContract360).toHaveBeenCalledTimes(2));
+      expect(await screen.findByRole("button", { name: "End date" })).toBeInTheDocument();
+      expect(screen.queryByLabelText("End date")).toBeNull();
     });
   });
 });

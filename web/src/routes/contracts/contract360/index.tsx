@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
-import type { ApiClient, Contract360Body, RenewalActionRow, RenewalPipelineItemBody, RenewalPriorityBody } from "../../../api/client";
+import type { ApiClient, Contract360Body, ContractFieldEvidenceBody, ContractStrategyBody, RenewalActionRow, RenewalPipelineItemBody, RenewalPriorityBody } from "../../../api/client";
 import { loadCurrentWorkspace } from "../../signin/workspaceStore";
 import { CHECK_AGAIN_LABEL, UPDATES_PAUSED_NOTICE, usePollBudget } from "../../../components/shell/usePollBudget";
 import { getRenewalActionPlan, savedActionOnScreen, type RenewalActionKind } from "../../renewals/renewalPipelineViewModel";
@@ -9,6 +9,7 @@ import Contract360Header from "./Contract360Header";
 import DetailsSection from "./DetailsSection";
 import WhyClauses from "./WhyClauses";
 import {
+  AUTO_ACCEPT_THRESHOLD,
   buildAnswers,
   buildNegotiationSteps,
   resolveBackLink,
@@ -34,6 +35,9 @@ type FetchState =
       contract: Contract360Body;
       renewals: readonly RenewalPipelineItemBody[];
       priority: RenewalPriorityBody | null;
+      strategy: ContractStrategyBody | null;
+      evidence: readonly ContractFieldEvidenceBody[];
+      autoAcceptThreshold: number;
     };
 
 /**
@@ -42,12 +46,13 @@ type FetchState =
  * header (origin back link · supplier · title · meta), the answers band (Where you can save · When
  * you must move · What to do, with Start negotiation / Assign to me or the tracker once acted),
  * "Why — the clauses behind it" with the selected clause's original wording, and the "Details ▾"
- * drawer (key terms, documents, facts to decide, priority score, extracted lists).
+ * drawer (key terms, documents, a review-count line when facts still need a decision, priority
+ * score, extracted lists).
  *
  * **Fetch order**: `getContract360` first -- a `404` is this screen's own "not found" state and
- * short-circuits the rest. Then `getRenewals` (for this contract's recommendation) and
- * `getRenewalPriority` together, both independently optional: either failing degrades its own
- * answer to an honest "not yet" rather than failing the screen.
+ * short-circuits the rest. Then `getRenewals` (for this contract's recommendation),
+ * `getRenewalPriority`, `getNegotiationSteps` and `getContractStrategy` together, each independently
+ * optional: a failure degrades its own answer to an honest "not yet" rather than failing the screen.
  *
  * **Citation landing (R-EVD-02)**: `?clause=<clauseId>` / `?page=<n>` pre-select a real clause so
  * its wording is highlighted without a click; `location.state.from` drives the back label.
@@ -112,10 +117,12 @@ export default function Contract360Route({ apiClient, userLabel }: Contract360Ro
       // Citation landing: select the cited clause before the first paint of the ready state.
       setSelectedClauseId(resolveHighlightedClauseId(contract.tabs.clauses, clauseParam, pageParam));
 
-      const [renewalsResult, priorityResult, stepsResult] = await Promise.all([
+      const [renewalsResult, priorityResult, stepsResult, strategyResult, evidenceResult] = await Promise.all([
         apiClient.getRenewals(workspace.id),
         apiClient.getRenewalPriority(workspace.id, contractId),
         apiClient.getNegotiationSteps(workspace.id, contractId),
+        apiClient.getContractStrategy(workspace.id, contractId),
+        apiClient.getContractEvidence(workspace.id, contractId),
       ]);
 
       const items = renewalsResult.ok && renewalsResult.renewals ? renewalsResult.renewals.items : [];
@@ -132,6 +139,9 @@ export default function Contract360Route({ apiClient, userLabel }: Contract360Ro
         contract,
         renewals: items,
         priority: priorityResult.ok ? priorityResult.priority : null,
+        strategy: strategyResult != null && strategyResult.ok ? strategyResult.strategy : null,
+        evidence: evidenceResult.ok && evidenceResult.evidence ? evidenceResult.evidence : [],
+        autoAcceptThreshold: evidenceResult.ok && evidenceResult.autoAcceptThreshold != null ? evidenceResult.autoAcceptThreshold : AUTO_ACCEPT_THRESHOLD,
       });
     });
     // Depends on workspace?.id/contractId (primitives), not workspace itself: loadCurrentWorkspace()
@@ -206,7 +216,7 @@ export default function Contract360Route({ apiClient, userLabel }: Contract360Ro
     );
   }
 
-  const { contract, renewals, priority } = fetchState;
+  const { contract, renewals, priority, strategy, evidence, autoAcceptThreshold } = fetchState;
   const { header, tabs } = contract;
 
   // The fifth state (ADR-020 w15 §2.3), driven by the server's `readiness` and never by an empty
@@ -234,7 +244,7 @@ export default function Contract360Route({ apiClient, userLabel }: Contract360Ro
       </div>
     );
   }
-  const answers = buildAnswers(header, tabs.renewal, renewals);
+  const answers = buildAnswers(header, tabs.renewal, renewals, { called: true, pack: strategy });
   const steps = buildNegotiationSteps(resolveSupplierLabel(header).label, answers.move.deadline);
 
   const postAction = (status: RenewalActionRow["status"], action: string, pending: RenewalActionKind | "undo") => {
@@ -325,11 +335,19 @@ export default function Contract360Route({ apiClient, userLabel }: Contract360Ro
         contractId={contractId}
         clauses={tabs.clauses}
         documents={tabs.documents}
+        autoAcceptThreshold={autoAcceptThreshold}
         selectedClauseId={selectedClauseId}
         onSelect={setSelectedClauseId}
       />
 
-      <DetailsSection contract={contract} priority={priority} open={detailsOpen} onToggle={() => setDetailsOpen((open) => !open)} />
+      <DetailsSection
+        contract={contract}
+        priority={priority}
+        evidence={evidence}
+        autoAcceptThreshold={autoAcceptThreshold}
+        open={detailsOpen}
+        onToggle={() => setDetailsOpen((open) => !open)}
+      />
     </div>
   );
 }

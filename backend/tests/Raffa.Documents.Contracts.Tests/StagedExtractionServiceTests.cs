@@ -3,6 +3,7 @@ using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Contracts;
 using Raffa.AiGateway.Fixtures;
 using Raffa.AiGateway.Foundry;
+using Raffa.Documents.Contracts.Application;
 using Raffa.Documents.Contracts.Application.Extraction;
 using Raffa.Documents.Contracts.Domain;
 using Raffa.Documents.Contracts.Infrastructure;
@@ -142,7 +143,7 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
             {"facts":[
                 {"field":"annualSpend","value":"120000.50","sourcePage":2,"sourceSpan":"Annual spend: $120,000.50","confidence":0.92},
                 {"field":"totalContractValue","value":"360000","sourcePage":2,"sourceSpan":"TCV: $360,000","confidence":0.9},
-                {"field":"paymentTerms","value":"Net 30","sourcePage":2,"sourceSpan":"Payment terms: Net 30","confidence":0.88}
+                {"field":"paymentTerms","value":"Net 30","sourcePage":2,"sourceSpan":"Payment terms: Net 30","confidence":0.92}
             ]}
             """,
         ["DatesAndRenewalTerms"] = """
@@ -160,17 +161,17 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
             """,
         ["LegalClauses"] = """
             {"items":[
-                {"clauseType":"termination","rawText":"Either party may terminate for convenience with 90 days notice.","riskLevel":"Medium","sourcePage":4,"sourceSpan":"Termination clause","confidence":0.85}
+                {"clauseType":"termination","rawText":"Either party may terminate for convenience with 90 days notice.","riskLevel":"Medium","sourcePage":4,"sourceSpan":"Termination clause","confidence":0.92}
             ]}
             """,
         ["Obligations"] = """
             {"items":[
-                {"party":"Customer","obligationType":"payment","description":"Pay invoice within 30 days of receipt","dueDate":"2026-02-01","sourcePage":2,"sourceSpan":"Payment obligation","confidence":0.8}
+                {"party":"Customer","obligationType":"payment","description":"Pay invoice within 30 days of receipt","dueDate":"2026-02-01","sourcePage":2,"sourceSpan":"Payment obligation","confidence":0.92}
             ]}
             """,
         ["Risk"] = """
             {"items":[
-                {"riskType":"liability","severity":"High","description":"Uncapped liability clause","sourcePage":4,"sourceSpan":"Liability clause","confidence":0.75}
+                {"riskType":"liability","severity":"High","description":"Uncapped liability clause","sourcePage":4,"sourceSpan":"Liability clause","confidence":0.92}
             ]}
             """,
     };
@@ -288,23 +289,33 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
         Assert.Equal("termination", clause.ClauseType);
         Assert.Equal(RiskSeverity.Medium, clause.RiskLevel);
         Assert.Equal(4, clause.SourcePage);
-        Assert.Equal(0.85, clause.Confidence);
+        Assert.Equal(0.92, clause.Confidence);
 
         var obligation = await readDb.Obligations.SingleAsync(o => o.ContractId == summary.ContractId);
         Assert.Equal("Customer", obligation.Party);
         Assert.Equal(new DateOnly(2026, 2, 1), obligation.DueDate);
         Assert.Equal(2, obligation.SourcePage);
-        Assert.Equal(0.8, obligation.Confidence);
+        Assert.Equal(0.92, obligation.Confidence);
 
         var risk = await readDb.Risks.SingleAsync(r => r.ContractId == summary.ContractId);
         Assert.Equal("liability", risk.RiskType);
         Assert.Equal(RiskSeverity.High, risk.Severity);
         Assert.Equal(4, risk.SourcePage);
-        Assert.Equal(0.75, risk.Confidence);
+        Assert.Equal(0.92, risk.Confidence);
+
+        Assert.All(evidence, e => Assert.Equal(ExtractionConfidencePolicy.AutoAccepted, e.Decision));
+        Assert.All(evidence, e => Assert.Equal(Now, e.DecidedAt));
 
         var auditEntry = Assert.Single(auditWriter.Written);
         Assert.Equal("document.extraction.completed", auditEntry.Action);
+        Assert.Equal("system:extraction", auditEntry.Actor);
         Assert.Equal(tenantId, auditEntry.TenantId);
+        Assert.Contains("fields=", auditEntry.Detail);
+        Assert.Contains("currency:0.95", auditEntry.Detail);
+        Assert.DoesNotContain("USD", auditEntry.Detail);
+        Assert.DoesNotContain(SupplierLegalName, auditEntry.Detail);
+        Assert.DoesNotContain("Net 30", auditEntry.Detail);
+        Assert.DoesNotContain("State of Delaware", auditEntry.Detail);
     }
 
     [Fact]
@@ -339,15 +350,13 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// Task E13/F03/US01/T02 (requirements R-SUP-01, product spec §7.3): <c>supplier</c> is a
-    /// <b>critical</b> field, judged at 0.8 rather than the ordinary 0.6. 0.64 is deliberately
-    /// chosen to sit between the two bars — under the old, single-threshold behaviour this fact
-    /// would have been trusted outright and the stage reported Completed. The evidence row is
-    /// written either way, so the field reaches the review list with its page/span/confidence; only
-    /// <see cref="StagedExtractionSummary.AcceptedSupplierName"/> tells the pipeline not to link it.
+    /// The same bar applies to every field, supplier included. 0.64 is below it, so the stage
+    /// and document go to review; the evidence row is still written so the field reaches the
+    /// review list; <see cref="StagedExtractionSummary.AcceptedSupplierName"/> stays null so
+    /// nothing downstream links a supplier off this fact.
     /// </summary>
     [Fact]
-    public async Task A_supplier_fact_below_the_critical_threshold_needs_review_but_keeps_its_evidence()
+    public async Task A_supplier_fact_below_the_bar_needs_review_but_keeps_its_evidence()
     {
         var tenantId = TenantId.New();
         var tenantContext = new TenantContext();
@@ -388,19 +397,18 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
         Assert.Equal(SupplierLegalName, supplierEvidence.Value);
         Assert.Equal("between Salesforce, Inc. and Contoso Ltd", supplierEvidence.SourceSpan);
         Assert.Equal(0.64, supplierEvidence.Confidence);
+        Assert.Equal(ExtractionConfidencePolicy.ReviewRequired, supplierEvidence.Decision);
 
-        // The sibling `currency` fact sits at the same 0.64-vs-0.8 relationship the other way
-        // round: an ordinary field at 0.64 would have been fine, which is exactly why the two
-        // thresholds cannot be one number.
+        var currencyEvidence = await readDb.ExtractionEvidences
+            .SingleAsync(e => e.ContractId == summary.ContractId && e.FieldName == "currency");
+        Assert.Equal(ExtractionConfidencePolicy.AutoAccepted, currencyEvidence.Decision);
         Assert.Equal("USD", (await readDb.Contracts.SingleAsync(c => c.Id == summary.ContractId)).Currency);
     }
 
-    /// <summary>Same shape as the test above, one notch higher: an ordinary field is unaffected by
-    /// the critical bar. 0.64 on <c>currency</c> alone keeps the stage Completed — proof that
-    /// <c>CriticalFields</c> narrows the stricter threshold to the fields §7.3 names, rather than
-    /// raising it for everything.</summary>
+    /// <summary>The five critical fields use the same bar as every other field: 0.64 on
+    /// <c>currency</c> is review-required, the same outcome a 0.64 <c>supplier</c> has.</summary>
     [Fact]
-    public async Task A_non_critical_fact_between_the_two_thresholds_is_still_trusted()
+    public async Task A_non_critical_fact_below_the_bar_needs_review_like_every_other_field()
     {
         var tenantId = TenantId.New();
         var tenantContext = new TenantContext();
@@ -421,9 +429,17 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
 
         Assert.True(result.IsSuccess);
         Assert.Equal(
-            ExtractionJobStatus.Completed,
+            ExtractionJobStatus.NeedsReview,
             result.Value.Stages.Single(s => s.Stage == ExtractionStage.Metadata).Status);
+        Assert.Equal(DocumentProcessingStatus.NeedsReview, result.Value.DocumentProcessingStatus);
         Assert.Null(result.Value.AcceptedSupplierName);
+
+        await using var readDb = CreateContext(tenantContext);
+        using var tenantScope = tenantContext.BeginScope(tenantId);
+        var currency = await readDb.ExtractionEvidences
+            .SingleAsync(e => e.ContractId == result.Value.ContractId && e.FieldName == "currency");
+        Assert.Equal(ExtractionConfidencePolicy.ReviewRequired, currency.Decision);
+        Assert.Equal(0.64, currency.Confidence);
     }
 
     /// <summary>ADR-004/ADR-017 amendments (2026-09-09): the live `extract` role sends each stage's
@@ -608,9 +624,13 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
             classificationConfidence: 0.99);
 
         Assert.True(clean.IsSuccess);
-        Assert.All(clean.Value.Stages, s => Assert.Equal(ExtractionJobStatus.Completed, s.Status));
-        Assert.Equal(DocumentProcessingStatus.Completed, clean.Value.DocumentProcessingStatus);
         Assert.Equal("Northwind Traders SA", clean.Value.AcceptedSupplierName);
+        // Derived dates and GoodConfidence status sit below the auto-accept bar, so the
+        // clean sample is reviewable — the fixture moved, the bar did not.
+        Assert.Equal(DocumentProcessingStatus.NeedsReview, clean.Value.DocumentProcessingStatus);
+        var cleanStages = clean.Value.Stages.ToDictionary(s => s.Stage);
+        Assert.Equal(ExtractionJobStatus.NeedsReview, cleanStages[ExtractionStage.Metadata].Status);
+        Assert.Equal(ExtractionJobStatus.NeedsReview, cleanStages[ExtractionStage.DatesAndRenewalTerms].Status);
 
         var ambiguous = await service.RunAsync(
             tenantId,
@@ -636,11 +656,13 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
         await using var readDb = CreateContext(tenantContext);
         using var tenantScope = tenantContext.BeginScope(tenantId);
         var weakFields = await readDb.ExtractionEvidences
-            .Where(e => e.ContractId == ambiguous.Value.ContractId && (e.Confidence == null || e.Confidence < 0.6))
+            .Where(e => e.ContractId == ambiguous.Value.ContractId && e.Decision == ExtractionConfidencePolicy.ReviewRequired)
             .Select(e => e.FieldName)
             .OrderBy(f => f)
             .ToListAsync();
-        Assert.Equal(["annualSpend", "autoRenewal", "supplier"], weakFields);
+        Assert.Contains("annualSpend", weakFields);
+        Assert.Contains("autoRenewal", weakFields);
+        Assert.Contains("supplier", weakFields);
 
         var cleanContract = await readDb.Contracts.SingleAsync(c => c.Id == clean.Value.ContractId);
         Assert.Equal("EUR", cleanContract.Currency);
@@ -675,11 +697,9 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
         seedDb.ExtractionJobs.Add(classificationJob);
         await seedDb.SaveChangesAsync();
 
-        // B2 (PR #137): a high-confidence supplier (≥ 0.8) triggers identityAccepted=true and
-        // overrides any weak fact, including a weak classification.  To isolate the test's own
-        // intent — "weak classification alone routes to NeedsReview when no supplier is accepted" —
-        // we strip the supplier fact from the Metadata payload so identityAccepted stays false and
-        // the B2 fast-path never fires.
+        // Strip the supplier fact so this case is only the weak classification (0.5), not a
+        // missing-supplier side effect. The classification uses the same auto-accept bar as every
+        // other field.
         var payloads = HighConfidencePayloads();
         payloads["Metadata"] = """
             {"facts":[
@@ -693,8 +713,8 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
         var service = new StagedExtractionService(
             runDb, new ScriptedAiGateway(payloads), tenantContext, new FixedClock(Now), new RecordingAuditWriter());
 
-        // All staged facts are high-confidence and no supplier is accepted (identityAccepted=false),
-        // so the weak classification (0.5 < 0.6 low-confidence bar) is the sole trigger for NeedsReview.
+        // All staged facts are high-confidence; the weak classification (0.5 < 0.90) is the
+        // sole trigger for NeedsReview.
         var result = await service.RunAsync(
             tenantId, document.Id, [new DocumentPageText(1, "text")], classificationConfidence: 0.5);
 
@@ -719,14 +739,11 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// B2 identity-trusted auto-Complete: a supplier accepted at the critical confidence bar (≥ 0.8)
-    /// means the contract is clearly identified. Non-critical weak facts (status, dates, spend) that
-    /// would normally route the document to NeedsReview are waived — the document counts as Completed
-    /// so it appears in Portfolio/Renewals/contractCount without waiting for HITL on every weak field.
-    /// The weak evidence rows are still persisted and visible on the review screen.
+    /// A strong supplier no longer auto-completes the document: every field uses the same bar,
+    /// so a weak status keeps the document in NeedsReview (badge and status stay in agreement).
     /// </summary>
     [Fact]
-    public async Task B2_strong_supplier_auto_completes_even_when_non_critical_facts_are_weak()
+    public async Task A_strong_supplier_does_not_auto_complete_when_another_field_needs_review()
     {
         var tenantId = TenantId.New();
         var tenantContext = new TenantContext();
@@ -735,7 +752,6 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
         var (_, document) = await SeedDocumentAsync(seedDb, tenantId);
 
         var payloads = HighConfidencePayloads();
-        // Supplier at critical threshold (0.9 ≥ 0.8 ✓) but status/currency confidence is low (0.31).
         payloads["Metadata"] = $$"""
             {"facts":[
                 {"field":"supplier","value":"{{SupplierLegalName}}","sourcePage":1,"sourceSpan":"between Salesforce, Inc. and Contoso Ltd","confidence":0.9},
@@ -752,26 +768,26 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
         Assert.True(result.IsSuccess);
         var summary = result.Value;
 
-        // B2: supplier was accepted — document is Completed despite the weak status fact.
-        Assert.Equal(DocumentProcessingStatus.Completed, summary.DocumentProcessingStatus);
+        Assert.Equal(DocumentProcessingStatus.NeedsReview, summary.DocumentProcessingStatus);
         Assert.Equal(SupplierLegalName, summary.AcceptedSupplierName);
 
-        // The metadata stage itself still reports NeedsReview (the weak status fact lives there);
-        // the document-level gate is lifted by identity, not by erasing the stage result.
         var metadataStage = summary.Stages.Single(s => s.Stage == ExtractionStage.Metadata);
         Assert.Equal(ExtractionJobStatus.NeedsReview, metadataStage.Status);
 
-        // Weak evidence row is still persisted — it reaches the review screen.
         await using var readDb = CreateContext(tenantContext);
         using var tenantScope = tenantContext.BeginScope(tenantId);
         var statusEvidence = await readDb.ExtractionEvidences
             .SingleAsync(e => e.ContractId == summary.ContractId && e.FieldName == "status");
         Assert.Equal(0.31, statusEvidence.Confidence);
+        Assert.Equal(ExtractionConfidencePolicy.ReviewRequired, statusEvidence.Decision);
+        var supplierEvidence = await readDb.ExtractionEvidences
+            .SingleAsync(e => e.ContractId == summary.ContractId && e.FieldName == "supplier");
+        Assert.Equal(ExtractionConfidencePolicy.AutoAccepted, supplierEvidence.Decision);
     }
 
     /// <summary>
-    /// B2 safety rail: a stage that fails entirely (model/network error) is a missing signal —
-    /// identity strength does not compensate for absent data, so the document still needs review.
+    /// A stage that fails entirely (model/network error) is a missing signal — an auto-accepted
+    /// supplier does not compensate for absent data, so the document still needs review.
     /// </summary>
     [Fact]
     public async Task B2_strong_supplier_still_needs_review_when_a_stage_fails()

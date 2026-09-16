@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Raffa.Tools: operator console — third composition root, after Raffa.Api and Raffa.Worker
+    (task E20/F02/US02/T01, w17, NW-73). No table, no endpoint, no business rule; referenced
+    by nothing. Resolves DocumentReprocessService through the owning modules' own
+    ServiceCollectionExtensions (ADR-002 w17 clause 1). Not containerised, not pushed to ACR,
+    not a Container App (ADR-005 / backend.yml:142-155): a project registered in the solution
+    is built and tested with no backend.yml edit.
+
+    One project reference picks up both halves (Raffa.Documents.Contracts + Raffa.SharedKernel)
+    transitively through Raffa.Messaging, which already references both.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Raffa.Tools</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Raffa.Messaging → Raffa.Documents.Contracts → Raffa.SharedKernel + Raffa.AiGateway -->
+    <ProjectReference Include="..\Raffa.Messaging\Raffa.Messaging.csproj" />
+    <!-- Audit module: AddAuditModule + IAuditWriter implementation. IAuditWriter port is already
+         in Raffa.SharedKernel (transitively available), but the implementation and extension
+         method live here. -->
+    <ProjectReference Include="..\Raffa.Audit\Raffa.Audit.csproj" />
+    <!-- Object storage: AddAzureBlobDocumentStorage. IDocumentStorage port is in SharedKernel;
+         the Azure SDK adapter is here. -->
+    <ProjectReference Include="..\Raffa.Storage\Raffa.Storage.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Microsoft.Extensions.Hosting is already available transitively through Raffa.Messaging,
+         but is listed explicitly for clarity (this is the composition root that calls it). -->
+    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.11" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,191 @@
+name: reprocess-tenant-documents
+
+# Task E20/F02/US02/T01 (wave w17, NW-73 — bulk whole-tenant reprocess console).
+# Re-enqueues every document in the verify-tenant-corpus worklist (processing_status = 'Failed'
+# or at least one embedding still starting with '%PDF') through Raffa.Tools →
+# DocumentReprocessService.ReprocessAsync. Run verify-tenant-corpus before and after to confirm
+# the worklist shrinks to zero.
+#
+# target_environment is dev only (ADR-022 w17 clause 6b). Anyone with repository write access
+# who explicitly dispatches this job can trigger a bulk reprocess — the set of humans who can
+# do so must be no wider than the set who could do the same as tenant Admins through the API
+# (ADR-022 w17 clause 3). There are no required reviewers on the dev environment
+# (OQ-w17-dm-04, assumption in force).
+on:
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: >-
+          GitHub Environment whose tenant corpus is reprocessed.
+          Only dev is offered: the set of humans who can trigger a
+          bulk reprocess must be no wider than the set who could do
+          the same as tenant Admins through the API (ADR-022 w17
+          clause 3). Dispatching against demo is not supported.
+        required: true
+        type: choice
+        options: [dev]
+        default: dev
+      tenant_id:
+        description: >-
+          The workspace/tenant UUID whose documents are reprocessed
+          (the same value the SPA sends as X-Tenant-Id). The worklist
+          predicate is identical to verify-tenant-corpus: Failed status
+          or at least one embedding starting with %PDF.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reprocess-tenant-documents-${{ inputs.target_environment }}-${{ inputs.tenant_id }}
+  cancel-in-progress: false
+
+env:
+  TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
+  TENANT_ID: ${{ inputs.tenant_id }}
+  # Route github.actor through an env var (repo idiom: demo-promote.yml:112).
+  # Never interpolate user-supplied or runner-supplied strings inline in run blocks.
+  REQUESTED_BY: ${{ github.actor }}
+
+jobs:
+  reprocess:
+    name: reprocess tenant (${{ inputs.target_environment }})
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.target_environment }}
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+
+      - name: Validate tenant id
+        run: |
+          set -euo pipefail
+          if ! printf '%s' "$TENANT_ID" | grep -Eiq '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'; then
+            echo "::error::tenant_id '$TENANT_ID' is not a UUID. Pass the workspace id the SPA sends as X-Tenant-Id."
+            exit 1
+          fi
+
+      - name: Azure login (OIDC)
+        uses: ./.github/actions/azure-login
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Ensure containerapp CLI extension
+        run: az extension add --name containerapp --upgrade -y
+
+      - name: Resolve resource group
+        run: echo "RESOURCE_GROUP=rg-raffa-${TARGET_ENVIRONMENT}" >> "$GITHUB_ENV"
+
+      - name: Detect Service Bus namespace
+        run: |
+          set -euo pipefail
+          API_NAME="ca-raffa-${TARGET_ENVIRONMENT}-api"
+          SB_FQNS=$(az containerapp show --name "$API_NAME" --resource-group "$RESOURCE_GROUP" \
+            --query "properties.template.containers[0].env[?name=='ServiceBus__FullyQualifiedNamespace'].value | [0]" \
+            -o tsv 2>/dev/null | tr -d '\r' || true)
+          if [ -z "$SB_FQNS" ] || [ "$SB_FQNS" = "None" ]; then
+            echo "::error::ServiceBus__FullyQualifiedNamespace not found on Container App $API_NAME. " \
+              "Confirm the HCP VCS apply landed the Service Bus module and that raffa-sp-${TARGET_ENVIRONMENT} " \
+              "has the topic-scoped Send role (ADR-016 w17 clause 44)."
+            exit 1
+          fi
+          echo "SB_FQNS=$SB_FQNS" >> "$GITHUB_ENV"
+          echo "Service Bus namespace: $SB_FQNS"
+
+      - name: Fetch Postgres connection string (ADR-021)
+        run: |
+          set -euo pipefail
+          HCP_RUNS="https://app.terraform.io/app/raffa-platform/workspaces/raffa-${TARGET_ENVIRONMENT}/runs"
+          KV_NAME=$(az keyvault list --resource-group "$RESOURCE_GROUP" --query "[0].name" -o tsv)
+          if [ -z "$KV_NAME" ]; then
+            echo "::error::no Key Vault found in resource group $RESOURCE_GROUP. Confirm the HCP VCS apply at $HCP_RUNS, then re-run this job."
+            exit 1
+          fi
+          echo "KV_NAME=$KV_NAME" >> "$GITHUB_ENV"
+          set +e
+          RAW_CONN=$(az keyvault secret show --vault-name "$KV_NAME" --name postgres-connection --query value -o tsv 2>/tmp/kv_secret_show.err)
+          KV_STATUS=$?
+          set -e
+          if [ $KV_STATUS -ne 0 ] || [ -z "$RAW_CONN" ]; then
+            echo "::error::could not read secret 'postgres-connection' from $KV_NAME. Either the HCP VCS apply at $HCP_RUNS has not created it yet, or this environment's CI deploy principal (raffa-sp-${TARGET_ENVIRONMENT}) is missing the 'Key Vault Secrets User' role on $KV_NAME. Azure CLI said: $(tail -c 500 /tmp/kv_secret_show.err | tr '\n' ' ')"
+            exit 1
+          fi
+          echo "::add-mask::$RAW_CONN"
+          PG_EXPORTS=$(printf '%s' "$RAW_CONN" | python3 scripts/pg_connection_string_env.py)
+          eval "$PG_EXPORTS"
+          echo "::add-mask::$PGPASSWORD"
+          if [ -z "${PGHOST:-}" ] || [ -z "${PGPASSWORD:-}" ]; then
+            echo "::error::scripts/pg_connection_string_env.py produced an incomplete environment from the postgres-connection secret"
+            exit 1
+          fi
+          {
+            echo "PGHOST=$PGHOST"
+            echo "PGPORT=$PGPORT"
+            echo "PGDATABASE=$PGDATABASE"
+            echo "PGUSER=$PGUSER"
+            echo "PGPASSWORD=$PGPASSWORD"
+            echo "PGSSLMODE=$PGSSLMODE"
+            echo "PG_CONN=$RAW_CONN"
+          } >> "$GITHUB_ENV"
+
+      - name: Fetch Storage connection string
+        run: |
+          set -euo pipefail
+          set +e
+          STORAGE_CONN=$(az keyvault secret show --vault-name "$KV_NAME" --name storage-connection --query value -o tsv 2>/tmp/kv_storage.err)
+          ST_STATUS=$?
+          set -e
+          if [ $ST_STATUS -ne 0 ] || [ -z "$STORAGE_CONN" ]; then
+            echo "::error::could not read secret 'storage-connection' from $KV_NAME. Azure CLI said: $(tail -c 500 /tmp/kv_storage.err | tr '\n' ' ')"
+            exit 1
+          fi
+          echo "::add-mask::$STORAGE_CONN"
+          echo "STORAGE_CONN=$STORAGE_CONN" >> "$GITHUB_ENV"
+
+      - name: Reprocess tenant documents
+        # AZURE_CLIENT_ID is deliberately NOT set here (ADR-016 w17 clause 39, task §9):
+        # it selects the user-assigned managed identity, absent from this runner host.
+        # DefaultAzureCredential falls through to AzureCliCredential, which uses the OIDC
+        # token acquired in the 'Azure login' step above.
+        #
+        # REQUESTED_BY carries github.actor through an env var rather than inline
+        # interpolation (repo idiom: demo-promote.yml:112; hardened-SAST safe).
+        run: |
+          set -euo pipefail
+          echo "::group::reprocess run (tenant=$TENANT_ID, run=$GITHUB_RUN_ID)"
+          dotnet run --project backend/src/Raffa.Tools --configuration Release -- \
+            --tenant-id  "$TENANT_ID" \
+            --requested-by "$REQUESTED_BY" \
+            --run-id     "$GITHUB_RUN_ID"
+          echo "::endgroup::"
+        env:
+          ConnectionStrings__DocumentsContracts: ${{ env.PG_CONN }}
+          ConnectionStrings__Audit: ${{ env.PG_CONN }}
+          ConnectionStrings__Storage: ${{ env.STORAGE_CONN }}
+          ServiceBus__FullyQualifiedNamespace: ${{ env.SB_FQNS }}
+
+      - name: Summary
+        if: always()
+        run: |
+          set -euo pipefail
+          {
+            echo "### reprocess-tenant-documents"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Environment | \`${TARGET_ENVIRONMENT}\` |"
+            echo "| Tenant | \`${TENANT_ID}\` |"
+            echo "| Run id | \`${GITHUB_RUN_ID}\` |"
+            echo "| Triggered by | \`${REQUESTED_BY}\` |"
+            echo
+            echo "Next: run \`verify-tenant-corpus\` against the same tenant to confirm the worklist is empty and \`%PDF\` is gone."
+          } >> "$GITHUB_STEP_SUMMARY"

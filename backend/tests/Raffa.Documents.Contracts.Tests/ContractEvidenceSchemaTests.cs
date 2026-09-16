@@ -73,6 +73,9 @@ public sealed class ContractEvidenceSchemaTests : IAsyncLifetime
         ("risk", "source_page", "integer", true),
         ("risk", "confidence", "double precision", true),
         ("risk", "version", "integer", false),
+
+        ("extraction_evidence", "decision", "character varying", true),
+        ("extraction_evidence", "decided_at", "timestamp with time zone", true),
     ];
 
     [Fact]

@@ -7,6 +7,7 @@ import type { WorkspaceRole } from "../../../src/components/shell/navItems";
 import type {
   ApiClient,
   Contract360Body,
+  ContractFieldEvidenceBody,
   CorrectionHistoryEntryBody,
   DocumentListItemBody,
   DocumentListPageBody,
@@ -51,7 +52,8 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     getRenewalPriority: vi.fn(),
     getCorrectionHistory: vi.fn(),
     correctContract: vi.fn(),
-    getContractEvidence: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, evidence: [], error: null }),
+    getContractEvidence: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, evidence: [], autoAcceptThreshold: 0.87, error: null }),
+    getContractStrategy: vi.fn(),
     validateDocument: vi.fn().mockResolvedValue({
       ok: true,
       statusCode: 200,
@@ -223,6 +225,24 @@ function contract360(overrides: Partial<Contract360Body["header"]> = {}): Contra
       activity: [],
     },
   };
+}
+
+function autoAcceptedEvidence(): ContractFieldEvidenceBody[] {
+  return ["type", "status", "currency", "autoRenewal"].map((fieldName) => ({
+    fieldName,
+    value: "x",
+    confidence: 0.96,
+    decision: "auto_accepted" as const,
+    sourcePage: null,
+    sourceSpan: null,
+    sourceDocumentId: null,
+    sourceFileName: null,
+    passage: null,
+    highlightStart: null,
+    highlightLength: null,
+    modelId: null,
+    extractedAt: "2026-09-09T10:00:00Z",
+  }));
 }
 
 describe("DocumentsRoute (task E13/F09/US01/T03, web-documents-v2)", () => {
@@ -530,7 +550,7 @@ describe("DocumentsRoute (task E13/F09/US01/T03, web-documents-v2)", () => {
       "/documents?review=doc-1",
     );
 
-    expect(await screen.findByText("Review extraction")).toBeInTheDocument();
+    expect(await screen.findByText(/facts need you/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "← Documents" })).toBeInTheDocument();
   });
 
@@ -548,17 +568,21 @@ describe("DocumentsRoute (task E13/F09/US01/T03, web-documents-v2)", () => {
       history: [],
       error: null,
     } satisfies GetCorrectionHistoryResult);
-    const client = mockApiClient({ listDocuments: vi.fn().mockResolvedValue(listOk(items)), getContract360, getCorrectionHistory });
+    const client = mockApiClient({
+      listDocuments: vi.fn().mockResolvedValue(listOk(items)),
+      getContract360,
+      getCorrectionHistory,
+      getContractEvidence: vi.fn().mockResolvedValue({
+        ok: true,
+        statusCode: 200,
+        evidence: autoAcceptedEvidence(),
+        autoAcceptThreshold: 0.87,
+        error: null,
+      }),
+    });
     renderDocuments(client, "/documents?review=doc-1");
 
-    await screen.findByText("Review extraction");
-    // Every required field (type/status/currency/autoRenewal) starts pending -- no evidence is
-    // mocked here, so every pending field blocks until a human decision; accept each.
-    const acceptButtons = screen.getAllByRole("button", { name: "Accept" });
-    for (const button of acceptButtons) {
-      // eslint-disable-next-line no-await-in-loop
-      await userEvent.click(button);
-    }
+    await screen.findByText(/facts need you/);
 
     const markValidated = screen.getByRole("button", { name: "Mark as validated" });
     expect(markValidated).not.toBeDisabled();
@@ -567,10 +591,8 @@ describe("DocumentsRoute (task E13/F09/US01/T03, web-documents-v2)", () => {
     expect(await screen.findByText(/is now askable\./)).toBeInTheDocument();
     const askLink = screen.getByRole("link", { name: "Ask: when does it expire?" });
     expect(askLink).toHaveAttribute("href", "/ask?scope=contract-1");
-    // The sign-off is a real write against the reviewed document (`?review=doc-1`), naming every
-    // Accepted field -- the backend moves the document to Completed and audits it.
     expect(client.validateDocument).toHaveBeenCalledWith(WORKSPACE_ID, "doc-1", {
-      acceptedFields: ["type", "status", "currency", "autoRenewal"],
+      acceptedFields: [],
     });
   });
 
@@ -585,19 +607,27 @@ describe("DocumentsRoute (task E13/F09/US01/T03, web-documents-v2)", () => {
       error: "This document failed processing; reprocess it before validating.",
     });
     renderDocuments(
-      mockApiClient({ listDocuments: vi.fn().mockResolvedValue(listOk(items)), getContract360, getCorrectionHistory, validateDocument }),
+      mockApiClient({
+        listDocuments: vi.fn().mockResolvedValue(listOk(items)),
+        getContract360,
+        getCorrectionHistory,
+        validateDocument,
+        getContractEvidence: vi.fn().mockResolvedValue({
+          ok: true,
+          statusCode: 200,
+          evidence: autoAcceptedEvidence(),
+          autoAcceptThreshold: 0.87,
+          error: null,
+        }),
+      }),
       "/documents?review=doc-1",
     );
 
-    await screen.findByText("Review extraction");
-    for (const button of screen.getAllByRole("button", { name: "Accept" })) {
-      // eslint-disable-next-line no-await-in-loop
-      await userEvent.click(button);
-    }
+    await screen.findByText(/facts need you/);
     await userEvent.click(screen.getByRole("button", { name: "Mark as validated" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/failed processing/i);
-    expect(screen.getByText("Review extraction")).toBeInTheDocument();
+    expect(screen.getByText(/facts need you/)).toBeInTheDocument();
     expect(screen.queryByText(/is now askable\./)).toBeNull();
   });
 

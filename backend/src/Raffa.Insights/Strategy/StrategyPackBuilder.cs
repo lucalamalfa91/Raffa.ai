@@ -1,4 +1,5 @@
 using System.Globalization;
+using Raffa.Benchmark.Contracts;
 using Raffa.Insights.Contracts;
 using Raffa.Insights.Criticality;
 using Raffa.Insights.Negotiation;
@@ -123,10 +124,33 @@ public static class StrategyPackBuilder
                 result.AcceptableRangeLow,
                 result.AcceptableRangeHigh,
                 result.WalkAwayThreshold,
-                result.Explanation));
+                AnnotateTargetExplanation(result.Explanation, result.OpeningTarget, line)));
         }
 
         return (levers, targets);
+    }
+
+    /// <summary>
+    /// Two honest shapes (ADR-001 w17 clause 4): a numeric target whose band is labelled
+    /// <c>representative</c> and carries adapter, sample size and as-of date, or the calculator's
+    /// own <c>insufficient market data</c> explanation when no band was supplied. Provenance is
+    /// appended only when the host filled adapter + as-of on a line that actually produced a
+    /// target — never onto an abstention, and never a bare percentile or an unqualified "market".
+    /// </summary>
+    private static string AnnotateTargetExplanation(
+        string explanation, decimal? openingTarget, PricedLine line)
+    {
+        if (openingTarget is null
+            || line.AdapterName is not { } adapter
+            || line.AsOf is not { } asOf)
+        {
+            return explanation;
+        }
+
+        var samplePart = line.SampleSize is { } n
+            ? $"; n={n.ToString(CultureInfo.InvariantCulture)}"
+            : string.Empty;
+        return $"{explanation} representative (source: {adapter}{samplePart}; as of {asOf:yyyy-MM-dd})";
     }
 
     /// <summary>

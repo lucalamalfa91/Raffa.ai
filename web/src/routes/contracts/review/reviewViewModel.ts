@@ -5,7 +5,7 @@ import type {
   CorrectionHistoryEntryBody,
   PortfolioContractType,
 } from "../../../api/client";
-import { getConfidenceTag, isConfidenceBlocking, type SemanticTag } from "../../../styles/semantics";
+import { getConfidenceTag, type SemanticTag } from "../../../styles/semantics";
 import { formatDateOnly, getContractTypeLabel } from "../portfolioTableFormatters";
 
 /**
@@ -22,12 +22,13 @@ import { formatDateOnly, getContractTypeLabel } from "../portfolioTableFormatter
  * R-SUP-03: "from the review UI where a user names the supplier as a correction"), which is a
  * supplier *name* the backend resolves into a link, never a guid.
  *
- * **Confidence and source are real now.** `GET /api/contracts/{id}/evidence` (`getContractEvidence`)
- * exposes the `ExtractionEvidence` trail the pipeline has always written -- per field: the value the
- * model proposed, its 0..1 confidence, the page, the quoted span, the passage around it and the
- * model id. `buildReviewFields` folds the latest row per field into each `ReviewFieldRow`, so
- * `fieldTag`/`isFieldBlocking` apply spec §7.3's thresholds (`styles/semantics.ts#getConfidenceTag`,
- * >95 / 80-95 / <80) to a real score. A field with no evidence at all (a bootstrap placeholder the
+ * **Confidence, source and the server's decision are real now.** `GET /api/contracts/{id}/evidence`
+ * (`getContractEvidence`) exposes the `ExtractionEvidence` trail -- per field: the value the model
+ * proposed, its 0..1 confidence, the persisted decision (`auto_accepted` / `human_accepted` /
+ * `review_required`), the page, the quoted span, the passage around it and the model id.
+ * `buildReviewFields` folds the latest row per field into each `ReviewFieldRow`, so
+ * `fieldTag`/`isFieldBlocking` **render that decision** (ADR-012 w17 clause 34) and never compare
+ * the percentage against a bar. A field with no evidence at all (a bootstrap placeholder the
  * extraction never touched, or a document processed before evidence was recorded) keeps the
  * conservative "Needs review" posture: no number is invented (Appendix C rule 10), and the field
  * blocks until a human decides.
@@ -38,6 +39,11 @@ import { formatDateOnly, getContractTypeLabel } from "../portfolioTableFormatter
  * built from the proposal (`proposalPending: true`) and "Accept" has to *write* it -- see
  * `useReviewSession.ts` -- because accepting an unapplied proposal is a real change, unlike accepting
  * a value the contract already holds.
+ *
+ * **An unrecovered field is still shown.** A canonical field with no contract value and no
+ * proposal used to be dropped; under NW-64 it survives as `missing` so the user can type it.
+ * Termination and price uplift are not in `CORRECTABLE_FIELDS` and are not invented (ADR-001 w17
+ * clause 5). A missing row carries no confidence and does not change the decided-set gate.
  */
 
 export type CorrectableFieldName =
@@ -185,9 +191,8 @@ export interface ReviewFieldRow {
   kind: FieldKind;
   /** See `FieldDefinition.required`'s own doc comment. */
   required: boolean;
-  /** Canonical wire-format value (never `null` -- rows with neither a contract value nor an
-   * extraction proposal are filtered out of `buildReviewFields`'s result, since there is nothing
-   * to review). The contract's current value, or -- when the contract has none -- the value the
+  /** Canonical wire-format value. Empty when `missing` (nothing extracted and nothing proposed).
+   * Otherwise the contract's current value, or -- when the contract has none -- the value the
    * extraction proposed (`proposalPending`). Correction-form pre-fill. */
   rawValue: string;
   /** Human-readable rendering of `rawValue`, for the list/evidence pane. */
@@ -198,12 +203,17 @@ export interface ReviewFieldRow {
   /** The extraction's real 0-100 score for this field, from `GET /api/contracts/{id}/evidence`;
    * `null` when no evidence row exists for it (nothing is invented -- see the module header). */
   confidencePct: number | null;
+  /** The server's persisted decision for this field; `null` when no evidence row exists. */
+  evidenceDecision: ContractFieldEvidenceBody["decision"] | null;
   /** The latest evidence row behind `confidencePct`: page, span, passage, model. */
   evidence: ContractFieldEvidenceBody | null;
   /** True when the extraction proposed a value the contract does not carry (today: a `supplier`
    * fact below the critical bar the pipeline declined to link). Accepting such a row is a real
    * write (`correctContract` with the proposed value), not a client-side acknowledgement. */
   proposalPending: boolean;
+  /** True when this canonical field has no contract value and no proposal. It renders as an empty
+   * fillable input, never as a confidence-tagged table row, and does not block validation. */
+  missing: boolean;
 }
 
 /** The canonical wire string for a proposed value, so a `proposalPending` row's Accept sends exactly
@@ -216,22 +226,20 @@ function normalizeProposedValue(kind: FieldKind, proposed: string): string {
 }
 
 /**
- * Builds one row per correctable field that has either a value on this contract or an extraction
- * proposal in `evidence` (AC-1). `history` is `GET /api/contracts/{id}/corrections`'s real,
- * newest-first result, so `history.find(...)` below returns each field's latest correction, matching
+ * Builds one row per correctable field (AC-1). A field with neither a contract value nor an
+ * extraction proposal survives as `missing` rather than being dropped (NW-64). `history` is
+ * `GET /api/contracts/{id}/corrections`'s real, newest-first result, so `history.find(...)`
+ * below returns each field's latest correction, matching
  * `ContractCorrectionHistoryQueryService`'s own `OrderByDescending(CorrectedAt)`.
  *
- * `acceptedThisSession` is this screen's own client-side "Accept" acknowledgement for a field whose
- * value the contract already holds -- there is no accept-only backend call for an unchanged value
- * (`ContractCorrectionService.CorrectAsync` rejects a no-op correction), so the durable record of
- * those acceptances is the `acceptedFields` list "Mark as validated" sends to
- * `POST /api/documents/{id}/validate`, which the backend writes onto the `document.validated` audit
- * row. A reload before that click re-asks any field that was only Accepted, never Corrected.
+ * Acceptance is the **server's** persisted decision on the evidence row (ADR-012 w17 clause 34/36).
+ * `auto_accepted` and `human_accepted` render as resolved without any React session set;
+ * `review_required` (or a missing evidence row) stays pending. A correction-history entry still
+ * outranks both: a human PATCH is already durable. A `missing` row is not part of that decided set.
  */
 export function buildReviewFields(
   contract: Contract360Body,
   history: readonly CorrectionHistoryEntryBody[],
-  acceptedThisSession: ReadonlySet<CorrectableFieldName>,
   evidence: EvidenceByField = new Map(),
 ): ReviewFieldRow[] {
   const rows: ReviewFieldRow[] = [];
@@ -240,15 +248,37 @@ export function buildReviewFields(
     const currentValue = readCorrectableValue(contract, def.name);
     const fieldEvidence = evidence.get(def.name.toLowerCase()) ?? null;
     const proposedValue = fieldEvidence?.value ?? null;
+    const latestCorrection = history.find((entry) => entry.fieldName === def.name) ?? null;
 
-    if (currentValue === null && (proposedValue === null || proposedValue.trim() === "")) continue;
+    if (currentValue === null && (proposedValue === null || proposedValue.trim() === "")) {
+      rows.push({
+        name: def.name,
+        label: def.label,
+        kind: def.kind,
+        required: def.required,
+        rawValue: "",
+        displayValue: formatCorrectableValue(def.kind, def.name, null),
+        decision: "pending",
+        latestCorrection,
+        confidencePct: null,
+        evidenceDecision: null,
+        evidence: null,
+        proposalPending: false,
+        missing: true,
+      });
+      continue;
+    }
 
     const proposalPending = currentValue === null && proposedValue !== null;
     const rawValue = currentValue ?? normalizeProposedValue(def.kind, proposedValue!);
 
-    const latestCorrection = history.find((entry) => entry.fieldName === def.name) ?? null;
+    const evidenceDecision = fieldEvidence?.decision ?? null;
     const decision: ReviewDecision =
-      latestCorrection !== null ? "corrected" : acceptedThisSession.has(def.name) ? "accepted" : "pending";
+      latestCorrection !== null
+        ? "corrected"
+        : evidenceDecision === "auto_accepted" || evidenceDecision === "human_accepted"
+          ? "accepted"
+          : "pending";
 
     rows.push({
       name: def.name,
@@ -260,8 +290,10 @@ export function buildReviewFields(
       decision,
       latestCorrection,
       confidencePct: fieldEvidence?.confidence == null ? null : fieldEvidence.confidence * 100,
+      evidenceDecision,
       evidence: fieldEvidence,
       proposalPending,
+      missing: false,
     });
   }
 
@@ -269,29 +301,44 @@ export function buildReviewFields(
 }
 
 /**
- * AC-2's tag, generalised for a field's decision state. A resolved field (accepted or corrected)
- * always shows a real, honest fact -- never a fabricated percentage. A pending field with a real
- * `confidencePct` reuses `styles/semantics.ts#getConfidenceTag` verbatim (never re-derived) -- the
- * >95/80-95/<80 thresholds exactly as ADR-019 locks them. A pending field with no score gets a
- * plain, text-labelled "Needs review" -- the same `.tag-outline` variant a genuine <80% score would
- * carry (ADR-019: outline blocks consequential use), just without inventing the percentage.
+ * AC-2's tag, generalised for a field's decision state. A corrected field shows a real, honest
+ * fact -- never a fabricated percentage. An accepted field paints the **server's** decision
+ * (`auto_accepted` → "Accepted automatically · NN%"; `human_accepted` → "Accepted by you", no
+ * percentage). A pending field with a real score reuses `styles/semantics.ts#getConfidenceTag`
+ * as `review_required`. A pending field with no score gets a plain "Needs review" -- the same
+ * `.tag-outline` variant, without inventing a percentage.
  */
-export function fieldTag(row: Pick<ReviewFieldRow, "decision" | "confidencePct">): SemanticTag {
+export function fieldTag(
+  row: Pick<ReviewFieldRow, "decision" | "confidencePct" | "evidenceDecision">,
+): SemanticTag {
   if (row.decision === "corrected") return { variant: "neutral", label: "Corrected" };
-  if (row.decision === "accepted") return { variant: "neutral", label: "Accepted by you" };
-  if (row.confidencePct !== null) return getConfidenceTag(row.confidencePct);
+  if (row.evidenceDecision === "human_accepted") return getConfidenceTag(row.confidencePct ?? 0, "human_accepted");
+  if (row.evidenceDecision === "auto_accepted") return getConfidenceTag(row.confidencePct ?? 0, "auto_accepted");
+  if (row.confidencePct !== null) return getConfidenceTag(row.confidencePct, "review_required");
   return { variant: "outline", label: "Needs review" };
 }
 
 /**
- * AC-4's per-field gate predicate. A resolved field never blocks, regardless of confidence -- a
- * human decision (accept or correct) outranks a model confidence estimate (product spec Appendix
- * C). A pending field blocks when it is either a real, confirmed <80% score, or when no score
- * exists at all: the conservative default the module header names.
+ * AC-4/AC-6's per-field gate predicate. Reads the **server's decision**, never a percentage bar.
+ * A corrected field never blocks. `auto_accepted` / `human_accepted` never block -- including a
+ * field below any historical band the server has already accepted. A pending field (review
+ * required, or no evidence row) blocks until a human decides.
  */
-export function isFieldBlocking(row: Pick<ReviewFieldRow, "decision" | "confidencePct">): boolean {
-  if (row.decision !== "pending") return false;
-  return row.confidencePct === null ? true : isConfidenceBlocking(row.confidencePct);
+export function isFieldBlocking(
+  row: Pick<ReviewFieldRow, "decision" | "confidencePct" | "evidenceDecision"> & Partial<Pick<ReviewFieldRow, "missing">>,
+): boolean {
+  if (row.missing) return false;
+  return row.decision === "pending";
+}
+
+/** Screen title: the count is what the user acts on; the sentence never names a threshold. */
+export function reviewTitle(blockingCount: number): string {
+  return `${blockingCount} facts need you — you decide`;
+}
+
+/** Floored percentage the legend paints from the response's `autoAcceptThreshold` (0..1). */
+export function legendThresholdPct(autoAcceptThreshold: number): number {
+  return Math.floor(autoAcceptThreshold * 100);
 }
 
 export interface ReviewProgress {
@@ -301,10 +348,11 @@ export interface ReviewProgress {
 }
 
 export function computeReviewProgress(rows: readonly ReviewFieldRow[]): ReviewProgress {
+  const decided = rows.filter((row) => !row.missing);
   return {
-    total: rows.length,
-    resolvedCount: rows.filter((row) => row.decision !== "pending").length,
-    blockingCount: rows.filter(isFieldBlocking).length,
+    total: decided.length,
+    resolvedCount: decided.filter((row) => row.decision !== "pending").length,
+    blockingCount: decided.filter(isFieldBlocking).length,
   };
 }
 
@@ -322,9 +370,10 @@ export function blockedReason(progress: ReviewProgress): string {
 }
 
 /** The field names "Mark as validated" reports to `POST /api/documents/{id}/validate` as accepted
- * as extracted: every row the reviewer clicked Accept on (corrected rows are already durable). */
+ * as extracted: human-accepted rows only. Auto-accepted rows stay the server's decision (stamping
+ * them here would paint a machine acceptance as a person's). Corrected rows are already durable. */
 export function acceptedFieldNames(rows: readonly ReviewFieldRow[]): string[] {
-  return rows.filter((row) => row.decision === "accepted").map((row) => row.name);
+  return rows.filter((row) => row.evidenceDecision === "human_accepted").map((row) => row.name);
 }
 
 /**

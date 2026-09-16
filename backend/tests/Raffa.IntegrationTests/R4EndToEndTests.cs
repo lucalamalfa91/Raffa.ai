@@ -366,8 +366,7 @@ public sealed class R4EndToEndTests : IClassFixture<R4IntegrationFixture>
         var kpisBody = await R1EndToEndTests.ParseAsync(kpisResponse);
         var realizedBucket = Assert.Single(kpisBody.GetProperty("savingsRealized").EnumerateArray());
         Assert.Equal("USD", realizedBucket.GetProperty("currency").GetString());
-        Assert.Equal(40_000m, realizedBucket.GetProperty("low").GetDecimal());
-        Assert.Equal(70_000m, realizedBucket.GetProperty("high").GetDecimal());
+        Assert.Equal(expectedCalculation.RealizedSaving, realizedBucket.GetProperty("amount").GetDecimal());
         Assert.Equal(1, realizedBucket.GetProperty("count").GetInt32());
     }
 

@@ -50,6 +50,10 @@ public class DependencyDirectionTests
         "Raffa.Worker",
         "Raffa.Market",
         "Raffa.Insights",
+        // Task E20/F02/US02/T01 (w17, NW-73): the operator console — host, not a domain module.
+        // Listed here so the violation check covers it; absent from DomainModules and
+        // AllowedReferences (a domain module referencing this host is a detectable violation).
+        "Raffa.Tools",
     ];
 
     /// <summary>

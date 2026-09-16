@@ -1,0 +1,101 @@
+/**
+ * Document viewer (`/documents/:documentId/viewer`, task E22/F03/US01/T01, NW-63
+ * w17 half). Component classes (.btn, .btn-ghost, .empty-state, .error-state,
+ * .skeleton, .screen-kicker/.screen-title, .micro-meta) come from
+ * ../../../styles/components.css (ADR-019). This file adds only this surface's
+ * composites: a page canvas on --color-surface with a 2 px left rule and zero
+ * radius (design-system.md "Detail pane"), and the wording <mark> tint reused
+ * from Contract 360 so ClauseHighlight paints without that screen's sheet.
+ *
+ * No shadow: --shadow-* is dialogs-only. No new token.
+ */
+
+.document-viewer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: 28px 32px 32px;
+  max-width: 52rem;
+}
+
+.document-viewer-header .screen-title {
+  margin: 0;
+}
+
+.document-viewer-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.document-viewer-nav-label {
+  font-variant-numeric: tabular-nums;
+}
+
+.document-viewer-canvas {
+  background: var(--color-surface);
+  border-left: 2px solid var(--color-text);
+  border-radius: 0;
+  min-height: 0;
+  aspect-ratio: 210 / 297;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+}
+
+.document-viewer-canvas img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 0;
+}
+
+.document-viewer-canvas .skeleton {
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+}
+
+.document-viewer-canvas .empty-state {
+  padding: var(--space-4);
+  align-self: center;
+}
+
+.document-viewer-citation-notice {
+  max-width: 480px;
+}
+
+/* ClauseHighlight's own classes — the same accent-100/200 tint Contract 360 uses. */
+.contract360-evidence {
+  width: 100%;
+  max-width: 52rem;
+  margin-top: 0;
+  padding: 20px;
+  background: var(--color-accent-100);
+  border: 1px solid var(--color-divider);
+  color: var(--color-text);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.contract360-evidence-citation {
+  margin: 0 0 12px;
+  font-family: var(--font-body);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-neutral-600);
+}
+
+.contract360-evidence-text {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.contract360-evidence-mark {
+  padding: 1px 2px;
+  background: var(--color-accent-200);
+  color: inherit;
+}

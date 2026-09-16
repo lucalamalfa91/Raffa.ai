@@ -35,6 +35,10 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Raffa.Api\Raffa.Api.csproj" />
     <ProjectReference Include="..\..\src\Raffa.AiGateway\Raffa.AiGateway.csproj" />
+    <!-- Task E21/F02/US01/T01 (NW-22): RenewalsEndpointTests stubs IBenchmarkService to prove
+         the endpoint resolves the market band and carries it on the wire. IBenchmarkService and
+         BenchmarkResult live in Raffa.Benchmark / Raffa.Benchmark.Contracts. -->
+    <ProjectReference Include="..\..\src\Raffa.Benchmark\Raffa.Benchmark.csproj" />
     <!-- Task E18/F02/US02/T01 (wave w16, NW-08): GET /api/audit is reachable now, and
          AuditEndpointTests seeds/reads Raffa.Audit.Infrastructure.AuditDbContext directly (the
          same "own DbContext, bypass the HTTP write path" shape InMemoryAskEngineFactory's own
@@ -48,6 +52,9 @@
     <!-- Task E19/F01/US01/T01: GET /api/renewals now embeds savedAction via RenewalsDbContext,
          so InMemoryAskEngineFactory must swap that context too (same as DocumentsContracts). -->
     <ProjectReference Include="..\..\src\Raffa.Renewals\Raffa.Renewals.csproj" />
+    <!-- Task E20/F01/US01/T01 (NW-72): SavingsKpiEndpointTests seeds RealizedSavings on an
+         in-memory SavingsDbContext to prove savingsRealized carries amount/count on the wire. -->
+    <ProjectReference Include="..\..\src\Raffa.Savings\Raffa.Savings.csproj" />
     <ProjectReference Include="..\..\src\Raffa.SharedKernel\Raffa.SharedKernel.csproj" />
   </ItemGroup>
 

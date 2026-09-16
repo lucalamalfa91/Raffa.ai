@@ -2,19 +2,17 @@
  * Raffa design system — semantic mappings (AC-2: "encoded, not colour-only").
  *
  * Ports the locked semantic mapping table into a single, typed, testable
- * source of truth, so every screen that renders a confidence/status/risk/
- * deadline value uses the same threshold and the same label -- never a
- * re-derived one, and never colour alone.
+ * source of truth, so every screen that renders a status/risk/deadline value
+ * uses the same label -- never a re-derived one, and never colour alone.
  *
- * Cites: reports/architecture/ADR-019-web-design-system.md ("Semantic
- * mapping (locked)"), inputs/design/prototypes/design-system.md ("Semantic
- * mapping"). Both carry spec §7.3's confidence thresholds (>95% accept,
- * 80-95% flag, <80% require review) onto the screen -- this module does not
- * re-derive them, only encodes the mapping already decided.
+ * Confidence is label-only (ADR-019 w17 clause 7; ADR-012 w17 clause 34):
+ * `getConfidenceTag` paints the **server's** persisted decision
+ * (`auto_accepted` / `human_accepted` / `review_required`). It does not
+ * decide acceptance and does not compare a percentage against a bar.
+ * Percentages beside a decision are floored (ADR-019 w17 clause 8).
  *
  * Pair every `SemanticTag` with the `.tag`/`.tag-{variant}` classes in
- * src/styles/components.css; pair `isDeadlineCritical`/`isConfidenceBlocking`
- * with `.deadline-critical` / a disabled CTA + `.hint` respectively.
+ * src/styles/components.css; pair `isDeadlineCritical` with `.deadline-critical`.
  */
 
 /** `.tag-neutral` | `.tag-accent` | `.tag-outline` (src/styles/components.css). */
@@ -25,28 +23,28 @@ export interface SemanticTag {
   label: string;
 }
 
-/**
- * Confidence >95% / 80-95% / <80% -> Accepted / Flagged / Review.
- * Below 80% blocks consequential use -- see `isConfidenceBlocking`.
- */
-export function getConfidenceTag(confidencePct: number): SemanticTag {
-  const rounded = Math.round(confidencePct);
-  if (confidencePct > 95) {
-    return { variant: "neutral", label: `Accepted · ${rounded}%` };
-  }
-  if (confidencePct >= 80) {
-    return { variant: "accent", label: `Flagged · ${rounded}%` };
-  }
-  return { variant: "outline", label: `Review · ${rounded}%` };
-}
+/** The three persisted extraction decisions `GET /api/contracts/{id}/evidence` returns. */
+export type ConfidenceDecision = "auto_accepted" | "human_accepted" | "review_required";
 
 /**
- * A confidence below 80% blocks consequential use (ADR-019 "Semantic
- * mapping"). Screens gate CTAs (e.g. disable "Mark as validated") on this
- * function, not on inspecting the tag's colour/variant.
+ * Paints a label for a server decision. Does not decide acceptance.
+ *
+ * Signature stays `(confidencePct: number, …)` so Contract 360 call sites
+ * compile untouched (E22/F04 deletes those). A missing decision is painted
+ * as `review_required` — never recomputed from the percentage.
+ * `auto_accepted` and `human_accepted` share `.tag-neutral` and differ only
+ * in the label (ADR-019 accessibility baseline: text carries the meaning).
  */
-export function isConfidenceBlocking(confidencePct: number): boolean {
-  return confidencePct < 80;
+export function getConfidenceTag(confidencePct: number, decision: ConfidenceDecision = "review_required"): SemanticTag {
+  const floored = Math.floor(confidencePct);
+  switch (decision) {
+    case "auto_accepted":
+      return { variant: "neutral", label: `Accepted automatically · ${floored}%` };
+    case "human_accepted":
+      return { variant: "neutral", label: "Accepted by you" };
+    case "review_required":
+      return { variant: "outline", label: `Review · ${floored}%` };
+  }
 }
 
 export type DocumentStatus = "completed" | "ready" | "needs_review" | "failed" | "processing" | "rejected" | "uploaded";

@@ -42,6 +42,17 @@ internal sealed class RecordingDocumentStorage : IDocumentStorage
         return await StoreAsync(path, content, cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<string> SavePreviewPageAsync(
+        TenantId tenantId,
+        EntityId documentId,
+        int page,
+        Stream content,
+        CancellationToken cancellationToken = default)
+    {
+        var path = DocumentStoragePath.BuildPreviewPage(tenantId, documentId, page);
+        return await StoreAsync(path, content, cancellationToken).ConfigureAwait(false);
+    }
+
     public Task<byte[]?> LoadAsync(
         TenantId tenantId, string storagePath, CancellationToken cancellationToken = default)
     {

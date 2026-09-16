@@ -1,4 +1,3 @@
-import { getConfidenceTag } from "../../../styles/semantics";
 import type { FactRow } from "./contract360ViewModel";
 
 export interface FactTableProps {
@@ -9,9 +8,10 @@ export interface FactTableProps {
 }
 
 /**
- * Term / Value / Source / Confidence list used inside the "Details ▾" drawer for the extracted
- * Products / Obligations / Risks. Every row is a deterministic, extracted fact -- never the
- * recommendation (ADR-019 facts vs AI).
+ * Term / Value / Source list used inside the "Details ▾" drawer for the extracted Products /
+ * Obligations / Risks. Every row is a deterministic extracted fact -- never the recommendation
+ * (ADR-019 facts vs AI) and never a confidence tag (ADR-019 w17 clause 11). Unofficialized values
+ * arrive already as the em-dash; rows are never dropped.
  */
 export default function FactTable({ title, rows, emptyMessage }: FactTableProps) {
   return (
@@ -27,21 +27,16 @@ export default function FactTable({ title, rows, emptyMessage }: FactTableProps)
               <th scope="col">Term</th>
               <th scope="col">Value</th>
               <th scope="col">Source</th>
-              <th scope="col">Confidence</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => {
-              const tag = row.confidencePct === null ? null : getConfidenceTag(row.confidencePct);
-              return (
-                <tr key={row.key}>
-                  <td>{row.term}</td>
-                  <td>{row.value}</td>
-                  <td>{row.source ?? "—"}</td>
-                  <td>{tag === null ? "—" : <span className={`tag tag-${tag.variant}`}>{tag.label}</span>}</td>
-                </tr>
-              );
-            })}
+            {rows.map((row) => (
+              <tr key={row.key}>
+                <td>{row.term}</td>
+                <td>{row.value}</td>
+                <td>{row.source ?? "—"}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       )}

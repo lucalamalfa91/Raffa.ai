@@ -43,6 +43,7 @@ public sealed class DocumentsContractsMigrationTests : IAsyncLifetime
 
         var appliedMigrations = await db.Database.GetAppliedMigrationsAsync();
         Assert.Contains(appliedMigrations, id => id.EndsWith("_Initial", StringComparison.Ordinal));
+        Assert.Contains(appliedMigrations, id => id.Contains("AddExtractionEvidenceDecision", StringComparison.Ordinal));
     }
 
     [Fact]

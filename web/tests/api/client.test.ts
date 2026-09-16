@@ -481,6 +481,19 @@ describe("createApiClient().getDocumentPreviewUrl (task E13/F09/US01/T03, docume
     expect(result).toEqual({ ok: false, statusCode: 404, objectUrl: null, error: "No document found for id missing-doc." });
   });
 
+  it("sends the 1-based page query and a page-level 404 does not claim the document is missing", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 404 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await createApiClient("https://api.dev.raffa.example").getDocumentPreviewUrl("tenant-1", "doc-1", 4);
+
+    expect(String(fetchMock.mock.calls[0][0])).toBe("https://api.dev.raffa.example/api/documents/doc-1/preview?page=4");
+    expect(result.ok).toBe(false);
+    expect(result.statusCode).toBe(404);
+    expect(result.error).toBe("No preview for page 4 of document doc-1.");
+    expect(result.error).not.toContain("No document found for id");
+  });
+
   it("resolves (does not throw) with statusCode null when the network request fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
 
@@ -1717,7 +1730,7 @@ describe("createApiClient().getSavingsKpis (task E08/F02/US01/T01)", () => {
     contractsAnalyzedCount: 9,
     savingsIdentified: [{ currency: "CHF", low: 410_000, high: 590_000, count: 6, averageConfidence: 0.82 }],
     savingsInProgress: [{ currency: "CHF", low: 240_000, high: 240_000, count: 2, averageConfidence: 0.75 }],
-    savingsRealized: [{ currency: "CHF", low: 85_000, high: 85_000, count: 1, averageConfidence: 0.91 }],
+    savingsRealized: [{ currency: "CHF", amount: 85_000, count: 1 }],
     upcomingRenewalsCount: 4,
   };
 
@@ -2437,6 +2450,7 @@ describe("createApiClient() Authorization header (task E18/F01/US02/T01, NW-05; 
       getCorrectionHistory: () => client.getCorrectionHistory("tenant-1", "contract-1"),
       correctContract: () => client.correctContract("tenant-1", "contract-1", { corrections: { annualSpend: "1" } }),
       getContractEvidence: () => client.getContractEvidence("tenant-1", "contract-1"),
+      getContractStrategy: () => client.getContractStrategy("tenant-1", "contract-1"),
       validateDocument: () => client.validateDocument("tenant-1", "doc-1", { acceptedFields: [] }),
       postRenewalAction: () =>
         client.postRenewalAction("tenant-1", "contract-1", { owner: "buyer@acme.example", status: "InProgress", action: "…" }),
@@ -2487,6 +2501,7 @@ describe("createApiClient().getContractEvidence (review evidence pane, GET /api/
       fieldName: "annualSpend",
       value: "48000",
       confidence: 0.96,
+      decision: "auto_accepted",
       sourcePage: 1,
       sourceSpan: "EUR 48,000,",
       sourceDocumentId: "doc-1",
@@ -2498,9 +2513,10 @@ describe("createApiClient().getContractEvidence (review evidence pane, GET /api/
       extractedAt: "2026-09-09T10:00:00Z",
     },
   ];
+  const evidenceResponse = { autoAcceptThreshold: 0.9, fields: evidence };
 
   it("GETs <baseUrl>/api/contracts/{id}/evidence with the X-Tenant-Id header", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(evidence), { status: 200 }));
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(evidenceResponse), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
     await createApiClient("https://api.dev.raffa.example").getContractEvidence("tenant-1", "contract-1");
@@ -2512,11 +2528,11 @@ describe("createApiClient().getContractEvidence (review evidence pane, GET /api/
   });
 
   it("reports ok:true with the evidence rows on 200 (an empty array is still ok)", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(evidence), { status: 200 })));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(evidenceResponse), { status: 200 })));
 
     const result = await createApiClient("https://api.dev.raffa.example").getContractEvidence("tenant-1", "contract-1");
 
-    expect(result).toEqual({ ok: true, statusCode: 200, evidence, error: null });
+    expect(result).toEqual({ ok: true, statusCode: 200, evidence, autoAcceptThreshold: 0.9, error: null });
   });
 
   it("reports a named 404 without attempting to parse an empty body", async () => {
@@ -2531,6 +2547,76 @@ describe("createApiClient().getContractEvidence (review evidence pane, GET /api/
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
 
     const result = await createApiClient("https://api.dev.raffa.example").getContractEvidence("tenant-1", "contract-1");
+
+    expect(result.ok).toBe(false);
+    expect(result.statusCode).toBeNull();
+    expect(result.error).toContain("network down");
+  });
+});
+
+describe("createApiClient().getContractStrategy (answers band, GET /api/contracts/{id}/strategy)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const strategy = {
+    contractId: "contract-1",
+    whenYouMustMove: {
+      renewalDate: "2027-01-01",
+      cancellationDeadline: "2026-12-01",
+      daysLeft: 83,
+      passedDeadline: false,
+      explanation: "83 day(s) until the cancellation deadline.",
+    },
+    whereYouCanPush: [
+      { leverType: "Volume" as const, rationale: "This line orders 100 — cite the order size.", citationKeys: [] },
+    ],
+    targets: [
+      {
+        description: "Sales Cloud Enterprise",
+        openingTarget: 1500,
+        acceptableRangeLow: 1500,
+        acceptableRangeHigh: 1800,
+        walkAwayThreshold: 2100,
+        explanation: "representative (source: stub-fixture; n=15; as of 2026-01-01)",
+      },
+    ],
+    nextSteps: [{ label: "Notify Salesforce of intent to renegotiate", dueHint: "this week" }],
+    openWeakFacts: [],
+  };
+
+  it("GETs <baseUrl>/api/contracts/{id}/strategy with the X-Tenant-Id header", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(strategy), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createApiClient("https://api.dev.raffa.example").getContractStrategy("tenant-1", "contract-1");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("https://api.dev.raffa.example/api/contracts/contract-1/strategy");
+    expect(init).toEqual({ headers: { "X-Tenant-Id": "tenant-1" }, cache: "no-store" });
+  });
+
+  it("reports ok:true with the strategy pack on 200", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(strategy), { status: 200 })));
+
+    const result = await createApiClient("https://api.dev.raffa.example").getContractStrategy("tenant-1", "contract-1");
+
+    expect(result).toEqual({ ok: true, statusCode: 200, strategy, error: null });
+  });
+
+  it("reports a named 404 without attempting to parse an empty body", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
+
+    const result = await createApiClient("https://api.dev.raffa.example").getContractStrategy("tenant-1", "missing");
+
+    expect(result).toEqual({ ok: false, statusCode: 404, strategy: null, error: "No contract found for id missing." });
+  });
+
+  it("resolves (does not throw) with statusCode null when the network request fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
+
+    const result = await createApiClient("https://api.dev.raffa.example").getContractStrategy("tenant-1", "contract-1");
 
     expect(result.ok).toBe(false);
     expect(result.statusCode).toBeNull();

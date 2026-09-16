@@ -3,6 +3,7 @@ import AppShell from "./AppShell";
 import type { WorkspaceRole } from "./navItems";
 import type { ApiClient } from "../../api/client";
 import DocumentsRoute from "../../routes/documents";
+import DocumentViewerRoute from "../../routes/documents/viewer";
 import PortfolioRoute from "../../routes/contracts";
 import Contract360Route from "../../routes/contracts/contract360";
 import ReviewRoute from "../../routes/contracts/review";
@@ -91,6 +92,7 @@ export function ShellRoutes({ workspaceId, workspaceName, role, userLabel, onSig
         <Route path="documents" element={<DocumentsRoute apiClient={apiClient} role={role} />} />
         <Route path="review" element={<Navigate to="/documents?filter=attention" replace />} />
         <Route path="workspace/members" element={<MembersRoute {...membersRouteProps} />} />
+        <Route path="documents/:documentId/viewer" element={<DocumentViewerRoute apiClient={apiClient} />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

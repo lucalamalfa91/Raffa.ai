@@ -1,7 +1,11 @@
+using System.Reflection;
 using Raffa.Api;
+using Raffa.Benchmark;
+using Raffa.Benchmark.Contracts;
 using Raffa.Documents.Contracts.Application;
 using Raffa.Documents.Contracts.Domain;
 using Raffa.Insights.Contracts;
+using Raffa.Insights.Strategy;
 using Raffa.Renewals.Application;
 using Raffa.Renewals.Domain;
 using Raffa.Savings.Application;
@@ -38,7 +42,8 @@ public sealed class InsightsEndpointCompositionTests
         bool autoRenewal = true,
         RiskSeverity? risk = RiskSeverity.Medium,
         IReadOnlyList<Contract360Risk>? risks = null,
-        IReadOnlyList<Contract360ProductLineItem>? products = null)
+        IReadOnlyList<Contract360ProductLineItem>? products = null,
+        int? renewalTermMonths = null)
     {
         var id = contractId ?? EntityId.New();
         var renewalDate = endDate is not null && autoRenewal ? endDate : null;
@@ -60,7 +65,7 @@ public sealed class InsightsEndpointCompositionTests
         var overview = new Contract360Overview(
             currency,               // Currency
             null,                   // EffectiveDate
-            null,                   // RenewalTermMonths
+            renewalTermMonths,      // RenewalTermMonths
             null,                   // PaymentTerms
             null,                   // GoverningLaw
             null,                   // ParentContractId
@@ -301,10 +306,129 @@ public sealed class InsightsEndpointCompositionTests
         Assert.Null(line.SampleSize);
     }
 
+    [Fact]
+    public async Task ToPricedLines_calls_the_adapter_when_the_host_resolves_a_complete_key()
+    {
+        var contract = FakeContract(
+            currency: "EUR",
+            products: [FakeProduct(sku: "SKU-9", unitPrice: 1234m)],
+            renewalTermMonths: 12);
+        var distribution = new BenchmarkDistribution(1000m, 1100m, 1200m);
+        var stub = new RecordingBenchmarkService(new BenchmarkResult(
+            Distribution: distribution,
+            Metric: "per seat / year",
+            Currency: "EUR",
+            Confidence: 0.9,
+            Source: "stub-fixture",
+            UpdatedAt: new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+            ComparisonDimensions: [BenchmarkComparisonDimension.Supplier, BenchmarkComparisonDimension.Geography],
+            SampleSize: 15));
+
+        var lines = await InsightsEndpointExtensions.ToPricedLines(
+            contract, stub, "Salesforce", "GB", new DateOnly(2026, 9, 9), CancellationToken.None);
+
+        var line = Assert.Single(lines);
+        Assert.Equal(distribution, line.Benchmark);
+        Assert.Equal(15, line.SampleSize);
+        Assert.Equal(12, line.TermMonths);
+        Assert.Equal("stub-fixture", line.AdapterName);
+        Assert.Equal(new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero), line.AsOf);
+        Assert.Equal(1, stub.CallCount);
+        Assert.Equal("Salesforce", stub.LastQuery!.Supplier);
+        Assert.Equal("GB", stub.LastQuery.Geography);
+        Assert.Equal("Sales Cloud Enterprise", stub.LastQuery.Product);
+        Assert.Equal("SKU-9", stub.LastQuery.Sku);
+        Assert.Equal("12 months", stub.LastQuery.Term);
+    }
+
+    [Fact]
+    public async Task ToPricedLines_does_not_call_the_adapter_when_the_key_is_incomplete()
+    {
+        var contract = FakeContract(products: [FakeProduct()]);
+        var stub = new RecordingBenchmarkService(result: null);
+
+        var lines = await InsightsEndpointExtensions.ToPricedLines(
+            contract, stub, supplierName: null, geography: "GB", new DateOnly(2026, 9, 9), CancellationToken.None);
+
+        var line = Assert.Single(lines);
+        Assert.Null(line.Benchmark);
+        Assert.Null(line.SampleSize);
+        Assert.Equal(0, stub.CallCount);
+    }
+
+    [Fact]
+    public async Task ToPricedLines_leaves_the_band_unset_when_the_adapter_abstains()
+    {
+        var contract = FakeContract(products: [FakeProduct()]);
+        var stub = new RecordingBenchmarkService(new BenchmarkResult(
+            Distribution: null,
+            Metric: "n/a",
+            Currency: "USD",
+            Confidence: 0d,
+            Source: "stub-fixture",
+            UpdatedAt: new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+            ComparisonDimensions: [],
+            SampleSize: 3));
+
+        var lines = await InsightsEndpointExtensions.ToPricedLines(
+            contract, stub, "Salesforce", "GB", new DateOnly(2026, 9, 9), CancellationToken.None);
+
+        var line = Assert.Single(lines);
+        Assert.Null(line.Benchmark);
+        Assert.Null(line.AdapterName);
+        Assert.Equal(1, stub.CallCount);
+    }
+
+    // ----- Host resolves; module stays fenced -----
+
+    [Fact]
+    public void GetContractStrategyAsync_takes_the_shared_key_resolver_and_the_benchmark_port()
+    {
+        var method = typeof(InsightsEndpointExtensions)
+            .GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
+            .Single(m => m.Name == "GetContractStrategyAsync");
+        var parameterTypeNames = method.GetParameters().Select(p => p.ParameterType.Name).ToArray();
+
+        Assert.Contains("BenchmarkKeyResolution", parameterTypeNames);
+        Assert.Contains(nameof(IBenchmarkService), parameterTypeNames);
+    }
+
+    [Fact]
+    public void Raffa_Insights_references_no_workspace_type_and_keeps_the_allow_list()
+    {
+        var raffaRefs = typeof(StrategyPackBuilder).Assembly.GetReferencedAssemblies()
+            .Select(a => a.Name)
+            .Where(n => n is not null && n.StartsWith("Raffa.", StringComparison.Ordinal))
+            .Select(n => n!)
+            .OrderBy(n => n, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(new[] { "Raffa.Benchmark", "Raffa.SharedKernel" }, raffaRefs);
+        Assert.DoesNotContain(raffaRefs, n => n.Contains("Identity", StringComparison.Ordinal));
+        Assert.DoesNotContain(raffaRefs, n => n.Contains("Workspace", StringComparison.Ordinal));
+    }
+
     // ----- ToStrategyInputs / ComputeRenewal -----
 
     [Fact]
-    public void ToStrategyInputs_echoes_the_renewal_calculation_and_leaves_supplier_name_null()
+    public void ToStrategyInputs_echoes_the_renewal_calculation_and_the_host_resolved_supplier_name()
+    {
+        var contract = FakeContract(endDate: new DateOnly(2027, 1, 1), autoRenewal: true);
+        var clock = new FixedClock(new DateTimeOffset(2026, 9, 9, 0, 0, 0, TimeSpan.Zero));
+        var renewalEngine = new RenewalEngine(clock);
+
+        var renewal = InsightsEndpointExtensions.ComputeRenewal(contract.Header, renewalEngine);
+        var strategyInputs = InsightsEndpointExtensions.ToStrategyInputs(
+            contract, renewal, [], [], DateOnly.FromDateTime(clock.UtcNow.UtcDateTime), "Salesforce");
+
+        Assert.Equal("Salesforce", strategyInputs.SupplierName);
+        Assert.Equal(renewal.RenewalDate, strategyInputs.RenewalDate);
+        Assert.Equal(renewal.DaysUntilRenewal, strategyInputs.DaysUntilRenewal);
+        Assert.Equal(contract.Header.AutoRenewal, strategyInputs.AutoRenewal);
+    }
+
+    [Fact]
+    public void ToStrategyInputs_leaves_supplier_name_null_when_the_host_did_not_resolve_one()
     {
         var contract = FakeContract(endDate: new DateOnly(2027, 1, 1), autoRenewal: true);
         var clock = new FixedClock(new DateTimeOffset(2026, 9, 9, 0, 0, 0, TimeSpan.Zero));
@@ -315,9 +439,23 @@ public sealed class InsightsEndpointCompositionTests
             contract, renewal, [], [], DateOnly.FromDateTime(clock.UtcNow.UtcDateTime));
 
         Assert.Null(strategyInputs.SupplierName);
-        Assert.Equal(renewal.RenewalDate, strategyInputs.RenewalDate);
-        Assert.Equal(renewal.DaysUntilRenewal, strategyInputs.DaysUntilRenewal);
-        Assert.Equal(contract.Header.AutoRenewal, strategyInputs.AutoRenewal);
+    }
+
+    private sealed class RecordingBenchmarkService(BenchmarkResult? result) : IBenchmarkService
+    {
+        public BenchmarkQuery? LastQuery { get; private set; }
+        public int CallCount { get; private set; }
+
+        public Task<Result<BenchmarkResult>> GetBenchmarkAsync(
+            BenchmarkQuery query, CancellationToken cancellationToken = default)
+        {
+            LastQuery = query;
+            CallCount++;
+            return Task.FromResult(
+                result is null
+                    ? Result<BenchmarkResult>.Failure("no result")
+                    : Result<BenchmarkResult>.Success(result));
+        }
     }
 
     // ----- ComputePriority -----

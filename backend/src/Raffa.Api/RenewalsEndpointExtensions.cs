@@ -1,4 +1,6 @@
 using Raffa.Api.Infrastructure;
+using Raffa.Benchmark;
+using Raffa.Benchmark.Contracts;
 using Raffa.Documents.Contracts.Application;
 using Raffa.Documents.Contracts.Domain;
 using Raffa.Renewals.Application;
@@ -118,6 +120,9 @@ public static class RenewalsEndpointExtensions
         RenewalPipelineBuilder pipelineBuilder,
         ISupplierNameLookup supplierNameLookup,
         RenewalActionService actionService,
+        IBenchmarkService benchmarkService,
+        BenchmarkKeyResolution benchmarkKeyResolution,
+        IClock clock,
         ITenantContext tenantContext,
         ICallerContext callerContext,
         CancellationToken cancellationToken)
@@ -147,8 +152,22 @@ public static class RenewalsEndpointExtensions
             .ResolveSupplierNamesAsync(tenantId, portfolioPage.Items, supplierNameLookup, tenantContext, cancellationToken)
             .ConfigureAwait(false);
 
-        var candidates = portfolioPage.Items.Select(ToCandidate);
-        var pipeline = pipelineBuilder.Build(candidates);
+        // Task E21/F02/US01/T01 (NW-22): resolve the market band per candidate here in the host —
+        // the one project allowed to reference every module — so RenewalPipelineBuilder stays pure
+        // (ADR-002 w17 clause 2). BenchmarkKeyResolution resolved the (supplier, geography) key in
+        // phase 1 (E21/F01/US01/T01); here we call IBenchmarkService and determine the position
+        // from the distribution. Abstentions (incomplete key, thin sample, no spend) produce a null
+        // band that the builder maps to "insufficient market data" (ADR-001 w17 clause 4).
+        var candidatesWithBands = new List<RenewalDashboardCandidate>(portfolioPage.Items.Count);
+        foreach (var item in portfolioPage.Items)
+        {
+            var band = await ResolveMarketBandAsync(
+                tenantId, item, benchmarkService, benchmarkKeyResolution, clock, cancellationToken)
+                .ConfigureAwait(false);
+            candidatesWithBands.Add(ToCandidate(item, band));
+        }
+
+        var pipeline = pipelineBuilder.Build(candidatesWithBands);
 
         // ADR-028 §D1 (task E19/F01/US01/T01): the persisted renewal action embedded under
         // `savedAction` on every row, resolved once for the whole page's contract ids -- a per-row
@@ -220,16 +239,109 @@ public static class RenewalsEndpointExtensions
     /// <summary>
     /// Maps one tenant-scoped portfolio row to the Renewals module's own input shape — the one
     /// mapping only this composition root can do (see the type doc comment). 1:1 field copy; no
-    /// decision is made here.
+    /// decision is made here. <paramref name="band"/> is the result of <see cref="ResolveMarketBandAsync"/>
+    /// called just before this in <see cref="GetRenewalsAsync"/>; null means the adapter abstained.
     /// </summary>
-    private static RenewalDashboardCandidate ToCandidate(PortfolioListItem item) =>
+    private static RenewalDashboardCandidate ToCandidate(PortfolioListItem item, ResolvedMarketBand? band = null) =>
         new(
             new EntityId(item.ContractId),
             item.SupplierId is { } supplierId ? new EntityId(supplierId) : null,
             item.EndDate,
             item.AutoRenewal,
             item.AnnualSpend,
-            item.CancellationDeadline);
+            item.CancellationDeadline,
+            band);
+
+    /// <summary>
+    /// Resolves the market position band for one portfolio row (task E21/F02/US01/T01, NW-22).
+    ///
+    /// <list type="number">
+    /// <item>Calls <see cref="BenchmarkKeyResolution.ResolveAsync"/> to obtain the
+    ///   (supplier name, geography) key — the two dimensions a <c>BenchmarkQuery</c> requires
+    ///   that only the host can supply (phase 1, E21/F01/US01/T01). An incomplete key → null.</item>
+    /// <item>Calls <see cref="IBenchmarkService.GetBenchmarkAsync"/> with a query composed from
+    ///   the resolved key plus the portfolio item's own currency and today's date as the purchase
+    ///   date. A service failure or an adapter abstention (too few comparables) → null.</item>
+    /// <item>Compares <see cref="PortfolioListItem.AnnualSpend"/> to the P25/P75 band
+    ///   (at-or-below P25 = <c>"below market"</c>, at-or-above P75 = <c>"above market"</c>,
+    ///   otherwise <c>"in line with market"</c>). No annual spend or inverted markers → null.</item>
+    /// </list>
+    ///
+    /// A null result is not a defect — the builder maps it to <c>"insufficient market data"</c>
+    /// (ADR-001 w17 clause 4, AC-3). Never throws: all failure modes are returned as null so the
+    /// loop in <see cref="GetRenewalsAsync"/> keeps processing the remaining candidates.
+    /// </summary>
+    private static async Task<ResolvedMarketBand?> ResolveMarketBandAsync(
+        TenantId tenantId,
+        PortfolioListItem item,
+        IBenchmarkService benchmarkService,
+        BenchmarkKeyResolution benchmarkKeyResolution,
+        IClock clock,
+        CancellationToken cancellationToken)
+    {
+        var keyResult = await benchmarkKeyResolution
+            .ResolveAsync(
+                tenantId,
+                item.SupplierId is { } sid ? new EntityId(sid) : null,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        if (keyResult is not BenchmarkKeyResult.Complete key)
+            return null; // incomplete key (no supplier name or no workspace country) → abstain
+
+        var query = new BenchmarkQuery(
+            Supplier: key.Supplier,
+            // PortfolioListItem has no product name; contract type is the closest identifying
+            // fact on the row (PortfolioListItem's own "Contract" column proxy). An unmatched
+            // product is an adapter abstention, not a fabricated catalog name.
+            Product: item.Type.ToString(),
+            Sku: null,
+            Geography: key.Geography,
+            Quantity: 1m,
+            // PortfolioListItem does not carry RenewalTermMonths; "unknown" lets the adapter skip
+            // term-gating rather than inventing "12 months" (Appendix C rule 10).
+            Term: "unknown",
+            Currency: item.Currency,
+            PurchaseDate: DateOnly.FromDateTime(clock.UtcNow.UtcDateTime));
+
+        var benchmarkResult = await benchmarkService
+            .GetBenchmarkAsync(query, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (benchmarkResult.IsFailure || !benchmarkResult.Value.HasSufficientData)
+            return null; // adapter abstained (thin sample or service error) → abstain
+
+        var position = DetermineMarketPosition(item.AnnualSpend, benchmarkResult.Value.Distribution!);
+        if (position is null)
+            return null; // no spend to compare → abstain
+
+        return new ResolvedMarketBand(
+            position,
+            benchmarkResult.Value.Source,
+            benchmarkResult.Value.SampleSize,
+            benchmarkResult.Value.UpdatedAt);
+    }
+
+    /// <summary>
+    /// Classifies <paramref name="annualSpend"/> relative to the P25/P75 band — the same
+    /// <c>[P25, P75]</c> rule <c>Raffa.Quotes.Application.Assessment.MarketAssessmentCalculator</c>
+    /// already uses: at-or-below P25 → <c>"below market"</c>, at-or-above P75 →
+    /// <c>"above market"</c>, anything else (including P50) → <c>"in line with market"</c>.
+    /// Returns <see langword="null"/> when spend is unknown or the markers are not well-ordered
+    /// — never a fabricated position (Appendix C rule 10; ADR-001 w17 clause 4).
+    /// </summary>
+    private static string? DetermineMarketPosition(decimal? annualSpend, BenchmarkDistribution dist)
+    {
+        if (annualSpend is not { } spend)
+            return null;
+
+        if (!(dist.P25 <= dist.P50 && dist.P50 <= dist.P75))
+            return null;
+
+        if (spend <= dist.P25) return "below market";
+        if (spend >= dist.P75) return "above market";
+        return "in line with market";
+    }
 
     /// <summary>
     /// Wire-shapes <see cref="RenewalPipelineItem"/> per AC-1 (top-level supplier/renewal/days/

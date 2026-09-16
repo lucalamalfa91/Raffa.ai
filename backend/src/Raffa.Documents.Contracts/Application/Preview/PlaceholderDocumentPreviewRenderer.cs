@@ -36,7 +36,13 @@ public sealed class PlaceholderDocumentPreviewRenderer : IDocumentPreviewRendere
     private static readonly Rgb Ink = new(0x2B, 0x2A, 0x28);
     private static readonly Rgb Muted = new(0x8A, 0x86, 0x7E);
 
-    public byte[]? Render(string fileName, string mimeType, ReadOnlyMemory<byte> content)
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Task E22/F02/US01/T01 (ADR-029 clause 3): the <paramref name="page"/> parameter is
+    /// accepted and ignored — the placeholder card does not vary by page. PNG uploads return their
+    /// own bytes regardless of which page is requested.
+    /// </remarks>
+    public byte[]? Render(string fileName, string mimeType, ReadOnlyMemory<byte> content, int page = 1)
     {
         if (string.Equals(mimeType, DocumentFormatSniffer.PngMimeType, StringComparison.OrdinalIgnoreCase)
             && !content.IsEmpty)

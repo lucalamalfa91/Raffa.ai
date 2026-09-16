@@ -13,10 +13,10 @@ namespace Raffa.Insights.Contracts;
 /// root (<see cref="InsightsCitationKeys.Fact"/>).</param>
 /// <param name="SupplierName">The supplier's display name, for the "Notify &lt;supplier&gt; of
 /// intent to renegotiate" next step (<c>raffa-v2/app.jsx</c> <c>stepDefs</c>); <see langword="null"/>
-/// when no supplier name has been resolved yet (today: always — <c>Contract.SupplierId</c> is a
-/// bare id, and Suppliers/Products has no name resolver wired to this composition; see
-/// <c>Raffa.Api.InsightsEndpointExtensions</c>'s own doc comment) — the builder falls back to
-/// generic phrasing rather than fabricating a name.</param>
+/// when the host's <c>BenchmarkKeyResolution</c> could not complete the (supplier name, geography)
+/// key (no <c>SupplierId</c>, the id no longer resolves, or the workspace has no country). The
+/// host resolves; this module never looks the name up (allow-list <c>[SharedKernel, Benchmark]</c>).
+/// The builder falls back to generic phrasing rather than fabricating a name.</param>
 /// <param name="RenewalDate">The deterministic renewal date (echoes
 /// <c>Raffa.Renewals.Application.RenewalCalculationResult.RenewalDate</c>) — <see langword="null"/>
 /// when it cannot be determined.</param>

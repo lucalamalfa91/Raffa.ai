@@ -34,13 +34,9 @@ public enum SavingsOpportunityStatus
     InProgress,
 
     /// <summary>The saving was actually achieved — spec §4.3's "savings realized" KPI bucket.
-    /// Setting this status alone (via `PATCH /api/savings/{id}`, this task's own surface) does not
-    /// yet create an audit-tracked realized-value record: that is a separate <c>RealizedSavings</c>
-    /// entity (module-map.md: "Savings | SavingsOpportunity, RealizedSavings"; task E04/F02/US02/T02,
-    /// realized-savings, parent story AC-3 "Realized value is captured and audit-tracked") — a
-    /// deliberate, documented gap this task leaves for that task to close, the same "wiring/data
-    /// lands with the first real caller" convention this codebase's other modules already follow
-    /// (see `backend/README.md`'s "Renewal Intelligence" section for the same pattern applied to
-    /// <c>RenewalOpportunity</c>).</summary>
+    /// Setting this status alone (via `PATCH /api/savings/{id}`) does not write a verified amount:
+    /// that lands on a separate <see cref="RealizedSavings"/> row when a non-null
+    /// <c>realizedAmount</c> is supplied. The Savings KPI reads those rows, not this status, for
+    /// the verified-money figure (task E20/F01/US01/T01).</summary>
     Realized,
 }

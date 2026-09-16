@@ -1,5 +1,6 @@
 using Raffa.Benchmark.Contracts;
 using Raffa.Insights.Contracts;
+using Raffa.Insights.Criticality;
 using Raffa.Insights.Strategy;
 using Raffa.SharedKernel;
 
@@ -119,6 +120,39 @@ public sealed class StrategyPackBuilderTests
         Assert.Equal(1800m, target.AcceptableRangeHigh);
     }
 
+    [Fact]
+    public void A_supplied_band_reaches_the_priced_line_target_with_adapter_sample_size_and_as_of()
+    {
+        var distribution = new BenchmarkDistribution(1500m, 1800m, 2100m);
+        var asOf = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var pack = StrategyPackBuilder.Build(Inputs(
+            pricedLines:
+            [
+                new PricedLine(
+                    null, "Sales Cloud Enterprise", 100m, 2300m, "USD", 12, distribution, 40, "stub-fixture", asOf),
+            ]));
+
+        var target = Assert.Single(pack.Targets);
+        Assert.NotNull(target.OpeningTarget);
+        Assert.Contains("representative", target.Explanation, StringComparison.Ordinal);
+        Assert.Contains("stub-fixture", target.Explanation, StringComparison.Ordinal);
+        Assert.Contains("n=40", target.Explanation, StringComparison.Ordinal);
+        Assert.Contains("2026-01-01", target.Explanation, StringComparison.Ordinal);
+        Assert.DoesNotContain("Not determined", target.Explanation, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void An_adapter_abstention_yields_the_explicit_insufficiency_string()
+    {
+        var pack = StrategyPackBuilder.Build(Inputs(
+            pricedLines: [new PricedLine(null, "Sales Cloud Enterprise", 100m, 2300m, "USD", 12, null, null)]));
+
+        var target = Assert.Single(pack.Targets);
+        Assert.Null(target.OpeningTarget);
+        Assert.Contains("insufficient market data", target.Explanation, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("representative", target.Explanation, StringComparison.Ordinal);
+    }
+
     // ----- Where you can push: levers still present without a band -----
 
     [Fact]
@@ -216,6 +250,27 @@ public sealed class StrategyPackBuilderTests
 
         var key = Assert.Single(pack.OpenWeakFacts);
         Assert.Equal($"fact:{contractId}:annualSpend", key);
+    }
+
+    [Fact]
+    public void Open_weak_facts_stay_the_criticality_threshold_filter_and_gain_no_new_shape()
+    {
+        var contractId = EntityId.New();
+        var inputs = new StrategyInputs(
+            contractId, "Salesforce", null, null, null, null, true,
+            [new PricedLine(null, "Line", 1m, 100m, "USD", 12, null, null)],
+            [
+                new CriticalFactConfidence("annualSpend", CriticalityScoreCalculator.WeakFactConfidenceThreshold - 0.01),
+                new CriticalFactConfidence("endDate", CriticalityScoreCalculator.WeakFactConfidenceThreshold),
+            ],
+            AsOfDate);
+
+        var pack = StrategyPackBuilder.Build(inputs);
+
+        var key = Assert.Single(pack.OpenWeakFacts);
+        Assert.Equal($"fact:{contractId}:annualSpend", key);
+        Assert.Equal(0.8, CriticalityScoreCalculator.WeakFactConfidenceThreshold);
+        Assert.IsAssignableFrom<IReadOnlyList<string>>(pack.OpenWeakFacts);
     }
 
     [Fact]

@@ -85,11 +85,13 @@ public static class ContractsEndpointExtensions
 
     /// <summary>
     /// `GET /api/contracts/{id}/evidence`: the latest per-field extraction evidence for one
-    /// contract (page, span, confidence, the quoted passage, the model) — the review screen's
-    /// evidence pane and its per-field confidence tags read this. Same guard-clause shape as
-    /// <see cref="GetCorrectionHistoryAsync"/>; 404 when <see cref="ContractEvidenceQueryService.GetLatestAsync"/>
-    /// returns <c>null</c> (no such contract for this tenant), 200 with an empty array for a
-    /// contract that exists but has no evidence yet.
+    /// contract (page, span, confidence, decision, the quoted passage, the model) — the review
+    /// screen's evidence pane and its per-field confidence tags read this. The server's
+    /// <c>autoAcceptThreshold</c> is emitted once per response so the web never hardcodes 90.
+    /// Same guard-clause shape as <see cref="GetCorrectionHistoryAsync"/>;
+    /// 404 when <see cref="ContractEvidenceQueryService.GetLatestAsync"/> returns <c>null</c>
+    /// (no such contract for this tenant), 200 with an empty <c>fields</c> array for a contract
+    /// that exists but has no evidence yet.
     /// </summary>
     private static async Task<IResult> GetContractEvidenceAsync(
         string id,
@@ -124,21 +126,26 @@ public static class ContractsEndpointExtensions
             return Results.NotFound();
         }
 
-        return Results.Ok(evidence.Select(e => new
+        return Results.Ok(new
         {
-            fieldName = e.FieldName,
-            value = e.Value,
-            confidence = e.Confidence,
-            sourcePage = e.SourcePage,
-            sourceSpan = e.SourceSpan,
-            sourceDocumentId = e.SourceDocumentId?.Value,
-            sourceFileName = e.SourceFileName,
-            passage = e.Passage,
-            highlightStart = e.HighlightStart,
-            highlightLength = e.HighlightLength,
-            modelId = e.ModelId,
-            extractedAt = e.ExtractedAt,
-        }));
+            autoAcceptThreshold = ExtractionConfidencePolicy.AutoAcceptThreshold,
+            fields = evidence.Select(e => new
+            {
+                fieldName = e.FieldName,
+                value = e.Value,
+                confidence = e.Confidence,
+                decision = e.Decision,
+                sourcePage = e.SourcePage,
+                sourceSpan = e.SourceSpan,
+                sourceDocumentId = e.SourceDocumentId?.Value,
+                sourceFileName = e.SourceFileName,
+                passage = e.Passage,
+                highlightStart = e.HighlightStart,
+                highlightLength = e.HighlightLength,
+                modelId = e.ModelId,
+                extractedAt = e.ExtractedAt,
+            }),
+        });
     }
 
     /// <summary>
@@ -389,6 +396,11 @@ public static class ContractsEndpointExtensions
         if (!Guid.TryParse(id, out var contractGuid))
         {
             return Results.BadRequest("The contract id in the route must be a GUID.");
+        }
+
+        if (request.Decision is not null)
+        {
+            return Results.BadRequest("decision is server-computed and cannot be supplied by the caller.");
         }
 
         if (request.Corrections is null || request.Corrections.Count == 0)

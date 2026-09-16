@@ -26,7 +26,7 @@ public sealed class SavingsKpiCalculatorTests
     [Fact]
     public void No_opportunities_produces_three_honestly_empty_buckets()
     {
-        var result = _calculator.Summarize([]);
+        var result = _calculator.Summarize([], []);
 
         Assert.Empty(result.Identified);
         Assert.Empty(result.InProgress);
@@ -43,11 +43,11 @@ public sealed class SavingsKpiCalculatorTests
             Snapshot(SavingsOpportunityStatus.Realized),
         };
 
-        var result = _calculator.Summarize(opportunities);
+        var result = _calculator.Summarize(opportunities, []);
 
         Assert.Single(result.Identified);
         Assert.Single(result.InProgress);
-        Assert.Single(result.Realized);
+        Assert.Empty(result.Realized);
     }
 
     [Fact]
@@ -59,7 +59,7 @@ public sealed class SavingsKpiCalculatorTests
             Snapshot(SavingsOpportunityStatus.Identified, "USD", low: 300m, high: 500m, confidence: 1.0),
         };
 
-        var result = _calculator.Summarize(opportunities);
+        var result = _calculator.Summarize(opportunities, []);
 
         var bucket = Assert.Single(result.Identified);
         Assert.Equal("USD", bucket.Currency);
@@ -81,7 +81,7 @@ public sealed class SavingsKpiCalculatorTests
             Snapshot(SavingsOpportunityStatus.Identified, "CHF", low: 900m, high: 1_000m),
         };
 
-        var result = _calculator.Summarize(opportunities);
+        var result = _calculator.Summarize(opportunities, []);
 
         Assert.Equal(2, result.Identified.Count);
         var usd = Assert.Single(result.Identified, b => b.Currency == "USD");
@@ -107,7 +107,7 @@ public sealed class SavingsKpiCalculatorTests
             Snapshot(SavingsOpportunityStatus.Identified, "usd", low: 300m, high: 500m, confidence: 1.0),
         };
 
-        var result = _calculator.Summarize(opportunities);
+        var result = _calculator.Summarize(opportunities, []);
 
         var bucket = Assert.Single(result.Identified);
         Assert.Equal(400m, bucket.Low);
@@ -125,37 +125,85 @@ public sealed class SavingsKpiCalculatorTests
             Snapshot(SavingsOpportunityStatus.Identified, "EUR"),
         };
 
-        var result = _calculator.Summarize(opportunities);
+        var result = _calculator.Summarize(opportunities, []);
 
         Assert.Equal(["CHF", "EUR", "USD"], result.Identified.Select(b => b.Currency));
     }
 
     [Fact]
-    public void Realized_bucket_reflects_the_opportunitys_own_estimated_range_not_a_separate_entity()
+    public void Two_realized_rows_in_one_currency_sum_to_one_money_figure()
     {
-        // Honest, documented gap (SavingsOpportunityStatus.Realized's own doc comment): this task's
-        // wave-spec dependency is savings-opportunity only, not the separate, audit-tracked
-        // RealizedSavings entity (task E04/F02/US02/T02) — so "Savings Realized" is computed from
-        // the same Low/High range every other bucket uses, for exactly the rows whose Status is
-        // Realized, nothing more.
-        var opportunities = new[]
+        var realized = new[]
         {
-            Snapshot(SavingsOpportunityStatus.Realized, "USD", low: 50m, high: 75m, confidence: 0.95),
+            new RealizedSavingsSnapshot("CHF", 40_000m),
+            new RealizedSavingsSnapshot("CHF", 45_000m),
         };
 
-        var result = _calculator.Summarize(opportunities);
+        var result = _calculator.Summarize([], realized);
 
         var bucket = Assert.Single(result.Realized);
-        Assert.Equal(50m, bucket.Low);
-        Assert.Equal(75m, bucket.High);
-        Assert.Equal(0.95, bucket.AverageConfidence, precision: 10);
+        Assert.Equal("CHF", bucket.Currency);
+        Assert.Equal(85_000m, bucket.Amount);
+        Assert.Equal(2, bucket.Count);
         Assert.Empty(result.Identified);
         Assert.Empty(result.InProgress);
     }
 
     [Fact]
+    public void Two_realized_currencies_produce_two_entries_and_no_combined_total()
+    {
+        var realized = new[]
+        {
+            new RealizedSavingsSnapshot("USD", 10_000m),
+            new RealizedSavingsSnapshot("CHF", 85_000m),
+        };
+
+        var result = _calculator.Summarize([], realized);
+
+        Assert.Equal(2, result.Realized.Count);
+        var chf = Assert.Single(result.Realized, b => b.Currency == "CHF");
+        var usd = Assert.Single(result.Realized, b => b.Currency == "USD");
+        Assert.Equal(85_000m, chf.Amount);
+        Assert.Equal(10_000m, usd.Amount);
+        Assert.Equal(["CHF", "USD"], result.Realized.Select(b => b.Currency));
+        Assert.DoesNotContain(result.Realized, b => b.Amount == 95_000m);
+    }
+
+    [Fact]
+    public void An_opportunity_estimate_range_never_reaches_the_realized_member()
+    {
+        var opportunities = new[]
+        {
+            Snapshot(SavingsOpportunityStatus.Realized, "USD", low: 50m, high: 75m, confidence: 0.95),
+            Snapshot(SavingsOpportunityStatus.Identified, "USD", low: 100m, high: 200m),
+        };
+
+        var result = _calculator.Summarize(opportunities, []);
+
+        Assert.Empty(result.Realized);
+        Assert.Single(result.Identified);
+    }
+
+    [Fact]
+    public void Differently_cased_realized_currency_rows_are_merged_into_one_bucket()
+    {
+        var realized = new[]
+        {
+            new RealizedSavingsSnapshot("USD", 10_000m),
+            new RealizedSavingsSnapshot("usd", 5_000m),
+        };
+
+        var result = _calculator.Summarize([], realized);
+
+        var bucket = Assert.Single(result.Realized);
+        Assert.Equal(15_000m, bucket.Amount);
+        Assert.Equal(2, bucket.Count);
+    }
+
+    [Fact]
     public void Rejects_a_null_argument()
     {
-        Assert.Throws<ArgumentNullException>(() => _calculator.Summarize(null!));
+        Assert.Throws<ArgumentNullException>(() => _calculator.Summarize(null!, []));
+        Assert.Throws<ArgumentNullException>(() => _calculator.Summarize([], null!));
     }
 }

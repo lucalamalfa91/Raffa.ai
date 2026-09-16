@@ -19,7 +19,7 @@ function kpis(overrides: Partial<SavingsKpiSummaryBody> = {}): SavingsKpiSummary
     contractsAnalyzedCount: 9,
     savingsIdentified: [{ currency: "CHF", low: 410_000, high: 590_000, count: 6, averageConfidence: 0.82 }],
     savingsInProgress: [{ currency: "CHF", low: 240_000, high: 240_000, count: 2, averageConfidence: 0.75 }],
-    savingsRealized: [{ currency: "CHF", low: 85_000, high: 85_000, count: 1, averageConfidence: 0.91 }],
+    savingsRealized: [{ currency: "CHF", amount: 85_000, count: 1 }],
     upcomingRenewalsCount: 4,
     ...overrides,
   };
@@ -106,24 +106,36 @@ describe("reduceKpiFetch ('benchmark-provider-unreachable -> KPIs stale-labelled
   });
 });
 
-describe("buildKpiCells (screens-v2.md #8: three cells with meta lines)", () => {
-  it("names the three cells in the prototype's order", () => {
-    expect(buildKpiCells(null).map((cell) => cell.label)).toEqual(["Contracts analyzed", "Upcoming renewals", "Savings identified"]);
+describe("buildKpiCells (screens-v2.md #8 plus the verified-money cell)", () => {
+  it("names the four cells in band order in both the failed-fetch and ready branches", () => {
+    const keys = ["contracts-analyzed", "upcoming-renewals", "savings-identified", "savings-verified"];
+    expect(buildKpiCells(null).map((cell) => cell.key)).toEqual(keys);
+    expect(buildKpiCells(kpis()).map((cell) => cell.key)).toEqual(keys);
+    expect(buildKpiCells(null).map((cell) => cell.label)).toEqual([
+      "Contracts analyzed",
+      "Upcoming renewals",
+      "Savings identified",
+      "Savings verified",
+    ]);
   });
 
   it("kpis:null renders every cell with an honestly empty lines array and no meta", () => {
     const cells = buildKpiCells(null);
+    expect(cells).toHaveLength(4);
     expect(cells.every((cell) => cell.lines.length === 0 && cell.meta === null)).toBe(true);
   });
 
   it("carries real values and meta lines from the same response", () => {
-    const [contracts, renewals, identified] = buildKpiCells(kpis());
+    const [contracts, renewals, identified, verified] = buildKpiCells(kpis());
     expect(contracts.lines).toEqual(["9"]);
     expect(contracts.meta).toBe("CHF 6,270,000 annual spend");
     expect(renewals.lines).toEqual(["4"]);
     expect(renewals.meta).toBe("auto-renewing contracts in the pipeline");
     expect(identified.lines).toEqual(["CHF 410,000–590,000"]);
-    expect(identified.meta).toBe("6 identified · 2 in progress · 1 realized");
+    expect(identified.meta).toBe("6 identified · 2 in progress");
+    expect(verified.lines).toEqual(["CHF 85,000"]);
+    expect(verified.meta).toBe("from 1 recorded outcome");
+    expect(verified.label).toBe("Savings verified");
   });
 
   it("multiple currency buckets render one line per currency, never summed across currencies", () => {
@@ -132,14 +144,27 @@ describe("buildKpiCells (screens-v2.md #8: three cells with meta lines)", () => 
         { currency: "CHF", low: 410_000, high: 590_000, count: 6, averageConfidence: 0.82 },
         { currency: "USD", low: 20_000, high: 20_000, count: 1, averageConfidence: 0.7 },
       ],
+      savingsRealized: [
+        { currency: "CHF", amount: 85_000, count: 1 },
+        { currency: "USD", amount: 12_000, count: 2 },
+      ],
       annualSpendAnalyzed: [
         { currency: "CHF", amount: 6_270_000, contractCount: 9 },
         { currency: "USD", amount: 100_000, contractCount: 1 },
       ],
     });
-    const [contracts, , identified] = buildKpiCells(twoCurrencies);
+    const [contracts, , identified, verified] = buildKpiCells(twoCurrencies);
     expect(identified.lines).toEqual(["CHF 410,000–590,000", "USD 20,000"]);
     expect(contracts.meta).toBe("CHF 6,270,000 · USD 100,000 annual spend");
+    expect(verified.lines).toEqual(["CHF 85,000", "USD 12,000"]);
+    expect(verified.meta).toBe("from 3 recorded outcomes");
+  });
+
+  it("loaded empty verified savings is an em-dash with a non-null meta, never a fabricated 0", () => {
+    const [, , , verified] = buildKpiCells(kpis({ savingsRealized: [] }));
+    expect(verified.lines).toEqual([]);
+    expect(verified.meta).toBe("no verified savings recorded yet");
+    expect(verified.label).toBe("Savings verified");
   });
 
   it("is honest when no spend has been analysed yet", () => {

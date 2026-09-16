@@ -38,6 +38,7 @@ function mockApiClient(listConversations: ApiClient["listConversations"] = vi.fn
     getCorrectionHistory: vi.fn(),
     correctContract: vi.fn(),
     getContractEvidence: vi.fn(),
+    getContractStrategy: vi.fn(),
     validateDocument: vi.fn(),
     postRenewalAction: vi.fn(),
     getQuote: vi.fn(),

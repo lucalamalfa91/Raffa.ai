@@ -1,5 +1,6 @@
 using Raffa.AiGateway;
 using Raffa.AiGateway.Contracts;
+using Raffa.Documents.Contracts.Application;
 using Raffa.Documents.Contracts.Application.Admission;
 using Raffa.Documents.Contracts.Application.Preview;
 using Raffa.Documents.Contracts.Domain;
@@ -104,19 +105,14 @@ public sealed class DocumentProcessingPipeline(
     /// (<c>{SourceType}:{SourceId}</c>) resolves back to this <see cref="Document"/>.</summary>
     private const string DocumentSourceType = "Document";
 
-    /// <summary>Same threshold and same reasoning as <see cref="StagedExtractionService.LowConfidenceThreshold"/>
-    /// (documented separately, not shared, because the two run against independent
-    /// <see cref="Domain.ExtractionJob"/> rows on different <see cref="ExtractionStage"/> values —
-    /// there is no single shared constant to reference without one service reaching into the
-    /// other's private state): below this, classification is a proposal a human should confirm,
-    /// not a trusted fact (product principle: "Human-in-the-loop for consequential decisions").
-    /// </summary>
-    private const double LowConfidenceThreshold = 0.6;
-
     /// <summary>
     /// Bytes in: hybrid parse → classify (gateway call) → staged extraction → Ask Raffa indexing.
     /// A parse failure marks the document <see cref="DocumentProcessingStatus.Failed"/> (an honest
     /// terminal state — not "still processing") and is returned; see the type doc comment.
+    /// Classification is a proposal a human should confirm when it falls below
+    /// <see cref="ExtractionConfidencePolicy"/> — the same bar staged extraction uses for every
+    /// field. Admission ("is the file a contract at all") is a different decision and lives on
+    /// <c>DocumentAdmissionOptions.AdmissionThreshold</c>.
     /// </summary>
     public async Task<Result<DocumentProcessingSummary>> ProcessAsync(
         TenantId tenantId,
@@ -192,7 +188,7 @@ public sealed class DocumentProcessingPipeline(
         {
             classificationJob.StartedAt = now;
             classificationJob.ModelId = classification.Metadata.ModelId;
-            classificationJob.Status = classification.Confidence < LowConfidenceThreshold
+            classificationJob.Status = ExtractionConfidencePolicy.RequiresReview(classification.Confidence)
                 ? ExtractionJobStatus.NeedsReview
                 : ExtractionJobStatus.Completed;
             classificationJob.CompletedAt = now;
@@ -229,15 +225,24 @@ public sealed class DocumentProcessingPipeline(
     {
         // R-DOC-06's list column: what the parse really produced, recorded before extraction so a
         // later stage failing still leaves an honest page count behind.
+        // Capture the previous page count before overwriting — needed for the reap step (ADR-029
+        // round-3 clause 2): if this reprocess yields fewer pages than the last run, the surplus
+        // page-{n}.png objects must be deleted.
+        var previousPageCount = document.PageCount;
         document.PageCount = pages.Count;
 
-        // R-DOC-08: render and store the first-page preview from the bytes we already hold. Never
-        // fatal - DocumentPreviewService returns null instead of throwing, and a document with no
-        // preview simply answers 404 on that endpoint (see that type's own doc comment).
+        // R-DOC-08 / ADR-029 clause 1-2: render and store per-page previews from the bytes we
+        // already hold. Runs AFTER admission and BEFORE extraction — a document whose extraction
+        // later fails is still viewable (AC-5, ExtractionSettlementTests). Never fatal: the service
+        // returns null instead of throwing; a document with no preview simply answers 404.
         if (previewService is not null && !content.IsEmpty)
         {
             var previewPath = await previewService
-                .RenderAndStoreAsync(tenantId, document.Id, fileName, mimeType, content, cancellationToken)
+                .RenderAndStoreAsync(
+                    tenantId, document.Id, fileName, mimeType, content,
+                    pageCount: pages.Count,
+                    previousPageCount: previousPageCount,
+                    cancellationToken)
                 .ConfigureAwait(false);
             if (previewPath is not null)
             {
@@ -288,7 +293,7 @@ public sealed class DocumentProcessingPipeline(
     ///
     /// <para>
     /// Four no-ops, each deliberate: no resolver composed in (a host without the Suppliers module —
-    /// see the type doc comment), no accepted supplier fact (absent, or below the critical-field
+    /// see the type doc comment), no accepted supplier fact (absent, or below the auto-accept
     /// bar — that document is already in <c>needs_review</c> with the fact's evidence, and a human
     /// correction re-resolves it), a resolver failure (this pipeline never fails an already-durable
     /// upload — see the type doc comment's own "Never fails an already-durable upload" remark), and
@@ -375,7 +380,7 @@ public sealed class DocumentProcessingPipeline(
         if (classificationJob is not null)
         {
             classificationJob.ModelId = classifyResult.Value.Metadata.ModelId;
-            classificationJob.Status = classifyResult.Value.Confidence < LowConfidenceThreshold
+            classificationJob.Status = ExtractionConfidencePolicy.RequiresReview(classifyResult.Value.Confidence)
                 ? ExtractionJobStatus.NeedsReview
                 : ExtractionJobStatus.Completed;
             classificationJob.CompletedAt = completedAt;

@@ -34,9 +34,10 @@ public sealed record DocumentValidationResult(
 /// either accepted the extraction or corrected it (corrections are already durable through
 /// <c>ContractCorrectionService</c> by the time this is called). This service records that
 /// decision as the document's status and one append-only <c>document.validated</c> audit row
-/// naming the accepted fields (Appendix C rule 9: capture decisions from day one) — never by
-/// rewriting the <see cref="ExtractionEvidence"/> rows, whose confidence stays what the model
-/// reported (rule 5: preserve the original extraction).
+/// naming the accepted fields (Appendix C rule 9: capture decisions from day one). The
+/// <see cref="ExtractionEvidence"/> confidence and value stay what the model reported (rule 5);
+/// only <see cref="ExtractionEvidence.Decision"/> becomes <c>human_accepted</c> for the fields
+/// the reviewer named.
 /// </para>
 ///
 /// <para>
@@ -118,6 +119,8 @@ public sealed class DocumentValidationService(
         if (!alreadyValidated)
         {
             document.ProcessingStatus = DocumentProcessingStatus.Completed;
+            await StampHumanAcceptedAsync(tenantId, document.ContractId, normalizedFields, now, cancellationToken)
+                .ConfigureAwait(false);
             await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
 
@@ -141,5 +144,37 @@ public sealed class DocumentValidationService(
             now,
             normalizedFields,
             alreadyValidated));
+    }
+
+    private async Task StampHumanAcceptedAsync(
+        TenantId tenantId,
+        EntityId? contractId,
+        IReadOnlyList<string> acceptedFields,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        if (contractId is not { } id || acceptedFields.Count == 0)
+        {
+            return;
+        }
+
+        var names = new HashSet<string>(acceptedFields, StringComparer.OrdinalIgnoreCase);
+        var rows = await dbContext.ExtractionEvidences
+            .Where(e => e.TenantId == tenantId && e.ContractId == id)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        foreach (var latest in rows
+            .GroupBy(e => e.FieldName, StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.OrderByDescending(e => e.CreatedAt).ThenByDescending(e => e.Id.Value).First()))
+        {
+            if (!names.Contains(latest.FieldName))
+            {
+                continue;
+            }
+
+            latest.Decision = ExtractionConfidencePolicy.HumanAccepted;
+            latest.DecidedAt = now;
+        }
     }
 }

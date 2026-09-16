@@ -338,6 +338,10 @@ public static class DocumentsEndpointExtensions
             documentType = metadata.DocumentType.ToString(),
             processingStatus = metadata.ProcessingStatus.ToString(),
             createdAt = metadata.CreatedAt,
+            // Task E22/F02/US01/T01 (ADR-029 clauses 6-7): exposed so the viewer can page
+            // through the document and surface the budget cap honestly (AC-4/AC-7).
+            pageCount = metadata.PageCount,
+            isPageCountLimited = metadata.IsPageCountLimited,
         });
     }
 
@@ -439,6 +443,12 @@ public static class DocumentsEndpointExtensions
     /// (ADR-009) — the client never sees, and never supplies, a blob path. 404 covers all three of
     /// "no such document", "not your tenant" and "no preview stored": none of them is a distinction
     /// a caller is entitled to.
+    ///
+    /// <para>
+    /// Task E22/F02/US01/T01 (ADR-029 clause 5): accepts an optional <c>?page=n</c> query
+    /// parameter (1-based). Out of range is 404, never a silent page 1 — silently serving the wrong
+    /// page to a citation deep-link is how a viewer lies about where a clause came from.
+    /// </para>
     /// </summary>
     private static async Task<IResult> GetDocumentPreviewAsync(
         string id,
@@ -465,7 +475,20 @@ public static class DocumentsEndpointExtensions
             return Results.BadRequest("The document id in the route must be a GUID.");
         }
 
-        var png = await previewService.LoadAsync(tenantId, new EntityId(documentGuid), cancellationToken);
+        // ADR-029 clause 5: optional ?page=n (1-based). Absent → page 1 (today's behaviour).
+        // Out of range is 404 (handled by DocumentPreviewService.LoadAsync), never a clamp.
+        var page = 1;
+        if (request.Query.TryGetValue("page", out var pageValues) && !string.IsNullOrWhiteSpace(pageValues))
+        {
+            if (!int.TryParse(pageValues.ToString(), out var parsedPage) || parsedPage < 1)
+            {
+                return Results.NotFound();
+            }
+
+            page = parsedPage;
+        }
+
+        var png = await previewService.LoadAsync(tenantId, new EntityId(documentGuid), page, cancellationToken);
         return png is null
             ? Results.NotFound()
             : Results.File(png, DocumentPreviewService.PreviewContentType);

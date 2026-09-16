@@ -67,4 +67,71 @@ public sealed class DocumentStoragePathTests
         Assert.Throws<ArgumentOutOfRangeException>(
             () => DocumentStoragePath.Build(TenantId.New(), EntityId.New(), versionNumber: 0, "contract.pdf"));
     }
+
+    // ---- Task E22/F02/US01/T01 (ADR-029 round-3 clause 1) ----
+
+    [Fact]
+    public void BuildPreviewPage_is_deterministic_for_the_same_tenant_document_page()
+    {
+        var tenantId   = TenantId.New();
+        var documentId = EntityId.New();
+
+        var path1 = DocumentStoragePath.BuildPreviewPage(tenantId, documentId, 1);
+        var path2 = DocumentStoragePath.BuildPreviewPage(tenantId, documentId, 1);
+
+        Assert.Equal(path1, path2);
+    }
+
+    [Fact]
+    public void BuildPreviewPage_produces_distinct_paths_for_different_pages()
+    {
+        var tenantId   = TenantId.New();
+        var documentId = EntityId.New();
+
+        var page1 = DocumentStoragePath.BuildPreviewPage(tenantId, documentId, 1);
+        var page2 = DocumentStoragePath.BuildPreviewPage(tenantId, documentId, 2);
+
+        Assert.NotEqual(page1, page2);
+    }
+
+    [Fact]
+    public void BuildPreviewPage_for_page_1_produces_same_path_as_BuildPreview()
+    {
+        // ADR-029 round-3 clause 1: BuildPreview is unchanged and stays the page-1 path.
+        var tenantId   = TenantId.New();
+        var documentId = EntityId.New();
+
+        var previewPage1 = DocumentStoragePath.BuildPreviewPage(tenantId, documentId, 1);
+        var buildPreview = DocumentStoragePath.BuildPreview(tenantId, documentId);
+
+        Assert.Equal(buildPreview, previewPage1);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void BuildPreviewPage_rejects_page_numbers_below_1(int invalidPage)
+    {
+        // ADR-009 w17 clause 6: page < 1 throws; an endpoint-only bound is not a bound.
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => DocumentStoragePath.BuildPreviewPage(TenantId.New(), EntityId.New(), invalidPage));
+    }
+
+    [Fact]
+    public void BuildPreviewPage_path_is_under_tenant_prefix_and_guarded_by_EnsureWithinTenant()
+    {
+        var tenantA = TenantId.New();
+        var tenantB = TenantId.New();
+        var documentId = EntityId.New();
+
+        var path = DocumentStoragePath.BuildPreviewPage(tenantA, documentId, 3);
+
+        Assert.StartsWith($"{tenantA.Value:D}/", path, StringComparison.Ordinal);
+
+        // The guard accepts this tenant's own path...
+        DocumentStoragePath.EnsureWithinTenant(tenantA, path);
+
+        // ...and throws for any other tenant (ADR-009: cross-tenant path is a defect, not a miss).
+        Assert.Throws<InvalidOperationException>(() => DocumentStoragePath.EnsureWithinTenant(tenantB, path));
+    }
 }

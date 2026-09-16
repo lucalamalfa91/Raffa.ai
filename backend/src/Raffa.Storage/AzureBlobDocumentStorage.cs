@@ -46,6 +46,19 @@ public sealed class AzureBlobDocumentStorage(BlobContainerClient container) : ID
         return await UploadAsync(path, content, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>Task E22/F02/US01/T01 (ADR-029): one rendered page of the preview — deterministic
+    /// path replaced in place on every reprocess (round-3 clause 1).</summary>
+    public async Task<string> SavePreviewPageAsync(
+        TenantId tenantId,
+        EntityId documentId,
+        int page,
+        Stream content,
+        CancellationToken cancellationToken = default)
+    {
+        var path = DocumentStoragePath.BuildPreviewPage(tenantId, documentId, page);
+        return await UploadAsync(path, content, cancellationToken).ConfigureAwait(false);
+    }
+
     /// <summary>Task E13/F04/US01/T02 (R-DOC-07): reads the bytes back for a reprocess or a preview
     /// stream; a missing blob is <see langword="null"/>, a cross-tenant path throws.</summary>
     public async Task<byte[]?> LoadAsync(

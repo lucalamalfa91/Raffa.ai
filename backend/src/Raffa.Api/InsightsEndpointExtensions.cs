@@ -1,4 +1,5 @@
 using Raffa.Api.Infrastructure;
+using Raffa.Benchmark;
 using Raffa.Benchmark.Contracts;
 using Raffa.Documents.Contracts.Application;
 using Raffa.Documents.Contracts.Domain;
@@ -37,20 +38,16 @@ namespace Raffa.Api;
 /// </para>
 ///
 /// <para>
-/// <b>Benchmark matching is honestly not wired for contract priced lines yet</b> (task's own coding
-/// objective lists "benchmark via <c>IBenchmarkService</c>" among the composed sources): a
-/// <c>Raffa.Benchmark.Contracts.BenchmarkQuery</c> requires a non-null supplier name and geography,
-/// and <c>Raffa.Documents.Contracts.Domain.Contract</c> has neither field today (only a bare
-/// <c>SupplierId</c> guid, no name resolver wired to this composition — Suppliers/Products is not
-/// named in this task's own "Context the implementer needs" list) — the exact same gap
-/// <see cref="Contract360Result.Benchmark"/>'s own doc comment already names verbatim ("no
-/// supplier-name/geography field exists on <c>Contract</c> today"). <see cref="ToPricedLines"/>
-/// therefore always produces <c>Benchmark: null</c> today (an honest "insufficient market data" for
-/// every priced-line target — <c>PricedLineNegotiationCalculator</c>'s own abstain path), not a
-/// hard-coded shortcut: once a follow-up task resolves a real supplier name + geography onto
-/// <see cref="Contract360Result"/>, this method is where a real <c>IBenchmarkService.GetBenchmarkAsync</c>
-/// call would be added, the same "wiring lands with the first real caller" gap this codebase
-/// documents everywhere else (see <c>backend/README.md</c> "Insights").
+/// <b>Benchmark matching is wired in the host</b> (task E21/F03/US01/T01, NW-62):
+/// <see cref="BenchmarkKeyResolution"/> — the same resolver the 360's <c>benchmark</c> member uses,
+/// one resolution per screen (ADR-024 w17 clause 7) — supplies the (supplier name, geography)
+/// pair from the supplier lookup and the workspace country (ISO 3166-1 alpha-2). Geography is
+/// resolved here because <c>Raffa.Insights</c>'s allow-list is exactly <c>[SharedKernel, Benchmark]</c>
+/// and cannot read the workspace. <see cref="ToPricedLines"/> then calls
+/// <see cref="IBenchmarkService.GetBenchmarkAsync"/> per priced line. Two honest shapes only
+/// (ADR-001 w17 clause 4): a representative position carrying adapter, sample size and as-of date,
+/// or the explicit "insufficient market data" when the adapter abstains or the key is incomplete.
+/// Never a fabricated number, never a bare percentile, never "market" unqualified.
 /// </para>
 ///
 /// Same interim <c>X-Tenant-Id</c> header placeholder as every other endpoint in this host (ADR-010
@@ -160,6 +157,8 @@ public static class InsightsEndpointExtensions
         RenewalEngine renewalEngine,
         IClock clock,
         ICallerContext callerContext,
+        IBenchmarkService benchmarkService,
+        BenchmarkKeyResolution benchmarkKeyResolution,
         CancellationToken cancellationToken)
     {
         // NW-05 (ADR-010 w15 footer; ADR-022 w15 footer clause 2): identity first, then the tenant
@@ -192,12 +191,30 @@ public static class InsightsEndpointExtensions
             return Results.NotFound();
         }
 
-        var renewal = ComputeRenewal(contract360.Header, renewalEngine);
-        var pricedLines = ToPricedLines(contract360);
-        var criticalFacts = ToCriticalFacts(contract360);
         var asOfDate = DateOnly.FromDateTime(clock.UtcNow.UtcDateTime);
 
-        var strategyInputs = ToStrategyInputs(contract360, renewal, pricedLines, criticalFacts, asOfDate);
+        // One resolution per screen (ADR-024 w17 clause 7): the same BenchmarkKeyResolution
+        // E21/F01 registered for the 360's benchmark member. Geography is the workspace country.
+        var key = await benchmarkKeyResolution
+            .ResolveAsync(tenantId, contract360.Header.SupplierId, cancellationToken)
+            .ConfigureAwait(false);
+
+        string? supplierName = null;
+        string? geography = null;
+        if (key is BenchmarkKeyResult.Complete complete)
+        {
+            supplierName = complete.Supplier;
+            geography = complete.Geography;
+        }
+
+        var renewal = ComputeRenewal(contract360.Header, renewalEngine);
+        var pricedLines = await ToPricedLines(
+                contract360, benchmarkService, supplierName, geography, asOfDate, cancellationToken)
+            .ConfigureAwait(false);
+        var criticalFacts = ToCriticalFacts(contract360);
+
+        var strategyInputs = ToStrategyInputs(
+            contract360, renewal, pricedLines, criticalFacts, asOfDate, supplierName);
         var pack = StrategyPackBuilder.Build(strategyInputs);
 
         return Results.Ok(ToStrategyResponse(pack));
@@ -303,35 +320,113 @@ public static class InsightsEndpointExtensions
     }
 
     /// <summary>
-    /// This contract's priced lines, generalized from <see cref="Contract360ProductLineItem"/> into
-    /// <see cref="PricedLine"/> (parent story AC-3). <see cref="PricedLine.TermMonths"/> stays null:
-    /// <c>ContractLineItem.BillingPeriod</c> is free text with no normalized-months column, unlike
-    /// <c>Raffa.Quotes.Domain.QuoteLine.NormalizedTermMonths</c> — a follow-up gap, not this task's
-    /// to close. <see cref="PricedLine.Benchmark"/>/<see cref="PricedLine.SampleSize"/> stay null —
-    /// see this type's own doc comment ("Benchmark matching is honestly not wired... yet").
+    /// This contract's priced lines without a benchmark lookup — used by callers that compose their
+    /// own adapter call (Ask's market-compare pack). <see cref="PricedLine.TermMonths"/> is the
+    /// contract's own <see cref="Contract360Overview.RenewalTermMonths"/> when recorded;
+    /// <c>ContractLineItem.BillingPeriod</c> stays free text. The band itself is left unset so the
+    /// pack states "insufficient market data" rather than fabricating one.
     /// </summary>
-    public static IReadOnlyList<PricedLine> ToPricedLines(Contract360Result contract)
+    public static IReadOnlyList<PricedLine> ToPricedLines(Contract360Result contract) =>
+        MapPricedLines(contract, static _ => default);
+
+    /// <summary>
+    /// This contract's priced lines, generalized from <see cref="Contract360ProductLineItem"/> into
+    /// <see cref="PricedLine"/> (parent story AC-3; task E21/F03/US01/T01). When
+    /// <paramref name="supplierName"/> and <paramref name="geography"/> are both present — the
+    /// complete key <see cref="BenchmarkKeyResolution"/> resolved in the host — calls
+    /// <see cref="IBenchmarkService.GetBenchmarkAsync"/> per line and fills the distribution, term,
+    /// sample size, adapter name and as-of date from a sufficient result. An incomplete key or an
+    /// adapter abstention leaves the band unset so the pack states "insufficient market data"
+    /// (ADR-001 w17 clause 4). Never fabricates a number.
+    /// </summary>
+    public static async Task<IReadOnlyList<PricedLine>> ToPricedLines(
+        Contract360Result contract,
+        IBenchmarkService benchmarkService,
+        string? supplierName,
+        string? geography,
+        DateOnly asOfDate,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(contract);
+        ArgumentNullException.ThrowIfNull(benchmarkService);
 
-        return contract.Products
-            .Select(product => new PricedLine(
+        var keyIsComplete = !string.IsNullOrWhiteSpace(supplierName)
+            && !string.IsNullOrWhiteSpace(geography);
+        var bands = new LineBenchmark[contract.Products.Count];
+
+        if (keyIsComplete)
+        {
+            for (var i = 0; i < contract.Products.Count; i++)
+            {
+                var product = contract.Products[i];
+                var termMonths = contract.Overview.RenewalTermMonths;
+                var query = new BenchmarkQuery(
+                    Supplier: supplierName!,
+                    Product: product.Description,
+                    Sku: product.Sku,
+                    Geography: geography!,
+                    Quantity: product.Quantity ?? 1m,
+                    Term: termMonths is { } months ? $"{months} months" : "unknown",
+                    Currency: contract.Overview.Currency,
+                    PurchaseDate: contract.Overview.EffectiveDate ?? asOfDate);
+
+                var benchmarkResult = await benchmarkService
+                    .GetBenchmarkAsync(query, cancellationToken)
+                    .ConfigureAwait(false);
+
+                if (benchmarkResult.IsSuccess && benchmarkResult.Value.HasSufficientData)
+                {
+                    var value = benchmarkResult.Value;
+                    bands[i] = new LineBenchmark(
+                        value.Distribution, value.SampleSize, value.Source, value.UpdatedAt);
+                }
+            }
+        }
+
+        return MapPricedLines(contract, i => bands[i]);
+    }
+
+    private readonly record struct LineBenchmark(
+        BenchmarkDistribution? Distribution,
+        int? SampleSize,
+        string? AdapterName,
+        DateTimeOffset? AsOf);
+
+    private static IReadOnlyList<PricedLine> MapPricedLines(
+        Contract360Result contract,
+        Func<int, LineBenchmark> resolveBand)
+    {
+        ArgumentNullException.ThrowIfNull(contract);
+        ArgumentNullException.ThrowIfNull(resolveBand);
+
+        var termMonths = contract.Overview.RenewalTermMonths;
+        var lines = new List<PricedLine>(contract.Products.Count);
+        for (var i = 0; i < contract.Products.Count; i++)
+        {
+            var product = contract.Products[i];
+            var band = resolveBand(i);
+            lines.Add(new PricedLine(
                 product.Sku,
                 product.Description,
                 product.Quantity,
                 product.UnitPrice,
                 contract.Overview.Currency,
-                TermMonths: null,
-                Benchmark: null,
-                SampleSize: null))
-            .ToList();
+                termMonths,
+                band.Distribution,
+                band.SampleSize,
+                band.AdapterName,
+                band.AsOf));
+        }
+
+        return lines;
     }
 
     /// <summary>
     /// Composes <see cref="Contract360Result"/> plus its already-computed <paramref name="renewal"/>
-    /// into <see cref="StrategyInputs"/>. <see cref="StrategyInputs.SupplierName"/> stays null — see
-    /// this type's own doc comment ("Contract.SupplierId is a bare id; no name resolver is wired to
-    /// this composition yet").
+    /// into <see cref="StrategyInputs"/>. <paramref name="supplierName"/> is the host-resolved half
+    /// of the (supplier name, geography) pair <see cref="BenchmarkKeyResolution"/> produced — the
+    /// module cannot look the name up itself (allow-list <c>[SharedKernel, Benchmark]</c>). Null
+    /// when the key was incomplete; the builder then falls back to generic phrasing.
     ///
     /// <para>
     /// <b>The cancellation deadline comes from two places, in order.</b> The renewal engine derives
@@ -350,7 +445,8 @@ public static class InsightsEndpointExtensions
         RenewalCalculationResult renewal,
         IReadOnlyList<PricedLine> pricedLines,
         IReadOnlyList<CriticalFactConfidence> criticalFacts,
-        DateOnly asOfDate)
+        DateOnly asOfDate,
+        string? supplierName = null)
     {
         ArgumentNullException.ThrowIfNull(contract);
         ArgumentNullException.ThrowIfNull(renewal);
@@ -363,7 +459,7 @@ public static class InsightsEndpointExtensions
 
         return new StrategyInputs(
             contract.ContractId,
-            SupplierName: null,
+            supplierName,
             renewal.RenewalDate,
             cancellationDeadline,
             renewal.DaysUntilRenewal,

@@ -287,18 +287,13 @@
 
 .contract360-clause {
   display: grid;
-  grid-template-columns: minmax(10rem, 16rem) minmax(0, 1fr) minmax(9rem, 18rem);
+  grid-template-columns: minmax(0, 1fr) minmax(9rem, 18rem);
   gap: 16px 24px;
   align-items: baseline;
   width: 100%;
   padding: 12px 8px 12px 0;
-  border: 0;
   border-bottom: 1px solid var(--color-divider);
-  background: transparent;
-  text-align: left;
-  color: inherit;
   font-size: 13px;
-  cursor: pointer;
 }
 
 .contract360-clause:hover {
@@ -307,6 +302,22 @@
 
 .contract360-clause.is-selected {
   background: var(--color-accent-100);
+}
+
+.contract360-clause-select {
+  display: grid;
+  grid-template-columns: minmax(10rem, 16rem) minmax(0, 1fr);
+  gap: 16px 24px;
+  align-items: baseline;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
 }
 
 .contract360-clause-type {
@@ -330,13 +341,23 @@
   color: var(--color-neutral-600);
 }
 
-.contract360-clause-source {
+.contract360-clause-why {
   overflow-wrap: break-word;
 }
 
 .contract360-clause-tag {
   padding: 1px 6px;
   font-size: 10px;
+}
+
+.contract360-clause-viewer {
+  padding: 0;
+  font-size: 11px;
+}
+
+.contract360-evidence-viewer {
+  margin: 12px 0 0;
+  font-family: var(--font-body);
 }
 
 /* The evidence card: paper-white and serif on purpose -- it is the document's own wording, not UI. */
@@ -470,6 +491,8 @@
 }
 
 .contract360-detail-link {
+  display: inline-block;
+  margin-top: 22px;
   padding: 0 4px;
   font-size: 12px;
 }
@@ -541,7 +564,8 @@
     gap: 28px;
   }
 
-  .contract360-clause {
+  .contract360-clause,
+  .contract360-clause-select {
     grid-template-columns: minmax(0, 1fr);
     gap: 4px;
   }

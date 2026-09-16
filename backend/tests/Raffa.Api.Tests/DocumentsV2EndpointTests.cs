@@ -144,6 +144,99 @@ public sealed class DocumentsV2EndpointTests : IClassFixture<RaffaApiFactory>
             (await GetAsync(client, "/api/documents/not-a-guid/preview", tenantId.ToString())).StatusCode);
     }
 
+    // ---- Task E22/F02/US01/T01 (rasterised pages, ADR-029 clauses 5-6-7) ----
+
+    [Fact]
+    public async Task Preview_page_1_is_returned_when_no_page_parameter_is_supplied()
+    {
+        // Absent ?page keeps today's exact behaviour (ADR-029 clause 5).
+        var host = CreateHost();
+        var client = host.Factory.CreateClient();
+        var tenantId = Guid.NewGuid();
+        var documentId = await UploadAsync(host, tenantId, "msa.pdf");
+
+        var response = await GetAsync(client, $"/api/documents/{documentId}/preview", tenantId.ToString());
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var png = await response.Content.ReadAsByteArrayAsync();
+        Assert.Equal(PngSignature, png[..4]);
+    }
+
+    [Fact]
+    public async Task Preview_page_1_is_returned_when_page_1_is_explicit()
+    {
+        var host = CreateHost();
+        var client = host.Factory.CreateClient();
+        var tenantId = Guid.NewGuid();
+        var documentId = await UploadAsync(host, tenantId, "msa.pdf");
+
+        var response = await GetAsync(client, $"/api/documents/{documentId}/preview?page=1", tenantId.ToString());
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var png = await response.Content.ReadAsByteArrayAsync();
+        Assert.Equal(PngSignature, png[..4]);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public async Task Preview_returns_404_for_page_numbers_below_1(int invalidPage)
+    {
+        // ADR-029 clause 5: out of range is 404, never a silent page 1.
+        var host = CreateHost();
+        var client = host.Factory.CreateClient();
+        var tenantId = Guid.NewGuid();
+        var documentId = await UploadAsync(host, tenantId, "msa.pdf");
+
+        var response = await GetAsync(client, $"/api/documents/{documentId}/preview?page={invalidPage}", tenantId.ToString());
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Preview_returns_404_when_page_exceeds_page_count()
+    {
+        // ADR-029 clause 5: page > page_count is 404 — silently serving the wrong page to a
+        // citation deep-link is how a viewer lies about where a clause came from.
+        var host = CreateHost();
+        var client = host.Factory.CreateClient();
+        var tenantId = Guid.NewGuid();
+        var documentId = await UploadAsync(host, tenantId, "msa.pdf");
+
+        // The fixture processes 1 page; page 2 must be 404.
+        var response = await GetAsync(client, $"/api/documents/{documentId}/preview?page=2", tenantId.ToString());
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Preview_second_tenant_gets_nothing_even_with_explicit_page()
+    {
+        var host = CreateHost();
+        var client = host.Factory.CreateClient();
+        var tenantId = Guid.NewGuid();
+        var documentId = await UploadAsync(host, tenantId, "msa.pdf");
+
+        Assert.Equal(
+            HttpStatusCode.NotFound,
+            (await GetAsync(client, $"/api/documents/{documentId}/preview?page=1", Guid.NewGuid().ToString())).StatusCode);
+    }
+
+    [Fact]
+    public async Task Document_metadata_carries_pageCount_after_processing()
+    {
+        // ADR-029 clause 6: pageCount is exposed on the document read model so the viewer can
+        // page through the document without guessing.
+        var host = CreateHost();
+        var client = host.Factory.CreateClient();
+        var tenantId = Guid.NewGuid();
+        var documentId = await UploadAsync(host, tenantId, "msa.pdf");
+
+        var response = await GetAsync(client, $"/api/documents/{documentId}", tenantId.ToString());
+        using var body = await ReadJsonAsync(response);
+
+        // pageCount is present and at least 1 (the fixture processes at least 1 page).
+        Assert.True(body.RootElement.GetProperty("pageCount").GetInt32() >= 1);
+        // isPageCountLimited is present (false for a 1-page document well under the 300-page budget).
+        Assert.False(body.RootElement.GetProperty("isPageCountLimited").GetBoolean());
+    }
+
     [Fact]
     public async Task Reprocess_is_admin_only_and_reports_the_rerun()
     {
@@ -230,6 +323,12 @@ public sealed class DocumentsV2EndpointTests : IClassFixture<RaffaApiFactory>
         Assert.Equal("buyer@acme.example", audit.Actor);
         Assert.Contains("acceptedFields=supplier,currency", audit.Detail);
 
+        var contractId = before.RootElement.GetProperty("contractId").GetGuid();
+        var evidenceAfter = EvidenceFields(await ReadJsonAsync(
+            await GetAsync(client, $"/api/contracts/{contractId}/evidence", tenantId.ToString())));
+        Assert.Equal("human_accepted", Assert.Single(evidenceAfter, e => e.GetProperty("fieldName").GetString() == "supplier").GetProperty("decision").GetString());
+        Assert.Equal("human_accepted", Assert.Single(evidenceAfter, e => e.GetProperty("fieldName").GetString() == "currency").GetProperty("decision").GetString());
+
         // The list now reports the document as completed — it feeds Ask/Portfolio/Renewals.
         var list = await ReadJsonAsync(await GetAsync(client, "/api/documents", tenantId.ToString()));
         var item = Assert.Single(list.RootElement.GetProperty("items").EnumerateArray());
@@ -264,7 +363,9 @@ public sealed class DocumentsV2EndpointTests : IClassFixture<RaffaApiFactory>
         var contractId = document.RootElement.GetProperty("contractId").GetGuid();
 
         var response = await GetAsync(client, $"/api/contracts/{contractId}/evidence", tenantId.ToString());
-        var evidence = (await ReadJsonAsync(response)).RootElement.EnumerateArray().ToList();
+        var payload = await ReadJsonAsync(response);
+        Assert.Equal(0.90, payload.RootElement.GetProperty("autoAcceptThreshold").GetDouble());
+        var evidence = EvidenceFields(payload);
         Assert.NotEmpty(evidence);
 
         // The fixture extractor read these straight from MsaText: quoted span, real page, real
@@ -274,6 +375,8 @@ public sealed class DocumentsV2EndpointTests : IClassFixture<RaffaApiFactory>
         Assert.Equal(1, annualSpend.GetProperty("sourcePage").GetInt32());
         Assert.Equal("EUR 48,000,", annualSpend.GetProperty("sourceSpan").GetString());
         Assert.True(annualSpend.GetProperty("confidence").GetDouble() > 0.9);
+        Assert.Equal("auto_accepted", annualSpend.GetProperty("decision").GetString());
+        Assert.False(annualSpend.TryGetProperty("autoAcceptThreshold", out _));
         Assert.Equal("msa.pdf", annualSpend.GetProperty("sourceFileName").GetString());
         Assert.Contains("Annual fees are EUR 48,000", annualSpend.GetProperty("passage").GetString());
         Assert.Equal(JsonValueKind.Number, annualSpend.GetProperty("highlightStart").ValueKind);
@@ -283,10 +386,17 @@ public sealed class DocumentsV2EndpointTests : IClassFixture<RaffaApiFactory>
         Assert.Equal("Msa", type.GetProperty("value").GetString());
         Assert.Equal(JsonValueKind.Null, type.GetProperty("sourcePage").ValueKind);
 
-        // The unlabelled supplier is proposed below the critical bar: present, weak, reviewable.
+        // The unlabelled supplier is proposed below the bar: present, weak, reviewable.
         var supplier = Assert.Single(evidence, e => e.GetProperty("fieldName").GetString() == "supplier");
         Assert.Equal("Contoso Ltd", supplier.GetProperty("value").GetString());
-        Assert.True(supplier.GetProperty("confidence").GetDouble() < 0.8);
+        Assert.True(supplier.GetProperty("confidence").GetDouble() < 0.90);
+        Assert.Equal("review_required", supplier.GetProperty("decision").GetString());
+
+        string[] allowedDecisions = ["auto_accepted", "human_accepted", "review_required"];
+        Assert.All(evidence, e => Assert.Contains(e.GetProperty("decision").GetString(), allowedDecisions));
+        var decisions = evidence.Select(e => e.GetProperty("decision").GetString()).Distinct().ToList();
+        Assert.Contains("auto_accepted", decisions);
+        Assert.Contains("review_required", decisions);
 
         Assert.Equal(
             HttpStatusCode.NotFound,
@@ -300,6 +410,40 @@ public sealed class DocumentsV2EndpointTests : IClassFixture<RaffaApiFactory>
         Assert.Equal(
             HttpStatusCode.BadRequest,
             (await client.GetAsync($"/api/contracts/{contractId}/evidence")).StatusCode);
+    }
+
+    [Fact]
+    public async Task A_caller_supplied_decision_on_patch_is_400_and_persists_nothing()
+    {
+        var host = CreateHost();
+        var client = host.Factory.CreateClient();
+        var tenantId = Guid.NewGuid();
+        var documentId = await UploadAsync(host, tenantId, "msa.pdf");
+        var document = await ReadJsonAsync(await GetAsync(client, $"/api/documents/{documentId}", tenantId.ToString()));
+        var contractId = document.RootElement.GetProperty("contractId").GetGuid();
+
+        var before = EvidenceFields(await ReadJsonAsync(
+            await GetAsync(client, $"/api/contracts/{contractId}/evidence", tenantId.ToString())))
+            .ToDictionary(e => e.GetProperty("fieldName").GetString()!, e => e.GetProperty("decision").GetString());
+
+        var patched = await SendJsonAsync(
+            client,
+            HttpMethod.Patch,
+            $"/api/contracts/{contractId}",
+            tenantId.ToString(),
+            """{"corrections":{"currency":"USD"},"decision":"auto_accepted"}""");
+        Assert.Equal(HttpStatusCode.BadRequest, patched.StatusCode);
+        Assert.Contains("decision", await patched.Content.ReadAsStringAsync(), StringComparison.OrdinalIgnoreCase);
+
+        var after = EvidenceFields(await ReadJsonAsync(
+            await GetAsync(client, $"/api/contracts/{contractId}/evidence", tenantId.ToString())))
+            .ToDictionary(e => e.GetProperty("fieldName").GetString()!, e => e.GetProperty("decision").GetString());
+        Assert.Equal(before, after);
+
+        var otherTenant = Guid.NewGuid();
+        Assert.Equal(
+            HttpStatusCode.NotFound,
+            (await GetAsync(client, $"/api/contracts/{contractId}/evidence", otherTenant.ToString())).StatusCode);
     }
 
     [Fact]
@@ -522,6 +666,13 @@ public sealed class DocumentsV2EndpointTests : IClassFixture<RaffaApiFactory>
         var body = await response.Content.ReadAsStringAsync();
         Assert.True(response.StatusCode == HttpStatusCode.OK, Excerpt(response, body));
         return JsonDocument.Parse(body);
+    }
+
+    private static List<JsonElement> EvidenceFields(JsonDocument payload)
+    {
+        Assert.Equal(JsonValueKind.Object, payload.RootElement.ValueKind);
+        Assert.Equal(0.90, payload.RootElement.GetProperty("autoAcceptThreshold").GetDouble());
+        return payload.RootElement.GetProperty("fields").EnumerateArray().ToList();
     }
 
     private static async Task AssertStatusAsync(HttpStatusCode expected, HttpResponseMessage response)

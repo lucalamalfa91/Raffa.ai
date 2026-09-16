@@ -142,6 +142,24 @@ public class FixtureContractFactExtractorTests
     }
 
     [Fact]
+    public void At_least_two_critical_fields_on_the_clean_msa_stay_strictly_below_the_auto_accept_bar()
+    {
+        var text = PageMarked(CleanPage1, CleanPage2);
+        var all = new[] { "Metadata", "CommercialTerms", "DatesAndRenewalTerms" }
+            .SelectMany(stage => Facts(stage, text))
+            .ToDictionary(f => f.Key, f => Confidence(f.Value), StringComparer.Ordinal);
+
+        const double bar = 0.90;
+        string[] critical = ["annualSpend", "totalContractValue", "cancellationDeadline", "endDate", "renewalTermMonths"];
+        var below = critical.Where(name => all.TryGetValue(name, out var c) && c < bar).ToList();
+
+        Assert.True(below.Count >= 2, "critical fields below the bar: " + string.Join(",", below));
+        Assert.All(below, name => Assert.True(all[name] <= 0.85, $"{name} at {all[name]} is adjacent to the bar"));
+        Assert.Contains("endDate", below);
+        Assert.Contains("cancellationDeadline", below);
+    }
+
+    [Fact]
     public void Ambiguous_msa_proposes_the_unlabelled_supplier_conflicting_fee_and_contradictory_renewal_at_low_confidence()
     {
         var text = PageMarked(AmbiguousPage1, AmbiguousPage2);

@@ -35,7 +35,7 @@ function formatCurrencyRange(currency: string, low: number, high: number): strin
 // KPI band + the "benchmark-provider-unreachable -> KPIs stale-labelled" state
 // ---------------------------------------------------------------------------------------------
 
-/** ADR-012 w16 clause 29: the realized figure in the identified-cell meta is a count, never a money amount. */
+/** ADR-001 w17 clause 10: the verified-money cell is labelled "Savings verified"; the domain word Realized never labels it. */
 
 /**
  * The KPI band's own fetch state -- deliberately `loading | ready` only, never a blocking `error`:
@@ -58,9 +58,13 @@ export function reduceKpiFetch(previous: KpiFetchState, outcome: KpiFetchOutcome
 }
 
 export interface KpiCellView {
-  key: "contracts-analyzed" | "upcoming-renewals" | "savings-identified";
+  key: "contracts-analyzed" | "upcoming-renewals" | "savings-identified" | "savings-verified";
   label: string;
-  /** One formatted line per currency bucket (or a single plain count) -- empty only when `kpis` is `null`, rendered as "—" by `KpiRow.tsx`, never a fabricated number. */
+  /**
+   * One formatted line per currency bucket (or a single plain count). Empty when `kpis` is `null`
+   * (not loaded / failed fetch: `meta === null`) **or** when the tenant has no figure for that
+   * cell (loaded and empty: `meta !== null`, rendered as "—" by `KpiRow.tsx`). Never a fabricated `0`.
+   */
   lines: readonly string[];
   meta: string | null;
 }
@@ -69,15 +73,27 @@ function identifiedLines(kpis: SavingsKpiSummaryBody): string[] {
   return kpis.savingsIdentified.map((bucket) => formatCurrencyRange(bucket.currency, bucket.low, bucket.high));
 }
 
+function verifiedLines(kpis: SavingsKpiSummaryBody): string[] {
+  return kpis.savingsRealized.map((bucket: SavingsKpiSummaryBody["savingsRealized"][number]) =>
+    formatCurrencyAmount(bucket.currency, bucket.amount),
+  );
+}
+
 function countOf(buckets: ReadonlyArray<{ count: number }>): number {
   return buckets.reduce((total, bucket) => total + bucket.count, 0);
 }
 
+function verifiedMeta(kpis: SavingsKpiSummaryBody): string {
+  const recorded = countOf(kpis.savingsRealized);
+  if (recorded === 0) return "no verified savings recorded yet";
+  return `from ${recorded} recorded outcome${recorded === 1 ? "" : "s"}`;
+}
+
 /**
- * The three V2 cells, in `app.jsx` `kpis` order. Every meta line is a real figure from the same
+ * The four V2 cells, in band order. Every meta line is a real figure from the same
  * response: the prototype's "still processing or in review" / "within 180 days" metas need counts
  * this endpoint does not return, so the metas here name what it *does* return -- annual spend
- * analyzed, the pipeline scope, and the in-progress / realized counts.
+ * analyzed, the pipeline scope, identified/in-progress counts, and verified-money provenance.
  */
 export function buildKpiCells(kpis: SavingsKpiSummaryBody | null): readonly KpiCellView[] {
   if (kpis === null) {
@@ -85,11 +101,11 @@ export function buildKpiCells(kpis: SavingsKpiSummaryBody | null): readonly KpiC
       { key: "contracts-analyzed", label: "Contracts analyzed", lines: [], meta: null },
       { key: "upcoming-renewals", label: "Upcoming renewals", lines: [], meta: null },
       { key: "savings-identified", label: "Savings identified", lines: [], meta: null },
+      { key: "savings-verified", label: "Savings verified", lines: [], meta: null },
     ];
   }
 
   const spendLines = kpis.annualSpendAnalyzed.map((bucket) => formatCurrencyAmount(bucket.currency, bucket.amount));
-  // Realized KPI stays a count (clause 29) — see the identified-cell meta below.
   return [
     {
       key: "contracts-analyzed",
@@ -107,7 +123,13 @@ export function buildKpiCells(kpis: SavingsKpiSummaryBody | null): readonly KpiC
       key: "savings-identified",
       label: "Savings identified",
       lines: identifiedLines(kpis),
-      meta: `${countOf(kpis.savingsIdentified)} identified · ${countOf(kpis.savingsInProgress)} in progress · ${countOf(kpis.savingsRealized)} realized`,
+      meta: `${countOf(kpis.savingsIdentified)} identified · ${countOf(kpis.savingsInProgress)} in progress`,
+    },
+    {
+      key: "savings-verified",
+      label: "Savings verified",
+      lines: verifiedLines(kpis),
+      meta: verifiedMeta(kpis),
     },
   ];
 }

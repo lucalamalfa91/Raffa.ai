@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Contracts;
+using Raffa.Documents.Contracts.Application;
 using Raffa.Documents.Contracts.Domain;
 using Raffa.Documents.Contracts.Infrastructure;
 using Raffa.SharedKernel;
@@ -70,23 +71,6 @@ public sealed class StagedExtractionService(
         ExtractionStage.Risk,
     ];
 
-    /// <summary>Below this, a fact is treated as needing human review rather than trusted
-    /// outright (product principle: "Human-in-the-loop for consequential decisions... low-
-    /// confidence extraction... must be reviewable"). The brief does not name an exact number;
-    /// this is this task's own documented choice, not a locked decision — a config knob, not a
-    /// hard-coded business rule, if a later task needs to tune it per-field.</summary>
-    private const double LowConfidenceThreshold = 0.6;
-
-    /// <summary>Product spec §7.3's own, stricter bar for a <b>critical</b> field
-    /// (<see cref="CriticalFields"/>): below this the document lands in
-    /// <see cref="DocumentProcessingStatus.NeedsReview"/> and the field shows up in the review
-    /// list with its <see cref="ExtractionEvidence"/> row, even though the same confidence would
-    /// have been trusted outright for an ordinary field. Deliberately a second, higher number
-    /// rather than a re-tuned <see cref="LowConfidenceThreshold"/>: a weak `currency` fact is a
-    /// nuisance, a weak `supplier` fact mis-attributes an entire contract to the wrong company
-    /// (requirements R-SUP-01/R-SUP-03), so the two cannot share one bar.</summary>
-    private const double CriticalConfidenceThreshold = 0.8;
-
     /// <summary>Field name of the `supplier` fact (requirements R-SUP-01): the supplier's legal
     /// name exactly as written in the document. Public because
     /// <see cref="DocumentProcessingPipeline"/> and the review surfaces address the resulting
@@ -125,12 +109,6 @@ public sealed class StagedExtractionService(
     /// scalar — see <see cref="ApplyMetadataFact"/>.</summary>
     private static readonly string[] MetadataFields = [SupplierFieldName, "currency", "governingLaw", "status"];
 
-    /// <summary>The fields product spec §7.3 calls <b>critical</b>: judged against
-    /// <see cref="CriticalConfidenceThreshold"/> instead of <see cref="LowConfidenceThreshold"/>.
-    /// A set (not a single constant) because §7.3 names a category, not one field — later tasks
-    /// promote further fields into it without touching <see cref="ApplyFacts"/>.</summary>
-    private static readonly HashSet<string> CriticalFields = new(StringComparer.Ordinal) { SupplierFieldName };
-
     private static readonly string[] CommercialTermsFields =
         ["annualSpend", "totalContractValue", "paymentTerms"];
 
@@ -143,11 +121,10 @@ public sealed class StagedExtractionService(
         NumberHandling = JsonNumberHandling.AllowReadingFromString,
     };
 
-    /// <summary>Recorded actor for the audit entry this pipeline writes (Appendix C rule 9) — the
-    /// reserved, documented non-human principal (ADR-011 w16 clause 16 convention): this pipeline
-    /// runs as automation, with no human caller at all, honestly labelled as such rather than
-    /// borrowing a caller-identity placeholder for a non-HTTP-triggered action.</summary>
-    private const string SystemActor = "system:staged-extraction";
+    /// <summary>Recorded actor for the one audit entry this pipeline writes per document per
+    /// extraction run (ADR-011 w17 clause 21): field names and confidence numbers, never a field
+    /// value. The reserved non-human principal; there is no HTTP caller.</summary>
+    private const string SystemActor = "system:extraction";
 
     /// <summary>Bootstrap-only placeholder <see cref="Contract.Status"/> for a contract shell
     /// this pipeline had to create (see <see cref="EnsureContractAsync"/>). Overwritten by the
@@ -173,7 +150,7 @@ public sealed class StagedExtractionService(
     /// (the admission gate's or <see cref="DocumentProcessingPipeline"/>'s own `classify` verdict for
     /// this document), is recorded as the <see cref="TypeFieldName"/> evidence row so the review
     /// screen can show a real confidence for "Contract type" — and a classification below
-    /// <see cref="LowConfidenceThreshold"/> routes the document to review like any other weak fact.
+    /// <see cref="ExtractionConfidencePolicy.AutoAcceptThreshold"/> routes the document to review like any other weak fact.
     /// </summary>
     public async Task<Result<StagedExtractionSummary>> RunAsync(
         TenantId tenantId,
@@ -206,10 +183,11 @@ public sealed class StagedExtractionService(
 
         var now = clock.UtcNow;
         var contract = await EnsureContractAsync(tenantId, document, now, cancellationToken).ConfigureAwait(false);
+        var runEvidence = new List<(string FieldName, double? Confidence)>();
 
         if (classificationConfidence is { } typeConfidence)
         {
-            await RecordClassificationEvidenceAsync(tenantId, document, contract, typeConfidence, now, cancellationToken)
+            await RecordClassificationEvidenceAsync(tenantId, document, contract, typeConfidence, now, runEvidence, cancellationToken)
                 .ConfigureAwait(false);
         }
 
@@ -224,7 +202,7 @@ public sealed class StagedExtractionService(
         foreach (var stage in PipelineStages)
         {
             var (stageResult, stageSupplierName) = await RunStageAsync(
-                    tenantId, document.Id, contract, stage, documentText, pageCount, cancellationToken)
+                    tenantId, document.Id, contract, stage, documentText, pageCount, runEvidence, cancellationToken)
                 .ConfigureAwait(false);
             stageResults.Add(stageResult);
 
@@ -233,7 +211,7 @@ public sealed class StagedExtractionService(
             acceptedSupplierName ??= stageSupplierName;
         }
 
-        document.ProcessingStatus = DetermineDocumentStatus(stageResults, classificationConfidence, identityAccepted: acceptedSupplierName is not null);
+        document.ProcessingStatus = DetermineDocumentStatus(stageResults, classificationConfidence);
 
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
@@ -245,7 +223,7 @@ public sealed class StagedExtractionService(
                     "document",
                     documentId.Value.ToString(),
                     now,
-                    $"contractId={contract.Id.Value}"),
+                    BuildExtractionAuditDetail(contract.Id, runEvidence)),
                 cancellationToken)
             .ConfigureAwait(false);
 
@@ -349,7 +327,7 @@ public sealed class StagedExtractionService(
     /// the `supplier` legal name that stage accepted, if any (see
     /// <see cref="StagedExtractionSummary.AcceptedSupplierName"/>) — the two travel together
     /// because whether the fact was accepted at all is decided here, against
-    /// <see cref="CriticalConfidenceThreshold"/>, not by the caller re-reading evidence rows.</summary>
+    /// <see cref="ExtractionConfidencePolicy"/>, not by the caller re-reading evidence rows.</summary>
     private async Task<(StagedExtractionStageResult Result, string? AcceptedSupplierName)> RunStageAsync(
         TenantId tenantId,
         EntityId documentId,
@@ -357,6 +335,7 @@ public sealed class StagedExtractionService(
         ExtractionStage stage,
         string documentText,
         int pageCount,
+        List<(string FieldName, double? Confidence)> runEvidence,
         CancellationToken cancellationToken)
     {
         var startedAt = clock.UtcNow;
@@ -402,13 +381,13 @@ public sealed class StagedExtractionService(
             {
                 ExtractionStage.Metadata => ApplyFacts(
                     tenantId, contract, documentId, job.Id, extractResult.Value.PayloadJson,
-                    MetadataFields, pageCount, startedAt, ApplyMetadataFact),
+                    MetadataFields, pageCount, startedAt, runEvidence, ApplyMetadataFact),
                 ExtractionStage.CommercialTerms => ApplyFacts(
                     tenantId, contract, documentId, job.Id, extractResult.Value.PayloadJson,
-                    CommercialTermsFields, pageCount, startedAt, ApplyCommercialTermsFact),
+                    CommercialTermsFields, pageCount, startedAt, runEvidence, ApplyCommercialTermsFact),
                 ExtractionStage.DatesAndRenewalTerms => ApplyFacts(
                     tenantId, contract, documentId, job.Id, extractResult.Value.PayloadJson,
-                    DatesFields, pageCount, startedAt, ApplyDatesFact),
+                    DatesFields, pageCount, startedAt, runEvidence, ApplyDatesFact),
                 ExtractionStage.LineItems => ApplyLineItems(
                     tenantId, contract, extractResult.Value.PayloadJson, pageCount, startedAt),
                 ExtractionStage.LegalClauses => ApplyClauses(
@@ -434,9 +413,8 @@ public sealed class StagedExtractionService(
             return (new StagedExtractionStageResult(stage, job.Status, 0, 0, job.ErrorDetail), null);
         }
 
-        // Human-in-the-loop principle: something skipped, any fact below its own confidence bar
-        // (LowConfidenceThreshold, or CriticalConfidenceThreshold for a CriticalFields entry), or
-        // a scalar-field stage that found nothing at all (see ScalarFactStages) all mean a person
+        // Human-in-the-loop principle: something skipped, any fact below ExtractionConfidencePolicy,
+        // or a scalar-field stage that found nothing at all (see ScalarFactStages) all mean a person
         // should look at this stage before it is trusted, even though the AI Gateway call itself
         // succeeded. An empty *list* stage is a legitimate answer, not a review trigger — a
         // reviewer cannot resolve "no line items", only a field.
@@ -482,13 +460,11 @@ public sealed class StagedExtractionService(
     /// trust that alone.
     ///
     /// <para>
-    /// A <see cref="CriticalFields"/> entry (requirements R-SUP-01, spec §7.3) is judged against
-    /// <see cref="CriticalConfidenceThreshold"/> rather than <see cref="LowConfidenceThreshold"/>,
-    /// but is otherwise handled identically: the <see cref="ExtractionEvidence"/> row is written
-    /// either way, so a rejected critical fact still reaches the review list <em>with</em> its page,
-    /// span and confidence — a reviewer needs to see what the model proposed and why it was not
-    /// trusted, not an empty field. Only <see cref="StageApplyResult.AcceptedSupplierName"/>
-    /// distinguishes the two outcomes downstream.
+    /// Every field is judged against <see cref="ExtractionConfidencePolicy"/> — the five
+    /// critical ones included, no second bar. The <see cref="ExtractionEvidence"/> row is
+    /// written either way, so a rejected fact still reaches the review list <em>with</em> its page,
+    /// span, confidence and decision. Only <see cref="StageApplyResult.AcceptedSupplierName"/>
+    /// distinguishes a linked supplier from a proposed one.
     /// </para>
     /// </summary>
     private StageApplyResult ApplyFacts(
@@ -500,6 +476,7 @@ public sealed class StagedExtractionService(
         IReadOnlyList<string> allowedFields,
         int pageCount,
         DateTimeOffset now,
+        List<(string FieldName, double? Confidence)> runEvidence,
         Action<Contract, string, string?> applyToContract)
     {
         var payload = JsonSerializer.Deserialize<ExtractedFactsPayload>(payloadJson, PayloadSerializerOptions);
@@ -529,9 +506,8 @@ public sealed class StagedExtractionService(
 
             applyToContract(contract, fact.Field, fact.Value);
 
-            var isCritical = CriticalFields.Contains(fact.Field);
-            var threshold = isCritical ? CriticalConfidenceThreshold : LowConfidenceThreshold;
-            var accepted = fact.Confidence is { } confidence && confidence >= threshold;
+            var decision = ExtractionConfidencePolicy.Decide(fact.Confidence);
+            var accepted = decision == ExtractionConfidencePolicy.AutoAccepted;
 
             if (!accepted)
             {
@@ -553,8 +529,11 @@ public sealed class StagedExtractionService(
                 SourceSpan = fact.SourceSpan,
                 SourcePage = ClampPage(fact.SourcePage, pageCount),
                 Confidence = fact.Confidence,
+                Decision = decision,
+                DecidedAt = now,
                 CreatedAt = now,
             });
+            runEvidence.Add((fact.Field, fact.Confidence));
 
             extracted++;
         }
@@ -685,7 +664,7 @@ public sealed class StagedExtractionService(
                 continue;
             }
 
-            if (item.Confidence is null || item.Confidence < LowConfidenceThreshold)
+            if (ExtractionConfidencePolicy.RequiresReview(item.Confidence))
             {
                 anyLowConfidence = true;
             }
@@ -741,7 +720,7 @@ public sealed class StagedExtractionService(
                 riskLevel = parsedRiskLevel;
             }
 
-            if (item.Confidence is null || item.Confidence < LowConfidenceThreshold)
+            if (ExtractionConfidencePolicy.RequiresReview(item.Confidence))
             {
                 anyLowConfidence = true;
             }
@@ -793,7 +772,7 @@ public sealed class StagedExtractionService(
                 dueDate = parsedDueDate;
             }
 
-            if (item.Confidence is null || item.Confidence < LowConfidenceThreshold)
+            if (ExtractionConfidencePolicy.RequiresReview(item.Confidence))
             {
                 anyLowConfidence = true;
             }
@@ -847,7 +826,7 @@ public sealed class StagedExtractionService(
                 continue;
             }
 
-            if (item.Confidence is null || item.Confidence < LowConfidenceThreshold)
+            if (ExtractionConfidencePolicy.RequiresReview(item.Confidence))
             {
                 anyLowConfidence = true;
             }
@@ -886,52 +865,28 @@ public sealed class StagedExtractionService(
 
     /// <summary>
     /// Decides the final <see cref="DocumentProcessingStatus"/> for the document once all seven
-    /// stages have run.
+    /// stages have run. Shares <see cref="ExtractionConfidencePolicy"/> with
+    /// <c>DocumentQueryService.IsWeak</c>: a document whose Documents-row badge says "needs
+    /// review" has <see cref="DocumentProcessingStatus.NeedsReview"/>, and vice versa.
     ///
     /// <para>
-    /// <b>B2 identity-trusted fast path</b> (<paramref name="identityAccepted"/> = <see langword="true"/>):
-    /// when the <c>supplier</c> fact was accepted at the critical confidence bar (≥ 0.8 —
-    /// <see cref="CriticalConfidenceThreshold"/>), the contract is clearly identified and its
-    /// supplier is linked by <see cref="DocumentProcessingPipeline.LinkSupplierAsync"/>. Keeping
-    /// such a contract hidden from Portfolio/Renewals/<c>contractCount</c> because a non-critical
-    /// fact (status, dates, spend figures) or even classification confidence is weak is the wrong
-    /// trade-off: the HITL queue fills with reviews a human cannot meaningfully resolve until the
-    /// contract is already visible. Non-critical weak facts are still written as
-    /// <see cref="ExtractionEvidence"/> rows and visible on the review screen; they do not
-    /// disappear — only the document-level gate that blocks Portfolio membership is lifted. Stage
-    /// <em>failures</em> (model/network error, malformed payload) still require human review even
-    /// when identity is trusted: a low-confidence fact is a "weak signal"; a failed stage is a
-    /// "missing signal" that identity strength does not compensate for.
-    /// </para>
-    ///
-    /// <para>
-    /// When identity is absent or weak (<paramref name="identityAccepted"/> = <see langword="false"/>),
-    /// the original posture applies: any NeedsReview stage or a weak classification routes the
-    /// document to human review.
+    /// Any NeedsReview stage (a fact below the bar, a skipped field, an empty scalar stage) or a
+    /// classification below the same bar routes the document to human review. Stage
+    /// <em>failures</em> (model/network error, malformed payload) also require review: a
+    /// low-confidence fact is a "weak signal"; a failed stage is a "missing signal".
     /// </para>
     /// </summary>
     private static DocumentProcessingStatus DetermineDocumentStatus(
-        IReadOnlyList<StagedExtractionStageResult> stages, double? classificationConfidence,
-        bool identityAccepted)
+        IReadOnlyList<StagedExtractionStageResult> stages, double? classificationConfidence)
     {
         if (stages.All(s => s.Status == ExtractionJobStatus.Failed))
         {
             return DocumentProcessingStatus.Failed;
         }
 
-        // A stage that failed entirely (model/network error, malformed payload) means a person
-        // should inspect, even when identity is trusted — a failed stage is a missing signal,
-        // not a weak one, and identity strength does not compensate for absent data.
         if (stages.Any(s => s.Status == ExtractionJobStatus.Failed))
         {
             return DocumentProcessingStatus.NeedsReview;
-        }
-
-        // B2: supplier was accepted at the critical confidence bar — non-critical weak facts and
-        // even an uncertain classification do not block Portfolio/Renewals/contractCount membership.
-        if (identityAccepted)
-        {
-            return DocumentProcessingStatus.Completed;
         }
 
         if (stages.Any(s => s.Status == ExtractionJobStatus.NeedsReview))
@@ -941,7 +896,8 @@ public sealed class StagedExtractionService(
 
         // The classification is a fact like any other (see TypeFieldName): a weak one means a
         // human should confirm the contract type before the document counts as validated.
-        if (classificationConfidence is { } confidence && confidence < LowConfidenceThreshold)
+        if (ExtractionConfidencePolicy.RequiresReview(classificationConfidence)
+            && classificationConfidence is not null)
         {
             return DocumentProcessingStatus.NeedsReview;
         }
@@ -964,6 +920,7 @@ public sealed class StagedExtractionService(
         Contract contract,
         double confidence,
         DateTimeOffset now,
+        List<(string FieldName, double? Confidence)> runEvidence,
         CancellationToken cancellationToken)
     {
         var classificationJobId = await dbContext.ExtractionJobs
@@ -973,6 +930,7 @@ public sealed class StagedExtractionService(
             .FirstOrDefaultAsync(cancellationToken)
             .ConfigureAwait(false);
 
+        var decision = ExtractionConfidencePolicy.Decide(confidence);
         dbContext.ExtractionEvidences.Add(new ExtractionEvidence
         {
             TenantId = tenantId,
@@ -984,9 +942,35 @@ public sealed class StagedExtractionService(
             SourceSpan = null,
             SourcePage = null,
             Confidence = confidence,
+            Decision = decision,
+            DecidedAt = now,
             CreatedAt = now,
         });
+        runEvidence.Add((TypeFieldName, confidence));
     }
+
+    /// <summary>
+    /// One audit row's detail: field names and confidence numbers, never a field value
+    /// (ADR-011 w17 clause 21). The audit table is append-only, so a value written once cannot
+    /// be removed.
+    /// </summary>
+    private static string BuildExtractionAuditDetail(
+        EntityId contractId, IReadOnlyList<(string FieldName, double? Confidence)> runEvidence)
+    {
+        var fields = string.Join(",",
+            runEvidence
+                .OrderBy(f => f.FieldName, StringComparer.OrdinalIgnoreCase)
+                .Select(f => f.FieldName + ":" + FormatConfidence(f.Confidence)));
+        return $"contractId={contractId.Value}; fields={fields}";
+    }
+
+    /// <summary>
+    /// Display of the already-compared stored double. Not a rounding step in the decision
+    /// (ADR-024 w17 clause A1): <see cref="ExtractionConfidencePolicy.Decide"/> still sees the
+    /// raw value. Default general format so the trail shows <c>0.95</c>, not a G17 round-trip.
+    /// </summary>
+    private static string FormatConfidence(double? confidence) =>
+        confidence is { } value ? value.ToString(CultureInfo.InvariantCulture) : "null";
 
     private static string Truncate(string value, int maxLength = 1000) =>
         value.Length <= maxLength ? value : value[..maxLength];
