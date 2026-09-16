@@ -275,6 +275,17 @@ public static class ConversationsEndpointExtensions
     /// against <paramref name="conversation"/>'s own recent turns, then persists both the user's
     /// question and Raffa's reply as new <see cref="ConversationMessage"/> rows — one
     /// implementation of "ask, then persist both turns, then wire-shape the reply", not two.
+    ///
+    /// <para>
+    /// <b>Scope (task E25/F03/US01/T01, NW-56; ADR-024)</b>: also threads
+    /// <paramref name="conversation"/>'s own persisted <c>ScopeContractId</c> into
+    /// <see cref="AskCopilotService.AskAsync"/>, so a conversation opened from Contract 360's "Ask
+    /// about it" scopes every turn to that contract (see that method's own doc comment for the
+    /// mechanism). The global Ask bar's alias always creates a conversation with
+    /// <c>scopeContractId: null</c> (<see cref="ChatEndpointExtensions.MapChatEndpoints"/>'s own
+    /// handler), so this is <see langword="null"/> there by construction, not by a second check
+    /// here.
+    /// </para>
     /// </summary>
     internal static async Task<object> AskAndAppendAsync(
         Raffa.Api.AskCopilotService askCopilotService,
@@ -292,7 +303,7 @@ public static class ConversationsEndpointExtensions
             .ToList();
 
         var reply = await askCopilotService
-            .AskAsync(tenantId, question, recentTurns, userId, cancellationToken)
+            .AskAsync(tenantId, question, recentTurns, userId, conversation.ScopeContractId, cancellationToken)
             .ConfigureAwait(false);
 
         await conversationService.AppendMessageAsync(
