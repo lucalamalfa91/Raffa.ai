@@ -69,6 +69,16 @@ namespace Raffa.Api;
 /// <c>Program.cs</c> — ADR-028 reserved that file for this task; this task finds it does not need
 /// it.
 /// </para>
+///
+/// <para>
+/// Task E23/F03/US01/T01 (NW-63r, phrase-edit-write; ADR-029 w18 footer clause 1): `PATCH
+/// /api/contracts/{id}/evidence/{fieldName}` — a reviewer's corrected OCR phrase, written as an
+/// override beside <c>ExtractionEvidence.Value</c> on the same evidence row
+/// (<see cref="ContractPhraseEditService"/>), never rewriting the proposal. Same guard-clause shape
+/// as every write above; <see cref="GetContractEvidenceAsync"/> above is this write's own read
+/// path, widened with <c>overrideValue</c> in the same task. No host change needed, same reason as
+/// the negotiation-steps task immediately above.
+/// </para>
 /// </summary>
 public static class ContractsEndpointExtensions
 {
@@ -78,6 +88,7 @@ public static class ContractsEndpointExtensions
         endpoints.MapPatch("/api/contracts/{id}", CorrectContractAsync);
         endpoints.MapGet("/api/contracts/{id}/corrections", GetCorrectionHistoryAsync);
         endpoints.MapGet("/api/contracts/{id}/evidence", GetContractEvidenceAsync);
+        endpoints.MapPatch("/api/contracts/{id}/evidence/{fieldName}", EditEvidencePhraseAsync);
         endpoints.MapGet("/api/contracts/{id}/negotiation-steps", GetNegotiationStepsAsync);
         endpoints.MapPut("/api/contracts/{id}/negotiation-steps", PutNegotiationStepsAsync);
         return endpoints;
@@ -92,7 +103,11 @@ public static class ContractsEndpointExtensions
     /// Same guard-clause shape as <see cref="GetCorrectionHistoryAsync"/>;
     /// 404 when <see cref="ContractEvidenceQueryService.GetLatestAsync"/> returns <c>null</c>
     /// (no such contract for this tenant), 200 with an empty <c>fields</c> array for a contract
-    /// that exists but has no evidence yet.
+    /// that exists but has no evidence yet. Task E23/F03/US01/T01 (phrase-edit-write) widens each
+    /// field with <c>overrideValue</c> — the reviewer's corrected phrase from
+    /// <see cref="EditEvidencePhraseAsync"/> below, when one has been written, always distinguishable
+    /// from <c>value</c> (the model's own proposal, still untouched) and surviving a reprocess
+    /// (ADR-027 fence, AC-4) — so a second browser reads the override back (AC-3).
     /// </summary>
     private static async Task<IResult> GetContractEvidenceAsync(
         string id,
@@ -134,6 +149,7 @@ public static class ContractsEndpointExtensions
             {
                 fieldName = e.FieldName,
                 value = e.Value,
+                overrideValue = e.OverrideValue,
                 confidence = e.Confidence,
                 decision = e.Decision,
                 sourcePage = e.SourcePage,
@@ -149,6 +165,77 @@ public static class ContractsEndpointExtensions
                 modelId = e.ModelId,
                 extractedAt = e.ExtractedAt,
             }),
+        });
+    }
+
+    /// <summary>
+    /// `PATCH /api/contracts/{id}/evidence/{fieldName}` (task E23/F03/US01/T01, phrase-edit-write,
+    /// NW-63r; parent story us-01-phrase-edit-write AC-1/AC-2/AC-3/AC-4): writes a reviewer's
+    /// corrected OCR phrase as an override beside the field's proposal
+    /// (<see cref="ContractPhraseEditService"/>), never rewriting the proposal itself (ADR-029 w18
+    /// footer clause 1). Same guard-clause shape as <see cref="CorrectContractAsync"/> below
+    /// (<see cref="ICallerContext.ResolveTenantAsync"/> first, non-GUID id 400, blank
+    /// <c>overrideValue</c> 400, unknown contract 404, unknown/no-evidence field name 400) — the
+    /// same 401 → 400 → 404 → 200 ladder every other contract write in this file already uses.
+    /// <c>GET /api/contracts/{id}/evidence</c> above reads the override back the same request
+    /// (AC-3), and a later reprocess cannot silently revert it (AC-4) — see
+    /// <see cref="ContractPhraseEditService"/>'s own doc comment for how.
+    /// </summary>
+    private static async Task<IResult> EditEvidencePhraseAsync(
+        string id,
+        string fieldName,
+        ContractPhraseEditRequest request,
+        HttpRequest httpRequest,
+        ContractPhraseEditService phraseEditService,
+        ICallerContext callerContext,
+        CancellationToken cancellationToken)
+    {
+        // NW-05 (ADR-010 w15 footer; ADR-022 w15 footer clause 2): identity first, then the tenant
+        // header as an authorized selector, then membership -- 401 / 400 / 404 in that order, all
+        // owned by ICallerContext (acceptance A15-8). The scope it hands back is the tenant scope
+        // this handler runs in; disposing it here is the same lifetime the old BeginScope had.
+        var caller = await callerContext.ResolveTenantAsync(httpRequest, cancellationToken);
+        if (caller.Failure is not null)
+        {
+            return caller.Failure;
+        }
+
+        using var callerTenantScope = caller.Scope;
+        var tenantGuid = caller.TenantId.Value;
+
+        if (!Guid.TryParse(id, out var contractGuid))
+        {
+            return Results.BadRequest("The contract id in the route must be a GUID.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.OverrideValue))
+        {
+            return Results.BadRequest("'overrideValue' is required and cannot be empty.");
+        }
+
+        var result = await phraseEditService.EditAsync(
+            new TenantId(tenantGuid),
+            new EntityId(contractGuid),
+            fieldName,
+            request.OverrideValue,
+            caller.Identity!,
+            cancellationToken).ConfigureAwait(false);
+
+        if (result.IsFailure)
+        {
+            return string.Equals(result.Error, ContractPhraseEditService.ContractNotFoundError, StringComparison.Ordinal)
+                ? Results.NotFound()
+                : Results.BadRequest(result.Error);
+        }
+
+        var edit = result.Value;
+        return Results.Ok(new
+        {
+            contractId = edit.ContractId.Value,
+            fieldName = edit.FieldName,
+            value = edit.Value,
+            overrideValue = edit.OverrideValue,
+            editedAt = edit.EditedAt,
         });
     }
 

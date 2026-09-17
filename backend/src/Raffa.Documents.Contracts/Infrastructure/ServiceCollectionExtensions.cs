@@ -148,6 +148,12 @@ public static class ServiceCollectionExtensions
         // reason as every other service above.
         services.AddScoped<NegotiationStepService>();
 
+        // Task E23/F03/US01/T01 (NW-63r, phrase-edit-write; ADR-029 w18 footer clause 1): writes a
+        // reviewer's corrected OCR phrase as an override beside the field's proposal on
+        // ExtractionEvidence (`PATCH /api/contracts/{id}/evidence/{fieldName}`). Scoped -- shares
+        // this registration's own DbContext instance, same reason as every other service above.
+        services.AddScoped<ContractPhraseEditService>();
+
         return services;
     }
 }
