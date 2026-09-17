@@ -52,6 +52,10 @@
     <!-- Task E19/F01/US01/T01: GET /api/renewals now embeds savedAction via RenewalsDbContext,
          so InMemoryAskEngineFactory must swap that context too (same as DocumentsContracts). -->
     <ProjectReference Include="..\..\src\Raffa.Renewals\Raffa.Renewals.csproj" />
+    <!-- Task E25/F04/US01/T01 (quote-benchmark-backend): QuoteBenchmarkHistoryEndpointTests seeds
+         Raffa.Quotes.Domain.Quote/QuoteLine rows directly into an InMemory-swapped QuotesDbContext
+         (InMemoryQuotesFactory) to prove the cold-start and history read-back over real HTTP. -->
+    <ProjectReference Include="..\..\src\Raffa.Quotes\Raffa.Quotes.csproj" />
     <!-- Task E20/F01/US01/T01 (NW-72): SavingsKpiEndpointTests seeds RealizedSavings on an
          in-memory SavingsDbContext to prove savingsRealized carries amount/count on the wire. -->
     <ProjectReference Include="..\..\src\Raffa.Savings\Raffa.Savings.csproj" />
