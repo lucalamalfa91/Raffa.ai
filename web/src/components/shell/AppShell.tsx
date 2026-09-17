@@ -42,7 +42,22 @@ export interface AppShellProps {
  * While documents are still `Uploaded`/`Processing` or waiting in Needs review, both rail counts
  * re-read on the shared 2 s poll budget (and on every navigation) so "N to review" / Portfolio /
  * Renewals move with ingest instead of freezing at the first shell mount.
+ *
+ * Task E25/F06/US01/T01 (NW-60, wave w18): the blanket claim above ("every route ... gets it
+ * automatically") now has one named exception. `/ask` and `/ask/:conversationId` render their own
+ * composer (`routes/ask/index.tsx`) -- mounting GlobalAskBar there too put two Ask inputs on one
+ * screen, exactly the duplicate ADR-018/ADR-020 forbid (AC-1/AC-3). `isAskRoute` below, driven by
+ * the same `useLocation()` this component already calls for `refreshKey`, is the one place that
+ * decides it -- a route-scoped check, not a new context. Cmd/Ctrl+K still focuses an Ask composer
+ * everywhere (AC-2): GlobalAskBar keeps its own shortcut for every route where it still renders
+ * (unchanged, its internals are out of this task's scope), and `AskRoute` now owns the identical
+ * shortcut for its own input on the two routes above -- exactly one of the two is ever mounted, so
+ * the listeners never overlap.
  */
+export function isAskRoute(pathname: string): boolean {
+  return pathname === "/ask" || pathname.startsWith("/ask/");
+}
+
 export default function AppShell({ workspaceId, workspaceName, role, userLabel, onSignOut, apiClient }: AppShellProps) {
   const location = useLocation();
   const [pollTick, setPollTick] = useState(0);
@@ -66,6 +81,9 @@ export default function AppShell({ workspaceId, workspaceName, role, userLabel, 
     onTick: () => setPollTick((current) => current + 1),
   });
 
+  // AC-1/AC-3: suppressed only on the Ask route itself, kept on every other screen.
+  const showGlobalAskBar = !isAskRoute(location.pathname);
+
   return (
     <div className="shell-layout">
       <RailNav
@@ -81,8 +99,10 @@ export default function AppShell({ workspaceId, workspaceName, role, userLabel, 
       <main className="shell-main">
         {/* Task E25/F01/US01/T01 (AC-3): the same server-derived `role` RailNav already receives
             below, threaded into the global Ask bar too so it can drop admin-gated suggestion chips
-            for a non-Admin -- never re-derived, never fetched a second time. */}
-        <GlobalAskBar kbReady={kbReady} role={role} apiClient={apiClient} />
+            for a non-Admin -- never re-derived, never fetched a second time.
+            Task E25/F06/US01/T01 (AC-1/AC-3): suppressed on the Ask route itself (see
+            `showGlobalAskBar` above) -- that route renders its own composer instead. */}
+        {showGlobalAskBar && <GlobalAskBar kbReady={kbReady} role={role} apiClient={apiClient} />}
         <div className="shell-content">
           {/* Shared with every screen through the router outlet (shellContext.ts): the same kbReady /
               validated-count verdict the rail and the Ask bar already render, plus the same document
