@@ -269,7 +269,9 @@ describe("RailNav (V2 two-tier rail, ADR-024 amendment; task E13/F09/US01/T01, g
       const listConversations = vi.fn().mockResolvedValue({ ok: true, statusCode: 200, conversations, error: null });
       const { container } = renderRail({ apiClient: mockApiClient(listConversations) });
 
-      await screen.findByRole("link", { name: "+ New chat" });
+      // Search chrome mounts only after listConversations resolves — "+ New chat" is always
+      // present, so waiting on it races the async slot (CI on main after #167).
+      await screen.findByRole("searchbox", { name: "Search chats" });
 
       const conversationSlot = container.querySelector(".shell-rail-conversations")!;
       const linkNames = Array.from(conversationSlot.querySelectorAll("a")).map((node) => node.textContent);
@@ -282,7 +284,7 @@ describe("RailNav (V2 two-tier rail, ADR-024 amendment; task E13/F09/US01/T01, g
         .mockResolvedValue({ ok: true, statusCode: 200, conversations: [conversation({ id: "conv-42" })], error: null });
       const { container } = renderRail({ apiClient: mockApiClient(listConversations) });
 
-      await screen.findByRole("link", { name: "+ New chat" });
+      await screen.findByRole("searchbox", { name: "Search chats" });
       const link = container.querySelector('a.shell-rail-conv-item[href="/ask/conv-42"]');
       expect(link).not.toBeNull();
     });
@@ -296,7 +298,7 @@ describe("RailNav (V2 two-tier rail, ADR-024 amendment; task E13/F09/US01/T01, g
       });
       const { container } = renderRail({ apiClient: mockApiClient(listConversations), initialEntry: "/ask/conv-2" });
 
-      await screen.findByRole("link", { name: "+ New chat" });
+      await screen.findByRole("searchbox", { name: "Search chats" });
       const active = container.querySelector('a.shell-rail-conv-item[href="/ask/conv-2"]');
       const inactive = container.querySelector('a.shell-rail-conv-item[href="/ask/conv-1"]');
       expect(active).toHaveClass("is-active");
@@ -309,7 +311,7 @@ describe("RailNav (V2 two-tier rail, ADR-024 amendment; task E13/F09/US01/T01, g
         .mockResolvedValue({ ok: true, statusCode: 200, conversations: [conversation({ id: "conv-1" })], error: null });
       const { container } = renderRail({ apiClient: mockApiClient(listConversations), initialEntry: "/ask" });
 
-      await screen.findByRole("link", { name: "+ New chat" });
+      await screen.findByRole("searchbox", { name: "Search chats" });
       const link = container.querySelector('a.shell-rail-conv-item[href="/ask/conv-1"]');
       expect(link).not.toHaveClass("is-active");
     });
