@@ -769,14 +769,22 @@ per-user conversations.
   primary (ADR-024 "every abstain has a clickable next step", task E25/F05/US02/T01; an abstain
   with no action still renders just the block, never an empty screen), `error` is a transport/400
   failure -- never confused with an abstain. Citation clicks
-  resolve by corpus (`resolveCitationOpenAction`): a **tenant** citation navigates to
-  `/contracts/<contractId>?page=<n>` (the real backend never sends `?clause=` yet -- confirmed
-  against `AskCopilotService.cs`'s own `PackItem` constructions, a documented, honest gap, not a
-  guess) with `state.from: "ask"`, which Contract 360's own back-link picks up; a **market** citation
-  opens `MarketRecordPanel.tsx` (`GET /api/market/records/{id}`: title, category, geography,
-  P25/P50/P75 band, provenance label, updated date); a **raffa** feature citation navigates to its
-  own href. Follow-up chips post as a new message in the same conversation, the same `ask()` path a
-  typed question uses.
+  resolve by corpus (`resolveCitationOpenAction`) and, since task E25/F02/US01/T01 (closes NW-55),
+  by whether the card itself carries a page preview: a **tenant** clause/fact citation whose evidence
+  resolved a source page now carries a real `previewUrl` (`/api/documents/{id}/preview?page=<n>`)
+  and an `href` of `/documents/<documentId>/viewer?page=<n>&clause=<clauseId>` --
+  `AskCopilotService.cs`'s own `ResolveTenantClauseLinks` sets both (superseding the older
+  `/contracts/<contractId>?page=<n>`-only, "never sends `?clause=`" behaviour); `CitationCard.tsx`
+  renders that `previewUrl` as a real `<img>` first-page thumbnail and a click opens the document
+  viewer straight on the cited page. A tenant fact with no resolved source page still falls back to
+  the bare `/contracts/<contractId>` href with `previewUrl: null`. A **market** citation opens
+  `MarketRecordPanel.tsx` (`GET /api/market/records/{id}`: title, category, geography, P25/P50/P75
+  band, provenance label, updated date) via its own `recordId`, not `href`; a **raffa** feature
+  citation still navigates to its own `href`. Neither `market` nor `raffa` ever carries a
+  `previewUrl` (`PackItem.PreviewUrl` stays `null` for both by rule) -- `CitationCard.tsx` renders
+  both as a `.btn.btn-secondary` "View source ->" CTA card instead of a preview, replacing the old,
+  always-present "No page preview available" placeholder. Follow-up chips post as a new message in
+  the same conversation, the same `ask()` path a typed question uses.
 - **Resume** (`/ask/:conversationId`, R-CONV-02 AC-1) -- `useConversation.ts` loads the conversation
   (`GET /api/conversations/{id}`) and turns every stored message, oldest first, into the same turn
   shape a live turn produces (`askViewModel.ts#buildTurnsFromConversation`); a resumed Raffa turn's
