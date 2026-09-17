@@ -94,6 +94,12 @@ public sealed class ScopedAskEndpointTests : IClassFixture<RaffaApiFactory>
             Status = "Completed",
             Currency = "CHF",
             AnnualSpend = 120000m,
+            // Task E30/F02/US01/T01 (NW-94): "cancellation deadline" is now a notice-shaped question
+            // AskCopilotService.BuildNoticeFallbackReplyAsync decides server-side -- an unknown
+            // deadline abstains (case 4) rather than answering from the generic per-contract fact, so
+            // this fixture needs a real one for AC-2's own "answers, never the redirect" claim below
+            // to still hold.
+            CancellationDeadline = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(30),
             CreatedAt = DateTimeOffset.UtcNow,
         };
         await factory.SeedContractAsync(scopedContract);
@@ -298,6 +304,12 @@ public sealed class ScopedAskEndpointTests : IClassFixture<RaffaApiFactory>
             Status = "Completed",
             Currency = "CHF",
             EndDate = today.AddDays(30),
+            // Task E30/F02/US01/T01 (NW-94): "cancellation deadline" is now a notice-shaped question
+            // AskCopilotService.BuildNoticeFallbackReplyAsync decides server-side -- an unknown
+            // deadline abstains (case 4) rather than answering from the generic per-contract fact, so
+            // this fixture needs a real one for AC-1's own "resolves to the scoped contract" claim
+            // below to still hold.
+            CancellationDeadline = today.AddDays(30),
             AutoRenewal = true,
             CreatedAt = now,
         };
@@ -349,13 +361,16 @@ public sealed class ScopedAskEndpointTests : IClassFixture<RaffaApiFactory>
 
         Assert.Equal("answer", root.GetProperty("kind").GetString());
 
-        var citedDocumentIds = root.GetProperty("citations").EnumerateArray()
-            .Select(c => c.TryGetProperty("documentId", out var id) ? id.GetString() : null)
+        // Task E30/F02/US01/T01 (NW-94): the notice fallback's own fact item has no source document
+        // -- contractId, not documentId, is the real stamped id (same NW-83 precedent this file's
+        // first test already follows).
+        var citedContractIds = root.GetProperty("citations").EnumerateArray()
+            .Select(c => c.TryGetProperty("contractId", out var id) ? id.GetString() : null)
             .Where(id => id is not null)
             .ToList();
 
-        Assert.Contains($"fact:{scopedContract.Id}:renewal", citedDocumentIds);
-        Assert.DoesNotContain($"fact:{otherContract.Id}:renewal", citedDocumentIds);
+        Assert.Contains(scopedContract.Id.ToString(), citedContractIds);
+        Assert.DoesNotContain(otherContract.Id.ToString(), citedContractIds);
     }
 
     /// <summary>
@@ -407,6 +422,11 @@ public sealed class ScopedAskEndpointTests : IClassFixture<RaffaApiFactory>
             Status = "Completed",
             Currency = "CHF",
             EndDate = today.AddDays(30),
+            // Task E30/F02/US01/T01 (NW-94): "cancellation deadline" is now a notice-shaped question
+            // AskCopilotService.BuildNoticeFallbackReplyAsync decides server-side -- an unknown
+            // deadline abstains (case 4) rather than answering from the generic per-contract fact, so
+            // this fixture needs a real one for AC-2's own "scoped id wins" claim below to still hold.
+            CancellationDeadline = today.AddDays(30),
             AutoRenewal = true,
             CreatedAt = now.AddSeconds(-1),
         };
@@ -447,15 +467,18 @@ public sealed class ScopedAskEndpointTests : IClassFixture<RaffaApiFactory>
 
         Assert.Equal("answer", root.GetProperty("kind").GetString());
 
-        var citedDocumentIds = root.GetProperty("citations").EnumerateArray()
-            .Select(c => c.TryGetProperty("documentId", out var id) ? id.GetString() : null)
+        // Task E30/F02/US01/T01 (NW-94): the notice fallback's own fact item has no source document
+        // -- contractId, not documentId, is the real stamped id (same NW-83 precedent this file's
+        // first test already follows).
+        var citedContractIds = root.GetProperty("citations").EnumerateArray()
+            .Select(c => c.TryGetProperty("contractId", out var id) ? id.GetString() : null)
             .Where(id => id is not null)
             .ToList();
 
         // AC-2: the scoped contract, never the newer same-supplier one a name-only
         // FirstOrDefault would otherwise have picked.
-        Assert.Contains($"fact:{scopedContract.Id}:renewal", citedDocumentIds);
-        Assert.DoesNotContain($"fact:{newerSameSupplierContract.Id}:renewal", citedDocumentIds);
+        Assert.Contains(scopedContract.Id.ToString(), citedContractIds);
+        Assert.DoesNotContain(newerSameSupplierContract.Id.ToString(), citedContractIds);
     }
 
     /// <summary>
