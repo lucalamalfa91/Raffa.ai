@@ -27,11 +27,13 @@ public sealed class CopilotReplyBuilderTests
         Page: 12,
         Section: "8.4",
         Snippet: "Liability is capped at CHF 1,000,000.",
-        Href: "/contracts/11111111-1111-1111-1111-111111111111",
-        PreviewUrl: "/documents/preview/1",
+        Href: "/documents/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/viewer?page=12",
+        PreviewUrl: "/api/documents/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/preview?page=12",
         RecordId: null,
         Provenance: "validated contract",
-        Values: []);
+        Values: [],
+        ContractId: "11111111-1111-1111-1111-111111111111",
+        DocumentId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
 
     private static readonly PackItem MarketItem = new(
         "market:deal-1",
@@ -73,7 +75,7 @@ public sealed class CopilotReplyBuilderTests
         var citation = Assert.Single(reply.Citations);
         Assert.Equal(1, citation.N);
         Assert.Equal(PackCorpus.Tenant, citation.Corpus);
-        Assert.Equal("tenant:contract-1", citation.DocumentId);
+        Assert.Equal("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", citation.DocumentId);
         Assert.Same(actions, reply.Actions);
         Assert.Equal(["What is the notice period?"], reply.FollowUps);
         Assert.Equal("fixture-answer-model", reply.Provenance.ModelId);
@@ -184,7 +186,7 @@ public sealed class CopilotReplyBuilderTests
         var citations = CopilotReplyBuilder.BuildCitations(["tenant:contract-1", "not-in-pack"], [TenantItem]);
 
         var citation = Assert.Single(citations);
-        Assert.Equal("tenant:contract-1", citation.DocumentId);
+        Assert.Equal("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", citation.DocumentId);
     }
 
     [Fact]

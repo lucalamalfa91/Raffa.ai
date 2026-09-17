@@ -5,9 +5,8 @@ import type { ContractFieldEvidenceBody } from "../../../api/client";
  * NW-63r; ADR-029 w18 footer clauses 2-3; ADR-012 §3, ADR-018 w17 clause 9). Absolutely-positioned
  * DOM over the existing page `<img>` -- no canvas, no new runtime dependency (`web/package.json`
  * keeps its fixed dependency set). A `null` box (every row written before this wave, or a page the
- * OCR call returned no layout geometry for) renders nothing here, leaving the existing
- * `ClauseHighlight` text-level highlight as the page's only citation affordance (epic-23 AC-4) --
- * the box is additive, never a replacement for the text.
+ * OCR call returned no layout geometry for) renders nothing here. The box is
+ * additive over the page image, never a replacement for it.
  *
  * Geometry source: `GET /api/contracts/{id}/evidence` (epic-23 feature-02, ADR-003 w18 footer
  * clauses 1-2), *not* the Contract 360 "Why" clauses this route already fetches for
@@ -96,8 +95,7 @@ export interface BoxOverlayProps {
 /**
  * Renders one positioned `<div>` per cited phrase (ADR-029 clause 2: "the box is drawn on the page
  * over the cited phrase"), scaled to the rendered image. Renders nothing when there is nothing to
- * draw -- an empty `boxes` list or an image that has not reported its natural size yet -- so a
- * parent that always renders this alongside `ClauseHighlight` never shows an empty layer.
+ * draw -- an empty `boxes` list or an image that has not reported its natural size yet.
  */
 export default function BoxOverlay({ boxes, naturalWidth, naturalHeight }: BoxOverlayProps) {
   if (boxes.length === 0) return null;

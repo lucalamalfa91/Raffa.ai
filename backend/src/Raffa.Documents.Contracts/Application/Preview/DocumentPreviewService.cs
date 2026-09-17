@@ -1,4 +1,5 @@
 using Raffa.AiGateway.Configuration;
+using Raffa.Documents.Contracts.Application.Admission;
 using Raffa.Documents.Contracts.Infrastructure;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Storage;
@@ -151,17 +152,47 @@ public sealed class DocumentPreviewService(
         var row = await dbContext.Documents
             .AsNoTracking()
             .Where(d => d.TenantId == tenantId && d.Id == documentId)
-            .Select(d => new { d.PreviewPath, d.PageCount })
+            .Select(d => new { d.PreviewPath, d.PageCount, d.StoragePath, d.FileName, d.MimeType })
             .SingleOrDefaultAsync(cancellationToken)
             .ConfigureAwait(false);
 
-        if (row is null || string.IsNullOrWhiteSpace(row.PreviewPath))
+        if (row is null)
         {
             return null;
         }
 
         // ADR-029 clause 5: out of range is null (→ 404), never a silent page 1.
         if (page < 1 || (row.PageCount.HasValue && page > row.PageCount.Value))
+        {
+            return null;
+        }
+
+        // Re-rasterise PDFs from the original bytes. Previews stored before white-compositing
+        // encoded pdfium's transparent background as opaque black, so serving the stored PNG
+        // would keep the viewer black even after the encoder fix.
+        if (string.Equals(row.MimeType, DocumentFormatSniffer.PdfMimeType, StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrWhiteSpace(row.StoragePath))
+        {
+            try
+            {
+                var original = await storage.LoadAsync(tenantId, row.StoragePath, cancellationToken)
+                    .ConfigureAwait(false);
+                if (original is { Length: > 0 })
+                {
+                    var png = renderer.Render(row.FileName, row.MimeType, original, page);
+                    if (png is { Length: > 0 })
+                    {
+                        return png;
+                    }
+                }
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                // Fall through to the stored preview rather than failing the GET.
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(row.PreviewPath))
         {
             return null;
         }

@@ -421,7 +421,25 @@ internal sealed class AskCopilotService(
     {
         if (namedContractItem is not null)
         {
-            return [BuildContractFactItem(namedContractItem, await ResolveDisplayNameAsync(namedContractItem, cancellationToken).ConfigureAwait(false))];
+            var fact = BuildContractFactItem(
+                namedContractItem,
+                await ResolveDisplayNameAsync(namedContractItem, cancellationToken).ConfigureAwait(false));
+            var excerpts = await BuildClausePackAsync(CurrentTenantId, question, namedContractItem, cancellationToken)
+                .ConfigureAwait(false);
+            var grounded = excerpts
+                .Where(item => item.DocumentId is not null && !string.IsNullOrWhiteSpace(item.Snippet))
+                .ToList();
+            if (grounded.Count == 0)
+            {
+                return [fact];
+            }
+
+            // Document quotes first so the cited Ask card is the page excerpt, not the
+            // portfolio paraphrase. Copy structured values onto the lead excerpt so numeric
+            // grounding of the date/spend still holds.
+            var lead = grounded[0] with { Values = fact.Values.Count > 0 ? fact.Values : grounded[0].Values };
+            var rest = grounded.Skip(1).Concat(excerpts.Where(item => item.DocumentId is null));
+            return [lead, ..rest, fact];
         }
 
         var routeDecision = _legacyRouter.Route(question);
@@ -547,21 +565,32 @@ internal sealed class AskCopilotService(
         foreach (var hit in searchResult.Value)
         {
             var clause = contract360?.Clauses.FirstOrDefault(c => c.ClauseId == hit.SourceId);
-            var (href, previewUrl) = ResolveTenantClauseLinks(clause, hit.SourceId, namedContractItem?.ContractId);
+            var (href, previewUrl) = ResolveTenantClauseLinks(
+                clause, hit.SourceId, namedContractItem?.ContractId, hit.SourceType, hit.Page);
+            var documentId = clause?.SourceDocumentId?.Value.ToString()
+                ?? (string.Equals(hit.SourceType, "Document", StringComparison.Ordinal)
+                    ? hit.SourceId.Value.ToString()
+                    : null);
+            var page = clause?.SourcePage ?? hit.Page;
+            var subtitle = page is { } knownPage
+                ? $"p.{knownPage}" + (clause?.SourceSpan is { } span ? $" §{span}" : string.Empty)
+                : hit.Section;
 
             items.Add(new PackItem(
                 $"fact:{hit.SourceId}:chunk[{hit.ChunkIndex}]",
                 PackCorpus.Tenant,
                 clause is not null ? $"{clause.ClauseType} clause" : $"{hit.SourceType} excerpt",
-                clause?.SourcePage is { } page ? $"p.{page}" + (clause.SourceSpan is { } span ? $" §{span}" : string.Empty) : null,
-                clause?.SourcePage,
-                clause?.SourceSpan ?? $"chunk {hit.ChunkIndex}",
+                subtitle,
+                page,
+                clause?.SourceSpan ?? hit.Section ?? $"chunk {hit.ChunkIndex}",
                 hit.ChunkText,
                 href,
                 previewUrl,
                 null,
                 "validated contract",
-                []));
+                [],
+                namedContractItem?.ContractId.ToString(),
+                documentId));
         }
 
         return items;
@@ -580,29 +609,30 @@ internal sealed class AskCopilotService(
     /// (or <see langword="null"/> with no named contract) -- never a dead viewer link.
     ///
     /// <para>
-    /// Honest gap (R-EVD-01 "citations resolve to Clause.SourcePage/SourceSpan when the hit is a
-    /// clause, else to the page"): when the embedded chunk's own source is the whole Document rather
-    /// than one extracted <c>Clause</c> row (<c>Embedding.SourceType == "Document"</c>),
-    /// <paramref name="clause"/> never resolves and this falls back to the contract route even
-    /// though <paramref name="sourceId"/>/the hit's own page could, in principle, still resolve a
-    /// document-level viewer link. This task's own coding objective and Definition of Done line
-    /// ("a tenant clause pack item carries a viewer href + real previewUrl") scope the fix to the
-    /// clause-resolved case only; the Document-sourced-chunk branch is not attempted here.
+    /// <b>Three tiers:</b> (1) a real Clause row anchored to a document page. (2) No Clause row,
+    /// but the hit is a Document-sourced chunk with a known page — today's common indexing shape
+    /// (<c>Embedding.SourceType == "Document"</c>). (3) Neither resolves — the contract route,
+    /// never a preview (previewUrl is tenant pages only).
     /// </para>
     /// </summary>
-    /// <param name="sourceId">The cited chunk's own source id (<see cref="EmbeddingSearchResult.SourceId"/>)
-    /// -- the clause id when <paramref name="clause"/> resolved it -- echoed into the viewer's
-    /// optional <c>?clause=</c> query parameter (ADR-018).</param>
-    /// <param name="namedContractId">The named contract's id, when the caller asked about one
-    /// contract by name -- the pre-existing fallback CTA target.</param>
     internal static (string? Href, string? PreviewUrl) ResolveTenantClauseLinks(
-        Contract360Clause? clause, EntityId sourceId, Guid? namedContractId)
+        Contract360Clause? clause, EntityId sourceId, Guid? namedContractId,
+        string? hitSourceType = null, int? hitPage = null)
     {
         if (clause is { SourceDocumentId: { } sourceDocumentId, SourcePage: { } sourcePage })
         {
             return (
                 $"/documents/{sourceDocumentId.Value}/viewer?page={sourcePage}&clause={sourceId.Value}",
                 $"/api/documents/{sourceDocumentId.Value}/preview?page={sourcePage}");
+        }
+
+        if (clause is null
+            && hitPage is { } page
+            && string.Equals(hitSourceType, "Document", StringComparison.Ordinal))
+        {
+            return (
+                $"/documents/{sourceId.Value}/viewer?page={page}",
+                $"/api/documents/{sourceId.Value}/preview?page={page}");
         }
 
         return (namedContractId is { } contractId ? $"/contracts/{contractId}" : null, null);

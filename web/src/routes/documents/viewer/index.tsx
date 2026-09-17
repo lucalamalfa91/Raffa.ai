@@ -3,12 +3,10 @@ import { useParams, useSearchParams } from "react-router-dom";
 import type {
   ApiClient,
   Contract360ClauseBody,
-  Contract360DocumentBody,
   ContractFieldEvidenceBody,
   ReadBackDocument,
 } from "../../../api/client";
 import { loadCurrentWorkspace } from "../../signin/workspaceStore";
-import ClauseHighlight from "../../contracts/contract360/ClauseHighlight";
 import BoxOverlay, { selectPageBoxes, type PageBoxSpec } from "./BoxOverlay";
 import {
   BEYOND_COUNT_HEADING,
@@ -39,7 +37,6 @@ type DocumentLoad =
       phase: "ready";
       document: ReadBackDocument;
       clauses: readonly Contract360ClauseBody[] | null;
-      documents: readonly Contract360DocumentBody[];
     };
 
 type PreviewLoad =
@@ -102,19 +99,17 @@ export default function DocumentViewerRoute({ apiClient }: DocumentViewerRoutePr
 
       const document = result.document;
       let clauses: readonly Contract360ClauseBody[] | null = null;
-      let documents: readonly Contract360DocumentBody[] = [];
 
       if (clauseParam !== null && document.contractId !== null) {
         const contractResult = await apiClient.getContract360(workspace.id, document.contractId);
         if (contractResult.ok && contractResult.contract !== null) {
           clauses = contractResult.contract.tabs.clauses;
-          documents = contractResult.contract.tabs.documents;
         } else {
           clauses = [];
         }
       }
 
-      setDocumentLoad({ phase: "ready", document, clauses, documents });
+      setDocumentLoad({ phase: "ready", document, clauses });
     });
   }, [apiClient, workspace?.id, documentId, clauseParam]);
 
@@ -324,10 +319,6 @@ export default function DocumentViewerRoute({ apiClient }: DocumentViewerRoutePr
         </div>
       )}
 
-      {citation.kind === "resolved" && (
-        <p className="micro-meta">{`Page ${surface.page} — the wording is highlighted below`}</p>
-      )}
-
       {previewLoad.phase === "reaped" ? (
         <div className="empty-state" role="status">
           <h3>{REAPED_PAGE_HEADING}</h3>
@@ -344,10 +335,6 @@ export default function DocumentViewerRoute({ apiClient }: DocumentViewerRoutePr
           naturalSize={naturalSize}
           onImageLoad={setNaturalSize}
         />
-      )}
-
-      {citation.kind === "resolved" && (
-        <ClauseHighlight clause={citation.clause} documents={documentLoad.documents} />
       )}
     </div>
   );

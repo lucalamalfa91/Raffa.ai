@@ -106,8 +106,8 @@ public sealed class PngImage
     /// <summary>
     /// Converts a raw BGRA pixel buffer (as produced by Docnet.Core / pdfium) into a PNG byte
     /// array without allocating a second imaging library (task E22/F02/US01/T01, ADR-029 clause 4).
-    /// The BGRA → RGB channel swap happens inline; the PNG is encoded by the same hand-rolled
-    /// deflate path <see cref="ToPng"/> uses, keeping the module's managed-only footprint.
+    /// Transparent pdfium pixels are composited onto white so a page with no explicit background
+    /// does not encode as an opaque black rectangle (black text on a dropped-alpha background).
     /// </summary>
     /// <param name="width">Pixel width of the rendered page.</param>
     /// <param name="height">Pixel height of the rendered page.</param>
@@ -118,19 +118,36 @@ public sealed class PngImage
     /// <returns>PNG-encoded bytes, ready to store or stream.</returns>
     internal static byte[] BgraToPng(int width, int height, byte[] bgra)
     {
-        // Convert BGRA → RGB in a new buffer, then reuse ToPng() infrastructure.
-        var rgb = new byte[width * height * 3];
-        for (int i = 0, j = 0; i < bgra.Length; i += 4, j += 3)
-        {
-            rgb[j]     = bgra[i + 2]; // R ← B channel index 2 in BGRA
-            rgb[j + 1] = bgra[i + 1]; // G ← G channel index 1 in BGRA
-            rgb[j + 2] = bgra[i];     // B ← B channel index 0 in BGRA
-        }
-
-        // Wrap the converted buffer as a PngImage and encode — avoids duplicating the PNG writer.
-        var img = new PngImage(width, height, default);
+        var rgb = BgraToRgbOnWhite(width, height, bgra);
+        var img = new PngImage(width, height, new Rgb(0xFF, 0xFF, 0xFF));
         Array.Copy(rgb, img._pixels, rgb.Length);
         return img.ToPng();
+    }
+
+    /// <summary>
+    /// BGRA → RGB, compositing each pixel onto white. pdfium leaves unspecified page backgrounds
+    /// as (0,0,0,0); dropping alpha without this step makes the whole page opaque black.
+    /// </summary>
+    internal static byte[] BgraToRgbOnWhite(int width, int height, byte[] bgra)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(width, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(height, 1);
+        ArgumentNullException.ThrowIfNull(bgra);
+
+        var rgb = new byte[width * height * 3];
+        for (int i = 0, j = 0; i + 3 < bgra.Length && j + 2 < rgb.Length; i += 4, j += 3)
+        {
+            var blue = bgra[i];
+            var green = bgra[i + 1];
+            var red = bgra[i + 2];
+            var alpha = bgra[i + 3];
+            var inverse = 255 - alpha;
+            rgb[j] = (byte)((red * alpha + 255 * inverse) / 255);
+            rgb[j + 1] = (byte)((green * alpha + 255 * inverse) / 255);
+            rgb[j + 2] = (byte)((blue * alpha + 255 * inverse) / 255);
+        }
+
+        return rgb;
     }
 
     /// <summary>Encodes the raster as a PNG (8-bit RGB, no interlacing, filter type 0).</summary>

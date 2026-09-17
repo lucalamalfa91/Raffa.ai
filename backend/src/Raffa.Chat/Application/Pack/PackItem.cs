@@ -73,6 +73,12 @@ public static class PackCorpus
 /// <param name="Values">Normalized, guardable facts this item asserts (see
 /// <see cref="PackValue"/>) — empty when this item is purely textual (a clause excerpt, a feature
 /// description) with no number/date a numeric guard needs to check.</param>
+/// <param name="ContractId">This item's own contract, when the composition root scoped it to
+/// exactly one. Echoed onto <see cref="Raffa.Chat.Application.Reply.ReplyCitation.ContractId"/>.</param>
+/// <param name="DocumentId">This item's own source document GUID, when the citation resolves to
+/// one real tenant document — never the citation key. Echoed onto
+/// <see cref="Raffa.Chat.Application.Reply.ReplyCitation.DocumentId"/> so the Ask card can fetch
+/// an authenticated page preview.</param>
 public sealed record PackItem(
     string CitationKey,
     string Corpus,
@@ -85,4 +91,6 @@ public sealed record PackItem(
     string? PreviewUrl,
     string? RecordId,
     string Provenance,
-    IReadOnlyList<PackValue> Values);
+    IReadOnlyList<PackValue> Values,
+    string? ContractId = null,
+    string? DocumentId = null);
