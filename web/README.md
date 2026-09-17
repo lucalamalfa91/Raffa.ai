@@ -1304,11 +1304,11 @@ painting the prototype's absent `API: ...` line onto the canvas.
 "Manual + automated smoke of the Day-1 path on `demo` passes." It drives the
 real, deployed SPA in a real browser end to end -- product-spec §20's own
 ladder (sign in -> invite -> upload -> review -> Contract 360 -> Ask with
-citations + one abstain -> renewal action -> savings opportunity -> quote
-check -> record outcome -> Home realized updates), never `dotnet test`,
-never Swagger (AC-1), against `demo`, never a `localhost` `config.json`
-shell (AC-2), which only makes sense once `demo-v*` promotion (ADR-016) has
-actually happened (AC-3).
+citations when the reply carries one -> renewal action -> Savings shows its
+KPIs -> quote check -> record outcome -> Savings link-back), never
+`dotnet test`, never Swagger (AC-1), against `demo`, never a `localhost`
+`config.json` shell (AC-2), which only makes sense once `demo-v*` promotion
+(ADR-016) has actually happened (AC-3).
 
 The task's own "Files to create or modify" table names this file as
 `workspace/raffa-web/e2e/day1.spec.ts`; it lives at `web/e2e/day1.spec.ts`
@@ -1318,20 +1318,18 @@ already recorded for two earlier tasks (OQ-impl-001/002) -- there is no other
 location where a browser test could reach the real, already-scaffolded ten
 screens this file drives.
 
-**Known regression, task E13/F09/US01/T01 (ADR-024 V2 shell, gap G-IA-V2;
-out of that task's own file scope, `web/e2e/**` is not in its "Files to
-create or modify" table):** this spec is the Day-1 (V1) IA's own walk and now
-fails at the V2 shell -- `page.goto("/")` (`assertHomeOpportunity`) no longer
-renders a "Home" screen (`/` redirects to `/ask`), so the
-`getByRole("heading", { name: "Home", exact: true })` assertion in "Home
-Savings Realized -- link back" (step 10) does not resolve, and every other
-step's own implicit "the rail has a Home item" assumption no longer holds
-either. `npm run test:e2e` is not part of this task's own proof (`npm test` /
-`npm run build` only) and is not run by CI yet (see "CI wiring" below), so
-this did not block the V2 shell landing -- but it does mean this suite itself
-is red until the V2 replacement lands: ADR-024's own "Implications for the
-decomposition" already names `web/e2e/v2.spec.ts` (gap G-INTEGRATION,
-task F11/T01) as that replacement, not a fix to this V1 file.
+**Reconciled to the V2 shell, task E26/F02/US01/T01 (NW-50, wave W18).** The
+regression this section used to document (task E13/F09/US01/T01, ADR-024 V2
+shell, gap G-IA-V2: `page.goto("/")` no longer rendering a "Home" screen, so
+the old six-cell KPI / "Home" heading assertions never resolved) is fixed --
+every step below now drives the real V2 screens (Ask is home at `/ask`; the
+old Home KPI row is `/savings`'s own four-cell band, reached from Ask/
+Renewals/Contract 360 actions, never the rail; uploads are polled
+asynchronously per wave w15's own NW-27 rebuild). See the spec file's own
+header comment for the full, cited reconciliation. `npm run test:e2e` is
+still not run by CI (see "CI wiring" below) -- NW-50's own scope is this file
+and its runner, never a `.github/workflows/` change (ADR-016's w14 footer:
+"a wave does not acquire a new CI capability as a side effect").
 
 ### Running it
 
@@ -1359,16 +1357,12 @@ MFA challenge. This is an Entra tenant configuration decision for whoever
 provisions the `demo`-tenant test account, not something this file's own
 scope (`web/`) can set.
 
-### Three real, honestly-tested divergences from the prototype
+### Real, honestly-tested divergences from the prototype
 
 `day1-demo.html` is one hard-coded demo scenario; the real app is not. The
 spec's own header comment has the full citations -- in short:
 
-1. **Members list has no GET.** The invite screen is real (`POST /api/workspaces/{tenantId}/invites`)
-   but there is still no list-members endpoint, so the table is this-browser's Admin row plus
-   invites sent from this session (`memberStore.ts`) -- not a fabricated roster, and not a
-   workspace-wide directory.
-2. **The workspace picker is server-driven now, not a per-browser cache**
+1. **The workspace picker is server-driven, not a per-browser cache**
    (task E14/F03/US02/T01, wave w14; ADR-026 §D1) -- this used to be the
    opposite (a fresh Playwright context could never discover the ADR-022
    fixture-seeded tenant at all, only create its own empty one). `GET
@@ -1381,14 +1375,22 @@ spec's own header comment has the full citations -- in short:
    savings-opportunity steps still assert whichever real, already-tested
    state (populated or honestly empty) actually renders, and name the gap
    inline via `test.info().annotations` rather than asserting a fabricated
-   populated state -- `pickOrCreateWorkspace` now also covers the third
-   outcome NW-01 introduces: exactly one real membership skips the picker
-   entirely (AC-2's "no picker").
-3. **A recorded quote outcome does not update the Savings figures**
-   (`NegotiationOutcomePropagationService` never runs for it -- see
-   `src/routes/quotes/NegotiationStep.tsx`'s own header comment). The final
-   step asserts the real outcome + the real "See it in Savings →" link, not a
-   KPI change this build does not perform.
+   populated state -- `pickOrCreateWorkspace` covers all three outcomes
+   NW-01 introduces: exactly one real membership skips the picker entirely
+   (AC-2's "no picker").
+2. **Uploads are asynchronous** (wave w15, NW-27/ADR-027): a document row
+   exists the instant a file is picked and reaches a terminal status
+   (`Needs review` / `Completed` / `Failed` / `Not added`) some seconds
+   later via the Worker. `uploadSampleDocument` polls the real
+   `DocumentStatusTable` row for that transition rather than assuming a
+   synchronous result -- the pre-V2 `.upload-result-card` this file used to
+   drive no longer exists anywhere in `web/src`.
+3. **Whether a recorded quote outcome updates the Savings figures is not
+   asserted here.** The final step follows the outcome panel's own real
+   "See it in Savings →" link and confirms it lands on the real Savings
+   screen with its real KPI band -- it does not assert a specific KPI value
+   change, since that depends on backend propagation this web-only task did
+   not re-verify.
 
 ### CI wiring is a follow-up, not this task
 
@@ -1435,6 +1437,15 @@ pass with real Entra test-account credentials against a live,
 gate this suite exists to satisfy; no local or CI session without those
 live credentials can supply it.
 
+Re-confirmed by task E26/F02/US01/T01's own V2 reconciliation: `npm ci`
+(133 packages, `package-lock.json` untouched), `npx tsc --noEmit` against
+this project's real `compilerOptions` with `e2e/` added to `include` (zero
+errors in `day1.spec.ts`; the two pre-existing errors on the tree are in
+`v2.spec.ts`, untouched by that task), `npx playwright test day1.spec.ts
+--list` (still discovers the one declared test) and `npx playwright test
+day1.spec.ts` with no environment set (still "1 skipped", exit `0`) all
+still hold on this harness.
+
 ## End-to-end (Ask Raffa V2 pilot path) -- task E13/F11/US01/T01, us-01-integration
 
 `e2e/v2.spec.ts` (same Playwright config, `playwright.config.ts`) is the V2
@@ -1444,10 +1455,14 @@ Definition of Done), then `demo` after a `demo-v*` promotion (ADR-016). The
 prose runbook for the same rows, including the API/SQL checks a browser cannot
 make, is [`../docs/ask-v2-acceptance.md`](../docs/ask-v2-acceptance.md).
 
-`day1.spec.ts` stays checked in but is the V1 walk and is red against the V2
-shell -- see "Known regression" in the section above. `v2.spec.ts` shares no
-selector with it: the V2 screens are different components with different copy
-(no `.ask-citation-chip`, no `Home` screen, no `Use sample file` button).
+`day1.spec.ts` stays checked in; it was the V1 walk and red against the V2
+shell until task E26/F02/US01/T01 reconciled it (see "End-to-end (Day-1
+browser walk)" above) -- the two files still share no imports and only a
+handful of incidental selectors (both drive the same real `.citation-card`/
+`.ask-message` Ask Raffa markup, for instance), because they cover different
+ground: `v2.spec.ts` is the acceptance-row suite for the V2 pilot path on a
+fixture-seeded tenant, `day1.spec.ts` is the single-clickable-flow demo walk
+on a fresh workspace.
 
 ### What runs and what skips
 
@@ -1561,9 +1576,12 @@ W14-A2), is [`../docs/waves/w14-acceptance.md`](../docs/waves/w14-acceptance.md)
 The same task added one line to `e2e/day1.spec.ts`'s "Invite a Procurement user"
 step -- `await page.reload()` between the click and its assertions -- which is the
 whole of **N3** (a reload-surviving roster; before it both assertions passed on this
-browser's own `sessionStorage` echo). Nothing else in that file changed: it is still
-the V1 walk and still red at its last step (see "Known regression" above), so N3's
-verdict is that step's line in the report, not the file's exit code.
+browser's own `sessionStorage` echo). Nothing else in that file changed at the time:
+it was still the V1 walk and still red at its last step, so N3's verdict was that
+step's line in the report, not the file's exit code. Task E26/F02/US01/T01 later
+reconciled the whole file to the V2 shell (see "End-to-end (Day-1 browser walk)"
+above); the reload this task added to the invite step survives unchanged in that
+reconciliation.
 
 ### What runs and what skips
 
