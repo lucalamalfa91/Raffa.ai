@@ -46,8 +46,9 @@ export interface ReplyCitation {
    * (R-ASK-08). */
   title: string;
   /** e.g. "p.12 §8.4", "representative market data · mock feed · updated 2026-09-01", "/renewals"
-   * -- already formatted by the pack (R-ASK-04); this card never re-derives it. */
-  subtitle: string;
+   * -- already formatted by the pack (R-ASK-04); this card never re-derives it. Absent when the
+   * pack only has a title + quote (the Ask card still renders the excerpt). */
+  subtitle?: string | null;
   /** Quoted evidence text, rendered with the accent-left rule (task text; the same "accent left
    * rule" idiom `.abstain-block`/`.ai-recommendation` already use, `styles/components.css`). */
   snippet: string;
@@ -153,4 +154,12 @@ export function getCorpusBadge(corpus: CitationCorpus): CorpusBadge {
     case "raffa":
       return { variant: "accent", label: "Raffa" };
   }
+}
+
+/** CTA on the Ask citation card: viewer deep-links say so; everything else is "View source". */
+export function citationOpenLabel(href: string | null | undefined): string {
+  if (typeof href === "string" && href.includes("/viewer")) {
+    return "Open in document viewer";
+  }
+  return "View source →";
 }

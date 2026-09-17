@@ -1,4 +1,5 @@
 using Docnet.Core;
+using Docnet.Core.Converters;
 using Docnet.Core.Models;
 using Raffa.Documents.Contracts.Application.Admission;
 
@@ -88,7 +89,9 @@ internal sealed class PdfPageDocumentPreviewRenderer : IDocumentPreviewRenderer
                 // Docnet.Core uses 0-based page indices.
                 using var pageReader = docReader.GetPageReader(page - 1);
 
-                var bgra   = pageReader.GetImage(); // BGRA: 4 bytes per pixel
+                // NaiveTransparencyRemover composites pdfium's transparent background onto white
+                // before we encode PNG. BgraToPng does the same as a second line of defence.
+                var bgra   = pageReader.GetImage(new NaiveTransparencyRemover());
                 var width  = pageReader.GetPageWidth();
                 var height = pageReader.GetPageHeight();
 

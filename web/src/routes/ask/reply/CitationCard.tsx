@@ -1,4 +1,4 @@
-import { getCorpusBadge, type ReplyCitation } from "./replyTypes";
+import { getCorpusBadge, citationOpenLabel, type ReplyCitation } from "./replyTypes";
 
 export interface CitationCardProps
   extends Pick<ReplyCitation, "n" | "corpus" | "title" | "subtitle" | "snippet" | "previewUrl" | "href"> {
@@ -14,22 +14,18 @@ export interface CitationCardProps
 
 /**
  * One citation card (task text; R-WEB-04; requirements.md §6): corpus badge + title + subtitle +
- * quoted snippet (accent-left rule) + first-page preview -- or, for a `raffa`/`market` citation
- * (never carries a real `previewUrl`; ADR-024 §2's three-source split), a `.btn`-styled
- * call-to-action card instead of an empty placeholder (us-02-citation-card-web AC-1/AC-2, closing
- * NW-55; supersedes the always-present "No page preview available" text this card used to render
- * for every corpus). The whole card is one native `<button>` (ADR-019 accessibility baseline:
- * "every interactive control is native") rather than a styled `<div onClick>`, so it is
- * keyboard-operable for free; the CTA label below is a plain, non-interactive `<span>`, never a
- * nested `<button>`/`<a>`, so the card keeps exactly one interaction either way (AC-3).
+ * the grounded quote (the pack snippet / page excerpt) at readable size, an optional page preview,
+ * and a CTA to open the source. The whole card is one native `<button>` (ADR-019 accessibility
+ * baseline: "every interactive control is native"). The CTA label is a plain, non-interactive
+ * `<span>`, never a nested `<button>`/`<a>`, so the card keeps exactly one interaction (AC-3).
  *
- * `.card` (ADR-019 / `styles/components.css`: "recommendation/provenance blocks only") is the
- * right shared base -- a citation card *is* a provenance block -- with this folder's own
- * `.citation-card` modifier (`reply.css`) resetting the native button chrome (font, text-align,
- * width) that `.card` alone does not cover.
+ * A missing preview must not leave an empty dashed void — the quote is the card. `previewUrl` is
+ * an authenticated object URL when Ask has already fetched the PNG (`useCitationPreviews`); a raw
+ * `/api/documents/.../preview` path cannot carry tenant/auth headers as `<img src>`.
  */
-export default function CitationCard({ n, corpus, title, subtitle, snippet, previewUrl, onOpen }: CitationCardProps) {
+export default function CitationCard({ n, corpus, title, subtitle, snippet, previewUrl, href, onOpen }: CitationCardProps) {
   const badge = getCorpusBadge(corpus);
+  const cta = citationOpenLabel(href);
 
   return (
     <button type="button" className="card citation-card" onClick={onOpen}>
@@ -38,15 +34,14 @@ export default function CitationCard({ n, corpus, title, subtitle, snippet, prev
         <span className="citation-card-index">[{n}]</span>
       </div>
       <p className="citation-card-title">{title}</p>
-      <p className="citation-card-subtitle micro-meta">{subtitle}</p>
-      <blockquote className="citation-card-snippet">{snippet}</blockquote>
+      {subtitle ? <p className="citation-card-subtitle micro-meta">{subtitle}</p> : null}
       {previewUrl ? (
-        <img className="citation-card-preview" src={previewUrl} alt={`${title} -- first page preview`} />
-      ) : (
-        <div className="citation-card-cta">
-          <span className="btn btn-secondary">View source →</span>
-        </div>
-      )}
+        <img className="citation-card-preview" src={previewUrl} alt={`${title} -- page preview`} />
+      ) : null}
+      <blockquote className="citation-card-snippet">{snippet}</blockquote>
+      <span className="citation-card-open">
+        <span className="btn btn-secondary">{cta}</span>
+      </span>
     </button>
   );
 }

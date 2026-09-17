@@ -102,6 +102,27 @@ public sealed class DocumentPreviewRenderingTests
         Assert.Equal(44, PngImage.MeasureText("AB", 4));
     }
 
+    [Fact]
+    public void Transparent_pdfium_pixels_composite_onto_white_not_opaque_black()
+    {
+        // pdfium leaves an unspecified page background as BGRA (0,0,0,0). Dropping alpha
+        // used to encode that as an opaque black PNG — black text on a black page.
+        var bgra = new byte[]
+        {
+            0, 0, 0, 0,          // fully transparent → white
+            0, 0, 0, 255,        // opaque black text → black
+            0, 0, 255, 255,      // opaque red (BGRA) → red
+            0, 0, 0, 128,        // half-alpha black → mid grey
+        };
+
+        var rgb = PngImage.BgraToRgbOnWhite(2, 2, bgra);
+
+        Assert.Equal([255, 255, 255], rgb[0..3]);
+        Assert.Equal([0, 0, 0], rgb[3..6]);
+        Assert.Equal([255, 0, 0], rgb[6..9]);
+        Assert.Equal([127, 127, 127], rgb[9..12]);
+    }
+
     private static void AssertIsPng(byte[] bytes)
     {
         Assert.True(bytes.Length > 8, "A PNG needs more than its signature.");
