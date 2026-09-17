@@ -344,10 +344,6 @@ internal sealed class AskCopilotService(
 
         if (boundedPack.Count == 0)
         {
-            var emptyActions = portfolio.Items.Count == 0
-                ? capabilityRouting.ResolveActions([CapabilityIntent.HowTo(CapabilityCatalog.DocumentsKey)], routingContext)
-                : [];
-
             // ADR-027 §D8 (task E16/F02/US03/T01): no number here. `portfolio.Items.Count` is the
             // UNFILTERED portfolio -- every bootstrap shell a still-processing document created --
             // so rendering it as "N validated contract(s)" asserted a fabricated fact to the user.
@@ -358,7 +354,7 @@ internal sealed class AskCopilotService(
                 ReplyKind.Abstain,
                 "Nothing in your validated contracts supports a reliable answer. " +
                 "Try a question about dates, spend, notice periods or clauses.",
-                [], emptyActions, ReplyProvenance.NoModelCall([]), []), false);
+                [], ResolveAbstainRecoveryActions(portfolio, routingContext), ReplyProvenance.NoModelCall([]), []), false);
         }
 
         var composed = await answerComposer.AnswerAsync(question, boundedPack, recentTurns, cancellationToken)
@@ -369,7 +365,7 @@ internal sealed class AskCopilotService(
             return (new CopilotReply(
                 ReplyKind.Abstain,
                 "Raffa could not reach the answer service just now — please try again shortly.",
-                [], [], ReplyProvenance.NoModelCall([]), []), false);
+                [], ResolveAbstainRecoveryActions(portfolio, routingContext), ReplyProvenance.NoModelCall([]), []), false);
         }
 
         var actionKeys = composed.Value.Result.ActionKeys ?? [];
@@ -378,9 +374,27 @@ internal sealed class AskCopilotService(
             : [];
 
         return (
-            CopilotReplyBuilder.FromGuardedResult(composed.Value.Result, boundedPack, resolvedActions),
+            CopilotReplyBuilder.FromGuardedResult(
+                composed.Value.Result, boundedPack, resolvedActions, ResolveAbstainRecoveryActions(portfolio, routingContext)),
             composed.Value.GuardIntervened);
     }
+
+    /// <summary>
+    /// The one recovery action every abstain path this method's caller can reach attaches
+    /// (E25/F05/US01/T01, story us-01-abstain-recovery-backend AC-1/AC-3; ADR-024 "every abstain
+    /// has a clickable next step"). Never derived from <c>AiAnswerResult.ActionKeys</c> — an
+    /// abstaining model has nothing grounded to suggest, and AC-2 requires a real catalog href
+    /// regardless of what it returned. Zero validated contracts is the one failure Ask can actually
+    /// unblock (upload something), so that case gets the Documents upload action; otherwise the
+    /// recovery is the Ask capability's own "ask about dates, spend, notice periods and clauses"
+    /// hint (<see cref="CapabilityCatalog.AskKey"/>'s own catalog description), which is exactly
+    /// what every abstain reply's own prose already suggests trying next. Both target capabilities
+    /// are <see cref="CapabilityRoleGate.Any"/>, so this never role-gates away to an empty list.
+    /// </summary>
+    private IReadOnlyList<CopilotAction> ResolveAbstainRecoveryActions(PortfolioPage portfolio, RoutingContext routingContext) =>
+        portfolio.Items.Count == 0
+            ? capabilityRouting.ResolveActions([CapabilityIntent.HowTo(CapabilityCatalog.DocumentsKey)], routingContext)
+            : capabilityRouting.ResolveActions([CapabilityIntent.HowTo(CapabilityCatalog.AskKey)], routingContext);
 
     private CopilotReply BuildRoutingOnlyReply(IntentPlanResult plan, RoutingContext routingContext)
     {
