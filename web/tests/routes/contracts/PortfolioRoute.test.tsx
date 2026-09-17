@@ -443,4 +443,52 @@ describe("PortfolioRoute -- column filters", () => {
     expect(within(table).queryByText("Salesforce")).not.toBeInTheDocument();
     expect(within(table).getByText("Microsoft")).toBeInTheDocument();
   });
+
+  it("uses a datepicker for Ends and a number input for Annual spend, not free-text dumps", async () => {
+    const getPortfolio = vi.fn().mockResolvedValue(
+      ok([
+        item({ contractId: "c-1", supplierName: "Salesforce", annualSpend: 640_000, endDate: "2027-01-15" }),
+        item({ contractId: "c-2", supplierName: "Microsoft", annualSpend: 12_000, endDate: "2026-06-01" }),
+      ]),
+    );
+    renderPortfolio(mockApiClient(getPortfolio));
+
+    const table = await screen.findByRole("table");
+    expect(screen.getByLabelText("Filter by supplier")).toHaveAttribute("type", "search");
+    expect(screen.getByLabelText("Filter by annual spend")).toHaveAttribute("type", "number");
+    expect(screen.getByLabelText("Filter by end date")).toHaveAttribute("type", "date");
+    expect(screen.getByLabelText("Filter by notice date")).toHaveAttribute("type", "date");
+    expect(screen.getByLabelText("Filter by status").tagName).toBe("SELECT");
+
+    fireEvent.change(screen.getByLabelText("Filter by end date"), { target: { value: "2027-01-15" } });
+    expect(within(table).getByText("Salesforce")).toBeInTheDocument();
+    expect(within(table).queryByText("Microsoft")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /clear filters/i }));
+    fireEvent.change(screen.getByLabelText("Filter by annual spend"), { target: { value: "12000" } });
+    expect(within(table).queryByText("Salesforce")).not.toBeInTheDocument();
+    expect(within(table).getByText("Microsoft")).toBeInTheDocument();
+  });
+
+  it("exposes date and choice filters for Start / Auto / Risk once More columns is on", async () => {
+    const getPortfolio = vi.fn().mockResolvedValue(
+      ok([
+        item({ contractId: "c-1", supplierName: "Salesforce", autoRenewal: true, risk: "High", startDate: "2024-03-01" }),
+        item({ contractId: "c-2", supplierName: "Microsoft", autoRenewal: false, risk: "Low", startDate: "2023-01-01" }),
+      ]),
+    );
+    renderPortfolio(mockApiClient(getPortfolio));
+
+    await screen.findByRole("table");
+    fireEvent.click(screen.getByRole("button", { name: /more columns/i }));
+
+    expect(screen.getByLabelText("Filter by start date")).toHaveAttribute("type", "date");
+    expect(screen.getByLabelText("Filter by auto-renewal").tagName).toBe("SELECT");
+    expect(screen.getByLabelText("Filter by risk").tagName).toBe("SELECT");
+
+    fireEvent.change(screen.getByLabelText("Filter by auto-renewal"), { target: { value: "No" } });
+    const table = screen.getByRole("table");
+    expect(within(table).queryByText("Salesforce")).not.toBeInTheDocument();
+    expect(within(table).getByText("Microsoft")).toBeInTheDocument();
+  });
 });

@@ -157,6 +157,9 @@ export function useReviewSession(
   const correct = useCallback(
     async (name: CorrectableFieldName, newValue: string | null, reason: string) => {
       if (workspaceId === null || contractId === null) return;
+      // Select first so a 400 lands in the evidence pane instead of failing silently beside an
+      // unselected row (Accept used to look dead for this reason).
+      setSelectedField(name);
       setSubmitting(true);
       setCorrectionError(null);
       const result = await apiClient.correctContract(workspaceId, contractId, {
@@ -168,7 +171,6 @@ export function useReviewSession(
         setCorrectionError(result.error ?? "The correction could not be saved.");
         return;
       }
-      setSelectedField(name);
       load();
     },
     [apiClient, workspaceId, contractId, load],

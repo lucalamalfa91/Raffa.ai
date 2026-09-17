@@ -76,6 +76,13 @@ public sealed class ContractCorrectionService(
     /// string to 404; every other failure maps to 400.</summary>
     public const string ContractNotFoundError = "Contract not found.";
 
+    /// <summary>Returned when every supplied value already matches the contract <em>and</em> none
+    /// of those fields still have <c>review_required</c> (or null-decision) evidence to officialize.
+    /// Confirming a review-required fact at its current value is not this error — that stamps
+    /// <c>human_accepted</c> and succeeds.</summary>
+    public const string NoOpCorrectionError =
+        "None of the supplied values differ from the contract's current values.";
+
     /// <summary>The correctable field name for the supplier link (requirements R-SUP-03) —
     /// deliberately the same literal the extraction pipeline writes its own
     /// <see cref="ExtractionEvidence.FieldName"/> under
@@ -281,7 +288,7 @@ public sealed class ContractCorrectionService(
                 : string.Equals(previousValue, newValue, StringComparison.Ordinal);
             if (unchanged)
             {
-                continue; // No actual change — do not fabricate a history row for a no-op.
+                continue; // No scalar/link change — a review_required confirm is officialized below.
             }
 
             if (isSupplier)
@@ -308,14 +315,37 @@ public sealed class ContractCorrectionService(
             correctedFields.Add(fieldName);
         }
 
+        var correctedSet = new HashSet<string>(correctedFields, StringComparer.OrdinalIgnoreCase);
+        var unchangedNames = corrections.Keys.Where(name => !correctedSet.Contains(name)).ToList();
+        var officializedFields = await OfficializeReviewRequiredAsync(
+                tenantId, contractId, unchangedNames, now, cancellationToken)
+            .ConfigureAwait(false);
+
         if (correctedFields.Count == 0)
         {
-            // Nothing was mutated and nothing was Add()ed above (every field hit the `continue`
-            // branch) — including the version-1 baseline, which is only staged below, after this
-            // check. A request that changes nothing has zero side effects, even for a contract
-            // that has never been versioned.
-            return Result<ContractCorrectionResult>.Failure(
-                "None of the supplied values differ from the contract's current values.");
+            if (officializedFields.Count == 0)
+            {
+                // True no-op: every value already matches and none of those fields still need a
+                // human accept. Confirming a review_required fact is handled above, not here.
+                return Result<ContractCorrectionResult>.Failure(NoOpCorrectionError);
+            }
+
+            await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            await auditWriter.WriteAsync(
+                    new AuditEntry(
+                        tenantId,
+                        actor,
+                        AuditCorrectedAction,
+                        AuditResourceType,
+                        contract.Id.Value.ToString(),
+                        now,
+                        $"officializedFields={string.Join(",", officializedFields)}"),
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+            return Result<ContractCorrectionResult>.Success(
+                new ContractCorrectionResult(
+                    contract.Id, latestVersionNumber.GetValueOrDefault(), officializedFields, now));
         }
 
         if (latestVersionNumber is null)
@@ -360,7 +390,7 @@ public sealed class ContractCorrectionService(
                 AuditResourceType,
                 contract.Id.Value.ToString(),
                 now,
-                BuildAuditDetail(newVersionNumber, correctedFields, reason)),
+                BuildAuditDetail(newVersionNumber, correctedFields, officializedFields, reason)),
             cancellationToken).ConfigureAwait(false);
 
         return Result<ContractCorrectionResult>.Success(
@@ -388,15 +418,70 @@ public sealed class ContractCorrectionService(
         return names.TryGetValue(id, out var name) ? name : null;
     }
 
+    /// <summary>
+    /// Stamps the latest <see cref="ExtractionEvidence"/> row for each unchanged field that still
+    /// requires a human decision as <c>human_accepted</c>. Confirming the extracted value (Accept,
+    /// or Save correction with the same text) is that decision — it must not 400 as a no-op.
+    /// Already <c>auto_accepted</c>/<c>human_accepted</c> rows, and fields with no evidence at all,
+    /// are left untouched. Same "latest row per field" grouping
+    /// <see cref="DocumentValidationService"/> uses to stamp on validate.
+    /// </summary>
+    private async Task<List<string>> OfficializeReviewRequiredAsync(
+        TenantId tenantId,
+        EntityId contractId,
+        IReadOnlyCollection<string> fieldNames,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        if (fieldNames.Count == 0)
+        {
+            return [];
+        }
+
+        var names = new HashSet<string>(fieldNames, StringComparer.OrdinalIgnoreCase);
+        var rows = await dbContext.ExtractionEvidences
+            .Where(e => e.TenantId == tenantId && e.ContractId == contractId)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var officialized = new List<string>();
+        foreach (var latest in rows
+            .Where(row => names.Contains(row.FieldName))
+            .GroupBy(row => row.FieldName, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.OrderByDescending(row => row.CreatedAt).ThenByDescending(row => row.Id.Value).First()))
+        {
+            if (!ExtractionConfidencePolicy.StillRequiresHumanDecision(latest.Decision))
+            {
+                continue;
+            }
+
+            latest.Decision = ExtractionConfidencePolicy.HumanAccepted;
+            latest.DecidedAt = now;
+            officialized.Add(latest.FieldName);
+        }
+
+        return officialized;
+    }
+
     /// <summary><see cref="AuditEntry.Detail"/> for a correction: the resulting version number
-    /// and which fields changed, plus the caller's own free-text reason when supplied. Recording
-    /// <paramref name="reason"/> here is not a new exposure — it is already stored, verbatim, on
-    /// every affected <see cref="CorrectionHistory.Reason"/> row written just above. Space-separated
-    /// key=value pairs, same convention as <c>Raffa.AiGateway.Logging.LoggingAiGateway.LogAsync</c>'s
-    /// own <c>Detail</c> string.</summary>
-    private static string BuildAuditDetail(int versionNumber, IReadOnlyList<string> correctedFields, string? reason)
+    /// and which fields changed, plus any review_required facts officialized in the same call and
+    /// the caller's own free-text reason when supplied. Recording <paramref name="reason"/> here is
+    /// not a new exposure — it is already stored, verbatim, on every affected
+    /// <see cref="CorrectionHistory.Reason"/> row written just above. Space-separated key=value
+    /// pairs, same convention as <c>Raffa.AiGateway.Logging.LoggingAiGateway.LogAsync</c>'s own
+    /// <c>Detail</c> string.</summary>
+    private static string BuildAuditDetail(
+        int versionNumber,
+        IReadOnlyList<string> correctedFields,
+        IReadOnlyList<string> officializedFields,
+        string? reason)
     {
         var detail = $"versionNumber={versionNumber} correctedFields={string.Join(",", correctedFields)}";
+        if (officializedFields.Count > 0)
+        {
+            detail = $"{detail} officializedFields={string.Join(",", officializedFields)}";
+        }
+
         return reason is null ? detail : $"{detail} reason={reason}";
     }
 

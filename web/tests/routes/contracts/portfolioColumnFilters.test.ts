@@ -36,7 +36,18 @@ function item(overrides: Partial<PortfolioListItem> = {}): PortfolioListItem {
 const ROWS = buildPortfolioRows(
   [
     item({ contractId: "sf", supplierName: "Salesforce", status: "active", risk: "High", autoRenewal: true }),
-    item({ contractId: "ms", supplierName: "Microsoft", status: "expired", risk: "Low", autoRenewal: false, type: "Sow" }),
+    item({
+      contractId: "ms",
+      supplierName: "Microsoft",
+      status: "expired",
+      risk: "Low",
+      autoRenewal: false,
+      type: "Sow",
+      annualSpend: 12_000,
+      startDate: "2023-01-01",
+      endDate: "2026-06-01",
+      cancellationDeadline: "2026-03-01",
+    }),
   ],
   NOW,
 );
@@ -76,5 +87,26 @@ describe("portfolioColumnFilters", () => {
   it("offers status and risk options from the loaded rows, first-seen order", () => {
     expect(getPortfolioStatusFilterOptions(ROWS)).toEqual(["Expired", "Active"]);
     expect(getPortfolioRiskFilterOptions(ROWS)).toEqual(["Low risk", "High risk"]);
+  });
+
+  it("restricts dates by the native yyyy-MM-dd value, not the DD/MM/YYYY display string", () => {
+    const byEnd = filterPortfolioRows(ROWS, { ...EMPTY_PORTFOLIO_COLUMN_FILTERS, ends: "2027-01-15" });
+    expect(byEnd.map((row) => row.item.contractId)).toEqual(["sf"]);
+
+    const byDisplayDump = filterPortfolioRows(ROWS, { ...EMPTY_PORTFOLIO_COLUMN_FILTERS, ends: "15/01/2027" });
+    expect(byDisplayDump).toEqual([]);
+  });
+
+  it("restricts spend by the raw amount, not the grouped display string", () => {
+    const byDigits = filterPortfolioRows(ROWS, { ...EMPTY_PORTFOLIO_COLUMN_FILTERS, spend: "640000" });
+    expect(byDigits.map((row) => row.item.contractId)).toEqual(["sf"]);
+
+    const byFormattedDump = filterPortfolioRows(ROWS, { ...EMPTY_PORTFOLIO_COLUMN_FILTERS, spend: "640,000" });
+    expect(byFormattedDump).toEqual([]);
+  });
+
+  it("leaves a null spend unmatched when a numeric filter is active", () => {
+    const withNull = buildPortfolioRows([item({ contractId: "none", annualSpend: null })], NOW);
+    expect(filterPortfolioRows(withNull, { ...EMPTY_PORTFOLIO_COLUMN_FILTERS, spend: "1" })).toEqual([]);
   });
 });

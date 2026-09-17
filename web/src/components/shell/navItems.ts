@@ -9,14 +9,16 @@
  *   - **Primary** (`app.jsx` `primaryNav`): Ask Raffa (badge `⌘K`, the last 5 conversations
  *     nested under it, "+ New chat") and Documents (badge `N to review` / `N docs`).
  *   - **Secondary, "From your contracts"** (`app.jsx` `kbNav`, `markup.html` "From your
- *     contracts"): Portfolio, Renewals, Quote check -- the whole row's foreground dims to
- *     `var(--color-neutral-500)` until the first validated contract (`kbReady`); Quote check's own
- *     badge is the constant `optional`, never a count.
+ *     contracts"): Portfolio, Renewals, Savings, Quote check. Portfolio / Renewals / Quote check
+ *     dim to `var(--color-neutral-500)` until the first validated contract (`kbReady`); Quote
+ *     check's own badge is the constant `optional`, never a count. Savings is a first-class rail
+ *     destination at `/savings` and is never greyed by that gate -- the screen already has an empty
+ *     state, and Ask's "switches on after your first validated contract" gate does not apply to it.
  *
  * "Home" and "Review queue" (the old flat list's first and seventh items) do not exist in V2 at all
- * (`ia-v2.md` "No Home item"; Savings moved to its own `/savings` route, reached from actions, not
- * the rail; Review is now a state of Documents, `/documents?review=:id`, not a rail destination) --
- * see WorkspaceShellApp.tsx for the matching route changes (`/` -> `/ask`, `/review` -> redirect).
+ * (`ia-v2.md` "No Home item"; Review is now a state of Documents, `/documents?review=:id`, not a
+ * rail destination) -- see WorkspaceShellApp.tsx for the matching route changes (`/` -> `/ask`,
+ * `/review` -> redirect).
  * "Workspace & members" moves from a flat-list row to a footer link (RailNav.tsx), still gated the
  * same way.
  *
@@ -64,14 +66,15 @@ export interface PrimaryNavItem {
 }
 
 export interface SecondaryNavItem {
-  id: "portfolio" | "renewals" | "quote-check";
+  id: "portfolio" | "renewals" | "savings" | "quote-check";
   label: string;
   path: string;
   badge: NavBadge | null;
   /** True until the first validated contract (`kbReady`) -- the whole row's foreground dims
    * (`app.jsx` kbNav's own `fg: s.screen===k?accent:kbReady?'inherit':'var(--color-neutral-500)'` --
    * greyed only when the row is not also the active screen; RailNav.tsx's `is-active` modifier wins
-   * over `is-greyed` for exactly that reason). */
+   * over `is-greyed` for exactly that reason). Savings is never greyed: the page is already
+   * reachable without a validated contract, and Ask's kb-off gate does not apply to it. */
   greyed: boolean;
 }
 
@@ -121,8 +124,9 @@ export interface SecondaryNavInput {
 
 /**
  * Secondary tier ("From your contracts"). Portfolio/Renewals share one badge (`app.jsx`:
- * `kbReady?completedCids.length:''` for both); Quote check's is the constant `optional`. Every item
- * greys together (`app.jsx` kbNav's own `fg` rule applies uniformly across all three rows).
+ * `kbReady?completedCids.length:''` for both); Quote check's is the constant `optional`; Savings
+ * has no badge. Portfolio / Renewals / Quote check grey together (`app.jsx` kbNav's own `fg` rule);
+ * Savings stays fully inked so anyone who can open `/savings` can also click it from the rail.
  */
 export function buildSecondaryNavItems(input: SecondaryNavInput): readonly SecondaryNavItem[] {
   const countBadge: NavBadge | null = input.kbReady
@@ -133,6 +137,7 @@ export function buildSecondaryNavItems(input: SecondaryNavInput): readonly Secon
   return [
     { id: "portfolio", label: "Portfolio", path: "/contracts", badge: countBadge, greyed },
     { id: "renewals", label: "Renewals", path: "/renewals", badge: countBadge, greyed },
+    { id: "savings", label: "Savings", path: "/savings", badge: null, greyed: false },
     { id: "quote-check", label: "Quote check", path: "/quotes", badge: QUOTE_CHECK_BADGE, greyed },
   ];
 }

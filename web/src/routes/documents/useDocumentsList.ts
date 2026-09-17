@@ -3,7 +3,12 @@ import type { ApiClient, DocumentListItemBody } from "../../api/client";
 import { loadCurrentWorkspace } from "../signin/workspaceStore";
 import { POLL_INTERVAL_MS, POLL_NO_CHANGE_BUDGET_MS, usePollBudget } from "../../components/shell/usePollBudget";
 import { runUploadBatch, MAX_FILES_PER_BATCH, type LocalUploadEntry } from "./uploadPipeline";
-import { filterDocumentsByAttention, type AttentionFilterValue, type DocumentCountsBody } from "./documentTable";
+import {
+  filterDocumentsByAttention,
+  STUCK_REPROCESS_AFTER_MS,
+  type AttentionFilterValue,
+  type DocumentCountsBody,
+} from "./documentTable";
 
 // R-DOC-09's cadence and ADR-012 w15 §17's no-change budget live in the shared hook every "not
 // ready yet" surface polls through (`usePollBudget.ts`); re-exported so this file stays the one
@@ -248,6 +253,51 @@ export function useDocumentsList(apiClient: ApiClient): UseDocumentsListResult {
     },
     [apiClient, workspace?.id, load],
   );
+
+  // One auto-reprocess per still-Uploaded document after STUCK_REPROCESS_AFTER_MS, using the same
+  // POST /api/documents/{id}/reprocess path the retired Retry upload CTA used. Tenant-scoped via
+  // workspace.id; ids already fired are remembered so a poll cannot loop. Failures stay silent —
+  // a 403 (Procurement) must not paint a banner the user did not ask for.
+  const autoReprocessedIdsRef = useRef(new Set<string>());
+  const autoReprocessTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+
+  useEffect(() => {
+    autoReprocessedIdsRef.current.clear();
+    for (const timer of autoReprocessTimersRef.current.values()) clearTimeout(timer);
+    autoReprocessTimersRef.current.clear();
+  }, [workspace?.id]);
+
+  useEffect(() => {
+    const tenantId = workspace?.id;
+    if (!tenantId) return;
+
+    const now = Date.now();
+    for (const item of documents) {
+      if (item.processingStatus !== "Uploaded") continue;
+      if (autoReprocessedIdsRef.current.has(item.id)) continue;
+      if (autoReprocessTimersRef.current.has(item.id)) continue;
+      const created = Date.parse(item.createdAt);
+      if (!Number.isFinite(created)) continue;
+      const delay = Math.max(0, STUCK_REPROCESS_AFTER_MS - (now - created));
+      const documentId = item.id;
+      const timer = setTimeout(() => {
+        autoReprocessTimersRef.current.delete(documentId);
+        if (!mountedRef.current) return;
+        if (autoReprocessedIdsRef.current.has(documentId)) return;
+        autoReprocessedIdsRef.current.add(documentId);
+        void apiClient.reprocessDocument(tenantId, documentId).then((result) => {
+          if (!mountedRef.current) return;
+          if (result.ok) load();
+        });
+      }, delay);
+      autoReprocessTimersRef.current.set(documentId, timer);
+    }
+
+    return () => {
+      for (const timer of autoReprocessTimersRef.current.values()) clearTimeout(timer);
+      autoReprocessTimersRef.current.clear();
+    };
+  }, [apiClient, documents, load, workspace?.id]);
 
   return {
     hasWorkspace: workspace !== null,
