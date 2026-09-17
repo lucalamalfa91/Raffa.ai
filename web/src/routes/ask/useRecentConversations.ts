@@ -35,6 +35,8 @@ export interface RecentConversationsState {
 }
 
 const EMPTY_STATE: readonly ConversationSummaryBody[] = [];
+/** Larger than the rail's historic last-5 so search can find older chats. Backend caps at 100. */
+export const CONVERSATION_LIST_TAKE = 50;
 
 /** `/ask/<conversationId>` -- the one route shape `WorkspaceShellApp.tsx` maps to `AskRoute`
  * carrying a resumable id (`/ask` itself, with no trailing segment, is the "new chat" screen).
@@ -59,7 +61,7 @@ export function useRecentConversations(apiClient: ApiClient): RecentConversation
       return;
     }
 
-    void apiClient.listConversations(workspace.id).then((result) => {
+    void apiClient.listConversations(workspace.id, CONVERSATION_LIST_TAKE).then((result) => {
       setConversations(result.ok && result.conversations ? result.conversations : EMPTY_STATE);
     });
     // workspace?.id (a primitive), not workspace itself -- loadCurrentWorkspace() returns a fresh

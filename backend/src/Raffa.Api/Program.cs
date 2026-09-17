@@ -294,6 +294,7 @@ builder.Services.AddScoped<BenchmarkKeyResolution>();
 // than a second, independently-tracked instance of either. ContractsEndpointExtensions.CorrectContractAsync
 // (PATCH /api/contracts/{id}) is its only caller.
 builder.Services.AddScoped<RenewalAlertRecomputeService>();
+builder.Services.AddScoped<DocumentPurgeAllService>();
 
 // Task E04/F02/US02/T01 (savings-opportunity, GET/PATCH /api/savings): the Savings module's own
 // AddSavingsModule(IServiceCollection, string) (ADR-002) — this module's first DbContext

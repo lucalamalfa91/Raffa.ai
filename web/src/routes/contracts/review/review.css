@@ -120,12 +120,23 @@
 
 .review-field-table th:nth-child(3),
 .review-field-table td:nth-child(3) {
-  width: 16%;
+  width: 22%;
+  overflow: hidden;
 }
 
 .review-field-table th:nth-child(4),
 .review-field-table td:nth-child(4) {
-  width: 32%;
+  width: 26%;
+  overflow: hidden;
+}
+
+/* Confidence tags are long ("Accepted automatically · 90%"); nowrap + a narrow column used to
+   paint them over Decision ("Correct"), which read as a garbled "C09ject". Let the tag wrap
+   inside its own cell instead. */
+.review-field-table td:nth-child(3) .tag {
+  white-space: normal;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .review-field-table tr.review-row-selected {
@@ -155,7 +166,13 @@
 
 .review-decision-actions {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: var(--space-2);
+}
+
+.review-decision-result {
+  flex: 1 1 100%;
 }
 
 /* Compact in-row Accept/Correct sizing, matching the export's own inline

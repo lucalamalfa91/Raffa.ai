@@ -654,13 +654,14 @@ describe("details ▾", () => {
     expect(buildProductsRows([product({ sourceSpan: null, sourcePage: null })])[0].source).toBe("Linked document");
     expect(buildProductsRows([product({ sourceDocumentId: null })])[0].source).toBeNull();
 
-    const unofficial = buildProductsRows([product({ lineItemId: "p-low", confidence: 0.71 })]);
+    const unofficial = buildProductsRows([product({ lineItemId: "p-low", confidence: 0.71, sourceSpan: null, sourcePage: null })]);
     expect(unofficial).toHaveLength(1);
     expect(unofficial[0].value).toBe(UNOFFICIALIZED_PLACEHOLDER);
     expect(unofficial[0].term).toBe("Premium DBU — committed");
 
     expect(buildObligationsRows([obligation({ confidence: 0.97 })])[0].value).toBe("Annual true-up of committed DBU · due 15/01/2026 · high");
-    expect(buildObligationsRows([obligation()])[0].value).toBe(UNOFFICIALIZED_PLACEHOLDER);
+    expect(buildObligationsRows([obligation()])[0].value).toBe("Annual true-up of committed DBU · due 15/01/2026 · high");
+    expect(buildObligationsRows([obligation({ confidence: 0.71, sourceSpan: null, sourcePage: null })])[0].value).toBe(UNOFFICIALIZED_PLACEHOLDER);
     expect(buildRisksRows([risk({ severity: "Critical" })])[0].value).toContain("Critical risk");
   });
 

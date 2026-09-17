@@ -22,7 +22,6 @@ import {
   buildScopeLine,
   buildYouTurn,
   createConversationAndAsk,
-  deriveConversationTitle,
   nextTurnId,
   parseScopeContractId,
   resolveAskOffReason,
@@ -30,6 +29,9 @@ import {
   suggestionsFor,
   type AskTurnView,
 } from "./askViewModel";
+import { ASK_FALLBACK_TITLE, formatConversationTitle } from "./conversationTitle";
+import { applyCitationPreviews, useCitationPreviews } from "./useCitationPreviews";
+import { getContractTypeLabel } from "../contracts/portfolioTableFormatters";
 import "./ask.css";
 
 export interface AskRouteProps {
@@ -95,7 +97,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   const { state: resumeState } = useConversation(apiClient, workspace?.id, resumeTargetId);
 
   const [turns, setTurns] = useState<readonly AskTurnView[]>([]);
-  const [title, setTitle] = useState<string | null>(null);
+  const [boundTitle, setBoundTitle] = useState<string | null>(null);
   const [question, setQuestion] = useState("");
   const [asking, setAsking] = useState(false);
   const [citationNotice, setCitationNotice] = useState<CitationNoticeState | null>(null);
@@ -148,28 +150,36 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   const searchParams = new URLSearchParams(location.search);
   const scopeContractId = currentConversationId === null ? parseScopeContractId(searchParams.get("scope")) : undefined;
 
-  // Task text point (2): "chips then name the supplier as c360Chips" -- app.jsx's own
-  // supplier-templated chip pair needs a real supplier name; GET /api/contracts/{id} is the only
-  // read that has one (a typed `supplierName` on the 360 header since task E13/F03/US01/T02 -- see
-  // ../contracts/contract360/contract360ViewModel.ts#resolveSupplierLabel's own doc comment for the
-  // full provenance -- read here rather than imported, per this task's own "independent,
-  // separately-evolving screens duplicate a small read" convention). A null/blank name stays `null`
-  // so `buildScopedSuggestions` falls back to its own "this supplier" wording.
+  // Bound chat title is supplier + contract (never the question, never a guid). Scoped new chats
+  // and resumed conversations both resolve it from GET /api/contracts/{id}.
+  const lastScopeRef = useRef<string | null>(null);
+  if (scopeContractId !== undefined) lastScopeRef.current = scopeContractId;
+  if (resumeState.phase === "ready") lastScopeRef.current = resumeState.conversation.scopeContractId;
+
+  const boundScopeId =
+    resumeState.phase === "ready"
+      ? resumeState.conversation.scopeContractId
+      : (scopeContractId ?? lastScopeRef.current);
+
   const [scopedSupplierName, setScopedSupplierName] = useState<string | null>(null);
   useEffect(() => {
-    if (scopeContractId === undefined || !workspace) {
+    if (boundScopeId === null || boundScopeId === undefined || !workspace) {
       setScopedSupplierName(null);
+      setBoundTitle(null);
       return;
     }
-    void apiClient.getContract360(workspace.id, scopeContractId).then((result) => {
+    void apiClient.getContract360(workspace.id, boundScopeId).then((result) => {
       if (!result.ok || !result.contract) {
         setScopedSupplierName(null);
+        setBoundTitle(null);
         return;
       }
-      const { supplierName } = result.contract.header;
-      setScopedSupplierName(supplierName !== null && supplierName.trim() !== "" ? supplierName : null);
+      const { supplierName, type } = result.contract.header;
+      const name = supplierName !== null && supplierName.trim() !== "" ? supplierName : null;
+      setScopedSupplierName(name);
+      setBoundTitle(formatConversationTitle({ supplierName: name, contractLabel: getContractTypeLabel(type) }));
     });
-  }, [apiClient, workspace?.id, scopeContractId]);
+  }, [apiClient, workspace?.id, boundScopeId]);
 
   // Task text point (2): "two suggestion chips from GET /api/capabilities (suggestionsFor("ask"))".
   // Fetched once -- the catalog is static and tenant-agnostic (getCapabilities's own OpenAPI
@@ -193,7 +203,6 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   useEffect(() => {
     if (resumeState.phase === "ready") {
       setTurns(resumeState.turns);
-      setTitle(resumeState.conversation.title);
     }
   }, [resumeState]);
 
@@ -201,7 +210,6 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     if (routeConversationId === null) {
       createdConversationId.current = null;
       setTurns([]);
-      setTitle(null);
     }
   }, [routeConversationId]);
 
@@ -211,7 +219,6 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
       if (text === "" || !workspace) return;
 
       setTurns((previous) => [...previous, buildYouTurn(nextTurnId(), text)]);
-      setTitle((previous) => previous ?? deriveConversationTitle(text));
       setQuestion("");
       setCitationNotice(null);
       setAsking(true);
@@ -303,6 +310,8 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     return () => window.removeEventListener("keydown", handleGlobalShortcut);
   }, []);
 
+  const previewUrls = useCitationPreviews(apiClient, workspace?.id, turns);
+
   if (!workspace) {
     return (
       <div className="empty-state" role="status">
@@ -341,7 +350,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
         <h3>Conversation not found</h3>
         <p className="micro-meta">This conversation does not exist, or is not yours.</p>
         <Link to="/ask" className="btn btn-secondary">
-          + New chat
+          Ask Raffa
         </Link>
       </div>
     );
@@ -360,17 +369,15 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   }
 
   const hasTurns = turns.length > 0;
+  const headerTitle = boundTitle ?? ASK_FALLBACK_TITLE;
 
   return (
     <div className="ask-screen">
       {hasTurns && (
         <div className="ask-screen-header">
           <div>
-            <h2 className="screen-title">{title ?? "New chat"}</h2>
+            <h2 className="screen-title">{headerTitle}</h2>
           </div>
-          <Link to="/ask" className="btn btn-secondary">
-            + New chat
-          </Link>
         </div>
       )}
 
@@ -418,7 +425,11 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
                 <div key={turn.id} className="ask-message" data-role="raffa">
                   <div className="ask-message-who">Raffa</div>
                   <div className="ask-message-content">
-                    <ReplyBody reply={turn.reply} onOpenCitation={(citation) => openCitation(turn, citation)} onFollowUp={ask} />
+                    <ReplyBody
+                      reply={applyCitationPreviews(turn.reply, previewUrls)}
+                      onOpenCitation={(citation) => openCitation(turn, citation)}
+                      onFollowUp={ask}
+                    />
                     {citationNotice !== null && citationNotice.turnId === turn.id && (
                       <p className="hint" role="status">
                         [{citationNotice.n}] {citationNotice.text}

@@ -497,6 +497,63 @@ public sealed class DocumentsV2EndpointTests : IClassFixture<RaffaApiFactory>
     }
 
     [Fact]
+    public async Task Delete_all_is_admin_only_and_cascades_portfolio_renewals_and_scoped_chats()
+    {
+        var host = CreateHost();
+        var client = host.Factory.CreateClient();
+        var tenantId = Guid.NewGuid();
+        var documentId = await UploadAsync(host, tenantId, "msa.pdf");
+
+        var list = await ReadJsonAsync(await GetAsync(client, "/api/documents", tenantId.ToString()));
+        var contractId = list.RootElement.GetProperty("items")[0].GetProperty("contractId").GetGuid();
+
+        const string adminEmail = "admin@acme.example";
+        const string procurementEmail = "buyer@acme.example";
+        await SeedMembershipAsync(host, tenantId, adminEmail, WorkspaceRoleName.Admin);
+        await SeedMembershipAsync(host, tenantId, procurementEmail, WorkspaceRoleName.Procurement);
+
+        var scopedChat = await SendJsonAsync(
+            client, HttpMethod.Post, "/api/conversations", tenantId.ToString(),
+            $"{{\"scopeContractId\":\"{contractId}\"}}", userId: adminEmail);
+        Assert.Equal(HttpStatusCode.Created, scopedChat.StatusCode);
+
+        var unscopedChat = await SendJsonAsync(
+            client, HttpMethod.Post, "/api/conversations", tenantId.ToString(), "{}", userId: adminEmail);
+        Assert.Equal(HttpStatusCode.Created, unscopedChat.StatusCode);
+        using var unscopedBody = JsonDocument.Parse(await unscopedChat.Content.ReadAsStringAsync());
+        var unscopedId = unscopedBody.RootElement.GetProperty("id").GetGuid();
+
+        var renewal = await SendJsonAsync(
+            client, HttpMethod.Post, $"/api/renewals/{contractId}/action", tenantId.ToString(),
+            """{"owner":"Alex","status":"InProgress","action":"Call supplier"}""", userId: adminEmail);
+        Assert.Equal(HttpStatusCode.OK, renewal.StatusCode);
+
+        Assert.Equal(
+            HttpStatusCode.Forbidden,
+            (await SendAsync(client, HttpMethod.Delete, "/api/documents", tenantId.ToString(), userId: procurementEmail)).StatusCode);
+
+        var wipe = await SendAsync(client, HttpMethod.Delete, "/api/documents", tenantId.ToString(), userId: adminEmail);
+        Assert.Equal(HttpStatusCode.NoContent, wipe.StatusCode);
+
+        var afterDocs = await ReadJsonAsync(await GetAsync(client, "/api/documents", tenantId.ToString()));
+        Assert.Equal(0, afterDocs.RootElement.GetProperty("totalCount").GetInt32());
+
+        var portfolio = await ReadJsonAsync(await GetAsync(client, "/api/contracts", tenantId.ToString()));
+        Assert.Empty(portfolio.RootElement.GetProperty("items").EnumerateArray());
+
+        var chatsResponse = await SendAsync(client, HttpMethod.Get, "/api/conversations", tenantId.ToString(), userId: adminEmail);
+        var chats = await ReadJsonAsync(chatsResponse);
+        var remaining = chats.RootElement.EnumerateArray().ToList();
+        Assert.Equal(unscopedId, Assert.Single(remaining).GetProperty("id").GetGuid());
+
+        Assert.Equal(
+            HttpStatusCode.NotFound,
+            (await SendAsync(client, HttpMethod.Get, $"/api/renewals/{contractId}/action", tenantId.ToString(), userId: adminEmail)).StatusCode);
+
+        Assert.Contains(host.Audit.Entries, e => e.Action == "document.purged_all");
+    }
+
+    [Fact]
     public async Task A_caller_with_no_role_header_is_resolved_through_the_workspace_membership()
     {
         var host = CreateHost();

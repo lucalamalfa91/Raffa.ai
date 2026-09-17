@@ -94,6 +94,7 @@ public static class DocumentsEndpointExtensions
         endpoints.MapPost("/api/documents/{id}/reprocess", ReprocessDocumentAsync);
         endpoints.MapPost("/api/documents/{id}/prioritise", PrioritiseDocumentAsync);
         endpoints.MapPost("/api/documents/{id}/validate", ValidateDocumentAsync);
+        endpoints.MapDelete("/api/documents", DeleteAllDocumentsAsync);
         endpoints.MapDelete("/api/documents/{id}", DeleteDocumentAsync);
         return endpoints;
     }
@@ -649,6 +650,37 @@ public static class DocumentsEndpointExtensions
 
         // The audit row (document.deleted) is written by the service itself, inside the tenant
         // scope the RLS-protected audit table requires — see DocumentDeleteService.
+        return Results.NoContent();
+    }
+
+    /// <summary>
+    /// Admin-only bulk wipe: every document in the tenant, then portfolio contracts those files
+    /// built, renewal rows for those contracts, and Ask chats scoped to them. 204 even when the
+    /// tenant already had nothing — idempotent. Procurement is 403, same gate as single delete.
+    /// </summary>
+    private static async Task<IResult> DeleteAllDocumentsAsync(
+        HttpContext httpContext,
+        DocumentPurgeAllService purgeService,
+        WorkspaceRoleResolver roleResolver,
+        ICallerContext callerContext,
+        CancellationToken cancellationToken)
+    {
+        var request = httpContext.Request;
+        var caller = await callerContext.ResolveTenantAsync(request, cancellationToken);
+        if (caller.Failure is not null)
+        {
+            return caller.Failure;
+        }
+
+        using var callerTenantScope = caller.Scope;
+        var tenantId = caller.TenantId;
+
+        if (!await roleResolver.IsAdminAsync(httpContext, tenantId, cancellationToken))
+        {
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
+        }
+
+        await purgeService.PurgeAsync(tenantId, caller.Identity!, cancellationToken).ConfigureAwait(false);
         return Results.NoContent();
     }
 

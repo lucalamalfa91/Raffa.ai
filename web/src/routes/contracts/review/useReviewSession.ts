@@ -177,10 +177,11 @@ export function useReviewSession(
   const accept = useCallback(
     async (name: CorrectableFieldName) => {
       const row = rows.find((candidate) => candidate.name === name);
-      if (row?.proposalPending) {
-        // The pipeline recorded this proposal but did not apply it (a supplier below the critical
-        // bar): accepting it *is* the correction the backend is waiting for -- a real write that
-        // links the supplier, which is what makes it show on the Documents row and in Ask.
+      // Any fact still pending review can be accepted — including after the document is already
+      // `Completed`. A no-op here is what made Accept look dead on validated contracts: only
+      // unapplied proposals used to write. The same `correctContract` write stamps the extracted
+      // value as a human decision whether the pipeline had applied it or not.
+      if (row && !row.missing && row.decision === "pending" && row.rawValue !== "") {
         await correct(name, row.rawValue, "Accepted as extracted.");
       }
     },

@@ -425,7 +425,7 @@ orchestrations:
   # (no base_branch) would root at output_dir `reports/` and hide infra/.
   # run.ps1/run.sh call ensure_artifact_git when this folder is not already
   # its own toplevel (otherwise Helix worktrees helix-artifacts).
-  # max_parallel (6 since w15) is the DAG width ceiling after auto_level_phases.
+  # max_parallel (3; was 6 since w15) is the DAG width ceiling after auto_level_phases.
   # over MUST exist at validate time -- do not delete the placeholder.
   # fan_out.write_back is INERT. The PR is orchestrations[].hooks
   # on_orchestration_stop (success path only; error → on_orchestration_error).
@@ -458,13 +458,9 @@ orchestrations:
       isolation: git-worktree
       base_branch: main
       integration_branch: integration
-      # 6, was 3: the w14 fan-out took 441 min for 11 tasks at 3 in flight —
-      # 70 % of a wave's wall clock. Phase barriers still bound the real
-      # degree; the cost is up to six concurrent Claude Code sessions
-      # (machine load, rate limits) and more exposure to the worktree-teardown
-      # bug seen on w14 (stakeholder ruling 2026-09-13; revert to 3 if the
-      # engine misbehaves under load).
-      max_parallel: 6
+      # 3: reverted from 6 after w18 ProcessError (sibling CLI teardown).
+      # Raise again only after Helix ADR-0152 lands.
+      max_parallel: 3
       # 3: Connection lost mid-response is TRANSIENT (Helix wraps ResultError);
       # genuine IMPLEMENTATION_GAPS stay TERMINAL and do not consume retries.
       max_task_attempts: 3

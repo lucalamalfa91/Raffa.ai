@@ -39,6 +39,7 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     createConversation: vi.fn(),
     getConversation: vi.fn(),
     postMessage: vi.fn(),
+    deleteConversation: vi.fn(),
     getCapabilities: vi.fn(),
     getMarketRecord: vi.fn(),
     getQuoteBenchmarkHistory: vi.fn(),
@@ -46,6 +47,7 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     getDocumentPreviewUrl: vi.fn(),
     reprocessDocument: vi.fn(),
     deleteDocument: vi.fn(),
+    deleteAllDocuments: vi.fn(),
     prioritiseDocument: vi.fn(),
     getPortfolio: vi.fn(),
     getContract360: vi.fn(),
@@ -483,7 +485,7 @@ describe("DocumentsRoute (task E13/F09/US01/T03, web-documents-v2)", () => {
     expect(await screen.findByText("Attention.pdf")).toBeInTheDocument();
     expect(screen.queryByText("Askable.pdf")).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: /all documents/i }));
+    await userEvent.click(screen.getByRole("button", { name: /^All documents/ }));
 
     expect(await screen.findByText("Askable.pdf")).toBeInTheDocument();
   });
@@ -659,5 +661,21 @@ describe("DocumentsRoute (task E13/F09/US01/T03, web-documents-v2)", () => {
 
     await screen.findByText("Salesforce_MSA.pdf");
     expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete all documents" })).not.toBeInTheDocument();
+  });
+
+  it("asks Admin to confirm before wiping every document, then reloads the list", async () => {
+    const items = [docItem({ processingStatus: "NeedsReview" })];
+    const listDocuments = vi.fn().mockResolvedValue(listOk(items));
+    const deleteAllDocuments = vi.fn().mockResolvedValue({ ok: true, statusCode: 204, error: null });
+    renderDocuments(mockApiClient({ listDocuments, deleteAllDocuments }));
+
+    await screen.findByText("Salesforce_MSA.pdf");
+    await userEvent.click(screen.getByRole("button", { name: "Delete all documents" }));
+    expect(deleteAllDocuments).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole("button", { name: "Confirm delete all" }));
+    await waitFor(() => expect(deleteAllDocuments).toHaveBeenCalledWith(WORKSPACE_ID));
+    await waitFor(() => expect(listDocuments.mock.calls.length).toBeGreaterThan(1));
   });
 });

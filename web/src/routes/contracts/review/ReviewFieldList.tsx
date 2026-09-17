@@ -91,9 +91,11 @@ export default function ReviewFieldList({
                     </div>
                   ) : row.decision === "accepted" ? (
                     <div className="review-decision-actions">
-                      {row.evidenceDecision !== "auto_accepted" ? (
-                        <span className="micro-meta">Accepted by you</span>
-                      ) : null}
+                      {row.evidenceDecision === "auto_accepted" ? (
+                        <span className="micro-meta review-decision-result">Accepted automatically</span>
+                      ) : (
+                        <span className="micro-meta review-decision-result">Accepted by you</span>
+                      )}
                       <button type="button" className="btn btn-ghost" onClick={() => onSelect(row.name)}>
                         Correct
                       </button>

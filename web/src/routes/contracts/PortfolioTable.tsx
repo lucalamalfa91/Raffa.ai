@@ -1,5 +1,15 @@
+import { useMemo, useState, type ChangeEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { formatAnnualSpend, formatAutoRenewal, formatDateOnly, getContractTypeLabel, getPortfolioRiskTag, getPortfolioStatusTag } from "./portfolioTableFormatters";
+import {
+  EMPTY_PORTFOLIO_COLUMN_FILTERS,
+  filterPortfolioRows,
+  getPortfolioRiskFilterOptions,
+  getPortfolioStatusFilterOptions,
+  isPortfolioColumnFilterActive,
+  PORTFOLIO_AUTO_FILTER_OPTIONS,
+  type PortfolioColumnFilters,
+} from "./portfolioColumnFilters";
 import type { PortfolioRow } from "./portfolioViewModel";
 
 /**
@@ -20,6 +30,64 @@ export interface PortfolioTableProps {
   moreColumns: boolean;
 }
 
+function ColumnTextFilter({
+  id,
+  label,
+  value,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <input
+      id={id}
+      className="input portfolio-col-filter"
+      type="search"
+      value={value}
+      aria-label={label}
+      onChange={(event: ChangeEvent<HTMLInputElement>) => onChange(event.target.value)}
+      onClick={(event) => event.stopPropagation()}
+    />
+  );
+}
+
+function ColumnSelectFilter({
+  id,
+  label,
+  value,
+  options,
+  allLabel,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: string | null;
+  options: readonly string[];
+  allLabel: string;
+  onChange: (value: string | null) => void;
+}) {
+  return (
+    <select
+      id={id}
+      className="input portfolio-col-filter"
+      value={value ?? ""}
+      aria-label={label}
+      onChange={(event) => onChange(event.target.value === "" ? null : event.target.value)}
+      onClick={(event) => event.stopPropagation()}
+    >
+      <option value="">{allLabel}</option>
+      {options.map((option) => (
+        <option key={option} value={option}>
+          {option}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 /**
  * The V2 Portfolio table (screens-v2.md #6; `raffa-v2/markup.html` "PORTFOLIO" block): Supplier ·
  * Contract · Annual spend · Ends · Give notice by (+ "· N d") [· Start · Auto · Risk when "More
@@ -33,92 +101,155 @@ export interface PortfolioTableProps {
  * layered on top of it, never the only way in. Supplier is the wire's own `supplierName` (R-SUP-04),
  * an honest "—" when no supplier is linked; Contract shows the type label -- `Contract` has no
  * title field, the same proxy every other screen uses for this gap.
+ *
+ * Column filters live in each header cell (not a disconnected toolbar): text contains on Supplier /
+ * Contract / spend / dates, selects on Auto / Risk / Status. Filtering is client-side over the
+ * already-loaded page, the same presentation-only shape Savings uses.
  */
 export default function PortfolioTable({ rows, moreColumns }: PortfolioTableProps) {
   const navigate = useNavigate();
+  const [filters, setFilters] = useState<PortfolioColumnFilters>(EMPTY_PORTFOLIO_COLUMN_FILTERS);
+
+  const visibleRows = useMemo(() => filterPortfolioRows(rows, filters), [rows, filters]);
+  const statusOptions = useMemo(() => getPortfolioStatusFilterOptions(rows), [rows]);
+  const riskOptions = useMemo(() => getPortfolioRiskFilterOptions(rows), [rows]);
+  const filtersActive = isPortfolioColumnFilterActive(filters);
+
+  const patchFilters = (patch: Partial<PortfolioColumnFilters>) => {
+    setFilters((current) => ({ ...current, ...patch }));
+  };
 
   return (
     <div className="portfolio-table-wrapper">
+      {filtersActive && (
+        <div className="portfolio-filter-clear">
+          <button type="button" className="btn-ghost" onClick={() => setFilters(EMPTY_PORTFOLIO_COLUMN_FILTERS)}>
+            Clear filters
+          </button>
+        </div>
+      )}
       <table className="table portfolio-table">
         <thead>
           <tr>
             <th scope="col" className="portfolio-col-supplier">
-              Supplier
+              <span>Supplier</span>
+              <ColumnTextFilter id="portfolio-filter-supplier" label="Filter by supplier" value={filters.supplier} onChange={(supplier) => patchFilters({ supplier })} />
             </th>
-            <th scope="col">Contract</th>
+            <th scope="col">
+              <span>Contract</span>
+              <ColumnTextFilter id="portfolio-filter-contract" label="Filter by contract" value={filters.contract} onChange={(contract) => patchFilters({ contract })} />
+            </th>
             <th scope="col" className="portfolio-table-numeric portfolio-col-spend">
-              Annual spend
+              <span>Annual spend</span>
+              <ColumnTextFilter id="portfolio-filter-spend" label="Filter by annual spend" value={filters.spend} onChange={(spend) => patchFilters({ spend })} />
             </th>
             <th scope="col" className="portfolio-col-ends">
-              Ends
+              <span>Ends</span>
+              <ColumnTextFilter id="portfolio-filter-ends" label="Filter by end date" value={filters.ends} onChange={(ends) => patchFilters({ ends })} />
             </th>
             <th scope="col" className="portfolio-col-notice">
-              Give notice by
+              <span>Give notice by</span>
+              <ColumnTextFilter id="portfolio-filter-notice" label="Filter by notice date" value={filters.notice} onChange={(notice) => patchFilters({ notice })} />
             </th>
             {moreColumns && (
               <>
                 <th scope="col" className="portfolio-col-start">
-                  Start
+                  <span>Start</span>
+                  <ColumnTextFilter id="portfolio-filter-start" label="Filter by start date" value={filters.start} onChange={(start) => patchFilters({ start })} />
                 </th>
                 <th scope="col" className="portfolio-col-auto">
-                  Auto
+                  <span>Auto</span>
+                  <ColumnSelectFilter
+                    id="portfolio-filter-auto"
+                    label="Filter by auto-renewal"
+                    value={filters.auto}
+                    options={PORTFOLIO_AUTO_FILTER_OPTIONS}
+                    allLabel="All"
+                    onChange={(auto) => patchFilters({ auto })}
+                  />
                 </th>
                 <th scope="col" className="portfolio-col-risk">
-                  Risk
+                  <span>Risk</span>
+                  <ColumnSelectFilter
+                    id="portfolio-filter-risk"
+                    label="Filter by risk"
+                    value={filters.risk}
+                    options={riskOptions}
+                    allLabel="All"
+                    onChange={(risk) => patchFilters({ risk })}
+                  />
                 </th>
               </>
             )}
             <th scope="col" className="portfolio-col-status">
-              Status
+              <span>Status</span>
+              <ColumnSelectFilter
+                id="portfolio-filter-status"
+                label="Filter by status"
+                value={filters.status}
+                options={statusOptions}
+                allLabel="All"
+                onChange={(status) => patchFilters({ status })}
+              />
             </th>
           </tr>
         </thead>
         <tbody>
-          {rows.map(({ item, cancelDays, isUrgent, isPending }) => {
-            const statusTag = getPortfolioStatusTag(item.status);
-            const riskTag = getPortfolioRiskTag(item.risk);
-            const contractHref = `/contracts/${item.contractId}`;
-            const contractLabel = getContractLabel(isPending, item.fileName, item.type);
+          {visibleRows.length === 0 ? (
+            <tr>
+              <td colSpan={moreColumns ? 9 : 6}>
+                <p className="micro-meta" role="status">
+                  No contracts match the selected filters. Clear a column filter to see the full list.
+                </p>
+              </td>
+            </tr>
+          ) : (
+            visibleRows.map(({ item, cancelDays, isUrgent, isPending }) => {
+              const statusTag = getPortfolioStatusTag(item.status);
+              const riskTag = getPortfolioRiskTag(item.risk);
+              const contractHref = `/contracts/${item.contractId}`;
+              const contractLabel = getContractLabel(isPending, item.fileName, item.type);
 
-            return (
-              <tr
-                key={item.contractId}
-                className={`portfolio-row${isUrgent ? " row-critical" : ""}${isPending ? " row-pending" : ""}`}
-                onClick={(event) => {
-                  // The Contract cell's own <Link> handles its click natively; everywhere else on
-                  // the row, follow it (markup.html's `cg-row` row click).
-                  if ((event.target as HTMLElement).closest("a") !== null) return;
-                  navigate(contractHref);
-                }}
-              >
-                <td className="portfolio-cell-supplier">{item.supplierName ?? "—"}</td>
-                <td className="portfolio-cell-contract">
-                  {/* w17: pending rows link to contract 360 but show the filename as the label */}
-                  <Link to={contractHref} title={isPending ? item.fileName ?? undefined : undefined}>
-                    {contractLabel}
-                  </Link>
-                </td>
-                <td className="portfolio-table-numeric portfolio-cell-spend">{formatAnnualSpend(item.annualSpend)}</td>
-                <td>{formatDateOnly(item.endDate)}</td>
-                <td className={isUrgent ? "portfolio-cell-notice deadline-critical" : "portfolio-cell-notice"}>
-                  {formatDateOnly(item.cancellationDeadline)}
-                  {cancelDays !== null && <span className="portfolio-notice-days"> · {cancelDays} d</span>}
-                </td>
-                {moreColumns && (
-                  <>
-                    <td className="portfolio-cell-start">{formatDateOnly(item.startDate)}</td>
-                    <td>{formatAutoRenewal(item.autoRenewal)}</td>
-                    <td>
-                      <span className={`tag tag-${riskTag.variant}`}>{riskTag.label}</span>
-                    </td>
-                  </>
-                )}
-                <td>
-                  <span className={`tag tag-${statusTag.variant}`}>{statusTag.label}</span>
-                </td>
-              </tr>
-            );
-          })}
+              return (
+                <tr
+                  key={item.contractId}
+                  className={`portfolio-row${isUrgent ? " row-critical" : ""}${isPending ? " row-pending" : ""}`}
+                  onClick={(event) => {
+                    // The Contract cell's own <Link> handles its click natively; everywhere else on
+                    // the row, follow it (markup.html's `cg-row` row click). Filter controls in the
+                    // header never reach here.
+                    if ((event.target as HTMLElement).closest("a") !== null) return;
+                    navigate(contractHref);
+                  }}
+                >
+                  <td className="portfolio-cell-supplier">{item.supplierName ?? "—"}</td>
+                  <td className="portfolio-cell-contract">
+                    <Link to={contractHref} title={isPending ? item.fileName ?? undefined : undefined}>
+                      {contractLabel}
+                    </Link>
+                  </td>
+                  <td className="portfolio-table-numeric portfolio-cell-spend">{formatAnnualSpend(item.annualSpend)}</td>
+                  <td>{formatDateOnly(item.endDate)}</td>
+                  <td className={isUrgent ? "portfolio-cell-notice deadline-critical" : "portfolio-cell-notice"}>
+                    {formatDateOnly(item.cancellationDeadline)}
+                    {cancelDays !== null && <span className="portfolio-notice-days"> · {cancelDays} d</span>}
+                  </td>
+                  {moreColumns && (
+                    <>
+                      <td className="portfolio-cell-start">{formatDateOnly(item.startDate)}</td>
+                      <td>{formatAutoRenewal(item.autoRenewal)}</td>
+                      <td>
+                        <span className={`tag tag-${riskTag.variant}`}>{riskTag.label}</span>
+                      </td>
+                    </>
+                  )}
+                  <td>
+                    <span className={`tag tag-${statusTag.variant}`}>{statusTag.label}</span>
+                  </td>
+                </tr>
+              );
+            })
+          )}
         </tbody>
       </table>
     </div>

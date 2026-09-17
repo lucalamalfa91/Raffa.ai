@@ -32,6 +32,7 @@ function mockApiClient(getPortfolio: ApiClient["getPortfolio"] = vi.fn()): ApiCl
     getDocumentPreviewUrl: vi.fn(),
     reprocessDocument: vi.fn(),
     deleteDocument: vi.fn(),
+    deleteAllDocuments: vi.fn(),
     prioritiseDocument: vi.fn(),
     getPortfolio,
     // This suite only exercises /contracts (PortfolioRoute itself) -- every other call is a bare
@@ -59,6 +60,7 @@ function mockApiClient(getPortfolio: ApiClient["getPortfolio"] = vi.fn()): ApiCl
     createConversation: vi.fn(),
     getConversation: vi.fn(),
     postMessage: vi.fn(),
+    deleteConversation: vi.fn(),
     getCapabilities: vi.fn(),
     getMarketRecord: vi.fn(),
     // Task E25/F04/US01/T01 (quote-benchmark-backend) added this member to `ApiClient` after this
@@ -318,7 +320,7 @@ describe("PortfolioRoute (V2, screens-v2.md #6 / markup.html PORTFOLIO block)", 
     );
 
     const table = await screen.findByRole("table");
-    expect(within(table).getAllByRole("columnheader").map((cell) => cell.textContent)).toEqual([
+    expect(within(table).getAllByRole("columnheader").map((cell) => cell.querySelector("span")?.textContent)).toEqual([
       "Supplier",
       "Contract",
       "Annual spend",
@@ -345,7 +347,7 @@ describe("PortfolioRoute (V2, screens-v2.md #6 / markup.html PORTFOLIO block)", 
     fireEvent.click(toggle);
 
     expect(screen.getByRole("button", { name: "Fewer columns" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getAllByRole("columnheader").map((cell) => cell.textContent)).toEqual([
+    expect(screen.getAllByRole("columnheader").map((cell) => cell.querySelector("span")?.textContent)).toEqual([
       "Supplier",
       "Contract",
       "Annual spend",
@@ -356,8 +358,9 @@ describe("PortfolioRoute (V2, screens-v2.md #6 / markup.html PORTFOLIO block)", 
       "Risk",
       "Status",
     ]);
-    expect(screen.getByText("High risk")).toBeInTheDocument();
-    expect(screen.getByText("Yes")).toBeInTheDocument();
+    const tbody = screen.getByRole("table").querySelector("tbody") as HTMLElement;
+    expect(within(tbody).getByText("High risk")).toBeInTheDocument();
+    expect(within(tbody).getByText("Yes")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Fewer columns" }));
     expect(screen.queryByText("Start")).toBeNull();
@@ -383,12 +386,9 @@ describe("PortfolioRoute (V2, screens-v2.md #6 / markup.html PORTFOLIO block)", 
   });
 });
 
-// Task E24/F01/US02/T01 (story us-02-portfolio-category-web; closes NW-23). Proves the whole
-// screen's own contract, not just the control's (`PortfolioFilterControl.test.tsx`): applying
-// issues `GET /api/contracts` with `?category=` via the `getPortfolio` wrapper (AC-1), the filter
-// is the router's own query parameter and nothing else (AC-2), and clearing re-loads the full,
-// unfiltered portfolio (AC-3).
-describe("PortfolioRoute -- category filter (task E24/F01/US02/T01, closes NW-23)", () => {
+// Column filters live in the table headers. `?category=` is still forwarded to getPortfolio so a
+// shared link keeps working; it is no longer a disconnected Category + Apply toolbar.
+describe("PortfolioRoute -- column filters", () => {
   beforeEach(() => {
     window.sessionStorage.clear();
     window.sessionStorage.setItem(
@@ -397,38 +397,50 @@ describe("PortfolioRoute -- category filter (task E24/F01/US02/T01, closes NW-23
     );
   });
 
-  it("AC-1/AC-2: loads unfiltered, then applying a category re-issues getPortfolio with ?category=", async () => {
-    const getPortfolio = vi.fn().mockResolvedValue(ok([]));
-    renderPortfolio(mockApiClient(getPortfolio));
-
-    await screen.findByLabelText("Category");
-    expect(getPortfolio).toHaveBeenNthCalledWith(1, WORKSPACE_ID, expect.objectContaining({ category: undefined }));
-
-    fireEvent.change(screen.getByLabelText("Category"), { target: { value: "Software" } });
-    fireEvent.click(screen.getByRole("button", { name: /^apply$/i }));
-
-    expect(getPortfolio).toHaveBeenCalledTimes(2);
-    expect(getPortfolio).toHaveBeenNthCalledWith(2, WORKSPACE_ID, expect.objectContaining({ category: "Software" }));
-  });
-
-  it("AC-3: clearing an applied filter re-loads the full portfolio (no category)", async () => {
+  it("forwards ?category= from the URL to getPortfolio", async () => {
     const getPortfolio = vi.fn().mockResolvedValue(ok([]));
     renderPortfolio(mockApiClient(getPortfolio), "/contracts?category=Software");
 
-    const clearButton = await screen.findByRole("button", { name: /clear filter/i });
-    expect(getPortfolio).toHaveBeenNthCalledWith(1, WORKSPACE_ID, expect.objectContaining({ category: "Software" }));
-
-    fireEvent.click(clearButton);
-
-    expect(getPortfolio).toHaveBeenCalledTimes(2);
-    expect(getPortfolio).toHaveBeenNthCalledWith(2, WORKSPACE_ID, expect.objectContaining({ category: undefined }));
+    await screen.findByText("Nothing to triage yet");
+    expect(getPortfolio).toHaveBeenCalledWith(WORKSPACE_ID, expect.objectContaining({ category: "Software" }));
   });
 
-  it("stays visible (and clearable) when a category matches nothing, alongside the zero-state reroute", async () => {
-    renderPortfolio(mockApiClient(vi.fn().mockResolvedValue(ok([]))), "/contracts?category=NoSuchCategory");
+  it("filters visible rows from the Supplier column header, without a second fetch", async () => {
+    const getPortfolio = vi.fn().mockResolvedValue(
+      ok([
+        item({ contractId: "c-1", supplierName: "Salesforce" }),
+        item({ contractId: "c-2", supplierName: "Microsoft" }),
+      ]),
+    );
+    renderPortfolio(mockApiClient(getPortfolio));
 
-    expect(await screen.findByRole("button", { name: /clear filter/i })).toBeInTheDocument();
-    expect(screen.getByLabelText("Category")).toHaveValue("NoSuchCategory");
-    expect(screen.getByText("Nothing to triage yet")).toBeInTheDocument();
+    const table = await screen.findByRole("table");
+    expect(within(table).getByText("Salesforce")).toBeInTheDocument();
+    expect(within(table).getByText("Microsoft")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Filter by supplier"), { target: { value: "micro" } });
+
+    expect(within(table).queryByText("Salesforce")).not.toBeInTheDocument();
+    expect(within(table).getByText("Microsoft")).toBeInTheDocument();
+    expect(getPortfolio).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: /clear filters/i }));
+    expect(within(table).getByText("Salesforce")).toBeInTheDocument();
+  });
+
+  it("filters by Status from the column header select", async () => {
+    const getPortfolio = vi.fn().mockResolvedValue(
+      ok([
+        item({ contractId: "c-1", supplierName: "Salesforce", status: "active" }),
+        item({ contractId: "c-2", supplierName: "Microsoft", status: "expired" }),
+      ]),
+    );
+    renderPortfolio(mockApiClient(getPortfolio));
+
+    const table = await screen.findByRole("table");
+    fireEvent.change(screen.getByLabelText("Filter by status"), { target: { value: "Expired" } });
+
+    expect(within(table).queryByText("Salesforce")).not.toBeInTheDocument();
+    expect(within(table).getByText("Microsoft")).toBeInTheDocument();
   });
 });

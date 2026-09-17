@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { ApiClient, CapabilityBody } from "../../api/client";
 import type { WorkspaceRole } from "../shell/navItems";
+import { isAskRoute } from "../shell/isAskRoute";
 import { getAskBarCopy } from "./askSuggestions";
 import "./ask-bar.css";
 
@@ -46,14 +47,17 @@ export default function GlobalAskBar({ kbReady, role, apiClient }: GlobalAskBarP
   const [value, setValue] = useState("");
   const [capabilities, setCapabilities] = useState<readonly CapabilityBody[] | null>(null);
   const copy = getAskBarCopy(location.pathname, kbReady, capabilities, role);
+  const hiddenOnAskScreen = isAskRoute(location.pathname);
 
   useEffect(() => {
+    if (hiddenOnAskScreen) return;
     void apiClient.getCapabilities().then((result) => {
       setCapabilities(result.ok && result.catalog ? result.catalog.capabilities : null);
     });
-  }, [apiClient]);
+  }, [apiClient, hiddenOnAskScreen]);
 
   useEffect(() => {
+    if (hiddenOnAskScreen) return;
     function handleGlobalShortcut(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
@@ -62,7 +66,11 @@ export default function GlobalAskBar({ kbReady, role, apiClient }: GlobalAskBarP
     }
     window.addEventListener("keydown", handleGlobalShortcut);
     return () => window.removeEventListener("keydown", handleGlobalShortcut);
-  }, []);
+  }, [hiddenOnAskScreen]);
+
+  if (hiddenOnAskScreen) {
+    return null;
+  }
 
   const submit = (query: string) => {
     const trimmed = query.trim();

@@ -4,7 +4,6 @@ import type { ApiClient, DocumentListPageBody, GetPortfolioResult, PortfolioList
 import { loadCurrentWorkspace } from "../signin/workspaceStore";
 import { CHECK_AGAIN_LABEL, UPDATES_PAUSED_NOTICE, usePollBudget } from "../../components/shell/usePollBudget";
 import PortfolioTable from "./PortfolioTable";
-import PortfolioFilterControl from "./PortfolioFilterControl";
 import {
   buildPortfolioRows,
   buildPortfolioSummary,
@@ -12,7 +11,6 @@ import {
   moreColumnsLabel,
   PORTFOLIO_SUMMARY_OFF,
   readCategoryFilter,
-  withCategoryFilter,
 } from "./portfolioViewModel";
 import "./contracts.css";
 
@@ -77,17 +75,14 @@ export function getPortfolioZeroCopy(variant: PortfolioZeroVariant): { sentence:
  * counts re-read on the shared 2 s cadence (also when rows are already on screen, so later
  * completions appear without a remount); the five-minute no-change budget still applies.
  *
- * **Category filter (task E24/F01/US02/T01, closes NW-23).** `PortfolioFilterControl` reads and
- * writes the route's own `?category=` search parameter (`portfolioViewModel.ts#readCategoryFilter`/
- * `withCategoryFilter`) -- never a component store -- so applying or clearing it re-issues this same
- * `GET /api/contracts` call with (or without) `category` set, the same "one fetch, server is the
- * filter" shape the rest of this doc comment already describes. Visible whenever the page has
- * loaded (including a filtered-to-zero result), so a filter that matches nothing can always be
- * cleared.
+ * **Column filters.** Each table header carries a compact filter for that column (text contains on
+ * Supplier / Contract / spend / dates; selects on Auto / Risk / Status). Filtering is client-side
+ * over the already-loaded page. `?category=` on the URL still reaches `GET /api/contracts` so a
+ * shared link keeps working; it is no longer a disconnected toolbar above the table.
  */
 export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
   const workspace = loadCurrentWorkspace();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   // Task E24/F01/US02/T01 (story us-02-portfolio-category-web; closes NW-23): the only state this
   // filter has. Never copied into a `useState` -- re-read from the URL on every render, so a
   // shared link, a reload or the browser's back/forward all reproduce the same filtered request
@@ -217,16 +212,6 @@ export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
           </div>
         )}
       </header>
-
-      {ready && (
-        // Visible whenever the page has loaded, including a filtered-to-zero result (AC-3: the
-        // operator must always be able to clear a filter that matched nothing).
-        <PortfolioFilterControl
-          category={category}
-          onApply={(next) => setSearchParams(withCategoryFilter(searchParams, next))}
-          onClear={() => setSearchParams(withCategoryFilter(searchParams, ""))}
-        />
-      )}
 
       {fetchState.phase === "loading" && (
         <div className="portfolio-skeleton" role="status" aria-live="polite">

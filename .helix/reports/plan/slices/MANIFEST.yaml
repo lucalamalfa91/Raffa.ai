@@ -469,6 +469,45 @@
       "mode": "next",
       "source": "inputs/next/w18-todo.md",
       "requirements": "reports/context/waves/w18-requirements.md"
+    },
+    {
+      "id": "w19",
+      "title": "W19 \u2014 Ask Raffa wow answers: evidence-based savings, a bound notice date, a negotiation strategy that writes Renewals",
+      "previous": "w18",
+      "tokens": 19400000,
+      "tasks": 19,
+      "epic": "E27, E28, E29, E30, E31",
+      "integration": false,
+      "checks": [
+        "github_auth",
+        "github_org",
+        "github_repos",
+        "hitl_previous"
+      ],
+      "stories": [
+        "E27/F01/US01",
+        "E27/F02/US01",
+        "E27/F03/US01",
+        "E27/F04/US01",
+        "E27/F05/US01",
+        "E28/F01/US01",
+        "E28/F02/US01",
+        "E28/F03/US01",
+        "E28/F03/US02",
+        "E29/F01/US01",
+        "E29/F02/US01",
+        "E29/F03/US01",
+        "E29/F04/US01",
+        "E30/F01/US01",
+        "E30/F02/US01",
+        "E31/F01/US01",
+        "E31/F02/US01",
+        "E31/F03/US01",
+        "E31/F04/US01"
+      ],
+      "mode": "next",
+      "source": "inputs/next/2026-09-16-ask-raffa-wow.md",
+      "requirements": "reports/context/waves/w19-requirements.md"
     }
   ]
 }

@@ -206,4 +206,36 @@ public sealed class RenewalActionService(
             a => a.ContractId,
             a => new RenewalActionResult(a.ContractId, a.Owner, a.Status, a.Action, a.UpdatedAt));
     }
+
+    /// <summary>
+    /// Removes every persisted action row for the given contracts in this tenant. Used by the
+    /// host's bulk document purge so a wiped contract does not leave a dangling renewal tracker.
+    /// </summary>
+    public async Task<int> DeleteForContractsAsync(
+        TenantId tenantId,
+        IReadOnlyCollection<EntityId> contractIds,
+        CancellationToken cancellationToken = default)
+    {
+        if (contractIds.Count == 0)
+        {
+            return 0;
+        }
+
+        using var _ = tenantContext.BeginScope(tenantId);
+
+        var idList = contractIds.ToList();
+        var rows = await dbContext.RenewalActions
+            .Where(a => a.TenantId == tenantId && idList.Contains(a.ContractId))
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        if (rows.Count == 0)
+        {
+            return 0;
+        }
+
+        dbContext.RenewalActions.RemoveRange(rows);
+        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        return rows.Count;
+    }
 }

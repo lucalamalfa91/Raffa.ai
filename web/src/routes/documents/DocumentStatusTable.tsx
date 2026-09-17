@@ -222,12 +222,12 @@ export default function DocumentStatusTable({
                     ) : null}
                   </td>
                   {isAdmin && (
-                    <td>
+                    <td className="document-status-table-delete">
                       {confirmingDeleteId === item.id ? (
                         <div className="document-status-table-delete-confirm">
                           <button
                             type="button"
-                            className="btn btn-secondary"
+                            className="btn btn-primary"
                             onClick={() => {
                               setConfirmingDeleteId(null);
                               onDelete(item.id);
@@ -235,7 +235,11 @@ export default function DocumentStatusTable({
                           >
                             Confirm delete
                           </button>
-                          <button type="button" className="btn btn-ghost" onClick={() => setConfirmingDeleteId(null)}>
+                          <button
+                            type="button"
+                            className="btn document-status-table-delete-cancel"
+                            onClick={() => setConfirmingDeleteId(null)}
+                          >
                             Cancel
                           </button>
                         </div>

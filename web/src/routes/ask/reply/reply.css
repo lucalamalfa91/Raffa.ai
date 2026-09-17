@@ -40,7 +40,8 @@
   white-space: pre-line;
 }
 
-.reply-markdown ul {
+.reply-markdown ul,
+.reply-markdown ol {
   margin: 0;
   padding-left: 1.25em;
 }

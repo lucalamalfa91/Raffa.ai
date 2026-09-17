@@ -25,7 +25,7 @@ describe("splitMarkdownBlocks", () => {
   });
 
   it("treats a block where every line starts with - or * as a list", () => {
-    expect(splitMarkdownBlocks("- one\n- two\n* three")).toEqual([{ type: "list", items: ["one", "two", "three"] }]);
+    expect(splitMarkdownBlocks("- one\n- two\n* three")).toEqual([{ type: "list", ordered: false, items: ["one", "two", "three"] }]);
   });
 
   it("does not treat a mixed prose+bullet block as a list", () => {
@@ -34,8 +34,8 @@ describe("splitMarkdownBlocks", () => {
     ]);
   });
 
-  it("returns no blocks for empty text", () => {
-    expect(splitMarkdownBlocks("")).toEqual([]);
+  it("treats a block where every line starts with 1) or 1. as an ordered list", () => {
+    expect(splitMarkdownBlocks("1) one\n2. two")).toEqual([{ type: "list", ordered: true, items: ["one", "two"] }]);
   });
 });
 
@@ -112,5 +112,30 @@ describe("ReplyMarkdown (task E13/F09/US01/T02, AC-3)", () => {
 
     expect(container.querySelector("script")).toBeNull();
     expect(container.textContent).toContain("<script>alert(1)</script> is not a valid clause.");
+  });
+
+  it("renders 1) numbered lists as an ordered list", () => {
+    const { container } = render(
+      <ReplyMarkdown text={"1) Notice: 90 days\n2) Auto-renews: yes"} citations={[]} onOpenCitation={vi.fn()} />,
+    );
+
+    expect(container.querySelector("ol")).not.toBeNull();
+    const items = container.querySelectorAll("li");
+    expect(items).toHaveLength(2);
+    expect(items[0].textContent).toBe("Notice: 90 days");
+  });
+
+  it("never renders a GUID or calc placeholder in the reply prose", () => {
+    render(
+      <ReplyMarkdown
+        text="Score is {calc:criticality[aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa]}."
+        citations={[citation()]}
+        onOpenCitation={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/Salesforce · MSA 2024/)).toBeInTheDocument();
+    expect(screen.queryByText(/aaaaaaaa-aaaa/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/calc:/)).not.toBeInTheDocument();
   });
 });

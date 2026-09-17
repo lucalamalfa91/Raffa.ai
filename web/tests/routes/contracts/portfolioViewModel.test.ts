@@ -199,9 +199,7 @@ describe("moreColumnsLabel (app.jsx colsLabel)", () => {
   });
 });
 
-// Task E24/F01/US02/T01 (story us-02-portfolio-category-web; closes NW-23). See
-// `PortfolioRoute.test.tsx` for the whole route's own `?category=`/`getPortfolio` round trip and
-// `PortfolioFilterControl.test.tsx` for the control.
+// `PortfolioRoute.test.tsx` for the route still forwarding `?category=` to getPortfolio.
 describe("readCategoryFilter", () => {
   it("AC-2: an absent category normalizes to \"\"", () => {
     expect(readCategoryFilter(new URLSearchParams())).toBe("");

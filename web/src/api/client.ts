@@ -471,6 +471,13 @@ export interface DeleteDocumentResult {
   error: string | null;
 }
 
+/** Same never-throws shape as `DeleteDocumentResult` — 204 on success, 403 for non-admin. */
+export interface DeleteAllDocumentsResult {
+  ok: boolean;
+  statusCode: number | null;
+  error: string | null;
+}
+
 // Task E16/F03/US02/T02 (wave w15): `prioritiseDocument`, wrapping `POST
 // /api/documents/{id}/prioritise` (ADR-027 w15 footer C12; any live member, never Admin-only --
 // whoever opened the document is the one waiting for it). `DocumentProgressPanel.tsx` calls this
@@ -1164,6 +1171,15 @@ export interface PostMessageResult {
   error: string | null;
 }
 
+export interface DeleteConversationResult {
+  /** True only on `204 No Content`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** Plain-language failure reason, present only when `ok` is false. */
+  error: string | null;
+}
+
 type GetCapabilitiesResponses = paths["/api/capabilities"]["get"]["responses"];
 export type CapabilityCatalogBody = GetCapabilitiesResponses[200]["content"]["application/json"];
 export type CapabilityBody = CapabilityCatalogBody["capabilities"][number];
@@ -1340,6 +1356,12 @@ export interface ApiClient {
    */
   deleteDocument(tenantId: string, id: string): Promise<DeleteDocumentResult>;
   /**
+   * Calls `DELETE /api/documents` (Admin only): wipe every document in the tenant and cascade
+   * portfolio / renewals / scoped Ask chats for the affected contracts. Same never-throws shape;
+   * a `403` (Procurement) is a normal, expected outcome.
+   */
+  deleteAllDocuments(tenantId: string): Promise<DeleteAllDocumentsResult>;
+  /**
    * Calls `POST /api/documents/{id}/prioritise` (operationId `prioritiseDocument`, any live member,
    * ADR-027 w15 footer C12). Same never-throws shape as every other call here; `DocumentProgressPanel
    * .tsx` calls this once per document id and never surfaces the outcome -- priority is an
@@ -1502,14 +1524,11 @@ export interface ApiClient {
   getSavingsOpportunities(tenantId: string): Promise<GetSavingsOpportunitiesResult>;
 
   /**
-   * Calls `GET /api/conversations` (operationId `listConversations`) -- the rail's last-5 resume
-   * list (R-CONV-02). `X-Tenant-Id` goes out alongside the `Authorization` header every method here
-   * sends (this file's own header comment has the full provenance); `take` is never sent, always
-   * taking the backend's own default (5). Same
-   * never-throws shape as every other call here: a `400` (missing header) is a normal, expected
-   * outcome the caller renders inline.
+   * Calls `GET /api/conversations` (operationId `listConversations`) -- the rail's resume
+   * list (R-CONV-02). `take` defaults to the backend's own default (5) when omitted; the rail
+   * passes a larger take so search/filter can see accumulated chats. Same never-throws shape.
    */
-  listConversations(tenantId: string): Promise<ListConversationsResult>;
+  listConversations(tenantId: string, take?: number): Promise<ListConversationsResult>;
   /**
    * Calls `POST /api/conversations` (operationId `createConversation`) -- opens a new chat, plain
    * or scoped to a contract (Contract 360 "Ask about it", `/ask?scope=<contractId>`). Same
@@ -1533,6 +1552,12 @@ export interface ApiClient {
    * (unknown conversation) is `ok: false`.
    */
   postMessage(tenantId: string, conversationId: string, request: PostMessageRequest): Promise<PostMessageResult>;
+  /**
+   * Calls `DELETE /api/conversations/{id}` -- removes the caller's own conversation. Same
+   * never-throws shape; a `404` (unknown / other user / other tenant) is a normal, expected
+   * outcome. 204 on success.
+   */
+  deleteConversation(tenantId: string, conversationId: string): Promise<DeleteConversationResult>;
   /**
    * Calls `GET /api/capabilities` (operationId `getCapabilities`) -- the versioned capability
    * catalog (R-SYS-01), the source of the Ask screen's own two suggestion chips
@@ -2253,6 +2278,33 @@ export function createApiClient(
 
       if (response.status === 404) {
         return { ok: false, statusCode: 404, error: `No document found for id ${id}.` };
+      }
+
+      return { ok: false, statusCode: response.status, error: `Request failed with HTTP ${response.status} ${response.statusText}.` };
+    },
+
+    async deleteAllDocuments(tenantId) {
+      let response: Response;
+      try {
+        response = await fetch(new URL("/api/documents", baseUrl), {
+          method: "DELETE",
+          headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          error: `Unable to reach ${baseUrl}/api/documents. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 204) {
+        return { ok: true, statusCode: 204, error: null };
+      }
+
+      if (response.status === 403) {
+        return { ok: false, statusCode: 403, error: "Only a Workspace Admin can delete all documents." };
       }
 
       return { ok: false, statusCode: response.status, error: `Request failed with HTTP ${response.status} ${response.statusText}.` };
@@ -3090,10 +3142,13 @@ export function createApiClient(
       return { ok: false, statusCode: response.status, opportunities: null, error };
     },
 
-    async listConversations(tenantId) {
+    async listConversations(tenantId, take) {
+      const url = new URL("/api/conversations", baseUrl);
+      if (take !== undefined) url.searchParams.set("take", String(take));
+
       let response: Response;
       try {
-        response = await fetch(new URL("/api/conversations", baseUrl), {
+        response = await fetch(url, {
           headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           cache: "no-store",
         });
@@ -3232,6 +3287,37 @@ export function createApiClient(
       }
 
       return { ok: false, statusCode: response.status, reply: null, error: postError };
+    },
+
+    async deleteConversation(tenantId, conversationId) {
+      let response: Response;
+      try {
+        response = await fetch(new URL(`/api/conversations/${encodeURIComponent(conversationId)}`, baseUrl), {
+          method: "DELETE",
+          headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          error: `Unable to reach ${baseUrl}/api/conversations/${conversationId}. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 204) {
+        return { ok: true, statusCode: 204, error: null };
+      }
+
+      if (response.status === 404) {
+        return { ok: false, statusCode: 404, error: `No conversation found for id ${conversationId}.` };
+      }
+
+      return {
+        ok: false,
+        statusCode: response.status,
+        error: `Request failed with HTTP ${response.status} ${response.statusText}.`,
+      };
     },
 
     async getCapabilities() {

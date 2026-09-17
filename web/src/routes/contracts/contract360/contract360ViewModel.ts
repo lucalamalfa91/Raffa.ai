@@ -618,17 +618,35 @@ function formatProductValue(p: Contract360ProductBody): string {
   return parts.length > 0 ? parts.join(" ") : "—";
 }
 
-/** Products (line items). Every row stays; a value below the published auto-accept bar is "—". */
+/**
+ * Details-list VALUE: a quoted source clause is enough to show the extracted wording, even when
+ * confidence is below the officialize bar. Hiding a sourced obligation behind "—" made SOURCE
+ * look populated while VALUE stayed empty. Unsourced, unofficialized facts still dash.
+ */
+export function sourcedOrOfficialized(value: string, officialized: boolean, source: string | null): string {
+  if (officialized) return value;
+  if (source !== null && source !== "Linked document") return value;
+  return UNOFFICIALIZED_PLACEHOLDER;
+}
+
+/** Products (line items). Every row stays; unsourced values below the auto-accept bar are "—". */
 export function buildProductsRows(
   products: readonly Contract360ProductBody[],
   autoAcceptThreshold: number = AUTO_ACCEPT_THRESHOLD,
 ): FactRow[] {
-  return products.map((p) => ({
-    key: p.lineItemId,
-    term: p.description !== "" ? p.description : (p.sku ?? "Line item"),
-    value: officializedOrDash(formatProductValue(p), isScoredFactOfficialized(p.confidence, autoAcceptThreshold)),
-    source: formatSource(p),
-  }));
+  return products.map((p) => {
+    const source = formatSource(p);
+    return {
+      key: p.lineItemId,
+      term: p.description !== "" ? p.description : (p.sku ?? "Line item"),
+      value: sourcedOrOfficialized(
+        formatProductValue(p),
+        isScoredFactOfficialized(p.confidence, autoAcceptThreshold),
+        source,
+      ),
+      source,
+    };
+  });
 }
 
 function formatObligationValue(o: Contract360ObligationBody): string {
@@ -638,17 +656,24 @@ function formatObligationValue(o: Contract360ObligationBody): string {
   return parts.join(" · ");
 }
 
-/** Obligations. Every row stays; a value below the published auto-accept bar is "—". */
+/** Obligations. Every row stays; a quoted SOURCE clause populates VALUE even below the bar. */
 export function buildObligationsRows(
   obligations: readonly Contract360ObligationBody[],
   autoAcceptThreshold: number = AUTO_ACCEPT_THRESHOLD,
 ): FactRow[] {
-  return obligations.map((o) => ({
-    key: o.obligationId,
-    term: o.obligationType,
-    value: officializedOrDash(formatObligationValue(o), isScoredFactOfficialized(o.confidence, autoAcceptThreshold)),
-    source: formatSource(o),
-  }));
+  return obligations.map((o) => {
+    const source = formatSource(o);
+    return {
+      key: o.obligationId,
+      term: o.obligationType,
+      value: sourcedOrOfficialized(
+        formatObligationValue(o),
+        isScoredFactOfficialized(o.confidence, autoAcceptThreshold),
+        source,
+      ),
+      source,
+    };
+  });
 }
 
 /** Risks. Severity is always textual (ADR-019 "no colour-only semantics"). Every row stays. */
@@ -656,12 +681,19 @@ export function buildRisksRows(
   risks: readonly Contract360RiskBody[],
   autoAcceptThreshold: number = AUTO_ACCEPT_THRESHOLD,
 ): FactRow[] {
-  return risks.map((r) => ({
-    key: r.riskId,
-    term: r.riskType,
-    value: officializedOrDash(`${r.description} (${r.severity} risk)`, isScoredFactOfficialized(r.confidence, autoAcceptThreshold)),
-    source: formatSource(r),
-  }));
+  return risks.map((r) => {
+    const source = formatSource(r);
+    return {
+      key: r.riskId,
+      term: r.riskType,
+      value: sourcedOrOfficialized(
+        `${r.description} (${r.severity} risk)`,
+        isScoredFactOfficialized(r.confidence, autoAcceptThreshold),
+        source,
+      ),
+      source,
+    };
+  });
 }
 
 export interface DocumentRow {
