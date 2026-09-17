@@ -4,6 +4,7 @@ import type {
   ApiClient,
   NegotiationLeverTypeName,
   NegotiationOutcomeBody,
+  QuoteBenchmarkHistoryEntryBody,
   QuoteNegotiationOutcomeBody,
   QuoteRecalculationBody,
   SkuMappingCorrectionInput,
@@ -11,15 +12,15 @@ import type {
   UploadQuoteFields,
 } from "../../api/client";
 import UploadQuoteForm from "./UploadQuoteForm";
-import QuoteLinesTable from "./QuoteLinesTable";
 import MappingBlock, { type MapDraft } from "./MappingBlock";
 import TargetStep, { defaultTargetPrice, defaultWalkAway } from "./TargetStep";
 import NegotiationStep, { type NegotiationOutcomeInput } from "./NegotiationStep";
+import AssessmentResult from "./assessment/AssessmentResult";
+import QuoteHistoryList from "./history/QuoteHistoryList";
 import {
   QUOTE_INTRO,
   QUOTE_LEVERS_FOOTER,
   aggregateQuote,
-  buildAssessmentBand,
   buildExtractRows,
   buildQuoteLineRows,
   formatQuoteMeta,
@@ -43,26 +44,43 @@ type FetchState =
 /** How far past the lines table the reader has chosen to go (`QUOTE_LEVERS_FOOTER`: "shown only if you want them"). */
 type LeversStage = "hidden" | "target" | "negotiation";
 
+/** AC-2: `GET /api/quotes/benchmark-history` is workspace-wide, not quote-specific -- tracked
+ * independently of `FetchState` above and loaded once per workspace (see the effect below), so
+ * browsing from the landing into a quote and back never re-fetches or blanks out an already-loaded
+ * history list. */
+type HistoryState =
+  | { phase: "loading" }
+  | { phase: "error"; message: string }
+  | { phase: "ready"; entries: readonly QuoteBenchmarkHistoryEntryBody[] };
+
 /**
  * Route `/quotes` and `/quotes/:quoteId` -- Quote check, V2 (ADR-024 V2 IA; screens-v2.md #9;
  * `raffa-v2/markup.html` "QUOTE CHECK (optional)" block). The header is constant ("Optional · new
- * purchase" · "Quote check" · the intro sentence); below it either the landing (`UploadQuoteForm`)
- * or, once a quote is loaded, the three-cell band (Supplier quote · Market range · Assessment), the
- * lines table (Line · Quoted · P50 · Position · Benchmark) and the footer "Target and negotiation
- * levers are one step further — shown only if you want them." that reveals the Target step, then
- * Negotiation. The Day-1 four-step stepper is gone; the same real calls remain.
+ * purchase" · "Quote check" · the intro sentence); below it either the landing (`UploadQuoteForm` +
+ * `./history/QuoteHistoryList`) or, once a quote is loaded, the market-benchmark result
+ * (`./assessment/AssessmentResult` -- the three-cell band, honest cold-start copy, and the lines
+ * table) and the footer "Target and negotiation levers are one step further — shown only if you want
+ * them." that reveals the Target step, then Negotiation. The Day-1 four-step stepper is gone; the
+ * same real calls remain.
  *
  * **Real backend, not the prototype's fixture.** `POST /api/quotes`, `POST /api/quotes/{id}/
  * assessment/recalculate` (a strict superset of `GET …/assessment`: same `assessment`, plus
- * `unmatchedLines`; an empty `mappings` array is its documented "pure refresh") and
- * `POST /api/negotiations/outcomes` -- see `../../api/client.ts`. Two named gaps: no
- * `GET /api/quotes/{id}` to re-read upload metadata after this session (the header meta line falls
- * back to the quote id), and no HTTP endpoint for `NegotiationStrategyService`'s lever
- * recommendations (`NegotiationStep.tsx`).
+ * `unmatchedLines`; an empty `mappings` array is its documented "pure refresh"),
+ * `GET /api/quotes/benchmark-history` (task E25/F04/US02/T01, closes NW-57) and
+ * `POST /api/negotiations/outcomes` -- see `../../api/client.ts`. `GET /api/quotes/{id}` (`loadQuote`
+ * below) reads back this quote's own recorded negotiation outcome, not its upload metadata -- the
+ * header meta line is still keyed off `quoteMetaById`, populated only by this session's own
+ * `uploadQuote` response, so a quote reopened from `QuoteHistoryList` (never uploaded this session)
+ * falls back to the truncated id there (`formatQuoteMeta`'s own null-quote branch); a named,
+ * pre-existing gap, not something this task's file scope closes. Second named gap: no HTTP endpoint
+ * for `NegotiationStrategyService`'s lever recommendations (`NegotiationStep.tsx`).
  *
  * **Blocked assessment.** While any line is still `SkuMatchStatus.Unmatched`, the band shows what
  * it honestly can, the unmapped lines say "Needs mapping", and the mapping block takes the footer's
- * place -- target and levers only open once every line is resolved.
+ * place -- target and levers only open once every line is resolved. This never hides
+ * `AssessmentResult`: the mapping block/footer/levers/negotiation sections are additional siblings
+ * below it, never a replacement -- so the "See it in Savings →" CTA deep inside `NegotiationStep`
+ * (AC-3) can never stand in for the benchmark result above it.
  */
 export default function QuoteCheckRoute({ apiClient }: QuoteCheckRouteProps) {
   const { quoteId: routeQuoteId } = useParams<{ quoteId?: string }>();
@@ -85,6 +103,7 @@ export default function QuoteCheckRoute({ apiClient }: QuoteCheckRouteProps) {
   const [outcomeError, setOutcomeError] = useState<string | null>(null);
   const [quoteOutcomeState, setQuoteOutcomeState] = useState<"idle" | "loading" | "error" | "ready">("idle");
   const [quoteOutcomeError, setQuoteOutcomeError] = useState<string | null>(null);
+  const [historyState, setHistoryState] = useState<HistoryState>({ phase: "loading" });
 
   const load = useCallback(
     (quoteId: string, mappings: readonly SkuMappingCorrectionInput[] = []) => {
@@ -136,6 +155,29 @@ export default function QuoteCheckRoute({ apiClient }: QuoteCheckRouteProps) {
     [apiClient, workspace?.id],
   );
 
+  /** AC-2: every request this workspace has made, newest first, read back from durable server state
+   * (ADR-028) -- never a client store. Rendered only on the landing (see the `!routeQuoteId` branch
+   * below); see `./history/QuoteHistoryList.tsx`'s own header comment for why it never also renders
+   * beside an already-open quote's own live result. */
+  const loadHistory = useCallback(() => {
+    if (!workspace) return;
+    setHistoryState({ phase: "loading" });
+    void apiClient.getQuoteBenchmarkHistory(workspace.id).then((result) => {
+      if (!result.ok || !result.history) {
+        setHistoryState({ phase: "error", message: result.error ?? "Quote check history could not be loaded." });
+        return;
+      }
+      setHistoryState({ phase: "ready", entries: result.history.items });
+    });
+  }, [apiClient, workspace?.id]);
+
+  useEffect(() => {
+    loadHistory();
+    // Workspace-wide, not quote-specific: this effect depends only on `loadHistory`'s own identity
+    // (which itself only changes with `workspace?.id`), never on `routeQuoteId` -- unlike the sibling
+    // effect below, navigating between the landing and a loaded quote must not re-fetch or reset it.
+  }, [loadHistory]);
+
   useEffect(() => {
     setLeversStage("hidden");
     setMapDrafts({});
@@ -172,6 +214,9 @@ export default function QuoteCheckRoute({ apiClient }: QuoteCheckRouteProps) {
       return { ok: false, error: result.error ?? "The quote could not be uploaded." };
     }
     setQuoteMetaById((previous) => ({ ...previous, [result.quote!.id]: result.quote! }));
+    // AC-2: "keep every request" -- this new quote is now part of the workspace's durable history,
+    // so refresh it immediately rather than waiting for a future mount to notice it.
+    loadHistory();
     navigate(`/quotes/${result.quote.id}`, { replace: true });
     return { ok: true };
   };
@@ -190,6 +235,24 @@ export default function QuoteCheckRoute({ apiClient }: QuoteCheckRouteProps) {
       <div className="quote-screen">
         {header(null)}
         <UploadQuoteForm onUpload={handleUpload} submitting={uploading} />
+        <section className="quote-history-section" aria-label="Quote check history">
+          {historyState.phase === "loading" && (
+            <div className="quote-skeleton" role="status" aria-live="polite">
+              <p className="micro-meta">Loading quote check history…</p>
+              <div className="skeleton quote-skeleton-row" />
+            </div>
+          )}
+          {historyState.phase === "error" && (
+            <div className="error-state" role="alert">
+              <h4>Quote check history unavailable</h4>
+              <p className="micro-meta">{historyState.message}</p>
+              <button type="button" className="btn btn-secondary" onClick={loadHistory}>
+                Retry
+              </button>
+            </div>
+          )}
+          {historyState.phase === "ready" && <QuoteHistoryList entries={historyState.entries} />}
+        </section>
       </div>
     );
   }
@@ -247,7 +310,6 @@ export default function QuoteCheckRoute({ apiClient }: QuoteCheckRouteProps) {
   const extractRows = buildExtractRows(recalculation.assessment.lines, recalculation.unmatchedLines, knownLineDetails);
   const lineRows = buildQuoteLineRows(extractRows, recalculation.assessment.lines);
   const aggregate = aggregateQuote(recalculation.assessment.lines);
-  const band = buildAssessmentBand(aggregate, recalculation.assessment.lines);
 
   if (targetInitializedFor !== routeQuoteId && !blocked) {
     // Seed the two editable Target inputs from the real aggregate exactly once per quote -- never
@@ -319,16 +381,7 @@ export default function QuoteCheckRoute({ apiClient }: QuoteCheckRouteProps) {
       {header(formatQuoteMeta(quoteMeta, routeQuoteId))}
 
       <section className="quote-results" aria-label="Quote assessment">
-        <div className="quote-band">
-          {band.map((cell) => (
-            <div key={cell.key} className="quote-band-cell">
-              <span className="quote-band-label">{cell.label}</span>
-              <span className={`quote-band-value${cell.emphasize ? " quote-emphasize" : ""}`}>{cell.value}</span>
-            </div>
-          ))}
-        </div>
-
-        <QuoteLinesTable rows={lineRows} />
+        <AssessmentResult aggregate={aggregate} lines={recalculation.assessment.lines} lineRows={lineRows} />
 
         {blocked ? (
           <MappingBlock
