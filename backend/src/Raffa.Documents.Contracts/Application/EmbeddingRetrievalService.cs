@@ -382,11 +382,19 @@ public sealed class EmbeddingRetrievalService(
                     .ToListAsync(cancellationToken)
                     .ConfigureAwait(false);
 
-                var peerDocumentIds = peerContractIds.Count == 0
+                // Nullable-to-nullable comparison (both sides EntityId?), same idiom
+                // PortfolioQueryService.GetPortfolioAsync's own SupplierId filter comment names:
+                // Contains against d.ContractId.Value (unwrapped to non-nullable) makes EF Core
+                // build the IN-list array parameter with a converter for the wrong (non-nullable)
+                // CLR type and throws building it, since the column itself is mapped through the
+                // nullable EntityId? converter — wrapping the list back to EntityId? instead keeps
+                // both sides on that same converter.
+                var peerContractIdsNullable = peerContractIds.ConvertAll(id => (EntityId?)id);
+                var peerDocumentIds = peerContractIdsNullable.Count == 0
                     ? []
                     : await dbContext.Documents
                         .AsNoTracking()
-                        .Where(d => d.TenantId == query.TenantId && d.ContractId.HasValue && peerContractIds.Contains(d.ContractId.Value))
+                        .Where(d => d.TenantId == query.TenantId && peerContractIdsNullable.Contains(d.ContractId))
                         .Select(d => d.Id)
                         .ToListAsync(cancellationToken)
                         .ConfigureAwait(false);
