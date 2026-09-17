@@ -121,3 +121,62 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260917131939_AddRenewalNegotiationTodo') THEN
+    CREATE TABLE renewal_negotiation_todo (
+        id uuid NOT NULL,
+        contract_id uuid NOT NULL,
+        point_key character varying(200) NOT NULL,
+        topic character varying(200) NOT NULL,
+        rank integer NOT NULL,
+        current text NOT NULL,
+        target text NOT NULL,
+        rationale text NOT NULL,
+        citation_keys text NOT NULL,
+        source character varying(20) NOT NULL,
+        status character varying(20) NOT NULL,
+        created_at timestamp with time zone NOT NULL,
+        updated_at timestamp with time zone NOT NULL,
+        tenant_id uuid NOT NULL,
+        CONSTRAINT pk_renewal_negotiation_todo PRIMARY KEY (id)
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260917131939_AddRenewalNegotiationTodo') THEN
+    CREATE UNIQUE INDEX ix_renewal_negotiation_todo_tenant_contract_point_key ON renewal_negotiation_todo (tenant_id, contract_id, point_key);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260917131939_AddRenewalNegotiationTodo') THEN
+    CREATE INDEX ix_renewal_negotiation_todo_tenant_id ON renewal_negotiation_todo (tenant_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260917131939_AddRenewalNegotiationTodo') THEN
+    ALTER TABLE "renewal_negotiation_todo" ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE "renewal_negotiation_todo" FORCE ROW LEVEL SECURITY;
+    CREATE POLICY tenant_isolation ON "renewal_negotiation_todo"
+        USING (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid)
+        WITH CHECK (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260917131939_AddRenewalNegotiationTodo') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20260917131939_AddRenewalNegotiationTodo', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+

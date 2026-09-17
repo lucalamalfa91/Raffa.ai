@@ -18,6 +18,10 @@ namespace Raffa.Renewals.Infrastructure;
 /// <see cref="RenewalAlert"/> — the persisted alert row <c>RenewalThresholdScheduler</c>'s own doc
 /// comment named as parent story task-02's job ("de-duplicating which alerts already exist for a
 /// threshold").
+///
+/// Task E29/F01/US01/T01 (todo-entity-api, wave w19 NW-85) adds this module's third table,
+/// <see cref="RenewalNegotiationTodo"/> — the AI-ranked negotiation TODO list Ask upserts
+/// in-process, keyed by (tenant, contract, point_key); see that entity's own doc comment.
 /// </summary>
 public sealed class RenewalsDbContext(DbContextOptions<RenewalsDbContext> options) : DbContext(options)
 {
@@ -25,10 +29,13 @@ public sealed class RenewalsDbContext(DbContextOptions<RenewalsDbContext> option
 
     public DbSet<RenewalAlert> RenewalAlerts => Set<RenewalAlert>();
 
+    public DbSet<RenewalNegotiationTodo> RenewalNegotiationTodos => Set<RenewalNegotiationTodo>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfiguration(new RenewalActionConfiguration());
         modelBuilder.ApplyConfiguration(new RenewalAlertConfiguration());
+        modelBuilder.ApplyConfiguration(new RenewalNegotiationTodoConfiguration());
 
         base.OnModelCreating(modelBuilder);
     }
