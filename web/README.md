@@ -598,6 +598,18 @@ state while nothing is validated. The Day-1 filter chips and attention strip are
   emphasis. The Contract cell is a real `<Link>` to Contract 360; the row's own click is the
   prototype's mouse convenience on top. Supplier is the wire's resolved `supplierName` (R-SUP-04) or
   an honest "—"; "Contract" still shows the type label (`Contract` has no title field yet).
+- **Category filter** (`PortfolioFilterControl.tsx`, task E24/F01/US02/T01, closes NW-23): a
+  free-text control anchored under the header, visible whenever the page has loaded. It reads and
+  writes the route's own `?category=` search parameter
+  (`portfolioViewModel.ts#readCategoryFilter`/`withCategoryFilter`) -- never a component store or
+  `sessionStorage` (ADR-012) -- so applying it re-issues `GET /api/contracts` with `?category=<value>`
+  (an exact-match `Supplier.Category`, resolved by the host join task E24/F01/US01/T01 added) and
+  clearing it removes the parameter and re-loads the full portfolio. Free text rather than a
+  dropdown: no endpoint lists a tenant's distinct categories, and this task's own scope excludes
+  adding one, so a hard-coded option list would either invent categories the tenant's suppliers do
+  not carry or silently omit real ones -- the council's own "never a hard-coded enum" rule. An
+  unmatched value narrows to an empty list, never a fabricated one (backend AC-3); the control stays
+  on screen either way so the filter can always be cleared.
 - **States** -- loading (`.portfolio-skeleton`), error (503-aware + Retry), and the reroute
   `.screen-reroute` ("Nothing to triage yet · The portfolio lights up from validated contracts.
   Upload one to start." → `/documents`) when nothing is validated yet. The header summary reads
@@ -1028,8 +1040,10 @@ Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
   hand-written `PortfolioRiskSeverity` alias instead, with a runtime
   `isPortfolioRiskSeverity` guard at the one place a raw string crosses into
   it. `client.ts`'s `getPortfolio(tenantId, query?)` mirrors the endpoint's
-  full filter/paging surface even though `src/routes/contracts/index.tsx`
-  itself only ever calls it unfiltered (see "Portfolio" above for why).
+  full filter/paging surface; `src/routes/contracts/index.tsx` calls it with
+  `pageSize` and, since task E24/F01/US02/T01, the route's own `?category=`
+  search parameter when set (see "Portfolio" above) -- every other filter
+  field on `PortfolioQueryParams` is still unused by this screen.
 - **Task E07/F02/US01/T01 (contract-360)** extended `openapi/raffa-api.v1.json` with three more
   operations -- `GET /api/contracts/{id}` (`getContract360`), `GET /api/renewals` (`getRenewals`),
   and `GET /api/renewals/{contractId}/priority` (`getRenewalPriority`) -- the same "repeating chore"
@@ -1203,9 +1217,10 @@ web/
         documentTable.ts      # pure helpers: type-label mapping, status/action derivation, attention-filter bucketing, kb summary
         documents.css         # this route's styles (V2: stacked single-column layout, no more the V1 two-column grid)
       contracts/            # Portfolio, V2 (see "Portfolio" above)
-        index.tsx             # PortfolioRoute -- fetch-once state machine, header summary, More columns, reroute
+        index.tsx             # PortfolioRoute -- fetch state machine, header summary, category filter, More columns, reroute
         PortfolioTable.tsx    # the V2 table (Supplier · Contract · Annual spend · Ends · Give notice by · Status [+ Start · Auto · Risk])
-        portfolioViewModel.ts # pure helpers: validated rows sorted by notice deadline, per-currency summary, compact amounts
+        PortfolioFilterControl.tsx # the ?category= free-text filter control (task E24/F01/US02/T01) -- router query param, never a store
+        portfolioViewModel.ts # pure helpers: validated rows sorted by notice deadline, per-currency summary, compact amounts, ?category= read/write
         portfolioAttention.ts # pure helper: daysUntil (UTC day arithmetic) shared with Contract 360
         portfolioTableFormatters.ts # pure helpers: date/number formatting, type label, status/risk -> tag mapping, supplier fallback
         contractStatus.ts     # isValidatedContractStatus -- the one "validated" predicate Portfolio and the rail share

@@ -1,10 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import type { ApiClient, DocumentListPageBody, GetPortfolioResult, PortfolioListItem } from "../../api/client";
 import { loadCurrentWorkspace } from "../signin/workspaceStore";
 import { CHECK_AGAIN_LABEL, UPDATES_PAUSED_NOTICE, usePollBudget } from "../../components/shell/usePollBudget";
 import PortfolioTable from "./PortfolioTable";
-import { buildPortfolioRows, buildPortfolioSummary, formatPortfolioSummary, moreColumnsLabel, PORTFOLIO_SUMMARY_OFF } from "./portfolioViewModel";
+import PortfolioFilterControl from "./PortfolioFilterControl";
+import {
+  buildPortfolioRows,
+  buildPortfolioSummary,
+  formatPortfolioSummary,
+  moreColumnsLabel,
+  PORTFOLIO_SUMMARY_OFF,
+  readCategoryFilter,
+  withCategoryFilter,
+} from "./portfolioViewModel";
 import "./contracts.css";
 
 export interface PortfolioRouteProps {
@@ -67,9 +76,23 @@ export function getPortfolioZeroCopy(variant: PortfolioZeroVariant): { sentence:
  * call is not. While documents are still `Uploaded`/`Processing`, both the list and the document
  * counts re-read on the shared 2 s cadence (also when rows are already on screen, so later
  * completions appear without a remount); the five-minute no-change budget still applies.
+ *
+ * **Category filter (task E24/F01/US02/T01, closes NW-23).** `PortfolioFilterControl` reads and
+ * writes the route's own `?category=` search parameter (`portfolioViewModel.ts#readCategoryFilter`/
+ * `withCategoryFilter`) -- never a component store -- so applying or clearing it re-issues this same
+ * `GET /api/contracts` call with (or without) `category` set, the same "one fetch, server is the
+ * filter" shape the rest of this doc comment already describes. Visible whenever the page has
+ * loaded (including a filtered-to-zero result), so a filter that matches nothing can always be
+ * cleared.
  */
 export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
   const workspace = loadCurrentWorkspace();
+  const [searchParams, setSearchParams] = useSearchParams();
+  // Task E24/F01/US02/T01 (story us-02-portfolio-category-web; closes NW-23): the only state this
+  // filter has. Never copied into a `useState` -- re-read from the URL on every render, so a
+  // shared link, a reload or the browser's back/forward all reproduce the same filtered request
+  // (ADR-012 "a client store never stands in for a missing GET").
+  const category = readCategoryFilter(searchParams);
   const [fetchState, setFetchState] = useState<FetchState>({ phase: "loading" });
   const [moreColumns, setMoreColumns] = useState(false);
   const [documentCounts, setDocumentCounts] = useState<DocumentListPageBody["counts"] | null>(null);
@@ -81,7 +104,12 @@ export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
 
       const generation = ++loadGeneration.current;
       if (!silent) setFetchState({ phase: "loading" });
-      const request = apiClient.getPortfolio(workspace.id, { pageSize: PORTFOLIO_PAGE_SIZE });
+      const request = apiClient.getPortfolio(workspace.id, {
+        pageSize: PORTFOLIO_PAGE_SIZE,
+        // Absent (not a blank string) when unset, matching every other optional field's own
+        // "omit rather than send blank" convention (PortfolioQueryParams' own doc comment).
+        category: category === "" ? undefined : category,
+      });
       let timeoutId: number | undefined;
       const timedOut: Promise<GetPortfolioResult> = new Promise((resolve) => {
         timeoutId = window.setTimeout(() => {
@@ -113,7 +141,7 @@ export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
         setFetchState({ phase: "ready", items: result.portfolio.items });
       });
     },
-    [apiClient, workspace?.id],
+    [apiClient, workspace?.id, category],
   );
 
   const loadDocumentCounts = useCallback(() => {
@@ -189,6 +217,16 @@ export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
           </div>
         )}
       </header>
+
+      {ready && (
+        // Visible whenever the page has loaded, including a filtered-to-zero result (AC-3: the
+        // operator must always be able to clear a filter that matched nothing).
+        <PortfolioFilterControl
+          category={category}
+          onApply={(next) => setSearchParams(withCategoryFilter(searchParams, next))}
+          onClear={() => setSearchParams(withCategoryFilter(searchParams, ""))}
+        />
+      )}
 
       {fetchState.phase === "loading" && (
         <div className="portfolio-skeleton" role="status" aria-live="polite">
