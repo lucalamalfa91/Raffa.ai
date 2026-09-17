@@ -123,13 +123,23 @@ describe("RailNav (V2 two-tier rail, ADR-024 amendment; task E13/F09/US01/T01, g
     window.sessionStorage.setItem("raffa.signin.currentWorkspace", JSON.stringify({ id: WORKSPACE_ID, name: "Acme Procurement" }));
   });
 
-  it("renders the workspace name and the two tiers in order: Ask Raffa, Documents, then 'From your contracts' / Portfolio, Renewals, Quote check", () => {
+  it("renders the workspace name and the two tiers in order: Ask Raffa, Documents, then 'From your contracts' / Portfolio, Renewals, Savings, Quote check", () => {
     const { container } = renderRail();
 
     expect(screen.getByText("Acme Procurement")).toBeInTheDocument();
 
     const labels = Array.from(container.querySelectorAll(".shell-rail-item-label")).map((node) => node.textContent);
-    expect(labels).toEqual(["Ask Raffa", "Documents", "Portfolio", "Renewals", "Quote check"]);
+    expect(labels).toEqual(["Ask Raffa", "Documents", "Portfolio", "Renewals", "Savings", "Quote check"]);
+  });
+
+  it("Savings is a visible first-class rail destination at /savings, with the same secondary-item chrome as Portfolio", () => {
+    renderRail({ initialEntry: "/savings" });
+
+    const savingsLink = screen.getByRole("link", { name: "Savings" });
+    expect(savingsLink).toHaveAttribute("href", "/savings");
+    expect(savingsLink).toHaveClass("shell-rail-secondary-item");
+    expect(savingsLink).toHaveClass("is-active");
+    expect(savingsLink).not.toHaveClass("is-greyed");
   });
 
   it("has no Home or Review queue item anywhere in the rail (V2 removes both)", () => {
@@ -183,13 +193,16 @@ describe("RailNav (V2 two-tier rail, ADR-024 amendment; task E13/F09/US01/T01, g
   });
 
   describe("greyed secondary tier (kbReady)", () => {
-    it("greys Portfolio, Renewals and Quote check and shows no count badge with 0 validated contracts", () => {
+    it("greys Portfolio, Renewals and Quote check and shows no count badge with 0 validated contracts; Savings stays clickable", () => {
       renderRail({ kbReady: false, validatedContractCount: 0 });
 
       for (const label of ["Portfolio", "Renewals", "Quote check"]) {
         const link = screen.getByText(label).closest("a")!;
         expect(link).toHaveClass("is-greyed");
       }
+      const savingsLink = screen.getByRole("link", { name: "Savings" });
+      expect(savingsLink).not.toHaveClass("is-greyed");
+      expect(savingsLink).toHaveAttribute("href", "/savings");
       const portfolioLink = screen.getByText("Portfolio").closest("a")!;
       expect(portfolioLink).not.toHaveTextContent(/\d/);
     });
@@ -203,7 +216,7 @@ describe("RailNav (V2 two-tier rail, ADR-024 amendment; task E13/F09/US01/T01, g
     it("un-greys the tier and badges Portfolio/Renewals with the validated count once kbReady", () => {
       renderRail({ kbReady: true, validatedContractCount: 3 });
 
-      for (const label of ["Portfolio", "Renewals", "Quote check"]) {
+      for (const label of ["Portfolio", "Renewals", "Savings", "Quote check"]) {
         const link = screen.getByText(label).closest("a")!;
         expect(link).not.toHaveClass("is-greyed");
       }
@@ -226,6 +239,7 @@ describe("RailNav (V2 two-tier rail, ADR-024 amendment; task E13/F09/US01/T01, g
 
       expect(screen.queryByText("Workspace & members")).not.toBeInTheDocument();
       expect(screen.getByText("Portfolio")).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Savings" })).toBeInTheDocument();
       expect(screen.getByText("Procurement")).toBeInTheDocument();
     });
 

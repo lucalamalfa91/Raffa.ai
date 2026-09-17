@@ -376,6 +376,7 @@ public sealed class ContractCorrectionServiceTests : IAsyncLifetime
             actor: "reviewer@example.com");
 
         Assert.True(result.IsFailure);
+        Assert.Equal(ContractCorrectionService.NoOpCorrectionError, result.Error);
         Assert.Empty(auditWriter.Written);
 
         using (tenantContext.BeginScope(tenantId))
@@ -385,6 +386,221 @@ public sealed class ContractCorrectionServiceTests : IAsyncLifetime
             // Not even the version-1 baseline should be written — a no-op request has zero side
             // effects, regardless of whether the contract had prior history.
             Assert.Empty(await readDb.ContractVersions.Where(v => v.ContractId == contractId).ToListAsync());
+        }
+    }
+
+    [Fact]
+    public async Task Confirming_a_review_required_value_officializes_it_without_a_history_row()
+    {
+        var tenantId = TenantId.New();
+        var now = new DateTimeOffset(2026, 9, 17, 14, 0, 0, TimeSpan.Zero);
+        var tenantContext = new TenantContext();
+
+        EntityId contractId;
+        using (tenantContext.BeginScope(tenantId))
+        {
+            await using var seedDb = CreateAppContext(tenantContext);
+            contractId = await SeedContractAsync(seedDb, tenantId, now.AddDays(-1));
+            seedDb.ExtractionEvidences.Add(new ExtractionEvidence
+            {
+                TenantId = tenantId,
+                ContractId = contractId,
+                FieldName = "status",
+                Value = "needs_review",
+                Confidence = 0,
+                Decision = ExtractionConfidencePolicy.ReviewRequired,
+                CreatedAt = now.AddDays(-1),
+            });
+            await seedDb.SaveChangesAsync();
+        }
+
+        await using var db = CreateAppContext(tenantContext);
+        var auditWriter = new RecordingAuditWriter();
+        var service = new ContractCorrectionService(db, tenantContext, new FixedClock(now), auditWriter);
+
+        var result = await service.CorrectAsync(
+            tenantId,
+            contractId,
+            new Dictionary<string, string?> { ["status"] = "needs_review" },
+            reason: null,
+            actor: "reviewer@example.com");
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(["status"], result.Value.CorrectedFields);
+        Assert.Equal(0, result.Value.VersionNumber);
+        Assert.Equal("contract.corrected", Assert.Single(auditWriter.Written).Action);
+        Assert.Contains("officializedFields=status", auditWriter.Written[0].Detail);
+
+        using (tenantContext.BeginScope(tenantId))
+        {
+            await using var readDb = CreateAppContext(tenantContext);
+
+            Assert.Empty(await readDb.ContractVersions.Where(v => v.ContractId == contractId).ToListAsync());
+            Assert.Empty(await readDb.CorrectionHistories.Where(h => h.TargetEntityId == contractId).ToListAsync());
+
+            var evidence = await readDb.ExtractionEvidences.SingleAsync(e => e.ContractId == contractId);
+            Assert.Equal(ExtractionConfidencePolicy.HumanAccepted, evidence.Decision);
+            Assert.Equal(now, evidence.DecidedAt);
+            Assert.Equal("needs_review", evidence.Value);
+        }
+    }
+
+    [Fact]
+    public async Task Confirming_review_required_with_an_optional_reason_still_officializes()
+    {
+        var tenantId = TenantId.New();
+        var now = new DateTimeOffset(2026, 9, 17, 14, 0, 0, TimeSpan.Zero);
+        var tenantContext = new TenantContext();
+
+        EntityId contractId;
+        using (tenantContext.BeginScope(tenantId))
+        {
+            await using var seedDb = CreateAppContext(tenantContext);
+            contractId = await SeedContractAsync(seedDb, tenantId, now.AddDays(-1));
+            seedDb.ExtractionEvidences.Add(new ExtractionEvidence
+            {
+                TenantId = tenantId,
+                ContractId = contractId,
+                FieldName = "status",
+                Value = "needs_review",
+                Confidence = 0,
+                Decision = ExtractionConfidencePolicy.ReviewRequired,
+                CreatedAt = now.AddDays(-1),
+            });
+            await seedDb.SaveChangesAsync();
+        }
+
+        await using var db = CreateAppContext(tenantContext);
+        var service = new ContractCorrectionService(db, tenantContext, new FixedClock(now), new RecordingAuditWriter());
+
+        var result = await service.CorrectAsync(
+            tenantId,
+            contractId,
+            new Dictionary<string, string?> { ["status"] = "needs_review" },
+            reason: "Looks right",
+            actor: "reviewer@example.com");
+
+        Assert.True(result.IsSuccess);
+        using (tenantContext.BeginScope(tenantId))
+        {
+            await using var readDb = CreateAppContext(tenantContext);
+            Assert.Equal(
+                ExtractionConfidencePolicy.HumanAccepted,
+                (await readDb.ExtractionEvidences.SingleAsync(e => e.ContractId == contractId)).Decision);
+            Assert.Empty(await readDb.CorrectionHistories.Where(h => h.TargetEntityId == contractId).ToListAsync());
+        }
+    }
+
+    [Fact]
+    public async Task Confirming_an_already_auto_accepted_value_is_still_a_no_op()
+    {
+        var tenantId = TenantId.New();
+        var now = new DateTimeOffset(2026, 9, 17, 14, 0, 0, TimeSpan.Zero);
+        var tenantContext = new TenantContext();
+
+        EntityId contractId;
+        using (tenantContext.BeginScope(tenantId))
+        {
+            await using var seedDb = CreateAppContext(tenantContext);
+            contractId = await SeedContractAsync(seedDb, tenantId, now.AddDays(-1));
+            seedDb.ExtractionEvidences.Add(new ExtractionEvidence
+            {
+                TenantId = tenantId,
+                ContractId = contractId,
+                FieldName = "status",
+                Value = "needs_review",
+                Confidence = 0.99,
+                Decision = ExtractionConfidencePolicy.AutoAccepted,
+                DecidedAt = now.AddDays(-1),
+                CreatedAt = now.AddDays(-1),
+            });
+            await seedDb.SaveChangesAsync();
+        }
+
+        await using var db = CreateAppContext(tenantContext);
+        var auditWriter = new RecordingAuditWriter();
+        var service = new ContractCorrectionService(db, tenantContext, new FixedClock(now), auditWriter);
+
+        var result = await service.CorrectAsync(
+            tenantId,
+            contractId,
+            new Dictionary<string, string?> { ["status"] = "needs_review" },
+            reason: null,
+            actor: "reviewer@example.com");
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(ContractCorrectionService.NoOpCorrectionError, result.Error);
+        Assert.Empty(auditWriter.Written);
+
+        using (tenantContext.BeginScope(tenantId))
+        {
+            await using var readDb = CreateAppContext(tenantContext);
+            var evidence = await readDb.ExtractionEvidences.SingleAsync(e => e.ContractId == contractId);
+            Assert.Equal(ExtractionConfidencePolicy.AutoAccepted, evidence.Decision);
+            Assert.Equal(now.AddDays(-1), evidence.DecidedAt);
+        }
+    }
+
+    [Fact]
+    public async Task Confirming_review_required_stamps_only_the_latest_evidence_row()
+    {
+        var tenantId = TenantId.New();
+        var now = new DateTimeOffset(2026, 9, 17, 14, 0, 0, TimeSpan.Zero);
+        var tenantContext = new TenantContext();
+
+        EntityId contractId;
+        using (tenantContext.BeginScope(tenantId))
+        {
+            await using var seedDb = CreateAppContext(tenantContext);
+            contractId = await SeedContractAsync(seedDb, tenantId, now.AddDays(-1));
+            seedDb.ExtractionEvidences.AddRange(
+                new ExtractionEvidence
+                {
+                    TenantId = tenantId,
+                    ContractId = contractId,
+                    FieldName = "status",
+                    Value = "draft",
+                    Confidence = 0.2,
+                    Decision = ExtractionConfidencePolicy.ReviewRequired,
+                    CreatedAt = now.AddHours(-2),
+                },
+                new ExtractionEvidence
+                {
+                    TenantId = tenantId,
+                    ContractId = contractId,
+                    FieldName = "status",
+                    Value = "needs_review",
+                    Confidence = 0,
+                    Decision = ExtractionConfidencePolicy.ReviewRequired,
+                    CreatedAt = now.AddHours(-1),
+                });
+            await seedDb.SaveChangesAsync();
+        }
+
+        await using var db = CreateAppContext(tenantContext);
+        var service = new ContractCorrectionService(db, tenantContext, new FixedClock(now), new RecordingAuditWriter());
+
+        var result = await service.CorrectAsync(
+            tenantId,
+            contractId,
+            new Dictionary<string, string?> { ["status"] = "needs_review" },
+            reason: null,
+            actor: "reviewer@example.com");
+
+        Assert.True(result.IsSuccess);
+
+        using (tenantContext.BeginScope(tenantId))
+        {
+            await using var readDb = CreateAppContext(tenantContext);
+            var rows = await readDb.ExtractionEvidences
+                .Where(e => e.ContractId == contractId)
+                .OrderBy(e => e.CreatedAt)
+                .ToListAsync();
+            Assert.Equal(2, rows.Count);
+            Assert.Equal(ExtractionConfidencePolicy.ReviewRequired, rows[0].Decision);
+            Assert.Null(rows[0].DecidedAt);
+            Assert.Equal(ExtractionConfidencePolicy.HumanAccepted, rows[1].Decision);
+            Assert.Equal(now, rows[1].DecidedAt);
         }
     }
 
@@ -588,7 +804,7 @@ public sealed class ContractCorrectionServiceTests : IAsyncLifetime
             tenantId, contractId, new Dictionary<string, string?> { ["supplier"] = "salesforce" }, reason: null, actor: actor);
 
         Assert.True(second.IsFailure);
-        Assert.Equal("None of the supplied values differ from the contract's current values.", second.Error);
+        Assert.Equal(ContractCorrectionService.NoOpCorrectionError, second.Error);
 
         var third = await service.CorrectAsync(
             tenantId, contractId, new Dictionary<string, string?> { ["supplier"] = "Workday, Inc." }, reason: null, actor: actor);

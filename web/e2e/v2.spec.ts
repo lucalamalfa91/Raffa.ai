@@ -386,7 +386,7 @@ test.describe("A14 — Ask is home and the rail is two-tier", () => {
   test("the rail is two-tier, in the prototype's order (R-WEB-02)", async () => {
     await page.goto("/ask");
     const labels = rail(page).locator(".shell-rail-item-label");
-    await expect(labels).toHaveText(["Ask Raffa", "Documents", "Portfolio", "Renewals", "Quote check"]);
+    await expect(labels).toHaveText(["Ask Raffa", "Documents", "Portfolio", "Renewals", "Savings", "Quote check"]);
     await expect(rail(page).locator(".shell-rail-section-kicker")).toHaveText("From your contracts");
     await expect(rail(page).getByRole("link", { name: "+ New chat" })).toBeVisible();
   });
@@ -397,6 +397,8 @@ test.describe("A14 — Ask is home and the rail is two-tier", () => {
       const item = rail(page).locator(".shell-rail-secondary-item").filter({ hasText: label });
       await expect(item, `${label} must be greyed before validation`).toHaveClass(/is-greyed/);
     }
+    const savingsItem = rail(page).locator(".shell-rail-secondary-item").filter({ hasText: "Savings" });
+    await expect(savingsItem, "Savings stays reachable before the first validated contract").not.toHaveClass(/is-greyed/);
     // ...and Ask itself is off, with the prototype's own copy (R-ASK-10).
     await expect(page.getByRole("heading", { name: "Ask needs at least one validated contract." })).toBeVisible();
     await expect(page.locator(".ask-off-actions").getByRole("link")).toHaveAttribute("href", "/documents");

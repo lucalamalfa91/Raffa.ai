@@ -437,13 +437,19 @@ describe("DocumentsRoute (task E13/F09/US01/T03, web-documents-v2)", () => {
     expect(screen.queryByText("Uploading…")).toBeNull();
   });
 
-  it("stops polling after five minutes without a change, offers Retry upload on the still-Uploaded row, and resumes on 'Check again'", async () => {
+  it("stops polling after five minutes without a change, keeps informational next-step copy, and resumes on 'Check again'", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const createdAt = new Date().toISOString();
+    const reprocessDocument = vi.fn().mockResolvedValue({
+      ok: true,
+      statusCode: 202,
+      queued: { documentId: "p", extractionJobId: "job-1", processingStatus: "Uploaded" },
+      error: null,
+    });
     const listDocuments = vi
       .fn<ApiClient["listDocuments"]>()
       .mockResolvedValue(listOk([docItem({ id: "p", fileName: "Stuck.pdf", processingStatus: "Uploaded", stage: null, contractId: null, createdAt })]));
-    renderDocuments(mockApiClient({ listDocuments }));
+    renderDocuments(mockApiClient({ listDocuments, reprocessDocument }));
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
@@ -451,15 +457,26 @@ describe("DocumentsRoute (task E13/F09/US01/T03, web-documents-v2)", () => {
     // ADR-020 w15 footer 10 (task E16/F03/US02/T02): "Uploaded", never "Queued…" -- the row grid's
     // own reading of an `Uploaded` document since the perceived-instant batch.
     expect(await screen.findByText("Processing in the background")).toBeInTheDocument();
+    expect(reprocessDocument).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Retry upload" })).not.toBeInTheDocument();
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(5 * 60_000);
+      await vi.advanceTimersByTimeAsync(3 * 60_000);
+    });
+    await waitFor(() => expect(reprocessDocument).toHaveBeenCalledTimes(1));
+    expect(reprocessDocument).toHaveBeenCalledWith(WORKSPACE_ID, "p");
+    expect(screen.queryByRole("button", { name: "Retry upload" })).not.toBeInTheDocument();
+    expect(screen.getByText("Processing in the background")).toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2 * 60_000);
     });
     expect(await screen.findByText("Nothing has changed for five minutes, so this page stopped checking for updates.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Retry upload" })).toBeInTheDocument();
-    expect(screen.queryByText("Processing in the background")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry upload" })).not.toBeInTheDocument();
+    expect(screen.getByText("Processing in the background")).toBeInTheDocument();
     expect(screen.getByText("Uploaded")).toHaveClass("tag");
     expect(screen.queryByText("Failed")).toBeNull();
+    expect(reprocessDocument).toHaveBeenCalledTimes(1);
 
     const callsWhenPaused = listDocuments.mock.calls.length;
     await act(async () => {

@@ -75,10 +75,11 @@ export function getPortfolioZeroCopy(variant: PortfolioZeroVariant): { sentence:
  * counts re-read on the shared 2 s cadence (also when rows are already on screen, so later
  * completions appear without a remount); the five-minute no-change budget still applies.
  *
- * **Column filters.** Each table header carries a compact filter for that column (text contains on
- * Supplier / Contract / spend / dates; selects on Auto / Risk / Status). Filtering is client-side
- * over the already-loaded page. `?category=` on the URL still reaches `GET /api/contracts` so a
- * shared link keeps working; it is no longer a disconnected toolbar above the table.
+ * **Column filters.** Each table header carries a compact, type-matched filter (text on Supplier /
+ * Contract, date on Ends / notice / Start, number on Annual spend, select on Auto / Risk / Status).
+ * Filtering is client-side over the already-loaded page. `?category=` on the URL still reaches
+ * `GET /api/contracts` so a shared link keeps working (ADR-012); it is no longer a disconnected
+ * toolbar above the table.
  */
 export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
   const workspace = loadCurrentWorkspace();

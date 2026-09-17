@@ -29,9 +29,9 @@ describe("documents.css (task E13/F09/US01/T03, web-documents-v2)", () => {
     expect(body).toMatch(/font-size:\s*clamp\(30px,\s*3\.4vw,\s*46px\)/);
   });
 
-  it("filenames wrap at word/character-run boundaries, not one glyph per line", () => {
-    expect(ruleBodyFor(css, ".document-status-table-filename")).toMatch(/overflow-wrap:\s*anywhere/);
-    expect(ruleBodyFor(css, ".document-status-table-link")).toMatch(/overflow-wrap:\s*anywhere/);
+  it("ellipses long filenames inside the Document column instead of overflowing the row", () => {
+    expect(ruleBodyFor(css, ".document-status-table-filename")).toMatch(/text-overflow:\s*ellipsis/);
+    expect(ruleBodyFor(css, ".document-status-table-link")).toMatch(/text-overflow:\s*ellipsis/);
   });
 
   it("dropzone is dashed, and the onboarding/list variants each carry their own density", () => {
@@ -63,5 +63,13 @@ describe("documents.css (task E13/F09/US01/T03, web-documents-v2)", () => {
     const rule = css.match(/\.document-status-table th:nth-child\(4\),\s*\.document-status-table td:nth-child\(4\)\s*\{([^}]*)\}/);
     expect(rule).not.toBeNull();
     expect(rule![1]).toMatch(/text-align:\s*right/);
+  });
+
+  it("reserves a percentage Delete column inside the 100% table, not a 1% + min-width overflow", () => {
+    const rule = css.match(/\.document-status-table th:nth-child\(5\),\s*\.document-status-table td:nth-child\(5\)\s*\{([^}]*)\}/);
+    expect(rule).not.toBeNull();
+    expect(rule![1]).toMatch(/width:\s*24%/);
+    expect(rule![1]).not.toMatch(/min-width:\s*13\.5rem/);
+    expect(css).toMatch(/\.document-status-table-delete-confirm\s*\{[^}]*flex-direction:\s*row/);
   });
 });

@@ -211,6 +211,8 @@ public sealed class StagedExtractionService(
             acceptedSupplierName ??= stageSupplierName;
         }
 
+        OfficializeDerivedStatus(tenantId, document, contract, now, runEvidence);
+
         document.ProcessingStatus = DetermineDocumentStatus(stageResults, classificationConfidence);
 
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
@@ -506,7 +508,27 @@ public sealed class StagedExtractionService(
 
             applyToContract(contract, fact.Field, fact.Value);
 
-            var decision = ExtractionConfidencePolicy.Decide(fact.Confidence);
+            // Status is derived from start/end after every stage has run — a fuzzy LLM "active"
+            // must not park the document in review. The model's proposal is applied onto the
+            // contract as an interim value; evidence is written by OfficializeDerivedStatus.
+            if (ExtractionConfidencePolicy.IsStatusField(fact.Field))
+            {
+                extracted++;
+                continue;
+            }
+
+            var confidence = fact.Confidence;
+            string decision;
+            if (ExtractionConfidencePolicy.IsExtractedStartDate(fact.Field) && TryParseDate(fact.Value, out _))
+            {
+                confidence = ExtractionConfidencePolicy.OfficialConfidence;
+                decision = ExtractionConfidencePolicy.AutoAccepted;
+            }
+            else
+            {
+                decision = ExtractionConfidencePolicy.Decide(fact.Confidence);
+            }
+
             var accepted = decision == ExtractionConfidencePolicy.AutoAccepted;
 
             if (!accepted)
@@ -528,12 +550,12 @@ public sealed class StagedExtractionService(
                 Value = fact.Value,
                 SourceSpan = fact.SourceSpan,
                 SourcePage = ClampPage(fact.SourcePage, pageCount),
-                Confidence = fact.Confidence,
+                Confidence = confidence,
                 Decision = decision,
                 DecidedAt = now,
                 CreatedAt = now,
             });
-            runEvidence.Add((fact.Field, fact.Confidence));
+            runEvidence.Add((fact.Field, confidence));
 
             extracted++;
         }
@@ -903,6 +925,49 @@ public sealed class StagedExtractionService(
         }
 
         return DocumentProcessingStatus.Completed;
+    }
+
+    /// <summary>
+    /// Overwrites <see cref="Contract.Status"/> with the date-derived value and records it as
+    /// <c>auto_accepted</c> at <see cref="ExtractionConfidencePolicy.OfficialConfidence"/>. A fuzzy
+    /// metadata-stage guess is never left as <c>review_required</c>. When neither start nor end is
+    /// known, the interim extracted status (if any, and not the bootstrap placeholder) is
+    /// officialized so the field still cannot block validation.
+    /// </summary>
+    private void OfficializeDerivedStatus(
+        TenantId tenantId,
+        Document document,
+        Contract contract,
+        DateTimeOffset now,
+        List<(string FieldName, double? Confidence)> runEvidence)
+    {
+        var today = DateOnly.FromDateTime(now.UtcDateTime);
+        var derived = ExtractionConfidencePolicy.DeriveStatus(contract.StartDate, contract.EndDate, today);
+        var status = derived
+            ?? (string.Equals(contract.Status, BootstrapContractStatus, StringComparison.OrdinalIgnoreCase)
+                || string.IsNullOrWhiteSpace(contract.Status)
+                    ? null
+                    : contract.Status.Trim().ToLowerInvariant());
+
+        if (status is null)
+        {
+            return;
+        }
+
+        contract.Status = status;
+        dbContext.ExtractionEvidences.Add(new ExtractionEvidence
+        {
+            TenantId = tenantId,
+            ContractId = contract.Id,
+            SourceDocumentId = document.Id,
+            FieldName = ExtractionConfidencePolicy.StatusFieldName,
+            Value = status,
+            Confidence = ExtractionConfidencePolicy.OfficialConfidence,
+            Decision = ExtractionConfidencePolicy.AutoAccepted,
+            DecidedAt = now,
+            CreatedAt = now,
+        });
+        runEvidence.Add((ExtractionConfidencePolicy.StatusFieldName, ExtractionConfidencePolicy.OfficialConfidence));
     }
 
     /// <summary>

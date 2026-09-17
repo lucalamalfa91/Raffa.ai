@@ -82,10 +82,15 @@ export default function ReviewFieldList({
                 <td>
                   {row.decision === "pending" ? (
                     <div className="review-decision-actions">
-                      <button type="button" className="btn btn-secondary" onClick={() => onAccept(row.name)}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        disabled={submitting}
+                        onClick={() => onAccept(row.name)}
+                      >
                         Accept
                       </button>
-                      <button type="button" className="btn btn-ghost" onClick={() => onSelect(row.name)}>
+                      <button type="button" className="btn btn-ghost" disabled={submitting} onClick={() => onSelect(row.name)}>
                         Correct
                       </button>
                     </div>

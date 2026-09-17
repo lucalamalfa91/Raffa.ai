@@ -32,8 +32,9 @@ type OpportunitiesFetchState =
   | { phase: "ready"; items: readonly SavingsOpportunityBody[] };
 
 /**
- * Route `/savings` -- Savings, V2 (ADR-024 V2 IA amendment "No Home item": reached from Ask
- * actions, Renewals and Contract 360, not the rail; screens-v2.md #8; `app.jsx` `kpis` / `opps`).
+ * Route `/savings` -- Savings, V2 (screens-v2.md #8; `app.jsx` `kpis` / `opps`). First-class rail
+ * destination under "From your contracts" (`navItems.ts`), also reached from Ask actions, Renewals
+ * and Contract 360.
  * Header ("Savings" + summary), the four-cell KPI band, the opportunities table (Supplier · Action
  * · Estimate · Status, rows open Contract 360), and the reroute state while nothing feeds it.
  *

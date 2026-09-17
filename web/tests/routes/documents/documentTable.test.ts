@@ -13,6 +13,8 @@ import {
   getRowStatusTag,
   getStagePercent,
   isAttentionStatus,
+  isStuckUploaded,
+  STUCK_REPROCESS_AFTER_MS,
   type DocumentCountsBody,
 } from "../../../src/routes/documents/documentTable";
 
@@ -132,8 +134,8 @@ describe("getRowAction", () => {
     });
   });
 
-  it("offers 'Retry upload' for failed documents", () => {
-    expect(getRowAction(item({ processingStatus: "Failed" }))).toEqual({ kind: "retry", label: "Retry upload" });
+  it("returns null for failed documents (recovery is auto-reprocess, not a table CTA)", () => {
+    expect(getRowAction(item({ processingStatus: "Failed" }))).toBeNull();
   });
 
   it("returns null while still processing (the stage text renders instead, not an action)", () => {
@@ -141,17 +143,13 @@ describe("getRowAction", () => {
   });
 
   it("returns null for a freshly uploaded document (the background-processing sentence renders instead)", () => {
-    const now = Date.parse("2026-09-15T18:00:00Z");
-    expect(
-      getRowAction(item({ processingStatus: "Uploaded", createdAt: "2026-09-15T17:58:00Z" }), now),
-    ).toBeNull();
+    expect(getRowAction(item({ processingStatus: "Uploaded", createdAt: "2026-09-15T17:58:00Z" }))).toBeNull();
   });
 
-  it("offers Retry upload once an Uploaded document has sat for five minutes", () => {
-    const now = Date.parse("2026-09-15T18:00:00Z");
+  it("still returns null for an Uploaded document that has sat past the stuck threshold", () => {
     expect(
-      getRowAction(item({ processingStatus: "Uploaded", createdAt: "2026-09-15T17:55:00Z" }), now),
-    ).toEqual({ kind: "retry", label: "Retry upload" });
+      getRowAction(item({ processingStatus: "Uploaded", createdAt: "2026-09-15T17:55:00Z" })),
+    ).toBeNull();
   });
 
   // ADR-020 w15 §1.4: a refused file offers no next step -- nothing to review, ask or retry.
@@ -169,6 +167,23 @@ describe("getRowAction", () => {
       });
     },
   );
+});
+
+describe("isStuckUploaded", () => {
+  const now = Date.parse("2026-09-15T18:00:00Z");
+
+  it("is false for a freshly uploaded document", () => {
+    expect(isStuckUploaded(item({ processingStatus: "Uploaded", createdAt: "2026-09-15T17:58:00Z" }), now)).toBe(false);
+  });
+
+  it("is true once an Uploaded document has sat for three minutes", () => {
+    expect(STUCK_REPROCESS_AFTER_MS).toBe(3 * 60 * 1000);
+    expect(isStuckUploaded(item({ processingStatus: "Uploaded", createdAt: "2026-09-15T17:57:00Z" }), now)).toBe(true);
+  });
+
+  it("is false while the Worker has already claimed the job", () => {
+    expect(isStuckUploaded(item({ processingStatus: "Processing", createdAt: "2026-09-15T17:50:00Z" }), now)).toBe(false);
+  });
 });
 
 // Task E16/F03/US01/T01 (ADR-027 §C9, ADR-012 w15 §13.5): the client filter mirrors the server's

@@ -245,7 +245,7 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
         var contract = await readDb.Contracts.SingleAsync(c => c.Id == summary.ContractId);
         Assert.Equal("USD", contract.Currency);
         Assert.Equal("State of Delaware", contract.GoverningLaw);
-        Assert.Equal("Active", contract.Status);
+        Assert.Equal("active", contract.Status);
         Assert.Equal(120000.50m, contract.AnnualSpend);
         Assert.Equal(360000m, contract.TotalContractValue);
         Assert.Equal("Net 30", contract.PaymentTerms);
@@ -625,11 +625,11 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
 
         Assert.True(clean.IsSuccess);
         Assert.Equal("Northwind Traders SA", clean.Value.AcceptedSupplierName);
-        // Derived dates and GoodConfidence status sit below the auto-accept bar, so the
-        // clean sample is reviewable — the fixture moved, the bar did not.
+        // Start date is officialized even when derived below the bar; end date / cancellation
+        // deadline still sit below it, so the dates stage (and the document) stay reviewable.
         Assert.Equal(DocumentProcessingStatus.NeedsReview, clean.Value.DocumentProcessingStatus);
         var cleanStages = clean.Value.Stages.ToDictionary(s => s.Stage);
-        Assert.Equal(ExtractionJobStatus.NeedsReview, cleanStages[ExtractionStage.Metadata].Status);
+        Assert.Equal(ExtractionJobStatus.Completed, cleanStages[ExtractionStage.Metadata].Status);
         Assert.Equal(ExtractionJobStatus.NeedsReview, cleanStages[ExtractionStage.DatesAndRenewalTerms].Status);
 
         var ambiguous = await service.RunAsync(
@@ -674,6 +674,17 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
         Assert.Equal("Switzerland", cleanContract.GoverningLaw);
         Assert.Equal("Net 30", cleanContract.PaymentTerms);
         Assert.Equal("active", cleanContract.Status);
+        Assert.Equal(new DateOnly(2026, 1, 1), cleanContract.StartDate);
+
+        var cleanStart = await readDb.ExtractionEvidences.SingleAsync(
+            e => e.ContractId == clean.Value.ContractId && e.FieldName == "startDate");
+        Assert.Equal(ExtractionConfidencePolicy.AutoAccepted, cleanStart.Decision);
+        Assert.Equal(ExtractionConfidencePolicy.OfficialConfidence, cleanStart.Confidence);
+
+        var cleanStatus = await readDb.ExtractionEvidences.SingleAsync(
+            e => e.ContractId == clean.Value.ContractId && e.FieldName == "status");
+        Assert.Equal("active", cleanStatus.Value);
+        Assert.Equal(ExtractionConfidencePolicy.AutoAccepted, cleanStatus.Decision);
     }
 
     [Fact]
@@ -740,7 +751,8 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
 
     /// <summary>
     /// A strong supplier no longer auto-completes the document: every field uses the same bar,
-    /// so a weak status keeps the document in NeedsReview (badge and status stay in agreement).
+    /// so a weak currency keeps the document in NeedsReview (badge and status stay in agreement).
+    /// Status is not that field — a fuzzy status guess is derived from dates and cannot block.
     /// </summary>
     [Fact]
     public async Task A_strong_supplier_does_not_auto_complete_when_another_field_needs_review()
@@ -755,7 +767,7 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
         payloads["Metadata"] = $$"""
             {"facts":[
                 {"field":"supplier","value":"{{SupplierLegalName}}","sourcePage":1,"sourceSpan":"between Salesforce, Inc. and Contoso Ltd","confidence":0.9},
-                {"field":"status","value":"active","sourcePage":1,"sourceSpan":"Status: Active","confidence":0.31}
+                {"field":"currency","value":"USD","sourcePage":1,"sourceSpan":"Currency: USD","confidence":0.31}
             ]}
             """;
 
@@ -776,13 +788,106 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
 
         await using var readDb = CreateContext(tenantContext);
         using var tenantScope = tenantContext.BeginScope(tenantId);
-        var statusEvidence = await readDb.ExtractionEvidences
-            .SingleAsync(e => e.ContractId == summary.ContractId && e.FieldName == "status");
-        Assert.Equal(0.31, statusEvidence.Confidence);
-        Assert.Equal(ExtractionConfidencePolicy.ReviewRequired, statusEvidence.Decision);
+        var currencyEvidence = await readDb.ExtractionEvidences
+            .SingleAsync(e => e.ContractId == summary.ContractId && e.FieldName == "currency");
+        Assert.Equal(0.31, currencyEvidence.Confidence);
+        Assert.Equal(ExtractionConfidencePolicy.ReviewRequired, currencyEvidence.Decision);
         var supplierEvidence = await readDb.ExtractionEvidences
             .SingleAsync(e => e.ContractId == summary.ContractId && e.FieldName == "supplier");
         Assert.Equal(ExtractionConfidencePolicy.AutoAccepted, supplierEvidence.Decision);
+    }
+
+    [Fact]
+    public async Task A_weak_extracted_start_date_and_status_guess_are_officialized_from_the_dates()
+    {
+        var tenantId = TenantId.New();
+        var tenantContext = new TenantContext();
+
+        await using var seedDb = CreateContext(tenantContext);
+        var (_, document) = await SeedDocumentAsync(seedDb, tenantId);
+
+        var payloads = HighConfidencePayloads();
+        payloads["Metadata"] = $$"""
+            {"facts":[
+                {"field":"supplier","value":"{{SupplierLegalName}}","sourcePage":1,"confidence":0.95},
+                {"field":"currency","value":"USD","sourcePage":1,"confidence":0.95},
+                {"field":"status","value":"active","sourcePage":1,"sourceSpan":"Status: Active","confidence":0.31}
+            ]}
+            """;
+        payloads["DatesAndRenewalTerms"] = """
+            {"facts":[
+                {"field":"startDate","value":"2026-01-01","sourcePage":1,"confidence":0.55},
+                {"field":"endDate","value":"2027-01-01","sourcePage":1,"confidence":0.95},
+                {"field":"effectiveDate","value":"2026-01-01","sourcePage":1,"confidence":0.95},
+                {"field":"autoRenewal","value":"true","sourcePage":1,"confidence":0.95}
+            ]}
+            """;
+
+        await using var runDb = CreateContext(tenantContext);
+        var service = new StagedExtractionService(
+            runDb, new ScriptedAiGateway(payloads), tenantContext, new FixedClock(Now), new RecordingAuditWriter());
+
+        var result = await service.RunAsync(tenantId, document.Id, [new DocumentPageText(1, "some contract text")]);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(
+            ExtractionJobStatus.Completed,
+            result.Value.Stages.Single(s => s.Stage == ExtractionStage.Metadata).Status);
+        Assert.Equal(
+            ExtractionJobStatus.Completed,
+            result.Value.Stages.Single(s => s.Stage == ExtractionStage.DatesAndRenewalTerms).Status);
+
+        await using var readDb = CreateContext(tenantContext);
+        using var tenantScope = tenantContext.BeginScope(tenantId);
+
+        var contract = await readDb.Contracts.SingleAsync(c => c.Id == result.Value.ContractId);
+        Assert.Equal(ExtractionConfidencePolicy.StatusActive, contract.Status);
+        Assert.Equal(new DateOnly(2026, 1, 1), contract.StartDate);
+
+        var startEvidence = await readDb.ExtractionEvidences
+            .SingleAsync(e => e.ContractId == contract.Id && e.FieldName == "startDate");
+        Assert.Equal(ExtractionConfidencePolicy.OfficialConfidence, startEvidence.Confidence);
+        Assert.Equal(ExtractionConfidencePolicy.AutoAccepted, startEvidence.Decision);
+
+        var statusEvidence = await readDb.ExtractionEvidences
+            .SingleAsync(e => e.ContractId == contract.Id && e.FieldName == "status");
+        Assert.Equal(ExtractionConfidencePolicy.StatusActive, statusEvidence.Value);
+        Assert.Equal(ExtractionConfidencePolicy.OfficialConfidence, statusEvidence.Confidence);
+        Assert.Equal(ExtractionConfidencePolicy.AutoAccepted, statusEvidence.Decision);
+    }
+
+    [Fact]
+    public async Task Status_is_expired_when_the_end_date_is_already_in_the_past()
+    {
+        var tenantId = TenantId.New();
+        var tenantContext = new TenantContext();
+
+        await using var seedDb = CreateContext(tenantContext);
+        var (_, document) = await SeedDocumentAsync(seedDb, tenantId);
+
+        var payloads = HighConfidencePayloads();
+        payloads["DatesAndRenewalTerms"] = """
+            {"facts":[
+                {"field":"startDate","value":"2024-01-01","sourcePage":1,"confidence":0.55},
+                {"field":"endDate","value":"2025-12-31","sourcePage":1,"confidence":0.95}
+            ]}
+            """;
+
+        await using var runDb = CreateContext(tenantContext);
+        var service = new StagedExtractionService(
+            runDb, new ScriptedAiGateway(payloads), tenantContext, new FixedClock(Now), new RecordingAuditWriter());
+
+        var result = await service.RunAsync(tenantId, document.Id, [new DocumentPageText(1, "some contract text")]);
+
+        Assert.True(result.IsSuccess);
+
+        await using var readDb = CreateContext(tenantContext);
+        using var tenantScope = tenantContext.BeginScope(tenantId);
+        var contract = await readDb.Contracts.SingleAsync(c => c.Id == result.Value.ContractId);
+        Assert.Equal(ExtractionConfidencePolicy.StatusExpired, contract.Status);
+        Assert.Equal(
+            ExtractionConfidencePolicy.AutoAccepted,
+            (await readDb.ExtractionEvidences.SingleAsync(e => e.ContractId == contract.Id && e.FieldName == "status")).Decision);
     }
 
     /// <summary>

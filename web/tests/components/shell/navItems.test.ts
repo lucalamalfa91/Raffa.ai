@@ -44,18 +44,28 @@ describe("navItems (V2 two-tier model, ADR-024 amendment; task E13/F09/US01/T01,
   });
 
   describe("buildSecondaryNavItems (\"From your contracts\")", () => {
-    it("lists Portfolio, Renewals, Quote check in that order, with no Review queue item", () => {
+    it("lists Portfolio, Renewals, Savings, Quote check in that order, with no Review queue item", () => {
       const items = buildSecondaryNavItems({ kbReady: false, validatedContractCount: 0 });
-      expect(items.map((item) => item.label)).toEqual(["Portfolio", "Renewals", "Quote check"]);
+      expect(items.map((item) => item.label)).toEqual(["Portfolio", "Renewals", "Savings", "Quote check"]);
       expect(items.map((item) => item.label)).not.toContain("Review queue");
     });
 
-    it("greys every item (and gives Portfolio/Renewals no badge at all) while kbReady is false", () => {
+    it("Savings is a first-class rail destination at /savings, with no badge", () => {
       const items = buildSecondaryNavItems({ kbReady: false, validatedContractCount: 0 });
-      expect(items.every((item) => item.greyed)).toBe(true);
-      const [portfolio, renewals] = items;
+      const savings = items.find((item) => item.id === "savings");
+      expect(savings).toEqual({ id: "savings", label: "Savings", path: "/savings", badge: null, greyed: false });
+    });
+
+    it("greys Portfolio/Renewals/Quote check (and gives Portfolio/Renewals no badge) while kbReady is false; Savings stays un-greyed", () => {
+      const items = buildSecondaryNavItems({ kbReady: false, validatedContractCount: 0 });
+      const [portfolio, renewals, savings, quoteCheck] = items;
+      expect(portfolio.greyed).toBe(true);
+      expect(renewals.greyed).toBe(true);
+      expect(savings.greyed).toBe(false);
+      expect(quoteCheck.greyed).toBe(true);
       expect(portfolio.badge).toBeNull();
       expect(renewals.badge).toBeNull();
+      expect(savings.badge).toBeNull();
     });
 
     it("un-greys every item and badges Portfolio/Renewals with the validated count once kbReady", () => {
@@ -69,8 +79,8 @@ describe("navItems (V2 two-tier model, ADR-024 amendment; task E13/F09/US01/T01,
     it("Quote check's badge is always the constant 'optional', never a count, ready or not", () => {
       const notReady = buildSecondaryNavItems({ kbReady: false, validatedContractCount: 0 });
       const ready = buildSecondaryNavItems({ kbReady: true, validatedContractCount: 5 });
-      expect(notReady[2].badge).toEqual({ text: "optional", tone: "muted" });
-      expect(ready[2].badge).toEqual({ text: "optional", tone: "muted" });
+      expect(notReady[3].badge).toEqual({ text: "optional", tone: "muted" });
+      expect(ready[3].badge).toEqual({ text: "optional", tone: "muted" });
     });
   });
 

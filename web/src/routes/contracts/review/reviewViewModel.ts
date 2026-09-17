@@ -37,8 +37,9 @@ import { formatDateOnly, getContractTypeLabel } from "../portfolioTableFormatter
  * (spec §7.3): below the 0.8 bar the backend records the evidence but refuses to link the supplier,
  * so the contract carries no supplier name while the evidence carries a proposed one. Such a row is
  * built from the proposal (`proposalPending: true`) and "Accept" has to *write* it -- see
- * `useReviewSession.ts` -- because accepting an unapplied proposal is a real change, unlike accepting
- * a value the contract already holds.
+ * `useReviewSession.ts` -- because accepting an unapplied proposal is a real change. Accepting a
+ * value the contract already holds is also a real write: the PATCH officializes `review_required`
+ * evidence as `human_accepted` rather than 400-ing as a no-op.
  *
  * **An unrecovered field is still shown.** A canonical field with no contract value and no
  * proposal used to be dropped; under NW-64 it survives as `missing` so the user can type it.
