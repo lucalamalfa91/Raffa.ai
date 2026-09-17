@@ -72,6 +72,12 @@ describe("contracts.css (V2 Portfolio table vs markup.html's own inline instance
     expect(body).toMatch(/padding:\s*var\(--space-1\)\s+var\(--space-2\)/);
     expect(body).toMatch(/font-size:\s*12px/);
   });
+
+  it("lays out the ready / to-review segmented filter with the screen's own padding tokens", () => {
+    const body = ruleBodyFor(contractsCss, ".readiness-filter-row");
+    expect(body).toMatch(/display:\s*flex/);
+    expect(body).toMatch(/padding:\s*16px 32px var\(--space-3\)/);
+  });
 });
 
 describe("components.css (shared V2 screen chrome used by Portfolio, Renewals, Quote check, Savings, Members)", () => {

@@ -33,6 +33,22 @@
   white-space: nowrap;
 }
 
+/* ---- Ready / to-review segmented filter --------------------------------- */
+
+.readiness-filter-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  padding: 16px 32px var(--space-3);
+}
+
+.portfolio-readiness-empty {
+  padding: 20px 32px 32px;
+  max-width: 520px;
+}
+
 /* ---- Column filters (in-header, not a disconnected toolbar) -------------- */
 
 .portfolio-filter-clear {

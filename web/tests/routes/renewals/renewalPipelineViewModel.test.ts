@@ -18,6 +18,7 @@ import {
   getRenewalStatusTag,
   isHighPriorityScore,
   isNoticeUrgent,
+  isRenewalItemReady,
 } from "../../../src/routes/renewals/renewalPipelineViewModel";
 
 function item(overrides: Partial<RenewalPipelineItemBody> = {}): RenewalPipelineItemBody {
@@ -74,6 +75,12 @@ describe("buildRenewalRows (app.jsx: sorted by score, highest first)", () => {
     expect(rows.map((row) => row.score)).toEqual([91, 40, null]);
     expect(rows[0].tracked?.action).toBe("In negotiation");
     expect(rows[1].tracked).toBeNull();
+  });
+
+  it("treats Determined as already-OK and CannotDetermine as still to review", () => {
+    expect(isRenewalItemReady(item({ status: "Determined" }))).toBe(true);
+    expect(isRenewalItemReady(item({ status: "CannotDetermine" }))).toBe(false);
+    expect(isRenewalItemReady(item({ status: "NoRenewal" }))).toBe(false);
   });
 
   it("treats a contract missing from the score map as unscored, not as zero", () => {

@@ -4,6 +4,14 @@ import type { ApiClient, DocumentListPageBody, GetPortfolioResult, PortfolioList
 import { loadCurrentWorkspace } from "../signin/workspaceStore";
 import { CHECK_AGAIN_LABEL, UPDATES_PAUSED_NOTICE, usePollBudget } from "../../components/shell/usePollBudget";
 import PortfolioTable from "./PortfolioTable";
+import ReadinessFilter from "../../components/ReadinessFilter";
+import {
+  countReadiness,
+  DEFAULT_READINESS_FILTER,
+  filterByReadiness,
+  getReadinessEmptyCopy,
+  type ReadinessFilterValue,
+} from "../../components/readiness";
 import {
   buildPortfolioRows,
   buildPortfolioSummary,
@@ -80,6 +88,11 @@ export function getPortfolioZeroCopy(variant: PortfolioZeroVariant): { sentence:
  * Filtering is client-side over the already-loaded page. `?category=` on the URL still reaches
  * `GET /api/contracts` so a shared link keeps working (ADR-012); it is no longer a disconnected
  * toolbar above the table.
+ *
+ * **Readiness filter.** The loaded page still carries pending / needs-review rows (w17 immediate
+ * visibility). A compact `.seg` (Ready / To review / All) defaults to already-OK so the table is
+ * usable; the still-to-review bucket is one click away, never hidden forever. Counts are the
+ * already-loaded page, never a second fetch.
  */
 export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
   const workspace = loadCurrentWorkspace();
@@ -92,6 +105,7 @@ export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
   const [fetchState, setFetchState] = useState<FetchState>({ phase: "loading" });
   const [moreColumns, setMoreColumns] = useState(false);
   const [documentCounts, setDocumentCounts] = useState<DocumentListPageBody["counts"] | null>(null);
+  const [readiness, setReadiness] = useState<ReadinessFilterValue>(DEFAULT_READINESS_FILTER);
   const loadGeneration = useRef(0);
 
   const loadPortfolio = useCallback(
@@ -153,10 +167,16 @@ export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
 
   const rows = useMemo(() => (fetchState.phase === "ready" ? buildPortfolioRows(fetchState.items) : []), [fetchState]);
   const summary = useMemo(() => buildPortfolioSummary(rows), [rows]);
+  const readinessCounts = useMemo(
+    () => countReadiness(rows.filter((row) => row.isReady).length, rows.filter((row) => !row.isReady).length),
+    [rows],
+  );
+  const visibleRows = useMemo(() => filterByReadiness(rows, readiness, (row) => row.isReady), [rows, readiness]);
 
   const ready = fetchState.phase === "ready";
   const lit = ready && rows.length > 0;
   const zero = ready && rows.length === 0;
+  const tableVisible = lit && visibleRows.length > 0;
 
   // Counts drive both the zero-state sentence and the in-flight poll, including when rows are
   // already on screen (later Completions must be able to appear without a remount).
@@ -205,7 +225,7 @@ export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
             {ready ? formatPortfolioSummary(summary) : fetchState.phase === "loading" ? "Loading portfolio…" : PORTFOLIO_SUMMARY_OFF}
           </p>
         </div>
-        {lit && (
+        {tableVisible && (
           <div className="screen-header-actions">
             <button type="button" className="btn btn-ghost portfolio-columns-toggle" aria-pressed={moreColumns} onClick={() => setMoreColumns((current) => !current)}>
               {moreColumnsLabel(moreColumns)}
@@ -256,7 +276,18 @@ export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
         </div>
       )}
 
-      {lit && <PortfolioTable rows={rows} moreColumns={moreColumns} />}
+      {lit && (
+        <>
+          <ReadinessFilter value={readiness} onChange={setReadiness} counts={readinessCounts} ariaLabel="Filter portfolio by readiness" />
+          {tableVisible ? (
+            <PortfolioTable rows={visibleRows} moreColumns={moreColumns} />
+          ) : (
+            <div className="portfolio-readiness-empty" role="status">
+              <p className="micro-meta">{getReadinessEmptyCopy(readiness)}</p>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
