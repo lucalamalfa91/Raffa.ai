@@ -173,7 +173,13 @@ public sealed class AskPricedLinesParityTests : IClassFixture<RaffaApiFactory>
         await SeedLineItemAsync(factory, tenantId, contract.Id);
 
         var pack = await BuildMarketComparePackAsync(factory, tenantId, contract.Id);
-        var marketItem = Assert.Single(pack, item => item.Corpus == PackCorpus.Market);
+
+        // Corpus == Market alone is not selective enough: the market-knowledge notes search below
+        // (unrelated to this task, always runs) seeds a real fixture with its own Salesforce
+        // MKT-SFDC-* notes, also Corpus == Market. The priced-line item's own citation key --
+        // "market:{supplierName}:{line.Description}" -- is what this task's own code builds, and is
+        // the one item under test here.
+        var marketItem = Assert.Single(pack, item => item.CitationKey.StartsWith("market:Salesforce:", StringComparison.Ordinal));
 
         Assert.DoesNotContain("insufficient market data", marketItem.Snippet, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("representative", marketItem.Provenance, StringComparison.Ordinal);
@@ -208,8 +214,10 @@ public sealed class AskPricedLinesParityTests : IClassFixture<RaffaApiFactory>
         // AC-3: previously a missing/failed band silently dropped the market card altogether (the
         // adapter-failure and insufficient-data branches both just `continue`d past it) -- this task
         // makes the abstain an entry, never an omission, so a client/model always has something
-        // citable to say "insufficient market data" with.
-        var marketItem = Assert.Single(pack, item => item.Corpus == PackCorpus.Market);
+        // citable to say "insufficient market data" with. Filtered by citation key, not bare Corpus
+        // == Market, for the same reason as the representative-band test above (the unrelated market
+        // -notes search also returns Corpus == Market items).
+        var marketItem = Assert.Single(pack, item => item.CitationKey.StartsWith("market:Salesforce:", StringComparison.Ordinal));
         Assert.Contains("insufficient market data", marketItem.Snippet, StringComparison.OrdinalIgnoreCase);
         Assert.Empty(marketItem.Values);
 
