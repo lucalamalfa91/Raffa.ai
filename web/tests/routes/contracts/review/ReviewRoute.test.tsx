@@ -75,6 +75,10 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     // Task E08/F01/US01/T01 (renewal-pipeline): this suite never reaches the Renewals screen --
     // bare vi.fn() is enough, same convention as the other calls above.
     postRenewalAction: vi.fn(),
+    // Task E29/F04/US01/T01 (todo-web): same "never reaches the Renewals screen" reasoning as
+    // postRenewalAction immediately above.
+    getRenewalNegotiationTodos: vi.fn(),
+    tickRenewalNegotiationTodo: vi.fn(),
     getQuote: vi.fn(),
     getNegotiationSteps: vi.fn(),
     putNegotiationSteps: vi.fn(),

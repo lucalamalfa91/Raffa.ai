@@ -855,6 +855,15 @@ gone with V2.
   "Assigned"), both the real `POST /api/renewals/{id}/action` with owner = the signed-in `userLabel`;
   once acted, the bordered "{action} · owner … Open contract →" box. "See the facts behind this →"
   opens Contract 360.
+- **Negotiation TODOs** (`NegotiationTodoList.tsx`, task E29/F04/US01/T01, wave w19 NW-85; ADR-012
+  cl. 52 / ADR-020 cl. 41 -- see "API client" above for the footer-transcription caveat) -- below the
+  recommended-action block, a `.table` sub-surface (Topic · Current → target · Why · Status · Mark
+  done) reads back the negotiation points Ask ranked and persisted for this contract
+  (`GET /api/renewals/{id}/negotiation-todos`); `Superseded` rows (the ranker no longer grounds that
+  point) are filtered out client-side, `Done` stays visible. A `.btn-secondary` **Mark done** PUTs the
+  tick (Procurement/Admin, same route) and the row is replaced with the server's own returned state,
+  never an optimistic flip -- so a Done tick surviving a repeat ask is proven, not assumed. Never
+  invents a point: there is no "add a point" affordance here.
 - **States** -- loading, error, and the reroute "No renewal dates yet · Renewals are computed from
   validated end dates and notice periods. Upload a contract to start." → `/documents`.
 
@@ -1234,6 +1243,26 @@ Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
   E14/F03/US02/T01, wave w14; see "Invitation accept" above) -- every one of this section's five
   client methods now has a real caller.
 
+- **Task E29/F04/US01/T01 (todo-web, wave w19 NW-85; ADR-012 w19 cl. 52 / ADR-020 w19 cl. 41)**
+  extended `openapi/raffa-api.v1.json` with `GET`/`PUT /api/renewals/{id}/negotiation-todos`
+  (`getRenewalNegotiationTodos`/`tickRenewalNegotiationTodo`) -- the ninth web epic to extend this
+  document (see "API client" provenance paragraphs above). Already implemented by backend task
+  E29/F01/US01/T01 (`RenewalsEndpointExtensions.cs`); per this section's own established convention
+  (e.g. task E19/F01/US01/T01's "one phase later"), the contract and generated schema are extended by
+  the web task that first consumes an operation, not the backend task that ships it -- this task. Both
+  routes share one wire shaper (`ToNegotiationTodoResponse`, backend), so `RenewalNegotiationTodoRow`
+  types a read row and a tick's `200` body alike, and can never drift into different shapes;
+  `RenewalNegotiationTodoStatusValue` is the closed `Open`/`Done`/`Superseded` vocabulary read off the
+  generated response, the same convention `RenewalActionStatusValue` above already establishes.
+  `tickRenewalNegotiationTodo`'s request body (`TickRenewalNegotiationTodoRequest`, `{ pointKey }`) is
+  hand-written, not generated -- same reason as `CorrectContractRequest` above (the generator does not
+  parse `requestBody`). ADR-012/ADR-020's own bodies had not yet been amended with this wave's w19
+  footer clauses when this task ran -- `reports/architecture/waves/w19.md`'s NW-85 row is the citable
+  source instead, the same transcription gap `src/routes/renewals/index.tsx`'s own `?select=` deep
+  link (task E29/F03/US01/T01) already names for its own cl. 51. First caller:
+  `src/routes/renewals/NegotiationTodoList.tsx`, embedded in `InsightCard.tsx`'s "Why it is here" pane
+  (see "Renewals" above).
+
 ## Directory layout
 
 ```
@@ -1323,6 +1352,7 @@ web/
         index.tsx                 # RenewalsRoute -- fetch-then-score-batch state machine, selection, actions, reroute
         RenewalTable.tsx          # the priority list (Score · Supplier · contract · Renews in · Notice in · Status)
         InsightCard.tsx           # the "Why it is here" pane: action + rationale, Start negotiation / Assign to me, acted box
+        NegotiationTodoList.tsx   # task E29/F04/US01/T01 -- negotiation TODO list (Topic/Current→target/Why/Status, Mark-done tick), embedded in InsightCard below the recommended action; GET/PUT /api/renewals/{id}/negotiation-todos
         renewalPipelineViewModel.ts # pure helpers: rows sorted by score, summary, formatting, the two action plans
         renewals.css              # this screen's styles
       quotes/                 # Quote check, V2 (see "Quote check" above)

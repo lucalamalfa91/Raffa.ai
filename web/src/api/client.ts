@@ -815,6 +815,71 @@ export interface PostRenewalActionResult {
   error: string | null;
 }
 
+// Task E29/F04/US01/T01 (todo-web, wave w19 NW-85; ADR-012 w19 cl. 52 / ADR-020 w19 cl. 41 --
+// transcription of that clause into the ADR-012/ADR-020 bodies was still pending when this task ran,
+// the same gap `src/routes/renewals/index.tsx`'s own `?select=` doc comment already names for its
+// own cl. 51, so `reports/architecture/waves/w19.md`'s NW-85 row is the citable source here too):
+// getRenewalNegotiationTodos + tickRenewalNegotiationTodo, wrapping `GET`/`PUT
+// /api/renewals/{id}/negotiation-todos` (backend/src/Raffa.Api/RenewalsEndpointExtensions.cs, task
+// E29/F01/US01/T01) -- the read-back TODO list Ask wrote and the Mark-done tick (parent story
+// us-01-todo-web AC-1/AC-2/AC-3). Extends openapi/raffa-api.v1.json (see that file's own "repeating
+// chore" provenance paragraph in web/README.md) -- feature-01 (backend) implemented the routes but,
+// per that same paragraph's own established convention (e.g. E19/F01/US01/T01's "Do not touch
+// web/openapi/raffa-api.v1.json / client.ts / schema.ts -- one phase later"), the contract and the
+// generated schema are extended by the web task that first consumes an operation, not by the backend
+// task that ships it -- this task.
+type GetRenewalNegotiationTodosResponses = paths["/api/renewals/{id}/negotiation-todos"]["get"]["responses"];
+export type RenewalNegotiationTodosBody = GetRenewalNegotiationTodosResponses[200]["content"]["application/json"];
+/** One row -- also `PUT .../negotiation-todos`'s own 200 body: `ToNegotiationTodoResponse` is the
+ * one wire-shaper both routes share (RenewalsEndpointExtensions.cs), so a read and a tick can never
+ * drift into different shapes -- same discipline `RenewalActionRow` above already establishes for
+ * its own sibling entity. */
+export type RenewalNegotiationTodoRow = RenewalNegotiationTodosBody[number];
+/** The closed three-state vocabulary (`RenewalNegotiationTodoStatus.ToString()`), read off the
+ * generated response type rather than hand-duplicated -- same convention `RenewalActionStatusValue`
+ * above already establishes. */
+export type RenewalNegotiationTodoStatusValue = RenewalNegotiationTodoRow["status"];
+
+export interface GetRenewalNegotiationTodosResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** Every TODO row for this contract, Open/Done/Superseded alike, ordered by rank then pointKey --
+   * an empty array is this contract's own honest "nothing upserted yet", never a failure -- present
+   * only when `ok` is true. */
+  todos: RenewalNegotiationTodosBody | null;
+  /** Plain-language failure reason (400 message, the "not a member" 404, HTTP status text, or
+   * network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
+/**
+ * `PUT /api/renewals/{id}/negotiation-todos` request body. Hand-written, not generated -- see this
+ * file's header comment for why (the generator does not parse `requestBody`). The backend's own
+ * `RenewalNegotiationTodoTickRequest` types `pointKey` as a nullable wire string (validated, not
+ * trusted, server-side) -- this client only ever sends a real, already-known key (the row the user
+ * clicked Mark-done on), so the stronger, non-optional shape here is honest about what this app
+ * actually sends, same reasoning `PostRenewalActionRequest` above already gives for its own sibling
+ * request shape.
+ */
+export interface TickRenewalNegotiationTodoRequest {
+  pointKey: string;
+}
+
+export interface TickRenewalNegotiationTodoResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** The ticked row, now Done, present only when `ok` is true. */
+  todo: RenewalNegotiationTodoRow | null;
+  /** Plain-language failure reason (400 blank pointKey / 403 not Admin-or-Procurement / 404 unknown
+   * point or non-member, HTTP status text, or network-failure cause), present only when `ok` is
+   * false. */
+  error: string | null;
+}
+
 // Task E07/F04/US01/T01 (ask-raffa-ui, ADR-020 screen 7): askRaffa, wrapping `POST
 // /api/chat/query` (backend/src/Raffa.Api/ChatEndpointExtensions.cs) -- the routed answer/citations
 // /abstain envelope behind `src/routes/ask/` (AC-1 route line, AC-2 citations, AC-3 abstain, AC-4
@@ -1425,6 +1490,25 @@ export interface ApiClient {
     contractId: string,
     request: PostRenewalActionRequest,
   ): Promise<PostRenewalActionResult>;
+  /**
+   * Calls `GET /api/renewals/{id}/negotiation-todos` (operationId `getRenewalNegotiationTodos`) --
+   * the negotiation TODO list Ask wrote for this contract, Open/Done/Superseded alike. Never throws;
+   * a `404` (caller not a member of this tenant) is a normal, expected outcome. Never invents a
+   * point: an empty array is this contract's own honest "nothing upserted yet".
+   */
+  getRenewalNegotiationTodos(tenantId: string, contractId: string): Promise<GetRenewalNegotiationTodosResult>;
+  /**
+   * Calls `PUT /api/renewals/{id}/negotiation-todos` (operationId `tickRenewalNegotiationTodo`) --
+   * marks one negotiation TODO point Done (Procurement/Admin only). Same never-throws shape as every
+   * other call here: a `400` (blank pointKey), `403` (not Admin/Procurement) or `404` (unknown point,
+   * or caller not a member) is a normal, expected outcome the caller renders inline. Ticks survive a
+   * repeat ask -- the server never un-ticks Done (RenewalNegotiationTodoService's own doc comment).
+   */
+  tickRenewalNegotiationTodo(
+    tenantId: string,
+    contractId: string,
+    request: TickRenewalNegotiationTodoRequest,
+  ): Promise<TickRenewalNegotiationTodoResult>;
   /**
    * Calls `GET /api/quotes/{id}` (operationId `getQuote`) -- the quote with recorded negotiation
    * outcomes newest first. Never throws; a `404` is a normal, expected outcome.
@@ -2707,6 +2791,113 @@ export function createApiClient(
       }
 
       return { ok: false, statusCode: response.status, action: null, error };
+    },
+
+    async getRenewalNegotiationTodos(tenantId, contractId) {
+      let response: Response;
+      try {
+        response = await fetch(
+          new URL(`/api/renewals/${encodeURIComponent(contractId)}/negotiation-todos`, baseUrl),
+          {
+            headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
+            cache: "no-store",
+          },
+        );
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          todos: null,
+          error: `Unable to reach ${baseUrl}/api/renewals/${contractId}/negotiation-todos. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const todos = (await response.json()) as RenewalNegotiationTodosBody;
+        return { ok: true, statusCode: 200, todos, error: null };
+      }
+
+      // Same "not a member of this tenant" 404 shape as every other ICallerContext-guarded GET above
+      // (Results.NotFound(), no body) -- never a 404 for "nothing upserted yet" (that is a 200 []).
+      if (response.status === 404) {
+        return { ok: false, statusCode: 404, todos: null, error: `No contract found for id ${contractId}.` };
+      }
+
+      // Same Results.BadRequest(string) shape as the other calls' 400s above.
+      let error: string;
+      try {
+        const errorBody: unknown = await response.json();
+        error = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, todos: null, error };
+    },
+
+    async tickRenewalNegotiationTodo(tenantId, contractId, request) {
+      let response: Response;
+      try {
+        response = await fetch(
+          new URL(`/api/renewals/${encodeURIComponent(contractId)}/negotiation-todos`, baseUrl),
+          {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Tenant-Id": tenantId,
+              ...await authHeaders(getAccessToken),
+            },
+            body: JSON.stringify(request),
+            cache: "no-store",
+          },
+        );
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          todo: null,
+          error: `Unable to reach ${baseUrl}/api/renewals/${contractId}/negotiation-todos. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const todo = (await response.json()) as RenewalNegotiationTodoRow;
+        return { ok: true, statusCode: 200, todo, error: null };
+      }
+
+      // Role gate is checked before the route id is even parsed (backend's own "authz before
+      // retrieval") -- the backend's 403 carries no body at all, same shape as the other calls'
+      // fixed-message 403s above (e.g. reprocessDocument).
+      if (response.status === 403) {
+        return {
+          ok: false,
+          statusCode: 403,
+          todo: null,
+          error: "Only a Workspace Admin or Procurement can mark a negotiation TODO done.",
+        };
+      }
+
+      // Never invents a point (client-architect's own rule): an unknown pointKey, or a caller who is
+      // not a member of this tenant, both read back as this same honest 404 -- no body either way.
+      if (response.status === 404) {
+        return {
+          ok: false,
+          statusCode: 404,
+          todo: null,
+          error: `No negotiation TODO found for point '${request.pointKey}' on contract ${contractId}.`,
+        };
+      }
+
+      // Same Results.BadRequest(string) shape as the other calls' 400s above.
+      let error: string;
+      try {
+        const errorBody: unknown = await response.json();
+        error = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, todo: null, error };
     },
 
     async getQuote(tenantId, id) {
