@@ -476,7 +476,13 @@ published by Terraform once `ai_gateway_wired = true` in
 `aisvc-raffa` account, the per-environment Foundry projects and the model
 deployments `gpt-5.4-nano-dev` / `text-embedding-3-small-dev` on dev,
 `gpt-5.4-demo` / `gpt-5.4-nano-demo` / `text-embedding-3-large-demo` on
-demo, OCR `prebuilt-read` — see `infra/README.md`). The fixture's `extract` role is no longer an
+demo, OCR `prebuilt-read` — see `infra/README.md`). Since ADR-017 w18,
+`FoundryOcrClient` also calls Document Intelligence `prebuilt-layout` on the
+same account for per-word `words`/`polygon` geometry (`AiOcrPage.Words`) —
+config-selected `AiGateway:Models:Ocr` stays `prebuilt-read` (the text
+path); `prebuilt-layout` is a fixed model id the client calls internally, no
+new role/SKU/config. A `prebuilt-layout` failure never fails the OCR call:
+every page just carries a null box instead (never an error). The fixture's `extract` role is no longer an
 empty `{}` placeholder: `Raffa.AiGateway.Fixtures.FixtureContractFactExtractor`
 reads the three scalar-fact stages (metadata, commercial terms, dates and
 renewal terms) from the page-marked text with regular expressions — every

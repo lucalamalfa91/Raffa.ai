@@ -191,6 +191,14 @@ Since 2026-09-09 (ADR-004/ADR-008/ADR-017 amendments) `modules/foundry`
 | embed | `text-embedding-3-small-dev` (v1, GlobalStandard, 100K TPM) | `text-embedding-3-large-demo` (v1, GlobalStandard, 100K TPM; the backend forces `dimensions = 1536`) |
 | ocr | Document Intelligence `prebuilt-read` 2024-11-30 (built in, no deployment) | same |
 
+Since ADR-017 w18, `Raffa.AiGateway.Foundry.FoundryOcrClient` also calls
+Document Intelligence `prebuilt-layout` 2024-11-30 on the same account, for
+per-word bounding-box geometry alongside `prebuilt-read`'s text — no new
+role, deployment or SKU (cloud-architect: the account already holds this
+built-in model). `prebuilt-layout` is not config-selected like the row
+above: it is a fixed model id the client calls internally, since only one
+role (`ocr`) exists for Document Intelligence.
+
 Every SKU/version was verified in `northeurope` for this subscription on
 2026-09-09 (`az cognitiveservices model list -l northeurope`);
 `gpt-4o-mini` / `gpt-4.1-*` exist there only as provisioned SKUs and are
