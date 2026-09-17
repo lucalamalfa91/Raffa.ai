@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using Raffa.Benchmark;
 using Raffa.Benchmark.Contracts;
 using Raffa.Chat.Application;
@@ -96,6 +97,27 @@ namespace Raffa.Api;
 /// data" exactly as <c>/strategy</c> does for the identical gap — never a fabricated percentile.
 /// R-STR-03 (status-aware renewal actions) is not read here — a follow-up, not attempted by this
 /// task.
+/// </para>
+///
+/// <para>
+/// <b>Notice pack is a structured fact, never a clause paraphrase</b> (task E30/F01/US01/T01,
+/// NW-91/NW-92; ADR-024 — this task's own citation is "w19 cl. 22; lock 8", not yet folded into
+/// this ADR's own amendment history on disk, so <c>reports/architecture/waves/w19.md</c>'s
+/// NW-91/NW-92 rows are the verifiable source cited from the methods below instead of a clause
+/// number this file cannot confirm): <see cref="BuildNoticePackAsync"/> answers a notice/preavviso/
+/// disdetta question (<see cref="IntentPlanner"/>'s own notice lexicon, mirrored locally because
+/// <c>IntentPlanner.cs</c> is outside this task's file scope) from the scoped contract's own
+/// <see cref="Contract360Renewal"/> fact, a host-computed day count (<see cref="RenewalEngine"/>/
+/// <see cref="IClock"/>, the same fallback <see cref="BuildRenewalStrategyPackAsync"/> already uses
+/// via <see cref="InsightsEndpointExtensions.ToStrategyInputs"/>), <see cref="StrategyPackBuilder"/>'s
+/// own "when you must move" explanation, and — only when this contract's own extracted clauses name
+/// one — a matching-clause citation built from <see cref="Contract360Result.Clauses"/>, never from
+/// <see cref="EmbeddingRetrievalService"/> (every notice question this pack answers is exactly the
+/// shape a full HTTP round trip already exercises under this project's InMemory EF Core provider,
+/// which cannot translate <c>Embedding.Vector.CosineDistance</c> — <c>InMemoryAskEngineFactory</c>'s
+/// own doc comment). Every date is a <see cref="PackValueKind.Date"/> value; "N days" is only ever a
+/// calculator-produced <see cref="PackValueKind.Number"/> value, never <c>EndDate − CancellationDeadline</c>
+/// and never model arithmetic (NW-92).
 /// </para>
 /// </summary>
 internal sealed class AskCopilotService(
@@ -406,7 +428,7 @@ internal sealed class AskCopilotService(
 
         var packItems = plan.Intent switch
         {
-            AskIntent.StructuredFact => await BuildStructuredFactPackAsync(question, namedContractItem, portfolio, cancellationToken)
+            AskIntent.StructuredFact => await BuildStructuredFactOrNoticePackAsync(question, namedContractItem, portfolio, cancellationToken)
                 .ConfigureAwait(false),
             AskIntent.Clause => await BuildClausePackAsync(tenantId, question, namedContractItem, cancellationToken)
                 .ConfigureAwait(false),
@@ -766,6 +788,253 @@ internal sealed class AskCopilotService(
             // ever reaches here uncovered.
             _ => ("Portfolio query result", "Raffa computed this from your validated contracts."),
         };
+
+    // Task E30/F01/US01/T01 (NW-91/NW-92): the same notice/preavviso/disdetta/cancellation-deadline
+    // lexicon IntentPlanner.NoticePattern already matches to steer this question to
+    // AskIntent.StructuredFact in the first place (task E27/F01/US01/T01, NW-79/NW-91) --
+    // duplicated here, not referenced, because IntentPlanner.cs is outside this task's own "Files
+    // to create or modify" (the same "each composition file owns its own copy" shape
+    // InsightsEndpointExtensions.ComputeRenewal's own doc comment already accepts for an identical
+    // reason).
+    private static readonly Regex NoticeQuestionPattern = new(
+        @"\b(notice|preavviso|disdetta(\s+period)?|cancellation\s+deadline)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // The matching-clause evidence item's own vocabulary (task E30/F01/US01/T01): a notice question
+    // is supported by whichever of this contract's own extracted clauses actually discusses when or
+    // how notice must be given -- termination, cancellation, notice and auto-renewal clauses all
+    // qualify; a generic "payment terms" or "liability" clause never does.
+    private static readonly Regex NoticeClauseTypePattern = new(
+        @"notice|cancellat|terminat|auto.?renew|renewal",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>
+    /// Task E30/F01/US01/T01 (NW-91/NW-92): <see cref="AskIntent.StructuredFact"/> covers both a
+    /// plain structured-fact question and a notice/preavviso/disdetta one — <see cref="IntentPlanner"/>
+    /// deliberately reuses the one intent for both (its own notice-lexicon doc comment) rather than
+    /// adding an eleventh <see cref="AskIntent"/> member. This is the split point: a notice question
+    /// about a resolved, named contract gets the structured notice pack
+    /// (<see cref="BuildNoticePackAsync"/>); everything else (no contract in scope, or a plain
+    /// dates/spend question) keeps the pre-existing <see cref="BuildStructuredFactPackAsync"/>
+    /// behaviour unchanged.
+    /// </summary>
+    private async Task<IReadOnlyList<PackItem>> BuildStructuredFactOrNoticePackAsync(
+        string question, PortfolioListItem? namedContractItem, PortfolioPage portfolio, CancellationToken cancellationToken) =>
+        namedContractItem is not null && NoticeQuestionPattern.IsMatch(question)
+            ? await BuildNoticePackAsync(namedContractItem, cancellationToken).ConfigureAwait(false)
+            : await BuildStructuredFactPackAsync(question, namedContractItem, portfolio, cancellationToken).ConfigureAwait(false);
+
+    /// <summary>
+    /// Task E30/F01/US01/T01 (NW-91/NW-92, parent story us-01-notice-pack AC-1/AC-2/AC-3): the
+    /// structured notice pack, in the task's own pack order — the scoped fact
+    /// (<c>endDate</c>/<c>cancellationDeadline</c>/<c>autoRenewal</c>/<c>renewalTermMonths</c>), the
+    /// host-computed day count, <see cref="StrategyPackBuilder"/>'s own "when you must move"
+    /// explanation, then a matching-clause evidence item when one exists. See this type's own doc
+    /// comment for the full rationale (why RAG is never called from here despite the coding
+    /// objective naming it a fallback).
+    ///
+    /// <para>
+    /// <b>Never model arithmetic (AC-2, NW-92)</b>: every date below is read straight off
+    /// <see cref="Contract360Renewal"/> (never re-derived), and the day count is
+    /// <see cref="InsightsEndpointExtensions.ToStrategyInputs"/>'s own fallback — the same
+    /// <see cref="RenewalEngine"/> result <see cref="BuildRenewalStrategyPackAsync"/> already
+    /// computes, falling back to this contract's own asOf-relative day count only because
+    /// <see cref="Raffa.Renewals.Application.ContractRenewalTerms.CancellationNoticeDays"/> has no
+    /// persisted column this wave (that record's own doc comment) — never
+    /// <c>EndDate − CancellationDeadline</c>, which this task's own coding objective forbids
+    /// outright.
+    /// </para>
+    /// </summary>
+    internal async Task<IReadOnlyList<PackItem>> BuildNoticePackAsync(
+        PortfolioListItem namedContractItem, CancellationToken cancellationToken)
+    {
+        var contract360 = await contract360QueryService
+            .GetByIdAsync(CurrentTenantId, new EntityId(namedContractItem.ContractId), cancellationToken)
+            .ConfigureAwait(false);
+
+        if (contract360 is null)
+        {
+            return [];
+        }
+
+        var supplierName = await ResolveDisplayNameAsync(namedContractItem, cancellationToken).ConfigureAwait(false);
+        var asOfDate = DateOnly.FromDateTime(clock.UtcNow.UtcDateTime);
+
+        // Same RenewalEngine + IClock composition BuildRenewalStrategyPackAsync already uses (this
+        // task's own "daysUntilNotice computed host-side via RenewalEngine/IClock") --
+        // ToStrategyInputs' own fallback (that method's doc comment: "the cancellation deadline
+        // comes from two places") is what actually produces a day count when, as always this wave,
+        // no notice-day count is on file: it falls back to Contract360Header.CancellationDeadline
+        // (the same raw fact Contract360Renewal.CancellationDeadline carries) with the days-left
+        // count derived from asOfDate the same way the engine would -- never EndDate minus
+        // CancellationDeadline.
+        var renewal = InsightsEndpointExtensions.ComputeRenewal(contract360.Header, renewalEngine);
+        var strategyInputs = InsightsEndpointExtensions
+            .ToStrategyInputs(contract360, renewal, pricedLines: [], criticalFacts: [], asOfDate)
+            with
+            { SupplierName = supplierName };
+        var whenYouMustMove = StrategyPackBuilder.Build(strategyInputs).WhenYouMustMove;
+
+        var items = new List<PackItem>
+        {
+            BuildNoticeFactItem(namedContractItem, contract360.Renewal, supplierName),
+            BuildWhenYouMustMoveItem(namedContractItem.ContractId, supplierName, whenYouMustMove),
+        };
+
+        var clauseItem = BuildMatchingClauseItem(contract360, namedContractItem.ContractId);
+        if (clauseItem is not null)
+        {
+            items.Add(clauseItem);
+        }
+
+        return items;
+    }
+
+    /// <summary>
+    /// Task E30/F01/US01/T01: the notice pack's first item — the scoped fact itself
+    /// (<c>endDate</c>/<c>cancellationDeadline</c>/<c>autoRenewal</c>/<c>renewalTermMonths</c>, task
+    /// text verbatim), read straight off <paramref name="renewal"/> (<see cref="Contract360Renewal"/>,
+    /// already tenant+contract scoped by <see cref="Contract360QueryService.GetByIdAsync"/>).
+    /// <c>autoRenewal</c> itself carries no <see cref="PackValue"/> (no <see cref="PackValueKind"/>
+    /// fits a boolean) — it decides which of the three honest snippets below applies instead, the
+    /// same role it already plays in <see cref="BuildContractFactItem"/>'s own snippet. Every date is
+    /// a <see cref="PackValueKind.Date"/> value (AC-2); <c>renewalTermMonths</c> is a bare
+    /// <see cref="PackValueKind.Number"/>, never fabricated when the contract has none on file.
+    /// </summary>
+    private static PackItem BuildNoticeFactItem(PortfolioListItem item, Contract360Renewal renewal, string displayName)
+    {
+        var values = new List<PackValue>();
+        if (renewal.EndDate is { } endDate)
+        {
+            values.Add(new PackValue("endDate", endDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), PackValueKind.Date));
+        }
+
+        if (renewal.CancellationDeadline is { } deadline)
+        {
+            values.Add(new PackValue("cancellationDeadline", deadline.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), PackValueKind.Date));
+        }
+
+        if (renewal.RenewalTermMonths is { } termMonths)
+        {
+            values.Add(new PackValue("renewalTermMonths", termMonths.ToString(CultureInfo.InvariantCulture), PackValueKind.Number));
+        }
+
+        string snippet;
+        if (!renewal.AutoRenewal)
+        {
+            // AC-3: autoRenewal=false -> no notice window, the contract just ends on endDate.
+            snippet = renewal.EndDate is { } end
+                ? $"{displayName} does not auto-renew: no notice window applies, the contract ends on {end:yyyy-MM-dd}."
+                : $"{displayName} does not auto-renew, and Raffa has no end date on file yet (Appendix C rule 10).";
+        }
+        else if (renewal.CancellationDeadline is { } deadlineDate)
+        {
+            // AC-3's fixture shape: the date, then "if missed" only when a real renewalTermMonths is
+            // on file -- never a fabricated "renews automatically" with no term to name.
+            snippet = renewal.RenewalTermMonths is { } months
+                ? $"{displayName}'s notice deadline is {deadlineDate:yyyy-MM-dd}. If missed, the " +
+                  $"contract renews for {months} month(s)."
+                : $"{displayName}'s notice deadline is {deadlineDate:yyyy-MM-dd}.";
+        }
+        else
+        {
+            snippet = $"{displayName} auto-renews, but Raffa has no validated notice deadline on " +
+                "file yet (Appendix C rule 10).";
+        }
+
+        return new PackItem(
+            $"fact:{item.ContractId}:notice",
+            PackCorpus.Tenant,
+            $"{displayName} · notice",
+            null,
+            null,
+            null,
+            snippet,
+            $"/contracts/{item.ContractId}",
+            null,
+            null,
+            "validated contract",
+            values,
+            item.ContractId.ToString());
+    }
+
+    /// <summary>
+    /// Task E30/F01/US01/T01: the notice pack's second item — <see cref="StrategyPackBuilder"/>'s
+    /// own "when you must move" explanation (task text: "miss / passed / no auto-renew"), the same
+    /// honest narration <see cref="BuildRenewalStrategyPackAsync"/> already cites verbatim, never
+    /// re-worded here. <c>daysUntilNotice</c> is the one new <see cref="PackValue"/> this item
+    /// carries beyond <see cref="BuildDateValues"/>'s existing two dates — AC-3's "deadline passed N
+    /// days ago" names an N that must itself be a pack value, and
+    /// <see cref="WhenYouMustMove.DaysLeft"/> (signed — negative means already passed, never floored
+    /// to zero, that record's own doc comment) is exactly that N, computed by the calculators, never
+    /// restated by a model.
+    /// </summary>
+    private static PackItem BuildWhenYouMustMoveItem(Guid contractId, string displayName, WhenYouMustMove whenYouMustMove)
+    {
+        var values = new List<PackValue>(BuildDateValues(whenYouMustMove.RenewalDate, whenYouMustMove.CancellationDeadline));
+        if (whenYouMustMove.DaysLeft is { } daysLeft)
+        {
+            values.Add(new PackValue("daysUntilNotice", daysLeft.ToString(CultureInfo.InvariantCulture), PackValueKind.Number));
+        }
+
+        return new PackItem(
+            InsightsCitationKeys.Calc("when-you-must-move"),
+            PackCorpus.Calc,
+            $"{displayName} — when you must move",
+            null,
+            null,
+            null,
+            whenYouMustMove.Explanation,
+            $"/contracts/{contractId}",
+            null,
+            null,
+            "deterministic calculator",
+            values,
+            contractId.ToString());
+    }
+
+    /// <summary>
+    /// Task E30/F01/US01/T01: the notice pack's optional third item — supporting evidence for the
+    /// <c>cancellationDeadline</c> fact above, the first of this contract's own extracted
+    /// <see cref="Contract360Clause"/> rows whose <see cref="Contract360Clause.ClauseType"/> or
+    /// <see cref="Contract360Clause.RawText"/> names notice/cancellation/termination/auto-renewal
+    /// (<see cref="NoticeClauseTypePattern"/>). <see langword="null"/> when none matches — "else
+    /// abstain honestly" (task text): the fact and explanation items already ground the reply, so a
+    /// missing evidence item narrows the citation, it never becomes a fabricated one. Reuses
+    /// <see cref="ResolveTenantClauseLinks"/>'s own tier-1 viewer link, the identical resolution
+    /// <see cref="BuildClausePackAsync"/> already gives a resolved <see cref="Contract360Clause"/>.
+    /// </summary>
+    private static PackItem? BuildMatchingClauseItem(Contract360Result contract360, Guid namedContractId)
+    {
+        var clause = contract360.Clauses.FirstOrDefault(c =>
+            NoticeClauseTypePattern.IsMatch(c.ClauseType) || NoticeClauseTypePattern.IsMatch(c.RawText));
+
+        if (clause is null)
+        {
+            return null;
+        }
+
+        var (href, previewUrl) = ResolveTenantClauseLinks(clause, clause.ClauseId, namedContractId);
+        var subtitle = clause.SourcePage is { } page
+            ? $"p.{page}" + (clause.SourceSpan is { } span ? $" §{span}" : string.Empty)
+            : null;
+
+        return new PackItem(
+            $"fact:{clause.ClauseId}:notice-clause",
+            PackCorpus.Tenant,
+            $"{clause.ClauseType} clause",
+            subtitle,
+            clause.SourcePage,
+            clause.SourceSpan,
+            clause.RawText,
+            href,
+            previewUrl,
+            null,
+            "validated contract",
+            [],
+            namedContractId.ToString(),
+            clause.SourceDocumentId?.Value.ToString());
+    }
 
     /// <summary>
     /// Task E28/F02/US01/T01 (NW-81; ADR-024 w19 cl. 15; parent story us-01-rag-contract-filter
