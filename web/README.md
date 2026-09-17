@@ -296,8 +296,14 @@ from `markup.html`.
   `GET /api/capabilities` once (task E13/F09/US01/T04, gap G-CAPABILITIES)
   and, once it resolves, prefers that catalog's own `exampleQuestions` for
   the capability key matching the current route; the pre-existing static
-  per-route copy is the fallback while the fetch is in flight, fails, or has
-  no entry for the current screen -- never a blank chip row. The placeholder
+  per-route copy is the fallback while the fetch is in flight, fails, has
+  no entry for the current screen, or that entry's own `roleGate` is not
+  `"any"` and the caller is not Admin (task E25/F01/US01/T01, AC-1;
+  ADR-022 S16-11 / ADR-012 w17 cl 40 -- presentation only, `role` threaded
+  from `AppShell.tsx`, never re-derived; `GET /api/capabilities` itself
+  stays un-gated and identical for both roles) -- never a blank chip row.
+  The same role gate applies to `AskRoute`'s own `suggestionsFor` below.
+  The placeholder
   itself still switches to "Ask Raffa switches on after your first
   validated contract" while `!kbReady`, regardless of route (ADR-024 V2
   amendment) -- this bar gets the user to `/ask`, it does not answer them

@@ -79,7 +79,10 @@ export default function AppShell({ workspaceId, workspaceName, role, userLabel, 
         apiClient={apiClient}
       />
       <main className="shell-main">
-        <GlobalAskBar kbReady={kbReady} apiClient={apiClient} />
+        {/* Task E25/F01/US01/T01 (AC-3): the same server-derived `role` RailNav already receives
+            below, threaded into the global Ask bar too so it can drop admin-gated suggestion chips
+            for a non-Admin -- never re-derived, never fetched a second time. */}
+        <GlobalAskBar kbReady={kbReady} role={role} apiClient={apiClient} />
         <div className="shell-content">
           {/* Shared with every screen through the router outlet (shellContext.ts): the same kbReady /
               validated-count verdict the rail and the Ask bar already render, plus the same document

@@ -10,6 +10,7 @@ import type {
   DocumentListPageBody,
 } from "../../api/client";
 import type { CitationCorpus, Reply, ReplyAction, ReplyCitation } from "./reply/replyTypes";
+import type { WorkspaceRole } from "../../components/shell/navItems";
 
 /**
  * V2 view-model for the Ask Raffa screen (route `/ask`, `/ask/:conversationId`; ADR-024;
@@ -380,15 +381,31 @@ const ASK_SUGGESTIONS_FALLBACK: readonly [string, string] = [
   "What liabilities do we have?",
 ];
 
+/**
+ * Task E25/F01/US01/T01 (AC-1, ADR-022 S16-11): drops the "ask" capability's own `exampleQuestions`
+ * for a non-Admin when its catalog entry carries `roleGate !== "any"`, the same predicate
+ * `components/ask-bar/askSuggestions.ts#suggestionsFromCapabilityCatalog` applies for the global
+ * bar -- duplicated rather than imported, the same "small pure predicate, independent screens"
+ * convention this file already follows elsewhere (see `resolveAskOffReason`'s neighbours). Falls
+ * back to `ASK_SUGGESTIONS_FALLBACK`, never an empty pair. `role` is optional so an unscoped caller
+ * that has not threaded a role through yet still gets today's behaviour unchanged -- in the real
+ * catalog the "ask" capability is always `roleGate: "any"` (`CapabilityCatalog.cs`), so this never
+ * hides a chip in production; an absent `role` is still read as "not Admin", never as Admin.
+ */
+function isChipVisibleForRole(roleGate: CapabilityBody["roleGate"], role: WorkspaceRole | undefined): boolean {
+  return roleGate === "any" || role === "admin";
+}
+
 export function suggestionsFor(
   capabilities: readonly CapabilityBody[] | null,
   supplierName?: string | null,
+  role?: WorkspaceRole,
 ): readonly [string, string] {
   if (supplierName !== undefined) {
     return buildScopedSuggestions(supplierName);
   }
   const match = capabilities?.find((capability) => capability.key === ASK_CAPABILITY_KEY);
-  if (match && match.exampleQuestions.length >= 2) {
+  if (match && match.exampleQuestions.length >= 2 && isChipVisibleForRole(match.roleGate, role)) {
     return [match.exampleQuestions[0], match.exampleQuestions[1]];
   }
   return ASK_SUGGESTIONS_FALLBACK;
