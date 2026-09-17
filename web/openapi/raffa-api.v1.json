@@ -3007,7 +3007,7 @@
       "get": {
         "operationId": "getContractEvidence",
         "summary": "Latest extraction evidence per contract field: page, span, confidence, quoted passage, model.",
-        "description": "Maps to GetContractEvidenceAsync in backend/src/Raffa.Api/ContractsEndpointExtensions.cs, backed by Raffa.Documents.Contracts.Application.ContractEvidenceQueryService. Exposes the ExtractionEvidence trail the staged extraction pipeline has written since task E02/F01/US02/T01 (product spec §7.3 \"every extracted fact carries source span + confidence\") -- one entry per field, the newest evidence row winning, alphabetical by fieldName. `fieldName` is the same key PATCH /api/contracts/{id} accepts (currency, annualSpend, supplier, ...), plus `type` for the classification verdict (no page/span: it reads the whole document). `passage` is the sentence of the indexed page text around `sourceSpan` with the span's offsets, present only when the page text still contains the span -- never an approximated context. Each field carries a server-computed `decision` (`auto_accepted` | `human_accepted` | `review_required`). `autoAcceptThreshold` is emitted once per response so the web never hardcodes 90. The review screen's evidence pane and per-field confidence tags read this. A contract that exists but has no evidence returns 200 with `fields: []`.",
+        "description": "Maps to GetContractEvidenceAsync in backend/src/Raffa.Api/ContractsEndpointExtensions.cs, backed by Raffa.Documents.Contracts.Application.ContractEvidenceQueryService. Exposes the ExtractionEvidence trail the staged extraction pipeline has written since task E02/F01/US02/T01 (product spec §7.3 \"every extracted fact carries source span + confidence\") -- one entry per field, the newest evidence row winning, alphabetical by fieldName. `fieldName` is the same key PATCH /api/contracts/{id} accepts (currency, annualSpend, supplier, ...), plus `type` for the classification verdict (no page/span: it reads the whole document). `passage` is the sentence of the indexed page text around `sourceSpan` with the span's offsets, present only when the page text still contains the span -- never an approximated context. `box` (epic-23 feature-02, ADR-003 w18) is the phrase's pixel-space bounding rectangle on the rendered page image, or null for text-level highlight only; every row is null today because no writer populates the four geometry columns it is read from until epic-23 feature-04 ships. Each field carries a server-computed `decision` (`auto_accepted` | `human_accepted` | `review_required`). `autoAcceptThreshold` is emitted once per response so the web never hardcodes 90. The review screen's evidence pane and per-field confidence tags read this. A contract that exists but has no evidence returns 200 with `fields: []`.",
         "parameters": [
           {
             "name": "X-Tenant-Id",
@@ -3056,6 +3056,7 @@
                       "decision",
                       "sourcePage",
                       "sourceSpan",
+                      "box",
                       "sourceDocumentId",
                       "sourceFileName",
                       "passage",
@@ -3104,6 +3105,35 @@
                           "null"
                         ],
                         "description": "The literal text the fact was read from, as quoted by the model."
+                      },
+                      "box": {
+                        "type": [
+                          "object",
+                          "null"
+                        ],
+                        "description": "Pixel-space bounding box of this phrase on the rendered page image (the same page sourcePage names), from prebuilt-layout word geometry (ADR-017 w18) unioned over the phrase's words. Null for every document rasterized before this wave, or any page the OCR call returned no layout geometry for -- the viewer then falls back to the sourceSpan text-level highlight, never an error.",
+                        "required": [
+                          "x",
+                          "y",
+                          "width",
+                          "height"
+                        ],
+                        "properties": {
+                          "x": {
+                            "type": "number",
+                            "description": "Left edge, in the rendered page image's pixel coordinate space."
+                          },
+                          "y": {
+                            "type": "number",
+                            "description": "Top edge, in the rendered page image's pixel coordinate space."
+                          },
+                          "width": {
+                            "type": "number"
+                          },
+                          "height": {
+                            "type": "number"
+                          }
+                        }
                       },
                       "sourceDocumentId": {
                         "type": [

@@ -426,7 +426,7 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": { autoAcceptThreshold: number; fields: ({ fieldName: string; value: string | null; confidence: number | null; decision: "auto_accepted" | "human_accepted" | "review_required"; sourcePage: number | null; sourceSpan: string | null; sourceDocumentId: string | null; sourceFileName: string | null; passage: string | null; highlightStart: number | null; highlightLength: number | null; modelId: string | null; extractedAt: string })[] };
+          "application/json": { autoAcceptThreshold: number; fields: ({ fieldName: string; value: string | null; confidence: number | null; decision: "auto_accepted" | "human_accepted" | "review_required"; sourcePage: number | null; sourceSpan: string | null; box: { x: number; y: number; width: number; height: number } | null; sourceDocumentId: string | null; sourceFileName: string | null; passage: string | null; highlightStart: number | null; highlightLength: number | null; modelId: string | null; extractedAt: string })[] };
         };
       };
       400: {

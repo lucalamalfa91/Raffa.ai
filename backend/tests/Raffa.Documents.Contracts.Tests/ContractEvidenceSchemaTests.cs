@@ -76,6 +76,15 @@ public sealed class ContractEvidenceSchemaTests : IAsyncLifetime
 
         ("extraction_evidence", "decision", "character varying", true),
         ("extraction_evidence", "decided_at", "timestamp with time zone", true),
+
+        // Epic-23 feature-02 (NW-63r, ADR-003 w18 footer clauses 1-2): the box a phrase occupies
+        // on the rendered page, and the phrase-edit override slot beside Value. All five nullable
+        // -- every row written before this wave predates them and must stay renderable.
+        ("extraction_evidence", "box_x", "double precision", true),
+        ("extraction_evidence", "box_y", "double precision", true),
+        ("extraction_evidence", "box_width", "double precision", true),
+        ("extraction_evidence", "box_height", "double precision", true),
+        ("extraction_evidence", "override_value", "text", true),
     ];
 
     [Fact]

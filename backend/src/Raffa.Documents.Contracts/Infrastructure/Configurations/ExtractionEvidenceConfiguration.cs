@@ -29,6 +29,13 @@ public sealed class ExtractionEvidenceConfiguration : IEntityTypeConfiguration<E
         builder.Property(e => e.Decision).HasMaxLength(40).HasColumnType("character varying");
         builder.Property(e => e.DecidedAt).HasColumnType("timestamp with time zone");
 
+        // Epic-23 feature-02 (ADR-003 w18 footer clauses 1-2): OverrideValue and BoxX/BoxY/
+        // BoxWidth/BoxHeight need no explicit mapping of their own. OverrideValue is unbounded
+        // corrected text, exactly like Value above (no HasMaxLength call either) -> "text" by the
+        // Npgsql provider's own convention. BoxX/Y/Width/Height are plain nullable doubles, exactly
+        // like Confidence above -> nullable "double precision" by the same convention. Nullability
+        // for all five already follows from their C# "?" types with zero configuration needed.
+
         builder.HasIndex(e => e.TenantId);
         builder.HasIndex(e => new { e.ContractId, e.FieldName });
 
