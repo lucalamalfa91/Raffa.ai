@@ -2468,6 +2468,11 @@ describe("createApiClient() Authorization header (task E18/F01/US02/T01, NW-05; 
           negotiationDurationDays: 1,
           leversUsed: ["Term"],
         }),
+      // Task E25/F04/US02/T01 (quote-benchmark-web): the sibling backend/contract task
+      // (E25/F04/US01/T01) added `getQuoteBenchmarkHistory` to `client.ts` without adding it here,
+      // so this completeness assertion has been failing since that task landed -- a pre-existing gap
+      // discovered while wiring the web route to this same method, fixed in the same commit.
+      getQuoteBenchmarkHistory: () => client.getQuoteBenchmarkHistory("tenant-1"),
       askRaffa: () => client.askRaffa("tenant-1", { question: "?" }),
       getSavingsKpis: () => client.getSavingsKpis("tenant-1"),
       getSavingsOpportunities: () => client.getSavingsOpportunities("tenant-1"),

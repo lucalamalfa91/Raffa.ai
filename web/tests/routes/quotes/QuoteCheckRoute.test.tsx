@@ -74,6 +74,10 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     getQuoteAssessment: vi.fn(),
     recalculateQuoteAssessment: vi.fn(),
     captureNegotiationOutcome: vi.fn(),
+    // Task E25/F04/US02/T01 (quote-benchmark-web, AC-2): `QuoteCheckRoute` now loads history on
+    // every mount regardless of which of this suite's scenarios is under test -- a safe, empty
+    // default here, exactly like every other fixture entry above that no individual test overrides.
+    getQuoteBenchmarkHistory: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, history: { items: [] }, error: null }),
     askRaffa: vi.fn(),
     getSavingsKpis: vi.fn(),
     getSavingsOpportunities: vi.fn(),

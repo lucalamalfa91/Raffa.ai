@@ -824,33 +824,52 @@ gone with V2.
 ### Quote check (ADR-024 V2, `raffa-v2/screens-v2.md` #9; originally ADR-020 screen 10, task E08/F03/US01/T01)
 
 `src/routes/quotes/` is the V2 Quote check: a constant header ("Optional · new purchase" · "Quote
-check" · "Drop a supplier proposal; …"), the landing drop card, and -- once a quote is loaded -- the
-three-cell band, the lines table and the "one step further" footer. The Day-1 four-step stepper is
-gone; the same real calls remain.
+check" · "Drop a supplier proposal; …"), the landing drop card plus this workspace's own quote check
+history, and -- once a quote is loaded -- the three-cell band, the lines table and the "one step
+further" footer. The Day-1 four-step stepper is gone; the same real calls remain.
 
 - **Real backend, not the prototype's fixture** -- `POST /api/quotes`,
   `POST /api/quotes/{id}/assessment/recalculate` (called with an empty `mappings` array as the
   documented "pure refresh" read; it is the only call that also returns `unmatchedLines`),
-  `GET /api/quotes/{id}` (the quote plus recorded outcomes, newest first) and
-  `POST /api/negotiations/outcomes`. One named gap remains: no HTTP endpoint
-  for `NegotiationStrategyService`'s lever recommendations (`NegotiationStep.tsx`).
+  `GET /api/quotes/{id}` (the quote plus recorded outcomes, newest first),
+  `GET /api/quotes/benchmark-history` (workspace-wide, loaded once on mount independent of which
+  quote if any is open; task E25/F04/US02/T01, closes NW-57) and `POST /api/negotiations/outcomes`.
+  One named gap remains: no HTTP endpoint for `NegotiationStrategyService`'s lever recommendations
+  (`NegotiationStep.tsx`).
 - **Landing** (`UploadQuoteForm.tsx`, `sampleQuote.ts`) -- the dashed card: **Upload a quote**
   (file picker; drag-and-drop on the card) uploads straight away, "or use the sample: Databricks
   proposal Q-88213" sends a real PDF built with `documents/sampleDocument.ts#buildSamplePdf` (three
   priced lines) with its own supplier/currency/geography -- whatever the real pipeline extracts is
   the honest answer. Supplier · currency · geography · purchase date stay reachable under a compact
   disclosure (the Benchmark Service cannot match without them).
+- **Quote check history** (`history/QuoteHistoryList.tsx`; ADR-028 -- history is server state; task
+  E25/F04/US02/T01, closes NW-57) -- also on the landing: every quote this workspace has ever
+  checked, newest first, read back from `GET /api/quotes/benchmark-history` rather than a client
+  store, so a reload or a second browser sees the same list. Each row (file · supplier · currency ·
+  geography · checked-in date) re-opens `/quotes/:id`; its own tag is a real position tally or, for a
+  genuine first-of-type quote, the identical honest cold-start label the loaded result uses below --
+  never re-derived, so the two surfaces can never disagree. An empty workspace gets its own "No quote
+  checks yet" state, not the reroute other screens use.
 - **Loaded** (`quoteCheckViewModel.ts`, `QuoteLinesTable.tsx`) -- `buildAssessmentBand`: Supplier
   quote (`sum(unitPrice × quantity)`) · Market range (`sum(P25..P75 × quantity)`) · Assessment
   (`summarizePositions`, a real tally such as "2 above market · 1 in line" -- the backend deliberately
   has no quote-level rollup); `buildQuoteLineRows`: Line · Quoted (`formatUnitPrice`, decimals kept)
   · P50 · Position (tag + "+20% vs P50", `formatVersusP50`) · Benchmark (confidence tag "High ·
-  n=96"). Zero extracted lines renders an honest note, never a scripted table.
+  n=96"). Zero extracted lines renders an honest note, never a scripted table. Both the band and the
+  line table now live in `assessment/AssessmentResult.tsx`, not inlined in `index.tsx`.
+- **First-of-type cold start** (`AssessmentResult.tsx#isQuoteBenchmarkColdStart`; ADR-028; task
+  E25/F04/US02/T01, closes NW-57) -- when every line reports the backend's own honest
+  `InsufficientBenchmarkData` status (a genuine first-of-type quote, nothing comparable on file yet
+  for its supplier/product), the band still shows only its real "Not yet available"/"Not yet assessed"
+  cells and a plain-language note explains why the position is missing -- no fabricated figure, no
+  digit in the copy itself. One real line among otherwise-cold ones is never treated as a full cold
+  start.
 - **One step further** -- the footer "Target and negotiation levers are one step further — shown only
   if you want them." toggles `TargetStep.tsx` (price ladder, editable target/walk-away seeded once from
   the real aggregate), whose "Build negotiation strategy →" reveals `NegotiationStep.tsx` (outcome
-  capture; the recorded panel always renders the server's own `realizedSaving`/`discountPercent`,
-  then links "See it in Savings →").
+  capture; the recorded panel always renders the server's own `realizedSaving`/`discountPercent`, then
+  links "See it in Savings →", secondary styling -- the benchmark result above stays on screen
+  throughout and is never replaced, AC-3 of task E25/F04/US02/T01).
 - **Blocked assessment** (`MappingBlock.tsx`, `isAssessmentBlocked`) -- while any line is still
   `SkuMatchStatus.Unmatched` the band shows what it honestly can, the line says "Needs mapping", and
   the mapping block (free-text canonical SKU / product name per line, one recalculate call) takes the
@@ -1265,7 +1284,7 @@ web/
         renewalPipelineViewModel.ts # pure helpers: rows sorted by score, summary, formatting, the two action plans
         renewals.css              # this screen's styles
       quotes/                 # Quote check, V2 (see "Quote check" above)
-        index.tsx               # QuoteCheckRoute -- header, landing, band + lines + footer, one-step-further reveal
+        index.tsx               # QuoteCheckRoute -- header, landing + history, band + lines + footer, one-step-further reveal
         UploadQuoteForm.tsx      # the dashed drop card + optional metadata disclosure
         sampleQuote.ts           # the Databricks sample proposal, a real PDF built with buildSamplePdf
         QuoteLinesTable.tsx      # Line · Quoted · P50 · Position · Benchmark
@@ -1274,6 +1293,10 @@ web/
         NegotiationStep.tsx      # one step further: outcome capture
         quoteCheckViewModel.ts   # pure helpers: aggregate, band, line rows, unit-price/P50 formatting
         quotes.css               # this screen's styles
+        assessment/              # task E25/F04/US02/T01 -- benchmark-first result, extracted from index.tsx
+          AssessmentResult.tsx      # the band + lines table + honest InsufficientBenchmarkData cold-start copy (AC-1)
+        history/                 # task E25/F04/US02/T01 -- ADR-028 (history is server state), closes NW-57
+          QuoteHistoryList.tsx      # landing-only: every quote this workspace has checked, from GET /api/quotes/benchmark-history (AC-2)
       savings/                 # Savings, V2 (see "Savings" above)
         index.tsx                # SavingsRoute -- three independent fetches (KPIs, opportunities, portfolio names), independent degrade states; renders the supplier/status/currency filter bar above the table
         KpiRow.tsx               # the three KPI cells + the stale-labelled notice
