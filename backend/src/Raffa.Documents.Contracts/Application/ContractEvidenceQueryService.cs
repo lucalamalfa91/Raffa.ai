@@ -17,6 +17,12 @@ namespace Raffa.Documents.Contracts.Application;
 /// <c>type</c>, ...).</param>
 /// <param name="Value">What the model proposed, verbatim — not the contract's current (possibly
 /// corrected) value.</param>
+/// <param name="Box">Pixel-space bounding box of this phrase on the rendered page image (epic-23
+/// feature-02, ADR-003 w18 footer clauses 1-2), read from this same evidence row whether or not
+/// <see cref="ExtractionEvidence.OverrideValue"/> is set; <see langword="null"/> for every row
+/// written before this wave, or any page the OCR call returned no layout geometry for — the
+/// viewer then falls back to the existing <paramref name="SourceSpan"/> text-level highlight,
+/// never an error (epic-23 AC-4).</param>
 /// <param name="Passage">The sentence(s) of the source page around <paramref name="SourceSpan"/>,
 /// when the page's indexed text still contains it; <see langword="null"/> when there is no page
 /// text to quote (a classification verdict, a document whose chunks were removed) — the span
@@ -32,6 +38,7 @@ public sealed record ContractFieldEvidence(
     DateTimeOffset? DecidedAt,
     int? SourcePage,
     string? SourceSpan,
+    ContractFieldEvidenceBox? Box,
     EntityId? SourceDocumentId,
     string? SourceFileName,
     string? Passage,
@@ -39,6 +46,17 @@ public sealed record ContractFieldEvidence(
     int? HighlightLength,
     string? ModelId,
     DateTimeOffset ExtractedAt);
+
+/// <summary>
+/// A single pixel-space rectangle on the rendered page image — the union of the
+/// <c>prebuilt-layout</c> word geometry (<see cref="Raffa.AiGateway.Contracts.AiOcrWord"/>) under
+/// one cited phrase, normalized at write time (epic-23 feature-02) so the viewer can position one
+/// absolutely-positioned <c>&lt;div&gt;</c> over the phrase with no further geometry math
+/// (ADR-029 w18 footer, ADR-012 §3: DOM over the existing page <c>&lt;img&gt;</c>, no new runtime
+/// dependency). All four members travel together — <see cref="ContractFieldEvidence.Box"/> is
+/// either this whole record or <see langword="null"/>, never a partial box.
+/// </summary>
+public sealed record ContractFieldEvidenceBox(double X, double Y, double Width, double Height);
 
 /// <summary>
 /// Tenant-scoped read of a contract's per-field extraction evidence — the trail
@@ -164,6 +182,7 @@ public sealed class ContractEvidenceQueryService(DocumentsContractsDbContext dbC
                     evidence.DecidedAt,
                     evidence.SourcePage,
                     evidence.SourceSpan,
+                    BuildBox(evidence),
                     evidence.SourceDocumentId,
                     evidence.SourceDocumentId is { } documentId ? fileNamesByDocument.GetValueOrDefault(documentId) : null,
                     passage?.Text,
@@ -174,6 +193,17 @@ public sealed class ContractEvidenceQueryService(DocumentsContractsDbContext dbC
             })
             .ToList();
     }
+
+    /// <summary>
+    /// All four of <see cref="ExtractionEvidence.BoxX"/>/<c>BoxY</c>/<c>BoxWidth</c>/<c>BoxHeight</c>
+    /// or none — epic-23 AC-4's "a null box is the honest w17 state, never an error" reads as: a
+    /// row missing even one of the four degrades to a whole null box (the text-level highlight),
+    /// rather than the pane trying to position a rectangle with a missing side.
+    /// </summary>
+    private static ContractFieldEvidenceBox? BuildBox(ExtractionEvidence evidence) =>
+        evidence.BoxX is { } x && evidence.BoxY is { } y && evidence.BoxWidth is { } width && evidence.BoxHeight is { } height
+            ? new ContractFieldEvidenceBox(x, y, width, height)
+            : null;
 
     private static (string Text, int HighlightStart, int HighlightLength)? LocatePassage(
         ExtractionEvidence evidence, IReadOnlyDictionary<(EntityId, int), string> pageTexts)

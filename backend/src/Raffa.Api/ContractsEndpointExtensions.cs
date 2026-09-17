@@ -85,8 +85,9 @@ public static class ContractsEndpointExtensions
 
     /// <summary>
     /// `GET /api/contracts/{id}/evidence`: the latest per-field extraction evidence for one
-    /// contract (page, span, confidence, decision, the quoted passage, the model) — the review
-    /// screen's evidence pane and its per-field confidence tags read this. The server's
+    /// contract (page, span, confidence, decision, the geometry box, the quoted passage, the
+    /// model) — the review screen's evidence pane and its per-field confidence tags read this,
+    /// and (epic-23 feature-04) the viewer draws <c>box</c> over the cited phrase. The server's
     /// <c>autoAcceptThreshold</c> is emitted once per response so the web never hardcodes 90.
     /// Same guard-clause shape as <see cref="GetCorrectionHistoryAsync"/>;
     /// 404 when <see cref="ContractEvidenceQueryService.GetLatestAsync"/> returns <c>null</c>
@@ -137,6 +138,9 @@ public static class ContractsEndpointExtensions
                 decision = e.Decision,
                 sourcePage = e.SourcePage,
                 sourceSpan = e.SourceSpan,
+                box = e.Box is { } box
+                    ? new { x = box.X, y = box.Y, width = box.Width, height = box.Height }
+                    : null,
                 sourceDocumentId = e.SourceDocumentId?.Value,
                 sourceFileName = e.SourceFileName,
                 passage = e.Passage,

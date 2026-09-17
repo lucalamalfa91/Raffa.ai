@@ -997,3 +997,49 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260917030920_AddExtractionEvidenceGeometryAndOverride') THEN
+    ALTER TABLE extraction_evidence ADD box_height double precision;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260917030920_AddExtractionEvidenceGeometryAndOverride') THEN
+    ALTER TABLE extraction_evidence ADD box_width double precision;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260917030920_AddExtractionEvidenceGeometryAndOverride') THEN
+    ALTER TABLE extraction_evidence ADD box_x double precision;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260917030920_AddExtractionEvidenceGeometryAndOverride') THEN
+    ALTER TABLE extraction_evidence ADD box_y double precision;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260917030920_AddExtractionEvidenceGeometryAndOverride') THEN
+    ALTER TABLE extraction_evidence ADD override_value text;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260917030920_AddExtractionEvidenceGeometryAndOverride') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20260917030920_AddExtractionEvidenceGeometryAndOverride', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+
