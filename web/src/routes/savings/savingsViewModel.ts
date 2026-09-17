@@ -1,6 +1,7 @@
 import type { PortfolioPageBody, SavingsKpiSummaryBody, SavingsOpportunityBody } from "../../api/client";
 import type { SemanticTag, TagVariant } from "../../styles/semantics";
 import { formatSupplier } from "../contracts/portfolioTableFormatters";
+import { matchesSavingsFilters, type SavingsFilterState } from "./savingsFilters";
 
 /**
  * Pure view-model helpers for the V2 Savings screen (route `/savings`; ADR-024 V2 IA "No Home
@@ -174,8 +175,17 @@ export interface OpportunityRowView {
   /** "Action" column: the opportunity's type (Renewal, Benchmark, …) -- the backend records no free-text action per opportunity. */
   action: string;
   estimate: string;
+  /** The wire's own ISO 4217 code (e.g. "CHF"), kept alongside the formatted `estimate` string
+   * purely so task-01-savings-filters' currency filter (`savingsFilters.ts`) can match on it --
+   * `estimate` embeds this same code as a display prefix, but parsing a formatted range string back
+   * into a filter key would be fragile. */
+  currency: string;
   confidence: SemanticTag | null;
   status: SemanticTag;
+  /** The wire's own closed status enum, kept alongside the presentation `status` tag purely so
+   * task-01-savings-filters' status filter (`savingsFilters.ts`) can match the real value rather
+   * than re-deriving it from a display label. */
+  statusValue: SavingsOpportunityBody["status"];
   navigation: OpportunityNavigation;
 }
 
@@ -222,8 +232,10 @@ function buildRealOpportunityRow(item: SavingsOpportunityBody, supplierNames: Re
     supplierTitle: supplier.title,
     action: item.type,
     estimate: formatCurrencyRange(item.currency, item.estimatedSavingsLow, item.estimatedSavingsHigh),
+    currency: item.currency,
     confidence: getSavingsConfidenceTag(item.confidence, item.confidenceLevel),
     status: getSavingsStatusTag(item.status),
+    statusValue: item.status,
     navigation: getOpportunityNavigation(item.contractId),
   };
 }
@@ -233,4 +245,18 @@ export function buildOpportunityRows(
   supplierNames: ReadonlyMap<string, string> = new Map(),
 ): readonly OpportunityRowView[] {
   return opportunities.map((item) => buildRealOpportunityRow(item, supplierNames));
+}
+
+// ---------------------------------------------------------------------------------------------
+// Filtering (task-01-savings-filters, ADR-020) -- pure presentation-layer restriction over rows
+// already on screen; never a re-fetch, never persisted.
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Applies the council's supplier/status/currency filter set (`savingsFilters.ts`) to the
+ * already-built rows (AC-1). An all-`null` `filters` -- `EMPTY_SAVINGS_FILTERS`, the "Clear
+ * filters" state -- matches every row, restoring the full list (AC-3).
+ */
+export function filterOpportunityRows(rows: readonly OpportunityRowView[], filters: SavingsFilterState): readonly OpportunityRowView[] {
+  return rows.filter((row) => matchesSavingsFilters(row, filters));
 }
