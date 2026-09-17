@@ -161,8 +161,8 @@ describe("PortfolioRoute (V2, screens-v2.md #6 / markup.html PORTFOLIO block)", 
     expect(getPortfolio).toHaveBeenCalledWith(WORKSPACE_ID, { pageSize: 100 });
   });
 
-  it("reroute state (R-WEB-02): with no validated contract the tier's own copy and 'Upload a contract' show, no table", async () => {
-    renderPortfolio(mockApiClient(vi.fn().mockResolvedValue(ok([item({ status: "needs_review" }), item({ contractId: "p", status: "processing" })]))));
+  it("reroute state (R-WEB-02): with no listable contract the tier's own copy and 'Upload a contract' show, no table", async () => {
+    renderPortfolio(mockApiClient(vi.fn().mockResolvedValue(ok([item({ status: "Failed" }), item({ contractId: "p", status: "  " })]))));
 
     expect(await screen.findByText("Nothing to triage yet")).toBeInTheDocument();
     expect(screen.getByText("The portfolio lights up from validated contracts. Upload one to start.")).toBeInTheDocument();
@@ -490,5 +490,87 @@ describe("PortfolioRoute -- column filters", () => {
     const table = screen.getByRole("table");
     expect(within(table).queryByText("Salesforce")).not.toBeInTheDocument();
     expect(within(table).getByText("Microsoft")).toBeInTheDocument();
+  });
+});
+
+describe("PortfolioRoute -- readiness filter (ready vs still-to-review)", () => {
+  beforeEach(() => {
+    window.sessionStorage.clear();
+    window.sessionStorage.setItem(
+      "raffa.signin.currentWorkspace",
+      JSON.stringify({ id: WORKSPACE_ID, name: "Acme Procurement" }),
+    );
+  });
+
+  it("defaults to already-OK rows and keeps still-to-review one click away", async () => {
+    renderPortfolio(
+      mockApiClient(
+        vi.fn().mockResolvedValue(
+          ok([
+            item({ contractId: "ok", supplierName: "Salesforce" }),
+            item({
+              contractId: "pending",
+              supplierName: "Uploading Co",
+              status: "processing",
+              documentProcessingStatus: "Uploaded",
+              fileName: "pending.pdf",
+            }),
+            item({
+              contractId: "review",
+              supplierName: "Review Co",
+              status: "needs_review",
+              documentProcessingStatus: "NeedsReview",
+            }),
+          ]),
+        ),
+      ),
+    );
+
+    const table = await screen.findByRole("table");
+    expect(within(table).getByText("Salesforce")).toBeInTheDocument();
+    expect(within(table).queryByText("Uploading Co")).not.toBeInTheDocument();
+    expect(within(table).queryByText("Review Co")).not.toBeInTheDocument();
+
+    const group = screen.getByRole("group", { name: "Filter portfolio by readiness" });
+    expect(within(group).getByRole("button", { name: "Ready · 1" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(group).getByRole("button", { name: "To review · 2" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByText("Contracts still in review are hidden — they are not ready to use yet.")).toBeInTheDocument();
+
+    fireEvent.click(within(group).getByRole("button", { name: "To review · 2" }));
+    expect(within(table).queryByText("Salesforce")).not.toBeInTheDocument();
+    expect(within(table).getByText("Uploading Co")).toBeInTheDocument();
+    expect(within(table).getByText("Review Co")).toBeInTheDocument();
+
+    fireEvent.click(within(group).getByRole("button", { name: "All · 3" }));
+    expect(within(table).getByText("Salesforce")).toBeInTheDocument();
+    expect(within(table).getByText("Uploading Co")).toBeInTheDocument();
+    expect(within(table).getByText("Review Co")).toBeInTheDocument();
+  });
+
+  it("with only still-to-review rows, default Ready is empty but To review reveals them — no reroute", async () => {
+    renderPortfolio(
+      mockApiClient(
+        vi.fn().mockResolvedValue(
+          ok([
+            item({
+              contractId: "pending",
+              supplierName: "Uploading Co",
+              status: "processing",
+              documentProcessingStatus: "Uploaded",
+              fileName: "pending.pdf",
+            }),
+          ]),
+        ),
+      ),
+    );
+
+    expect(await screen.findByText("No ready contracts in this list. Switch to To review to see uploads still being analyzed.")).toBeInTheDocument();
+    expect(screen.queryByText("Nothing to triage yet")).toBeNull();
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.getByText("Lights up from validated contracts")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "To review · 1" }));
+    const table = await screen.findByRole("table");
+    expect(within(table).getByText("Uploading Co")).toBeInTheDocument();
   });
 });

@@ -4,7 +4,22 @@ import type { ApiClient, RenewalPipelineItemBody } from "../../api/client";
 import { loadCurrentWorkspace } from "../signin/workspaceStore";
 import RenewalTable from "./RenewalTable";
 import InsightCard from "./InsightCard";
-import { buildRenewalRows, formatRenewalsSummary, getRenewalActionPlan, RENEWALS_SUMMARY_OFF, type RenewalActionKind } from "./renewalPipelineViewModel";
+import ReadinessFilter from "../../components/ReadinessFilter";
+import {
+  countReadiness,
+  DEFAULT_READINESS_FILTER,
+  filterByReadiness,
+  getReadinessEmptyCopy,
+  type ReadinessFilterValue,
+} from "../../components/readiness";
+import {
+  buildRenewalRows,
+  formatRenewalsSummary,
+  getRenewalActionPlan,
+  isRenewalItemReady,
+  RENEWALS_SUMMARY_OFF,
+  type RenewalActionKind,
+} from "./renewalPipelineViewModel";
 import "./renewals.css";
 
 export interface RenewalsRouteProps {
@@ -41,6 +56,11 @@ type FetchState =
  * **Status shared with the Contract 360 tracker** (`racts`): the real write is
  * `POST /api/renewals/{id}/action`; every surface reads `savedAction` on the same
  * `GET /api/renewals` row.
+ *
+ * **Readiness filter.** The pipeline still carries contracts whose dates are not yet determined
+ * (`CannotDetermine` -- still in review / not analyzed). A compact `.seg` (Ready / To review / All)
+ * defaults to already-OK (`Determined`) so the list is usable; the still-to-review bucket is one
+ * click away, never hidden forever.
  */
 export default function RenewalsRoute({ apiClient, userLabel }: RenewalsRouteProps) {
   const workspace = loadCurrentWorkspace();
@@ -48,6 +68,7 @@ export default function RenewalsRoute({ apiClient, userLabel }: RenewalsRoutePro
   const [selectedContractId, setSelectedContractId] = useState<string | null>(null);
   const [actionPending, setActionPending] = useState<RenewalActionKind | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [readiness, setReadiness] = useState<ReadinessFilterValue>(DEFAULT_READINESS_FILTER);
 
   const load = useCallback(() => {
     if (!workspace) return;
@@ -101,6 +122,11 @@ export default function RenewalsRoute({ apiClient, userLabel }: RenewalsRoutePro
     () => (fetchState.phase === "ready" ? buildRenewalRows(fetchState.items, fetchState.scores) : []),
     [fetchState],
   );
+  const readinessCounts = useMemo(
+    () => countReadiness(rows.filter((row) => isRenewalItemReady(row.item)).length, rows.filter((row) => !isRenewalItemReady(row.item)).length),
+    [rows],
+  );
+  const visibleRows = useMemo(() => filterByReadiness(rows, readiness, (row) => isRenewalItemReady(row.item)), [rows, readiness]);
 
   if (!workspace) {
     // Should not normally be reachable -- App.tsx only mounts the shell (and therefore this route)
@@ -115,11 +141,12 @@ export default function RenewalsRoute({ apiClient, userLabel }: RenewalsRoutePro
   }
 
   // The pane always follows a real selection (`app.jsx`: `rsel = renewals.find(r=>r.id===s.rsel) ||
-  // renewals[0]`): an explicit click wins while its row is still listed, else the top-priority row.
-  const effectiveSelectedId = rows.some((row) => row.item.contractId === selectedContractId)
+  // renewals[0]`): an explicit click wins while its row is still listed, else the top-priority
+  // *visible* row (the readiness filter can hide the previous selection).
+  const effectiveSelectedId = visibleRows.some((row) => row.item.contractId === selectedContractId)
     ? selectedContractId
-    : (rows[0]?.item.contractId ?? null);
-  const selectedRow = rows.find((row) => row.item.contractId === effectiveSelectedId) ?? null;
+    : (visibleRows[0]?.item.contractId ?? null);
+  const selectedRow = visibleRows.find((row) => row.item.contractId === effectiveSelectedId) ?? null;
 
   const handleAction = (kind: RenewalActionKind) => {
     if (!selectedRow) return;
@@ -150,7 +177,7 @@ export default function RenewalsRoute({ apiClient, userLabel }: RenewalsRoutePro
         <div>
           <h2 className="screen-title">Renewals</h2>
           <p className="screen-header-summary">
-            {ready ? formatRenewalsSummary(rows.length) : fetchState.phase === "loading" ? "Loading renewals…" : RENEWALS_SUMMARY_OFF}
+            {ready ? formatRenewalsSummary(readinessCounts.ok) : fetchState.phase === "loading" ? "Loading renewals…" : RENEWALS_SUMMARY_OFF}
           </p>
         </div>
       </header>
@@ -189,18 +216,27 @@ export default function RenewalsRoute({ apiClient, userLabel }: RenewalsRoutePro
       )}
 
       {ready && rows.length > 0 && (
-        <div className="renewal-screen-body">
-          <RenewalTable rows={rows} selectedContractId={effectiveSelectedId} onSelect={setSelectedContractId} />
-          {selectedRow && (
-            <InsightCard
-              item={selectedRow.item}
-              tracked={selectedRow.tracked}
-              actionPending={actionPending}
-              actionError={actionError}
-              onAction={handleAction}
-            />
+        <>
+          <ReadinessFilter value={readiness} onChange={setReadiness} counts={readinessCounts} ariaLabel="Filter renewals by readiness" />
+          {visibleRows.length === 0 ? (
+            <div className="renewal-readiness-empty" role="status">
+              <p className="micro-meta">{getReadinessEmptyCopy(readiness)}</p>
+            </div>
+          ) : (
+            <div className="renewal-screen-body">
+              <RenewalTable rows={visibleRows} selectedContractId={effectiveSelectedId} onSelect={setSelectedContractId} />
+              {selectedRow && (
+                <InsightCard
+                  item={selectedRow.item}
+                  tracked={selectedRow.tracked}
+                  actionPending={actionPending}
+                  actionError={actionError}
+                  onAction={handleAction}
+                />
+              )}
+            </div>
           )}
-        </div>
+        </>
       )}
     </div>
   );
