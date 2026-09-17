@@ -520,7 +520,7 @@ public static class NegotiationPointRanker
             citationKeys.Add(InsightsCitationKeys.Fact(inputs.ContractId, $"priced-line[{volume.Index}].quantity"));
         }
 
-        var strength = bestTerm is { } strongCheck && strongCheck.Months >= LongTermStrongThresholdMonths
+        var strength = bestTerm is not null && bestTerm.Value.Months >= LongTermStrongThresholdMonths
             ? NegotiationPointStrength.Strong
             : NegotiationPointStrength.Moderate;
 

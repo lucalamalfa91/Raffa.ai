@@ -27,7 +27,7 @@ backend/
     Raffa.Benchmark/           # IBenchmarkService.GetBenchmarkAsync + normalized Contracts DTOs (E04/F01/US01/T01); BenchmarkAdapterRegistry + AddBenchmarkModule (E04/F01/US01/T02); FixtureBenchmarkAdapter registered as the default IBenchmarkProviderAdapter, incl. statistical weak-comparable abstain (E04/F01/US02/T01+T02) — no host calls AddBenchmarkModule yet (R3)
     Raffa.Suppliers.Products/  # Supplier entity, SupplierNameNormalizer, ISupplierResolver/ISupplierNameLookup impls, SuppliersDbContext + RLS (task E13/F03/US01/T01, ADR-024; live) - see "Supplier identity" below
     Raffa.Market/              # R-MKT-01/02/03/04 mock feed + benchmark projection + in-memory notes retrieval (E13/F02/US01/T01); market_record/market_embedding pgvector index + ingestion job + DB-backed retrieval/benchmark + GET /api/market/records/{id} (E13/F02/US01/T02, mapped by E13/F06/US01/T01) - see "Market Intelligence" below
-    Raffa.Insights/            # criticality score, priced-line negotiation, strategy pack builder (E13/F07/US01/T01, ADR-024) - pure calculators fed by DTOs; InsightsEndpointExtensions mapped by task E13/F06/US01/T01 (ask-engine) - see "Insights" below
+    Raffa.Insights/            # criticality score, priced-line negotiation, strategy pack builder (E13/F07/US01/T01, ADR-024) + grounded NegotiationPointRanker (E31/F02/US01/T01, NW-96) - pure calculators fed by DTOs; InsightsEndpointExtensions mapped by task E13/F06/US01/T01 (ask-engine) - see "Insights" below
     Raffa.Renewals/            # renewal engine + opportunity + explainable priority score + threshold scheduler + dashboard pipeline + action (R2; live) — see "Renewal Intelligence" below
     Raffa.Savings/             # price normalization + percentile/target/savings-range calculator (R3; task E04/F02/US01/T01) + persisted, trackable SavingsOpportunity + GET/PATCH /api/savings (task E04/F02/US02/T01) — see "Savings Intelligence" below
     Raffa.Quotes/              # quote upload + hybrid-OCR-reused, schema-constrained line-item extraction (evidence + confidence; deterministic pricing) + POST /api/quotes (R4; task E05/F01/US01/T01) + SKU/edition normalization against a per-tenant canonical mapping, unmatched-SKU flagging (task E05/F01/US02/T01) + benchmark matching/above-in-line-below market assessment + GET /api/quotes/{id}/assessment, AddBenchmarkModule now wired (task E05/F02/US01/T01) + deterministic recommended target range/potential saving on that same endpoint (task E05/F02/US01/T02) + deterministic negotiation strategy (opening target/acceptable range/walk-away threshold + seven canonical levers with rationale, NegotiationStrategyService, no HTTP endpoint yet) (task E05/F03/US01/T01) + NegotiationOutcome capture (original/target/final/deterministic saving+discount/duration/levers used) + POST /api/negotiations/outcomes, append-only/audit-tracked (task E05/F03/US02/T01) + read-back: `QuoteQueryService` (stored fields only, computes nothing) backing GET /api/quotes (tenant list) and GET /api/quotes/{id} (the quote with its recorded negotiation outcomes embedded, newest first) — task E19/F02/US01/T01, quote-read-api, wave w16 NW-12, ADR-028 §D2 — see "Quote Check" / "Market Assessment" / "Negotiation Strategy" / "Negotiation Outcome" below
@@ -2606,7 +2606,8 @@ Task E13/F07/US01/T01 (insights-calculators; ADR-024; parent story
 us-01-insights) fills in `Raffa.Insights` (scaffolded by
 E13/F01/US01/T01) with three pure calculators, fed by DTOs only — the
 same determinism convention (Appendix C rule 6) every calculator in this
-backend already follows:
+backend already follows. Task E31/F02/US01/T01 (point-ranker; NW-96; ADR-024
+w19 cl. 23) adds a fourth:
 
 - `Criticality.CriticalityScoreCalculator.Calculate` — product spec §12.1/
   R-PORT-01's deterministic, explainable 0-100 portfolio-criticality
@@ -2640,6 +2641,23 @@ backend already follows:
   tracker) — plus `openWeakFacts` and a citation key for every number
   (`fact:<contractId>:<field>` / `market:<recordId>` / `calc:<name>`,
   `Raffa.Insights.Contracts.InsightsCitationKeys`).
+- `Application.NegotiationPointRanker.Rank` — the six canonical negotiation
+  points (above-band price, uncapped/high liability, auto-renew+short
+  notice, SLA/credits, term/volume, payment terms; AC-2 order), emitting a
+  point **only** when it is grounded in a stored fact, a clause, an
+  assessed risk or a benchmark band — never the generic seven-lever dump
+  the calculator above still produces for the older `RenewalStrategy`
+  pack (epic-31's own "Out of scope: no ungrounded '7 lever' dump"). Fed
+  by `NegotiationPointInputs` (contract id, priced lines, auto-renewal +
+  dates, clause/risk snapshots, payment terms) built by
+  `Raffa.Api.AskCopilotService.BuildNegotiationPointsPackAsync`, the
+  shared host helper that also caps the chat pack at the top three points
+  ("chat top-3") while upserting the whole ranked set to
+  `Raffa.Renewals.Application.RenewalNegotiationTodoService` when asked
+  ("persist-all"). No `AskIntent` dispatches to it yet — later tasks wire
+  it into a live turn; today it is reached directly, the same
+  test-reachability precedent `BuildRenewalStrategyPackAsync`/
+  `BuildMarketComparePackAsync` already establish.
 
 **Where the shared `PricedLine` input lives, and why**: R-STR-02
 generalizes `NegotiationStrategyCalculator` to a shared priced-line input.
@@ -2683,8 +2701,9 @@ inspects `src/` projects). `AskCopilotService`'s own `PortfolioStrategy`/
 reachable both ways. **Per-contract benchmark matching is wired** (task
 E21/F03/US01/T01, NW-62, for `GET /api/contracts/{id}/strategy`; task
 E28/F01/US01/T01, NW-82, for `AskCopilotService.BuildRenewalStrategyPackAsync`/
-`BuildMarketComparePackAsync`): `Raffa.Api.BenchmarkKeyResolution` resolves
-the one `(supplier name, geography)` key both paths query with — supplier
+`BuildMarketComparePackAsync`; task E31/F02/US01/T01, NW-96, for
+`BuildNegotiationPointsPackAsync`): `Raffa.Api.BenchmarkKeyResolution` resolves
+the one `(supplier name, geography)` key every path queries with — supplier
 name through `ISupplierNameLookup`, geography from the caller's own
 `Raffa.Identity.Workspace.Domain.WorkspaceTenant.Country` (ISO 3166-1
 alpha-2) — then the async `InsightsEndpointExtensions.ToPricedLines`
@@ -2696,7 +2715,7 @@ column — the workspace country is the honest proxy, not a per-contract
 one (ADR-024 w17 clause 8) — and an incomplete key (no `SupplierId`, an
 unresolved name, or no workspace country) still leaves `PricedLine.Benchmark`
 `null`, so the pack states "insufficient market data" rather than
-fabricating a number; the two HTTP routes and both Ask intents narrate
+fabricating a number; the two HTTP routes and every Ask call site narrate
 identically for the same contract because they resolve the same key and
 call the same overload.
 
