@@ -547,36 +547,38 @@ describe("createConversationAndAsk", () => {
 
     expect(createConversation).toHaveBeenCalledWith("tenant-1", {});
     expect(postMessage).toHaveBeenCalledWith("tenant-1", "conv-1", { question: "When does Salesforce expire?" });
-    expect(result).toEqual({ ok: true, conversationId: "conv-1", reply });
+    // Task E27/F04/US01/T01 (binding-chip, NW-78): the success result now also carries
+    // `scopeContractId`, echoed straight off `created.conversation` (here `null`, matching this
+    // test's own unscoped mock response at line ~530) -- see `createConversationAndAsk`'s own doc
+    // comment for why the bound-contract chip must read this field rather than the caller's own
+    // `scopeContractId` argument.
+    expect(result).toEqual({ ok: true, conversationId: "conv-1", reply, scopeContractId: null });
   });
 
-  it("passes scopeContractId through to createConversation when supplied", async () => {
+  it("passes scopeContractId through to createConversation when supplied, and echoes the created conversation's own persisted value back on the result (NW-78/AC-2)", async () => {
     const createConversation = vi.fn().mockResolvedValue({
       ok: true,
       statusCode: 201,
       conversation: { id: "conv-1", title: "New chat", scopeContractId: "contract-1", updatedAt: "2026-09-08T00:00:00Z" },
       error: null,
     });
-    const postMessage = vi.fn().mockResolvedValue({
-      ok: true,
-      statusCode: 200,
-      reply: {
-        conversationId: "conv-1",
-        messageId: "msg-1",
-        kind: "answer",
-        answerMarkdown: "…",
-        citations: [],
-        actions: [],
-        provenance: { sources: [], modelId: null, promptVersion: null, inputHash: null },
-        followUps: [],
-      },
-      error: null,
-    });
+    const reply: ConversationReplyBody = {
+      conversationId: "conv-1",
+      messageId: "msg-1",
+      kind: "answer",
+      answerMarkdown: "…",
+      citations: [],
+      actions: [],
+      provenance: { sources: [], modelId: null, promptVersion: null, inputHash: null },
+      followUps: [],
+    };
+    const postMessage = vi.fn().mockResolvedValue({ ok: true, statusCode: 200, reply, error: null });
     const apiClient = mockApiClient({ createConversation, postMessage });
 
-    await createConversationAndAsk(apiClient, "tenant-1", "When must we give notice to Salesforce?", "contract-1");
+    const result = await createConversationAndAsk(apiClient, "tenant-1", "When must we give notice to Salesforce?", "contract-1");
 
     expect(createConversation).toHaveBeenCalledWith("tenant-1", { scopeContractId: "contract-1" });
+    expect(result).toEqual({ ok: true, conversationId: "conv-1", reply, scopeContractId: "contract-1" });
   });
 
   it("reports failure (with no conversationId) when creation itself fails", async () => {

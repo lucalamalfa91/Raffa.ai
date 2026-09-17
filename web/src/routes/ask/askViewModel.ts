@@ -1,6 +1,7 @@
 import type {
   ApiClient,
   CapabilityBody,
+  Contract360HeaderBody,
   ConversationActionBody,
   ConversationCitationBody,
   ConversationDetailBody,
@@ -11,6 +12,7 @@ import type {
 } from "../../api/client";
 import type { CitationCorpus, Reply, ReplyAction, ReplyCitation } from "./reply/replyTypes";
 import type { WorkspaceRole } from "../../components/shell/navItems";
+import { formatSupplier, getContractTypeLabel } from "../contracts/portfolioTableFormatters";
 
 /**
  * V2 view-model for the Ask Raffa screen (route `/ask`, `/ask/:conversationId`; ADR-024;
@@ -397,6 +399,63 @@ export const ASK_INPUT_PLACEHOLDER = "Ask Raffa — spend, dates, clauses, liabi
 export const THINKING_COPY = "Authorising scope → detecting intent → retrieving evidence";
 
 // ---------------------------------------------------------------------------------------------
+// Bound-contract chip (task E27/F04/US01/T01, NW-78, wave w19; ADR-012 cl. 49 / ADR-020 37.2 per
+// `reports/architecture/waves/w19.md` -- the w19 council-close footer that names those clause
+// numbers was not actually appended to either ADR file in this worktree as of this task (only a
+// w18 footer exists on each); `reports/architecture/waves/w19.md` NW-78's own row is the real,
+// on-disk decision text this citation stands for, the same "cite the wave file, not an
+// unwritten ADR clause" convention `../ask-bar/askSuggestions.test.ts`'s own NW-77 doc comment
+// already established for this exact wave). screens-v2.md #2's "scope line" (`askScope`) is cited
+// as this feature's anchor -- that line predates the chip and has no literal copy of its own for
+// it (the same honest gap `buildScopedBrief`'s doc comment above already named for NW-56).
+// ---------------------------------------------------------------------------------------------
+
+export interface BoundContractChip {
+  /** `/contracts/{id}` -- never a bare id rendered as the label (R-SUP-04 "never a guid"). */
+  href: string;
+  /** `{supplierName} · {type}`, e.g. "Salesforce · MSA". */
+  label: string;
+}
+
+/**
+ * AC-1: `{supplierName} · {type}` linking `/contracts/{id}`. A blank/absent `supplierName` falls
+ * back to the same id-fragment label `contract360ViewModel.ts#resolveSupplierLabel` already
+ * established for the 360 header's own kicker (`formatSupplier`, reused rather than re-derived --
+ * R-SUP-04 "never a guid" applies here exactly as it does there) -- a supplier-less contract is
+ * still resolvable and the chip still renders, it just names what it honestly has.
+ */
+export function buildBoundContractChip(
+  contractId: string,
+  header: Pick<Contract360HeaderBody, "supplierName" | "supplierId" | "type">,
+): BoundContractChip {
+  const supplierLabel =
+    header.supplierName !== null && header.supplierName.trim() !== ""
+      ? header.supplierName.trim()
+      : formatSupplier(header.supplierId).label;
+  return { href: `/contracts/${contractId}`, label: `${supplierLabel} · ${getContractTypeLabel(header.type)}` };
+}
+
+/**
+ * AC-2/AC-3: the chip's own "supplier/type fetch" -- rebuilt from an explicit `contractId` (the
+ * conversation's own persisted `scopeContractId`, sourced by the caller from the conversation
+ * detail wire or the create response, **never** from `location.search`; this function has no URL
+ * of any kind in its signature and cannot read one) plus a fresh `getContract360` read, the same
+ * 360-header source `index.tsx`'s pre-existing `scopedSupplierName` effect already reads for the
+ * new-chat brief (NW-56). Returns `null` -- "not yet resolvable" -- on a transport failure, a 404
+ * (deleted or cross-tenant contract) or an `ok` response carrying no `contract`; `index.tsx` renders
+ * nothing at all for `null` (AC-3), never a stale or placeholder chip.
+ */
+export async function fetchBoundContractChip(
+  apiClient: ApiClient,
+  tenantId: string,
+  contractId: string,
+): Promise<BoundContractChip | null> {
+  const result = await apiClient.getContract360(tenantId, contractId);
+  if (!result.ok || !result.contract) return null;
+  return buildBoundContractChip(contractId, result.contract.header);
+}
+
+// ---------------------------------------------------------------------------------------------
 // Suggestion chips (task text point (2): "two suggestion chips from GET /api/capabilities
 // (suggestionsFor("ask"))"; R-SYS-01)
 // ---------------------------------------------------------------------------------------------
@@ -500,14 +559,24 @@ export function parseScopeContractId(rawScope: string | null): string | undefine
  * (task text point (2): "a question creates a conversation ... then posts the message"). Returns
  * the created conversation id on success so `index.tsx` can navigate to `/ask/<conversationId>`
  * (task text: "the URL becomes `/ask/<conversationId>`") even when the first message itself somehow
- * fails -- the conversation still exists and is worth resuming. */
+ * fails -- the conversation still exists and is worth resuming.
+ *
+ * NW-78/AC-2: the success result also carries `scopeContractId` straight off `created.conversation`
+ * -- the just-created conversation's **own persisted field**, echoed back by the server -- not the
+ * `scopeContractId` parameter this function was called with. The two are equal on a well-behaved
+ * backend, but `index.tsx`'s bound-contract chip must key off the former: the caller's own
+ * `scopeContractId` local goes back to `undefined` the very next render (it is
+ * `currentConversationId === null ? parseScopeContractId(...) : undefined`, and
+ * `createdConversationId.current` is set synchronously before this promise's caller ever sees this
+ * value), so it is gone before a second render could read it -- exactly the "never the transient
+ * `?scope=` query" rule this same field's own doc comment on `BoundContractChip` above states. */
 export async function createConversationAndAsk(
   apiClient: ApiClient,
   tenantId: string,
   question: string,
   scopeContractId: string | undefined,
 ): Promise<
-  | { ok: true; conversationId: string; reply: ConversationReplyBody }
+  | { ok: true; conversationId: string; reply: ConversationReplyBody; scopeContractId: string | null }
   | { ok: false; conversationId: string | null; reason: string }
 > {
   const created = await apiClient.createConversation(tenantId, scopeContractId ? { scopeContractId } : {});
@@ -521,5 +590,5 @@ export async function createConversationAndAsk(
     return { ok: false, conversationId, reason: posted.error ?? TRANSPORT_ERROR_REASON };
   }
 
-  return { ok: true, conversationId, reply: posted.reply };
+  return { ok: true, conversationId, reply: posted.reply, scopeContractId: created.conversation.scopeContractId };
 }
