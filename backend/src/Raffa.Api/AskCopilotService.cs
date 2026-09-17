@@ -64,13 +64,20 @@ namespace Raffa.Api;
 /// </para>
 ///
 /// <para>
-/// <b>Known gaps, honestly scoped</b>: <c>Raffa.Documents.Contracts.Domain.Contract</c> has no
-/// geography/product-category field, so a <see cref="BenchmarkQuery"/> built here uses
-/// <c>GoverningLaw</c> as an imperfect geography proxy (documented on
-/// <see cref="BuildMarketComparePackAsync"/>) — the same honest gap
-/// <c>Raffa.Api.InsightsEndpointExtensions</c>'s own doc comment already names for
-/// <c>/api/contracts/{id}/strategy</c>. R-STR-03 (status-aware renewal actions) is not read here —
-/// a follow-up, not attempted by this task.
+/// <b>Priced-line bands share one resolution with <c>/api/contracts/{id}/strategy</c></b> (task
+/// E28/F01/US01/T01, NW-82; ADR-024 w17 clause 7 "one resolution per screen"):
+/// <see cref="BuildRenewalStrategyPackAsync"/>/<see cref="BuildMarketComparePackAsync"/> both
+/// resolve the (supplier name, geography) key through the same <see cref="BenchmarkKeyResolution"/>
+/// <c>InsightsEndpointExtensions.GetContractStrategyAsync</c> already calls, then pass it to the
+/// same async <c>InsightsEndpointExtensions.ToPricedLines</c> overload — never
+/// <c>Contract.GoverningLaw</c> as a geography stand-in (the gap this doc comment used to name; a
+/// contract still has no dedicated geography column, but the workspace's own country, the same
+/// proxy <c>/strategy</c> already accepted as honest in ADR-024 w17 clause 8, is a real resolution,
+/// not an invented one). An incomplete key (no <c>SupplierId</c>, an unresolved name, or no
+/// workspace country) leaves every line's band unset, so both methods narrate "insufficient market
+/// data" exactly as <c>/strategy</c> does for the identical gap — never a fabricated percentile.
+/// R-STR-03 (status-aware renewal actions) is not read here — a follow-up, not attempted by this
+/// task.
 /// </para>
 /// </summary>
 internal sealed class AskCopilotService(
@@ -88,6 +95,7 @@ internal sealed class AskCopilotService(
     SavingsOpportunityService savingsOpportunityService,
     ISupplierNameLookup supplierNameLookup,
     IBenchmarkService benchmarkService,
+    BenchmarkKeyResolution benchmarkKeyResolution,
     IMarketKnowledgeRetrieval marketKnowledgeRetrieval,
     IAuditWriter auditWriter,
     ITenantContext tenantContext,
@@ -608,7 +616,14 @@ internal sealed class AskCopilotService(
         return (namedContractId is { } contractId ? $"/contracts/{contractId}" : null, null);
     }
 
-    private async Task<IReadOnlyList<PackItem>> BuildMarketComparePackAsync(
+    /// <summary>
+    /// <c>internal</c>, not <c>private</c> — the same test-reachability precedent
+    /// <see cref="ResolveTenantClauseLinks"/> already establishes (<c>Raffa.Api.Tests</c>' own
+    /// <c>InternalsVisibleTo</c> grant), so <c>Raffa.Api.Tests</c> can assert directly on the
+    /// "insufficient market data" branch below without depending on
+    /// <c>FixtureAiGateway.AnswerFromPack</c>'s own unrelated top-5-citation cap.
+    /// </summary>
+    internal async Task<IReadOnlyList<PackItem>> BuildMarketComparePackAsync(
         PortfolioListItem? namedContractItem, CancellationToken cancellationToken)
     {
         if (namedContractItem is null)
@@ -626,7 +641,18 @@ internal sealed class AskCopilotService(
         }
 
         var supplierName = await ResolveDisplayNameAsync(namedContractItem, cancellationToken).ConfigureAwait(false);
-        var pricedLines = InsightsEndpointExtensions.ToPricedLines(contract360);
+        var asOfDate = DateOnly.FromDateTime(clock.UtcNow.UtcDateTime);
+
+        // Same (supplier name, geography) key and the same async ToPricedLines overload
+        // BuildRenewalStrategyPackAsync/GET /api/contracts/{id}/strategy use (ADR-024 w17 clause 7;
+        // task E28/F01/US01/T01, NW-82) -- one resolution, three consumers, never GoverningLaw as a
+        // geography stand-in (see this type's own doc comment).
+        var (benchmarkSupplierName, geography) = await ResolveBenchmarkKeyAsync(contract360.Header.SupplierId, cancellationToken)
+            .ConfigureAwait(false);
+
+        var pricedLines = await InsightsEndpointExtensions
+            .ToPricedLines(contract360, benchmarkService, benchmarkSupplierName, geography, asOfDate, cancellationToken)
+            .ConfigureAwait(false);
 
         var items = new List<PackItem>
         {
@@ -640,50 +666,50 @@ internal sealed class AskCopilotService(
                 continue;
             }
 
-            // Honest gap (see this type's own doc comment): Contract has no geography field yet,
-            // so GoverningLaw stands in — a real mismatch here is exactly the "insufficient market
-            // data" outcome ADR-001 already treats as a first-class, honest answer, never a bare
-            // fabricated number.
-            var query = new BenchmarkQuery(
-                supplierName,
-                line.Description,
-                line.Sku,
-                contract360.Overview.GoverningLaw ?? "Unknown",
-                line.Quantity ?? 1m,
-                contract360.Overview.RenewalTermMonths is { } months ? $"{months} months" : "unknown",
-                contract360.Overview.Currency,
-                contract360.Overview.EffectiveDate ?? DateOnly.FromDateTime(clock.UtcNow.UtcDateTime));
-
-            var benchmarkResult = await benchmarkService.GetBenchmarkAsync(query, cancellationToken).ConfigureAwait(false);
-            if (benchmarkResult.IsFailure)
-            {
-                continue;
-            }
-
-            var benchmark = benchmarkResult.Value;
             var lineKey = $"market:{supplierName}:{line.Description}".Replace(' ', '-');
 
-            if (benchmark.HasSufficientData)
+            if (line.Benchmark is { } distribution)
             {
-                var distribution = benchmark.Distribution!;
                 items.Add(new PackItem(
                     lineKey,
                     PackCorpus.Market,
                     $"{supplierName} · {line.Description}",
-                    benchmark.Source,
+                    line.AdapterName,
                     null,
                     null,
                     $"P25 {distribution.P25} · P50 {distribution.P50} · P75 {distribution.P75} " +
-                    $"{benchmark.Currency}/unit · n = {benchmark.SampleSize?.ToString(CultureInfo.InvariantCulture) ?? "n/a"}",
+                    $"{line.Currency}/unit · n = {line.SampleSize?.ToString(CultureInfo.InvariantCulture) ?? "n/a"}",
                     null,
                     null,
                     null,
-                    benchmark.Source,
+                    FormatRepresentativeProvenance(line),
                     [
-                        new PackValue("p25", distribution.P25.ToString(CultureInfo.InvariantCulture), PackValueKind.Amount, benchmark.Currency),
-                        new PackValue("p50", distribution.P50.ToString(CultureInfo.InvariantCulture), PackValueKind.Amount, benchmark.Currency),
-                        new PackValue("p75", distribution.P75.ToString(CultureInfo.InvariantCulture), PackValueKind.Amount, benchmark.Currency),
+                        new PackValue("p25", distribution.P25.ToString(CultureInfo.InvariantCulture), PackValueKind.Amount, line.Currency),
+                        new PackValue("p50", distribution.P50.ToString(CultureInfo.InvariantCulture), PackValueKind.Amount, line.Currency),
+                        new PackValue("p75", distribution.P75.ToString(CultureInfo.InvariantCulture), PackValueKind.Amount, line.Currency),
                     ]));
+            }
+            else
+            {
+                // AC-3: a missing band narrates "insufficient market data", never a fabricated
+                // percentile. Previously this line was silently dropped (no PackItem at all, the
+                // adapter-failure/insufficient-data branches both just `continue`d) -- leaving the
+                // model nothing to cite when it had to say so, and no honest trace an operator could
+                // tell apart from "this intent never ran".
+                items.Add(new PackItem(
+                    lineKey,
+                    PackCorpus.Market,
+                    $"{supplierName} · {line.Description}",
+                    null,
+                    null,
+                    null,
+                    "Insufficient market data for this line — too few comparables to publish a " +
+                    "benchmark (Appendix C rule 10; ADR-001).",
+                    null,
+                    null,
+                    null,
+                    "insufficient market data",
+                    []));
             }
 
             items.Add(new PackItem(
@@ -714,7 +740,18 @@ internal sealed class AskCopilotService(
         return items;
     }
 
-    private async Task<IReadOnlyList<PackItem>> BuildRenewalStrategyPackAsync(
+    /// <summary>
+    /// <c>internal</c>, not <c>private</c> — see <see cref="BuildMarketComparePackAsync"/>'s own
+    /// doc comment for why (test-reachability precedent, <see cref="ResolveTenantClauseLinks"/>).
+    /// <c>Raffa.Api.Tests.AskPricedLinesParityTests</c> calls this directly to compare the
+    /// <c>calc:target[...]</c> item's <see cref="PackValue"/>s against <c>GET
+    /// /api/contracts/{id}/strategy</c>'s own JSON (AC-2) -- <c>FixtureAiGateway.AnswerFromPack</c>
+    /// only ever echoes a pack's first five items, and this pack's own fixed order
+    /// (when-you-must-move, then up to seven levers per priced line, then one target per line)
+    /// never puts a target that early, so an HTTP-round-trip reply could not observe it without
+    /// first asserting on that unrelated cap.
+    /// </summary>
+    internal async Task<IReadOnlyList<PackItem>> BuildRenewalStrategyPackAsync(
         PortfolioListItem namedContractItem, CancellationToken cancellationToken)
     {
         var contract360 = await contract360QueryService
@@ -727,14 +764,37 @@ internal sealed class AskCopilotService(
         }
 
         var renewal = InsightsEndpointExtensions.ComputeRenewal(contract360.Header, renewalEngine);
-        var pricedLines = InsightsEndpointExtensions.ToPricedLines(contract360);
-        var criticalFacts = InsightsEndpointExtensions.ToCriticalFacts(contract360);
         var asOfDate = DateOnly.FromDateTime(clock.UtcNow.UtcDateTime);
+
+        // One resolution per screen (ADR-024 w17 clause 7), extended to Ask (task E28/F01/US01/T01,
+        // NW-82): the same BenchmarkKeyResolution key, and the same async ToPricedLines overload,
+        // GET /api/contracts/{id}/strategy already calls -- so the two paths query the benchmark
+        // service with an identical (supplier name, geography) key and cannot compute two different
+        // bands for the same line (AC-1/AC-2). Previously this called the *sync* ToPricedLines
+        // overload, which never resolves a band at all (every line's Benchmark stays null by
+        // construction) -- Ask's own strategy pack narrated "insufficient market data" on every
+        // priced line even when /strategy found a real one; that drift is this task's own bug to
+        // close.
+        var (benchmarkSupplierName, geography) = await ResolveBenchmarkKeyAsync(contract360.Header.SupplierId, cancellationToken)
+            .ConfigureAwait(false);
+
+        var pricedLines = await InsightsEndpointExtensions
+            .ToPricedLines(contract360, benchmarkService, benchmarkSupplierName, geography, asOfDate, cancellationToken)
+            .ConfigureAwait(false);
+
+        var criticalFacts = InsightsEndpointExtensions.ToCriticalFacts(contract360);
         var supplierName = await ResolveDisplayNameAsync(namedContractItem, cancellationToken).ConfigureAwait(false);
 
-        // Composed by the same mapping GET /api/contracts/{id}/strategy uses, so Ask and the
-        // endpoint cannot drift (they narrate the same numbers -- ADR-024). Only the supplier name
-        // differs: the endpoint has no name resolver wired, this path does.
+        // Composed by the same mapping GET /api/contracts/{id}/strategy uses
+        // (InsightsEndpointExtensions.ToStrategyInputs / StrategyPackBuilder.Build), so Ask and the
+        // endpoint narrate the identical targets whenever a band exists (AC-2) and the identical
+        // "insufficient market data" explanation when it does not (AC-3;
+        // PricedLineNegotiationCalculator.ComputeTargetRange). Ask overrides SupplierName with its
+        // own always-available ResolveDisplayNameAsync result (falls back to the contract type,
+        // never null, unlike /strategy's own name -- which is only as good as this same
+        // BenchmarkKeyResolution call) purely for narration text ("Notify X of intent..." etc.); the
+        // override never touches a priced line's own Benchmark/band, so it cannot desync the numbers
+        // this task fixes.
         var strategyInputs = InsightsEndpointExtensions
             .ToStrategyInputs(contract360, renewal, pricedLines, criticalFacts, asOfDate)
             with
@@ -1076,6 +1136,41 @@ internal sealed class AskCopilotService(
 
         return match is null ? null : new EntityId(match.ContractId);
     }
+
+    /// <summary>
+    /// Resolves the (supplier name, geography) key <see cref="BuildRenewalStrategyPackAsync"/>/
+    /// <see cref="BuildMarketComparePackAsync"/> need for the async
+    /// <c>InsightsEndpointExtensions.ToPricedLines</c> overload — the same
+    /// <see cref="BenchmarkKeyResolution"/> <c>GET /api/contracts/{id}/strategy</c> already resolves
+    /// (ADR-024 w17 clause 7 "one resolution per screen"; task E28/F01/US01/T01, NW-82). An
+    /// <see cref="BenchmarkKeyResult.Incomplete"/> key (no <c>SupplierId</c>, an unresolved name, or
+    /// no workspace country) maps to <c>(null, null)</c>, so <c>ToPricedLines</c> leaves every
+    /// line's band unset rather than querying with a fabricated geography.
+    /// </summary>
+    private async Task<(string? SupplierName, string? Geography)> ResolveBenchmarkKeyAsync(
+        EntityId? supplierId, CancellationToken cancellationToken)
+    {
+        var key = await benchmarkKeyResolution
+            .ResolveAsync(CurrentTenantId, supplierId, cancellationToken)
+            .ConfigureAwait(false);
+
+        return key is BenchmarkKeyResult.Complete complete ? (complete.Supplier, complete.Geography) : (null, null);
+    }
+
+    /// <summary>
+    /// <see cref="BuildMarketComparePackAsync"/>'s own market-corpus provenance label for a line
+    /// whose band resolved (task text, verbatim: "a provenance label (representative · adapter · n
+    /// · as-of)") — distinct from, and simpler than,
+    /// <c>Raffa.Insights.Strategy.StrategyPackBuilder.AnnotateTargetExplanation</c>'s own
+    /// "representative (source: X; n=Y; as of Z)" phrase folded into a target's free-text
+    /// explanation (that file is out of this task's "Files to create or modify" scope, so its own
+    /// wording is left exactly as it already is); both name the same three facts — adapter, sample
+    /// size, as-of date — because ADR-001 w17 clause 4 requires a representative claim to carry
+    /// them, never a bare percentile.
+    /// </summary>
+    private static string FormatRepresentativeProvenance(PricedLine line) =>
+        $"representative · {line.AdapterName} · n={line.SampleSize?.ToString(CultureInfo.InvariantCulture) ?? "n/a"} " +
+        $"· as of {(line.AsOf is { } asOf ? asOf.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : "n/a")}";
 
     private async Task<string> ResolveDisplayNameAsync(PortfolioListItem item, CancellationToken cancellationToken)
     {
