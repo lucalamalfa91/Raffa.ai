@@ -1002,6 +1002,30 @@ export interface CaptureNegotiationOutcomeResult {
   error: string | null;
 }
 
+// Task E25/F04/US01/T01 (quote-benchmark-backend; NW-57): getQuoteBenchmarkHistory, wrapping
+// `GET /api/quotes/benchmark-history` -- the tenant's quotes, newest first, each carrying a
+// freshly-recomputed per-line market-benchmark assessment (the identical per-line shape
+// `QuoteLineAssessmentBody` above already names, reused verbatim on the wire). Durable server state
+// (ADR-028 -- "a client store never stands in for a missing GET"): nothing here is held only in this
+// browser tab, so a reload or a second browser sees the same history, including a first-of-type
+// quote's honest `InsufficientBenchmarkData` cold start. Never 404s -- an empty `items` array is a
+// tenant's own honest "no quotes yet" answer, the same convention `getSavingsOpportunities` above
+// already follows for its own tenant-scoped list.
+type GetQuoteBenchmarkHistoryResponses = paths["/api/quotes/benchmark-history"]["get"]["responses"];
+export type QuoteBenchmarkHistoryBody = GetQuoteBenchmarkHistoryResponses[200]["content"]["application/json"];
+export type QuoteBenchmarkHistoryEntryBody = QuoteBenchmarkHistoryBody["items"][number];
+
+export interface GetQuoteBenchmarkHistoryResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** The tenant's quotes, newest first, each with its own `lines` assessment; present only when `ok` is true. */
+  history: QuoteBenchmarkHistoryBody | null;
+  /** Plain-language failure reason (400 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
 // Task E08/F02/US01/T01 (savings-home, ADR-020 screen 9): getSavingsKpis, wrapping
 // `GET /api/savings/kpis` -- the Home screen's 6 KPI cells (Annual spend analyzed, Savings
 // identified, Savings realized, Savings in progress, Contracts analyzed, Upcoming renewals; product
@@ -1455,6 +1479,13 @@ export interface ApiClient {
     tenantId: string,
     request: CaptureNegotiationOutcomeRequest,
   ): Promise<CaptureNegotiationOutcomeResult>;
+  /**
+   * Calls `GET /api/quotes/benchmark-history` (operationId `getQuoteBenchmarkHistory`) -- the
+   * tenant's quotes, newest first, each carrying its own market-benchmark position read back from
+   * server state (ADR-028; closes NW-57). Same never-throws shape as every other call here; never
+   * 404s (an empty `items` array is a normal, expected "no quotes yet" answer).
+   */
+  getQuoteBenchmarkHistory(tenantId: string): Promise<GetQuoteBenchmarkHistoryResult>;
 
   askRaffa(tenantId: string, request: AskRaffaRequest): Promise<AskRaffaResult>;
   /**
@@ -2958,6 +2989,39 @@ export function createApiClient(
       }
 
       return { ok: false, statusCode: response.status, outcome: null, error };
+    },
+
+    async getQuoteBenchmarkHistory(tenantId) {
+      let response: Response;
+      try {
+        response = await fetch(new URL("/api/quotes/benchmark-history", baseUrl), {
+          headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          history: null,
+          error: `Unable to reach ${baseUrl}/api/quotes/benchmark-history. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const history = (await response.json()) as QuoteBenchmarkHistoryBody;
+        return { ok: true, statusCode: 200, history, error: null };
+      }
+
+      // Same Results.BadRequest(string) shape as every other call's 400 above.
+      let error: string;
+      try {
+        const errorBody: unknown = await response.json();
+        error = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, history: null, error };
     },
 
     async getSavingsKpis(tenantId) {
