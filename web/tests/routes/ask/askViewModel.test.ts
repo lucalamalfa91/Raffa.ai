@@ -159,7 +159,30 @@ describe("mapConversationReplyToReply / mapConversationMessageToReply", () => {
       reply({ kind: "abstain", answerMarkdown: "Nothing in the validated contracts supports a reliable answer.", citations: [], actions: [] }),
     );
 
-    expect(mapped).toEqual({ kind: "abstain", reason: "Nothing in the validated contracts supports a reliable answer." });
+    expect(mapped).toEqual({ kind: "abstain", reason: "Nothing in the validated contracts supports a reliable answer.", actions: [] });
+  });
+
+  // Task E25/F05/US02/T01 (abstain-recovery-web; ADR-024 "every abstain has a clickable next
+  // step"): the abstain branch no longer drops `turn.actions` -- it maps them the same way
+  // redirect/refusal already do, via the shared `mapConversationAction`. `ReplyBody.tsx` (not this
+  // mapper) is what forces the result to render secondary-only; the "primary" kind below is the
+  // honest output of `toReplyActionKind(0)`, proven separately by the `mapConversationAction`
+  // describe block above.
+  it("maps an abstain reply's recovery action the same way answer/redirect/refusal map theirs", () => {
+    const mapped = mapConversationReplyToReply(
+      reply({
+        kind: "abstain",
+        answerMarkdown: "Nothing in the validated contracts supports a reliable answer.",
+        citations: [],
+        actions: [{ label: "Upload a contract", href: "/documents", kind: "upload" }],
+      }),
+    );
+
+    expect(mapped).toEqual({
+      kind: "abstain",
+      reason: "Nothing in the validated contracts supports a reliable answer.",
+      actions: [{ label: "Upload a contract", href: "/documents", kind: "primary" }],
+    });
   });
 
   it("maps a stored message the same way, with an always-empty followUps (no such column on ConversationMessage)", () => {

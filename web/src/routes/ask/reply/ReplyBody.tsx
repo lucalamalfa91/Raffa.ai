@@ -75,6 +75,14 @@ export default function ReplyBody({ reply, onOpenCitation, onFollowUp }: ReplyBo
           <div className="abstain-block">
             <strong>Cannot determine reliably.</strong> {reply.reason}
           </div>
+          {/* ADR-024 "every abstain has a clickable next step" / parent story AC-1: the recovery
+              action always renders secondary, never primary -- forced here regardless of the
+              `kind` the mapper produced, the same defensive posture the redirect/refusal case
+              above already takes with its own "only ever the first action" slice. AC-3: no
+              action is not an error -- the block above already renders on its own. */}
+          {reply.actions && reply.actions.length > 0 && (
+            <ActionRow actions={reply.actions.map((action) => ({ ...action, kind: "secondary" }))} />
+          )}
         </div>
       );
 
