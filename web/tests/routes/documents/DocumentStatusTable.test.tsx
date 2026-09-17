@@ -31,8 +31,6 @@ function renderTable(props: Partial<ComponentProps<typeof DocumentStatusTable>> 
         documents={[]}
         filter="attention"
         localUploads={[]}
-        onRetryLocal={vi.fn()}
-        onRetryServer={vi.fn()}
         onDelete={vi.fn()}
         isAdmin={false}
         {...props}
@@ -124,8 +122,7 @@ describe("DocumentStatusTable", () => {
     expect(screen.getByRole("link", { name: "Salesforce_MSA.pdf" })).toHaveAttribute("href", "/documents?progress=doc-1");
   });
 
-  it("offers Retry upload for an Uploaded row older than five minutes, calling onRetryServer", async () => {
-    const onRetryServer = vi.fn();
+  it("keeps 'Processing in the background' for an Uploaded row older than three minutes, with no Retry upload CTA", () => {
     renderTable({
       documents: [
         item({
@@ -133,24 +130,19 @@ describe("DocumentStatusTable", () => {
           processingStatus: "Uploaded",
           stage: null,
           contractId: null,
-          createdAt: new Date(Date.now() - 6 * 60_000).toISOString(),
+          createdAt: new Date(Date.now() - 4 * 60_000).toISOString(),
         }),
       ],
-      onRetryServer,
     });
 
-    expect(screen.queryByText("Processing in the background")).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Retry upload" }));
-    expect(onRetryServer).toHaveBeenCalledWith("doc-stuck");
+    expect(screen.getByText("Processing in the background")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry upload" })).not.toBeInTheDocument();
   });
 
-  it("offers Retry upload for a server-known failed row, calling onRetryServer with its id", async () => {
-    const onRetryServer = vi.fn();
-    renderTable({ documents: [item({ id: "doc-9", processingStatus: "Failed" })], onRetryServer });
+  it("does not offer Retry upload for a server-known failed row", () => {
+    renderTable({ documents: [item({ id: "doc-9", processingStatus: "Failed" })] });
 
-    await userEvent.click(screen.getByRole("button", { name: "Retry upload" }));
-
-    expect(onRetryServer).toHaveBeenCalledWith("doc-9");
+    expect(screen.queryByRole("button", { name: "Retry upload" })).not.toBeInTheDocument();
   });
 
   // Task E16/F03/US02/T02 (ADR-020 w15 footer 10, wave w15): the perceived-instant batch -- a row
@@ -171,8 +163,7 @@ describe("DocumentStatusTable", () => {
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 
-  it("offers Retry upload for a local failed upload, calling onRetryLocal with its key", async () => {
-    const onRetryLocal = vi.fn();
+  it("renders a local failed upload with its sentence and no Retry upload CTA", () => {
     const localUploads: LocalUploadEntry[] = [
       {
         key: "local-1",
@@ -181,12 +172,10 @@ describe("DocumentStatusTable", () => {
         errorMessage: "Raffa.ai could not process Broken.pdf. Try again.",
       },
     ];
-    renderTable({ localUploads, onRetryLocal });
+    renderTable({ localUploads });
 
     expect(screen.getByText("Raffa.ai could not process Broken.pdf. Try again.")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Retry upload" }));
-
-    expect(onRetryLocal).toHaveBeenCalledWith("local-1");
+    expect(screen.queryByRole("button", { name: "Retry upload" })).not.toBeInTheDocument();
   });
 
   // ADR-020 w15 §6 / ADR-019 w15 clause 4: a refusal that never reached the server (oversize,

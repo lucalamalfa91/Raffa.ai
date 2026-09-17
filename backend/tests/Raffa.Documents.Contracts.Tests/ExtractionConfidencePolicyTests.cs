@@ -47,6 +47,23 @@ public sealed class ExtractionConfidencePolicyTests
     }
 
     [Theory]
+    [InlineData(null)]
+    [InlineData("review_required")]
+    [InlineData("unknown")]
+    public void Null_and_review_required_decisions_still_need_a_human(string? decision)
+    {
+        Assert.True(ExtractionConfidencePolicy.StillRequiresHumanDecision(decision));
+    }
+
+    [Theory]
+    [InlineData("auto_accepted")]
+    [InlineData("human_accepted")]
+    public void Accepted_decisions_do_not_still_need_a_human(string decision)
+    {
+        Assert.False(ExtractionConfidencePolicy.StillRequiresHumanDecision(decision));
+    }
+
+    [Theory]
     [InlineData("annualSpend")]
     [InlineData("totalContractValue")]
     [InlineData("cancellationDeadline")]
@@ -77,5 +94,71 @@ public sealed class ExtractionConfidencePolicyTests
         // 0.895 rounded to one decimal would cross the bar; the policy must not.
         Assert.True(Math.Round(0.895, 1) >= ExtractionConfidencePolicy.AutoAcceptThreshold);
         Assert.Equal(ExtractionConfidencePolicy.ReviewRequired, ExtractionConfidencePolicy.Decide(0.895));
+    }
+
+    [Theory]
+    [InlineData(0.0)]
+    [InlineData(0.55)]
+    [InlineData(0.89)]
+    [InlineData(null)]
+    public void An_extracted_start_date_is_always_auto_accepted(double? confidence)
+    {
+        Assert.Equal(
+            ExtractionConfidencePolicy.AutoAccepted,
+            ExtractionConfidencePolicy.Decide("startDate", confidence));
+        Assert.Equal(
+            ExtractionConfidencePolicy.ReviewRequired,
+            ExtractionConfidencePolicy.Decide("endDate", confidence));
+    }
+
+    [Fact]
+    public void Status_is_active_when_today_falls_inside_the_start_end_window()
+    {
+        var today = new DateOnly(2026, 9, 17);
+        Assert.Equal(
+            ExtractionConfidencePolicy.StatusActive,
+            ExtractionConfidencePolicy.DeriveStatus(new DateOnly(2026, 1, 1), new DateOnly(2027, 1, 1), today));
+    }
+
+    [Fact]
+    public void Status_is_expired_when_the_end_date_is_before_today()
+    {
+        var today = new DateOnly(2026, 9, 17);
+        Assert.Equal(
+            ExtractionConfidencePolicy.StatusExpired,
+            ExtractionConfidencePolicy.DeriveStatus(new DateOnly(2024, 1, 1), new DateOnly(2025, 12, 31), today));
+    }
+
+    [Fact]
+    public void Status_is_expired_when_the_start_date_is_still_in_the_future()
+    {
+        var today = new DateOnly(2026, 9, 17);
+        Assert.Equal(
+            ExtractionConfidencePolicy.StatusExpired,
+            ExtractionConfidencePolicy.DeriveStatus(new DateOnly(2027, 1, 1), new DateOnly(2028, 1, 1), today));
+    }
+
+    [Fact]
+    public void An_open_ended_start_in_the_past_is_active()
+    {
+        var today = new DateOnly(2026, 9, 17);
+        Assert.Equal(
+            ExtractionConfidencePolicy.StatusActive,
+            ExtractionConfidencePolicy.DeriveStatus(new DateOnly(2026, 1, 1), endDate: null, today));
+    }
+
+    [Fact]
+    public void Neither_date_yields_no_derived_status()
+    {
+        Assert.Null(ExtractionConfidencePolicy.DeriveStatus(null, null, new DateOnly(2026, 9, 17)));
+    }
+
+    [Fact]
+    public void Inclusive_bounds_treat_today_as_in_force()
+    {
+        var today = new DateOnly(2026, 9, 17);
+        Assert.Equal(
+            ExtractionConfidencePolicy.StatusActive,
+            ExtractionConfidencePolicy.DeriveStatus(today, today, today));
     }
 }

@@ -302,8 +302,6 @@ export default function DocumentsRoute({ apiClient, role }: DocumentsRouteProps)
         documents={list.filteredDocuments}
         filter={list.filter}
         localUploads={list.localUploads}
-        onRetryLocal={list.retryLocalUpload}
-        onRetryServer={list.retryServerDocument}
         onDelete={handleDelete}
         isAdmin={role === "admin"}
         updatesPaused={list.updatesPaused}

@@ -532,9 +532,7 @@ async function uploadSampleDocument(page: Page): Promise<UploadOutcome> {
 
   let outcome = await pollUploadOutcome(row, notAddedChip);
   if (outcome === "failed") {
-    // One real retry (the row's own "Retry upload" action re-runs the same upload) before this
-    // helper accepts "failed" as this run's honest final answer -- classified again, never assumed.
-    await row.getByRole("button", { name: /retry upload/i }).click();
+    // Auto-reprocess (useDocumentsList) is the recovery path; the row has no Retry upload CTA.
     outcome = await pollUploadOutcome(row, notAddedChip);
   }
 
@@ -580,10 +578,8 @@ function contractIdFromUrl(url: string): string | null {
 /**
  * Resolves every currently-pending review field (`ReviewFieldList.tsx`'s own Accept/Correct pair)
  * until none remain: the first pending field is Corrected (a real `PATCH /api/contracts/{id}` write,
- * via `submitDifferentCorrectionValue`), every other pending field is Accepted (session-only local
- * state, no backend call for a value the contract already holds -- `ContractCorrectionService
- * .CorrectAsync` rejects a no-op correction outright, so "accept, unchanged" cannot be made durable;
- * see `reviewViewModel.ts`'s own header comment). Since no live per-field confidence gate blocks
+ * via `submitDifferentCorrectionValue`), every other pending field is Accepted (also a real PATCH —
+ * confirming the extracted value officializes `review_required` evidence as `human_accepted`). Since no live per-field confidence gate blocks
  * differently per field, this resolves *all* of them -- exercising both real decisions the parent
  * story's "review critical fields" names, not literally stopping at a fixed count. Re-queries "first
  * pending row" fresh every iteration (never a cached index), so it is safe across the
@@ -609,12 +605,16 @@ async function resolveAllReviewFields(page: Page): Promise<void> {
     } else {
       await pendingRow.getByRole("button", { name: /^accept$/i }).click();
     }
+
+    // Both decisions now reload the screen (`load()` → skeleton). Wait for the table to return
+    // so the next iteration does not treat the empty skeleton as "nothing left to review".
+    await page.locator(".review-field-table").waitFor({ state: "visible", timeout: 30_000 });
   }
 }
 
 /**
- * `EvidencePane.tsx`'s correction form. `ContractCorrectionService.CorrectAsync` rejects a no-op
- * correction outright, so this always picks a value that differs from whatever is already there —
+ * `EvidencePane.tsx`'s correction form. The first pending field is exercised as a true value change,
+ * so this always picks a value that differs from whatever is already there —
  * for the `<select>` case (enum `type`, bool `autoRenewal`) that is any other option in the closed,
  * backend-validated list, never a guessed/free-typed value.
  */

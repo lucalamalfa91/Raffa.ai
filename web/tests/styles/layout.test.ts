@@ -89,14 +89,14 @@ describe("documents.css (E06/F06/US01/T01 regression guard; V2 layout reconciled
     expect(body).not.toMatch(/max-width/);
   });
 
-  it("wraps long filenames at word/character-run boundaries, not one glyph per line", () => {
+  it("ellipses long filenames inside the Document column instead of overflowing the row", () => {
     // V2 moved this property off the raw `.document-status-table th/td:nth-child(1)` column-width
     // selector and onto the semantic content classes actually rendered inside that cell --
     // `DocumentStatusTable.tsx` renders every column-1 filename through one of these two, never bare
     // text directly on the `td` -- see tests/routes/documents/documents.css.test.ts for this task's
-    // fuller export-fidelity coverage of the same selectors. (The retired "Not added" card's own
+    // fuller coverage of the same selectors. (The retired "Not added" card's own
     // `.upload-result-filename` left with the card, task E16/F03/US01/T01.)
-    expect(ruleBodyFor(css, ".document-status-table-link")).toMatch(/overflow-wrap:\s*anywhere/);
-    expect(ruleBodyFor(css, ".document-status-table-filename")).toMatch(/overflow-wrap:\s*anywhere/);
+    expect(ruleBodyFor(css, ".document-status-table-link")).toMatch(/text-overflow:\s*ellipsis/);
+    expect(ruleBodyFor(css, ".document-status-table-filename")).toMatch(/text-overflow:\s*ellipsis/);
   });
 });
