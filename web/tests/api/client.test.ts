@@ -2442,6 +2442,7 @@ describe("createApiClient() Authorization header (task E18/F01/US02/T01, NW-05; 
       getDocumentPreviewUrl: () => client.getDocumentPreviewUrl("tenant-1", "doc-1"),
       reprocessDocument: () => client.reprocessDocument("tenant-1", "doc-1"),
       deleteDocument: () => client.deleteDocument("tenant-1", "doc-1"),
+      deleteAllDocuments: () => client.deleteAllDocuments("tenant-1"),
       prioritiseDocument: () => client.prioritiseDocument("tenant-1", "doc-1"),
       getPortfolio: () => client.getPortfolio("tenant-1"),
       getContract360: () => client.getContract360("tenant-1", "contract-1"),
@@ -2480,6 +2481,7 @@ describe("createApiClient() Authorization header (task E18/F01/US02/T01, NW-05; 
       createConversation: () => client.createConversation("tenant-1"),
       getConversation: () => client.getConversation("tenant-1", "conv-1"),
       postMessage: () => client.postMessage("tenant-1", "conv-1", { question: "?" }),
+      deleteConversation: () => client.deleteConversation("tenant-1", "conv-1"),
       getCapabilities: () => client.getCapabilities(),
       getMarketRecord: () => client.getMarketRecord("rec-1"),
     };

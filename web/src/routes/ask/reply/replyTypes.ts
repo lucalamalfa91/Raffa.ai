@@ -52,8 +52,15 @@ export interface ReplyCitation {
    * rule" idiom `.abstain-block`/`.ai-recommendation` already use, `styles/components.css`). */
   snippet: string;
   /** First-page preview image URL (`GET /api/documents/{id}/preview`, requirements.md §6). Absent
-   * (or `null`) renders the honest placeholder block instead of a fabricated image. */
+   * (or `null`) renders the honest placeholder block instead of a fabricated image. Prefer an
+   * authenticated object URL (`getDocumentPreviewUrl`) over the raw API path — `<img src>` cannot
+   * send the tenant/auth headers that route needs. */
   previewUrl?: string | null;
+  /** Tenant document this citation points at. Never rendered (R-ASK-08); used only to fetch a
+   * real page preview when `previewUrl` is missing. */
+  documentId?: string | null;
+  /** 1-based page for `GET /api/documents/{id}/preview?page=`. */
+  page?: number | null;
   /** In-app destination (e.g. `/contracts/…?clause=…`, `/renewals`). Carried on the citation for
    * the caller's own navigation decision (F09/T04's real `onOpenCitation`) -- `CitationCard` never
    * turns this into a competing native link itself; some citations (a not-yet-resolved tenant

@@ -131,6 +131,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<DocumentReprocessService>();
         services.AddScoped<DocumentPriorityService>();
         services.AddScoped<DocumentDeleteService>();
+        services.AddScoped<ContractPurgeService>();
 
         // Review sign-off and the evidence read behind the review screen's pane
         // (`POST /api/documents/{id}/validate`, `GET /api/contracts/{id}/evidence`). Scoped for the

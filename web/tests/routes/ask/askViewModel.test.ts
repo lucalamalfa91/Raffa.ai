@@ -85,6 +85,8 @@ describe("mapConversationCitation", () => {
       subtitle: "p.12 §8.4",
       snippet: "automatically renew for successive twelve (12) month periods",
       previewUrl: "/api/documents/doc-1/preview",
+      documentId: "doc-1",
+      page: 12,
       href: "/contracts/contract-1?page=12",
     });
   });
@@ -483,6 +485,7 @@ describe("createConversationAndAsk", () => {
       getDocumentPreviewUrl: vi.fn(),
       reprocessDocument: vi.fn(),
       deleteDocument: vi.fn(),
+    deleteAllDocuments: vi.fn(),
       prioritiseDocument: vi.fn(),
       getPortfolio: vi.fn(),
       getContract360: vi.fn(),
@@ -513,6 +516,7 @@ describe("createConversationAndAsk", () => {
       createConversation: vi.fn(),
       getConversation: vi.fn(),
       postMessage: vi.fn(),
+    deleteConversation: vi.fn(),
       getCapabilities: vi.fn(),
       getMarketRecord: vi.fn(),
       ...overrides,

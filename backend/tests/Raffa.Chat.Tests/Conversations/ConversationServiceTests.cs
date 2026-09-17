@@ -423,4 +423,67 @@ public sealed class ConversationServiceTests : IAsyncLifetime
         Assert.Null(appended);
         Assert.Empty(auditWriter.Written);
     }
+
+    [Fact]
+    public async Task DeleteAsync_removes_the_callers_conversation_and_its_messages()
+    {
+        var tenantId = TenantId.New();
+        var tenantContext = new TenantContext();
+        var auditWriter = new RecordingAuditWriter();
+        var t0 = new DateTimeOffset(2026, 9, 8, 9, 0, 0, TimeSpan.Zero);
+
+        ConversationSummaryResult created;
+        {
+            var service = CreateService(tenantContext, new FixedClock(t0), auditWriter, out var db);
+            await using var _ = db;
+            created = await service.CreateAsync(tenantId, "alice@example.com", null);
+            await service.AppendMessageAsync(tenantId, "alice@example.com", created.ConversationId, YouMessage("When does it expire?"));
+        }
+
+        {
+            var service = CreateService(tenantContext, new FixedClock(t0), auditWriter, out var db);
+            await using var _ = db;
+            Assert.False(await service.DeleteAsync(tenantId, "bob@example.com", created.ConversationId));
+        }
+
+        var deleteService = CreateService(tenantContext, new FixedClock(t0), auditWriter, out var deleteDb);
+        await using var __ = deleteDb;
+        Assert.True(await deleteService.DeleteAsync(tenantId, "alice@example.com", created.ConversationId));
+
+        var queryService = CreateService(tenantContext, new FixedClock(t0), auditWriter, out var queryDb);
+        await using var ___ = queryDb;
+        Assert.Null(await queryService.GetAsync(tenantId, "alice@example.com", created.ConversationId));
+        Assert.Contains(auditWriter.Written, e => e.Action == "conversation.deleted");
+    }
+
+    [Fact]
+    public async Task DeleteByScopeContractsAsync_removes_every_chat_bound_to_those_contracts()
+    {
+        var tenantId = TenantId.New();
+        var tenantContext = new TenantContext();
+        var auditWriter = new RecordingAuditWriter();
+        var t0 = new DateTimeOffset(2026, 9, 8, 9, 0, 0, TimeSpan.Zero);
+        var scopedId = EntityId.New();
+        var otherId = EntityId.New();
+
+        ConversationSummaryResult scoped;
+        ConversationSummaryResult unscoped;
+        {
+            var service = CreateService(tenantContext, new FixedClock(t0), auditWriter, out var db);
+            await using var _ = db;
+            scoped = await service.CreateAsync(tenantId, "alice@example.com", scopedId);
+            unscoped = await service.CreateAsync(tenantId, "bob@example.com", null);
+            await service.CreateAsync(tenantId, "alice@example.com", otherId);
+        }
+
+        var deleteService = CreateService(tenantContext, new FixedClock(t0), auditWriter, out var deleteDb);
+        await using var __ = deleteDb;
+        var removed = await deleteService.DeleteByScopeContractsAsync(tenantId, "admin@example.com", [scopedId]);
+        Assert.Equal(1, removed);
+
+        var queryService = CreateService(tenantContext, new FixedClock(t0), auditWriter, out var queryDb);
+        await using var ___ = queryDb;
+        Assert.Null(await queryService.GetAsync(tenantId, "alice@example.com", scoped.ConversationId));
+        Assert.NotNull(await queryService.GetAsync(tenantId, "bob@example.com", unscoped.ConversationId));
+    }
 }

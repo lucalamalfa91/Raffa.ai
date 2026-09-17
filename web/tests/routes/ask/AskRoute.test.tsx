@@ -145,9 +145,10 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     uploadDocument: vi.fn(),
     getDocument: vi.fn(),
     listDocuments: vi.fn().mockResolvedValue(emptyDocuments()),
-    getDocumentPreviewUrl: vi.fn(),
+    getDocumentPreviewUrl: vi.fn().mockResolvedValue({ ok: false, statusCode: 404, objectUrl: null, error: "No preview." }),
     reprocessDocument: vi.fn(),
     deleteDocument: vi.fn(),
+    deleteAllDocuments: vi.fn(),
     prioritiseDocument: vi.fn(),
     getPortfolio: vi.fn().mockResolvedValue(validatedPortfolio()),
     // AC-5's own scoped-new-chat effect (index.tsx) calls this unconditionally whenever `?scope=` is
@@ -178,6 +179,7 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     createConversation: vi.fn(),
     getConversation: vi.fn(),
     postMessage: vi.fn(),
+    deleteConversation: vi.fn(),
     getCapabilities: vi.fn().mockResolvedValue(emptyCatalog()),
     getMarketRecord: vi.fn(),
     getQuoteBenchmarkHistory: vi.fn(),
@@ -573,7 +575,8 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
       expect(await screen.findByText("15 January 2027")).toBeInTheDocument();
       expect(screen.getByRole("link", { name: "Open Contract 360 →" })).toHaveAttribute("href", "/contracts/contract-1");
       expect(getConversation).toHaveBeenCalledWith(WORKSPACE_ID, CONVERSATION_ID);
-      expect(screen.getByRole("link", { name: "+ New chat" })).toHaveAttribute("href", "/ask");
+      expect(screen.queryByRole("link", { name: "+ New chat" })).not.toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Ask Raffa" })).toBeInTheDocument();
     });
 
     it("shows a named 'not found' state for an unknown/foreign conversation id, not a generic error", async () => {

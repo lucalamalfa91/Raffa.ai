@@ -59,6 +59,15 @@ describe("isAskRoute", () => {
     expect(isAskRoute("/ask/22222222-2222-2222-2222-222222222222")).toBe(true);
   });
 
+  it("matches /ask with a trailing slash", () => {
+    expect(isAskRoute("/ask/")).toBe(true);
+  });
+
+  it("matches a descendant remainder without a leading slash (React Router 7 splat parent)", () => {
+    expect(isAskRoute("ask")).toBe(true);
+    expect(isAskRoute("ask/22222222-2222-2222-2222-222222222222")).toBe(true);
+  });
+
   it("does not match a route that only shares the /ask prefix", () => {
     expect(isAskRoute("/askew")).toBe(false);
   });

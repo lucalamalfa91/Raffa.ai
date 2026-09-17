@@ -241,6 +241,38 @@ public sealed class RenewalAlertService(
         return created;
     }
 
+    /// <summary>
+    /// Removes every persisted alert for the given contracts in this tenant. Used by the host's
+    /// bulk document purge so a wiped contract does not leave a dangling renewal signal.
+    /// </summary>
+    public async Task<int> DeleteForContractsAsync(
+        TenantId tenantId,
+        IReadOnlyCollection<EntityId> contractIds,
+        CancellationToken cancellationToken = default)
+    {
+        if (contractIds.Count == 0)
+        {
+            return 0;
+        }
+
+        using var _ = tenantContext.BeginScope(tenantId);
+
+        var idList = contractIds.ToList();
+        var rows = await dbContext.RenewalAlerts
+            .Where(a => a.TenantId == tenantId && idList.Contains(a.ContractId))
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        if (rows.Count == 0)
+        {
+            return 0;
+        }
+
+        dbContext.RenewalAlerts.RemoveRange(rows);
+        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        return rows.Count;
+    }
+
     private static RenewalAlertResult ToResult(RenewalAlert alert) => new(
         alert.ContractId, alert.Milestone, alert.ThresholdDays, alert.MilestoneDate, alert.Status);
 

@@ -116,6 +116,19 @@ public sealed class ConversationsEndpointTests : IClassFixture<RaffaApiFactory>
     }
 
     [Fact]
+    public async Task Delete_invalid_conversation_id_returns_400()
+    {
+        var client = _factory.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Delete, "/api/conversations/not-a-guid");
+        request.Headers.Add("X-Tenant-Id", Guid.NewGuid().ToString());
+        request.Headers.Add("X-User-Id", "alice@example.com");
+
+        var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Create_missing_tenant_header_returns_400()
     {
         var client = _factory.CreateClient();

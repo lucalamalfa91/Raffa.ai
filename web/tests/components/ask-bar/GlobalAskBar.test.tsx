@@ -39,6 +39,7 @@ function mockApiClient(getCapabilities: ApiClient["getCapabilities"] = vi.fn(() 
     getDocumentPreviewUrl: vi.fn(),
     reprocessDocument: vi.fn(),
     deleteDocument: vi.fn(),
+    deleteAllDocuments: vi.fn(),
     prioritiseDocument: vi.fn(),
     getPortfolio: vi.fn(),
     getContract360: vi.fn(),
@@ -64,6 +65,7 @@ function mockApiClient(getCapabilities: ApiClient["getCapabilities"] = vi.fn(() 
     createConversation: vi.fn(),
     getConversation: vi.fn(),
     postMessage: vi.fn(),
+    deleteConversation: vi.fn(),
     getCapabilities,
     getMarketRecord: vi.fn(),
     getQuoteBenchmarkHistory: vi.fn(),
@@ -101,6 +103,19 @@ function renderAtPath(path: string, kbReady = true, apiClient: ApiClient = mockA
 }
 
 describe("GlobalAskBar", () => {
+  it("renders nothing when the bar is mounted on /ask itself", () => {
+    const apiClient = mockApiClient();
+    render(
+      <MemoryRouter initialEntries={["/ask"]}>
+        <GlobalAskBar kbReady={true} apiClient={apiClient} role="admin" />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByRole("search")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Ask Raffa")).not.toBeInTheDocument();
+    expect(apiClient.getCapabilities).not.toHaveBeenCalled();
+  });
+
   it("shows the prototype's default placeholder and exactly two suggestion chips outside a known section", () => {
     renderAtPath("/");
 

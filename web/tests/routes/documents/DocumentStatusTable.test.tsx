@@ -304,4 +304,26 @@ describe("DocumentStatusTable", () => {
 
     expect(screen.getByText("—")).toBeInTheDocument();
   });
+
+  it("offers Confirm delete and Cancel as an inline pair, then calls onDelete only on confirm", async () => {
+    const onDelete = vi.fn();
+    renderTable({ documents: [item()], isAdmin: true, onDelete });
+
+    await userEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    const confirm = screen.getByRole("button", { name: "Confirm delete" });
+    const cancel = screen.getByRole("button", { name: "Cancel" });
+    expect(confirm).toHaveClass("btn-primary");
+    expect(cancel).toHaveClass("document-status-table-delete-cancel");
+    expect(confirm.parentElement).toHaveClass("document-status-table-delete-confirm");
+    expect(onDelete).not.toHaveBeenCalled();
+
+    await userEvent.click(cancel);
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Delete" }));
+    await userEvent.click(screen.getByRole("button", { name: "Confirm delete" }));
+    expect(onDelete).toHaveBeenCalledWith("doc-1");
+  });
 });

@@ -265,7 +265,10 @@
 
 .document-status-table th:nth-child(5),
 .document-status-table td:nth-child(5) {
-  width: 8%;
+  width: 1%;
+  min-width: 13.5rem;
+  white-space: nowrap;
+  vertical-align: middle;
 }
 
 .document-status-table-filename {
@@ -295,9 +298,31 @@
 }
 
 .document-status-table-delete-confirm {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: nowrap;
+}
+
+.document-status-table-delete-confirm .btn {
+  flex: 0 0 auto;
+  font-size: 12px;
+  padding: 4px 8px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.document-status-table-delete-cancel {
+  background: transparent;
+  border-color: transparent;
+  color: var(--color-neutral-600);
+  padding-inline: var(--space-1);
+}
+
+.document-status-table-delete-cancel:hover:not(:disabled) {
+  background: var(--color-neutral-200);
+  color: var(--color-text);
 }
 
 /* Bare progress bar under the status tag (raffa-v2/markup.html row template: 4px, neutral-200
