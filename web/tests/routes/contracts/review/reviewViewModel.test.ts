@@ -306,6 +306,7 @@ function evidence(overrides: Partial<ContractFieldEvidenceBody> = {}): ContractF
     passage: "The fees are EUR 500,000 per year, invoiced annually.",
     highlightStart: 13,
     highlightLength: 20,
+    box: null,
     modelId: "fixture-extract-model",
     extractedAt: "2026-09-09T10:00:00Z",
     ...overrides,

@@ -71,6 +71,7 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     postMessage: vi.fn(),
     getCapabilities: vi.fn(),
     getMarketRecord: vi.fn(),
+    getQuoteBenchmarkHistory: vi.fn(),
     // Task E08/F01/US01/T01 (renewal-pipeline): this suite never reaches the Renewals screen --
     // bare vi.fn() is enough, same convention as the other calls above.
     postRenewalAction: vi.fn(),
@@ -180,6 +181,7 @@ function evidenceRow(overrides: Partial<ContractFieldEvidenceBody> = {}): Contra
     passage: "All invoices are payable within forty-five (45) days of receipt.",
     highlightStart: 17,
     highlightLength: 35,
+    box: null,
     modelId: "fixture-extract-model",
     extractedAt: "2026-09-09T10:00:00Z",
     ...overrides,

@@ -377,6 +377,10 @@ public sealed class DocumentsV2EndpointTests : IClassFixture<RaffaApiFactory>
         Assert.True(annualSpend.GetProperty("confidence").GetDouble() > 0.9);
         Assert.Equal("auto_accepted", annualSpend.GetProperty("decision").GetString());
         Assert.False(annualSpend.TryGetProperty("autoAcceptThreshold", out _));
+        // Epic-23 feature-02 (AC-3/AC-4): `box` rides beside sourcePage/sourceSpan/passage on every
+        // field, and is honestly null here -- nothing populates the geometry columns this reads
+        // from until epic-23 feature-04 ships; a null box is the w17 state, never an error.
+        Assert.Equal(JsonValueKind.Null, annualSpend.GetProperty("box").ValueKind);
         Assert.Equal("msa.pdf", annualSpend.GetProperty("sourceFileName").GetString());
         Assert.Contains("Annual fees are EUR 48,000", annualSpend.GetProperty("passage").GetString());
         Assert.Equal(JsonValueKind.Number, annualSpend.GetProperty("highlightStart").ValueKind);

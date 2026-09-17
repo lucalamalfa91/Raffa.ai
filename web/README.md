@@ -286,18 +286,32 @@ from `markup.html`.
   still only decides which affordances *render*; the API's own `403` is the
   authority.
 - **Global Ask bar (AC-3)** -- `src/components/ask-bar/GlobalAskBar.tsx`
-  renders on every routed screen (mounted once, above `<Outlet/>`, in
-  `AppShell.tsx`). Enter (or a suggestion chip) always opens a **new chat**:
-  it navigates to `/ask` with `{ state: { query, newChat: true } }`
+  renders on every routed screen except `/ask` and `/ask/:conversationId`
+  (mounted above `<Outlet/>` in `AppShell.tsx`; suppressed on those two by a
+  plain `useLocation()` pathname check, `isAskRoute` in that same file --
+  task E25/F06/US01/T01, NW-60 -- because that route renders its own
+  composer and a second Ask input on one screen is exactly the duplicate
+  ADR-018/ADR-020 forbid). Enter (or a suggestion chip) always opens a **new
+  chat**: it navigates to `/ask` with `{ state: { query, newChat: true } }`
   (`useLocation().state` -- `AskRoute` reads `state.query` to seed and ask a
   brand-new conversation immediately, task E13/F09/US01/T04). Cmd/Ctrl+K
-  focuses the input from anywhere. Suggestion-chip copy
+  focuses the input from anywhere the bar itself renders; on `/ask` and
+  `/ask/:conversationId` the identical shortcut instead focuses that
+  screen's own composer input (`src/routes/ask/index.tsx`'s
+  `composerInputRef`) -- exactly one of the two components is ever mounted,
+  so the two window listeners never overlap. Suggestion-chip copy
   (`src/components/ask-bar/askSuggestions.ts#getAskBarCopy`) fetches
   `GET /api/capabilities` once (task E13/F09/US01/T04, gap G-CAPABILITIES)
   and, once it resolves, prefers that catalog's own `exampleQuestions` for
   the capability key matching the current route; the pre-existing static
-  per-route copy is the fallback while the fetch is in flight, fails, or has
-  no entry for the current screen -- never a blank chip row. The placeholder
+  per-route copy is the fallback while the fetch is in flight, fails, has
+  no entry for the current screen, or that entry's own `roleGate` is not
+  `"any"` and the caller is not Admin (task E25/F01/US01/T01, AC-1;
+  ADR-022 S16-11 / ADR-012 w17 cl 40 -- presentation only, `role` threaded
+  from `AppShell.tsx`, never re-derived; `GET /api/capabilities` itself
+  stays un-gated and identical for both roles) -- never a blank chip row.
+  The same role gate applies to `AskRoute`'s own `suggestionsFor` below.
+  The placeholder
   itself still switches to "Ask Raffa switches on after your first
   validated contract" while `!kbReady`, regardless of route (ADR-024 V2
   amendment) -- this bar gets the user to `/ask`, it does not answer them
@@ -584,6 +598,18 @@ state while nothing is validated. The Day-1 filter chips and attention strip are
   emphasis. The Contract cell is a real `<Link>` to Contract 360; the row's own click is the
   prototype's mouse convenience on top. Supplier is the wire's resolved `supplierName` (R-SUP-04) or
   an honest "—"; "Contract" still shows the type label (`Contract` has no title field yet).
+- **Category filter** (`PortfolioFilterControl.tsx`, task E24/F01/US02/T01, closes NW-23): a
+  free-text control anchored under the header, visible whenever the page has loaded. It reads and
+  writes the route's own `?category=` search parameter
+  (`portfolioViewModel.ts#readCategoryFilter`/`withCategoryFilter`) -- never a component store or
+  `sessionStorage` (ADR-012) -- so applying it re-issues `GET /api/contracts` with `?category=<value>`
+  (an exact-match `Supplier.Category`, resolved by the host join task E24/F01/US01/T01 added) and
+  clearing it removes the parameter and re-loads the full portfolio. Free text rather than a
+  dropdown: no endpoint lists a tenant's distinct categories, and this task's own scope excludes
+  adding one, so a hard-coded option list would either invent categories the tenant's suppliers do
+  not carry or silently omit real ones -- the council's own "never a hard-coded enum" rule. An
+  unmatched value narrows to an empty list, never a fabricated one (backend AC-3); the control stays
+  on screen either way so the filter can always be cleared.
 - **States** -- loading (`.portfolio-skeleton`), error (503-aware + Retry), and the reroute
   `.screen-reroute` ("Nothing to triage yet · The portfolio lights up from validated contracts.
   Upload one to start." → `/documents`) when nothing is validated yet. The header summary reads
@@ -723,24 +749,42 @@ per-user conversations.
   carries in router state, `newChat: true`) runs `createConversationAndAsk`:
   `POST /api/conversations` (with `scopeContractId` when `?scope=` is present) then
   `POST /api/conversations/{id}/messages`, then the URL becomes `/ask/<conversationId>`
-  (`navigate(..., { replace: true })`). `?scope=<contractId>` templates the two chips with the real
-  supplier name instead (`buildScopedSuggestions`, read off `GET /api/contracts/{id}`'s typed
-  `supplierName`; "this supplier" when it is null or blank).
+  (`navigate(..., { replace: true })`). `?scope=<contractId>` (Contract 360's "Ask about it") templates
+  the two chips with the real supplier name instead (`buildScopedSuggestions`, read off
+  `GET /api/contracts/{id}`'s typed `supplierName`; "this supplier" when it is null or blank) **and**
+  briefs the contract instead of rendering the generic hello/scope line (task E25/F03/US02/T01,
+  NW-56, `askViewModel.ts#buildScopedBrief`): a `.screen-kicker` naming the supplier ("this contract"
+  while the name is still loading or unknown), a heading "Ask about {supplier}", and a one-line
+  contract-specific scope ("Answers cite this contract's pages.") in place of the N-validated-
+  contracts sentence, which would otherwise misdescribe a chat scoped to one contract. The off-state
+  gate above is unaffected -- a scoped link into a tenant with zero validated contracts still renders
+  the generic `AskOffState`, never a briefed-but-off face.
 - **Conversation** -- header shows the derived title (`deriveConversationTitle`, collapsed
   whitespace, hard-truncated at 48 chars, no ellipsis) + "+ New chat"; every turn renders through the
   phase-2 `ReplyBody` (task E13/F09/US01/T02, `routes/ask/reply/*`, this task maps the wire reply
   onto it -- `askViewModel.ts#mapConversationReplyToReply`/`mapConversationMessageToReply` -- but
   does not modify that renderer itself): `answer` gets markdown + numbered citation cards + actions +
   follow-up chips, `redirect`/`refusal` share warm prose + one CTA, `abstain` is the accent-left
-  block, `error` is a transport/400 failure -- never confused with an abstain. Citation clicks
-  resolve by corpus (`resolveCitationOpenAction`): a **tenant** citation navigates to
-  `/contracts/<contractId>?page=<n>` (the real backend never sends `?clause=` yet -- confirmed
-  against `AskCopilotService.cs`'s own `PackItem` constructions, a documented, honest gap, not a
-  guess) with `state.from: "ask"`, which Contract 360's own back-link picks up; a **market** citation
-  opens `MarketRecordPanel.tsx` (`GET /api/market/records/{id}`: title, category, geography,
-  P25/P50/P75 band, provenance label, updated date); a **raffa** feature citation navigates to its
-  own href. Follow-up chips post as a new message in the same conversation, the same `ask()` path a
-  typed question uses.
+  block plus, when the server selected one, a **secondary** recovery-action `ActionRow` -- never
+  primary (ADR-024 "every abstain has a clickable next step", task E25/F05/US02/T01; an abstain
+  with no action still renders just the block, never an empty screen), `error` is a transport/400
+  failure -- never confused with an abstain. Citation clicks
+  resolve by corpus (`resolveCitationOpenAction`) and, since task E25/F02/US01/T01 (closes NW-55),
+  by whether the card itself carries a page preview: a **tenant** clause/fact citation whose evidence
+  resolved a source page now carries a real `previewUrl` (`/api/documents/{id}/preview?page=<n>`)
+  and an `href` of `/documents/<documentId>/viewer?page=<n>&clause=<clauseId>` --
+  `AskCopilotService.cs`'s own `ResolveTenantClauseLinks` sets both (superseding the older
+  `/contracts/<contractId>?page=<n>`-only, "never sends `?clause=`" behaviour); `CitationCard.tsx`
+  renders that `previewUrl` as a real `<img>` first-page thumbnail and a click opens the document
+  viewer straight on the cited page. A tenant fact with no resolved source page still falls back to
+  the bare `/contracts/<contractId>` href with `previewUrl: null`. A **market** citation opens
+  `MarketRecordPanel.tsx` (`GET /api/market/records/{id}`: title, category, geography, P25/P50/P75
+  band, provenance label, updated date) via its own `recordId`, not `href`; a **raffa** feature
+  citation still navigates to its own `href`. Neither `market` nor `raffa` ever carries a
+  `previewUrl` (`PackItem.PreviewUrl` stays `null` for both by rule) -- `CitationCard.tsx` renders
+  both as a `.btn.btn-secondary` "View source ->" CTA card instead of a preview, replacing the old,
+  always-present "No page preview available" placeholder. Follow-up chips post as a new message in
+  the same conversation, the same `ask()` path a typed question uses.
 - **Resume** (`/ask/:conversationId`, R-CONV-02 AC-1) -- `useConversation.ts` loads the conversation
   (`GET /api/conversations/{id}`) and turns every stored message, oldest first, into the same turn
   shape a live turn produces (`askViewModel.ts#buildTurnsFromConversation`); a resumed Raffa turn's
@@ -791,33 +835,52 @@ gone with V2.
 ### Quote check (ADR-024 V2, `raffa-v2/screens-v2.md` #9; originally ADR-020 screen 10, task E08/F03/US01/T01)
 
 `src/routes/quotes/` is the V2 Quote check: a constant header ("Optional · new purchase" · "Quote
-check" · "Drop a supplier proposal; …"), the landing drop card, and -- once a quote is loaded -- the
-three-cell band, the lines table and the "one step further" footer. The Day-1 four-step stepper is
-gone; the same real calls remain.
+check" · "Drop a supplier proposal; …"), the landing drop card plus this workspace's own quote check
+history, and -- once a quote is loaded -- the three-cell band, the lines table and the "one step
+further" footer. The Day-1 four-step stepper is gone; the same real calls remain.
 
 - **Real backend, not the prototype's fixture** -- `POST /api/quotes`,
   `POST /api/quotes/{id}/assessment/recalculate` (called with an empty `mappings` array as the
   documented "pure refresh" read; it is the only call that also returns `unmatchedLines`),
-  `GET /api/quotes/{id}` (the quote plus recorded outcomes, newest first) and
-  `POST /api/negotiations/outcomes`. One named gap remains: no HTTP endpoint
-  for `NegotiationStrategyService`'s lever recommendations (`NegotiationStep.tsx`).
+  `GET /api/quotes/{id}` (the quote plus recorded outcomes, newest first),
+  `GET /api/quotes/benchmark-history` (workspace-wide, loaded once on mount independent of which
+  quote if any is open; task E25/F04/US02/T01, closes NW-57) and `POST /api/negotiations/outcomes`.
+  One named gap remains: no HTTP endpoint for `NegotiationStrategyService`'s lever recommendations
+  (`NegotiationStep.tsx`).
 - **Landing** (`UploadQuoteForm.tsx`, `sampleQuote.ts`) -- the dashed card: **Upload a quote**
   (file picker; drag-and-drop on the card) uploads straight away, "or use the sample: Databricks
   proposal Q-88213" sends a real PDF built with `documents/sampleDocument.ts#buildSamplePdf` (three
   priced lines) with its own supplier/currency/geography -- whatever the real pipeline extracts is
   the honest answer. Supplier · currency · geography · purchase date stay reachable under a compact
   disclosure (the Benchmark Service cannot match without them).
+- **Quote check history** (`history/QuoteHistoryList.tsx`; ADR-028 -- history is server state; task
+  E25/F04/US02/T01, closes NW-57) -- also on the landing: every quote this workspace has ever
+  checked, newest first, read back from `GET /api/quotes/benchmark-history` rather than a client
+  store, so a reload or a second browser sees the same list. Each row (file · supplier · currency ·
+  geography · checked-in date) re-opens `/quotes/:id`; its own tag is a real position tally or, for a
+  genuine first-of-type quote, the identical honest cold-start label the loaded result uses below --
+  never re-derived, so the two surfaces can never disagree. An empty workspace gets its own "No quote
+  checks yet" state, not the reroute other screens use.
 - **Loaded** (`quoteCheckViewModel.ts`, `QuoteLinesTable.tsx`) -- `buildAssessmentBand`: Supplier
   quote (`sum(unitPrice × quantity)`) · Market range (`sum(P25..P75 × quantity)`) · Assessment
   (`summarizePositions`, a real tally such as "2 above market · 1 in line" -- the backend deliberately
   has no quote-level rollup); `buildQuoteLineRows`: Line · Quoted (`formatUnitPrice`, decimals kept)
   · P50 · Position (tag + "+20% vs P50", `formatVersusP50`) · Benchmark (confidence tag "High ·
-  n=96"). Zero extracted lines renders an honest note, never a scripted table.
+  n=96"). Zero extracted lines renders an honest note, never a scripted table. Both the band and the
+  line table now live in `assessment/AssessmentResult.tsx`, not inlined in `index.tsx`.
+- **First-of-type cold start** (`AssessmentResult.tsx#isQuoteBenchmarkColdStart`; ADR-028; task
+  E25/F04/US02/T01, closes NW-57) -- when every line reports the backend's own honest
+  `InsufficientBenchmarkData` status (a genuine first-of-type quote, nothing comparable on file yet
+  for its supplier/product), the band still shows only its real "Not yet available"/"Not yet assessed"
+  cells and a plain-language note explains why the position is missing -- no fabricated figure, no
+  digit in the copy itself. One real line among otherwise-cold ones is never treated as a full cold
+  start.
 - **One step further** -- the footer "Target and negotiation levers are one step further — shown only
   if you want them." toggles `TargetStep.tsx` (price ladder, editable target/walk-away seeded once from
   the real aggregate), whose "Build negotiation strategy →" reveals `NegotiationStep.tsx` (outcome
-  capture; the recorded panel always renders the server's own `realizedSaving`/`discountPercent`,
-  then links "See it in Savings →").
+  capture; the recorded panel always renders the server's own `realizedSaving`/`discountPercent`, then
+  links "See it in Savings →", secondary styling -- the benchmark result above stays on screen
+  throughout and is never replaced, AC-3 of task E25/F04/US02/T01).
 - **Blocked assessment** (`MappingBlock.tsx`, `isAssessmentBlocked`) -- while any line is still
   `SkuMatchStatus.Unmatched` the band shows what it honestly can, the line says "Needs mapping", and
   the mapping block (free-text canonical SKU / product name per line, one recalculate call) takes the
@@ -846,8 +909,18 @@ six-cell row and eight-column table are gone with V2.
   `<Link>` to Contract 360 (`state.from = "savings"` drives its back label), the row click a
   convenience on top; an opportunity with no `contractId` opens `/quotes`. Only real
   `SavingsOpportunity` rows render (a session-tracked renewal action is no longer prepended).
+- **Filters** (task-01-savings-filters, ADR-020; `savingsFilters.ts`, `filterOpportunityRows`) --
+  three native `<select>`s anchored above the table restrict it by supplier / status / currency, the
+  council's exact set (AC-2); "Estimate" stays a sort/numeric column, never a filter. Options are
+  derived from whichever opportunities are already loaded (supplier labels resolved the same way the
+  table itself resolves them), never a hardcoded or fabricated list, and never shrink each other --
+  each dropdown's own options always come from the full, unfiltered list. Pure client-side view
+  state: filtering never re-fetches and is never written to storage; "Clear filters" (disabled while
+  no filter is active) restores the full list (AC-3), and a filtered-to-empty result gets its own
+  "No opportunities match the selected filters" message rather than the reroute below.
 - **Reroute** -- "No savings opportunities yet · Opportunities appear once a renewal is actioned or a
-  saving is identified from validated contracts." → **Open renewals**.
+  saving is identified from validated contracts." → **Open renewals**. (Only for a genuinely empty
+  opportunities list -- a filter narrowing a non-empty list to zero rows never reaches this state.)
 
 ### Workspace & members (ADR-024 V2, `raffa-v2/screens-v2.md` #10; ADR-020 w14 design footer screen 10; task E15/F02/US01/T01, wave w14)
 
@@ -1004,8 +1077,10 @@ Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
   hand-written `PortfolioRiskSeverity` alias instead, with a runtime
   `isPortfolioRiskSeverity` guard at the one place a raw string crosses into
   it. `client.ts`'s `getPortfolio(tenantId, query?)` mirrors the endpoint's
-  full filter/paging surface even though `src/routes/contracts/index.tsx`
-  itself only ever calls it unfiltered (see "Portfolio" above for why).
+  full filter/paging surface; `src/routes/contracts/index.tsx` calls it with
+  `pageSize` and, since task E24/F01/US02/T01, the route's own `?category=`
+  search parameter when set (see "Portfolio" above) -- every other filter
+  field on `PortfolioQueryParams` is still unused by this screen.
 - **Task E07/F02/US01/T01 (contract-360)** extended `openapi/raffa-api.v1.json` with three more
   operations -- `GET /api/contracts/{id}` (`getContract360`), `GET /api/renewals` (`getRenewals`),
   and `GET /api/renewals/{contractId}/priority` (`getRenewalPriority`) -- the same "repeating chore"
@@ -1178,10 +1253,16 @@ web/
         DocumentStatusTable.tsx # the row grid: Document/Supplier·Type/Status/Next step/Admin-only Delete (with confirm/cancel)
         documentTable.ts      # pure helpers: type-label mapping, status/action derivation, attention-filter bucketing, kb summary
         documents.css         # this route's styles (V2: stacked single-column layout, no more the V1 two-column grid)
+        viewer/               # ADR-018 w17 clause 9 -- citation-reached route, not a rail destination (task E22/F03/US01/T01); box overlay task E23/F04/US01/T01
+          index.tsx              # DocumentViewerRoute -- /documents/:documentId/viewer?page=&clause=, PNG pages via getDocumentPreviewUrl (object URL, revoked on page change/unmount), citation resolution against Contract 360's clauses, box-overlay evidence fetch
+          documentViewerViewModel.ts # pure helpers: page/citation resolution (parsePositivePage, resolveCitation, resolveViewerSurface), nav/empty/not-found copy
+          BoxOverlay.tsx          # task E23/F04/US01/T01 (NW-63r): selectPageBoxes/computeBoxRect (pure) + the absolutely-positioned <div>-per-phrase overlay, from GET /api/contracts/{id}/evidence's box (ADR-029 clause 2); a null box leaves ClauseHighlight's text-level highlight as the only affordance
+          documentViewer.css      # this route's styles, incl. .document-viewer-box-layer/.document-viewer-box
       contracts/            # Portfolio, V2 (see "Portfolio" above)
-        index.tsx             # PortfolioRoute -- fetch-once state machine, header summary, More columns, reroute
+        index.tsx             # PortfolioRoute -- fetch state machine, header summary, category filter, More columns, reroute
         PortfolioTable.tsx    # the V2 table (Supplier · Contract · Annual spend · Ends · Give notice by · Status [+ Start · Auto · Risk])
-        portfolioViewModel.ts # pure helpers: validated rows sorted by notice deadline, per-currency summary, compact amounts
+        PortfolioFilterControl.tsx # the ?category= free-text filter control (task E24/F01/US02/T01) -- router query param, never a store
+        portfolioViewModel.ts # pure helpers: validated rows sorted by notice deadline, per-currency summary, compact amounts, ?category= read/write
         portfolioAttention.ts # pure helper: daysUntil (UTC day arithmetic) shared with Contract 360
         portfolioTableFormatters.ts # pure helpers: date/number formatting, type label, status/risk -> tag mapping, supplier fallback
         contractStatus.ts     # isValidatedContractStatus -- the one "validated" predicate Portfolio and the rail share
@@ -1219,7 +1300,7 @@ web/
         renewalPipelineViewModel.ts # pure helpers: rows sorted by score, summary, formatting, the two action plans
         renewals.css              # this screen's styles
       quotes/                 # Quote check, V2 (see "Quote check" above)
-        index.tsx               # QuoteCheckRoute -- header, landing, band + lines + footer, one-step-further reveal
+        index.tsx               # QuoteCheckRoute -- header, landing + history, band + lines + footer, one-step-further reveal
         UploadQuoteForm.tsx      # the dashed drop card + optional metadata disclosure
         sampleQuote.ts           # the Databricks sample proposal, a real PDF built with buildSamplePdf
         QuoteLinesTable.tsx      # Line · Quoted · P50 · Position · Benchmark
@@ -1228,11 +1309,16 @@ web/
         NegotiationStep.tsx      # one step further: outcome capture
         quoteCheckViewModel.ts   # pure helpers: aggregate, band, line rows, unit-price/P50 formatting
         quotes.css               # this screen's styles
+        assessment/              # task E25/F04/US02/T01 -- benchmark-first result, extracted from index.tsx
+          AssessmentResult.tsx      # the band + lines table + honest InsufficientBenchmarkData cold-start copy (AC-1)
+        history/                 # task E25/F04/US02/T01 -- ADR-028 (history is server state), closes NW-57
+          QuoteHistoryList.tsx      # landing-only: every quote this workspace has checked, from GET /api/quotes/benchmark-history (AC-2)
       savings/                 # Savings, V2 (see "Savings" above)
-        index.tsx                # SavingsRoute -- three independent fetches (KPIs, opportunities, portfolio names), independent degrade states
+        index.tsx                # SavingsRoute -- three independent fetches (KPIs, opportunities, portfolio names), independent degrade states; renders the supplier/status/currency filter bar above the table
         KpiRow.tsx               # the three KPI cells + the stale-labelled notice
         OpportunitiesTable.tsx   # Supplier · Action · Estimate · Status, rows open Contract 360
-        savingsViewModel.ts      # pure helpers: reduceKpiFetch, buildKpiCells, formatSavingsSummary, buildOpportunityRows, buildSupplierNameIndex
+        savingsViewModel.ts      # pure helpers: reduceKpiFetch, buildKpiCells, formatSavingsSummary, buildOpportunityRows, buildSupplierNameIndex, filterOpportunityRows
+        savingsFilters.ts        # pure supplier/status/currency filter predicates + option lists (task-01-savings-filters, ADR-020; tested in savingsFilters.test.ts)
         savings.css              # this screen's styles
     components/
       shell/                  # task E06/F03/US02/T01 -- app shell, router, role guard; V2 two-tier rail by E13/F09/US01/T01 (see "App shell" above)
@@ -1304,11 +1390,11 @@ painting the prototype's absent `API: ...` line onto the canvas.
 "Manual + automated smoke of the Day-1 path on `demo` passes." It drives the
 real, deployed SPA in a real browser end to end -- product-spec §20's own
 ladder (sign in -> invite -> upload -> review -> Contract 360 -> Ask with
-citations + one abstain -> renewal action -> savings opportunity -> quote
-check -> record outcome -> Home realized updates), never `dotnet test`,
-never Swagger (AC-1), against `demo`, never a `localhost` `config.json`
-shell (AC-2), which only makes sense once `demo-v*` promotion (ADR-016) has
-actually happened (AC-3).
+citations when the reply carries one -> renewal action -> Savings shows its
+KPIs -> quote check -> record outcome -> Savings link-back), never
+`dotnet test`, never Swagger (AC-1), against `demo`, never a `localhost`
+`config.json` shell (AC-2), which only makes sense once `demo-v*` promotion
+(ADR-016) has actually happened (AC-3).
 
 The task's own "Files to create or modify" table names this file as
 `workspace/raffa-web/e2e/day1.spec.ts`; it lives at `web/e2e/day1.spec.ts`
@@ -1318,20 +1404,18 @@ already recorded for two earlier tasks (OQ-impl-001/002) -- there is no other
 location where a browser test could reach the real, already-scaffolded ten
 screens this file drives.
 
-**Known regression, task E13/F09/US01/T01 (ADR-024 V2 shell, gap G-IA-V2;
-out of that task's own file scope, `web/e2e/**` is not in its "Files to
-create or modify" table):** this spec is the Day-1 (V1) IA's own walk and now
-fails at the V2 shell -- `page.goto("/")` (`assertHomeOpportunity`) no longer
-renders a "Home" screen (`/` redirects to `/ask`), so the
-`getByRole("heading", { name: "Home", exact: true })` assertion in "Home
-Savings Realized -- link back" (step 10) does not resolve, and every other
-step's own implicit "the rail has a Home item" assumption no longer holds
-either. `npm run test:e2e` is not part of this task's own proof (`npm test` /
-`npm run build` only) and is not run by CI yet (see "CI wiring" below), so
-this did not block the V2 shell landing -- but it does mean this suite itself
-is red until the V2 replacement lands: ADR-024's own "Implications for the
-decomposition" already names `web/e2e/v2.spec.ts` (gap G-INTEGRATION,
-task F11/T01) as that replacement, not a fix to this V1 file.
+**Reconciled to the V2 shell, task E26/F02/US01/T01 (NW-50, wave W18).** The
+regression this section used to document (task E13/F09/US01/T01, ADR-024 V2
+shell, gap G-IA-V2: `page.goto("/")` no longer rendering a "Home" screen, so
+the old six-cell KPI / "Home" heading assertions never resolved) is fixed --
+every step below now drives the real V2 screens (Ask is home at `/ask`; the
+old Home KPI row is `/savings`'s own four-cell band, reached from Ask/
+Renewals/Contract 360 actions, never the rail; uploads are polled
+asynchronously per wave w15's own NW-27 rebuild). See the spec file's own
+header comment for the full, cited reconciliation. `npm run test:e2e` is
+still not run by CI (see "CI wiring" below) -- NW-50's own scope is this file
+and its runner, never a `.github/workflows/` change (ADR-016's w14 footer:
+"a wave does not acquire a new CI capability as a side effect").
 
 ### Running it
 
@@ -1359,16 +1443,12 @@ MFA challenge. This is an Entra tenant configuration decision for whoever
 provisions the `demo`-tenant test account, not something this file's own
 scope (`web/`) can set.
 
-### Three real, honestly-tested divergences from the prototype
+### Real, honestly-tested divergences from the prototype
 
 `day1-demo.html` is one hard-coded demo scenario; the real app is not. The
 spec's own header comment has the full citations -- in short:
 
-1. **Members list has no GET.** The invite screen is real (`POST /api/workspaces/{tenantId}/invites`)
-   but there is still no list-members endpoint, so the table is this-browser's Admin row plus
-   invites sent from this session (`memberStore.ts`) -- not a fabricated roster, and not a
-   workspace-wide directory.
-2. **The workspace picker is server-driven now, not a per-browser cache**
+1. **The workspace picker is server-driven, not a per-browser cache**
    (task E14/F03/US02/T01, wave w14; ADR-026 §D1) -- this used to be the
    opposite (a fresh Playwright context could never discover the ADR-022
    fixture-seeded tenant at all, only create its own empty one). `GET
@@ -1381,14 +1461,22 @@ spec's own header comment has the full citations -- in short:
    savings-opportunity steps still assert whichever real, already-tested
    state (populated or honestly empty) actually renders, and name the gap
    inline via `test.info().annotations` rather than asserting a fabricated
-   populated state -- `pickOrCreateWorkspace` now also covers the third
-   outcome NW-01 introduces: exactly one real membership skips the picker
-   entirely (AC-2's "no picker").
-3. **A recorded quote outcome does not update the Savings figures**
-   (`NegotiationOutcomePropagationService` never runs for it -- see
-   `src/routes/quotes/NegotiationStep.tsx`'s own header comment). The final
-   step asserts the real outcome + the real "See it in Savings →" link, not a
-   KPI change this build does not perform.
+   populated state -- `pickOrCreateWorkspace` covers all three outcomes
+   NW-01 introduces: exactly one real membership skips the picker entirely
+   (AC-2's "no picker").
+2. **Uploads are asynchronous** (wave w15, NW-27/ADR-027): a document row
+   exists the instant a file is picked and reaches a terminal status
+   (`Needs review` / `Completed` / `Failed` / `Not added`) some seconds
+   later via the Worker. `uploadSampleDocument` polls the real
+   `DocumentStatusTable` row for that transition rather than assuming a
+   synchronous result -- the pre-V2 `.upload-result-card` this file used to
+   drive no longer exists anywhere in `web/src`.
+3. **Whether a recorded quote outcome updates the Savings figures is not
+   asserted here.** The final step follows the outcome panel's own real
+   "See it in Savings →" link and confirms it lands on the real Savings
+   screen with its real KPI band -- it does not assert a specific KPI value
+   change, since that depends on backend propagation this web-only task did
+   not re-verify.
 
 ### CI wiring is a follow-up, not this task
 
@@ -1435,6 +1523,15 @@ pass with real Entra test-account credentials against a live,
 gate this suite exists to satisfy; no local or CI session without those
 live credentials can supply it.
 
+Re-confirmed by task E26/F02/US01/T01's own V2 reconciliation: `npm ci`
+(133 packages, `package-lock.json` untouched), `npx tsc --noEmit` against
+this project's real `compilerOptions` with `e2e/` added to `include` (zero
+errors in `day1.spec.ts`; the two pre-existing errors on the tree are in
+`v2.spec.ts`, untouched by that task), `npx playwright test day1.spec.ts
+--list` (still discovers the one declared test) and `npx playwright test
+day1.spec.ts` with no environment set (still "1 skipped", exit `0`) all
+still hold on this harness.
+
 ## End-to-end (Ask Raffa V2 pilot path) -- task E13/F11/US01/T01, us-01-integration
 
 `e2e/v2.spec.ts` (same Playwright config, `playwright.config.ts`) is the V2
@@ -1444,10 +1541,14 @@ Definition of Done), then `demo` after a `demo-v*` promotion (ADR-016). The
 prose runbook for the same rows, including the API/SQL checks a browser cannot
 make, is [`../docs/ask-v2-acceptance.md`](../docs/ask-v2-acceptance.md).
 
-`day1.spec.ts` stays checked in but is the V1 walk and is red against the V2
-shell -- see "Known regression" in the section above. `v2.spec.ts` shares no
-selector with it: the V2 screens are different components with different copy
-(no `.ask-citation-chip`, no `Home` screen, no `Use sample file` button).
+`day1.spec.ts` stays checked in; it was the V1 walk and red against the V2
+shell until task E26/F02/US01/T01 reconciled it (see "End-to-end (Day-1
+browser walk)" above) -- the two files still share no imports and only a
+handful of incidental selectors (both drive the same real `.citation-card`/
+`.ask-message` Ask Raffa markup, for instance), because they cover different
+ground: `v2.spec.ts` is the acceptance-row suite for the V2 pilot path on a
+fixture-seeded tenant, `day1.spec.ts` is the single-clickable-flow demo walk
+on a fresh workspace.
 
 ### What runs and what skips
 
@@ -1561,9 +1662,12 @@ W14-A2), is [`../docs/waves/w14-acceptance.md`](../docs/waves/w14-acceptance.md)
 The same task added one line to `e2e/day1.spec.ts`'s "Invite a Procurement user"
 step -- `await page.reload()` between the click and its assertions -- which is the
 whole of **N3** (a reload-surviving roster; before it both assertions passed on this
-browser's own `sessionStorage` echo). Nothing else in that file changed: it is still
-the V1 walk and still red at its last step (see "Known regression" above), so N3's
-verdict is that step's line in the report, not the file's exit code.
+browser's own `sessionStorage` echo). Nothing else in that file changed at the time:
+it was still the V1 walk and still red at its last step, so N3's verdict was that
+step's line in the report, not the file's exit code. Task E26/F02/US01/T01 later
+reconciled the whole file to the V2 shell (see "End-to-end (Day-1 browser walk)"
+above); the reload this task added to the invite step survives unchanged in that
+reconciliation.
 
 ### What runs and what skips
 

@@ -426,7 +426,7 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": { autoAcceptThreshold: number; fields: ({ fieldName: string; value: string | null; confidence: number | null; decision: "auto_accepted" | "human_accepted" | "review_required"; sourcePage: number | null; sourceSpan: string | null; sourceDocumentId: string | null; sourceFileName: string | null; passage: string | null; highlightStart: number | null; highlightLength: number | null; modelId: string | null; extractedAt: string })[] };
+          "application/json": { autoAcceptThreshold: number; fields: ({ fieldName: string; value: string | null; confidence: number | null; decision: "auto_accepted" | "human_accepted" | "review_required"; sourcePage: number | null; sourceSpan: string | null; box: { x: number; y: number; width: number; height: number } | null; sourceDocumentId: string | null; sourceFileName: string | null; passage: string | null; highlightStart: number | null; highlightLength: number | null; modelId: string | null; extractedAt: string })[] };
         };
       };
       400: {
@@ -810,6 +810,20 @@ export interface operations {
       };
     };
   };
+  getQuoteBenchmarkHistory: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { items: ({ id: string; fileName: string; mimeType: string; processingStatus: string; supplier: string | null; currency: string | null; geography: string | null; purchaseDate: string | null; createdAt: string; lines: ({ quoteLineId: string; status: "Assessed" | "QuoteDataUnresolved" | "InsufficientBenchmarkData"; position: string | null; unitPrice: number | null; quantity: number | null; benchmark: { hasSufficientData: boolean; distribution: { p25: number; p50: number; p75: number } | null; metric: string; currency: string } | null; confidence: { level: "Low" | "Medium" | "High"; score: number; source: string; sampleSize: number | null; comparisonDimensions: (string)[]; updatedAt: string; summary: string } | null; targetSaving: { recommendedTargetLow: number | null; recommendedTargetHigh: number | null; savingsRangeLow: number | null; savingsRangeHigh: number | null; totalSavingsRangeLow: number | null; totalSavingsRangeHigh: number | null; explanation: string } | null; explanation: string })[] })[] };
+        };
+      };
+      400: {
+        content: {
+          "application/json": string;
+        };
+      };
+    };
+  };
 }
 
 export interface paths {
@@ -937,5 +951,8 @@ export interface paths {
   "/api/contracts/{id}/negotiation-steps": {
     get: operations["getNegotiationSteps"];
     put: operations["putNegotiationSteps"];
+  };
+  "/api/quotes/benchmark-history": {
+    get: operations["getQuoteBenchmarkHistory"];
   };
 }

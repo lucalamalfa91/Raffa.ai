@@ -122,6 +122,13 @@ public sealed class ContractEvidenceQueryServiceTests : IAsyncLifetime
                 SourceSpan = "EUR 48,000, invoiced yearly\nin advance",
                 SourcePage = 1,
                 Confidence = 0.96,
+                // Epic-23 feature-02: this is the only row in the seed with prebuilt-layout
+                // geometry, so the box is the newer row's own -- the older, superseded row below
+                // (and every other field) proves the null-geometry / null-box path instead.
+                BoxX = 120.5,
+                BoxY = 640.25,
+                BoxWidth = 210,
+                BoxHeight = 18.5,
                 CreatedAt = Now,
             },
             new ExtractionEvidence
@@ -188,17 +195,26 @@ public sealed class ContractEvidenceQueryServiceTests : IAsyncLifetime
             "EUR 48,000, invoiced yearly in advance",
             annualSpend.Passage.Substring(annualSpend.HighlightStart!.Value, annualSpend.HighlightLength!.Value));
 
+        // Epic-23 feature-02 (AC-3): the newer row's geometry round-trips into one Box, read the
+        // same way regardless of OverrideValue (unset here, feature-03's own concern).
+        Assert.NotNull(annualSpend.Box);
+        Assert.Equal(new ContractFieldEvidenceBox(120.5, 640.25, 210, 18.5), annualSpend.Box);
+
         // No span (a classification verdict): no passage, honestly.
         var type = evidence.Single(e => e.FieldName == "type");
         Assert.Equal("Msa", type.Value);
         Assert.Null(type.Passage);
         Assert.Null(type.HighlightStart);
         Assert.Null(type.ModelId);
+        // Epic-23 feature-02 (AC-4): no geometry columns set on this row -> a null box, never an
+        // error -- the honest w17 state every pre-existing row (and this fixture) is still in.
+        Assert.Null(type.Box);
 
         // A span the page text does not contain: the span is reported, the passage is not invented.
         var paymentTerms = evidence.Single(e => e.FieldName == "paymentTerms");
         Assert.Equal("this span is not on the page", paymentTerms.SourceSpan);
         Assert.Null(paymentTerms.Passage);
+        Assert.Null(paymentTerms.Box);
     }
 
     [Fact]

@@ -57,6 +57,7 @@ function mockApiClient(listConversations: ApiClient["listConversations"] = vi.fn
     postMessage: vi.fn(),
     getCapabilities: vi.fn(),
     getMarketRecord: vi.fn(),
+    getQuoteBenchmarkHistory: vi.fn(),
   };
 }
 

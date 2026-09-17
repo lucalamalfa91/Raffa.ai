@@ -25,6 +25,43 @@ import { daysUntil } from "./portfolioAttention";
  * currency and every currency present is named. A row with no annual spend contributes nothing.
  */
 
+/**
+ * The category filter's URL query key (task E24/F01/US02/T01, story
+ * us-02-portfolio-category-web; closes NW-23). This filter's only state is the route's own search
+ * params -- ADR-012 "a client store never stands in for a missing GET" -- read fresh on every
+ * render, never cached in a component store or `sessionStorage`/`localStorage`. Named to match the
+ * backend's own query parameter verbatim (`PortfolioEndpointExtensions.TryParseFilter`,
+ * `PortfolioQueryParams.category` in `api/client.ts`).
+ */
+export const PORTFOLIO_CATEGORY_PARAM = "category";
+
+/**
+ * Reads the category filter from the route's search params. Blank and absent both normalize to
+ * `""` -- the backend's own "blank or absent leaves the full portfolio" contract
+ * (us-01-portfolio-category-backend AC-2) -- so callers never need a second branch for the
+ * empty-string case, and trims the same way `PortfolioEndpointExtensions.TryParseFilter` trims the
+ * wire value.
+ */
+export function readCategoryFilter(searchParams: URLSearchParams): string {
+  return searchParams.get(PORTFOLIO_CATEGORY_PARAM)?.trim() ?? "";
+}
+
+/**
+ * Returns the search params that follow from applying `category` (or clearing it, via `""` or a
+ * whitespace-only string) -- every other query parameter this screen does not own is carried over
+ * untouched, so the result can be handed straight to `useSearchParams`'s setter.
+ */
+export function withCategoryFilter(searchParams: URLSearchParams, category: string): URLSearchParams {
+  const next = new URLSearchParams(searchParams);
+  const trimmed = category.trim();
+  if (trimmed.length > 0) {
+    next.set(PORTFOLIO_CATEGORY_PARAM, trimmed);
+  } else {
+    next.delete(PORTFOLIO_CATEGORY_PARAM);
+  }
+  return next;
+}
+
 export interface PortfolioRow {
   item: PortfolioListItem;
   /** Days until the cancellation deadline (negative once past), `null` without a deadline. */

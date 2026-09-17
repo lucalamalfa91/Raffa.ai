@@ -43,9 +43,35 @@ public sealed class ExtractionEvidence : TenantScopedEntity
     /// human-corrected) value.</summary>
     public string? Value { get; set; }
 
+    /// <summary>
+    /// The reviewer's corrected OCR phrase, written <b>beside</b> <see cref="Value"/> by the
+    /// phrase-edit write path (epic-23 feature-03) — never in place of it (ADR-029 w18 footer
+    /// clause 1: "an override, never an in-place rewrite"). <see cref="Value"/> stays exactly what
+    /// the model proposed for every row; this is null until a human edits this phrase, and a
+    /// reprocess that re-derives <see cref="Value"/> must leave this column untouched (ADR-027).
+    /// The read model reads this the same way — and from the same row — as the proposal, so the
+    /// two are always distinguishable rather than one silently replacing the other.
+    /// </summary>
+    public string? OverrideValue { get; set; }
+
     public string? SourceSpan { get; set; }
     public int? SourcePage { get; set; }
     public double? Confidence { get; set; }
+
+    /// <summary>
+    /// Pixel-space bounding box of this phrase on the rendered page image (ADR-003 w18 footer
+    /// clauses 1-2; ADR-017 w18's <c>prebuilt-layout</c> word geometry, unioned over the phrase's
+    /// run of words — <see cref="Raffa.AiGateway.Contracts.AiOcrWord"/>). All four are set
+    /// together or not at all: every row written before this wave, and any page the OCR call
+    /// returned no layout geometry for, leaves them null — the viewer then falls back to the
+    /// existing <see cref="SourceSpan"/> text-level highlight, never an error (epic-23 AC-4).
+    /// Read from this same row regardless of whether <see cref="OverrideValue"/> is set: editing
+    /// the phrase's text does not move the box the model originally found it in.
+    /// </summary>
+    public double? BoxX { get; set; }
+    public double? BoxY { get; set; }
+    public double? BoxWidth { get; set; }
+    public double? BoxHeight { get; set; }
 
     /// <summary>
     /// Server-computed acceptance of this proposal: <c>auto_accepted</c>,

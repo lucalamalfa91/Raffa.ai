@@ -684,6 +684,22 @@ namespace Raffa.Documents.Contracts.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<double?>("BoxHeight")
+                        .HasColumnType("double precision")
+                        .HasColumnName("box_height");
+
+                    b.Property<double?>("BoxWidth")
+                        .HasColumnType("double precision")
+                        .HasColumnName("box_width");
+
+                    b.Property<double?>("BoxX")
+                        .HasColumnType("double precision")
+                        .HasColumnName("box_x");
+
+                    b.Property<double?>("BoxY")
+                        .HasColumnType("double precision")
+                        .HasColumnName("box_y");
+
                     b.Property<double?>("Confidence")
                         .HasColumnType("double precision")
                         .HasColumnName("confidence");
@@ -714,6 +730,10 @@ namespace Raffa.Documents.Contracts.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")
                         .HasColumnName("field_name");
+
+                    b.Property<string>("OverrideValue")
+                        .HasColumnType("text")
+                        .HasColumnName("override_value");
 
                     b.Property<Guid?>("SourceDocumentId")
                         .HasColumnType("uuid")

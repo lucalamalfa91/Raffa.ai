@@ -18,6 +18,7 @@ import {
   buildRaffaTurnFromReply,
   buildErrorTurn,
   buildOffCopy,
+  buildScopedBrief,
   buildScopeLine,
   buildYouTurn,
   createConversationAndAsk,
@@ -68,6 +69,17 @@ interface CitationNoticeState {
  * the other source -- resuming a link/rail click. `currentConversationId` is whichever is set;
  * `resumeTargetId` is the route id *only* when it is not the one this screen already created, which
  * is what actually tells `useConversation` whether to fetch at all.
+ *
+ * Task E25/F06/US01/T01 (NW-60, wave w18): `AppShell.tsx` stops mounting `GlobalAskBar` on this
+ * route (it duplicated this screen's own input), so this component now also owns the Cmd/Ctrl+K
+ * shortcut for its composer -- see `composerInputRef`'s own comment below.
+ *
+ * Task E25/F03/US02/T01 (NW-56, wave w18): a scoped entry (`?scope=<contractId>`, from Contract
+ * 360's "Ask about it") now briefs the contract in the new-chat block instead of rendering the
+ * generic `ASK_HELLO` + scope line -- see `scopedBrief`/`askViewModel.ts#buildScopedBrief` below.
+ * The off-state-first gate above is untouched (no scoped override of R-ASK-10, ux-ui-designer's own
+ * w18 ruling for this gap): a scoped link into a tenant with zero validated contracts still lands on
+ * the generic `AskOffState`, never a briefed-but-off face.
  */
 export default function AskRoute({ apiClient }: AskRouteProps) {
   const location = useLocation();
@@ -172,6 +184,11 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
 
   const suggestions = scopeContractId !== undefined ? suggestionsFor(capabilities, scopedSupplierName) : suggestionsFor(capabilities);
 
+  // NW-56: the brief that replaces ASK_HELLO + the generic scope line in the new-chat block below,
+  // read only while scopeContractId !== undefined. Cheap and pure, so (like `suggestions` above)
+  // this is recomputed every render rather than memoized.
+  const scopedBrief = buildScopedBrief(scopedSupplierName);
+
   // Resuming (or navigating back to a fresh /ask) seeds/clears this screen's own turn list.
   useEffect(() => {
     if (resumeState.phase === "ready") {
@@ -268,6 +285,24 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     [navigate],
   );
 
+  // Task E25/F06/US01/T01 (NW-60; AC-2): `AppShell.tsx` no longer mounts `GlobalAskBar` on this
+  // route, so this screen's own composer input takes over the Cmd/Ctrl+K shortcut GlobalAskBar.tsx
+  // used to own here -- same self-contained pattern (own ref, own window listener, no context).
+  // `composerInputRef.current` is only non-null while the composer is actually on screen (the final
+  // render below, past the off/loading/not-found/error returns), so the shortcut is a safe no-op
+  // otherwise -- nothing else on those other faces claims the input.
+  const composerInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    function handleGlobalShortcut(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        composerInputRef.current?.focus();
+      }
+    }
+    window.addEventListener("keydown", handleGlobalShortcut);
+    return () => window.removeEventListener("keydown", handleGlobalShortcut);
+  }, []);
+
   if (!workspace) {
     return (
       <div className="empty-state" role="status">
@@ -344,10 +379,23 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
           <div className="ask-chat-log" role="log" aria-live="polite">
             {!hasTurns && (
               <div className="ask-new-chat">
-                <h3 className="ask-new-chat-hello">{ASK_HELLO}</h3>
-                <p className="micro-meta ask-new-chat-scope">
-                  {buildScopeLine(validatedContractCount, [])}. {NEW_CHAT_TRAILER}
-                </p>
+                {scopeContractId !== undefined ? (
+                  // NW-56/AC-1/AC-3: a scoped entry briefs the contract -- supplier kicker + a
+                  // heading naming it -- instead of the generic hello, and a contract-specific
+                  // one-line scope instead of the "N validated contracts" sentence below.
+                  <>
+                    <p className="screen-kicker">{scopedBrief.kicker}</p>
+                    <h3 className="ask-new-chat-hello">{scopedBrief.heading}</h3>
+                    <p className="micro-meta ask-new-chat-scope">{scopedBrief.scopeLine}</p>
+                  </>
+                ) : (
+                  <>
+                    <h3 className="ask-new-chat-hello">{ASK_HELLO}</h3>
+                    <p className="micro-meta ask-new-chat-scope">
+                      {buildScopeLine(validatedContractCount, [])}. {NEW_CHAT_TRAILER}
+                    </p>
+                  </>
+                )}
                 <div className="ask-new-chat-chips">
                   {suggestions.map((suggestion) => (
                     <button key={suggestion} type="button" className="ask-suggestion" aria-label={suggestion} onClick={() => ask(suggestion)}>
@@ -394,6 +442,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
 
           <div className="ask-input-row">
             <input
+              ref={composerInputRef}
               className="input"
               placeholder={ASK_INPUT_PLACEHOLDER}
               aria-label="Ask Raffa a question"

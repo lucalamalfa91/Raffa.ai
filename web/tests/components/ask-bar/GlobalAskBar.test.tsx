@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import GlobalAskBar from "../../../src/components/ask-bar/GlobalAskBar";
 import type { ApiClient, CapabilityBody } from "../../../src/api/client";
+import type { WorkspaceRole } from "../../../src/components/shell/navItems";
 
 /** Renders whatever router state `/ask` was reached with, so a test can assert on `newChat`/`query`
  * without `routes/ask/**` itself (this task's own "do not touch" boundary) -- a plain
@@ -65,6 +66,7 @@ function mockApiClient(getCapabilities: ApiClient["getCapabilities"] = vi.fn(() 
     postMessage: vi.fn(),
     getCapabilities,
     getMarketRecord: vi.fn(),
+    getQuoteBenchmarkHistory: vi.fn(),
   };
 }
 
@@ -82,12 +84,17 @@ function capability(overrides: Partial<CapabilityBody> = {}): CapabilityBody {
   };
 }
 
-function renderAtPath(path: string, kbReady = true, apiClient: ApiClient = mockApiClient()) {
+/** `role` defaults to `"admin"` so every pre-existing call below keeps exercising the full,
+ * ungated chip set unchanged (task E25/F01/US01/T01 added the prop; none of this suite's fixture
+ * capabilities carry `roleGate: "admin"`, so the default is never load-bearing for them either
+ * way) -- see `../../../src/components/ask-bar/askSuggestions.test.ts` for the role-gate behaviour
+ * itself. */
+function renderAtPath(path: string, kbReady = true, apiClient: ApiClient = mockApiClient(), role: WorkspaceRole = "admin") {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
         <Route path="/ask" element={<AskProbe />} />
-        <Route path="*" element={<GlobalAskBar kbReady={kbReady} apiClient={apiClient} />} />
+        <Route path="*" element={<GlobalAskBar kbReady={kbReady} apiClient={apiClient} role={role} />} />
       </Routes>
     </MemoryRouter>,
   );

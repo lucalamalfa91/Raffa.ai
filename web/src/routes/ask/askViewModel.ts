@@ -10,6 +10,7 @@ import type {
   DocumentListPageBody,
 } from "../../api/client";
 import type { CitationCorpus, Reply, ReplyAction, ReplyCitation } from "./reply/replyTypes";
+import type { WorkspaceRole } from "../../components/shell/navItems";
 
 /**
  * V2 view-model for the Ask Raffa screen (route `/ask`, `/ask/:conversationId`; ADR-024;
@@ -138,9 +139,14 @@ function buildReply(turn: NormalizedTurnBody): Reply {
     case "abstain":
       // The backend's own abstain branch stores the reason *as* answerMarkdown/markdown
       // (Raffa.Chat.Application.Reply.CopilotReplyBuilder's own abstain construction:
-      // `new(ReplyKind.Abstain, guarded.AbstainReason ?? "...", [], [], ..., [])`) -- there is no
-      // separate "reason" field on the wire to read instead.
-      return { kind: "abstain", reason: turn.text };
+      // `new(ReplyKind.Abstain, guarded.AbstainReason ?? "...", [], recoveryActions, ..., [])`) --
+      // there is no separate "reason" field on the wire to read instead. `recoveryActions` (task
+      // E25/F05/US01/T01, backend) lands on the wire's own generic `actions[]`, mapped here with
+      // the same `mapConversationAction` the answer/redirect/refusal branches already use (task
+      // E25/F05/US02/T01) -- `ReplyBody.tsx` is the layer that forces the result to render
+      // secondary-only (ADR-024), never primary, the same defensive posture it already applies to
+      // redirect/refusal's own action slice below.
+      return { kind: "abstain", reason: turn.text, actions: turn.actions.map(mapConversationAction) };
     default: {
       // Exhaustiveness guard: a future wire `kind` value fails this file's own build instead of
       // silently rendering nothing for it (same convention `./reply/ReplyBody.tsx` already uses).
@@ -346,6 +352,43 @@ export const NEW_CHAT_TRAILER =
 /** screens-v2.md #2 "New chat": `askHello`, quoted verbatim. */
 export const ASK_HELLO = "What do you want to know?";
 
+/**
+ * NW-56 (ADR-020 heading copy; ADR-024 scoped entry): `Contract360Header.tsx`'s "Ask about it"
+ * (`/ask?scope=<contractId>`) used to open an empty chat headed by the generic `ASK_HELLO` -- a
+ * scoped entry from a live contract must instead **brief** that contract. `screens-v2.md` has no
+ * literal scoped-brief copy of its own (the export predates this gap; §5's Contract 360 header --
+ * "supplier, name" -- is the closest anchor, reused below rather than invented, the same divergence
+ * `Contract360Header.tsx`'s own header comment already takes for that screen's kicker); requirements
+ * win over a silent prototype (ADR-024's own rule). Three strings replace, together,
+ * `ASK_HELLO` + the generic `buildScopeLine` sentence in the new-chat block:
+ *
+ * - `kicker` -- the same `.screen-kicker` shape `Contract360Header.tsx:41-44`
+ *   (`resolveSupplierLabel`) already renders over its own heading;
+ * - `heading` -- "Ask about {supplier}", replacing `ASK_HELLO`;
+ * - `scopeLine` -- a one-line, contract-specific scope, replacing the "Answers only from N
+ *   validated contracts…" sentence, which would otherwise mis-describe a chat about one contract.
+ *
+ * `supplierName` is `index.tsx`'s already-fetched `scopedSupplierName` (`getContract360`), `null`
+ * until that fetch resolves (or when the contract truly has none). The "this contract" fallback --
+ * deliberately not `buildScopedSuggestions`' own mid-sentence "this supplier" -- keeps `heading` a
+ * complete, honest sentence ("Ask about this contract") through that window, the same fallback
+ * discipline `resolveSupplierLabel` already applies to the 360 kicker.
+ */
+export interface ScopedAskBrief {
+  kicker: string;
+  heading: string;
+  scopeLine: string;
+}
+
+export function buildScopedBrief(supplierName: string | null): ScopedAskBrief {
+  const name = supplierName !== null && supplierName.trim() !== "" ? supplierName.trim() : "this contract";
+  return {
+    kicker: name,
+    heading: `Ask about ${name}`,
+    scopeLine: "Answers cite this contract's pages.",
+  };
+}
+
 /** ADR-024 §6 / screens-v2.md #2: the same placeholder the global Ask bar uses
  * (`components/ask-bar/askSuggestions.ts` READY_PLACEHOLDER). */
 export const ASK_INPUT_PLACEHOLDER = "Ask Raffa — spend, dates, clauses, liability…";
@@ -380,15 +423,31 @@ const ASK_SUGGESTIONS_FALLBACK: readonly [string, string] = [
   "What liabilities do we have?",
 ];
 
+/**
+ * Task E25/F01/US01/T01 (AC-1, ADR-022 S16-11): drops the "ask" capability's own `exampleQuestions`
+ * for a non-Admin when its catalog entry carries `roleGate !== "any"`, the same predicate
+ * `components/ask-bar/askSuggestions.ts#suggestionsFromCapabilityCatalog` applies for the global
+ * bar -- duplicated rather than imported, the same "small pure predicate, independent screens"
+ * convention this file already follows elsewhere (see `resolveAskOffReason`'s neighbours). Falls
+ * back to `ASK_SUGGESTIONS_FALLBACK`, never an empty pair. `role` is optional so an unscoped caller
+ * that has not threaded a role through yet still gets today's behaviour unchanged -- in the real
+ * catalog the "ask" capability is always `roleGate: "any"` (`CapabilityCatalog.cs`), so this never
+ * hides a chip in production; an absent `role` is still read as "not Admin", never as Admin.
+ */
+function isChipVisibleForRole(roleGate: CapabilityBody["roleGate"], role: WorkspaceRole | undefined): boolean {
+  return roleGate === "any" || role === "admin";
+}
+
 export function suggestionsFor(
   capabilities: readonly CapabilityBody[] | null,
   supplierName?: string | null,
+  role?: WorkspaceRole,
 ): readonly [string, string] {
   if (supplierName !== undefined) {
     return buildScopedSuggestions(supplierName);
   }
   const match = capabilities?.find((capability) => capability.key === ASK_CAPABILITY_KEY);
-  if (match && match.exampleQuestions.length >= 2) {
+  if (match && match.exampleQuestions.length >= 2 && isChipVisibleForRole(match.roleGate, role)) {
     return [match.exampleQuestions[0], match.exampleQuestions[1]];
   }
   return ASK_SUGGESTIONS_FALLBACK;

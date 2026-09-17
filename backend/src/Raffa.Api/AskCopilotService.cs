@@ -54,6 +54,16 @@ namespace Raffa.Api;
 /// </para>
 ///
 /// <para>
+/// <b>Scoped entries (task E25/F03/US01/T01, NW-56; ADR-024)</b>: <see cref="AskAsync"/>'s own
+/// <c>scopeContractId</c> parameter — the conversation's persisted
+/// <c>Conversation.ScopeContractId</c>, threaded in by <see cref="ConversationsEndpointExtensions"/>
+/// — resolves to a known supplier name and overrides the domain gate's own free-text extraction
+/// before the reply switch decides, so a turn opened from Contract 360's "Ask about it" is always
+/// about that one contract, never a generic gate/hello, regardless of whether the question itself
+/// names the supplier. See <see cref="AskAsync"/>'s own scope-resolution step for the mechanism.
+/// </para>
+///
+/// <para>
 /// <b>Known gaps, honestly scoped</b>: <c>Raffa.Documents.Contracts.Domain.Contract</c> has no
 /// geography/product-category field, so a <see cref="BenchmarkQuery"/> built here uses
 /// <c>GoverningLaw</c> as an imperfect geography proxy (documented on
@@ -120,6 +130,12 @@ internal sealed class AskCopilotService(
     /// <param name="actor">The caller's resolved token subject (ADR-011 w16 clause 15) — required,
     /// no default, so a placeholder can never return by omission. Recorded on the one audit row
     /// this call writes (R-ASK-09).</param>
+    /// <param name="scopeContractId">The conversation's own persisted
+    /// <c>Conversation.ScopeContractId</c> (task E25/F03/US01/T01, NW-56; ADR-024 "the gate
+    /// resolves the scope id before the R-ASK-10 check") — set when this conversation was opened
+    /// from Contract 360's "Ask about it" (ADR-024 "citation landing... → /ask?scope="), null for
+    /// the global Ask bar's always-unscoped new chat. See the scope-resolution step below (right
+    /// after <c>gate</c> is classified) for what this does to the turn.</param>
     /// <exception cref="ArgumentException"><paramref name="question"/> is null/blank.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="recentTurns"/> is <see langword="null"/>.</exception>
     public async Task<CopilotReply> AskAsync(
@@ -127,6 +143,7 @@ internal sealed class AskCopilotService(
         string question,
         IReadOnlyList<(string Role, string Markdown)> recentTurns,
         string actor,
+        EntityId? scopeContractId = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(question);
@@ -149,6 +166,45 @@ internal sealed class AskCopilotService(
             : new Dictionary<EntityId, string>();
 
         var gate = domainGate.Classify(question, supplierNames.Values.ToList());
+
+        // AC-1/AC-2 (ADR-024 "the gate resolves the scope id before the R-ASK-10 check"; task
+        // E25/F03/US01/T01, NW-56): a conversation opened from Contract 360's "Ask about it"
+        // carries its own persisted Conversation.ScopeContractId — ConversationsEndpointExtensions
+        // .AskAndAppendAsync threads it into scopeContractId above — naming one contract this
+        // tenant already validated. Resolving its supplier name and folding it into the gate's own
+        // NamedSupplier BEFORE the reply switch below ever runs is what scopes every downstream
+        // consumer (IntentPlanner.Plan, and every BuildXxxPackAsync that resolves
+        // `namedContractItem` from it) "via the existing namedSupplier/scope path" (this task's own
+        // coding objective) with no further change to any of them — and what keeps a scoped turn
+        // from ever landing on the generic GateLabel.NeedsDocument redirect (some unrelated
+        // capitalized word the question happens to contain) or an unscoped GateLabel.InDomain (no
+        // supplier named at all, so a downstream pack would otherwise fall back to a portfolio-wide
+        // answer instead of this contract's own — AC-3). Only the gate's own supplier-resolution
+        // rule is affected this way; Greeting/OffDomain/Legal/Capability do not key off a named
+        // supplier and still win outright, exactly as DomainGate.Classify's own deterministic-first
+        // ordering already intends. A scope id that does not resolve to a portfolio row, or
+        // resolves to one with no known supplier name yet (SupplierId unset, or the lookup has no
+        // name for it), changes nothing here: the gate's own free-text extraction still decides,
+        // same as before this task.
+        var scopedContractItem = scopeContractId is { } scopedContractIdValue
+            ? portfolio.Items.FirstOrDefault(item => item.ContractId == scopedContractIdValue.Value)
+            : null;
+
+        var scopedSupplierName = scopedContractItem?.SupplierId is { } scopedSupplierId &&
+            supplierNames.TryGetValue(new EntityId(scopedSupplierId), out var resolvedScopedSupplierName)
+                ? resolvedScopedSupplierName
+                : null;
+
+        if (scopedSupplierName is not null && gate.Label is GateLabel.NeedsDocument or GateLabel.InDomain)
+        {
+            gate = gate with
+            {
+                Label = GateLabel.InDomain,
+                Reason = $"scoped entry resolved to known supplier '{scopedSupplierName}' before the " +
+                    "gate's own free-text extraction decided (ADR-024, task E25/F03/US01/T01).",
+                NamedSupplier = scopedSupplierName,
+            };
+        }
 
         // AC-7 / R-ASK-09: the audit row must distinguish "guard caught a violation and downgraded
         // to abstain" from every other abstain path (empty pack, gateway call failed) — so every
@@ -288,10 +344,6 @@ internal sealed class AskCopilotService(
 
         if (boundedPack.Count == 0)
         {
-            var emptyActions = portfolio.Items.Count == 0
-                ? capabilityRouting.ResolveActions([CapabilityIntent.HowTo(CapabilityCatalog.DocumentsKey)], routingContext)
-                : [];
-
             // ADR-027 §D8 (task E16/F02/US03/T01): no number here. `portfolio.Items.Count` is the
             // UNFILTERED portfolio -- every bootstrap shell a still-processing document created --
             // so rendering it as "N validated contract(s)" asserted a fabricated fact to the user.
@@ -302,7 +354,7 @@ internal sealed class AskCopilotService(
                 ReplyKind.Abstain,
                 "Nothing in your validated contracts supports a reliable answer. " +
                 "Try a question about dates, spend, notice periods or clauses.",
-                [], emptyActions, ReplyProvenance.NoModelCall([]), []), false);
+                [], ResolveAbstainRecoveryActions(portfolio, routingContext), ReplyProvenance.NoModelCall([]), []), false);
         }
 
         var composed = await answerComposer.AnswerAsync(question, boundedPack, recentTurns, cancellationToken)
@@ -313,7 +365,7 @@ internal sealed class AskCopilotService(
             return (new CopilotReply(
                 ReplyKind.Abstain,
                 "Raffa could not reach the answer service just now — please try again shortly.",
-                [], [], ReplyProvenance.NoModelCall([]), []), false);
+                [], ResolveAbstainRecoveryActions(portfolio, routingContext), ReplyProvenance.NoModelCall([]), []), false);
         }
 
         var actionKeys = composed.Value.Result.ActionKeys ?? [];
@@ -322,9 +374,29 @@ internal sealed class AskCopilotService(
             : [];
 
         return (
-            CopilotReplyBuilder.FromGuardedResult(composed.Value.Result, boundedPack, resolvedActions),
+            CopilotReplyBuilder.FromGuardedResult(
+                composed.Value.Result, boundedPack, resolvedActions, ResolveAbstainRecoveryActions(portfolio, routingContext)),
             composed.Value.GuardIntervened);
     }
+
+    /// <summary>
+    /// The one recovery action every abstain path this method's caller can reach attaches
+    /// (E25/F05/US01/T01, story us-01-abstain-recovery-backend AC-1/AC-3; ADR-024 "every abstain
+    /// has a clickable next step"). Never derived from <c>AiAnswerResult.ActionKeys</c> — an
+    /// abstaining model has nothing grounded to suggest, and AC-2 requires a real catalog href
+    /// regardless of what it returned. Zero validated contracts is the one failure Ask can actually
+    /// unblock (upload something), so that case gets the Documents upload action; otherwise the
+    /// recovery is the Ask capability's own "ask about dates, spend, notice periods and clauses"
+    /// hint (<see cref="CapabilityCatalog.AskKey"/>'s own catalog description), which is exactly
+    /// what every abstain reply's own prose already suggests trying next. Both target capabilities
+    /// are <see cref="CapabilityRoleGate.Any"/>, so this never role-gates away to an empty list.
+    /// </summary>
+    private IReadOnlyList<CopilotAction> ResolveAbstainRecoveryActions(PortfolioPage portfolio, RoutingContext routingContext) =>
+        portfolio.Items.Count == 0
+            // Documents is Always-available, so HowTo(DocumentsKey) would Navigate to /documents.
+            // UnknownSupplier is the catalog path that emits CopilotActionKind.Upload at /documents.
+            ? capabilityRouting.ResolveActions([CapabilityIntent.UnknownSupplier], routingContext)
+            : capabilityRouting.ResolveActions([CapabilityIntent.HowTo(CapabilityCatalog.AskKey)], routingContext);
 
     private CopilotReply BuildRoutingOnlyReply(IntentPlanResult plan, RoutingContext routingContext)
     {
@@ -475,6 +547,7 @@ internal sealed class AskCopilotService(
         foreach (var hit in searchResult.Value)
         {
             var clause = contract360?.Clauses.FirstOrDefault(c => c.ClauseId == hit.SourceId);
+            var (href, previewUrl) = ResolveTenantClauseLinks(clause, hit.SourceId, namedContractItem?.ContractId);
 
             items.Add(new PackItem(
                 $"fact:{hit.SourceId}:chunk[{hit.ChunkIndex}]",
@@ -484,14 +557,55 @@ internal sealed class AskCopilotService(
                 clause?.SourcePage,
                 clause?.SourceSpan ?? $"chunk {hit.ChunkIndex}",
                 hit.ChunkText,
-                namedContractItem is not null ? $"/contracts/{namedContractItem.ContractId}" : null,
-                null,
+                href,
+                previewUrl,
                 null,
                 "validated contract",
                 []));
         }
 
         return items;
+    }
+
+    /// <summary>
+    /// Task E25/F02/US01/T01 (NW-55; ADR-024; ADR-018 w17 clause 9 viewer route): the tenant
+    /// citation card's real deep-link and page preview -- <c>/documents/:documentId/viewer?page=
+    /// &amp;clause=</c> and the existing <c>/api/documents/{id}/preview?page=</c> route -- replacing
+    /// the bare <c>/contracts/{id}</c> CTA whenever this hit actually resolves to one real page of
+    /// one real document. Same shape, and the same fallback rule, as the Contract 360 client's own
+    /// <c>contract360ViewModel.ts</c> <c>resolveViewerHref</c> ("No document or no sourcePage -&gt;
+    /// no link"): only when <paramref name="clause"/> carries both a
+    /// <see cref="Contract360Clause.SourceDocumentId"/> and a <see cref="Contract360Clause.SourcePage"/>
+    /// does this return the viewer pair; otherwise it falls back to the pre-existing contract route
+    /// (or <see langword="null"/> with no named contract) -- never a dead viewer link.
+    ///
+    /// <para>
+    /// Honest gap (R-EVD-01 "citations resolve to Clause.SourcePage/SourceSpan when the hit is a
+    /// clause, else to the page"): when the embedded chunk's own source is the whole Document rather
+    /// than one extracted <c>Clause</c> row (<c>Embedding.SourceType == "Document"</c>),
+    /// <paramref name="clause"/> never resolves and this falls back to the contract route even
+    /// though <paramref name="sourceId"/>/the hit's own page could, in principle, still resolve a
+    /// document-level viewer link. This task's own coding objective and Definition of Done line
+    /// ("a tenant clause pack item carries a viewer href + real previewUrl") scope the fix to the
+    /// clause-resolved case only; the Document-sourced-chunk branch is not attempted here.
+    /// </para>
+    /// </summary>
+    /// <param name="sourceId">The cited chunk's own source id (<see cref="EmbeddingSearchResult.SourceId"/>)
+    /// -- the clause id when <paramref name="clause"/> resolved it -- echoed into the viewer's
+    /// optional <c>?clause=</c> query parameter (ADR-018).</param>
+    /// <param name="namedContractId">The named contract's id, when the caller asked about one
+    /// contract by name -- the pre-existing fallback CTA target.</param>
+    internal static (string? Href, string? PreviewUrl) ResolveTenantClauseLinks(
+        Contract360Clause? clause, EntityId sourceId, Guid? namedContractId)
+    {
+        if (clause is { SourceDocumentId: { } sourceDocumentId, SourcePage: { } sourcePage })
+        {
+            return (
+                $"/documents/{sourceDocumentId.Value}/viewer?page={sourcePage}&clause={sourceId.Value}",
+                $"/api/documents/{sourceDocumentId.Value}/preview?page={sourcePage}");
+        }
+
+        return (namedContractId is { } contractId ? $"/contracts/{contractId}" : null, null);
     }
 
     private async Task<IReadOnlyList<PackItem>> BuildMarketComparePackAsync(
@@ -823,6 +937,18 @@ internal sealed class AskCopilotService(
 
     // ----- Shared helpers -----
 
+    /// <summary>
+    /// Task E25/F02/US01/T01 (NW-55): still the pre-existing <c>/contracts/{id}</c> CTA and a
+    /// <see langword="null"/> <see cref="PackItem.PreviewUrl"/> -- deliberately untouched by this
+    /// task. A contract-level fact (e.g. "ends on 2027-01-01") has no single source page: it is
+    /// computed from <see cref="PortfolioListItem"/> columns, which name no
+    /// <c>SourceDocumentId</c>/<c>SourcePage</c> at all, so there is nothing here for
+    /// <see cref="ResolveTenantClauseLinks"/>'s viewer link to resolve against. AC-3 ("PreviewUrl is
+    /// set only for tenant <em>pages</em>") already reads this item as correctly page-less, not as a
+    /// gap: a contract route is still a valid <see cref="PackItem.Href"/> shape for
+    /// <see cref="PackCorpus.Tenant"/> per that field's own doc comment ("a document/contract route
+    /// for PackCorpus.Tenant").
+    /// </summary>
     private PackItem BuildContractFactItem(PortfolioListItem item, string displayName)
     {
         var values = new List<PackValue>();

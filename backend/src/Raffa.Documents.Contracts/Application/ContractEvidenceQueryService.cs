@@ -17,6 +17,20 @@ namespace Raffa.Documents.Contracts.Application;
 /// <c>type</c>, ...).</param>
 /// <param name="Value">What the model proposed, verbatim — not the contract's current (possibly
 /// corrected) value.</param>
+/// <param name="OverrideValue">Epic-23 feature-03 (ADR-029 w18 footer clause 1): the reviewer's
+/// corrected phrase, when a phrase-edit has been written for this field — <see langword="null"/>
+/// until then. Read independently of which row <see cref="Value"/> itself came from (see
+/// <see cref="ContractEvidenceQueryService.GetLatestAsync"/>'s own doc comment): a reprocess that
+/// supersedes the proposal for display must not silently drop a human's already-recorded override
+/// (ADR-027 fence, parent story AC-4). Always distinguishable from <see cref="Value"/> — never one
+/// silently replacing the other on the wire, the same promise
+/// <see cref="ExtractionEvidence.OverrideValue"/>'s own doc comment makes for the column.</param>
+/// <param name="Box">Pixel-space bounding box of this phrase on the rendered page image (epic-23
+/// feature-02, ADR-003 w18 footer clauses 1-2), read from this same evidence row whether or not
+/// <see cref="ExtractionEvidence.OverrideValue"/> is set; <see langword="null"/> for every row
+/// written before this wave, or any page the OCR call returned no layout geometry for — the
+/// viewer then falls back to the existing <paramref name="SourceSpan"/> text-level highlight,
+/// never an error (epic-23 AC-4).</param>
 /// <param name="Passage">The sentence(s) of the source page around <paramref name="SourceSpan"/>,
 /// when the page's indexed text still contains it; <see langword="null"/> when there is no page
 /// text to quote (a classification verdict, a document whose chunks were removed) — the span
@@ -27,11 +41,13 @@ namespace Raffa.Documents.Contracts.Application;
 public sealed record ContractFieldEvidence(
     string FieldName,
     string? Value,
+    string? OverrideValue,
     double? Confidence,
     string? Decision,
     DateTimeOffset? DecidedAt,
     int? SourcePage,
     string? SourceSpan,
+    ContractFieldEvidenceBox? Box,
     EntityId? SourceDocumentId,
     string? SourceFileName,
     string? Passage,
@@ -39,6 +55,17 @@ public sealed record ContractFieldEvidence(
     int? HighlightLength,
     string? ModelId,
     DateTimeOffset ExtractedAt);
+
+/// <summary>
+/// A single pixel-space rectangle on the rendered page image — the union of the
+/// <c>prebuilt-layout</c> word geometry (<see cref="Raffa.AiGateway.Contracts.AiOcrWord"/>) under
+/// one cited phrase, normalized at write time (epic-23 feature-02) so the viewer can position one
+/// absolutely-positioned <c>&lt;div&gt;</c> over the phrase with no further geometry math
+/// (ADR-029 w18 footer, ADR-012 §3: DOM over the existing page <c>&lt;img&gt;</c>, no new runtime
+/// dependency). All four members travel together — <see cref="ContractFieldEvidence.Box"/> is
+/// either this whole record or <see langword="null"/>, never a partial box.
+/// </summary>
+public sealed record ContractFieldEvidenceBox(double X, double Y, double Width, double Height);
 
 /// <summary>
 /// Tenant-scoped read of a contract's per-field extraction evidence — the trail
@@ -61,6 +88,20 @@ public sealed record ContractFieldEvidence(
 /// Same belt-and-suspenders tenant scoping as every other read in this module (ADR-009): the
 /// explicit <c>tenant_id</c> predicate plus the ambient RLS scope are two independent reasons a
 /// cross-tenant contract id reads back as "not found".
+/// </para>
+///
+/// <para>
+/// <b>The override rides independently of "latest" (epic-23 feature-03, ADR-027 fence).</b> A
+/// reprocess writes a brand-new <see cref="ExtractionEvidence"/> row per field
+/// (<c>StagedExtractionService</c> always <c>Add</c>s, never updates) — that new row wins "latest"
+/// for <see cref="ContractFieldEvidence.Value"/>/<c>Box</c>/etc., but a human's already-recorded
+/// <see cref="ExtractionEvidence.OverrideValue"/> lives on whichever row it was written on, which
+/// the reprocess never touches. So <see cref="GetLatestAsync"/> resolves
+/// <see cref="ContractFieldEvidence.OverrideValue"/> by searching every row for the field for the
+/// most recent one that actually carries a non-null override, not just the row selected as
+/// "latest" for the rest of the proposal — the read-side half of "re-derivation never overrides a
+/// human correction" (ADR-027 w17 footer clause 2), applied to the phrase-edit override the same
+/// way it already applies to a human-accepted <see cref="ExtractionEvidence.Decision"/>.
 /// </para>
 /// </summary>
 public sealed class ContractEvidenceQueryService(DocumentsContractsDbContext dbContext, ITenantContext tenantContext)
@@ -100,16 +141,33 @@ public sealed class ContractEvidenceQueryService(DocumentsContractsDbContext dbC
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
-        var latest = rows
+        var groupedByField = rows
             .GroupBy(e => e.FieldName, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var latest = groupedByField
             .Select(byField => byField.OrderByDescending(e => e.CreatedAt).ThenByDescending(e => e.Id.Value).First())
-            .OrderBy(e => e.FieldName, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         if (latest.Count == 0)
         {
             return [];
         }
+
+        // Epic-23 feature-03 (ADR-027 fence, AC-4): the most recent override per field, searched
+        // across every row for that field -- independent of which row `latest` above picked for the
+        // proposal. See the type doc comment for why this must not just read `OverrideValue` off
+        // the `latest` row itself.
+        var overrideByField = groupedByField.ToDictionary(
+            byField => byField.Key,
+            byField => byField
+                .Where(e => e.OverrideValue is not null)
+                .OrderByDescending(e => e.CreatedAt)
+                .ThenByDescending(e => e.Id.Value)
+                .FirstOrDefault()
+                ?.OverrideValue,
+            StringComparer.OrdinalIgnoreCase);
 
         var documentIds = latest
             .Where(e => e.SourceDocumentId is not null)
@@ -159,11 +217,13 @@ public sealed class ContractEvidenceQueryService(DocumentsContractsDbContext dbC
                 return new ContractFieldEvidence(
                     evidence.FieldName,
                     evidence.Value,
+                    overrideByField.GetValueOrDefault(evidence.FieldName),
                     evidence.Confidence,
                     evidence.Decision ?? ExtractionConfidencePolicy.Decide(evidence.Confidence),
                     evidence.DecidedAt,
                     evidence.SourcePage,
                     evidence.SourceSpan,
+                    BuildBox(evidence),
                     evidence.SourceDocumentId,
                     evidence.SourceDocumentId is { } documentId ? fileNamesByDocument.GetValueOrDefault(documentId) : null,
                     passage?.Text,
@@ -174,6 +234,17 @@ public sealed class ContractEvidenceQueryService(DocumentsContractsDbContext dbC
             })
             .ToList();
     }
+
+    /// <summary>
+    /// All four of <see cref="ExtractionEvidence.BoxX"/>/<c>BoxY</c>/<c>BoxWidth</c>/<c>BoxHeight</c>
+    /// or none — epic-23 AC-4's "a null box is the honest w17 state, never an error" reads as: a
+    /// row missing even one of the four degrades to a whole null box (the text-level highlight),
+    /// rather than the pane trying to position a rectangle with a missing side.
+    /// </summary>
+    private static ContractFieldEvidenceBox? BuildBox(ExtractionEvidence evidence) =>
+        evidence.BoxX is { } x && evidence.BoxY is { } y && evidence.BoxWidth is { } width && evidence.BoxHeight is { } height
+            ? new ContractFieldEvidenceBox(x, y, width, height)
+            : null;
 
     private static (string Text, int HighlightStart, int HighlightLength)? LocatePassage(
         ExtractionEvidence evidence, IReadOnlyDictionary<(EntityId, int), string> pageTexts)

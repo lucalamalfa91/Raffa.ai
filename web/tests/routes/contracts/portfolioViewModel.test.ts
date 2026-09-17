@@ -6,7 +6,10 @@ import {
   formatCompactAmount,
   formatPortfolioSummary,
   moreColumnsLabel,
+  PORTFOLIO_CATEGORY_PARAM,
   PORTFOLIO_SUMMARY_OFF,
+  readCategoryFilter,
+  withCategoryFilter,
 } from "../../../src/routes/contracts/portfolioViewModel";
 
 const NOW = new Date(Date.UTC(2026, 8, 9)); // 2026-09-09
@@ -193,5 +196,59 @@ describe("moreColumnsLabel (app.jsx colsLabel)", () => {
   it("toggles between the prototype's two labels", () => {
     expect(moreColumnsLabel(false)).toBe("More columns");
     expect(moreColumnsLabel(true)).toBe("Fewer columns");
+  });
+});
+
+// Task E24/F01/US02/T01 (story us-02-portfolio-category-web; closes NW-23). See
+// `PortfolioRoute.test.tsx` for the whole route's own `?category=`/`getPortfolio` round trip and
+// `PortfolioFilterControl.test.tsx` for the control.
+describe("readCategoryFilter", () => {
+  it("AC-2: an absent category normalizes to \"\"", () => {
+    expect(readCategoryFilter(new URLSearchParams())).toBe("");
+  });
+
+  it("AC-2: a blank category normalizes to \"\"", () => {
+    expect(readCategoryFilter(new URLSearchParams("category="))).toBe("");
+  });
+
+  it("trims surrounding whitespace, matching PortfolioEndpointExtensions.TryParseFilter's own Trim()", () => {
+    expect(readCategoryFilter(new URLSearchParams("category=%20Software%20"))).toBe("Software");
+  });
+
+  it("a whitespace-only category also normalizes to \"\"", () => {
+    expect(readCategoryFilter(new URLSearchParams("category=%20%20"))).toBe("");
+  });
+
+  it("reads a real value verbatim", () => {
+    expect(readCategoryFilter(new URLSearchParams("category=Logistics"))).toBe("Logistics");
+  });
+});
+
+describe("withCategoryFilter", () => {
+  it("AC-1: sets the category query parameter", () => {
+    const next = withCategoryFilter(new URLSearchParams(), "Software");
+    expect(next.get(PORTFOLIO_CATEGORY_PARAM)).toBe("Software");
+  });
+
+  it("trims before setting", () => {
+    const next = withCategoryFilter(new URLSearchParams(), "  Software  ");
+    expect(next.get(PORTFOLIO_CATEGORY_PARAM)).toBe("Software");
+  });
+
+  it("AC-3: clearing (\"\") removes the parameter entirely -- re-loads the full portfolio", () => {
+    const next = withCategoryFilter(new URLSearchParams("category=Software"), "");
+    expect(next.has(PORTFOLIO_CATEGORY_PARAM)).toBe(false);
+  });
+
+  it("clearing with a whitespace-only value also removes the parameter", () => {
+    const next = withCategoryFilter(new URLSearchParams("category=Software"), "   ");
+    expect(next.has(PORTFOLIO_CATEGORY_PARAM)).toBe(false);
+  });
+
+  it("leaves every other query parameter this screen does not own untouched", () => {
+    const next = withCategoryFilter(new URLSearchParams("status=Active&page=2"), "Software");
+    expect(next.get("status")).toBe("Active");
+    expect(next.get("page")).toBe("2");
+    expect(next.get(PORTFOLIO_CATEGORY_PARAM)).toBe("Software");
   });
 });

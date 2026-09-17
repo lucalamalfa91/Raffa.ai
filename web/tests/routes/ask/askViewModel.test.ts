@@ -6,6 +6,7 @@ import {
   buildErrorTurn,
   buildOffCopy,
   resolveAskOffReason,
+  buildScopedBrief,
   buildScopeLine,
   buildScopedSuggestions,
   buildTenantCitationHref,
@@ -158,7 +159,30 @@ describe("mapConversationReplyToReply / mapConversationMessageToReply", () => {
       reply({ kind: "abstain", answerMarkdown: "Nothing in the validated contracts supports a reliable answer.", citations: [], actions: [] }),
     );
 
-    expect(mapped).toEqual({ kind: "abstain", reason: "Nothing in the validated contracts supports a reliable answer." });
+    expect(mapped).toEqual({ kind: "abstain", reason: "Nothing in the validated contracts supports a reliable answer.", actions: [] });
+  });
+
+  // Task E25/F05/US02/T01 (abstain-recovery-web; ADR-024 "every abstain has a clickable next
+  // step"): the abstain branch no longer drops `turn.actions` -- it maps them the same way
+  // redirect/refusal already do, via the shared `mapConversationAction`. `ReplyBody.tsx` (not this
+  // mapper) is what forces the result to render secondary-only; the "primary" kind below is the
+  // honest output of `toReplyActionKind(0)`, proven separately by the `mapConversationAction`
+  // describe block above.
+  it("maps an abstain reply's recovery action the same way answer/redirect/refusal map theirs", () => {
+    const mapped = mapConversationReplyToReply(
+      reply({
+        kind: "abstain",
+        answerMarkdown: "Nothing in the validated contracts supports a reliable answer.",
+        citations: [],
+        actions: [{ label: "Upload a contract", href: "/documents", kind: "upload" }],
+      }),
+    );
+
+    expect(mapped).toEqual({
+      kind: "abstain",
+      reason: "Nothing in the validated contracts supports a reliable answer.",
+      actions: [{ label: "Upload a contract", href: "/documents", kind: "primary" }],
+    });
   });
 
   it("maps a stored message the same way, with an always-empty followUps (no such column on ConversationMessage)", () => {
@@ -348,6 +372,43 @@ describe("buildScopedSuggestions / suggestionsFor", () => {
   });
 });
 
+// Task E25/F03/US02/T01 (NW-56): a scoped `?scope=<contractId>` entry (Contract 360's "Ask about
+// it") briefs the contract instead of rendering ASK_HELLO + the generic buildScopeLine sentence.
+describe("buildScopedBrief (NW-56; ADR-020 heading copy)", () => {
+  it("names the real supplier in the kicker and the heading", () => {
+    expect(buildScopedBrief("Salesforce")).toEqual({
+      kicker: "Salesforce",
+      heading: "Ask about Salesforce",
+      scopeLine: "Answers cite this contract's pages.",
+    });
+  });
+
+  it("falls back to 'this contract' -- not buildScopedSuggestions' own 'this supplier' -- when the name is null", () => {
+    expect(buildScopedBrief(null)).toEqual({
+      kicker: "this contract",
+      heading: "Ask about this contract",
+      scopeLine: "Answers cite this contract's pages.",
+    });
+  });
+
+  it("falls back the same way for a blank name (still loading, or genuinely unresolved)", () => {
+    expect(buildScopedBrief("   ")).toEqual({
+      kicker: "this contract",
+      heading: "Ask about this contract",
+      scopeLine: "Answers cite this contract's pages.",
+    });
+  });
+
+  it("trims a supplier name carrying incidental whitespace", () => {
+    expect(buildScopedBrief("  Salesforce  ").kicker).toBe("Salesforce");
+  });
+
+  it("never renders the generic ASK_HELLO as its heading, scoped or not", () => {
+    expect(buildScopedBrief("Salesforce").heading).not.toBe(ASK_HELLO);
+    expect(buildScopedBrief(null).heading).not.toBe(ASK_HELLO);
+  });
+});
+
 describe("deriveConversationTitle", () => {
   it("collapses embedded whitespace/newlines to single spaces", () => {
     expect(deriveConversationTitle("What   is\nour   AWS\tspend?")).toBe("What is our AWS spend?");
@@ -440,6 +501,11 @@ describe("createConversationAndAsk", () => {
       getQuoteAssessment: vi.fn(),
       recalculateQuoteAssessment: vi.fn(),
       captureNegotiationOutcome: vi.fn(),
+      // Pre-existing gap inherited from task E25/F04/US01/T01 (NW-57, merged ahead of this task):
+      // `ApiClient` gained `getQuoteBenchmarkHistory` (client.ts:1488) without this file's own
+      // mock keeping up. Fixed here since this file is already this task's own; the same gap in
+      // other suites' mockApiClient helpers is untouched -- out of this task's file scope.
+      getQuoteBenchmarkHistory: vi.fn(),
       askRaffa: vi.fn(),
       getSavingsKpis: vi.fn(),
       getSavingsOpportunities: vi.fn(),

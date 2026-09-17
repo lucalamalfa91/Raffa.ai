@@ -162,4 +162,24 @@ public class FixtureAiGatewayOcrTests
         Assert.True(result.IsSuccess);
         Assert.Equal(2, result.Value.Pages.Count);
     }
+
+    /// <summary>
+    /// DoD (task E23/F01/US01/T01): "a fixture test proves a `prebuilt-layout`-less document still
+    /// reads as text-only (null geometry)". There is no Document Intelligence Layout endpoint (or
+    /// any endpoint at all) behind this fixture, so every page it produces — born-digital PDF,
+    /// plain text, or the binary placeholder — must carry a null <see cref="AiOcrPage.Words"/>,
+    /// never a fabricated box (ADR-017 w18).
+    /// </summary>
+    [Fact]
+    public async Task Ocr_never_carries_geometry_since_the_fixture_has_no_layout_model()
+    {
+        var gateway = CreateGateway();
+        var content = Encoding.UTF8.GetBytes("page one text\fpage two text");
+
+        var result = await gateway.OcrAsync(new AiOcrRequest("contract.pdf", "application/pdf", content));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, result.Value.Pages.Count);
+        Assert.All(result.Value.Pages, page => Assert.Null(page.Words));
+    }
 }

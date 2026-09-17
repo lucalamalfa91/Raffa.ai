@@ -14,7 +14,9 @@
  * verbatim from requirements.md §6's own JSON example.
  *
  * A discriminated union on `kind`, not one flat optional-everything shape: `answer` is the only
- * variant that ever carries citations, `abstain`/`error` never carry actions, so illegal
+ * variant that ever carries citations; `redirect`/`refusal` always carry their one primary CTA;
+ * `abstain` optionally carries a **secondary-only** recovery action (ADR-024 "every abstain has a
+ * clickable next step", task E25/F05/US02/T01); `error` never carries any action. Illegal
  * combinations (e.g. an abstain with citation cards) are unrepresentable rather than merely
  * undocumented -- `ReplyBody.tsx`'s own `switch (reply.kind)` is exhaustive over this union
  * (`noFallthroughCasesInSwitch`, tsconfig.json).
@@ -100,11 +102,17 @@ export interface RedirectReply {
 }
 
 /** `abstain` — the accent-left "Cannot determine reliably." block + `reason`, only for true
- * insufficiency (spec §10.4; screens-v2.md §2) -- never citations, never actions (task text: "the
- * only place that block appears"). */
+ * insufficiency (spec §10.4; screens-v2.md §2) -- never citations (task text: "the only place that
+ * block appears"). May optionally carry the server-selected recovery action (ADR-024 "every
+ * abstain has a clickable next step"; task E25/F05/US02/T01, parent story us-02-abstain-recovery-web
+ * AC-1/AC-3): `../askViewModel.ts#buildReply` maps it off the wire's own generic `actions[]`
+ * (backend: `CopilotReplyBuilder`'s `recoveryActions`, task E25/F05/US01/T01). `ReplyBody.tsx`
+ * renders it as a **secondary** `ActionRow`, never primary, and only when present -- an abstain
+ * with no action still renders just the block, never an empty screen (AC-3). */
 export interface AbstainReply {
   kind: "abstain";
   reason: string;
+  actions?: readonly ReplyAction[];
 }
 
 /** A transport/network failure -- not part of the wire's own `kind` enum, the same client-only

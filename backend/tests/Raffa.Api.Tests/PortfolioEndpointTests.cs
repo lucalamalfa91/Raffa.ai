@@ -6,6 +6,7 @@ using Raffa.Api.Tests.TestSupport;
 using Raffa.Documents.Contracts.Domain;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Suppliers;
+using Raffa.Suppliers.Products.Application;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
@@ -145,6 +146,113 @@ public sealed class PortfolioEndpointTests : IClassFixture<RaffaApiFactory>
         Assert.Equal(JsonValueKind.Null, unlinked.GetProperty("supplierName").ValueKind);
     }
 
+    // ----- category (task E24/F01/US01/T01, story us-01-portfolio-category-backend, closes
+    // NW-23/OQ-w17-007) -----
+
+    [Fact]
+    public async Task Category_filter_restricts_to_contracts_whose_supplier_has_that_category()
+    {
+        var now = new DateTimeOffset(2026, 9, 16, 12, 0, 0, TimeSpan.Zero);
+        var tenantId = TenantId.New();
+        var saasSupplierId = EntityId.New();
+        var hardwareSupplierId = EntityId.New();
+
+        var factory = WithSupplierCategories(
+            _factory,
+            new Dictionary<EntityId, string> { [saasSupplierId] = "SaaS", [hardwareSupplierId] = "Hardware" });
+
+        // Distinct CreatedAt values keep the portfolio's ORDER BY deterministic under the InMemory
+        // provider, same reason Every_row_carries_the_supplier_name_next_to_its_id does this.
+        var saasContract = NewContract(tenantId, now, saasSupplierId);
+        var hardwareContract = NewContract(tenantId, now.AddSeconds(-1), hardwareSupplierId);
+        var unlinkedContract = NewContract(tenantId, now.AddSeconds(-2), supplierId: null);
+        await factory.SeedContractAsync(saasContract);
+        await factory.SeedDocumentAsync(InMemoryAskEngineFactory.NewLinkedDocument(tenantId, saasContract.Id));
+        await factory.SeedContractAsync(hardwareContract);
+        await factory.SeedDocumentAsync(InMemoryAskEngineFactory.NewLinkedDocument(tenantId, hardwareContract.Id));
+        await factory.SeedContractAsync(unlinkedContract);
+        await factory.SeedDocumentAsync(InMemoryAskEngineFactory.NewLinkedDocument(tenantId, unlinkedContract.Id));
+
+        var client = factory.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/contracts?category=SaaS");
+        request.Headers.Add("X-Tenant-Id", tenantId.Value.ToString());
+
+        var response = await client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+
+        // AC-1: only the SaaS-category supplier's contract survives -- the Hardware-category
+        // contract and the unlinked one (no supplier to resolve a category from at all) are both
+        // narrowed away, never left in by accident. totalCount narrows with items (see
+        // FilterByCategoryAsync's own doc comment for why).
+        var item = Assert.Single(body.RootElement.GetProperty("items").EnumerateArray());
+        Assert.Equal(saasSupplierId.Value.ToString(), item.GetProperty("supplierId").GetString());
+        Assert.Equal(1, body.RootElement.GetProperty("totalCount").GetInt32());
+    }
+
+    [Fact]
+    public async Task Category_with_no_matching_supplier_returns_empty_not_fabricated()
+    {
+        var now = new DateTimeOffset(2026, 9, 16, 12, 0, 0, TimeSpan.Zero);
+        var tenantId = TenantId.New();
+        var saasSupplierId = EntityId.New();
+
+        var factory = WithSupplierCategories(
+            _factory, new Dictionary<EntityId, string> { [saasSupplierId] = "SaaS" });
+
+        var saasContract = NewContract(tenantId, now, saasSupplierId);
+        await factory.SeedContractAsync(saasContract);
+        await factory.SeedDocumentAsync(InMemoryAskEngineFactory.NewLinkedDocument(tenantId, saasContract.Id));
+
+        var client = factory.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/contracts?category=Nonexistent");
+        request.Headers.Add("X-Tenant-Id", tenantId.Value.ToString());
+
+        var response = await client.SendAsync(request);
+
+        // AC-3: a category no supplier on this tenant carries at all still narrows to an empty
+        // items array -- 200 with nothing in it, never a fabricated row and never a 404/500.
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Empty(body.RootElement.GetProperty("items").EnumerateArray());
+        Assert.Equal(0, body.RootElement.GetProperty("totalCount").GetInt32());
+    }
+
+    [Fact]
+    public async Task Blank_category_leaves_the_full_portfolio_unfiltered()
+    {
+        var now = new DateTimeOffset(2026, 9, 16, 12, 0, 0, TimeSpan.Zero);
+        var tenantId = TenantId.New();
+        var saasSupplierId = EntityId.New();
+
+        var factory = WithSupplierCategories(
+            _factory, new Dictionary<EntityId, string> { [saasSupplierId] = "SaaS" });
+
+        var saasContract = NewContract(tenantId, now, saasSupplierId);
+        var unlinkedContract = NewContract(tenantId, now.AddSeconds(-1), supplierId: null);
+        await factory.SeedContractAsync(saasContract);
+        await factory.SeedDocumentAsync(InMemoryAskEngineFactory.NewLinkedDocument(tenantId, saasContract.Id));
+        await factory.SeedContractAsync(unlinkedContract);
+        await factory.SeedDocumentAsync(InMemoryAskEngineFactory.NewLinkedDocument(tenantId, unlinkedContract.Id));
+
+        var client = factory.CreateClient();
+        // AC-2: an absent `category` -- not exercised here, see Every_row_carries_the_supplier_name_
+        // next_to_its_id and the malformed-query theory above -- leaves the full portfolio; a blank
+        // value must mean the identical thing (TryParseFilter trims and treats an empty result as
+        // "not filtered", never as a literal empty-string match nothing can ever satisfy).
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/contracts?category=");
+        request.Headers.Add("X-Tenant-Id", tenantId.Value.ToString());
+
+        var response = await client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(2, body.RootElement.GetProperty("items").EnumerateArray().Count());
+        Assert.Equal(2, body.RootElement.GetProperty("totalCount").GetInt32());
+    }
+
     /// <summary>Swaps in an InMemory portfolio store plus a <see cref="StubSupplierNameLookup"/>
     /// over <paramref name="namesById"/>. <see cref="ServiceCollectionServiceExtensions.AddSingleton{T}(IServiceCollection, T)"/>
     /// appended after <c>Program.cs</c>'s own <c>AddSuppliersProductsModule</c> registration wins
@@ -158,6 +266,25 @@ public sealed class PortfolioEndpointTests : IClassFixture<RaffaApiFactory>
             .WithInMemoryAskEngine(new FixtureAiGateway(new AiGatewayModelOptions(), SystemClock.Instance))
             .WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
                 services.AddSingleton<ISupplierNameLookup>(new StubSupplierNameLookup(namesById))));
+
+    /// <summary>Swaps in an InMemory portfolio store plus a <see cref="StubSupplierCategoryLookup"/>
+    /// over <paramref name="categoriesById"/> -- same shape as <see cref="WithSupplierNames"/>
+    /// above, for <see cref="ISupplierCategoryLookup"/> instead (task E24/F01/US01/T01, story
+    /// us-01-portfolio-category-backend). Also stubs <see cref="ISupplierNameLookup"/> to an empty
+    /// map: <c>GetPortfolioAsync</c> composes <c>supplierName</c> on every row unconditionally
+    /// (regardless of whether a category filter was even supplied), so leaving that port on its
+    /// real, Postgres-backed registration would make every test using this helper reach for a
+    /// database this project never stands up -- an empty stub keeps that call inert without
+    /// asserting anything about names, which is this helper's own tests' business.</summary>
+    internal static WebApplicationFactory<Program> WithSupplierCategories(
+        WebApplicationFactory<Program> factory, IReadOnlyDictionary<EntityId, string> categoriesById) =>
+        factory
+            .WithInMemoryAskEngine(new FixtureAiGateway(new AiGatewayModelOptions(), SystemClock.Instance))
+            .WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+            {
+                services.AddSingleton<ISupplierNameLookup>(new StubSupplierNameLookup(new Dictionary<EntityId, string>()));
+                services.AddSingleton<ISupplierCategoryLookup>(new StubSupplierCategoryLookup(categoriesById));
+            }));
 
     /// <summary>A minimal portfolio row: enough columns for the list (and, with
     /// <paramref name="autoRenewal"/>, for the renewal pipeline) without asserting anything about

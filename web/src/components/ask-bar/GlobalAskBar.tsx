@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { ApiClient, CapabilityBody } from "../../api/client";
+import type { WorkspaceRole } from "../shell/navItems";
 import { getAskBarCopy } from "./askSuggestions";
 import "./ask-bar.css";
 
@@ -8,6 +9,14 @@ export interface GlobalAskBarProps {
   /** `useValidatedContractCount`'s `kbReady`, fetched once by `AppShell.tsx` and passed down --
    * this component never calls that API itself (ADR-024 V2 amendment; task E13/F09/US01/T01). */
   kbReady: boolean;
+  /**
+   * Task E25/F01/US01/T01 (AC-3): the server-derived role, threaded straight through from
+   * `AppShell.tsx` (which already receives it from `App.tsx`) -- never re-derived here. Used only
+   * to decide which catalog-sourced suggestion chips this bar shows (`askSuggestions.ts#
+   * getAskBarCopy`); `GET /api/capabilities` itself is un-gated and identical for both roles
+   * (AC-2, ADR-022 S16-11) -- this is presentation only, never a security control.
+   */
+  role: WorkspaceRole;
   /**
    * Task E13/F09/US01/T04 (gap G-CAPABILITIES): this component fetches `GET /api/capabilities`
    * itself (once -- the catalog is static and tenant-agnostic, `getCapabilities`'s own OpenAPI
@@ -30,13 +39,13 @@ export interface GlobalAskBarProps {
  *
  * Cmd/Ctrl+K focuses this input from anywhere in the app (design-system.md "⌘K opens Ask").
  */
-export default function GlobalAskBar({ kbReady, apiClient }: GlobalAskBarProps) {
+export default function GlobalAskBar({ kbReady, role, apiClient }: GlobalAskBarProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
   const [value, setValue] = useState("");
   const [capabilities, setCapabilities] = useState<readonly CapabilityBody[] | null>(null);
-  const copy = getAskBarCopy(location.pathname, kbReady, capabilities);
+  const copy = getAskBarCopy(location.pathname, kbReady, capabilities, role);
 
   useEffect(() => {
     void apiClient.getCapabilities().then((result) => {
