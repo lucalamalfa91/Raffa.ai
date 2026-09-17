@@ -555,8 +555,21 @@ persists it to the `embedding` table; `SearchAsync` embeds a query the
 same way and returns the tenant's nearest chunks by cosine distance
 (`Vector.CosineDistance`), explicitly filtered by `tenant_id` on top of
 that table's own RLS policy. Embedding generation never touches a
-provider SDK directly — always through `IAiGateway`. `SearchAsync`'s first
-caller is `POST /api/chat/query` (task E02/F04/US02/T01, below).
+provider SDK directly — always through `IAiGateway`.
+**Task E28/F02/US01/T01 (NW-81)** adds `SearchByContractAsync`, the
+contract-scoped counterpart `AskCopilotService.BuildClausePackAsync` now
+calls whenever a turn already names a contract: it resolves an
+`EmbeddingSearchQuery.ContractId` to that contract's own `Document` rows
+(`SourceType`/`SourceId`) for a "this contract" slice, plus a separate,
+lower-`topK` "similar types" peer slice from other validated contracts of
+the same `ContractDocumentType` — so a 37-contract tenant no longer gets
+another supplier's MSA back for a question about one named contract.
+`SearchAsync` remains the tenant-wide fallback for a fully unscoped
+question (no contract named at all); its first caller is
+`POST /api/chat/query` (task E02/F04/US02/T01, below) by way of
+`AskCopilotService`. Neither method ever reaches the market-intelligence
+feed — that stays behind `IMarketKnowledgeRetrieval`, a separate index,
+never mixed into this tenant pgvector table (ADR-011).
 `IndexChunkAsync`'s first production caller is `DocumentProcessingPipeline`
 (task E02/F06/US01/T01, r1-integration, above) — one `Embedding` row per
 parsed page, `SourceType="Document"`/`SourceId=<documentId>`, so a document
@@ -1115,7 +1128,7 @@ composition root, `Raffa.Api.AskCopilotService` (`AskAsync`) — the pack
 -composition root ADR-024 calls for: everything `Raffa.Chat`'s ADR-002
 allow-list (`[SharedKernel, AiGateway]`) forbids that module from doing
 itself (querying `PortfolioQueryService`/`Contract360QueryService`,
-`EmbeddingRetrievalService.SearchAsync`, `RenewalEngine`/
+`EmbeddingRetrievalService.SearchByContractAsync`/`SearchAsync`, `RenewalEngine`/
 `PriorityScoreCalculator`/`CriticalityScoreCalculator` (Insights),
 `SavingsOpportunityService`, `IBenchmarkService`/`IMarketKnowledgeRetrieval`
 (Market), `ISupplierNameLookup`) happens here, then gets handed to
