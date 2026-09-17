@@ -126,12 +126,13 @@ public sealed class ScopedAskEndpointTests : IClassFixture<RaffaApiFactory>
         // supplier).
         Assert.Equal("answer", root.GetProperty("kind").GetString());
 
-        // AC-3: the pack/citations are scoped to the named contract's own supplier.
-        var citedDocumentIds = root.GetProperty("citations").EnumerateArray()
-            .Select(c => c.TryGetProperty("documentId", out var id) ? id.GetString() : null)
+        // AC-3: the pack/citations are scoped to the named contract. contractId is the real id;
+        // documentId is only set when a page excerpt exists.
+        var citedContractIds = root.GetProperty("citations").EnumerateArray()
+            .Select(c => c.TryGetProperty("contractId", out var id) ? id.GetString() : null)
             .Where(id => id is not null)
             .ToList();
-        Assert.Contains($"fact:{scopedContract.Id}:renewal", citedDocumentIds);
+        Assert.Contains(scopedContract.Id.ToString(), citedContractIds);
 
         // The redirect this fix removes is the only place "Oracle" could otherwise ever surface
         // (RedirectReplyBuilder.NeedsDocument's own copy: "No {namedSupplier} contract has been
@@ -235,14 +236,14 @@ public sealed class ScopedAskEndpointTests : IClassFixture<RaffaApiFactory>
 
         Assert.Equal("answer", root.GetProperty("kind").GetString());
 
-        var citedDocumentIds = root.GetProperty("citations").EnumerateArray()
-            .Select(c => c.TryGetProperty("documentId", out var id) ? id.GetString() : null)
+        var citedContractIds = root.GetProperty("citations").EnumerateArray()
+            .Select(c => c.TryGetProperty("contractId", out var id) ? id.GetString() : null)
             .Where(id => id is not null)
             .ToList();
 
-        // AC-1/AC-3: scoped to the named contract's own supplier -- not the deterministic
-        // renewal-window aggregate both contracts would otherwise match.
-        Assert.Contains($"fact:{scopedContract.Id}:renewal", citedDocumentIds);
-        Assert.DoesNotContain($"fact:{otherContract.Id}:renewal", citedDocumentIds);
+        // AC-1/AC-3: scoped to the named contract -- not the deterministic renewal-window
+        // aggregate both contracts would otherwise match.
+        Assert.Contains(scopedContract.Id.ToString(), citedContractIds);
+        Assert.DoesNotContain(otherContract.Id.ToString(), citedContractIds);
     }
 }

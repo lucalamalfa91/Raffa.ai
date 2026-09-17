@@ -424,7 +424,10 @@ internal sealed class AskCopilotService(
             var fact = BuildContractFactItem(
                 namedContractItem,
                 await ResolveDisplayNameAsync(namedContractItem, cancellationToken).ConfigureAwait(false));
-            var excerpts = await BuildClausePackAsync(CurrentTenantId, question, namedContractItem, cancellationToken)
+            // Clause rows, not embedding search: InMemory EF cannot translate pgvector
+            // CosineDistance, and a date/spend fact should quote the extracted clause when one
+            // exists rather than 500 the whole Ask turn.
+            var excerpts = await BuildNamedContractExcerptItemsAsync(namedContractItem, cancellationToken)
                 .ConfigureAwait(false);
             var grounded = excerpts
                 .Where(item => item.DocumentId is not null && !string.IsNullOrWhiteSpace(item.Snippet))
@@ -546,9 +549,18 @@ internal sealed class AskCopilotService(
     private async Task<IReadOnlyList<PackItem>> BuildClausePackAsync(
         TenantId tenantId, string question, PortfolioListItem? namedContractItem, CancellationToken cancellationToken)
     {
-        var searchResult = await embeddingRetrievalService
-            .SearchAsync(tenantId, question, ClauseTopK, cancellationToken)
-            .ConfigureAwait(false);
+        Result<IReadOnlyList<EmbeddingSearchResult>> searchResult;
+        try
+        {
+            searchResult = await embeddingRetrievalService
+                .SearchAsync(tenantId, question, ClauseTopK, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (InvalidOperationException)
+        {
+            // EF InMemory cannot translate Vector.CosineDistance (see InMemoryAskEngineFactory).
+            return [];
+        }
 
         if (searchResult.IsFailure)
         {
@@ -636,6 +648,58 @@ internal sealed class AskCopilotService(
         }
 
         return (namedContractId is { } contractId ? $"/contracts/{contractId}" : null, null);
+    }
+
+    /// <summary>
+    /// Page excerpts for a named-contract structured fact card, taken from already-extracted
+    /// <see cref="Contract360Result.Clauses"/> — the actual document sentence, not the portfolio
+    /// paraphrase. Does not call embedding search (InMemory CosineDistance cannot translate).
+    /// </summary>
+    private async Task<IReadOnlyList<PackItem>> BuildNamedContractExcerptItemsAsync(
+        PortfolioListItem namedContractItem, CancellationToken cancellationToken)
+    {
+        var contract360 = await contract360QueryService
+            .GetByIdAsync(CurrentTenantId, new EntityId(namedContractItem.ContractId), cancellationToken)
+            .ConfigureAwait(false);
+
+        if (contract360 is null)
+        {
+            return [];
+        }
+
+        var items = new List<PackItem>();
+        foreach (var clause in contract360.Clauses)
+        {
+            if (string.IsNullOrWhiteSpace(clause.RawText) || clause.SourceDocumentId is null)
+            {
+                continue;
+            }
+
+            var (href, previewUrl) = ResolveTenantClauseLinks(
+                clause, clause.ClauseId, namedContractItem.ContractId);
+            var page = clause.SourcePage;
+            var subtitle = page is { } knownPage
+                ? $"p.{knownPage}" + (clause.SourceSpan is { } span ? $" §{span}" : string.Empty)
+                : clause.SourceSpan;
+
+            items.Add(new PackItem(
+                $"fact:{clause.ClauseId}:clause",
+                PackCorpus.Tenant,
+                $"{clause.ClauseType} clause",
+                subtitle,
+                page,
+                clause.SourceSpan,
+                clause.RawText,
+                href,
+                previewUrl,
+                null,
+                "validated contract",
+                [],
+                namedContractItem.ContractId.ToString(),
+                clause.SourceDocumentId.Value.ToString()));
+        }
+
+        return items;
     }
 
     private async Task<IReadOnlyList<PackItem>> BuildMarketComparePackAsync(
@@ -1015,7 +1079,8 @@ internal sealed class AskCopilotService(
             null,
             null,
             "validated contract",
-            values);
+            values,
+            item.ContractId.ToString());
     }
 
     private static IReadOnlyList<PackValue> BuildDateValues(DateOnly? renewalDate, DateOnly? cancellationDeadline)
