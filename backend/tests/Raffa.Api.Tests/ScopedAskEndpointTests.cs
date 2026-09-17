@@ -26,9 +26,18 @@ namespace Raffa.Api.Tests;
 /// success path without a Testcontainer.
 ///
 /// <para>
-/// Both tests below ask a question that names <b>no</b> known supplier the way the "Ask about it"
-/// entry point itself never requires one — the whole point of AC-1/AC-2/AC-3 is that scope alone,
-/// not the question text, decides which contract the turn is about.
+/// The first two tests below ask a question that names <b>no</b> known supplier the way the "Ask
+/// about it" entry point itself never requires one — the whole point of AC-1/AC-2/AC-3 is that
+/// scope alone, not the question text, decides which contract the turn is about.
+/// </para>
+///
+/// <para>
+/// <b>Deepened (task E27/F02/US01/T01, NW-76; ADR-024 w19 cl. 12; lock 4)</b>: the four tests
+/// below that prove a purely deictic phrasing resolves to the scope id, a scoped id wins over a
+/// same-supplier portfolio hit that a name-only lookup would otherwise pick, an unseen scope id
+/// refuses before any pack is built, and <c>AskIntent.PortfolioMarketPosition</c> is exempt from
+/// that refusal (lock 4) — <c>AskCopilotService.BuildInDomainReplyAsync</c>'s own doc comment
+/// names the mechanism.
 /// </para>
 /// </summary>
 public sealed class ScopedAskEndpointTests : IClassFixture<RaffaApiFactory>
@@ -244,5 +253,315 @@ public sealed class ScopedAskEndpointTests : IClassFixture<RaffaApiFactory>
         // renewal-window aggregate both contracts would otherwise match.
         Assert.Contains($"fact:{scopedContract.Id}:renewal", citedDocumentIds);
         Assert.DoesNotContain($"fact:{otherContract.Id}:renewal", citedDocumentIds);
+    }
+
+    /// <summary>
+    /// AC-1 (task E27/F02/US01/T01, NW-76; ADR-024 w19 cl. 12): a purely deictic phrasing ("this
+    /// contract") carries no supplier name at all for <c>Gate.DomainGate</c>'s own free-text
+    /// extraction to find -- the scope id is the only thing that can resolve it. Two contracts,
+    /// two different suppliers, so an unscoped reading of this question has no named-supplier
+    /// contract to land on at all; scoped, it must cite the named contract alone.
+    /// </summary>
+    [Fact]
+    public async Task Scoped_conversation_resolves_a_deictic_question_to_the_scoped_contract()
+    {
+        var recordingGateway = new RecordingAiGateway(
+            new FixtureAiGateway(new AiGatewayModelOptions(), SystemClock.Instance, new AiGatewayOcrOptions()));
+
+        var tenantId = TenantId.New();
+        const string userId = "alice@example.com";
+        var salesforceId = EntityId.New();
+        var databricksId = EntityId.New();
+
+        var factory = _factory
+            .WithInMemoryAskEngine(recordingGateway)
+            .WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+                services.AddSingleton<ISupplierNameLookup>(new StubSupplierNameLookup(
+                    new Dictionary<EntityId, string>
+                    {
+                        [salesforceId] = "Salesforce, Inc.",
+                        [databricksId] = "Databricks Inc.",
+                    }))));
+
+        var now = DateTimeOffset.UtcNow;
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var scopedContract = new Contract
+        {
+            TenantId = tenantId,
+            SupplierId = salesforceId,
+            Type = ContractDocumentType.Msa,
+            Status = "Completed",
+            Currency = "CHF",
+            EndDate = today.AddDays(30),
+            AutoRenewal = true,
+            CreatedAt = now,
+        };
+        var otherContract = new Contract
+        {
+            TenantId = tenantId,
+            SupplierId = databricksId,
+            Type = ContractDocumentType.OrderForm,
+            Status = "Completed",
+            Currency = "CHF",
+            EndDate = today.AddDays(45),
+            AutoRenewal = true,
+            CreatedAt = now.AddSeconds(-1),
+        };
+        await factory.SeedContractAsync(scopedContract);
+        await factory.SeedDocumentAsync(InMemoryAskEngineFactory.NewLinkedDocument(tenantId, scopedContract.Id));
+        await factory.SeedContractAsync(otherContract);
+        await factory.SeedDocumentAsync(InMemoryAskEngineFactory.NewLinkedDocument(tenantId, otherContract.Id));
+
+        var client = factory.CreateClient();
+
+        using var createRequest = new HttpRequestMessage(HttpMethod.Post, "/api/conversations")
+        {
+            Content = JsonContent.Create(new { scopeContractId = scopedContract.Id.Value.ToString() }),
+        };
+        createRequest.Headers.Add("X-Tenant-Id", tenantId.Value.ToString());
+        createRequest.Headers.Add("X-User-Id", userId);
+
+        var createResponse = await client.SendAsync(createRequest);
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+
+        using var created = JsonDocument.Parse(await createResponse.Content.ReadAsStringAsync());
+        var conversationId = created.RootElement.GetProperty("id").GetGuid();
+
+        using var messageRequest = new HttpRequestMessage(HttpMethod.Post, $"/api/conversations/{conversationId}/messages")
+        {
+            Content = JsonContent.Create(new { question = "What's the cancellation deadline for this contract?" }),
+        };
+        messageRequest.Headers.Add("X-Tenant-Id", tenantId.Value.ToString());
+        messageRequest.Headers.Add("X-User-Id", userId);
+
+        var response = await client.SendAsync(messageRequest);
+        var rawBody = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var body = JsonDocument.Parse(rawBody);
+        var root = body.RootElement;
+
+        Assert.Equal("answer", root.GetProperty("kind").GetString());
+
+        var citedDocumentIds = root.GetProperty("citations").EnumerateArray()
+            .Select(c => c.TryGetProperty("documentId", out var id) ? id.GetString() : null)
+            .Where(id => id is not null)
+            .ToList();
+
+        Assert.Contains($"fact:{scopedContract.Id}:renewal", citedDocumentIds);
+        Assert.DoesNotContain($"fact:{otherContract.Id}:renewal", citedDocumentIds);
+    }
+
+    /// <summary>
+    /// AC-2 (task E27/F02/US01/T01, NW-76; ADR-024 w19 cl. 12): two contracts sharing one
+    /// supplier -- the literal "two contracts, same supplier: scoped id wins" case the wave
+    /// record names. The newer one sorts first in
+    /// <c>PortfolioQueryService.GetPortfolioAsync</c>'s own newest-first order, so a name-only
+    /// <c>FirstOrDefault</c> would silently answer about it even when the conversation is scoped
+    /// to the older one -- the scoped id must win regardless of ordering.
+    /// </summary>
+    [Fact]
+    public async Task Scoped_id_wins_over_a_same_supplier_portfolio_hit_never_FirstOrDefault_by_name()
+    {
+        var recordingGateway = new RecordingAiGateway(
+            new FixtureAiGateway(new AiGatewayModelOptions(), SystemClock.Instance, new AiGatewayOcrOptions()));
+
+        var tenantId = TenantId.New();
+        const string userId = "alice@example.com";
+        var salesforceId = EntityId.New();
+
+        var factory = _factory
+            .WithInMemoryAskEngine(recordingGateway)
+            .WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+                services.AddSingleton<ISupplierNameLookup>(
+                    new StubSupplierNameLookup(new Dictionary<EntityId, string> { [salesforceId] = "Salesforce, Inc." }))));
+
+        var now = DateTimeOffset.UtcNow;
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        // Newer CreatedAt -- sorts FIRST in GetPortfolioAsync's own OrderByDescending(CreatedAt)
+        // -- and is deliberately the one this test does NOT scope to, so a name-only
+        // FirstOrDefault would pick this one instead of the scoped contract if the fix regressed.
+        var newerSameSupplierContract = new Contract
+        {
+            TenantId = tenantId,
+            SupplierId = salesforceId,
+            Type = ContractDocumentType.OrderForm,
+            Status = "Completed",
+            Currency = "CHF",
+            EndDate = today.AddDays(200),
+            AutoRenewal = true,
+            CreatedAt = now,
+        };
+        var scopedContract = new Contract
+        {
+            TenantId = tenantId,
+            SupplierId = salesforceId,
+            Type = ContractDocumentType.Msa,
+            Status = "Completed",
+            Currency = "CHF",
+            EndDate = today.AddDays(30),
+            AutoRenewal = true,
+            CreatedAt = now.AddSeconds(-1),
+        };
+        await factory.SeedContractAsync(newerSameSupplierContract);
+        await factory.SeedDocumentAsync(InMemoryAskEngineFactory.NewLinkedDocument(tenantId, newerSameSupplierContract.Id));
+        await factory.SeedContractAsync(scopedContract);
+        await factory.SeedDocumentAsync(InMemoryAskEngineFactory.NewLinkedDocument(tenantId, scopedContract.Id));
+
+        var client = factory.CreateClient();
+
+        using var createRequest = new HttpRequestMessage(HttpMethod.Post, "/api/conversations")
+        {
+            Content = JsonContent.Create(new { scopeContractId = scopedContract.Id.Value.ToString() }),
+        };
+        createRequest.Headers.Add("X-Tenant-Id", tenantId.Value.ToString());
+        createRequest.Headers.Add("X-User-Id", userId);
+
+        var createResponse = await client.SendAsync(createRequest);
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+
+        using var created = JsonDocument.Parse(await createResponse.Content.ReadAsStringAsync());
+        var conversationId = created.RootElement.GetProperty("id").GetGuid();
+
+        using var messageRequest = new HttpRequestMessage(HttpMethod.Post, $"/api/conversations/{conversationId}/messages")
+        {
+            Content = JsonContent.Create(new { question = "What's the cancellation deadline?" }),
+        };
+        messageRequest.Headers.Add("X-Tenant-Id", tenantId.Value.ToString());
+        messageRequest.Headers.Add("X-User-Id", userId);
+
+        var response = await client.SendAsync(messageRequest);
+        var rawBody = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var body = JsonDocument.Parse(rawBody);
+        var root = body.RootElement;
+
+        Assert.Equal("answer", root.GetProperty("kind").GetString());
+
+        var citedDocumentIds = root.GetProperty("citations").EnumerateArray()
+            .Select(c => c.TryGetProperty("documentId", out var id) ? id.GetString() : null)
+            .Where(id => id is not null)
+            .ToList();
+
+        // AC-2: the scoped contract, never the newer same-supplier one a name-only
+        // FirstOrDefault would otherwise have picked.
+        Assert.Contains($"fact:{scopedContract.Id}:renewal", citedDocumentIds);
+        Assert.DoesNotContain($"fact:{newerSameSupplierContract.Id}:renewal", citedDocumentIds);
+    }
+
+    /// <summary>
+    /// AC-3 (task E27/F02/US01/T01, NW-76; ADR-024 w19 cl. 12): a <c>scopeContractId</c> naming a
+    /// contract this call's own portfolio never returns -- here, simply never seeded at all, the
+    /// same "no row" shape a wrong-tenant id or one deleted since the conversation was opened
+    /// would also produce -- refuses instead of silently falling back to an unscoped answer.
+    /// <c>ConversationService.CreateAsync</c> does not itself authorize the id (a separate, open
+    /// gap outside this task's own file scope -- `reports/architecture/waves/w19.md` NW-76's raw
+    /// record), so a conversation can carry one; this is exactly why the engine re-checks on every
+    /// turn rather than trusting the value it was handed at creation.
+    /// </summary>
+    [Fact]
+    public async Task Unseen_scope_id_refuses_before_any_pack_is_assembled()
+    {
+        var recordingGateway = new RecordingAiGateway(
+            new FixtureAiGateway(new AiGatewayModelOptions(), SystemClock.Instance, new AiGatewayOcrOptions()));
+
+        var tenantId = TenantId.New();
+        const string userId = "alice@example.com";
+        var unseenContractId = EntityId.New();
+
+        var factory = _factory.WithInMemoryAskEngine(recordingGateway);
+        var client = factory.CreateClient();
+
+        using var createRequest = new HttpRequestMessage(HttpMethod.Post, "/api/conversations")
+        {
+            Content = JsonContent.Create(new { scopeContractId = unseenContractId.Value.ToString() }),
+        };
+        createRequest.Headers.Add("X-Tenant-Id", tenantId.Value.ToString());
+        createRequest.Headers.Add("X-User-Id", userId);
+
+        var createResponse = await client.SendAsync(createRequest);
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+
+        using var created = JsonDocument.Parse(await createResponse.Content.ReadAsStringAsync());
+        var conversationId = created.RootElement.GetProperty("id").GetGuid();
+
+        using var messageRequest = new HttpRequestMessage(HttpMethod.Post, $"/api/conversations/{conversationId}/messages")
+        {
+            Content = JsonContent.Create(new { question = "What's the cancellation deadline for this contract?" }),
+        };
+        messageRequest.Headers.Add("X-Tenant-Id", tenantId.Value.ToString());
+        messageRequest.Headers.Add("X-User-Id", userId);
+
+        var response = await client.SendAsync(messageRequest);
+        var rawBody = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var body = JsonDocument.Parse(rawBody);
+        var root = body.RootElement;
+
+        // AC-3: refusal, never a pack -- no citations at all, unscoped or otherwise.
+        Assert.Equal("refusal", root.GetProperty("kind").GetString());
+        Assert.Equal(0, root.GetProperty("citations").GetArrayLength());
+    }
+
+    /// <summary>
+    /// AC-4 / lock 4 (task E27/F02/US01/T01, NW-76; ADR-024 w19 cl. 12): a
+    /// <c>AskIntent.PortfolioMarketPosition</c>-shaped question is exempt from AC-3's unseen-scope
+    /// refusal -- it is always portfolio-wide by construction and never depends on the scoped
+    /// contract resolving at all. That intent's own pack is not yet built (a later task's scope --
+    /// NW-86/87/88/89 in the same wave record), so this question still abstains -- but it must be
+    /// the ordinary empty-pack <c>ReplyKind.Abstain</c>, never this task's own new
+    /// <c>ReplyKind.Refusal</c>, proving the exemption actually fired rather than the check simply
+    /// never running.
+    /// </summary>
+    [Fact]
+    public async Task Unseen_scope_id_does_not_refuse_a_portfolio_market_position_question()
+    {
+        var recordingGateway = new RecordingAiGateway(
+            new FixtureAiGateway(new AiGatewayModelOptions(), SystemClock.Instance, new AiGatewayOcrOptions()));
+
+        var tenantId = TenantId.New();
+        const string userId = "alice@example.com";
+        var unseenContractId = EntityId.New();
+
+        var factory = _factory.WithInMemoryAskEngine(recordingGateway);
+        var client = factory.CreateClient();
+
+        using var createRequest = new HttpRequestMessage(HttpMethod.Post, "/api/conversations")
+        {
+            Content = JsonContent.Create(new { scopeContractId = unseenContractId.Value.ToString() }),
+        };
+        createRequest.Headers.Add("X-Tenant-Id", tenantId.Value.ToString());
+        createRequest.Headers.Add("X-User-Id", userId);
+
+        var createResponse = await client.SendAsync(createRequest);
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+
+        using var created = JsonDocument.Parse(await createResponse.Content.ReadAsStringAsync());
+        var conversationId = created.RootElement.GetProperty("id").GetGuid();
+
+        using var messageRequest = new HttpRequestMessage(HttpMethod.Post, $"/api/conversations/{conversationId}/messages")
+        {
+            Content = JsonContent.Create(new { question = "Which contracts are poorly positioned on the market?" }),
+        };
+        messageRequest.Headers.Add("X-Tenant-Id", tenantId.Value.ToString());
+        messageRequest.Headers.Add("X-User-Id", userId);
+
+        var response = await client.SendAsync(messageRequest);
+        var rawBody = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var body = JsonDocument.Parse(rawBody);
+        var root = body.RootElement;
+
+        // Lock 4: the exemption fired -- the ordinary empty-pack abstain, never this task's own
+        // unseen-scope refusal.
+        Assert.Equal("abstain", root.GetProperty("kind").GetString());
     }
 }
