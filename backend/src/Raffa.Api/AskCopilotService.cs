@@ -22,6 +22,7 @@ using Raffa.Savings.Application;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Suppliers;
 using Raffa.SharedKernel.Tenancy;
+using Raffa.Suppliers.Products.Application;
 
 namespace Raffa.Api;
 
@@ -180,7 +181,16 @@ internal sealed class AskCopilotService(
             ? await supplierNameLookup.GetNamesAsync(tenantId, supplierIds, cancellationToken).ConfigureAwait(false)
             : new Dictionary<EntityId, string>();
 
-        var gate = domainGate.Classify(question, supplierNames.Values.ToList());
+        // Task E27/F05/US01/T01 (NW-80): DomainGate cannot normalize a name itself (Raffa.Chat's
+        // allow-list is [SharedKernel, AiGateway] -- it cannot reference Raffa.Suppliers.Products),
+        // so this host -- the one place ADR-002 lets both sides be referenced -- runs the real
+        // SupplierNameNormalizer once per known name and hands the gate both forms (see
+        // KnownSupplierName's own doc comment).
+        var knownSuppliers = supplierNames.Values
+            .Select(name => new KnownSupplierName(name, SupplierNameNormalizer.Normalize(name)))
+            .ToList();
+
+        var gate = domainGate.Classify(question, knownSuppliers);
 
         // AC-1/AC-2 (ADR-024 "the gate resolves the scope id before the R-ASK-10 check"; task
         // E25/F03/US01/T01, NW-56): a conversation opened from Contract 360's "Ask about it"
@@ -233,7 +243,7 @@ internal sealed class AskCopilotService(
             GateLabel.Capability => (BuildCapabilityReply(portfolio.Items.Count), false),
             GateLabel.NeedsDocument => (BuildNeedsDocumentReply(gate.NamedSupplier!, portfolio.Items.Count), false),
             GateLabel.InDomain => await BuildInDomainReplyAsync(
-                tenantId, question, gate.NamedSupplier, portfolio, supplierNames, recentTurns, cancellationToken)
+                tenantId, question, gate.NamedSupplier, scopedContractItem, portfolio, supplierNames, recentTurns, cancellationToken)
                 .ConfigureAwait(false),
             _ => throw new ArgumentOutOfRangeException(nameof(gate), gate.Label, "Unknown GateLabel."),
         };
@@ -310,11 +320,19 @@ internal sealed class AskCopilotService(
     /// was empty" and "the answer failed to reach the gateway" apart from a real guard catch, which
     /// a single boolean derived from <see cref="ReplyKind"/> alone could never do (every one of
     /// these paths returns <see cref="ReplyKind.Abstain"/> identically).
+    ///
+    /// <para>
+    /// <b>Which contract "named" resolves to (task E27/F05/US01/T01, NW-80)</b>: see
+    /// <see cref="ResolveNamedContractItem"/> for the scoped-id-wins / soonest-cancellation-deadline
+    /// rule that replaced a plain <c>FirstOrDefault</c> here, and never silently merges multiple
+    /// contracts under one supplier without saying so.
+    /// </para>
     /// </summary>
     private async Task<(CopilotReply Reply, bool GuardIntervened)> BuildInDomainReplyAsync(
         TenantId tenantId,
         string question,
         string? namedSupplier,
+        PortfolioListItem? scopedContractItem,
         PortfolioPage portfolio,
         IReadOnlyDictionary<EntityId, string> supplierNames,
         IReadOnlyList<(string Role, string Markdown)> recentTurns,
@@ -322,12 +340,8 @@ internal sealed class AskCopilotService(
     {
         var plan = intentPlanner.Plan(question, namedSupplier);
 
-        var namedContractItem = plan.NamedSupplier is null
-            ? null
-            : portfolio.Items.FirstOrDefault(item =>
-                item.SupplierId is { } supplierId &&
-                supplierNames.TryGetValue(new EntityId(supplierId), out var name) &&
-                string.Equals(name, plan.NamedSupplier, StringComparison.OrdinalIgnoreCase));
+        var (namedContractItem, disambiguationItem) = ResolveNamedContractItem(
+            scopedContractItem, plan.NamedSupplier, portfolio, supplierNames);
 
         var contractIdForActions = namedContractItem is not null ? new EntityId(namedContractItem.ContractId) : (EntityId?)null;
         var routingContext = new RoutingContext(portfolio.TotalCount, CapabilityCallerRole.Standard, contractIdForActions);
@@ -354,6 +368,15 @@ internal sealed class AskCopilotService(
             AskIntent.DocumentStatus => BuildDocumentStatusPack(portfolio),
             _ => [],
         };
+
+        // NW-80 "never silently merge": prepended, not appended, so PackBudget.Apply (which always
+        // keeps at least its first item) and FixtureAiGateway.AnswerFromPack (which cites only the
+        // first few pack items) can never drop the one sentence telling the user which contract was
+        // chosen among several.
+        if (disambiguationItem is not null)
+        {
+            packItems = packItems.Prepend(disambiguationItem).ToList();
+        }
 
         var boundedPack = packBudget.Apply(packItems);
 
@@ -392,6 +415,129 @@ internal sealed class AskCopilotService(
             CopilotReplyBuilder.FromGuardedResult(
                 composed.Value.Result, boundedPack, resolvedActions, ResolveAbstainRecoveryActions(portfolio, routingContext)),
             composed.Value.GuardIntervened);
+    }
+
+    /// <summary>
+    /// Task E27/F05/US01/T01 (NW-80; parent story us-01-supplier-resolution AC-2): which single
+    /// contract a named-supplier turn answers about, replacing a plain <c>FirstOrDefault</c> over
+    /// <paramref name="portfolio"/> (whichever row the portfolio query happened to return first for
+    /// that supplier — never a deliberate choice, and never told to the user) with two rules, tried
+    /// in order:
+    ///
+    /// <list type="number">
+    /// <item><b>Scoped id wins.</b> <paramref name="scopedContractItem"/> is <see cref="AskAsync"/>'s
+    /// own already-resolved <c>Conversation.ScopeContractId</c> (Contract 360's "Ask about it") — it
+    /// names one exact contract with no ambiguity at all, so it is returned unchanged and no
+    /// disambiguation note is produced (the user already knows which contract they opened this chat
+    /// from).</item>
+    /// <item><b>Else, the soonest cancellation deadline / renewal wins</b> — the same ordering
+    /// <c>Raffa.Renewals.Application.RenewalPipelineBuilder.Build</c> uses: cancellation deadline
+    /// when known, else renewal date, unknown-urgency rows last. Sorting directly on
+    /// <see cref="PortfolioListItem.CancellationDeadline"/>/<see cref="PortfolioListItem.RenewalDate"/>
+    /// *is* that ordering, not an approximation of it —
+    /// <c>Raffa.Renewals.Application.RenewalEngine.Calculate</c>'s own doc comment records that its
+    /// <c>RenewalDate</c> "reproduces <see cref="PortfolioListItem.RenewalDate"/>'s own convention on
+    /// purpose". When more than one contract matches, <see cref="BuildMultiContractDisambiguationItem"/>
+    /// is what keeps the pick from being a silent merge.</item>
+    /// </list>
+    /// </summary>
+    /// <returns>The contract this turn answers about (or <see langword="null"/> when no supplier was
+    /// named, or a named supplier has no contract at all — <see cref="GateLabel.NeedsDocument"/>
+    /// already handled the latter upstream so this is not expected in practice), and a
+    /// <see cref="PackCorpus.Calc"/> pack item naming the choice, only when the choice was actually
+    /// ambiguous.</returns>
+    private static (PortfolioListItem? Item, PackItem? DisambiguationItem) ResolveNamedContractItem(
+        PortfolioListItem? scopedContractItem,
+        string? namedSupplier,
+        PortfolioPage portfolio,
+        IReadOnlyDictionary<EntityId, string> supplierNames)
+    {
+        if (scopedContractItem is not null)
+        {
+            return (scopedContractItem, null);
+        }
+
+        if (namedSupplier is null)
+        {
+            return (null, null);
+        }
+
+        var matches = portfolio.Items
+            .Where(item =>
+                item.SupplierId is { } supplierId &&
+                supplierNames.TryGetValue(new EntityId(supplierId), out var name) &&
+                string.Equals(name, namedSupplier, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(item => item.CancellationDeadline ?? item.RenewalDate ?? DateOnly.MaxValue)
+            .ThenBy(item => item.ContractId)
+            .ToList();
+
+        if (matches.Count == 0)
+        {
+            return (null, null);
+        }
+
+        var chosen = matches[0];
+
+        if (matches.Count == 1)
+        {
+            return (chosen, null);
+        }
+
+        return (chosen, BuildMultiContractDisambiguationItem(chosen, matches.Count, namedSupplier));
+    }
+
+    /// <summary>
+    /// NW-80's required disambiguation sentence: <c>"Using {Type} CT-01 (renews …). Ask if you meant
+    /// another."</c> (task text, verbatim). A <see cref="PackCorpus.Calc"/> pack item, not free-form
+    /// model prose, so the fact of which contract was picked is grounded evidence the `answer` role
+    /// can cite rather than something it might choose to omit — both the fixture and the live gateway
+    /// cite pack items, never invent independent sentences (<c>Raffa.AiGateway.Fixtures
+    /// .FixtureAiGateway.AnswerFromPack</c>'s own "no chunk concatenation" convention), and
+    /// <see cref="BuildInDomainReplyAsync"/> prepends this item so <see cref="PackBudget.Apply"/> and
+    /// that fixture's first-N-items citation both always keep it.
+    ///
+    /// <para>
+    /// "CT-01" is this one reply's own local label, not a persisted contract code (no such column
+    /// exists on <c>Contract</c> yet) — it exists only so "ask if you meant another" has something
+    /// short to refer back to. It is always "01" because <paramref name="chosen"/> is always the
+    /// soonest match (position 1 of <see cref="ResolveNamedContractItem"/>'s own soonest-first sort)
+    /// and this sentence only ever names the one contract actually chosen, never enumerates the
+    /// others.
+    /// </para>
+    /// </summary>
+    private static PackItem BuildMultiContractDisambiguationItem(
+        PortfolioListItem chosen, int matchCount, string supplierDisplayName)
+    {
+        const string ChosenContractLabel = "CT-01";
+
+        // Never fabricated (Appendix C rule 10): renewal date first (what RenewalPipelineBuilder's
+        // own sort actually ordered on when known), else the cancellation deadline, else the bare
+        // end date, else an honest "unknown" rather than inventing one.
+        var renewalText = chosen.RenewalDate is { } renewalDate
+            ? $"renews {renewalDate:yyyy-MM-dd}"
+            : chosen.CancellationDeadline is { } deadline
+                ? $"cancellation deadline {deadline:yyyy-MM-dd}"
+                : chosen.EndDate is { } endDate
+                    ? $"ends {endDate:yyyy-MM-dd}"
+                    : "renewal date unknown";
+
+        var snippet =
+            $"Using {chosen.Type} {ChosenContractLabel} ({renewalText}). {supplierDisplayName} has " +
+            $"{matchCount} contracts on file — ask if you meant another.";
+
+        return new PackItem(
+            InsightsCitationKeys.Calc("multi-contract-resolution"),
+            PackCorpus.Calc,
+            $"{supplierDisplayName} — multiple contracts",
+            null,
+            null,
+            null,
+            snippet,
+            null, // Href is always null for PackCorpus.Calc (PackItem.Href's own doc comment).
+            null,
+            null,
+            "deterministic calculator",
+            []);
     }
 
     /// <summary>
