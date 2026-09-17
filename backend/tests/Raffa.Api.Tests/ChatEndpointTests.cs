@@ -281,14 +281,17 @@ public sealed class ChatEndpointTests : IClassFixture<RaffaApiFactory>
         using var body = JsonDocument.Parse(rawBody);
         Assert.Equal("answer", body.RootElement.GetProperty("kind").GetString());
 
-        var citedDocumentIds = body.RootElement.GetProperty("citations").EnumerateArray()
-            .Select(c => c.TryGetProperty("documentId", out var id) ? id.GetString() : null)
+        // Citations stamp a real contractId (BuildContractFactItem has no single source page, so
+        // documentId is null). The old stub put the internal `fact:{id}:renewal` lookup key on
+        // documentId — that is no longer an id.
+        var citedContractIds = body.RootElement.GetProperty("citations").EnumerateArray()
+            .Select(c => c.TryGetProperty("contractId", out var id) ? id.GetString() : null)
             .Where(id => id is not null)
             .ToList();
 
-        Assert.Contains($"fact:{renewingSoon.Id}:renewal", citedDocumentIds);
-        Assert.Contains($"fact:{alsoRenewingSoon.Id}:renewal", citedDocumentIds);
-        Assert.DoesNotContain($"fact:{notInWindow.Id}:renewal", citedDocumentIds);
+        Assert.Contains(renewingSoon.Id.ToString(), citedContractIds);
+        Assert.Contains(alsoRenewingSoon.Id.ToString(), citedContractIds);
+        Assert.DoesNotContain(notInWindow.Id.ToString(), citedContractIds);
 
         Assert.DoesNotContain("Structured query", rawBody, StringComparison.Ordinal);
         Assert.DoesNotContain("Document:", rawBody, StringComparison.Ordinal);
