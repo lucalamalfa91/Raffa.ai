@@ -180,6 +180,7 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     postMessage: vi.fn(),
     getCapabilities: vi.fn().mockResolvedValue(emptyCatalog()),
     getMarketRecord: vi.fn(),
+    getQuoteBenchmarkHistory: vi.fn(),
     ...overrides,
   };
 }

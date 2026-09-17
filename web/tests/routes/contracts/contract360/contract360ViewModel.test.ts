@@ -156,6 +156,7 @@ function fieldEvidence(overrides: Partial<ContractFieldEvidenceBody> = {}): Cont
     passage: null,
     highlightStart: null,
     highlightLength: null,
+    box: null,
     modelId: "fixture-extract-model",
     extractedAt: "2026-09-09T10:00:00Z",
     ...overrides,

@@ -61,6 +61,7 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     postMessage: vi.fn(),
     getCapabilities: vi.fn(),
     getMarketRecord: vi.fn(),
+    getQuoteBenchmarkHistory: vi.fn(),
     getSavingsKpis: vi.fn(),
     getSavingsOpportunities: vi.fn(),
     ...overrides,

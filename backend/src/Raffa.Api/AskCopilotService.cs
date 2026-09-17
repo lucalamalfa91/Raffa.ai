@@ -393,7 +393,9 @@ internal sealed class AskCopilotService(
     /// </summary>
     private IReadOnlyList<CopilotAction> ResolveAbstainRecoveryActions(PortfolioPage portfolio, RoutingContext routingContext) =>
         portfolio.Items.Count == 0
-            ? capabilityRouting.ResolveActions([CapabilityIntent.HowTo(CapabilityCatalog.DocumentsKey)], routingContext)
+            // Documents is Always-available, so HowTo(DocumentsKey) would Navigate to /documents.
+            // UnknownSupplier is the catalog path that emits CopilotActionKind.Upload at /documents.
+            ? capabilityRouting.ResolveActions([CapabilityIntent.UnknownSupplier], routingContext)
             : capabilityRouting.ResolveActions([CapabilityIntent.HowTo(CapabilityCatalog.AskKey)], routingContext);
 
     private CopilotReply BuildRoutingOnlyReply(IntentPlanResult plan, RoutingContext routingContext)

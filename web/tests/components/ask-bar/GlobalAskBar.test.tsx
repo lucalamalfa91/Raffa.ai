@@ -66,6 +66,7 @@ function mockApiClient(getCapabilities: ApiClient["getCapabilities"] = vi.fn(() 
     postMessage: vi.fn(),
     getCapabilities,
     getMarketRecord: vi.fn(),
+    getQuoteBenchmarkHistory: vi.fn(),
   };
 }
 

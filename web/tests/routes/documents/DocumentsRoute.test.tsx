@@ -41,6 +41,7 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     postMessage: vi.fn(),
     getCapabilities: vi.fn(),
     getMarketRecord: vi.fn(),
+    getQuoteBenchmarkHistory: vi.fn(),
     listDocuments: vi.fn().mockResolvedValue(emptyPage()),
     getDocumentPreviewUrl: vi.fn(),
     reprocessDocument: vi.fn(),
@@ -240,6 +241,7 @@ function autoAcceptedEvidence(): ContractFieldEvidenceBody[] {
     passage: null,
     highlightStart: null,
     highlightLength: null,
+    box: null,
     modelId: null,
     extractedAt: "2026-09-09T10:00:00Z",
   }));
