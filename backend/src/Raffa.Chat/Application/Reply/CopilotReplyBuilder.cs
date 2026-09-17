@@ -77,6 +77,15 @@ public static class CopilotReplyBuilder
     /// <see cref="ReplyCitation"/> rows, numbered in the order the model returned them — the same
     /// order its inline <c>[n]</c> markers reference.
     /// </summary>
+    /// <remarks>
+    /// Task E28/F03/US01/T01 (NW-83; ADR-024 w19 cl. 17 "no citation without a pack source"):
+    /// <see cref="ReplyCitation.DocumentId"/>/<see cref="ReplyCitation.ContractId"/> echo
+    /// <see cref="PackItem.DocumentId"/>/<see cref="PackItem.ContractId"/> verbatim — the
+    /// composition root (<c>Raffa.Api.AskCopilotService</c>) is the one place that resolves a real
+    /// id, never this builder. Previously this stamped <see cref="PackItem.CitationKey"/> itself
+    /// onto <c>DocumentId</c> for every tenant item (an internal lookup token, not a document id)
+    /// and left <c>ContractId</c> always <see langword="null"/> — both stubs are gone.
+    /// </remarks>
     public static IReadOnlyList<ReplyCitation> BuildCitations(
         IReadOnlyList<string> citationKeys, IReadOnlyList<PackItem> pack)
     {
@@ -102,8 +111,8 @@ public static class CopilotReplyBuilder
                 Title: item.Title,
                 Subtitle: item.Subtitle,
                 Snippet: item.Snippet,
-                DocumentId: item.Corpus == PackCorpus.Tenant ? item.CitationKey : null,
-                ContractId: null,
+                DocumentId: item.DocumentId,
+                ContractId: item.ContractId,
                 Page: item.Page,
                 Section: item.Section,
                 PreviewUrl: item.PreviewUrl,

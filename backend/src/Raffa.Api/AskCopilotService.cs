@@ -624,30 +624,66 @@ internal sealed class AskCopilotService(
     /// also (via <see cref="ResolveTenantClauseLinks"/>'s own fallback) leaves it with no href: a
     /// peer citation names a fact pattern, never a clickable route into a contract the pack never
     /// resolved.
+    ///
+    /// <para>
+    /// <b>Real ids, not the citation key (task E28/F03/US01/T01, NW-83; ADR-024 w19 cl. 17 "no
+    /// citation without a pack source")</b>: <c>ContractId</c> is <paramref name="namedContractId"/>
+    /// verbatim -- already <see langword="null"/> for a peer or an unscoped (tenant-wide) hit, so
+    /// this never re-derives it. <c>DocumentId</c> is the resolved clause's own
+    /// <see cref="Contract360Clause.SourceDocumentId"/>, or -- closing the gap
+    /// <see cref="ResolveTenantClauseLinks"/>'s own doc comment used to name -- the hit's own source
+    /// id when <see cref="EmbeddingSearchResult.SourceType"/> is <c>"Document"</c>, which is what
+    /// <c>DocumentProcessingPipeline.IndexForRetrievalAsync</c> stamps on <em>every</em> chunk it
+    /// indexes today (no clause-level embedding exists yet, so this is the common case, not the
+    /// edge case). Both are peer-gated through the local <c>hitSourceType</c>/<c>hitPage</c>
+    /// variables below, not just <paramref name="namedContractId"/> -- a peer's own document is a
+    /// real, resolvable id and would otherwise leak through this fallback despite the href already
+    /// being suppressed for it.
+    /// </para>
+    ///
+    /// <para>
+    /// <c>internal</c>, not <c>private</c> -- the same test-reachability precedent
+    /// <see cref="ResolveTenantClauseLinks"/> already establishes: <c>Raffa.Api.Tests</c> asserts
+    /// directly on the returned <see cref="PackItem"/>'s <c>ContractId</c>/<c>DocumentId</c>/
+    /// <c>Page</c>/<c>Href</c> (task E28/F03/US01/T01's own Definition of Done line) without first
+    /// standing up a full <c>AskAsync</c>/HTTP round trip through a real embedding search.
+    /// </para>
     /// </summary>
-    private static PackItem BuildClausePackItem(
+    internal static PackItem BuildClausePackItem(
         EmbeddingSearchResult hit, Contract360Clause? clause, Guid? namedContractId, bool isPeer)
     {
-        var (href, previewUrl) = ResolveTenantClauseLinks(clause, hit.SourceId, namedContractId);
+        // NW-81's own peer-isolation rule, extended to ids: gating the raw hit fields here (not
+        // just namedContractId, already null for a peer at the call site) is what stops
+        // ResolveTenantClauseLinks' Document-sourced tier from resolving a peer's own document into
+        // a clickable href, and DocumentId below from resolving it into an id, either.
+        var hitSourceType = isPeer ? null : hit.SourceType;
+        var hitPage = isPeer ? null : hit.Page;
+
+        var (href, previewUrl) = ResolveTenantClauseLinks(clause, hit.SourceId, namedContractId, hitSourceType, hitPage);
 
         var baseTitle = clause is not null ? $"{clause.ClauseType} clause" : $"{hit.SourceType} excerpt";
         var subtitle = clause?.SourcePage is { } page
             ? $"p.{page}" + (clause.SourceSpan is { } span ? $" §{span}" : string.Empty)
             : null;
 
+        var documentId = clause?.SourceDocumentId?.Value.ToString()
+            ?? (string.Equals(hitSourceType, "Document", StringComparison.Ordinal) ? hit.SourceId.Value.ToString() : null);
+
         return new PackItem(
             $"fact:{hit.SourceId}:chunk[{hit.ChunkIndex}]",
             PackCorpus.Tenant,
             isPeer ? $"Similar contract — {baseTitle}" : baseTitle,
             isPeer ? "similar contract, not this one" : subtitle,
-            clause?.SourcePage,
-            clause?.SourceSpan ?? $"chunk {hit.ChunkIndex}",
+            clause?.SourcePage ?? hit.Page,
+            clause?.SourceSpan ?? hit.Section ?? $"chunk {hit.ChunkIndex}",
             hit.ChunkText,
             href,
             previewUrl,
             null,
             isPeer ? "similar validated contract" : "validated contract",
-            []);
+            [],
+            namedContractId?.ToString(),
+            documentId);
     }
 
     /// <summary>
@@ -659,28 +695,41 @@ internal sealed class AskCopilotService(
     /// <c>contract360ViewModel.ts</c> <c>resolveViewerHref</c> ("No document or no sourcePage -&gt;
     /// no link"): only when <paramref name="clause"/> carries both a
     /// <see cref="Contract360Clause.SourceDocumentId"/> and a <see cref="Contract360Clause.SourcePage"/>
-    /// does this return the viewer pair; otherwise it falls back to the pre-existing contract route
-    /// (or <see langword="null"/> with no named contract) -- never a dead viewer link.
+    /// does this return the viewer pair.
     ///
     /// <para>
-    /// Honest gap (R-EVD-01 "citations resolve to Clause.SourcePage/SourceSpan when the hit is a
-    /// clause, else to the page"): when the embedded chunk's own source is the whole Document rather
-    /// than one extracted <c>Clause</c> row (<c>Embedding.SourceType == "Document"</c>),
-    /// <paramref name="clause"/> never resolves and this falls back to the contract route even
-    /// though <paramref name="sourceId"/>/the hit's own page could, in principle, still resolve a
-    /// document-level viewer link. This task's own coding objective and Definition of Done line
-    /// ("a tenant clause pack item carries a viewer href + real previewUrl") scope the fix to the
-    /// clause-resolved case only; the Document-sourced-chunk branch is not attempted here.
+    /// <b>Three tiers (task E28/F03/US01/T01, NW-83; parent story us-01-citation-ids-backend AC-2)</b>:
+    /// (1) <paramref name="clause"/> resolves to a real document page -- the viewer, clause
+    /// included, exactly as before this task. (2) No <c>Clause</c> row, but
+    /// <paramref name="hitSourceType"/> is <c>"Document"</c> and <paramref name="hitPage"/> is known
+    /// -- the same viewer, page only (no clause to highlight). This is the honest gap this method's
+    /// own doc comment used to name ("the Document-sourced-chunk branch is not attempted here") --
+    /// closed now because it is, today, the <em>only</em> shape a real indexed chunk has
+    /// (<c>DocumentProcessingPipeline.IndexForRetrievalAsync</c> indexes every page under
+    /// <c>Embedding.SourceType == "Document"</c>; no clause-level embedding exists yet). (3) Neither
+    /// resolves -- the pre-existing <c>/contracts/{id}</c> CTA, now carrying whichever locator
+    /// survives (a clause id we know but could not look up, else a known page) so the 360 screen can
+    /// still land the reader near the right evidence -- never a preview (AC-3: previewUrl is tenant
+    /// <em>pages</em> only).
     /// </para>
     /// </summary>
     /// <param name="sourceId">The cited chunk's own source id (<see cref="EmbeddingSearchResult.SourceId"/>)
-    /// -- the clause id when <paramref name="clause"/> resolved it -- echoed into the viewer's
-    /// optional <c>?clause=</c> query parameter (ADR-018).</param>
+    /// -- the clause id when <paramref name="clause"/> resolved it, else the hit's own source id --
+    /// echoed into the viewer's optional <c>?clause=</c> query parameter (ADR-018) or (tier 2) the
+    /// viewer route itself.</param>
     /// <param name="namedContractId">The named contract's id, when the caller asked about one
-    /// contract by name -- the pre-existing fallback CTA target.</param>
+    /// contract by name -- the tier-3 fallback CTA target.</param>
+    /// <param name="hitSourceType">The raw hit's own <see cref="EmbeddingSearchResult.SourceType"/>
+    /// ("Document"/"Clause"), or <see langword="null"/> when the caller withholds it (a peer hit, or
+    /// a pre-NW-83 caller) -- defaulted so every existing call site keeps compiling unchanged.</param>
+    /// <param name="hitPage">The raw hit's own <see cref="EmbeddingSearchResult.Page"/>, under the
+    /// same withholding rule as <paramref name="hitSourceType"/>.</param>
     internal static (string? Href, string? PreviewUrl) ResolveTenantClauseLinks(
-        Contract360Clause? clause, EntityId sourceId, Guid? namedContractId)
+        Contract360Clause? clause, EntityId sourceId, Guid? namedContractId,
+        string? hitSourceType = null, int? hitPage = null)
     {
+        // Tier 1: a real Clause row anchored to a document page (AC-1/AC-2) -- unchanged from
+        // NW-55.
         if (clause is { SourceDocumentId: { } sourceDocumentId, SourcePage: { } sourcePage })
         {
             return (
@@ -688,7 +737,28 @@ internal sealed class AskCopilotService(
                 $"/api/documents/{sourceDocumentId.Value}/preview?page={sourcePage}");
         }
 
-        return (namedContractId is { } contractId ? $"/contracts/{contractId}" : null, null);
+        // Tier 2 ("else viewer ?page= + evidence highlight"): a Document-sourced chunk with a known
+        // page -- today's common real-indexing shape (see this method's own doc comment).
+        if (clause is null && hitPage is { } page && string.Equals(hitSourceType, "Document", StringComparison.Ordinal))
+        {
+            return (
+                $"/documents/{sourceId.Value}/viewer?page={page}",
+                $"/api/documents/{sourceId.Value}/preview?page={page}");
+        }
+
+        // Tier 3 ("else 360 ?clause=/?page="): neither resolves -- fall back to the contract route,
+        // carrying whichever locator survives.
+        if (namedContractId is not { } contractId)
+        {
+            return (null, null);
+        }
+
+        if (clause is null && string.Equals(hitSourceType, "Clause", StringComparison.Ordinal))
+        {
+            return ($"/contracts/{contractId}?clause={sourceId.Value}", null);
+        }
+
+        return (hitPage is { } fallbackPage ? $"/contracts/{contractId}?page={fallbackPage}" : $"/contracts/{contractId}", null);
     }
 
     /// <summary>
@@ -799,7 +869,8 @@ internal sealed class AskCopilotService(
                 null,
                 null,
                 "validated contract",
-                [new PackValue("unitPrice", unitPrice.ToString(CultureInfo.InvariantCulture), PackValueKind.Amount, contract360.Overview.Currency)]));
+                [new PackValue("unitPrice", unitPrice.ToString(CultureInfo.InvariantCulture), PackValueKind.Amount, contract360.Overview.Currency)],
+                namedContractItem.ContractId.ToString()));
         }
 
         var noteQuery = $"{supplierName}";
@@ -887,7 +958,8 @@ internal sealed class AskCopilotService(
                 pack.WhenYouMustMove.Explanation,
                 $"/contracts/{namedContractItem.ContractId}", null, null,
                 "deterministic calculator",
-                BuildDateValues(pack.WhenYouMustMove.RenewalDate, pack.WhenYouMustMove.CancellationDeadline)),
+                BuildDateValues(pack.WhenYouMustMove.RenewalDate, pack.WhenYouMustMove.CancellationDeadline),
+                namedContractItem.ContractId.ToString()),
         };
 
         var leverIndex = 0;
@@ -900,7 +972,8 @@ internal sealed class AskCopilotService(
                 null, null, null,
                 lever.Rationale,
                 $"/contracts/{namedContractItem.ContractId}", null, null,
-                "deterministic calculator", []));
+                "deterministic calculator", [],
+                namedContractItem.ContractId.ToString()));
         }
 
         var targetIndex = 0;
@@ -934,7 +1007,8 @@ internal sealed class AskCopilotService(
                 null, null, null,
                 target.Explanation,
                 $"/contracts/{namedContractItem.ContractId}", null, null,
-                "deterministic calculator", values));
+                "deterministic calculator", values,
+                namedContractItem.ContractId.ToString()));
         }
 
         items.Add(new PackItem(
@@ -944,7 +1018,8 @@ internal sealed class AskCopilotService(
             null, null, null,
             string.Join("; ", pack.NextSteps.Select(step => $"{step.Label} ({step.DueHint})")),
             $"/contracts/{namedContractItem.ContractId}", null, null,
-            "deterministic calculator", []));
+            "deterministic calculator", [],
+            namedContractItem.ContractId.ToString()));
 
         return items;
     }
@@ -1010,7 +1085,8 @@ internal sealed class AskCopilotService(
                 topComponent.Item2.Explanation,
                 $"/contracts/{contractItem.ContractId}", null, null,
                 "deterministic calculator",
-                [new PackValue("totalScore", score.TotalScore.ToString(CultureInfo.InvariantCulture), PackValueKind.Number)]));
+                [new PackValue("totalScore", score.TotalScore.ToString(CultureInfo.InvariantCulture), PackValueKind.Number)],
+                contractItem.ContractId.ToString()));
         }
 
         return items;
@@ -1040,7 +1116,8 @@ internal sealed class AskCopilotService(
             [
                 new PackValue("estimatedSavingsLow", opportunity.EstimatedSavingsLow.ToString(CultureInfo.InvariantCulture), PackValueKind.Amount, opportunity.Currency),
                 new PackValue("estimatedSavingsHigh", opportunity.EstimatedSavingsHigh.ToString(CultureInfo.InvariantCulture), PackValueKind.Amount, opportunity.Currency),
-            ])).ToList();
+            ],
+            namedContractItem.ContractId.ToString())).ToList();
     }
 
     private static IReadOnlyList<PackItem> BuildDocumentStatusPack(PortfolioPage portfolio)
@@ -1120,7 +1197,8 @@ internal sealed class AskCopilotService(
             null,
             null,
             "validated contract",
-            values);
+            values,
+            item.ContractId.ToString());
     }
 
     private static IReadOnlyList<PackValue> BuildDateValues(DateOnly? renewalDate, DateOnly? cancellationDeadline)
