@@ -387,6 +387,13 @@ public sealed class FixtureAiGateway(
     /// valid UTF-8 text (genuine binary — a real scanned image/PDF) still returns one honest
     /// placeholder page rather than fabricating plausible-looking contract text, the same "empty
     /// JSON is honest" choice <see cref="ExtractAsync"/> already makes for its own placeholder.
+    ///
+    /// Every page this returns has a <see langword="null"/> <see cref="AiOcrPage.Words"/> (ADR-017
+    /// w18): there is no `prebuilt-layout` behind this fixture either, and fabricating plausible
+    /// pixel polygons would be exactly the dishonesty this method already refuses for text. CI
+    /// therefore proves the box-overlay code paths tolerate "no geometry" against every fixture
+    /// document, never against a real Document Intelligence Layout response — matching this
+    /// project's existing "CI stays provider-free" posture for the other four roles.
     /// </summary>
     private static IReadOnlyList<AiOcrPage> DecodePages(ReadOnlySpan<byte> content)
     {
