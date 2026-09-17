@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useSearchParams } from "react-router-dom";
 import type {
   ApiClient,
   Contract360Body,
   Contract360ClauseBody,
+  ContractFieldEvidenceBody,
   GetDocumentPreviewResult,
   ReadBackDocument,
 } from "../../../../src/api/client";
@@ -163,6 +164,36 @@ function contract360(clauses: Contract360ClauseBody[] = [clause()]): Contract360
 
 function previewOk(objectUrl: string): GetDocumentPreviewResult {
   return { ok: true, statusCode: 200, objectUrl, error: null };
+}
+
+// Task E23/F04/US01/T01 (NW-63r, AC-1): a field's evidence, widened with `box` (epic-23 feature-02).
+function evidenceRow(overrides: Partial<ContractFieldEvidenceBody> = {}): ContractFieldEvidenceBody {
+  return {
+    fieldName: "startDate",
+    value: "2026-01-01",
+    confidence: 0.92,
+    decision: "auto_accepted",
+    sourcePage: 3,
+    sourceSpan: "1 January 2026",
+    box: { x: 100, y: 200, width: 300, height: 60 },
+    sourceDocumentId: DOCUMENT_ID,
+    sourceFileName: "Acme_MSA.pdf",
+    passage: "...effective 1 January 2026...",
+    highlightStart: 10,
+    highlightLength: 15,
+    modelId: "gpt-x",
+    extractedAt: "2026-09-01T00:00:00Z",
+    ...overrides,
+  };
+}
+
+/** jsdom never actually decodes an <img>'s bytes, so `naturalWidth`/`naturalHeight` stay 0 and
+ * `onLoad` never fires on its own -- this stands in for "the page image finished loading" the same
+ * way a real browser would report it. */
+function fireImageLoad(image: HTMLElement, width: number, height: number) {
+  Object.defineProperty(image, "naturalWidth", { value: width, configurable: true });
+  Object.defineProperty(image, "naturalHeight", { value: height, configurable: true });
+  fireEvent.load(image);
 }
 
 function readyClient(overrides: Partial<ApiClient> = {}): ApiClient {
@@ -331,5 +362,88 @@ describe("DocumentViewerRoute (task E22/F03/US01/T01)", () => {
     expect(screen.getByText("Page 3 — the wording is highlighted below")).toBeInTheDocument();
     expect(screen.queryByTestId("document-viewer-citation-notice")).not.toBeInTheDocument();
     expect(apiClient.getDocumentPreviewUrl).toHaveBeenCalledWith(WORKSPACE_ID, DOCUMENT_ID, 3);
+    // Unmocked getContractEvidence (mockApiClient's bare vi.fn()) resolves to `undefined`, which the
+    // route must read as "no boxes" rather than throw -- the exact w17 fallback this test's own name
+    // asserts (task E23/F04/US01/T01 widens this route without breaking it).
+    expect(screen.queryByTestId("document-viewer-box")).not.toBeInTheDocument();
+  });
+
+  // Task E23/F04/US01/T01 (NW-63r, epic-23 feature-04, AC-1): the bounding-box overlay.
+  describe("bounding-box overlay (task E23/F04/US01/T01)", () => {
+    it("a cited field's box on the current page is drawn over the <img>, alongside the text highlight", async () => {
+      const apiClient = readyClient({
+        getContractEvidence: vi.fn().mockResolvedValue({
+          ok: true,
+          statusCode: 200,
+          evidence: [evidenceRow({ fieldName: "startDate", sourcePage: 3 })],
+          autoAcceptThreshold: 0.9,
+          error: null,
+        }),
+      });
+      renderViewer(apiClient, `/documents/${DOCUMENT_ID}/viewer?page=3&clause=${CLAUSE_ID}`);
+
+      await waitFor(() => expect(apiClient.getContractEvidence).toHaveBeenCalledWith(WORKSPACE_ID, CONTRACT_ID));
+      const image = await screen.findByRole("img", { name: "Document page" });
+      fireImageLoad(image, 1000, 2000);
+
+      const box = await screen.findByTestId("document-viewer-box");
+      expect(box).toHaveStyle({ left: "10%", top: "10%", width: "30%", height: "3%" });
+      // The box is additive (ADR-029 w18 footer clause 3: "draws a box on the page and shows the
+      // text") -- it must not replace the existing text-level highlight.
+      expect(screen.getByTestId("clause-highlight")).toBeInTheDocument();
+    });
+
+    it("a field's evidence on another page never bleeds its box onto this one", async () => {
+      const apiClient = readyClient({
+        getContractEvidence: vi.fn().mockResolvedValue({
+          ok: true,
+          statusCode: 200,
+          evidence: [evidenceRow({ fieldName: "startDate", sourcePage: 4 })],
+          autoAcceptThreshold: 0.9,
+          error: null,
+        }),
+      });
+      renderViewer(apiClient, `/documents/${DOCUMENT_ID}/viewer?page=3`);
+
+      const image = await screen.findByRole("img", { name: "Document page" });
+      fireImageLoad(image, 1000, 2000);
+
+      expect(screen.queryByTestId("document-viewer-box")).not.toBeInTheDocument();
+    });
+
+    it("a null box degrades to the existing text-level highlight only (epic-23 AC-4)", async () => {
+      const apiClient = readyClient({
+        getContractEvidence: vi.fn().mockResolvedValue({
+          ok: true,
+          statusCode: 200,
+          evidence: [evidenceRow({ fieldName: "startDate", sourcePage: 3, box: null })],
+          autoAcceptThreshold: 0.9,
+          error: null,
+        }),
+      });
+      renderViewer(apiClient, `/documents/${DOCUMENT_ID}/viewer?page=3&clause=${CLAUSE_ID}`);
+
+      const image = await screen.findByRole("img", { name: "Document page" });
+      fireImageLoad(image, 1000, 2000);
+      await waitFor(() => expect(screen.getByTestId("clause-highlight")).toBeInTheDocument());
+
+      expect(screen.queryByTestId("document-viewer-box")).not.toBeInTheDocument();
+    });
+
+    it("a getContractEvidence failure degrades to no boxes, never a viewer-wide error", async () => {
+      const apiClient = readyClient({
+        getContractEvidence: vi.fn().mockResolvedValue({
+          ok: false,
+          statusCode: 503,
+          evidence: null,
+          error: "unavailable",
+        }),
+      });
+      renderViewer(apiClient, `/documents/${DOCUMENT_ID}/viewer?page=3&clause=${CLAUSE_ID}`);
+
+      await waitFor(() => expect(screen.getByTestId("clause-highlight")).toBeInTheDocument());
+      expect(screen.queryByTestId("document-viewer-box")).not.toBeInTheDocument();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
   });
 });
