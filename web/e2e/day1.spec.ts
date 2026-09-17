@@ -10,10 +10,10 @@ import { test, expect, type Locator, type Page } from "@playwright/test";
  * Reconciled to the V2 shell by task E26/F02/US01/T01 (NW-50, wave W18).
  * `day1-demo.html` and the ten-screen Day-1 inventory predate ADR-024's V2
  * information architecture (epic-13): **Ask Raffa is home** (`/` → `/ask`,
- * R-WEB-01), there is no rail "Home" item, and **Savings is a screen reached
- * from Ask/Renewals/Contract 360 actions, at `/savings`, never the rail**
- * (ADR-024 "No Home item"; ADR-012 V2 IA amendment; `WorkspaceShellApp.tsx`'s
- * own route-table comment: "`savings` -> `SavingsRoute` (not a rail item)").
+ * R-WEB-01), there is no rail "Home" item, and **Savings is a first-class rail
+ * destination at `/savings`** (also reached from Ask/Renewals/Contract 360
+ * actions; `navItems.ts` secondary tier; `WorkspaceShellApp.tsx`'s own
+ * route-table comment: "`savings` -> `SavingsRoute`").
  * AC-1: sign in → invite → upload → review → Contract 360 → Ask (citations
  * when the reply carries one) → renewal action → Savings shows its KPIs →
  * quote check → record outcome → Savings link-back. AC-2: every remaining
@@ -744,8 +744,8 @@ async function actOnFirstRenewal(page: Page): Promise<boolean> {
 }
 
 /**
- * Savings (screens-v2.md #8; ADR-024 "No Home item" -- reached from Ask/Renewals/Contract 360
- * actions, never the rail). The four real KPI cells (`savingsViewModel.ts#buildKpiCells`: Contracts
+ * Savings (screens-v2.md #8; first-class rail destination at `/savings`, also reached from
+ * Ask/Renewals/Contract 360 actions). The four real KPI cells (`savingsViewModel.ts#buildKpiCells`: Contracts
  * analyzed · Upcoming renewals · Savings identified · Savings verified) always render -- this is the
  * V2 replacement for the pre-V2 Home screen's own six-cell KPI row (Annual spend analyzed / Savings
  * identified / Savings realized / Savings in progress / Contracts analyzed / Upcoming renewals),

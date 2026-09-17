@@ -38,8 +38,8 @@ export interface WorkspaceShellAppProps {
 /**
  * V2 route table (ADR-024 amendment to ADR-018's locked "Route map"; `ia-v2.md` "Route map (V2)"):
  * `/` -> `/ask` (R-WEB-01, sign-in and every stale bookmark lands on the new home); `ask` /
- * `ask/:conversationId` -> `AskRoute`; `savings` -> `SavingsRoute` (not a rail item -- reached from
- * Ask actions, Renewals and Contract 360); `review` redirects to `/documents?filter=attention`
+ * `ask/:conversationId` -> `AskRoute`; `savings` -> `SavingsRoute` (rail item under "From your
+ * contracts", also reached from Ask actions, Renewals and Contract 360); `review` redirects to `/documents?filter=attention`
  * (Review is a *state* of Documents in V2, not a rail destination or its own screen -- the old
  * `routes/review/` rail landing has been deleted). `contracts`, `contracts/:contractId`,
  * `renewals`, `quotes`, `quotes/:quoteId` and `workspace/members` all render their V2 screens
