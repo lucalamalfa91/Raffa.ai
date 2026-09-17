@@ -86,7 +86,22 @@ describe("mapConversationCitation", () => {
       snippet: "automatically renew for successive twelve (12) month periods",
       previewUrl: "/api/documents/doc-1/preview",
       href: "/contracts/contract-1?page=12",
+      // Task E28/F03/US02/T01 (NW-83/NW-93): echoed verbatim from the wire's own `contractId` so
+      // `CitationCard.tsx` can build its two-CTA card's "Open contract" action.
+      contractId: "contract-1",
     });
+  });
+
+  // Task E28/F03/US02/T01 (NW-83/NW-93): once the wire's own `href` has already resolved to the
+  // W18 viewer route (`AskCopilotService.ResolveTenantClauseLinks`, no bare page left to append),
+  // this mapper changes nothing about it -- `CitationCard.tsx` reads the viewer href verbatim.
+  it("passes a viewer-route href through unchanged (no ?page= re-synthesis once the backend already resolved one)", () => {
+    const view = mapConversationCitation(
+      citation({ href: "/documents/doc-1/viewer?page=12&clause=clause-1", documentId: "doc-1" }),
+    );
+
+    expect(view.href).toBe("/documents/doc-1/viewer?page=12&clause=clause-1");
+    expect(view.contractId).toBe("contract-1");
   });
 
   it("leaves a market citation's href untouched (never ?page=-enriched)", () => {
