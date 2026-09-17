@@ -1,4 +1,5 @@
 import type { CapabilityBody } from "../../api/client";
+import type { WorkspaceRole } from "../shell/navItems";
 
 /**
  * Global Ask bar copy, quoted from `raffa-v2/app.jsx`:
@@ -15,6 +16,14 @@ import type { CapabilityBody } from "../../api/client";
  * otherwise the prototype's own `chipsFor` pair. Contract 360 has no catalog key — its chips stay
  * the prototype's supplier-templated pair, with "this supplier" when the bar has not loaded the
  * contract (the bar does not fetch).
+ *
+ * Task E25/F01/US01/T01 (ADR-022 S16-11, ADR-012 w17 cl 40): a catalog entry whose own `roleGate`
+ * is not `"any"` (today, only `workspace-members` — `CapabilityCatalog.cs`) never surfaces its
+ * `exampleQuestions` as chips to a non-Admin — it falls back to the same static `CHIPS_FOR` pair
+ * used while the catalog has not loaded yet, never an admin action a Procurement caller cannot
+ * take. `GET /api/capabilities` itself stays un-gated and identical for both roles (AC-2) — this
+ * is presentation only, never a security control (the same rule `workspaceRole.ts`'s own header
+ * comment states for the rail).
  */
 export interface AskBarCopy {
   placeholder: string;
@@ -68,7 +77,8 @@ export function screenForPath(pathname: string): AskBarScreen {
 export function getAskBarCopy(
   pathname: string,
   kbReady: boolean,
-  capabilities?: readonly CapabilityBody[] | null,
+  capabilities: readonly CapabilityBody[] | null | undefined,
+  role: WorkspaceRole,
 ): AskBarCopy {
   const placeholder = kbReady ? READY_PLACEHOLDER : KB_OFF_PLACEHOLDER;
   if (!kbReady) return { placeholder, suggestions: [] };
@@ -76,22 +86,26 @@ export function getAskBarCopy(
   const screen = screenForPath(pathname);
   const catalogKey = CAPABILITY_KEY_BY_SCREEN[screen];
   const catalogSuggestions =
-    catalogKey === null ? null : suggestionsFromCapabilityCatalog(capabilities ?? null, catalogKey);
+    catalogKey === null ? null : suggestionsFromCapabilityCatalog(capabilities ?? null, catalogKey, role);
 
   return { placeholder, suggestions: catalogSuggestions ?? CHIPS_FOR[screen] };
 }
 
 /**
  * `capabilities[key].exampleQuestions`, first two -- `null` when `capabilities` has not loaded yet,
- * has no entry for `key`, or that entry has fewer than two example questions (never a single-chip
- * row; the caller's own static fallback covers that instead).
+ * has no entry for `key`, that entry has fewer than two example questions (never a single-chip
+ * row; the caller's own static fallback covers that instead), or the entry's own `roleGate` is not
+ * `"any"` and `role` is not `"admin"` (task E25/F01/US01/T01, AC-1) -- the caller's static fallback
+ * covers that case too, so a non-Admin still sees two generic, role-safe chips rather than none.
  */
 export function suggestionsFromCapabilityCatalog(
   capabilities: readonly CapabilityBody[] | null,
   key: string,
+  role: WorkspaceRole,
 ): readonly [string, string] | null {
   if (capabilities === null) return null;
   const match = capabilities.find((capability) => capability.key === key);
   if (!match || match.exampleQuestions.length < 2) return null;
+  if (match.roleGate !== "any" && role !== "admin") return null;
   return [match.exampleQuestions[0], match.exampleQuestions[1]];
 }
