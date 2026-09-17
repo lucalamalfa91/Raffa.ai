@@ -18,3 +18,4 @@ python scripts/check_slice_prereqs.py --slice <id>
 | `w16` | 13 | 16.0M | w15 | E18, E19 | W16 — nothing the product knows lives only in a browser tab | inputs/next/w16-todo.md |
 | `w17` | 14 | 20.4M | w16 | E20, E21, E22 | W17 — the product officializes what it knows, shows the page it read it from, and answers where you can save | inputs/next/w17-todo.md |
 | `w18` | 20 | 19.2M | w17 | E23, E24, E25, E26 | W18 — the viewer draws the box, the cited phrase is editable, and the lists/Ask/Quote surfaces stop dead-ending | inputs/next/w18-todo.md |
+| `w19` | 19 | 19.4M | w18 | E27, E28, E29, E30, E31 | W19 — Ask Raffa wow answers: evidence-based savings, a bound notice date, a negotiation strategy that writes Renewals | inputs/next/2026-09-16-ask-raffa-wow.md |
