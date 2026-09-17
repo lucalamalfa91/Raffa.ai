@@ -64,6 +64,23 @@ namespace Raffa.Api;
 /// </para>
 ///
 /// <para>
+/// <b>Scope wins by id, and an unseen scope refuses (task E27/F02/US01/T01, NW-76; ADR-024 w19 cl.
+/// 12; lock 4)</b>: the gate-level override above only carries a <em>name</em> forward — two
+/// portfolio rows can share one supplier's display name, and a name-only lookup could land on the
+/// wrong one. <see cref="BuildInDomainReplyAsync"/> also receives the scoped <em>id</em> itself
+/// (not just the resolved name) and lets it win outright over that lookup, and folds it into the
+/// routing context's own contract id so a follow-up action never points at the same-name-but-wrong
+/// contract either. A <c>scopeContractId</c> that does not resolve to a row in this call's own
+/// freshly-fetched portfolio — wrong tenant, no linked document, deleted since the conversation was
+/// opened — refuses outright (<see cref="ReplyKind.Refusal"/>, the w18 acceptance runbook's "N11")
+/// before a single pack item is ever built, rather than silently falling back to an unscoped answer
+/// for a caller who explicitly named a contract they can no longer see. <b>Lock 4</b> exempts
+/// <see cref="AskIntent.PortfolioMarketPosition"/> from both rules: that intent is always
+/// portfolio-wide by construction, so it never depends on the scoped contract resolving, and is
+/// never narrowed to it either.
+/// </para>
+///
+/// <para>
 /// <b>Priced-line bands share one resolution with <c>/api/contracts/{id}/strategy</c></b> (task
 /// E28/F01/US01/T01, NW-82; ADR-024 w17 clause 7 "one resolution per screen"):
 /// <see cref="BuildRenewalStrategyPackAsync"/>/<see cref="BuildMarketComparePackAsync"/> both
@@ -150,7 +167,11 @@ internal sealed class AskCopilotService(
     /// resolves the scope id before the R-ASK-10 check") — set when this conversation was opened
     /// from Contract 360's "Ask about it" (ADR-024 "citation landing... → /ask?scope="), null for
     /// the global Ask bar's always-unscoped new chat. See the scope-resolution step below (right
-    /// after <c>gate</c> is classified) for what this does to the turn.</param>
+    /// after <c>gate</c> is classified) for what this does to the turn. Threaded on into
+    /// <see cref="BuildInDomainReplyAsync"/> unchanged (task E27/F02/US01/T01, NW-76) so that
+    /// method can tell "no scope" from "a scope that did not resolve" — this parameter alone, not
+    /// the gate's already-resolved supplier name, is what lets a same-name portfolio hit lose to
+    /// the real scoped id and an unseen id refuse (see this type's own doc comment).</param>
     /// <exception cref="ArgumentException"><paramref name="question"/> is null/blank.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="recentTurns"/> is <see langword="null"/>.</exception>
     public async Task<CopilotReply> AskAsync(
@@ -233,7 +254,8 @@ internal sealed class AskCopilotService(
             GateLabel.Capability => (BuildCapabilityReply(portfolio.Items.Count), false),
             GateLabel.NeedsDocument => (BuildNeedsDocumentReply(gate.NamedSupplier!, portfolio.Items.Count), false),
             GateLabel.InDomain => await BuildInDomainReplyAsync(
-                tenantId, question, gate.NamedSupplier, portfolio, supplierNames, recentTurns, cancellationToken)
+                tenantId, question, gate.NamedSupplier, portfolio, supplierNames, recentTurns,
+                scopeContractId, scopedContractItem, cancellationToken)
                 .ConfigureAwait(false),
             _ => throw new ArgumentOutOfRangeException(nameof(gate), gate.Label, "Unknown GateLabel."),
         };
@@ -311,6 +333,15 @@ internal sealed class AskCopilotService(
     /// a single boolean derived from <see cref="ReplyKind"/> alone could never do (every one of
     /// these paths returns <see cref="ReplyKind.Abstain"/> identically).
     /// </summary>
+    /// <param name="scopeContractId">Echoes <see cref="AskAsync"/>'s own parameter of the same name
+    /// — <see langword="null"/> for an unscoped turn. Only used to tell that case apart from "a
+    /// scope was set but did not resolve" below; the id itself is <paramref name="scopedContractItem"/>.</param>
+    /// <param name="scopedContractItem">The portfolio row <paramref name="scopeContractId"/>
+    /// resolved to in this call's own freshly-fetched <paramref name="portfolio"/>
+    /// (<see langword="null"/> when <paramref name="scopeContractId"/> is itself
+    /// <see langword="null"/>, <em>or</em> when it named an id this tenant cannot currently see —
+    /// wrong tenant, no linked document, deleted since the conversation was opened). Task
+    /// E27/F02/US01/T01 (NW-76; ADR-024 w19 cl. 12; lock 4) — see this type's own doc comment.</param>
     private async Task<(CopilotReply Reply, bool GuardIntervened)> BuildInDomainReplyAsync(
         TenantId tenantId,
         string question,
@@ -318,17 +349,39 @@ internal sealed class AskCopilotService(
         PortfolioPage portfolio,
         IReadOnlyDictionary<EntityId, string> supplierNames,
         IReadOnlyList<(string Role, string Markdown)> recentTurns,
+        EntityId? scopeContractId,
+        PortfolioListItem? scopedContractItem,
         CancellationToken cancellationToken)
     {
         var plan = intentPlanner.Plan(question, namedSupplier);
 
-        var namedContractItem = plan.NamedSupplier is null
-            ? null
-            : portfolio.Items.FirstOrDefault(item =>
-                item.SupplierId is { } supplierId &&
-                supplierNames.TryGetValue(new EntityId(supplierId), out var name) &&
-                string.Equals(name, plan.NamedSupplier, StringComparison.OrdinalIgnoreCase));
+        // AC-3, lock 4 (task E27/F02/US01/T01, NW-76): a scope id present on this conversation but
+        // absent from this turn's own freshly-fetched portfolio refuses outright, before a single
+        // BuildXxxPackAsync call below ever runs (no pack leak) -- never a silent fall-through to
+        // an unscoped answer for a caller who explicitly named a contract they can no longer see.
+        // PortfolioMarketPosition is exempt: lock 4 already makes it portfolio-wide regardless of
+        // scope, so it never depends on the scoped contract resolving at all.
+        if (scopeContractId is not null && scopedContractItem is null && plan.Intent != AskIntent.PortfolioMarketPosition)
+        {
+            return (BuildUnseenScopeRefusal(portfolio), false);
+        }
 
+        // AC-2 (NW-76): a resolved, visible scope id wins outright over a same-name portfolio
+        // lookup -- two rows can share one supplier's display name, and picking whichever one a
+        // name match happens to hit first would silently answer about the wrong contract. Lock 4:
+        // PortfolioMarketPosition is never narrowed to the scoped contract, so it alone keeps the
+        // ordinary name-based lookup (which still applies for every other, unscoped turn).
+        var namedContractItem = scopedContractItem is not null && plan.Intent != AskIntent.PortfolioMarketPosition
+            ? scopedContractItem
+            : plan.NamedSupplier is null
+                ? null
+                : portfolio.Items.FirstOrDefault(item =>
+                    item.SupplierId is { } supplierId &&
+                    supplierNames.TryGetValue(new EntityId(supplierId), out var name) &&
+                    string.Equals(name, plan.NamedSupplier, StringComparison.OrdinalIgnoreCase));
+
+        // AC-2: follows namedContractItem above, so a scoped turn's follow-up actions (e.g. "open
+        // this contract") also target the real scoped id, never a same-name-but-wrong contract.
         var contractIdForActions = namedContractItem is not null ? new EntityId(namedContractItem.ContractId) : (EntityId?)null;
         var routingContext = new RoutingContext(portfolio.TotalCount, CapabilityCallerRole.Standard, contractIdForActions);
 
@@ -392,6 +445,32 @@ internal sealed class AskCopilotService(
             CopilotReplyBuilder.FromGuardedResult(
                 composed.Value.Result, boundedPack, resolvedActions, ResolveAbstainRecoveryActions(portfolio, routingContext)),
             composed.Value.GuardIntervened);
+    }
+
+    /// <summary>
+    /// AC-3 (task E27/F02/US01/T01, NW-76; ADR-024 w19 cl. 12): the reply for a
+    /// <c>scopeContractId</c> that does not resolve to a row in this turn's own freshly-fetched
+    /// portfolio. <see cref="ReplyKind.Refusal"/>, not <see cref="ReplyKind.Abstain"/> — this is not
+    /// "a real question with no groundable evidence", it is "the caller named a contract they
+    /// cannot see", the same distinction <see cref="RedirectReplyBuilder.Legal"/> already draws for
+    /// a different refusal. Reuses <see cref="ResolveAbstainRecoveryActions"/> for the same
+    /// upload-or-ask-again next step every other "cannot proceed for this contract" reply in this
+    /// method already offers, rather than inventing a third recovery shape — a bare
+    /// <see cref="RoutingContext"/> with no <c>ContractId</c>, since the one contract this turn
+    /// named is exactly the one that is not available to route to.
+    /// </summary>
+    private CopilotReply BuildUnseenScopeRefusal(PortfolioPage portfolio)
+    {
+        var routingContext = new RoutingContext(portfolio.TotalCount, CapabilityCallerRole.Standard);
+
+        return new CopilotReply(
+            ReplyKind.Refusal,
+            "The contract this conversation is scoped to is no longer available to you. Open " +
+            "Portfolio to pick a contract, or ask a portfolio-wide question instead.",
+            [],
+            ResolveAbstainRecoveryActions(portfolio, routingContext),
+            ReplyProvenance.NoModelCall([]),
+            []);
     }
 
     /// <summary>
