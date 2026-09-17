@@ -123,13 +123,25 @@
   border: 1px solid var(--color-divider);
 }
 
-.citation-card-preview-placeholder {
+/* Replaces the old text-only placeholder for a `raffa`/`market` citation (never carries a real
+   `previewUrl`) -- same footprint as `.citation-card-preview` above, holding a `.btn`-styled,
+   non-interactive call-to-action label instead of an empty slot (us-02-citation-card-web AC-2,
+   NW-55). No new token: reuses the divider/surface tokens the preview placeholder already did. */
+.citation-card-cta {
   display: flex;
   align-items: center;
   justify-content: center;
   height: 120px;
   border: 1px dashed var(--color-divider);
   text-align: center;
+}
+
+/* The label itself borrows `.btn.btn-secondary` (ADR-019 locked catalogue) purely for its visual
+   treatment -- it is a `<span>`, not a `<button>`/`<a>`, so the card's own native `<button>` stays
+   the one interactive control (ADR-019 accessibility baseline; AC-3). `pointer-events: none` makes
+   that explicit rather than incidental: a click always resolves on the ancestor button. */
+.citation-card-cta .btn {
+  pointer-events: none;
 }
 
 /* ---- Actions (`m.hasActions`: gap 8px, margin-top 12px) ----------------- */
