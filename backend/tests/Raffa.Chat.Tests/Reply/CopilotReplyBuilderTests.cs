@@ -19,6 +19,9 @@ public sealed class CopilotReplyBuilderTests
     private static readonly DateTimeOffset Now = new(2026, 9, 9, 12, 0, 0, TimeSpan.Zero);
     private static readonly AiCallMetadata Metadata = new("fixture-answer-model", "v1", "answer-v2.1", Now, "deadbeef");
 
+    private const string TenantItemContractId = "11111111-1111-1111-1111-111111111111";
+    private const string TenantItemDocumentId = "22222222-2222-2222-2222-222222222222";
+
     private static readonly PackItem TenantItem = new(
         "tenant:contract-1",
         PackCorpus.Tenant,
@@ -31,7 +34,9 @@ public sealed class CopilotReplyBuilderTests
         PreviewUrl: "/documents/preview/1",
         RecordId: null,
         Provenance: "validated contract",
-        Values: []);
+        Values: [],
+        ContractId: TenantItemContractId,
+        DocumentId: TenantItemDocumentId);
 
     private static readonly PackItem MarketItem = new(
         "market:deal-1",
@@ -73,7 +78,11 @@ public sealed class CopilotReplyBuilderTests
         var citation = Assert.Single(reply.Citations);
         Assert.Equal(1, citation.N);
         Assert.Equal(PackCorpus.Tenant, citation.Corpus);
-        Assert.Equal("tenant:contract-1", citation.DocumentId);
+
+        // Task E28/F03/US01/T01 (NW-83; ADR-024 w19 cl. 17): real ids echoed from the pack item,
+        // never PackItem.CitationKey standing in for DocumentId and never a null ContractId.
+        Assert.Equal(TenantItemDocumentId, citation.DocumentId);
+        Assert.Equal(TenantItemContractId, citation.ContractId);
         Assert.Same(actions, reply.Actions);
         Assert.Equal(["What is the notice period?"], reply.FollowUps);
         Assert.Equal("fixture-answer-model", reply.Provenance.ModelId);
@@ -184,7 +193,7 @@ public sealed class CopilotReplyBuilderTests
         var citations = CopilotReplyBuilder.BuildCitations(["tenant:contract-1", "not-in-pack"], [TenantItem]);
 
         var citation = Assert.Single(citations);
-        Assert.Equal("tenant:contract-1", citation.DocumentId);
+        Assert.Equal(TenantItemDocumentId, citation.DocumentId);
     }
 
     [Fact]
