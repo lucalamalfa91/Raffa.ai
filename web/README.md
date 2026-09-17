@@ -1226,6 +1226,11 @@ web/
         DocumentStatusTable.tsx # the row grid: Document/Supplier·Type/Status/Next step/Admin-only Delete (with confirm/cancel)
         documentTable.ts      # pure helpers: type-label mapping, status/action derivation, attention-filter bucketing, kb summary
         documents.css         # this route's styles (V2: stacked single-column layout, no more the V1 two-column grid)
+        viewer/               # ADR-018 w17 clause 9 -- citation-reached route, not a rail destination (task E22/F03/US01/T01); box overlay task E23/F04/US01/T01
+          index.tsx              # DocumentViewerRoute -- /documents/:documentId/viewer?page=&clause=, PNG pages via getDocumentPreviewUrl (object URL, revoked on page change/unmount), citation resolution against Contract 360's clauses, box-overlay evidence fetch
+          documentViewerViewModel.ts # pure helpers: page/citation resolution (parsePositivePage, resolveCitation, resolveViewerSurface), nav/empty/not-found copy
+          BoxOverlay.tsx          # task E23/F04/US01/T01 (NW-63r): selectPageBoxes/computeBoxRect (pure) + the absolutely-positioned <div>-per-phrase overlay, from GET /api/contracts/{id}/evidence's box (ADR-029 clause 2); a null box leaves ClauseHighlight's text-level highlight as the only affordance
+          documentViewer.css      # this route's styles, incl. .document-viewer-box-layer/.document-viewer-box
       contracts/            # Portfolio, V2 (see "Portfolio" above)
         index.tsx             # PortfolioRoute -- fetch state machine, header summary, category filter, More columns, reroute
         PortfolioTable.tsx    # the V2 table (Supplier · Contract · Annual spend · Ends · Give notice by · Status [+ Start · Auto · Risk])

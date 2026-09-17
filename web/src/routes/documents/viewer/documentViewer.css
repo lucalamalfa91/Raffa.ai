@@ -8,6 +8,16 @@
  * from Contract 360 so ClauseHighlight paints without that screen's sheet.
  *
  * No shadow: --shadow-* is dialogs-only. No new token.
+ *
+ * Task E23/F04/US01/T01 (NW-63r, epic-23 feature-04; ADR-029 w18 footer clauses
+ * 2-3; ADR-012 §3): `.document-viewer-box-layer`/`.document-viewer-box` draw the
+ * bounding-box overlay (`BoxOverlay.tsx`) as absolutely-positioned DOM over the
+ * page `<img>` -- the same "no canvas, no new dependency" DOM-over-image posture
+ * this file already uses for the wording <mark>. The fill reuses the established
+ * `color-mix(in srgb, var(--color-accent) N%, transparent)` idiom
+ * (../../documents/documents.css's own focus ring) rather than the opaque
+ * --color-accent-100/200 tokens, which are sized for a page background, not an
+ * overlay that must not hide the page content underneath it.
  */
 
 .document-viewer {
@@ -33,6 +43,7 @@
 }
 
 .document-viewer-canvas {
+  position: relative;
   background: var(--color-surface);
   border-left: 2px solid var(--color-text);
   border-radius: 0;
@@ -41,6 +52,27 @@
   display: flex;
   align-items: stretch;
   justify-content: center;
+}
+
+/* BoxOverlay.tsx: one absolutely-positioned layer over the whole canvas, one
+   absolutely-positioned box per cited phrase inside it. `computeBoxRect`
+   supplies left/top/width/height as percentages of the canvas's own box, which
+   is exactly right when the page image fills the canvas edge to edge under
+   `object-fit: contain` (BoxOverlay.tsx's own doc comment records the V1
+   simplification when it does not). `pointer-events: none` throughout: the box
+   is a read-only annotation, never a click target, so it must never steal a
+   click from the page underneath it. */
+.document-viewer-box-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.document-viewer-box {
+  position: absolute;
+  border: 2px solid var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 20%, transparent);
+  border-radius: 0;
 }
 
 .document-viewer-canvas img {
