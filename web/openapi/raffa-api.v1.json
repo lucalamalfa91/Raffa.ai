@@ -1758,6 +1758,15 @@
             }
           },
           {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Exact-match Supplier.Category, resolved by a host join in PortfolioEndpointExtensions -- Raffa.Documents.Contracts cannot reference Raffa.Suppliers.Products (ADR-002), so PortfolioQueryService only carries this value past itself, never resolves it (task E24/F01/US01/T01, story us-01-portfolio-category-backend; closes NW-23/OQ-w17-007). Blank or absent leaves the full tenant-scoped portfolio; a category no supplier on the page carries -- including one that matches no supplier at all -- narrows to an empty items array, never a fabricated one."
+          },
+          {
             "name": "page",
             "in": "query",
             "required": false,
