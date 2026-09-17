@@ -8,14 +8,19 @@ namespace Raffa.Documents.Contracts.Application;
 /// (task E02/F03/US01/T01, us-01-portfolio-list-filters AC-2: "Filters by supplier/category/
 /// renewal period/spend/status/risk/auto-renewal", product spec §8.1 "Filters" column).
 ///
-/// "Category" is deliberately not a member here. No Category concept exists anywhere in the
-/// currently-implemented schema this task depends on (wave-spec `contract-schema`): the
-/// Suppliers/Products bounded context that would own it (ADR-002 module map) is still an empty
-/// scaffold project with no domain types (see `backend/README.md`'s solution layout), and
-/// <c>Raffa.Documents.Contracts</c> is architecturally forbidden from referencing it directly
-/// (<c>Raffa.ArchitectureTests.DependencyDirectionTests</c>'s allow-list for this module is
-/// exactly <c>[SharedKernel, AiGateway]</c>). A follow-up task adds the Category filter once
-/// Suppliers/Products exists and defines what a contract's category is.
+/// <see cref="Category"/> (task E24/F01/US01/T01, story us-01-portfolio-category-backend, closes
+/// NW-23/OQ-w17-007): the comment this replaces said Category was "deliberately not a member"
+/// because Suppliers/Products was "still an empty scaffold project with no domain types". That is
+/// now false — <c>Raffa.Suppliers.Products.Domain.Supplier.Category</c> exists and is persisted
+/// (<c>Infrastructure.Configurations.SupplierConfiguration</c>). What still holds, unchanged, is
+/// the architecture boundary that made this filter unusual in the first place:
+/// <c>Raffa.ArchitectureTests.DependencyDirectionTests</c>'s allow-list for this module is still
+/// exactly <c>[SharedKernel, AiGateway]</c>, so neither this type nor
+/// <see cref="PortfolioQueryService"/> (which consumes it) can ever resolve a supplier's category
+/// itself. This member only *carries* the requested value through; <c>Raffa.Api</c>'s
+/// <c>PortfolioEndpointExtensions</c> — "the one project allowed to reference every module"
+/// (ADR-002) — is the one place that can actually join it to a supplier and apply it, the same way
+/// it already joins <c>supplierName</c> on (<c>ResolveSupplierNamesAsync</c>).
 ///
 /// Every member is optional (null = not filtered), so a caller with no query parameters gets the
 /// full tenant-scoped portfolio — <see cref="None"/> is that default.
@@ -28,7 +33,8 @@ public sealed record PortfolioFilter(
     decimal? MinAnnualSpend = null,
     decimal? MaxAnnualSpend = null,
     DateOnly? RenewalFrom = null,
-    DateOnly? RenewalTo = null)
+    DateOnly? RenewalTo = null,
+    string? Category = null)
 {
     /// <summary>No filters applied — the full tenant-scoped portfolio.</summary>
     public static readonly PortfolioFilter None = new();

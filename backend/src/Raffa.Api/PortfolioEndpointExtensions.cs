@@ -5,6 +5,7 @@ using Raffa.Documents.Contracts.Domain;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Suppliers;
 using Raffa.SharedKernel.Tenancy;
+using Raffa.Suppliers.Products.Application;
 
 namespace Raffa.Api;
 
@@ -35,6 +36,17 @@ namespace Raffa.Api;
 /// disappeared reads as a present id with a <see langword="null"/> name rather than silently losing
 /// both.
 /// </para>
+///
+/// <para>
+/// Task E24/F01/US01/T01 (story us-01-portfolio-category-backend, closes NW-23/OQ-w17-007) adds
+/// <c>?category=</c> the same way: <see cref="PortfolioFilter.Category"/> only carries the
+/// requested value past <see cref="PortfolioQueryService"/> (which cannot resolve it either, same
+/// allow-list), and this handler joins it here, via <see cref="ISupplierCategoryLookup"/> and the
+/// <see cref="FilterByCategoryAsync"/> helper below — narrowing the already-fetched page to the
+/// rows whose supplier carries that category, batched exactly like <c>supplierName</c> above. A
+/// category no supplier on this page carries — including one that matches no supplier at all —
+/// narrows to an empty <c>items</c> array, never a fabricated one (AC-3).
+/// </para>
 /// </summary>
 public static class PortfolioEndpointExtensions
 {
@@ -49,6 +61,7 @@ public static class PortfolioEndpointExtensions
         PortfolioQueryService portfolioQueryService,
         DocumentQueryService documentQueryService,
         ISupplierNameLookup supplierNameLookup,
+        ISupplierCategoryLookup supplierCategoryLookup,
         ITenantContext tenantContext,
         ICallerContext callerContext,
         CancellationToken cancellationToken)
@@ -89,8 +102,26 @@ public static class PortfolioEndpointExtensions
             .CountProcessingDocumentsAsync(tenantId, cancellationToken)
             .ConfigureAwait(false);
 
+        // task E24/F01/US01/T01 (story us-01-portfolio-category-backend AC-1/AC-3): narrows the
+        // already-fetched, already-paged items to the ones whose supplier carries filter.Category
+        // -- see FilterByCategoryAsync's own doc comment for why this runs on the fetched page
+        // rather than inside PortfolioQueryService's own query (Documents/Contracts' allow-list
+        // forbids it from resolving a supplier's category at all). totalCount narrows with it so
+        // the response stays internally consistent for the page actually returned; a portfolio
+        // whose category matches span more than one page is a known limitation this comment
+        // records rather than hides -- PortfolioQueryService.cs is a different task's file.
+        IReadOnlyList<PortfolioListItem> portfolioItems = result.Items;
+        var totalCount = result.TotalCount;
+        if (filter.Category is { } category)
+        {
+            portfolioItems = await FilterByCategoryAsync(
+                    tenantId, portfolioItems, category, supplierCategoryLookup, tenantContext, cancellationToken)
+                .ConfigureAwait(false);
+            totalCount = portfolioItems.Count;
+        }
+
         var supplierNames = await ResolveSupplierNamesAsync(
-            tenantId, result.Items, supplierNameLookup, tenantContext, cancellationToken).ConfigureAwait(false);
+            tenantId, portfolioItems, supplierNameLookup, tenantContext, cancellationToken).ConfigureAwait(false);
 
         // Enum members are projected to their string names for the wire contract — the same
         // convention Program.cs already uses for DocumentType/ProcessingStatus on
@@ -99,7 +130,7 @@ public static class PortfolioEndpointExtensions
         // array, so a caller can render "showing X of Y" / know whether another page exists.
         return Results.Ok(new
         {
-            items = result.Items.Select(item => new
+            items = portfolioItems.Select(item => new
             {
                 contractId = item.ContractId,
                 supplierId = item.SupplierId,
@@ -122,7 +153,7 @@ public static class PortfolioEndpointExtensions
             }),
             page = result.Page,
             pageSize = result.PageSize,
-            totalCount = result.TotalCount,
+            totalCount,
             processingDocumentCount,
         });
     }
@@ -189,11 +220,60 @@ public static class PortfolioEndpointExtensions
         supplierId is { } id && supplierNames.TryGetValue(new EntityId(id), out var name) ? name : null;
 
     /// <summary>
+    /// AC-1/AC-3 (task E24/F01/US01/T01, story us-01-portfolio-category-backend): narrows an
+    /// already-fetched portfolio page to the rows whose supplier carries <paramref name="category"/>
+    /// — batched exactly like <see cref="ResolveSupplierNamesAsync"/> above, for the identical
+    /// reason (ADR-002: only <c>Raffa.Api</c> may see both <c>Raffa.Documents.Contracts</c> and
+    /// <c>Raffa.Suppliers.Products</c> at once). Runs against <paramref name="items"/> — the page
+    /// <see cref="PortfolioQueryService"/> already fetched and paged — never against the full
+    /// tenant dataset; see this method's own caller for the pagination trade-off that follows from
+    /// that (<c>PortfolioQueryService.cs</c> is outside this task's file scope). A row whose
+    /// supplier is unset, unresolved, has no category on file, or carries a different category is
+    /// excluded — an unmatched <paramref name="category"/> therefore narrows to an empty result,
+    /// never a fabricated one (AC-3).
+    /// </summary>
+    internal static async Task<IReadOnlyList<PortfolioListItem>> FilterByCategoryAsync(
+        TenantId tenantId,
+        IReadOnlyList<PortfolioListItem> items,
+        string category,
+        ISupplierCategoryLookup supplierCategoryLookup,
+        ITenantContext tenantContext,
+        CancellationToken cancellationToken)
+    {
+        var supplierIds = items
+            .Where(item => item.SupplierId is not null)
+            .Select(item => new EntityId(item.SupplierId!.Value))
+            .Distinct()
+            .ToList();
+
+        // No supplier on this page can possibly match -- skip the round trip entirely, same
+        // convention ResolveSupplierNamesAsync above already uses.
+        if (supplierIds.Count == 0)
+        {
+            return [];
+        }
+
+        using var tenantScope = tenantContext.BeginScope(tenantId);
+        var categoriesBySupplier = await supplierCategoryLookup
+            .GetCategoriesAsync(tenantId, supplierIds, cancellationToken)
+            .ConfigureAwait(false);
+
+        return items
+            .Where(item =>
+                item.SupplierId is { } supplierId
+                && categoriesBySupplier.TryGetValue(new EntityId(supplierId), out var supplierCategory)
+                && supplierCategory == category)
+            .ToList();
+    }
+
+    /// <summary>
     /// Parses the AC-2 filter query parameters (supplierId, status, risk, autoRenewal,
-    /// minAnnualSpend, maxAnnualSpend, renewalFrom, renewalTo). No "category" parameter exists —
-    /// see <see cref="PortfolioFilter"/>'s own doc comment for why. Every parameter is optional;
-    /// an absent one leaves the corresponding <see cref="PortfolioFilter"/> member null (not
-    /// filtered). Returns false with a caller-facing <paramref name="error"/> on the first
+    /// minAnnualSpend, maxAnnualSpend, renewalFrom, renewalTo), plus <c>category</c> (task
+    /// E24/F01/US01/T01, story us-01-portfolio-category-backend AC-1/AC-2). A blank or absent
+    /// <c>category</c> leaves <see cref="PortfolioFilter.Category"/> null (AC-2: the full
+    /// tenant-scoped portfolio) rather than filtering on an empty string. Every parameter is
+    /// optional; an absent one leaves the corresponding <see cref="PortfolioFilter"/> member null
+    /// (not filtered). Returns false with a caller-facing <paramref name="error"/> on the first
     /// malformed value found.
     /// </summary>
     private static bool TryParseFilter(
@@ -212,6 +292,17 @@ public static class PortfolioEndpointExtensions
             }
 
             supplierId = new EntityId(supplierGuid);
+        }
+
+        // Blank ("?category=") and absent both mean "not filtered" (AC-2) -- unlike `status`
+        // below, which takes even a blank value literally (no such requirement is on record for
+        // it). Trimmed so incidental surrounding whitespace from a query string never quietly
+        // fails to match any supplier's stored Category.
+        string? category = null;
+        if (query.TryGetValue("category", out var categoryValues))
+        {
+            var trimmedCategory = categoryValues.ToString().Trim();
+            category = trimmedCategory.Length > 0 ? trimmedCategory : null;
         }
 
         string? status = query.TryGetValue("status", out var statusValues)
@@ -255,7 +346,7 @@ public static class PortfolioEndpointExtensions
         }
 
         filter = new PortfolioFilter(
-            supplierId, status, risk, autoRenewal, minAnnualSpend, maxAnnualSpend, renewalFrom, renewalTo);
+            supplierId, status, risk, autoRenewal, minAnnualSpend, maxAnnualSpend, renewalFrom, renewalTo, category);
         return true;
     }
 
