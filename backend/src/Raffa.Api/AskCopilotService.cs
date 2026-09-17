@@ -94,6 +94,13 @@ internal sealed class AskCopilotService(
     IClock clock)
 {
     private const int ClauseTopK = 5;
+
+    /// <summary>Task E28/F02/US01/T01 (NW-81 AC-2 "lower K"): the labelled "similar types" peer
+    /// slice always asks for fewer rows than <see cref="ClauseTopK"/> -- it is corroborating
+    /// evidence from a different, merely similar-type contract, never this contract's own primary
+    /// evidence.</summary>
+    private const int ClausePeerTopK = 2;
+
     private const int MarketNotesTopK = 3;
     private const int MaxPricedLinesForBenchmark = 2;
     private const int PortfolioStrategyTopN = 5;
@@ -525,11 +532,49 @@ internal sealed class AskCopilotService(
             _ => ("Portfolio query result", "Raffa computed this from your validated contracts."),
         };
 
+    /// <summary>
+    /// Task E28/F02/US01/T01 (NW-81; ADR-024 w19 cl. 15; parent story us-01-rag-contract-filter
+    /// AC-1/AC-2/AC-3): when a contract is named, this used to call
+    /// <see cref="EmbeddingRetrievalService.SearchAsync"/> -- a cosine top-K over <b>every</b>
+    /// embedding this tenant owns -- and relied on <paramref name="namedContractItem"/> only to
+    /// resolve a citation's clause/link, never to filter the search itself. That is the exact NW-81
+    /// defect: a tenant with 37 contracts could get another supplier's MSA back for a question about
+    /// one named contract (Q2/Q3 "do not mix 37 contracts"). This now calls
+    /// <see cref="EmbeddingRetrievalService.SearchByContractAsync"/>, which returns two slices --
+    /// this contract's own chunks, and a lower-K, separately labelled "similar types" peer slice
+    /// from other validated contracts of the same
+    /// <see cref="Raffa.Documents.Contracts.Domain.ContractDocumentType"/> (AC-1/AC-2) --
+    /// and builds the pack from those instead. Market notes are never reached from here at all
+    /// (AC-3): <see cref="IMarketKnowledgeRetrieval"/> is only ever called from
+    /// <see cref="BuildMarketComparePackAsync"/>, a different intent branch.
+    /// </summary>
     private async Task<IReadOnlyList<PackItem>> BuildClausePackAsync(
         TenantId tenantId, string question, PortfolioListItem? namedContractItem, CancellationToken cancellationToken)
     {
+        if (namedContractItem is null)
+        {
+            // No contract is in scope for this turn (a fully generic clause question) -- there is
+            // no "this contract" or "similar types" to split against, so this is the one path that
+            // still searches the whole tenant corpus. ADR-024 w19's own NW-79 amendment still names
+            // this the "unscoped Clause RAG" fallback; NW-81 only requires filtering a turn that
+            // already names a contract.
+            var tenantWideResult = await embeddingRetrievalService
+                .SearchAsync(tenantId, question, ClauseTopK, cancellationToken)
+                .ConfigureAwait(false);
+
+            return tenantWideResult.IsFailure
+                ? []
+                : tenantWideResult.Value
+                    .Select(hit => BuildClausePackItem(hit, clause: null, namedContractId: null, isPeer: false))
+                    .ToList();
+        }
+
+        var contractId = new EntityId(namedContractItem.ContractId);
+
         var searchResult = await embeddingRetrievalService
-            .SearchAsync(tenantId, question, ClauseTopK, cancellationToken)
+            .SearchByContractAsync(
+                new EmbeddingSearchQuery(tenantId, question, ClauseTopK, contractId, ClausePeerTopK),
+                cancellationToken)
             .ConfigureAwait(false);
 
         if (searchResult.IsFailure)
@@ -537,34 +582,64 @@ internal sealed class AskCopilotService(
             return [];
         }
 
-        Contract360Result? contract360 = namedContractItem is null
-            ? null
-            : await contract360QueryService
-                .GetByIdAsync(tenantId, new EntityId(namedContractItem.ContractId), cancellationToken)
-                .ConfigureAwait(false);
+        var contract360 = await contract360QueryService
+            .GetByIdAsync(tenantId, contractId, cancellationToken)
+            .ConfigureAwait(false);
 
         var items = new List<PackItem>();
-        foreach (var hit in searchResult.Value)
+
+        foreach (var hit in searchResult.Value.ThisContract)
         {
             var clause = contract360?.Clauses.FirstOrDefault(c => c.ClauseId == hit.SourceId);
-            var (href, previewUrl) = ResolveTenantClauseLinks(clause, hit.SourceId, namedContractItem?.ContractId);
+            items.Add(BuildClausePackItem(hit, clause, namedContractItem.ContractId, isPeer: false));
+        }
 
-            items.Add(new PackItem(
-                $"fact:{hit.SourceId}:chunk[{hit.ChunkIndex}]",
-                PackCorpus.Tenant,
-                clause is not null ? $"{clause.ClauseType} clause" : $"{hit.SourceType} excerpt",
-                clause?.SourcePage is { } page ? $"p.{page}" + (clause.SourceSpan is { } span ? $" §{span}" : string.Empty) : null,
-                clause?.SourcePage,
-                clause?.SourceSpan ?? $"chunk {hit.ChunkIndex}",
-                hit.ChunkText,
-                href,
-                previewUrl,
-                null,
-                "validated contract",
-                []));
+        // AC-2: labelled separately, and never resolved against this contract's own Contract360
+        // clauses or link -- a peer hit belongs to a different, unresolved contract by construction
+        // (SearchByContractAsync's own peer slice already excludes contractId itself), so it must
+        // never be citable as if it were this contract's own evidence (R-ASK-04).
+        foreach (var hit in searchResult.Value.SimilarTypes)
+        {
+            items.Add(BuildClausePackItem(hit, clause: null, namedContractId: null, isPeer: true));
         }
 
         return items;
+    }
+
+    /// <summary>
+    /// One clause-pack <see cref="PackItem"/> from a raw <see cref="EmbeddingSearchResult"/> hit
+    /// (task E28/F02/US01/T01, NW-81 AC-1/AC-2). <paramref name="isPeer"/> marks a hit from the
+    /// "similar types" peer slice: its title and provenance are labelled as a different, merely
+    /// similar-type contract so neither the model nor a reader can mistake it for
+    /// <paramref name="namedContractId"/>'s own evidence -- callers pass <see langword="null"/> for
+    /// both <paramref name="clause"/> and <paramref name="namedContractId"/> on a peer hit, which
+    /// also (via <see cref="ResolveTenantClauseLinks"/>'s own fallback) leaves it with no href: a
+    /// peer citation names a fact pattern, never a clickable route into a contract the pack never
+    /// resolved.
+    /// </summary>
+    private static PackItem BuildClausePackItem(
+        EmbeddingSearchResult hit, Contract360Clause? clause, Guid? namedContractId, bool isPeer)
+    {
+        var (href, previewUrl) = ResolveTenantClauseLinks(clause, hit.SourceId, namedContractId);
+
+        var baseTitle = clause is not null ? $"{clause.ClauseType} clause" : $"{hit.SourceType} excerpt";
+        var subtitle = clause?.SourcePage is { } page
+            ? $"p.{page}" + (clause.SourceSpan is { } span ? $" §{span}" : string.Empty)
+            : null;
+
+        return new PackItem(
+            $"fact:{hit.SourceId}:chunk[{hit.ChunkIndex}]",
+            PackCorpus.Tenant,
+            isPeer ? $"Similar contract — {baseTitle}" : baseTitle,
+            isPeer ? "similar contract, not this one" : subtitle,
+            clause?.SourcePage,
+            clause?.SourceSpan ?? $"chunk {hit.ChunkIndex}",
+            hit.ChunkText,
+            href,
+            previewUrl,
+            null,
+            isPeer ? "similar validated contract" : "validated contract",
+            []);
     }
 
     /// <summary>
