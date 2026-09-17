@@ -55,6 +55,13 @@ describe("shell.css (E06/F06/US01/T01 -- shell-main fills the rail's 1fr track)"
     const body = ruleBodyFor(css, ".shell-main");
     expect(body).toMatch(/max-width:\s*none/);
   });
+
+  it("places the chat-list search with tokens and does not squash the shared .input chrome", () => {
+    const body = ruleBodyFor(css, ".shell-rail-conv-search");
+    expect(body).toMatch(/margin:\s*var\(--space-2\)\s+var\(--space-3\)\s+var\(--space-2\)\s+28px/);
+    expect(body).not.toMatch(/padding:/);
+    expect(body).not.toMatch(/font-size:/);
+  });
 });
 
 describe("signin.css (E06/F06/US01/T01 -- full-viewport two-column sign-in canvas)", () => {

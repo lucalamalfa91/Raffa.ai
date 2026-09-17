@@ -30,24 +30,36 @@ export interface PortfolioTableProps {
   moreColumns: boolean;
 }
 
-function ColumnTextFilter({
+function ColumnInputFilter({
   id,
   label,
   value,
   onChange,
+  type,
+  placeholder,
+  min,
+  step,
 }: {
   id: string;
   label: string;
   value: string;
   onChange: (value: string) => void;
+  type: "search" | "date" | "number";
+  placeholder?: string;
+  min?: number;
+  step?: string;
 }) {
   return (
     <input
       id={id}
       className="input portfolio-col-filter"
-      type="search"
+      type={type}
       value={value}
+      placeholder={placeholder}
+      min={min}
+      step={step}
       aria-label={label}
+      autoComplete="off"
       onChange={(event: ChangeEvent<HTMLInputElement>) => onChange(event.target.value)}
       onClick={(event) => event.stopPropagation()}
     />
@@ -102,9 +114,10 @@ function ColumnSelectFilter({
  * an honest "—" when no supplier is linked; Contract shows the type label -- `Contract` has no
  * title field, the same proxy every other screen uses for this gap.
  *
- * Column filters live in each header cell (not a disconnected toolbar): text contains on Supplier /
- * Contract / spend / dates, selects on Auto / Risk / Status. Filtering is client-side over the
- * already-loaded page, the same presentation-only shape Savings uses.
+ * Column filters live in each header cell (not a disconnected toolbar), typed by the column:
+ * text contains on Supplier / Contract, native date on Ends / Give notice by / Start, number on
+ * Annual spend, selects on Auto / Risk / Status (the same `.input` + `<select>` pattern Savings
+ * and review fields already use). Filtering is client-side over the already-loaded page.
  */
 export default function PortfolioTable({ rows, moreColumns }: PortfolioTableProps) {
   const navigate = useNavigate();
@@ -133,29 +146,63 @@ export default function PortfolioTable({ rows, moreColumns }: PortfolioTableProp
           <tr>
             <th scope="col" className="portfolio-col-supplier">
               <span>Supplier</span>
-              <ColumnTextFilter id="portfolio-filter-supplier" label="Filter by supplier" value={filters.supplier} onChange={(supplier) => patchFilters({ supplier })} />
+              <ColumnInputFilter
+                id="portfolio-filter-supplier"
+                type="search"
+                label="Filter by supplier"
+                placeholder="Contains"
+                value={filters.supplier}
+                onChange={(supplier) => patchFilters({ supplier })}
+              />
             </th>
             <th scope="col">
               <span>Contract</span>
-              <ColumnTextFilter id="portfolio-filter-contract" label="Filter by contract" value={filters.contract} onChange={(contract) => patchFilters({ contract })} />
+              <ColumnInputFilter
+                id="portfolio-filter-contract"
+                type="search"
+                label="Filter by contract"
+                placeholder="Contains"
+                value={filters.contract}
+                onChange={(contract) => patchFilters({ contract })}
+              />
             </th>
             <th scope="col" className="portfolio-table-numeric portfolio-col-spend">
               <span>Annual spend</span>
-              <ColumnTextFilter id="portfolio-filter-spend" label="Filter by annual spend" value={filters.spend} onChange={(spend) => patchFilters({ spend })} />
+              <ColumnInputFilter
+                id="portfolio-filter-spend"
+                type="number"
+                label="Filter by annual spend"
+                min={0}
+                step="1"
+                value={filters.spend}
+                onChange={(spend) => patchFilters({ spend })}
+              />
             </th>
             <th scope="col" className="portfolio-col-ends">
               <span>Ends</span>
-              <ColumnTextFilter id="portfolio-filter-ends" label="Filter by end date" value={filters.ends} onChange={(ends) => patchFilters({ ends })} />
+              <ColumnInputFilter id="portfolio-filter-ends" type="date" label="Filter by end date" value={filters.ends} onChange={(ends) => patchFilters({ ends })} />
             </th>
             <th scope="col" className="portfolio-col-notice">
               <span>Give notice by</span>
-              <ColumnTextFilter id="portfolio-filter-notice" label="Filter by notice date" value={filters.notice} onChange={(notice) => patchFilters({ notice })} />
+              <ColumnInputFilter
+                id="portfolio-filter-notice"
+                type="date"
+                label="Filter by notice date"
+                value={filters.notice}
+                onChange={(notice) => patchFilters({ notice })}
+              />
             </th>
             {moreColumns && (
               <>
                 <th scope="col" className="portfolio-col-start">
                   <span>Start</span>
-                  <ColumnTextFilter id="portfolio-filter-start" label="Filter by start date" value={filters.start} onChange={(start) => patchFilters({ start })} />
+                  <ColumnInputFilter
+                    id="portfolio-filter-start"
+                    type="date"
+                    label="Filter by start date"
+                    value={filters.start}
+                    onChange={(start) => patchFilters({ start })}
+                  />
                 </th>
                 <th scope="col" className="portfolio-col-auto">
                   <span>Auto</span>

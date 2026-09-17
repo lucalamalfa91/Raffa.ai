@@ -65,6 +65,13 @@ describe("contracts.css (V2 Portfolio table vs markup.html's own inline instance
     expect(contractsCss).not.toMatch(/\.portfolio-filters/);
     expect(contractsCss).not.toMatch(/\.attention-cell/);
   });
+
+  it("keeps in-header column filters compact on the shared .input tokens", () => {
+    const body = ruleBodyFor(contractsCss, ".portfolio-col-filter");
+    expect(body).toMatch(/margin-top:\s*var\(--space-1\)/);
+    expect(body).toMatch(/padding:\s*var\(--space-1\)\s+var\(--space-2\)/);
+    expect(body).toMatch(/font-size:\s*12px/);
+  });
 });
 
 describe("components.css (shared V2 screen chrome used by Portfolio, Renewals, Quote check, Savings, Members)", () => {

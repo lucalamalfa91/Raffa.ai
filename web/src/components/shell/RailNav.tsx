@@ -133,6 +133,7 @@ export default function RailNav({
                     className="input shell-rail-conv-search"
                     placeholder="Search chats"
                     aria-label="Search chats"
+                    autoComplete="off"
                     value={chatQuery}
                     onChange={(event) => setChatQuery(event.target.value)}
                   />
