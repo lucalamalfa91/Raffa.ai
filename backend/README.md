@@ -1130,11 +1130,14 @@ itself (querying `PortfolioQueryService`/`Contract360QueryService`,
    answered directly (`Reply.RedirectReplyBuilder`, real
    `CapabilityRouting`-resolved actions) — **zero retrieval, zero model
    call** — only `in_domain` reaches the planner (R-ASK-02).
-2. **Planner** (`Application.Planning.IntentPlanner.Plan`) — nine fixed
+2. **Planner** (`Application.Planning.IntentPlanner.Plan`) — ten fixed
    intents (structured fact, clause, market compare, renewal strategy,
-   portfolio strategy, savings, document status, quote route, navigate),
-   reusing `AskRaffaQueryRouter`/`DeterministicQueryPlanner` for the
-   legacy structured/clause split. `AskCopilotService` composes one
+   portfolio strategy, portfolio market position, savings, document status,
+   quote route, navigate), reusing `AskRaffaQueryRouter`/
+   `DeterministicQueryPlanner` for the legacy structured/clause split
+   (`portfolio market position` — task E27/F01/US01/T01, NW-79, ADR-024 w19
+   cl. 13 — always ranks the workspace portfolio, never Quote check, even
+   when a supplier is already in scope). `AskCopilotService` composes one
    `Pack.PackItem` list per intent (tenant facts, clause chunks, market
    notes, calculator output — every item citable, tagged `tenant`/
    `market`/`raffa`/`calc`).

@@ -4,9 +4,10 @@ using Raffa.Chat.Domain;
 namespace Raffa.Chat.Application.Planning;
 
 /// <summary>
-/// Maps a <see cref="GateLabel.InDomain"/> question onto one of the nine fixed
+/// Maps a <see cref="GateLabel.InDomain"/> question onto one of the ten fixed
 /// <see cref="AskIntent"/> values (task E13/F06/US01/T01, ask-engine; ADR-024 "planner (fixed
-/// intents)"; `inputs/requirements.md` R-ASK-03). The prototype's own branch order
+/// intents)"; `inputs/requirements.md` R-ASK-03; <see cref="AskIntent.PortfolioMarketPosition"/>
+/// added by task E27/F01/US01/T01, NW-79, ADR-024 w19 cl. 13). The prototype's own branch order
 /// (`inputs/design/prototypes/raffa-v2/app.jsx` → <c>ask(text, scope)</c>, echoed in
 /// `raffa-v2/ia-v2.md` "Ask intents in the prototype") is the behavioural oracle this planner
 /// reproduces, generalized from keyword matching over a hard-coded fixture into keyword matching
@@ -36,6 +37,31 @@ public sealed class IntentPlanner
 {
     private readonly AskRaffaQueryRouter _legacyRouter = new();
 
+    // "quali contratti" / "which contracts" (PortfolioQuestionPattern below) combined with "mal
+    // posizionat*" / "poorly positioned" / "above market" / "too expensive" (optionally
+    // "risparm*" / "2026" too, not required for the match) — screenshot Q1 (task
+    // E27/F01/US01/T01, NW-79/NW-86; ADR-024 w19 cl. 13; product-owner lock 6: this is a
+    // portfolio question answered in Ask, never Quote check's new-market-proposal handler).
+    // Checked before BenchmarkPattern and SavingsPattern so a "mercato"/"risparmiare" inside the
+    // same sentence never steals it into QuoteRoute/PortfolioStrategy — this is its own intent.
+    private static readonly Regex PortfolioMarketPositionPattern = new(
+        @"\b(mal\s+posizionat\w*|poorly\s+positioned|above\s+market|too\s+expensive)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex PortfolioQuestionPattern = new(
+        @"\b(quali\s+contratti|which\s+contracts)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // "saving / risparm / largest" (prototype) plus "where can we save / dove posso risparmiare"
+    // (R-PORT-02's own worked question) — same named-supplier-vs-portfolio-wide split as
+    // priority. Checked ahead of BenchmarkPattern (task E27/F01/US01/T01, NW-79; ADR-024 w19 cl.
+    // 13) so a sentence that also names "mercato" — but does not match
+    // PortfolioMarketPositionPattern above — still reaches Savings/PortfolioStrategy instead of
+    // being stolen by the market/benchmark lexicon into QuoteRoute.
+    private static readonly Regex SavingsPattern = new(
+        @"\b(saving\w*|risparm\w*|largest)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     // "benchmark / compare / competitor / 'in linea' / market / fair price / too much" — prototype
     // verbatim, English + Italian.
     private static readonly Regex BenchmarkPattern = new(
@@ -45,8 +71,19 @@ public sealed class IntentPlanner
 
     // "How should I approach the Salesforce renewal?" / "Come dovrei affrontare il rinnovo
     // Salesforce?" (R-STR-01 AC-1's own worked question) — a full strategy pack, not just a date.
+    // Widened (task E27/F01/US01/T01, NW-79/NW-95; ADR-024 w19 cl. 13) with "contrattare"/
+    // "punti" and the bare noun "rinnovo" (screenshot Q3: "quali punti su cui contrattare nel
+    // prossimo rinnovo") — two deliberate narrowings, each guarding a real collision:
+    // "contratta\w*", never "contratt\w*", so it matches only the verb family (to negotiate), not
+    // the noun "contratto"/"contratti" (contract) that shows up in almost every Ask question; and
+    // bare "rinnovo", never "rinnov\w*", because that wildcard also matches the plain verb
+    // conjugation "rinnovano" ("[contracts] renew") in a structured date question with no
+    // supplier in scope — golden case seeded-structured_fact-rinnovo-120-giorni-it
+    // (GAP-ASK-ITALIAN-STRUCTURED-BLIND) — which would otherwise be stolen into an unscoped
+    // portfolio-strategy criticality ranking instead of its documented abstain.
     private static readonly Regex RenewalStrategyPattern = new(
-        @"\b(approach|affrontare|renewal\s+strategy|strategia|negotiat\w*|negozia\w*)\b",
+        @"\b(approach|affrontare|renewal\s+strategy|strategia|negotiat\w*|negozia\w*|" +
+        @"contrattare|contratta\w*|rinnovo|punti)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // "top / first / why / perché / start" (priority narration) and "most critical / più critici"
@@ -55,12 +92,6 @@ public sealed class IntentPlanner
     // becomes PortfolioStrategy.
     private static readonly Regex PriorityPattern = new(
         @"\b(top|first|why|perch[eé]|start|critic\w*|priorit\w*)\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
-    // "saving / risparm / largest" (prototype) plus "where can we save / dove posso risparmiare"
-    // (R-PORT-02's own worked question) — same named-supplier-vs-portfolio-wide split as priority.
-    private static readonly Regex SavingsPattern = new(
-        @"\b(saving\w*|risparm\w*|largest)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // "askable / not yet / confidence / fields / missing" (prototype) plus status/stato.
@@ -74,6 +105,17 @@ public sealed class IntentPlanner
         @"vai\s+a|apri\s+(documenti|rinnovi|portafoglio))\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // "notice" / "preavviso" / "disdetta" / "disdetta period" / "cancellation deadline" (task
+    // E27/F01/US01/T01, NW-79/NW-91; ADR-024 w19 cl. 13) — a validated-contract structured fact
+    // (EndDate/CancellationDeadline/AutoRenewal), never generic clause RAG. Checked last, right
+    // before the legacy router's own fallback: <c>AskRaffaQueryRouter</c> already has a
+    // "cancellation deadline" Structured keyword, but no "notice"/"preavviso"/"disdetta" keyword
+    // of its own, so without this pattern those phrasings default to its Semantic fallback and
+    // become AskIntent.Clause (unfiltered tenant RAG) instead of the structured notice fact.
+    private static readonly Regex NoticePattern = new(
+        @"\b(notice|preavviso|disdetta(\s+period)?|cancellation\s+deadline)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     /// <summary>
     /// Plans <paramref name="question"/>, already known to be
     /// <see cref="GateLabel.InDomain"/> (<see cref="Gate.DomainGate.Classify"/>).
@@ -82,13 +124,43 @@ public sealed class IntentPlanner
     /// <param name="namedSupplier">The gate's own resolved supplier name
     /// (<see cref="Gate.DomainGateResult.NamedSupplier"/>), or <see langword="null"/> when the
     /// question named none. A benchmark/priority/savings question scopes to this contract when
-    /// present, or to the whole portfolio when absent.</param>
+    /// present, or to the whole portfolio when absent; a <see cref="AskIntent.PortfolioMarketPosition"/>
+    /// question is always portfolio-wide regardless of this value (lock 4) — it is echoed, never
+    /// used to narrow that intent to one contract.</param>
     /// <exception cref="ArgumentException"><paramref name="question"/> is null/blank.</exception>
     public IntentPlanResult Plan(string question, string? namedSupplier)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(question);
 
         var trimmed = question.Trim();
+
+        if (PortfolioMarketPositionPattern.IsMatch(trimmed) && PortfolioQuestionPattern.IsMatch(trimmed))
+        {
+            // Lock 4: always the workspace portfolio, even when a supplier is already in scope
+            // (e.g. the chat was opened from one contract's 360) — this branch never reads
+            // namedSupplier to decide anything, it only echoes it through unchanged.
+            return new IntentPlanResult(
+                AskIntent.PortfolioMarketPosition,
+                "matched the portfolio mal-position lexicon ('quali contratti'/'which contracts' + " +
+                "'mal posizionat*'/'poorly positioned'/'above market'/'too expensive') — always the " +
+                "workspace portfolio, even when a supplier is in scope (lock 4; R-SYS-02 narrowed, " +
+                "lock 6).",
+                namedSupplier);
+        }
+
+        if (SavingsPattern.IsMatch(trimmed))
+        {
+            return namedSupplier is not null
+                ? new IntentPlanResult(
+                    AskIntent.Savings,
+                    $"matched the savings lexicon scoped to '{namedSupplier}'.",
+                    namedSupplier)
+                : new IntentPlanResult(
+                    AskIntent.PortfolioStrategy,
+                    "matched the savings lexicon with no supplier in scope — portfolio-wide " +
+                    "'where can we save' (R-PORT-02).",
+                    namedSupplier);
+        }
 
         if (BenchmarkPattern.IsMatch(trimmed))
         {
@@ -109,7 +181,8 @@ public sealed class IntentPlanner
         {
             return new IntentPlanResult(
                 AskIntent.RenewalStrategy,
-                "matched the renewal-strategy lexicon ('approach'/'affrontare'/'negotiate'...).",
+                "matched the renewal-strategy lexicon ('approach'/'affrontare'/'negotiate'/" +
+                "'contrattare'/'rinnovo'/'punti'...).",
                 namedSupplier);
         }
 
@@ -128,20 +201,6 @@ public sealed class IntentPlanner
                     namedSupplier);
         }
 
-        if (SavingsPattern.IsMatch(trimmed))
-        {
-            return namedSupplier is not null
-                ? new IntentPlanResult(
-                    AskIntent.Savings,
-                    $"matched the savings lexicon scoped to '{namedSupplier}'.",
-                    namedSupplier)
-                : new IntentPlanResult(
-                    AskIntent.PortfolioStrategy,
-                    "matched the savings lexicon with no supplier in scope — portfolio-wide " +
-                    "'where can we save' (R-PORT-02).",
-                    namedSupplier);
-        }
-
         if (DocumentStatusPattern.IsMatch(trimmed))
         {
             return new IntentPlanResult(
@@ -152,6 +211,15 @@ public sealed class IntentPlanner
         {
             return new IntentPlanResult(
                 AskIntent.Navigate, "matched a bare navigation request with nothing to narrate.", namedSupplier);
+        }
+
+        if (NoticePattern.IsMatch(trimmed))
+        {
+            return new IntentPlanResult(
+                AskIntent.StructuredFact,
+                "matched the notice lexicon ('notice'/'preavviso'/'disdetta'/'cancellation " +
+                "deadline') — a validated-contract structured fact, not clause RAG (NW-91).",
+                namedSupplier);
         }
 
         var legacyDecision = _legacyRouter.Route(trimmed);
@@ -165,7 +233,7 @@ public sealed class IntentPlanner
 
         // Structured (dates, spend, "next N days") or no pattern matched at all: StructuredFact is
         // the safe default — an empty pack for a genuinely unanswerable question still abstains
-        // honestly downstream (Appendix C rule 10) rather than this planner inventing a tenth
+        // honestly downstream (Appendix C rule 10) rather than this planner inventing yet another
         // intent for "unknown".
         return new IntentPlanResult(
             AskIntent.StructuredFact,
