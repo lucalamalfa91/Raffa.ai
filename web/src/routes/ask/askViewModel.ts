@@ -139,9 +139,14 @@ function buildReply(turn: NormalizedTurnBody): Reply {
     case "abstain":
       // The backend's own abstain branch stores the reason *as* answerMarkdown/markdown
       // (Raffa.Chat.Application.Reply.CopilotReplyBuilder's own abstain construction:
-      // `new(ReplyKind.Abstain, guarded.AbstainReason ?? "...", [], [], ..., [])`) -- there is no
-      // separate "reason" field on the wire to read instead.
-      return { kind: "abstain", reason: turn.text };
+      // `new(ReplyKind.Abstain, guarded.AbstainReason ?? "...", [], recoveryActions, ..., [])`) --
+      // there is no separate "reason" field on the wire to read instead. `recoveryActions` (task
+      // E25/F05/US01/T01, backend) lands on the wire's own generic `actions[]`, mapped here with
+      // the same `mapConversationAction` the answer/redirect/refusal branches already use (task
+      // E25/F05/US02/T01) -- `ReplyBody.tsx` is the layer that forces the result to render
+      // secondary-only (ADR-024), never primary, the same defensive posture it already applies to
+      // redirect/refusal's own action slice below.
+      return { kind: "abstain", reason: turn.text, actions: turn.actions.map(mapConversationAction) };
     default: {
       // Exhaustiveness guard: a future wire `kind` value fails this file's own build instead of
       // silently rendering nothing for it (same convention `./reply/ReplyBody.tsx` already uses).
