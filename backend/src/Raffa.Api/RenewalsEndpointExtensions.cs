@@ -3,6 +3,7 @@ using Raffa.Benchmark;
 using Raffa.Benchmark.Contracts;
 using Raffa.Documents.Contracts.Application;
 using Raffa.Documents.Contracts.Domain;
+using Raffa.Identity.Workspace.Domain;
 using Raffa.Renewals.Application;
 using Raffa.Renewals.Domain;
 using Raffa.SharedKernel;
@@ -102,6 +103,20 @@ namespace Raffa.Api;
 /// <c>RecommendedAction</c>) — reusing that name would overwrite a deterministic calculator's output
 /// with user state on a shipped screen, so the embedded field is deliberately named differently.
 /// </para>
+///
+/// <para>
+/// Task E29/F01/US01/T01 (todo-entity-api, wave w19 NW-85; ADR-028/ADR-009/ADR-011 w19) adds
+/// <c>GET</c>/<c>PUT /api/renewals/{id}/negotiation-todos</c> — same <c>{id}</c>/contract-id meaning
+/// as every other route in this file. <see cref="GetRenewalNegotiationTodosAsync"/> is guarded
+/// exactly like <see cref="GetRenewalActionAsync"/> (<see cref="ICallerContext"/> only — any live
+/// tenant member reads). <see cref="TickRenewalNegotiationTodoAsync"/> additionally requires the
+/// caller's workspace role to be Admin or Procurement (parent story us-01-todo-entity-api AC-2:
+/// "tick PUT mirrors <c>POST /api/renewals/{id}/action</c> roles (Procurement/Admin)"; waves/w19.md's
+/// own NW-85 row, security-architect: "tick PUT = Procurement/Admin, authz before retrieval") —
+/// resolved the same way <see cref="AuditEndpointExtensions.GetAuditEventsAsync"/> already resolves
+/// its own Admin-only gate, via <see cref="WorkspaceRoleResolver"/>, and checked <b>before</b> the
+/// route id is even parsed ("authz before retrieval").
+/// </para>
 /// </summary>
 public static class RenewalsEndpointExtensions
 {
@@ -111,6 +126,8 @@ public static class RenewalsEndpointExtensions
         endpoints.MapGet("/api/renewals/{contractId}/priority", GetRenewalPriorityAsync);
         endpoints.MapPost("/api/renewals/{id}/action", PostRenewalActionAsync);
         endpoints.MapGet("/api/renewals/{id}/action", GetRenewalActionAsync);
+        endpoints.MapGet("/api/renewals/{id}/negotiation-todos", GetRenewalNegotiationTodosAsync);
+        endpoints.MapPut("/api/renewals/{id}/negotiation-todos", TickRenewalNegotiationTodoAsync);
         return endpoints;
     }
 
@@ -596,5 +613,132 @@ public static class RenewalsEndpointExtensions
         status = action.Status.ToString(),
         action = action.Action,
         updatedAt = action.UpdatedAt,
+    };
+
+    /// <summary>
+    /// <c>GET /api/renewals/{id}/negotiation-todos</c> (task E29/F01/US01/T01, todo-entity-api;
+    /// parent story us-01-todo-entity-api AC-2). <c>{id}</c> carries exactly the same meaning as on
+    /// <see cref="PostRenewalActionAsync"/>/<see cref="GetRenewalActionAsync"/> above — the contract
+    /// id. Same guard-clause shape as <see cref="GetRenewalActionAsync"/>: tenant/identity via
+    /// <see cref="ICallerContext"/>, then the route id's GUID format — no additional role gate (any
+    /// live tenant member reads, same posture as every other GET in this file). A bare JSON array,
+    /// not <c>{ items: [...] }</c>: this is a small, unpaginated, per-contract list, the same shape
+    /// <see cref="AuditEndpointExtensions.GetAuditEventsAsync"/> already returns for the identical
+    /// reason (no paging needed) — <c>GET /api/renewals</c>'s own <c>{ items, totalCount }</c> wrapper
+    /// exists for that route's portfolio-wide pagination, which does not apply here. Never a 404: a
+    /// well-formed contract id with nothing ever upserted for it is an honest empty list
+    /// (<see cref="RenewalNegotiationTodoService.GetAsync"/>'s own doc comment).
+    /// </summary>
+    private static async Task<IResult> GetRenewalNegotiationTodosAsync(
+        string id,
+        HttpRequest request,
+        RenewalNegotiationTodoService todoService,
+        ICallerContext callerContext,
+        CancellationToken cancellationToken)
+    {
+        var caller = await callerContext.ResolveTenantAsync(request, cancellationToken);
+        if (caller.Failure is not null)
+        {
+            return caller.Failure;
+        }
+
+        using var callerTenantScope = caller.Scope;
+        var tenantGuid = caller.TenantId.Value;
+
+        if (!Guid.TryParse(id, out var contractGuid))
+        {
+            return Results.BadRequest(
+                "The renewal id in the route must be a GUID (the same 'contractId' GET /api/renewals returns).");
+        }
+
+        var todos = await todoService.GetAsync(
+            new TenantId(tenantGuid), new EntityId(contractGuid), cancellationToken).ConfigureAwait(false);
+
+        return Results.Ok(todos.Select(ToNegotiationTodoResponse));
+    }
+
+    /// <summary>
+    /// <c>PUT /api/renewals/{id}/negotiation-todos</c> (task E29/F01/US01/T01, todo-entity-api;
+    /// parent story us-01-todo-entity-api AC-2, the tick; AC-3, the audit). <c>{id}</c> is the
+    /// contract id, same meaning as every other route in this file. Order:
+    /// <see cref="ICallerContext"/> (401 no identity / 400 malformed tenant header / 404 not a
+    /// member) — then the Admin-or-Procurement role gate (403), <b>before</b> the route id is even
+    /// parsed, let alone <see cref="RenewalNegotiationTodoService"/> is called ("authz before
+    /// retrieval", waves/w19.md's own NW-85 row) — then the route id's GUID format (400) — then the
+    /// tick itself. 404 when <c>pointKey</c> names no existing row for this (tenant, contract): this
+    /// route never creates one (client-architect's "never invent a point";
+    /// <see cref="RenewalNegotiationTodoService.SetDoneAsync"/>'s own doc comment).
+    /// </summary>
+    private static async Task<IResult> TickRenewalNegotiationTodoAsync(
+        string id,
+        RenewalNegotiationTodoTickRequest request,
+        HttpRequest httpRequest,
+        RenewalNegotiationTodoService todoService,
+        WorkspaceRoleResolver roleResolver,
+        ICallerContext callerContext,
+        CancellationToken cancellationToken)
+    {
+        var caller = await callerContext.ResolveTenantAsync(httpRequest, cancellationToken);
+        if (caller.Failure is not null)
+        {
+            return caller.Failure;
+        }
+
+        using var callerTenantScope = caller.Scope;
+        var tenantId = caller.TenantId;
+
+        // Parent story AC-2 / waves/w19.md NW-85 (security-architect): "tick PUT = Procurement/Admin,
+        // authz before retrieval" -- resolved and checked before the route id is parsed or the todo
+        // service is ever called, same ordering AuditEndpointExtensions.GetAuditEventsAsync already
+        // uses for its own Admin-only gate. A live member who is not Admin/Procurement is 403 -- 404
+        // is reserved for "not a member at all" (already ruled out by ResolveTenantAsync above,
+        // ADR-025 Rule B1).
+        var role = await roleResolver.ResolveAsync(httpRequest.HttpContext, tenantId, cancellationToken);
+        if (role is not (WorkspaceRoleName.Admin or WorkspaceRoleName.Procurement))
+        {
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
+        }
+
+        if (!Guid.TryParse(id, out var contractGuid))
+        {
+            return Results.BadRequest(
+                "The renewal id in the route must be a GUID (the same 'contractId' GET /api/renewals returns).");
+        }
+
+        var result = await todoService.SetDoneAsync(
+            tenantId,
+            new EntityId(contractGuid),
+            request.PointKey,
+            caller.Identity!,
+            cancellationToken).ConfigureAwait(false);
+
+        if (result.IsFailure)
+        {
+            return Results.BadRequest(result.Error);
+        }
+
+        return result.Value is null ? Results.NotFound() : Results.Ok(ToNegotiationTodoResponse(result.Value));
+    }
+
+    /// <summary>
+    /// Wire-shapes a <see cref="RenewalNegotiationTodoResult"/> — the one place
+    /// <see cref="GetRenewalNegotiationTodosAsync"/> and <see cref="TickRenewalNegotiationTodoAsync"/>
+    /// both build this response, so a read and a tick can never drift into different shapes (same
+    /// discipline <see cref="ToActionResponse"/> already establishes for its own sibling entity).
+    /// </summary>
+    private static object ToNegotiationTodoResponse(RenewalNegotiationTodoResult todo) => new
+    {
+        contractId = todo.ContractId.Value,
+        pointKey = todo.PointKey,
+        topic = todo.Topic,
+        rank = todo.Rank,
+        current = todo.Current,
+        target = todo.Target,
+        rationale = todo.Rationale,
+        citationKeys = todo.CitationKeys,
+        source = todo.Source,
+        status = todo.Status.ToString(),
+        createdAt = todo.CreatedAt,
+        updatedAt = todo.UpdatedAt,
     };
 }
