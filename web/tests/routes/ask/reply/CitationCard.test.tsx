@@ -44,7 +44,7 @@ describe("CitationCard (task E13/F09/US01/T02, AC-3)", () => {
     expect(screen.getByText("[2]")).toBeInTheDocument();
   });
 
-  it("renders the first-page preview image when previewUrl is given", () => {
+  it("renders the first-page preview image when previewUrl is given (AC-1)", () => {
     render(
       <CitationCard
         n={1}
@@ -60,22 +60,41 @@ describe("CitationCard (task E13/F09/US01/T02, AC-3)", () => {
     const img = screen.getByRole("img");
     expect(img).toHaveAttribute("src", "/api/documents/abc/preview");
     expect(screen.queryByText("No page preview available")).not.toBeInTheDocument();
+    expect(screen.queryByText("View source →")).not.toBeInTheDocument();
   });
 
-  it("renders the honest placeholder block when there is no previewUrl", () => {
+  // Task E25/F02/US02/T01 (us-02-citation-card-web AC-2, closing NW-55): a `raffa`/`market`
+  // citation never carries a `previewUrl` (ADR-024 §2) and used to fall through to this same
+  // component's old "No page preview available" placeholder -- it now renders a `.btn`-styled CTA
+  // card instead, and the placeholder text is gone for good, not just for these two corpora.
+  it.each<{ corpus: CitationCorpus }>([{ corpus: "raffa" }, { corpus: "market" }])(
+    "renders a CTA card, never the old placeholder, for a $corpus citation with no previewUrl (AC-2)",
+    ({ corpus }) => {
+      render(
+        <CitationCard
+          n={1}
+          corpus={corpus}
+          title="Salesforce · MSA 2024"
+          subtitle="p.12 §8.4"
+          snippet="…"
+          onOpen={vi.fn()}
+        />,
+      );
+
+      expect(screen.queryByRole("img")).not.toBeInTheDocument();
+      expect(screen.queryByText("No page preview available")).not.toBeInTheDocument();
+      expect(screen.getByText("View source →")).toBeInTheDocument();
+    },
+  );
+
+  it("the CTA label is not itself a button or link -- the card keeps exactly one interaction (AC-3)", () => {
     render(
-      <CitationCard
-        n={1}
-        corpus="tenant"
-        title="Salesforce · MSA 2024"
-        subtitle="p.12 §8.4"
-        snippet="…"
-        onOpen={vi.fn()}
-      />,
+      <CitationCard n={1} corpus="raffa" title="What Ask can do" subtitle="/documents" snippet="…" onOpen={vi.fn()} />,
     );
 
-    expect(screen.queryByRole("img")).not.toBeInTheDocument();
-    expect(screen.getByText("No page preview available")).toBeInTheDocument();
+    // Exactly one `<button>` in the whole card (the outer one); the CTA label is a plain `<span>`.
+    expect(screen.getAllByRole("button")).toHaveLength(1);
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 
   it("calls onOpen when clicked -- its only interaction", async () => {

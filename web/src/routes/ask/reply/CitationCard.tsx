@@ -14,9 +14,14 @@ export interface CitationCardProps
 
 /**
  * One citation card (task text; R-WEB-04; requirements.md §6): corpus badge + title + subtitle +
- * quoted snippet (accent-left rule) + first-page preview or an honest placeholder. The whole card
- * is one native `<button>` (ADR-019 accessibility baseline: "every interactive control is
- * native") rather than a styled `<div onClick>`, so it is keyboard-operable for free.
+ * quoted snippet (accent-left rule) + first-page preview -- or, for a `raffa`/`market` citation
+ * (never carries a real `previewUrl`; ADR-024 §2's three-source split), a `.btn`-styled
+ * call-to-action card instead of an empty placeholder (us-02-citation-card-web AC-1/AC-2, closing
+ * NW-55; supersedes the always-present "No page preview available" text this card used to render
+ * for every corpus). The whole card is one native `<button>` (ADR-019 accessibility baseline:
+ * "every interactive control is native") rather than a styled `<div onClick>`, so it is
+ * keyboard-operable for free; the CTA label below is a plain, non-interactive `<span>`, never a
+ * nested `<button>`/`<a>`, so the card keeps exactly one interaction either way (AC-3).
  *
  * `.card` (ADR-019 / `styles/components.css`: "recommendation/provenance blocks only") is the
  * right shared base -- a citation card *is* a provenance block -- with this folder's own
@@ -38,8 +43,8 @@ export default function CitationCard({ n, corpus, title, subtitle, snippet, prev
       {previewUrl ? (
         <img className="citation-card-preview" src={previewUrl} alt={`${title} -- first page preview`} />
       ) : (
-        <div className="citation-card-preview-placeholder">
-          <span className="micro-meta">No page preview available</span>
+        <div className="citation-card-cta">
+          <span className="btn btn-secondary">View source →</span>
         </div>
       )}
     </button>
