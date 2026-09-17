@@ -294,7 +294,14 @@ from `markup.html`.
   ADR-018/ADR-020 forbid). Enter (or a suggestion chip) always opens a **new
   chat**: it navigates to `/ask` with `{ state: { query, newChat: true } }`
   (`useLocation().state` -- `AskRoute` reads `state.query` to seed and ask a
-  brand-new conversation immediately, task E13/F09/US01/T04). Cmd/Ctrl+K
+  brand-new conversation immediately, task E13/F09/US01/T04) -- **except from
+  Contract 360** (task E27/F03/US01/T01, NW-77; ADR-012 cl. 49 / ADR-020
+  §37.1 per `reports/architecture/waves/w19.md`): while the current route is
+  `/contracts/:contractId` (`askSuggestions.ts#contractIdForPath`, never its
+  `/review` sub-route), it navigates `/ask?scope=<contractId>` instead,
+  reusing `AskRoute`'s own w18 `parseScopeContractId` to create the scoped
+  conversation -- the query still rides `state.query` unchanged, never a new
+  nav-state field. Cmd/Ctrl+K
   focuses the input from anywhere the bar itself renders; on `/ask` and
   `/ask/:conversationId` the identical shortcut instead focuses that
   screen's own composer input (`src/routes/ask/index.tsx`'s
@@ -311,6 +318,16 @@ from `markup.html`.
   from `AppShell.tsx`, never re-derived; `GET /api/capabilities` itself
   stays un-gated and identical for both roles) -- never a blank chip row.
   The same role gate applies to `AskRoute`'s own `suggestionsFor` below.
+  **Contract 360 has no catalog key**, so its own two chips are always the
+  supplier-templated pair instead (`askSuggestions.ts#c360Chips`, task
+  E27/F03/US01/T01, NW-77, AC-2): the bar fetches `GET /api/contracts/{id}`
+  (`getContract360`) itself while on that route -- the same read
+  `askViewModel.ts#buildScopedSuggestions` already does for `AskRoute`'s own
+  scoped chips -- and names the real supplier once it resolves; "this
+  supplier" only survives while that fetch is in flight, fails, or the
+  contract genuinely has none. Portfolio/Ask-home (and every other screen)
+  never receive a supplier name at all, so their own chips are unaffected
+  (AC-3).
   The placeholder
   itself still switches to "Ask Raffa switches on after your first
   validated contract" while `!kbReady`, regardless of route (ADR-024 V2
@@ -721,8 +738,10 @@ E13/F09/US01/T04, us-01-web-v2 AC-1/AC-3/AC-5/AC-6, `raffa-v2/screens-v2.md` #2)
 resume -- `turns.length === 0` vs `> 0` and two route-derived ids inside one component, not four
 separate components; see `index.tsx`'s own header comment for the full state-machine reasoning).
 Reached from the global Ask bar (`components/ask-bar/GlobalAskBar.tsx`, Enter or Cmd/Ctrl+K) on any
-screen, directly at `/ask`, a rail conversation click, or Contract 360's "Ask about it"
-(`/ask?scope=<contractId>`). Replaces the V1 single-turn `POST /api/chat/query` screen this same
+screen -- scoped (`/ask?scope=<contractId>`) when submitted from Contract 360 itself (task
+E27/F03/US01/T01, NW-77), plain `/ask` elsewhere -- directly at `/ask`, a rail conversation click,
+or Contract 360's own "Ask about it" button (`Contract360Header.tsx`, the same `?scope=` template).
+Replaces the V1 single-turn `POST /api/chat/query` screen this same
 task deleted (`ChatMessage.tsx`, `askViewModel.ts#ROUTE_LINE_BY_INTENT`) with real, resumable,
 per-user conversations.
 
@@ -1340,8 +1359,8 @@ web/
         shellContext.ts          # useOutletContext typing for the router outlet (workspaceId/kbReady/validatedContractCount)
         shell.css                # rail/shell layout
       ask-bar/                # task E06/F03/US02/T01 -- global Ask bar scaffold (AC-3); V2 new-chat state + off placeholder by E13/F09/US01/T01; capability-sourced chips by E13/F09/US01/T04
-        GlobalAskBar.tsx         # the bar itself: input, chips, Enter -> /ask with { query, newChat: true }, Cmd/Ctrl+K focus, fetches GET /api/capabilities once
-        askSuggestions.ts        # getAskBarCopy: static per-route fallback copy + kbReady off-copy, overridden by the capability catalog's own exampleQuestions once it resolves for the current route
+        GlobalAskBar.tsx         # the bar itself: input, chips, Enter -> /ask with { query, newChat: true } (or /ask?scope=<contractId> from Contract 360, NW-77 task E27/F03/US01/T01), Cmd/Ctrl+K focus, fetches GET /api/capabilities once + GET /api/contracts/{id} while on Contract 360 (real supplier name for the notice chip)
+        askSuggestions.ts        # getAskBarCopy: static per-route fallback copy + kbReady off-copy, overridden by the capability catalog's own exampleQuestions once it resolves for the current route; c360Chips/contractIdForPath (NW-77) name the Contract 360 chip with the real supplier, never on any other screen
         ask-bar.css
     App.tsx                   # composition root: BrowserRouter (public /invite/accept + the account/workspace gate), /health effect, AuthenticatedGate's three states (task E14/F03/US02/T01)
     main.tsx                  # boot: load config -> construct MSAL + API client -> render
