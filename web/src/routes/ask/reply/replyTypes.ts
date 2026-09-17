@@ -30,10 +30,15 @@ export type CitationCorpus = "tenant" | "market" | "raffa";
 /**
  * One entry of `citations[]` (requirements.md §6 JSON example), narrowed to exactly the fields
  * `CitationCard.tsx` renders (task text: "props: n, corpus, title, subtitle, snippet, previewUrl?,
- * href?"). The wire shape also carries `documentId`/`contractId`/`page`/`section`/`recordId` --
- * identifiers this presentational card never renders (R-ASK-08 "no guids ever rendered") and does
- * not need. F09/T04's adapter keeps those on its own richer type for navigation/resolution -- the
- * V1 precedent for that split is `../askViewModel.ts`'s `ChatCitationView`, which also keeps
+ * href?") plus `contractId` (task E28/F03/US02/T01, NW-83/NW-93 -- see that field's own doc
+ * comment below). The wire shape also carries `documentId`/`page`/`section`/`recordId` --
+ * identifiers this presentational card still never renders as visible text (R-ASK-08 "no guids
+ * ever rendered") and does not need: `href` already arrives fully resolved (including a real
+ * document's page and clause/span, when one exists -- `AskCopilotService
+ * .ResolveTenantClauseLinks`, NW-83) and `contractId` is used only to build a second CTA's own
+ * `href` attribute, never printed as text -- the same standing exception `href` itself already
+ * relies on. F09/T04's adapter keeps the rest on its own richer type for navigation/resolution --
+ * the V1 precedent for that split is `../askViewModel.ts`'s `ChatCitationView`, which also keeps
  * `sourceType`/`sourceId` off the rendered chip.
  */
 export interface ReplyCitation {
@@ -59,8 +64,19 @@ export interface ReplyCitation {
    * turns this into a competing native link itself; some citations (a not-yet-resolved tenant
    * citation) have no `href` at all and must resolve asynchronously first, the same shape
    * `../askViewModel.ts#resolveCitationContractId` already established for V1. This card's one
-   * interaction is always "click -> onOpen" (task text). */
+   * interaction is always "click -> onOpen" (task text) -- unless `contractId` below turns it into
+   * the two-CTA card instead (`CitationCard.tsx`). */
   href?: string | null;
+  /** This citation's own contract id, when it resolves to exactly one (task E28/F03/US02/T01,
+   * NW-83/NW-93; echoes the wire's `contractId`, itself the composition root's
+   * `PackItem.ContractId` verbatim -- never re-derived from a citation key). Used only to build
+   * the two-CTA card's primary "Open contract" action (`/contracts/{contractId}`) once `href`
+   * above has already resolved to the W18 viewer route (`CitationCard.tsx`'s own `isViewerHref`) --
+   * never rendered as visible text (R-ASK-08 still holds: an id inside an `href` attribute is not
+   * a guid "rendered", the same exception `href` itself already relies on). Absent/`null` for a
+   * market/raffa citation and for an NW-81 "similar types" peer hit, exactly like the wire's own
+   * field never resolves those either -- both then keep today's single-button fallback card. */
+  contractId?: string | null;
 }
 
 /** `actions[].kind` (requirements.md §6) -> `.btn-primary` / `.btn-secondary` (task text). */
