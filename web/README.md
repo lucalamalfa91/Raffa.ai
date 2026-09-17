@@ -286,12 +286,20 @@ from `markup.html`.
   still only decides which affordances *render*; the API's own `403` is the
   authority.
 - **Global Ask bar (AC-3)** -- `src/components/ask-bar/GlobalAskBar.tsx`
-  renders on every routed screen (mounted once, above `<Outlet/>`, in
-  `AppShell.tsx`). Enter (or a suggestion chip) always opens a **new chat**:
-  it navigates to `/ask` with `{ state: { query, newChat: true } }`
+  renders on every routed screen except `/ask` and `/ask/:conversationId`
+  (mounted above `<Outlet/>` in `AppShell.tsx`; suppressed on those two by a
+  plain `useLocation()` pathname check, `isAskRoute` in that same file --
+  task E25/F06/US01/T01, NW-60 -- because that route renders its own
+  composer and a second Ask input on one screen is exactly the duplicate
+  ADR-018/ADR-020 forbid). Enter (or a suggestion chip) always opens a **new
+  chat**: it navigates to `/ask` with `{ state: { query, newChat: true } }`
   (`useLocation().state` -- `AskRoute` reads `state.query` to seed and ask a
   brand-new conversation immediately, task E13/F09/US01/T04). Cmd/Ctrl+K
-  focuses the input from anywhere. Suggestion-chip copy
+  focuses the input from anywhere the bar itself renders; on `/ask` and
+  `/ask/:conversationId` the identical shortcut instead focuses that
+  screen's own composer input (`src/routes/ask/index.tsx`'s
+  `composerInputRef`) -- exactly one of the two components is ever mounted,
+  so the two window listeners never overlap. Suggestion-chip copy
   (`src/components/ask-bar/askSuggestions.ts#getAskBarCopy`) fetches
   `GET /api/capabilities` once (task E13/F09/US01/T04, gap G-CAPABILITIES)
   and, once it resolves, prefers that catalog's own `exampleQuestions` for
