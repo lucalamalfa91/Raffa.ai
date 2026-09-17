@@ -51,6 +51,13 @@ public sealed class EmbeddingRetrievalService(
     ITenantContext tenantContext,
     IClock clock)
 {
+    /// <summary>Same discriminator <c>DocumentProcessingPipeline</c> indexes page chunks under
+    /// (mirrors <see cref="ContractEvidenceQueryService"/>'s own private constant of the same
+    /// name) — the only <see cref="Embedding.SourceType"/> anything actually writes today, so
+    /// <see cref="SearchByContractAsync"/> resolves "this contract"/"similar types" membership by
+    /// joining through <see cref="Domain.Document.ContractId"/>, never a <c>Clause</c>-sourced row.</summary>
+    private const string DocumentSourceType = "Document";
+
     /// <summary>
     /// Embeds <paramref name="chunkText"/> via <see cref="IAiGateway.EmbedAsync"/> (AC-3) and
     /// persists it as a new <see cref="Embedding"/> row scoped to <paramref name="tenantId"/>.
@@ -231,17 +238,236 @@ public sealed class EmbeddingRetrievalService(
             .ConfigureAwait(false);
 
         IReadOnlyList<EmbeddingSearchResult> results = matches
-            .Select(x => new EmbeddingSearchResult(
-                x.Embedding.Id,
-                x.Embedding.SourceType,
-                x.Embedding.SourceId,
-                x.Embedding.ChunkIndex,
-                x.Embedding.ChunkText,
-                x.Distance,
-                x.Embedding.Page,
-                x.Embedding.Section))
+            .Select(x => ToSearchResult(x.Embedding, x.Distance))
             .ToList();
 
         return Result<IReadOnlyList<EmbeddingSearchResult>>.Success(results);
     }
+
+    /// <summary>
+    /// Task E28/F02/US01/T01 (NW-81; ADR-024 w19 cl. 15; ADR-011 market isolation): the
+    /// contract-scoped counterpart to <see cref="SearchAsync"/>. <see cref="SearchAsync"/> is a
+    /// cosine top-K over <b>every</b> embedding this tenant owns — correct for an unscoped
+    /// question with no named contract, but the exact defect this task closes for a scoped turn: a
+    /// tenant with 37 contracts got another supplier's MSA back just because it embedded closer to
+    /// the query than anything from the contract the user actually asked about (Q2/Q3 "mixing 37
+    /// contracts").
+    ///
+    /// <para>
+    /// Returns two independent slices, both nearest-first by cosine distance, from one embedded
+    /// query vector (a single <see cref="IAiGateway.EmbedAsync"/> call, AC-3 — the two slices are a
+    /// read-side split, not two separate questions):
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description><b>This contract</b> (AC-1, <see cref="EmbeddingContractScopedSearchResult.ThisContract"/>):
+    /// only <see cref="Embedding"/> rows whose <see cref="Embedding.SourceId"/> resolves — via
+    /// <see cref="Domain.Document.ContractId"/>, since <see cref="Embedding"/> itself carries no
+    /// contract id, only the loose <see cref="Embedding.SourceType"/>/<see cref="Embedding.SourceId"/>
+    /// pointer (see that entity's own doc comment) — to <see cref="EmbeddingSearchQuery.ContractId"/>
+    /// itself.</description></item>
+    /// <item><description><b>Similar types</b> (AC-2, <see cref="EmbeddingContractScopedSearchResult.SimilarTypes"/>):
+    /// a labelled peer slice at <see cref="EmbeddingSearchQuery.PeerTopK"/> (deliberately lower than
+    /// <see cref="EmbeddingSearchQuery.TopK"/>) drawn from <b>other</b> contracts of the same
+    /// <see cref="ContractDocumentType"/> — "same type/category" per the wave's own row — that are
+    /// themselves validated (at least one linked <see cref="Domain.Document"/> reached
+    /// <see cref="DocumentProcessingStatus.Completed"/>; the same definition
+    /// <see cref="PortfolioQueryService.CountValidatedContractsAsync"/> already establishes as "the
+    /// one definition of validated", never <see cref="Contract.Status"/>, which is the literal
+    /// <c>"processing"</c> string for a bootstrapped-but-unprocessed shell). Callers keep this slice
+    /// labelled as "similar contract" evidence (never this contract's own) — see
+    /// <c>AskCopilotService.BuildClausePackAsync</c>.</description></item>
+    /// </list>
+    ///
+    /// <para>
+    /// <b>Market never enters this method (AC-3, ADR-011).</b> Both slices are drawn exclusively
+    /// from this tenant's own <see cref="Embedding"/> rows in Postgres — the market-intelligence
+    /// feed is a separate corpus behind <c>IMarketKnowledgeRetrieval</c> with its own index, never
+    /// this pgvector table (ADR-024 "three sources of truth", ADR-011 "no-training... never mixed
+    /// into tenant pgvector"). This method has no market dependency to accidentally reach for.
+    /// </para>
+    ///
+    /// <para>
+    /// RLS remains the non-bypassable backstop (ADR-009, not re-decided by this task): the explicit
+    /// <c>tenant_id</c> predicates below are belt-and-suspenders on top of it, the same shape every
+    /// other query in this class already uses.
+    /// </para>
+    /// </summary>
+    public async Task<Result<EmbeddingContractScopedSearchResult>> SearchByContractAsync(
+        EmbeddingSearchQuery query, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(query.QueryText))
+        {
+            return Result<EmbeddingContractScopedSearchResult>.Failure("Query text is required.");
+        }
+
+        if (query.TopK <= 0)
+        {
+            return Result<EmbeddingContractScopedSearchResult>.Failure("topK must be a positive number.");
+        }
+
+        if (query.PeerTopK < 0)
+        {
+            return Result<EmbeddingContractScopedSearchResult>.Failure("peerTopK must not be negative.");
+        }
+
+        // Entry point: open this call's own tenant scope before the gateway or the database is
+        // touched (see the type doc comment).
+        using var tenantScope = tenantContext.BeginScope(query.TenantId);
+
+        var embedResult = await aiGateway.EmbedAsync(new AiEmbeddingRequest(query.QueryText), cancellationToken)
+            .ConfigureAwait(false);
+
+        if (embedResult.IsFailure)
+        {
+            return Result<EmbeddingContractScopedSearchResult>.Failure(embedResult.Error);
+        }
+
+        var queryVector = new Vector(embedResult.Value.Vector.ToArray());
+
+        // AC-1: "this contract" is resolved via SourceId/SourceType, not a column on Embedding
+        // itself — same two-step (documents-of-the-contract, then embeddings-of-those-documents)
+        // ContractEvidenceQueryService already uses, materialising the id list first rather than
+        // nesting an un-materialised IQueryable.Contains subquery, for the same reason that file
+        // does: a proven-translatable shape over a value-converted EntityId column.
+        var thisContractDocumentIds = await dbContext.Documents
+            .AsNoTracking()
+            .Where(d => d.TenantId == query.TenantId && d.ContractId.HasValue && d.ContractId.Value == query.ContractId)
+            .Select(d => d.Id)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var thisContractMatches = thisContractDocumentIds.Count == 0
+            ? []
+            : await dbContext.Embeddings
+                .AsNoTracking()
+                .Where(e => e.TenantId == query.TenantId
+                    && e.SourceType == DocumentSourceType
+                    && thisContractDocumentIds.Contains(e.SourceId))
+                .Select(e => new { Embedding = e, Distance = e.Vector.CosineDistance(queryVector) })
+                .OrderBy(x => x.Distance)
+                .Take(query.TopK)
+                .ToListAsync(cancellationToken)
+                .ConfigureAwait(false);
+
+        IReadOnlyList<EmbeddingSearchResult> similarTypes = [];
+
+        if (query.PeerTopK > 0)
+        {
+            // Cast to nullable so "no such contract for this tenant" (null) is distinguishable
+            // from the real, non-nullable default enum member (Msa) — SingleOrDefaultAsync over a
+            // non-nullable projection cannot tell those two cases apart.
+            var contractType = await dbContext.Contracts
+                .AsNoTracking()
+                .Where(c => c.TenantId == query.TenantId && c.Id == query.ContractId)
+                .Select(c => (ContractDocumentType?)c.Type)
+                .SingleOrDefaultAsync(cancellationToken)
+                .ConfigureAwait(false);
+
+            if (contractType is { } type)
+            {
+                // AC-2: other validated contracts of the same type/category — "other" excludes
+                // query.ContractId by construction (c.Id != query.ContractId), so the peer slice
+                // can never silently duplicate the this-contract slice above.
+                var peerContractIds = await dbContext.Contracts
+                    .AsNoTracking()
+                    .Where(c => c.TenantId == query.TenantId
+                        && c.Id != query.ContractId
+                        && c.Type == type
+                        && dbContext.Documents.Any(d =>
+                            d.TenantId == query.TenantId
+                            && d.ContractId.HasValue
+                            && d.ContractId.Value == c.Id
+                            && d.ProcessingStatus == DocumentProcessingStatus.Completed))
+                    .Select(c => c.Id)
+                    .ToListAsync(cancellationToken)
+                    .ConfigureAwait(false);
+
+                // Nullable-to-nullable comparison (both sides EntityId?), same idiom
+                // PortfolioQueryService.GetPortfolioAsync's own SupplierId filter comment names:
+                // Contains against d.ContractId.Value (unwrapped to non-nullable) makes EF Core
+                // build the IN-list array parameter with a converter for the wrong (non-nullable)
+                // CLR type and throws building it, since the column itself is mapped through the
+                // nullable EntityId? converter — wrapping the list back to EntityId? instead keeps
+                // both sides on that same converter.
+                var peerContractIdsNullable = peerContractIds.ConvertAll(id => (EntityId?)id);
+                var peerDocumentIds = peerContractIdsNullable.Count == 0
+                    ? []
+                    : await dbContext.Documents
+                        .AsNoTracking()
+                        .Where(d => d.TenantId == query.TenantId && peerContractIdsNullable.Contains(d.ContractId))
+                        .Select(d => d.Id)
+                        .ToListAsync(cancellationToken)
+                        .ConfigureAwait(false);
+
+                if (peerDocumentIds.Count > 0)
+                {
+                    var peerMatches = await dbContext.Embeddings
+                        .AsNoTracking()
+                        .Where(e => e.TenantId == query.TenantId
+                            && e.SourceType == DocumentSourceType
+                            && peerDocumentIds.Contains(e.SourceId))
+                        .Select(e => new { Embedding = e, Distance = e.Vector.CosineDistance(queryVector) })
+                        .OrderBy(x => x.Distance)
+                        .Take(query.PeerTopK)
+                        .ToListAsync(cancellationToken)
+                        .ConfigureAwait(false);
+
+                    similarTypes = peerMatches.Select(x => ToSearchResult(x.Embedding, x.Distance)).ToList();
+                }
+            }
+        }
+
+        return Result<EmbeddingContractScopedSearchResult>.Success(
+            new EmbeddingContractScopedSearchResult(
+                thisContractMatches.Select(x => ToSearchResult(x.Embedding, x.Distance)).ToList(),
+                similarTypes));
+    }
+
+    private static EmbeddingSearchResult ToSearchResult(Embedding embedding, double distance) =>
+        new(
+            embedding.Id,
+            embedding.SourceType,
+            embedding.SourceId,
+            embedding.ChunkIndex,
+            embedding.ChunkText,
+            distance,
+            embedding.Page,
+            embedding.Section);
 }
+
+/// <summary>
+/// Input to <see cref="EmbeddingRetrievalService.SearchByContractAsync"/> (task E28/F02/US01/T01,
+/// NW-81; ADR-024 w19 cl. 15). Carries <see cref="ContractId"/> rather than a pre-resolved source-id
+/// list — the service itself resolves which <see cref="Embedding.SourceId"/> values belong to this
+/// contract (via <see cref="Domain.Document.ContractId"/>) and which belong to a validated peer of
+/// the same <see cref="ContractDocumentType"/>, so no caller has to know the SourceType/SourceId
+/// pointer shape <see cref="Domain.Embedding"/> itself documents.
+/// </summary>
+/// <param name="TenantId">The caller's already-authorized tenant (ADR-009).</param>
+/// <param name="QueryText">The natural-language question to embed and search with.</param>
+/// <param name="TopK">Max rows for the "this contract" slice.</param>
+/// <param name="ContractId">The contract this turn is scoped to.</param>
+/// <param name="PeerTopK">Max rows for the labelled "similar types" peer slice — deliberately lower
+/// than <paramref name="TopK"/> (NW-81 "lower K"); <c>0</c> skips the peer slice entirely rather
+/// than failing, for a caller that only wants this contract's own evidence.</param>
+public sealed record EmbeddingSearchQuery(
+    TenantId TenantId,
+    string QueryText,
+    int TopK,
+    EntityId ContractId,
+    int PeerTopK);
+
+/// <summary>
+/// Result of <see cref="EmbeddingRetrievalService.SearchByContractAsync"/>: two independently
+/// nearest-first slices that a caller must keep labelled apart (task E28/F02/US01/T01, NW-81
+/// AC-1/AC-2) — <see cref="SimilarTypes"/> is evidence about a <em>different</em>, merely
+/// similar-type contract and must never be rendered or cited as if it were <see cref="ThisContract"/>'s
+/// own fact.
+/// </summary>
+/// <param name="ThisContract">Nearest-first hits from the scoped contract's own embeddings only.</param>
+/// <param name="SimilarTypes">Nearest-first hits from other validated contracts of the same
+/// <see cref="ContractDocumentType"/> — empty when <see cref="EmbeddingSearchQuery.PeerTopK"/> was
+/// <c>0</c>, the contract itself was not found for this tenant, or no validated peer exists.</param>
+public sealed record EmbeddingContractScopedSearchResult(
+    IReadOnlyList<EmbeddingSearchResult> ThisContract,
+    IReadOnlyList<EmbeddingSearchResult> SimilarTypes);
