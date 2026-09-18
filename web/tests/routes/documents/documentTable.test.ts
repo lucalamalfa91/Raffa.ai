@@ -13,6 +13,12 @@ import {
   getRowStatusTag,
   getStagePercent,
   isAttentionStatus,
+  isStuckUploaded,
+  isStuckProcessing,
+  STUCK_REPROCESS_AFTER_MS,
+  STUCK_PROCESSING_REPROCESS_AFTER_MS,
+  MAX_STUCK_REPROCESS_ATTEMPTS,
+  getFailedHint,
   type DocumentCountsBody,
 } from "../../../src/routes/documents/documentTable";
 
@@ -29,6 +35,7 @@ function item(overrides: Partial<DocumentListItemBody> = {}): DocumentListItemBo
     createdAt: "2026-09-06T08:05:00Z",
     weakFactCount: 0,
     rejectionReason: null,
+    errorDetail: null,
     ...overrides,
   };
 }
@@ -132,8 +139,8 @@ describe("getRowAction", () => {
     });
   });
 
-  it("offers 'Retry upload' for failed documents", () => {
-    expect(getRowAction(item({ processingStatus: "Failed" }))).toEqual({ kind: "retry", label: "Retry upload" });
+  it("returns null for failed documents (recovery is auto-reprocess, not a table CTA)", () => {
+    expect(getRowAction(item({ processingStatus: "Failed" }))).toBeNull();
   });
 
   it("returns null while still processing (the stage text renders instead, not an action)", () => {
@@ -141,17 +148,13 @@ describe("getRowAction", () => {
   });
 
   it("returns null for a freshly uploaded document (the background-processing sentence renders instead)", () => {
-    const now = Date.parse("2026-09-15T18:00:00Z");
-    expect(
-      getRowAction(item({ processingStatus: "Uploaded", createdAt: "2026-09-15T17:58:00Z" }), now),
-    ).toBeNull();
+    expect(getRowAction(item({ processingStatus: "Uploaded", createdAt: "2026-09-15T17:58:00Z" }))).toBeNull();
   });
 
-  it("offers Retry upload once an Uploaded document has sat for five minutes", () => {
-    const now = Date.parse("2026-09-15T18:00:00Z");
+  it("still returns null for an Uploaded document that has sat past the stuck threshold", () => {
     expect(
-      getRowAction(item({ processingStatus: "Uploaded", createdAt: "2026-09-15T17:55:00Z" }), now),
-    ).toEqual({ kind: "retry", label: "Retry upload" });
+      getRowAction(item({ processingStatus: "Uploaded", createdAt: "2026-09-15T17:55:00Z" })),
+    ).toBeNull();
   });
 
   // ADR-020 w15 §1.4: a refused file offers no next step -- nothing to review, ask or retry.
@@ -169,6 +172,59 @@ describe("getRowAction", () => {
       });
     },
   );
+});
+
+describe("isStuckUploaded", () => {
+  const now = Date.parse("2026-09-15T18:00:00Z");
+
+  it("is false for a freshly uploaded document", () => {
+    expect(isStuckUploaded(item({ processingStatus: "Uploaded", createdAt: "2026-09-15T17:58:00Z" }), now)).toBe(false);
+  });
+
+  it("is true once an Uploaded document has sat for three minutes", () => {
+    expect(STUCK_REPROCESS_AFTER_MS).toBe(3 * 60 * 1000);
+    expect(isStuckUploaded(item({ processingStatus: "Uploaded", createdAt: "2026-09-15T17:57:00Z" }), now)).toBe(true);
+  });
+
+  it("is false while the Worker has already claimed the job", () => {
+    expect(isStuckUploaded(item({ processingStatus: "Processing", createdAt: "2026-09-15T17:50:00Z" }), now)).toBe(false);
+  });
+});
+
+describe("isStuckProcessing", () => {
+  const now = Date.parse("2026-09-15T18:00:00Z");
+
+  it("is false while the same stage has been showing for under the processing window", () => {
+    expect(isStuckProcessing(item({ processingStatus: "Processing", stage: "Uploading" }), now - 3 * 60_000, now)).toBe(false);
+  });
+
+  it("is false for same-label LegalClauses→Risk at three minutes (both Validating schema)", () => {
+    expect(STUCK_PROCESSING_REPROCESS_AFTER_MS).toBe(15 * 60 * 1000);
+    expect(isStuckProcessing(item({ processingStatus: "Processing", stage: "Validating schema" }), now - 3 * 60_000, now)).toBe(false);
+  });
+
+  it("is true once the same Processing stage has been showing for fifteen minutes", () => {
+    expect(MAX_STUCK_REPROCESS_ATTEMPTS).toBe(3);
+    expect(isStuckProcessing(item({ processingStatus: "Processing", stage: "Validating schema" }), now - STUCK_PROCESSING_REPROCESS_AFTER_MS, now)).toBe(true);
+  });
+
+  it("is false for Uploaded and terminal statuses", () => {
+    expect(isStuckProcessing(item({ processingStatus: "Uploaded" }), now - STUCK_PROCESSING_REPROCESS_AFTER_MS, now)).toBe(false);
+    expect(isStuckProcessing(item({ processingStatus: "Failed" }), now - STUCK_PROCESSING_REPROCESS_AFTER_MS, now)).toBe(false);
+  });
+});
+
+describe("getFailedHint", () => {
+  it("surfaces errorDetail when the list carries one", () => {
+    expect(getFailedHint("Gave up after 3 attempts. Processing made no progress for 15 minutes.")).toBe(
+      "Gave up after 3 attempts. Processing made no progress for 15 minutes.",
+    );
+  });
+
+  it("falls back to the historical not-linked sentence", () => {
+    expect(getFailedHint(null)).toBe("Not yet linked to a contract");
+    expect(getFailedHint("  ")).toBe("Not yet linked to a contract");
+  });
 });
 
 // Task E16/F03/US01/T01 (ADR-027 §C9, ADR-012 w15 §13.5): the client filter mirrors the server's

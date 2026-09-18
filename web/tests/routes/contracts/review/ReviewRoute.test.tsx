@@ -39,6 +39,7 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     getDocumentPreviewUrl: vi.fn(),
     reprocessDocument: vi.fn(),
     deleteDocument: vi.fn(),
+    deleteAllDocuments: vi.fn(),
     prioritiseDocument: vi.fn(),
     getPortfolio: vi.fn(),
     getContract360: vi.fn(),
@@ -69,6 +70,7 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     createConversation: vi.fn(),
     getConversation: vi.fn(),
     postMessage: vi.fn(),
+    deleteConversation: vi.fn(),
     getCapabilities: vi.fn(),
     getMarketRecord: vi.fn(),
     getQuoteBenchmarkHistory: vi.fn(),
@@ -452,10 +454,32 @@ describe("ReviewRoute", () => {
         correction: { contractId: CONTRACT_ID, versionNumber: 2, correctedFields: ["paymentTerms"], correctedAt: "2026-09-06T08:00:00Z" },
         error: null,
       };
+      const original = fullContract();
+      const updated = fullContract({
+        tabs: {
+          ...original.tabs,
+          overview: { ...original.tabs.overview, paymentTerms: "Net 60" },
+          commercials: { ...original.tabs.commercials, paymentTerms: "Net 60" },
+        },
+      });
       const correctContract = vi.fn().mockResolvedValue(correctionResult);
-      const getContract360 = vi.fn().mockResolvedValue(ok(fullContract()));
+      const getContract360 = vi.fn().mockResolvedValueOnce(ok(original)).mockResolvedValue(ok(updated));
+      const getCorrectionHistory = vi
+        .fn()
+        .mockResolvedValueOnce(historyOk([]))
+        .mockResolvedValue(
+          historyOk([
+            correctionEntry({
+              fieldName: "paymentTerms",
+              previousValue: "Net 45",
+              newValue: "Net 60",
+              correctedAt: "2026-09-06T08:00:00Z",
+              reason: "Renegotiated payment terms.",
+            }),
+          ]),
+        );
 
-      renderReview(mockApiClient({ getContract360, correctContract }));
+      renderReview(mockApiClient({ getContract360, getCorrectionHistory, correctContract }));
       await screen.findByText(REVIEW_READY);
 
       fireEvent.click(screen.getByRole("button", { name: "Payment terms" }));
@@ -469,11 +493,58 @@ describe("ReviewRoute", () => {
           reason: "Renegotiated payment terms.",
         }),
       );
-      // A successful correction re-fetches the contract for real, rather than trusting a locally
-      // patched copy -- the same "reload, don't guess" convention ../contract360/index.tsx follows.
-      // (async: the correction's own `await` and the subsequent `load()` call both resolve after
-      // this click handler yields, so this assertion must poll rather than check immediately.)
+      // A successful correction merges into the mounted table, then silently re-fetches. The
+      // review route stays put — no skeleton, no navigation off `/review`.
       await waitFor(() => expect(getContract360).toHaveBeenCalledTimes(2));
+      expect(screen.queryByText("Loading review…")).toBeNull();
+      expect(screen.queryByText("CONTRACT_360_SCREEN")).toBeNull();
+      const paymentRow = screen.getByRole("button", { name: "Payment terms" }).closest("tr")!;
+      expect(paymentRow).toHaveTextContent("Corrected → Net 60");
+      expect(within(paymentRow).queryByRole("button", { name: "Accept" })).toBeNull();
+    });
+
+    it("Save correction updates the row in place without a loading skeleton", async () => {
+      const original = fullContract();
+      const updated = fullContract({
+        tabs: {
+          ...original.tabs,
+          overview: { ...original.tabs.overview, paymentTerms: "Net 60" },
+          commercials: { ...original.tabs.commercials, paymentTerms: "Net 60" },
+        },
+      });
+      const getContract360 = vi.fn().mockResolvedValueOnce(ok(original)).mockResolvedValue(ok(updated));
+      const getCorrectionHistory = vi
+        .fn()
+        .mockResolvedValueOnce(historyOk([]))
+        .mockResolvedValue(
+          historyOk([
+            correctionEntry({
+              fieldName: "paymentTerms",
+              previousValue: "Net 45",
+              newValue: "Net 60",
+              correctedAt: "2026-09-06T08:00:00Z",
+            }),
+          ]),
+        );
+      const correctContract = vi.fn().mockResolvedValue({
+        ok: true,
+        statusCode: 200,
+        correction: { contractId: CONTRACT_ID, versionNumber: 2, correctedFields: ["paymentTerms"], correctedAt: "2026-09-06T08:00:00Z" },
+        error: null,
+      } satisfies CorrectContractResult);
+
+      const { container } = renderReview(mockApiClient({ getContract360, getCorrectionHistory, correctContract }));
+      await screen.findByText(REVIEW_READY);
+
+      fireEvent.click(screen.getByRole("button", { name: "Payment terms" }));
+      fireEvent.change(await screen.findByLabelText("Correct value"), { target: { value: "Net 60" } });
+      fireEvent.click(screen.getByRole("button", { name: /save correction/i }));
+
+      await waitFor(() => expect(correctContract).toHaveBeenCalled());
+      expect(container.querySelector(".review-skeleton")).toBeNull();
+      expect(screen.queryByText("Loading review…")).toBeNull();
+      expect(screen.getByRole("table")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Payment terms" }).closest("tr")).toHaveTextContent("Corrected → Net 60");
     });
 
     it("shows an inline error and does not clear the form on a failed correction (e.g. a rejected no-op)", async () => {
@@ -652,6 +723,238 @@ describe("ReviewRoute", () => {
           reason: "Accepted as extracted.",
         }),
       );
+    });
+
+    it("Accept on an already-applied review_required field PATCHes the extracted value so the server can officialize it", async () => {
+      const correctContract = vi.fn().mockResolvedValue({
+        ok: true,
+        statusCode: 200,
+        correction: { contractId: CONTRACT_ID, versionNumber: 0, correctedFields: ["status"], correctedAt: "2026-09-17T14:00:00Z" },
+        error: null,
+      } satisfies CorrectContractResult);
+      renderReview(
+        mockApiClient({
+          getContract360: vi.fn().mockResolvedValue(ok(minimalContract())),
+          getContractEvidence: vi.fn().mockResolvedValue(
+            evidenceOk([
+              evidenceRow({
+                fieldName: "status",
+                value: "active",
+                confidence: 0,
+                decision: "review_required",
+                sourcePage: null,
+                sourceSpan: null,
+                passage: null,
+                highlightStart: null,
+                highlightLength: null,
+              }),
+              ...autoAcceptedEvidence(["type", "currency", "autoRenewal"]),
+            ]),
+          ),
+          correctContract,
+        }),
+      );
+      await screen.findByText(REVIEW_READY);
+
+      const statusRow = screen.getByRole("button", { name: "Status" }).closest("tr")!;
+      expect(statusRow).toHaveTextContent("Review · 0%");
+      fireEvent.click(within(statusRow).getByRole("button", { name: "Accept" }));
+
+      await waitFor(() =>
+        expect(correctContract).toHaveBeenCalledWith(WORKSPACE_ID, CONTRACT_ID, {
+          corrections: { status: "active" },
+          reason: "Accepted as extracted.",
+        }),
+      );
+    });
+
+    it("Accept updates that row in place: Accepted by you, no Accept button, no skeleton or navigation", async () => {
+      const pendingEvidence = evidenceOk([
+        evidenceRow({
+          fieldName: "status",
+          value: "active",
+          confidence: 0.5,
+          decision: "review_required",
+          sourcePage: null,
+          sourceSpan: null,
+          passage: null,
+          highlightStart: null,
+          highlightLength: null,
+        }),
+        ...autoAcceptedEvidence(["type", "currency", "autoRenewal"]),
+      ]);
+      const acceptedEvidence = evidenceOk([
+        evidenceRow({
+          fieldName: "status",
+          value: "active",
+          confidence: 0.5,
+          decision: "human_accepted",
+          sourcePage: null,
+          sourceSpan: null,
+          passage: null,
+          highlightStart: null,
+          highlightLength: null,
+        }),
+        ...autoAcceptedEvidence(["type", "currency", "autoRenewal"]),
+      ]);
+      const getContract360 = vi.fn().mockResolvedValue(ok(minimalContract()));
+      const getContractEvidence = vi.fn().mockResolvedValueOnce(pendingEvidence).mockResolvedValue(acceptedEvidence);
+      const correctContract = vi.fn().mockResolvedValue({
+        ok: true,
+        statusCode: 200,
+        correction: { contractId: CONTRACT_ID, versionNumber: 0, correctedFields: ["status"], correctedAt: "2026-09-17T14:00:00Z" },
+        error: null,
+      } satisfies CorrectContractResult);
+
+      const { container } = renderReview(
+        mockApiClient({
+          getContract360,
+          getContractEvidence,
+          correctContract,
+        }),
+      );
+      await screen.findByText(REVIEW_READY);
+
+      expect(screen.getByRole("heading", { level: 2, name: "1 facts need you — you decide" })).toBeInTheDocument();
+      expect(screen.getByText(/3 of 4 fields resolved · 1 needs review/i)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /mark as validated/i })).toBeDisabled();
+
+      const statusRowBefore = screen.getByRole("button", { name: "Status" }).closest("tr")!;
+      fireEvent.click(within(statusRowBefore).getByRole("button", { name: "Accept" }));
+
+      await waitFor(() => {
+        const statusRow = screen.getByRole("button", { name: "Status" }).closest("tr")!;
+        expect(within(statusRow).queryByRole("button", { name: "Accept" })).toBeNull();
+        expect(statusRow).toHaveTextContent("Accepted by you");
+        expect(statusRow).not.toHaveTextContent("Review · 50%");
+      });
+
+      expect(container.querySelector(".review-skeleton")).toBeNull();
+      expect(screen.queryByText("Loading review…")).toBeNull();
+      expect(screen.queryByText("CONTRACT_360_SCREEN")).toBeNull();
+      expect(screen.getByRole("table")).toBeInTheDocument();
+      expect(screen.getByRole("heading", { level: 2, name: "0 facts need you — you decide" })).toBeInTheDocument();
+      expect(screen.getByText(/4 of 4 fields resolved/i)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /mark as validated/i })).toBeEnabled();
+    });
+
+    it("keeps the row as review_required when Accept's PATCH fails", async () => {
+      const correctContract = vi.fn().mockResolvedValue({
+        ok: false,
+        statusCode: 400,
+        correction: null,
+        error: "None of the supplied values differ from the contract's current values.",
+      } satisfies CorrectContractResult);
+      renderReview(
+        mockApiClient({
+          getContract360: vi.fn().mockResolvedValue(ok(minimalContract())),
+          getContractEvidence: vi.fn().mockResolvedValue(
+            evidenceOk([
+              evidenceRow({
+                fieldName: "status",
+                value: "active",
+                confidence: 0,
+                decision: "review_required",
+                sourcePage: null,
+                sourceSpan: null,
+                passage: null,
+                highlightStart: null,
+                highlightLength: null,
+              }),
+              ...autoAcceptedEvidence(["type", "currency", "autoRenewal"]),
+            ]),
+          ),
+          correctContract,
+        }),
+      );
+      await screen.findByText(REVIEW_READY);
+
+      const statusRow = screen.getByRole("button", { name: "Status" }).closest("tr")!;
+      fireEvent.click(within(statusRow).getByRole("button", { name: "Accept" }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(/none of the supplied values differ/i);
+      expect(within(statusRow).getByRole("button", { name: "Accept" })).toBeInTheDocument();
+      expect(statusRow).toHaveTextContent("Review · 0%");
+      expect(screen.queryByText("Loading review…")).toBeNull();
+    });
+
+    it("Save correction with the extracted value still PATCHes — confirming is not a client-side no-op", async () => {
+      const correctContract = vi.fn().mockResolvedValue({
+        ok: true,
+        statusCode: 200,
+        correction: { contractId: CONTRACT_ID, versionNumber: 0, correctedFields: ["status"], correctedAt: "2026-09-17T14:00:00Z" },
+        error: null,
+      } satisfies CorrectContractResult);
+      renderReview(
+        mockApiClient({
+          getContract360: vi.fn().mockResolvedValue(ok(minimalContract())),
+          getContractEvidence: vi.fn().mockResolvedValue(
+            evidenceOk([
+              evidenceRow({
+                fieldName: "status",
+                value: "active",
+                confidence: 0,
+                decision: "review_required",
+                sourcePage: null,
+                sourceSpan: null,
+                passage: null,
+                highlightStart: null,
+                highlightLength: null,
+              }),
+              ...autoAcceptedEvidence(["type", "currency", "autoRenewal"]),
+            ]),
+          ),
+          correctContract,
+        }),
+      );
+      await screen.findByText(REVIEW_READY);
+
+      fireEvent.click(screen.getByRole("button", { name: "Status" }));
+      fireEvent.click(await screen.findByRole("button", { name: /save correction/i }));
+
+      await waitFor(() =>
+        expect(correctContract).toHaveBeenCalledWith(WORKSPACE_ID, CONTRACT_ID, {
+          corrections: { status: "active" },
+          reason: null,
+        }),
+      );
+    });
+
+    it("shows the API error in the evidence pane when Accept is rejected", async () => {
+      const correctContract = vi.fn().mockResolvedValue({
+        ok: false,
+        statusCode: 400,
+        correction: null,
+        error: "None of the supplied values differ from the contract's current values.",
+      } satisfies CorrectContractResult);
+      renderReview(
+        mockApiClient({
+          getContract360: vi.fn().mockResolvedValue(ok(minimalContract())),
+          getContractEvidence: vi.fn().mockResolvedValue(
+            evidenceOk([
+              evidenceRow({
+                fieldName: "status",
+                value: "active",
+                confidence: 0,
+                decision: "review_required",
+                sourcePage: null,
+                sourceSpan: null,
+                passage: null,
+                highlightStart: null,
+                highlightLength: null,
+              }),
+              ...autoAcceptedEvidence(["type", "currency", "autoRenewal"]),
+            ]),
+          ),
+          correctContract,
+        }),
+      );
+      await screen.findByText(REVIEW_READY);
+
+      fireEvent.click(within(screen.getByRole("button", { name: "Status" }).closest("tr")!).getByRole("button", { name: "Accept" }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(/none of the supplied values differ/i);
+      expect(screen.getByRole("heading", { name: "Status", level: 6 })).toBeInTheDocument();
     });
 
     it("shows a visible banner and keeps every field reviewable when the evidence call fails", async () => {

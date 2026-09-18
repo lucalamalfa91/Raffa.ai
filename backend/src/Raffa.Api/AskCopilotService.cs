@@ -802,7 +802,28 @@ internal sealed class AskCopilotService(
     {
         if (namedContractItem is not null)
         {
-            return [BuildContractFactItem(namedContractItem, await ResolveDisplayNameAsync(namedContractItem, cancellationToken).ConfigureAwait(false))];
+            var fact = BuildContractFactItem(
+                namedContractItem,
+                await ResolveDisplayNameAsync(namedContractItem, cancellationToken).ConfigureAwait(false));
+            // Clause rows, not embedding search: InMemory EF cannot translate pgvector
+            // CosineDistance, and a date/spend fact should quote the extracted clause when one
+            // exists rather than 500 the whole Ask turn.
+            var excerpts = await BuildNamedContractExcerptItemsAsync(namedContractItem, cancellationToken)
+                .ConfigureAwait(false);
+            var grounded = excerpts
+                .Where(item => item.DocumentId is not null && !string.IsNullOrWhiteSpace(item.Snippet))
+                .ToList();
+            if (grounded.Count == 0)
+            {
+                return [fact];
+            }
+
+            // Document quotes first so the cited Ask card is the page excerpt, not the
+            // portfolio paraphrase. Copy structured values onto the lead excerpt so numeric
+            // grounding of the date/spend still holds.
+            var lead = grounded[0] with { Values = fact.Values.Count > 0 ? fact.Values : grounded[0].Values };
+            var rest = grounded.Skip(1).Concat(excerpts.Where(item => item.DocumentId is null));
+            return [lead, ..rest, fact];
         }
 
         var routeDecision = _legacyRouter.Route(question);
@@ -1374,24 +1395,41 @@ internal sealed class AskCopilotService(
             // still searches the whole tenant corpus. ADR-024 w19's own NW-79 amendment still names
             // this the "unscoped Clause RAG" fallback; NW-81 only requires filtering a turn that
             // already names a contract.
-            var tenantWideResult = await embeddingRetrievalService
-                .SearchAsync(tenantId, question, ClauseTopK, cancellationToken)
-                .ConfigureAwait(false);
+            try
+            {
+                var tenantWideResult = await embeddingRetrievalService
+                    .SearchAsync(tenantId, question, ClauseTopK, cancellationToken)
+                    .ConfigureAwait(false);
 
-            return tenantWideResult.IsFailure
-                ? []
-                : tenantWideResult.Value
-                    .Select(hit => BuildClausePackItem(hit, clause: null, namedContractId: null, isPeer: false))
-                    .ToList();
+                return tenantWideResult.IsFailure
+                    ? []
+                    : tenantWideResult.Value
+                        .Select(hit => BuildClausePackItem(hit, clause: null, namedContractId: null, isPeer: false))
+                        .ToList();
+            }
+            catch (InvalidOperationException)
+            {
+                // EF InMemory cannot translate Vector.CosineDistance (see InMemoryAskEngineFactory).
+                return [];
+            }
         }
 
         var contractId = new EntityId(namedContractItem.ContractId);
 
-        var searchResult = await embeddingRetrievalService
-            .SearchByContractAsync(
-                new EmbeddingSearchQuery(tenantId, question, ClauseTopK, contractId, ClausePeerTopK),
-                cancellationToken)
-            .ConfigureAwait(false);
+        Result<EmbeddingContractScopedSearchResult> searchResult;
+        try
+        {
+            searchResult = await embeddingRetrievalService
+                .SearchByContractAsync(
+                    new EmbeddingSearchQuery(tenantId, question, ClauseTopK, contractId, ClausePeerTopK),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (InvalidOperationException)
+        {
+            // EF InMemory cannot translate Vector.CosineDistance (see InMemoryAskEngineFactory).
+            return [];
+        }
 
         if (searchResult.IsFailure)
         {
@@ -1567,6 +1605,58 @@ internal sealed class AskCopilotService(
         }
 
         return (hitPage is { } fallbackPage ? $"/contracts/{contractId}?page={fallbackPage}" : $"/contracts/{contractId}", null);
+    }
+
+    /// <summary>
+    /// Page excerpts for a named-contract structured fact card, taken from already-extracted
+    /// <see cref="Contract360Result.Clauses"/> — the actual document sentence, not the portfolio
+    /// paraphrase. Does not call embedding search (InMemory CosineDistance cannot translate).
+    /// </summary>
+    private async Task<IReadOnlyList<PackItem>> BuildNamedContractExcerptItemsAsync(
+        PortfolioListItem namedContractItem, CancellationToken cancellationToken)
+    {
+        var contract360 = await contract360QueryService
+            .GetByIdAsync(CurrentTenantId, new EntityId(namedContractItem.ContractId), cancellationToken)
+            .ConfigureAwait(false);
+
+        if (contract360 is null)
+        {
+            return [];
+        }
+
+        var items = new List<PackItem>();
+        foreach (var clause in contract360.Clauses)
+        {
+            if (string.IsNullOrWhiteSpace(clause.RawText) || clause.SourceDocumentId is null)
+            {
+                continue;
+            }
+
+            var (href, previewUrl) = ResolveTenantClauseLinks(
+                clause, clause.ClauseId, namedContractItem.ContractId);
+            var page = clause.SourcePage;
+            var subtitle = page is { } knownPage
+                ? $"p.{knownPage}" + (clause.SourceSpan is { } span ? $" §{span}" : string.Empty)
+                : clause.SourceSpan;
+
+            items.Add(new PackItem(
+                $"fact:{clause.ClauseId}:clause",
+                PackCorpus.Tenant,
+                $"{clause.ClauseType} clause",
+                subtitle,
+                page,
+                clause.SourceSpan,
+                clause.RawText,
+                href,
+                previewUrl,
+                null,
+                "validated contract",
+                [],
+                namedContractItem.ContractId.ToString(),
+                clause.SourceDocumentId.Value.ToString()));
+        }
+
+        return items;
     }
 
     /// <summary>

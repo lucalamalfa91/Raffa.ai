@@ -1,5 +1,6 @@
-import { Link, NavLink } from "react-router-dom";
-import type { ApiClient } from "../../api/client";
+import { useEffect, useMemo, useState } from "react";
+import { Link, NavLink, useNavigate } from "react-router-dom";
+import type { ApiClient, PortfolioListItem } from "../../api/client";
 import {
   buildPrimaryNavItems,
   buildSecondaryNavItems,
@@ -10,6 +11,12 @@ import {
   type WorkspaceRole,
 } from "./navItems";
 import { useRecentConversations } from "../../routes/ask/useRecentConversations";
+import {
+  conversationDisplayTitle,
+  filterConversations,
+  indexPortfolioByContractId,
+} from "../../routes/ask/conversationTitle";
+import { loadCurrentWorkspace } from "../../routes/signin/workspaceStore";
 import type { DocumentCountsBody } from "./useDocumentCounts";
 
 export interface RailNavProps {
@@ -62,10 +69,36 @@ export default function RailNav({
   onSignOut,
   apiClient,
 }: RailNavProps) {
-  // Task E13/F09/US01/T04 (gap G-CONVERSATIONS): last 5 conversations + which one (if any) is
-  // active -- see that hook's own doc comment for why this re-fetches on navigation rather than
-  // once per shell mount.
-  const { conversations, activeConversationId } = useRecentConversations(apiClient);
+  const navigate = useNavigate();
+  const workspace = loadCurrentWorkspace();
+  const { conversations, activeConversationId, reload } = useRecentConversations(apiClient);
+  const [chatQuery, setChatQuery] = useState("");
+  const [portfolioItems, setPortfolioItems] = useState<readonly PortfolioListItem[]>([]);
+
+  useEffect(() => {
+    if (!workspace) {
+      setPortfolioItems([]);
+      return;
+    }
+    void apiClient.getPortfolio(workspace.id, { pageSize: 100 }).then((result) => {
+      setPortfolioItems(result.ok && result.portfolio ? result.portfolio.items : []);
+    });
+  }, [apiClient, workspace?.id, conversations]);
+
+  const portfolioById = useMemo(() => indexPortfolioByContractId(portfolioItems), [portfolioItems]);
+  const titleOf = (conversation: (typeof conversations)[number]) => conversationDisplayTitle(conversation, portfolioById);
+  const visibleConversations = filterConversations(conversations, chatQuery, titleOf);
+
+  const deleteChat = (conversationId: string) => {
+    if (!workspace) return;
+    void apiClient.deleteConversation(workspace.id, conversationId).then((result) => {
+      if (!result.ok) return;
+      if (activeConversationId === conversationId) {
+        navigate("/ask", { state: { newChat: true } });
+      }
+      reload();
+    });
+  };
   // Task E16/F03/US01/T01 (ADR-012 w15 §6): the badge reads the server's `counts` -- `all` for
   // "N docs" (what Raffa.ai keeps, never a refused file), `needsReview` for "N to review" -- and
   // stays absent until the shell has confirmed a number (`getDocumentsBadge`'s honest-absence rule).
@@ -94,18 +127,38 @@ export default function RailNav({
 
             {item.hasConversationSlot && (
               <div className="shell-rail-conversations">
-                {/* R-CONV-02 "the rail shows the user's last 5 conversations, resume by click,
-                    active one in accent" -- `useRecentConversations` already caps this at the
-                    backend's own default (5); `.slice(0, 5)` here is defensive, not load-bearing. */}
-                {conversations.slice(0, 5).map((conversation) => (
-                  <Link
-                    key={conversation.id}
-                    to={`/ask/${conversation.id}`}
-                    className={`shell-rail-conv-item${conversation.id === activeConversationId ? " is-active" : ""}`}
-                  >
-                    <span className="shell-rail-conv-title">{conversation.title}</span>
-                  </Link>
-                ))}
+                {conversations.length > 0 && (
+                  <input
+                    type="search"
+                    className="input shell-rail-conv-search"
+                    placeholder="Search chats"
+                    aria-label="Search chats"
+                    autoComplete="off"
+                    value={chatQuery}
+                    onChange={(event) => setChatQuery(event.target.value)}
+                  />
+                )}
+                {visibleConversations.map((conversation) => {
+                  const title = titleOf(conversation);
+                  return (
+                    <div key={conversation.id} className="shell-rail-conv-row">
+                      <Link
+                        to={`/ask/${conversation.id}`}
+                        className={`shell-rail-conv-item${conversation.id === activeConversationId ? " is-active" : ""}`}
+                      >
+                        <span className="shell-rail-conv-title">{title}</span>
+                      </Link>
+                      <button
+                        type="button"
+                        className="shell-rail-conv-delete"
+                        aria-label={`Delete ${title}`}
+                        onClick={() => deleteChat(conversation.id)}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  );
+                })}
                 <Link to="/ask" state={{ newChat: true }} className="shell-rail-new-chat">
                   + New chat
                 </Link>

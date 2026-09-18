@@ -40,7 +40,8 @@
   white-space: pre-line;
 }
 
-.reply-markdown ul {
+.reply-markdown ul,
+.reply-markdown ol {
   margin: 0;
   padding-left: 1.25em;
 }
@@ -62,16 +63,17 @@
 
 .reply-cards {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3);
+  flex-direction: column;
+  gap: var(--space-4);
 }
 
 .citation-card {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  flex: 1 1 240px;
-  max-width: 280px;
+  gap: var(--space-3);
+  flex: 1 1 auto;
+  width: 100%;
+  max-width: 52rem;
   font: inherit;
   color: inherit;
   text-align: left;
@@ -109,38 +111,31 @@
 
 .citation-card-snippet {
   margin: 0;
-  padding-left: var(--space-2);
+  padding-left: var(--space-3);
   border-left: 2px solid var(--color-accent);
-  font-size: 12px;
-  font-style: italic;
-  color: var(--color-neutral-700);
+  font-size: 14px;
+  font-style: normal;
+  line-height: 1.5;
+  color: var(--color-text);
+  white-space: pre-wrap;
 }
 
 .citation-card-preview {
   width: 100%;
-  height: 120px;
-  object-fit: cover;
+  max-height: 28rem;
+  min-height: 16rem;
+  object-fit: contain;
+  background: var(--color-bg);
   border: 1px solid var(--color-divider);
 }
 
-/* Replaces the old text-only placeholder for a `raffa`/`market` citation (never carries a real
-   `previewUrl`) -- same footprint as `.citation-card-preview` above, holding a `.btn`-styled,
-   non-interactive call-to-action label instead of an empty slot (us-02-citation-card-web AC-2,
-   NW-55). No new token: reuses the divider/surface tokens the preview placeholder already did. */
-.citation-card-cta {
+.citation-card-open {
   display: flex;
   align-items: center;
-  justify-content: center;
-  height: 120px;
-  border: 1px dashed var(--color-divider);
-  text-align: center;
+  justify-content: flex-start;
 }
 
-/* The label itself borrows `.btn.btn-secondary` (ADR-019 locked catalogue) purely for its visual
-   treatment -- it is a `<span>`, not a `<button>`/`<a>`, so the card's own native `<button>` stays
-   the one interactive control (ADR-019 accessibility baseline; AC-3). `pointer-events: none` makes
-   that explicit rather than incidental: a click always resolves on the ancestor button. */
-.citation-card-cta .btn {
+.citation-card-open .btn {
   pointer-events: none;
 }
 

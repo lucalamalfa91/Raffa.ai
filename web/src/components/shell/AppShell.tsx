@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Outlet, useLocation } from "react-router-dom";
+import { Outlet, useLocation, useMatch } from "react-router-dom";
 import RailNav from "./RailNav";
 import GlobalAskBar from "../ask-bar/GlobalAskBar";
 import { useValidatedContractCount } from "./useValidatedContractCount";
@@ -7,7 +7,11 @@ import { useDocumentCounts } from "./useDocumentCounts";
 import { usePollBudget } from "./usePollBudget";
 import type { WorkspaceRole } from "./navItems";
 import type { ApiClient } from "../../api/client";
+import { isAskRoute } from "./isAskRoute";
+import { DocumentViewerProvider } from "../../routes/documents/viewer/DocumentViewerOverlay";
 import "./shell.css";
+
+export { isAskRoute } from "./isAskRoute";
 
 export interface AppShellProps {
   /**
@@ -46,20 +50,21 @@ export interface AppShellProps {
  * Task E25/F06/US01/T01 (NW-60, wave w18): the blanket claim above ("every route ... gets it
  * automatically") now has one named exception. `/ask` and `/ask/:conversationId` render their own
  * composer (`routes/ask/index.tsx`) -- mounting GlobalAskBar there too put two Ask inputs on one
- * screen, exactly the duplicate ADR-018/ADR-020 forbid (AC-1/AC-3). `isAskRoute` below, driven by
- * the same `useLocation()` this component already calls for `refreshKey`, is the one place that
- * decides it -- a route-scoped check, not a new context. Cmd/Ctrl+K still focuses an Ask composer
- * everywhere (AC-2): GlobalAskBar keeps its own shortcut for every route where it still renders
- * (unchanged, its internals are out of this task's scope), and `AskRoute` now owns the identical
- * shortcut for its own input on the two routes above -- exactly one of the two is ever mounted, so
- * the listeners never overlap.
+ * screen, exactly the duplicate ADR-018/ADR-020 forbid (AC-1/AC-3). `isAskRoute` (`./isAskRoute.ts`)
+ * plus `useMatch` (absolute and relative, so a React Router 7 descendant remainder under App.tsx's
+ * `path="/*"` cannot keep the bar mounted) are the check -- a route-scoped decision, not a new
+ * context. Cmd/Ctrl+K still focuses an Ask composer everywhere (AC-2): GlobalAskBar keeps its own
+ * shortcut for every route where it still renders, and `AskRoute` owns the identical shortcut for
+ * its own input on the two routes above -- exactly one of the two is ever mounted, so the
+ * listeners never overlap.
  */
-export function isAskRoute(pathname: string): boolean {
-  return pathname === "/ask" || pathname.startsWith("/ask/");
-}
 
 export default function AppShell({ workspaceId, workspaceName, role, userLabel, onSignOut, apiClient }: AppShellProps) {
   const location = useLocation();
+  const matchAskAbsolute = useMatch({ path: "/ask", end: true });
+  const matchAskConversationAbsolute = useMatch({ path: "/ask/:conversationId", end: true });
+  const matchAskRelative = useMatch({ path: "ask", end: true });
+  const matchAskConversationRelative = useMatch({ path: "ask/:conversationId", end: true });
   const [pollTick, setPollTick] = useState(0);
   const refreshKey = `${location.pathname}:${pollTick}`;
   const documentCounts = useDocumentCounts(apiClient, refreshKey);
@@ -82,34 +87,45 @@ export default function AppShell({ workspaceId, workspaceName, role, userLabel, 
   });
 
   // AC-1/AC-3: suppressed only on the Ask route itself, kept on every other screen.
-  const showGlobalAskBar = !isAskRoute(location.pathname);
+  // `useMatch` covers both the absolute `/ask` path and the relative `ask` remainder a splat
+  // parent can leave; `isAskRoute` is the same predicate GlobalAskBar uses as a second guard.
+  const onAskScreen = Boolean(
+    matchAskAbsolute ||
+      matchAskConversationAbsolute ||
+      matchAskRelative ||
+      matchAskConversationRelative ||
+      isAskRoute(location.pathname),
+  );
+  const showGlobalAskBar = !onAskScreen;
 
   return (
-    <div className="shell-layout">
-      <RailNav
-        workspaceName={workspaceName}
-        role={role}
-        userLabel={userLabel}
-        onSignOut={onSignOut}
-        kbReady={kbReady}
-        validatedContractCount={count}
-        documentCounts={documentCounts}
-        apiClient={apiClient}
-      />
-      <main className="shell-main">
-        {/* Task E25/F01/US01/T01 (AC-3): the same server-derived `role` RailNav already receives
-            below, threaded into the global Ask bar too so it can drop admin-gated suggestion chips
-            for a non-Admin -- never re-derived, never fetched a second time.
-            Task E25/F06/US01/T01 (AC-1/AC-3): suppressed on the Ask route itself (see
-            `showGlobalAskBar` above) -- that route renders its own composer instead. */}
-        {showGlobalAskBar && <GlobalAskBar kbReady={kbReady} role={role} apiClient={apiClient} />}
-        <div className="shell-content">
-          {/* Shared with every screen through the router outlet (shellContext.ts): the same kbReady /
-              validated-count verdict the rail and the Ask bar already render, plus the same document
-              counts the rail badge shows, so a screen never has to re-fetch for a second opinion. */}
-          <Outlet context={{ workspaceId, kbReady, validatedContractCount: count, documentCounts }} />
-        </div>
-      </main>
-    </div>
+    <DocumentViewerProvider apiClient={apiClient}>
+      <div className="shell-layout">
+        <RailNav
+          workspaceName={workspaceName}
+          role={role}
+          userLabel={userLabel}
+          onSignOut={onSignOut}
+          kbReady={kbReady}
+          validatedContractCount={count}
+          documentCounts={documentCounts}
+          apiClient={apiClient}
+        />
+        <main className="shell-main">
+          {/* Task E25/F01/US01/T01 (AC-3): the same server-derived `role` RailNav already receives
+              below, threaded into the global Ask bar too so it can drop admin-gated suggestion chips
+              for a non-Admin -- never re-derived, never fetched a second time.
+              Task E25/F06/US01/T01 (AC-1/AC-3): suppressed on the Ask route itself (see
+              `showGlobalAskBar` above) -- that route renders its own composer instead. */}
+          {showGlobalAskBar && <GlobalAskBar kbReady={kbReady} role={role} apiClient={apiClient} />}
+          <div className="shell-content">
+            {/* Shared with every screen through the router outlet (shellContext.ts): the same kbReady /
+                validated-count verdict the rail and the Ask bar already render, plus the same document
+                counts the rail badge shows, so a screen never has to re-fetch for a second opinion. */}
+            <Outlet context={{ workspaceId, kbReady, validatedContractCount: count, documentCounts }} />
+          </div>
+        </main>
+      </div>
+    </DocumentViewerProvider>
   );
 }

@@ -105,7 +105,8 @@ public sealed class ExtractionJobClaimStoreTests : IAsyncLifetime
         Assert.Equal(1, firstResult);
 
         // A later delivery of the same message (or a lease-holder still alive) must see it lost —
-        // this task's claim never re-opens on a plain retry, only us-02's lease/reclaim logic may.
+        // this claim never re-opens on a plain retry. HungProcessingRecoveryService aborts a
+        // stale holder and re-enqueues from scratch instead.
         await using var secondDb = CreateContext();
         var secondStore = new ExtractionJobClaimStore(secondDb, new SystemClock());
         var secondResult = await secondStore.TryClaimAsync(jobId, "worker-b", CancellationToken.None);

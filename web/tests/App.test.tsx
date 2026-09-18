@@ -74,6 +74,7 @@ function mockApiClient(result: Promise<HealthCheckResult> | HealthCheckResult): 
     getDocumentPreviewUrl: vi.fn(),
     reprocessDocument: vi.fn(),
     deleteDocument: vi.fn(),
+    deleteAllDocuments: vi.fn(),
     prioritiseDocument: vi.fn(),
     // Task E07/F01/US01/T01 (portfolio-list-filters): exercised in depth by
     // tests/routes/contracts/*.test.tsx. Task E13/F09/US01/T01 (web-shell-v2) made this call
@@ -144,6 +145,7 @@ function mockApiClient(result: Promise<HealthCheckResult> | HealthCheckResult): 
     createConversation: vi.fn(),
     getConversation: vi.fn(),
     postMessage: vi.fn(),
+    deleteConversation: vi.fn(),
     getCapabilities: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, catalog: { version: "test", capabilities: [] }, error: null }),
     getMarketRecord: vi.fn(),
     getQuoteBenchmarkHistory: vi.fn(),

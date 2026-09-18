@@ -39,6 +39,7 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     createConversation: vi.fn(),
     getConversation: vi.fn(),
     postMessage: vi.fn(),
+    deleteConversation: vi.fn(),
     getCapabilities: vi.fn(),
     getMarketRecord: vi.fn(),
     getQuoteBenchmarkHistory: vi.fn(),
@@ -50,6 +51,7 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     getDocumentPreviewUrl: vi.fn(),
     reprocessDocument: vi.fn(),
     deleteDocument: vi.fn(),
+    deleteAllDocuments: vi.fn(),
     prioritiseDocument: vi.fn(),
     getPortfolio: vi.fn(),
     getContract360: vi.fn(),
@@ -360,22 +362,21 @@ describe("DocumentViewerRoute (task E22/F03/US01/T01)", () => {
     expect(screen.getByRole("button", { name: "Next" })).not.toBeDisabled();
   });
 
-  it("a resolved clause shows the wording highlighted below and not a drawn shape on the page", async () => {
+  it("a resolved clause opens the cited page without embedding the Ask citation card", async () => {
     const apiClient = readyClient();
     renderViewer(apiClient, `/documents/${DOCUMENT_ID}/viewer?page=3&clause=${CLAUSE_ID}`);
-    await waitFor(() => expect(screen.getByTestId("clause-highlight")).toBeInTheDocument());
-    expect(screen.getByText("Page 3 — the wording is highlighted below")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("img", { name: "Document page" })).toBeInTheDocument());
+    expect(screen.queryByText(/highlighted below/)).not.toBeInTheDocument();
     expect(screen.queryByTestId("document-viewer-citation-notice")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("clause-highlight")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Open in document viewer" })).not.toBeInTheDocument();
     expect(apiClient.getDocumentPreviewUrl).toHaveBeenCalledWith(WORKSPACE_ID, DOCUMENT_ID, 3);
-    // Unmocked getContractEvidence (mockApiClient's bare vi.fn()) resolves to `undefined`, which the
-    // route must read as "no boxes" rather than throw -- the exact w17 fallback this test's own name
-    // asserts (task E23/F04/US01/T01 widens this route without breaking it).
     expect(screen.queryByTestId("document-viewer-box")).not.toBeInTheDocument();
   });
 
   // Task E23/F04/US01/T01 (NW-63r, epic-23 feature-04, AC-1): the bounding-box overlay.
   describe("bounding-box overlay (task E23/F04/US01/T01)", () => {
-    it("a cited field's box on the current page is drawn over the <img>, alongside the text highlight", async () => {
+    it("a cited field's box on the current page is drawn over the <img>", async () => {
       const apiClient = readyClient({
         getContractEvidence: vi.fn().mockResolvedValue({
           ok: true,
@@ -393,9 +394,8 @@ describe("DocumentViewerRoute (task E22/F03/US01/T01)", () => {
 
       const box = await screen.findByTestId("document-viewer-box");
       expect(box).toHaveStyle({ left: "10%", top: "10%", width: "30%", height: "3%" });
-      // The box is additive (ADR-029 w18 footer clause 3: "draws a box on the page and shows the
-      // text") -- it must not replace the existing text-level highlight.
-      expect(screen.getByTestId("clause-highlight")).toBeInTheDocument();
+      expect(screen.queryByTestId("clause-highlight")).not.toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: "Open in document viewer" })).not.toBeInTheDocument();
     });
 
     it("a field's evidence on another page never bleeds its box onto this one", async () => {
@@ -416,7 +416,7 @@ describe("DocumentViewerRoute (task E22/F03/US01/T01)", () => {
       expect(screen.queryByTestId("document-viewer-box")).not.toBeInTheDocument();
     });
 
-    it("a null box degrades to the existing text-level highlight only (epic-23 AC-4)", async () => {
+    it("a null box draws nothing on the page (epic-23 AC-4)", async () => {
       const apiClient = readyClient({
         getContractEvidence: vi.fn().mockResolvedValue({
           ok: true,
@@ -430,7 +430,7 @@ describe("DocumentViewerRoute (task E22/F03/US01/T01)", () => {
 
       const image = await screen.findByRole("img", { name: "Document page" });
       fireImageLoad(image, 1000, 2000);
-      await waitFor(() => expect(screen.getByTestId("clause-highlight")).toBeInTheDocument());
+      await waitFor(() => expect(screen.queryByTestId("clause-highlight")).not.toBeInTheDocument());
 
       expect(screen.queryByTestId("document-viewer-box")).not.toBeInTheDocument();
     });
@@ -446,7 +446,8 @@ describe("DocumentViewerRoute (task E22/F03/US01/T01)", () => {
       });
       renderViewer(apiClient, `/documents/${DOCUMENT_ID}/viewer?page=3&clause=${CLAUSE_ID}`);
 
-      await waitFor(() => expect(screen.getByTestId("clause-highlight")).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByRole("img", { name: "Document page" })).toBeInTheDocument());
+      expect(screen.queryByTestId("clause-highlight")).not.toBeInTheDocument();
       expect(screen.queryByTestId("document-viewer-box")).not.toBeInTheDocument();
       expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     });

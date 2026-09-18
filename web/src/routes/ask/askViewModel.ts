@@ -83,6 +83,14 @@ export function buildTenantCitationHref(href: string | null, page: number | null
   return page !== null ? `${href}?page=${page}` : href;
 }
 
+export function citationDocumentId(documentId: string | null | undefined): string | null {
+  if (documentId === null || documentId === undefined) return null;
+  const trimmed = documentId.trim();
+  if (trimmed === "") return null;
+  const prefix = "Document:";
+  return trimmed.startsWith(prefix) ? trimmed.slice(prefix.length) : trimmed;
+}
+
 export function mapConversationCitation(body: ConversationCitationBody): ReplyCitation {
   const corpus = toCitationCorpus(body.corpus);
   return {
@@ -92,6 +100,8 @@ export function mapConversationCitation(body: ConversationCitationBody): ReplyCi
     subtitle: body.subtitle ?? "",
     snippet: body.snippet,
     previewUrl: body.previewUrl,
+    documentId: citationDocumentId(body.documentId),
+    page: body.page,
     href: corpus === "tenant" ? buildTenantCitationHref(body.href, body.page) : body.href,
     // Task E28/F03/US02/T01 (NW-83/NW-93): echoed verbatim so `CitationCard.tsx` can build its
     // two-CTA card's primary "Open contract" action once `href` above has resolved to the W18

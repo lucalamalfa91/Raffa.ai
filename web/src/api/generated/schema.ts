@@ -208,7 +208,7 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": { items: ({ id: string; contractId: string | null; supplierName: string | null; fileName: string; documentType: "Msa" | "OrderForm" | "Sow" | "Amendment" | "RenewalLetter" | "Quote" | "Invoice" | "PriceList" | "Nda" | "Dpa" | "Other"; processingStatus: "Uploaded" | "Processing" | "NeedsReview" | "Completed" | "Failed" | "Rejected"; stage: string | null; pageCount: number | null; createdAt: string; weakFactCount: number; rejectionReason: string | null })[]; page: number; pageSize: number; totalCount: number; counts: { all: number; needsAttention: number; needsReview: number; processing: number; rejected: number } };
+          "application/json": { items: ({ id: string; contractId: string | null; supplierName: string | null; fileName: string; documentType: "Msa" | "OrderForm" | "Sow" | "Amendment" | "RenewalLetter" | "Quote" | "Invoice" | "PriceList" | "Nda" | "Dpa" | "Other"; processingStatus: "Uploaded" | "Processing" | "NeedsReview" | "Completed" | "Failed" | "Rejected"; stage: string | null; pageCount: number | null; createdAt: string; weakFactCount: number; rejectionReason: string | null; errorDetail?: string | null })[]; page: number; pageSize: number; totalCount: number; counts: { all: number; needsAttention: number; needsReview: number; processing: number; rejected: number } };
         };
       };
       400: {

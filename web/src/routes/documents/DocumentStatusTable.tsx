@@ -6,6 +6,7 @@ import { getRejectionReasonCopy, type LocalUploadEntry } from "./uploadPipeline"
 import {
   formatUploadedAt,
   getDocumentTypeLabel,
+  getFailedHint,
   getOpenTarget,
   getRowAction,
   getRowStatus,
@@ -14,14 +15,14 @@ import {
   type RowStatus,
 } from "./documentTable";
 import ProcessingPipeline from "./ProcessingPipeline";
+import { DocumentViewerLink } from "./viewer/DocumentViewerOverlay";
+import { buildDocumentViewerHref } from "./viewer/documentViewerViewModel";
 
 export interface DocumentStatusTableProps {
   /** Already filtered by the caller's current chip. */
   documents: readonly DocumentListItemBody[];
   filter: AttentionFilterValue;
   localUploads: readonly LocalUploadEntry[];
-  onRetryLocal: (key: string) => void;
-  onRetryServer: (documentId: string) => void;
   onDelete: (documentId: string) => void;
   /** R-WEB-07: "Procurement sees ... delete disabled." */
   isAdmin: boolean;
@@ -81,8 +82,6 @@ export default function DocumentStatusTable({
   documents,
   filter,
   localUploads,
-  onRetryLocal,
-  onRetryServer,
   onDelete,
   isAdmin,
   updatesPaused = false,
@@ -134,13 +133,10 @@ export default function DocumentStatusTable({
                     <span className={`tag tag-${tag.variant}`}>{tag.label}</span>
                   </td>
                   <td className="document-status-table-next-step">
-                    {entry.phase === "failed" ? (
-                      <button type="button" className="btn btn-secondary" onClick={() => onRetryLocal(entry.key)}>
-                        Retry upload
-                      </button>
-                    ) : entry.phase === "rejected" ? null : (
+                    {entry.phase === "rejected" || entry.phase === "failed" ? null : (
                       // ADR-020 w15 footer 10: the row already reads "Uploaded" above -- this is
-                      // the honest half of that claim, said once, right underneath it.
+                      // the honest half of that claim, said once, right underneath it. A stuck
+                      // upload is recovered by a one-shot auto-reprocess, never a Retry upload CTA.
                       <span className="micro-meta">Processing in the background</span>
                     )}
                   </td>
@@ -166,7 +162,7 @@ export default function DocumentStatusTable({
                     ) : (
                       <>
                         <div className="document-status-table-filename">{item.fileName}</div>
-                        {rowStatus === "failed" && <div className="hint">Not yet linked to a contract</div>}
+                        {rowStatus === "failed" && <div className="hint">{getFailedHint(item.errorDetail)}</div>}
                         {rejectionHint !== null && <div className="hint">{rejectionHint}</div>}
                       </>
                     )}
@@ -174,6 +170,11 @@ export default function DocumentStatusTable({
                       {item.pageCount !== null ? `${item.pageCount} page${item.pageCount === 1 ? "" : "s"} · ` : ""}
                       {formatUploadedAt(item.createdAt)}
                     </div>
+                    {rowStatus !== "rejected" && rowStatus !== "failed" && (
+                      <DocumentViewerLink to={buildDocumentViewerHref(item.id)} className="btn btn-ghost">
+                        View document
+                      </DocumentViewerLink>
+                    )}
                   </td>
                   <td className="document-status-table-supplier">
                     <span>{item.supplierName ?? "—"}</span> <span className="micro-meta">· {getDocumentTypeLabel(item.documentType)}</span>
@@ -183,15 +184,12 @@ export default function DocumentStatusTable({
                     {rowStatus === "processing" && <ProcessingPipeline stage={item.stage} />}
                   </td>
                   <td className="document-status-table-next-step">
-                    {action !== null && action.kind === "retry" ? (
-                      <button type="button" className="btn btn-secondary" onClick={() => onRetryServer(item.id)}>
-                        {action.label}
-                      </button>
-                    ) : rowStatus === "uploaded" ? (
+                    {rowStatus === "uploaded" ? (
                       // ADR-020 w15 footer 10 (task E16/F03/US02/T02): the row already reads
                       // "Uploaded" -- no Worker has claimed it yet, so there is no real stage to
-                      // report, only that it is on its way. After five minutes that claim is
-                      // overdue and the retry branch above offers Retry upload instead.
+                      // report, only that it is on its way. A still-Uploaded row is recovered by
+                      // one auto-reprocess after three minutes (`useDocumentsList`), never a Retry
+                      // upload button that would blow the Delete column off-screen.
                       <span className="micro-meta">Processing in the background</span>
                     ) : rowStatus === "processing" ? (
                       // A `Processing` row reads its real stage string, verbatim -- the Worker has
@@ -222,12 +220,12 @@ export default function DocumentStatusTable({
                     ) : null}
                   </td>
                   {isAdmin && (
-                    <td>
+                    <td className="document-status-table-delete">
                       {confirmingDeleteId === item.id ? (
                         <div className="document-status-table-delete-confirm">
                           <button
                             type="button"
-                            className="btn btn-secondary"
+                            className="btn btn-primary"
                             onClick={() => {
                               setConfirmingDeleteId(null);
                               onDelete(item.id);
@@ -235,7 +233,11 @@ export default function DocumentStatusTable({
                           >
                             Confirm delete
                           </button>
-                          <button type="button" className="btn btn-ghost" onClick={() => setConfirmingDeleteId(null)}>
+                          <button
+                            type="button"
+                            className="btn document-status-table-delete-cancel"
+                            onClick={() => setConfirmingDeleteId(null)}
+                          >
                             Cancel
                           </button>
                         </div>

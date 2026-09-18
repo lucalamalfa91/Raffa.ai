@@ -9,6 +9,8 @@ import type { ReplyCitation } from "./reply/replyTypes";
 import AskOffState from "./AskOffState";
 import MarketRecordPanel from "./MarketRecordPanel";
 import { useConversation } from "./useConversation";
+import { parseDocumentViewerHref } from "../documents/viewer/documentViewerViewModel";
+import { useDocumentViewerOverlay } from "../documents/viewer/DocumentViewerOverlay";
 import {
   ASK_HELLO,
   ASK_INPUT_PLACEHOLDER,
@@ -22,7 +24,6 @@ import {
   buildScopeLine,
   buildYouTurn,
   createConversationAndAsk,
-  deriveConversationTitle,
   fetchBoundContractChip,
   nextTurnId,
   parseScopeContractId,
@@ -32,6 +33,9 @@ import {
   type AskTurnView,
   type BoundContractChip,
 } from "./askViewModel";
+import { ASK_FALLBACK_TITLE, formatConversationTitle } from "./conversationTitle";
+import { applyCitationPreviews, useCitationPreviews } from "./useCitationPreviews";
+import { getContractTypeLabel } from "../contracts/portfolioTableFormatters";
 import "./ask.css";
 
 export interface AskRouteProps {
@@ -107,7 +111,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   const { state: resumeState } = useConversation(apiClient, workspace?.id, resumeTargetId);
 
   const [turns, setTurns] = useState<readonly AskTurnView[]>([]);
-  const [title, setTitle] = useState<string | null>(null);
+  const [boundTitle, setBoundTitle] = useState<string | null>(null);
 
   // NW-78 (wave w19): the persistent binding chip's own two-stage state. `boundContractId` is the
   // durable source -- this conversation's own persisted `scopeContractId`, read off the create
@@ -171,28 +175,36 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   const searchParams = new URLSearchParams(location.search);
   const scopeContractId = currentConversationId === null ? parseScopeContractId(searchParams.get("scope")) : undefined;
 
-  // Task text point (2): "chips then name the supplier as c360Chips" -- app.jsx's own
-  // supplier-templated chip pair needs a real supplier name; GET /api/contracts/{id} is the only
-  // read that has one (a typed `supplierName` on the 360 header since task E13/F03/US01/T02 -- see
-  // ../contracts/contract360/contract360ViewModel.ts#resolveSupplierLabel's own doc comment for the
-  // full provenance -- read here rather than imported, per this task's own "independent,
-  // separately-evolving screens duplicate a small read" convention). A null/blank name stays `null`
-  // so `buildScopedSuggestions` falls back to its own "this supplier" wording.
+  // Bound chat title is supplier + contract (never the question, never a guid). Scoped new chats
+  // and resumed conversations both resolve it from GET /api/contracts/{id}.
+  const lastScopeRef = useRef<string | null>(null);
+  if (scopeContractId !== undefined) lastScopeRef.current = scopeContractId;
+  if (resumeState.phase === "ready") lastScopeRef.current = resumeState.conversation.scopeContractId;
+
+  const boundScopeId =
+    resumeState.phase === "ready"
+      ? resumeState.conversation.scopeContractId
+      : (scopeContractId ?? lastScopeRef.current);
+
   const [scopedSupplierName, setScopedSupplierName] = useState<string | null>(null);
   useEffect(() => {
-    if (scopeContractId === undefined || !workspace) {
+    if (boundScopeId === null || boundScopeId === undefined || !workspace) {
       setScopedSupplierName(null);
+      setBoundTitle(null);
       return;
     }
-    void apiClient.getContract360(workspace.id, scopeContractId).then((result) => {
+    void apiClient.getContract360(workspace.id, boundScopeId).then((result) => {
       if (!result.ok || !result.contract) {
         setScopedSupplierName(null);
+        setBoundTitle(null);
         return;
       }
-      const { supplierName } = result.contract.header;
-      setScopedSupplierName(supplierName !== null && supplierName.trim() !== "" ? supplierName : null);
+      const { supplierName, type } = result.contract.header;
+      const name = supplierName !== null && supplierName.trim() !== "" ? supplierName : null;
+      setScopedSupplierName(name);
+      setBoundTitle(formatConversationTitle({ supplierName: name, contractLabel: getContractTypeLabel(type) }));
     });
-  }, [apiClient, workspace?.id, scopeContractId]);
+  }, [apiClient, workspace?.id, boundScopeId]);
 
   // NW-78: the persistent chip's own supplier+type fetch, independent of `scopedSupplierName`
   // above (that effect only ever runs pre-creation, off the transient `?scope=`) -- this one runs
@@ -228,7 +240,6 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   useEffect(() => {
     if (resumeState.phase === "ready") {
       setTurns(resumeState.turns);
-      setTitle(resumeState.conversation.title);
       // AC-2: rebuilt from the conversation detail wire, so the chip survives resume -- a resumed
       // URL carries no `?scope=` at all, only `/ask/<conversationId>`.
       setBoundContractId(resumeState.conversation.scopeContractId);
@@ -245,7 +256,6 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     if (routeConversationId === null) {
       createdConversationId.current = null;
       setTurns([]);
-      setTitle(null);
       setBoundContractId(null);
     }
   }, [routeConversationId]);
@@ -256,7 +266,6 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
       if (text === "" || !workspace) return;
 
       setTurns((previous) => [...previous, buildYouTurn(nextTurnId(), text)]);
-      setTitle((previous) => previous ?? deriveConversationTitle(text));
       setQuestion("");
       setCitationNotice(null);
       setAsking(true);
@@ -317,12 +326,18 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
    * card navigates to its own href. `askViewModel.ts#resolveCitationOpenAction`'s own doc comment
    * has the full decision table -- this is only the "then do it" half.
    */
+  const overlay = useDocumentViewerOverlay();
   const openCitation = useCallback(
     (turn: Extract<AskTurnView, { role: "raffa" }>, citation: ReplyCitation) => {
       setCitationNotice(null);
       const action = resolveCitationOpenAction(citation, turn.wireCitations);
 
       if (action.kind === "navigate") {
+        const viewer = parseDocumentViewerHref(action.href);
+        if (viewer !== null && overlay !== null) {
+          overlay.open(viewer);
+          return;
+        }
         navigate(action.href, { state: { from: "ask" } });
         return;
       }
@@ -332,7 +347,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
       }
       setCitationNotice({ turnId: turn.id, n: citation.n, text: "This citation can't be opened right now." });
     },
-    [navigate],
+    [navigate, overlay],
   );
 
   // Task E25/F06/US01/T01 (NW-60; AC-2): `AppShell.tsx` no longer mounts `GlobalAskBar` on this
@@ -352,6 +367,8 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     window.addEventListener("keydown", handleGlobalShortcut);
     return () => window.removeEventListener("keydown", handleGlobalShortcut);
   }, []);
+
+  const previewUrls = useCitationPreviews(apiClient, workspace?.id, turns);
 
   if (!workspace) {
     return (
@@ -391,7 +408,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
         <h3>Conversation not found</h3>
         <p className="micro-meta">This conversation does not exist, or is not yours.</p>
         <Link to="/ask" className="btn btn-secondary">
-          + New chat
+          Ask Raffa
         </Link>
       </div>
     );
@@ -410,6 +427,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   }
 
   const hasTurns = turns.length > 0;
+  const headerTitle = boundTitle ?? ASK_FALLBACK_TITLE;
 
   return (
     <div className="ask-screen">
@@ -426,11 +444,8 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
       {hasTurns && (
         <div className="ask-screen-header">
           <div>
-            <h2 className="screen-title">{title ?? "New chat"}</h2>
+            <h2 className="screen-title">{headerTitle}</h2>
           </div>
-          <Link to="/ask" className="btn btn-secondary">
-            + New chat
-          </Link>
         </div>
       )}
 
@@ -478,7 +493,11 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
                 <div key={turn.id} className="ask-message" data-role="raffa">
                   <div className="ask-message-who">Raffa</div>
                   <div className="ask-message-content">
-                    <ReplyBody reply={turn.reply} onOpenCitation={(citation) => openCitation(turn, citation)} onFollowUp={ask} />
+                    <ReplyBody
+                      reply={applyCitationPreviews(turn.reply, previewUrls)}
+                      onOpenCitation={(citation) => openCitation(turn, citation)}
+                      onFollowUp={ask}
+                    />
                     {citationNotice !== null && citationNotice.turnId === turn.id && (
                       <p className="hint" role="status">
                         [{citationNotice.n}] {citationNotice.text}

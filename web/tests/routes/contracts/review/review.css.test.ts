@@ -44,8 +44,8 @@ describe("review.css (E11/F07/US01/T01 -- list/legend/evidence-pane vs day1-demo
   it("gives the field table fixed, non-equal column widths (export's own narrow-field/wide-value/auto/auto proportions)", () => {
     expect(css).toMatch(/\.review-field-table th:nth-child\(1\),\s*\.review-field-table td:nth-child\(1\)\s*\{\s*width:\s*20%/);
     expect(css).toMatch(/\.review-field-table th:nth-child\(2\),\s*\.review-field-table td:nth-child\(2\)\s*\{\s*width:\s*32%/);
-    expect(css).toMatch(/\.review-field-table th:nth-child\(3\),\s*\.review-field-table td:nth-child\(3\)\s*\{\s*width:\s*16%/);
-    expect(css).toMatch(/\.review-field-table th:nth-child\(4\),\s*\.review-field-table td:nth-child\(4\)\s*\{\s*width:\s*32%/);
+    expect(css).toMatch(/\.review-field-table th:nth-child\(3\),\s*\.review-field-table td:nth-child\(3\)\s*\{\s*width:\s*22%/);
+    expect(css).toMatch(/\.review-field-table th:nth-child\(4\),\s*\.review-field-table td:nth-child\(4\)\s*\{\s*width:\s*26%/);
   });
 
   it("truncates a long extracted value with an ellipsis instead of wrapping the row", () => {

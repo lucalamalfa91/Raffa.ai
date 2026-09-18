@@ -75,6 +75,7 @@ public static class ConversationsEndpointExtensions
         endpoints.MapGet("/api/conversations", GetConversationsAsync);
         endpoints.MapPost("/api/conversations", PostConversationAsync);
         endpoints.MapGet("/api/conversations/{id}", GetConversationAsync);
+        endpoints.MapDelete("/api/conversations/{id}", DeleteConversationAsync);
         endpoints.MapPost("/api/conversations/{id}/messages", PostConversationMessageAsync);
         return endpoints;
     }
@@ -207,6 +208,38 @@ public static class ConversationsEndpointExtensions
         }
 
         return Results.Ok(ToDetailResponse(conversation));
+    }
+
+    /// <summary>`DELETE /api/conversations/{id}` — the caller's own conversation, 204 on success.
+    /// Same 404-not-403 rule as <see cref="GetConversationAsync"/> (unknown / other tenant / other
+    /// user). Any live member can delete their own chat; this is not Admin-gated.</summary>
+    private static async Task<IResult> DeleteConversationAsync(
+        string id,
+        HttpRequest request,
+        ConversationService conversationService,
+        ICallerContext callerContext,
+        CancellationToken cancellationToken)
+    {
+        var caller = await callerContext.ResolveTenantAsync(request, cancellationToken);
+        if (caller.Failure is not null)
+        {
+            return caller.Failure;
+        }
+
+        using var callerTenantScope = caller.Scope;
+        var tenantId = caller.TenantId;
+        var userId = caller.Identity!;
+
+        if (!Guid.TryParse(id, out var conversationGuid))
+        {
+            return Results.BadRequest("The conversation id in the route must be a GUID.");
+        }
+
+        var deleted = await conversationService
+            .DeleteAsync(tenantId, userId, new EntityId(conversationGuid), cancellationToken)
+            .ConfigureAwait(false);
+
+        return deleted ? Results.NoContent() : Results.NotFound();
     }
 
     /// <summary>

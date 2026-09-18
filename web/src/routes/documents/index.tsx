@@ -59,6 +59,7 @@ export default function DocumentsRoute({ apiClient, role }: DocumentsRouteProps)
   const list = useDocumentsList(apiClient);
   const [justValidated, setJustValidated] = useState<JustValidated | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [confirmingDeleteAll, setConfirmingDeleteAll] = useState(false);
 
   useEffect(() => {
     if (searchParams.get("filter") === "all") {
@@ -182,6 +183,18 @@ export default function DocumentsRoute({ apiClient, role }: DocumentsRouteProps)
     });
   };
 
+  const handleDeleteAll = () => {
+    setDeleteError(null);
+    void apiClient.deleteAllDocuments(workspace.id).then((result) => {
+      if (!result.ok) {
+        setDeleteError(result.error ?? "Documents could not be deleted.");
+        return;
+      }
+      setConfirmingDeleteAll(false);
+      list.reload();
+    });
+  };
+
   // Onboarding empty is a server fact plus this session's own in-flight rows: nothing Raffa.ai
   // keeps (`counts.all`), nothing it refused (`counts.rejected` -- a refusal is a row now, ADR-020
   // w15 §1), and nothing picked in this browser yet. Never the fetched page's length.
@@ -225,6 +238,28 @@ export default function DocumentsRoute({ apiClient, role }: DocumentsRouteProps)
           <h2 className="screen-title">Documents</h2>
           <p className="screen-header-summary">{buildKbSummary(list.counts)}</p>
         </div>
+        {role === "admin" && (
+          <div className="screen-header-actions">
+            {confirmingDeleteAll ? (
+              <div className="document-status-table-delete-confirm">
+                <button type="button" className="btn btn-primary" onClick={handleDeleteAll}>
+                  Confirm delete all
+                </button>
+                <button
+                  type="button"
+                  className="btn document-status-table-delete-cancel"
+                  onClick={() => setConfirmingDeleteAll(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button type="button" className="btn btn-ghost" onClick={() => setConfirmingDeleteAll(true)}>
+                Delete all documents
+              </button>
+            )}
+          </div>
+        )}
       </header>
 
       <UploadDropzone variant="list" onFilesSelected={handleFilesSelected} onUseSampleFile={handleUseSampleFile} />
@@ -267,8 +302,6 @@ export default function DocumentsRoute({ apiClient, role }: DocumentsRouteProps)
         documents={list.filteredDocuments}
         filter={list.filter}
         localUploads={list.localUploads}
-        onRetryLocal={list.retryLocalUpload}
-        onRetryServer={list.retryServerDocument}
         onDelete={handleDelete}
         isAdmin={role === "admin"}
         updatesPaused={list.updatesPaused}

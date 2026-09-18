@@ -131,6 +131,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<DocumentReprocessService>();
         services.AddScoped<DocumentPriorityService>();
         services.AddScoped<DocumentDeleteService>();
+        services.AddScoped<ContractPurgeService>();
 
         // Review sign-off and the evidence read behind the review screen's pane
         // (`POST /api/documents/{id}/validate`, `GET /api/contracts/{id}/evidence`). Scoped for the
@@ -142,6 +143,10 @@ public static class ServiceCollectionExtensions
         // Worker handler will use. Scoped — shares this registration's own DbContext instance,
         // same reason as every other service above.
         services.AddScoped<IExtractionJobClaimStore, ExtractionJobClaimStore>();
+        services.TryAddSingleton<IExtractionRunAborter, ExtractionRunAborter>();
+        services.AddScoped<IExtractionHangWatch, ExtractionHangWatch>();
+        services.AddScoped<ExtractionProgressHeartbeat>();
+        services.AddScoped<HungProcessingRecoveryService>();
 
         // Task E19/F03/US01/T01 (us-01-step-ticks-api, ADR-028 §D3): Contract 360's negotiation
         // checklist ticks. Scoped -- shares this registration's own DbContext instance, same

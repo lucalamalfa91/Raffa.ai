@@ -4,9 +4,11 @@ import {
   CITATION_UNRESOLVABLE_COPY,
   FIRST_PAGE,
   PAGE_NAV_TOTAL_UNKNOWN,
+  buildDocumentViewerHref,
   formatBeyondCountCopy,
   formatHighlightAffordance,
   formatPageNav,
+  parseDocumentViewerHref,
   parsePositivePage,
   previewNotFoundCause,
   resolveCitation,
@@ -190,5 +192,25 @@ describe("resolveCitation (step 12 triggers)", () => {
       citation: { kind: "none" },
     });
     expect(formatPageNav(surface.kind === "page" ? surface.page : FIRST_PAGE, null)).toBe(PAGE_NAV_TOTAL_UNKNOWN);
+  });
+});
+
+describe("parseDocumentViewerHref / buildDocumentViewerHref", () => {
+  it("parses document id, page and clause from the viewer route", () => {
+    expect(parseDocumentViewerHref("/documents/doc-1/viewer?page=12&clause=clause-1")).toEqual({
+      documentId: "doc-1",
+      page: "12",
+      clause: "clause-1",
+    });
+  });
+
+  it("returns null for a non-viewer href", () => {
+    expect(parseDocumentViewerHref("/contracts/contract-1")).toBeNull();
+    expect(parseDocumentViewerHref("/documents")).toBeNull();
+  });
+
+  it("round-trips through buildDocumentViewerHref", () => {
+    expect(buildDocumentViewerHref("doc-1", 2, "cl-1")).toBe("/documents/doc-1/viewer?page=2&clause=cl-1");
+    expect(buildDocumentViewerHref("doc-1")).toBe("/documents/doc-1/viewer");
   });
 });

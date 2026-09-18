@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import DocumentsRoute from "../../../src/routes/documents";
+import { DocumentViewerProvider } from "../../../src/routes/documents/viewer/DocumentViewerOverlay";
 import type { WorkspaceRole } from "../../../src/components/shell/navItems";
 import type {
   ApiClient,
@@ -39,6 +40,7 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     createConversation: vi.fn(),
     getConversation: vi.fn(),
     postMessage: vi.fn(),
+    deleteConversation: vi.fn(),
     getCapabilities: vi.fn(),
     getMarketRecord: vi.fn(),
     getQuoteBenchmarkHistory: vi.fn(),
@@ -50,6 +52,7 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     getDocumentPreviewUrl: vi.fn(),
     reprocessDocument: vi.fn(),
     deleteDocument: vi.fn(),
+    deleteAllDocuments: vi.fn(),
     prioritiseDocument: vi.fn(),
     getPortfolio: vi.fn(),
     getContract360: vi.fn(),
@@ -100,6 +103,7 @@ function docItem(overrides: Partial<DocumentListItemBody> = {}): DocumentListIte
     createdAt: "2026-09-06T08:05:00Z",
     weakFactCount: 0,
     rejectionReason: null,
+    errorDetail: null,
     ...overrides,
   };
 }
@@ -157,16 +161,18 @@ function pdfFile(name = "Acme_MSA.pdf") {
 function renderDocuments(apiClient: ApiClient, initialPath = "/documents", role: WorkspaceRole = "admin") {
   return render(
     <MemoryRouter initialEntries={[initialPath]}>
-      <Routes>
-        {/* Task E14/F03/US02/T01 (wave w14): role is now threaded through from WorkspaceShellApp's
-            ShellRoutes as a prop, instead of this route calling the deleted resolveWorkspaceRole()
-            itself -- "admin" by default keeps every pre-existing assertion in this suite unchanged;
-            "hides Delete for Procurement" below overrides it. */}
-        <Route path="/documents" element={<DocumentsRoute apiClient={apiClient} role={role} />} />
-        <Route path="/contracts/:contractId" element={<div>CONTRACT_360_SCREEN</div>} />
-        <Route path="/ask" element={<div>ASK_SCREEN</div>} />
-        <Route path="/quotes" element={<div>QUOTE_CHECK_SCREEN</div>} />
-      </Routes>
+      <DocumentViewerProvider apiClient={apiClient}>
+        <Routes>
+          {/* Task E14/F03/US02/T01 (wave w14): role is now threaded through from WorkspaceShellApp's
+              ShellRoutes as a prop, instead of this route calling the deleted resolveWorkspaceRole()
+              itself -- "admin" by default keeps every pre-existing assertion in this suite unchanged;
+              "hides Delete for Procurement" below overrides it. */}
+          <Route path="/documents" element={<DocumentsRoute apiClient={apiClient} role={role} />} />
+          <Route path="/contracts/:contractId" element={<div>CONTRACT_360_SCREEN</div>} />
+          <Route path="/ask" element={<div>ASK_SCREEN</div>} />
+          <Route path="/quotes" element={<div>QUOTE_CHECK_SCREEN</div>} />
+        </Routes>
+      </DocumentViewerProvider>
     </MemoryRouter>,
   );
 }
@@ -439,13 +445,19 @@ describe("DocumentsRoute (task E13/F09/US01/T03, web-documents-v2)", () => {
     expect(screen.queryByText("Uploading…")).toBeNull();
   });
 
-  it("stops polling after five minutes without a change, offers Retry upload on the still-Uploaded row, and resumes on 'Check again'", async () => {
+  it("stops polling after five minutes without a change, keeps informational next-step copy, and resumes on 'Check again'", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const createdAt = new Date().toISOString();
+    const reprocessDocument = vi.fn().mockResolvedValue({
+      ok: true,
+      statusCode: 202,
+      queued: { documentId: "p", extractionJobId: "job-1", processingStatus: "Uploaded" },
+      error: null,
+    });
     const listDocuments = vi
       .fn<ApiClient["listDocuments"]>()
       .mockResolvedValue(listOk([docItem({ id: "p", fileName: "Stuck.pdf", processingStatus: "Uploaded", stage: null, contractId: null, createdAt })]));
-    renderDocuments(mockApiClient({ listDocuments }));
+    renderDocuments(mockApiClient({ listDocuments, reprocessDocument }));
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
@@ -453,15 +465,26 @@ describe("DocumentsRoute (task E13/F09/US01/T03, web-documents-v2)", () => {
     // ADR-020 w15 footer 10 (task E16/F03/US02/T02): "Uploaded", never "Queued…" -- the row grid's
     // own reading of an `Uploaded` document since the perceived-instant batch.
     expect(await screen.findByText("Processing in the background")).toBeInTheDocument();
+    expect(reprocessDocument).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Retry upload" })).not.toBeInTheDocument();
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(5 * 60_000);
+      await vi.advanceTimersByTimeAsync(3 * 60_000);
+    });
+    await waitFor(() => expect(reprocessDocument).toHaveBeenCalledTimes(1));
+    expect(reprocessDocument).toHaveBeenCalledWith(WORKSPACE_ID, "p");
+    expect(screen.queryByRole("button", { name: "Retry upload" })).not.toBeInTheDocument();
+    expect(screen.getByText("Processing in the background")).toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2 * 60_000);
     });
     expect(await screen.findByText("Nothing has changed for five minutes, so this page stopped checking for updates.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Retry upload" })).toBeInTheDocument();
-    expect(screen.queryByText("Processing in the background")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry upload" })).not.toBeInTheDocument();
+    expect(screen.getByText("Processing in the background")).toBeInTheDocument();
     expect(screen.getByText("Uploaded")).toHaveClass("tag");
     expect(screen.queryByText("Failed")).toBeNull();
+    expect(reprocessDocument).toHaveBeenCalledTimes(1);
 
     const callsWhenPaused = listDocuments.mock.calls.length;
     await act(async () => {
@@ -477,6 +500,78 @@ describe("DocumentsRoute (task E13/F09/US01/T03, web-documents-v2)", () => {
     expect(screen.queryByText(/stopped checking for updates/)).toBeNull();
   });
 
+  it("does not auto-reprocess a Processing document at three minutes, including same-label Validating schema", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const reprocessDocument = vi.fn().mockResolvedValue({
+      ok: true,
+      statusCode: 202,
+      queued: { documentId: "p", extractionJobId: "job-1", processingStatus: "Uploaded" },
+      error: null,
+    });
+    const listDocuments = vi
+      .fn<ApiClient["listDocuments"]>()
+      .mockResolvedValue(
+        listOk([
+          docItem({
+            id: "p",
+            fileName: "LegalThenRisk.pdf",
+            processingStatus: "Processing",
+            stage: "Validating schema",
+            contractId: null,
+            createdAt: new Date().toISOString(),
+          }),
+        ]),
+      );
+    renderDocuments(mockApiClient({ listDocuments, reprocessDocument }));
+
+    expect(await screen.findByText("Validating schema…")).toBeInTheDocument();
+    expect(reprocessDocument).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3 * 60_000);
+    });
+    expect(reprocessDocument).not.toHaveBeenCalled();
+  });
+
+  it("auto-reprocesses a Processing document stuck on the same stage after fifteen minutes", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const reprocessDocument = vi.fn().mockResolvedValue({
+      ok: true,
+      statusCode: 202,
+      queued: { documentId: "p", extractionJobId: "job-1", processingStatus: "Uploaded" },
+      error: null,
+    });
+    const listDocuments = vi
+      .fn<ApiClient["listDocuments"]>()
+      .mockResolvedValue(
+        listOk([
+          docItem({
+            id: "p",
+            fileName: "Hung.pdf",
+            processingStatus: "Processing",
+            stage: "Uploading",
+            contractId: null,
+            createdAt: new Date().toISOString(),
+          }),
+        ]),
+      );
+    renderDocuments(mockApiClient({ listDocuments, reprocessDocument }));
+
+    expect(await screen.findByText("Uploading…")).toBeInTheDocument();
+    expect(reprocessDocument).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3 * 60_000);
+    });
+    expect(reprocessDocument).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(12 * 60_000);
+    });
+    await waitFor(() => expect(reprocessDocument).toHaveBeenCalledTimes(1));
+    expect(reprocessDocument).toHaveBeenCalledWith(WORKSPACE_ID, "p");
+  });
+
   it("the attention filter hides completed rows and shows the empty message; 'All documents' reveals them", async () => {
     const items = [
       docItem({ id: "a", fileName: "Attention.pdf", processingStatus: "NeedsReview" }),
@@ -487,7 +582,7 @@ describe("DocumentsRoute (task E13/F09/US01/T03, web-documents-v2)", () => {
     expect(await screen.findByText("Attention.pdf")).toBeInTheDocument();
     expect(screen.queryByText("Askable.pdf")).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: /all documents/i }));
+    await userEvent.click(screen.getByRole("button", { name: /^All documents/ }));
 
     expect(await screen.findByText("Askable.pdf")).toBeInTheDocument();
   });
@@ -663,5 +758,50 @@ describe("DocumentsRoute (task E13/F09/US01/T03, web-documents-v2)", () => {
 
     await screen.findByText("Salesforce_MSA.pdf");
     expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete all documents" })).not.toBeInTheDocument();
+  });
+
+  it("asks Admin to confirm before wiping every document, then reloads the list", async () => {
+    const items = [docItem({ processingStatus: "NeedsReview" })];
+    const listDocuments = vi.fn().mockResolvedValue(listOk(items));
+    const deleteAllDocuments = vi.fn().mockResolvedValue({ ok: true, statusCode: 204, error: null });
+    renderDocuments(mockApiClient({ listDocuments, deleteAllDocuments }));
+
+    await screen.findByText("Salesforce_MSA.pdf");
+    await userEvent.click(screen.getByRole("button", { name: "Delete all documents" }));
+    expect(deleteAllDocuments).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole("button", { name: "Confirm delete all" }));
+    await waitFor(() => expect(deleteAllDocuments).toHaveBeenCalledWith(WORKSPACE_ID));
+    await waitFor(() => expect(listDocuments.mock.calls.length).toBeGreaterThan(1));
+  });
+
+  it("View document opens the viewer overlay on the list without leaving /documents", async () => {
+    const items = [docItem({ id: "doc-1", fileName: "raffa-sample-northwind-msa.pdf", processingStatus: "NeedsReview", weakFactCount: 2 })];
+    const getDocument = vi.fn().mockResolvedValue({
+      ok: true,
+      statusCode: 200,
+      document: {
+        id: "doc-1",
+        contractId: "contract-1",
+        fileName: "raffa-sample-northwind-msa.pdf",
+        mimeType: "application/pdf",
+        documentType: "Msa",
+        processingStatus: "Completed",
+        createdAt: "2026-09-06T08:05:00Z",
+        pageCount: 2,
+        isPageCountLimited: false,
+      },
+      error: null,
+    });
+    const getDocumentPreviewUrl = vi.fn().mockResolvedValue({ ok: true, statusCode: 200, objectUrl: "blob:page", error: null });
+    renderDocuments(mockApiClient({ listDocuments: vi.fn().mockResolvedValue(listOk(items)), getDocument, getDocumentPreviewUrl }));
+
+    await screen.findByText("raffa-sample-northwind-msa.pdf");
+    await userEvent.click(screen.getByRole("link", { name: "View document" }));
+
+    expect(await screen.findByRole("dialog", { name: "Document viewer" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Documents" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "raffa-sample-northwind-msa.pdf" })).toBeInTheDocument();
   });
 });

@@ -81,6 +81,7 @@ function mockApiClient(): ApiClient {
     getDocumentPreviewUrl: vi.fn(),
     reprocessDocument: vi.fn(),
     deleteDocument: vi.fn(),
+    deleteAllDocuments: vi.fn(),
     prioritiseDocument: vi.fn(),
     getPortfolio: vi
       .fn()
@@ -154,6 +155,7 @@ function mockApiClient(): ApiClient {
     createConversation: vi.fn(),
     getConversation: vi.fn(),
     postMessage: vi.fn(),
+    deleteConversation: vi.fn(),
     getCapabilities: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, catalog: { version: "test", capabilities: [] }, error: null }),
     getMarketRecord: vi.fn(),
     getQuoteBenchmarkHistory: vi.fn(),
@@ -200,6 +202,7 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
     // every other screen in this suite already follows (see e.g. the Contract 360/Renewals cases
     // below). The full off/on state matrix is covered in depth by tests/routes/ask/AskRoute.test.tsx.
     expect(await screen.findByRole("heading", { name: "Ask needs at least one validated contract." })).toBeInTheDocument();
+    expect(screen.queryByRole("search")).not.toBeInTheDocument();
   });
 
   it("renders the global Ask bar on a routed screen (AC-3, every app screen)", () => {
@@ -259,6 +262,7 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
     // this suite's shared mock always resolves 0 validated contracts, so the real Ask screen the
     // catch-all redirect lands on is its off state.
     expect(await screen.findByRole("heading", { name: "Ask needs at least one validated contract." })).toBeInTheDocument();
+    expect(screen.queryByRole("search")).not.toBeInTheDocument();
   });
 
   it("/review redirects to /documents?filter=attention (Review is a state of Documents in V2, not a rail destination)", async () => {

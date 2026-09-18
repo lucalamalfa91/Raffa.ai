@@ -8,12 +8,11 @@ import { daysUntil } from "./portfolioAttention";
  * `raffa-v2/app.jsx` `kbContracts` / `pfSummary` / `moreCols`). No React here -- every rule is
  * unit-testable without rendering (`portfolioViewModel.test.ts`).
  *
- * **All uploaded contracts, sorted by the notice deadline (pending rows last).** w17 change: a
- * contract is visible as soon as its document is uploaded -- no longer waiting for extraction to
- * complete. Pending rows (documentProcessingStatus = Uploaded or Processing) appear after all
- * validated rows (sorted by notice deadline), clearly labelled as still-processing via `isPending`.
- * The summary "validatedCount" and spend totals still count only validated (non-pending) rows so
- * the headline figure stays accurate.
+ * **All uploaded contracts, split ready vs still-to-review.** w17 made a contract visible as soon
+ * as its document is uploaded; this screen keeps that data in the list but defaults the view to
+ * already-OK rows (`isReady`). Pending (Uploaded/Processing) and needs-review rows stay one click
+ * away on the readiness filter -- never hidden forever. Failed / blank-status rows are still
+ * excluded (they have their own Documents screen). The summary still counts only ready rows.
  *
  * **Urgent = notice due within 45 days.** `app.jsx`: `rowBg: c.cancelDays<=45 ? accent-100 :
  * transparent`, `bar: accent`, `cancelFg: accent-700`, `cancelW: 600` -- the same locked ADR-019
@@ -71,9 +70,14 @@ export interface PortfolioRow {
   /**
    * w17: true when the linked document is still in `Uploaded` or `Processing` state, meaning
    * extraction has not completed yet. Pending rows show the filename as the primary identifier
-   * instead of the contract-type label, and are sorted after all validated rows.
+   * instead of the contract-type label, and are sorted after all ready rows.
    */
   isPending: boolean;
+  /**
+   * Already analyzed / validated / OK to use. The readiness filter defaults to this bucket.
+   * False for still-processing, needs-review, or a contract status that is not yet validated.
+   */
+  isReady: boolean;
 }
 
 /**
@@ -87,24 +91,58 @@ function isDocumentPending(documentProcessingStatus: string | null | undefined):
   return s === "uploaded" || s === "processing";
 }
 
+function isDocumentNeedsReview(documentProcessingStatus: string | null | undefined): boolean {
+  return documentProcessingStatus?.toLowerCase() === "needsreview";
+}
+
+function isFailedOrBlank(item: PortfolioListItem): boolean {
+  const status = item.status.trim().toLowerCase();
+  if (status === "" || status === "failed") return true;
+  const processing = item.documentProcessingStatus?.toLowerCase();
+  return processing === "failed" || processing === "rejected";
+}
+
+/**
+ * Already analyzed / validated / OK to use -- the default readiness bucket. A row is ready only
+ * when the contract status is past every transient/blocking value *and* the linked document is
+ * not still uploading, processing, or parked in NeedsReview.
+ */
+export function isPortfolioItemReady(item: PortfolioListItem): boolean {
+  return (
+    isValidatedContractStatus(item.status) &&
+    !isDocumentPending(item.documentProcessingStatus) &&
+    !isDocumentNeedsReview(item.documentProcessingStatus)
+  );
+}
+
+function isPortfolioListable(item: PortfolioListItem): boolean {
+  if (isFailedOrBlank(item)) return false;
+  return (
+    isPortfolioItemReady(item) ||
+    isDocumentPending(item.documentProcessingStatus) ||
+    isDocumentNeedsReview(item.documentProcessingStatus) ||
+    item.status.trim().toLowerCase() === "processing" ||
+    item.status.trim().toLowerCase().includes("review")
+  );
+}
+
 export function buildPortfolioRows(items: readonly PortfolioListItem[], now: Date = new Date()): PortfolioRow[] {
   return items
-    // w17: include both validated contracts AND freshly-uploaded (pending) ones.
-    // - Pending (documentProcessingStatus = Uploaded|Processing): shown immediately after upload
-    //   so the user sees their document appear at once.
-    // - Validated (isValidatedContractStatus = true): shown with full extracted data.
-    // - needs_review / failed / etc.: still excluded — they have their own Documents screen.
-    .filter((item) => isValidatedContractStatus(item.status) || isDocumentPending(item.documentProcessingStatus))
+    // Include ready contracts AND still-to-review (pending / needs_review) ones. Failed, rejected
+    // and blank-status shells stay out -- they have their own Documents screen.
+    .filter(isPortfolioListable)
     .map((item) => {
       const cancelDays = daysUntil(item.cancellationDeadline, now);
       const isPending = isDocumentPending(item.documentProcessingStatus);
-      return { item, cancelDays, isUrgent: cancelDays !== null && isDeadlineCritical(cancelDays), isPending };
+      const isReady = isPortfolioItemReady(item);
+      return { item, cancelDays, isUrgent: cancelDays !== null && isDeadlineCritical(cancelDays), isPending, isReady };
     })
     .sort(compareByNoticeDeadline);
 }
 
 function compareByNoticeDeadline(a: PortfolioRow, b: PortfolioRow): number {
-  // w17: pending rows (still processing) sort after all validated rows regardless of deadline.
+  // Ready rows first; within the still-to-review bucket, pending (not yet analyzed) after needs-review.
+  if (a.isReady !== b.isReady) return a.isReady ? -1 : 1;
   if (a.isPending !== b.isPending) return a.isPending ? 1 : -1;
 
   if (a.cancelDays !== b.cancelDays) {
@@ -136,10 +174,10 @@ export interface PortfolioSummary {
 }
 
 export function buildPortfolioSummary(rows: readonly PortfolioRow[]): PortfolioSummary {
-  // w17: only validated (non-pending) rows contribute to the summary figures so the headline
-  // "N validated contracts · CHF X annual · K notice deadlines" stays accurate. Pending rows
-  // are shown in the table but not counted here (they have no extracted spend or deadlines yet).
-  const validatedRows = rows.filter((row) => !row.isPending);
+  // Only ready (already-OK) rows contribute to the summary figures so the headline
+  // "N validated contracts · CHF X annual · K notice deadlines" stays accurate. Still-to-review
+  // rows stay in the list behind the readiness filter but are not counted here.
+  const validatedRows = rows.filter((row) => row.isReady);
 
   const totals = new Map<string | null, number>();
   for (const { item } of validatedRows) {

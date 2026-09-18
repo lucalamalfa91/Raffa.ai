@@ -90,17 +90,53 @@
 .shell-rail-conversations {
   display: flex;
   flex-direction: column;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+/* Placement only. Height, padding, 2px ink border, radius and 14px type come from the shared
+   `.input` catalogue entry (components.css) — the previous 4px/12px squash made this look like a
+   different, unstyled control from every other field in the app. Left inset 28px matches
+   `.shell-rail-conv-item`'s own padding so the field lines up with the chat titles. */
+.shell-rail-conv-search {
+  display: block;
+  margin: var(--space-2) var(--space-3) var(--space-2) 28px;
+  width: calc(100% - 28px - var(--space-3));
+}
+
+.shell-rail-conv-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
 }
 
 .shell-rail-conv-item {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: 6px var(--space-4) 6px 28px;
+  padding: 6px 8px 6px 28px;
   font-size: 12px;
   text-decoration: none;
   color: var(--color-text);
   min-width: 0;
+  flex: 1;
+}
+
+.shell-rail-conv-delete {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 4px 12px 4px 0;
+  font: inherit;
+  font-size: 11px;
+  color: var(--color-neutral-600);
+  cursor: pointer;
+  flex: none;
+}
+
+.shell-rail-conv-delete:hover {
+  color: var(--color-accent-700);
+  text-decoration: underline;
 }
 
 .shell-rail-conv-item:hover {
@@ -267,4 +303,11 @@
 .shell-content > .empty-state,
 .shell-content > .error-state {
   padding: 48px 32px;
+}
+
+/* Failsafe: the Ask screen already has its own composer. Never paint the global bar over it
+   even if a routing remainder keeps GlobalAskBar mounted. */
+.shell-main:has(.ask-screen) > .ask-bar,
+.shell-main:has(.ask-off) > .ask-bar {
+  display: none;
 }

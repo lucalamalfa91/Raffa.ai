@@ -3,12 +3,10 @@ import { useParams, useSearchParams } from "react-router-dom";
 import type {
   ApiClient,
   Contract360ClauseBody,
-  Contract360DocumentBody,
   ContractFieldEvidenceBody,
   ReadBackDocument,
 } from "../../../api/client";
 import { loadCurrentWorkspace } from "../../signin/workspaceStore";
-import ClauseHighlight from "../../contracts/contract360/ClauseHighlight";
 import BoxOverlay, { selectPageBoxes, type PageBoxSpec } from "./BoxOverlay";
 import {
   BEYOND_COUNT_HEADING,
@@ -31,6 +29,14 @@ export interface DocumentViewerRouteProps {
   apiClient: ApiClient;
 }
 
+export interface DocumentViewerProps {
+  apiClient: ApiClient;
+  documentId: string | undefined;
+  pageParam: string | null;
+  clauseParam: string | null;
+  onPageChange: (nextPage: number, clauseId: string | null) => void;
+}
+
 type DocumentLoad =
   | { phase: "loading" }
   | { phase: "missing" }
@@ -39,7 +45,6 @@ type DocumentLoad =
       phase: "ready";
       document: ReadBackDocument;
       clauses: readonly Contract360ClauseBody[] | null;
-      documents: readonly Contract360DocumentBody[];
     };
 
 type PreviewLoad =
@@ -51,19 +56,18 @@ type PreviewLoad =
   | { phase: "ready"; objectUrl: string };
 
 /**
- * Route `/documents/:documentId/viewer?page=&clause=` (ADR-018 w17 clause 13;
- * ADR-029 clauses 4–7; task E22/F03/US01/T01, NW-63 w17 half). Citation-reached,
- * not a rail destination. PNG pages via `getDocumentPreviewUrl`; the caller
- * owns `URL.revokeObjectURL` in this effect's cleanup so at most the current
- * page is alive. No PDF library.
+ * Document viewer internals (page fetch, pdfium PNG, chrome). The dedicated
+ * `/documents/:documentId/viewer` route and the in-app overlay both render this
+ * so paging, highlights and empty/error states stay one implementation.
  */
-export default function DocumentViewerRoute({ apiClient }: DocumentViewerRouteProps) {
-  const { documentId } = useParams<{ documentId: string }>();
-  const [searchParams, setSearchParams] = useSearchParams();
+export function DocumentViewer({
+  apiClient,
+  documentId,
+  pageParam,
+  clauseParam,
+  onPageChange,
+}: DocumentViewerProps) {
   const workspace = loadCurrentWorkspace();
-
-  const pageParam = searchParams.get("page");
-  const clauseParam = searchParams.get("clause");
 
   const [documentLoad, setDocumentLoad] = useState<DocumentLoad>({ phase: "loading" });
   const [previewLoad, setPreviewLoad] = useState<PreviewLoad>({ phase: "idle" });
@@ -102,19 +106,17 @@ export default function DocumentViewerRoute({ apiClient }: DocumentViewerRoutePr
 
       const document = result.document;
       let clauses: readonly Contract360ClauseBody[] | null = null;
-      let documents: readonly Contract360DocumentBody[] = [];
 
       if (clauseParam !== null && document.contractId !== null) {
         const contractResult = await apiClient.getContract360(workspace.id, document.contractId);
         if (contractResult.ok && contractResult.contract !== null) {
           clauses = contractResult.contract.tabs.clauses;
-          documents = contractResult.contract.tabs.documents;
         } else {
           clauses = [];
         }
       }
 
-      setDocumentLoad({ phase: "ready", document, clauses, documents });
+      setDocumentLoad({ phase: "ready", document, clauses });
     });
   }, [apiClient, workspace?.id, documentId, clauseParam]);
 
@@ -205,13 +207,6 @@ export default function DocumentViewerRoute({ apiClient }: DocumentViewerRoutePr
     };
   }, [apiClient, workspace?.id, documentId, fetchPage, pageCount, reloadNonce]);
 
-  const writePage = (nextPage: number, clauseId: string | null) => {
-    const next = new URLSearchParams();
-    next.set("page", String(nextPage));
-    if (clauseId !== null) next.set("clause", clauseId);
-    setSearchParams(next);
-  };
-
   if (!workspace) {
     return (
       <div className="empty-state" role="status">
@@ -288,7 +283,7 @@ export default function DocumentViewerRoute({ apiClient }: DocumentViewerRoutePr
         <div className="empty-state" role="status">
           <h3>{BEYOND_COUNT_HEADING}</h3>
           <p className="micro-meta">{formatBeyondCountCopy(surface.pageCount)}</p>
-          <button type="button" className="btn btn-secondary" onClick={() => writePage(FIRST_PAGE, clauseParam)}>
+          <button type="button" className="btn btn-secondary" onClick={() => onPageChange(FIRST_PAGE, clauseParam)}>
             Go to page 1
           </button>
         </div>
@@ -303,8 +298,8 @@ export default function DocumentViewerRoute({ apiClient }: DocumentViewerRoutePr
   const pageBoxes: readonly PageBoxSpec[] = selectPageBoxes(evidence, documentId, surface.page);
   const canPrev = surface.page > FIRST_PAGE;
   const canNext = documentLoad.document.pageCount !== null && surface.page < documentLoad.document.pageCount;
-  const onPrev = () => writePage(surface.page - 1, resolvedClauseId);
-  const onNext = () => writePage(surface.page + 1, resolvedClauseId);
+  const onPrev = () => onPageChange(surface.page - 1, resolvedClauseId);
+  const onNext = () => onPageChange(surface.page + 1, resolvedClauseId);
 
   return (
     <div className="document-viewer">
@@ -324,10 +319,6 @@ export default function DocumentViewerRoute({ apiClient }: DocumentViewerRoutePr
         </div>
       )}
 
-      {citation.kind === "resolved" && (
-        <p className="micro-meta">{`Page ${surface.page} — the wording is highlighted below`}</p>
-      )}
-
       {previewLoad.phase === "reaped" ? (
         <div className="empty-state" role="status">
           <h3>{REAPED_PAGE_HEADING}</h3>
@@ -344,10 +335,6 @@ export default function DocumentViewerRoute({ apiClient }: DocumentViewerRoutePr
           naturalSize={naturalSize}
           onImageLoad={setNaturalSize}
         />
-      )}
-
-      {citation.kind === "resolved" && (
-        <ClauseHighlight clause={citation.clause} documents={documentLoad.documents} />
       )}
     </div>
   );
@@ -444,5 +431,33 @@ function PageCanvas({
     <div className="document-viewer-canvas" role="status" aria-live="polite">
       <div className="skeleton" />
     </div>
+  );
+}
+
+/**
+ * Route `/documents/:documentId/viewer?page=&clause=` (ADR-018 w17 clause 13;
+ * ADR-029 clauses 4–7; task E22/F03/US01/T01, NW-63 w17 half). Citation-reached
+ * deep link: the current page lives in the URL. In-app CTAs prefer
+ * `DocumentViewerProvider`'s overlay on the current screen instead.
+ */
+export default function DocumentViewerRoute({ apiClient }: DocumentViewerRouteProps) {
+  const { documentId } = useParams<{ documentId: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const writePage = (nextPage: number, clauseId: string | null) => {
+    const next = new URLSearchParams();
+    next.set("page", String(nextPage));
+    if (clauseId !== null) next.set("clause", clauseId);
+    setSearchParams(next);
+  };
+
+  return (
+    <DocumentViewer
+      apiClient={apiClient}
+      documentId={documentId}
+      pageParam={searchParams.get("page")}
+      clauseParam={searchParams.get("clause")}
+      onPageChange={writePage}
+    />
   );
 }

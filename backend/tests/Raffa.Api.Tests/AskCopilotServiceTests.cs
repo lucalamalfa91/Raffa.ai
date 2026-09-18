@@ -212,4 +212,17 @@ public sealed class AskCopilotServiceTests
         Assert.Null(item.Href);
         Assert.Null(item.PreviewUrl);
     }
+
+    [Fact]
+    public void Document_sourced_hit_with_a_known_page_resolves_the_viewer_and_a_real_preview()
+    {
+        var documentId = new EntityId(Guid.NewGuid());
+        var namedContractId = Guid.NewGuid();
+
+        var (href, previewUrl) = AskCopilotService.ResolveTenantClauseLinks(
+            null, documentId, namedContractId, hitSourceType: "Document", hitPage: 2);
+
+        Assert.Equal($"/documents/{documentId.Value}/viewer?page=2", href);
+        Assert.Equal($"/api/documents/{documentId.Value}/preview?page=2", previewUrl);
+    }
 }

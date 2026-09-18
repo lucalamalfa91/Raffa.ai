@@ -4,7 +4,14 @@ import type { ApiClient, DocumentListPageBody, GetPortfolioResult, PortfolioList
 import { loadCurrentWorkspace } from "../signin/workspaceStore";
 import { CHECK_AGAIN_LABEL, UPDATES_PAUSED_NOTICE, usePollBudget } from "../../components/shell/usePollBudget";
 import PortfolioTable from "./PortfolioTable";
-import PortfolioFilterControl from "./PortfolioFilterControl";
+import ReadinessFilter from "../../components/ReadinessFilter";
+import {
+  countReadiness,
+  DEFAULT_READINESS_FILTER,
+  filterByReadiness,
+  getReadinessEmptyCopy,
+  type ReadinessFilterValue,
+} from "../../components/readiness";
 import {
   buildPortfolioRows,
   buildPortfolioSummary,
@@ -12,7 +19,6 @@ import {
   moreColumnsLabel,
   PORTFOLIO_SUMMARY_OFF,
   readCategoryFilter,
-  withCategoryFilter,
 } from "./portfolioViewModel";
 import "./contracts.css";
 
@@ -77,17 +83,20 @@ export function getPortfolioZeroCopy(variant: PortfolioZeroVariant): { sentence:
  * counts re-read on the shared 2 s cadence (also when rows are already on screen, so later
  * completions appear without a remount); the five-minute no-change budget still applies.
  *
- * **Category filter (task E24/F01/US02/T01, closes NW-23).** `PortfolioFilterControl` reads and
- * writes the route's own `?category=` search parameter (`portfolioViewModel.ts#readCategoryFilter`/
- * `withCategoryFilter`) -- never a component store -- so applying or clearing it re-issues this same
- * `GET /api/contracts` call with (or without) `category` set, the same "one fetch, server is the
- * filter" shape the rest of this doc comment already describes. Visible whenever the page has
- * loaded (including a filtered-to-zero result), so a filter that matches nothing can always be
- * cleared.
+ * **Column filters.** Each table header carries a compact, type-matched filter (text on Supplier /
+ * Contract, date on Ends / notice / Start, number on Annual spend, select on Auto / Risk / Status).
+ * Filtering is client-side over the already-loaded page. `?category=` on the URL still reaches
+ * `GET /api/contracts` so a shared link keeps working (ADR-012); it is no longer a disconnected
+ * toolbar above the table.
+ *
+ * **Readiness filter.** The loaded page still carries pending / needs-review rows (w17 immediate
+ * visibility). A compact `.seg` (Ready / To review / All) defaults to already-OK so the table is
+ * usable; the still-to-review bucket is one click away, never hidden forever. Counts are the
+ * already-loaded page, never a second fetch.
  */
 export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
   const workspace = loadCurrentWorkspace();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   // Task E24/F01/US02/T01 (story us-02-portfolio-category-web; closes NW-23): the only state this
   // filter has. Never copied into a `useState` -- re-read from the URL on every render, so a
   // shared link, a reload or the browser's back/forward all reproduce the same filtered request
@@ -96,6 +105,7 @@ export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
   const [fetchState, setFetchState] = useState<FetchState>({ phase: "loading" });
   const [moreColumns, setMoreColumns] = useState(false);
   const [documentCounts, setDocumentCounts] = useState<DocumentListPageBody["counts"] | null>(null);
+  const [readiness, setReadiness] = useState<ReadinessFilterValue>(DEFAULT_READINESS_FILTER);
   const loadGeneration = useRef(0);
 
   const loadPortfolio = useCallback(
@@ -157,10 +167,16 @@ export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
 
   const rows = useMemo(() => (fetchState.phase === "ready" ? buildPortfolioRows(fetchState.items) : []), [fetchState]);
   const summary = useMemo(() => buildPortfolioSummary(rows), [rows]);
+  const readinessCounts = useMemo(
+    () => countReadiness(rows.filter((row) => row.isReady).length, rows.filter((row) => !row.isReady).length),
+    [rows],
+  );
+  const visibleRows = useMemo(() => filterByReadiness(rows, readiness, (row) => row.isReady), [rows, readiness]);
 
   const ready = fetchState.phase === "ready";
   const lit = ready && rows.length > 0;
   const zero = ready && rows.length === 0;
+  const tableVisible = lit && visibleRows.length > 0;
 
   // Counts drive both the zero-state sentence and the in-flight poll, including when rows are
   // already on screen (later Completions must be able to appear without a remount).
@@ -209,7 +225,7 @@ export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
             {ready ? formatPortfolioSummary(summary) : fetchState.phase === "loading" ? "Loading portfolio…" : PORTFOLIO_SUMMARY_OFF}
           </p>
         </div>
-        {lit && (
+        {tableVisible && (
           <div className="screen-header-actions">
             <button type="button" className="btn btn-ghost portfolio-columns-toggle" aria-pressed={moreColumns} onClick={() => setMoreColumns((current) => !current)}>
               {moreColumnsLabel(moreColumns)}
@@ -217,16 +233,6 @@ export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
           </div>
         )}
       </header>
-
-      {ready && (
-        // Visible whenever the page has loaded, including a filtered-to-zero result (AC-3: the
-        // operator must always be able to clear a filter that matched nothing).
-        <PortfolioFilterControl
-          category={category}
-          onApply={(next) => setSearchParams(withCategoryFilter(searchParams, next))}
-          onClear={() => setSearchParams(withCategoryFilter(searchParams, ""))}
-        />
-      )}
 
       {fetchState.phase === "loading" && (
         <div className="portfolio-skeleton" role="status" aria-live="polite">
@@ -270,7 +276,18 @@ export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
         </div>
       )}
 
-      {lit && <PortfolioTable rows={rows} moreColumns={moreColumns} />}
+      {lit && (
+        <>
+          <ReadinessFilter value={readiness} onChange={setReadiness} counts={readinessCounts} ariaLabel="Filter portfolio by readiness" />
+          {tableVisible ? (
+            <PortfolioTable rows={visibleRows} moreColumns={moreColumns} />
+          ) : (
+            <div className="portfolio-readiness-empty" role="status">
+              <p className="micro-meta">{getReadinessEmptyCopy(readiness)}</p>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

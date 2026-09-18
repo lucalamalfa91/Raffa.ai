@@ -126,33 +126,74 @@ export function getOpenTarget(item: Pick<DocumentListItemBody, "id" | "contractI
   }
 }
 
-export type RowActionKind = "review" | "ask" | "quote" | "retry";
+export type RowActionKind = "review" | "ask" | "quote";
 
 export interface RowAction {
   kind: RowActionKind;
   label: string;
 }
 
-/** How long an `Uploaded` row may sit with "Processing in the background" before the next-step
- * cell becomes Retry upload. After this the Worker has had a fair chance to claim the job; staying
- * `Uploaded` means the pointer is gone (dead-lettered or never delivered) and the only recovery
- * is `POST /api/documents/{id}/reprocess`. */
-export const STUCK_REPROCESS_AFTER_MS = 5 * 60 * 1000;
+/** How long an `Uploaded` row may sit with "Processing in the background" before the list
+ * automatically calls `POST /api/documents/{id}/reprocess` once. After this the Worker has had a
+ * fair chance to claim the job; staying `Uploaded` means the pointer is gone (dead-lettered or
+ * never delivered). The table never offers a Retry upload CTA — next-step copy stays informational.
+ */
+export const STUCK_REPROCESS_AFTER_MS = 3 * 60 * 1000;
+
+/** How long a `Processing` row may sit on the same UI stage before auto-reprocess. Matches the
+ * server hang window (`HungProcessingDetector.InactivityWindow` = 15 min): Foundry
+ * `RequestTimeoutSeconds` (180) × (`MaxRetries` + 1) = 12 minutes, plus preview/OCR margin.
+ * Must not fire at three minutes — a live LLM call can still be in flight, and LegalClauses /
+ * Obligations / Risk all render as the same "Validating schema" label. */
+export const STUCK_PROCESSING_REPROCESS_AFTER_MS = 15 * 60 * 1000;
+
+/** Full restart cap shared with `ExtractionRequestedHandler.MaxAttempts`. After this many
+ * auto-reprocess calls the server marks the row Failed (or the client stops looping if the
+ * Worker is still gone). */
+export const MAX_STUCK_REPROCESS_ATTEMPTS = 3;
+
+/** True when an `Uploaded` document has sat long enough that the list should fire one auto-reprocess. */
+export function isStuckUploaded(
+  item: Pick<DocumentListItemBody, "processingStatus" | "createdAt">,
+  nowMs: number = Date.now(),
+): boolean {
+  if (item.processingStatus !== "Uploaded") return false;
+  const created = Date.parse(item.createdAt);
+  return Number.isFinite(created) && nowMs - created >= STUCK_REPROCESS_AFTER_MS;
+}
+
+/** True when a `Processing` row has shown the same stage for `STUCK_PROCESSING_REPROCESS_AFTER_MS`.
+ * `stageUnchangedSinceMs` is when the client first observed this stage (the list API has no
+ * per-stage timestamp; the server hang detector uses job `claimed_at`/`started_at`). */
+export function isStuckProcessing(
+  item: Pick<DocumentListItemBody, "processingStatus">,
+  stageUnchangedSinceMs: number,
+  nowMs: number = Date.now(),
+): boolean {
+  if (item.processingStatus !== "Processing") return false;
+  return nowMs - stageUnchangedSinceMs >= STUCK_PROCESSING_REPROCESS_AFTER_MS;
+}
+
+/** Failed-row hint: the job's own `errorDetail` when the list carries one, otherwise the
+ * historical "not linked" sentence. */
+export function getFailedHint(errorDetail: string | null | undefined): string {
+  const detail = errorDetail?.trim();
+  return detail ? detail : "Not yet linked to a contract";
+}
 
 /**
  * Next-step action per row (`raffa-v2/app.jsx`'s own `docRows` action ternary; screens-v2.md #3
- * "Review N fields / Ask about it / Retry upload"). A `Quote`-typed document is routed to Quote
+ * "Review N fields / Ask about it"). A `Quote`-typed document is routed to Quote
  * check instead of the review/ask flow at any resolved status -- OQ-askv2-008's own assumption in
  * force: "no automatic Quote record; the result card and Ask route to Quote check (/quotes) where
  * the user uploads the quote" -- there is nothing to review or ask about inside Documents for a
- * Quote, only a hand-off. `null` for a still-processing row (the stage text is the only thing shown
- * there, not an action button -- see `DocumentStatusTable.tsx`), except an `Uploaded` row older
- * than `STUCK_REPROCESS_AFTER_MS`, which offers the same Retry upload Failed already uses
- * (`POST .../reprocess`).
+ * Quote, only a hand-off. `null` for a still-processing / uploaded / failed row: the stage or
+ * "Processing in the background" sentence is the only thing shown there, not an action button
+ * (`DocumentStatusTable.tsx`). A stuck `Uploaded` row is recovered by `useDocumentsList`'s
+ * one-shot auto-reprocess after `STUCK_REPROCESS_AFTER_MS`, not by a table CTA.
  */
 export function getRowAction(
-  item: Pick<DocumentListItemBody, "processingStatus" | "documentType" | "weakFactCount" | "createdAt">,
-  nowMs: number = Date.now(),
+  item: Pick<DocumentListItemBody, "processingStatus" | "documentType" | "weakFactCount">,
 ): RowAction | null {
   const status = getRowStatus(item.processingStatus);
 
@@ -165,15 +206,6 @@ export function getRowAction(
   }
   if (status === "completed") {
     return { kind: "ask", label: "Ask about it" };
-  }
-  if (status === "failed") {
-    return { kind: "retry", label: "Retry upload" };
-  }
-  if (status === "uploaded") {
-    const created = Date.parse(item.createdAt);
-    if (Number.isFinite(created) && nowMs - created >= STUCK_REPROCESS_AFTER_MS) {
-      return { kind: "retry", label: "Retry upload" };
-    }
   }
   return null;
 }

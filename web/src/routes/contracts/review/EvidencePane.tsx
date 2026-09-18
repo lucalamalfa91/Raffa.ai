@@ -2,6 +2,8 @@ import { useEffect, useState, type FormEvent } from "react";
 import type { ContractFieldEvidenceBody } from "../../../api/client";
 import { CONTRACT_TYPE_OPTIONS, splitPassage, type CorrectableFieldName, type ReviewFieldRow } from "./reviewViewModel";
 import { getContractTypeLabel } from "../portfolioTableFormatters";
+import { DocumentViewerLink } from "../../documents/viewer/DocumentViewerOverlay";
+import { buildDocumentViewerHref } from "../../documents/viewer/documentViewerViewModel";
 
 export interface EvidencePaneProps {
   /** `null` before any row has been selected (initial state). */
@@ -157,6 +159,16 @@ function EvidenceCard({ evidence }: { evidence: ContractFieldEvidenceBody | null
         </p>
       )}
       <p className="micro-meta review-evidence-meta">{meta}</p>
+      {evidence.sourceDocumentId !== null && (
+        <p>
+          <DocumentViewerLink
+            to={buildDocumentViewerHref(evidence.sourceDocumentId, evidence.sourcePage)}
+            className="btn btn-ghost"
+          >
+            Open in document viewer
+          </DocumentViewerLink>
+        </p>
+      )}
     </div>
   );
 }

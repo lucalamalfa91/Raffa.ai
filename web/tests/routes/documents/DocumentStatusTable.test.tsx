@@ -31,8 +31,6 @@ function renderTable(props: Partial<ComponentProps<typeof DocumentStatusTable>> 
         documents={[]}
         filter="attention"
         localUploads={[]}
-        onRetryLocal={vi.fn()}
-        onRetryServer={vi.fn()}
         onDelete={vi.fn()}
         isAdmin={false}
         {...props}
@@ -74,6 +72,8 @@ describe("DocumentStatusTable", () => {
     expect(screen.getByRole("link", { name: "Salesforce_MSA.pdf" })).toHaveAttribute("href", "/contracts/contract-1");
     const askLink = screen.getByRole("link", { name: "Ask about it" });
     expect(askLink).toHaveAttribute("href", "/ask?scope=contract-1");
+    expect(screen.getByRole("link", { name: "View document" })).toHaveAttribute("href", "/documents/doc-1/viewer");
+    expect(askLink).toHaveAttribute("href", "/ask?scope=contract-1");
   });
 
   it("links a needs_review row to the review state, with the real weak-fact count", () => {
@@ -95,10 +95,8 @@ describe("DocumentStatusTable", () => {
 
     expect(screen.getByText("OCR / text…")).toBeInTheDocument();
     expect(screen.getByRole("progressbar")).toBeInTheDocument();
-    // The only link on the row is the filename, opening the progress panel -- the next-step cell
-    // has the stage text, never an action button, while a Worker is on it.
-    expect(screen.getAllByRole("link")).toHaveLength(1);
     expect(screen.getByRole("link", { name: "Salesforce_MSA.pdf" })).toHaveAttribute("href", "/documents?progress=doc-1");
+    expect(screen.getByRole("link", { name: "View document" })).toHaveAttribute("href", "/documents/doc-1/viewer");
   });
 
   // ADR-020 w15 footer 10 (task E16/F03/US02/T02, wave w15): a stored server row at `Uploaded`
@@ -124,8 +122,7 @@ describe("DocumentStatusTable", () => {
     expect(screen.getByRole("link", { name: "Salesforce_MSA.pdf" })).toHaveAttribute("href", "/documents?progress=doc-1");
   });
 
-  it("offers Retry upload for an Uploaded row older than five minutes, calling onRetryServer", async () => {
-    const onRetryServer = vi.fn();
+  it("keeps 'Processing in the background' for an Uploaded row older than three minutes, with no Retry upload CTA", () => {
     renderTable({
       documents: [
         item({
@@ -133,24 +130,19 @@ describe("DocumentStatusTable", () => {
           processingStatus: "Uploaded",
           stage: null,
           contractId: null,
-          createdAt: new Date(Date.now() - 6 * 60_000).toISOString(),
+          createdAt: new Date(Date.now() - 4 * 60_000).toISOString(),
         }),
       ],
-      onRetryServer,
     });
 
-    expect(screen.queryByText("Processing in the background")).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Retry upload" }));
-    expect(onRetryServer).toHaveBeenCalledWith("doc-stuck");
+    expect(screen.getByText("Processing in the background")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry upload" })).not.toBeInTheDocument();
   });
 
-  it("offers Retry upload for a server-known failed row, calling onRetryServer with its id", async () => {
-    const onRetryServer = vi.fn();
-    renderTable({ documents: [item({ id: "doc-9", processingStatus: "Failed" })], onRetryServer });
+  it("does not offer Retry upload for a server-known failed row", () => {
+    renderTable({ documents: [item({ id: "doc-9", processingStatus: "Failed" })] });
 
-    await userEvent.click(screen.getByRole("button", { name: "Retry upload" }));
-
-    expect(onRetryServer).toHaveBeenCalledWith("doc-9");
+    expect(screen.queryByRole("button", { name: "Retry upload" })).not.toBeInTheDocument();
   });
 
   // Task E16/F03/US02/T02 (ADR-020 w15 footer 10, wave w15): the perceived-instant batch -- a row
@@ -171,8 +163,7 @@ describe("DocumentStatusTable", () => {
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 
-  it("offers Retry upload for a local failed upload, calling onRetryLocal with its key", async () => {
-    const onRetryLocal = vi.fn();
+  it("renders a local failed upload with its sentence and no Retry upload CTA", () => {
     const localUploads: LocalUploadEntry[] = [
       {
         key: "local-1",
@@ -181,12 +172,10 @@ describe("DocumentStatusTable", () => {
         errorMessage: "Raffa.ai could not process Broken.pdf. Try again.",
       },
     ];
-    renderTable({ localUploads, onRetryLocal });
+    renderTable({ localUploads });
 
     expect(screen.getByText("Raffa.ai could not process Broken.pdf. Try again.")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Retry upload" }));
-
-    expect(onRetryLocal).toHaveBeenCalledWith("local-1");
+    expect(screen.queryByRole("button", { name: "Retry upload" })).not.toBeInTheDocument();
   });
 
   // ADR-020 w15 §6 / ADR-019 w15 clause 4: a refusal that never reached the server (oversize,
@@ -303,5 +292,27 @@ describe("DocumentStatusTable", () => {
     renderTable({ documents: [item({ supplierName: null })] });
 
     expect(screen.getByText("—")).toBeInTheDocument();
+  });
+
+  it("offers Confirm delete and Cancel as an inline pair, then calls onDelete only on confirm", async () => {
+    const onDelete = vi.fn();
+    renderTable({ documents: [item()], isAdmin: true, onDelete });
+
+    await userEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    const confirm = screen.getByRole("button", { name: "Confirm delete" });
+    const cancel = screen.getByRole("button", { name: "Cancel" });
+    expect(confirm).toHaveClass("btn-primary");
+    expect(cancel).toHaveClass("document-status-table-delete-cancel");
+    expect(confirm.parentElement).toHaveClass("document-status-table-delete-confirm");
+    expect(onDelete).not.toHaveBeenCalled();
+
+    await userEvent.click(cancel);
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Delete" }));
+    await userEvent.click(screen.getByRole("button", { name: "Confirm delete" }));
+    expect(onDelete).toHaveBeenCalledWith("doc-1");
   });
 });

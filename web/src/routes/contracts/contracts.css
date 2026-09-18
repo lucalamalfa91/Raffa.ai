@@ -33,14 +33,53 @@
   white-space: nowrap;
 }
 
-/* ---- Category filter (task E24/F01/US02/T01) -------------------------------- */
+/* ---- Ready / to-review segmented filter --------------------------------- */
 
-.portfolio-filter-control {
+.readiness-filter-row {
   display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
+  align-items: center;
+  justify-content: space-between;
   gap: var(--space-4);
-  padding: 16px 32px 0;
+  flex-wrap: wrap;
+  padding: 16px 32px var(--space-3);
+}
+
+.portfolio-readiness-empty {
+  padding: 20px 32px 32px;
+  max-width: 520px;
+}
+
+/* ---- Column filters (in-header, not a disconnected toolbar) -------------- */
+
+.portfolio-filter-clear {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: var(--space-2);
+}
+
+.portfolio-table th {
+  vertical-align: bottom;
+}
+
+.portfolio-table th > span {
+  display: block;
+}
+
+.portfolio-col-filter {
+  display: block;
+  width: 100%;
+  margin-top: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  font-size: 12px;
+  font-weight: var(--weight-body);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--color-text);
+  min-width: 0;
+}
+
+.portfolio-table th.portfolio-table-numeric .portfolio-col-filter {
+  text-align: right;
 }
 
 /* ---- Loading skeleton ------------------------------------------------------- */

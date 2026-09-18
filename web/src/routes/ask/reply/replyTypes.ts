@@ -51,14 +51,22 @@ export interface ReplyCitation {
    * (R-ASK-08). */
   title: string;
   /** e.g. "p.12 §8.4", "representative market data · mock feed · updated 2026-09-01", "/renewals"
-   * -- already formatted by the pack (R-ASK-04); this card never re-derives it. */
-  subtitle: string;
+   * -- already formatted by the pack (R-ASK-04); this card never re-derives it. Absent when the
+   * pack only has a title + quote (the Ask card still renders the excerpt). */
+  subtitle?: string | null;
   /** Quoted evidence text, rendered with the accent-left rule (task text; the same "accent left
    * rule" idiom `.abstain-block`/`.ai-recommendation` already use, `styles/components.css`). */
   snippet: string;
   /** First-page preview image URL (`GET /api/documents/{id}/preview`, requirements.md §6). Absent
-   * (or `null`) renders the honest placeholder block instead of a fabricated image. */
+   * (or `null`) renders the honest placeholder block instead of a fabricated image. Prefer an
+   * authenticated object URL (`getDocumentPreviewUrl`) over the raw API path — `<img src>` cannot
+   * send the tenant/auth headers that route needs. */
   previewUrl?: string | null;
+  /** Tenant document this citation points at. Never rendered (R-ASK-08); used only to fetch a
+   * real page preview when `previewUrl` is missing. */
+  documentId?: string | null;
+  /** 1-based page for `GET /api/documents/{id}/preview?page=`. */
+  page?: number | null;
   /** In-app destination (e.g. `/contracts/…?clause=…`, `/renewals`). Carried on the citation for
    * the caller's own navigation decision (F09/T04's real `onOpenCitation`) -- `CitationCard` never
    * turns this into a competing native link itself; some citations (a not-yet-resolved tenant
@@ -162,4 +170,12 @@ export function getCorpusBadge(corpus: CitationCorpus): CorpusBadge {
     case "raffa":
       return { variant: "accent", label: "Raffa" };
   }
+}
+
+/** CTA on the Ask citation card: viewer deep-links say so; everything else is "View source". */
+export function citationOpenLabel(href: string | null | undefined): string {
+  if (typeof href === "string" && href.includes("/viewer")) {
+    return "Open in document viewer";
+  }
+  return "View source →";
 }

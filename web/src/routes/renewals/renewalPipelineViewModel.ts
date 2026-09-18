@@ -35,6 +35,10 @@ export function savedActionOnScreen(saved: RenewalActionRow | null | undefined):
  * not a fabricated zero); ties break on the sooner notice deadline, then on the contract id so two
  * equal rows never swap between renders.
  */
+export function isRenewalItemReady(item: RenewalPipelineItemBody): boolean {
+  return item.status === "Determined";
+}
+
 export function buildRenewalRows(
   items: readonly RenewalPipelineItemBody[],
   scores: Readonly<Record<string, number | null>>,

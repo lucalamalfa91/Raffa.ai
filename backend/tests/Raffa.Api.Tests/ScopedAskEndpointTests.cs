@@ -144,7 +144,7 @@ public sealed class ScopedAskEndpointTests : IClassFixture<RaffaApiFactory>
         // AC-3: the pack/citations are scoped to the named contract's own supplier. Task
         // E28/F03/US01/T01 (NW-83) stamps a real contractId now (BuildContractFactItem's own
         // PackItem has no source document, so contractId -- not documentId -- is the real id these
-        // per-contract citations carry).
+        // per-contract citations carry). documentId is only set when a page excerpt exists.
         var citedContractIds = root.GetProperty("citations").EnumerateArray()
             .Select(c => c.TryGetProperty("contractId", out var id) ? id.GetString() : null)
             .Where(id => id is not null)

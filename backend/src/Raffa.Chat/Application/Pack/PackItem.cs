@@ -89,8 +89,9 @@ public static class PackCorpus
 /// chunk whose own source is the whole document (<c>Embedding.SourceType == "Document"</c>, today's
 /// only real indexing path — see <c>AskCopilotService.BuildClausePackItem</c>). <see langword="null"/>
 /// for every other corpus and for a peer hit. Echoed verbatim onto
-/// <see cref="Raffa.Chat.Application.Reply.ReplyCitation.DocumentId"/> — never
-/// <see cref="CitationKey"/> itself, which used to stand in for it.</param>
+/// <see cref="Raffa.Chat.Application.Reply.ReplyCitation.DocumentId"/> so the Ask card can fetch
+/// an authenticated page preview — never <see cref="CitationKey"/> itself, which used to stand in
+/// for it.</param>
 public sealed record PackItem(
     string CitationKey,
     string Corpus,

@@ -94,6 +94,7 @@ public static class DocumentsEndpointExtensions
         endpoints.MapPost("/api/documents/{id}/reprocess", ReprocessDocumentAsync);
         endpoints.MapPost("/api/documents/{id}/prioritise", PrioritiseDocumentAsync);
         endpoints.MapPost("/api/documents/{id}/validate", ValidateDocumentAsync);
+        endpoints.MapDelete("/api/documents", DeleteAllDocumentsAsync);
         endpoints.MapDelete("/api/documents/{id}", DeleteDocumentAsync);
         return endpoints;
     }
@@ -299,6 +300,7 @@ public static class DocumentsEndpointExtensions
         string id,
         HttpRequest request,
         DocumentQueryService queryService,
+        HungProcessingRecoveryService hungRecovery,
         ICallerContext callerContext,
         CancellationToken cancellationToken)
     {
@@ -320,8 +322,13 @@ public static class DocumentsEndpointExtensions
             return Results.BadRequest("The document id in the route must be a GUID.");
         }
 
+        var documentId = new EntityId(documentGuid);
+        await hungRecovery
+            .RecoverDocumentAsync(tenantId, documentId, force: false, cancellationToken)
+            .ConfigureAwait(false);
+
         var metadata = await queryService
-            .GetByIdAsync(tenantId, new EntityId(documentGuid), cancellationToken)
+            .GetByIdAsync(tenantId, documentId, cancellationToken)
             .ConfigureAwait(false);
 
         if (metadata is null)
@@ -355,6 +362,7 @@ public static class DocumentsEndpointExtensions
     private static async Task<IResult> ListDocumentsAsync(
         HttpRequest request,
         DocumentQueryService queryService,
+        HungProcessingRecoveryService hungRecovery,
         ICallerContext callerContext,
         CancellationToken cancellationToken)
     {
@@ -370,6 +378,10 @@ public static class DocumentsEndpointExtensions
 
         using var callerTenantScope = caller.Scope;
         var tenantId = caller.TenantId;
+
+        await hungRecovery
+            .RecoverHungInTenantAsync(tenantId, cancellationToken)
+            .ConfigureAwait(false);
 
         DocumentProcessingStatus? status = null;
         if (request.Query.TryGetValue("status", out var statusValues) && !string.IsNullOrWhiteSpace(statusValues))
@@ -420,6 +432,7 @@ public static class DocumentsEndpointExtensions
                 // (`not_a_contract` | `no_readable_text`), null unless Rejected. The screen writes
                 // the sentence (ADR-020 w15 §6); this API never authors user-facing prose.
                 rejectionReason = item.RejectionReason?.ToApiValue(),
+                errorDetail = item.ErrorDetail,
             }),
             page = result.Page,
             pageSize = result.PageSize,
@@ -649,6 +662,37 @@ public static class DocumentsEndpointExtensions
 
         // The audit row (document.deleted) is written by the service itself, inside the tenant
         // scope the RLS-protected audit table requires — see DocumentDeleteService.
+        return Results.NoContent();
+    }
+
+    /// <summary>
+    /// Admin-only bulk wipe: every document in the tenant, then portfolio contracts those files
+    /// built, renewal rows for those contracts, and Ask chats scoped to them. 204 even when the
+    /// tenant already had nothing — idempotent. Procurement is 403, same gate as single delete.
+    /// </summary>
+    private static async Task<IResult> DeleteAllDocumentsAsync(
+        HttpContext httpContext,
+        DocumentPurgeAllService purgeService,
+        WorkspaceRoleResolver roleResolver,
+        ICallerContext callerContext,
+        CancellationToken cancellationToken)
+    {
+        var request = httpContext.Request;
+        var caller = await callerContext.ResolveTenantAsync(request, cancellationToken);
+        if (caller.Failure is not null)
+        {
+            return caller.Failure;
+        }
+
+        using var callerTenantScope = caller.Scope;
+        var tenantId = caller.TenantId;
+
+        if (!await roleResolver.IsAdminAsync(httpContext, tenantId, cancellationToken))
+        {
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
+        }
+
+        await purgeService.PurgeAsync(tenantId, caller.Identity!, cancellationToken).ConfigureAwait(false);
         return Results.NoContent();
     }
 

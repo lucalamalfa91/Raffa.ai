@@ -11,6 +11,7 @@
 .documents-screen {
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .documents-screen:not(.documents-screen--list):not(.documents-onboarding) {
@@ -195,6 +196,7 @@
 .documents-list-main {
   display: flex;
   flex-direction: column;
+  min-width: 0;
   padding: 20px 32px 32px;
 }
 
@@ -240,43 +242,70 @@
 .documents-list-body {
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* `.table` is table-layout:fixed + width 100%. Percentages must sum to 100% so DELETE stays inside
+   the shell content track — a 1% + min-width last column grows the table past the viewport and
+   clips "DELETE" to "DELE". Filename / next-step ellipsis absorb the leftover, not overflow. */
+.document-status-table {
+  width: 100%;
+  table-layout: fixed;
 }
 
 .document-status-table th:nth-child(1),
 .document-status-table td:nth-child(1) {
-  width: 34%;
+  width: 26%;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .document-status-table th:nth-child(2),
 .document-status-table td:nth-child(2) {
-  width: 24%;
+  width: 16%;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .document-status-table th:nth-child(3),
 .document-status-table td:nth-child(3) {
-  width: 16%;
+  width: 12%;
 }
 
 .document-status-table th:nth-child(4),
 .document-status-table td:nth-child(4) {
-  width: 18%;
+  width: 22%;
+  min-width: 0;
+  overflow: hidden;
   text-align: right;
 }
 
 .document-status-table th:nth-child(5),
 .document-status-table td:nth-child(5) {
-  width: 8%;
+  width: 24%;
+  padding-left: var(--space-2);
+  padding-right: 0;
+  white-space: nowrap;
+  vertical-align: middle;
+  overflow: visible;
 }
 
 .document-status-table-filename {
+  display: block;
   font-weight: var(--weight-body-strong);
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .document-status-table-link {
+  display: block;
   font-weight: var(--weight-body-strong);
   text-decoration: none;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .document-status-table-link:hover,
@@ -291,13 +320,38 @@
 }
 
 .document-status-table-next-step {
+  overflow: hidden;
   text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .document-status-table-delete-confirm {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: nowrap;
+}
+
+.document-status-table-delete-confirm .btn {
+  flex: 0 0 auto;
+  font-size: 12px;
+  padding: 4px 8px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.document-status-table-delete-cancel {
+  background: transparent;
+  border-color: transparent;
+  color: var(--color-neutral-600);
+  padding-inline: var(--space-1);
+}
+
+.document-status-table-delete-cancel:hover:not(:disabled) {
+  background: var(--color-neutral-200);
+  color: var(--color-text);
 }
 
 /* Bare progress bar under the status tag (raffa-v2/markup.html row template: 4px, neutral-200

@@ -3,7 +3,14 @@ import type { ApiClient, DocumentListItemBody } from "../../api/client";
 import { loadCurrentWorkspace } from "../signin/workspaceStore";
 import { POLL_INTERVAL_MS, POLL_NO_CHANGE_BUDGET_MS, usePollBudget } from "../../components/shell/usePollBudget";
 import { runUploadBatch, MAX_FILES_PER_BATCH, type LocalUploadEntry } from "./uploadPipeline";
-import { filterDocumentsByAttention, type AttentionFilterValue, type DocumentCountsBody } from "./documentTable";
+import {
+  filterDocumentsByAttention,
+  STUCK_REPROCESS_AFTER_MS,
+  STUCK_PROCESSING_REPROCESS_AFTER_MS,
+  MAX_STUCK_REPROCESS_ATTEMPTS,
+  type AttentionFilterValue,
+  type DocumentCountsBody,
+} from "./documentTable";
 
 // R-DOC-09's cadence and ADR-012 w15 §17's no-change budget live in the shared hook every "not
 // ready yet" surface polls through (`usePollBudget.ts`); re-exported so this file stays the one
@@ -248,6 +255,72 @@ export function useDocumentsList(apiClient: ApiClient): UseDocumentsListResult {
     },
     [apiClient, workspace?.id, load],
   );
+
+  // Auto-reprocess stuck Uploaded (never claimed) and hung Processing (claimed, then silent)
+  // rows through POST /api/documents/{id}/reprocess. Tenant-scoped via workspace.id. Capped at
+  // MAX_STUCK_REPROCESS_ATTEMPTS so a permanently bad file cannot loop. Failures stay silent —
+  // a 403 (Procurement) must not paint a banner the user did not ask for; the API list recovery
+  // still unsticks the row for every role.
+  const autoReprocessCountRef = useRef(new Map<string, number>());
+  const autoReprocessTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const processingStageSeenRef = useRef(new Map<string, { stage: string | null; since: number }>());
+
+  useEffect(() => {
+    autoReprocessCountRef.current.clear();
+    processingStageSeenRef.current.clear();
+    for (const timer of autoReprocessTimersRef.current.values()) clearTimeout(timer);
+    autoReprocessTimersRef.current.clear();
+  }, [workspace?.id]);
+
+  useEffect(() => {
+    const tenantId = workspace?.id;
+    if (!tenantId) return;
+
+    const now = Date.now();
+    for (const item of documents) {
+      const count = autoReprocessCountRef.current.get(item.id) ?? 0;
+      if (count >= MAX_STUCK_REPROCESS_ATTEMPTS) continue;
+      if (autoReprocessTimersRef.current.has(item.id)) continue;
+
+      let delay: number | null = null;
+      if (item.processingStatus === "Uploaded") {
+        const created = Date.parse(item.createdAt);
+        if (!Number.isFinite(created)) continue;
+        delay = Math.max(0, STUCK_REPROCESS_AFTER_MS - (now - created));
+      } else if (item.processingStatus === "Processing") {
+        const stageKey = item.stage ?? "";
+        const seen = processingStageSeenRef.current.get(item.id);
+        if (!seen || seen.stage !== stageKey) {
+          processingStageSeenRef.current.set(item.id, { stage: stageKey, since: now });
+          delay = STUCK_PROCESSING_REPROCESS_AFTER_MS;
+        } else {
+          delay = Math.max(0, STUCK_PROCESSING_REPROCESS_AFTER_MS - (now - seen.since));
+        }
+      } else {
+        processingStageSeenRef.current.delete(item.id);
+        continue;
+      }
+
+      const documentId = item.id;
+      const timer = setTimeout(() => {
+        autoReprocessTimersRef.current.delete(documentId);
+        if (!mountedRef.current) return;
+        const fired = autoReprocessCountRef.current.get(documentId) ?? 0;
+        if (fired >= MAX_STUCK_REPROCESS_ATTEMPTS) return;
+        autoReprocessCountRef.current.set(documentId, fired + 1);
+        void apiClient.reprocessDocument(tenantId, documentId).then((result) => {
+          if (!mountedRef.current) return;
+          if (result.ok) load();
+        });
+      }, delay);
+      autoReprocessTimersRef.current.set(documentId, timer);
+    }
+
+    return () => {
+      for (const timer of autoReprocessTimersRef.current.values()) clearTimeout(timer);
+      autoReprocessTimersRef.current.clear();
+    };
+  }, [apiClient, documents, load, workspace?.id]);
 
   return {
     hasWorkspace: workspace !== null,

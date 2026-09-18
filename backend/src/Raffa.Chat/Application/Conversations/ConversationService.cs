@@ -50,6 +50,10 @@ public sealed class ConversationService(
     /// <see cref="ListRecentAsync"/> — this is only the default when none is supplied.</summary>
     public const int DefaultRecentLimit = 5;
 
+    /// <summary>Upper bound for <see cref="ListRecentAsync"/> so a search/filter of accumulated
+    /// chats cannot unbounded-scan the table in one request.</summary>
+    public const int MaxRecentLimit = 100;
+
     /// <summary>
     /// The title a brand-new conversation carries until its first
     /// <see cref="ConversationRole.You"/> message derives a real one (see
@@ -64,6 +68,7 @@ public sealed class ConversationService(
 
     private const string AuditConversationCreatedAction = "conversation.created";
     private const string AuditMessageAppendedAction = "conversation.message.appended";
+    private const string AuditConversationDeletedAction = "conversation.deleted";
     private const string AuditConversationResourceType = "conversation";
     private const string AuditConversationMessageResourceType = "conversation_message";
 
@@ -118,7 +123,7 @@ public sealed class ConversationService(
     {
         using var tenantScope = tenantContext.BeginScope(tenantId);
 
-        var take = Math.Max(1, limit);
+        var take = Math.Clamp(limit, 1, MaxRecentLimit);
 
         var conversations = await dbContext.Conversations
             .AsNoTracking()
@@ -256,6 +261,112 @@ public sealed class ConversationService(
             cancellationToken).ConfigureAwait(false);
 
         return ToMessageResult(message);
+    }
+
+    /// <summary>Deletes the caller's own conversation and its messages. Returns
+    /// <see langword="false"/> under the identical "not this user's conversation in this tenant"
+    /// rule <see cref="GetAsync"/> documents — the endpoint turns that into 404, never 403.</summary>
+    public async Task<bool> DeleteAsync(
+        TenantId tenantId,
+        string userId,
+        EntityId conversationId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            throw new ArgumentException("A user id is required.", nameof(userId));
+        }
+
+        using var tenantScope = tenantContext.BeginScope(tenantId);
+
+        var conversation = await dbContext.Conversations
+            .SingleOrDefaultAsync(
+                c => c.TenantId == tenantId && c.UserId == userId && c.Id == conversationId,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        if (conversation is null)
+        {
+            return false;
+        }
+
+        var messages = await dbContext.ConversationMessages
+            .Where(m => m.TenantId == tenantId && m.ConversationId == conversationId)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        dbContext.ConversationMessages.RemoveRange(messages);
+        dbContext.Conversations.Remove(conversation);
+        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        await auditWriter.WriteAsync(
+            new AuditEntry(
+                tenantId,
+                userId,
+                AuditConversationDeletedAction,
+                AuditConversationResourceType,
+                conversationId.Value.ToString(),
+                clock.UtcNow,
+                $"messageCount={messages.Count}"),
+            cancellationToken).ConfigureAwait(false);
+
+        return true;
+    }
+
+    /// <summary>
+    /// Deletes every conversation scoped to any of <paramref name="contractIds"/> in this tenant,
+    /// regardless of owner — used by the host's bulk document purge, which must also drop Ask chats
+    /// bound to the contracts those documents built. Unscoped chats are left alone.
+    /// </summary>
+    public async Task<int> DeleteByScopeContractsAsync(
+        TenantId tenantId,
+        string actor,
+        IReadOnlyCollection<EntityId> contractIds,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(actor);
+        if (contractIds.Count == 0)
+        {
+            return 0;
+        }
+
+        using var tenantScope = tenantContext.BeginScope(tenantId);
+
+        // Nullable element type: ScopeContractId is EntityId?, and Npgsql cannot build
+        // array-contains from List<EntityId> against a nullable converted column.
+        var idList = contractIds.Select(id => (EntityId?)id).ToList();
+        var conversations = await dbContext.Conversations
+            .Where(c => c.TenantId == tenantId && c.ScopeContractId != null && idList.Contains(c.ScopeContractId))
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        if (conversations.Count == 0)
+        {
+            return 0;
+        }
+
+        var conversationIds = conversations.Select(c => c.Id).ToList();
+        var messages = await dbContext.ConversationMessages
+            .Where(m => m.TenantId == tenantId && conversationIds.Contains(m.ConversationId))
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        dbContext.ConversationMessages.RemoveRange(messages);
+        dbContext.Conversations.RemoveRange(conversations);
+        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        await auditWriter.WriteAsync(
+            new AuditEntry(
+                tenantId,
+                actor,
+                AuditConversationDeletedAction,
+                AuditConversationResourceType,
+                "bulk",
+                clock.UtcNow,
+                $"count={conversations.Count}; messageCount={messages.Count}"),
+            cancellationToken).ConfigureAwait(false);
+
+        return conversations.Count;
     }
 
     /// <summary>

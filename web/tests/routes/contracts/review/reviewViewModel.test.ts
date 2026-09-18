@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Contract360Body, ContractFieldEvidenceBody, CorrectionHistoryEntryBody } from "../../../../src/api/client";
 import {
   acceptedFieldNames,
+  applySuccessfulCorrection,
   blockedReason,
   buildReviewFields,
   computeReviewProgress,
@@ -104,6 +105,60 @@ describe("readCorrectableValue", () => {
   it("returns null for an optional field that was never extracted", () => {
     const noGoverningLaw = contract({ tabs: { ...contract().tabs, overview: { ...contract().tabs.overview, governingLaw: null } } });
     expect(readCorrectableValue(noGoverningLaw, "governingLaw")).toBeNull();
+  });
+});
+
+describe("applySuccessfulCorrection", () => {
+  it("officializes same-value Accept as human_accepted without inventing a history row", () => {
+    const evidenceRows = [evidence({ fieldName: "status", value: "active", decision: "review_required", confidence: 0.5 })];
+    const applied = applySuccessfulCorrection({
+      contract: contract(),
+      history: [],
+      evidence: evidenceRows,
+      name: "status",
+      newValue: "active",
+      reason: "Accepted as extracted.",
+      correctedAt: "2026-09-18T08:00:00Z",
+    });
+
+    expect(applied.history).toEqual([]);
+    expect(applied.evidence[0].decision).toBe("human_accepted");
+    expect(readCorrectableValue(applied.contract, "status")).toBe("active");
+
+    const status = buildReviewFields(applied.contract, applied.history, indexEvidence(applied.evidence)).find(
+      (row) => row.name === "status",
+    )!;
+    expect(status.decision).toBe("accepted");
+    expect(status.evidenceDecision).toBe("human_accepted");
+    expect(fieldTag(status)).toEqual({ variant: "neutral", label: "Accepted by you" });
+    expect(isFieldBlocking(status)).toBe(false);
+  });
+
+  it("writes a changed value onto the contract and paints the field as corrected", () => {
+    const applied = applySuccessfulCorrection({
+      contract: contract(),
+      history: [],
+      evidence: [evidence({ fieldName: "paymentTerms", value: "Net 45", decision: "review_required" })],
+      name: "paymentTerms",
+      newValue: "Net 60",
+      reason: "Renegotiated payment terms.",
+      correctedAt: "2026-09-18T08:00:00Z",
+    });
+
+    expect(readCorrectableValue(applied.contract, "paymentTerms")).toBe("Net 60");
+    expect(applied.history[0]).toMatchObject({
+      fieldName: "paymentTerms",
+      previousValue: "Net 45",
+      newValue: "Net 60",
+      reason: "Renegotiated payment terms.",
+    });
+
+    const paymentTerms = buildReviewFields(applied.contract, applied.history, indexEvidence(applied.evidence)).find(
+      (row) => row.name === "paymentTerms",
+    )!;
+    expect(paymentTerms.decision).toBe("corrected");
+    expect(paymentTerms.displayValue).toBe("Net 60");
+    expect(isFieldBlocking(paymentTerms)).toBe(false);
   });
 });
 

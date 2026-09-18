@@ -4,8 +4,9 @@
  * .skeleton, .screen-kicker/.screen-title, .micro-meta) come from
  * ../../../styles/components.css (ADR-019). This file adds only this surface's
  * composites: a page canvas on --color-surface with a 2 px left rule and zero
- * radius (design-system.md "Detail pane"), and the wording <mark> tint reused
- * from Contract 360 so ClauseHighlight paints without that screen's sheet.
+ * radius (design-system.md "Detail pane"). In-page highlight boxes are drawn
+ * over the page image; this screen does not embed the Ask/Contract 360 citation
+ * card.
  *
  * No shadow: --shadow-* is dialogs-only. No new token.
  *
@@ -98,36 +99,35 @@
   max-width: 480px;
 }
 
-/* ClauseHighlight's own classes — the same accent-100/200 tint Contract 360 uses. */
-.contract360-evidence {
-  width: 100%;
-  max-width: 52rem;
-  margin-top: 0;
-  padding: 20px;
-  background: var(--color-accent-100);
-  border: 1px solid var(--color-divider);
-  color: var(--color-text);
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: 12.5px;
-  line-height: 1.6;
+/* Overlay dialog — same tokens as the prototype `.dialog` (surface + --shadow-lg,
+   dimmed --color-neutral-900 mix) but sized to read a page, not a 440px confirm. */
+.document-viewer-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+  background: color-mix(in srgb, var(--color-neutral-900) 50%, transparent);
 }
 
-.contract360-evidence-citation {
-  margin: 0 0 12px;
-  font-family: var(--font-body);
-  font-size: 10px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--color-neutral-600);
+.document-viewer-dialog {
+  width: min(56rem, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg);
+  box-shadow: var(--shadow-lg);
+  border-radius: var(--radius-lg);
 }
 
-.contract360-evidence-text {
-  margin: 0;
-  white-space: pre-wrap;
+.document-viewer-dialog-bar {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--space-2) var(--space-4) 0;
 }
 
-.contract360-evidence-mark {
-  padding: 1px 2px;
-  background: var(--color-accent-200);
-  color: inherit;
+.document-viewer-dialog .document-viewer {
+  max-width: none;
+  padding: var(--space-4) var(--space-6) var(--space-6);
 }

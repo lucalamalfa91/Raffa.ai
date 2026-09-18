@@ -184,6 +184,11 @@ public sealed class DocumentQueryService(
             documents.Where(d => d.ProcessingStatus == DocumentProcessingStatus.Processing).Select(d => d.Id).ToList(),
             cancellationToken).ConfigureAwait(false);
 
+        var errorByDocument = await ErrorDetailsByDocumentAsync(
+            tenantId,
+            documents.Where(d => d.ProcessingStatus == DocumentProcessingStatus.Failed).Select(d => d.Id).ToList(),
+            cancellationToken).ConfigureAwait(false);
+
         var weakFactsByContract = await WeakFactCountsAsync(tenantId, contractIds, cancellationToken)
             .ConfigureAwait(false);
         var supplierNamesByContract = await SupplierNamesByContractAsync(tenantId, contractIds, cancellationToken)
@@ -203,7 +208,10 @@ public sealed class DocumentQueryService(
                 d.PageCount,
                 d.CreatedAt,
                 d.ContractId is { } weakContractId ? weakFactsByContract.GetValueOrDefault(weakContractId) : 0,
-                d.RejectionReason))
+                d.RejectionReason,
+                d.ProcessingStatus == DocumentProcessingStatus.Failed
+                    ? errorByDocument.GetValueOrDefault(d.Id)
+                    : null))
             .ToList();
 
         return new DocumentListPage(items, pageNumber, size, totalCount, counts);
@@ -287,6 +295,31 @@ public sealed class DocumentQueryService(
                 group => group.Key,
                 group => DocumentProcessingStageMap.Resolve(
                     group.Select(j => new ExtractionJobSnapshot(j.Stage, j.Status, j.StartedAt)).ToList()));
+    }
+
+    private async Task<Dictionary<EntityId, string>> ErrorDetailsByDocumentAsync(
+        TenantId tenantId, IReadOnlyList<EntityId> documentIds, CancellationToken cancellationToken)
+    {
+        if (documentIds.Count == 0)
+        {
+            return [];
+        }
+
+        var jobs = await dbContext.ExtractionJobs
+            .AsNoTracking()
+            .Where(j => j.TenantId == tenantId && documentIds.Contains(j.DocumentId) && j.ErrorDetail != null)
+            .Select(j => new { j.DocumentId, j.ErrorDetail, j.CompletedAt, j.StartedAt, j.QueuedAt })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return jobs
+            .GroupBy(j => j.DocumentId)
+            .ToDictionary(
+                group => group.Key,
+                group => group
+                    .OrderByDescending(j => j.CompletedAt ?? j.StartedAt ?? j.QueuedAt)
+                    .Select(j => j.ErrorDetail!)
+                    .First());
     }
 
     /// <summary>

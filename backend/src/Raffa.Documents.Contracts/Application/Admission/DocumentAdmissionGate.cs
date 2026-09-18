@@ -64,7 +64,9 @@ public sealed class DocumentAdmissionGate(
     DocumentAdmissionOptions options,
     ITenantContext tenantContext,
     IAuditWriter auditWriter,
-    IClock clock)
+    IClock clock,
+    IExtractionHangWatch? hangWatch = null,
+    ExtractionProgressHeartbeat? progressHeartbeat = null)
 {
     /// <summary>Audit action for a rejected upload (R-DOC-03).</summary>
     public const string RejectedAuditAction = "document.rejected";
@@ -119,6 +121,15 @@ public sealed class DocumentAdmissionGate(
         if (parseResult.IsFailure)
         {
             return AdmissionDecision.Fail(MapUnavailable("read", parseResult.Error));
+        }
+
+        if (progressHeartbeat is not null)
+        {
+            await progressHeartbeat.PulseBoundAsync(cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            hangWatch?.Heartbeat();
         }
 
         var pages = parseResult.Value;

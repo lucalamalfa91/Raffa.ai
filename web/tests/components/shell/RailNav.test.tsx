@@ -30,8 +30,9 @@ function mockApiClient(listConversations: ApiClient["listConversations"] = vi.fn
     getDocumentPreviewUrl: vi.fn(),
     reprocessDocument: vi.fn(),
     deleteDocument: vi.fn(),
+    deleteAllDocuments: vi.fn(),
     prioritiseDocument: vi.fn(),
-    getPortfolio: vi.fn(),
+    getPortfolio: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, portfolio: { items: [], page: 1, pageSize: 100, totalCount: 0 }, error: null }),
     getContract360: vi.fn(),
     getRenewals: vi.fn(),
     getRenewalPriority: vi.fn(),
@@ -55,6 +56,7 @@ function mockApiClient(listConversations: ApiClient["listConversations"] = vi.fn
     createConversation: vi.fn(),
     getConversation: vi.fn(),
     postMessage: vi.fn(),
+    deleteConversation: vi.fn().mockResolvedValue({ ok: true, statusCode: 204, error: null }),
     getCapabilities: vi.fn(),
     getMarketRecord: vi.fn(),
     getQuoteBenchmarkHistory: vi.fn(),
@@ -125,13 +127,23 @@ describe("RailNav (V2 two-tier rail, ADR-024 amendment; task E13/F09/US01/T01, g
     window.sessionStorage.setItem("raffa.signin.currentWorkspace", JSON.stringify({ id: WORKSPACE_ID, name: "Acme Procurement" }));
   });
 
-  it("renders the workspace name and the two tiers in order: Ask Raffa, Documents, then 'From your contracts' / Portfolio, Renewals, Quote check", () => {
+  it("renders the workspace name and the two tiers in order: Ask Raffa, Documents, then 'From your contracts' / Portfolio, Renewals, Savings, Quote check", () => {
     const { container } = renderRail();
 
     expect(screen.getByText("Acme Procurement")).toBeInTheDocument();
 
     const labels = Array.from(container.querySelectorAll(".shell-rail-item-label")).map((node) => node.textContent);
-    expect(labels).toEqual(["Ask Raffa", "Documents", "Portfolio", "Renewals", "Quote check"]);
+    expect(labels).toEqual(["Ask Raffa", "Documents", "Portfolio", "Renewals", "Savings", "Quote check"]);
+  });
+
+  it("Savings is a visible first-class rail destination at /savings, with the same secondary-item chrome as Portfolio", () => {
+    renderRail({ initialEntry: "/savings" });
+
+    const savingsLink = screen.getByRole("link", { name: "Savings" });
+    expect(savingsLink).toHaveAttribute("href", "/savings");
+    expect(savingsLink).toHaveClass("shell-rail-secondary-item");
+    expect(savingsLink).toHaveClass("is-active");
+    expect(savingsLink).not.toHaveClass("is-greyed");
   });
 
   it("has no Home or Review queue item anywhere in the rail (V2 removes both)", () => {
@@ -185,13 +197,16 @@ describe("RailNav (V2 two-tier rail, ADR-024 amendment; task E13/F09/US01/T01, g
   });
 
   describe("greyed secondary tier (kbReady)", () => {
-    it("greys Portfolio, Renewals and Quote check and shows no count badge with 0 validated contracts", () => {
+    it("greys Portfolio, Renewals and Quote check and shows no count badge with 0 validated contracts; Savings stays clickable", () => {
       renderRail({ kbReady: false, validatedContractCount: 0 });
 
       for (const label of ["Portfolio", "Renewals", "Quote check"]) {
         const link = screen.getByText(label).closest("a")!;
         expect(link).toHaveClass("is-greyed");
       }
+      const savingsLink = screen.getByRole("link", { name: "Savings" });
+      expect(savingsLink).not.toHaveClass("is-greyed");
+      expect(savingsLink).toHaveAttribute("href", "/savings");
       const portfolioLink = screen.getByText("Portfolio").closest("a")!;
       expect(portfolioLink).not.toHaveTextContent(/\d/);
     });
@@ -205,7 +220,7 @@ describe("RailNav (V2 two-tier rail, ADR-024 amendment; task E13/F09/US01/T01, g
     it("un-greys the tier and badges Portfolio/Renewals with the validated count once kbReady", () => {
       renderRail({ kbReady: true, validatedContractCount: 3 });
 
-      for (const label of ["Portfolio", "Renewals", "Quote check"]) {
+      for (const label of ["Portfolio", "Renewals", "Savings", "Quote check"]) {
         const link = screen.getByText(label).closest("a")!;
         expect(link).not.toHaveClass("is-greyed");
       }
@@ -228,6 +243,7 @@ describe("RailNav (V2 two-tier rail, ADR-024 amendment; task E13/F09/US01/T01, g
 
       expect(screen.queryByText("Workspace & members")).not.toBeInTheDocument();
       expect(screen.getByText("Portfolio")).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Savings" })).toBeInTheDocument();
       expect(screen.getByText("Procurement")).toBeInTheDocument();
     });
 
@@ -246,7 +262,7 @@ describe("RailNav (V2 two-tier rail, ADR-024 amendment; task E13/F09/US01/T01, g
       const listConversations = vi.fn().mockResolvedValue({ ok: true, statusCode: 200, conversations: [], error: null });
       renderRail({ apiClient: mockApiClient(listConversations) });
 
-      expect(listConversations).toHaveBeenCalledWith(WORKSPACE_ID);
+      expect(listConversations).toHaveBeenCalledWith(WORKSPACE_ID, 50);
     });
 
     it("lists every returned conversation, in the order the API returned them, above '+ New chat'", async () => {
@@ -257,21 +273,24 @@ describe("RailNav (V2 two-tier rail, ADR-024 amendment; task E13/F09/US01/T01, g
       const listConversations = vi.fn().mockResolvedValue({ ok: true, statusCode: 200, conversations, error: null });
       const { container } = renderRail({ apiClient: mockApiClient(listConversations) });
 
-      await screen.findByRole("link", { name: "When does Salesforce expire?" });
+      // Search chrome mounts only after listConversations resolves — "+ New chat" is always
+      // present, so waiting on it races the async slot (CI on main after #167).
+      await screen.findByRole("searchbox", { name: "Search chats" });
 
       const conversationSlot = container.querySelector(".shell-rail-conversations")!;
       const linkNames = Array.from(conversationSlot.querySelectorAll("a")).map((node) => node.textContent);
-      expect(linkNames).toEqual(["When does Salesforce expire?", "What is our AWS liability cap?", "+ New chat"]);
+      expect(linkNames).toEqual(["Ask Raffa", "Ask Raffa", "+ New chat"]);
     });
 
     it("resumes by click -- each conversation link points at /ask/<id>", async () => {
       const listConversations = vi
         .fn()
         .mockResolvedValue({ ok: true, statusCode: 200, conversations: [conversation({ id: "conv-42" })], error: null });
-      renderRail({ apiClient: mockApiClient(listConversations) });
+      const { container } = renderRail({ apiClient: mockApiClient(listConversations) });
 
-      const link = await screen.findByRole("link", { name: conversation().title });
-      expect(link).toHaveAttribute("href", "/ask/conv-42");
+      await screen.findByRole("searchbox", { name: "Search chats" });
+      const link = container.querySelector('a.shell-rail-conv-item[href="/ask/conv-42"]');
+      expect(link).not.toBeNull();
     });
 
     it("marks the conversation matching the current /ask/:id route active, in accent", async () => {
@@ -281,11 +300,12 @@ describe("RailNav (V2 two-tier rail, ADR-024 amendment; task E13/F09/US01/T01, g
         conversations: [conversation({ id: "conv-1" }), conversation({ id: "conv-2", title: "Second chat" })],
         error: null,
       });
-      renderRail({ apiClient: mockApiClient(listConversations), initialEntry: "/ask/conv-2" });
+      const { container } = renderRail({ apiClient: mockApiClient(listConversations), initialEntry: "/ask/conv-2" });
 
-      const active = await screen.findByRole("link", { name: "Second chat" });
+      await screen.findByRole("searchbox", { name: "Search chats" });
+      const active = container.querySelector('a.shell-rail-conv-item[href="/ask/conv-2"]');
+      const inactive = container.querySelector('a.shell-rail-conv-item[href="/ask/conv-1"]');
       expect(active).toHaveClass("is-active");
-      const inactive = screen.getByRole("link", { name: conversation().title });
       expect(inactive).not.toHaveClass("is-active");
     });
 
@@ -293,9 +313,10 @@ describe("RailNav (V2 two-tier rail, ADR-024 amendment; task E13/F09/US01/T01, g
       const listConversations = vi
         .fn()
         .mockResolvedValue({ ok: true, statusCode: 200, conversations: [conversation({ id: "conv-1" })], error: null });
-      renderRail({ apiClient: mockApiClient(listConversations), initialEntry: "/ask" });
+      const { container } = renderRail({ apiClient: mockApiClient(listConversations), initialEntry: "/ask" });
 
-      const link = await screen.findByRole("link", { name: conversation().title });
+      await screen.findByRole("searchbox", { name: "Search chats" });
+      const link = container.querySelector('a.shell-rail-conv-item[href="/ask/conv-1"]');
       expect(link).not.toHaveClass("is-active");
     });
 
@@ -304,6 +325,72 @@ describe("RailNav (V2 two-tier rail, ADR-024 amendment; task E13/F09/US01/T01, g
 
       expect(screen.queryByText(/expire\?/)).not.toBeInTheDocument();
       expect(screen.getByRole("link", { name: "+ New chat" })).toBeInTheDocument();
+    });
+
+    it("filters the chat list by the bound title and deletes a chat from the rail", async () => {
+      const conversations = [
+        conversation({ id: "conv-1", scopeContractId: "contract-salesforce" }),
+        conversation({ id: "conv-2", scopeContractId: "contract-aws" }),
+      ];
+      const listConversations = vi.fn().mockResolvedValue({ ok: true, statusCode: 200, conversations, error: null });
+      const deleteConversation = vi.fn().mockResolvedValue({ ok: true, statusCode: 204, error: null });
+      const getPortfolio = vi.fn().mockResolvedValue({
+        ok: true,
+        statusCode: 200,
+        portfolio: {
+          items: [
+            {
+              contractId: "contract-salesforce",
+              supplierId: null,
+              supplierName: "Salesforce",
+              type: "Msa",
+              annualSpend: null,
+              currency: "CHF",
+              startDate: null,
+              endDate: null,
+              renewalDate: null,
+              cancellationDeadline: null,
+              autoRenewal: false,
+              status: "active",
+              risk: null,
+            },
+            {
+              contractId: "contract-aws",
+              supplierId: null,
+              supplierName: "AWS",
+              type: "OrderForm",
+              annualSpend: null,
+              currency: "CHF",
+              startDate: null,
+              endDate: null,
+              renewalDate: null,
+              cancellationDeadline: null,
+              autoRenewal: false,
+              status: "active",
+              risk: null,
+            },
+          ],
+          page: 1,
+          pageSize: 100,
+          totalCount: 2,
+          processingDocumentCount: 0,
+        },
+        error: null,
+      });
+      const apiClient = mockApiClient(listConversations);
+      apiClient.deleteConversation = deleteConversation;
+      apiClient.getPortfolio = getPortfolio;
+      renderRail({ apiClient });
+
+      expect(await screen.findByRole("link", { name: "Salesforce — MSA" })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "AWS — Order Form" })).toBeInTheDocument();
+
+      await userEvent.type(screen.getByRole("searchbox", { name: "Search chats" }), "sales");
+      expect(screen.getByRole("link", { name: "Salesforce — MSA" })).toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: "AWS — Order Form" })).not.toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole("button", { name: "Delete Salesforce — MSA" }));
+      expect(deleteConversation).toHaveBeenCalledWith(WORKSPACE_ID, "conv-1");
     });
   });
 });

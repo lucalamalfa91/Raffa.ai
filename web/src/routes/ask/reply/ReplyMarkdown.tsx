@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { humanizeReplyText } from "./humanizeReplyText";
 import type { ReplyCitation } from "./replyTypes";
 
 /**
@@ -11,7 +12,9 @@ import type { ReplyCitation } from "./replyTypes";
  *
  * Supports exactly the subset R-ASK-05's persona prompt is allowed to produce (`answerMarkdown` is
  * narrated prose, not arbitrary Markdown): paragraphs (blank-line separated), `**bold**`, short
- * lists (every non-empty line of a block starts with `-`/`*`), and inline `[n]` citation markers.
+ * lists (every non-empty line of a block starts with `-`/`*` or a `1)` / `1.` marker), and inline
+ * `[n]` citation markers. Identifier tokens such as `{calc:criticality[<guid>]}` are replaced with
+ * a supplier/document name before render (R-ASK-08).
  *
  * **No raw HTML pass-through.** Every character of the source text is emitted as a React text
  * child, never via `dangerouslySetInnerHTML` -- React itself escapes text children on render, so a
@@ -39,9 +42,12 @@ export interface ReplyMarkdownProps {
   onOpenCitation: (citation: ReplyCitation) => void;
 }
 
-export type MarkdownBlock = { type: "paragraph"; text: string } | { type: "list"; items: string[] };
+export type MarkdownBlock =
+  | { type: "paragraph"; text: string }
+  | { type: "list"; ordered: boolean; items: string[] };
 
-const LIST_MARKER_PATTERN = /^[-*]\s+/;
+const BULLET_LIST_MARKER_PATTERN = /^[-*]\s+/;
+const NUMBERED_LIST_MARKER_PATTERN = /^\d+[.)]\s+/;
 const INLINE_TOKEN_PATTERN = /\*\*(.+?)\*\*|\[(\d+)\]/g;
 
 /**
@@ -63,8 +69,12 @@ export function splitMarkdownBlocks(source: string): MarkdownBlock[] {
         .map((line) => line.trim())
         .filter((line) => line.length > 0);
 
-      if (lines.length > 0 && lines.every((line) => LIST_MARKER_PATTERN.test(line))) {
-        return { type: "list", items: lines.map((line) => line.replace(LIST_MARKER_PATTERN, "")) };
+      if (lines.length > 0 && lines.every((line) => BULLET_LIST_MARKER_PATTERN.test(line))) {
+        return { type: "list", ordered: false, items: lines.map((line) => line.replace(BULLET_LIST_MARKER_PATTERN, "")) };
+      }
+
+      if (lines.length > 0 && lines.every((line) => NUMBERED_LIST_MARKER_PATTERN.test(line))) {
+        return { type: "list", ordered: true, items: lines.map((line) => line.replace(NUMBERED_LIST_MARKER_PATTERN, "")) };
       }
 
       return { type: "paragraph", text: lines.join("\n") };
@@ -131,17 +141,25 @@ export function renderInline(text: string, citations: readonly ReplyCitation[], 
 }
 
 export default function ReplyMarkdown({ text, citations, onOpenCitation }: ReplyMarkdownProps) {
-  const blocks = splitMarkdownBlocks(text);
+  const blocks = splitMarkdownBlocks(humanizeReplyText(text, citations));
 
   return (
     <div className="reply-markdown">
       {blocks.map((block, index) =>
         block.type === "list" ? (
-          <ul key={index}>
-            {block.items.map((item, itemIndex) => (
-              <li key={itemIndex}>{renderInline(item, citations, onOpenCitation, `b${index}-i${itemIndex}`)}</li>
-            ))}
-          </ul>
+          block.ordered ? (
+            <ol key={index}>
+              {block.items.map((item, itemIndex) => (
+                <li key={itemIndex}>{renderInline(item, citations, onOpenCitation, `b${index}-i${itemIndex}`)}</li>
+              ))}
+            </ol>
+          ) : (
+            <ul key={index}>
+              {block.items.map((item, itemIndex) => (
+                <li key={itemIndex}>{renderInline(item, citations, onOpenCitation, `b${index}-i${itemIndex}`)}</li>
+              ))}
+            </ul>
+          )
         ) : (
           <p key={index}>{renderInline(block.text, citations, onOpenCitation, `b${index}`)}</p>
         ),

@@ -23,8 +23,10 @@ public sealed class ExtractionTransientException(string message) : Exception(mes
 /// <list type="number">
 /// <item><b>Claim.</b> <see cref="IExtractionJobClaimStore.TryClaimAsync"/> is the compare-and-swap
 /// that turns at-least-once delivery into exactly-once work. Zero rows means a duplicate, a
-/// redelivery racing the original, a second replica, or a job that is no longer queued — and
-/// the correct response to all four is the same: do nothing, complete the message.</item>
+/// redelivery racing the original, a second replica, or a job that is no longer queued. A live
+/// duplicate is completed. A stale in-flight claim (the original worker died holding it) is
+/// aborted and re-enqueued from scratch by <see cref="HungProcessingRecoveryService"/> so the
+/// document cannot sit on Processing forever.</item>
 /// <item><b>Content gate.</b> <see cref="DocumentAdmissionGate.EvaluateAsync"/> — parse/OCR, the
 /// readable-text floor, the Foundry <c>classify</c> call and the threshold — is exactly the work
 /// the request used to wait minutes for. A refusal is now a <b>row</b>:
@@ -53,7 +55,11 @@ public sealed class ExtractionRequestedHandler(
     IExtractionJobClaimStore claimStore,
     ITenantContext tenantContext,
     IClock clock,
-    ILogger<ExtractionRequestedHandler> logger)
+    ILogger<ExtractionRequestedHandler> logger,
+    HungProcessingRecoveryService? hungRecovery = null,
+    IExtractionRunAborter? runAborter = null,
+    IExtractionHangWatch? hangWatch = null,
+    ExtractionProgressHeartbeat? progressHeartbeat = null)
 {
     /// <summary>Deliveries a job may consume before its row is marked terminal (ADR-027 §D3).</summary>
     public const int MaxAttempts = 3;
@@ -174,21 +180,91 @@ public sealed class ExtractionRequestedHandler(
         var claimed = await claimStore.TryClaimAsync(jobId, ClaimedBy, cancellationToken).ConfigureAwait(false);
         if (claimed == 0)
         {
-            logger.LogInformation(
-                "Extraction job {JobId} for document {DocumentId} was not claimable (duplicate delivery, already claimed, or no longer queued); nothing to do",
-                jobId.Value, documentId.Value);
-
-            // ADR-027 §C6 (fix 2026-09-14): a lost claim is two different things. The row EXISTS and
-            // someone else holds or finished it -- a duplicate delivery, complete it. The row does NOT
-            // exist -- the upload's commit was slower than its publish, so this delivery arrived before
-            // the row became visible; completing it would strand the document at Uploaded on a POST
-            // that returned 201. The consumer settles that case by DeliveryCount.
-            var rowExists = await dbContext.ExtractionJobs
-                .AnyAsync(j => j.TenantId == tenantId && j.Id == jobId, cancellationToken)
-                .ConfigureAwait(false);
-            return rowExists ? ExtractionHandleOutcome.ClaimLost : ExtractionHandleOutcome.JobNotFound;
+            return await OnClaimLostAsync(tenantId, documentId, jobId, cancellationToken).ConfigureAwait(false);
         }
 
+        var workToken = hangWatch?.Start(cancellationToken) ?? cancellationToken;
+        var runToken = runAborter?.Register(jobId.Value, workToken) ?? workToken;
+        try
+        {
+            return await RunClaimedAsync(tenantId, documentId, jobId, runToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Inactivity watch or hang recovery cancelled this run. Abort the zombie and
+            // re-enqueue from scratch (or fail after MaxAttempts) — never complete a ClaimLost
+            // no-op that would leave the row on Processing forever.
+            logger.LogWarning(
+                "Extraction job {JobId} for document {DocumentId} was aborted after making no progress; recovering from scratch",
+                jobId.Value, documentId.Value);
+            await RecoverHungAsync(tenantId, documentId).ConfigureAwait(false);
+            return ExtractionHandleOutcome.Handled;
+        }
+        catch (ExtractionTransientException)
+        {
+            throw;
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // The consumer used to Abandon with the claim still held; the redelivery then lost
+            // the claim and completed the message, stranding the document at Processing. Recover
+            // here instead: abort, then POST-reprocess equivalent, so a crash cannot hang forever.
+            logger.LogError(
+                exception,
+                "Unhandled failure processing document {DocumentId}; aborting the run and re-enqueueing from scratch",
+                documentId.Value);
+            await RecoverHungAsync(tenantId, documentId).ConfigureAwait(false);
+            return ExtractionHandleOutcome.Handled;
+        }
+        finally
+        {
+            runAborter?.Unregister(jobId.Value);
+        }
+    }
+
+    private async Task<ExtractionHandleOutcome> OnClaimLostAsync(
+        TenantId tenantId, EntityId documentId, EntityId jobId, CancellationToken cancellationToken)
+    {
+        logger.LogInformation(
+            "Extraction job {JobId} for document {DocumentId} was not claimable (duplicate delivery, already claimed, or no longer queued)",
+            jobId.Value, documentId.Value);
+
+        var rowExists = await dbContext.ExtractionJobs
+            .AnyAsync(j => j.TenantId == tenantId && j.Id == jobId, cancellationToken)
+            .ConfigureAwait(false);
+        if (!rowExists)
+        {
+            return ExtractionHandleOutcome.JobNotFound;
+        }
+
+        // A still-held claim whose last heartbeat is stale means the original worker is gone
+        // (process crash after the peek-lock expired) and this redelivery would otherwise be
+        // completed as a no-op — the hang that left rows on "Uploading…" forever. Recover from
+        // scratch. A fresh in-flight claim (duplicate delivery of a live run) is still a no-op.
+        if (hungRecovery is not null)
+        {
+            var action = await hungRecovery
+                .RecoverDocumentAsync(tenantId, documentId, force: false, cancellationToken)
+                .ConfigureAwait(false);
+            if (action is not HungRecoveryAction.None)
+            {
+                return ExtractionHandleOutcome.Handled;
+            }
+        }
+
+        return ExtractionHandleOutcome.ClaimLost;
+    }
+
+    private Task RecoverHungAsync(TenantId tenantId, EntityId documentId) =>
+        hungRecovery is null
+            ? Task.CompletedTask
+            : hungRecovery.RecoverDocumentAsync(tenantId, documentId, force: true, CancellationToken.None);
+
+    /// <summary>Claim won: load, mark Processing, gate, pipeline. <paramref name="cancellationToken"/>
+    /// is the hang-watch token so a silent stage cancels this run.</summary>
+    private async Task<ExtractionHandleOutcome> RunClaimedAsync(
+        TenantId tenantId, EntityId documentId, EntityId jobId, CancellationToken cancellationToken)
+    {
         var job = await dbContext.ExtractionJobs
             .SingleOrDefaultAsync(j => j.TenantId == tenantId && j.Id == jobId, cancellationToken)
             .ConfigureAwait(false);
@@ -205,7 +281,15 @@ public sealed class ExtractionRequestedHandler(
         }
 
         document.ProcessingStatus = DocumentProcessingStatus.Processing;
+        // Durable heartbeat so the list reports "Classifying" (not "Uploading") and hang
+        // detection has a timestamp while the admission gate runs.
+        job.StartedAt ??= clock.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        hangWatch?.Heartbeat();
+
+        using var bound = progressHeartbeat?.Bind(job);
+        using var foundryAttempts = progressHeartbeat?.BeginFoundryAttempts();
+        using var memoryPulses = progressHeartbeat?.BeginMemoryPulses();
 
         var bytes = await storage.LoadAsync(tenantId, document.StoragePath, cancellationToken).ConfigureAwait(false);
         if (bytes is null || bytes.Length == 0)
@@ -215,6 +299,7 @@ public sealed class ExtractionRequestedHandler(
             return ExtractionHandleOutcome.Handled;
         }
 
+        hangWatch?.Heartbeat();
         var decision = await admissionGate
             .EvaluateAsync(tenantId, WorkerActor, document.FileName, document.MimeType, bytes, cancellationToken)
             .ConfigureAwait(false);
@@ -236,6 +321,7 @@ public sealed class ExtractionRequestedHandler(
                 return ExtractionHandleOutcome.Handled;
         }
 
+        hangWatch?.Heartbeat();
         var result = await processingPipeline
             .ProcessAsync(
                 tenantId,

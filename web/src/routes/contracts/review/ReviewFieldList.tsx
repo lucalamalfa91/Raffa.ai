@@ -7,7 +7,7 @@ export interface ReviewFieldListProps {
   selectedField: CorrectableFieldName | null;
   onSelect: (name: CorrectableFieldName) => void;
   onAccept: (name: CorrectableFieldName) => void;
-  /** Same correction write the evidence pane uses (`PATCH /api/contracts/{id}` then `load()`). */
+  /** Same correction write the evidence pane uses (`PATCH /api/contracts/{id}` then in-place merge). */
   onCorrect: (name: CorrectableFieldName, value: string | null, reason: string) => void;
   submitting?: boolean;
   /** Shown in the unrecovered section when the last fill failed and no recovered row is selected. */
@@ -82,18 +82,25 @@ export default function ReviewFieldList({
                 <td>
                   {row.decision === "pending" ? (
                     <div className="review-decision-actions">
-                      <button type="button" className="btn btn-secondary" onClick={() => onAccept(row.name)}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        disabled={submitting}
+                        onClick={() => onAccept(row.name)}
+                      >
                         Accept
                       </button>
-                      <button type="button" className="btn btn-ghost" onClick={() => onSelect(row.name)}>
+                      <button type="button" className="btn btn-ghost" disabled={submitting} onClick={() => onSelect(row.name)}>
                         Correct
                       </button>
                     </div>
                   ) : row.decision === "accepted" ? (
                     <div className="review-decision-actions">
-                      {row.evidenceDecision !== "auto_accepted" ? (
-                        <span className="micro-meta">Accepted by you</span>
-                      ) : null}
+                      {row.evidenceDecision === "auto_accepted" ? (
+                        <span className="micro-meta review-decision-result">Accepted automatically</span>
+                      ) : (
+                        <span className="micro-meta review-decision-result">Accepted by you</span>
+                      )}
                       <button type="button" className="btn btn-ghost" onClick={() => onSelect(row.name)}>
                         Correct
                       </button>

@@ -153,6 +153,28 @@ public class FoundryRetryPolicyTests
     }
 
     [Fact]
+    public async Task Notifies_the_ambient_attempt_heartbeat_on_every_try()
+    {
+        var handler = new FakeHttpMessageHandler(
+            FakeHttpMessageHandler.Json(HttpStatusCode.InternalServerError, "{}"),
+            FakeHttpMessageHandler.Json(HttpStatusCode.OK, "{}"));
+        using var httpClient = new HttpClient(handler) { BaseAddress = BaseAddress };
+        var policy = TestRetryPolicies.NoDelay();
+        var pulses = 0;
+        using (FoundryAttemptHeartbeat.Begin(_ =>
+        {
+            pulses++;
+            return Task.CompletedTask;
+        }))
+        {
+            var result = await policy.SendAsync(httpClient, Get(), CancellationToken.None);
+            Assert.True(result.IsSuccess);
+        }
+
+        Assert.Equal(2, pulses);
+    }
+
+    [Fact]
     public void Defaults_keep_the_worst_case_inside_the_synchronous_upload_path()
     {
         var options = new AiGatewayResilienceOptions();

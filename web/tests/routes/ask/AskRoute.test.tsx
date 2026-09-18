@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation, useParams } from "react-router-dom";
 import AskRoute from "../../../src/routes/ask";
+import { DocumentViewerProvider } from "../../../src/routes/documents/viewer/DocumentViewerOverlay";
 import type {
   ApiClient,
   ConversationReplyBody,
@@ -145,9 +146,10 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     uploadDocument: vi.fn(),
     getDocument: vi.fn(),
     listDocuments: vi.fn().mockResolvedValue(emptyDocuments()),
-    getDocumentPreviewUrl: vi.fn(),
+    getDocumentPreviewUrl: vi.fn().mockResolvedValue({ ok: false, statusCode: 404, objectUrl: null, error: "No preview." }),
     reprocessDocument: vi.fn(),
     deleteDocument: vi.fn(),
+    deleteAllDocuments: vi.fn(),
     prioritiseDocument: vi.fn(),
     getPortfolio: vi.fn().mockResolvedValue(validatedPortfolio()),
     // AC-5's own scoped-new-chat effect (index.tsx) calls this unconditionally whenever `?scope=` is
@@ -178,6 +180,7 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     createConversation: vi.fn(),
     getConversation: vi.fn(),
     postMessage: vi.fn(),
+    deleteConversation: vi.fn(),
     getCapabilities: vi.fn().mockResolvedValue(emptyCatalog()),
     getMarketRecord: vi.fn(),
     getQuoteBenchmarkHistory: vi.fn(),
@@ -219,13 +222,15 @@ function PathProbe() {
 function renderAsk(apiClient: ApiClient, initialEntry: { pathname: string; state?: unknown } | string = "/ask") {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
-      <PathProbe />
-      <Routes>
-        <Route path="/ask" element={<AskRoute apiClient={apiClient} />} />
-        <Route path="/ask/:conversationId" element={<AskRoute apiClient={apiClient} />} />
-        <Route path="/contracts/:contractId" element={<Contract360Stub />} />
-        <Route path="/renewals" element={<div>RENEWALS SCREEN</div>} />
-      </Routes>
+      <DocumentViewerProvider apiClient={apiClient}>
+        <PathProbe />
+        <Routes>
+          <Route path="/ask" element={<AskRoute apiClient={apiClient} />} />
+          <Route path="/ask/:conversationId" element={<AskRoute apiClient={apiClient} />} />
+          <Route path="/contracts/:contractId" element={<Contract360Stub />} />
+          <Route path="/renewals" element={<div>RENEWALS SCREEN</div>} />
+        </Routes>
+      </DocumentViewerProvider>
     </MemoryRouter>,
   );
 }
@@ -577,7 +582,8 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
       expect(await screen.findByText("15 January 2027")).toBeInTheDocument();
       expect(screen.getByRole("link", { name: "Open Contract 360 →" })).toHaveAttribute("href", "/contracts/contract-1");
       expect(getConversation).toHaveBeenCalledWith(WORKSPACE_ID, CONVERSATION_ID);
-      expect(screen.getByRole("link", { name: "+ New chat" })).toHaveAttribute("href", "/ask");
+      expect(screen.queryByRole("link", { name: "+ New chat" })).not.toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Ask Raffa" })).toBeInTheDocument();
     });
 
     it("shows a named 'not found' state for an unknown/foreign conversation id, not a generic error", async () => {
@@ -692,5 +698,59 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
       await waitFor(() => expect(getContract360).toHaveBeenCalledWith(WORKSPACE_ID, "contract-1"));
       expect(screen.queryByRole("link", { name: "Acme Corp · MSA" })).not.toBeInTheDocument();
     });
+  });
+
+  it("a viewer citation opens the document overlay on Ask without leaving the conversation", async () => {
+    const viewerReply = answerReply({
+      citations: [
+        {
+          n: 1,
+          corpus: "tenant",
+          title: "Northwind · MSA",
+          subtitle: "p.2",
+          snippet: "The initial term is thirty-six (36) months",
+          documentId: "doc-1",
+          contractId: "contract-1",
+          page: 2,
+          section: null,
+          previewUrl: null,
+          href: "/documents/doc-1/viewer?page=2",
+          recordId: null,
+        },
+      ],
+    });
+    const getDocument = vi.fn().mockResolvedValue({
+      ok: true,
+      statusCode: 200,
+      document: {
+        id: "doc-1",
+        contractId: "contract-1",
+        fileName: "raffa-sample-northwind-msa.pdf",
+        mimeType: "application/pdf",
+        documentType: "Msa",
+        processingStatus: "Completed",
+        createdAt: "2026-09-01T00:00:00Z",
+        pageCount: 2,
+        isPageCountLimited: false,
+      },
+      error: null,
+    });
+    const getDocumentPreviewUrl = vi.fn().mockResolvedValue({ ok: true, statusCode: 200, objectUrl: "blob:page", error: null });
+    renderAsk(
+      mockApiClient({
+        createConversation: vi.fn().mockResolvedValue(createdConversation()),
+        postMessage: vi.fn().mockResolvedValue(postedReply(viewerReply)),
+        getDocument,
+        getDocumentPreviewUrl,
+      }),
+    );
+
+    await userEvent.type(await screen.findByRole("textbox", { name: /ask raffa a question/i }), "…{Enter}");
+    await screen.findByText("Northwind · MSA");
+    await userEvent.click(screen.getByRole("link", { name: "Open at this span" }));
+
+    expect(await screen.findByRole("dialog", { name: "Document viewer" })).toBeInTheDocument();
+    expect(screen.getByTestId("path").textContent).toMatch(/^\/ask/);
+    expect(screen.queryByText(/CONTRACT_360/)).not.toBeInTheDocument();
   });
 });

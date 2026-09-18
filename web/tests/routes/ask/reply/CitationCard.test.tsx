@@ -61,24 +61,22 @@ describe("CitationCard (task E13/F09/US01/T02, AC-3)", () => {
         corpus="tenant"
         title="Salesforce · MSA 2024"
         subtitle="p.12 §8.4"
-        snippet="…"
+        snippet="automatically renew for successive twelve (12) month periods"
         previewUrl="/api/documents/abc/preview"
+        href="/documents/abc/viewer?page=12"
         onOpen={vi.fn()}
       />,
     );
 
     const img = screen.getByRole("img");
     expect(img).toHaveAttribute("src", "/api/documents/abc/preview");
+    expect(screen.getByText("automatically renew for successive twelve (12) month periods")).toBeInTheDocument();
+    expect(screen.getByText("Open in document viewer")).toBeInTheDocument();
     expect(screen.queryByText("No page preview available")).not.toBeInTheDocument();
-    expect(screen.queryByText("View source →")).not.toBeInTheDocument();
   });
 
-  // Task E25/F02/US02/T01 (us-02-citation-card-web AC-2, closing NW-55): a `raffa`/`market`
-  // citation never carries a `previewUrl` (ADR-024 §2) and used to fall through to this same
-  // component's old "No page preview available" placeholder -- it now renders a `.btn`-styled CTA
-  // card instead, and the placeholder text is gone for good, not just for these two corpora.
   it.each<{ corpus: CitationCorpus }>([{ corpus: "raffa" }, { corpus: "market" }])(
-    "renders a CTA card, never the old placeholder, for a $corpus citation with no previewUrl (AC-2)",
+    "keeps the quote and a CTA, never an empty dashed preview void, for a $corpus citation with no previewUrl (AC-2)",
     ({ corpus }) => {
       renderCard(
         <CitationCard
@@ -86,16 +84,37 @@ describe("CitationCard (task E13/F09/US01/T02, AC-3)", () => {
           corpus={corpus}
           title="Salesforce · MSA 2024"
           subtitle="p.12 §8.4"
-          snippet="…"
+          snippet="automatically renew for successive twelve (12) month periods"
           onOpen={vi.fn()}
         />,
       );
 
       expect(screen.queryByRole("img")).not.toBeInTheDocument();
       expect(screen.queryByText("No page preview available")).not.toBeInTheDocument();
+      expect(screen.getByText("automatically renew for successive twelve (12) month periods")).toBeInTheDocument();
       expect(screen.getByText("View source →")).toBeInTheDocument();
+      expect(document.querySelector(".citation-card-cta")).toBeNull();
     },
   );
+
+  it("still shows the quote and View source when a tenant citation has no page preview", () => {
+    render(
+      <CitationCard
+        n={1}
+        corpus="tenant"
+        title="Northwind Traders SA · Msa"
+        snippet="This Agreement shall remain in force until 17 September 2027 and shall automatically renew."
+        onOpen={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+    expect(
+      screen.getByText("This Agreement shall remain in force until 17 September 2027 and shall automatically renew."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("View source →")).toBeInTheDocument();
+    expect(document.querySelector(".citation-card-cta")).toBeNull();
+  });
 
   it("the CTA label is not itself a button or link -- the card keeps exactly one interaction (AC-3)", () => {
     renderCard(

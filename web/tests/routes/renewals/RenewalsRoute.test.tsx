@@ -31,6 +31,7 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     getDocumentPreviewUrl: vi.fn(),
     reprocessDocument: vi.fn(),
     deleteDocument: vi.fn(),
+    deleteAllDocuments: vi.fn(),
     prioritiseDocument: vi.fn(),
     getPortfolio: vi.fn(),
     getContract360: vi.fn(),
@@ -40,6 +41,7 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     createConversation: vi.fn(),
     getConversation: vi.fn(),
     postMessage: vi.fn(),
+    deleteConversation: vi.fn(),
     getCapabilities: vi.fn(),
     getMarketRecord: vi.fn(),
     getQuoteBenchmarkHistory: vi.fn(),
@@ -425,5 +427,41 @@ describe("RenewalsRoute (V2, ADR-024 / screens-v2.md #7)", () => {
       expect(screen.getByRole("button", { name: "Start negotiation" })).toBeEnabled();
       expect(window.sessionStorage.getItem("raffa.renewals.actions")).toBeNull();
     });
+  });
+
+  it("defaults to already-OK (Determined) rows and keeps CannotDetermine one click away", async () => {
+    const determined = pipelineItem({ contractId: "ready", supplierName: "Salesforce", status: "Determined" });
+    const pending = pipelineItem({
+      contractId: "pending",
+      supplierName: "Uploading Co",
+      status: "CannotDetermine",
+      renewalDate: null,
+      daysUntilRenewal: null,
+      cancellationDeadline: null,
+      daysUntilCancellationDeadline: null,
+    });
+    renderRenewals(
+      mockApiClient({
+        getRenewals: vi.fn().mockResolvedValue(ok([determined, pending])),
+        getRenewalPriority: priorityByContract({ ready: 85, pending: 10 }),
+      }),
+    );
+
+    const table = await screen.findByRole("table");
+    expect(within(table).getByText("Salesforce")).toBeInTheDocument();
+    expect(within(table).queryByText("Uploading Co")).not.toBeInTheDocument();
+    expect(screen.getByText("1 contract with validated dates · sorted by priority")).toBeInTheDocument();
+
+    const group = screen.getByRole("group", { name: "Filter renewals by readiness" });
+    expect(within(group).getByRole("button", { name: "Ready · 1" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(group).getByRole("button", { name: "To review · 1" })).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.click(within(group).getByRole("button", { name: "To review · 1" }));
+    expect(within(table).queryByText("Salesforce")).not.toBeInTheDocument();
+    expect(within(table).getByText("Uploading Co")).toBeInTheDocument();
+
+    fireEvent.click(within(group).getByRole("button", { name: "All · 2" }));
+    expect(within(table).getByText("Salesforce")).toBeInTheDocument();
+    expect(within(table).getByText("Uploading Co")).toBeInTheDocument();
   });
 });
