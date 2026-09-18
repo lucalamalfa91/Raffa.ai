@@ -107,15 +107,17 @@ namespace Raffa.Api;
 /// host may perform, Insights stays fenced to <c>[SharedKernel, Benchmark]</c>) into
 /// <c>Raffa.Insights.Application.NegotiationPointRanker.Rank</c>, which emits a point only when it is
 /// grounded in a stored fact, a clause, an assessed risk or a benchmark band — never the generic
-/// seven-lever dump <see cref="Raffa.Insights.Negotiation.PricedLineNegotiationCalculator"/> emits
-/// for the older, different <c>RenewalStrategy</c> pack above. The whole ranked set is upserted to
+/// seven-lever dump <see cref="Raffa.Insights.Negotiation.PricedLineNegotiationCalculator"/> used to
+/// emit into the <c>RenewalStrategy</c> pack below (task E31/F01/US01/T01 retired that loop — see
+/// <see cref="BuildRenewalStrategyPackAsync"/>'s own doc comment). The whole ranked set is upserted to
 /// <see cref="RenewalNegotiationTodoService"/> when asked (<c>persistTodos</c> — "persist-all"), while
 /// only the top three ever reach the returned pack (<c>PackItem</c>s — "chat top-3"): the two counts
-/// deliberately differ, so a re-ask never re-litigates a point Procurement already ticked done. No
-/// intent dispatches to this method yet — later tasks (epic-29/feature-02, epic-31/feature-01,
-/// feature-03) wire it into a live turn; it is unit/integration-tested directly in the meantime, the
-/// same test-reachability precedent <see cref="BuildMarketComparePackAsync"/>/
-/// <see cref="BuildRenewalStrategyPackAsync"/> already establish.
+/// deliberately differ, so a re-ask never re-litigates a point Procurement already ticked done. Wired
+/// into a live turn by task E31/F01/US01/T01 (q3-route, NW-95) via
+/// <see cref="BuildRenewalStrategyPackAsync"/> (<c>includeRenewalUrgency: false</c> — that pack
+/// already narrates its own "when you must move" section; <c>persistTodos: false</c> — task
+/// E31/F03/US01/T01, q3-persist, NW-97, owns "persist-all" right before the final answer call).
+/// epic-29/feature-02 still has its own call site to add.
 /// </para>
 /// </summary>
 internal sealed class AskCopilotService(
@@ -433,7 +435,7 @@ internal sealed class AskCopilotService(
                 .ConfigureAwait(false),
             AskIntent.MarketCompare => await BuildMarketComparePackAsync(namedContractItem, cancellationToken).ConfigureAwait(false),
             AskIntent.RenewalStrategy => namedContractItem is not null
-                ? await BuildRenewalStrategyPackAsync(namedContractItem, cancellationToken).ConfigureAwait(false)
+                ? await BuildRenewalStrategyWithEvidenceAsync(tenantId, question, namedContractItem, cancellationToken).ConfigureAwait(false)
                 : await BuildPortfolioStrategyPackAsync(portfolio, supplierNames, cancellationToken).ConfigureAwait(false),
             AskIntent.PortfolioStrategy => await BuildPortfolioStrategyPackAsync(portfolio, supplierNames, cancellationToken).ConfigureAwait(false),
             AskIntent.Savings => namedContractItem is not null
@@ -1059,51 +1061,10 @@ internal sealed class AskCopilotService(
                 continue;
             }
 
-            var lineKey = $"market:{supplierName}:{line.Description}".Replace(' ', '-');
-
-            if (line.Benchmark is { } distribution)
-            {
-                items.Add(new PackItem(
-                    lineKey,
-                    PackCorpus.Market,
-                    $"{supplierName} · {line.Description}",
-                    line.AdapterName,
-                    null,
-                    null,
-                    $"P25 {distribution.P25} · P50 {distribution.P50} · P75 {distribution.P75} " +
-                    $"{line.Currency}/unit · n = {line.SampleSize?.ToString(CultureInfo.InvariantCulture) ?? "n/a"}",
-                    null,
-                    null,
-                    null,
-                    FormatRepresentativeProvenance(line),
-                    [
-                        new PackValue("p25", distribution.P25.ToString(CultureInfo.InvariantCulture), PackValueKind.Amount, line.Currency),
-                        new PackValue("p50", distribution.P50.ToString(CultureInfo.InvariantCulture), PackValueKind.Amount, line.Currency),
-                        new PackValue("p75", distribution.P75.ToString(CultureInfo.InvariantCulture), PackValueKind.Amount, line.Currency),
-                    ]));
-            }
-            else
-            {
-                // AC-3: a missing band narrates "insufficient market data", never a fabricated
-                // percentile. Previously this line was silently dropped (no PackItem at all, the
-                // adapter-failure/insufficient-data branches both just `continue`d) -- leaving the
-                // model nothing to cite when it had to say so, and no honest trace an operator could
-                // tell apart from "this intent never ran".
-                items.Add(new PackItem(
-                    lineKey,
-                    PackCorpus.Market,
-                    $"{supplierName} · {line.Description}",
-                    null,
-                    null,
-                    null,
-                    "Insufficient market data for this line — too few comparables to publish a " +
-                    "benchmark (Appendix C rule 10; ADR-001).",
-                    null,
-                    null,
-                    null,
-                    "insufficient market data",
-                    []));
-            }
+            // Same per-line shape BuildRenewalStrategyPackAsync's own market corpus now reuses (task
+            // E31/F01/US01/T01, NW-95) -- one construction, so a missing band never narrates two
+            // different "insufficient market data" wordings for the identical line.
+            items.Add(BuildMarketPricedLineItem(supplierName, line));
 
             items.Add(new PackItem(
                 $"fact:{namedContractItem.ContractId}:priced-line[{line.Description}].unitPrice".Replace(' ', '-'),
@@ -1140,10 +1101,28 @@ internal sealed class AskCopilotService(
     /// <c>Raffa.Api.Tests.AskPricedLinesParityTests</c> calls this directly to compare the
     /// <c>calc:target[...]</c> item's <see cref="PackValue"/>s against <c>GET
     /// /api/contracts/{id}/strategy</c>'s own JSON (AC-2) -- <c>FixtureAiGateway.AnswerFromPack</c>
-    /// only ever echoes a pack's first five items, and this pack's own fixed order
-    /// (when-you-must-move, then up to seven levers per priced line, then one target per line)
-    /// never puts a target that early, so an HTTP-round-trip reply could not observe it without
-    /// first asserting on that unrelated cap.
+    /// only ever echoes a pack's first five items, and calling this method directly is what lets
+    /// that test (and <c>Raffa.Api.Tests.AskQ3RenewalStrategyTests</c>, task E31/F01/US01/T01)
+    /// assert past that unrelated cap regardless of this pack's own item order.
+    ///
+    /// <para>
+    /// <b>Tenant clause evidence is this method's own caller's job</b> (AC-2, task E31/F01/US01/T01,
+    /// NW-95): this method returns <c>calc</c>/<c>market</c>/<c>raffa</c> items only, never
+    /// <c>tenant</c> — it has no <c>question</c> text to search clause embeddings with, and adding
+    /// one just for this would break <c>AskPricedLinesParityTests</c>' own direct call (a signature
+    /// this task deliberately leaves alone). <see cref="BuildRenewalStrategyWithEvidenceAsync"/> is
+    /// the composition that appends this contract's own scoped clause evidence
+    /// (<see cref="BuildClausePackAsync"/>, the epic-28 scoped RAG) and is what <see cref="BuildInDomainReplyAsync"/>
+    /// actually calls for a live <see cref="AskIntent.RenewalStrategy"/> turn.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>Fixed item order</b>: when-you-must-move, then up to three grounded ranked points
+    /// (<see cref="BuildNegotiationPointsPackAsync"/>, task E31/F02/US01/T01, NW-96 — never the
+    /// generic seven-lever dump this method used to emit here, retired by this same task per
+    /// epic-31's own "Out of scope: no ungrounded '7 lever' dump"), then one target per priced line,
+    /// then next-steps, then up to two market bands, then one raffa Renewals citation.
+    /// </para>
     /// </summary>
     internal async Task<IReadOnlyList<PackItem>> BuildRenewalStrategyPackAsync(
         PortfolioListItem namedContractItem, CancellationToken cancellationToken)
@@ -1210,19 +1189,21 @@ internal sealed class AskCopilotService(
                 namedContractItem.ContractId.ToString()),
         };
 
-        var leverIndex = 0;
-        foreach (var lever in pack.WhereYouCanPush)
-        {
-            items.Add(new PackItem(
-                InsightsCitationKeys.Calc($"lever[{leverIndex++}]"),
-                PackCorpus.Calc,
-                $"{supplierName} — {lever.LeverType} lever",
-                null, null, null,
-                lever.Rationale,
-                $"/contracts/{namedContractItem.ContractId}", null, null,
-                "deterministic calculator", [],
-                namedContractItem.ContractId.ToString()));
-        }
+        // Grounded-only ranked points (task E31/F02/US01/T01, point-ranker; NW-96; ADR-024 w19 cl.
+        // 23), wired into a live turn for the first time here (task E31/F01/US01/T01, q3-route;
+        // NW-95; AC-1/AC-2 "calc (strategy/ranked points)") -- this replaces the ungrounded
+        // seven-lever loop that used to sit here (epic-31's own "Out of scope: no ungrounded '7
+        // lever' dump"). includeRenewalUrgency is false -- the when-you-must-move item above already
+        // covers that ground, and BuildNegotiationPointsPackAsync's own doc comment names this exact
+        // caller as the one that passes false so the same date is never narrated twice. persistTodos
+        // is false -- task E31/F03/US01/T01 (q3-persist, NW-97) owns "persist-all", after this
+        // pack's own ranking, right before the final answer call; actor is therefore never read
+        // (that method's own doc comment, "ignored otherwise").
+        var rankedPoints = await BuildNegotiationPointsPackAsync(
+                new EntityId(namedContractItem.ContractId), includeRenewalUrgency: false, persistTodos: false,
+                actor: string.Empty, cancellationToken)
+            .ConfigureAwait(false);
+        items.AddRange(rankedPoints);
 
         var targetIndex = 0;
         foreach (var target in pack.Targets)
@@ -1269,7 +1250,63 @@ internal sealed class AskCopilotService(
             "deterministic calculator", [],
             namedContractItem.ContractId.ToString()));
 
+        // Market corpus (AC-2 "+ market"): the same benchmarked priced lines above, as citable
+        // PackCorpus.Market items -- BuildMarketPricedLineItem is the same per-line shape
+        // BuildMarketComparePackAsync already builds (task E28/F01/US01/T01, NW-82), reused rather
+        // than duplicated so a missing band never narrates two different "insufficient market data"
+        // wordings for the identical line.
+        foreach (var line in pricedLines.Take(MaxPricedLinesForBenchmark))
+        {
+            if (line.UnitPrice is null)
+            {
+                continue;
+            }
+
+            items.Add(BuildMarketPricedLineItem(supplierName, line));
+        }
+
+        // AC-2 "+ one raffa Renewals item": a feature citation card, the same FeatureCitation shape
+        // BuildCapabilityReply already cites directly into a reply (R-SYS-03), but as a genuine
+        // PackItem here so the `answer` role can cite it like any other pack source. Task
+        // E31/F03/US01/T01 (q3-persist, NW-97) still owns the server-injected /renewals?select=
+        // Navigate action -- this is the citation card, never the CTA.
+        if (BuildFeatureCitationPackItem(CapabilityCatalog.RenewalsKey) is { } renewalsItem)
+        {
+            items.Add(renewalsItem);
+        }
+
         return items;
+    }
+
+    /// <summary>
+    /// Task E31/F01/US01/T01 (q3-route; NW-95; ADR-024 w19 cl. 23; parent story us-01-q3-route
+    /// AC-1/AC-2/AC-3): the full Q3 "contrattare"/"rinnovo" answer pack --
+    /// <see cref="BuildRenewalStrategyPackAsync"/>'s own calc/market/raffa items plus this
+    /// contract's own clause evidence (<see cref="BuildClausePackAsync"/>, the same epic-28 scoped
+    /// RAG <see cref="AskIntent.Clause"/> already uses -- "this contract" + the labelled "similar
+    /// types" peer slice, never tenant-wide), so AC-2's four corpora (calc/tenant/market/raffa) all
+    /// reach one answer. Tenant evidence is appended, not prepended: the calc corpus's own "when you
+    /// must move" item must stay first (AC-3 -- a missing deadline is answered before anything
+    /// else, never buried, and is never itself an empty pack: <c>StrategyPackBuilder</c>'s own
+    /// <c>WhenYouMustMove</c>/<c>NextSteps</c> plus this method's own raffa item are unconditional,
+    /// so <see cref="BuildInDomainReplyAsync"/>'s empty-pack abstain branch is never reached for a
+    /// resolved contract regardless of how little else grounds).
+    ///
+    /// <para>
+    /// <c>internal</c>, not <c>private</c> -- same test-reachability precedent as
+    /// <see cref="BuildRenewalStrategyPackAsync"/> itself (<c>Raffa.Api.Tests.AskQ3RenewalStrategyTests</c>
+    /// calls this directly to assert all four corpora in one pack, past
+    /// <c>FixtureAiGateway.AnswerFromPack</c>'s unrelated five-item citation cap).
+    /// </para>
+    /// </summary>
+    internal async Task<IReadOnlyList<PackItem>> BuildRenewalStrategyWithEvidenceAsync(
+        TenantId tenantId, string question, PortfolioListItem namedContractItem, CancellationToken cancellationToken)
+    {
+        var strategyItems = await BuildRenewalStrategyPackAsync(namedContractItem, cancellationToken).ConfigureAwait(false);
+        var clauseItems = await BuildClausePackAsync(tenantId, question, namedContractItem, cancellationToken)
+            .ConfigureAwait(false);
+
+        return strategyItems.Concat(clauseItems).ToList();
     }
 
     /// <summary>
@@ -1608,6 +1645,91 @@ internal sealed class AskCopilotService(
             note.RecordId,
             note.Provenance,
             []);
+
+    /// <summary>
+    /// One <see cref="PackCorpus.Market"/> item for a benchmarked priced line -- a representative
+    /// band (P25/P50/P75 + provenance) when one resolved, else an honest "insufficient market data"
+    /// entry, never a silently dropped line (AC-3, task E28/F01/US01/T01, NW-82). Shared by
+    /// <see cref="BuildMarketComparePackAsync"/> and <see cref="BuildRenewalStrategyPackAsync"/>
+    /// (task E31/F01/US01/T01, NW-95) so the two packs can never narrate two different wordings for
+    /// the identical line's missing band.
+    /// </summary>
+    private static PackItem BuildMarketPricedLineItem(string supplierName, PricedLine line)
+    {
+        var lineKey = $"market:{supplierName}:{line.Description}".Replace(' ', '-');
+
+        if (line.Benchmark is not { } distribution)
+        {
+            return new PackItem(
+                lineKey,
+                PackCorpus.Market,
+                $"{supplierName} · {line.Description}",
+                null,
+                null,
+                null,
+                "Insufficient market data for this line — too few comparables to publish a " +
+                "benchmark (Appendix C rule 10; ADR-001).",
+                null,
+                null,
+                null,
+                "insufficient market data",
+                []);
+        }
+
+        return new PackItem(
+            lineKey,
+            PackCorpus.Market,
+            $"{supplierName} · {line.Description}",
+            line.AdapterName,
+            null,
+            null,
+            $"P25 {distribution.P25} · P50 {distribution.P50} · P75 {distribution.P75} " +
+            $"{line.Currency}/unit · n = {line.SampleSize?.ToString(CultureInfo.InvariantCulture) ?? "n/a"}",
+            null,
+            null,
+            null,
+            FormatRepresentativeProvenance(line),
+            [
+                new PackValue("p25", distribution.P25.ToString(CultureInfo.InvariantCulture), PackValueKind.Amount, line.Currency),
+                new PackValue("p50", distribution.P50.ToString(CultureInfo.InvariantCulture), PackValueKind.Amount, line.Currency),
+                new PackValue("p75", distribution.P75.ToString(CultureInfo.InvariantCulture), PackValueKind.Amount, line.Currency),
+            ]);
+    }
+
+    /// <summary>
+    /// One <see cref="PackCorpus.Raffa"/> citation item for a capability (AC-2 "one raffa Renewals
+    /// item", task E31/F01/US01/T01, NW-95) -- the same <see cref="FeatureCitation"/> shape
+    /// <see cref="BuildFeatureCitations"/> already cites directly into a deterministic reply
+    /// (<see cref="BuildCapabilityReply"/>), but as a genuine <see cref="PackItem"/> here so the
+    /// `answer` role can cite it like any other pack source instead of it being injected out of
+    /// band. <see langword="null"/> for an unrecognized key -- never fabricated (Appendix C rule
+    /// 10) -- though every key this file passes is one of <see cref="CapabilityCatalog"/>'s own
+    /// constants, so this is not expected in practice.
+    /// </summary>
+    private static PackItem? BuildFeatureCitationPackItem(string capabilityKey)
+    {
+        var capability = CapabilityCatalog.Find(capabilityKey);
+        if (capability is null)
+        {
+            return null;
+        }
+
+        var feature = FeatureCitation.For(capability);
+
+        return new PackItem(
+            $"raffa:{capabilityKey}",
+            PackCorpus.Raffa,
+            feature.Title,
+            feature.Subtitle,
+            null,
+            null,
+            feature.Snippet,
+            feature.Href,
+            null,
+            null,
+            "Raffa feature",
+            []);
+    }
 
     private static IReadOnlyList<ReplyCitation> BuildFeatureCitations(IReadOnlyList<string> keys)
     {
