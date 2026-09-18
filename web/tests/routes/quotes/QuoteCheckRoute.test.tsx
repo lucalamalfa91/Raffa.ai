@@ -78,6 +78,10 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     // every mount regardless of which of this suite's scenarios is under test -- a safe, empty
     // default here, exactly like every other fixture entry above that no individual test overrides.
     getQuoteBenchmarkHistory: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, history: { items: [] }, error: null }),
+    // Task E29/F04/US01/T01 (todo-web): this suite never reaches the Renewals screen -- bare
+    // vi.fn() is enough, same convention as the other unexercised calls above.
+    getRenewalNegotiationTodos: vi.fn(),
+    tickRenewalNegotiationTodo: vi.fn(),
     askRaffa: vi.fn(),
     getSavingsKpis: vi.fn(),
     getSavingsOpportunities: vi.fn(),

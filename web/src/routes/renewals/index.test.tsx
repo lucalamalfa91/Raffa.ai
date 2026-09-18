@@ -91,6 +91,11 @@ function apiClientWith(overrides: Partial<ApiClient> = {}): ApiClient {
       }),
     ),
     postRenewalAction: vi.fn(),
+    // Task E29/F04/US01/T01 (todo-web): InsightCard now always renders NegotiationTodoList, which
+    // fetches on mount -- an unstubbed method here would reject `.then()` on `undefined` and crash
+    // every test in this file, not just ones about the TODO list itself. None of the tests below
+    // exercise the list's own content or the tick, so an honest empty list is enough.
+    getRenewalNegotiationTodos: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, todos: [], error: null }),
     ...overrides,
   } as unknown as ApiClient;
 }
