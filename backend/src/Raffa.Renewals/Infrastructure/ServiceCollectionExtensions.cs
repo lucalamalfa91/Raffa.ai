@@ -227,6 +227,14 @@ public static class ServiceCollectionExtensions
         // of them is registered somewhere in this method.
         services.AddScoped<RenewalAlertService>();
 
+        // Task E29/F01/US01/T01 (todo-entity-api, wave w19 NW-85): RenewalNegotiationTodoService
+        // depends on the same Scoped RenewalsDbContext/IAuditWriter above — same landmine as
+        // RenewalActionService/RenewalAlertService/RenewalThresholdScheduler (any host that calls
+        // this method must also call Raffa.Audit's AddAuditModule). First real callers:
+        // Raffa.Api.RenewalsEndpointExtensions (GET/tick PUT) and, once epic-29/feature-02 lands,
+        // Raffa.Api.AskCopilotService's own in-process upsert after ranking.
+        services.AddScoped<RenewalNegotiationTodoService>();
+
         return services;
     }
 }
