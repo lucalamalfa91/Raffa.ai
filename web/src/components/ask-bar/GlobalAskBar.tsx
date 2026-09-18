@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { ApiClient, CapabilityBody } from "../../api/client";
 import type { WorkspaceRole } from "../shell/navItems";
-import { getAskBarCopy } from "./askSuggestions";
+import { loadCurrentWorkspace } from "../../routes/signin/workspaceStore";
+import { contractIdForPath, getAskBarCopy } from "./askSuggestions";
 import "./ask-bar.css";
 
 export interface GlobalAskBarProps {
@@ -23,6 +24,9 @@ export interface GlobalAskBarProps {
    * description) to source its own per-screen suggestion chips from the real catalog
    * (`askSuggestions.ts#getAskBarCopy`), falling back to the prototype's `chipsFor` pair while the
    * fetch is in flight or if it fails.
+   *
+   * Task E27/F03/US01/T01 (NW-77): also calls `getContract360` itself (only while the current route
+   * is Contract 360) to source the notice chip's real supplier name -- see `supplierName` below.
    */
   apiClient: ApiClient;
 }
@@ -36,6 +40,15 @@ export interface GlobalAskBarProps {
  *    `AskRoute`.
  * 2. **Off state matches the prototype.** Placeholder swaps to the off-copy, the input is
  *    `disabled={kbOff}`, the square greys, and the chips empty (`askChips: kbReady ? askChips : []`).
+ * 3. **Scoped from Contract 360** (task E27/F03/US01/T01, NW-77; ADR-012 cl. 49 / ADR-020 §37.1 per
+ *    `reports/architecture/waves/w19.md`; `ia-v2.md` "on Contract 360 the chips name the current
+ *    supplier"). While the current route is `/contracts/:contractId` (never its `/review`
+ *    sub-route -- `askSuggestions.ts#contractIdForPath`'s own doc comment), `submit` navigates
+ *    `/ask?scope=<contractId>` instead of the plain `/ask` above, reusing `AskRoute`'s own w18
+ *    `parseScopeContractId` (`askViewModel.ts`) to create the scoped conversation -- never a new
+ *    nav-state field, the query still rides `state.query` unchanged. The notice chip's supplier
+ *    name is the open contract's real one for the same reason -- see `supplierName` below and
+ *    `askSuggestions.ts#c360Chips`.
  *
  * Cmd/Ctrl+K focuses this input from anywhere in the app (design-system.md "⌘K opens Ask").
  */
@@ -45,7 +58,48 @@ export default function GlobalAskBar({ kbReady, role, apiClient }: GlobalAskBarP
   const inputRef = useRef<HTMLInputElement>(null);
   const [value, setValue] = useState("");
   const [capabilities, setCapabilities] = useState<readonly CapabilityBody[] | null>(null);
-  const copy = getAskBarCopy(location.pathname, kbReady, capabilities, role);
+
+  // NW-77 AC-1: null on every screen but Contract 360 -- see askSuggestions.ts#contractIdForPath's
+  // own doc comment. Both `submit`'s scoped navigate below and the supplier fetch just below read
+  // this same value, so they can never disagree about which contract (if any) is open.
+  const contractId = contractIdForPath(location.pathname);
+
+  // NW-77 AC-2: the open contract's real supplier name for the c360 notice chip -- the same
+  // `getContract360` read `routes/ask/askViewModel.ts#buildScopedSuggestions`'s own caller
+  // (`routes/ask/index.tsx`) already does for the Ask screen's own scoped chips. `loadCurrentWorkspace`
+  // (not a prop) matches that same file's own convention -- `GlobalAskBar` is rendered outside
+  // `AppShell`'s `<Outlet/>` (`AppShell.tsx`), so it has no routed access to `:contractId` via
+  // `useParams` and no `Outlet context` either; `location.pathname` above is what actually carries it
+  // here. `cancelled` guards against an out-of-order response after a quick Contract-to-Contract
+  // navigation overwriting the chip with the wrong supplier (GlobalAskBar stays mounted across every
+  // route, unlike `AskRoute`'s own identical effect, which only re-fires per conversation).
+  const [supplierName, setSupplierName] = useState<string | null>(null);
+  useEffect(() => {
+    if (contractId === null) {
+      setSupplierName(null);
+      return;
+    }
+    const workspace = loadCurrentWorkspace();
+    if (!workspace) {
+      setSupplierName(null);
+      return;
+    }
+    let cancelled = false;
+    void apiClient.getContract360(workspace.id, contractId).then((result) => {
+      if (cancelled) return;
+      if (!result.ok || !result.contract) {
+        setSupplierName(null);
+        return;
+      }
+      const { supplierName: name } = result.contract.header;
+      setSupplierName(name !== null && name.trim() !== "" ? name : null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [apiClient, contractId]);
+
+  const copy = getAskBarCopy(location.pathname, kbReady, capabilities, role, supplierName);
 
   useEffect(() => {
     void apiClient.getCapabilities().then((result) => {
@@ -68,7 +122,11 @@ export default function GlobalAskBar({ kbReady, role, apiClient }: GlobalAskBarP
     const trimmed = query.trim();
     if (!trimmed) return;
     setValue("");
-    navigate("/ask", { state: { query: trimmed, newChat: true } });
+    // NW-77 AC-1: `?scope=` (query string), never a new nav-state field (ADR-012 cl. 49) -- the same
+    // bare-id template `Contract360Header.tsx`'s own "Ask about it" link already uses, reused by
+    // `AskRoute`'s w18 `parseScopeContractId` (`askViewModel.ts`) to create the scoped conversation.
+    const path = contractId !== null ? `/ask?scope=${contractId}` : "/ask";
+    navigate(path, { state: { query: trimmed, newChat: true } });
   };
 
   return (
