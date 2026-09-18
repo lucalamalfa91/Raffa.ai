@@ -119,7 +119,10 @@ namespace Raffa.Api;
 /// branch calls <see cref="BuildRenewalStrategyWithEvidenceAsync"/> (calc + tenant + market + raffa)
 /// with <c>persistTodos: true</c>, so a real Q3 ask durably upserts before
 /// <see cref="AnswerComposer.AnswerAsync"/> — the <c>/renewals?select={id}</c> deep-link is true
-/// after asking. Feature-03 (q3-persist, NW-97) still owns the injected navigate action.
+/// after asking. Feature-03 (q3-persist, NW-97) injects that turn's own server-side
+/// <c>/renewals?select={id}</c> <see cref="CopilotActionKind.Navigate"/> action — see
+/// <see cref="BuildInDomainReplyAsync"/>'s own <c>isQ3PersistTurn</c> branch, never
+/// <c>composed.Value.Result.ActionKeys</c> (the model's own action keys).
 /// </para>
 ///
 /// <para>
@@ -474,6 +477,13 @@ internal sealed class AskCopilotService(
             _ => [],
         };
 
+        // Task E31/F03/US01/T01 (q3-persist; NW-97; ADR-024 w19 cl. 21/ADR-028): exactly the
+        // condition the switch above already used to pick the live Q3 composition
+        // (BuildRenewalStrategyWithEvidenceAsync, persistTodos: true) -- re-read, never
+        // re-derived, so the server-injected Renewals action below can never fire for a turn that
+        // did not just upsert. See the injected-action block near this method's own return.
+        var isQ3PersistTurn = plan.Intent == AskIntent.RenewalStrategy && namedContractItem is not null;
+
         // NW-80 "never silently merge": prepended, not appended, so PackBudget.Apply (which always
         // keeps at least its first item) and FixtureAiGateway.AnswerFromPack (which cites only the
         // first few pack items) can never drop the one sentence telling the user which contract was
@@ -515,6 +525,26 @@ internal sealed class AskCopilotService(
         var resolvedActions = actionKeys.Count > 0
             ? capabilityRouting.ResolveActions(actionKeys.Select(CapabilityIntent.HowTo).ToList(), routingContext)
             : [];
+
+        // Task E31/F03/US01/T01 (q3-persist; NW-97; ADR-024 w19 cl. 21/ADR-028; parent story
+        // us-01-q3-persist AC-2): the live Q3 answer's server-injected `/renewals?select={id}`
+        // Navigate action -- built the same way every other deep-link in this file already is
+        // (CapabilityRouting.ResolveActions -> ForKey -> BuildHref's own RenewalsKey branch), never
+        // from composed.Value.Result.ActionKeys above (the model's own action keys --
+        // FixtureAiGateway.AnswerFromPack never populates them for a pack-JSON turn at all, and a
+        // live Foundry answer must not get to invent this link either). routingContext already
+        // carries this turn's namedContractItem id (set above, before the Navigate/QuoteRoute
+        // short-circuit), so ForKey needs no extra id resolution and cannot throw for a missing
+        // placeholder. Concat + Distinct() folds the case where actionKeys also named this
+        // capability into one action rather than two identical buttons -- the same "Record
+        // equality" de-dup ResolveActions itself already performs internally (CapabilityRouting's
+        // own type doc comment), extended here across the two lists this method now combines.
+        if (isQ3PersistTurn)
+        {
+            var injectedRenewalsAction = capabilityRouting.ResolveActions(
+                [CapabilityIntent.HowTo(CapabilityCatalog.RenewalsKey)], routingContext);
+            resolvedActions = resolvedActions.Concat(injectedRenewalsAction).Distinct().ToList();
+        }
 
         return (
             CopilotReplyBuilder.FromGuardedResult(
@@ -1546,8 +1576,9 @@ internal sealed class AskCopilotService(
         // AC-2 "+ one raffa Renewals item": a feature citation card, the same FeatureCitation shape
         // BuildCapabilityReply already cites directly into a reply (R-SYS-03), but as a genuine
         // PackItem here so the `answer` role can cite it like any other pack source. Task
-        // E31/F03/US01/T01 (q3-persist, NW-97) still owns the server-injected /renewals?select=
-        // Navigate action -- this is the citation card, never the CTA.
+        // E31/F03/US01/T01 (q3-persist, NW-97) injects the server-injected /renewals?select=
+        // Navigate action in BuildInDomainReplyAsync's own isQ3PersistTurn branch -- this is the
+        // citation card, never the CTA.
         if (BuildFeatureCitationPackItem(CapabilityCatalog.RenewalsKey) is { } renewalsItem)
         {
             items.Add(renewalsItem);
