@@ -1,6 +1,6 @@
 import type { PortfolioListItem } from "../../api/client";
 import { isDeadlineCritical } from "../../styles/semantics";
-import { isValidatedContractStatus } from "./contractStatus";
+import { isContractReadyToUse, isDocumentNeedsReview, isDocumentPending } from "./contractStatus";
 import { daysUntil } from "./portfolioAttention";
 
 /**
@@ -80,21 +80,6 @@ export interface PortfolioRow {
   isReady: boolean;
 }
 
-/**
- * Returns true when the document linked to this portfolio item is still being processed.
- * The check is on `documentProcessingStatus` (the new w17 field) so the pending flag is
- * authoritative even if `Contract.Status` has already been updated by a partial extraction stage.
- */
-function isDocumentPending(documentProcessingStatus: string | null | undefined): boolean {
-  if (!documentProcessingStatus) return false;
-  const s = documentProcessingStatus.toLowerCase();
-  return s === "uploaded" || s === "processing";
-}
-
-function isDocumentNeedsReview(documentProcessingStatus: string | null | undefined): boolean {
-  return documentProcessingStatus?.toLowerCase() === "needsreview";
-}
-
 function isFailedOrBlank(item: PortfolioListItem): boolean {
   const status = item.status.trim().toLowerCase();
   if (status === "" || status === "failed") return true;
@@ -103,16 +88,11 @@ function isFailedOrBlank(item: PortfolioListItem): boolean {
 }
 
 /**
- * Already analyzed / validated / OK to use -- the default readiness bucket. A row is ready only
- * when the contract status is past every transient/blocking value *and* the linked document is
- * not still uploading, processing, or parked in NeedsReview.
+ * Already analyzed / validated / OK to use -- the default readiness bucket. Same rule Renewals
+ * uses (`isContractReadyToUse`): not "has dates".
  */
 export function isPortfolioItemReady(item: PortfolioListItem): boolean {
-  return (
-    isValidatedContractStatus(item.status) &&
-    !isDocumentPending(item.documentProcessingStatus) &&
-    !isDocumentNeedsReview(item.documentProcessingStatus)
-  );
+  return isContractReadyToUse(item.status, item.documentProcessingStatus);
 }
 
 function isPortfolioListable(item: PortfolioListItem): boolean {

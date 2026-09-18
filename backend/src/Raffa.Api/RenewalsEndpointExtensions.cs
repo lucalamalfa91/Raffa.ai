@@ -176,9 +176,19 @@ public static class RenewalsEndpointExtensions
         var savedActions = await actionService.GetActionsAsync(
             tenantId, pipeline.Select(item => item.ContractId).ToList(), cancellationToken).ConfigureAwait(false);
 
+        // Ready vs To review on the Renewals screen is Portfolio's own validation rule, not
+        // date-determination (`RenewalPipelineItem.Status`). Pass the source row through so the
+        // client can apply `isContractReadyToUse` without a second fetch; never drop an un-ready
+        // row here -- they belong in To review / All.
+        var portfolioByContractId = portfolioPage.Items.ToDictionary(item => item.ContractId);
+
         return Results.Ok(new
         {
-            items = pipeline.Select(item => ToPipelineResponse(item, supplierNames, savedActions)),
+            items = pipeline.Select(item =>
+            {
+                portfolioByContractId.TryGetValue(item.ContractId.Value, out var portfolioItem);
+                return ToPipelineResponse(item, supplierNames, savedActions, portfolioItem);
+            }),
             totalCount = portfolioPage.TotalCount,
         });
     }
@@ -353,12 +363,16 @@ public static class RenewalsEndpointExtensions
     /// pre-existing, unchanged <c>action</c> — <see langword="null"/> when nothing was ever recorded
     /// for this contract (never a default/placeholder object), otherwise the same shape
     /// <see cref="GetRenewalActionAsync"/>/<see cref="PostRenewalActionAsync"/> return
-    /// (<see cref="ToActionResponse"/>).
+    /// (<see cref="ToActionResponse"/>). <paramref name="portfolioItem"/> is the source
+    /// <see cref="PortfolioListItem"/> this pipeline row was built from — <c>contractStatus</c> and
+    /// <c>documentProcessingStatus</c> ride beside the unchanged renewal-engine <c>status</c> so
+    /// Renewals can apply the same Ready/To review rule as Portfolio.
     /// </summary>
     private static object ToPipelineResponse(
         RenewalPipelineItem item,
         IReadOnlyDictionary<EntityId, string> supplierNames,
-        IReadOnlyDictionary<EntityId, RenewalActionResult> savedActions)
+        IReadOnlyDictionary<EntityId, RenewalActionResult> savedActions,
+        PortfolioListItem? portfolioItem)
     {
         var facts = item.InsightCard.Facts;
         var recommendations = item.InsightCard.Recommendations;
@@ -371,6 +385,10 @@ public static class RenewalsEndpointExtensions
             supplierId = item.SupplierId?.Value,
             supplierName,
             status = item.Status.ToString(),
+            // Distinct from `status` (renewal-engine Determined/CannotDetermine/NoRenewal). These
+            // two are the Portfolio Ready/To review inputs, copied 1:1 from the source row.
+            contractStatus = portfolioItem?.Status ?? string.Empty,
+            documentProcessingStatus = portfolioItem?.DocumentProcessingStatus?.ToString(),
             renewalDate = item.RenewalDate,
             daysUntilRenewal = item.DaysUntilRenewal,
             annualSpend = item.AnnualSpend,

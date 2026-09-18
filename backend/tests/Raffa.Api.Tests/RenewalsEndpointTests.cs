@@ -3,6 +3,7 @@ using System.Text.Json;
 using Raffa.Api.Tests.TestSupport;
 using Raffa.Benchmark;
 using Raffa.Benchmark.Contracts;
+using Raffa.Documents.Contracts.Domain;
 using Raffa.Identity.Workspace.Domain;
 using Raffa.Identity.Workspace.Infrastructure;
 using Raffa.SharedKernel;
@@ -148,6 +149,45 @@ public sealed class RenewalsEndpointTests : IClassFixture<RaffaApiFactory>
         Assert.Equal(
             "Salesforce, Inc.",
             item.GetProperty("insightCard").GetProperty("facts").GetProperty("supplierName").GetString());
+        Assert.Equal("Completed", item.GetProperty("contractStatus").GetString());
+        Assert.Equal("Completed", item.GetProperty("documentProcessingStatus").GetString());
+    }
+
+    [Fact]
+    public async Task A_needs_review_auto_renewing_contract_still_appears_with_its_portfolio_status()
+    {
+        var now = new DateTimeOffset(2026, 9, 9, 12, 0, 0, TimeSpan.Zero);
+        var tenantId = TenantId.New();
+        var salesforceId = EntityId.New();
+
+        var factory = PortfolioEndpointTests.WithSupplierNames(
+            _factory,
+            new Dictionary<EntityId, string> { [salesforceId] = "Salesforce, Inc." });
+
+        var contract = PortfolioEndpointTests.NewContract(
+            tenantId,
+            now,
+            salesforceId,
+            autoRenewal: true,
+            endDate: DateOnly.FromDateTime(now.UtcDateTime).AddDays(60));
+        contract.Status = "needs_review";
+        await factory.SeedContractAsync(contract);
+        await factory.SeedDocumentAsync(
+            InMemoryAskEngineFactory.NewLinkedDocument(tenantId, contract.Id, DocumentProcessingStatus.NeedsReview));
+
+        var client = factory.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/renewals");
+        request.Headers.Add("X-Tenant-Id", tenantId.Value.ToString());
+
+        var response = await client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var item = Assert.Single(body.RootElement.GetProperty("items").EnumerateArray());
+
+        Assert.Equal("Determined", item.GetProperty("status").GetString());
+        Assert.Equal("needs_review", item.GetProperty("contractStatus").GetString());
+        Assert.Equal("NeedsReview", item.GetProperty("documentProcessingStatus").GetString());
     }
 
     // ----- Market position (task E21/F02/US01/T01, NW-22) -----

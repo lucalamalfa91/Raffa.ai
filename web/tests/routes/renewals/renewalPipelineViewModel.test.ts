@@ -27,6 +27,8 @@ function item(overrides: Partial<RenewalPipelineItemBody> = {}): RenewalPipeline
     supplierId: "s-1",
     supplierName: "Salesforce",
     status: "Determined",
+    contractStatus: "active",
+    documentProcessingStatus: "Completed",
     renewalDate: "2026-12-01",
     daysUntilRenewal: 83,
     annualSpend: 500_000,
@@ -77,10 +79,13 @@ describe("buildRenewalRows (app.jsx: sorted by score, highest first)", () => {
     expect(rows[1].tracked).toBeNull();
   });
 
-  it("treats Determined as already-OK and CannotDetermine as still to review", () => {
-    expect(isRenewalItemReady(item({ status: "Determined" }))).toBe(true);
-    expect(isRenewalItemReady(item({ status: "CannotDetermine" }))).toBe(false);
-    expect(isRenewalItemReady(item({ status: "NoRenewal" }))).toBe(false);
+  it("Ready follows Portfolio validation, not date-determination", () => {
+    expect(isRenewalItemReady(item({ status: "Determined", contractStatus: "active", documentProcessingStatus: "Completed" }))).toBe(true);
+    expect(isRenewalItemReady(item({ status: "Determined", contractStatus: "needs_review", documentProcessingStatus: "NeedsReview" }))).toBe(false);
+    expect(isRenewalItemReady(item({ status: "Determined", contractStatus: "processing", documentProcessingStatus: "Uploaded" }))).toBe(false);
+    expect(isRenewalItemReady(item({ status: "Determined", contractStatus: "processing", documentProcessingStatus: "Processing" }))).toBe(false);
+    expect(isRenewalItemReady(item({ status: "CannotDetermine", contractStatus: "active", documentProcessingStatus: "Completed" }))).toBe(true);
+    expect(isRenewalItemReady(item({ status: "NoRenewal", contractStatus: "active", documentProcessingStatus: "Completed" }))).toBe(true);
   });
 
   it("treats a contract missing from the score map as unscored, not as zero", () => {

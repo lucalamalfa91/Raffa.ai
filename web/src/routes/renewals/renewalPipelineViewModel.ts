@@ -1,6 +1,7 @@
 import type { RenewalActionRow, RenewalActionStatusValue, RenewalPipelineItemBody } from "../../api/client";
 import type { SemanticTag } from "../../styles/semantics";
 import { isDeadlineCritical } from "../../styles/semantics";
+import { isContractReadyToUse } from "../contracts/contractStatus";
 
 /**
  * Pure view-model helpers for the V2 Renewals screen (route `/renewals`; ADR-024 V2 IA amending
@@ -30,15 +31,20 @@ export function savedActionOnScreen(saved: RenewalActionRow | null | undefined):
 }
 
 /**
+ * Same Ready rule as Portfolio (`isContractReadyToUse` / `isPortfolioItemReady`): validated and
+ * OK to open for negotiation. Renewal-engine `status` (`Determined` / `CannotDetermine`) is
+ * date-determination, not readiness -- a row with dates can still be in human validation.
+ */
+export function isRenewalItemReady(item: RenewalPipelineItemBody): boolean {
+  return isContractReadyToUse(item.contractStatus, item.documentProcessingStatus);
+}
+
+/**
  * `app.jsx`: `renewals = completedCids.map(...).sort((a,b)=>b.score-a.score)` -- highest priority
  * first. A row whose score is still unknown sorts after every scored row (an honest "not ranked yet",
  * not a fabricated zero); ties break on the sooner notice deadline, then on the contract id so two
  * equal rows never swap between renders.
  */
-export function isRenewalItemReady(item: RenewalPipelineItemBody): boolean {
-  return item.status === "Determined";
-}
-
 export function buildRenewalRows(
   items: readonly RenewalPipelineItemBody[],
   scores: Readonly<Record<string, number | null>>,
