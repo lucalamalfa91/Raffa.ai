@@ -26,6 +26,16 @@
   padding: 20px 32px 24px;
 }
 
+/* ---- Bound contract chip (NW-78; ADR-012 cl. 49 / ADR-020 37.2 per
+   reports/architecture/waves/w19.md; screens-v2.md #2 "scope line" as anchor). `.tag`/`.tag-neutral`
+   (../../styles/components.css) already paint the pill; this only keeps the anchor from stretching
+   to the flex column's full width and undoes its default underline -- the same
+   link-not-prose convention `./reply/reply.css`'s own `.reply-citation-ref` already establishes. */
+.ask-bound-chip {
+  align-self: flex-start;
+  text-decoration: none;
+}
+
 .ask-screen-header {
   display: flex;
   align-items: center;

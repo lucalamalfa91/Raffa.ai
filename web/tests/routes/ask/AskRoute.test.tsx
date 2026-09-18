@@ -587,4 +587,110 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
       expect(await screen.findByText(/conversation not found/i)).toBeInTheDocument();
     });
   });
+
+  /**
+   * Task E27/F04/US01/T01 (binding-chip; parent story us-01-binding-chip AC-1/AC-2/AC-3; closes
+   * NW-78, ADR-012 cl. 49 / ADR-020 37.2 per `reports/architecture/waves/w19.md`; screens-v2.md #2
+   * "scope line" as anchor). `askViewModel.test.ts` proves the pure chip-building/fetch logic in
+   * isolation; this describe block proves the one thing that cannot -- that the real, mounted
+   * `AskRoute` actually wires `boundContractId`/`boundContractChip` into the screen: the chip
+   * appears above the thread and links to Contract 360, both freshly created (AC-1) and resumed
+   * with no `?scope=` in the URL at all (AC-2), and stays off the screen while the bound contract
+   * has not resolved (AC-3).
+   */
+  describe("NW-78: persistent binding chip", () => {
+    /** Minimal `GetContract360Result` shape -- only the three header fields
+     * `askViewModel.ts#buildBoundContractChip` reads, the same "cast rather than fill every
+     * generated field" convention `GlobalAskBar.test.tsx#contract360Result` already establishes for
+     * this identical wire shape. */
+    function boundContract360Result(): unknown {
+      return {
+        ok: true,
+        statusCode: 200,
+        contract: { header: { supplierName: "Acme Corp", supplierId: "s-1", type: "Msa" } },
+        error: null,
+      };
+    }
+
+    it("AC-1: a freshly scoped conversation shows the chip once created, linking to Contract 360", async () => {
+      const createConversation = vi.fn().mockResolvedValue({
+        ok: true,
+        statusCode: 201,
+        conversation: { id: CONVERSATION_ID, title: "New chat", scopeContractId: "contract-1", updatedAt: "2026-09-08T00:00:00Z" },
+        error: null,
+      });
+      const postMessage = vi.fn().mockResolvedValue(postedReply());
+      const getContract360 = vi.fn().mockResolvedValue(boundContract360Result());
+      renderAsk(mockApiClient({ createConversation, postMessage, getContract360 }), "/ask?scope=contract-1");
+
+      const input = await screen.findByRole("textbox", { name: /ask raffa a question/i });
+      await userEvent.type(input, "When must we give notice?{Enter}");
+
+      const chip = await screen.findByRole("link", { name: "Acme Corp · MSA" });
+      expect(chip).toHaveAttribute("href", "/contracts/contract-1");
+      expect(getContract360).toHaveBeenCalledWith(WORKSPACE_ID, "contract-1");
+
+      await userEvent.click(chip);
+      expect(await screen.findByText(/CONTRACT_360/)).toHaveTextContent("contractId=contract-1");
+    });
+
+    it("AC-2 survives resume: a resumed conversation shows the chip from its own persisted scopeContractId -- the resumed URL carries no `?scope=` at all", async () => {
+      const getConversation = vi.fn().mockResolvedValue({
+        ok: true,
+        statusCode: 200,
+        conversation: {
+          id: CONVERSATION_ID,
+          title: "When does Salesforce expire?",
+          scopeContractId: "contract-1",
+          createdAt: "2026-09-08T00:00:00Z",
+          updatedAt: "2026-09-08T00:05:00Z",
+          messages: [
+            {
+              id: "m1",
+              role: "you",
+              kind: "answer",
+              markdown: "When does Salesforce expire?",
+              citations: [],
+              actions: [],
+              modelId: null,
+              promptVersion: null,
+              inputHash: null,
+              createdAt: "2026-09-08T00:00:00Z",
+            },
+          ],
+        },
+        error: null,
+      });
+      const getContract360 = vi.fn().mockResolvedValue(boundContract360Result());
+      // `/ask/${CONVERSATION_ID}` -- deliberately no `?scope=` query string, proving the chip cannot
+      // be reading one.
+      renderAsk(mockApiClient({ getConversation, getContract360 }), `/ask/${CONVERSATION_ID}`);
+
+      const chip = await screen.findByRole("link", { name: "Acme Corp · MSA" });
+      expect(chip).toHaveAttribute("href", "/contracts/contract-1");
+      expect(getContract360).toHaveBeenCalledWith(WORKSPACE_ID, "contract-1");
+    });
+
+    it("AC-3: stays unrendered while the bound contract cannot be resolved", async () => {
+      const getConversation = vi.fn().mockResolvedValue({
+        ok: true,
+        statusCode: 200,
+        conversation: {
+          id: CONVERSATION_ID,
+          title: "New chat",
+          scopeContractId: "contract-1",
+          createdAt: "2026-09-08T00:00:00Z",
+          updatedAt: "2026-09-08T00:05:00Z",
+          messages: [],
+        },
+        error: null,
+      });
+      const getContract360 = vi.fn().mockResolvedValue({ ok: false, statusCode: 404, contract: null, error: "No contract found." });
+      renderAsk(mockApiClient({ getConversation, getContract360 }), `/ask/${CONVERSATION_ID}`);
+
+      await screen.findByRole("log");
+      await waitFor(() => expect(getContract360).toHaveBeenCalledWith(WORKSPACE_ID, "contract-1"));
+      expect(screen.queryByRole("link", { name: "Acme Corp · MSA" })).not.toBeInTheDocument();
+    });
+  });
 });
