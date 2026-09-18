@@ -66,6 +66,12 @@ function mockApiClient(getPortfolio: ApiClient["getPortfolio"] = vi.fn()): ApiCl
     // own mock object satisfies the interface under `tsc --noEmit` again, the same "bare vi.fn(),
     // every other call is unused by this suite" convention every other entry above already follows.
     getQuoteBenchmarkHistory: vi.fn(),
+    // Task E29/F04/US01/T01 (todo-web) added these two to `ApiClient` after this helper was
+    // written; stubbed here (unrelated to this task's own scope) purely so this file's own mock
+    // object satisfies the interface under `tsc --noEmit` again, same convention as
+    // `getQuoteBenchmarkHistory` immediately above.
+    getRenewalNegotiationTodos: vi.fn(),
+    tickRenewalNegotiationTodo: vi.fn(),
   };
 }
 

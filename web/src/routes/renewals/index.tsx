@@ -215,6 +215,8 @@ export default function RenewalsRoute({ apiClient, userLabel }: RenewalsRoutePro
               actionPending={actionPending}
               actionError={actionError}
               onAction={handleAction}
+              apiClient={apiClient}
+              tenantId={workspace.id}
             />
           )}
         </div>

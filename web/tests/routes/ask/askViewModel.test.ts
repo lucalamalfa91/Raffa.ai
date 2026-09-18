@@ -506,6 +506,10 @@ describe("createConversationAndAsk", () => {
       // mock keeping up. Fixed here since this file is already this task's own; the same gap in
       // other suites' mockApiClient helpers is untouched -- out of this task's file scope.
       getQuoteBenchmarkHistory: vi.fn(),
+      // Task E29/F04/US01/T01 (todo-web): same "sibling task widened ApiClient without this file's
+      // mock keeping up" gap this file's own comment above already documents for its neighbour.
+      getRenewalNegotiationTodos: vi.fn(),
+      tickRenewalNegotiationTodo: vi.fn(),
       askRaffa: vi.fn(),
       getSavingsKpis: vi.fn(),
       getSavingsOpportunities: vi.fn(),
