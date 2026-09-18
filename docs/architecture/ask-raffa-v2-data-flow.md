@@ -1,5 +1,8 @@
 # Ask Raffa V2 — architecture and data flow
 
+Buyer screens and the upload → review → validated path:
+[`product-flow.md`](product-flow.md).
+
 > **The one rule.** Ask Raffa answers only from Raffa's own store — the
 > Postgres tables and the two vector indexes that live in the same database —
 > plus its deterministic calculators. Microsoft Foundry on Azure reads,
@@ -10,10 +13,7 @@
 
 Binding decisions: [ADR-024](../../.helix/reports/architecture/ADR-024-ask-raffa-v2.md),
 requirements [`requirements.md`](../../.helix/inputs/requirements.md) (§2 three
-sources, §5.1 intake, §5.3 engine, §5.8 market intelligence). Design
-reference: `Raffa V2 Prototype.html`, unpacked under
-[`raffa-v2/`](../../.helix/inputs/design/prototypes/raffa-v2/README.md).
-Wave: epic-13 / slice `e13`.
+sources, §5.1 intake, §5.3 engine, §5.8 market intelligence).
 
 **Colour legend used in every diagram**
 
@@ -44,15 +44,14 @@ flowchart LR
 
   subgraph WEB["Raffa web SPA"]
     direction TB
-    DOCS["Documents<br/>drop one or more contracts"]
-    ASKUI["Ask Raffa — home<br/>conversations · citation cards · actions"]
-    SCREENS["Contract 360 · Renewals<br/>Quote check · Savings"]
+    DOCS["Documents<br/>drop · stages · review · overlay viewer"]
+    ASKUI["Ask Raffa — home<br/>bound chats · quote citations · overlay"]
+    SCREENS["Portfolio · Contract 360 · Renewals<br/>Savings · Quote check"]
   end
 
   subgraph API["Raffa API — Azure Container Apps"]
     direction TB
-    GATE["Admission gate<br/>format → parse → classify → admit or refuse"]
-    PIPE["Extraction pipeline<br/>facts · clauses · supplier · page-aware chunks"]
+    PIPE["Documents pipeline (Worker)<br/>admit · extract · heartbeats · hung recovery"]
     ENGINE["Ask engine<br/>authz → domain gate → planner → context pack → guards"]
     CALC["Calculators<br/>renewals · criticality · levers · benchmark"]
     INGEST["Market ingestion job<br/>Worker command · CI workflow"]
@@ -90,13 +89,12 @@ flowchart LR
 
   U --> DOCS
   U --> ASKUI
-  DOCS -- "1 upload" --> GATE
-  GATE -- "2 parse and classify first" --> OCR
-  GATE --> CLS
-  GATE -- "3 refused: 422, nothing stored" --> DOCS
-  GATE -- "3 admitted" --> PIPE
+  DOCS -- "1 POST 201 Uploaded (size/format only)" --> PIPE
   PIPE --> BLOB
-  PIPE -- "facts" --> EXT
+  PIPE -- "2 classify on Worker" --> OCR
+  PIPE --> CLS
+  PIPE -- "Rejected row, not 422" --> DOCS
+  PIPE -- "3 extract" --> EXT
   PIPE --> T1
   PIPE -- "chunks" --> EMB
   PIPE --> T2
@@ -114,14 +112,14 @@ flowchart LR
   ENGINE -- "5 compute" --> CALC
   ENGINE -- "6 pack + persona prompt" --> ANS
   ANS -- "7 answer + citation keys" --> ENGINE
-  ENGINE -- "8 prose · citation cards · deep links" --> ASKUI
+  ENGINE -- "8 prose · quote cards · viewer overlay" --> ASKUI
   ASKUI --> SCREENS
   ENGINE -. "never" .-x WEBX
   ENGINE -. "never at question time" .-x PROV
 
   class U user
   class DOCS,ASKUI,SCREENS web
-  class GATE,PIPE,ENGINE,CALC,INGEST api
+  class PIPE,ENGINE,CALC,INGEST api
   class OCR,CLS,EXT,EMB,ANS ai
   class T1,T2,M1,M2,BLOB store
   class MOCK,LIVE,PROV market
@@ -135,9 +133,12 @@ only path that ever touches the market source) and the **Ask engine**
 the Ask engine (4–8). There is no edge from the engine to the market
 source and no edge from Foundry to the internet.
 
+`POST /api/documents` stores the original and queues work; the Worker owns
+classify/extract. A content refusal is a `Rejected` document row, not HTTP 422.
+
 ---
 
-## 2. Documents intake — the admission gate runs before anything is written
+## 2. Documents intake — size and format on the request, content on the Worker
 
 ```mermaid
 flowchart TB
@@ -147,32 +148,39 @@ flowchart TB
   classDef no fill:#b91c1c,stroke:#b91c1c,color:#ffffff
   classDef dec fill:#fff7ed,stroke:#b45309,color:#7c2d12
 
-  IN["File from Documents<br/>POST /api/documents, one request per file"] --> F1{"Known format?"}
-  F1 -- "no" --> R415["415 — Raffa reads PDF, Word, Excel and scanned images<br/>no AI call, nothing stored"]
-  F1 -- "magic bytes: PDF · DOCX · XLSX · PNG · JPG, up to 50 MB" --> P["Parse in memory<br/>native text, or OCR through Foundry Document Intelligence"]
+  IN["File from Documents<br/>POST /api/documents, one request per file"] --> F1{"Size and magic bytes?"}
+  F1 -- "too big" --> R413["413 — nothing stored"]
+  F1 -- "not PDF · DOCX · XLSX · PNG · JPG" --> R415["415 — no AI call, nothing stored"]
+  F1 -- "ok, up to 50 MB" --> S["201 Uploaded<br/>blob + document row + queued ExtractionJob"]
+  S --> W["Worker claims the job"]
+  W --> H{"Hung?"}
+  H -- "Uploaded 3 min unclaimed" --> RP["reprocess, cap 3"]
+  H -- "Processing silent 15 min<br/>despite started_at heartbeats" --> RP
+  W --> P["Parse — native text or OCR"]
   P --> F2{"Readable text?"}
-  F2 -- "under 200 characters — a photo of grandma" --> R422a["422 — no_readable_text<br/>nothing stored, audit hash only"]
+  F2 -- "under 200 characters" --> REJ["Rejected — Not added row<br/>audit hash; no embeddings"]
   F2 -- "yes" --> C["classify — Foundry<br/>fixed label set + confidence"]
-  C --> F3{"Contract-related?"}
-  F3 -- "no — a recipe, Other, or confidence under 0.6" --> R422b["422 — not_a_contract<br/>nothing stored, audit hash only"]
-  F3 -- "MSA · Order Form · SOW · Amendment · Renewal letter · Quote · Invoice · Price list · NDA · DPA" --> S["Store original + preview in Blob<br/>document row in Postgres, RLS"]
-  S --> X["Staged extraction — Foundry extract<br/>dates · spend · notice · uplift · liability · supplier"]
-  X --> I["Index page-aware chunks — Foundry embed<br/>tenant RAG"]
-  I --> ST{"Weak critical field?"}
-  ST -- "below 80 percent" --> NR["needs_review — accept or correct in Documents"]
-  ST -- "all above threshold" --> DONE["completed — validated, askable"]
+  C --> F3{"Contract-related at ≥ 0.6?"}
+  F3 -- "Other, or below threshold" --> REJ
+  F3 -- "MSA · Order Form · SOW · Amendment · Renewal letter · Quote · Invoice · Price list · NDA · DPA" --> X["Staged extraction<br/>startDate always auto-accepted<br/>status derived from dates at 1.0"]
+  X --> I["Index page-aware chunks — Foundry embed"]
+  I --> ST{"Critical field below 0.90?"}
+  ST -- "yes, or a failed/skipped stage" --> NR["NeedsReview — Accept/Save in Documents"]
+  ST -- "all at or above the bar" --> DONE["Completed — validated, askable"]
   NR -- "Mark as validated" --> DONE
 
-  class IN,P,S,X,I,NR step
+  class IN,S,W,P,X,I,NR,RP step
   class C ai
   class DONE ok
-  class R415,R422a,R422b no
-  class F1,F2,F3,ST dec
+  class R413,R415,REJ no
+  class F1,F2,F3,ST,H dec
 ```
 
-A refused file leaves one audit row (a hash, the detected type, the
-confidence, the reason) and nothing else: no blob, no document row, no
-embedding. Only `completed` documents feed Ask, Portfolio and Renewals.
+A format/size refusal never creates a row. A content refusal **does**:
+`Rejected`, listed under Not added. Ask lights up from `Completed` documents.
+Portfolio and Renewals also show not-yet-ready rows behind **To review**
+(default view is **Ready**). Admin `DELETE /api/documents` purges files and
+cascades the contracts, renewals, and scoped chats they produced.
 
 ---
 
@@ -232,15 +240,19 @@ sequenceDiagram
   participant G as Guards<br/>grounding · numeric · actions
 
   U->>SPA: Is my Allianz contract above market?
+  Note over SPA: Bound chat: scopeContractId from 360, or a named supplier
   SPA->>API: POST /api/conversations/:id/messages
   rect rgb(224, 242, 254)
-    Note over API: Authorization scope first — tenant, user, role — before any retrieval
+    Note over API: Authorization first — tenant, user, role — then scope id wins over same-name lookup
     API->>API: Domain gate — greeting · off-domain · legal · capability · needs-document · in-domain
     opt ambiguous turn
       API->>F: classify with a fixed label set
       F-->>API: label + confidence
     end
-    API->>API: Planner — market_compare, renewal_strategy, portfolio_strategy, ...
+    API->>API: Planner — StructuredFact, Clause, MarketCompare, RenewalStrategy, PortfolioStrategy, PortfolioMarketPosition, …
+    opt notice question
+      API-->>SPA: fallback answer from the bound contract — Foundry is not called
+    end
   end
   rect rgb(220, 252, 231)
     Note over API,PG: Context pack — built only from Raffa's own store
@@ -265,8 +277,11 @@ sequenceDiagram
     end
   end
   API->>PG: append both turns — citations, actions, AI metadata hash
+  opt RenewalStrategy with a resolved contract
+    API->>PG: upsert ranked negotiation TODOs on that renewal
+  end
   API-->>SPA: kind · answerMarkdown · citations · actions · provenance · followUps
-  SPA-->>U: prose + citation cards (contract page · market record · Raffa feature) + deep links
+  SPA-->>U: quote on the card · Open contract / Open at this span overlay · no guid in prose
 ```
 
 ---
@@ -312,6 +327,11 @@ Four reply kinds, four layouts in the UI: `answer` (prose, cards,
 buttons), `redirect` and `refusal` (warm prose + one CTA), `abstain` (the
 accent-left block, only when there is truly nothing to stand on).
 
+A bound notice question never reaches Foundry. `PortfolioMarketPosition`
+is a planner destination (not Quote check) but has no pack yet — those
+turns abstain. `RenewalStrategy` with a resolved contract persists
+negotiation TODOs before the answer is composed.
+
 ---
 
 ## 6. The store — what is tenant-isolated and what is shared
@@ -335,7 +355,7 @@ erDiagram
     uuid tenant_id "RLS"
     string file_name
     string document_type "MSA OrderForm SOW Amendment RenewalLetter Quote Invoice PriceList NDA DPA"
-    string processing_status "uploaded processing needs_review completed failed"
+    string processing_status "uploaded processing needs_review completed failed rejected"
     int page_count
     string preview_path
   }
@@ -415,7 +435,7 @@ flowchart LR
   classDef store fill:#166534,stroke:#166534,color:#ffffff
   classDef ops fill:#374151,stroke:#374151,color:#ffffff
 
-  subgraph GH["GitHub — lucalamalfa91/raffa"]
+  subgraph GH["GitHub — lucalamalfa91/Raffa.ai"]
     direction TB
     CI["CI — build, test, golden set<br/>schema apply on deploy (ADR-021)"]
     SEED["seed-market-intelligence.yml<br/>verify-tenant-corpus.yml"]

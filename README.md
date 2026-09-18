@@ -1,156 +1,121 @@
 # Raffa.ai
 
-AI-native procurement / contract-intelligence platform. Raffa knows what a
-team bought, what they pay, when they need to act, and where they can save
-money.
+Contract intelligence for procurement. A workspace knows what the team bought,
+what they pay, when they must act, and where they can save — from the contracts
+they upload, not from the open web.
 
-V1 is a **web-first modular monolith** (API + worker + Postgres + object
-storage + queue) on Azure `dev` and `demo`. Scope is R0–R4 (ADR-001); full
-CLM, e-sign, PO/invoice, and ERP replacement are out of scope.
+Web-first modular monolith (API + worker + Postgres + object storage + queue)
+on Azure `dev` and `demo`. Scope is R0–R4 (ADR-001). Full CLM, e-sign, PO/invoice,
+and ERP replacement are out of scope.
 
-- **Repository**: [`lucalamalfa91/raffa`](https://github.com/lucalamalfa91/raffa)
-- **Owner**: `lucalamalfa91` — a personal GitHub **user** account. Raffa is
-  not a GitHub organization (ADR-014).
-- **Visibility**: public
+- **Repository**: [`lucalamalfa91/Raffa.ai`](https://github.com/lucalamalfa91/Raffa.ai)
 - **Default branch**: `main` — trunk-based, protected (ADR-014)
 
-## Folder layout
+## What you use
 
-One monorepo, four product domains plus the Helix run artefact — not four
-separate remotes (ADR-014). Each domain folder carries its own README; keep
-those in sync when the public surface of that folder changes (see
-`.helix/skills/readme-hygiene.md`).
+Sign-in lands on **Ask Raffa** (`/ask`). The rail is two-tier:
 
-| Folder | Contents | README |
-|--------|----------|--------|
-| `infra/` | Terraform for Azure `dev` and `demo` (HCP Terraform remote state) | [`infra/README.md`](infra/README.md) |
-| `backend/` | .NET 10 modular-monolith API + worker | [`backend/README.md`](backend/README.md) |
-| `web/` | React + TypeScript SPA (Vite, MSAL PKCE) | [`web/README.md`](web/README.md) |
-| `mobile/` | React Native (Expo) — **non-gating** lane, no store release for R0–R4 | [`mobile/README.md`](mobile/README.md) |
-| `.helix/` | Helix process artefact — ADRs, work items, slices, delivery process | [`.helix/README.md`](.helix/README.md) |
-| `docs/` | Architecture diagrams and acceptance checklists (Ask Raffa V2 data flow: [`docs/architecture/ask-raffa-v2-data-flow.md`](docs/architecture/ask-raffa-v2-data-flow.md)) | — |
+| Tier | Screen | Route |
+|------|--------|--------|
+| Primary | Ask Raffa (recent chats nested under it) | `/ask`, `/ask/:id` |
+| Primary | Documents | `/documents` |
+| From your contracts | Portfolio | `/contracts` |
+| From your contracts | Renewals | `/renewals` |
+| From your contracts | Savings | `/savings` |
+| From your contracts | Quote check (new proposals, optional) | `/quotes` |
 
-## Stack (locked by ADR)
+There is no Home item. Review is a state of Documents (`?review=`), not a rail
+destination. Workspace & members lives in the rail footer (Admin). Portfolio,
+Renewals, and Quote check stay dim until the workspace has at least one
+**validated** contract (a linked document in `Completed`). Savings is always
+reachable.
+
+## How a workspace works
+
+```
+Upload in Documents → Worker processes → Review weak facts → Validated contract
+        ↓                                         ↓
+   Ask (citations)                    Portfolio · Renewals · Savings
+```
+
+1. **Documents** — drop PDF / Word / Excel / images. Size and format are
+   decided on the request (413 / 415). Everything else runs on the Worker:
+   classify, extract, embed. Non-contracts become a `Rejected` row ("Not added"),
+   not a 422. Hung jobs retry: **Uploaded** after 3 minutes;
+   **Processing** after 15 minutes of silence (job heartbeats). Admin
+   **Delete all documents** removes the files and cascades the contracts they
+   built, their renewal trackers, and Ask chats scoped to those contracts.
+   The viewer opens as an in-page overlay; `/documents/:id/viewer` remains for
+   deep links.
+2. **Review** — Accept or Save in place (no remount). Accepting the extracted
+   value officializes it (`human_accepted`). An extracted start date is always
+   auto-accepted. Contract **status** is derived from official start/end dates
+   at 100% confidence, not from the model's wording. "Mark as validated" signs
+   the document `Completed`.
+3. **Validated feeds the rest** — Ask answers from validated contracts (plus
+   market records and Raffa's capability catalog). Portfolio and Renewals list
+   the workspace's contracts; both default to **Ready**, with **To review** and
+   **All** one click away. Portfolio headers filter by type (text / date /
+   number / select).
+
+**Ask** binds to a supplier/contract when the chat was opened from Contract 360
+(`?scope=` → persisted `scopeContractId`) or when the question names a known
+supplier. A bound chat shows a chip and a title `Supplier — Contract type`.
+Citations show the document quote; a spanned clause offers **Open contract** and
+**Open at this span** (viewer overlay). The rail searches and deletes the
+caller's chats. The global Ask bar is hidden on `/ask` itself (that screen has
+its own composer).
+
+Quote check is only for a **new** supplier proposal. "Which of *my* contracts
+are off-market?" stays in Ask (today that intent routes correctly, then
+abstains — pack not built yet).
+
+Flows in detail: [`docs/architecture/product-flow.md`](docs/architecture/product-flow.md).
+Ask engine, store, and Foundry: [`docs/architecture/ask-raffa-v2-data-flow.md`](docs/architecture/ask-raffa-v2-data-flow.md).
+
+## Repo layout
+
+| Folder | What a developer runs |
+|--------|------------------------|
+| `web/` | React + TypeScript SPA (Vite, MSAL PKCE). [`web/README.md`](web/README.md) |
+| `backend/` | .NET 10 API (`Raffa.Api`) + Worker (`Raffa.Worker`) + Postgres. [`backend/README.md`](backend/README.md) |
+| `infra/` | Terraform for Azure `dev` / `demo`. [`infra/README.md`](infra/README.md) |
+| `mobile/` | Expo lane, non-gating for R0–R4. [`mobile/README.md`](mobile/README.md) |
+| `docs/` | Product and Ask data-flow diagrams (this folder) |
+| `.helix/` | Delivery process artefact — not the product |
+
+## Stack
 
 | Layer | Decision |
 |-------|----------|
 | Backend | .NET 10 / ASP.NET Core modular monolith + worker (ADR-002) |
 | Data | PostgreSQL Flexible Server + pgvector, EF Core, RLS tenancy (ADR-003, ADR-009) |
-| Cloud | Azure North Europe, cheap SKUs (ADR-005, ADR-006) |
-| IaC | Reusable Terraform modules + two env roots; HCP workspaces `raffa-dev` / `raffa-demo` (ADR-007) |
-| Auth | Entra ID, Authorization Code + PKCE; per-env public client + API registration (ADR-010) |
-| Web | React + TypeScript + Vite on Azure Static Web Apps; config at runtime, not build time (ADR-012) |
-| Mobile | Expo + TypeScript; `continue-on-error` in CI (ADR-013) |
-| CI → Azure | GitHub OIDC federated credentials; no stored client secrets (ADR-015) |
+| Cloud | Azure North Europe (ADR-005, ADR-006) |
+| IaC | Terraform; HCP workspaces `raffa-dev` / `raffa-demo` (ADR-007) |
+| Auth | Entra ID, Authorization Code + PKCE (ADR-010) |
+| Web | React + TypeScript + Vite on Azure Static Web Apps; config at runtime (ADR-012) |
+| CI → Azure | GitHub OIDC; no stored client secrets (ADR-015) |
 | Promotion | Merge to `main` → `dev`; tag + GitHub Environment approval → `demo` (ADR-016) |
 
-## Environments and who applies what
+Local how-to lives in the folder READMEs. Architecture decisions live under
+`.helix/reports/architecture/`.
 
-- **`dev`** — auto-deploy on merge to `main` (backend/web). Infra apply is
-  owned by **HCP Terraform VCS**, not by a CLI `terraform apply` from GitHub
-  Actions (`.github/workflows/infra.yml` apply job is a pointer to the HCP UI).
-- **`demo`** — tagged promotion (`demo-v*`) with required reviewers on the
-  GitHub `demo` Environment (ADR-016). First apply of workspace `raffa-demo`
-  is a HCP UI / VCS run, same as `dev`.
-- **Do not mix identities.** HCP Terraform uses the Azure app
-  `raffa-hcp-dev` (`ARM_*` as HCP **Environment** variables). GitHub Actions
-  deploy uses `raffa-sp-dev` / `raffa-sp-demo` via OIDC. Details:
-  [`infra/README.md`](infra/README.md).
-- **Demo fixture data** (so the Day-1 Savings screen is not empty on a
-  fresh `raffa_demo`) is seeded by `.github/workflows/seed-demo-fixture.yml`
-  — an explicit, manually-dispatched/callable job against `dev` or `demo`,
-  reusing the same per-env deploy identity above, never a side effect of an
-  ordinary `dev` push. Details: [`backend/README.md`](backend/README.md)
-  "Demo fixture seed".
-- **Workspace Admin membership** — once `GET /api/workspaces` lists by
-  membership (w14), every workspace needs a live Admin `workspace_membership`
-  row or its creator's picker returns empty. The seed above now grants one to
-  the ADR-022 fixture tenant; every other, already-existing workspace is
-  granted one by `.github/workflows/backfill-workspace-membership.yml`
-  (`target_environment` + a `pairs` input of `<workspace id>,<admin email>`),
-  the same explicit, operator-dispatched, non-promoted shape as the seed.
-  Details: [`backend/README.md`](backend/README.md) "Admin membership for the
-  fixture tenant, and the backfill for everything else".
+## Environments
 
-## Branching and protection
+- **`dev`** — auto-deploy on merge to `main` (backend/web). Infra apply is HCP
+  Terraform VCS, not a GitHub Actions `terraform apply`.
+- **`demo`** — tagged promotion (`demo-v*`) with required reviewers (ADR-016).
+- Identities and fixture/seed jobs: [`infra/README.md`](infra/README.md),
+  [`backend/README.md`](backend/README.md). Operator-only workflows (never a
+  side effect of a push): `seed-demo-fixture.yml`, `seed-market-intelligence.yml`,
+  `verify-tenant-corpus.yml`, `backfill-workspace-membership.yml`.
+
+## Branching
 
 Trunk-based: every change lands on `main` through a required pull request.
-`main` is protected — PR required (including for admins), status checks must
-pass, no force-pushes, no branch deletion.
-
-Helix execution fan-out works on `wave/<task-id>` branches, merges them into
-`integration` at phase barriers, then opens a PR `integration` → `main`.
-Operators do not hand-merge at barriers. See
-`.helix/reports/architecture/ADR-014-git-flow.md`.
-
-## Local verification of repo shape
-
-These scripts make repo identity and branch protection reproducible. Both
-require the GitHub CLI (`gh`) authenticated against `lucalamalfa91/raffa`.
+No force-pushes, no branch deletion.
 
 ```bash
-# owner/repo/visibility/description/default-branch + folder layout + secret scan
 python scripts/verify_github_repos.py
-
-# applies (idempotently) and confirms `main` branch protection
 python scripts/apply_github_branch_protection.py
 ```
-
-Both exit `0` when the repository already matches — or has just been
-brought to match — the required shape, and non-zero with a report of what
-does not.
-
-Per-domain how-to (run, test, plan, deploy) lives in that folder's README.
-Architecture decisions live under `.helix/reports/architecture/`.
-
-## Ask Raffa V2 — the pilot path and its operator jobs (epic-13, ADR-024)
-
-V2 makes **Ask Raffa the home of the product**: sign-in lands on `/ask`, the
-rail is two-tier, uploads happen only in Documents (non-contracts are refused
-at the door), and every answer cites one of three sources — your validated
-contracts, the market-intelligence feed, or Raffa's own capability catalog —
-or abstains. The buyer journey it has to survive is one flow:
-
-> Sign in → **Documents** (drop one or more contracts; non-contracts are
-> refused) → review weak facts → **Ask** (contract vs market, renewal
-> strategy) → **new chat** (portfolio strategy) → follow a citation into
-> **Contract 360**.
-
-**Acceptance checklist**: [`docs/ask-v2-acceptance.md`](docs/ask-v2-acceptance.md)
-— A1–A14 as a runbook, one exact command or click-path and one observable pass
-condition per row, plus the gaps that currently shape what a row can prove.
-**Data flow**: [`docs/architecture/ask-raffa-v2-data-flow.md`](docs/architecture/ask-raffa-v2-data-flow.md).
-
-### The two V2 operator jobs
-
-Both are `workflow_dispatch` (and `workflow_call`) only — never a side effect
-of a push, exactly like `seed-demo-fixture.yml` (ADR-021 / ADR-022). Both reuse
-the same per-environment OIDC deploy identity and the same `postgres-connection`
-Key Vault secret, so neither needs a new Azure role assignment (ADR-011,
-ADR-015).
-
-| Workflow | Inputs | What it does |
-|----------|--------|--------------|
-| [`.github/workflows/seed-market-intelligence.yml`](.github/workflows/seed-market-intelligence.yml) | `target_environment` (`dev` \| `demo`) | Runs the Worker's `ingest-market` command against that environment's database with the checked-in mock feed (`backend/fixtures/market-intelligence.mock.json`), prints the ingestion summary, **re-runs it and fails unless the second pass reports `0 inserted, 0 updated`** (R-MKT-03 AC-1), then verifies `market_record` / `market_embedding` landed and still carry no `tenant_id`. |
-| [`.github/workflows/verify-tenant-corpus.yml`](.github/workflows/verify-tenant-corpus.yml) | `target_environment`, `tenant_id` | Reports that tenant's documents, `%PDF` embeddings (R-DOC-07 AC-1) and supplier gaps (R-SUP-03). **Does not mutate.** Bulk whole-tenant reprocess is W17; an Admin resubmits one document through the product. |
-
-Order for a fresh environment: deploy (schema apply, ADR-021) → **seed-demo-fixture**
-→ **seed-market-intelligence** → **verify-tenant-corpus** → walk
-`docs/ask-v2-acceptance.md` and `docs/waves/w16-acceptance.md`. The same order applies to `demo`
-after a promotion. **No `demo-v*` tag is cut by w16.**
-
-### Proving it in a browser
-
-`web/e2e/v2.spec.ts` (Playwright) walks A1, A3, A4, A8, A9, A10 and A14 against
-a deployed environment, and A2 / A5 / A6 / A7 as well when `E2E_LIVE_FOUNDRY=1`.
-Unconfigured it reports every row as skipped with the reason and exits `0`. See
-[`web/README.md`](web/README.md) "End-to-end (Ask Raffa V2 pilot path)". The
-V1 walk, `web/e2e/day1.spec.ts`, is red against the V2 shell by design; this
-suite replaces it.
-
-The AI golden set (A13) needs no CI step of its own:
-`backend/tests/Raffa.AiEval` is a member of `Raffa.slnx`, so
-`.github/workflows/backend.yml`'s existing `dotnet test Raffa.slnx` runs it
-and a guard intervention fails the build. See
-[`backend/README.md`](backend/README.md) "Ask Raffa V2 — operator jobs, golden
-set and acceptance".
