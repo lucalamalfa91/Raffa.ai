@@ -14,7 +14,9 @@ import {
   getStagePercent,
   isAttentionStatus,
   isStuckUploaded,
+  isStuckProcessing,
   STUCK_REPROCESS_AFTER_MS,
+  MAX_STUCK_REPROCESS_ATTEMPTS,
   type DocumentCountsBody,
 } from "../../../src/routes/documents/documentTable";
 
@@ -183,6 +185,24 @@ describe("isStuckUploaded", () => {
 
   it("is false while the Worker has already claimed the job", () => {
     expect(isStuckUploaded(item({ processingStatus: "Processing", createdAt: "2026-09-15T17:50:00Z" }), now)).toBe(false);
+  });
+});
+
+describe("isStuckProcessing", () => {
+  const now = Date.parse("2026-09-15T18:00:00Z");
+
+  it("is false while the same stage has been showing for under three minutes", () => {
+    expect(isStuckProcessing(item({ processingStatus: "Processing", stage: "Uploading" }), now - 60_000, now)).toBe(false);
+  });
+
+  it("is true once the same Processing stage has been showing for three minutes", () => {
+    expect(MAX_STUCK_REPROCESS_ATTEMPTS).toBe(3);
+    expect(isStuckProcessing(item({ processingStatus: "Processing", stage: "Validating schema" }), now - STUCK_REPROCESS_AFTER_MS, now)).toBe(true);
+  });
+
+  it("is false for Uploaded and terminal statuses", () => {
+    expect(isStuckProcessing(item({ processingStatus: "Uploaded" }), now - STUCK_REPROCESS_AFTER_MS, now)).toBe(false);
+    expect(isStuckProcessing(item({ processingStatus: "Failed" }), now - STUCK_REPROCESS_AFTER_MS, now)).toBe(false);
   });
 });
 

@@ -33,10 +33,9 @@ public sealed class ExtractionJob : TenantScopedEntity
     public int AttemptCount { get; set; }
 
     /// <summary>
-    /// When a worker last claimed this job (ADR-027 §D3). Null until the first claim; us-02's
-    /// handler uses it, alongside a lease window, to decide whether a stale claim may be
-    /// reclaimed. Nullable so a never-claimed <see cref="ExtractionJobStatus.Queued"/> row needs
-    /// no sentinel value.
+    /// When a worker last claimed this job (ADR-027 §D3). Null until the first claim. Hang
+    /// recovery (<see cref="Application.Extraction.HungProcessingDetector"/>) uses it, with
+    /// <see cref="StartedAt"/> / <see cref="CompletedAt"/>, as the last-progress heartbeat.
     /// </summary>
     public DateTimeOffset? ClaimedAt { get; set; }
 

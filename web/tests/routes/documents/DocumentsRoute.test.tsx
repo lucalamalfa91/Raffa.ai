@@ -495,6 +495,40 @@ describe("DocumentsRoute (task E13/F09/US01/T03, web-documents-v2)", () => {
     expect(screen.queryByText(/stopped checking for updates/)).toBeNull();
   });
 
+  it("auto-reprocesses a Processing document stuck on the same stage after three minutes", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const reprocessDocument = vi.fn().mockResolvedValue({
+      ok: true,
+      statusCode: 202,
+      queued: { documentId: "p", extractionJobId: "job-1", processingStatus: "Uploaded" },
+      error: null,
+    });
+    const listDocuments = vi
+      .fn<ApiClient["listDocuments"]>()
+      .mockResolvedValue(
+        listOk([
+          docItem({
+            id: "p",
+            fileName: "Hung.pdf",
+            processingStatus: "Processing",
+            stage: "Uploading",
+            contractId: null,
+            createdAt: new Date().toISOString(),
+          }),
+        ]),
+      );
+    renderDocuments(mockApiClient({ listDocuments, reprocessDocument }));
+
+    expect(await screen.findByText("Uploading…")).toBeInTheDocument();
+    expect(reprocessDocument).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3 * 60_000);
+    });
+    await waitFor(() => expect(reprocessDocument).toHaveBeenCalledTimes(1));
+    expect(reprocessDocument).toHaveBeenCalledWith(WORKSPACE_ID, "p");
+  });
+
   it("the attention filter hides completed rows and shows the empty message; 'All documents' reveals them", async () => {
     const items = [
       docItem({ id: "a", fileName: "Attention.pdf", processingStatus: "NeedsReview" }),

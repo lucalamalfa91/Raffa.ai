@@ -300,6 +300,7 @@ public static class DocumentsEndpointExtensions
         string id,
         HttpRequest request,
         DocumentQueryService queryService,
+        HungProcessingRecoveryService hungRecovery,
         ICallerContext callerContext,
         CancellationToken cancellationToken)
     {
@@ -321,8 +322,13 @@ public static class DocumentsEndpointExtensions
             return Results.BadRequest("The document id in the route must be a GUID.");
         }
 
+        var documentId = new EntityId(documentGuid);
+        await hungRecovery
+            .RecoverDocumentAsync(tenantId, documentId, force: false, cancellationToken)
+            .ConfigureAwait(false);
+
         var metadata = await queryService
-            .GetByIdAsync(tenantId, new EntityId(documentGuid), cancellationToken)
+            .GetByIdAsync(tenantId, documentId, cancellationToken)
             .ConfigureAwait(false);
 
         if (metadata is null)
@@ -356,6 +362,7 @@ public static class DocumentsEndpointExtensions
     private static async Task<IResult> ListDocumentsAsync(
         HttpRequest request,
         DocumentQueryService queryService,
+        HungProcessingRecoveryService hungRecovery,
         ICallerContext callerContext,
         CancellationToken cancellationToken)
     {
@@ -371,6 +378,10 @@ public static class DocumentsEndpointExtensions
 
         using var callerTenantScope = caller.Scope;
         var tenantId = caller.TenantId;
+
+        await hungRecovery
+            .RecoverHungInTenantAsync(tenantId, cancellationToken)
+            .ConfigureAwait(false);
 
         DocumentProcessingStatus? status = null;
         if (request.Query.TryGetValue("status", out var statusValues) && !string.IsNullOrWhiteSpace(statusValues))

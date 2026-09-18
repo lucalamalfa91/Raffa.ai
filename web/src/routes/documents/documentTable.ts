@@ -137,8 +137,15 @@ export interface RowAction {
  * automatically calls `POST /api/documents/{id}/reprocess` once. After this the Worker has had a
  * fair chance to claim the job; staying `Uploaded` means the pointer is gone (dead-lettered or
  * never delivered). The table never offers a Retry upload CTA — next-step copy stays informational.
+ * The same window applies to a `Processing` row whose stage has not changed: the Worker claimed
+ * the job, then went silent (claim held, Service Bus message already completed as claim-lost).
  */
 export const STUCK_REPROCESS_AFTER_MS = 3 * 60 * 1000;
+
+/** Full restart cap shared with `ExtractionRequestedHandler.MaxAttempts`. After this many
+ * auto-reprocess calls the server marks the row Failed (or the client stops looping if the
+ * Worker is still gone). */
+export const MAX_STUCK_REPROCESS_ATTEMPTS = 3;
 
 /** True when an `Uploaded` document has sat long enough that the list should fire one auto-reprocess. */
 export function isStuckUploaded(
@@ -148,6 +155,18 @@ export function isStuckUploaded(
   if (item.processingStatus !== "Uploaded") return false;
   const created = Date.parse(item.createdAt);
   return Number.isFinite(created) && nowMs - created >= STUCK_REPROCESS_AFTER_MS;
+}
+
+/** True when a `Processing` row has shown the same stage for `STUCK_REPROCESS_AFTER_MS`.
+ * `stageUnchangedSinceMs` is when the client first observed this stage (the list API has no
+ * per-stage timestamp; the server hang detector uses job `claimed_at`/`started_at`). */
+export function isStuckProcessing(
+  item: Pick<DocumentListItemBody, "processingStatus">,
+  stageUnchangedSinceMs: number,
+  nowMs: number = Date.now(),
+): boolean {
+  if (item.processingStatus !== "Processing") return false;
+  return nowMs - stageUnchangedSinceMs >= STUCK_REPROCESS_AFTER_MS;
 }
 
 /**
