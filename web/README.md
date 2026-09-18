@@ -778,6 +778,16 @@ per-user conversations.
   contracts sentence, which would otherwise misdescribe a chat scoped to one contract. The off-state
   gate above is unaffected -- a scoped link into a tenant with zero validated contracts still renders
   the generic `AskOffState`, never a briefed-but-off face.
+- **Bound-contract chip** (`index.tsx`, task E27/F04/US01/T01, NW-78, wave w19; ADR-012 cl. 49 /
+  ADR-020 37.2 per `reports/architecture/waves/w19.md`) -- a persistent `.tag-neutral` pill (`{
+  supplierName} · {type}`, never a bare guid) renders above the thread, inside a plain `<Link
+  to={boundContractChip.href}>` to `/contracts/{contractId}`, for as long as this conversation is
+  scoped -- independent of `hasTurns` (visible the instant a scoped create response resolves,
+  before the first reply, not only once resumed with a full history). Keyed off `boundContractId`,
+  the conversation's own **durable**, persisted `scopeContractId` (read off the create response or
+  the resumed conversation detail) -- never the transient `?scope=` query the New-chat brief above
+  reads pre-creation -- so the chip is what actually survives a resume; unrendered, not a
+  placeholder, while the supplier/type fetch behind its own label has not resolved yet.
 - **Conversation** -- header shows the derived title (`deriveConversationTitle`, collapsed
   whitespace, hard-truncated at 48 chars, no ellipsis) + "+ New chat"; every turn renders through the
   phase-2 `ReplyBody` (task E13/F09/US01/T02, `routes/ask/reply/*`, this task maps the wire reply

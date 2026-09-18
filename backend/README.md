@@ -1196,6 +1196,67 @@ Cross-tenant isolation over this new endpoint (parent story AC-9) is
 proven the same way as `POST /api/chat/query`'s — see
 `Raffa.IntegrationTests.AskRaffaRagCrossTenantIsolationTests`.
 
+### Ask Raffa V2 — the notice pack (tasks E30/F01/US01/T01 + E30/F02/US01/T01, NW-91/NW-92/NW-94, ADR-024 w19 cl. 22)
+
+A notice/preavviso/disdetta/cancellation-deadline question rides the identical
+`POST /api/conversations/{id}/messages` route above — no new endpoint — but is
+detected and answered entirely server-side, before any pack ever reaches
+`AnswerComposer`/the AI gateway. `AskCopilotService.NoticeQuestionPattern`
+(`notice|preavviso|disdetta(\s+period)?|cancellation\s+deadline`, English +
+Italian) is checked inside the planner's existing `AskIntent.StructuredFact`
+branch — deliberately **not** an eleventh `AskIntent` (this file's own doc
+comment: `IntentPlanner` reuses the one intent for both rather than adding
+one, so "The V2 engine"'s ten fixed intents above are unchanged).
+
+**The pack (feature-01, NW-91/NW-92).** `BuildNoticePackAsync` composes, in
+order: (1) the scoped fact itself — `endDate`/`cancellationDeadline`/
+`renewalTermMonths` read straight off `Contract360Renewal`, every date a
+`PackValueKind.Date` — with one of three honest snippets keyed on
+`autoRenewal`: `false` states "no notice window applies, the contract ends on
+`endDate`" (never a fabricated deadline); a known deadline states the date
+plus, only when a `renewalTermMonths` is on file, "if missed, renews for N
+month(s)"; neither known states the honest gap (Appendix C rule 10); (2)
+`StrategyPackBuilder`'s own "when you must move" explanation (the identical
+narration `BuildRenewalStrategyPackAsync` cites below), whose
+`daysUntilNotice` pack value is `WhenYouMustMove.DaysLeft` — signed, never
+floored to zero, so a passed deadline reads "N days ago"; (3) an optional
+matching-clause evidence item, the first extracted clause whose type or text
+names notice/cancellation/termination/auto-renewal
+(`BuildMatchingClauseItem`), via the same `ResolveTenantClauseLinks` tier-1
+resolution `BuildClausePackAsync` uses. **"N days" is never `EndDate −
+CancellationDeadline`** (the task's own forbidden shortcut) — the day count
+is always a calculator output, and RAG (epic-28's contract-scoped
+`SearchByContractAsync`) is fallback only, never called from this path at all
+(the InMemory EF provider cannot translate `CosineDistance`, the same
+constraint the Q3 pack below documents).
+
+**The fallbacks (feature-02, NW-94) short-circuit before feature-01's own
+pack wrapper is ever reached** — `BuildInDomainReplyAsync` checks
+`NoticeQuestionPattern` directly, ahead of the `packItems` switch, and
+decides one of five server-owned outcomes, never falling through to
+`AnswerComposer`: (1) a known deadline **and** a spanned clause → `answer`,
+citing the fact and the deep-linked clause (page+documentId real, NW-83 — so
+the client's two-CTA card, "Ask Raffa" in `web/README.md`, renders itself
+from the citation alone); (2) a known deadline, no matching span → `answer`,
+citing the fact alone (never a fabricated page); (3) no deadline, a clause
+names one in its own words → `answer`, quoting the clause text verbatim as
+the whole answer; (4) neither → `abstain` naming this contract's own
+supplier, with a 360 **Review** recovery action
+(`CapabilityIntent.HowTo(CapabilityCatalog.ContractDetailKey)`) — never the
+generic ask-hint recovery, and never "which supplier" even though nothing
+grounded; (5) no contract in scope at all (no conversation scope, no
+resolvable named supplier) → `abstain` with a **Portfolio** recovery action
+(`/contracts`), never a guessed contract. A multi-contract disambiguation
+item (NW-80, "never silently merge") is prepended to every one of the four
+answering/abstaining cases' own citations and answer text, never folded into
+case 4's abstain. Zero gateway calls on any of the five paths — proved
+directly (`RecordingAiGateway.Calls` empty) by
+`Raffa.Api.Tests.NoticeFallbackEndpointTests`, the host-level test for all
+five cases (a real clause seeded via `InMemoryAskEngineFactory
+.SeedClauseAsync`, this task's own addition to the shared InMemory fixture —
+no Postgres needed for a "matching clause" scenario, since
+`Contract360QueryService.GetByIdAsync`'s `Clauses` read is a plain EF query).
+
 ## Ask Raffa — capability catalog
 
 Task E13/F08/US01/T01 (story us-01-capability-catalog, ADR-024 "Capability
