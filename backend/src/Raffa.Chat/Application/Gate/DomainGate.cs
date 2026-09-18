@@ -1,7 +1,25 @@
+using System.Text;
 using System.Text.RegularExpressions;
 using Raffa.Chat.Domain;
 
 namespace Raffa.Chat.Application.Gate;
+
+/// <summary>
+/// One supplier this tenant already has at least one contract for, as the composition root
+/// (<c>Raffa.Api.AskCopilotService</c>) resolves it before calling <see cref="DomainGate.Classify"/>
+/// (task E27/F05/US01/T01, NW-80). <see cref="DisplayName"/> is
+/// <c>Raffa.Suppliers.Products.Domain.Supplier.Name</c>, via
+/// <c>Raffa.SharedKernel.Suppliers.ISupplierNameLookup.GetNamesAsync</c> the host already called for
+/// every other reason it needs a name (ADR-024 "names, never guids"). <see cref="NormalizedName"/>
+/// is that same name run through <c>Raffa.Suppliers.Products.Application.SupplierNameNormalizer
+/// .Normalize</c> -- lower-cased, punctuation-stripped, legal-suffix-stripped ("GmbH"/"SA"/"Ltd"/
+/// ...) -- computed once by the host and carried in here rather than called from this type, because
+/// <c>Raffa.Chat</c>'s allow-list (<c>[SharedKernel, AiGateway]</c>,
+/// <c>Raffa.ArchitectureTests.DependencyDirectionTests</c>) forbids this module from referencing
+/// <c>Raffa.Suppliers.Products</c> at all. <see cref="DomainGate"/> stays pure/synchronous either
+/// way -- no DB, no LLM -- it only ever compares strings it is handed.
+/// </summary>
+public readonly record struct KnownSupplierName(string DisplayName, string NormalizedName);
 
 /// <summary>
 /// The Ask engine's admission gate (task E13/F06/US01/T01, ask-engine; ADR-024 "engine (R-ASK-01
@@ -117,18 +135,19 @@ public sealed class DomainGate
     /// <c>AskRaffaQueryRouter</c>/<c>DeterministicQueryPlanner</c> already establish.
     /// </summary>
     /// <param name="question">The caller's raw question text.</param>
-    /// <param name="knownSupplierNames">Every supplier name this tenant already has at least one
-    /// contract for (resolved by the composition root via
-    /// <c>Raffa.SharedKernel.Suppliers.ISupplierNameLookup</c> — R-ASK-03) — compared
-    /// case-insensitively against a capitalized candidate extracted from
-    /// <paramref name="question"/>. An empty collection is valid input (a brand-new tenant with no
-    /// contracts at all): every named supplier then resolves to <see cref="GateLabel.NeedsDocument"/>.</param>
+    /// <param name="knownSuppliers">Every supplier this tenant already has at least one contract
+    /// for (resolved by the composition root — R-ASK-03; see <see cref="KnownSupplierName"/>'s own
+    /// doc comment for how its two fields are computed). <see cref="ExtractSupplierCandidate"/>
+    /// tries an exact, case-insensitive match against a capitalized candidate first, then falls
+    /// back to a normalized/contains match against the whole question (task E27/F05/US01/T01,
+    /// NW-80). An empty collection is valid input (a brand-new tenant with no contracts at all):
+    /// every named supplier then resolves to <see cref="GateLabel.NeedsDocument"/>.</param>
     /// <exception cref="ArgumentException"><paramref name="question"/> is null/blank.</exception>
-    /// <exception cref="ArgumentNullException"><paramref name="knownSupplierNames"/> is null.</exception>
-    public DomainGateResult Classify(string question, IReadOnlyCollection<string> knownSupplierNames)
+    /// <exception cref="ArgumentNullException"><paramref name="knownSuppliers"/> is null.</exception>
+    public DomainGateResult Classify(string question, IReadOnlyCollection<KnownSupplierName> knownSuppliers)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(question);
-        ArgumentNullException.ThrowIfNull(knownSupplierNames);
+        ArgumentNullException.ThrowIfNull(knownSuppliers);
 
         var trimmed = question.Trim();
 
@@ -153,13 +172,13 @@ public sealed class DomainGate
             return new DomainGateResult(GateLabel.Capability, "matched the capability/how-to lexicon.");
         }
 
-        var (candidate, resolvedCandidate) = ExtractSupplierCandidate(trimmed, knownSupplierNames);
+        var (candidate, resolvedCandidate) = ExtractSupplierCandidate(trimmed, knownSuppliers);
         if (candidate is not null && resolvedCandidate is null)
         {
             return new DomainGateResult(
                 GateLabel.NeedsDocument,
                 $"named supplier '{candidate}' does not match any of this tenant's " +
-                $"{knownSupplierNames.Count} known supplier(s) (R-ASK-03).",
+                $"{knownSuppliers.Count} known supplier(s) (R-ASK-03).",
                 candidate);
         }
 
@@ -178,10 +197,12 @@ public sealed class DomainGate
 
     /// <summary>
     /// Picks the capitalized run in <paramref name="question"/> most likely to be a supplier name,
-    /// and says whether this tenant already knows it.
+    /// and says whether this tenant already knows it. Two tiers, tried in order (task
+    /// E27/F05/US01/T01, NW-80 — "exact, then normalized/contains"):
     ///
     /// <para>
-    /// Two rules, both learned from real questions (golden set, task E13/F06/US01/T02):
+    /// <b>Tier 1 — exact, capitalized-run match</b> (unchanged from task E13/F06/US01/T02's own
+    /// golden-set fix), two rules:
     /// <list type="number">
     /// <item><b>Every</b> capitalized run is considered, not just the first. "How should I approach
     /// the Salesforce renewal?" names one supplier, and it is not the first capitalized token.</item>
@@ -189,15 +210,31 @@ public sealed class DomainGate
     /// that mentions a known supplier is never sent to "upload a document first" because some other
     /// capitalized word appeared earlier in the sentence.</item>
     /// </list>
-    /// Runs in <see cref="NeverSupplierNames"/> are skipped outright. When nothing matches a known
-    /// supplier, the first remaining run is returned as the unknown candidate — the honest
-    /// R-ASK-03 answer is still "no contract for that supplier".
+    /// Runs in <see cref="NeverSupplierNames"/> are skipped outright.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>Tier 2 — normalized/contains, against the whole question</b>: Tier 1 can only ever see a
+    /// capitalized run, so a mention missing the supplier's own legal suffix ("AsterCloud" for
+    /// "AsterCloud GmbH") or typed with no capital letter at all ("su salesforce") never produces a
+    /// Tier-1 match to begin with — not a mismatch, a candidate that was never extracted. This tier
+    /// normalizes <paramref name="question"/> the same way <see cref="KnownSupplierName.NormalizedName"/>
+    /// was already normalized (case-folded, punctuation-stripped — see
+    /// <see cref="NormalizeForContainsMatch"/>) and checks whether each known supplier's normalized
+    /// name occurs as one or more whole words anywhere in it. Tried only when Tier 1 resolved
+    /// nothing, so an exact capitalized match is never second-guessed by a looser one.
+    /// </para>
+    ///
+    /// <para>
+    /// When nothing resolves in either tier, the first capitalized run Tier 1 saw (if any) is
+    /// returned as the unknown candidate — the honest R-ASK-03 answer is still "no contract for
+    /// that supplier".
     /// </para>
     /// </summary>
     /// <returns>The candidate (or <see langword="null"/> when the question names none), and the
-    /// candidate that matched a known supplier (or <see langword="null"/> when none did).</returns>
+    /// known supplier's display name that matched (or <see langword="null"/> when none did).</returns>
     private static (string? Candidate, string? Resolved) ExtractSupplierCandidate(
-        string question, IReadOnlyCollection<string> knownSupplierNames)
+        string question, IReadOnlyCollection<KnownSupplierName> knownSuppliers)
     {
         string? first = null;
 
@@ -209,14 +246,70 @@ public sealed class DomainGate
                 continue;
             }
 
-            if (knownSupplierNames.Any(name => string.Equals(name, value, StringComparison.OrdinalIgnoreCase)))
+            foreach (var known in knownSuppliers)
             {
-                return (value, value);
+                if (string.Equals(known.DisplayName, value, StringComparison.OrdinalIgnoreCase))
+                {
+                    return (value, known.DisplayName);
+                }
             }
 
             first ??= value;
         }
 
+        var normalizedQuestion = NormalizeForContainsMatch(question);
+        foreach (var known in knownSuppliers)
+        {
+            if (ContainsWholeWord(normalizedQuestion, known.NormalizedName))
+            {
+                return (first ?? known.DisplayName, known.DisplayName);
+            }
+        }
+
         return (first, null);
     }
+
+    /// <summary>
+    /// Lower-cases <paramref name="text"/> and drops every character that is neither a letter/digit
+    /// nor whitespace, collapsing whitespace runs to a single space — the same punctuation-handling
+    /// rule <c>Raffa.Suppliers.Products.Application.SupplierNameNormalizer.Normalize</c>'s own char
+    /// loop applies (duplicated rather than referenced; see <see cref="KnownSupplierName"/>'s own doc
+    /// comment for why <c>Raffa.Chat</c> cannot call that type directly), minus that method's
+    /// legal-suffix stripping — stripping a *trailing* word only makes sense applied to a single
+    /// supplier name, never to an arbitrary sentence. Never applied to a supplier name itself: the
+    /// host is the one place both sides of Tier 2's comparison are normalized by the real
+    /// <c>SupplierNameNormalizer</c>, so they agree on legal-suffix handling even though this method
+    /// does not attempt it.
+    /// </summary>
+    private static string NormalizeForContainsMatch(string text)
+    {
+        var builder = new StringBuilder(text.Length);
+        foreach (var c in text)
+        {
+            if (char.IsLetterOrDigit(c))
+            {
+                builder.Append(char.ToLowerInvariant(c));
+            }
+            else if (char.IsWhiteSpace(c))
+            {
+                builder.Append(' ');
+            }
+            // every other character (punctuation) is dropped, exactly like SupplierNameNormalizer.
+        }
+
+        var words = builder.ToString().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return string.Join(' ', words);
+    }
+
+    /// <summary>
+    /// Whether <paramref name="needle"/> occurs in <paramref name="normalizedHaystack"/> as one or
+    /// more whole, space-bounded words — never a same-word substring hit ("co" inside "coach").
+    /// Both arguments are expected already normalized (single-spaced, lower-case, alphanumeric-only —
+    /// <see cref="NormalizeForContainsMatch"/> for the question, <see cref="KnownSupplierName.NormalizedName"/>
+    /// for the supplier), so padding each with one boundary space is enough to guarantee a match only
+    /// ever lands on real word boundaries.
+    /// </summary>
+    private static bool ContainsWholeWord(string normalizedHaystack, string needle) =>
+        needle.Length > 0 &&
+        $" {normalizedHaystack} ".Contains($" {needle} ", StringComparison.Ordinal);
 }
