@@ -59,17 +59,23 @@ export function toCitationCorpus(wireCorpus: string): CitationCorpus {
 }
 
 /**
- * A tenant citation's real `href` is always the bare `/contracts/{contractId}` on this backend
- * today (`AskCopilotService.cs`'s own `PackItem` constructions -- confirmed, never `?clause=...`
- * despite requirements.md §6's own illustrative example) -- so the citation-landing deep link
- * (task text: "clicking a tenant citation -> `/contracts/<contractId>?clause=<clauseId>` (or
- * `?page=`)") has to be finished client-side. There is no raw `clauseId` anywhere on the wire
- * (R-ASK-08 "no guids ever rendered" -- consistent with that, not an oversight this function works
- * around), only `page` (a plain integer), so this always takes the `?page=` branch of
- * `../contracts/contract360/contract360ViewModel.ts#resolveHighlightedClauseId`'s own two mutually
- * exclusive branches -- that screen resolves `page` back to a real clause itself once it loads.
- * Defensive against a future backend fix: a `href` that already carries a query string (e.g. a
- * `?clause=` this backend does not send yet) is trusted as-is, never double-appended.
+ * Trusts the backend's own citation `href` -- there is nothing left to synthesise (task
+ * E28/F03/US02/T01, NW-83). Before that task a tenant citation's real `href` was always the bare
+ * `/contracts/{contractId}` (`AskCopilotService.cs`'s own `PackItem` constructions), never
+ * `?clause=...` despite requirements.md §6's own illustrative example, so the citation-landing deep
+ * link had to be finished client-side by appending `?page=` here. `AskCopilotService
+ * .ResolveTenantClauseLinks` now stamps the full link server-side instead: the W18 viewer's
+ * `?page=&clause=` pair when a clause/span resolves, the viewer's `?page=` alone when only a
+ * document page does, or the 360 route's own `?clause=`/`?page=` half otherwise -- three tiers, and
+ * every one of them already carries whatever query string applies. `CitationCard.tsx` reads that
+ * shape directly (`isViewerHref`) to decide whether a citation "carries a clause/span id" at all,
+ * so the `?page=`-appending branch below no longer fires against real backend data.
+ *
+ * Kept, not deleted: a defensive fallback for a builder that still sends a bare `href` alongside a
+ * known `page` without going through `ResolveTenantClauseLinks` (`BuildContractFactItem` does
+ * today, though its own `page` is always `null`, so even that call site never actually reaches the
+ * append branch). A `href` that already carries a query string is trusted as-is, never
+ * double-appended.
  */
 export function buildTenantCitationHref(href: string | null, page: number | null): string | null {
   if (href === null) return null;
@@ -87,6 +93,11 @@ export function mapConversationCitation(body: ConversationCitationBody): ReplyCi
     snippet: body.snippet,
     previewUrl: body.previewUrl,
     href: corpus === "tenant" ? buildTenantCitationHref(body.href, body.page) : body.href,
+    // Task E28/F03/US02/T01 (NW-83/NW-93): echoed verbatim so `CitationCard.tsx` can build its
+    // two-CTA card's primary "Open contract" action once `href` above has resolved to the W18
+    // viewer route. No extra corpus gate needed -- the wire's own `contractId` is already `null`
+    // for market/raffa citations and for an NW-81 peer hit.
+    contractId: body.contractId,
   };
 }
 
