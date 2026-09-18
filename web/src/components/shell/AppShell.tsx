@@ -8,6 +8,7 @@ import { usePollBudget } from "./usePollBudget";
 import type { WorkspaceRole } from "./navItems";
 import type { ApiClient } from "../../api/client";
 import { isAskRoute } from "./isAskRoute";
+import { DocumentViewerProvider } from "../../routes/documents/viewer/DocumentViewerOverlay";
 import "./shell.css";
 
 export { isAskRoute } from "./isAskRoute";
@@ -98,31 +99,33 @@ export default function AppShell({ workspaceId, workspaceName, role, userLabel, 
   const showGlobalAskBar = !onAskScreen;
 
   return (
-    <div className="shell-layout">
-      <RailNav
-        workspaceName={workspaceName}
-        role={role}
-        userLabel={userLabel}
-        onSignOut={onSignOut}
-        kbReady={kbReady}
-        validatedContractCount={count}
-        documentCounts={documentCounts}
-        apiClient={apiClient}
-      />
-      <main className="shell-main">
-        {/* Task E25/F01/US01/T01 (AC-3): the same server-derived `role` RailNav already receives
-            below, threaded into the global Ask bar too so it can drop admin-gated suggestion chips
-            for a non-Admin -- never re-derived, never fetched a second time.
-            Task E25/F06/US01/T01 (AC-1/AC-3): suppressed on the Ask route itself (see
-            `showGlobalAskBar` above) -- that route renders its own composer instead. */}
-        {showGlobalAskBar && <GlobalAskBar kbReady={kbReady} role={role} apiClient={apiClient} />}
-        <div className="shell-content">
-          {/* Shared with every screen through the router outlet (shellContext.ts): the same kbReady /
-              validated-count verdict the rail and the Ask bar already render, plus the same document
-              counts the rail badge shows, so a screen never has to re-fetch for a second opinion. */}
-          <Outlet context={{ workspaceId, kbReady, validatedContractCount: count, documentCounts }} />
-        </div>
-      </main>
-    </div>
+    <DocumentViewerProvider apiClient={apiClient}>
+      <div className="shell-layout">
+        <RailNav
+          workspaceName={workspaceName}
+          role={role}
+          userLabel={userLabel}
+          onSignOut={onSignOut}
+          kbReady={kbReady}
+          validatedContractCount={count}
+          documentCounts={documentCounts}
+          apiClient={apiClient}
+        />
+        <main className="shell-main">
+          {/* Task E25/F01/US01/T01 (AC-3): the same server-derived `role` RailNav already receives
+              below, threaded into the global Ask bar too so it can drop admin-gated suggestion chips
+              for a non-Admin -- never re-derived, never fetched a second time.
+              Task E25/F06/US01/T01 (AC-1/AC-3): suppressed on the Ask route itself (see
+              `showGlobalAskBar` above) -- that route renders its own composer instead. */}
+          {showGlobalAskBar && <GlobalAskBar kbReady={kbReady} role={role} apiClient={apiClient} />}
+          <div className="shell-content">
+            {/* Shared with every screen through the router outlet (shellContext.ts): the same kbReady /
+                validated-count verdict the rail and the Ask bar already render, plus the same document
+                counts the rail badge shows, so a screen never has to re-fetch for a second opinion. */}
+            <Outlet context={{ workspaceId, kbReady, validatedContractCount: count, documentCounts }} />
+          </div>
+        </main>
+      </div>
+    </DocumentViewerProvider>
   );
 }

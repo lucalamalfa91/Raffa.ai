@@ -123,3 +123,46 @@ export function resolveViewerSurface(input: {
 export function previewNotFoundCause(pageCount: number | null): NotFoundCause | "empty" {
   return pageCount === null ? "empty" : "reaped";
 }
+
+/** In-app destination of the viewer route (`/documents/:documentId/viewer?page=&clause=`). */
+export interface DocumentViewerTarget {
+  documentId: string;
+  page: string | null;
+  clause: string | null;
+}
+
+/**
+ * Parse a viewer deep-link. Returns `null` for any other in-app href (360, Documents list,
+ * Renewals). Query values stay strings so the viewer can keep treating absent/`page=` the same
+ * way the route already does.
+ */
+export function parseDocumentViewerHref(href: string): DocumentViewerTarget | null {
+  try {
+    const url = new URL(href, "https://raffa.local");
+    const match = url.pathname.match(/^\/documents\/([^/]+)\/viewer$/);
+    if (match === null) return null;
+    return {
+      documentId: match[1],
+      page: url.searchParams.get("page"),
+      clause: url.searchParams.get("clause"),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function isDocumentViewerHref(href: string): boolean {
+  return parseDocumentViewerHref(href) !== null;
+}
+
+export function buildDocumentViewerHref(
+  documentId: string,
+  page?: number | string | null,
+  clause?: string | null,
+): string {
+  const params = new URLSearchParams();
+  if (page !== null && page !== undefined && page !== "") params.set("page", String(page));
+  if (clause) params.set("clause", clause);
+  const query = params.toString();
+  return `/documents/${documentId}/viewer${query === "" ? "" : `?${query}`}`;
+}

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
-import { Link } from "react-router-dom";
 import type { Contract360ClauseBody, Contract360DocumentBody } from "../../../api/client";
 import { buildClauseEvidence, clauseViewerHref } from "./contract360ViewModel";
+import { DocumentViewerLink } from "../../documents/viewer/DocumentViewerOverlay";
 
 export interface ClauseHighlightProps {
   clause: Contract360ClauseBody;
@@ -36,9 +36,9 @@ export default function ClauseHighlight({ clause, documents }: ClauseHighlightPr
       </p>
       {viewerHref !== null && (
         <p className="contract360-evidence-viewer">
-          <Link to={viewerHref} className="btn btn-ghost">
+          <DocumentViewerLink to={viewerHref} className="btn btn-ghost">
             Open in document viewer
-          </Link>
+          </DocumentViewerLink>
         </p>
       )}
     </div>

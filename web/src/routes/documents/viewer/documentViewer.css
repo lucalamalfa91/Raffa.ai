@@ -98,3 +98,36 @@
 .document-viewer-citation-notice {
   max-width: 480px;
 }
+
+/* Overlay dialog — same tokens as the prototype `.dialog` (surface + --shadow-lg,
+   dimmed --color-neutral-900 mix) but sized to read a page, not a 440px confirm. */
+.document-viewer-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+  background: color-mix(in srgb, var(--color-neutral-900) 50%, transparent);
+}
+
+.document-viewer-dialog {
+  width: min(56rem, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg);
+  box-shadow: var(--shadow-lg);
+  border-radius: var(--radius-lg);
+}
+
+.document-viewer-dialog-bar {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--space-2) var(--space-4) 0;
+}
+
+.document-viewer-dialog .document-viewer {
+  max-width: none;
+  padding: var(--space-4) var(--space-6) var(--space-6);
+}

@@ -72,6 +72,8 @@ describe("DocumentStatusTable", () => {
     expect(screen.getByRole("link", { name: "Salesforce_MSA.pdf" })).toHaveAttribute("href", "/contracts/contract-1");
     const askLink = screen.getByRole("link", { name: "Ask about it" });
     expect(askLink).toHaveAttribute("href", "/ask?scope=contract-1");
+    expect(screen.getByRole("link", { name: "View document" })).toHaveAttribute("href", "/documents/doc-1/viewer");
+    expect(askLink).toHaveAttribute("href", "/ask?scope=contract-1");
   });
 
   it("links a needs_review row to the review state, with the real weak-fact count", () => {
@@ -93,10 +95,8 @@ describe("DocumentStatusTable", () => {
 
     expect(screen.getByText("OCR / text…")).toBeInTheDocument();
     expect(screen.getByRole("progressbar")).toBeInTheDocument();
-    // The only link on the row is the filename, opening the progress panel -- the next-step cell
-    // has the stage text, never an action button, while a Worker is on it.
-    expect(screen.getAllByRole("link")).toHaveLength(1);
     expect(screen.getByRole("link", { name: "Salesforce_MSA.pdf" })).toHaveAttribute("href", "/documents?progress=doc-1");
+    expect(screen.getByRole("link", { name: "View document" })).toHaveAttribute("href", "/documents/doc-1/viewer");
   });
 
   // ADR-020 w15 footer 10 (task E16/F03/US02/T02, wave w15): a stored server row at `Uploaded`

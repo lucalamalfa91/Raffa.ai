@@ -1,5 +1,7 @@
 import { Link } from "react-router-dom";
 import type { ReplyAction } from "./replyTypes";
+import { DocumentViewerLink } from "../../documents/viewer/DocumentViewerOverlay";
+import { isDocumentViewerHref } from "../../documents/viewer/documentViewerViewModel";
 
 export interface ActionRowProps {
   actions: readonly ReplyAction[];
@@ -18,11 +20,17 @@ export default function ActionRow({ actions }: ActionRowProps) {
 
   return (
     <div className="reply-actions">
-      {actions.map((action) => (
-        <Link key={`${action.kind}-${action.label}`} to={action.href} className={`btn btn-${action.kind}`}>
-          {action.label}
-        </Link>
-      ))}
+      {actions.map((action) =>
+        isDocumentViewerHref(action.href) ? (
+          <DocumentViewerLink key={`${action.kind}-${action.label}`} to={action.href} className={`btn btn-${action.kind}`}>
+            {action.label}
+          </DocumentViewerLink>
+        ) : (
+          <Link key={`${action.kind}-${action.label}`} to={action.href} className={`btn btn-${action.kind}`}>
+            {action.label}
+          </Link>
+        ),
+      )}
     </div>
   );
 }

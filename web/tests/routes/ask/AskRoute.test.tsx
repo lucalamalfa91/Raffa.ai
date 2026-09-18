@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation, useParams } from "react-router-dom";
 import AskRoute from "../../../src/routes/ask";
+import { DocumentViewerProvider } from "../../../src/routes/documents/viewer/DocumentViewerOverlay";
 import type {
   ApiClient,
   ConversationReplyBody,
@@ -217,13 +218,15 @@ function PathProbe() {
 function renderAsk(apiClient: ApiClient, initialEntry: { pathname: string; state?: unknown } | string = "/ask") {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
-      <PathProbe />
-      <Routes>
-        <Route path="/ask" element={<AskRoute apiClient={apiClient} />} />
-        <Route path="/ask/:conversationId" element={<AskRoute apiClient={apiClient} />} />
-        <Route path="/contracts/:contractId" element={<Contract360Stub />} />
-        <Route path="/renewals" element={<div>RENEWALS SCREEN</div>} />
-      </Routes>
+      <DocumentViewerProvider apiClient={apiClient}>
+        <PathProbe />
+        <Routes>
+          <Route path="/ask" element={<AskRoute apiClient={apiClient} />} />
+          <Route path="/ask/:conversationId" element={<AskRoute apiClient={apiClient} />} />
+          <Route path="/contracts/:contractId" element={<Contract360Stub />} />
+          <Route path="/renewals" element={<div>RENEWALS SCREEN</div>} />
+        </Routes>
+      </DocumentViewerProvider>
     </MemoryRouter>,
   );
 }
@@ -585,5 +588,59 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
 
       expect(await screen.findByText(/conversation not found/i)).toBeInTheDocument();
     });
+  });
+
+  it("a viewer citation opens the document overlay on Ask without leaving the conversation", async () => {
+    const viewerReply = answerReply({
+      citations: [
+        {
+          n: 1,
+          corpus: "tenant",
+          title: "Northwind · MSA",
+          subtitle: "p.2",
+          snippet: "The initial term is thirty-six (36) months",
+          documentId: "doc-1",
+          contractId: "contract-1",
+          page: 2,
+          section: null,
+          previewUrl: null,
+          href: "/documents/doc-1/viewer?page=2",
+          recordId: null,
+        },
+      ],
+    });
+    const getDocument = vi.fn().mockResolvedValue({
+      ok: true,
+      statusCode: 200,
+      document: {
+        id: "doc-1",
+        contractId: "contract-1",
+        fileName: "raffa-sample-northwind-msa.pdf",
+        mimeType: "application/pdf",
+        documentType: "Msa",
+        processingStatus: "Completed",
+        createdAt: "2026-09-01T00:00:00Z",
+        pageCount: 2,
+        isPageCountLimited: false,
+      },
+      error: null,
+    });
+    const getDocumentPreviewUrl = vi.fn().mockResolvedValue({ ok: true, statusCode: 200, objectUrl: "blob:page", error: null });
+    renderAsk(
+      mockApiClient({
+        createConversation: vi.fn().mockResolvedValue(createdConversation()),
+        postMessage: vi.fn().mockResolvedValue(postedReply(viewerReply)),
+        getDocument,
+        getDocumentPreviewUrl,
+      }),
+    );
+
+    await userEvent.type(await screen.findByRole("textbox", { name: /ask raffa a question/i }), "…{Enter}");
+    const card = await screen.findByText("Northwind · MSA");
+    await userEvent.click(card.closest("button")!);
+
+    expect(await screen.findByRole("dialog", { name: "Document viewer" })).toBeInTheDocument();
+    expect(screen.getByTestId("path").textContent).toMatch(/^\/ask/);
+    expect(screen.queryByText(/CONTRACT_360/)).not.toBeInTheDocument();
   });
 });
