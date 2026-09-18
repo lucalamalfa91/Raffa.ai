@@ -7,7 +7,7 @@ export interface ReviewFieldListProps {
   selectedField: CorrectableFieldName | null;
   onSelect: (name: CorrectableFieldName) => void;
   onAccept: (name: CorrectableFieldName) => void;
-  /** Same correction write the evidence pane uses (`PATCH /api/contracts/{id}` then `load()`). */
+  /** Same correction write the evidence pane uses (`PATCH /api/contracts/{id}` then in-place merge). */
   onCorrect: (name: CorrectableFieldName, value: string | null, reason: string) => void;
   submitting?: boolean;
   /** Shown in the unrecovered section when the last fill failed and no recovered row is selected. */

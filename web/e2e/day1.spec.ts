@@ -606,8 +606,8 @@ async function resolveAllReviewFields(page: Page): Promise<void> {
       await pendingRow.getByRole("button", { name: /^accept$/i }).click();
     }
 
-    // Both decisions now reload the screen (`load()` → skeleton). Wait for the table to return
-    // so the next iteration does not treat the empty skeleton as "nothing left to review".
+    // Accept/Save merge in place; the table stays mounted. Wait for it anyway so a slow PATCH
+    // cannot let the next iteration treat a still-pending row as already resolved.
     await page.locator(".review-field-table").waitFor({ state: "visible", timeout: 30_000 });
   }
 }
