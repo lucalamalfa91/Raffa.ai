@@ -55,7 +55,8 @@ public sealed class StagedExtractionService(
     IAiGateway aiGateway,
     ITenantContext tenantContext,
     IClock clock,
-    IAuditWriter auditWriter)
+    IAuditWriter auditWriter,
+    IExtractionHangWatch? hangWatch = null)
 {
     /// <summary>AC-1's seven stages, in pipeline order. <see cref="ExtractionStage.Classification"/>
     /// is deliberately excluded — it is queued and (eventually) consumed elsewhere, before this
@@ -352,6 +353,10 @@ public sealed class StagedExtractionService(
             StartedAt = startedAt,
         };
         dbContext.ExtractionJobs.Add(job);
+        // Persist the Running heartbeat before the gateway call so a hang is visible as this
+        // stage (not the previous one) and hang recovery has a fresh started_at to measure.
+        hangWatch?.Heartbeat();
+        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
         var request = new AiExtractionRequest(
             StageName: stage.ToString(),

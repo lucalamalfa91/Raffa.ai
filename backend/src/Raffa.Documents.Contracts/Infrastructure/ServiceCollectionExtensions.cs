@@ -143,6 +143,9 @@ public static class ServiceCollectionExtensions
         // Worker handler will use. Scoped — shares this registration's own DbContext instance,
         // same reason as every other service above.
         services.AddScoped<IExtractionJobClaimStore, ExtractionJobClaimStore>();
+        services.TryAddSingleton<IExtractionRunAborter, ExtractionRunAborter>();
+        services.AddScoped<IExtractionHangWatch, ExtractionHangWatch>();
+        services.AddScoped<HungProcessingRecoveryService>();
 
         // Task E19/F03/US01/T01 (us-01-step-ticks-api, ADR-028 §D3): Contract 360's negotiation
         // checklist ticks. Scoped -- shares this registration's own DbContext instance, same

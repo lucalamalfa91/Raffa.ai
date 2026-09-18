@@ -6,6 +6,7 @@ import { runUploadBatch, MAX_FILES_PER_BATCH, type LocalUploadEntry } from "./up
 import {
   filterDocumentsByAttention,
   STUCK_REPROCESS_AFTER_MS,
+  MAX_STUCK_REPROCESS_ATTEMPTS,
   type AttentionFilterValue,
   type DocumentCountsBody,
 } from "./documentTable";
@@ -254,15 +255,18 @@ export function useDocumentsList(apiClient: ApiClient): UseDocumentsListResult {
     [apiClient, workspace?.id, load],
   );
 
-  // One auto-reprocess per still-Uploaded document after STUCK_REPROCESS_AFTER_MS, using the same
-  // POST /api/documents/{id}/reprocess path the retired Retry upload CTA used. Tenant-scoped via
-  // workspace.id; ids already fired are remembered so a poll cannot loop. Failures stay silent —
-  // a 403 (Procurement) must not paint a banner the user did not ask for.
-  const autoReprocessedIdsRef = useRef(new Set<string>());
+  // Auto-reprocess stuck Uploaded (never claimed) and hung Processing (claimed, then silent)
+  // rows through POST /api/documents/{id}/reprocess. Tenant-scoped via workspace.id. Capped at
+  // MAX_STUCK_REPROCESS_ATTEMPTS so a permanently bad file cannot loop. Failures stay silent —
+  // a 403 (Procurement) must not paint a banner the user did not ask for; the API list recovery
+  // still unsticks the row for every role.
+  const autoReprocessCountRef = useRef(new Map<string, number>());
   const autoReprocessTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const processingStageSeenRef = useRef(new Map<string, { stage: string | null; since: number }>());
 
   useEffect(() => {
-    autoReprocessedIdsRef.current.clear();
+    autoReprocessCountRef.current.clear();
+    processingStageSeenRef.current.clear();
     for (const timer of autoReprocessTimersRef.current.values()) clearTimeout(timer);
     autoReprocessTimersRef.current.clear();
   }, [workspace?.id]);
@@ -273,18 +277,36 @@ export function useDocumentsList(apiClient: ApiClient): UseDocumentsListResult {
 
     const now = Date.now();
     for (const item of documents) {
-      if (item.processingStatus !== "Uploaded") continue;
-      if (autoReprocessedIdsRef.current.has(item.id)) continue;
+      const count = autoReprocessCountRef.current.get(item.id) ?? 0;
+      if (count >= MAX_STUCK_REPROCESS_ATTEMPTS) continue;
       if (autoReprocessTimersRef.current.has(item.id)) continue;
-      const created = Date.parse(item.createdAt);
-      if (!Number.isFinite(created)) continue;
-      const delay = Math.max(0, STUCK_REPROCESS_AFTER_MS - (now - created));
+
+      let delay: number | null = null;
+      if (item.processingStatus === "Uploaded") {
+        const created = Date.parse(item.createdAt);
+        if (!Number.isFinite(created)) continue;
+        delay = Math.max(0, STUCK_REPROCESS_AFTER_MS - (now - created));
+      } else if (item.processingStatus === "Processing") {
+        const stageKey = item.stage ?? "";
+        const seen = processingStageSeenRef.current.get(item.id);
+        if (!seen || seen.stage !== stageKey) {
+          processingStageSeenRef.current.set(item.id, { stage: stageKey, since: now });
+          delay = STUCK_REPROCESS_AFTER_MS;
+        } else {
+          delay = Math.max(0, STUCK_REPROCESS_AFTER_MS - (now - seen.since));
+        }
+      } else {
+        processingStageSeenRef.current.delete(item.id);
+        continue;
+      }
+
       const documentId = item.id;
       const timer = setTimeout(() => {
         autoReprocessTimersRef.current.delete(documentId);
         if (!mountedRef.current) return;
-        if (autoReprocessedIdsRef.current.has(documentId)) return;
-        autoReprocessedIdsRef.current.add(documentId);
+        const fired = autoReprocessCountRef.current.get(documentId) ?? 0;
+        if (fired >= MAX_STUCK_REPROCESS_ATTEMPTS) return;
+        autoReprocessCountRef.current.set(documentId, fired + 1);
         void apiClient.reprocessDocument(tenantId, documentId).then((result) => {
           if (!mountedRef.current) return;
           if (result.ok) load();

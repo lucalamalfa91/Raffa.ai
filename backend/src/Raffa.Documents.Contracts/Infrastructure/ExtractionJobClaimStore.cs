@@ -1,3 +1,5 @@
+using Raffa.Documents.Contracts.Application;
+using Raffa.Documents.Contracts.Application.Extraction;
 using Raffa.Documents.Contracts.Domain;
 using Raffa.SharedKernel;
 using Microsoft.EntityFrameworkCore;
@@ -11,9 +13,10 @@ namespace Raffa.Documents.Contracts.Infrastructure;
 /// a duplicate delivery, a redelivery racing the original, or a second worker instance all see
 /// zero rows affected and do nothing — the database, not the caller, decides who won.
 ///
-/// us-02's message handler (task E16/F02/US02/T01) is the first real caller and will wrap this
-/// with the fuller lease/reclaim and status-transition behaviour ADR-027 §D3's own SQL sample
-/// describes; this task proves the atomic primitive itself, scoped exactly to what AC-4 asks for.
+/// us-02's message handler (task E16/F02/US02/T01) is the first real caller. A stale claim is
+/// not reopened here: <see cref="HungProcessingRecoveryService"/> aborts the zombie and
+/// re-enqueues through <see cref="DocumentReprocessService"/> instead, so a hang cannot leave
+/// the row on Processing forever.
 /// </summary>
 public interface IExtractionJobClaimStore
 {
