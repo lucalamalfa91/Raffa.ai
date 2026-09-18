@@ -892,6 +892,8 @@ describe("createApiClient().getRenewals (task E07/F02/US01/T01)", () => {
         contractId: "contract-1",
         supplierId: null,
         status: "Determined",
+        contractStatus: "active",
+        documentProcessingStatus: "Completed",
         renewalDate: "2026-01-01",
         daysUntilRenewal: 30,
         annualSpend: 500000,

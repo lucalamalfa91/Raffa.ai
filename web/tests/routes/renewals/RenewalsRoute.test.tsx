@@ -78,6 +78,8 @@ function pipelineItem(overrides: Partial<RenewalPipelineItemBody> = {}): Renewal
     supplierId: "33333333-3333-3333-3333-333333333333",
     supplierName: null,
     status: "Determined",
+    contractStatus: "active",
+    documentProcessingStatus: "Completed",
     renewalDate: "2026-12-01",
     daysUntilRenewal: 20,
     annualSpend: 500_000,
@@ -429,12 +431,27 @@ describe("RenewalsRoute (V2, ADR-024 / screens-v2.md #7)", () => {
     });
   });
 
-  it("defaults to already-OK (Determined) rows and keeps CannotDetermine one click away", async () => {
-    const determined = pipelineItem({ contractId: "ready", supplierName: "Salesforce", status: "Determined" });
-    const pending = pipelineItem({
+  it("defaults to validated Ready rows; dated-but-unvalidated contracts sit in To review", async () => {
+    const ready = pipelineItem({
+      contractId: "ready",
+      supplierName: "Salesforce",
+      status: "Determined",
+      contractStatus: "active",
+      documentProcessingStatus: "Completed",
+    });
+    const inReview = pipelineItem({
       contractId: "pending",
+      supplierName: "Review Co",
+      status: "Determined",
+      contractStatus: "needs_review",
+      documentProcessingStatus: "NeedsReview",
+    });
+    const notAnalyzed = pipelineItem({
+      contractId: "uploading",
       supplierName: "Uploading Co",
       status: "CannotDetermine",
+      contractStatus: "processing",
+      documentProcessingStatus: "Uploaded",
       renewalDate: null,
       daysUntilRenewal: null,
       cancellationDeadline: null,
@@ -442,26 +459,54 @@ describe("RenewalsRoute (V2, ADR-024 / screens-v2.md #7)", () => {
     });
     renderRenewals(
       mockApiClient({
-        getRenewals: vi.fn().mockResolvedValue(ok([determined, pending])),
-        getRenewalPriority: priorityByContract({ ready: 85, pending: 10 }),
+        getRenewals: vi.fn().mockResolvedValue(ok([ready, inReview, notAnalyzed])),
+        getRenewalPriority: priorityByContract({ ready: 85, pending: 40, uploading: 10 }),
       }),
     );
 
     const table = await screen.findByRole("table");
     expect(within(table).getByText("Salesforce")).toBeInTheDocument();
+    expect(within(table).queryByText("Review Co")).not.toBeInTheDocument();
     expect(within(table).queryByText("Uploading Co")).not.toBeInTheDocument();
     expect(screen.getByText("1 contract with validated dates · sorted by priority")).toBeInTheDocument();
 
     const group = screen.getByRole("group", { name: "Filter renewals by readiness" });
     expect(within(group).getByRole("button", { name: "Ready · 1" })).toHaveAttribute("aria-pressed", "true");
-    expect(within(group).getByRole("button", { name: "To review · 1" })).toHaveAttribute("aria-pressed", "false");
+    expect(within(group).getByRole("button", { name: "To review · 2" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByText("Contracts still in review are hidden — they are not ready to use yet.")).toBeInTheDocument();
 
-    fireEvent.click(within(group).getByRole("button", { name: "To review · 1" }));
+    fireEvent.click(within(group).getByRole("button", { name: "To review · 2" }));
     expect(within(table).queryByText("Salesforce")).not.toBeInTheDocument();
+    expect(within(table).getByText("Review Co")).toBeInTheDocument();
     expect(within(table).getByText("Uploading Co")).toBeInTheDocument();
 
-    fireEvent.click(within(group).getByRole("button", { name: "All · 2" }));
+    fireEvent.click(within(group).getByRole("button", { name: "All · 3" }));
     expect(within(table).getByText("Salesforce")).toBeInTheDocument();
+    expect(within(table).getByText("Review Co")).toBeInTheDocument();
     expect(within(table).getByText("Uploading Co")).toBeInTheDocument();
+  });
+
+  it("with only still-to-review rows, default Ready is empty but To review reveals them — no reroute", async () => {
+    const inReview = pipelineItem({
+      contractId: "pending",
+      supplierName: "Review Co",
+      status: "Determined",
+      contractStatus: "needs_review",
+      documentProcessingStatus: "NeedsReview",
+    });
+    renderRenewals(
+      mockApiClient({
+        getRenewals: vi.fn().mockResolvedValue(ok([inReview])),
+        getRenewalPriority: priorityByContract({ pending: 40 }),
+      }),
+    );
+
+    expect(await screen.findByText("No ready contracts in this list. Switch to To review to see uploads still being analyzed.")).toBeInTheDocument();
+    expect(screen.queryByText("No renewal dates yet")).toBeNull();
+    expect(screen.queryByRole("table")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "To review · 1" }));
+    const table = await screen.findByRole("table");
+    expect(within(table).getByText("Review Co")).toBeInTheDocument();
   });
 });

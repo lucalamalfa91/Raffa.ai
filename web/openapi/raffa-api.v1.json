@@ -3249,6 +3249,8 @@
                           "supplierId",
                           "supplierName",
                           "status",
+                          "contractStatus",
+                          "documentProcessingStatus",
                           "renewalDate",
                           "daysUntilRenewal",
                           "annualSpend",
@@ -3284,6 +3286,17 @@
                               "NoRenewal",
                               "CannotDetermine"
                             ]
+                          },
+                          "contractStatus": {
+                            "type": "string",
+                            "description": "Contract.Status from the same portfolio row this pipeline item was built from — the free-text validation/lifecycle status Portfolio uses for Ready vs To review. Distinct from `status`, which remains the renewal-engine calculation (Determined/NoRenewal/CannotDetermine)."
+                          },
+                          "documentProcessingStatus": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "Same field as GET /api/contracts: processing status of the most-recently-created linked document (Uploaded|Processing|NeedsReview|Completed|Failed|Rejected, or null for orphaned shells). Renewals Ready/To review uses this with contractStatus — never the date-determination `status`."
                           },
                           "renewalDate": {
                             "type": [

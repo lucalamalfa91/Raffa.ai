@@ -64,10 +64,10 @@ type FetchState =
  * `CapabilityCatalog.RenewalsKey`); see `effectiveSelectedId` below for how an unmatched value falls
  * back to the same top-priority default the no-query case has always used.
  *
- * **Readiness filter.** The pipeline still carries contracts whose dates are not yet determined
- * (`CannotDetermine` -- still in review / not analyzed). A compact `.seg` (Ready / To review / All)
- * defaults to already-OK (`Determined`) so the list is usable; the still-to-review bucket is one
- * click away, never hidden forever.
+ * **Readiness filter.** The pipeline still carries contracts that are not yet OK to open (still in
+ * human validation, not analyzed, or otherwise unusable). A compact `.seg` (Ready / To review / All)
+ * defaults to already-OK so the list is usable; the still-to-review bucket is one click away, never
+ * hidden forever. Ready is the same validation rule as Portfolio -- not "has dates".
  */
 export default function RenewalsRoute({ apiClient, userLabel }: RenewalsRouteProps) {
   const workspace = loadCurrentWorkspace();

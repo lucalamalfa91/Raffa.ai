@@ -22,3 +22,33 @@ export function isValidatedContractStatus(status: string): boolean {
   if (normalized === "" || normalized === "processing" || normalized === "failed") return false;
   return !normalized.includes("review");
 }
+
+/** Linked document still uploading or being analyzed -- not OK to open yet. */
+export function isDocumentPending(documentProcessingStatus: string | null | undefined): boolean {
+  if (!documentProcessingStatus) return false;
+  const s = documentProcessingStatus.toLowerCase();
+  return s === "uploaded" || s === "processing";
+}
+
+/** Linked document is parked in human validation. */
+export function isDocumentNeedsReview(documentProcessingStatus: string | null | undefined): boolean {
+  return documentProcessingStatus?.toLowerCase() === "needsreview";
+}
+
+/**
+ * Already analyzed / validated / OK to use -- the default Ready bucket on Portfolio and Renewals.
+ * A row is ready only when contract status is past every transient/blocking value *and* the linked
+ * document is not still uploading, processing, or parked in NeedsReview. Date-determination
+ * (`Determined` vs `CannotDetermine`) is not this predicate: a contract with dates can still be
+ * in review, and a validated contract without dates is still OK to open.
+ */
+export function isContractReadyToUse(
+  contractStatus: string,
+  documentProcessingStatus?: string | null,
+): boolean {
+  return (
+    isValidatedContractStatus(contractStatus) &&
+    !isDocumentPending(documentProcessingStatus) &&
+    !isDocumentNeedsReview(documentProcessingStatus)
+  );
+}

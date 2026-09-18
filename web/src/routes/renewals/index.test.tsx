@@ -25,6 +25,8 @@ function renewalItem(overrides: Partial<RenewalPipelineItemBody>): RenewalPipeli
     supplierId: null,
     supplierName: null,
     status: "Determined",
+    contractStatus: "active",
+    documentProcessingStatus: "Completed",
     renewalDate: "2027-01-01",
     daysUntilRenewal: 120,
     annualSpend: 50000,
