@@ -2663,15 +2663,27 @@ w19 cl. 23) adds a fourth:
   `BuildMarketComparePackAsync` already establish. **Wired into a live
   turn by task E29/F02/US01/T01 (todo-host-upsert; NW-85/NW-97; ADR-028/
   ADR-024 w19 cl. 21)**: `AskIntent.RenewalStrategy`'s named-contract
-  branch now calls it (`persistTodos: true`) via the new
-  `BuildRenewalStrategyAndNegotiationTodosPackAsync`, appended to
-  `BuildRenewalStrategyPackAsync`'s own pack — so a real Q3 ask durably
+  branch reaches it through `BuildRenewalStrategyPackAsync`
+  (`persistTodos: true`), itself called by the composition
+  `BuildRenewalStrategyWithEvidenceAsync` — so a real Q3 ask durably
   upserts before the answer is composed, proved end to end by
   `Raffa.Api.Tests.AskRenewalStrategyTodoUpsertTests` (upsert-before-
   answer, idempotent re-ask, a ticked Done row surviving a repeat ask).
-  Epic-31/feature-01 (q3-route, NW-95) and feature-03 (q3-persist, NW-97)
-  still own that switch arm's final corpus shape (tenant/market/raffa
-  corpora) and the server-injected `/renewals?select=` navigate action.
+  Epic-31/feature-01 (q3-route, NW-95) built that switch arm's final
+  corpus shape (tenant/market/raffa corpora). **Feature-03 (q3-persist,
+  NW-97; ADR-024 w19 cl. 21/ADR-028) adds the server-injected
+  `/renewals?select={contractId}` navigate action** on top of it —
+  `AskCopilotService.BuildInDomainReplyAsync`'s own `isQ3PersistTurn`
+  branch, built through `CapabilityRouting.ResolveActions` /
+  `BuildHref`'s `RenewalsKey` case (never from the model's own
+  `composed.Value.Result.ActionKeys` —
+  `Raffa.AiGateway.Fixtures.FixtureAiGateway.AnswerFromPack` never
+  populates one for a pack-JSON turn in the first place), so the reply's
+  own `actions[]` carries the deep-link the moment ranking upserts,
+  never twice on a repeat ask (`Concat(...).Distinct()`, the same
+  "Record equality" de-dup `ResolveActions` already performs
+  internally). Proved by
+  `Raffa.Api.Tests.AskQ3RenewalsDeepLinkActionTests`.
 
 **Where the shared `PricedLine` input lives, and why**: R-STR-02
 generalizes `NegotiationStrategyCalculator` to a shared priced-line input.
