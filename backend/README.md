@@ -2657,7 +2657,11 @@ w19 cl. 23) adds a fourth:
   ("persist-all"). No `AskIntent` dispatches to it yet — later tasks wire
   it into a live turn; today it is reached directly, the same
   test-reachability precedent `BuildRenewalStrategyPackAsync`/
-  `BuildMarketComparePackAsync` already establish.
+  `BuildMarketComparePackAsync` already establish — proved end to end
+  (chat pack capped at three, the full five-point ranked set readable
+  back via `RenewalNegotiationTodoService.GetAsync` when `persistTodos`
+  is set, and a repeat call never duplicating rows) by
+  `Raffa.Api.Tests.AskNegotiationPointsPackTests`.
 
 **Where the shared `PricedLine` input lives, and why**: R-STR-02
 generalizes `NegotiationStrategyCalculator` to a shared priced-line input.
