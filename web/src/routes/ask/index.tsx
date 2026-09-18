@@ -24,12 +24,14 @@ import {
   buildScopeLine,
   buildYouTurn,
   createConversationAndAsk,
+  fetchBoundContractChip,
   nextTurnId,
   parseScopeContractId,
   resolveAskOffReason,
   resolveCitationOpenAction,
   suggestionsFor,
   type AskTurnView,
+  type BoundContractChip,
 } from "./askViewModel";
 import { ASK_FALLBACK_TITLE, formatConversationTitle } from "./conversationTitle";
 import { applyCitationPreviews, useCitationPreviews } from "./useCitationPreviews";
@@ -84,6 +86,16 @@ interface CitationNoticeState {
  * The off-state-first gate above is untouched (no scoped override of R-ASK-10, ux-ui-designer's own
  * w18 ruling for this gap): a scoped link into a tenant with zero validated contracts still lands on
  * the generic `AskOffState`, never a briefed-but-off face.
+ *
+ * Task E27/F04/US01/T01 (NW-78, wave w19; ADR-012 cl. 49 / ADR-020 37.2 per
+ * `reports/architecture/waves/w19.md`; screens-v2.md #2 "scope line" as anchor): a persistent
+ * `.tag-neutral` binding chip now renders above the thread for as long as this conversation is
+ * scoped -- `boundContractId` (this conversation's own persisted `scopeContractId`, set from the
+ * create response or the resumed conversation detail) and `boundContractChip` (that id's resolved
+ * `askViewModel.ts#fetchBoundContractChip` result, `null` -- unrendered, AC-3 -- until it resolves).
+ * Deliberately **not** the same state NW-56's brief above reads: that one is the transient,
+ * pre-creation `scopeContractId` local (`?scope=`, gone the render after creation); this one is the
+ * durable field the server persisted, so it is still there after a reload (AC-2 "survives resume").
  */
 export default function AskRoute({ apiClient }: AskRouteProps) {
   const location = useLocation();
@@ -100,6 +112,17 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
 
   const [turns, setTurns] = useState<readonly AskTurnView[]>([]);
   const [boundTitle, setBoundTitle] = useState<string | null>(null);
+
+  // NW-78 (wave w19): the persistent binding chip's own two-stage state. `boundContractId` is the
+  // durable source -- this conversation's own persisted `scopeContractId`, read off the create
+  // response or the resumed conversation detail below, **never** the transient `scopeContractId`
+  // local further down (that one is only "what to send" pre-creation and reverts to `undefined`
+  // the render after `createdConversationId.current` is set -- see this file's own header comment).
+  // `boundContractChip` is what the 360-header fetch resolved that id to; `null` leaves the chip
+  // unrendered (AC-3), whether nothing is bound yet or the fetch has not settled.
+  const [boundContractId, setBoundContractId] = useState<string | null>(null);
+  const [boundContractChip, setBoundContractChip] = useState<BoundContractChip | null>(null);
+
   const [question, setQuestion] = useState("");
   const [asking, setAsking] = useState(false);
   const [citationNotice, setCitationNotice] = useState<CitationNoticeState | null>(null);
@@ -183,6 +206,18 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     });
   }, [apiClient, workspace?.id, boundScopeId]);
 
+  // NW-78: the persistent chip's own supplier+type fetch, independent of `scopedSupplierName`
+  // above (that effect only ever runs pre-creation, off the transient `?scope=`) -- this one runs
+  // off `boundContractId`, the durable id, for as long as this conversation is scoped, turns or no
+  // turns, freshly created or resumed.
+  useEffect(() => {
+    if (boundContractId === null || !workspace) {
+      setBoundContractChip(null);
+      return;
+    }
+    void fetchBoundContractChip(apiClient, workspace.id, boundContractId).then(setBoundContractChip);
+  }, [apiClient, workspace?.id, boundContractId]);
+
   // Task text point (2): "two suggestion chips from GET /api/capabilities (suggestionsFor("ask"))".
   // Fetched once -- the catalog is static and tenant-agnostic (getCapabilities's own OpenAPI
   // description), the same "fetch once, never re-poll" shape useValidatedContractCount already
@@ -205,6 +240,15 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   useEffect(() => {
     if (resumeState.phase === "ready") {
       setTurns(resumeState.turns);
+      // AC-2: rebuilt from the conversation detail wire, so the chip survives resume -- a resumed
+      // URL carries no `?scope=` at all, only `/ask/<conversationId>`.
+      setBoundContractId(resumeState.conversation.scopeContractId);
+    } else if (resumeState.phase === "loading") {
+      // A rail click straight from one resumed conversation to another re-enters "loading" without
+      // ever passing through routeConversationId === null below -- the previous conversation's
+      // chip is not this one's, so it drops rather than showing a stale supplier/type until the new
+      // fetch resolves (AC-3 "not yet resolvable").
+      setBoundContractId(null);
     }
   }, [resumeState]);
 
@@ -212,6 +256,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     if (routeConversationId === null) {
       createdConversationId.current = null;
       setTurns([]);
+      setBoundContractId(null);
     }
   }, [routeConversationId]);
 
@@ -237,6 +282,11 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
             return;
           }
           createdConversationId.current = result.conversationId;
+          // AC-1/AC-2: sourced from the create response's own `conversation.scopeContractId`
+          // (askViewModel.ts#createConversationAndAsk's own doc comment), not the local
+          // `scopeContractId` this call was made with -- that local is about to read `undefined`
+          // once `createdConversationId.current` above makes `currentConversationId` non-null.
+          setBoundContractId(result.scopeContractId);
           setTurns((previous) => [...previous, buildRaffaTurnFromReply(nextTurnId(), result.reply)]);
           navigate(`/ask/${result.conversationId}`, { replace: true });
         });
@@ -381,6 +431,16 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
 
   return (
     <div className="ask-screen">
+      {/* NW-78 (AC-1/AC-2/AC-3): above the thread, independent of hasTurns -- a just-scoped
+          conversation is bound from the instant its create response resolves (already true by
+          then, see the optimistic "you" bubble in ask() above), not only once it has been
+          resumed with a full history. */}
+      {boundContractChip !== null && (
+        <Link to={boundContractChip.href} className="ask-bound-chip">
+          <span className="tag tag-neutral">{boundContractChip.label}</span>
+        </Link>
+      )}
+
       {hasTurns && (
         <div className="ask-screen-header">
           <div>

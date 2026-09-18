@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import type { ApiClient, RenewalPipelineItemBody } from "../../api/client";
 import { loadCurrentWorkspace } from "../signin/workspaceStore";
 import RenewalTable from "./RenewalTable";
@@ -57,6 +57,13 @@ type FetchState =
  * `POST /api/renewals/{id}/action`; every surface reads `savedAction` on the same
  * `GET /api/renewals` row.
  *
+ * **`?select=` deep link (task E29/F03/US01/T01, NW-84; ADR-012 cl. 51 per
+ * `reports/architecture/waves/w19.md` -- the ADR-012 body's own w19 footer text was not yet
+ * transcribed when this task ran, so the wave file is the citable source of the decision).** A chat
+ * reply can inject `/renewals?select={contractId}` (`Raffa.Chat`'s `CapabilityRouting.BuildHref`,
+ * `CapabilityCatalog.RenewalsKey`); see `effectiveSelectedId` below for how an unmatched value falls
+ * back to the same top-priority default the no-query case has always used.
+ *
  * **Readiness filter.** The pipeline still carries contracts whose dates are not yet determined
  * (`CannotDetermine` -- still in review / not analyzed). A compact `.seg` (Ready / To review / All)
  * defaults to already-OK (`Determined`) so the list is usable; the still-to-review bucket is one
@@ -64,8 +71,16 @@ type FetchState =
  */
 export default function RenewalsRoute({ apiClient, userLabel }: RenewalsRouteProps) {
   const workspace = loadCurrentWorkspace();
+  const [searchParams] = useSearchParams();
   const [fetchState, setFetchState] = useState<FetchState>({ phase: "loading" });
-  const [selectedContractId, setSelectedContractId] = useState<string | null>(null);
+  // Seeds the initial selection from the `?select=` deep link above, read once via the lazy
+  // initializer -- the same "read once, on mount" convention `routes/documents/index.tsx`'s
+  // `?filter=` already uses -- so a later click (`onSelect` below) is never fought by a stale URL on
+  // re-render. A value matching no row (absent, malformed, or another tenant's contract -- `rows` is
+  // already this tenant's own `GET /api/renewals` list, so a foreign id simply never appears in it)
+  // is handled entirely by `effectiveSelectedId`'s existing fallback: no 500, no leak, no special
+  // case needed here.
+  const [selectedContractId, setSelectedContractId] = useState<string | null>(() => searchParams.get("select"));
   const [actionPending, setActionPending] = useState<RenewalActionKind | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [readiness, setReadiness] = useState<ReadinessFilterValue>(DEFAULT_READINESS_FILTER);
@@ -141,8 +156,9 @@ export default function RenewalsRoute({ apiClient, userLabel }: RenewalsRoutePro
   }
 
   // The pane always follows a real selection (`app.jsx`: `rsel = renewals.find(r=>r.id===s.rsel) ||
-  // renewals[0]`): an explicit click wins while its row is still listed, else the top-priority
-  // *visible* row (the readiness filter can hide the previous selection).
+  // renewals[0]`): an explicit click, or the initial `?select=` deep link seeded above, wins while
+  // its row is still listed; an unmatched id (absent, malformed, or another tenant's) falls through
+  // to the top-priority *visible* row (the readiness filter can hide the previous selection).
   const effectiveSelectedId = visibleRows.some((row) => row.item.contractId === selectedContractId)
     ? selectedContractId
     : (visibleRows[0]?.item.contractId ?? null);
@@ -232,6 +248,8 @@ export default function RenewalsRoute({ apiClient, userLabel }: RenewalsRoutePro
                   actionPending={actionPending}
                   actionError={actionError}
                   onAction={handleAction}
+                  apiClient={apiClient}
+                  tenantId={workspace.id}
                 />
               )}
             </div>

@@ -2474,6 +2474,11 @@ describe("createApiClient() Authorization header (task E18/F01/US02/T01, NW-05; 
       // so this completeness assertion has been failing since that task landed -- a pre-existing gap
       // discovered while wiring the web route to this same method, fixed in the same commit.
       getQuoteBenchmarkHistory: () => client.getQuoteBenchmarkHistory("tenant-1"),
+      // Task E29/F04/US01/T01 (todo-web): same "sibling task added a client.ts method without
+      // updating this table" gap `getQuoteBenchmarkHistory`'s own comment above already documents --
+      // fixed in the same commit as the client.ts change that added these two.
+      getRenewalNegotiationTodos: () => client.getRenewalNegotiationTodos("tenant-1", "contract-1"),
+      tickRenewalNegotiationTodo: () => client.tickRenewalNegotiationTodo("tenant-1", "contract-1", { pointKey: "above_band_price" }),
       askRaffa: () => client.askRaffa("tenant-1", { question: "?" }),
       getSavingsKpis: () => client.getSavingsKpis("tenant-1"),
       getSavingsOpportunities: () => client.getSavingsOpportunities("tenant-1"),

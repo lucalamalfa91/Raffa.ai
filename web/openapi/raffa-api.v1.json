@@ -3832,6 +3832,261 @@
         }
       }
     },
+    "/api/renewals/{id}/negotiation-todos": {
+      "get": {
+        "operationId": "getRenewalNegotiationTodos",
+        "summary": "Read-back the negotiation TODO list Ask wrote for one contract.",
+        "description": "Maps to GetRenewalNegotiationTodosAsync in backend/src/Raffa.Api/RenewalsEndpointExtensions.cs (task E29/F01/US01/T01, todo-entity-api; parent story us-01-todo-entity-api AC-2; wave w19 NW-85). {id} is the contractId GET /api/renewals returns per row, same meaning as on /api/renewals/{id}/action above. No role gate -- any live tenant member reads (a non-member is 404, never 403, ADR-025 Rule B1). A bare JSON array, not { items: [...] }: this is a small, unpaginated, per-contract list, the same shape GET /api/audit already returns for the identical reason. Never a 404 for 'nothing upserted yet' -- a well-formed contract id with no rows is an honest 200 []; the only 404 cause is ICallerContext resolving the caller to a non-member of the tenant. Task E29/F04/US01/T01 (todo-web) is the first web caller, the ninth web epic to extend this document (see this document's own 'API client' provenance paragraphs in web/README.md).",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The renewal's contractId -- the same id GET /api/renewals returns per row."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Every TODO row for this contract (Open/Done/Superseded alike), ordered by rank then pointKey. An empty array when nothing was ever upserted for this contract.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "contractId",
+                      "pointKey",
+                      "topic",
+                      "rank",
+                      "current",
+                      "target",
+                      "rationale",
+                      "citationKeys",
+                      "source",
+                      "status",
+                      "createdAt",
+                      "updatedAt"
+                    ],
+                    "properties": {
+                      "contractId": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "pointKey": {
+                        "type": "string"
+                      },
+                      "topic": {
+                        "type": "string"
+                      },
+                      "rank": {
+                        "type": "integer"
+                      },
+                      "current": {
+                        "type": "string"
+                      },
+                      "target": {
+                        "type": "string"
+                      },
+                      "rationale": {
+                        "type": "string"
+                      },
+                      "citationKeys": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "source": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "Open",
+                          "Done",
+                          "Superseded"
+                        ]
+                      },
+                      "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "updatedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid X-Tenant-Id header, or a non-GUID id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The caller is not a member of this tenant (ADR-025 Rule B1)."
+          }
+        }
+      },
+      "put": {
+        "operationId": "tickRenewalNegotiationTodo",
+        "summary": "Mark one negotiation TODO point Done.",
+        "description": "Maps to TickRenewalNegotiationTodoAsync in backend/src/Raffa.Api/RenewalsEndpointExtensions.cs (task E29/F01/US01/T01, todo-entity-api; parent story us-01-todo-entity-api AC-2, the tick; AC-3, the audit; wave w19 NW-85, security-architect: 'tick PUT = Procurement/Admin, authz before retrieval'). {id} is the contractId, same meaning as GET above. Order: ICallerContext (401 no identity / 400 malformed tenant header / 404 not a member) -- then the Admin-or-Procurement role gate (403), before the route id is even parsed -- then the id's GUID format (400) -- then the tick itself. 404 when pointKey names no existing row for this (tenant, contract): this route never creates one (client-architect's 'never invent a point'). Unconditional tick: an already-Done or previously-Superseded row both become/stay Done -- there is no un-tick route. Task E29/F04/US01/T01 (todo-web) is the first web caller.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The renewal's contractId -- the same id GET /api/renewals returns per row."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "pointKey": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Which row to tick. RenewalNegotiationTodoService.SetDoneAsync fails (400) if blank."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The ticked row, now Done.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "contractId",
+                    "pointKey",
+                    "topic",
+                    "rank",
+                    "current",
+                    "target",
+                    "rationale",
+                    "citationKeys",
+                    "source",
+                    "status",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "contractId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "pointKey": {
+                      "type": "string"
+                    },
+                    "topic": {
+                      "type": "string"
+                    },
+                    "rank": {
+                      "type": "integer"
+                    },
+                    "current": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
+                    },
+                    "rationale": {
+                      "type": "string"
+                    },
+                    "citationKeys": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "source": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "Open",
+                        "Done",
+                        "Superseded"
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid X-Tenant-Id header, non-GUID id, or a blank pointKey.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller is a live member of this tenant, but not Admin or Procurement."
+          },
+          "404": {
+            "description": "The caller is not a member of this tenant, or pointKey names no existing row for this contract (this route never invents one)."
+          }
+        }
+      }
+    },
     "/api/quotes": {
       "post": {
         "operationId": "uploadQuote",

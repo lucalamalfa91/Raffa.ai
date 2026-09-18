@@ -51,6 +51,13 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     getContractStrategy: vi.fn(),
     validateDocument: vi.fn(),
     postRenewalAction: vi.fn(),
+    // Task E29/F04/US01/T01 (todo-web): InsightCard now always renders NegotiationTodoList, which
+    // fetches on mount for every "once populated" test below -- an unstubbed method here would
+    // reject `.then()` on `undefined` and crash all of them, not just ones about the TODO list
+    // itself. None of the tests in this file exercise the list's own content or the tick, so an
+    // honest empty list is enough (same fix as src/routes/renewals/index.test.tsx's own mock).
+    getRenewalNegotiationTodos: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, todos: [], error: null }),
+    tickRenewalNegotiationTodo: vi.fn(),
     getQuote: vi.fn(),
     getNegotiationSteps: vi.fn(),
     putNegotiationSteps: vi.fn(),

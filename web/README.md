@@ -101,7 +101,7 @@ own rail destination. Pixel/behaviour reference: `inputs/design/prototypes/Raffa
 | `/contracts` | Portfolio, V2: header ("Portfolio" + "N validated contracts · CHF 4.2M annual · K notice deadlines within 45 days", or "Lights up from validated contracts"), one table sorted by notice deadline (Supplier · Contract · Annual spend · Ends · Give notice by · Status; **More columns** adds Start · Auto · Risk; rows inside the 45-day window tinted + accent bar; rows open Contract 360), and the reroute state ("Nothing to triage yet" → Upload a contract) while nothing is validated. Calls the real `GET /api/contracts` (now carrying `currency`). See "Portfolio" below. | E07/F01/US01/T01; V2 design alignment (Sept 2026) |
 | `/contracts/:id` | Contract 360, V2 **no tabs**: origin back link ("← Ask Raffa / Documents / Portfolio / Renewals / Savings", else "← Back"), supplier · title · "{type} · {spend} / year · N documents · {status}", **Ask about it** → `/ask?scope=<id>`; the **answers band** (Where you can save · When you must move · What to do, with Start negotiation / Assign to me or the negotiation tracker once acted); **Why — the clauses behind it** (clause rows with leverage tags; click → the original wording highlighted; **Open in document viewer**; `?clause=<id>`/`?page=<n>` pre-select it); **Details ▾** (key terms, documents, "N facts still need you — Review all →" when any `review_required` decision remains, priority score, Products/Obligations/Risks). Calls the real `GET /api/contracts/{id}`, `GET /api/renewals`, `GET /api/renewals/{contractId}/priority`, `GET /api/contracts/{id}/evidence`, `POST /api/renewals/{id}/action`. See "Contract 360" below. | E07/F02/US01/T01; citation landing E13/F10/US01/T01; V2 layout (Sept 2026); details and Why E22/F04/US01/T01 |
 | `/contracts/:id/review` | Review / correction: 4-column field list (critical marker, extracted value + real source line, real per-field confidence tag from the extraction evidence, Accept/Correct) + right-hand evidence pane (file · page header, the quoted passage with the span highlighted, model + confidence, correction form, real correction-history trail) + gated "Mark as validated" that really signs the document off. Calls the real `GET /api/contracts/{id}`, `GET /api/contracts/{id}/corrections`, `GET /api/contracts/{id}/evidence`, `PATCH /api/contracts/{id}`, `POST /api/documents/{id}/validate`. Shares its whole lifecycle with the Documents review state through `routes/contracts/review/useReviewSession.ts`. See "Review / correction" below. | E07/F03/US01/T01 |
-| `/renewals` | Renewals, V2: header ("Renewals" + "N contracts with validated dates · sorted by priority"), one list sorted by score (Score · Supplier · contract · Renews in · Notice in · Status) and the selected row's **Why it is here** pane (recommended action + rationale, Start negotiation / Assign to me, "See the facts behind this →"), plus loading/error states and the reroute "No renewal dates yet" while nothing is validated. Calls the real `GET /api/renewals`, `GET /api/renewals/{contractId}/priority`, `POST /api/renewals/{id}/action`. See "Renewals" below. | E08/F01/US01/T01; V2 design alignment (Sept 2026) |
+| `/renewals` | Renewals, V2: header ("Renewals" + "N contracts with validated dates · sorted by priority"), one list sorted by score (Score · Supplier · contract · Renews in · Notice in · Status) and the selected row's **Why it is here** pane (recommended action + rationale, Start negotiation / Assign to me, "See the facts behind this →"), optional `?select=<contractId>` pre-selects that row (else the top-priority default, never a 500 on an unmatched/foreign id), plus loading/error states and the reroute "No renewal dates yet" while nothing is validated. Calls the real `GET /api/renewals`, `GET /api/renewals/{contractId}/priority`, `POST /api/renewals/{id}/action`. See "Renewals" below. | E08/F01/US01/T01; V2 design alignment (Sept 2026); `?select=` E29/F03/US01/T01 |
 | `/quotes`, `/quotes/:id` | Quote check, V2: constant header ("Optional · new purchase" · intro sentence); landing = the dashed drop card (**Upload a quote** + "or use the sample: Databricks proposal Q-88213", optional supplier/currency/geography/date under a disclosure); loaded = the Supplier quote · Market range · Assessment band, the lines table (Line · Quoted · P50 · Position · Benchmark) and "Target and negotiation levers are one step further — shown only if you want them." revealing Target, then Negotiation (outcome capture); unmapped SKUs show the mapping block instead. Calls the real `POST /api/quotes`, `POST /api/quotes/{id}/assessment/recalculate`, `POST /api/negotiations/outcomes`. See "Quote check" below. | E08/F03/US01/T01; V2 design alignment (Sept 2026) |
 | `/savings` | Savings, V2 (not a rail item -- reached from Ask actions, Renewals and Contract 360): header + summary, three KPI cells (Contracts analyzed · Upcoming renewals · Savings identified, each with a meta line), the opportunities table (Supplier · Action · Estimate · Status; rows open Contract 360), a stale-labelled KPI degrade when the benchmark provider is unreachable, and the reroute "No savings opportunities yet" → Renewals. Calls the real `GET /api/savings/kpis`, `GET /api/savings`, plus `GET /api/contracts` for supplier names. See "Savings" below. | E08/F02/US01/T01; moved by E13/F09/US01/T01; V2 design alignment (Sept 2026) |
 | `/review` | Redirects to `/documents?filter=attention` -- Review is a *state* of Documents in V2, not its own rail destination or screen. The old `src/routes/review/` rail landing (V1 review queue) has been deleted. | E13/F09/US01/T01 |
@@ -294,7 +294,14 @@ from `markup.html`.
   ADR-018/ADR-020 forbid). Enter (or a suggestion chip) always opens a **new
   chat**: it navigates to `/ask` with `{ state: { query, newChat: true } }`
   (`useLocation().state` -- `AskRoute` reads `state.query` to seed and ask a
-  brand-new conversation immediately, task E13/F09/US01/T04). Cmd/Ctrl+K
+  brand-new conversation immediately, task E13/F09/US01/T04) -- **except from
+  Contract 360** (task E27/F03/US01/T01, NW-77; ADR-012 cl. 49 / ADR-020
+  §37.1 per `reports/architecture/waves/w19.md`): while the current route is
+  `/contracts/:contractId` (`askSuggestions.ts#contractIdForPath`, never its
+  `/review` sub-route), it navigates `/ask?scope=<contractId>` instead,
+  reusing `AskRoute`'s own w18 `parseScopeContractId` to create the scoped
+  conversation -- the query still rides `state.query` unchanged, never a new
+  nav-state field. Cmd/Ctrl+K
   focuses the input from anywhere the bar itself renders; on `/ask` and
   `/ask/:conversationId` the identical shortcut instead focuses that
   screen's own composer input (`src/routes/ask/index.tsx`'s
@@ -311,6 +318,16 @@ from `markup.html`.
   from `AppShell.tsx`, never re-derived; `GET /api/capabilities` itself
   stays un-gated and identical for both roles) -- never a blank chip row.
   The same role gate applies to `AskRoute`'s own `suggestionsFor` below.
+  **Contract 360 has no catalog key**, so its own two chips are always the
+  supplier-templated pair instead (`askSuggestions.ts#c360Chips`, task
+  E27/F03/US01/T01, NW-77, AC-2): the bar fetches `GET /api/contracts/{id}`
+  (`getContract360`) itself while on that route -- the same read
+  `askViewModel.ts#buildScopedSuggestions` already does for `AskRoute`'s own
+  scoped chips -- and names the real supplier once it resolves; "this
+  supplier" only survives while that fetch is in flight, fails, or the
+  contract genuinely has none. Portfolio/Ask-home (and every other screen)
+  never receive a supplier name at all, so their own chips are unaffected
+  (AC-3).
   The placeholder
   itself still switches to "Ask Raffa switches on after your first
   validated contract" while `!kbReady`, regardless of route (ADR-024 V2
@@ -721,8 +738,10 @@ E13/F09/US01/T04, us-01-web-v2 AC-1/AC-3/AC-5/AC-6, `raffa-v2/screens-v2.md` #2)
 resume -- `turns.length === 0` vs `> 0` and two route-derived ids inside one component, not four
 separate components; see `index.tsx`'s own header comment for the full state-machine reasoning).
 Reached from the global Ask bar (`components/ask-bar/GlobalAskBar.tsx`, Enter or Cmd/Ctrl+K) on any
-screen, directly at `/ask`, a rail conversation click, or Contract 360's "Ask about it"
-(`/ask?scope=<contractId>`). Replaces the V1 single-turn `POST /api/chat/query` screen this same
+screen -- scoped (`/ask?scope=<contractId>`) when submitted from Contract 360 itself (task
+E27/F03/US01/T01, NW-77), plain `/ask` elsewhere -- directly at `/ask`, a rail conversation click,
+or Contract 360's own "Ask about it" button (`Contract360Header.tsx`, the same `?scope=` template).
+Replaces the V1 single-turn `POST /api/chat/query` screen this same
 task deleted (`ChatMessage.tsx`, `askViewModel.ts#ROUTE_LINE_BY_INTENT`) with real, resumable,
 per-user conversations.
 
@@ -759,6 +778,16 @@ per-user conversations.
   contracts sentence, which would otherwise misdescribe a chat scoped to one contract. The off-state
   gate above is unaffected -- a scoped link into a tenant with zero validated contracts still renders
   the generic `AskOffState`, never a briefed-but-off face.
+- **Bound-contract chip** (`index.tsx`, task E27/F04/US01/T01, NW-78, wave w19; ADR-012 cl. 49 /
+  ADR-020 37.2 per `reports/architecture/waves/w19.md`) -- a persistent `.tag-neutral` pill (`{
+  supplierName} · {type}`, never a bare guid) renders above the thread, inside a plain `<Link
+  to={boundContractChip.href}>` to `/contracts/{contractId}`, for as long as this conversation is
+  scoped -- independent of `hasTurns` (visible the instant a scoped create response resolves,
+  before the first reply, not only once resumed with a full history). Keyed off `boundContractId`,
+  the conversation's own **durable**, persisted `scopeContractId` (read off the create response or
+  the resumed conversation detail) -- never the transient `?scope=` query the New-chat brief above
+  reads pre-creation -- so the chip is what actually survives a resume; unrendered, not a
+  placeholder, while the supplier/type fetch behind its own label has not resolved yet.
 - **Conversation** -- header shows the derived title (`deriveConversationTitle`, collapsed
   whitespace, hard-truncated at 48 chars, no ellipsis) + "+ New chat"; every turn renders through the
   phase-2 `ReplyBody` (task E13/F09/US01/T02, `routes/ask/reply/*`, this task maps the wire reply
@@ -823,12 +852,28 @@ gone with V2.
   `GET /api/renewals` carries no contract name, so the contract half is "Contract {short id}" with the
   full id as tooltip. Status is "Open" until a persisted `savedAction` exists on the list row
   (`NotStarted` is treated as no action taken). A reload or a second browser shows the same status.
+- **`?select=<contractId>` deep link** (task E29/F03/US01/T01, NW-84; ADR-012 cl. 51 per
+  `reports/architecture/waves/w19.md`) -- seeds the initial selection on mount only (a later click
+  still wins). The value is `Raffa.Chat`'s own `CapabilityRouting.BuildHref` for the `renewals`
+  capability, so a chat reply's "Open in Renewals" action lands on the right row. An id that matches
+  no row in this tenant's own list (absent, malformed, or another tenant's contract) falls back to
+  the same top-priority default the no-query case already used -- never a 500, never a second fetch
+  keyed on the raw query value.
 - **Why it is here** (`InsightCard.tsx`) -- "{supplier} — N days to notice", the contract line, the
   accent "Recommended action" kicker, the Renewals module's own deterministic action + rationale,
   **Start negotiation** (primary → InProgress / "In negotiation") and **Assign to me** (NotStarted /
   "Assigned"), both the real `POST /api/renewals/{id}/action` with owner = the signed-in `userLabel`;
   once acted, the bordered "{action} · owner … Open contract →" box. "See the facts behind this →"
   opens Contract 360.
+- **Negotiation TODOs** (`NegotiationTodoList.tsx`, task E29/F04/US01/T01, wave w19 NW-85; ADR-012
+  cl. 52 / ADR-020 cl. 41 -- see "API client" above for the footer-transcription caveat) -- below the
+  recommended-action block, a `.table` sub-surface (Topic · Current → target · Why · Status · Mark
+  done) reads back the negotiation points Ask ranked and persisted for this contract
+  (`GET /api/renewals/{id}/negotiation-todos`); `Superseded` rows (the ranker no longer grounds that
+  point) are filtered out client-side, `Done` stays visible. A `.btn-secondary` **Mark done** PUTs the
+  tick (Procurement/Admin, same route) and the row is replaced with the server's own returned state,
+  never an optimistic flip -- so a Done tick surviving a repeat ask is proven, not assumed. Never
+  invents a point: there is no "add a point" affordance here.
 - **States** -- loading, error, and the reroute "No renewal dates yet · Renewals are computed from
   validated end dates and notice periods. Upload a contract to start." → `/documents`.
 
@@ -1208,6 +1253,26 @@ Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
   E14/F03/US02/T01, wave w14; see "Invitation accept" above) -- every one of this section's five
   client methods now has a real caller.
 
+- **Task E29/F04/US01/T01 (todo-web, wave w19 NW-85; ADR-012 w19 cl. 52 / ADR-020 w19 cl. 41)**
+  extended `openapi/raffa-api.v1.json` with `GET`/`PUT /api/renewals/{id}/negotiation-todos`
+  (`getRenewalNegotiationTodos`/`tickRenewalNegotiationTodo`) -- the ninth web epic to extend this
+  document (see "API client" provenance paragraphs above). Already implemented by backend task
+  E29/F01/US01/T01 (`RenewalsEndpointExtensions.cs`); per this section's own established convention
+  (e.g. task E19/F01/US01/T01's "one phase later"), the contract and generated schema are extended by
+  the web task that first consumes an operation, not the backend task that ships it -- this task. Both
+  routes share one wire shaper (`ToNegotiationTodoResponse`, backend), so `RenewalNegotiationTodoRow`
+  types a read row and a tick's `200` body alike, and can never drift into different shapes;
+  `RenewalNegotiationTodoStatusValue` is the closed `Open`/`Done`/`Superseded` vocabulary read off the
+  generated response, the same convention `RenewalActionStatusValue` above already establishes.
+  `tickRenewalNegotiationTodo`'s request body (`TickRenewalNegotiationTodoRequest`, `{ pointKey }`) is
+  hand-written, not generated -- same reason as `CorrectContractRequest` above (the generator does not
+  parse `requestBody`). ADR-012/ADR-020's own bodies had not yet been amended with this wave's w19
+  footer clauses when this task ran -- `reports/architecture/waves/w19.md`'s NW-85 row is the citable
+  source instead, the same transcription gap `src/routes/renewals/index.tsx`'s own `?select=` deep
+  link (task E29/F03/US01/T01) already names for its own cl. 51. First caller:
+  `src/routes/renewals/NegotiationTodoList.tsx`, embedded in `InsightCard.tsx`'s "Why it is here" pane
+  (see "Renewals" above).
+
 ## Directory layout
 
 ```
@@ -1297,6 +1362,7 @@ web/
         index.tsx                 # RenewalsRoute -- fetch-then-score-batch state machine, selection, actions, reroute
         RenewalTable.tsx          # the priority list (Score · Supplier · contract · Renews in · Notice in · Status)
         InsightCard.tsx           # the "Why it is here" pane: action + rationale, Start negotiation / Assign to me, acted box
+        NegotiationTodoList.tsx   # task E29/F04/US01/T01 -- negotiation TODO list (Topic/Current→target/Why/Status, Mark-done tick), embedded in InsightCard below the recommended action; GET/PUT /api/renewals/{id}/negotiation-todos
         renewalPipelineViewModel.ts # pure helpers: rows sorted by score, summary, formatting, the two action plans
         renewals.css              # this screen's styles
       quotes/                 # Quote check, V2 (see "Quote check" above)
@@ -1333,8 +1399,8 @@ web/
         shellContext.ts          # useOutletContext typing for the router outlet (workspaceId/kbReady/validatedContractCount)
         shell.css                # rail/shell layout
       ask-bar/                # task E06/F03/US02/T01 -- global Ask bar scaffold (AC-3); V2 new-chat state + off placeholder by E13/F09/US01/T01; capability-sourced chips by E13/F09/US01/T04
-        GlobalAskBar.tsx         # the bar itself: input, chips, Enter -> /ask with { query, newChat: true }, Cmd/Ctrl+K focus, fetches GET /api/capabilities once
-        askSuggestions.ts        # getAskBarCopy: static per-route fallback copy + kbReady off-copy, overridden by the capability catalog's own exampleQuestions once it resolves for the current route
+        GlobalAskBar.tsx         # the bar itself: input, chips, Enter -> /ask with { query, newChat: true } (or /ask?scope=<contractId> from Contract 360, NW-77 task E27/F03/US01/T01), Cmd/Ctrl+K focus, fetches GET /api/capabilities once + GET /api/contracts/{id} while on Contract 360 (real supplier name for the notice chip)
+        askSuggestions.ts        # getAskBarCopy: static per-route fallback copy + kbReady off-copy, overridden by the capability catalog's own exampleQuestions once it resolves for the current route; c360Chips/contractIdForPath (NW-77) name the Contract 360 chip with the real supplier, never on any other screen
         ask-bar.css
     App.tsx                   # composition root: BrowserRouter (public /invite/accept + the account/workspace gate), /health effect, AuthenticatedGate's three states (task E14/F03/US02/T01)
     main.tsx                  # boot: load config -> construct MSAL + API client -> render
