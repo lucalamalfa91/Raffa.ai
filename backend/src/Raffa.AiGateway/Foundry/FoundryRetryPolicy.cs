@@ -43,6 +43,8 @@ public sealed class FoundryRetryPolicy(
 
         for (var attempt = 0; ; attempt++)
         {
+            await FoundryAttemptHeartbeat.NotifyAsync(cancellationToken).ConfigureAwait(false);
+
             TimeSpan? retryAfter = null;
             HttpResponseMessage? response = null;
 

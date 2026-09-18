@@ -1139,6 +1139,13 @@
                               "null"
                             ],
                             "description": "ADR-027 §D6: `not_a_contract` or `no_readable_text` while `processingStatus` is `Rejected` (the same reason codes ADR-024's retired 422 body carried); null for every other status. Not declared with `enum` alongside the nullable union -- same generator limitation this document's `stage` property documents."
+                          },
+                          "errorDetail": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "Latest extraction-job error while `processingStatus` is `Failed`; null otherwise. The Documents list surfaces this instead of only 'Not yet linked to a contract'."
                           }
                         }
                       }

@@ -16,6 +16,7 @@ function item(overrides: Partial<DocumentListItemBody> = {}): DocumentListItemBo
     createdAt: "2026-09-06T08:05:00Z",
     weakFactCount: 0,
     rejectionReason: null,
+    errorDetail: null,
     ...overrides,
   };
 }
@@ -95,6 +96,15 @@ describe("getProgressView", () => {
 
     expect(view.isWaiting).toBe(false);
     expect(view.headline).toBe("Not yet linked to a contract");
+    expect(view.link).toBeNull();
+  });
+
+  it("surfaces errorDetail on Failed when the list carries one", () => {
+    const view = getProgressView(
+      item({ processingStatus: "Failed", errorDetail: "Gave up after 3 attempts. Processing made no progress for 15 minutes." }),
+    );
+
+    expect(view.headline).toBe("Gave up after 3 attempts. Processing made no progress for 15 minutes.");
     expect(view.link).toBeNull();
   });
 

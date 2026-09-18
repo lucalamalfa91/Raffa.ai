@@ -16,7 +16,9 @@ import {
   isStuckUploaded,
   isStuckProcessing,
   STUCK_REPROCESS_AFTER_MS,
+  STUCK_PROCESSING_REPROCESS_AFTER_MS,
   MAX_STUCK_REPROCESS_ATTEMPTS,
+  getFailedHint,
   type DocumentCountsBody,
 } from "../../../src/routes/documents/documentTable";
 
@@ -33,6 +35,7 @@ function item(overrides: Partial<DocumentListItemBody> = {}): DocumentListItemBo
     createdAt: "2026-09-06T08:05:00Z",
     weakFactCount: 0,
     rejectionReason: null,
+    errorDetail: null,
     ...overrides,
   };
 }
@@ -191,18 +194,36 @@ describe("isStuckUploaded", () => {
 describe("isStuckProcessing", () => {
   const now = Date.parse("2026-09-15T18:00:00Z");
 
-  it("is false while the same stage has been showing for under three minutes", () => {
-    expect(isStuckProcessing(item({ processingStatus: "Processing", stage: "Uploading" }), now - 60_000, now)).toBe(false);
+  it("is false while the same stage has been showing for under the processing window", () => {
+    expect(isStuckProcessing(item({ processingStatus: "Processing", stage: "Uploading" }), now - 3 * 60_000, now)).toBe(false);
   });
 
-  it("is true once the same Processing stage has been showing for three minutes", () => {
+  it("is false for same-label LegalClauses→Risk at three minutes (both Validating schema)", () => {
+    expect(STUCK_PROCESSING_REPROCESS_AFTER_MS).toBe(15 * 60 * 1000);
+    expect(isStuckProcessing(item({ processingStatus: "Processing", stage: "Validating schema" }), now - 3 * 60_000, now)).toBe(false);
+  });
+
+  it("is true once the same Processing stage has been showing for fifteen minutes", () => {
     expect(MAX_STUCK_REPROCESS_ATTEMPTS).toBe(3);
-    expect(isStuckProcessing(item({ processingStatus: "Processing", stage: "Validating schema" }), now - STUCK_REPROCESS_AFTER_MS, now)).toBe(true);
+    expect(isStuckProcessing(item({ processingStatus: "Processing", stage: "Validating schema" }), now - STUCK_PROCESSING_REPROCESS_AFTER_MS, now)).toBe(true);
   });
 
   it("is false for Uploaded and terminal statuses", () => {
-    expect(isStuckProcessing(item({ processingStatus: "Uploaded" }), now - STUCK_REPROCESS_AFTER_MS, now)).toBe(false);
-    expect(isStuckProcessing(item({ processingStatus: "Failed" }), now - STUCK_REPROCESS_AFTER_MS, now)).toBe(false);
+    expect(isStuckProcessing(item({ processingStatus: "Uploaded" }), now - STUCK_PROCESSING_REPROCESS_AFTER_MS, now)).toBe(false);
+    expect(isStuckProcessing(item({ processingStatus: "Failed" }), now - STUCK_PROCESSING_REPROCESS_AFTER_MS, now)).toBe(false);
+  });
+});
+
+describe("getFailedHint", () => {
+  it("surfaces errorDetail when the list carries one", () => {
+    expect(getFailedHint("Gave up after 3 attempts. Processing made no progress for 15 minutes.")).toBe(
+      "Gave up after 3 attempts. Processing made no progress for 15 minutes.",
+    );
+  });
+
+  it("falls back to the historical not-linked sentence", () => {
+    expect(getFailedHint(null)).toBe("Not yet linked to a contract");
+    expect(getFailedHint("  ")).toBe("Not yet linked to a contract");
   });
 });
 

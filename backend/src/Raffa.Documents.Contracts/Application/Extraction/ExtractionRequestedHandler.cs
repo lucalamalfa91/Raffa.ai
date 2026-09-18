@@ -58,7 +58,8 @@ public sealed class ExtractionRequestedHandler(
     ILogger<ExtractionRequestedHandler> logger,
     HungProcessingRecoveryService? hungRecovery = null,
     IExtractionRunAborter? runAborter = null,
-    IExtractionHangWatch? hangWatch = null)
+    IExtractionHangWatch? hangWatch = null,
+    ExtractionProgressHeartbeat? progressHeartbeat = null)
 {
     /// <summary>Deliveries a job may consume before its row is marked terminal (ADR-027 §D3).</summary>
     public const int MaxAttempts = 3;
@@ -285,6 +286,10 @@ public sealed class ExtractionRequestedHandler(
         job.StartedAt ??= clock.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         hangWatch?.Heartbeat();
+
+        using var bound = progressHeartbeat?.Bind(job);
+        using var foundryAttempts = progressHeartbeat?.BeginFoundryAttempts();
+        using var memoryPulses = progressHeartbeat?.BeginMemoryPulses();
 
         var bytes = await storage.LoadAsync(tenantId, document.StoragePath, cancellationToken).ConfigureAwait(false);
         if (bytes is null || bytes.Length == 0)

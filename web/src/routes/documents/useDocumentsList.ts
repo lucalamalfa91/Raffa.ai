@@ -6,6 +6,7 @@ import { runUploadBatch, MAX_FILES_PER_BATCH, type LocalUploadEntry } from "./up
 import {
   filterDocumentsByAttention,
   STUCK_REPROCESS_AFTER_MS,
+  STUCK_PROCESSING_REPROCESS_AFTER_MS,
   MAX_STUCK_REPROCESS_ATTEMPTS,
   type AttentionFilterValue,
   type DocumentCountsBody,
@@ -291,9 +292,9 @@ export function useDocumentsList(apiClient: ApiClient): UseDocumentsListResult {
         const seen = processingStageSeenRef.current.get(item.id);
         if (!seen || seen.stage !== stageKey) {
           processingStageSeenRef.current.set(item.id, { stage: stageKey, since: now });
-          delay = STUCK_REPROCESS_AFTER_MS;
+          delay = STUCK_PROCESSING_REPROCESS_AFTER_MS;
         } else {
-          delay = Math.max(0, STUCK_REPROCESS_AFTER_MS - (now - seen.since));
+          delay = Math.max(0, STUCK_PROCESSING_REPROCESS_AFTER_MS - (now - seen.since));
         }
       } else {
         processingStageSeenRef.current.delete(item.id);

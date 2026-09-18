@@ -145,6 +145,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IExtractionJobClaimStore, ExtractionJobClaimStore>();
         services.TryAddSingleton<IExtractionRunAborter, ExtractionRunAborter>();
         services.AddScoped<IExtractionHangWatch, ExtractionHangWatch>();
+        services.AddScoped<ExtractionProgressHeartbeat>();
         services.AddScoped<HungProcessingRecoveryService>();
 
         // Task E19/F03/US01/T01 (us-01-step-ticks-api, ADR-028 §D3): Contract 360's negotiation

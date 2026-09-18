@@ -99,6 +99,7 @@ function docItem(overrides: Partial<DocumentListItemBody> = {}): DocumentListIte
     createdAt: "2026-09-06T08:05:00Z",
     weakFactCount: 0,
     rejectionReason: null,
+    errorDetail: null,
     ...overrides,
   };
 }
@@ -495,7 +496,40 @@ describe("DocumentsRoute (task E13/F09/US01/T03, web-documents-v2)", () => {
     expect(screen.queryByText(/stopped checking for updates/)).toBeNull();
   });
 
-  it("auto-reprocesses a Processing document stuck on the same stage after three minutes", async () => {
+  it("does not auto-reprocess a Processing document at three minutes, including same-label Validating schema", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const reprocessDocument = vi.fn().mockResolvedValue({
+      ok: true,
+      statusCode: 202,
+      queued: { documentId: "p", extractionJobId: "job-1", processingStatus: "Uploaded" },
+      error: null,
+    });
+    const listDocuments = vi
+      .fn<ApiClient["listDocuments"]>()
+      .mockResolvedValue(
+        listOk([
+          docItem({
+            id: "p",
+            fileName: "LegalThenRisk.pdf",
+            processingStatus: "Processing",
+            stage: "Validating schema",
+            contractId: null,
+            createdAt: new Date().toISOString(),
+          }),
+        ]),
+      );
+    renderDocuments(mockApiClient({ listDocuments, reprocessDocument }));
+
+    expect(await screen.findByText("Validating schema…")).toBeInTheDocument();
+    expect(reprocessDocument).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3 * 60_000);
+    });
+    expect(reprocessDocument).not.toHaveBeenCalled();
+  });
+
+  it("auto-reprocesses a Processing document stuck on the same stage after fifteen minutes", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const reprocessDocument = vi.fn().mockResolvedValue({
       ok: true,
@@ -524,6 +558,11 @@ describe("DocumentsRoute (task E13/F09/US01/T03, web-documents-v2)", () => {
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(3 * 60_000);
+    });
+    expect(reprocessDocument).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(12 * 60_000);
     });
     await waitFor(() => expect(reprocessDocument).toHaveBeenCalledTimes(1));
     expect(reprocessDocument).toHaveBeenCalledWith(WORKSPACE_ID, "p");

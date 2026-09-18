@@ -56,7 +56,8 @@ public sealed class StagedExtractionService(
     ITenantContext tenantContext,
     IClock clock,
     IAuditWriter auditWriter,
-    IExtractionHangWatch? hangWatch = null)
+    IExtractionHangWatch? hangWatch = null,
+    ExtractionProgressHeartbeat? progressHeartbeat = null)
 {
     /// <summary>AC-1's seven stages, in pipeline order. <see cref="ExtractionStage.Classification"/>
     /// is deliberately excluded — it is queued and (eventually) consumed elsewhere, before this
@@ -363,7 +364,20 @@ public sealed class StagedExtractionService(
             DocumentText: documentText,
             JsonSchema: BuildSchema(stage));
 
-        var extractResult = await aiGateway.ExtractAsync(request, cancellationToken).ConfigureAwait(false);
+        Result<AiExtractionResult> extractResult;
+        if (progressHeartbeat is null)
+        {
+            extractResult = await aiGateway.ExtractAsync(request, cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            using (progressHeartbeat.Bind(job))
+            using (progressHeartbeat.BeginFoundryAttempts())
+            using (progressHeartbeat.BeginMemoryPulses())
+            {
+                extractResult = await aiGateway.ExtractAsync(request, cancellationToken).ConfigureAwait(false);
+            }
+        }
 
         var completedAt = clock.UtcNow;
 
