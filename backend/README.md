@@ -2654,14 +2654,24 @@ w19 cl. 23) adds a fourth:
   shared host helper that also caps the chat pack at the top three points
   ("chat top-3") while upserting the whole ranked set to
   `Raffa.Renewals.Application.RenewalNegotiationTodoService` when asked
-  ("persist-all"). No `AskIntent` dispatches to it yet — later tasks wire
-  it into a live turn; today it is reached directly, the same
+  ("persist-all"). Proved in isolation (chat pack capped at three, the
+  full five-point ranked set readable back via
+  `RenewalNegotiationTodoService.GetAsync` when `persistTodos` is set,
+  and a repeat call never duplicating rows) by
+  `Raffa.Api.Tests.AskNegotiationPointsPackTests`, the same
   test-reachability precedent `BuildRenewalStrategyPackAsync`/
-  `BuildMarketComparePackAsync` already establish — proved end to end
-  (chat pack capped at three, the full five-point ranked set readable
-  back via `RenewalNegotiationTodoService.GetAsync` when `persistTodos`
-  is set, and a repeat call never duplicating rows) by
-  `Raffa.Api.Tests.AskNegotiationPointsPackTests`.
+  `BuildMarketComparePackAsync` already establish. **Wired into a live
+  turn by task E29/F02/US01/T01 (todo-host-upsert; NW-85/NW-97; ADR-028/
+  ADR-024 w19 cl. 21)**: `AskIntent.RenewalStrategy`'s named-contract
+  branch now calls it (`persistTodos: true`) via the new
+  `BuildRenewalStrategyAndNegotiationTodosPackAsync`, appended to
+  `BuildRenewalStrategyPackAsync`'s own pack — so a real Q3 ask durably
+  upserts before the answer is composed, proved end to end by
+  `Raffa.Api.Tests.AskRenewalStrategyTodoUpsertTests` (upsert-before-
+  answer, idempotent re-ask, a ticked Done row surviving a repeat ask).
+  Epic-31/feature-01 (q3-route, NW-95) and feature-03 (q3-persist, NW-97)
+  still own that switch arm's final corpus shape (tenant/market/raffa
+  corpora) and the server-injected `/renewals?select=` navigate action.
 
 **Where the shared `PricedLine` input lives, and why**: R-STR-02
 generalizes `NegotiationStrategyCalculator` to a shared priced-line input.

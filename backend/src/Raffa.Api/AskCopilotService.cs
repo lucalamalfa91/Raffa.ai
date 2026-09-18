@@ -112,11 +112,16 @@ namespace Raffa.Api;
 /// for the older, different <c>RenewalStrategy</c> pack above. The whole ranked set is upserted to
 /// <see cref="RenewalNegotiationTodoService"/> when asked (<c>persistTodos</c> — "persist-all"), while
 /// only the top three ever reach the returned pack (<c>PackItem</c>s — "chat top-3"): the two counts
-/// deliberately differ, so a re-ask never re-litigates a point Procurement already ticked done. No
-/// intent dispatches to this method yet — later tasks (epic-29/feature-02, epic-31/feature-01,
-/// feature-03) wire it into a live turn; it is unit/integration-tested directly in the meantime, the
-/// same test-reachability precedent <see cref="BuildMarketComparePackAsync"/>/
-/// <see cref="BuildRenewalStrategyPackAsync"/> already establish.
+/// deliberately differ, so a re-ask never re-litigates a point Procurement already ticked done.
+/// <b>Wired into a live turn by task E29/F02/US01/T01 (todo-host-upsert; NW-85/NW-97; ADR-028/
+/// ADR-024 w19 cl. 21)</b>: <see cref="BuildInDomainReplyAsync"/>'s <see cref="AskIntent.RenewalStrategy"/>
+/// named-contract branch now calls this method (via
+/// <see cref="BuildRenewalStrategyAndNegotiationTodosPackAsync"/> below) with <c>persistTodos: true</c>,
+/// so a real Q3 ask durably upserts before <see cref="AnswerComposer.AnswerAsync"/> ever runs — the
+/// <c>/renewals?select={id}</c> deep-link is genuinely true after asking, not merely true in a
+/// direct-DI test. Epic-31/feature-01 (q3-route, NW-95) and feature-03 (q3-persist, NW-97) still own
+/// that switch arm's final corpus shape (tenant/market/raffa corpora) and the injected
+/// <c>/renewals?select=</c> navigate action; this task only makes the persistence itself real.
 /// </para>
 ///
 /// <para>
@@ -308,7 +313,7 @@ internal sealed class AskCopilotService(
             GateLabel.NeedsDocument => (BuildNeedsDocumentReply(gate.NamedSupplier!, portfolio.Items.Count), false),
             GateLabel.InDomain => await BuildInDomainReplyAsync(
                 tenantId, question, gate.NamedSupplier, portfolio, supplierNames, recentTurns,
-                scopeContractId, scopedContractItem, cancellationToken)
+                scopeContractId, scopedContractItem, actor, cancellationToken)
                 .ConfigureAwait(false),
             _ => throw new ArgumentOutOfRangeException(nameof(gate), gate.Label, "Unknown GateLabel."),
         };
@@ -402,6 +407,11 @@ internal sealed class AskCopilotService(
     /// <see langword="null"/>, <em>or</em> when it named an id this tenant cannot currently see —
     /// wrong tenant, no linked document, deleted since the conversation was opened). Task
     /// E27/F02/US01/T01 (NW-76; ADR-024 w19 cl. 12; lock 4) — see this type's own doc comment.</param>
+    /// <param name="actor">Echoes <see cref="AskAsync"/>'s own required, no-default <c>actor</c>
+    /// (the caller's resolved token subject, ADR-011 w16 §15) — threaded down only so the
+    /// <see cref="AskIntent.RenewalStrategy"/> named-contract branch can pass it on to
+    /// <see cref="BuildNegotiationPointsPackAsync"/>'s own required <c>actor</c> parameter whenever
+    /// <c>persistTodos: true</c> (task E29/F02/US01/T01, todo-host-upsert). Never the model.</param>
     private async Task<(CopilotReply Reply, bool GuardIntervened)> BuildInDomainReplyAsync(
         TenantId tenantId,
         string question,
@@ -411,6 +421,7 @@ internal sealed class AskCopilotService(
         IReadOnlyList<(string Role, string Markdown)> recentTurns,
         EntityId? scopeContractId,
         PortfolioListItem? scopedContractItem,
+        string actor,
         CancellationToken cancellationToken)
     {
         var plan = intentPlanner.Plan(question, namedSupplier);
@@ -455,7 +466,7 @@ internal sealed class AskCopilotService(
                 .ConfigureAwait(false),
             AskIntent.MarketCompare => await BuildMarketComparePackAsync(namedContractItem, cancellationToken).ConfigureAwait(false),
             AskIntent.RenewalStrategy => namedContractItem is not null
-                ? await BuildRenewalStrategyPackAsync(namedContractItem, cancellationToken).ConfigureAwait(false)
+                ? await BuildRenewalStrategyAndNegotiationTodosPackAsync(namedContractItem, actor, cancellationToken).ConfigureAwait(false)
                 : await BuildPortfolioStrategyPackAsync(portfolio, supplierNames, cancellationToken).ConfigureAwait(false),
             AskIntent.PortfolioStrategy => await BuildPortfolioStrategyPackAsync(portfolio, supplierNames, cancellationToken).ConfigureAwait(false),
             AskIntent.Savings => namedContractItem is not null
@@ -1539,6 +1550,58 @@ internal sealed class AskCopilotService(
             namedContractItem.ContractId.ToString()));
 
         return items;
+    }
+
+    /// <summary>
+    /// Task E29/F02/US01/T01 (todo-host-upsert; NW-85/NW-97; ADR-028/ADR-024 w19 cl. 21; parent story
+    /// us-01-todo-host-upsert AC-1): wires the grounded negotiation-points ranker
+    /// (<see cref="BuildNegotiationPointsPackAsync"/>, task E31/F02/US01/T01) into the
+    /// <see cref="AskIntent.RenewalStrategy"/> named-contract branch of a live Q3 turn — until this
+    /// task, that method existed and was directly tested (<c>Raffa.Api.Tests
+    /// .AskNegotiationPointsPackTests</c>) but no <see cref="AskIntent"/> ever reached it. Calling it
+    /// here — with <c>persistTodos: true</c> — <em>before</em> this switch arm's returned pack is
+    /// ever handed to <see cref="AnswerComposer.AnswerAsync"/> is what makes the
+    /// <c>/renewals?select={id}</c> deep-link true after a real ask: the whole grounded set is
+    /// durably upserted (<see cref="RenewalNegotiationTodoService.UpsertAsync"/>'s own idempotent
+    /// reconciliation — same <c>point_key</c> updates, a <see cref="RenewalNegotiationTodoStatus.Done"/>
+    /// row is frozen, a vanished point becomes <see cref="RenewalNegotiationTodoStatus.Superseded"/>)
+    /// regardless of whether the returned <see cref="PackItem"/>s below survive
+    /// <see cref="PackBudget.Apply"/> or get cited in the composed answer.
+    ///
+    /// <para>
+    /// <b>Additive, not a replacement.</b> <see cref="BuildRenewalStrategyPackAsync"/>'s own pack
+    /// (when-you-must-move + the older, ungrounded-by-design seven-lever playbook + priced-line
+    /// targets — see this type's own doc comment) is returned untouched and still leads; the
+    /// grounded negotiation points are appended so both are citable while task E31/F01/US01/T01
+    /// (q3-route, NW-95) and E31/F03/US01/T01 (q3-persist, NW-97) — which still own this switch
+    /// arm's final corpus shape (tenant/market/raffa corpora) and the injected
+    /// <c>/renewals?select=</c> action — decide what the composed answer actually narrates.
+    /// <c>includeRenewalUrgency: false</c> because <see cref="BuildRenewalStrategyPackAsync"/>
+    /// already narrates "when you must move" once — never twice in the same answer (see
+    /// <see cref="BuildNegotiationPointsPackAsync"/>'s own doc comment on that parameter).
+    /// </para>
+    /// </summary>
+    /// <param name="namedContractItem">The one contract this Q3 turn is about (never null — the
+    /// switch arm only calls this when <c>namedContractItem is not null</c>).</param>
+    /// <param name="actor">The caller's resolved token subject (ADR-011 w16 §15), threaded from
+    /// <see cref="AskAsync"/> via <see cref="BuildInDomainReplyAsync"/> — required by
+    /// <see cref="BuildNegotiationPointsPackAsync"/>'s own <c>persistTodos: true</c> contract.</param>
+    private async Task<IReadOnlyList<PackItem>> BuildRenewalStrategyAndNegotiationTodosPackAsync(
+        PortfolioListItem namedContractItem, string actor, CancellationToken cancellationToken)
+    {
+        var strategyItems = await BuildRenewalStrategyPackAsync(namedContractItem, cancellationToken)
+            .ConfigureAwait(false);
+
+        var negotiationPointItems = await BuildNegotiationPointsPackAsync(
+            new EntityId(namedContractItem.ContractId),
+            includeRenewalUrgency: false,
+            persistTodos: true,
+            actor,
+            cancellationToken).ConfigureAwait(false);
+
+        return negotiationPointItems.Count == 0
+            ? strategyItems
+            : strategyItems.Concat(negotiationPointItems).ToList();
     }
 
     /// <summary>
