@@ -150,6 +150,127 @@ export function readCorrectableValue(contract: Contract360Body, name: Correctabl
   }
 }
 
+function parseOptionalNumber(value: string | null): number | null {
+  if (value === null || value.trim() === "") return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function parseOptionalInt(value: string | null): number | null {
+  if (value === null || value.trim() === "") return null;
+  const numeric = Number.parseInt(value, 10);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+/**
+ * Writes one correctable field onto a Contract 360 aggregate, mirroring `readCorrectableValue`.
+ * Used to merge a successful `PATCH /api/contracts/{id}` into the already-rendered review session
+ * so Accept/Save can update that row without remounting the screen.
+ */
+export function writeCorrectableValue(
+  contract: Contract360Body,
+  name: CorrectableFieldName,
+  newValue: string | null,
+): Contract360Body {
+  const { header, tabs } = contract;
+  switch (name) {
+    case "type": {
+      const next = CONTRACT_TYPE_OPTIONS.find((option) => option === newValue);
+      return next === undefined ? contract : { ...contract, header: { ...header, type: next } };
+    }
+    case "supplier":
+      return { ...contract, header: { ...header, supplierName: newValue } };
+    case "status":
+      return { ...contract, header: { ...header, status: newValue ?? header.status } };
+    case "currency":
+      return {
+        ...contract,
+        tabs: { ...tabs, overview: { ...tabs.overview, currency: newValue ?? tabs.overview.currency } },
+      };
+    case "startDate":
+      return { ...contract, header: { ...header, startDate: newValue } };
+    case "endDate":
+      return { ...contract, header: { ...header, endDate: newValue } };
+    case "effectiveDate":
+      return { ...contract, tabs: { ...tabs, overview: { ...tabs.overview, effectiveDate: newValue } } };
+    case "cancellationDeadline":
+      return { ...contract, header: { ...header, cancellationDeadline: newValue } };
+    case "annualSpend":
+      return { ...contract, header: { ...header, annualSpend: parseOptionalNumber(newValue) } };
+    case "totalContractValue":
+      return { ...contract, header: { ...header, totalContractValue: parseOptionalNumber(newValue) } };
+    case "autoRenewal":
+      return { ...contract, header: { ...header, autoRenewal: newValue === "true" } };
+    case "renewalTermMonths":
+      return { ...contract, tabs: { ...tabs, overview: { ...tabs.overview, renewalTermMonths: parseOptionalInt(newValue) } } };
+    case "paymentTerms":
+      return { ...contract, tabs: { ...tabs, overview: { ...tabs.overview, paymentTerms: newValue } } };
+    case "governingLaw":
+      return { ...contract, tabs: { ...tabs, overview: { ...tabs.overview, governingLaw: newValue } } };
+  }
+}
+
+function officializeEvidence(
+  evidence: readonly ContractFieldEvidenceBody[],
+  name: CorrectableFieldName,
+): ContractFieldEvidenceBody[] {
+  const key = name.toLowerCase();
+  return evidence.map((entry) => {
+    if (entry.fieldName.toLowerCase() !== key) return entry;
+    if (entry.decision === "auto_accepted" || entry.decision === "human_accepted") return entry;
+    return { ...entry, decision: "human_accepted" };
+  });
+}
+
+/**
+ * Merges a successful review PATCH into the session's already-fetched aggregates. A same-value
+ * confirm (Accept, or Save with the extracted text) officializes that field's evidence as
+ * `human_accepted` — the same stamp `ContractCorrectionService` writes, and the paint
+ * `buildReviewFields` already reads as "Accepted by you". A value change writes the new figure
+ * onto the contract and prepends a history row so the field paints as corrected. A failed PATCH
+ * never reaches this helper; the row stays `review_required`.
+ */
+export function applySuccessfulCorrection(input: {
+  contract: Contract360Body;
+  history: readonly CorrectionHistoryEntryBody[];
+  evidence: readonly ContractFieldEvidenceBody[];
+  name: CorrectableFieldName;
+  newValue: string | null;
+  reason: string | null;
+  correctedAt: string;
+}): {
+  contract: Contract360Body;
+  history: CorrectionHistoryEntryBody[];
+  evidence: ContractFieldEvidenceBody[];
+} {
+  const previous = readCorrectableValue(input.contract, input.name);
+  const valueChanged = previous !== input.newValue;
+
+  if (!valueChanged) {
+    return {
+      contract: input.contract,
+      history: [...input.history],
+      evidence: officializeEvidence(input.evidence, input.name),
+    };
+  }
+
+  return {
+    contract: writeCorrectableValue(input.contract, input.name, input.newValue),
+    history: [
+      {
+        fieldName: input.name,
+        previousValue: previous,
+        newValue: input.newValue,
+        correctedBy: "you",
+        correctedAt: input.correctedAt,
+        reason: input.reason,
+      },
+      ...input.history,
+    ],
+    evidence: [...input.evidence],
+  };
+}
+
 /** Human-readable rendering of a field's raw wire value, for the list column and evidence pane --
  * never fed back into the correction form (that always starts from the raw value; see
  * `ReviewFieldRow.rawValue`). */

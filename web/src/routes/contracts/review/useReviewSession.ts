@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   ApiClient,
   Contract360Body,
@@ -7,6 +7,7 @@ import type {
 } from "../../../api/client";
 import {
   acceptedFieldNames,
+  applySuccessfulCorrection,
   buildReviewFields,
   computeReviewProgress,
   indexEvidence,
@@ -50,8 +51,8 @@ export interface ReviewSession {
   accept: (name: CorrectableFieldName) => Promise<void>;
   /** The bar the server used for auto-accept, for the legend. `null` until evidence is ready. */
   autoAcceptThreshold: number | null;
-  /** "Save correction": `PATCH /api/contracts/{id}` then a full re-fetch (reload, never a locally
-   * patched copy -- the same "reload, don't guess" convention `../contract360/index.tsx` follows). */
+  /** "Save correction": `PATCH /api/contracts/{id}`, then merge that write into the current
+   * session and silently re-fetch. The table stays mounted — no skeleton, no route remount. */
   correct: (name: CorrectableFieldName, newValue: string | null, reason: string) => Promise<void>;
   correctionError: string | null;
   submitting: boolean;
@@ -81,8 +82,8 @@ export interface ReviewSession {
  * **Decision state is the server's.** A field with a correction-history entry is `"corrected"` --
  * persists across reloads, came from a real `PATCH`. A field the evidence row marks
  * `auto_accepted` or `human_accepted` is `"accepted"` -- also durable, painted from the GET.
- * `accept()` for an unapplied proposal is a real `PATCH` plus `load()`; there is no session-only
- * acceptance store (ADR-012 w17 clause 36).
+ * `accept()` for an unapplied proposal is a real `PATCH` plus an in-place merge of that write
+ * (and a silent re-fetch); there is no session-only acceptance store (ADR-012 w17 clause 36).
  */
 export function useReviewSession(
   apiClient: ApiClient,
@@ -96,14 +97,24 @@ export function useReviewSession(
   const [submitting, setSubmitting] = useState(false);
   const [validating, setValidating] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const loadGeneration = useRef(0);
 
-  const load = useCallback(() => {
+  const load = useCallback((options?: { silent?: boolean }) => {
     if (workspaceId === null || contractId === null) return;
 
-    setFetchState({ phase: "loading" });
+    const silent = options?.silent === true;
+    const generation = ++loadGeneration.current;
+    // A silent refresh keeps the ready table on screen. `onClick={reload}` can pass a click
+    // event as `options`; that object has no `silent`, so Retry still shows the skeleton.
+    if (!silent) {
+      setFetchState({ phase: "loading" });
+    }
 
     void apiClient.getContract360(workspaceId, contractId).then(async (contractResult) => {
+      if (generation !== loadGeneration.current) return;
+
       if (!contractResult.ok || !contractResult.contract) {
+        if (silent) return;
         if (contractResult.statusCode === 404) {
           setFetchState({ phase: "not-found" });
           return;
@@ -125,6 +136,8 @@ export function useReviewSession(
         apiClient.getCorrectionHistory(workspaceId, contractId),
         apiClient.getContractEvidence(workspaceId, contractId),
       ]);
+
+      if (generation !== loadGeneration.current) return;
 
       setFetchState({
         phase: "ready",
@@ -171,7 +184,22 @@ export function useReviewSession(
         setCorrectionError(result.error ?? "The correction could not be saved.");
         return;
       }
-      load();
+      const trimmedReason = reason.trim() === "" ? null : reason.trim();
+      const correctedAt = result.correction?.correctedAt ?? new Date().toISOString();
+      setFetchState((current) => {
+        if (current.phase !== "ready") return current;
+        const applied = applySuccessfulCorrection({
+          contract: current.contract,
+          history: current.history,
+          evidence: current.evidence,
+          name,
+          newValue,
+          reason: trimmedReason,
+          correctedAt,
+        });
+        return { ...current, ...applied };
+      });
+      load({ silent: true });
     },
     [apiClient, workspaceId, contractId, load],
   );
@@ -210,7 +238,7 @@ export function useReviewSession(
 
   return {
     fetchState,
-    reload: load,
+    reload: () => load(),
     rows,
     progress,
     selectedField,
