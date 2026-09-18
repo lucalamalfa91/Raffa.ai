@@ -205,6 +205,24 @@ internal static class InMemoryAskEngineFactory
         await dbContext.SaveChangesAsync().ConfigureAwait(false);
     }
 
+    /// <summary>Writes <paramref name="clause"/> straight into the InMemory
+    /// <see cref="DocumentsContractsDbContext"/>, same shape as <see cref="SeedContractAsync"/> --
+    /// task E30/F02/US01/T01's own notice-evidence fixtures need a real <c>Clause</c> row for
+    /// <c>Contract360QueryService.GetByIdAsync</c>'s own Clauses tab, which
+    /// <c>AskCopilotService.BuildMatchingClauseItem</c> reads (a plain EF Core query against this
+    /// same swapped <see cref="DocumentsContractsDbContext"/> -- unlike embedding/pgvector search,
+    /// nothing here needs a real Postgres).</summary>
+    public static async Task SeedClauseAsync(this WebApplicationFactory<Program> factory, Clause clause)
+    {
+        ArgumentNullException.ThrowIfNull(factory);
+        ArgumentNullException.ThrowIfNull(clause);
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<DocumentsContractsDbContext>();
+        dbContext.Clauses.Add(clause);
+        await dbContext.SaveChangesAsync().ConfigureAwait(false);
+    }
+
     /// <summary>A linked document row so a seeded contract is not a dead leftover
     /// (no documents pointing at it). Defaults to <see cref="DocumentProcessingStatus.Completed"/>
     /// — the state Portfolio/Renewals/Ask's validated surfaces expect.</summary>

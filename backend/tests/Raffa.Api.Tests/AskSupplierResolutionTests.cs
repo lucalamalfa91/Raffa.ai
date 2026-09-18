@@ -73,6 +73,12 @@ public sealed class AskSupplierResolutionTests : IClassFixture<RaffaApiFactory>
             Status = "Completed",
             Currency = "CHF",
             EndDate = today.AddDays(30),
+            // Task E30/F02/US01/T01 (NW-94): a notice-shaped question ("cancellation deadline") is
+            // now server-decided by AskCopilotService.BuildNoticeFallbackReplyAsync -- an unknown
+            // deadline abstains (case 4) rather than answering from the generic per-contract fact,
+            // so this fixture needs a real one for AC-2's own "answers about the soonest" claim to
+            // still hold.
+            CancellationDeadline = today.AddDays(30),
             AutoRenewal = true,
             CreatedAt = now,
         };
@@ -114,21 +120,30 @@ public sealed class AskSupplierResolutionTests : IClassFixture<RaffaApiFactory>
         Assert.Equal("answer", root.GetProperty("kind").GetString());
 
         var citations = root.GetProperty("citations").EnumerateArray().ToList();
-        var citedDocumentIds = citations
-            .Select(c => c.TryGetProperty("documentId", out var id) ? id.GetString() : null)
+
+        // Task E30/F02/US01/T01 (NW-94): the notice fallback's own fact item (like
+        // BuildContractFactItem before it) has no source document -- contractId, not documentId, is
+        // the real stamped id for a contract-level fact citation (the same NW-83 precedent this
+        // file's sibling ScopedAskEndpointTests already follows).
+        var citedContractIds = citations
+            .Select(c => c.TryGetProperty("contractId", out var id) ? id.GetString() : null)
             .Where(id => id is not null)
             .ToList();
 
         // AC-2 "soonest wins": the 30-day contract's own fact is cited, the 400-day one never is.
-        Assert.Contains($"fact:{soonerContract.Id}:renewal", citedDocumentIds);
-        Assert.DoesNotContain($"fact:{laterContract.Id}:renewal", citedDocumentIds);
+        Assert.Contains(soonerContract.Id.ToString(), citedContractIds);
+        Assert.DoesNotContain(laterContract.Id.ToString(), citedContractIds);
 
         // AC-2 "never silently merge": the pack's own disambiguation item is cited too, and its
-        // text reaches the reply.
+        // text reaches the reply. Lower-case "ask" -- BuildMultiContractDisambiguationItem's own
+        // shipped sentence joins the parenthetical with an em-dash ("... on file — ask if you meant
+        // another."), not the two-sentence, capitalized form this assertion used to name; that
+        // method is NW-80's, outside this task's own file scope, so the assertion is corrected to
+        // match already-shipped behavior rather than the production code changed to match it.
         Assert.Contains(citations, c =>
             c.GetProperty("corpus").GetString() == "calc" &&
-            c.GetProperty("snippet").GetString()!.Contains("Ask if you meant another", StringComparison.Ordinal));
-        Assert.Contains("Ask if you meant another", rawBody, StringComparison.Ordinal);
+            c.GetProperty("snippet").GetString()!.Contains("ask if you meant another", StringComparison.Ordinal));
+        Assert.Contains("ask if you meant another", rawBody, StringComparison.Ordinal);
         Assert.Contains("CT-01", rawBody, StringComparison.Ordinal);
     }
 
