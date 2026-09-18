@@ -6,6 +6,7 @@ import { getRejectionReasonCopy, type LocalUploadEntry } from "./uploadPipeline"
 import {
   formatUploadedAt,
   getDocumentTypeLabel,
+  getFailedHint,
   getOpenTarget,
   getRowAction,
   getRowStatus,
@@ -161,7 +162,7 @@ export default function DocumentStatusTable({
                     ) : (
                       <>
                         <div className="document-status-table-filename">{item.fileName}</div>
-                        {rowStatus === "failed" && <div className="hint">Not yet linked to a contract</div>}
+                        {rowStatus === "failed" && <div className="hint">{getFailedHint(item.errorDetail)}</div>}
                         {rejectionHint !== null && <div className="hint">{rejectionHint}</div>}
                       </>
                     )}

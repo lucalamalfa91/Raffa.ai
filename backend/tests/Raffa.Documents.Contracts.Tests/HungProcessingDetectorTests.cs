@@ -16,11 +16,28 @@ public sealed class HungProcessingDetectorTests
     }
 
     [Fact]
-    public void Processing_with_no_heartbeat_for_three_minutes_is_hung()
+    public void Processing_with_no_heartbeat_for_three_minutes_is_not_hung()
     {
-        var jobs = new[] { new ExtractionJobProgress(Now.AddMinutes(-3), Now.AddMinutes(-5), null) };
+        var jobs = new[] { new ExtractionJobProgress(Now.AddMinutes(-3), Now.AddMinutes(-3), null) };
 
-        Assert.Equal(TimeSpan.FromMinutes(3), HungProcessingDetector.InactivityWindow);
+        Assert.Equal(TimeSpan.FromMinutes(15), HungProcessingDetector.InactivityWindow);
+        Assert.False(HungProcessingDetector.IsHung(DocumentProcessingStatus.Processing, Now, jobs));
+    }
+
+    [Fact]
+    public void Processing_with_a_heartbeat_during_a_long_extract_is_not_hung()
+    {
+        // Live ExtractAsync > 3 min: started_at moved by a durable pulse (Foundry retry / 30s watch).
+        var jobs = new[] { new ExtractionJobProgress(Now.AddMinutes(-10), Now.AddMinutes(-1), null) };
+
+        Assert.False(HungProcessingDetector.IsHung(DocumentProcessingStatus.Processing, Now, jobs));
+    }
+
+    [Fact]
+    public void Processing_with_no_heartbeat_for_the_inactivity_window_is_hung()
+    {
+        var jobs = new[] { new ExtractionJobProgress(Now.AddMinutes(-15), Now.AddMinutes(-16), null) };
+
         Assert.True(HungProcessingDetector.IsHung(DocumentProcessingStatus.Processing, Now, jobs));
     }
 

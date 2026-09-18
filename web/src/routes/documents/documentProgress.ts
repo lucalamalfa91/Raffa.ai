@@ -1,6 +1,6 @@
 import type { DocumentListItemBody } from "../../api/client";
 import { getRejectionReasonCopy } from "./uploadPipeline";
-import { DOCUMENT_PROCESSING_STAGES, getOpenTarget, getRowStatus } from "./documentTable";
+import { DOCUMENT_PROCESSING_STAGES, getFailedHint, getOpenTarget, getRowStatus } from "./documentTable";
 
 /**
  * View-model for `DocumentProgressPanel.tsx` (`?progress=<id>`; task E16/F03/US02/T02, wave w15,
@@ -57,12 +57,8 @@ export interface DocumentProgressView {
   link: ProgressLink | null;
 }
 
-/** Verbatim from `DocumentStatusTable.tsx`'s own filename-cell fallback for a `"failed"` row --
- * said once there, so it is said the same way here. */
-const FAILED_HEADLINE = "Not yet linked to a contract";
-
 export function getProgressView(
-  item: Pick<DocumentListItemBody, "id" | "processingStatus" | "stage" | "contractId" | "documentType" | "rejectionReason">,
+  item: Pick<DocumentListItemBody, "id" | "processingStatus" | "stage" | "contractId" | "documentType" | "rejectionReason" | "errorDetail">,
 ): DocumentProgressView {
   const rowStatus = getRowStatus(item.processingStatus);
 
@@ -98,7 +94,7 @@ export function getProgressView(
   }
 
   if (rowStatus === "failed") {
-    return { isWaiting: false, stages, headline: FAILED_HEADLINE, link: null };
+    return { isWaiting: false, stages, headline: getFailedHint(item.errorDetail), link: null };
   }
 
   // rowStatus === "rejected": the same reason sentence the row's own hint shows -- silent (a plain,

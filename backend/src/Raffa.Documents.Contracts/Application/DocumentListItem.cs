@@ -29,7 +29,10 @@ public sealed record DocumentListItem(
     /// <summary>Task E16/F02/US03/T01 (ADR-027 §D6/§D7): the content gate's refusal <em>code</em>,
     /// set only on a <see cref="DocumentProcessingStatus.Rejected"/> row. A code, never a sentence
     /// -- the screen picks the words (ADR-020 w15 §6).</summary>
-    Admission.AdmissionRejectionReason? RejectionReason = null);
+    Admission.AdmissionRejectionReason? RejectionReason = null,
+    /// <summary>Latest extraction-job error for a <see cref="DocumentProcessingStatus.Failed"/>
+    /// row, so the list can show why processing stopped instead of only "Not yet linked".</summary>
+    string? ErrorDetail = null);
 
 /// <summary>
 /// ADR-027 §D7 as amended by §C5 and §C9 (task E16/F02/US03/T01): tenant-wide, page-independent,

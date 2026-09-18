@@ -1,5 +1,6 @@
 using Raffa.AiGateway.Configuration;
 using Raffa.Documents.Contracts.Application.Admission;
+using Raffa.Documents.Contracts.Application.Extraction;
 using Raffa.Documents.Contracts.Infrastructure;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Storage;
@@ -39,7 +40,9 @@ public sealed class DocumentPreviewService(
     IDocumentStorage storage,
     IDocumentPreviewRenderer renderer,
     ITenantContext tenantContext,
-    AiGatewayOcrOptions? ocrOptions = null)
+    AiGatewayOcrOptions? ocrOptions = null,
+    IExtractionHangWatch? hangWatch = null,
+    ExtractionProgressHeartbeat? progressHeartbeat = null)
 {
     /// <summary>Content type every stored preview is served with (R-DOC-08, OpenAPI <c>image/png</c>).</summary>
     public const string PreviewContentType = "image/png";
@@ -85,6 +88,18 @@ public sealed class DocumentPreviewService(
 
         for (var page = 1; page <= pagesToRender; page++)
         {
+            // Outside PdfiumLock (held inside the renderer): a hang abort must be able to
+            // observe cancellation between pages, not while native pdfium is in a lock.
+            cancellationToken.ThrowIfCancellationRequested();
+            if (progressHeartbeat is not null)
+            {
+                await progressHeartbeat.PulseBoundAsync(cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                hangWatch?.Heartbeat();
+            }
+
             byte[]? png;
             try
             {

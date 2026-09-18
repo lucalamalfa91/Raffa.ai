@@ -43,9 +43,22 @@ public sealed class HungProcessingRecoveryServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_processing_document_heartbeating_past_three_minutes_is_left_alone()
+    {
+        var harness = await SeedHungAsync(claimedAt: Now.AddMinutes(-4), attemptCount: 1);
+
+        var action = await harness.Recovery.RecoverDocumentAsync(harness.TenantId, harness.DocumentId, force: false);
+
+        Assert.Equal(HungRecoveryAction.None, action);
+        Assert.Equal(DocumentProcessingStatus.Processing, await harness.ReloadStatusAsync());
+        Assert.Empty(harness.Queue.Published);
+        Assert.Empty(harness.Aborter.Aborted);
+    }
+
+    [Fact]
     public async Task A_hung_processing_document_is_aborted_and_requeued_from_scratch()
     {
-        var harness = await SeedHungAsync(claimedAt: Now.AddMinutes(-3), attemptCount: 1);
+        var harness = await SeedHungAsync(claimedAt: Now.AddMinutes(-15), attemptCount: 1);
 
         var action = await harness.Recovery.RecoverDocumentAsync(harness.TenantId, harness.DocumentId, force: false);
 
@@ -68,7 +81,7 @@ public sealed class HungProcessingRecoveryServiceTests : IAsyncLifetime
     public async Task A_hung_document_that_has_already_used_max_attempts_fails_terminally()
     {
         var harness = await SeedHungAsync(
-            claimedAt: Now.AddMinutes(-4),
+            claimedAt: Now.AddMinutes(-16),
             attemptCount: ExtractionRequestedHandler.MaxAttempts);
 
         var action = await harness.Recovery.RecoverDocumentAsync(harness.TenantId, harness.DocumentId, force: false);
@@ -87,7 +100,7 @@ public sealed class HungProcessingRecoveryServiceTests : IAsyncLifetime
     [Fact]
     public async Task RecoverHungInTenantAsync_does_not_touch_another_tenant()
     {
-        var harness = await SeedHungAsync(claimedAt: Now.AddMinutes(-10), attemptCount: 1);
+        var harness = await SeedHungAsync(claimedAt: Now.AddMinutes(-20), attemptCount: 1);
         var otherTenant = TenantId.New();
 
         await harness.Recovery.RecoverHungInTenantAsync(otherTenant);

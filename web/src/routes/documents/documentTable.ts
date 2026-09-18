@@ -137,10 +137,15 @@ export interface RowAction {
  * automatically calls `POST /api/documents/{id}/reprocess` once. After this the Worker has had a
  * fair chance to claim the job; staying `Uploaded` means the pointer is gone (dead-lettered or
  * never delivered). The table never offers a Retry upload CTA — next-step copy stays informational.
- * The same window applies to a `Processing` row whose stage has not changed: the Worker claimed
- * the job, then went silent (claim held, Service Bus message already completed as claim-lost).
  */
 export const STUCK_REPROCESS_AFTER_MS = 3 * 60 * 1000;
+
+/** How long a `Processing` row may sit on the same UI stage before auto-reprocess. Matches the
+ * server hang window (`HungProcessingDetector.InactivityWindow` = 15 min): Foundry
+ * `RequestTimeoutSeconds` (180) × (`MaxRetries` + 1) = 12 minutes, plus preview/OCR margin.
+ * Must not fire at three minutes — a live LLM call can still be in flight, and LegalClauses /
+ * Obligations / Risk all render as the same "Validating schema" label. */
+export const STUCK_PROCESSING_REPROCESS_AFTER_MS = 15 * 60 * 1000;
 
 /** Full restart cap shared with `ExtractionRequestedHandler.MaxAttempts`. After this many
  * auto-reprocess calls the server marks the row Failed (or the client stops looping if the
@@ -157,7 +162,7 @@ export function isStuckUploaded(
   return Number.isFinite(created) && nowMs - created >= STUCK_REPROCESS_AFTER_MS;
 }
 
-/** True when a `Processing` row has shown the same stage for `STUCK_REPROCESS_AFTER_MS`.
+/** True when a `Processing` row has shown the same stage for `STUCK_PROCESSING_REPROCESS_AFTER_MS`.
  * `stageUnchangedSinceMs` is when the client first observed this stage (the list API has no
  * per-stage timestamp; the server hang detector uses job `claimed_at`/`started_at`). */
 export function isStuckProcessing(
@@ -166,7 +171,14 @@ export function isStuckProcessing(
   nowMs: number = Date.now(),
 ): boolean {
   if (item.processingStatus !== "Processing") return false;
-  return nowMs - stageUnchangedSinceMs >= STUCK_REPROCESS_AFTER_MS;
+  return nowMs - stageUnchangedSinceMs >= STUCK_PROCESSING_REPROCESS_AFTER_MS;
+}
+
+/** Failed-row hint: the job's own `errorDetail` when the list carries one, otherwise the
+ * historical "not linked" sentence. */
+export function getFailedHint(errorDetail: string | null | undefined): string {
+  const detail = errorDetail?.trim();
+  return detail ? detail : "Not yet linked to a contract";
 }
 
 /**

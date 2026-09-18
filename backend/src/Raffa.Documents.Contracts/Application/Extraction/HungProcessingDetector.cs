@@ -12,9 +12,12 @@ namespace Raffa.Documents.Contracts.Application.Extraction;
 public static class HungProcessingDetector
 {
     /// <summary>How long a processing document may sit on the same durable step before the
-    /// run is aborted and re-enqueued from scratch. Matches the list's own three-minute
-    /// auto-reprocess window for a never-claimed <c>Uploaded</c> row.</summary>
-    public static readonly TimeSpan InactivityWindow = TimeSpan.FromMinutes(3);
+    /// run is aborted and re-enqueued from scratch. Sized for a live Foundry call:
+    /// <c>RequestTimeoutSeconds</c> (180) × (<c>MaxRetries</c> + 1) = 12 minutes, plus a
+    /// preview/OCR margin. Must stay in lock-step with the list's Processing auto-reprocess
+    /// window and <see cref="ExtractionHangWatch"/> <c>CancelAfter</c>. Never-claimed
+    /// <c>Uploaded</c> rows keep their own three-minute recovery.</summary>
+    public static readonly TimeSpan InactivityWindow = TimeSpan.FromMinutes(15);
 
     public static DateTimeOffset? LastProgressAt(IEnumerable<ExtractionJobProgress> jobs)
     {

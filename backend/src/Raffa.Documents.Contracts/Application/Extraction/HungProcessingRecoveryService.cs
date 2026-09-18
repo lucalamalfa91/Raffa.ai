@@ -94,8 +94,10 @@ public sealed class HungProcessingRecoveryService(
         if (!force)
         {
             var progress = jobs.Select(j => new ExtractionJobProgress(j.ClaimedAt, j.StartedAt, j.CompletedAt));
-            var hung = document.ProcessingStatus == DocumentProcessingStatus.Processing
-                && HungProcessingDetector.IsHung(document.ProcessingStatus, clock.UtcNow, progress);
+            // A live Worker that is still heartbeating started_at will not look hung, so GET
+            // recovery must not re-enqueue and start a second ProcessAsync while that owner holds
+            // the claim. Silence for InactivityWindow is the only cheap signal we need.
+            var hung = HungProcessingDetector.IsHung(document.ProcessingStatus, clock.UtcNow, progress);
             if (!hung)
             {
                 return HungRecoveryAction.None;

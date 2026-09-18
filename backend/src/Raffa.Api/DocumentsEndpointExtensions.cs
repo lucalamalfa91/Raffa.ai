@@ -432,6 +432,7 @@ public static class DocumentsEndpointExtensions
                 // (`not_a_contract` | `no_readable_text`), null unless Rejected. The screen writes
                 // the sentence (ADR-020 w15 §6); this API never authors user-facing prose.
                 rejectionReason = item.RejectionReason?.ToApiValue(),
+                errorDetail = item.ErrorDetail,
             }),
             page = result.Page,
             pageSize = result.PageSize,
