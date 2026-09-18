@@ -1,5 +1,10 @@
 # Ask Raffa V2 — acceptance runbook (A1–A14)
 
+Current product path (upload → Worker → review → Ask / Portfolio / Renewals):
+[`architecture/product-flow.md`](architecture/product-flow.md). **A1's 422
+curl is stale** — content refusals are `Rejected` document rows after `201`,
+not an empty 422. Format/size are still 415/413.
+
 Operator checklist for `inputs/requirements.md` §10 ("Acceptance on `demo`,
 observable") and ADR-024. One row per acceptance item, each with **the exact
 command or click-path** and **the observable pass condition** — nothing here
