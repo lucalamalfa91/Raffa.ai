@@ -21,8 +21,10 @@ public enum ReplyKind
     /// attempt (R-ASK-02).</summary>
     Redirect,
 
-    /// <summary>Declines a legal reading, offers the commercial analogue instead (R-ASK-02
-    /// "legal").</summary>
+    /// <summary>Declines outright, never a real answer attempt: a legal reading (R-ASK-02
+    /// "legal"), offering the commercial analogue instead; or a conversation's own
+    /// <c>scopeContractId</c> that does not resolve to a contract this caller can currently see
+    /// (task E27/F02/US01/T01, NW-76; ADR-024 w19 cl. 12).</summary>
     Refusal,
 }
 
