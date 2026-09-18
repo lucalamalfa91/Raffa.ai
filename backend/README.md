@@ -2665,12 +2665,25 @@ reference is not constrained by `DependencyDirectionTests`, which only
 inspects `src/` projects). `AskCopilotService`'s own `PortfolioStrategy`/
 `RenewalStrategy` intents narrate the identical `CriticalityScoreCalculator`/
 `StrategyPackBuilder` output these two HTTP routes return — one calculation,
-reachable both ways. Per-contract benchmark matching is honestly not
-wired yet: a `BenchmarkQuery` needs a supplier name and geography, and
-`Contract` carries neither (only a bare `SupplierId` guid) — the same gap
-`Contract360Result.Benchmark` already has — so `PricedLine.Benchmark` is
-always `null` through this composition until a follow-up task resolves a
-real supplier name (Suppliers/Products) and geography onto the contract.
+reachable both ways. **Per-contract benchmark matching is wired** (task
+E21/F03/US01/T01, NW-62, for `GET /api/contracts/{id}/strategy`; task
+E28/F01/US01/T01, NW-82, for `AskCopilotService.BuildRenewalStrategyPackAsync`/
+`BuildMarketComparePackAsync`): `Raffa.Api.BenchmarkKeyResolution` resolves
+the one `(supplier name, geography)` key both paths query with — supplier
+name through `ISupplierNameLookup`, geography from the caller's own
+`Raffa.Identity.Workspace.Domain.WorkspaceTenant.Country` (ISO 3166-1
+alpha-2) — then the async `InsightsEndpointExtensions.ToPricedLines`
+overload calls `IBenchmarkService.GetBenchmarkAsync` per priced line and
+fills `PricedLine.Benchmark`/`SampleSize`/`AdapterName`/`AsOf` from a
+sufficient result (ADR-024 w17 clause 7, "one resolution per screen", now
+also Ask's own rule). `Contract` still carries no dedicated geography
+column — the workspace country is the honest proxy, not a per-contract
+one (ADR-024 w17 clause 8) — and an incomplete key (no `SupplierId`, an
+unresolved name, or no workspace country) still leaves `PricedLine.Benchmark`
+`null`, so the pack states "insufficient market data" rather than
+fabricating a number; the two HTTP routes and both Ask intents narrate
+identically for the same contract because they resolve the same key and
+call the same overload.
 
 ## R4 demo smoke test
 
