@@ -42,9 +42,11 @@
          modules whose DbContexts the tenant fixtures seed directly (Documents/Contracts for
          contracts, Suppliers/Products for supplier names, Savings for the empty opportunity list
          the portfolio-strategy pack reads). Everything else the engine touches — Market, Insights,
-         Renewals, Benchmark, Audit — arrives transitively through Raffa.Api and needs no
-         reference here because this project never names those types. -->
+         Benchmark, Audit — arrives transitively through Raffa.Api and needs no reference here
+         because this project never names those types. Renewals is named: AskEvalHost swaps
+         RenewalsDbContext to InMemory so Q3 persist-all does not dial the unreachable placeholder. -->
     <ProjectReference Include="..\..\src\Raffa.Api\Raffa.Api.csproj" />
+    <ProjectReference Include="..\..\src\Raffa.Renewals\Raffa.Renewals.csproj" />
     <ProjectReference Include="..\..\src\Raffa.Chat\Raffa.Chat.csproj" />
     <ProjectReference Include="..\..\src\Raffa.AiGateway\Raffa.AiGateway.csproj" />
     <ProjectReference Include="..\..\src\Raffa.Documents.Contracts\Raffa.Documents.Contracts.csproj" />

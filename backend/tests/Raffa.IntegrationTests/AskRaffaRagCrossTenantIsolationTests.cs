@@ -32,7 +32,11 @@ namespace Raffa.IntegrationTests;
 /// — this test seeds raw tenant-scoped embedding chunks directly (the same shape
 /// <c>Raffa.Documents.Contracts.Tests.EmbeddingRetrievalServiceTests</c> already covers on its
 /// own), not a full Contract/Supplier row, so a named-supplier question would incorrectly resolve
-/// `needs_document` instead of reaching retrieval — proving nothing about isolation.
+/// `needs_document` instead of reaching retrieval — proving nothing about isolation. The same
+/// phrasing is used on the messages-endpoint and guard-audit cases: IntentPlanner's NW-79
+/// <c>NoticePattern</c> steers any "notice period" question to <c>AskIntent.StructuredFact</c>,
+/// which abstains when no Contract row exists, never the Clause-RAG / guard-retry path those
+/// cases prove.
 ///
 /// <b>AC-1</b> (auth-before-retrieval) / <b>AC-3</b> (unauthorized documents never enter the LLM
 /// context): tenant B's indexed content is never returned for tenant A's turn. This holds even
@@ -128,10 +132,10 @@ public sealed class AskRaffaRagCrossTenantIsolationTests : IClassFixture<R0Integ
 
         await IndexChunkAsync(
             tenantA, "Document", tenantADocumentId,
-            "Tenant A's notice period is 90 days under its own master services agreement.");
+            "Tenant A's liability cap is CHF 1000000 under its own master services agreement.");
         await IndexChunkAsync(
             tenantB, "Document", tenantBDocumentId,
-            "Tenant B's notice period is 60 days under its own master services agreement.");
+            "Tenant B's liability cap is CHF 2000000 under its own master services agreement.");
 
         var client = _fixture.CreateClient();
 
@@ -139,7 +143,7 @@ public sealed class AskRaffaRagCrossTenantIsolationTests : IClassFixture<R0Integ
 
         using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/conversations/{conversationId}/messages")
         {
-            Content = JsonContent.Create(new { question = "what notice period do we have on file" }),
+            Content = JsonContent.Create(new { question = "what liability coverage do we have on file" }),
         };
         request.Headers.Add("X-Tenant-Id", tenantA.Value.ToString());
         request.Headers.Add("X-User-Id", "alice@tenant-a.example");
@@ -183,7 +187,7 @@ public sealed class AskRaffaRagCrossTenantIsolationTests : IClassFixture<R0Integ
 
         await IndexChunkAsync(
             tenantId, "Document", documentId,
-            "The notice period is 45 days under this agreement.");
+            "The liability cap is CHF 450000 under this agreement.");
 
         var recordingAuditWriter = new RecordingAuditWriter();
 
@@ -212,7 +216,7 @@ public sealed class AskRaffaRagCrossTenantIsolationTests : IClassFixture<R0Integ
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/chat/query")
         {
-            Content = JsonContent.Create(new { question = "what notice period do we have on file" }),
+            Content = JsonContent.Create(new { question = "what liability coverage do we have on file" }),
         };
         request.Headers.Add("X-Tenant-Id", tenantId.Value.ToString());
         request.Headers.Add("X-User-Id", "dave@guard-test.example");

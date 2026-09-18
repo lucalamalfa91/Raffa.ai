@@ -8,6 +8,7 @@ using Raffa.Documents.Contracts.Domain;
 using Raffa.Documents.Contracts.Infrastructure;
 using Raffa.Identity.Workspace.Domain;
 using Raffa.Identity.Workspace.Infrastructure;
+using Raffa.Renewals.Infrastructure;
 using Raffa.Savings.Infrastructure;
 using Raffa.SharedKernel;
 using Raffa.Suppliers.Products.Infrastructure;
@@ -41,11 +42,13 @@ namespace Raffa.AiEval.TenantFixtures;
 /// <para>
 /// <b>What is substituted, and why</b>:
 /// <list type="bullet">
-/// <item>Four DbContexts move to EF Core InMemory — <see cref="DocumentsContractsDbContext"/>
-/// (portfolio + Contract 360), <see cref="SuppliersDbContext"/> (supplier names, i.e. whether a
-/// named supplier is known at all), <see cref="SavingsDbContext"/> (the opportunity list the
-/// portfolio-strategy and savings packs read) and <see cref="ChatDbContext"/> (conversation
-/// persistence). Testcontainers would work, but the task's own instruction is to prefer in-memory
+/// <item>DbContexts the Ask pipeline actually opens move to EF Core InMemory —
+/// <see cref="DocumentsContractsDbContext"/> (portfolio + Contract 360),
+/// <see cref="SuppliersDbContext"/> (supplier names), <see cref="SavingsDbContext"/> (opportunity
+/// list), <see cref="ChatDbContext"/> (conversation persistence),
+/// <see cref="IdentityWorkspaceDbContext"/> (NW-05 membership), and
+/// <see cref="Raffa.Renewals.Infrastructure.RenewalsDbContext"/> (Q3 persist-all negotiation
+/// TODOs). Testcontainers would work, but the task's own instruction is to prefer in-memory
 /// wiring, and RLS-backed behaviour against a real Postgres is already
 /// <c>Raffa.IntegrationTests</c>' job.</item>
 /// <item><see cref="IAiGateway"/> becomes <see cref="FixtureAiGateway"/> behind a
@@ -76,9 +79,9 @@ internal sealed class AskEvalHost : IAsyncDisposable
         .AddSingleton<IModelCustomizer, InMemoryModelCustomizer>()
         .BuildServiceProvider();
 
-    // Every module the host requires a connection string for. Never dialled for the four contexts
-    // swapped below; the remaining ones (Identity/Workspace, Audit, Renewals, Quotes) are only
-    // resolved by endpoints the golden set never calls, so no connection is ever opened.
+    // Every module the host requires a connection string for. Never dialled for the InMemory
+    // contexts swapped below; Audit and Quotes stay on this unreachable placeholder because
+    // the golden set never resolves those DbContexts (IAuditWriter is swapped to an in-memory spy).
     private static readonly string[] RequiredConnectionStringKeys =
     [
         "IdentityWorkspace", "DocumentsContracts", "Audit", "Chat", "Suppliers", "Renewals", "Savings", "Quotes",
@@ -131,6 +134,7 @@ internal sealed class AskEvalHost : IAsyncDisposable
         var savingsDbName = $"aieval-savings-{fixture.Key}";
         var chatDbName = $"aieval-chat-{fixture.Key}";
         var identityDbName = $"aieval-identity-{fixture.Key}";
+        var renewalsDbName = $"aieval-renewals-{fixture.Key}";
 
         var auditWriter = new RecordingAuditWriter();
         RecordingAiGateway? gateway = AiEvalOptions.UseFoundry
@@ -159,6 +163,10 @@ internal sealed class AskEvalHost : IAsyncDisposable
                 // the fixture tenant in an in-memory identity store (the appsettings default would
                 // dial a Postgres that is never there).
                 SwapToInMemory<IdentityWorkspaceDbContext>(services, identityDbName);
+                // Task E29/F02 (todo-host-upsert): a live Q3 turn upserts ranked points through
+                // RenewalNegotiationTodoService before the answer returns. Left on the host's
+                // Npgsql registration that write dials the unreachable placeholder above.
+                SwapToInMemory<RenewalsDbContext>(services, renewalsDbName);
                 services.AddSingleton<IStartupFilter, GoldenCallerStartupFilter>();
 
                 // Plain interface registrations: unlike AddDbContext's TryAdd-based core services,

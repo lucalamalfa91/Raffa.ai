@@ -169,18 +169,10 @@ namespace Raffa.Api;
 /// <b>Pre-existing, unrelated gap surfaced (not caused) by this task</b>: <c>IntentPlanner</c>'s own
 /// <c>NoticePattern</c> (task E27/F01/US01/T01, NW-79 — landed before feature-01 and this task)
 /// already steers any "notice period" phrasing to <see cref="AskIntent.StructuredFact"/>, never
-/// <see cref="AskIntent.Clause"/>. Two <c>Raffa.IntegrationTests.AskRaffaRagCrossTenantIsolationTests</c>
-/// cases predating NW-79 — <c>Messages_endpoint_extends_the_same_cross_tenant_isolation</c> and
-/// <c>Guard_intervention_on_the_in_domain_path_is_recorded_in_the_audit_entry</c>, both phrased
-/// "what notice period do we have on file" — assert a Clause-RAG/guard-retry path neither has
-/// reached since NW-79 landed (both seed a raw embedding chunk with no <c>Contract</c> row, so this
-/// task's own case 5 now abstains to Portfolio where the pre-NW-79 code would have hit the generic
-/// empty-pack abstain instead — "abstain" either way, never the "answer"/"abstainGuardIntervened=True"
-/// those two tests still expect). Left unfixed: outside this task's own file scope (`AskCopilotService.cs`
-/// / `Raffa.Api.Tests` per its own Files/Tests tables), and <c>Raffa.IntegrationTests</c> needs a live
-/// Postgres Testcontainer this harness cannot run to verify a guess-fix. Recorded here, not silently
-/// absorbed, the same "deviation on the record" precedent <see cref="Gate.DomainGate"/>'s own doc
-/// comment already sets for an identical harness constraint.
+/// <see cref="AskIntent.Clause"/>. <c>Raffa.IntegrationTests.AskRaffaRagCrossTenantIsolationTests</c>
+/// therefore asks "what liability coverage do we have on file" (Clause RAG) on the messages-endpoint
+/// and guard-audit cases, so those proofs stay on the retrieval path instead of the structured-notice
+/// abstain.
 /// </para>
 /// </summary>
 internal sealed class AskCopilotService(
