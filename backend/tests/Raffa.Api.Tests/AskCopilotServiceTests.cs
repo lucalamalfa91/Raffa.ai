@@ -122,6 +122,97 @@ public sealed class AskCopilotServiceTests
         Assert.Equal("/documents", item.Href);
     }
 
+    // ----- Task E28/F03/US01/T01 (NW-83; ADR-024 w19 cl. 17 "no citation without a pack source") -----
+    // DoD: "a notice/clause citation carries a non-null contractId+documentId+page and a viewer
+    // href". BuildClausePackItem (made internal for the same test-reachability reason as
+    // ResolveTenantClauseLinks above) is exercised directly -- see that method's own doc comment.
+
+    // Tier 1: the hit resolved to a real Clause row anchored to a document page.
+    [Fact]
+    public void Clause_pack_item_for_a_resolved_clause_stamps_real_contract_document_page_and_href()
+    {
+        var documentId = new EntityId(Guid.NewGuid());
+        var clauseId = new EntityId(Guid.NewGuid());
+        var namedContractId = Guid.NewGuid();
+        var clause = new Contract360Clause(
+            ClauseId: clauseId,
+            ClauseType: "Auto-renewal",
+            RawText: "This Agreement shall automatically renew...",
+            NormalizedValue: null,
+            RiskLevel: null,
+            SourceDocumentId: documentId,
+            SourceSpan: "§8.4",
+            SourcePage: 12,
+            Confidence: 0.92);
+        var hit = new EmbeddingSearchResult(
+            EmbeddingId: EntityId.New(),
+            SourceType: "Clause",
+            SourceId: clauseId,
+            ChunkIndex: 0,
+            ChunkText: "This Agreement shall automatically renew...",
+            Distance: 0.1);
+
+        var item = AskCopilotService.BuildClausePackItem(hit, clause, namedContractId, isPeer: false);
+
+        Assert.Equal(namedContractId.ToString(), item.ContractId);
+        Assert.Equal(documentId.Value.ToString(), item.DocumentId);
+        Assert.Equal(12, item.Page);
+        Assert.Equal($"/documents/{documentId.Value}/viewer?page=12&clause={clauseId.Value}", item.Href);
+    }
+
+    // Tier 2, and today's realistic shape: DocumentProcessingPipeline.IndexForRetrievalAsync indexes
+    // every page under Embedding.SourceType == "Document" -- no clause-level embedding exists yet,
+    // so no Clause row ever resolves for a real hit. Closes the "Document-sourced-chunk branch is
+    // not attempted here" gap NW-55's own doc comment named.
+    [Fact]
+    public void Clause_pack_item_for_a_document_sourced_hit_still_stamps_a_real_document_page_and_viewer_href()
+    {
+        var documentId = new EntityId(Guid.NewGuid());
+        var namedContractId = Guid.NewGuid();
+        var hit = new EmbeddingSearchResult(
+            EmbeddingId: EntityId.New(),
+            SourceType: "Document",
+            SourceId: documentId,
+            ChunkIndex: 3,
+            ChunkText: "Either party may terminate this Agreement upon 90 days written notice.",
+            Distance: 0.2,
+            Page: 4,
+            Section: "9. Termination");
+
+        var item = AskCopilotService.BuildClausePackItem(hit, clause: null, namedContractId, isPeer: false);
+
+        Assert.Equal(namedContractId.ToString(), item.ContractId);
+        Assert.Equal(documentId.Value.ToString(), item.DocumentId);
+        Assert.Equal(4, item.Page);
+        Assert.Equal("9. Termination", item.Section);
+        Assert.Equal($"/documents/{documentId.Value}/viewer?page=4", item.Href);
+        Assert.Equal($"/api/documents/{documentId.Value}/preview?page=4", item.PreviewUrl);
+    }
+
+    // NW-81's own peer-isolation rule (R-ASK-04), extended to ids: a "similar types" peer hit must
+    // never be attributed to the contract in scope, or made clickable into its own document, even
+    // when its own embedding is Document-sourced with a known page exactly like the test above.
+    [Fact]
+    public void Clause_pack_item_for_a_peer_hit_never_carries_an_id_or_href_even_when_document_sourced()
+    {
+        var documentId = new EntityId(Guid.NewGuid());
+        var hit = new EmbeddingSearchResult(
+            EmbeddingId: EntityId.New(),
+            SourceType: "Document",
+            SourceId: documentId,
+            ChunkIndex: 1,
+            ChunkText: "A similar-type contract's own clause text.",
+            Distance: 0.3,
+            Page: 2);
+
+        var item = AskCopilotService.BuildClausePackItem(hit, clause: null, namedContractId: null, isPeer: true);
+
+        Assert.Null(item.ContractId);
+        Assert.Null(item.DocumentId);
+        Assert.Null(item.Href);
+        Assert.Null(item.PreviewUrl);
+    }
+
     [Fact]
     public void Document_sourced_hit_with_a_known_page_resolves_the_viewer_and_a_real_preview()
     {

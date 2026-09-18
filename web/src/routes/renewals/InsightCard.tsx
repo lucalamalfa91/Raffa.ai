@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import type { RenewalPipelineItemBody } from "../../api/client";
+import type { ApiClient, RenewalPipelineItemBody } from "../../api/client";
 import {
   RENEWAL_ACTION_KINDS,
   formatContractRef,
@@ -8,6 +8,7 @@ import {
   type RenewalActionKind,
 } from "./renewalPipelineViewModel";
 import type { RenewalActionRow } from "../../api/client";
+import NegotiationTodoList from "./NegotiationTodoList";
 
 export interface InsightCardProps {
   item: RenewalPipelineItemBody;
@@ -18,6 +19,19 @@ export interface InsightCardProps {
   /** The last action attempt's own failure message, or `null`. Never silently swallowed. */
   actionError: string | null;
   onAction: (kind: RenewalActionKind) => void;
+  /**
+   * Task E29/F04/US01/T01 (todo-web): threaded one level further down into `NegotiationTodoList`
+   * below, which owns its own `GET`/`PUT /api/renewals/{id}/negotiation-todos` fetch/tick lifecycle
+   * (see that component's own doc comment for why it, not `index.tsx` or this component, is the one
+   * that owns that state). `apiClient` is already a prop on every route above this one
+   * (`RenewalsRouteProps`); this is the first time a leaf this far down the renewals tree has needed
+   * it directly.
+   */
+  apiClient: ApiClient;
+  /** The signed-in caller's current workspace id (`index.tsx`'s own `workspace.id`) -- see
+   * `NegotiationTodoList`'s own doc comment for why it is threaded as a prop rather than re-read
+   * from session storage in this leaf. */
+  tenantId: string;
 }
 
 /**
@@ -36,8 +50,23 @@ export interface InsightCardProps {
  * click away on Contract 360 ("See the facts behind this →"), exactly where the prototype sends the
  * reader. The Day-1 card's six-cell fact grid (uplift, market position, potential savings -- all
  * honestly "Not yet available" until the benchmark modules feed the engine) is not part of this pane.
+ *
+ * **Negotiation TODOs (task E29/F04/US01/T01, wave w19 NW-85).** Below the recommended-action block
+ * and above "See the facts behind this →", `NegotiationTodoList` renders the negotiation points Ask
+ * ranked and persisted for this contract (`GET /api/renewals/{id}/negotiation-todos`) and lets
+ * Procurement/Admin tick one done (`PUT` of the same route). Not part of the original V2 prototype
+ * sequence quoted above -- this wave's own ux-ui-designer ruling is the source for this sub-surface
+ * ("`.table` sub-surface, Mark-done `.btn-secondary`, Open/Done tags").
  */
-export default function InsightCard({ item, tracked, actionPending, actionError, onAction }: InsightCardProps) {
+export default function InsightCard({
+  item,
+  tracked,
+  actionPending,
+  actionError,
+  onAction,
+  apiClient,
+  tenantId,
+}: InsightCardProps) {
   const { recommendations } = item.insightCard;
   const contractRef = formatContractRef(item.contractId);
   const contractHref = `/contracts/${item.contractId}`;
@@ -85,6 +114,8 @@ export default function InsightCard({ item, tracked, actionPending, actionError,
           {actionError}
         </p>
       )}
+
+      <NegotiationTodoList apiClient={apiClient} tenantId={tenantId} contractId={item.contractId} />
 
       <Link to={contractHref} className="btn btn-ghost renewal-pane-facts-link">
         See the facts behind this →

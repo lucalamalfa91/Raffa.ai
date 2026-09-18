@@ -60,7 +60,9 @@ public static class PackCorpus
 /// <param name="Href">Deep link for this item's own citation card — a document/contract route for
 /// <see cref="PackCorpus.Tenant"/>, a capability route for <see cref="PackCorpus.Raffa"/>
 /// (R-SYS-03), <see langword="null"/> for <see cref="PackCorpus.Market"/> (a market record opens a
-/// side panel by id, not a route — R-EVD-02) and <see cref="PackCorpus.Calc"/>.</param>
+/// side panel by id, not a route — R-EVD-02). <see cref="PackCorpus.Calc"/> items also carry a real
+/// <c>/contracts/{id}</c> route when they are scoped to one contract (task E28/F03/US01/T01,
+/// NW-83) — never the <see langword="null"/> this doc comment used to claim.</param>
 /// <param name="PreviewUrl">First-page preview image route (R-DOC-08), when this item resolves to
 /// a tenant document; <see langword="null"/> otherwise.</param>
 /// <param name="RecordId">The market record id (R-EVD-02: "a market citation opens a side panel
@@ -74,11 +76,22 @@ public static class PackCorpus
 /// <see cref="PackValue"/>) — empty when this item is purely textual (a clause excerpt, a feature
 /// description) with no number/date a numeric guard needs to check.</param>
 /// <param name="ContractId">This item's own contract, when the composition root scoped it to
-/// exactly one. Echoed onto <see cref="Raffa.Chat.Application.Reply.ReplyCitation.ContractId"/>.</param>
-/// <param name="DocumentId">This item's own source document GUID, when the citation resolves to
-/// one real tenant document — never the citation key. Echoed onto
+/// exactly one — every <see cref="PackCorpus.Tenant"/>/<see cref="PackCorpus.Calc"/> item built
+/// from a named contract (task E28/F03/US01/T01, NW-83; ADR-024 w19 cl. 17 "no citation without a
+/// pack source"). <see langword="null"/> for a cross-contract aggregate, a
+/// <see cref="PackCorpus.Market"/> item, a <see cref="PackCorpus.Raffa"/> feature citation, or a
+/// tenant hit from the NW-81 "similar types" peer slice, which must never be attributed to the
+/// contract in scope (R-ASK-04). Echoed verbatim onto
+/// <see cref="Raffa.Chat.Application.Reply.ReplyCitation.ContractId"/> — never re-derived from
+/// <see cref="CitationKey"/>, which is an internal lookup token, not an id.</param>
+/// <param name="DocumentId">This item's own source document, when the citation resolves to one
+/// real tenant document — a clause's own <c>Contract360Clause.SourceDocumentId</c>, or an embedded
+/// chunk whose own source is the whole document (<c>Embedding.SourceType == "Document"</c>, today's
+/// only real indexing path — see <c>AskCopilotService.BuildClausePackItem</c>). <see langword="null"/>
+/// for every other corpus and for a peer hit. Echoed verbatim onto
 /// <see cref="Raffa.Chat.Application.Reply.ReplyCitation.DocumentId"/> so the Ask card can fetch
-/// an authenticated page preview.</param>
+/// an authenticated page preview — never <see cref="CitationKey"/> itself, which used to stand in
+/// for it.</param>
 public sealed record PackItem(
     string CitationKey,
     string Corpus,

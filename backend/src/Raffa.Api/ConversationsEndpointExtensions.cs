@@ -319,6 +319,15 @@ public static class ConversationsEndpointExtensions
     /// handler), so this is <see langword="null"/> there by construction, not by a second check
     /// here.
     /// </para>
+    ///
+    /// <para>
+    /// <b>Deepened, not re-wired (task E27/F02/US01/T01, NW-76; ADR-024 w19 cl. 12)</b>: this call
+    /// site already threaded <c>conversation.ScopeContractId</c> through unchanged — the fix that
+    /// task adds (a scoped id winning over a same-name portfolio hit, an unseen id refusing, lock
+    /// 4's <c>PortfolioMarketPosition</c> exception) all lives one level down, inside
+    /// <c>AskCopilotService.AskAsync</c>/<c>BuildInDomainReplyAsync</c> — this file's own doc
+    /// comment on that type is where the mechanism is documented.
+    /// </para>
     /// </summary>
     internal static async Task<object> AskAndAppendAsync(
         Raffa.Api.AskCopilotService askCopilotService,

@@ -31,6 +31,13 @@ public enum AskIntent
     /// criticality ranking (R-PORT-01/02), typically asked in a new chat.</summary>
     PortfolioStrategy,
 
+    /// <summary>"Which of my contracts are poorly positioned on the market / where can I save in
+    /// 2026?" — a portfolio-wide market-position ranking (task E27/F01/US01/T01, NW-79/NW-86;
+    /// ADR-024 w19 cl. 13; product-owner lock 6: R-SYS-02 narrowed — this is answered in Ask,
+    /// never routed to Quote check, which stays the handler for a new market proposal). Always the
+    /// workspace portfolio, even when the chat was opened from one contract's 360 (lock 4).</summary>
+    PortfolioMarketPosition,
+
     /// <summary>"Where is the largest saving?" for one contract — that contract's savings
     /// opportunities/targets.</summary>
     Savings,

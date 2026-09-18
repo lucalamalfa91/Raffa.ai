@@ -121,6 +121,109 @@ public sealed class HungProcessingRecoveryServiceTests : IAsyncLifetime
         Assert.Single(harness.Queue.Published);
     }
 
+    [Theory]
+    [InlineData("Gave up after 3 attempts. Processing made no progress for 3 minutes.", true)]
+    [InlineData("Gave up after 3 attempts. Processing made no progress for 15 minutes.", false)]
+    [InlineData("Gave up after 3 attempts. Last error: Malformed extraction payload.", false)]
+    [InlineData("Schema validation failed", false)]
+    [InlineData(null, false)]
+    public void IsResurrectableHangCapFailure_is_only_the_old_shorter_hang_cap(
+        string? errorDetail, bool expected)
+    {
+        Assert.Equal(expected, HungProcessingRecoveryService.IsResurrectableHangCapFailure(errorDetail));
+    }
+
+    [Fact]
+    public async Task A_failed_document_from_the_old_three_minute_hang_cap_is_requeued_with_a_fresh_attempt_budget()
+    {
+        var harness = await SeedFailedAsync(
+            "Gave up after 3 attempts. Processing made no progress for 3 minutes.",
+            attemptCount: ExtractionRequestedHandler.MaxAttempts);
+
+        var action = await harness.Recovery.RecoverDocumentAsync(harness.TenantId, harness.DocumentId, force: false);
+
+        Assert.Equal(HungRecoveryAction.Requeued, action);
+        Assert.Equal(DocumentProcessingStatus.Uploaded, await harness.ReloadStatusAsync());
+        Assert.Empty(harness.Aborter.Aborted);
+        var pointer = Assert.Single(harness.Queue.Published);
+        Assert.Equal(harness.DocumentId.Value, pointer.DocumentId);
+
+        await using var db = CreateContext();
+        var job = await db.ExtractionJobs.SingleAsync(j => j.Id == harness.JobId);
+        Assert.Equal(ExtractionJobStatus.Queued, job.Status);
+        Assert.Equal(0, job.AttemptCount);
+        Assert.Null(job.ErrorDetail);
+        Assert.Null(job.ClaimedAt);
+    }
+
+    [Fact]
+    public async Task A_failed_document_from_the_current_hang_cap_is_left_failed()
+    {
+        var harness = await SeedFailedAsync(
+            "Gave up after 3 attempts. Processing made no progress for 15 minutes.",
+            attemptCount: ExtractionRequestedHandler.MaxAttempts);
+
+        var action = await harness.Recovery.RecoverDocumentAsync(harness.TenantId, harness.DocumentId, force: false);
+
+        Assert.Equal(HungRecoveryAction.None, action);
+        Assert.Equal(DocumentProcessingStatus.Failed, await harness.ReloadStatusAsync());
+        Assert.Empty(harness.Queue.Published);
+
+        await using var db = CreateContext();
+        var job = await db.ExtractionJobs.SingleAsync(j => j.Id == harness.JobId);
+        Assert.Equal(ExtractionJobStatus.Failed, job.Status);
+        Assert.Equal(ExtractionRequestedHandler.MaxAttempts, job.AttemptCount);
+    }
+
+    [Fact]
+    public async Task A_failed_document_with_a_parse_error_is_left_failed()
+    {
+        var harness = await SeedFailedAsync(
+            "Gave up after 3 attempts. Last error: Malformed extraction payload.",
+            attemptCount: ExtractionRequestedHandler.MaxAttempts);
+
+        var action = await harness.Recovery.RecoverDocumentAsync(harness.TenantId, harness.DocumentId, force: false);
+
+        Assert.Equal(HungRecoveryAction.None, action);
+        Assert.Equal(DocumentProcessingStatus.Failed, await harness.ReloadStatusAsync());
+        Assert.Empty(harness.Queue.Published);
+    }
+
+    [Fact]
+    public async Task RecoverHungInTenantAsync_resurrects_stranded_three_minute_failures()
+    {
+        var harness = await SeedFailedAsync(
+            "Gave up after 3 attempts. Processing made no progress for 3 minutes.",
+            attemptCount: ExtractionRequestedHandler.MaxAttempts);
+
+        await harness.Recovery.RecoverHungInTenantAsync(harness.TenantId);
+
+        Assert.Equal(DocumentProcessingStatus.Uploaded, await harness.ReloadStatusAsync());
+        Assert.Single(harness.Queue.Published);
+
+        await using var db = CreateContext();
+        var job = await db.ExtractionJobs.SingleAsync(j => j.Id == harness.JobId);
+        Assert.Equal(0, job.AttemptCount);
+
+        await harness.Recovery.RecoverHungInTenantAsync(harness.TenantId);
+        Assert.Single(harness.Queue.Published);
+        Assert.Equal(DocumentProcessingStatus.Uploaded, await harness.ReloadStatusAsync());
+    }
+
+    [Fact]
+    public async Task RecoverHungInTenantAsync_does_not_resurrect_another_tenants_stranded_failure()
+    {
+        var harness = await SeedFailedAsync(
+            "Gave up after 3 attempts. Processing made no progress for 3 minutes.",
+            attemptCount: ExtractionRequestedHandler.MaxAttempts);
+        var otherTenant = TenantId.New();
+
+        await harness.Recovery.RecoverHungInTenantAsync(otherTenant);
+
+        Assert.Equal(DocumentProcessingStatus.Failed, await harness.ReloadStatusAsync());
+        Assert.Empty(harness.Queue.Published);
+    }
+
     private DocumentsContractsDbContext CreateContext()
     {
         var optionsBuilder = new DbContextOptionsBuilder<DocumentsContractsDbContext>();
@@ -128,10 +231,44 @@ public sealed class HungProcessingRecoveryServiceTests : IAsyncLifetime
         return new DocumentsContractsDbContext(optionsBuilder.Options);
     }
 
-    private async Task<Harness> SeedHungAsync(DateTimeOffset claimedAt, int attemptCount)
+    private Task<Harness> SeedHungAsync(DateTimeOffset claimedAt, int attemptCount) =>
+        SeedAsync(
+            processingStatus: DocumentProcessingStatus.Processing,
+            jobStatus: ExtractionJobStatus.Queued,
+            claimedAt: claimedAt,
+            claimedBy: "worker-dead",
+            startedAt: claimedAt,
+            completedAt: null,
+            attemptCount: attemptCount,
+            errorDetail: null);
+
+    private Task<Harness> SeedFailedAsync(string errorDetail, int attemptCount)
+    {
+        var failedAt = Now.AddMinutes(-10);
+        return SeedAsync(
+            processingStatus: DocumentProcessingStatus.Failed,
+            jobStatus: ExtractionJobStatus.Failed,
+            claimedAt: null,
+            claimedBy: null,
+            startedAt: failedAt,
+            completedAt: failedAt,
+            attemptCount: attemptCount,
+            errorDetail: errorDetail);
+    }
+
+    private async Task<Harness> SeedAsync(
+        DocumentProcessingStatus processingStatus,
+        ExtractionJobStatus jobStatus,
+        DateTimeOffset? claimedAt,
+        string? claimedBy,
+        DateTimeOffset? startedAt,
+        DateTimeOffset? completedAt,
+        int attemptCount,
+        string? errorDetail)
     {
         var tenantId = TenantId.New();
         var tenantContext = new TenantContext();
+        var queuedAt = claimedAt ?? startedAt ?? Now.AddHours(-1);
         var document = new Document
         {
             TenantId = tenantId,
@@ -140,19 +277,21 @@ public sealed class HungProcessingRecoveryServiceTests : IAsyncLifetime
             StoragePath = $"{tenantId.Value}/stuck.pdf",
             Checksum = "checksum",
             CreatedAt = Now.AddHours(-1),
-            ProcessingStatus = DocumentProcessingStatus.Processing,
+            ProcessingStatus = processingStatus,
         };
         var job = new ExtractionJob
         {
             TenantId = tenantId,
             DocumentId = document.Id,
             Stage = ExtractionStage.Classification,
-            Status = ExtractionJobStatus.Queued,
-            QueuedAt = claimedAt,
+            Status = jobStatus,
+            QueuedAt = queuedAt,
             ClaimedAt = claimedAt,
-            ClaimedBy = "worker-dead",
-            StartedAt = claimedAt,
+            ClaimedBy = claimedBy,
+            StartedAt = startedAt,
+            CompletedAt = completedAt,
             AttemptCount = attemptCount,
+            ErrorDetail = errorDetail,
         };
 
         await using (var db = CreateContext())

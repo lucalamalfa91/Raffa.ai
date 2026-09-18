@@ -499,6 +499,46 @@ export interface operations {
       };
     };
   };
+  getRenewalNegotiationTodos: {
+    responses: {
+      200: {
+        content: {
+          "application/json": ({ contractId: string; pointKey: string; topic: string; rank: number; current: string; target: string; rationale: string; citationKeys: (string)[]; source: string; status: "Open" | "Done" | "Superseded"; createdAt: string; updatedAt: string })[];
+        };
+      };
+      400: {
+        content: {
+          "application/json": string;
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  tickRenewalNegotiationTodo: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { contractId: string; pointKey: string; topic: string; rank: number; current: string; target: string; rationale: string; citationKeys: (string)[]; source: string; status: "Open" | "Done" | "Superseded"; createdAt: string; updatedAt: string };
+        };
+      };
+      400: {
+        content: {
+          "application/json": string;
+        };
+      };
+      403: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
   listQuotes: {
     responses: {
       200: {
@@ -897,6 +937,10 @@ export interface paths {
   "/api/renewals/{id}/action": {
     get: operations["getRenewalAction"];
     post: operations["postRenewalAction"];
+  };
+  "/api/renewals/{id}/negotiation-todos": {
+    get: operations["getRenewalNegotiationTodos"];
+    put: operations["tickRenewalNegotiationTodo"];
   };
   "/api/quotes": {
     get: operations["listQuotes"];

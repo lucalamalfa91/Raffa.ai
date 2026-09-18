@@ -88,7 +88,22 @@ describe("mapConversationCitation", () => {
       documentId: "doc-1",
       page: 12,
       href: "/contracts/contract-1?page=12",
+      // Task E28/F03/US02/T01 (NW-83/NW-93): echoed verbatim from the wire's own `contractId` so
+      // `CitationCard.tsx` can build its two-CTA card's "Open contract" action.
+      contractId: "contract-1",
     });
+  });
+
+  // Task E28/F03/US02/T01 (NW-83/NW-93): once the wire's own `href` has already resolved to the
+  // W18 viewer route (`AskCopilotService.ResolveTenantClauseLinks`, no bare page left to append),
+  // this mapper changes nothing about it -- `CitationCard.tsx` reads the viewer href verbatim.
+  it("passes a viewer-route href through unchanged (no ?page= re-synthesis once the backend already resolved one)", () => {
+    const view = mapConversationCitation(
+      citation({ href: "/documents/doc-1/viewer?page=12&clause=clause-1", documentId: "doc-1" }),
+    );
+
+    expect(view.href).toBe("/documents/doc-1/viewer?page=12&clause=clause-1");
+    expect(view.contractId).toBe("contract-1");
   });
 
   it("leaves a market citation's href untouched (never ?page=-enriched)", () => {
@@ -509,6 +524,10 @@ describe("createConversationAndAsk", () => {
       // mock keeping up. Fixed here since this file is already this task's own; the same gap in
       // other suites' mockApiClient helpers is untouched -- out of this task's file scope.
       getQuoteBenchmarkHistory: vi.fn(),
+      // Task E29/F04/US01/T01 (todo-web): same "sibling task widened ApiClient without this file's
+      // mock keeping up" gap this file's own comment above already documents for its neighbour.
+      getRenewalNegotiationTodos: vi.fn(),
+      tickRenewalNegotiationTodo: vi.fn(),
       askRaffa: vi.fn(),
       getSavingsKpis: vi.fn(),
       getSavingsOpportunities: vi.fn(),
@@ -547,36 +566,38 @@ describe("createConversationAndAsk", () => {
 
     expect(createConversation).toHaveBeenCalledWith("tenant-1", {});
     expect(postMessage).toHaveBeenCalledWith("tenant-1", "conv-1", { question: "When does Salesforce expire?" });
-    expect(result).toEqual({ ok: true, conversationId: "conv-1", reply });
+    // Task E27/F04/US01/T01 (binding-chip, NW-78): the success result now also carries
+    // `scopeContractId`, echoed straight off `created.conversation` (here `null`, matching this
+    // test's own unscoped mock response at line ~530) -- see `createConversationAndAsk`'s own doc
+    // comment for why the bound-contract chip must read this field rather than the caller's own
+    // `scopeContractId` argument.
+    expect(result).toEqual({ ok: true, conversationId: "conv-1", reply, scopeContractId: null });
   });
 
-  it("passes scopeContractId through to createConversation when supplied", async () => {
+  it("passes scopeContractId through to createConversation when supplied, and echoes the created conversation's own persisted value back on the result (NW-78/AC-2)", async () => {
     const createConversation = vi.fn().mockResolvedValue({
       ok: true,
       statusCode: 201,
       conversation: { id: "conv-1", title: "New chat", scopeContractId: "contract-1", updatedAt: "2026-09-08T00:00:00Z" },
       error: null,
     });
-    const postMessage = vi.fn().mockResolvedValue({
-      ok: true,
-      statusCode: 200,
-      reply: {
-        conversationId: "conv-1",
-        messageId: "msg-1",
-        kind: "answer",
-        answerMarkdown: "…",
-        citations: [],
-        actions: [],
-        provenance: { sources: [], modelId: null, promptVersion: null, inputHash: null },
-        followUps: [],
-      },
-      error: null,
-    });
+    const reply: ConversationReplyBody = {
+      conversationId: "conv-1",
+      messageId: "msg-1",
+      kind: "answer",
+      answerMarkdown: "…",
+      citations: [],
+      actions: [],
+      provenance: { sources: [], modelId: null, promptVersion: null, inputHash: null },
+      followUps: [],
+    };
+    const postMessage = vi.fn().mockResolvedValue({ ok: true, statusCode: 200, reply, error: null });
     const apiClient = mockApiClient({ createConversation, postMessage });
 
-    await createConversationAndAsk(apiClient, "tenant-1", "When must we give notice to Salesforce?", "contract-1");
+    const result = await createConversationAndAsk(apiClient, "tenant-1", "When must we give notice to Salesforce?", "contract-1");
 
     expect(createConversation).toHaveBeenCalledWith("tenant-1", { scopeContractId: "contract-1" });
+    expect(result).toEqual({ ok: true, conversationId: "conv-1", reply, scopeContractId: "contract-1" });
   });
 
   it("reports failure (with no conversationId) when creation itself fails", async () => {

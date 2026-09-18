@@ -281,9 +281,11 @@ public sealed class ChatEndpointTests : IClassFixture<RaffaApiFactory>
         using var body = JsonDocument.Parse(rawBody);
         Assert.Equal("answer", body.RootElement.GetProperty("kind").GetString());
 
-        // Citations stamp a real contractId (BuildContractFactItem has no single source page, so
-        // documentId is null). The old stub put the internal `fact:{id}:renewal` lookup key on
-        // documentId — that is no longer an id.
+        // Task E28/F03/US01/T01 (NW-83; ADR-024 w19 cl. 17): citations carry a real contractId now
+        // (BuildContractFactItem's own PackItem has no source document -- a contract-level fact has
+        // no single page -- so contractId, not documentId, is the real, stamped id to assert on
+        // here; documentId is correctly null for every one of these citations). The old stub put
+        // the internal `fact:{id}:renewal` lookup key on documentId — that is no longer an id.
         var citedContractIds = body.RootElement.GetProperty("citations").EnumerateArray()
             .Select(c => c.TryGetProperty("contractId", out var id) ? id.GetString() : null)
             .Where(id => id is not null)

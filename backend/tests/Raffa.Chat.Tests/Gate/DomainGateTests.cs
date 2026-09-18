@@ -10,13 +10,29 @@ namespace Raffa.Chat.Tests.Gate;
 /// — this is the task's own Definition of Done set of gate labels, run in isolation ("gate labels
 /// for 'ciao', 'ricetta della carbonara', 'posso fare causa?', 'cosa sai fare?', 'quando scade
 /// Databricks?' (needs_document), 'Is my Allianz contract above market?' (in_domain)").
+///
+/// <para>
+/// Task E27/F05/US01/T01 (NW-80) added the <c>Normalized_contains_*</c>/<c>Partial_mention_*</c>
+/// tests below, proving <see cref="DomainGate.Classify"/>'s second matching tier — everything above
+/// them proves Tier 1 (the pre-existing, unchanged exact capitalized-run match) still behaves
+/// exactly as before.
+/// </para>
 /// </summary>
 public sealed class DomainGateTests
 {
     private readonly DomainGate _gate = new();
 
-    private static readonly string[] NoKnownSuppliers = [];
-    private static readonly string[] KnownAllianz = ["Allianz"];
+    private static readonly KnownSupplierName[] NoKnownSuppliers = [];
+    private static readonly KnownSupplierName[] KnownAllianz = [Known("Allianz")];
+
+    /// <summary>Builds a <see cref="KnownSupplierName"/> the way the host would for every Tier-1
+    /// test below: none of these names carry punctuation or a legal suffix, so a plain
+    /// <see cref="string.ToLowerInvariant"/> is already exactly what the real
+    /// <c>SupplierNameNormalizer.Normalize</c> would produce for them too — the Tier-2 tests added
+    /// for task E27/F05/US01/T01 (NW-80) construct <see cref="KnownSupplierName"/> directly instead,
+    /// precisely to exercise a normalized form that differs from a plain lower-case (a stripped
+    /// legal suffix).</summary>
+    private static KnownSupplierName Known(string displayName) => new(displayName, displayName.ToLowerInvariant());
 
     [Fact]
     public void Ciao_is_greeting()
@@ -82,7 +98,7 @@ public sealed class DomainGateTests
     [Fact]
     public void Supplier_resolution_is_case_insensitive()
     {
-        var result = _gate.Classify("quando scade Databricks?", ["databricks"]);
+        var result = _gate.Classify("quando scade Databricks?", [Known("databricks")]);
 
         Assert.Equal(GateLabel.InDomain, result.Label);
     }
@@ -147,7 +163,7 @@ public sealed class DomainGateTests
         // so the first-capitalized-run heuristic used to report it as a named, unknown supplier and
         // the turn was answered "No I contract has been uploaded and validated" -- never
         // considering Salesforce (golden set, GAP-ASK-PRONOUN-AS-SUPPLIER).
-        var result = _gate.Classify("How should I approach the Salesforce renewal?", ["Salesforce"]);
+        var result = _gate.Classify("How should I approach the Salesforce renewal?", [Known("Salesforce")]);
 
         Assert.Equal(GateLabel.InDomain, result.Label);
         Assert.Equal("Salesforce", result.NamedSupplier);
@@ -157,7 +173,7 @@ public sealed class DomainGateTests
     public void A_known_supplier_anywhere_in_the_question_wins_over_an_earlier_capitalized_word()
     {
         // The known supplier is the last capitalized run here; an earlier one must not shadow it.
-        var result = _gate.Classify("In Q4 we renew Databricks, right?", ["Databricks"]);
+        var result = _gate.Classify("In Q4 we renew Databricks, right?", [Known("Databricks")]);
 
         Assert.Equal(GateLabel.InDomain, result.Label);
         Assert.Equal("Databricks", result.NamedSupplier);
@@ -169,7 +185,7 @@ public sealed class DomainGateTests
         // Nothing about the fix loosens R-ASK-03: a supplier this tenant has no contract for is
         // still answered with "upload it first", and the reported candidate is the real name, not
         // a pronoun.
-        var result = _gate.Classify("How should I approach the Snowflake renewal?", ["Salesforce"]);
+        var result = _gate.Classify("How should I approach the Snowflake renewal?", [Known("Salesforce")]);
 
         Assert.Equal(GateLabel.NeedsDocument, result.Label);
         Assert.Equal("Snowflake", result.NamedSupplier);
@@ -183,5 +199,82 @@ public sealed class DomainGateTests
         // NeedsDocument.
         Assert.Equal(GateLabel.Greeting, _gate.Classify("ciao", NoKnownSuppliers).Label);
         Assert.Equal(GateLabel.OffDomain, _gate.Classify("che meteo fa oggi?", NoKnownSuppliers).Label);
+    }
+
+    // ----- Task E27/F05/US01/T01 (NW-80): Tier 2, normalized/contains -----
+
+    /// <summary>AC-1's own worked example: "astercloud GmbH" (lower-case first word) must resolve
+    /// to the stored "AsterCloud GmbH". <see cref="DomainGate"/>'s capitalized-run pattern only ever
+    /// sees "GmbH" here ("astercloud" is lower-case, so it never joins the run) — Tier 1 alone can
+    /// only fail this, never resolve it — so this is proof of Tier 2's whole-question
+    /// normalized/contains match, not of a wider Tier-1 pattern.</summary>
+    [Fact]
+    public void A_capitalized_legal_suffix_with_a_lowercase_supplier_name_resolves_via_normalized_contains()
+    {
+        var knownAsterCloud = new[] { new KnownSupplierName("AsterCloud GmbH", "astercloud") };
+
+        var result = _gate.Classify("Tell me about astercloud GmbH please", knownAsterCloud);
+
+        Assert.Equal(GateLabel.InDomain, result.Label);
+        Assert.Equal("AsterCloud GmbH", result.NamedSupplier);
+    }
+
+    /// <summary>AC-1's other worked example: a fully lower-case mention with no capital letter at
+    /// all ("su salesforce") produces zero Tier-1 candidates (the capitalized-run pattern matches
+    /// nothing), so only Tier 2 can resolve it.</summary>
+    [Fact]
+    public void A_fully_lowercase_mention_with_no_capital_letter_resolves_via_normalized_contains()
+    {
+        var result = _gate.Classify(
+            "Quanto paghiamo su salesforce quest'anno?", [new KnownSupplierName("Salesforce", "salesforce")]);
+
+        Assert.Equal(GateLabel.InDomain, result.Label);
+        Assert.Equal("Salesforce", result.NamedSupplier);
+    }
+
+    /// <summary>A candidate missing the supplier's own legal suffix ("AsterCloud" for the stored
+    /// "AsterCloud GmbH") is a real Tier-1 candidate, but it does not equal the full stored name —
+    /// Tier 2's normalized form (legal suffix stripped by the host's own SupplierNameNormalizer
+    /// before this test ever runs) is what resolves it to the canonical display name, not the
+    /// as-typed partial one.</summary>
+    [Fact]
+    public void A_partial_mention_missing_the_legal_suffix_resolves_to_the_full_stored_name()
+    {
+        var knownAsterCloud = new[] { new KnownSupplierName("AsterCloud GmbH", "astercloud") };
+
+        var result = _gate.Classify("How should I approach the AsterCloud renewal?", knownAsterCloud);
+
+        Assert.Equal(GateLabel.InDomain, result.Label);
+        Assert.Equal("AsterCloud GmbH", result.NamedSupplier);
+    }
+
+    /// <summary>Tier 2 matches whole words only — a known supplier normalizing to "sap" must never
+    /// fire merely because "sap" is a substring of "sapling". Proves the word-boundary guarantee,
+    /// not just the happy path.</summary>
+    [Fact]
+    public void Normalized_contains_match_never_fires_on_a_same_word_substring()
+    {
+        var result = _gate.Classify(
+            "Can you check the sapling in our garden?", [new KnownSupplierName("SAP", "sap")]);
+
+        Assert.Equal(GateLabel.InDomain, result.Label);
+        Assert.Null(result.NamedSupplier);
+    }
+
+    /// <summary>Tier 1 still wins outright when it already resolves — Tier 2 is a fallback, never a
+    /// second opinion that could contradict an exact match.</summary>
+    [Fact]
+    public void An_exact_capitalized_match_is_never_second_guessed_by_the_normalized_tier()
+    {
+        var knownBoth = new[]
+        {
+            new KnownSupplierName("Salesforce", "salesforce"),
+            new KnownSupplierName("AsterCloud GmbH", "astercloud"),
+        };
+
+        var result = _gate.Classify("How should I approach the Salesforce renewal?", knownBoth);
+
+        Assert.Equal(GateLabel.InDomain, result.Label);
+        Assert.Equal("Salesforce", result.NamedSupplier);
     }
 }

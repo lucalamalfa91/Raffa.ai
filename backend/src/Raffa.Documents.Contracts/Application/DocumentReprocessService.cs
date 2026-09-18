@@ -60,8 +60,17 @@ public sealed class DocumentReprocessService(
     /// <see langword="null"/> when no such document exists for this tenant (the endpoint's 404).
     /// </summary>
     /// <param name="actor">Who asked for the re-run, for the audit row.</param>
+    /// <param name="resetAttemptCount">
+    /// When true, the classification job's <c>attempt_count</c> is zeroed so the next claim starts
+    /// a fresh budget. Used to resurrect hang-cap Failures left terminal by the old 3-minute
+    /// window; ordinary reprocess keeps the lifetime bound so a bad file cannot loop.
+    /// </param>
     public async Task<Result<DocumentReprocessQueued>?> ReprocessAsync(
-        TenantId tenantId, EntityId documentId, string actor, CancellationToken cancellationToken = default)
+        TenantId tenantId,
+        EntityId documentId,
+        string actor,
+        CancellationToken cancellationToken = default,
+        bool resetAttemptCount = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(actor);
 
@@ -101,7 +110,8 @@ public sealed class DocumentReprocessService(
             .RemoveChunksAsync(tenantId, DocumentSourceType, documentId, cancellationToken)
             .ConfigureAwait(false);
 
-        var job = await RequeueClassificationJobAsync(tenantId, documentId, document.CreatedAt, cancellationToken)
+        var job = await RequeueClassificationJobAsync(
+                tenantId, documentId, document.CreatedAt, resetAttemptCount, cancellationToken)
             .ConfigureAwait(false);
         document.ProcessingStatus = DocumentProcessingStatus.Uploaded;
 
@@ -143,11 +153,16 @@ public sealed class DocumentReprocessService(
     /// Puts the classification job back into the exact state a fresh claim requires: Queued,
     /// unclaimed, no timestamps. <c>ClaimedAt</c>/<c>ClaimedBy</c> must be cleared — the claim's
     /// compare-and-swap is <c>claimed_at IS NULL</c>, so a job left claimed from its first run would
-    /// refuse the re-run's delivery for ever. <c>AttemptCount</c> is deliberately kept: it is the
-    /// bound on redeliveries across the document's whole life, not per request.
+    /// refuse the re-run's delivery for ever. <c>AttemptCount</c> is kept unless
+    /// <paramref name="resetAttemptCount"/> is set: it is the bound on redeliveries across the
+    /// document's whole life, not per request.
     /// </summary>
     private async Task<ExtractionJob> RequeueClassificationJobAsync(
-        TenantId tenantId, EntityId documentId, DateTimeOffset fallbackQueuedAt, CancellationToken cancellationToken)
+        TenantId tenantId,
+        EntityId documentId,
+        DateTimeOffset fallbackQueuedAt,
+        bool resetAttemptCount,
+        CancellationToken cancellationToken)
     {
         var classificationJob = await dbContext.ExtractionJobs
             .Where(j => j.TenantId == tenantId
@@ -181,6 +196,10 @@ public sealed class DocumentReprocessService(
             // ADR-027 w15 footer C12: a re-run is a fresh job nobody has opened yet -- it must not
             // inherit the queue-jump the previous run was given.
             classificationJob.PrioritisedAt = null;
+            if (resetAttemptCount)
+            {
+                classificationJob.AttemptCount = 0;
+            }
         }
 
         return classificationJob;

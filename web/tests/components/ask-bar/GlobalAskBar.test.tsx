@@ -69,6 +69,10 @@ function mockApiClient(getCapabilities: ApiClient["getCapabilities"] = vi.fn(() 
     getCapabilities,
     getMarketRecord: vi.fn(),
     getQuoteBenchmarkHistory: vi.fn(),
+    // Task E29/F04/US01/T01 (todo-web): this suite never reaches the Renewals screen -- bare
+    // vi.fn() is enough, same convention as the other unexercised calls above.
+    getRenewalNegotiationTodos: vi.fn(),
+    tickRenewalNegotiationTodo: vi.fn(),
   };
 }
 
