@@ -14,6 +14,8 @@ import {
   type RowStatus,
 } from "./documentTable";
 import ProcessingPipeline from "./ProcessingPipeline";
+import { DocumentViewerLink } from "./viewer/DocumentViewerOverlay";
+import { buildDocumentViewerHref } from "./viewer/documentViewerViewModel";
 
 export interface DocumentStatusTableProps {
   /** Already filtered by the caller's current chip. */
@@ -167,6 +169,11 @@ export default function DocumentStatusTable({
                       {item.pageCount !== null ? `${item.pageCount} page${item.pageCount === 1 ? "" : "s"} · ` : ""}
                       {formatUploadedAt(item.createdAt)}
                     </div>
+                    {rowStatus !== "rejected" && rowStatus !== "failed" && (
+                      <DocumentViewerLink to={buildDocumentViewerHref(item.id)} className="btn btn-ghost">
+                        View document
+                      </DocumentViewerLink>
+                    )}
                   </td>
                   <td className="document-status-table-supplier">
                     <span>{item.supplierName ?? "—"}</span> <span className="micro-meta">· {getDocumentTypeLabel(item.documentType)}</span>

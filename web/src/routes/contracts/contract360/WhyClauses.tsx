@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import type { Contract360ClauseBody, Contract360DocumentBody } from "../../../api/client";
 import ClauseHighlight from "./ClauseHighlight";
 import { AUTO_ACCEPT_THRESHOLD, LEVERAGE_LEGEND, buildClauseRows } from "./contract360ViewModel";
+import { DocumentViewerLink } from "../../documents/viewer/DocumentViewerOverlay";
 
 export interface WhyClausesProps {
   contractId: string;
@@ -64,9 +65,9 @@ export default function WhyClauses({
                   {row.risk !== null && <span className={`tag tag-${row.risk.variant} contract360-clause-tag`}>{row.risk.label}</span>}
                   {row.why !== null && <span className="contract360-clause-why">{row.why}</span>}
                   {row.viewerHref !== null && (
-                    <Link to={row.viewerHref} className="btn btn-ghost contract360-clause-viewer">
+                    <DocumentViewerLink to={row.viewerHref} className="btn btn-ghost contract360-clause-viewer">
                       Open in document viewer
-                    </Link>
+                    </DocumentViewerLink>
                   )}
                 </span>
               </div>

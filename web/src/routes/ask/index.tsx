@@ -9,6 +9,8 @@ import type { ReplyCitation } from "./reply/replyTypes";
 import AskOffState from "./AskOffState";
 import MarketRecordPanel from "./MarketRecordPanel";
 import { useConversation } from "./useConversation";
+import { parseDocumentViewerHref } from "../documents/viewer/documentViewerViewModel";
+import { useDocumentViewerOverlay } from "../documents/viewer/DocumentViewerOverlay";
 import {
   ASK_HELLO,
   ASK_INPUT_PLACEHOLDER,
@@ -274,12 +276,18 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
    * card navigates to its own href. `askViewModel.ts#resolveCitationOpenAction`'s own doc comment
    * has the full decision table -- this is only the "then do it" half.
    */
+  const overlay = useDocumentViewerOverlay();
   const openCitation = useCallback(
     (turn: Extract<AskTurnView, { role: "raffa" }>, citation: ReplyCitation) => {
       setCitationNotice(null);
       const action = resolveCitationOpenAction(citation, turn.wireCitations);
 
       if (action.kind === "navigate") {
+        const viewer = parseDocumentViewerHref(action.href);
+        if (viewer !== null && overlay !== null) {
+          overlay.open(viewer);
+          return;
+        }
         navigate(action.href, { state: { from: "ask" } });
         return;
       }
@@ -289,7 +297,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
       }
       setCitationNotice({ turnId: turn.id, n: citation.n, text: "This citation can't be opened right now." });
     },
-    [navigate],
+    [navigate, overlay],
   );
 
   // Task E25/F06/US01/T01 (NW-60; AC-2): `AppShell.tsx` no longer mounts `GlobalAskBar` on this

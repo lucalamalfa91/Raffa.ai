@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import DocumentsRoute from "../../../src/routes/documents";
+import { DocumentViewerProvider } from "../../../src/routes/documents/viewer/DocumentViewerOverlay";
 import type { WorkspaceRole } from "../../../src/components/shell/navItems";
 import type {
   ApiClient,
@@ -155,16 +156,18 @@ function pdfFile(name = "Acme_MSA.pdf") {
 function renderDocuments(apiClient: ApiClient, initialPath = "/documents", role: WorkspaceRole = "admin") {
   return render(
     <MemoryRouter initialEntries={[initialPath]}>
-      <Routes>
-        {/* Task E14/F03/US02/T01 (wave w14): role is now threaded through from WorkspaceShellApp's
-            ShellRoutes as a prop, instead of this route calling the deleted resolveWorkspaceRole()
-            itself -- "admin" by default keeps every pre-existing assertion in this suite unchanged;
-            "hides Delete for Procurement" below overrides it. */}
-        <Route path="/documents" element={<DocumentsRoute apiClient={apiClient} role={role} />} />
-        <Route path="/contracts/:contractId" element={<div>CONTRACT_360_SCREEN</div>} />
-        <Route path="/ask" element={<div>ASK_SCREEN</div>} />
-        <Route path="/quotes" element={<div>QUOTE_CHECK_SCREEN</div>} />
-      </Routes>
+      <DocumentViewerProvider apiClient={apiClient}>
+        <Routes>
+          {/* Task E14/F03/US02/T01 (wave w14): role is now threaded through from WorkspaceShellApp's
+              ShellRoutes as a prop, instead of this route calling the deleted resolveWorkspaceRole()
+              itself -- "admin" by default keeps every pre-existing assertion in this suite unchanged;
+              "hides Delete for Procurement" below overrides it. */}
+          <Route path="/documents" element={<DocumentsRoute apiClient={apiClient} role={role} />} />
+          <Route path="/contracts/:contractId" element={<div>CONTRACT_360_SCREEN</div>} />
+          <Route path="/ask" element={<div>ASK_SCREEN</div>} />
+          <Route path="/quotes" element={<div>QUOTE_CHECK_SCREEN</div>} />
+        </Routes>
+      </DocumentViewerProvider>
     </MemoryRouter>,
   );
 }
@@ -694,5 +697,34 @@ describe("DocumentsRoute (task E13/F09/US01/T03, web-documents-v2)", () => {
     await userEvent.click(screen.getByRole("button", { name: "Confirm delete all" }));
     await waitFor(() => expect(deleteAllDocuments).toHaveBeenCalledWith(WORKSPACE_ID));
     await waitFor(() => expect(listDocuments.mock.calls.length).toBeGreaterThan(1));
+  });
+
+  it("View document opens the viewer overlay on the list without leaving /documents", async () => {
+    const items = [docItem({ id: "doc-1", fileName: "raffa-sample-northwind-msa.pdf", processingStatus: "NeedsReview", weakFactCount: 2 })];
+    const getDocument = vi.fn().mockResolvedValue({
+      ok: true,
+      statusCode: 200,
+      document: {
+        id: "doc-1",
+        contractId: "contract-1",
+        fileName: "raffa-sample-northwind-msa.pdf",
+        mimeType: "application/pdf",
+        documentType: "Msa",
+        processingStatus: "Completed",
+        createdAt: "2026-09-06T08:05:00Z",
+        pageCount: 2,
+        isPageCountLimited: false,
+      },
+      error: null,
+    });
+    const getDocumentPreviewUrl = vi.fn().mockResolvedValue({ ok: true, statusCode: 200, objectUrl: "blob:page", error: null });
+    renderDocuments(mockApiClient({ listDocuments: vi.fn().mockResolvedValue(listOk(items)), getDocument, getDocumentPreviewUrl }));
+
+    await screen.findByText("raffa-sample-northwind-msa.pdf");
+    await userEvent.click(screen.getByRole("link", { name: "View document" }));
+
+    expect(await screen.findByRole("dialog", { name: "Document viewer" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Documents" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "raffa-sample-northwind-msa.pdf" })).toBeInTheDocument();
   });
 });
