@@ -218,7 +218,8 @@ public sealed class DocumentPreviewService(
 
     private static bool CanLiveRasterize(string? mimeType) =>
         string.Equals(mimeType, DocumentFormatSniffer.PdfMimeType, StringComparison.OrdinalIgnoreCase)
-        || OfficePageDocumentPreviewRenderer.CanLiveRasterize(mimeType);
+        || OfficePageDocumentPreviewRenderer.CanLiveRasterize(mimeType)
+        || ImageDocumentPreviewRenderer.CanLiveRasterize(mimeType);
 
     /// <summary>
     /// Deletes <c>page-{n}.png</c> for <c>n &gt; newPageCount</c> and <c>n ≤ oldPageCount</c>,

@@ -505,7 +505,7 @@ public static class DocumentsEndpointExtensions
         var png = await previewService.LoadAsync(tenantId, new EntityId(documentGuid), page, cancellationToken);
         return png is null
             ? Results.NotFound()
-            : Results.File(png, DocumentPreviewService.PreviewContentType);
+            : Results.File(png, PreviewMediaType(png));
     }
 
     /// <summary>
@@ -722,4 +722,10 @@ public static class DocumentsEndpointExtensions
         Results.Json(
             $"Raffa accepts files up to {options.MaxFileBytes / (1024 * 1024)} MB. This file is larger.",
             statusCode: StatusCodes.Status413PayloadTooLarge);
+
+    /// <summary>JPEG scans are stored as the original bytes; sniff so the browser decodes them.</summary>
+    private static string PreviewMediaType(byte[] bytes) =>
+        bytes.Length >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF
+            ? DocumentFormatSniffer.JpegMimeType
+            : DocumentPreviewService.PreviewContentType;
 }

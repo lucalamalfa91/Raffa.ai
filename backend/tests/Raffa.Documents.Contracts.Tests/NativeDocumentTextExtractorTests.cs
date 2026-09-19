@@ -10,9 +10,8 @@ namespace Raffa.Documents.Contracts.Tests;
 /// Proves <see cref="NativeDocumentTextExtractor"/> — the concrete, real native-text half of task
 /// E02/F01/US02/T02's hybrid pre-pass. DOCX/XLSX round-trip through the real
 /// <c>DocumentFormat.OpenXml</c> SDK (no hand-rolled binary — the SDK's own writer builds the test
-/// fixtures). PDF is deliberately <em>not</em> handled here since the ADR-017 amendment of
-/// 2026-09-09: every PDF goes to the `ocr` role (Document Intelligence Read on a live deployment,
-/// <c>FixturePdfTextScanner</c> under the fixture gateway — see <c>FixturePdfTextScannerTests</c>).
+/// fixtures). PDF selectable text is read via pdfium; image-only scans stay insufficient so
+/// the hybrid parser can OCR them.
 /// </summary>
 public sealed class NativeDocumentTextExtractorTests
 {
@@ -21,14 +20,15 @@ public sealed class NativeDocumentTextExtractorTests
     private const string XlsxMimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
     [Fact]
-    public void CanHandle_recognizes_docx_and_xlsx_but_neither_pdf_nor_an_image_mime_type()
+    public void CanHandle_recognizes_pdf_docx_and_xlsx_but_not_an_image_mime_type()
     {
         var extractor = new NativeDocumentTextExtractor();
 
+        Assert.True(extractor.CanHandle(PdfMimeType));
         Assert.True(extractor.CanHandle(DocxMimeType));
         Assert.True(extractor.CanHandle(XlsxMimeType));
-        Assert.False(extractor.CanHandle(PdfMimeType));
         Assert.False(extractor.CanHandle("image/png"));
+        Assert.False(extractor.CanHandle("image/jpeg"));
     }
 
     [Fact]
@@ -40,14 +40,37 @@ public sealed class NativeDocumentTextExtractorTests
     }
 
     [Fact]
-    public void A_pdf_handed_to_extract_anyway_is_refused_rather_than_scanned()
+    public void An_image_handed_to_extract_is_refused_rather_than_scanned()
     {
-        // CanHandle is the contract; a caller that skips it gets a loud NotSupportedException, never
-        // a silent "insufficient" that would quietly re-route a PDF through a native path again.
         var extractor = new NativeDocumentTextExtractor();
 
         Assert.Throws<NotSupportedException>(
-            () => extractor.Extract(PdfMimeType, "%PDF-1.4\n1 0 obj << /Type /Page >> endobj\n"u8.ToArray()));
+            () => extractor.Extract("image/png", new byte[] { 0x89, 0x50, 0x4E, 0x47 }));
+    }
+
+    [Fact]
+    public void A_born_digital_pdf_is_extracted_by_pdfium_and_is_sufficient()
+    {
+        var bytes = BornDigitalPdf.FromPages(BornDigitalPdf.MsaPageOne, BornDigitalPdf.MsaPageTwo);
+        var extractor = new NativeDocumentTextExtractor();
+
+        var result = extractor.Extract(PdfMimeType, bytes);
+
+        Assert.True(result.IsSufficient);
+        Assert.Equal(2, result.Pages.Count);
+        Assert.Contains("MASTER SERVICES AGREEMENT", result.Pages[0].Text, StringComparison.Ordinal);
+        Assert.Contains("IBM Corporation", result.Pages[0].Text, StringComparison.Ordinal);
+        Assert.Contains("1 January 2026", result.Pages[1].Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_hand_rolled_incomplete_pdf_is_insufficient_so_ocr_can_still_run()
+    {
+        var extractor = new NativeDocumentTextExtractor();
+
+        var result = extractor.Extract(PdfMimeType, "%PDF-1.4\n1 0 obj << /Type /Page >> endobj\n"u8.ToArray());
+
+        Assert.False(result.IsSufficient);
     }
 
     // ---- DOCX ------------------------------------------------------------------------------

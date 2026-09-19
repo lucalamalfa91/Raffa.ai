@@ -128,10 +128,12 @@ public static class ServiceCollectionExtensions
         // IDocumentPreviewRenderer before calling this extension still wins (TryAdd is
         // first-registration-wins).
         services.TryAddSingleton<PdfPageDocumentPreviewRenderer>();
+        services.TryAddSingleton<ImageDocumentPreviewRenderer>();
         services.TryAddSingleton<OfficePageDocumentPreviewRenderer>();
         services.TryAddSingleton<IDocumentPreviewRenderer>(sp =>
             new CompositeDocumentPreviewRenderer(
                 sp.GetRequiredService<PdfPageDocumentPreviewRenderer>(),
+                sp.GetRequiredService<ImageDocumentPreviewRenderer>(),
                 sp.GetRequiredService<OfficePageDocumentPreviewRenderer>()));
         services.AddScoped<DocumentPreviewService>();
         services.AddScoped<DocumentReprocessService>();
