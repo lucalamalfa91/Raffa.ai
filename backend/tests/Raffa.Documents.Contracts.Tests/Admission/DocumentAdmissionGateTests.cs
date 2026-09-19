@@ -322,6 +322,63 @@ public sealed class DocumentAdmissionGateTests
     }
 
     [Fact]
+    public async Task A_transient_sql_throw_on_classify_is_retried_in_call_and_does_not_fail_the_file()
+    {
+        var remainingThrows = 2;
+        var harness = Harness.WithScriptedGateway(
+            new ScriptedAiGateway(
+                classify: _ =>
+                {
+                    if (remainingThrows-- > 0)
+                    {
+                        throw new InvalidOperationException(TransientDataAccessFault.EfRetryExhaustedMessage);
+                    }
+
+                    return Result<AiClassificationResult>.Success(new AiClassificationResult(
+                        AiDocumentType.Msa,
+                        0.95,
+                        new AiCallMetadata("scripted-classify", "1", "p1", Now, "hash")));
+                },
+                ocr: ScanPdfLikeTheFixture),
+            delay: static (_, _) => Task.CompletedTask);
+
+        var decision = await harness.Gate.EvaluateAsync(
+            Tenant, Actor, "msa.pdf", "application/pdf", BuildPdf(MsaText));
+
+        Assert.Equal(AdmissionOutcome.Admitted, decision.Outcome);
+        Assert.Equal(3, harness.Gateway.ClassifyCalls);
+        Assert.Empty(harness.Audit.Entries);
+    }
+
+    [Fact]
+    public async Task A_classify_throw_that_stays_transient_is_exhausted_in_call_then_reported_unavailable()
+    {
+        var harness = Harness.WithScriptedGateway(
+            new ScriptedAiGateway(
+                classify: _ => throw new InvalidOperationException(TransientDataAccessFault.EfRetryExhaustedMessage),
+                ocr: ScanPdfLikeTheFixture),
+            delay: static (_, _) => Task.CompletedTask);
+
+        var decision = await harness.Gate.EvaluateAsync(
+            Tenant, Actor, "msa.pdf", "application/pdf", BuildPdf(MsaText));
+
+        Assert.Equal(AdmissionOutcome.Failed, decision.Outcome);
+        Assert.StartsWith(DocumentAdmissionGate.GatewayUnavailablePrefix, decision.Error);
+        Assert.Contains("classify", decision.Error);
+        Assert.Contains("transient failure", decision.Error);
+        Assert.Equal(DocumentAdmissionGate.ClassifyTransientRetries + 1, harness.Gateway.ClassifyCalls);
+    }
+
+    [Fact]
+    public void Transient_data_access_fault_is_the_ef_retry_message_not_a_missing_role()
+    {
+        Assert.True(TransientDataAccessFault.IsTransient(
+            new InvalidOperationException(TransientDataAccessFault.EfRetryExhaustedMessage)));
+        Assert.False(TransientDataAccessFault.IsTransient(
+            new InvalidOperationException("ManagedIdentityCredential authentication failed: no token endpoint.")));
+    }
+
+    [Fact]
     public void Readable_chars_ignore_whitespace_and_blank_pages()
     {
         var pages = new List<DocumentPageText>
@@ -388,16 +445,28 @@ public sealed class DocumentAdmissionGateTests
                     ocr: ScanPdfLikeTheFixture),
                 options);
 
-        public static Harness WithScriptedGateway(IAiGateway gateway, DocumentAdmissionOptions? options = null) =>
-            Build(gateway, options);
+        public static Harness WithScriptedGateway(
+            IAiGateway gateway,
+            DocumentAdmissionOptions? options = null,
+            Func<TimeSpan, CancellationToken, Task>? delay = null) =>
+            Build(gateway, options, delay);
 
-        private static Harness Build(IAiGateway inner, DocumentAdmissionOptions? options)
+        private static Harness Build(
+            IAiGateway inner,
+            DocumentAdmissionOptions? options,
+            Func<TimeSpan, CancellationToken, Task>? delay = null)
         {
             var gateway = new CountingAiGateway(inner);
             var audit = new RecordingAuditWriter();
             var parsing = new HybridDocumentParsingService(gateway, new NativeDocumentTextExtractor());
             var gate = new DocumentAdmissionGate(
-                parsing, gateway, options ?? new DocumentAdmissionOptions(), new TenantContext(), audit, new FixedClock(Now));
+                parsing,
+                gateway,
+                options ?? new DocumentAdmissionOptions(),
+                new TenantContext(),
+                audit,
+                new FixedClock(Now),
+                delay: delay);
             return new Harness { Gate = gate, Gateway = gateway, Audit = audit };
         }
     }

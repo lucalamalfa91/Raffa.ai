@@ -175,6 +175,22 @@ public class FoundryRetryPolicyTests
     }
 
     [Fact]
+    public async Task A_throwing_heartbeat_does_not_fail_the_foundry_call()
+    {
+        var handler = new FakeHttpMessageHandler(FakeHttpMessageHandler.Json(HttpStatusCode.OK, "{}"));
+        using var httpClient = new HttpClient(handler) { BaseAddress = BaseAddress };
+        var policy = TestRetryPolicies.NoDelay();
+        using (FoundryAttemptHeartbeat.Begin(_ =>
+            throw new InvalidOperationException(
+                "An exception has been raised that is likely due to a transient failure.")))
+        {
+            var result = await policy.SendAsync(httpClient, Get(), CancellationToken.None);
+            Assert.True(result.IsSuccess);
+            Assert.Equal(HttpStatusCode.OK, result.Value.StatusCode);
+        }
+    }
+
+    [Fact]
     public void Defaults_keep_the_worst_case_inside_the_synchronous_upload_path()
     {
         var options = new AiGatewayResilienceOptions();

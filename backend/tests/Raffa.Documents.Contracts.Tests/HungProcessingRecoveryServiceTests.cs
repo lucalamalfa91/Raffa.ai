@@ -133,6 +133,25 @@ public sealed class HungProcessingRecoveryServiceTests : IAsyncLifetime
         Assert.Equal(expected, HungProcessingRecoveryService.IsResurrectableHangCapFailure(errorDetail));
     }
 
+    public const string LiveClassifyOutageError =
+        "Gave up after 3 attempts. Last error: The document could not be assessed: the 'classify' role could not be reached (InvalidOperationException: An exception has been raised that is likely due to a transient failure.) Nothing was stored.";
+
+    [Theory]
+    [InlineData(LiveClassifyOutageError, true)]
+    [InlineData(
+        "Gave up after 3 attempts. Classify stayed unreachable after in-call retries. Last error: The document could not be assessed: the 'classify' role could not be reached (InvalidOperationException: An exception has been raised that is likely due to a transient failure.) Nothing was stored.",
+        false)]
+    [InlineData("Gave up after 3 attempts. Last error: Malformed extraction payload.", false)]
+    [InlineData(
+        "The document could not be assessed: the 'classify' role could not be reached (InvalidOperationException: ManagedIdentityCredential authentication failed: no token endpoint.). Nothing was stored.",
+        false)]
+    [InlineData(null, false)]
+    public void IsResurrectableClassifyOutageFailure_is_the_ef_transient_wrap_only(
+        string? errorDetail, bool expected)
+    {
+        Assert.Equal(expected, HungProcessingRecoveryService.IsResurrectableClassifyOutageFailure(errorDetail));
+    }
+
     [Fact]
     public async Task A_failed_document_from_the_old_three_minute_hang_cap_is_requeued_with_a_fresh_attempt_budget()
     {
@@ -173,6 +192,61 @@ public sealed class HungProcessingRecoveryServiceTests : IAsyncLifetime
         var job = await db.ExtractionJobs.SingleAsync(j => j.Id == harness.JobId);
         Assert.Equal(ExtractionJobStatus.Failed, job.Status);
         Assert.Equal(ExtractionRequestedHandler.MaxAttempts, job.AttemptCount);
+    }
+
+    [Fact]
+    public async Task A_failed_document_from_the_classify_ef_transient_outage_is_requeued_with_a_fresh_attempt_budget()
+    {
+        var harness = await SeedFailedAsync(
+            LiveClassifyOutageError,
+            attemptCount: ExtractionRequestedHandler.MaxAttempts);
+
+        var action = await harness.Recovery.RecoverDocumentAsync(harness.TenantId, harness.DocumentId, force: false);
+
+        Assert.Equal(HungRecoveryAction.Requeued, action);
+        Assert.Equal(DocumentProcessingStatus.Uploaded, await harness.ReloadStatusAsync());
+        Assert.Single(harness.Queue.Published);
+
+        await using var db = CreateContext();
+        var job = await db.ExtractionJobs.SingleAsync(j => j.Id == harness.JobId);
+        Assert.Equal(ExtractionJobStatus.Queued, job.Status);
+        Assert.Equal(0, job.AttemptCount);
+        Assert.Null(job.ErrorDetail);
+    }
+
+    [Fact]
+    public async Task RecoverHungInTenantAsync_resurrects_stranded_classify_outage_failures()
+    {
+        var harness = await SeedFailedAsync(
+            LiveClassifyOutageError,
+            attemptCount: ExtractionRequestedHandler.MaxAttempts);
+
+        await harness.Recovery.RecoverHungInTenantAsync(harness.TenantId);
+
+        Assert.Equal(DocumentProcessingStatus.Uploaded, await harness.ReloadStatusAsync());
+        Assert.Single(harness.Queue.Published);
+
+        await using var db = CreateContext();
+        var job = await db.ExtractionJobs.SingleAsync(j => j.Id == harness.JobId);
+        Assert.Equal(0, job.AttemptCount);
+
+        await harness.Recovery.RecoverHungInTenantAsync(harness.TenantId);
+        Assert.Single(harness.Queue.Published);
+        Assert.Equal(DocumentProcessingStatus.Uploaded, await harness.ReloadStatusAsync());
+    }
+
+    [Fact]
+    public async Task A_failed_document_with_classify_retries_exhausted_marker_is_left_failed()
+    {
+        var harness = await SeedFailedAsync(
+            "Gave up after 3 attempts. Classify stayed unreachable after in-call retries. Last error: The document could not be assessed: the 'classify' role could not be reached (InvalidOperationException: An exception has been raised that is likely due to a transient failure.) Nothing was stored.",
+            attemptCount: ExtractionRequestedHandler.MaxAttempts);
+
+        var action = await harness.Recovery.RecoverDocumentAsync(harness.TenantId, harness.DocumentId, force: false);
+
+        Assert.Equal(HungRecoveryAction.None, action);
+        Assert.Equal(DocumentProcessingStatus.Failed, await harness.ReloadStatusAsync());
+        Assert.Empty(harness.Queue.Published);
     }
 
     [Fact]

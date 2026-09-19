@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 using Raffa.Documents.Contracts.Application;
+using Raffa.Documents.Contracts.Application.Admission;
 using Raffa.Documents.Contracts.Domain;
 using Raffa.Documents.Contracts.Infrastructure;
 using Raffa.SharedKernel;
@@ -15,10 +16,12 @@ namespace Raffa.Documents.Contracts.Application.Extraction;
 /// <see cref="DocumentReprocessService"/> (the same path as <c>POST /api/documents/{id}/reprocess</c>)
 /// or marks it <see cref="DocumentProcessingStatus.Failed"/> once
 /// <see cref="ExtractionRequestedHandler.MaxAttempts"/> full restarts have already been claimed.
-/// Also resurrects hang-cap Failures written under a shorter inactivity window than the current
-/// policy (the old 3-minute #186 Failures) so they get a fresh attempt budget under the 15-minute
-/// window. Tenant-scoped: every query and write runs inside the caller's
-/// <see cref="ITenantContext"/> scope (ADR-009).
+    /// Also resurrects hang-cap Failures written under a shorter inactivity window than the current
+    /// policy (the old 3-minute #186 Failures) so they get a fresh attempt budget under the 15-minute
+    /// window, and Failed rows whose last error is the classify-unreachable / EF-transient wrap
+    /// ("Nothing was stored") so one GET /api/documents requeues the whole outage batch.
+    /// Tenant-scoped: every query and write runs inside the caller's
+    /// <see cref="ITenantContext"/> scope (ADR-009).
 /// </summary>
 public sealed class HungProcessingRecoveryService(
     DocumentsContractsDbContext dbContext,
@@ -30,6 +33,9 @@ public sealed class HungProcessingRecoveryService(
 {
     public const string GaveUpErrorPrefix = "Gave up after";
     public const string MadeNoProgressPhrase = "made no progress";
+    public const string NothingWasStoredPhrase = "Nothing was stored";
+    public const string TransientFailurePhrase = "transient failure";
+    public const string ClassifyRetriesExhaustedMarker = "Classify stayed unreachable after in-call retries.";
 
     private static readonly Regex HangCapMinutesRegex = new(
         @"Gave up after \d+ attempts\. Processing made no progress for (\d+) minutes",
@@ -67,9 +73,37 @@ public sealed class HungProcessingRecoveryService(
     }
 
     /// <summary>
+    /// True when <paramref name="errorDetail"/> is the live classify-outage sentence: admission
+    /// wrapped an EF/SQL <see cref="TransientDataAccessFault"/> as "classify could not be reached
+    /// … Nothing was stored." A later exhaustion that carries
+    /// <see cref="ClassifyRetriesExhaustedMarker"/> is left Failed so GET list cannot loop.
+    /// </summary>
+    public static bool IsResurrectableClassifyOutageFailure(string? errorDetail)
+    {
+        if (string.IsNullOrWhiteSpace(errorDetail))
+        {
+            return false;
+        }
+
+        if (errorDetail.Contains(ClassifyRetriesExhaustedMarker, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        return errorDetail.Contains(DocumentAdmissionGate.GatewayUnavailablePrefix, StringComparison.Ordinal)
+            && errorDetail.Contains("classify", StringComparison.OrdinalIgnoreCase)
+            && errorDetail.Contains(NothingWasStoredPhrase, StringComparison.Ordinal)
+            && errorDetail.Contains(TransientFailurePhrase, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static bool IsResurrectableFailure(string? errorDetail) =>
+        IsResurrectableHangCapFailure(errorDetail) || IsResurrectableClassifyOutageFailure(errorDetail);
+
+    /// <summary>
     /// Scans this tenant's <see cref="DocumentProcessingStatus.Processing"/> rows and recovers
     /// each one that has been silent for <see cref="HungProcessingDetector.InactivityWindow"/>.
-    /// Also requeues Failed rows whose error is a resurrectable hang-cap (old 3-minute wording).
+    /// Also requeues Failed rows whose error is a resurrectable hang-cap (old 3-minute wording)
+    /// or the classify-unreachable / EF-transient wrap.
     /// Called from <c>GET /api/documents</c> so a user looking at the list (or the rail poll)
     /// unsticks zombies whose Service Bus message was already completed as claim-lost, and
     /// stranded false-hang Failures that the 15-minute window would otherwise leave terminal.
@@ -100,7 +134,9 @@ public sealed class HungProcessingRecoveryService(
                 && j.Stage == ExtractionStage.Classification
                 && j.ErrorDetail != null
                 && j.ErrorDetail.Contains(GaveUpErrorPrefix)
-                && j.ErrorDetail.Contains(MadeNoProgressPhrase)))
+                && (j.ErrorDetail.Contains(MadeNoProgressPhrase)
+                    || (j.ErrorDetail.Contains(NothingWasStoredPhrase)
+                        && j.ErrorDetail.Contains(TransientFailurePhrase)))))
             .Select(d => d.Id)
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
@@ -212,7 +248,7 @@ public sealed class HungProcessingRecoveryService(
         ExtractionJob? classification,
         CancellationToken cancellationToken)
     {
-        if (!IsResurrectableHangCapFailure(classification?.ErrorDetail))
+        if (!IsResurrectableFailure(classification?.ErrorDetail))
         {
             return HungRecoveryAction.None;
         }
@@ -232,7 +268,7 @@ public sealed class HungProcessingRecoveryService(
         if (action == HungRecoveryAction.Requeued)
         {
             logger.LogWarning(
-                "Resurrected stranded hang-cap Failure for document {DocumentId} and re-enqueued with a fresh attempt budget",
+                "Resurrected stranded hang-cap or classify-outage Failure for document {DocumentId} and re-enqueued with a fresh attempt budget",
                 documentId.Value);
         }
 

@@ -34,9 +34,18 @@ public sealed class ExtractionProgressHeartbeat(
     public async Task PulseAsync(ExtractionJob job, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(job);
-        job.StartedAt = clock.UtcNow;
         hangWatch?.Heartbeat();
-        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        job.StartedAt = clock.UtcNow;
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // A SQL blip on started_at must not abort classify/extract. The in-memory hang
+            // watch already ticked above; GET recovery still has ClaimedAt/StartedAt from
+            // the last successful write.
+        }
     }
 
     public Task PulseBoundAsync(CancellationToken cancellationToken)
