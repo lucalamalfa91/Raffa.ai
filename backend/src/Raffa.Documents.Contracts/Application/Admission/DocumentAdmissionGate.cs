@@ -66,7 +66,8 @@ public sealed class DocumentAdmissionGate(
     IAuditWriter auditWriter,
     IClock clock,
     IExtractionHangWatch? hangWatch = null,
-    ExtractionProgressHeartbeat? progressHeartbeat = null)
+    ExtractionProgressHeartbeat? progressHeartbeat = null,
+    Func<TimeSpan, CancellationToken, Task>? delay = null)
 {
     /// <summary>Audit action for a rejected upload (R-DOC-03).</summary>
     public const string RejectedAuditAction = "document.rejected";
@@ -78,6 +79,11 @@ public sealed class DocumentAdmissionGate(
     /// <summary>The backend-owned fragment of the 422 body (OpenAPI <c>uploadDocument</c> 422 <c>hint</c>);
     /// the web's own R-DOC-04 copy quotes it.</summary>
     public const string Hint = "Raffa only keeps contracts, order forms, quotes and the documents around them.";
+
+    /// <summary>Retries after the first classify attempt when the throw is a data-access
+    /// transient (EF retry storm), not a missing deployment. Each Worker delivery then counts as
+    /// one <c>MaxAttempts</c> slot only after these in-call retries are spent.</summary>
+    public const int ClassifyTransientRetries = 3;
 
     private static readonly JsonSerializerOptions AuditDetailJson = new(JsonSerializerDefaults.Web);
 
@@ -144,8 +150,7 @@ public sealed class DocumentAdmissionGate(
         Result<AiClassificationResult> classifyResult;
         try
         {
-            classifyResult = await aiGateway
-                .ClassifyAsync(new AiClassificationRequest(BuildClassificationText(pages)), cancellationToken)
+            classifyResult = await ClassifyWithTransientRetryAsync(pages, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
@@ -229,6 +234,37 @@ public sealed class DocumentAdmissionGate(
     /// role: every page, in order, separated by a blank line.</summary>
     private static string BuildClassificationText(IReadOnlyList<DocumentPageText> pages) =>
         string.Join("\n\n", pages.Select(p => p.Text));
+
+    /// <summary>
+    /// Foundry HTTP already retries inside <c>FoundryRetryPolicy</c>. This loop is for the
+    /// thrown path — EF <see cref="TransientDataAccessFault"/> on heartbeat/audit — so one
+    /// delivery does not burn <c>MaxAttempts</c> as if the file were bad.
+    /// </summary>
+    private async Task<Result<AiClassificationResult>> ClassifyWithTransientRetryAsync(
+        IReadOnlyList<DocumentPageText> pages, CancellationToken cancellationToken)
+    {
+        var wait = delay ?? Task.Delay;
+        var request = new AiClassificationRequest(BuildClassificationText(pages));
+
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                return await aiGateway.ClassifyAsync(request, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (
+                exception is not OperationCanceledException && TransientDataAccessFault.IsTransient(exception))
+            {
+                if (attempt >= ClassifyTransientRetries)
+                {
+                    throw;
+                }
+
+                var backoffMs = Math.Min(8_000, 500 * (1 << attempt));
+                await wait(TimeSpan.FromMilliseconds(backoffMs), cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
 
     private async Task AuditRejectionAsync(
         TenantId tenantId,

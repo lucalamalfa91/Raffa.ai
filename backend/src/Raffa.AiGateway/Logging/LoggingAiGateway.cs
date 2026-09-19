@@ -106,7 +106,8 @@ public sealed class LoggingAiGateway : IAiGateway
 
         if (result.IsSuccess)
         {
-            await LogAsync("classified", result.Value.Metadata, cancellationToken).ConfigureAwait(false);
+            await LogBestEffortAsync("classified", result.Value.Metadata, cancellationToken)
+                .ConfigureAwait(false);
         }
 
         return result;
@@ -120,7 +121,8 @@ public sealed class LoggingAiGateway : IAiGateway
 
         if (result.IsSuccess)
         {
-            await LogAsync("extracted", result.Value.Metadata, cancellationToken).ConfigureAwait(false);
+            await LogBestEffortAsync("extracted", result.Value.Metadata, cancellationToken)
+                .ConfigureAwait(false);
         }
 
         return result;
@@ -134,7 +136,8 @@ public sealed class LoggingAiGateway : IAiGateway
 
         if (result.IsSuccess)
         {
-            await LogAsync("embedded", result.Value.Metadata, cancellationToken).ConfigureAwait(false);
+            await LogBestEffortAsync("embedded", result.Value.Metadata, cancellationToken)
+                .ConfigureAwait(false);
         }
 
         return result;
@@ -148,7 +151,8 @@ public sealed class LoggingAiGateway : IAiGateway
 
         if (result.IsSuccess)
         {
-            await LogAsync("answered", result.Value.Metadata, cancellationToken).ConfigureAwait(false);
+            await LogBestEffortAsync("answered", result.Value.Metadata, cancellationToken)
+                .ConfigureAwait(false);
         }
 
         return result;
@@ -165,7 +169,7 @@ public sealed class LoggingAiGateway : IAiGateway
             // ADR-017: "Per-page OCR usage MUST be logged (page count, model id, cost
             // attribution)" — the one field the other four roles' log line does not carry, so it
             // is threaded through as an addendum rather than duplicating LogAsync's whole body.
-            await LogAsync(
+            await LogBestEffortAsync(
                     "ocr",
                     result.Value.Metadata,
                     cancellationToken,
@@ -177,13 +181,32 @@ public sealed class LoggingAiGateway : IAiGateway
     }
 
     /// <summary>
+    /// A successful role call must not be rewritten as "the role could not be reached" because
+    /// the audit <c>SaveChanges</c> hit EF's retry-exhaustion
+    /// (<see cref="TransientDataAccessFault"/>). A missing tenant scope is still a caller bug
+    /// and still throws. A non-transient audit failure still throws (ADR-011).
+    /// </summary>
+    private async Task LogBestEffortAsync(
+        string role, AiCallMetadata metadata, CancellationToken cancellationToken, string? extraDetail = null)
+    {
+        try
+        {
+            await LogAsync(role, metadata, cancellationToken, extraDetail).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (
+            exception is not OperationCanceledException && TransientDataAccessFault.IsTransient(exception))
+        {
+            // Classify/extract already succeeded. Failing the call here is what marked every
+            // document in a batch Failed with "classify role could not be reached".
+        }
+    }
+
+    /// <summary>
     /// Writes one append-only audit row per successful role call. Requires an active
     /// <see cref="ITenantContext.BeginScope"/> scope: an AI Gateway call that cannot be attributed
     /// to a tenant is a caller bug, not something to log anonymously or drop silently — the same
     /// "fail closed" posture <see cref="ITenantContext.Current"/>'s own doc comment describes for
-    /// RLS. Mirrors <c>DocumentUploadService.UploadAsync</c>'s own choice to let a write failure
-    /// here throw and fail the call: "ADR-011 treats audit as a compliance control, not a
-    /// best-effort side-channel".
+    /// RLS.
     /// </summary>
     /// <param name="extraDetail">
     /// Role-specific addendum appended to the standard reproducibility fields — today only

@@ -358,7 +358,8 @@ public static class DocumentsEndpointExtensions
     /// the weak-fact count the row's "Review N fields" action shows. Optional <c>status</c>,
     /// <c>page</c> and <c>pageSize</c> query parameters, same conventions as
     /// <c>GET /api/contracts</c>. Hung recovery also requeues Failed rows left terminal by the
-    /// old 3-minute hang cap, so opening the list is enough to restart them.
+    /// old 3-minute hang cap and by the classify-unreachable / EF-transient wrap, so opening the
+    /// list is enough to restart them.
     /// </summary>
     private static async Task<IResult> ListDocumentsAsync(
         HttpRequest request,

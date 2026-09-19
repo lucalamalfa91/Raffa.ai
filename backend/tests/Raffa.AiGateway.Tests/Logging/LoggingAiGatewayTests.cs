@@ -245,6 +245,33 @@ public class LoggingAiGatewayTests
     }
 
     [Fact]
+    public async Task A_transient_audit_write_after_classify_success_does_not_fail_the_role()
+    {
+        var inner = new FixtureAiGateway(new AiGatewayModelOptions(), new FixedClock(Now));
+        var tenantContext = new TenantContext();
+        var gateway = new LoggingAiGateway(
+            inner,
+            new ThrowingTransientAuditWriter(),
+            tenantContext,
+            new AiGatewayComplianceOptions());
+
+        using (tenantContext.BeginScope(TenantId.New()))
+        {
+            var result = await gateway.ClassifyAsync(
+                new AiClassificationRequest("This MASTER SERVICES AGREEMENT is entered into as of ..."));
+
+            Assert.True(result.IsSuccess);
+            Assert.Equal(AiDocumentType.Msa, result.Value.DocumentType);
+        }
+    }
+
+    private sealed class ThrowingTransientAuditWriter : IAuditWriter
+    {
+        public Task WriteAsync(AuditEntry entry, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException(TransientDataAccessFault.EfRetryExhaustedMessage);
+    }
+
+    [Fact]
     public async Task Audit_detail_never_contains_the_raw_document_text()
     {
         var (gateway, auditWriter, tenantContext) = CreateGateway();

@@ -62,8 +62,8 @@ public sealed class DocumentReprocessService(
     /// <param name="actor">Who asked for the re-run, for the audit row.</param>
     /// <param name="resetAttemptCount">
     /// When true, the classification job's <c>attempt_count</c> is zeroed so the next claim starts
-    /// a fresh budget. Used to resurrect hang-cap Failures left terminal by the old 3-minute
-    /// window; ordinary reprocess keeps the lifetime bound so a bad file cannot loop.
+    /// a fresh budget. Used to resurrect hang-cap Failures and the classify-outage / EF-transient
+    /// wrap; ordinary reprocess keeps the lifetime bound so a bad file cannot loop.
     /// </param>
     public async Task<Result<DocumentReprocessQueued>?> ReprocessAsync(
         TenantId tenantId,

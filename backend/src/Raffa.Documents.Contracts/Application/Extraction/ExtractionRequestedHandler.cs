@@ -396,9 +396,10 @@ public sealed class ExtractionRequestedHandler(
     {
         if (job.AttemptCount >= MaxAttempts)
         {
-            await FailTerminalAsync(
-                document, job, $"Gave up after {job.AttemptCount} attempts. Last error: {error}", cancellationToken)
-                .ConfigureAwait(false);
+            var prefix = HungProcessingRecoveryService.IsResurrectableClassifyOutageFailure(error)
+                ? $"{HungProcessingRecoveryService.GaveUpErrorPrefix} {job.AttemptCount} attempts. {HungProcessingRecoveryService.ClassifyRetriesExhaustedMarker} Last error: "
+                : $"{HungProcessingRecoveryService.GaveUpErrorPrefix} {job.AttemptCount} attempts. Last error: ";
+            await FailTerminalAsync(document, job, prefix + error, cancellationToken).ConfigureAwait(false);
             return;
         }
 
