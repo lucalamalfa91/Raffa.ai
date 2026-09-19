@@ -128,11 +128,23 @@ public sealed class HybridDocumentParsingServiceTests
     }
 
     [Fact]
-    public async Task A_pdf_goes_to_the_ocr_role_even_when_it_is_born_digital()
+    public async Task A_born_digital_pdf_uses_native_pdfium_text_and_never_calls_ocr()
     {
-        // ADR-017 amendment (2026-09-09): the real native extractor handles DOCX/XLSX only, so a
-        // PDF — born-digital or scanned — is read by the `ocr` role; the fixture gateway's own
-        // scanner stands in for Document Intelligence here.
+        var gateway = new OcrOnlyAiGateway();
+        var service = new HybridDocumentParsingService(gateway, new NativeDocumentTextExtractor());
+        var pdf = BornDigitalPdf.FromPages(BornDigitalPdf.MsaPageOne, BornDigitalPdf.MsaPageTwo);
+
+        var result = await service.ParseAsync("contract.pdf", "application/pdf", pdf);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, result.Value.Count);
+        Assert.Contains("MASTER SERVICES AGREEMENT", result.Value[0].Text, StringComparison.Ordinal);
+        Assert.Contains("governing law", result.Value[1].Text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task An_incomplete_pdf_still_falls_back_to_ocr()
+    {
         var gateway = new FixtureAiGateway(new AiGatewayModelOptions(), new FixedClock(Now));
         var service = new HybridDocumentParsingService(gateway, new NativeDocumentTextExtractor());
         var pdf =
@@ -149,8 +161,29 @@ public sealed class HybridDocumentParsingServiceTests
 
         Assert.True(result.IsSuccess);
         var page = Assert.Single(result.Value);
-        Assert.Equal(1, page.PageNumber);
         Assert.Equal("MASTER SERVICES AGREEMENT between Acme Corp and Contoso Ltd.", page.Text);
+    }
+
+    [Fact]
+    public async Task Empty_ocr_on_a_pdf_with_native_text_keeps_the_native_pages()
+    {
+        var nativePages = new List<DocumentPageText>
+        {
+            new(1, BornDigitalPdf.MsaPageOne),
+            new(2, BornDigitalPdf.MsaPageTwo),
+        };
+        var extractor = new ScriptedNativeTextExtractor(
+            canHandle: true, new NativeTextExtractionResult(nativePages, IsSufficient: false));
+        var metadata = new AiCallMetadata("test-model", "1", "test-v1", Now, "hash");
+        var gateway = new OcrOnlyAiGateway(onOcr: _ => Result<AiOcrResult>.Success(
+            new AiOcrResult([new AiOcrPage(1, "[fixture-ocr: binary]")], metadata)));
+        var service = new HybridDocumentParsingService(gateway, extractor);
+
+        var result = await service.ParseAsync("contract.pdf", "application/pdf", "bytes"u8.ToArray());
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, result.Value.Count);
+        Assert.Contains("IBM Corporation", result.Value[0].Text, StringComparison.Ordinal);
     }
 
     [Fact]

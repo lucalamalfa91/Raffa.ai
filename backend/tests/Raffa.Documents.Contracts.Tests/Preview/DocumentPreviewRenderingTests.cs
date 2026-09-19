@@ -166,6 +166,7 @@ public sealed class DocumentPreviewRenderingTests
     {
         var composite = new CompositeDocumentPreviewRenderer(
             new PdfPageDocumentPreviewRenderer(),
+            new ImageDocumentPreviewRenderer(),
             new OfficePageDocumentPreviewRenderer());
         var bytes = BuildMinimalDocx("Supplier IBM Corporation");
 

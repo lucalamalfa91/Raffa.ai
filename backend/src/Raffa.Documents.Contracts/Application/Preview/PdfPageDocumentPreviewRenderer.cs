@@ -49,20 +49,12 @@ internal sealed class PdfPageDocumentPreviewRenderer : IDocumentPreviewRenderer
     /// </summary>
     private static readonly PageDimensions RenderDimensions = new(1240, 1754);
 
-    /// <summary>
-    /// pdfium is process-global and not safe for concurrent <c>GetDocReader</c>. The Worker
-    /// runs <c>MaxConcurrentCalls = 4</c> on this singleton, and a <c>using</c> on
-    /// <see cref="DocLib.Instance"/> would call <c>FPDF_DestroyLibrary</c> after every page —
-    /// the next load then access-violates (0xC0000005), which a managed catch cannot absorb.
-    /// </summary>
-    private static readonly object PdfiumLock = new();
-
     /// <inheritdoc/>
     public byte[]? Render(string fileName, string mimeType, ReadOnlyMemory<byte> content, int page = 1)
     {
         if (!string.Equals(mimeType, DocumentFormatSniffer.PdfMimeType, StringComparison.OrdinalIgnoreCase))
         {
-            // Non-PDF: delegate to PlaceholderDocumentPreviewRenderer in the chain.
+            // Non-PDF: delegate to the Office/image painters in the composite chain.
             return null;
         }
 
@@ -71,7 +63,7 @@ internal sealed class PdfPageDocumentPreviewRenderer : IDocumentPreviewRenderer
             return null;
         }
 
-        lock (PdfiumLock)
+        lock (PdfiumGate.Sync)
         {
             try
             {

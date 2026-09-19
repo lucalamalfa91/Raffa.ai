@@ -18,9 +18,9 @@ public interface INativeDocumentTextExtractor
 {
     /// <summary>
     /// Whether this extractor recognizes <paramref name="mimeType"/> at all. An unrecognized mime
-    /// type (for example a raw image format, or anything outside spec §4's PDF/DOCX/XLSX upload
-    /// set) is a different situation from "recognized but insufficient" — it always routes
-    /// straight to OCR, never attempts a native parse that was never going to apply.
+    /// type (for example a raw image format outside spec §4's PDF/DOCX/XLSX upload set) is a
+    /// different situation from "recognized but insufficient" — it always routes straight to
+    /// OCR. PDF is recognized; an image-only scan is insufficient so OCR can still run.
     /// </summary>
     bool CanHandle(string mimeType);
 
