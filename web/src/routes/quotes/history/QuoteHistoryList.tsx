@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import type { QuoteBenchmarkHistoryEntryBody } from "../../../api/client";
 import type { SemanticTag } from "../../../styles/semantics";
 import { summarizePositions } from "../quoteCheckViewModel";
@@ -41,48 +41,66 @@ const CREATED_AT_FORMATTER = new Intl.DateTimeFormat("en-GB", {
  * (`quoteCheckViewModel.ts#summarizePositions`) or, for a genuine first-of-type quote, the same
  * honest "First of its kind" label `AssessmentResult`'s cold-start copy uses -- `isQuoteBenchmarkColdStart`
  * is imported, not re-derived, so the two surfaces can never disagree about what counts as a cold start.
+ *
+ * **Same table system as Documents / Portfolio / Renewals / Savings**, not a one-off history list.
+ * Locked `.table` catalogue (ADR-019): 11px uppercase thead, 2px header rule, 1px row rules, hover
+ * tint. Filename is the keyboard-operable `<Link>` (Documents' own `document-status-table-link`
+ * pattern); the meta line is a sibling `.micro-meta`, never inside the link. Assessment is a `.tag`
+ * (`tag-outline` for "Not yet assessed" / cold start, `tag-neutral` for a real tally -- the same
+ * pairing `QuoteLinesTable` already uses). The row's own click is the prototype `cg-row` mouse
+ * convenience Portfolio / Renewals / Savings layer on top of the cell link, never the only way in.
+ * No column filters: Documents and Renewals do not have them, and a two-column compact list does
+ * not earn Portfolio's typed header inputs.
  */
 export default function QuoteHistoryList({ entries }: QuoteHistoryListProps) {
-  return (
-    <div className="quote-history">
-      <h6>Quote check history</h6>
-      <p className="micro-meta quote-history-intro">
-        Every quote this workspace has checked, newest first — durable on the server, not this browser tab.
-        Reopen one to see its market position again.
-      </p>
+  const navigate = useNavigate();
 
-      {entries.length === 0 ? (
-        <p className="quote-history-empty micro-meta" role="status">
-          No quote checks yet — upload a supplier proposal above to start this workspace's benchmark history.
-        </p>
-      ) : (
-        <table className="table quote-history-table">
-          <thead>
-            <tr>
-              <th scope="col">Quote</th>
-              <th scope="col">Assessment</th>
-            </tr>
-          </thead>
-          <tbody>
-            {entries.map((entry) => {
-              const tag = getQuoteHistoryPositionTag(entry);
-              return (
-                <tr key={entry.id}>
-                  <td>
-                    <Link to={`/quotes/${entry.id}`} className="quote-history-link">
-                      <span className="quote-history-file">{entry.fileName}</span>
-                      <span className="micro-meta quote-history-meta">{formatHistoryMeta(entry)}</span>
-                    </Link>
-                  </td>
-                  <td>
-                    <span className={`tag tag-${tag.variant}`}>{tag.label}</span>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
+  if (entries.length === 0) {
+    return (
+      <p className="quote-history-empty micro-meta" role="status">
+        No quote checks yet — upload a supplier proposal above to start this workspace's benchmark history.
+      </p>
+    );
+  }
+
+  return (
+    <div className="quote-history-table-wrapper">
+      <table className="table quote-history-table">
+        <thead>
+          <tr>
+            <th scope="col">Quote</th>
+            <th scope="col" className="quote-history-col-assessment">
+              Assessment
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {entries.map((entry) => {
+            const tag = getQuoteHistoryPositionTag(entry);
+            const href = `/quotes/${entry.id}`;
+            return (
+              <tr
+                key={entry.id}
+                className="quote-history-row"
+                onClick={(event) => {
+                  if ((event.target as HTMLElement).closest("a") !== null) return;
+                  navigate(href);
+                }}
+              >
+                <td>
+                  <Link to={href} className="quote-history-link">
+                    {entry.fileName}
+                  </Link>
+                  <div className="micro-meta">{formatHistoryMeta(entry)}</div>
+                </td>
+                <td>
+                  <span className={`tag tag-${tag.variant}`}>{tag.label}</span>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -102,12 +120,16 @@ export function formatHistoryMeta(entry: QuoteBenchmarkHistoryEntryBody): string
   return parts.join(" · ");
 }
 
-/** A real tally (`summarizePositions`) for an assessed entry, or the same honest cold-start label
- * `AssessmentResult` shows -- never a fabricated position, and never a second definition of "cold
- * start" from this one. */
+/** A real tally (`summarizePositions`) for an assessed entry, or the same honest cold-start /
+ * not-yet-assessed labels the lines table already uses -- never a fabricated position, and never a
+ * second definition of "cold start" from this one. */
 export function getQuoteHistoryPositionTag(entry: QuoteBenchmarkHistoryEntryBody): SemanticTag {
   if (isQuoteBenchmarkColdStart(entry.lines)) {
     return { variant: "outline", label: "First of its kind" };
   }
-  return { variant: "neutral", label: summarizePositions(entry.lines) };
+  const label = summarizePositions(entry.lines);
+  if (label === "Not yet assessed") {
+    return { variant: "outline", label };
+  }
+  return { variant: "neutral", label };
 }
