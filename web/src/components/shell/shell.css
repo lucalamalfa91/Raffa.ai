@@ -10,17 +10,26 @@
 .shell-layout {
   display: grid;
   grid-template-columns: 232px 1fr;
+  height: 100vh;
   min-height: 100vh;
+  overflow: hidden;
 }
 
 .shell-rail {
   display: flex;
   flex-direction: column;
+  height: 100vh;
+  max-height: 100vh;
+  overflow-y: auto;
+  position: sticky;
+  top: 0;
+  align-self: start;
   border-right: 2px solid var(--color-divider);
   background: var(--color-bg);
 }
 
 .shell-rail-header {
+  flex-shrink: 0;
   padding: var(--space-6) var(--space-4) var(--space-4);
   border-bottom: 2px solid var(--color-divider);
 }
@@ -239,8 +248,13 @@
 
 .shell-rail-footer {
   margin-top: auto;
+  flex-shrink: 0;
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
   padding: var(--space-3) var(--space-4);
   border-top: 2px solid var(--color-divider);
+  background: var(--color-bg);
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
@@ -275,6 +289,7 @@
 
 .shell-main {
   min-width: 0;
+  min-height: 0;
   /* Task E06/F06/US01/T01 (full-bleed-layout): explicit, defensive
      `max-width: none`. index.css no longer puts a global `max-width: 40rem`
      on the bare `<main>` element (that E01 OIDC-scaffold rule used to crush

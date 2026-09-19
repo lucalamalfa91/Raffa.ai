@@ -1,4 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
+import TablePager from "../../../components/table/TablePager";
+import { usePagedRows } from "../../../components/table/pager";
 import type { QuoteBenchmarkHistoryEntryBody } from "../../../api/client";
 import type { SemanticTag } from "../../../styles/semantics";
 import { summarizePositions } from "../quoteCheckViewModel";
@@ -54,6 +56,7 @@ const CREATED_AT_FORMATTER = new Intl.DateTimeFormat("en-GB", {
  */
 export default function QuoteHistoryList({ entries }: QuoteHistoryListProps) {
   const navigate = useNavigate();
+  const { page, setPage, pageItems, totalItems } = usePagedRows(entries);
 
   if (entries.length === 0) {
     return (
@@ -75,7 +78,7 @@ export default function QuoteHistoryList({ entries }: QuoteHistoryListProps) {
           </tr>
         </thead>
         <tbody>
-          {entries.map((entry) => {
+          {pageItems.map((entry) => {
             const tag = getQuoteHistoryPositionTag(entry);
             const href = `/quotes/${entry.id}`;
             return (
@@ -101,6 +104,7 @@ export default function QuoteHistoryList({ entries }: QuoteHistoryListProps) {
           })}
         </tbody>
       </table>
+      <TablePager page={page} totalItems={totalItems} onPageChange={setPage} label="Quote history pages" />
     </div>
   );
 }

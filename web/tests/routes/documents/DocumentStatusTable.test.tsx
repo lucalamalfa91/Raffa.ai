@@ -294,6 +294,36 @@ describe("DocumentStatusTable", () => {
     expect(screen.getByText("—")).toBeInTheDocument();
   });
 
+  it("defaults to 10 rows and pages the rest", async () => {
+    const documents = Array.from({ length: 12 }, (_, index) =>
+      item({
+        id: `doc-${index}`,
+        fileName: `Contract_${index}.pdf`,
+        contractId: `contract-${index}`,
+      }),
+    );
+    renderTable({ documents, filter: "all" });
+
+    expect(screen.getAllByRole("row")).toHaveLength(11);
+    expect(screen.getByRole("link", { name: "Contract_0.pdf" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Contract_10.pdf" })).not.toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Document pages" })).toBeInTheDocument();
+    expect(screen.getByText("1–10 of 12")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Next" }));
+
+    expect(screen.getByRole("link", { name: "Contract_10.pdf" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Contract_11.pdf" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Contract_0.pdf" })).not.toBeInTheDocument();
+    expect(screen.getByText("11–12 of 12")).toBeInTheDocument();
+  });
+
+  it("hides the pager when 10 or fewer rows fit on one page", () => {
+    renderTable({ documents: [item()], filter: "all" });
+
+    expect(screen.queryByRole("navigation", { name: "Document pages" })).not.toBeInTheDocument();
+  });
+
   it("offers Confirm delete and Cancel as an inline pair, then calls onDelete only on confirm", async () => {
     const onDelete = vi.fn();
     renderTable({ documents: [item()], isAdmin: true, onDelete });

@@ -1,0 +1,29 @@
+/**
+ * Shared pager under Documents / Portfolio / Renewals / Quote check history / Savings.
+ * Tokens only -- no new colours, radii, or spacing steps (ADR-019).
+ */
+
+.table-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  flex-wrap: wrap;
+}
+
+.table-pager-range {
+  margin: 0;
+}
+
+.table-pager-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.table-pager-controls .btn.is-current {
+  color: var(--color-accent-700);
+  font-weight: var(--weight-body-strong);
+  text-decoration: underline;
+}

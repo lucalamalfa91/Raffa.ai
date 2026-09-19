@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import type { QuoteBenchmarkHistoryEntryBody, QuoteLineAssessmentBody } from "../../../api/client";
 import QuoteHistoryList, { formatHistoryMeta, getQuoteHistoryPositionTag } from "./QuoteHistoryList";
@@ -162,6 +163,23 @@ describe("QuoteHistoryList", () => {
     renderList([entry({ lines: [] })]);
     const tag = screen.getByText("Not yet assessed");
     expect(tag).toHaveClass("tag", "tag-outline");
+  });
+
+  it("defaults to 10 rows and pages the rest", async () => {
+    const entries = Array.from({ length: 12 }, (_, index) =>
+      entry({ id: `q-${index}`, fileName: `Quote_${index}.pdf` }),
+    );
+    renderList(entries);
+
+    expect(screen.getAllByRole("row")).toHaveLength(11);
+    expect(screen.getByRole("link", { name: "Quote_0.pdf" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Quote_10.pdf" })).not.toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Quote history pages" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Next" }));
+
+    expect(screen.getByRole("link", { name: "Quote_10.pdf" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Quote_0.pdf" })).not.toBeInTheDocument();
   });
 
   it("an assessed entry's tally is a status tag, the same treatment Portfolio / Documents use", () => {
