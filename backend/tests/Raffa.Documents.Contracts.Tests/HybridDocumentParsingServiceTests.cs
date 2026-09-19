@@ -75,6 +75,43 @@ public sealed class HybridDocumentParsingServiceTests
     }
 
     [Fact]
+    public async Task A_real_docx_never_goes_to_ocr_even_when_its_text_is_mostly_tables()
+    {
+        // Regression: Body.InnerText mashed table cells and the model missed fields; the
+        // document is still born-digital and must not be billed as a scan.
+        using var stream = new MemoryStream();
+        using (var document = DocumentFormat.OpenXml.Packaging.WordprocessingDocument.Create(
+                   stream, DocumentFormat.OpenXml.WordprocessingDocumentType.Document))
+        {
+            var main = document.AddMainDocumentPart();
+            main.Document = new DocumentFormat.OpenXml.Wordprocessing.Document(
+                new DocumentFormat.OpenXml.Wordprocessing.Body(
+                    new DocumentFormat.OpenXml.Wordprocessing.Table(
+                        new DocumentFormat.OpenXml.Wordprocessing.TableRow(
+                            new DocumentFormat.OpenXml.Wordprocessing.TableCell(
+                                new DocumentFormat.OpenXml.Wordprocessing.Paragraph(
+                                    new DocumentFormat.OpenXml.Wordprocessing.Run(
+                                        new DocumentFormat.OpenXml.Wordprocessing.Text("Supplier")))),
+                            new DocumentFormat.OpenXml.Wordprocessing.TableCell(
+                                new DocumentFormat.OpenXml.Wordprocessing.Paragraph(
+                                    new DocumentFormat.OpenXml.Wordprocessing.Run(
+                                        new DocumentFormat.OpenXml.Wordprocessing.Text("IBM Corporation"))))))));
+            main.Document.Save();
+        }
+
+        var service = new HybridDocumentParsingService(new OcrOnlyAiGateway(), new NativeDocumentTextExtractor());
+
+        var result = await service.ParseAsync(
+            "order.docx",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            stream.ToArray());
+
+        Assert.True(result.IsSuccess);
+        var page = Assert.Single(result.Value);
+        Assert.Contains("Supplier | IBM Corporation", page.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Sufficient_native_text_is_used_directly_and_the_gateway_is_never_called()
     {
         var nativePages = new List<DocumentPageText> { new(1, "Native contract text.") };

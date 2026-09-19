@@ -1,4 +1,6 @@
 using System.Buffers.Binary;
+using DocumentFormat.OpenXml;
+using DocumentFormat.OpenXml.Packaging;
 using Raffa.AiGateway.Configuration;
 using Raffa.Documents.Contracts.Application.Admission;
 using Raffa.Documents.Contracts.Application.Preview;
@@ -7,6 +9,7 @@ using Raffa.SharedKernel;
 using Raffa.SharedKernel.Storage;
 using Raffa.SharedKernel.Tenancy;
 using Microsoft.EntityFrameworkCore;
+using WP = DocumentFormat.OpenXml.Wordprocessing;
 
 namespace Raffa.Documents.Contracts.Tests.Preview;
 
@@ -132,6 +135,46 @@ public sealed class DocumentPreviewRenderingTests
     }
 
     // ---- Task E22/F02/US01/T01 (ADR-029 clause 3-4 / round-3 clause 1-2) ----
+
+    [Fact]
+    public void Office_renderer_paints_docx_page_text_not_the_file_placeholder()
+    {
+        var renderer = new OfficePageDocumentPreviewRenderer();
+        var bytes = BuildMinimalDocx("IBM Enterprise Service Order Form");
+        var placeholder = PlaceholderDocumentPreviewRenderer.RenderPlaceholder("FILE");
+
+        var preview = renderer.Render("order.docx", DocumentFormatSniffer.DocxMimeType, bytes, page: 1);
+
+        Assert.NotNull(preview);
+        AssertIsPng(preview!);
+        Assert.NotEqual(placeholder, preview);
+        Assert.Equal(OfficePageDocumentPreviewRenderer.PageWidth, BinaryPrimitives.ReadInt32BigEndian(preview.AsSpan(16, 4)));
+        Assert.True(BinaryPrimitives.ReadInt32BigEndian(preview.AsSpan(20, 4)) >= OfficePageDocumentPreviewRenderer.PageHeight);
+    }
+
+    [Fact]
+    public void Office_renderer_returns_null_for_a_page_past_the_docx_page_map()
+    {
+        var renderer = new OfficePageDocumentPreviewRenderer();
+        var bytes = BuildMinimalDocx("One page only");
+
+        Assert.Null(renderer.Render("order.docx", DocumentFormatSniffer.DocxMimeType, bytes, page: 2));
+    }
+
+    [Fact]
+    public void Composite_renderer_uses_office_painter_when_pdfium_has_nothing()
+    {
+        var composite = new CompositeDocumentPreviewRenderer(
+            new PdfPageDocumentPreviewRenderer(),
+            new OfficePageDocumentPreviewRenderer());
+        var bytes = BuildMinimalDocx("Supplier IBM Corporation");
+
+        var preview = composite.Render("order.docx", DocumentFormatSniffer.DocxMimeType, bytes);
+
+        Assert.NotNull(preview);
+        AssertIsPng(preview!);
+        Assert.NotEqual(PlaceholderDocumentPreviewRenderer.RenderPlaceholder("FILE"), preview);
+    }
 
     [Fact]
     public void Pdf_page_renderer_does_not_unload_pdfium_between_calls()
@@ -305,6 +348,20 @@ public sealed class DocumentPreviewRenderingTests
     }
 
     // ---- helpers ----
+
+    private static byte[] BuildMinimalDocx(string text)
+    {
+        using var stream = new MemoryStream();
+
+        using (var document = WordprocessingDocument.Create(stream, WordprocessingDocumentType.Document))
+        {
+            var mainPart = document.AddMainDocumentPart();
+            mainPart.Document = new WP.Document(new WP.Body(new WP.Paragraph(new WP.Run(new WP.Text(text)))));
+            mainPart.Document.Save();
+        }
+
+        return stream.ToArray();
+    }
 
     private static DocumentPreviewService BuildService(
         RecordingStorage storage,

@@ -77,6 +77,44 @@ public sealed class NativeDocumentTextExtractorTests
         Assert.Empty(result.Pages);
     }
 
+    [Fact]
+    public void Docx_table_cells_and_paragraphs_stay_separated_so_fields_are_recoverable()
+    {
+        // Body.InnerText concatenated this to "SupplierIBM CorporationStart date1 January 2026"
+        // and staged extraction missed supplier/dates, leaving status at the bootstrap
+        // "processing" placeholder.
+        var bytes = BuildOrderFormDocx();
+        var extractor = new NativeDocumentTextExtractor();
+
+        var result = extractor.Extract(DocxMimeType, bytes);
+
+        Assert.True(result.IsSufficient);
+        var page = Assert.Single(result.Pages);
+        Assert.DoesNotContain("SupplierIBM", page.Text, StringComparison.Ordinal);
+        Assert.Contains("IBM Enterprise Service Order", page.Text, StringComparison.Ordinal);
+        Assert.Contains("Supplier | IBM Corporation", page.Text, StringComparison.Ordinal);
+        Assert.Contains("Start date | 1 January 2026", page.Text, StringComparison.Ordinal);
+        Assert.Contains("Governing law", page.Text, StringComparison.Ordinal);
+        Assert.Contains("New York", page.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Docx_page_breaks_become_separate_pages_and_stay_sufficient()
+    {
+        var bytes = BuildDocxWithPageBreak();
+        var extractor = new NativeDocumentTextExtractor();
+
+        var result = extractor.Extract(DocxMimeType, bytes);
+
+        Assert.True(result.IsSufficient);
+        Assert.Equal(2, result.Pages.Count);
+        Assert.Equal(1, result.Pages[0].PageNumber);
+        Assert.Equal(2, result.Pages[1].PageNumber);
+        Assert.Contains("IBM Corporation", result.Pages[0].Text, StringComparison.Ordinal);
+        Assert.Contains("1 January 2026", result.Pages[1].Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("1 January 2026", result.Pages[0].Text, StringComparison.Ordinal);
+    }
+
     private static byte[] BuildMinimalDocx(string text)
     {
         using var stream = new MemoryStream();
@@ -85,6 +123,52 @@ public sealed class NativeDocumentTextExtractorTests
         {
             var mainPart = document.AddMainDocumentPart();
             mainPart.Document = new WP.Document(new WP.Body(new WP.Paragraph(new WP.Run(new WP.Text(text)))));
+            mainPart.Document.Save();
+        }
+
+        return stream.ToArray();
+    }
+
+    private static byte[] BuildOrderFormDocx()
+    {
+        using var stream = new MemoryStream();
+
+        using (var document = WordprocessingDocument.Create(stream, WordprocessingDocumentType.Document))
+        {
+            var mainPart = document.AddMainDocumentPart();
+            var headerPart = mainPart.AddNewPart<HeaderPart>();
+            headerPart.Header = new WP.Header(new WP.Paragraph(new WP.Run(new WP.Text("IBM Enterprise Service Order"))));
+            headerPart.Header.Save();
+
+            mainPart.Document = new WP.Document(new WP.Body(
+                new WP.Paragraph(new WP.Run(new WP.Text("Order Form"))),
+                new WP.Table(
+                    new WP.TableRow(
+                        new WP.TableCell(new WP.Paragraph(new WP.Run(new WP.Text("Supplier")))),
+                        new WP.TableCell(new WP.Paragraph(new WP.Run(new WP.Text("IBM Corporation"))))),
+                    new WP.TableRow(
+                        new WP.TableCell(new WP.Paragraph(new WP.Run(new WP.Text("Start date")))),
+                        new WP.TableCell(new WP.Paragraph(new WP.Run(new WP.Text("1 January 2026")))))),
+                new WP.Paragraph(new WP.Run(new WP.Text("Governing law"))),
+                new WP.Paragraph(new WP.Run(new WP.Text("New York")))));
+            mainPart.Document.Save();
+        }
+
+        return stream.ToArray();
+    }
+
+    private static byte[] BuildDocxWithPageBreak()
+    {
+        using var stream = new MemoryStream();
+
+        using (var document = WordprocessingDocument.Create(stream, WordprocessingDocumentType.Document))
+        {
+            var mainPart = document.AddMainDocumentPart();
+            mainPart.Document = new WP.Document(new WP.Body(
+                new WP.Paragraph(new WP.Run(new WP.Text("IBM Corporation"))),
+                new WP.Paragraph(new WP.Run(
+                    new WP.LastRenderedPageBreak(),
+                    new WP.Text("Start date 1 January 2026")))));
             mainPart.Document.Save();
         }
 
