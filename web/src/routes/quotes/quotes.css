@@ -95,6 +95,70 @@
   margin-top: var(--space-3);
 }
 
+/* ---- History (landing; same table system as Documents / Portfolio / Savings) ---- */
+
+.quote-history-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: 20px 32px 32px;
+}
+
+.quote-history-section h6 {
+  margin: 0;
+}
+
+.quote-history-intro {
+  margin: 0;
+}
+
+.quote-history-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.quote-history-table-wrapper {
+  overflow-x: auto;
+}
+
+.quote-history-table {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.quote-history-table th {
+  letter-spacing: var(--tracking-kicker);
+}
+
+.quote-history-table .quote-history-col-assessment {
+  width: 22%;
+}
+
+.quote-history-table tbody tr.quote-history-row {
+  cursor: pointer;
+}
+
+.quote-history-table tbody tr.quote-history-row:hover {
+  background: var(--color-neutral-200);
+}
+
+/* Documents' filename + meta line (`document-status-table-link` + sibling `.micro-meta`): the
+   filename is the keyboard-operable control; meta never lives inside the link. */
+.quote-history-link {
+  display: block;
+  font-weight: var(--weight-body-strong);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quote-history-link:hover,
+.quote-history-link:focus-visible {
+  text-decoration: underline;
+}
+
 /* ---- Loading skeleton ------------------------------------------------------------ */
 
 .quote-skeleton {

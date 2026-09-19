@@ -236,8 +236,13 @@ export default function QuoteCheckRoute({ apiClient }: QuoteCheckRouteProps) {
         {header(null)}
         <UploadQuoteForm onUpload={handleUpload} submitting={uploading} />
         <section className="quote-history-section" aria-label="Quote check history">
+          <h6>Quote check history</h6>
+          <p className="micro-meta quote-history-intro">
+            Every quote this workspace has checked, newest first — durable on the server, not this browser tab.
+            Reopen one to see its market position again.
+          </p>
           {historyState.phase === "loading" && (
-            <div className="quote-skeleton" role="status" aria-live="polite">
+            <div className="quote-history-skeleton" role="status" aria-live="polite">
               <p className="micro-meta">Loading quote check history…</p>
               <div className="skeleton quote-skeleton-row" />
             </div>

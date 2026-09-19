@@ -151,6 +151,8 @@ describe("QuoteCheckRoute", () => {
     );
 
     expect(await screen.findByText("older-quote.pdf")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 6, name: "Quote check history" })).toBeInTheDocument();
+    expect(screen.getByRole("table")).toHaveClass("table");
     expect(screen.getByRole("link", { name: /older-quote\.pdf/i })).toHaveAttribute("href", "/quotes/q-old");
   });
 });
