@@ -108,7 +108,7 @@ public sealed class HybridDocumentParsingServiceTests
 
         Assert.True(result.IsSuccess);
         var page = Assert.Single(result.Value);
-        Assert.Contains("Supplier | IBM Corporation", page.Text, StringComparison.Ordinal);
+        Assert.Contains("Supplier: IBM Corporation", page.Text, StringComparison.Ordinal);
     }
 
     [Fact]

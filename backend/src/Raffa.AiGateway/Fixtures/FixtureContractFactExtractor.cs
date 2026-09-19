@@ -91,7 +91,17 @@ public static class FixtureContractFactExtractor
         @"(?<![A-Za-z0-9])(?<name>[A-Z][A-Za-z0-9&.,'’\- ]{2,80}?)\s*,?\s*\(\s*(?:the\s+|hereinafter\s+)?[""“”']?(?:Supplier|Provider|Service Provider|Vendor|Contractor|Licensor)[""“”']?\s*\)",
         RegexOptions.CultureInvariant);
 
-    private static readonly Regex SupplierLineRegex = new(@"\bSupplier\s*:\s*(?<name>[^\n.;]{2,80})", Options);
+    private static readonly Regex SupplierLineRegex = new(
+        @"\b(?:the\s+)?(?:Supplier|Provider|Service Provider|Vendor|Contractor|Licensor)\s*(?::|\||–|—|=)\s*(?<name>[^\n|;.]{2,80})",
+        Options);
+
+    private static readonly HashSet<string> FieldLabelNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "start date", "end date", "effective date", "governing law", "annual spend",
+        "total contract value", "tcv", "payment terms", "currency", "status",
+        "cancellation deadline", "auto renewal", "auto-renewal", "renewal term",
+        "start", "end", "supplier", "provider", "vendor",
+    };
 
     private static readonly Regex PreambleRegex = new(
         @"\bbetween\s+(?<a>" + PartyToken + @")\s+and\s+(?<b>" + PartyToken + ")",
@@ -101,6 +111,10 @@ public static class FixtureContractFactExtractor
 
     private static readonly Regex GoverningLawRegex = new(
         @"governed by(?: and construed in accordance with)? the laws? of (?<law>[^.,;\n]{2,60})",
+        Options);
+
+    private static readonly Regex GoverningLawLabelRegex = new(
+        @"\bgoverning law\b\s*(?::|\||is)?\s*(?<law>[A-Z][^.,;\n|]{1,50})",
         Options);
 
     /// <summary>Legal-form suffixes that legitimately follow a comma inside a party name
@@ -147,6 +161,14 @@ public static class FixtureContractFactExtractor
         Options);
     private static readonly Regex NoticeRegex = new(
         NumberToken + @"\s*(?:calendar\s+)?days['’]?\s*(?:prior\s+|advance\s+)?(?:written\s+)?notice",
+        Options);
+
+    private static readonly Regex CancellationLabelRegex = new(
+        @"\b(?:cancellation deadline|cancellation date|notice deadline)\s*(?::|\|)?\s*" + DateToken,
+        Options);
+
+    private static readonly Regex LabelledAmountRegex = new(
+        @"\b(?<label>annual spend|annual fee|annual subscription(?: fee)?|total contract value|tcv|total value)\s*(?::|\|)\s*(?:(?<cur>EUR|USD|GBP|CHF|€|\$|£)\s*)?(?<amt>\d[\d.,]*)",
         Options);
 
     private static readonly Dictionary<string, int> NumberWords = new(StringComparer.OrdinalIgnoreCase)
@@ -217,10 +239,15 @@ public static class FixtureContractFactExtractor
         }
 
         var law = GoverningLawRegex.Match(text);
+        if (!law.Success)
+        {
+            law = GoverningLawLabelRegex.Match(text);
+        }
+
         if (law.Success)
         {
             var value = TrimName(law.Groups["law"].Value);
-            if (value.Length > 0)
+            if (value.Length > 0 && !IsFieldLabel(value))
             {
                 facts.Add(Fact.Create("governingLaw", value, law, pages, StrongConfidence));
             }
@@ -251,9 +278,9 @@ public static class FixtureContractFactExtractor
         if (line.Success)
         {
             var name = NormalizePartyName(line.Groups["name"].Value);
-            if (name.Length > 0)
+            if (name.Length > 0 && !IsFieldLabel(name))
             {
-                return Fact.Create("supplier", name, line, pages, GoodConfidence);
+                return Fact.Create("supplier", name, line, pages, StrongConfidence);
             }
         }
 
@@ -313,13 +340,15 @@ public static class FixtureContractFactExtractor
     {
         var facts = new List<Fact>();
 
-        var annual = ExtractCuedAmount(text, pages, "annualSpend", AnnualCueRegex);
+        var annual = ExtractCuedAmount(text, pages, "annualSpend", AnnualCueRegex)
+            ?? ExtractLabelledAmount(text, pages, "annualSpend");
         if (annual is not null)
         {
             facts.Add(annual);
         }
 
-        var total = ExtractCuedAmount(text, pages, "totalContractValue", TotalCueRegex);
+        var total = ExtractCuedAmount(text, pages, "totalContractValue", TotalCueRegex)
+            ?? ExtractLabelledAmount(text, pages, "totalContractValue");
         if (total is not null)
         {
             facts.Add(total);
@@ -342,7 +371,7 @@ public static class FixtureContractFactExtractor
         var candidates = new List<(Match Match, string Amount)>();
         foreach (Match match in CurrencyRegex.Matches(text))
         {
-            var sentence = SentenceAround(text, match.Index, match.Length);
+            var sentence = SentenceAround(text, match.Index);
             if (!cue.IsMatch(sentence))
             {
                 continue;
@@ -456,10 +485,18 @@ public static class FixtureContractFactExtractor
             facts.Add(renewalTerm);
         }
 
-        var notice = NoticeRegex.Match(text);
-        if (notice.Success && endDate is { } e && TryParseCount(notice.Groups["n"].Value, out var noticeDays))
+        var cancellation = CancellationLabelRegex.Match(text);
+        if (cancellation.Success && TryParseDate(cancellation.Groups["date"].Value, out var cancelDate))
         {
-            facts.Add(Fact.Create("cancellationDeadline", Iso(e.AddDays(-noticeDays)), notice, pages, DerivedConfidence));
+            facts.Add(Fact.Create("cancellationDeadline", Iso(cancelDate), cancellation, pages, StrongConfidence));
+        }
+        else
+        {
+            var notice = NoticeRegex.Match(text);
+            if (notice.Success && endDate is { } e && TryParseCount(notice.Groups["n"].Value, out var noticeDays))
+            {
+                facts.Add(Fact.Create("cancellationDeadline", Iso(e.AddDays(-noticeDays)), notice, pages, DerivedConfidence));
+            }
         }
 
         return facts;
@@ -541,6 +578,35 @@ public static class FixtureContractFactExtractor
     }
 
     // ----- helpers ----------------------------------------------------------------------------
+
+    private static bool IsFieldLabel(string value)
+    {
+        var trimmed = value.Trim().TrimEnd(':', '|', '.', '-', ' ');
+        return FieldLabelNames.Contains(trimmed);
+    }
+
+    private static Fact? ExtractLabelledAmount(string text, PageMap pages, string field)
+    {
+        foreach (Match match in LabelledAmountRegex.Matches(text))
+        {
+            var label = match.Groups["label"].Value;
+            var isAnnual = label.StartsWith("annual", StringComparison.OrdinalIgnoreCase);
+            var isTotal = label.Contains("total", StringComparison.OrdinalIgnoreCase)
+                || label.Equals("tcv", StringComparison.OrdinalIgnoreCase);
+            if ((field == "annualSpend" && !isAnnual) || (field == "totalContractValue" && !isTotal))
+            {
+                continue;
+            }
+
+            var amount = NormalizeAmount(match.Groups["amt"].Value);
+            if (amount is not null)
+            {
+                return Fact.Create(field, amount, match, pages, StrongConfidence);
+            }
+        }
+
+        return null;
+    }
 
     private static string TrimName(string raw)
     {
@@ -656,7 +722,7 @@ public static class FixtureContractFactExtractor
 
     /// <summary>The sentence containing a match: from the previous sentence terminator (or page
     /// marker / start of text) to the next one.</summary>
-    private static string SentenceAround(string text, int index, int length)
+    private static string SentenceAround(string text, int index)
     {
         var start = index;
         while (start > 0 && text[start - 1] is not ('.' or ';' or '\n'))
@@ -664,7 +730,9 @@ public static class FixtureContractFactExtractor
             start--;
         }
 
-        var end = index + length;
+        // From the match start, not a consumed trailing "." ("USD 188000. Total…"):
+        // CurrencyRegex's amount can swallow the sentence terminator and steal TCV.
+        var end = index;
         while (end < text.Length && text[end] is not ('.' or ';' or '\n'))
         {
             end++;

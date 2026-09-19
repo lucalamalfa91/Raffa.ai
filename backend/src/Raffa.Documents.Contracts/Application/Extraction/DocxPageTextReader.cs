@@ -75,6 +75,28 @@ internal sealed class DocxPageTextReader
             case Table table:
                 WriteTable(table);
                 return;
+            case TextBoxContent box:
+                foreach (var child in box.Elements())
+                {
+                    Walk(child);
+                }
+
+                return;
+            case AlternateContent alternate:
+                // Word letterheads often live in the mc:Choice drawing, not the fallback.
+                var choice = alternate.GetFirstChild<AlternateContentChoice>();
+                if (choice is not null)
+                {
+                    Walk(choice);
+                    return;
+                }
+
+                foreach (var child in alternate.Elements())
+                {
+                    Walk(child);
+                }
+
+                return;
             default:
                 foreach (var child in element.Elements())
                 {
@@ -146,6 +168,7 @@ internal sealed class DocxPageTextReader
 
     private void WriteTable(Table table)
     {
+        List<string>? headers = null;
         foreach (var row in table.Elements<TableRow>())
         {
             var cells = new List<string>();
@@ -165,8 +188,10 @@ internal sealed class DocxPageTextReader
                 cells.Add(string.Join(' ', nested.Finish()).Replace('\n', ' ').Trim());
             }
 
-            _current.Append(string.Join(" | ", cells));
-            _current.Append('\n');
+            if (OfficeTableText.AppendRow(_current, cells, headers))
+            {
+                headers = cells;
+            }
         }
 
         _current.Append('\n');
