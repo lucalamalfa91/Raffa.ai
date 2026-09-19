@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { WorkspaceMemberBody } from "../../../api/client";
-import { getMemberStatusTag, isLastActiveAdmin, memberRoleLabel, removeConsequence, revokeConsequence } from "./memberViewModel";
+import { getMemberStatusTag, isLastActiveAdmin, memberRoleLabel, reissueConsequence, removeConsequence, revokeConsequence } from "./memberViewModel";
 
 export interface MembersActionError {
   /** The roster row id (invitation id for `Invited`, membership id for `Active`) the error belongs
@@ -24,6 +24,8 @@ export interface MembersTableProps {
   pendingActionId: string | null;
   actionError: MembersActionError | null;
   onRevoke: (invitationId: string) => void;
+  /** Re-issue by replacement (ADR-025 §J.2b): mints a new token and kills the previous link. */
+  onReissue: (invitationId: string, email: string, role: string) => void;
   /** `isSelf` lets the caller apply D-58.7's post-removal redirect only to the signed-in Admin's own row. */
   onRemove: (membershipId: string, isSelf: boolean) => void;
 }
@@ -41,8 +43,8 @@ export interface MembersTableProps {
  * **inline in the row** -- never a dialog (`--shadow-*` is "dialogs only", ADR-019 `:78`) -- per
  * ADR-020's w14 design footer (screen 10, D-58.5/D-58.6/D-58.7).
  */
-export default function MembersTable({ members, currentUserEmail, canManage, pendingActionId, actionError, onRevoke, onRemove }: MembersTableProps) {
-  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+export default function MembersTable({ members, currentUserEmail, canManage, pendingActionId, actionError, onRevoke, onReissue, onRemove }: MembersTableProps) {
+  const [confirming, setConfirming] = useState<{ id: string; kind: "revoke" | "reissue" | "remove" } | null>(null);
 
   return (
     <table className="table members-table">
@@ -91,9 +93,9 @@ export default function MembersTable({ members, currentUserEmail, canManage, pen
                     isSelf={isSelf}
                     pending={pendingActionId === actionId}
                     error={actionError?.id === actionId ? actionError.message : null}
-                    confirming={confirmingId === member.id}
-                    onRequestConfirm={() => setConfirmingId(member.id)}
-                    onCancelConfirm={() => setConfirmingId(null)}
+                    confirmingKind={confirming?.id === member.id ? confirming.kind : null}
+                    onRequestConfirm={(kind) => setConfirming({ id: member.id, kind })}
+                    onCancelConfirm={() => setConfirming(null)}
                     // Fix 2026-09-15: `member.id` is the roster row's own WorkspaceUser id -- stable
                     // across the Active/Invited transition, never an action target (the backend's
                     // own WorkspaceMembersEndpointExtensions.ListMembersAsync doc comment: "DELETE
@@ -103,6 +105,7 @@ export default function MembersTable({ members, currentUserEmail, canManage, pen
                     // one of invitationId/membershipId is set per status; the guard is defensive only
                     // -- these buttons only render once that status's own id is on the row.
                     onRevoke={() => member.invitationId && onRevoke(member.invitationId)}
+                    onReissue={() => member.invitationId && onReissue(member.invitationId, member.email, member.role)}
                     onRemove={() => member.membershipId && onRemove(member.membershipId, isSelf)}
                   />
                 </td>
@@ -121,25 +124,58 @@ interface MemberActionsProps {
   isSelf: boolean;
   pending: boolean;
   error: string | null;
-  confirming: boolean;
-  onRequestConfirm: () => void;
+  confirmingKind: "revoke" | "reissue" | "remove" | null;
+  onRequestConfirm: (kind: "revoke" | "reissue" | "remove") => void;
   onCancelConfirm: () => void;
   onRevoke: () => void;
+  onReissue: () => void;
   onRemove: () => void;
 }
 
-function MemberActions({ member, members, isSelf, pending, error, confirming, onRequestConfirm, onCancelConfirm, onRevoke, onRemove }: MemberActionsProps) {
+function MemberActions({
+  member,
+  members,
+  isSelf,
+  pending,
+  error,
+  confirmingKind,
+  onRequestConfirm,
+  onCancelConfirm,
+  onRevoke,
+  onReissue,
+  onRemove,
+}: MemberActionsProps) {
   if (member.status === "Invited") {
-    if (confirming) {
+    if (confirmingKind === "revoke") {
       const { question, detail } = revokeConsequence(member.email);
       return (
         <ConfirmBlock question={question} detail={detail} confirmLabel="Yes, revoke" pendingLabel="Revoking…" pending={pending} error={error} onConfirm={onRevoke} onCancel={onCancelConfirm} />
       );
     }
+    if (confirmingKind === "reissue") {
+      const { question, detail } = reissueConsequence(member.email);
+      return (
+        <ConfirmBlock
+          question={question}
+          detail={detail}
+          confirmLabel="Yes, send a new invitation"
+          pendingLabel="Sending…"
+          pending={pending}
+          error={error}
+          onConfirm={onReissue}
+          onCancel={onCancelConfirm}
+        />
+      );
+    }
     return (
-      <button type="button" className="btn btn-ghost" onClick={onRequestConfirm}>
-        Revoke
-      </button>
+      <div className="members-invited-actions">
+        <button type="button" className="btn btn-ghost" onClick={() => onRequestConfirm("reissue")}>
+          Send a new invitation
+        </button>
+        <button type="button" className="btn btn-ghost" onClick={() => onRequestConfirm("revoke")}>
+          Revoke
+        </button>
+      </div>
     );
   }
 
@@ -154,14 +190,14 @@ function MemberActions({ member, members, isSelf, pending, error, confirming, on
         </span>
       );
     }
-    if (confirming) {
+    if (confirmingKind === "remove") {
       const { question, detail } = removeConsequence(member.email, isSelf);
       return (
         <ConfirmBlock question={question} detail={detail} confirmLabel="Yes, remove" pendingLabel="Removing…" pending={pending} error={error} onConfirm={onRemove} onCancel={onCancelConfirm} />
       );
     }
     return (
-      <button type="button" className="btn btn-ghost" onClick={onRequestConfirm}>
+      <button type="button" className="btn btn-ghost" onClick={() => onRequestConfirm("remove")}>
         Remove
       </button>
     );

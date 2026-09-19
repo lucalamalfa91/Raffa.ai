@@ -246,7 +246,7 @@ describe("MembersRoute (V2, ADR-020/ADR-025/ADR-026 w14 footers; screens-v2.md #
     expect(inviteWorkspaceMember).toHaveBeenCalledTimes(1);
   });
 
-  it("a successful invite re-reads the roster instead of appending a row locally, and renders 'Invitation sent to {email}.' on deliveryOutcome 'sent' with no link", async () => {
+  it("a successful invite re-reads the roster instead of appending a row locally, and renders 'Invitation sent to {email}.' on deliveryOutcome 'sent' with the copyable link", async () => {
     const getWorkspaceMembers = vi
       .fn()
       .mockResolvedValueOnce(membersOk([activeMember()]))
@@ -262,7 +262,23 @@ describe("MembersRoute (V2, ADR-020/ADR-025/ADR-026 w14 footers; screens-v2.md #
     expect(await screen.findByText("buyer@acme.example")).toBeInTheDocument();
     expect(screen.getByText("Invitation sent to buyer@acme.example.")).toBeInTheDocument();
     expect(screen.getByLabelText("Work email")).toHaveValue("");
-    expect(screen.queryByLabelText("Invitation link")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Invitation link")).toBeInTheDocument();
+  });
+
+  it("an empty second click keeps the last accept link instead of wiping it", async () => {
+    const getWorkspaceMembers = vi.fn().mockResolvedValue(membersOk([activeMember()]));
+    const inviteWorkspaceMember = vi.fn().mockResolvedValue(invited({ email: "buyer@acme.example", deliveryOutcome: "no_transport" }));
+    renderMembers(mockApiClient({ getWorkspaceMembers, inviteWorkspaceMember }), { workspaceId: WORKSPACE_ID });
+    await screen.findByRole("table");
+
+    fireEvent.change(screen.getByLabelText("Work email"), { target: { value: "buyer@acme.example" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
+    expect(await screen.findByLabelText("Invitation link")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("An email is required.");
+    expect(screen.getByLabelText("Invitation link")).toBeInTheDocument();
+    expect(inviteWorkspaceMember).toHaveBeenCalledTimes(1);
   });
 
   // Task E17/F02/US01/T01 (ADR-020 w15 §3.3/§3.4): the second outcome -- the mail failed -- keeps
@@ -343,10 +359,10 @@ describe("MembersRoute (V2, ADR-020/ADR-025/ADR-026 w14 footers; screens-v2.md #
     expect(screen.getByText("It expires 01/01/2099, can be used once, and is not shown again.")).toBeInTheDocument();
 
     const clipboardSpy = vi.fn().mockResolvedValue(undefined);
-    Object.assign(navigator, { clipboard: { writeText: clipboardSpy } });
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: clipboardSpy } });
     fireEvent.click(screen.getByRole("button", { name: "Copy link" }));
     await waitFor(() => expect(clipboardSpy).toHaveBeenCalledWith(expectedLink));
-    expect(await screen.findByRole("button", { name: "Copied" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument());
   });
 
   it("a failed invite request never claims a mail either way (index.tsx:63's own defect this task closes)", async () => {
@@ -412,6 +428,40 @@ describe("MembersRoute (V2, ADR-020/ADR-025/ADR-026 w14 footers; screens-v2.md #
 
     fireEvent.click(within(otherRow).getByRole("button", { name: "Yes, remove" }));
     await waitFor(() => expect(removeMember).toHaveBeenCalledWith(WORKSPACE_ID, "member-9"));
+  });
+
+  it("Send a new invitation on an Invited row re-issues by replacement and shows the new copyable link", async () => {
+    const admin = activeMember();
+    const invitee = invitedMember({ invitationId: "invite-9", email: "invitee@acme.example", role: "Procurement" });
+    const getWorkspaceMembers = vi
+      .fn()
+      .mockResolvedValueOnce(membersOk([admin, invitee]))
+      .mockResolvedValueOnce(membersOk([admin, invitee]));
+    const inviteWorkspaceMember = vi.fn().mockResolvedValue(
+      invited({
+        email: "invitee@acme.example",
+        deliveryOutcome: "no_transport",
+        acceptUrl: "/invite/accept#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.reissued-secret",
+      }),
+    );
+    renderMembers(mockApiClient({ getWorkspaceMembers, inviteWorkspaceMember }), { workspaceId: WORKSPACE_ID });
+
+    const table = await screen.findByRole("table");
+    const inviteeRow = within(table).getByText("invitee@acme.example").closest("tr");
+    if (!inviteeRow) throw new Error("invitee row not found");
+    fireEvent.click(within(inviteeRow).getByRole("button", { name: "Send a new invitation" }));
+    expect(within(inviteeRow).getByText("Send a new invitation to invitee@acme.example?")).toBeInTheDocument();
+    expect(within(inviteeRow).getByText("The link you already shared stops working.")).toBeInTheDocument();
+    expect(inviteWorkspaceMember).not.toHaveBeenCalled();
+
+    fireEvent.click(within(inviteeRow).getByRole("button", { name: "Yes, send a new invitation" }));
+    await waitFor(() =>
+      expect(inviteWorkspaceMember).toHaveBeenCalledWith(WORKSPACE_ID, { email: "invitee@acme.example", role: "Procurement" }),
+    );
+    expect(await screen.findByText("Invitation ready for invitee@acme.example.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Invitation link")).toHaveValue(
+      new URL("/invite/accept#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.reissued-secret", window.location.origin).toString(),
+    );
   });
 
   it("the last Admin's Remove is a disabled control with a .hint, never hidden and never a click that can 409 (AC-8)", async () => {
