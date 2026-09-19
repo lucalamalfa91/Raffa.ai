@@ -238,6 +238,16 @@ describe("RailNav (V2 two-tier rail, ADR-024 amendment; task E13/F09/US01/T01, g
       expect(screen.getByText("Workspace Admin")).toBeInTheDocument();
     });
 
+    it("keeps Workspace & members in the pinned rail footer", () => {
+      const { container } = renderRail({ role: "admin" });
+      const footer = container.querySelector(".shell-rail-footer");
+      const rail = container.querySelector(".shell-rail");
+
+      expect(footer).not.toBeNull();
+      expect(rail?.lastElementChild).toBe(footer);
+      expect(footer).toContainElement(screen.getByRole("link", { name: "Workspace & members" }));
+    });
+
     it("hides Workspace & members for Procurement (AC-2)", () => {
       renderRail({ role: "procurement" });
 

@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import type { DocumentListItemBody } from "../../api/client";
+import TablePager from "../../components/table/TablePager";
+import { usePagedRows } from "../../components/table/pager";
 import { CHECK_AGAIN_LABEL, UPDATES_PAUSED_NOTICE } from "../../components/shell/usePollBudget";
 import { getRejectionReasonCopy, type LocalUploadEntry } from "./uploadPipeline";
 import {
@@ -93,8 +95,16 @@ export default function DocumentStatusTable({
   // rows, exactly where the card was -- the third chip reads the server bucket alone (ADR-020 w15
   // §6.4).
   const visibleLocalUploads = filter === "rejected" ? [] : localUploads;
+  const combinedRows = useMemo(
+    () => [
+      ...visibleLocalUploads.map((entry) => ({ kind: "local" as const, key: entry.key, entry })),
+      ...documents.map((item) => ({ kind: "server" as const, key: item.id, item })),
+    ],
+    [visibleLocalUploads, documents],
+  );
+  const { page, setPage, pageItems, totalItems } = usePagedRows(combinedRows, filter);
   const attentionEmpty = filter === "attention" && documents.length === 0 && visibleLocalUploads.length === 0;
-  const rowsVisible = documents.length > 0 || visibleLocalUploads.length > 0;
+  const rowsVisible = totalItems > 0;
 
   return (
     <div className="documents-list-body">
@@ -120,140 +130,29 @@ export default function DocumentStatusTable({
             </tr>
           </thead>
           <tbody>
-            {visibleLocalUploads.map((entry) => {
-              const tag = getRowStatusTag(localRowStatus(entry.phase));
-              return (
-                <tr key={entry.key}>
-                  <td>
-                    <div className="document-status-table-filename">{entry.file.name}</div>
-                    {entry.errorMessage && <div className="hint">{entry.errorMessage}</div>}
-                  </td>
-                  <td className="micro-meta">—</td>
-                  <td>
-                    <span className={`tag tag-${tag.variant}`}>{tag.label}</span>
-                  </td>
-                  <td className="document-status-table-next-step">
-                    {entry.phase === "rejected" || entry.phase === "failed" ? null : (
-                      // ADR-020 w15 footer 10: the row already reads "Uploaded" above -- this is
-                      // the honest half of that claim, said once, right underneath it. A stuck
-                      // upload is recovered by a one-shot auto-reprocess, never a Retry upload CTA.
-                      <span className="micro-meta">Processing in the background</span>
-                    )}
-                  </td>
-                  {isAdmin && <td />}
-                </tr>
-              );
-            })}
-
-            {documents.map((item) => {
-              const rowStatus = getRowStatus(item.processingStatus);
-              const tag = getRowStatusTag(rowStatus);
-              const action = getRowAction(item);
-              const rejectionHint = rowStatus === "rejected" ? getRejectionReasonCopy(item.rejectionReason) : null;
-              const openTarget = getOpenTarget(item, rowStatus);
-
-              return (
-                <tr key={item.id}>
-                  <td>
-                    {openTarget !== null ? (
-                      <Link to={openTarget} className="document-status-table-link">
-                        {item.fileName}
-                      </Link>
-                    ) : (
-                      <>
-                        <div className="document-status-table-filename">{item.fileName}</div>
-                        {rowStatus === "failed" && <div className="hint">{getFailedHint(item.errorDetail)}</div>}
-                        {rejectionHint !== null && <div className="hint">{rejectionHint}</div>}
-                      </>
-                    )}
-                    <div className="micro-meta">
-                      {item.pageCount !== null ? `${item.pageCount} page${item.pageCount === 1 ? "" : "s"} · ` : ""}
-                      {formatUploadedAt(item.createdAt)}
-                    </div>
-                    {rowStatus !== "rejected" && rowStatus !== "failed" && (
-                      <DocumentViewerLink to={buildDocumentViewerHref(item.id)} className="btn btn-ghost">
-                        View document
-                      </DocumentViewerLink>
-                    )}
-                  </td>
-                  <td className="document-status-table-supplier">
-                    <span>{item.supplierName ?? "—"}</span> <span className="micro-meta">· {getDocumentTypeLabel(item.documentType)}</span>
-                  </td>
-                  <td>
-                    <span className={`tag tag-${tag.variant}`}>{tag.label}</span>
-                    {rowStatus === "processing" && <ProcessingPipeline stage={item.stage} />}
-                  </td>
-                  <td className="document-status-table-next-step">
-                    {rowStatus === "uploaded" ? (
-                      // ADR-020 w15 footer 10 (task E16/F03/US02/T02): the row already reads
-                      // "Uploaded" -- no Worker has claimed it yet, so there is no real stage to
-                      // report, only that it is on its way. A still-Uploaded row is recovered by
-                      // one auto-reprocess after three minutes (`useDocumentsList`), never a Retry
-                      // upload button that would blow the Delete column off-screen.
-                      <span className="micro-meta">Processing in the background</span>
-                    ) : rowStatus === "processing" ? (
-                      // A `Processing` row reads its real stage string, verbatim -- the Worker has
-                      // genuinely claimed the job by the time this branch renders.
-                      <span className="micro-meta">{(item.stage ?? "Queued") + "…"}</span>
-                    ) : action !== null ? (
-                      action.kind === "ask" ? (
-                        // `raffa-v2/app.jsx`'s own "Ask about it" handler both opens a new chat
-                        // *and* pre-asks "When does {supplier} expire?" -- `state.query` is the same
-                        // seed mechanism `components/ask-bar/GlobalAskBar.tsx` already establishes
-                        // (`AskRoute` already reads `state.query` today, per web/README.md's own
-                        // "Ask Raffa" section), not a new, unread convention invented here.
-                        <Link
-                          to={`/ask?scope=${item.contractId ?? ""}`}
-                          state={{ query: `When does ${item.supplierName ?? "it"} expire?`, newChat: true }}
-                          className="btn btn-secondary"
-                        >
-                          {action.label}
-                        </Link>
-                      ) : (
-                        <Link
-                          to={action.kind === "review" ? `/documents?review=${item.id}` : "/quotes"}
-                          className={`btn ${action.kind === "review" ? "btn-primary" : "btn-secondary"}`}
-                        >
-                          {action.label}
-                        </Link>
-                      )
-                    ) : null}
-                  </td>
-                  {isAdmin && (
-                    <td className="document-status-table-delete">
-                      {confirmingDeleteId === item.id ? (
-                        <div className="document-status-table-delete-confirm">
-                          <button
-                            type="button"
-                            className="btn btn-primary"
-                            onClick={() => {
-                              setConfirmingDeleteId(null);
-                              onDelete(item.id);
-                            }}
-                          >
-                            Confirm delete
-                          </button>
-                          <button
-                            type="button"
-                            className="btn document-status-table-delete-cancel"
-                            onClick={() => setConfirmingDeleteId(null)}
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      ) : (
-                        <button type="button" className="btn btn-ghost" onClick={() => setConfirmingDeleteId(item.id)}>
-                          Delete
-                        </button>
-                      )}
-                    </td>
-                  )}
-                </tr>
-              );
-            })}
+            {pageItems.map((row) =>
+              row.kind === "local" ? (
+                <LocalUploadRow key={row.key} entry={row.entry} isAdmin={isAdmin} />
+              ) : (
+                <ServerDocumentRow
+                  key={row.key}
+                  item={row.item}
+                  isAdmin={isAdmin}
+                  confirmingDeleteId={confirmingDeleteId}
+                  onConfirmDelete={(documentId) => {
+                    setConfirmingDeleteId(null);
+                    onDelete(documentId);
+                  }}
+                  onAskConfirm={setConfirmingDeleteId}
+                  onCancelConfirm={() => setConfirmingDeleteId(null)}
+                />
+              ),
+            )}
           </tbody>
         </table>
       )}
+
+      <TablePager page={page} totalItems={totalItems} onPageChange={setPage} label="Document pages" />
 
       {updatesPaused && (
         <div className="documents-updates-paused" role="status">
@@ -266,5 +165,125 @@ export default function DocumentStatusTable({
         </div>
       )}
     </div>
+  );
+}
+
+function LocalUploadRow({ entry, isAdmin }: { entry: LocalUploadEntry; isAdmin: boolean }) {
+  const tag = getRowStatusTag(localRowStatus(entry.phase));
+  return (
+    <tr>
+      <td>
+        <div className="document-status-table-filename">{entry.file.name}</div>
+        {entry.errorMessage && <div className="hint">{entry.errorMessage}</div>}
+      </td>
+      <td className="micro-meta">—</td>
+      <td>
+        <span className={`tag tag-${tag.variant}`}>{tag.label}</span>
+      </td>
+      <td className="document-status-table-next-step">
+        {entry.phase === "rejected" || entry.phase === "failed" ? null : (
+          <span className="micro-meta">Processing in the background</span>
+        )}
+      </td>
+      {isAdmin && <td />}
+    </tr>
+  );
+}
+
+function ServerDocumentRow({
+  item,
+  isAdmin,
+  confirmingDeleteId,
+  onConfirmDelete,
+  onAskConfirm,
+  onCancelConfirm,
+}: {
+  item: DocumentListItemBody;
+  isAdmin: boolean;
+  confirmingDeleteId: string | null;
+  onConfirmDelete: (documentId: string) => void;
+  onAskConfirm: (documentId: string) => void;
+  onCancelConfirm: () => void;
+}) {
+  const rowStatus = getRowStatus(item.processingStatus);
+  const tag = getRowStatusTag(rowStatus);
+  const action = getRowAction(item);
+  const rejectionHint = rowStatus === "rejected" ? getRejectionReasonCopy(item.rejectionReason) : null;
+  const openTarget = getOpenTarget(item, rowStatus);
+
+  return (
+    <tr>
+      <td>
+        {openTarget !== null ? (
+          <Link to={openTarget} className="document-status-table-link">
+            {item.fileName}
+          </Link>
+        ) : (
+          <>
+            <div className="document-status-table-filename">{item.fileName}</div>
+            {rowStatus === "failed" && <div className="hint">{getFailedHint(item.errorDetail)}</div>}
+            {rejectionHint !== null && <div className="hint">{rejectionHint}</div>}
+          </>
+        )}
+        <div className="micro-meta">
+          {item.pageCount !== null ? `${item.pageCount} page${item.pageCount === 1 ? "" : "s"} · ` : ""}
+          {formatUploadedAt(item.createdAt)}
+        </div>
+        {rowStatus !== "rejected" && rowStatus !== "failed" && (
+          <DocumentViewerLink to={buildDocumentViewerHref(item.id)} className="btn btn-ghost">
+            View document
+          </DocumentViewerLink>
+        )}
+      </td>
+      <td className="document-status-table-supplier">
+        <span>{item.supplierName ?? "—"}</span> <span className="micro-meta">· {getDocumentTypeLabel(item.documentType)}</span>
+      </td>
+      <td>
+        <span className={`tag tag-${tag.variant}`}>{tag.label}</span>
+        {rowStatus === "processing" && <ProcessingPipeline stage={item.stage} />}
+      </td>
+      <td className="document-status-table-next-step">
+        {rowStatus === "uploaded" ? (
+          <span className="micro-meta">Processing in the background</span>
+        ) : rowStatus === "processing" ? (
+          <span className="micro-meta">{(item.stage ?? "Queued") + "…"}</span>
+        ) : action !== null ? (
+          action.kind === "ask" ? (
+            <Link
+              to={`/ask?scope=${item.contractId ?? ""}`}
+              state={{ query: `When does ${item.supplierName ?? "it"} expire?`, newChat: true }}
+              className="btn btn-secondary"
+            >
+              {action.label}
+            </Link>
+          ) : (
+            <Link
+              to={action.kind === "review" ? `/documents?review=${item.id}` : "/quotes"}
+              className={`btn ${action.kind === "review" ? "btn-primary" : "btn-secondary"}`}
+            >
+              {action.label}
+            </Link>
+          )
+        ) : null}
+      </td>
+      {isAdmin && (
+        <td className="document-status-table-delete">
+          {confirmingDeleteId === item.id ? (
+            <div className="document-status-table-delete-confirm">
+              <button type="button" className="btn btn-primary" onClick={() => onConfirmDelete(item.id)}>
+                Confirm delete
+              </button>
+              <button type="button" className="btn document-status-table-delete-cancel" onClick={onCancelConfirm}>
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button type="button" className="btn btn-ghost" onClick={() => onAskConfirm(item.id)}>
+              Delete
+            </button>
+          )}
+        </td>
+      )}
+    </tr>
   );
 }

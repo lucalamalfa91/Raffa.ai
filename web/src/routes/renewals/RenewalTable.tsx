@@ -1,3 +1,5 @@
+import TablePager from "../../components/table/TablePager";
+import { usePagedRows } from "../../components/table/pager";
 import {
   formatContractRef,
   formatDays,
@@ -29,6 +31,7 @@ export interface RenewalTableProps {
  * layered on top, never the only way in.
  */
 export default function RenewalTable({ rows, selectedContractId, onSelect }: RenewalTableProps) {
+  const { page, setPage, pageItems, totalItems } = usePagedRows(rows);
   return (
     <div className="renewal-table-wrapper">
       <table className="table renewal-table">
@@ -50,7 +53,7 @@ export default function RenewalTable({ rows, selectedContractId, onSelect }: Ren
           </tr>
         </thead>
         <tbody>
-          {rows.map(({ item, score, tracked }) => {
+          {pageItems.map(({ item, score, tracked }) => {
             const supplier = formatRenewalSupplier(item.supplierName);
             const contractRef = formatContractRef(item.contractId);
             const statusTag = getRenewalStatusTag(tracked);
@@ -99,6 +102,7 @@ export default function RenewalTable({ rows, selectedContractId, onSelect }: Ren
           })}
         </tbody>
       </table>
+      <TablePager page={page} totalItems={totalItems} onPageChange={setPage} label="Renewal pages" />
     </div>
   );
 }

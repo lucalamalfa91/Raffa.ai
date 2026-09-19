@@ -1,5 +1,7 @@
 import { useMemo, useState, type ChangeEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import TablePager from "../../components/table/TablePager";
+import { usePagedRows } from "../../components/table/pager";
 import { formatAnnualSpend, formatAutoRenewal, formatDateOnly, getContractTypeLabel, getPortfolioRiskTag, getPortfolioStatusTag } from "./portfolioTableFormatters";
 import {
   EMPTY_PORTFOLIO_COLUMN_FILTERS,
@@ -123,7 +125,8 @@ export default function PortfolioTable({ rows, moreColumns }: PortfolioTableProp
   const navigate = useNavigate();
   const [filters, setFilters] = useState<PortfolioColumnFilters>(EMPTY_PORTFOLIO_COLUMN_FILTERS);
 
-  const visibleRows = useMemo(() => filterPortfolioRows(rows, filters), [rows, filters]);
+  const filteredRows = useMemo(() => filterPortfolioRows(rows, filters), [rows, filters]);
+  const { page, setPage, pageItems: visibleRows, totalItems } = usePagedRows(filteredRows, filters);
   const statusOptions = useMemo(() => getPortfolioStatusFilterOptions(rows), [rows]);
   const riskOptions = useMemo(() => getPortfolioRiskFilterOptions(rows), [rows]);
   const filtersActive = isPortfolioColumnFilterActive(filters);
@@ -242,7 +245,7 @@ export default function PortfolioTable({ rows, moreColumns }: PortfolioTableProp
           </tr>
         </thead>
         <tbody>
-          {visibleRows.length === 0 ? (
+          {filteredRows.length === 0 ? (
             <tr>
               <td colSpan={moreColumns ? 9 : 6}>
                 <p className="micro-meta" role="status">
@@ -299,6 +302,7 @@ export default function PortfolioTable({ rows, moreColumns }: PortfolioTableProp
           )}
         </tbody>
       </table>
+      <TablePager page={page} totalItems={totalItems} onPageChange={setPage} label="Portfolio pages" />
     </div>
   );
 }

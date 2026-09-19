@@ -1,4 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
+import TablePager from "../../components/table/TablePager";
+import { usePagedRows } from "../../components/table/pager";
 import type { OpportunityNavigation, OpportunityRowView } from "./savingsViewModel";
 
 export interface OpportunitiesTableProps {
@@ -17,6 +19,7 @@ function hrefFor(navigation: OpportunityNavigation): string {
  */
 export default function OpportunitiesTable({ rows }: OpportunitiesTableProps) {
   const navigate = useNavigate();
+  const { page, setPage, pageItems, totalItems } = usePagedRows(rows);
 
   return (
     <div className="savings-table-wrapper">
@@ -34,7 +37,7 @@ export default function OpportunitiesTable({ rows }: OpportunitiesTableProps) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => {
+          {pageItems.map((row) => {
             const href = hrefFor(row.navigation);
             return (
               <tr
@@ -65,6 +68,7 @@ export default function OpportunitiesTable({ rows }: OpportunitiesTableProps) {
           })}
         </tbody>
       </table>
+      <TablePager page={page} totalItems={totalItems} onPageChange={setPage} label="Opportunity pages" />
     </div>
   );
 }
