@@ -123,10 +123,16 @@ public static class ServiceCollectionExtensions
         // Task E13/F04/US01/T02 (documents-v2-api): preview rendering + the reprocess/delete units
         // of work. Task E22/F02/US01/T01: PdfPageDocumentPreviewRenderer (Docnet.Core/pdfium) is
         // registered ahead of PlaceholderDocumentPreviewRenderer via TryAdd — the real renderer wins
-        // for PDFs, and the placeholder stays the honest fallback for everything it cannot draw.
-        // A host that registers its own IDocumentPreviewRenderer before calling this extension still
-        // wins (TryAdd is first-registration-wins).
-        services.TryAddSingleton<IDocumentPreviewRenderer, PdfPageDocumentPreviewRenderer>();
+        // for PDFs. Office (DOCX/XLSX) is painted from native page text so the viewer overlay is
+        // not stuck on the "FILE PREVIEW NOT RENDERED" card. A host that registers its own
+        // IDocumentPreviewRenderer before calling this extension still wins (TryAdd is
+        // first-registration-wins).
+        services.TryAddSingleton<PdfPageDocumentPreviewRenderer>();
+        services.TryAddSingleton<OfficePageDocumentPreviewRenderer>();
+        services.TryAddSingleton<IDocumentPreviewRenderer>(sp =>
+            new CompositeDocumentPreviewRenderer(
+                sp.GetRequiredService<PdfPageDocumentPreviewRenderer>(),
+                sp.GetRequiredService<OfficePageDocumentPreviewRenderer>()));
         services.AddScoped<DocumentPreviewService>();
         services.AddScoped<DocumentReprocessService>();
         services.AddScoped<DocumentPriorityService>();

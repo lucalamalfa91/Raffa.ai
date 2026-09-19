@@ -36,8 +36,8 @@ namespace Raffa.Documents.Contracts.Application.Preview;
 ///
 /// <para>
 /// <b>Non-PDF pass-through.</b> <see langword="null"/> is returned immediately for non-PDF content
-/// so the service's <see cref="PlaceholderDocumentPreviewRenderer"/> chain handles it — a JPEG
-/// upload gets the placeholder card rather than a failed render.
+/// so <see cref="CompositeDocumentPreviewRenderer"/> can try the Office painter, and the service's
+/// <see cref="PlaceholderDocumentPreviewRenderer"/> fallback still covers JPEG/unknown.
 /// </para>
 /// </summary>
 internal sealed class PdfPageDocumentPreviewRenderer : IDocumentPreviewRenderer

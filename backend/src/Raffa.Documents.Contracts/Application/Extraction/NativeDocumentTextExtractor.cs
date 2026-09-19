@@ -13,6 +13,8 @@ namespace Raffa.Documents.Contracts.Application.Extraction;
 /// project). A Word/Excel file is never a scanned image, so a successful parse is always
 /// <see cref="NativeTextExtractionResult.IsSufficient"/>, regardless of how much text it actually
 /// contains — an empty document is an honest fact, not a reason to spend an OCR page on it.
+/// DOCX is walked as paragraphs/tables/page-breaks (see <see cref="DocxPageTextReader"/>), never
+/// <c>Body.InnerText</c>, so an order form's supplier and dates stay recoverable.
 ///
 /// <b>PDF is no longer handled here</b> (ADR-017 amendment 2026-09-09). The previous hand-written
 /// content-stream scanner could not read real supplier PDFs (CID fonts, hex strings, object
@@ -53,9 +55,13 @@ public sealed class NativeDocumentTextExtractor : INativeDocumentTextExtractor
             using var stream = new MemoryStream(content.ToArray());
             using var document = WordprocessingDocument.Open(stream, isEditable: false);
 
-            var text = document.MainDocumentPart?.Document?.Body?.InnerText ?? string.Empty;
+            // Structured walk — never Body.InnerText. Adjacent paragraphs/cells would otherwise
+            // concatenate ("SupplierIBM Corporation") and staged extraction would miss fields.
+            var pages = DocxPageTextReader.ReadPages(document)
+                .Select((text, index) => new DocumentPageText(index + 1, text))
+                .ToList();
 
-            return new NativeTextExtractionResult([new DocumentPageText(1, text)], IsSufficient: true);
+            return new NativeTextExtractionResult(pages, IsSufficient: true);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

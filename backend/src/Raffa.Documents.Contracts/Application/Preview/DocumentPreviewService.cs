@@ -182,11 +182,11 @@ public sealed class DocumentPreviewService(
             return null;
         }
 
-        // Re-rasterise PDFs from the original bytes. Previews stored before white-compositing
-        // encoded pdfium's transparent background as opaque black, so serving the stored PNG
-        // would keep the viewer black even after the encoder fix.
-        if (string.Equals(row.MimeType, DocumentFormatSniffer.PdfMimeType, StringComparison.OrdinalIgnoreCase)
-            && !string.IsNullOrWhiteSpace(row.StoragePath))
+        // Re-rasterise PDFs and Office files from the original bytes. PDF: previews stored
+        // before white-compositing encoded pdfium's transparent background as opaque black.
+        // Office: uploads processed before the text-page painter stored the FILE placeholder
+        // card — serving that PNG would keep the viewer unreadable after the renderer fix.
+        if (CanLiveRasterize(row.MimeType) && !string.IsNullOrWhiteSpace(row.StoragePath))
         {
             try
             {
@@ -215,6 +215,10 @@ public sealed class DocumentPreviewService(
         var path = DocumentStoragePath.BuildPreviewPage(tenantId, documentId, page);
         return await storage.LoadAsync(tenantId, path, cancellationToken).ConfigureAwait(false);
     }
+
+    private static bool CanLiveRasterize(string? mimeType) =>
+        string.Equals(mimeType, DocumentFormatSniffer.PdfMimeType, StringComparison.OrdinalIgnoreCase)
+        || OfficePageDocumentPreviewRenderer.CanLiveRasterize(mimeType);
 
     /// <summary>
     /// Deletes <c>page-{n}.png</c> for <c>n &gt; newPageCount</c> and <c>n ≤ oldPageCount</c>,
