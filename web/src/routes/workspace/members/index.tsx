@@ -10,6 +10,7 @@ import {
   inviteDomainWarning,
   inviteOutcomeFrom,
   requestAccessMailto,
+  toInviteWorkspaceRole,
   validateInviteEmail,
   workspaceDomainFromEmail,
   type Day1InviteRole,
@@ -104,14 +105,16 @@ export default function MembersRoute({ apiClient, userLabel, workspaceId, worksp
   const sendInvite = useCallback(() => {
     if (!workspaceId) return;
 
-    setOutcome(null);
-    setInviteFailure(null);
     const validationError = validateInviteEmail(email);
     if (validationError !== null) {
+      // Keep the last successful accept link on screen -- a second empty click used to wipe it,
+      // and the server cannot reproduce the token (hash only).
       setInviteError(validationError);
       return;
     }
 
+    setOutcome(null);
+    setInviteFailure(null);
     setSubmitting(true);
     setInviteError(null);
     const invitedEmail = email.trim();
@@ -143,6 +146,32 @@ export default function MembersRoute({ apiClient, userLabel, workspaceId, worksp
       loadRoster();
     });
   }, [apiClient, email, inviteRole, workspaceId, loadRoster]);
+
+  const handleReissue = useCallback(
+    (invitationId: string, invitedEmail: string, role: string) => {
+      if (!workspaceId) return;
+      setActionError(null);
+      setInviteError(null);
+      setInviteFailure(null);
+      setPendingActionId(invitationId);
+      void apiClient
+        .inviteWorkspaceMember(workspaceId, { email: invitedEmail, role: toInviteWorkspaceRole(role) })
+        .then((result) => {
+          setPendingActionId(null);
+          if (result.statusCode === 502 && result.failureReason !== null) {
+            setInviteFailure({ failureReason: result.failureReason, email: invitedEmail });
+            return;
+          }
+          if (!result.ok || !result.member) {
+            setActionError({ id: invitationId, message: result.error ?? "The invitation could not be created." });
+            return;
+          }
+          setOutcome(inviteOutcomeFrom(result.member));
+          loadRoster();
+        });
+    },
+    [apiClient, workspaceId, loadRoster],
+  );
 
   const handleRevoke = useCallback(
     (invitationId: string) => {
@@ -250,6 +279,7 @@ export default function MembersRoute({ apiClient, userLabel, workspaceId, worksp
               pendingActionId={pendingActionId}
               actionError={actionError}
               onRevoke={handleRevoke}
+              onReissue={handleReissue}
               onRemove={handleRemove}
             />
           )}

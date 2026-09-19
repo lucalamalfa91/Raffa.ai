@@ -50,14 +50,15 @@ export interface InvitePaneProps {
  * the native control stays in the accessibility tree) -> block "Send invitation" -> the outcome.
  *
  * Task E17/F02/US01/T01 (wave w15, NW-69/NW-68/NW-67; ADR-020 w15 §3): the outcome is the server's
- * own `deliveryOutcome`, in exactly three states -- "Invitation sent to {email}." (no link), "Invitation
- * created, but the email could not be sent." (the copyable link is the remedy), "Invitation ready for
- * {email}." (the link, plus its expiry meta) -- each with the one-time-code sentence while the 201's
- * `identityProvisioned` is true. A 502 renders its designed copy in the pre-creation error slot with
- * "No invitation was created." beneath it. There is deliberately no resend affordance on this pane:
- * the server cannot re-send the original link (the token is stored only as a hash), so any retry is
- * a re-issue that kills the link the Admin is looking at -- the link block IS the remedy, and the
- * roster row's "Send a new invitation" remains the only re-issue path (ADR-020 w15 §3.4).
+ * own `deliveryOutcome`, in exactly three states -- "Invitation sent to {email}.", "Invitation
+ * created, but the email could not be sent.", "Invitation ready for {email}." -- each with the
+ * copyable accept link (demo has no ACS transport; even `sent` is only "ACS accepted", not inbox
+ * delivery) and the one-time-code sentence while the 201's `identityProvisioned` is true. A 502
+ * renders its designed copy in the pre-creation error slot with "No invitation was created."
+ * beneath it. There is deliberately no resend affordance on this pane: the server cannot re-send
+ * the original link (the token is stored only as a hash), so any retry is a re-issue that kills
+ * the link the Admin is looking at -- the link block IS the remedy, and the roster row's
+ * "Send a new invitation" remains the only re-issue path (ADR-020 w15 §3.4).
  */
 export default function InvitePane({
   email,
@@ -88,8 +89,6 @@ export default function InvitePane({
     if (!clipboard) return;
     void clipboard.writeText(link).then(() => setLinkCopied(true));
   };
-
-  const blocked = error !== null || failure !== null;
 
   return (
     <aside className="members-invite-pane" aria-label="Invite a colleague">
@@ -153,14 +152,7 @@ export default function InvitePane({
           </div>
         )}
 
-        {!blocked && outcome !== null && outcome.outcome === "sent" && (
-          <div className="members-invite-outcome-block" role="status">
-            <p className="members-invite-outcome">{inviteOutcomeSentence(outcome)}</p>
-            {outcome.identityProvisioned && <p className="micro-meta">{IDENTITY_ONE_TIME_CODE_LINE}</p>}
-          </div>
-        )}
-
-        {!blocked && outcome !== null && outcome.outcome !== "sent" && (
+        {failure === null && outcome !== null && (
           <div className="members-invite-link" role="status">
             <p className="members-invite-outcome">{inviteOutcomeSentence(outcome)}</p>
             <div className="members-invite-link-row">

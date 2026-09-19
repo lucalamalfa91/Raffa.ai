@@ -20,7 +20,9 @@ import {
   memberRoleLabel,
   removeConsequence,
   requestAccessMailto,
+  reissueConsequence,
   revokeConsequence,
+  toInviteWorkspaceRole,
   validateInviteEmail,
   workspaceDomainFromEmail,
 } from "../../../../src/routes/workspace/members/memberViewModel";
@@ -164,6 +166,13 @@ describe("revoke/remove consequence copy (ADR-020 w14 design footer, screen 10)"
     });
   });
 
+  it("re-issue tells the Admin the already-shared link dies before the click", () => {
+    expect(reissueConsequence("buyer@acme.example")).toEqual({
+      question: "Send a new invitation to buyer@acme.example?",
+      detail: "The link you already shared stops working.",
+    });
+  });
+
   it("remove (someone else) says they lose access -- a different fact from revoke", () => {
     expect(removeConsequence("buyer@acme.example", false)).toEqual({
       question: "Remove buyer@acme.example?",
@@ -202,8 +211,8 @@ describe("expiry formatting", () => {
 });
 
 // Task E17/F02/US01/T01 (ADR-026 w15 footer §8, ADR-020 w15 §3.3-§3.6): the pane branches on the
-// server's own `deliveryOutcome` string -- three arms, the link on exactly two of them -- and never
-// on `mailDelivered` or a status code.
+// server's own `deliveryOutcome` string -- three arms -- and never on `mailDelivered` or a status
+// code. Demo has no ACS transport, and ACS `sent` is only "accepted", so every arm carries the link.
 describe("inviteOutcomeFrom / inviteOutcomeSentence", () => {
   const member = {
     email: "buyer@acme.example",
@@ -212,8 +221,14 @@ describe("inviteOutcomeFrom / inviteOutcomeSentence", () => {
     identityProvisioned: true,
   };
 
-  it("keys the three arms on deliveryOutcome, carrying the link only for mail_failed and no_transport", () => {
-    expect(inviteOutcomeFrom({ ...member, deliveryOutcome: "sent" })).toEqual({ outcome: "sent", email: member.email, identityProvisioned: true });
+  it("keys the three arms on deliveryOutcome and always carries the accept link", () => {
+    expect(inviteOutcomeFrom({ ...member, deliveryOutcome: "sent" })).toEqual({
+      outcome: "sent",
+      email: member.email,
+      acceptUrl: member.acceptUrl,
+      expiresAt: member.expiresAt,
+      identityProvisioned: true,
+    });
     expect(inviteOutcomeFrom({ ...member, deliveryOutcome: "mail_failed" })).toEqual({
       outcome: "mail_failed",
       email: member.email,
@@ -228,6 +243,17 @@ describe("inviteOutcomeFrom / inviteOutcomeSentence", () => {
       expiresAt: member.expiresAt,
       identityProvisioned: true,
     });
+  });
+
+  it("treats a missing or unknown deliveryOutcome as no_transport so the pane never claims a mail", () => {
+    expect(inviteOutcomeFrom({ ...member, deliveryOutcome: undefined })).toEqual({
+      outcome: "no_transport",
+      email: member.email,
+      acceptUrl: member.acceptUrl,
+      expiresAt: member.expiresAt,
+      identityProvisioned: true,
+    });
+    expect(inviteOutcomeFrom({ ...member, deliveryOutcome: "proxy_mangled" })).toMatchObject({ outcome: "no_transport" });
   });
 
   it("renders each outcome's own sentence verbatim, and the word 'sent' appears in the first only", () => {
@@ -258,6 +284,14 @@ describe("inviteFailureCopy (ADR-020 w15 §3.5: the closed reason set plus the c
   it("keeps the two shared sentences verbatim", () => {
     expect(NO_INVITATION_CREATED_META).toBe("No invitation was created.");
     expect(IDENTITY_ONE_TIME_CODE_LINE).toBe("They will get a one-time code from Microsoft the first time they sign in.");
+  });
+});
+
+describe("toInviteWorkspaceRole", () => {
+  it("passes through a catalog role and degrades an unknown value to Procurement", () => {
+    expect(toInviteWorkspaceRole("Admin")).toBe("Admin");
+    expect(toInviteWorkspaceRole("Legal")).toBe("Legal");
+    expect(toInviteWorkspaceRole("not-a-role")).toBe("Procurement");
   });
 });
 

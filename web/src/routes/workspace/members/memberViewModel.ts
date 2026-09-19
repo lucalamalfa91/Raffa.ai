@@ -18,6 +18,16 @@ import type { SemanticTag } from "../../../styles/semantics";
 
 export type Day1InviteRole = "Admin" | "Procurement";
 
+const INVITE_WORKSPACE_ROLES = ["Admin", "Procurement", "Legal", "Finance", "ReadOnly"] as const;
+export type ReissueRole = (typeof INVITE_WORKSPACE_ROLES)[number];
+
+/** Roster `role` is a bare wire string (ADR-026). Re-issue posts the same catalog value the
+ * invite API already accepts; anything outside the catalog degrades to Procurement rather than
+ * sending an unknown role that the server would 400. */
+export function toInviteWorkspaceRole(role: string): ReissueRole {
+  return (INVITE_WORKSPACE_ROLES as readonly string[]).includes(role) ? (role as ReissueRole) : "Procurement";
+}
+
 /** Radio order quoted from the prototype: Procurement first (the default), Workspace Admin second. */
 export const INVITE_ROLE_ORDER: readonly Day1InviteRole[] = ["Procurement", "Admin"];
 
@@ -147,6 +157,16 @@ export function revokeConsequence(email: string): ActionConsequence {
   };
 }
 
+/** ADR-020 second w14 footer / INDEX: re-issue is revoke-then-invite; the Invited row must say
+ * the already-shared link dies before the click. The server stores only a SHA-256 of the token,
+ * so this is the only way to recover a lost accept URL. */
+export function reissueConsequence(email: string): ActionConsequence {
+  return {
+    question: `Send a new invitation to ${email}?`,
+    detail: "The link you already shared stops working.",
+  };
+}
+
 /** Same table, `remove` rows (D-58.5/D-58.7). The self variant drops the templated workspace name
  * for the same reason `formatWorkspaceLine` above degrades gracefully -- this route is never handed
  * one -- and reads naturally with "this workspace" instead, since the Admin confirming is already
@@ -167,14 +187,16 @@ export function removeConsequence(email: string, isSelf: boolean): ActionConsequ
  * The invite result is the server's fact, never a client inference from a 201 (N3b-1). Task
  * E17/F02/US01/T01 (wave w15, NW-69; ADR-026 w15 footer §8, ADR-020 w15 §3.3): the discriminant is
  * the server's own `deliveryOutcome` string -- three arms, one per outcome, and never a fourth: a
- * guest-provisioning failure is a 502 with no invitation at all (`InviteFailure` below), which is
- * what makes "a link renders only when it is usable" true by construction. `mailDelivered` is no
- * longer the discriminant and is never combined with the outcome (ADR-012 w15 §7). The link rides
- * on exactly `mail_failed` and `no_transport`; `identityProvisioned` is the one server boolean the
- * pane renders (the one-time-code sentence), on every arm.
+ * guest-provisioning failure is a 502 with no invitation at all (`InviteFailure` below).
+ * `mailDelivered` is no longer the discriminant and is never combined with the outcome
+ * (ADR-012 w15 §7). Demo publishes `Invitations__Mail__Enabled=false`, so ACS never runs and
+ * `sent` means only "ACS accepted the message", not "it reached the inbox" -- the pane therefore
+ * always carries `acceptUrl` so the Admin can copy the link instead of a silent 201. A missing or
+ * unknown discriminant falls through to `no_transport` (show the link, never claim a mail).
+ * `identityProvisioned` is the one server boolean the pane renders (the one-time-code sentence).
  */
 export type InviteOutcome =
-  | { outcome: "sent"; email: string; identityProvisioned: boolean }
+  | { outcome: "sent"; email: string; acceptUrl: string; expiresAt: string; identityProvisioned: boolean }
   | { outcome: "mail_failed"; email: string; acceptUrl: string; expiresAt: string; identityProvisioned: boolean }
   | { outcome: "no_transport"; email: string; acceptUrl: string; expiresAt: string; identityProvisioned: boolean };
 
@@ -184,16 +206,18 @@ export function inviteOutcomeFrom(member: {
   email: string;
   acceptUrl: string;
   expiresAt: string;
-  deliveryOutcome: "sent" | "mail_failed" | "no_transport";
+  deliveryOutcome?: string | null;
   identityProvisioned: boolean;
 }): InviteOutcome {
   const { email, acceptUrl, expiresAt, identityProvisioned } = member;
   switch (member.deliveryOutcome) {
     case "sent":
-      return { outcome: "sent", email, identityProvisioned };
+      return { outcome: "sent", email, acceptUrl, expiresAt, identityProvisioned };
     case "mail_failed":
       return { outcome: "mail_failed", email, acceptUrl, expiresAt, identityProvisioned };
     case "no_transport":
+      return { outcome: "no_transport", email, acceptUrl, expiresAt, identityProvisioned };
+    default:
       return { outcome: "no_transport", email, acceptUrl, expiresAt, identityProvisioned };
   }
 }
