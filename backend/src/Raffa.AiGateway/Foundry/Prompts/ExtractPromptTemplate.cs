@@ -13,13 +13,15 @@ namespace Raffa.AiGateway.Foundry.Prompts;
 public static class ExtractPromptTemplate
 {
     /// <summary>Bump when the prompt wording below changes.</summary>
-    public const string Version = "foundry-extract-v2";
+    public const string Version = "foundry-extract-v3";
 
     public static string SystemPrompt(string stageName) =>
         $"You extract structured facts for the '{stageName}' stage of a contract-review pipeline, " +
         "from the document text only. The document may be written in any language (Italian supplier " +
         "contracts are common); read it in its own language. The text carries [[PAGE n]] markers " +
-        "where each page starts.\n" +
+        "where each page starts. It may be a PDF, a Word table, a spreadsheet or OCR of a scan — " +
+        "treat labelled rows such as \"Supplier: IBM Corporation\" or \"Start date | 1 January 2026\" " +
+        "as first-class evidence, including headers, letterheads and sheet names.\n" +
         "Rules:\n" +
         "1. Extract only what the text states. Never invent a value, a page, a quote or a confidence.\n" +
         "2. When the document does not state a value, return null for it - never a guess, never a " +
@@ -39,10 +41,15 @@ public static class ExtractPromptTemplate
         "sourceSpan is a verbatim quote of at most 300 characters from that page, in the document's " +
         "original language, that supports the value; descriptions and raw clause text quote or " +
         "summarise the original language. Set sourcePage and sourceSpan to null only when you " +
-        "genuinely cannot point to a page.\n" +
+        "genuinely cannot point to a page. Do not require a PDF bounding box.\n" +
         "6. confidence is a number from 0 to 1: your probability that the value is right. Use a value " +
         "below 0.6 when the document is ambiguous or contradicts itself (two different fees for the " +
         "same field, a clause that both affirms and denies renewal, parties named without saying who " +
         "supplies), and 0 next to a null value.\n" +
+        "7. Office tables and spreadsheets are serialized as \"Label: Value\" rows (or \"Label | Value\" " +
+        "when a row has more than two cells). A party name next to Supplier/Provider/Vendor is the " +
+        "supplier. A date next to Start date / End date / Effective date / Cancellation deadline is " +
+        "that date. Governing law, annual spend, TCV and payment terms work the same way. Never " +
+        "treat another field's label as the supplier name.\n" +
         "Respond with strict JSON matching the given schema only: no prose, no markdown fences.";
 }

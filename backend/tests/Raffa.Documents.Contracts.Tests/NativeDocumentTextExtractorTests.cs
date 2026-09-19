@@ -115,8 +115,8 @@ public sealed class NativeDocumentTextExtractorTests
         var page = Assert.Single(result.Pages);
         Assert.DoesNotContain("SupplierIBM", page.Text, StringComparison.Ordinal);
         Assert.Contains("IBM Enterprise Service Order", page.Text, StringComparison.Ordinal);
-        Assert.Contains("Supplier | IBM Corporation", page.Text, StringComparison.Ordinal);
-        Assert.Contains("Start date | 1 January 2026", page.Text, StringComparison.Ordinal);
+        Assert.Contains("Supplier: IBM Corporation", page.Text, StringComparison.Ordinal);
+        Assert.Contains("Start date: 1 January 2026", page.Text, StringComparison.Ordinal);
         Assert.Contains("Governing law", page.Text, StringComparison.Ordinal);
         Assert.Contains("New York", page.Text, StringComparison.Ordinal);
     }
@@ -201,6 +201,23 @@ public sealed class NativeDocumentTextExtractorTests
     // ---- XLSX ------------------------------------------------------------------------------
 
     [Fact]
+    public void Xlsx_label_rows_and_a_second_sheet_stay_recoverable()
+    {
+        var bytes = BuildTwoSheetOrderFormXlsx();
+        var extractor = new NativeDocumentTextExtractor();
+
+        var result = extractor.Extract(XlsxMimeType, bytes);
+
+        Assert.True(result.IsSufficient);
+        Assert.Equal(2, result.Pages.Count);
+        Assert.Contains("Cover", result.Pages[0].Text, StringComparison.Ordinal);
+        Assert.Contains("Commercials", result.Pages[1].Text, StringComparison.Ordinal);
+        Assert.Contains("Supplier: IBM Corporation", result.Pages[1].Text, StringComparison.Ordinal);
+        Assert.Contains("Start date: 1 January 2026", result.Pages[1].Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("SupplierIBM", result.Pages[1].Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Xlsx_reads_shared_string_and_inline_string_cells_from_every_worksheet()
     {
         var bytes = BuildMinimalXlsx();
@@ -254,4 +271,42 @@ public sealed class NativeDocumentTextExtractorTests
 
         return stream.ToArray();
     }
+
+    private static byte[] BuildTwoSheetOrderFormXlsx()
+    {
+        using var stream = new MemoryStream();
+
+        using (var document = SpreadsheetDocument.Create(stream, SpreadsheetDocumentType.Workbook))
+        {
+            var workbookPart = document.AddWorkbookPart();
+            workbookPart.Workbook = new Workbook();
+
+            var coverPart = workbookPart.AddNewPart<WorksheetPart>();
+            coverPart.Worksheet = new Worksheet(new SheetData(
+                new Row(Inline("A1", "Cover sheet — commercials are on the next tab"))));
+            coverPart.Worksheet.Save();
+
+            var commercialPart = workbookPart.AddNewPart<WorksheetPart>();
+            commercialPart.Worksheet = new Worksheet(new SheetData(
+                new Row(Inline("A1", "Supplier"), Inline("B1", "IBM Corporation")),
+                new Row(Inline("A2", "Start date"), Inline("B2", "1 January 2026")),
+                new Row(Inline("A3", "End date"), Inline("B3", "31 December 2028"))));
+            commercialPart.Worksheet.Save();
+
+            var sheets = workbookPart.Workbook.AppendChild(new Sheets());
+            sheets.Append(new Sheet { Id = workbookPart.GetIdOfPart(coverPart), SheetId = 1, Name = "Cover" });
+            sheets.Append(new Sheet { Id = workbookPart.GetIdOfPart(commercialPart), SheetId = 2, Name = "Commercials" });
+            workbookPart.Workbook.Save();
+        }
+
+        return stream.ToArray();
+    }
+
+    private static Cell Inline(string cellRef, string text) =>
+        new()
+        {
+            CellReference = cellRef,
+            DataType = CellValues.InlineString,
+            InlineString = new InlineString(new Text(text)),
+        };
 }

@@ -1,9 +1,6 @@
-using System.Globalization;
-using System.Text;
 using Docnet.Core;
 using Docnet.Core.Models;
 using DocumentFormat.OpenXml.Packaging;
-using DocumentFormat.OpenXml.Spreadsheet;
 using Raffa.Documents.Contracts.Application.Admission;
 using Raffa.Documents.Contracts.Application.Preview;
 
@@ -125,54 +122,9 @@ public sealed class NativeDocumentTextExtractor : INativeDocumentTextExtractor
             using var stream = new MemoryStream(content.ToArray());
             using var document = SpreadsheetDocument.Open(stream, isEditable: false);
 
-            var workbookPart = document.WorkbookPart;
-            var sheets = workbookPart?.Workbook?.Sheets?.Elements<Sheet>() ?? [];
-            var sharedStrings = workbookPart?.SharedStringTablePart?.SharedStringTable;
-
-            var pages = new List<DocumentPageText>();
-
-            foreach (var sheet in sheets)
-            {
-                if (workbookPart is null
-                    || sheet.Id?.Value is not { } relationshipId
-                    || workbookPart.GetPartById(relationshipId) is not WorksheetPart worksheetPart
-                    || worksheetPart.Worksheet is not { } worksheet)
-                {
-                    continue;
-                }
-
-                var builder = new StringBuilder();
-
-                foreach (var row in worksheet.Descendants<Row>())
-                {
-                    var cells = new List<string>();
-                    foreach (var cell in row.Elements<Cell>())
-                    {
-                        var cellText = ReadCellText(cell, sharedStrings);
-                        if (!string.IsNullOrEmpty(cellText))
-                        {
-                            cells.Add(cellText);
-                        }
-                    }
-
-                    if (cells.Count == 0)
-                    {
-                        continue;
-                    }
-
-                    if (builder.Length > 0)
-                    {
-                        builder.Append('\n');
-                    }
-
-                    builder.Append(string.Join(" | ", cells));
-                }
-
-                // One "page" per worksheet — XLSX has no native page concept without a rendering
-                // engine (no fixed print layout is guaranteed), but "sheet" is the closest,
-                // honestly-meaningful unit to cite as evidence (spec §7.3 source page/section).
-                pages.Add(new DocumentPageText(pages.Count + 1, builder.ToString().TrimEnd()));
-            }
+            var pages = XlsxPageTextReader.ReadPages(document)
+                .Select((text, index) => new DocumentPageText(index + 1, text))
+                .ToList();
 
             return new NativeTextExtractionResult(pages, IsSufficient: true);
         }
@@ -180,32 +132,5 @@ public sealed class NativeDocumentTextExtractor : INativeDocumentTextExtractor
         {
             return new NativeTextExtractionResult([], IsSufficient: false);
         }
-    }
-
-    private static string? ReadCellText(Cell cell, SharedStringTable? sharedStrings)
-    {
-        // Inline strings (<is><t>...</t></is>) carry their text directly on the cell, not via the
-        // <v>/CellValue element the other two branches below read — a writer that has no
-        // SharedStringTablePart at all (a real, common case, not just a test convenience) still
-        // needs its cell text read correctly.
-        if (cell.DataType?.Value == CellValues.InlineString)
-        {
-            return cell.InlineString?.Text?.Text;
-        }
-
-        var rawValue = cell.CellValue?.InnerText;
-        if (string.IsNullOrEmpty(rawValue))
-        {
-            return null;
-        }
-
-        if (cell.DataType?.Value == CellValues.SharedString
-            && sharedStrings is not null
-            && int.TryParse(rawValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var sharedIndex))
-        {
-            return sharedStrings.Elements<SharedStringItem>().ElementAtOrDefault(sharedIndex)?.InnerText;
-        }
-
-        return rawValue;
     }
 }

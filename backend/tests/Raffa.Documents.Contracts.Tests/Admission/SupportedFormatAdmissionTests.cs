@@ -62,7 +62,7 @@ public sealed class SupportedFormatAdmissionTests
         Assert.True(decision.ReadableChars >= 200);
         Assert.Equal(0, harness.Gateway.OcrCalls);
         var text = string.Join('\n', decision.Pages.Select(p => p.Text));
-        Assert.Contains("Supplier | IBM Corporation", text, StringComparison.Ordinal);
+        Assert.Contains("Supplier: IBM Corporation", text, StringComparison.Ordinal);
         Assert.DoesNotContain("SupplierIBM", text, StringComparison.Ordinal);
 
         var preview = new OfficePageDocumentPreviewRenderer()
@@ -84,8 +84,8 @@ public sealed class SupportedFormatAdmissionTests
         Assert.True(decision.ReadableChars >= 200);
         Assert.Equal(0, harness.Gateway.OcrCalls);
         var text = Assert.Single(decision.Pages).Text;
-        Assert.Contains("Supplier | IBM Corporation", text, StringComparison.Ordinal);
-        Assert.Contains("Annual spend | 188000", text, StringComparison.Ordinal);
+        Assert.Contains("Supplier: IBM Corporation", text, StringComparison.Ordinal);
+        Assert.Contains("Annual spend: 188000", text, StringComparison.Ordinal);
 
         var preview = new OfficePageDocumentPreviewRenderer()
             .Render("prices.xlsx", DocumentFormatSniffer.XlsxMimeType, bytes);
