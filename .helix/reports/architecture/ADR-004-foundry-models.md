@@ -145,11 +145,11 @@ structured-output calls over a bounded document, not agentic work.
 
 | Role | demo deployment (model, version, SKU) |
 | --- | --- |
-| classify | `gpt-5.6-luna-demo` (gpt-5.6-luna 2026-07-09, DataZoneStandard, 200K TPM) |
-| extract, answer | `gpt-5.6-terra-demo` (gpt-5.6-terra 2026-07-09, DataZoneStandard, 200K TPM) |
+| classify | `gpt-5.6-luna-demo` (gpt-5.6-luna 2026-07-09, GlobalStandard, 200K TPM) |
+| extract, answer | `gpt-5.6-terra-demo` (gpt-5.6-terra 2026-07-09, GlobalStandard, 200K TPM) |
 
-Rules unchanged: `NoAutoUpgrade`, pinned version, DataZoneStandard, every
-request knob configuration-driven (`ai_gateway_extra_env` for a per-role
+Rules unchanged: `NoAutoUpgrade`, pinned version, every request knob
+configuration-driven (`ai_gateway_extra_env` for a per-role
 `ReasoningEffort` once the live probe settles it). The swap is one apply on
 `raffa-demo`: the same run destroys `gpt-5.4-demo` / `gpt-5.4-nano-demo` and
 publishes the new deployment names to both Container Apps, so a request in
@@ -157,3 +157,18 @@ flight during the apply may fail once. Context that prompted it: until
 2026-09-21 `demo` had never actually called a Foundry model at all
 (`ai_gateway_wired` was still `false`, ADR-008's two-phase gate), so this is
 the first frontier configuration `demo` will really run.
+
+SKU correction (2026-09-21, same day): the first apply of this amendment was
+rejected by ARM with `InvalidResourceProperties: The specified SKU
+'DataZoneStandard' for model 'gpt-5.6-terra 2026-07-09' is not supported in
+this region 'northeurope'` (identically for `gpt-5.6-luna`). The catalogue
+lists the family for Data Zone deployment types, but the EU Data Zone does
+not yet serve it from this account's region, so both GPT-5.6 deployments
+use `GlobalStandard`, the fallback the original decision already allows
+("DataZoneStandard wherever the model offers it, else GlobalStandard").
+Consequence to keep in view: GlobalStandard may route a request to capacity
+outside the EU, which the EU-residency posture of the DataZone rule was
+guarding; `demo` is not a production root, and `dev` keeps its
+DataZoneStandard gpt-5.4-nano. Revisit (flip the two `sku_name` values in
+`infra/environments/demo/main.tf`, one apply) once Azure lists
+DataZoneStandard for GPT-5.6 in `northeurope`.

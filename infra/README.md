@@ -186,8 +186,8 @@ Since 2026-09-09 (ADR-004/ADR-008/ADR-017 amendments) `modules/foundry`
 
 | Role | dev deployment | demo deployment |
 |---|---|---|
-| classify | `gpt-5.4-nano-dev` (gpt-5.4-nano 2026-03-17, DataZoneStandard, 300K TPM) | `gpt-5.6-luna-demo` (gpt-5.6-luna 2026-07-09, DataZoneStandard, 200K TPM) |
-| extract, answer | `gpt-5.4-nano-dev` | `gpt-5.6-terra-demo` (gpt-5.6-terra 2026-07-09, DataZoneStandard, 200K TPM) |
+| classify | `gpt-5.4-nano-dev` (gpt-5.4-nano 2026-03-17, DataZoneStandard, 300K TPM) | `gpt-5.6-luna-demo` (gpt-5.6-luna 2026-07-09, GlobalStandard, 200K TPM) |
+| extract, answer | `gpt-5.4-nano-dev` | `gpt-5.6-terra-demo` (gpt-5.6-terra 2026-07-09, GlobalStandard, 200K TPM) |
 | embed | `text-embedding-3-small-dev` (v1, GlobalStandard, 100K TPM) | `text-embedding-3-large-demo` (v1, GlobalStandard, 100K TPM; the backend forces `dimensions = 1536`) |
 | ocr | Document Intelligence `prebuilt-read` 2024-11-30 (built in, no deployment) | same |
 
