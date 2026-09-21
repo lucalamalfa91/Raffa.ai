@@ -1,7 +1,7 @@
 {
   "name": "raffa-web",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "description": "Raffa web client - React + TypeScript + Vite SPA, OIDC Authorization Code + PKCE (ADR-012, ADR-010).",
   "engines": {
