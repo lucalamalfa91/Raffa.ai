@@ -137,7 +137,7 @@ already proven live, not just described here):
 | Shared AI resource group | `rg-raffa-ai` (tags `env=shared`; owned by the `dev` root, ADR-008) |
 | AI services account | `aisvc-raffa` (kind `AIServices`, S0, custom subdomain `aisvc-raffa`, keys disabled) |
 | Foundry project | `raffa-<env>` (account-native sub-resource, no hub) |
-| Model deployments | `<model>-<env>` (e.g. `gpt-5.4-nano-dev`, `text-embedding-3-small-dev`, `gpt-5.4-demo`) |
+| Model deployments | `<model>-<env>` (e.g. `gpt-5.4-nano-dev`, `text-embedding-3-small-dev`, `gpt-5.6-terra-demo`) |
 | Service Bus subscription | `document-processing` on the `extraction-events` topic (one per env; `max_delivery_count = 8`, `lock_duration = PT5M`, `default_message_ttl = P1D`, sessions **not** enabled) |
 | Communication Service | `acs-raffa-<env>` (`data_location = "Europe"`, global resource type — no `location`) |
 | Email Communication Service | `acsemail-raffa-<env>` (`data_location = "Europe"`) + an Azure Managed Domain (`…azurecomm.net`, sender `DoNotReply@…`) |
@@ -186,8 +186,8 @@ Since 2026-09-09 (ADR-004/ADR-008/ADR-017 amendments) `modules/foundry`
 
 | Role | dev deployment | demo deployment |
 |---|---|---|
-| classify | `gpt-5.4-nano-dev` (gpt-5.4-nano 2026-03-17, DataZoneStandard, 300K TPM) | `gpt-5.4-nano-demo` (200K TPM) |
-| extract, answer | `gpt-5.4-nano-dev` | `gpt-5.4-demo` (gpt-5.4 2026-03-05, DataZoneStandard, 200K TPM) |
+| classify | `gpt-5.4-nano-dev` (gpt-5.4-nano 2026-03-17, DataZoneStandard, 300K TPM) | `gpt-5.6-luna-demo` (gpt-5.6-luna 2026-07-09, DataZoneStandard, 200K TPM) |
+| extract, answer | `gpt-5.4-nano-dev` | `gpt-5.6-terra-demo` (gpt-5.6-terra 2026-07-09, DataZoneStandard, 200K TPM) |
 | embed | `text-embedding-3-small-dev` (v1, GlobalStandard, 100K TPM) | `text-embedding-3-large-demo` (v1, GlobalStandard, 100K TPM; the backend forces `dimensions = 1536`) |
 | ocr | Document Intelligence `prebuilt-read` 2024-11-30 (built in, no deployment) | same |
 

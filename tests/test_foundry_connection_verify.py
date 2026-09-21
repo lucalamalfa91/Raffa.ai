@@ -1155,7 +1155,8 @@ class CheckEnvRootsModelRolesCompleteTests(unittest.TestCase):
         self.assertEqual(set(bindings), set(fcv.ENVS))
         self.assertEqual(set(bindings["dev"]["roles"]), set(fcv.MODEL_ROLES))
         self.assertEqual(bindings["dev"]["roles"]["embed"], "text-embedding-3-small")
-        self.assertEqual(bindings["demo"]["roles"]["extract"], "gpt-5.4")
+        self.assertEqual(bindings["demo"]["roles"]["extract"], "gpt-5.6-terra")
+        self.assertEqual(bindings["demo"]["roles"]["classify"], "gpt-5.6-luna")
 
     def test_currently_passes_against_the_real_repo(self) -> None:
         passed, detail = fcv.check_env_roots_model_roles_complete()

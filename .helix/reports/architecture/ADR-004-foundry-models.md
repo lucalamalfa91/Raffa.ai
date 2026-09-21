@@ -130,3 +130,30 @@ it): the gateway keeps every knob configuration-driven and omits it when
 unset, and the "temperature <= 0.2" rule above applies whenever temperature
 is sent. Model swap remains config-only: a different deployment is a
 Terraform change in the environment root, not code.
+
+## Amendment (2026-09-21, demo moves to the GPT-5.6 family)
+
+`demo`'s chat deployments in the table above are replaced; `dev`, `embed`
+and `ocr` are unchanged. Azure publishes GPT-5.6 Sol / Terra / Luna with
+model version `2026-07-09` in Global and Data Zone deployment types, EU Data
+Zone included, with structured output supported; Terra is positioned as
+"competitive with GPT-5.5 at a lower cost" and Luna as the fastest and
+cheapest tier. `demo` stays "deliberately frontier" at the same cost
+posture: Terra where gpt-5.4 was, Luna where gpt-5.4-nano was, Sol (the
+extended-reasoning tier) deliberately not used -- extraction and answers are
+structured-output calls over a bounded document, not agentic work.
+
+| Role | demo deployment (model, version, SKU) |
+| --- | --- |
+| classify | `gpt-5.6-luna-demo` (gpt-5.6-luna 2026-07-09, DataZoneStandard, 200K TPM) |
+| extract, answer | `gpt-5.6-terra-demo` (gpt-5.6-terra 2026-07-09, DataZoneStandard, 200K TPM) |
+
+Rules unchanged: `NoAutoUpgrade`, pinned version, DataZoneStandard, every
+request knob configuration-driven (`ai_gateway_extra_env` for a per-role
+`ReasoningEffort` once the live probe settles it). The swap is one apply on
+`raffa-demo`: the same run destroys `gpt-5.4-demo` / `gpt-5.4-nano-demo` and
+publishes the new deployment names to both Container Apps, so a request in
+flight during the apply may fail once. Context that prompted it: until
+2026-09-21 `demo` had never actually called a Foundry model at all
+(`ai_gateway_wired` was still `false`, ADR-008's two-phase gate), so this is
+the first frontier configuration `demo` will really run.
