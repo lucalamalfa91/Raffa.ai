@@ -20,7 +20,7 @@ public sealed class PackBudget
     /// output) against the cheap instruction models ADR-004 selects, cheap enough that a runaway
     /// pack still fails fast rather than silently ballooning the `answer` role's cost (R-AI-04).
     /// </summary>
-    public const int DefaultMaxTokens = 4000;
+    public const int DefaultMaxTokens = 6000;
 
     /// <summary>Rough, deliberately conservative characters-per-token ratio for a token estimate
     /// with no tokenizer dependency in this module (<c>Raffa.Chat</c>'s allow-list is exactly

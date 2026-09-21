@@ -129,10 +129,12 @@ public static class ServiceCollectionExtensions
 
             services.AddScoped<MarketIngestionService>();
             services.AddScoped<MarketRecordQueryService>();
+            services.Replace(ServiceDescriptor.Scoped<IMarketDealLookup>(sp => sp.GetRequiredService<MarketRecordQueryService>()));
         }
         else
         {
             services.TryAddSingleton<IMarketKnowledgeRetrieval, InMemoryMarketKnowledgeRetrieval>();
+            services.TryAddSingleton<IMarketDealLookup, ProviderMarketDealLookup>();
 
             // Registered into the same enumerable Raffa.Benchmark.BenchmarkAdapterRegistry's own
             // constructor consumes (TryAddEnumerable — see that type's own doc comment for why not

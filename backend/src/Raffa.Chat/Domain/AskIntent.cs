@@ -38,9 +38,16 @@ public enum AskIntent
     /// workspace portfolio, even when the chat was opened from one contract's 360 (lock 4).</summary>
     PortfolioMarketPosition,
 
-    /// <summary>"Where is the largest saving?" for one contract — that contract's savings
-    /// opportunities/targets.</summary>
+    /// <summary>"Where is the largest saving?" / "quali leve per risparmiare 20k sul rinnovo" for
+    /// one contract — that contract's savings levers: grounded lever calculations, negotiation
+    /// points, market deals, clause evidence and the negotiation council's plays.</summary>
     Savings,
+
+    /// <summary>"Come posso salvare 40K sul prossimo quarterly basandomi sui contratti attivi?" —
+    /// a quantified saving goal (amount and/or window, see
+    /// <see cref="Application.Planning.SavingsGoal"/>) with no supplier in scope: the
+    /// portfolio-wide candidate list that adds up to the target inside the window.</summary>
+    PortfolioSavingsTarget,
 
     /// <summary>"Which documents are not askable yet?" — document/field status, not a contract
     /// fact.</summary>

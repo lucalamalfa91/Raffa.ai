@@ -124,10 +124,28 @@ public sealed class DomainGate
     /// uploaded and validated", never even considering Salesforce. Found by the golden set
     /// (task E13/F06/US01/T02, GAP-ASK-PRONOUN-AS-SUPPLIER).
     /// </summary>
+    // A money or savings signal that turns a how-to phrasing into a real savings question.
+    private static readonly Regex SavingsSignalPattern = new(
+        @"\b(risparm\w*|saving\w*|sav(e|es|ed)|salv\w*|tagli\w*|ridurr\w*|riduzione|cost\w*|budget|spend\w*|spesa|" +
+        @"rinnov\w*|renew\w*|negozia\w*|negotiat\w*|contratt\w*|contract\w*|lev[ae]|lever\w*)\b|\d",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     private static readonly HashSet<string> NeverSupplierNames = new(StringComparer.OrdinalIgnoreCase)
     {
         "I", "I'm", "I've", "I'd", "I'll", "A", "An", "The", "OK", "Ok",
+        "Raffa", "Ask", "EUR", "USD", "CHF", "GBP", "Q1", "Q2", "Q3", "Q4", "FY", "H1", "H2",
     };
+
+    // Money shorthand and currency codes are never supplier names: "40K", "20 k", "1.5M", "€ 20k",
+    // "EUR 20000" — the capitalized "K"/"M" after a number used to be extracted as a supplier
+    // candidate ("No K contract has been uploaded"). Blanked before name extraction runs.
+    private static readonly Regex MoneyShorthandPattern = new(
+        @"(?:€|\$|£|\b(?:EUR|USD|CHF|GBP)\b)?\s?\b\d+(?:[.,]\d+)*\s?[kKmM]\b(?:€|\$|£)?|\b(?:EUR|USD|CHF|GBP)\b\s?\d[\d.,]*",
+        RegexOptions.Compiled);
+
+    // A one-letter or letter+digit token ("K", "M", "Q2") is never a proper noun worth a
+    // needs-document redirect.
+    private static readonly Regex NeverACandidatePattern = new(@"^[A-Z]\d?$", RegexOptions.Compiled);
 
     /// <summary>
     /// Classifies <paramref name="question"/>. Pure and synchronous: no I/O, no LLM call, always
@@ -167,7 +185,10 @@ public sealed class DomainGate
             return new DomainGateResult(GateLabel.Legal, "matched the legal-advice lexicon.");
         }
 
-        if (CapabilityPattern.IsMatch(trimmed))
+        // "How do I cut costs by 40k this quarter?" / "come faccio a risparmiare 20k?" is a savings
+        // question that happens to open like a how-to: a money or savings signal in the same
+        // sentence keeps it in domain, so it reaches the planner instead of the feature tour.
+        if (CapabilityPattern.IsMatch(trimmed) && !SavingsSignalPattern.IsMatch(trimmed))
         {
             return new DomainGateResult(GateLabel.Capability, "matched the capability/how-to lexicon.");
         }
@@ -238,10 +259,13 @@ public sealed class DomainGate
     {
         string? first = null;
 
-        foreach (Match match in CapitalizedNamePattern.Matches(question))
+        // Same length, so a match at position 0 is still "at position 0" for CapitalizedNamePattern.
+        var scrubbed = MoneyShorthandPattern.Replace(question, m => new string(' ', m.Length));
+
+        foreach (Match match in CapitalizedNamePattern.Matches(scrubbed))
         {
             var value = match.Value.Trim();
-            if (value.Length == 0 || NeverSupplierNames.Contains(value))
+            if (value.Length == 0 || NeverSupplierNames.Contains(value) || NeverACandidatePattern.IsMatch(value))
             {
                 continue;
             }

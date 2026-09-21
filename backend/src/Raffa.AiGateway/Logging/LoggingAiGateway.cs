@@ -159,6 +159,20 @@ public sealed class LoggingAiGateway : IAiGateway
     }
 
     /// <inheritdoc/>
+    public async Task<Result<AiAnalysisResult>> AnalyzeAsync(
+        AiAnalysisRequest request, CancellationToken cancellationToken = default)
+    {
+        var result = await _inner.AnalyzeAsync(request, cancellationToken).ConfigureAwait(false);
+
+        if (result.IsSuccess)
+        {
+            await LogBestEffortAsync("analyzed", result.Value.Metadata, cancellationToken, $"agent={request.AgentName}")
+                .ConfigureAwait(false);
+        }
+
+        return result;
+    }
+
     public async Task<Result<AiOcrResult>> OcrAsync(
         AiOcrRequest request, CancellationToken cancellationToken = default)
     {

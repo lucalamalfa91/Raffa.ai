@@ -87,6 +87,14 @@ public sealed class SavingsOpportunity : TenantScopedEntity
     /// (ADR-010 not wired in yet); see <c>RenewalAction.Owner</c>'s own doc comment.</summary>
     public string? Owner { get; set; }
 
+    /// <summary>
+    /// Stable identity of a generated opportunity within one contract (the savings lever's own
+    /// key, e.g. <c>market-discount</c>, <c>above-band-line-0</c>), so Ask Raffa's lever
+    /// calculations can be upserted turn after turn instead of piling up duplicates. Null for an
+    /// opportunity a person recorded by hand; unique per (tenant, contract, key) when set.
+    /// </summary>
+    public string? OpportunityKey { get; set; }
+
     /// <summary>When this opportunity was identified (caller-supplied via <c>IClock</c>, not a
     /// database default) — orders `GET /api/savings`'s list, newest first.</summary>
     public required DateTimeOffset CreatedAt { get; set; }

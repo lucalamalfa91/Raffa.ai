@@ -7,6 +7,7 @@ using Raffa.Documents.Contracts.Domain;
 using Raffa.Documents.Contracts.Infrastructure;
 using Raffa.Identity.Workspace.Infrastructure;
 using Raffa.Renewals.Infrastructure;
+using Raffa.Savings.Infrastructure;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Storage;
 using Microsoft.AspNetCore.Authentication;
@@ -93,6 +94,7 @@ internal static class InMemoryAskEngineFactory
         var chatDbName = $"chat-{Guid.NewGuid()}";
         var identityDbName = $"identity-workspace-{Guid.NewGuid()}";
         var renewalsDbName = $"renewals-{Guid.NewGuid()}";
+        var savingsDbName = $"savings-{Guid.NewGuid()}";
 
         return factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
         {
@@ -139,6 +141,15 @@ internal static class InMemoryAskEngineFactory
             services.RemoveAll<RenewalsDbContext>();
             services.AddDbContext<RenewalsDbContext>(o => o
                 .UseInMemoryDatabase(renewalsDbName)
+                .UseInternalServiceProvider(InMemoryProviderServices));
+
+            // Savings: the savings-consultant packs read recorded opportunities and persist the
+            // lever-generated ones (AskCopilotService.Savings.cs), so the Ask pipeline now opens
+            // this context too.
+            services.RemoveAll<DbContextOptions<SavingsDbContext>>();
+            services.RemoveAll<SavingsDbContext>();
+            services.AddDbContext<SavingsDbContext>(o => o
+                .UseInMemoryDatabase(savingsDbName)
                 .UseInternalServiceProvider(InMemoryProviderServices));
 
             // Fix 2026-09-14: the X-User-Id -> `oid` bridge and the implicit tenant Admin both moved to

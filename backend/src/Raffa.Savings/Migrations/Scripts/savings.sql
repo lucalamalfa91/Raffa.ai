@@ -136,3 +136,28 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260921212938_AddOpportunityKey') THEN
+    ALTER TABLE savings_opportunity ADD opportunity_key character varying(120);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260921212938_AddOpportunityKey') THEN
+    CREATE UNIQUE INDEX ix_savings_opportunity_tenant_id_contract_id_opportunity_key ON savings_opportunity (tenant_id, contract_id, opportunity_key) WHERE opportunity_key IS NOT NULL;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260921212938_AddOpportunityKey') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20260921212938_AddOpportunityKey', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+

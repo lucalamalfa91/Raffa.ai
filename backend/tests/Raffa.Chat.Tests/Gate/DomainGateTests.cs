@@ -277,4 +277,38 @@ public sealed class DomainGateTests
         Assert.Equal(GateLabel.InDomain, result.Label);
         Assert.Equal("Salesforce", result.NamedSupplier);
     }
+
+    // ----- Money shorthand is never a supplier name -----
+
+    [Theory]
+    [InlineData("come posso salvare 40K sul prossimo quarterly basandoti sui contratti attivi?")]
+    [InlineData("quali leve posso usare per risparmiare 20 K sul rinnovo")]
+    [InlineData("posso tagliare 1.5M di spesa quest'anno?")]
+    [InlineData("we need EUR 20000 of savings by Q2")]
+    [InlineData("risparmiare € 20k entro il trimestre")]
+    public void Money_shorthand_and_currency_codes_are_in_domain_not_needs_document(string question)
+    {
+        var result = _gate.Classify(question, KnownAllianz);
+
+        Assert.Equal(GateLabel.InDomain, result.Label);
+        Assert.Null(result.NamedSupplier);
+    }
+
+    [Fact]
+    public void Money_shorthand_does_not_hide_a_real_supplier_in_the_same_sentence()
+    {
+        var result = _gate.Classify("posso risparmiare 20k sul rinnovo Allianz?", KnownAllianz);
+
+        Assert.Equal(GateLabel.InDomain, result.Label);
+        Assert.Equal("Allianz", result.NamedSupplier);
+    }
+
+    [Fact]
+    public void An_unknown_capitalized_supplier_still_needs_a_document_after_the_scrub()
+    {
+        var result = _gate.Classify("posso risparmiare 20k sul rinnovo Databricks?", KnownAllianz);
+
+        Assert.Equal(GateLabel.NeedsDocument, result.Label);
+        Assert.Equal("Databricks", result.NamedSupplier);
+    }
 }

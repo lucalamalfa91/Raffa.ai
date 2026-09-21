@@ -22,7 +22,7 @@ internal static class GoldenSet
     /// the report lists them in, and the order they are evaluated in.</summary>
     public static IReadOnlyList<GoldenCase> Cases => LazyCases.Value;
 
-    /// <summary>The fixed intent vocabulary a case may name — the nine
+    /// <summary>The fixed intent vocabulary a case may name — the eleven
     /// <c>Raffa.Chat.Domain.AskIntent</c> members (R-ASK-03) plus the five gate labels that never
     /// reach the planner (R-ASK-02). Asserted by <c>GoldenSetTests</c>, so a typo in a JSON file
     /// surfaces as a failing test rather than as a silently uncounted intent in the coverage
@@ -32,6 +32,7 @@ internal static class GoldenSet
         "greeting", "off_domain", "legal", "capability", "needs_document",
         "structured_fact", "clause", "market_compare", "renewal_strategy",
         "portfolio_strategy", "savings", "document_status", "quote_route", "navigate",
+        "portfolio_savings_target",
     };
 
     public static IReadOnlySet<string> KnownKinds { get; } = new HashSet<string>(StringComparer.Ordinal)

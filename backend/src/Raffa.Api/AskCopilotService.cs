@@ -7,6 +7,7 @@ using Raffa.Benchmark.Contracts;
 using Raffa.Chat.Application;
 using Raffa.Chat.Application.Answering;
 using Raffa.Chat.Application.Capabilities;
+using Raffa.Chat.Application.Council;
 using Raffa.Chat.Application.Gate;
 using Raffa.Chat.Application.Pack;
 using Raffa.Chat.Application.Planning;
@@ -175,7 +176,7 @@ namespace Raffa.Api;
 /// abstain.
 /// </para>
 /// </summary>
-internal sealed class AskCopilotService(
+internal sealed partial class AskCopilotService(
     DomainGate domainGate,
     IntentPlanner intentPlanner,
     AnswerComposer answerComposer,
@@ -193,6 +194,8 @@ internal sealed class AskCopilotService(
     IBenchmarkService benchmarkService,
     BenchmarkKeyResolution benchmarkKeyResolution,
     IMarketKnowledgeRetrieval marketKnowledgeRetrieval,
+    IMarketDealLookup marketDealLookup,
+    NegotiationCouncil negotiationCouncil,
     IAuditWriter auditWriter,
     ITenantContext tenantContext,
     IClock clock)
@@ -454,7 +457,15 @@ internal sealed class AskCopilotService(
         string actor,
         CancellationToken cancellationToken)
     {
-        var plan = intentPlanner.Plan(question, namedSupplier);
+        // A bare follow-up ("non mi hai risposto", "e quindi?") is planned on the previous user
+        // question too, so it inherits that turn's intent and saving goal instead of falling
+        // through to the StructuredFact default (see IntentPlanner.Plan's own doc comment).
+        var previousUserQuestion = recentTurns
+            .LastOrDefault(turn => string.Equals(turn.Role, "you", StringComparison.OrdinalIgnoreCase) ||
+                                   string.Equals(turn.Role, "user", StringComparison.OrdinalIgnoreCase))
+            .Markdown;
+
+        var plan = intentPlanner.Plan(question, namedSupplier, previousUserQuestion);
 
         // AC-3, lock 4 (task E27/F02/US01/T01, NW-76): a scope id present on this conversation but
         // absent from this turn's own freshly-fetched portfolio refuses outright, before a single
@@ -516,11 +527,12 @@ internal sealed class AskCopilotService(
                 .ConfigureAwait(false),
             AskIntent.MarketCompare => await BuildMarketComparePackAsync(namedContractItem, cancellationToken).ConfigureAwait(false),
             AskIntent.RenewalStrategy => namedContractItem is not null
-                ? await BuildRenewalStrategyWithEvidenceAsync(tenantId, question, namedContractItem, actor, cancellationToken).ConfigureAwait(false)
+                ? await BuildRenewalStrategyWithEvidenceAsync(tenantId, question, namedContractItem, actor, cancellationToken, plan.Goal).ConfigureAwait(false)
                 : await BuildPortfolioStrategyPackAsync(portfolio, supplierNames, cancellationToken).ConfigureAwait(false),
             AskIntent.PortfolioStrategy => await BuildPortfolioStrategyPackAsync(portfolio, supplierNames, cancellationToken).ConfigureAwait(false),
+            AskIntent.PortfolioSavingsTarget => await BuildPortfolioSavingsTargetPackAsync(portfolio, plan.Goal, cancellationToken).ConfigureAwait(false),
             AskIntent.Savings => namedContractItem is not null
-                ? await BuildSavingsPackAsync(tenantId, namedContractItem, cancellationToken).ConfigureAwait(false)
+                ? await BuildSavingsLeverPackAsync(tenantId, namedContractItem, plan.Goal, actor, cancellationToken).ConfigureAwait(false)
                 : await BuildPortfolioStrategyPackAsync(portfolio, supplierNames, cancellationToken).ConfigureAwait(false),
             AskIntent.DocumentStatus => BuildDocumentStatusPack(portfolio),
             _ => [],
@@ -540,6 +552,19 @@ internal sealed class AskCopilotService(
         if (disambiguationItem is not null)
         {
             packItems = packItems.Prepend(disambiguationItem).ToList();
+        }
+
+        // The negotiation council (Raffa.Chat.Application.Council): for a savings or negotiation
+        // turn, two analysts read the pack in parallel and a strategist turns their findings into
+        // ranked plays -- inserted right after the target verdict so the budget keeps them and the
+        // answer leads with them. A failed agent degrades the council, never the turn.
+        if (IsCouncilIntent(plan.Intent, namedContractItem))
+        {
+            var council = await negotiationCouncil.RunAsync(question, packItems, plan.Goal, cancellationToken).ConfigureAwait(false);
+            if (council.Items.Count > 0)
+            {
+                packItems = InsertCouncilItems(packItems, council.Items);
+            }
         }
 
         var boundedPack = packBudget.Apply(packItems);
@@ -1935,11 +1960,16 @@ internal sealed class AskCopilotService(
         string question,
         PortfolioListItem namedContractItem,
         string actor,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        SavingsGoal? goal = null)
     {
-        var strategyItems = await BuildRenewalStrategyPackAsync(
+        var strategyItems = (await BuildRenewalStrategyPackAsync(
                 namedContractItem, cancellationToken, persistTodos: true, actor)
-            .ConfigureAwait(false);
+            .ConfigureAwait(false)).ToList();
+
+        // The money behind the strategy: the target verdict, the grounded levers, the supplier's
+        // market deals and the playbook entries for those levers (AskCopilotService.Savings.cs).
+        strategyItems.AddRange(await BuildLeverAddendumAsync(namedContractItem, goal, cancellationToken).ConfigureAwait(false));
 
         // Tenant clause evidence (AC-2). SearchByContractAsync uses CosineDistance, which
         // InMemory EF cannot translate — the same constraint BuildNoticePackAsync documents
@@ -1956,7 +1986,7 @@ internal sealed class AskCopilotService(
             clauseItems = [];
         }
 
-        return strategyItems.Concat(clauseItems).ToList();
+        return DistinctByCitationKey(strategyItems.Concat(clauseItems));
     }
 
     /// <summary>
@@ -2154,34 +2184,6 @@ internal sealed class AskCopilotService(
         }
 
         return items;
-    }
-
-    private async Task<IReadOnlyList<PackItem>> BuildSavingsPackAsync(
-        TenantId tenantId, PortfolioListItem namedContractItem, CancellationToken cancellationToken)
-    {
-        var supplierName = await ResolveDisplayNameAsync(namedContractItem, cancellationToken).ConfigureAwait(false);
-        var allSavings = await savingsOpportunityService.ListAsync(tenantId, cancellationToken).ConfigureAwait(false);
-        var contractSavings = allSavings.Where(o => o.ContractId?.Value == namedContractItem.ContractId).ToList();
-
-        if (contractSavings.Count == 0)
-        {
-            return [BuildContractFactItem(namedContractItem, supplierName)];
-        }
-
-        return contractSavings.Select((opportunity, index) => new PackItem(
-            $"fact:{namedContractItem.ContractId}:saving[{index}]",
-            PackCorpus.Tenant,
-            $"{supplierName} — {opportunity.Type}",
-            opportunity.ConfidenceLevel.ToString(),
-            null, null,
-            $"Estimated saving {opportunity.EstimatedSavingsLow}–{opportunity.EstimatedSavingsHigh} {opportunity.Currency}.",
-            $"/contracts/{namedContractItem.ContractId}", null, null,
-            "validated contract",
-            [
-                new PackValue("estimatedSavingsLow", opportunity.EstimatedSavingsLow.ToString(CultureInfo.InvariantCulture), PackValueKind.Amount, opportunity.Currency),
-                new PackValue("estimatedSavingsHigh", opportunity.EstimatedSavingsHigh.ToString(CultureInfo.InvariantCulture), PackValueKind.Amount, opportunity.Currency),
-            ],
-            namedContractItem.ContractId.ToString())).ToList();
     }
 
     private static IReadOnlyList<PackItem> BuildDocumentStatusPack(PortfolioPage portfolio)
@@ -2538,6 +2540,21 @@ internal sealed class AskCopilotService(
                 $"kind={reply.Kind} citationCount={reply.Citations.Count} actionCount={reply.Actions.Count} " +
                 $"packHash={packHash} abstainGuardIntervened={guardIntervened}"),
             cancellationToken).ConfigureAwait(false);
+    }
+
+    private static bool IsCouncilIntent(AskIntent intent, PortfolioListItem? namedContractItem) =>
+        intent is AskIntent.Savings or AskIntent.PortfolioSavingsTarget ||
+        (intent == AskIntent.RenewalStrategy && namedContractItem is not null);
+
+    /// <summary>Council plays go right after the calculators' target verdict (or the first item
+    /// when there is none), ahead of the raw evidence they summarize.</summary>
+    private static IReadOnlyList<PackItem> InsertCouncilItems(IReadOnlyList<PackItem> packItems, IReadOnlyList<PackItem> councilItems)
+    {
+        var list = packItems.ToList();
+        var anchor = list.FindIndex(i => i.CitationKey is "calc:savings-target" or "calc:portfolio-target");
+        var insertAt = anchor >= 0 ? anchor + 1 : Math.Min(1, list.Count);
+        list.InsertRange(insertAt, councilItems);
+        return list;
     }
 
     private static string ComputeHash(string input) =>

@@ -206,6 +206,12 @@ var chatConnectionString = builder.Configuration.GetConnectionString("Chat")
         "Missing required configuration 'ConnectionStrings:Chat' " +
         "(set env var ConnectionStrings__Chat in deployed environments).");
 
+// Chat:Council (kill switch + bounds of the negotiation council), registered before
+// AddChatModule's own TryAddSingleton default so a configured value wins.
+var councilOptions = new Raffa.Chat.Application.Council.CouncilOptions();
+builder.Configuration.GetSection(Raffa.Chat.Application.Council.CouncilOptions.SectionName).Bind(councilOptions);
+builder.Services.AddSingleton(councilOptions);
+
 builder.Services.AddChatModule(chatConnectionString);
 
 // Task E13/F06/US01/T01 (ask-engine): Chat:PackTokenBudget, registered *before* AddChatModule's

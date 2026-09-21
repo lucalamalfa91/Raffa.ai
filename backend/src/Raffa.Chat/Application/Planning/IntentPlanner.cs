@@ -59,8 +59,29 @@ public sealed class IntentPlanner
     // PortfolioMarketPositionPattern above — still reaches Savings/PortfolioStrategy instead of
     // being stolen by the market/benchmark lexicon into QuoteRoute.
     private static readonly Regex SavingsPattern = new(
-        @"\b(saving\w*|risparm\w*|largest)\b",
+        @"\b(saving\w*|sav(e|es|ed)|risparm\w*|largest|salv\w*|tagli\w*|ridurr\w*|riduzione|ridotto|costi|budget|" +
+        @"lev[ae]|lever\w*|cut\s+(the\s+)?cost\w*|spend\s+less|abbassare|abbattere|efficient\w*)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // A short follow-up that carries no intent of its own ("non mi hai risposto", "e quindi?",
+    // "spiegami meglio", "how?") — planned on the previous user question plus this one, so the
+    // turn advances the same topic instead of falling through to the StructuredFact default.
+    // Two tiers: an explicit follow-up phrase anywhere in a short turn, or a bare interrogative
+    // ("come?", "why?") when the whole turn is three words or fewer — never a full question that
+    // merely opens with "come"/"how".
+    private static readonly Regex ExplicitFollowUpPattern = new(
+        @"\b(non\s+(mi\s+)?hai\s+risposto|e\s+quindi|e\s+allora|spiegami|approfondisci|dettaglia\w*|pi[uù]\s+dettagli|" +
+        @"di\s+pi[uù]|in\s+concreto|concretamente|nello\s+specifico|ok\s+e|s[iì]\s+ma|ma\s+come|ma\s+quindi|" +
+        @"tell\s+me\s+more|more\s+detail\w*|elaborate|be\s+(more\s+)?specific|you\s+didn'?t\s+answer|" +
+        @"that'?s\s+not\s+an\s+answer|and\s+then|so\s+what|concretely|specifically)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex BareInterrogativePattern = new(
+        @"^(?:e\s+)?(?:come|quindi|perch[eé]|allora|how|why|and)\W*$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private const int FollowUpMaxWords = 12;
+    private const int BareInterrogativeMaxWords = 3;
 
     // "benchmark / compare / competitor / 'in linea' / market / fair price / too much" — prototype
     // verbatim, English + Italian.
@@ -128,11 +149,27 @@ public sealed class IntentPlanner
     /// question is always portfolio-wide regardless of this value (lock 4) — it is echoed, never
     /// used to narrow that intent to one contract.</param>
     /// <exception cref="ArgumentException"><paramref name="question"/> is null/blank.</exception>
-    public IntentPlanResult Plan(string question, string? namedSupplier)
+    public IntentPlanResult Plan(string question, string? namedSupplier) => Plan(question, namedSupplier, previousUserQuestion: null);
+
+    /// <summary>
+    /// Plans <paramref name="question"/>; when it is a bare follow-up (see <c>FollowUpPattern</c>)
+    /// and <paramref name="previousUserQuestion"/> is known, the two are planned together so the
+    /// follow-up inherits the previous turn's intent and goal ("quali leve per risparmiare 20k" →
+    /// "non mi hai risposto" stays a scoped savings turn with the same 20k target).
+    /// </summary>
+    public IntentPlanResult Plan(string question, string? namedSupplier, string? previousUserQuestion)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(question);
 
         var trimmed = question.Trim();
+
+        if (!string.IsNullOrWhiteSpace(previousUserQuestion) && IsBareFollowUp(trimmed))
+        {
+            var inherited = Plan(previousUserQuestion.Trim() + " " + trimmed, namedSupplier, previousUserQuestion: null);
+            return inherited with { Reason = "bare follow-up planned on the previous user question: " + inherited.Reason };
+        }
+
+        var goal = SavingsGoalParser.Parse(trimmed);
 
         if (PortfolioMarketPositionPattern.IsMatch(trimmed) && PortfolioQuestionPattern.IsMatch(trimmed))
         {
@@ -145,21 +182,33 @@ public sealed class IntentPlanner
                 "'mal posizionat*'/'poorly positioned'/'above market'/'too expensive') — always the " +
                 "workspace portfolio, even when a supplier is in scope (lock 4; R-SYS-02 narrowed, " +
                 "lock 6).",
-                namedSupplier);
+                namedSupplier, goal);
         }
 
         if (SavingsPattern.IsMatch(trimmed))
         {
-            return namedSupplier is not null
-                ? new IntentPlanResult(
+            if (namedSupplier is not null)
+            {
+                return new IntentPlanResult(
                     AskIntent.Savings,
                     $"matched the savings lexicon scoped to '{namedSupplier}'.",
-                    namedSupplier)
+                    namedSupplier,
+                    goal);
+            }
+
+            return goal.HasTarget
+                ? new IntentPlanResult(
+                    AskIntent.PortfolioSavingsTarget,
+                    "matched the savings lexicon with a quantified goal (amount/percent/window) and no " +
+                    "supplier in scope — portfolio-wide savings target.",
+                    namedSupplier,
+                    goal)
                 : new IntentPlanResult(
                     AskIntent.PortfolioStrategy,
                     "matched the savings lexicon with no supplier in scope — portfolio-wide " +
                     "'where can we save' (R-PORT-02).",
-                    namedSupplier);
+                    namedSupplier,
+                    goal);
         }
 
         if (BenchmarkPattern.IsMatch(trimmed))
@@ -174,7 +223,7 @@ public sealed class IntentPlanner
                     AskIntent.QuoteRoute,
                     "matched the benchmark/compare lexicon with no supplier in scope — route to " +
                     "Quote check (R-SYS-02).",
-                    namedSupplier);
+                    namedSupplier, goal);
         }
 
         if (RenewalStrategyPattern.IsMatch(trimmed))
@@ -183,7 +232,8 @@ public sealed class IntentPlanner
                 AskIntent.RenewalStrategy,
                 "matched the renewal-strategy lexicon ('approach'/'affrontare'/'negotiate'/" +
                 "'contrattare'/'rinnovo'/'punti'...).",
-                namedSupplier);
+                namedSupplier,
+                goal);
         }
 
         if (PriorityPattern.IsMatch(trimmed))
@@ -198,19 +248,19 @@ public sealed class IntentPlanner
                     AskIntent.PortfolioStrategy,
                     "matched the priority lexicon ('top'/'first'/'critical'...) with no supplier " +
                     "in scope — portfolio-wide criticality ranking (R-PORT-01/02).",
-                    namedSupplier);
+                    namedSupplier, goal);
         }
 
         if (DocumentStatusPattern.IsMatch(trimmed))
         {
             return new IntentPlanResult(
-                AskIntent.DocumentStatus, "matched the document/field-status lexicon.", namedSupplier);
+                AskIntent.DocumentStatus, "matched the document/field-status lexicon.", namedSupplier, goal);
         }
 
         if (NavigatePattern.IsMatch(trimmed))
         {
             return new IntentPlanResult(
-                AskIntent.Navigate, "matched a bare navigation request with nothing to narrate.", namedSupplier);
+                AskIntent.Navigate, "matched a bare navigation request with nothing to narrate.", namedSupplier, goal);
         }
 
         if (NoticePattern.IsMatch(trimmed))
@@ -219,7 +269,7 @@ public sealed class IntentPlanner
                 AskIntent.StructuredFact,
                 "matched the notice lexicon ('notice'/'preavviso'/'disdetta'/'cancellation " +
                 "deadline') — a validated-contract structured fact, not clause RAG (NW-91).",
-                namedSupplier);
+                namedSupplier, goal);
         }
 
         var legacyDecision = _legacyRouter.Route(trimmed);
@@ -228,7 +278,7 @@ public sealed class IntentPlanner
             return new IntentPlanResult(
                 AskIntent.Clause,
                 $"legacy query router classified this Semantic (clause/legal vocabulary): {legacyDecision.Reason}",
-                namedSupplier);
+                namedSupplier, goal);
         }
 
         // Structured (dates, spend, "next N days") or no pattern matched at all: StructuredFact is
@@ -238,6 +288,18 @@ public sealed class IntentPlanner
         return new IntentPlanResult(
             AskIntent.StructuredFact,
             $"legacy query router classified this Structured, or nothing else matched: {legacyDecision.Reason}",
-            namedSupplier);
+            namedSupplier, goal);
+    }
+
+    private static bool IsBareFollowUp(string question)
+    {
+        var wordCount = question.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
+
+        if (wordCount <= BareInterrogativeMaxWords && BareInterrogativePattern.IsMatch(question))
+        {
+            return true;
+        }
+
+        return wordCount <= FollowUpMaxWords && ExplicitFollowUpPattern.IsMatch(question);
     }
 }
