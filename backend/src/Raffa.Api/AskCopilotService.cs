@@ -454,7 +454,15 @@ internal sealed class AskCopilotService(
         string actor,
         CancellationToken cancellationToken)
     {
-        var plan = intentPlanner.Plan(question, namedSupplier);
+        // A bare follow-up ("non mi hai risposto", "e quindi?") is planned on the previous user
+        // question too, so it inherits that turn's intent and saving goal instead of falling
+        // through to the StructuredFact default (see IntentPlanner.Plan's own doc comment).
+        var previousUserQuestion = recentTurns
+            .LastOrDefault(turn => string.Equals(turn.Role, "you", StringComparison.OrdinalIgnoreCase) ||
+                                   string.Equals(turn.Role, "user", StringComparison.OrdinalIgnoreCase))
+            .Markdown;
+
+        var plan = intentPlanner.Plan(question, namedSupplier, previousUserQuestion);
 
         // AC-3, lock 4 (task E27/F02/US01/T01, NW-76): a scope id present on this conversation but
         // absent from this turn's own freshly-fetched portfolio refuses outright, before a single

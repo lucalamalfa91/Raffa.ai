@@ -14,4 +14,10 @@ namespace Raffa.Chat.Application.Planning;
 /// <see cref="Gate.DomainGateResult.NamedSupplier"/>) unchanged — the planner never re-extracts
 /// it, it only decides how to use it (scope the pack to this one supplier's contract(s), or leave
 /// the intent portfolio-wide when null).</param>
-public sealed record IntentPlanResult(AskIntent Intent, string Reason, string? NamedSupplier);
+/// <param name="Goal">The quantified saving goal the question carries (amount, percentage,
+/// window), parsed by <see cref="SavingsGoalParser"/>; a goal with
+/// <see cref="SavingsGoal.HasTarget"/> false for every question that quantifies nothing. Only the
+/// savings-family intents (<see cref="AskIntent.Savings"/>,
+/// <see cref="AskIntent.PortfolioSavingsTarget"/>, <see cref="AskIntent.RenewalStrategy"/>) read
+/// it.</param>
+public sealed record IntentPlanResult(AskIntent Intent, string Reason, string? NamedSupplier, SavingsGoal? Goal = null);
