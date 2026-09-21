@@ -1,12 +1,16 @@
 /**
- * Portfolio screen, V2 (route `/contracts`; ADR-024 V2 IA; screens-v2.md #6; `raffa-v2/markup.html`
- * "PORTFOLIO" block). Component classes (.screen-header, .screen-reroute, .btn, .tag, .table,
- * .row-critical, .deadline-critical, .skeleton, .empty-state, .error-state, .micro-meta) come from
+ * Portfolio screen, V2 (route `/contracts`; ADR-024 V2 IA; `Raffa.ai V2.dc.html` PORTFOLIO block).
+ * Component classes (.screen-header, .screen-reroute, .btn, .tag, .table, .row-critical,
+ * .deadline-critical, .skeleton, .empty-state, .error-state, .micro-meta) come from
  * ../../styles/components.css (ADR-019 component catalogue) -- this file adds only this screen's own
  * composites: the table's instance values and column widths, quoted from the prototype's own inline
- * styles on this exact table.
+ * styles on this exact block.
  *
- *   <sc-raw-table class="table" style="font-size:13px;font-variant-numeric:tabular-nums;table-layout:fixed;min-width:760px">
+ *   <div style="padding:28px 32px 16px;display:flex;align-items:flex-end;justify-content:space-between;gap:24px;border-bottom:2px solid var(--color-divider)">
+ *     <h2 style="margin:0">Portfolio</h2><div style="font-size:13px;color:var(--color-neutral-600);margin-top:4px">{{ pfSummary }}</div>
+ *     <button class="btn btn-ghost" style="font-size:12px;white-space:nowrap">{{ colsLabel }}</button>
+ *   <div style="padding:20px 32px 32px;overflow-x:auto">
+ *   <table class="table" style="font-size:13px;font-variant-numeric:tabular-nums;table-layout:fixed;min-width:760px">
  *     <th style="width:14%">Supplier</th> <th>Contract</th> <th style="text-align:right;width:13%">Annual spend</th>
  *     <th style="width:12%">Ends</th> <th style="width:14%">Give notice by</th>
  *     [<th style="width:10%">Start</th> <th style="width:8%">Auto</th> <th style="width:8%">Risk</th>]
@@ -14,13 +18,17 @@
  *   <tr class="cg-row" style="background:{{ c.rowBg }}">
  *     <td style="font-weight:600;border-left:3px solid {{ c.bar }};padding-left:10px">{{ c.supplier }}</td>
  *     <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.name }}</td>
- *     <td style="text-align:right;font-weight:600">{{ c.spendFmt }}</td> ...
- *     <td style="color:{{ c.cancelFg }};font-weight:{{ c.cancelW }}">{{ c.cancel }} <span style="font-size:11px">· {{ c.cancelDays }} d</span></td>
+ *     <td style="text-align:right;font-weight:600">{{ c.spendFmt }}</td> <td>{{ c.end }}</td>
+ *     <td style="color:{{ c.cancelFg }};font-weight:{{ c.cancelW }}">{{ c.cancel }} <span style="font-size:11px">{{ c.pfNotice }}</span></td>
+ *     [<td style="color:var(--color-neutral-700)">{{ c.start }}</td> <td>{{ c.auto }}</td> <td>{{ c.risk }}</td>]
+ *     <td><span class="tag {{ c.statusTag }}" style="padding:2px 8px;font-size:10px">{{ c.status }}</span></td>
  *
  * `rowBg`/`bar` (accent-100 tint + accent bar when notice is due within 45 days) are the shared
  * `.row-critical` treatment (components.css); every supplier cell reserves the bar's 3px so a state
  * change never shifts the column, exactly as the prototype's always-present, sometimes-transparent
- * border-left does.
+ * border-left does. The header and reroute block are the shared `.screen-header` / `.screen-reroute`
+ * (components.css), whose values are the same block's `padding:28px 32px 16px` / `padding:48px 32px;
+ * max-width:520px`.
  */
 
 .portfolio-screen {
@@ -28,58 +36,13 @@
   flex-direction: column;
 }
 
-.portfolio-columns-toggle {
+/* `<button class="btn btn-ghost" style="font-size:12px;white-space:nowrap">` -- an instance value on
+   the shared `.btn` (components.css), which `src/index.css` loads *after* every route sheet
+   (main.tsx imports it last), so every instance override in this file carries one extra class of
+   specificity rather than relying on source order. */
+.btn.portfolio-columns-toggle {
   font-size: 12px;
   white-space: nowrap;
-}
-
-/* ---- Ready / to-review segmented filter --------------------------------- */
-
-.readiness-filter-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  flex-wrap: wrap;
-  padding: 16px 32px var(--space-3);
-}
-
-.portfolio-readiness-empty {
-  padding: 20px 32px 32px;
-  max-width: 520px;
-}
-
-/* ---- Column filters (in-header, not a disconnected toolbar) -------------- */
-
-.portfolio-filter-clear {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: var(--space-2);
-}
-
-.portfolio-table th {
-  vertical-align: bottom;
-}
-
-.portfolio-table th > span {
-  display: block;
-}
-
-.portfolio-col-filter {
-  display: block;
-  width: 100%;
-  margin-top: var(--space-1);
-  padding: var(--space-1) var(--space-2);
-  font-size: 12px;
-  font-weight: var(--weight-body);
-  letter-spacing: 0;
-  text-transform: none;
-  color: var(--color-text);
-  min-width: 0;
-}
-
-.portfolio-table th.portfolio-table-numeric .portfolio-col-filter {
-  text-align: right;
 }
 
 /* ---- Loading skeleton ------------------------------------------------------- */
@@ -109,15 +72,17 @@
 }
 
 /* components.css's shared `.table th`/`.table td` add a --space-3 horizontal component the prototype's
-   own compiled `.table` rules do not have (`padding:var(--space-2)`, 8px on every side) -- same
-   specificity (class + element), later-loaded sheet wins. */
-.portfolio-table th,
-.portfolio-table td {
+   own compiled `.table` rules do not have (`padding:var(--space-2)`, 8px on every side). */
+.table.portfolio-table th,
+.table.portfolio-table td {
   padding: var(--space-2);
 }
 
-.portfolio-table th {
+/* The compiled `.table th`: `font-size:11px; letter-spacing:.08em; text-transform:uppercase`,
+   vertically centred in its one-line 33.5px row. */
+.table.portfolio-table th {
   letter-spacing: var(--tracking-kicker);
+  vertical-align: middle;
 }
 
 .portfolio-table th.portfolio-table-numeric,
@@ -154,8 +119,9 @@
   width: 12%;
 }
 
-/* Rows open Contract 360 (markup.html `cg-row`): the hover tint says so; the Contract cell's own
-   <Link> stays the keyboard-operable control. */
+/* Rows open Contract 360 (`cg-row`): the hover tint says so; the Contract cell's own <Link> stays
+   the keyboard-operable control. `.cg-row:hover` is `!important` in the compiled sheet, so the
+   tint also wins over the urgent row's own accent-100. */
 .portfolio-table tbody tr.portfolio-row {
   cursor: pointer;
 }
@@ -187,4 +153,13 @@
 
 .portfolio-notice-days {
   font-size: 11px;
+}
+
+/* The status tag's instance values (`style="padding:2px 8px;font-size:10px"` on the compiled
+   `.tag`, whose own rule sets no weight -- body 400 -- and `letter-spacing:.02em`). */
+.portfolio-table .portfolio-status-tag {
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: var(--weight-body);
+  letter-spacing: 0.02em;
 }

@@ -16,11 +16,11 @@ function renderCard(element: ReactElement) {
 
 // Task E13/F09/US01/T02's own "Tests required" row: "unit | card variants, actions, layouts per kind".
 describe("CitationCard (task E13/F09/US01/T02, AC-3)", () => {
-  it.each<{ corpus: CitationCorpus; badgeText: string; tagClass: string }>([
-    { corpus: "tenant", badgeText: "Validated contract", tagClass: "tag-neutral" },
-    { corpus: "market", badgeText: "Market · representative", tagClass: "tag-outline" },
-    { corpus: "raffa", badgeText: "Raffa", tagClass: "tag-accent" },
-  ])("renders the $corpus corpus badge", ({ corpus, badgeText, tagClass }) => {
+  it.each<{ corpus: CitationCorpus; badgeText: string }>([
+    { corpus: "tenant", badgeText: "Validated contract" },
+    { corpus: "market", badgeText: "Market · representative" },
+    { corpus: "raffa", badgeText: "Raffa" },
+  ])("names the $corpus corpus in the quote block's label (text, never colour alone)", ({ corpus, badgeText }) => {
     renderCard(
       <CitationCard
         n={1}
@@ -32,8 +32,11 @@ describe("CitationCard (task E13/F09/US01/T02, AC-3)", () => {
       />,
     );
 
-    const badge = screen.getByText(badgeText);
-    expect(badge).toHaveClass("tag", tagClass);
+    // The V2 quote block's uppercase label slot: "[n] <corpus>" (text, not a coloured tag), with
+    // the card itself carrying the corpus for styling.
+    const label = screen.getByText(badgeText, { exact: false });
+    expect(label).toHaveClass("citation-card-label");
+    expect(label.closest(".citation-card")).toHaveAttribute("data-corpus", corpus);
   });
 
   it("renders the title, subtitle, snippet and index", () => {

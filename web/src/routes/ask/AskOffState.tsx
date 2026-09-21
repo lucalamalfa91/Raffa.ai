@@ -23,7 +23,7 @@ export interface AskOffStateProps {
 export default function AskOffState({ copy, updatesPaused = false, onCheckAgain }: AskOffStateProps) {
   return (
     <div className="ask-off">
-      <p className="screen-kicker">Ask Raffa</p>
+      <p className="screen-kicker">Ask Raffa.ai</p>
       <h2 className="screen-title ask-off-title">Ask needs at least one validated contract.</h2>
       <p className="micro-meta ask-off-reason">{copy.reason}</p>
       {updatesPaused && (

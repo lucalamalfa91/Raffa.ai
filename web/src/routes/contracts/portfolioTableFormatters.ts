@@ -1,11 +1,12 @@
 import type { PortfolioContractType, PortfolioListItem } from "../../api/client";
-import { getRiskTag, type RiskLevel, type SemanticTag } from "../../styles/semantics";
+import type { SemanticTag } from "../../styles/semantics";
+import { formatCompactAmount } from "./portfolioViewModel";
 
 /**
- * Pure view-model helpers for PortfolioTable.tsx (AC-3: columns quoted verbatim from screens.md #4 --
- * "Attention · Supplier · Contract · Annual spend · Start · End · Renewal · Cancel by · Auto ·
- * Status"). Same one-concern-per-file split `documents/documentTable.ts` already established for this
- * repo.
+ * Pure view-model helpers for PortfolioTable.tsx -- the V2 Portfolio columns (`Raffa.ai V2.dc.html`
+ * PORTFOLIO block: Supplier · Contract · Annual spend · Ends · Give notice by [· Start · Auto · Risk]
+ * · Status). Same one-concern-per-file split `documents/documentTable.ts` already established for
+ * this repo.
  */
 
 /**
@@ -24,21 +25,20 @@ const CONTRACT_TYPE_LABEL: Record<PortfolioContractType, string> = {
 };
 
 /**
- * "Contract" column (screens.md #4): `Contract` (the domain entity) has no title/name field yet
+ * "Contract" column: `Contract` (the domain entity) has no title/name field yet
  * (`PortfolioListItem.cs`'s own doc comment), so this is the closest identifying information
  * `GET /api/contracts` actually returns for that column -- the same documented proxy that file's own
- * comment names, not an invented one.
+ * comment names, not an invented one (the prototype's fixtures carry a `name`; the wire does not).
  */
 export function getContractTypeLabel(type: PortfolioContractType): string {
   return CONTRACT_TYPE_LABEL[type];
 }
 
 /**
- * "Start"/"End"/"Renewal"/"Cancel by" columns. `dateOnly` is the wire's `yyyy-MM-dd` (a `DateOnly`);
- * rendered DD/MM/YYYY, the same unambiguous non-locale-month-name convention
- * `documents/documentTable.ts#formatUploadedAt`'s own comment already chose for this app (no
- * time-of-day component to lose to a timezone shift here, since a date-only value has none to begin
- * with).
+ * A `DateOnly` wire value (`yyyy-MM-dd`) rendered DD/MM/YYYY -- the unambiguous
+ * non-locale-month-name convention `documents/documentTable.ts#formatUploadedAt`'s own comment
+ * chose for Contract 360 and Review (which import this). No time-of-day component to lose to a
+ * timezone shift here, since a date-only value has none to begin with.
  */
 export function formatDateOnly(dateOnly: string | null): string {
   if (dateOnly === null) return "—";
@@ -46,21 +46,47 @@ export function formatDateOnly(dateOnly: string | null): string {
   return `${day}/${month}/${year}`;
 }
 
+const MONTH_ABBREVIATIONS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
+
 /**
- * "Annual spend" column. `PortfolioListItem` (`GET /api/contracts`) carries no currency code at all --
- * `Contract.Currency` exists on the domain entity but `PortfolioEndpointExtensions.GetPortfolioAsync`'s
- * own response projection never selects it (checked: `contractId, supplierId, type, annualSpend,
- * startDate, endDate, renewalDate, cancellationDeadline, autoRenewal, status, risk` -- no `currency`)
- * -- so this renders a grouped plain number, never a fabricated currency symbol.
+ * "Ends" / "Give notice by" / "Start" columns: `DD Mon YYYY` ("02 Oct 2026"), the prototype's own
+ * fixture format for this table (`Raffa.ai V2.dc.html` `c.end` / `c.cancel` / `c.start`:
+ * `'31 Oct 2026'`, `'02 Oct 2026'`, `'01 Nov 2023'`). Month names are a fixed English table, never
+ * `toLocaleDateString`, so the column reads the same on every browser locale. Portfolio-only:
+ * Contract 360 and Review keep `formatDateOnly` above.
  */
-export function formatAnnualSpend(annualSpend: number | null): string {
+export function formatPortfolioDate(dateOnly: string | null): string {
+  if (dateOnly === null) return "—";
+  const [year, month, day] = dateOnly.split("-");
+  const monthLabel = MONTH_ABBREVIATIONS[Number(month) - 1];
+  if (monthLabel === undefined) return dateOnly;
+  return `${day} ${monthLabel} ${year}`;
+}
+
+/**
+ * "Annual spend" column: the prototype's `c.spendFmt` (`app.jsx#chf`: `CHF 58k`, `CHF 1.2M`) -- the
+ * same compact figure the header's `pfSummary` line already uses (`portfolioViewModel.ts#
+ * formatCompactAmount`), keyed on the row's own `currency`. No code at all when the row carried none
+ * (never a fabricated currency symbol), an em dash when there is no spend.
+ */
+export function formatAnnualSpend(annualSpend: number | null, currency: string | null | undefined): string {
   if (annualSpend === null) return "—";
-  return new Intl.NumberFormat("en-GB").format(annualSpend);
+  return formatCompactAmount(annualSpend, currency ?? null);
 }
 
 /** "Auto" column. Text, not colour-only (ADR-019 accessibility baseline), and not a bare "true"/"false". */
 export function formatAutoRenewal(autoRenewal: boolean): string {
   return autoRenewal ? "Yes" : "No";
+}
+
+/**
+ * "Risk" column: plain text (`{{ c.risk }}` -- `'High'` / `'Medium'` / `'Low'` in the prototype's
+ * fixtures), never a tag. `null` (no recorded `Risk` row) is an honest em dash, never a fabricated
+ * "Low".
+ */
+export function formatRisk(risk: PortfolioListItem["risk"]): string {
+  if (risk === null) return "—";
+  return risk;
 }
 
 /**
@@ -104,25 +130,4 @@ function capitalizeStatus(status: string): string {
   const trimmed = status.trim();
   if (trimmed.length === 0) return "Unknown";
   return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
-}
-
-/**
- * "Risk" column tag. Reuses `styles/semantics.ts#getRiskTag` (never re-derived) for the three tiers
- * ADR-019's locked semantic mapping actually names (High -> accent; Medium/Low -> neutral). The
- * domain's fourth tier, `RiskSeverity.Critical`, has no ADR-019 treatment defined at all -- folded
- * into the same accent treatment as `High` (the conservative, more-severe-leaning direction; see
- * `portfolioAttention.ts`'s header comment for the equivalent fold on the attention-bucket side), not
- * silently downgraded to `Medium`/`Low` or left untagged. `null` (a contract with no recorded `Risk`
- * row at all) is its own explicit, honest neutral label -- never a fabricated "Low risk".
- */
-export function getPortfolioRiskTag(risk: PortfolioListItem["risk"]): SemanticTag {
-  if (risk === null) return { variant: "neutral", label: "No risk recorded" };
-  if (risk === "Critical") return getRiskTag("high");
-
-  const known: readonly string[] = ["Low", "Medium", "High"];
-  if (known.includes(risk)) return getRiskTag(risk.toLowerCase() as RiskLevel);
-
-  // Defends against a future backend value this table doesn't know about yet (e.g. a fifth
-  // RiskSeverity member) -- fails safe to a plain, honest label rather than mis-tagging it.
-  return { variant: "neutral", label: risk };
 }

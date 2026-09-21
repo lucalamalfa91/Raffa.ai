@@ -4,14 +4,6 @@ import type { ApiClient, DocumentListPageBody, GetPortfolioResult, PortfolioList
 import { loadCurrentWorkspace } from "../signin/workspaceStore";
 import { CHECK_AGAIN_LABEL, UPDATES_PAUSED_NOTICE, usePollBudget } from "../../components/shell/usePollBudget";
 import PortfolioTable from "./PortfolioTable";
-import ReadinessFilter from "../../components/ReadinessFilter";
-import {
-  countReadiness,
-  DEFAULT_READINESS_FILTER,
-  filterByReadiness,
-  getReadinessEmptyCopy,
-  type ReadinessFilterValue,
-} from "../../components/readiness";
 import {
   buildPortfolioRows,
   buildPortfolioSummary,
@@ -66,12 +58,11 @@ export function getPortfolioZeroCopy(variant: PortfolioZeroVariant): { sentence:
 
 /**
  * Route `/contracts` -- Portfolio, V2 (ADR-024 V2 IA amending ADR-018/ADR-020 screen 4;
- * screens-v2.md #6; `raffa-v2/markup.html` "PORTFOLIO" block, `app.jsx` `kbContracts` /
- * `pfSummary` / `moreCols`). Replaces the Day-1 screen's seven filter chips, attention strip and
- * ten-column severity-sorted table with the prototype's own shape: a header ("Portfolio" + the
- * `pfSummary` line + "More columns"), the validated contracts only, sorted by how soon notice must
- * be given, urgent rows tinted, rows opening Contract 360 -- and, while no contract is validated,
- * the tier's reroute state (R-WEB-02): "Nothing to triage yet" with one of the three sentences above.
+ * `Raffa.ai V2.dc.html` PORTFOLIO block, `kbContracts` / `pfSummary` / `moreCols` in its logic).
+ * The prototype's own shape, and nothing beside it: a header ("Portfolio" + the `pfSummary` line +
+ * "More columns"), the validated contracts only, sorted by how soon notice must be given, urgent
+ * rows tinted, rows opening Contract 360 -- and, while no contract is validated, the tier's reroute
+ * state (R-WEB-02): "Nothing to triage yet" with one of the three sentences above.
  *
  * **Fetch, derive client-side, re-read while ingest is in flight.** One `GET /api/contracts` call
  * per mount (and per Retry) for the tenant's first page (`PORTFOLIO_PAGE_SIZE`); validated-only
@@ -83,16 +74,8 @@ export function getPortfolioZeroCopy(variant: PortfolioZeroVariant): { sentence:
  * counts re-read on the shared 2 s cadence (also when rows are already on screen, so later
  * completions appear without a remount); the five-minute no-change budget still applies.
  *
- * **Column filters.** Each table header carries a compact, type-matched filter (text on Supplier /
- * Contract, date on Ends / notice / Start, number on Annual spend, select on Auto / Risk / Status).
- * Filtering is client-side over the already-loaded page. `?category=` on the URL still reaches
- * `GET /api/contracts` so a shared link keeps working (ADR-012); it is no longer a disconnected
- * toolbar above the table.
- *
- * **Readiness filter.** The loaded page still carries pending / needs-review rows (w17 immediate
- * visibility). A compact `.seg` (Ready / To review / All) defaults to already-OK so the table is
- * usable; the still-to-review bucket is one click away, never hidden forever. Counts are the
- * already-loaded page, never a second fetch.
+ * **`?category=`** on the URL still reaches `GET /api/contracts` so a shared link keeps working
+ * (ADR-012); there is no filter toolbar on the screen itself, exactly as in the prototype.
  */
 export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
   const workspace = loadCurrentWorkspace();
@@ -105,7 +88,6 @@ export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
   const [fetchState, setFetchState] = useState<FetchState>({ phase: "loading" });
   const [moreColumns, setMoreColumns] = useState(false);
   const [documentCounts, setDocumentCounts] = useState<DocumentListPageBody["counts"] | null>(null);
-  const [readiness, setReadiness] = useState<ReadinessFilterValue>(DEFAULT_READINESS_FILTER);
   const loadGeneration = useRef(0);
 
   const loadPortfolio = useCallback(
@@ -167,16 +149,10 @@ export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
 
   const rows = useMemo(() => (fetchState.phase === "ready" ? buildPortfolioRows(fetchState.items) : []), [fetchState]);
   const summary = useMemo(() => buildPortfolioSummary(rows), [rows]);
-  const readinessCounts = useMemo(
-    () => countReadiness(rows.filter((row) => row.isReady).length, rows.filter((row) => !row.isReady).length),
-    [rows],
-  );
-  const visibleRows = useMemo(() => filterByReadiness(rows, readiness, (row) => row.isReady), [rows, readiness]);
 
   const ready = fetchState.phase === "ready";
   const lit = ready && rows.length > 0;
   const zero = ready && rows.length === 0;
-  const tableVisible = lit && visibleRows.length > 0;
 
   // Counts drive both the zero-state sentence and the in-flight poll, including when rows are
   // already on screen (later Completions must be able to appear without a remount).
@@ -225,7 +201,7 @@ export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
             {ready ? formatPortfolioSummary(summary) : fetchState.phase === "loading" ? "Loading portfolio…" : PORTFOLIO_SUMMARY_OFF}
           </p>
         </div>
-        {tableVisible && (
+        {lit && (
           <div className="screen-header-actions">
             <button type="button" className="btn btn-ghost portfolio-columns-toggle" aria-pressed={moreColumns} onClick={() => setMoreColumns((current) => !current)}>
               {moreColumnsLabel(moreColumns)}
@@ -257,7 +233,7 @@ export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
       )}
 
       {zero && (
-        // markup.html `kbOff`: the tier's reroute state -- the h3 verbatim, the sentence one of
+        // `kbOff`: the tier's reroute state -- the h3 verbatim, the sentence one of
         // ADR-020 w15 §2.2's three, selected by the server's counts.
         <div className="screen-reroute" role="status">
           <h3>Nothing to triage yet</h3>
@@ -276,18 +252,7 @@ export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
         </div>
       )}
 
-      {lit && (
-        <>
-          <ReadinessFilter value={readiness} onChange={setReadiness} counts={readinessCounts} ariaLabel="Filter portfolio by readiness" />
-          {tableVisible ? (
-            <PortfolioTable rows={visibleRows} moreColumns={moreColumns} />
-          ) : (
-            <div className="portfolio-readiness-empty" role="status">
-              <p className="micro-meta">{getReadinessEmptyCopy(readiness)}</p>
-            </div>
-          )}
-        </>
-      )}
+      {lit && <PortfolioTable rows={rows} moreColumns={moreColumns} />}
     </div>
   );
 }

@@ -135,6 +135,8 @@ export interface SaveAnswer {
 }
 
 export interface MoveAnswer {
+  /** "Confirm — contract ends {termEnd}": the formatted term end, `null` when no end date is known. */
+  termEnd: string | null;
   /** The notice deadline as a date, "Add the end date" on an extraction miss, or an honest gap. */
   deadline: string;
   /** Review href when `deadline` is the missing-fact recovery copy; otherwise `null`. */
@@ -165,8 +167,9 @@ export const ADD_THE_END_DATE = "Add the end date";
 export type StrategySource = { called: false } | { called: true; pack: ContractStrategyBody | null };
 
 const EMPTY_SAVE: SaveAnswer = { estimate: "", lever: "" };
-const EMPTY_MOVE: MoveAnswer = { deadline: "", deadlineHref: null, cancelDays: null, isUrgent: false, detail: "" };
+const EMPTY_MOVE: MoveAnswer = { termEnd: null, deadline: "", deadlineHref: null, cancelDays: null, isUrgent: false, detail: "" };
 const FAILED_MOVE: MoveAnswer = {
+  termEnd: null,
   deadline: SAVINGS_NOT_YET_AVAILABLE,
   deadlineHref: null,
   cancelDays: null,
@@ -257,6 +260,7 @@ function mapMove(
 
   if (!hasDate && !determinedNoRenewal) {
     return {
+      termEnd: null,
       deadline: ADD_THE_END_DATE,
       deadlineHref: `/contracts/${header.contractId}/review`,
       cancelDays: null,
@@ -291,7 +295,7 @@ function mapMove(
     detail = termEnd !== "" ? `${prefix}. ${termEnd}${autoText}.` : `${prefix}${autoText}.`;
   }
 
-  return { deadline, deadlineHref: null, cancelDays, isUrgent, detail };
+  return { termEnd: move.renewalDate !== null ? formatDateOnly(move.renewalDate) : null, deadline, deadlineHref: null, cancelDays, isUrgent, detail };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -484,6 +488,19 @@ export function formatShortReference(row: { sourcePage: number | null; sourceSpa
 }
 
 /**
+ * An extracted list row (product · obligation · risk) is shown when its confidence clears the
+ * auto-accept threshold *or* it points at a real page/span in a linked document -- the same
+ * "sourced or officialized" rule the V2 drawer applied; otherwise its figures read as an em dash
+ * and the row stays.
+ */
+export function isExtractedRowShown(
+  row: { confidence: number | null; sourcePage: number | null; sourceSpan: string | null },
+  autoAcceptThreshold: number,
+): boolean {
+  return isScoredFactOfficialized(row.confidence, autoAcceptThreshold) || formatShortReference(row) !== null;
+}
+
+/**
  * The evidence card (`markup.html` `hl`: "{{ hl.doc }} · page {{ hl.page }} · §{{ hl.sec }}" over
  * `{{ hl.before }}<mark>{{ hl.quote }}</mark>{{ hl.after }}`). The backend `Clause` carries one
  * `rawText`, not separate before/quote/after strings: when the normalised value is a literal
@@ -537,14 +554,6 @@ export function resolveHighlightedClauseId(
 // ---------------------------------------------------------------------------------------------
 
 
-export const DETAILS_LABEL_CLOSED = "All terms, documents and open facts ▾";
-export const DETAILS_LABEL_OPEN = "Hide details";
-
-/**
- * One row of the Term / Value / Source template used by the drawer's extracted lists
- * (Products / Obligations / Risks) and by the key-terms list. Unofficialized values are already
- * the em-dash; no confidence travels with the row.
- */
 export interface FactRow {
   key: string;
   term: string;
@@ -558,28 +567,7 @@ export function toConfidencePercent(confidence: number | null): number | null {
   return confidence === null ? null : confidence * 100;
 }
 
-interface SourceFields {
-  sourceDocumentId: string | null;
-  sourceSpan: string | null;
-  sourcePage: number | null;
-}
-
 /** `null` when there is no linked source document at all -- distinct from "linked, but no page/span recorded" (`"Linked document"`). */
-function formatSource(row: SourceFields): string | null {
-  if (row.sourceDocumentId === null) return null;
-  const parts: string[] = [];
-  if (row.sourcePage !== null) parts.push(`p.${row.sourcePage}`);
-  if (row.sourceSpan !== null && row.sourceSpan.trim() !== "") parts.push(row.sourceSpan);
-  return parts.length > 0 ? parts.join(" · ") : "Linked document";
-}
-
-/**
- * "Key terms" (`app.jsx` `otherRows`: Annual spend · Start → end · Notice period · Uplift ·
- * Auto-renewal), from the real contract-level fields on the header / commercials / renewal /
- * overview. Every row stays; a value the server has not accepted (`review_required`, or no
- * evidence row) renders as "—". Contract-level fields carry no per-field source (they are
- * aggregates, not span extractions), so those cells stay empty rather than borrowing a clause's.
- */
 export function buildKeyTerms(
   contract: Contract360Body,
   evidence: readonly ContractFieldEvidenceBody[] = [],
@@ -607,93 +595,6 @@ export function buildKeyTerms(
     rows.push({ key: "parentContractId", term: "Parent contract", value: tabs.overview.parentContractId, source: null });
   }
   return rows;
-}
-
-function formatProductValue(p: Contract360ProductBody): string {
-  const parts: string[] = [];
-  if (p.quantity !== null) parts.push(`${formatPlainNumber(p.quantity)}${p.unit ? ` ${p.unit}` : ""}`);
-  if (p.unitPrice !== null) parts.push(`@ ${formatPlainNumber(p.unitPrice)}`);
-  if (p.discount !== null) parts.push(`${formatPlainNumber(p.discount)}% disc.`);
-  if (p.annualCost !== null) parts.push(`→ ${formatPlainNumber(p.annualCost)}/yr`);
-  return parts.length > 0 ? parts.join(" ") : "—";
-}
-
-/**
- * Details-list VALUE: a quoted source clause is enough to show the extracted wording, even when
- * confidence is below the officialize bar. Hiding a sourced obligation behind "—" made SOURCE
- * look populated while VALUE stayed empty. Unsourced, unofficialized facts still dash.
- */
-export function sourcedOrOfficialized(value: string, officialized: boolean, source: string | null): string {
-  if (officialized) return value;
-  if (source !== null && source !== "Linked document") return value;
-  return UNOFFICIALIZED_PLACEHOLDER;
-}
-
-/** Products (line items). Every row stays; unsourced values below the auto-accept bar are "—". */
-export function buildProductsRows(
-  products: readonly Contract360ProductBody[],
-  autoAcceptThreshold: number = AUTO_ACCEPT_THRESHOLD,
-): FactRow[] {
-  return products.map((p) => {
-    const source = formatSource(p);
-    return {
-      key: p.lineItemId,
-      term: p.description !== "" ? p.description : (p.sku ?? "Line item"),
-      value: sourcedOrOfficialized(
-        formatProductValue(p),
-        isScoredFactOfficialized(p.confidence, autoAcceptThreshold),
-        source,
-      ),
-      source,
-    };
-  });
-}
-
-function formatObligationValue(o: Contract360ObligationBody): string {
-  const parts = [o.description];
-  if (o.dueDate !== null) parts.push(`due ${formatDateOnly(o.dueDate)}`);
-  if (o.criticality !== null) parts.push(o.criticality);
-  return parts.join(" · ");
-}
-
-/** Obligations. Every row stays; a quoted SOURCE clause populates VALUE even below the bar. */
-export function buildObligationsRows(
-  obligations: readonly Contract360ObligationBody[],
-  autoAcceptThreshold: number = AUTO_ACCEPT_THRESHOLD,
-): FactRow[] {
-  return obligations.map((o) => {
-    const source = formatSource(o);
-    return {
-      key: o.obligationId,
-      term: o.obligationType,
-      value: sourcedOrOfficialized(
-        formatObligationValue(o),
-        isScoredFactOfficialized(o.confidence, autoAcceptThreshold),
-        source,
-      ),
-      source,
-    };
-  });
-}
-
-/** Risks. Severity is always textual (ADR-019 "no colour-only semantics"). Every row stays. */
-export function buildRisksRows(
-  risks: readonly Contract360RiskBody[],
-  autoAcceptThreshold: number = AUTO_ACCEPT_THRESHOLD,
-): FactRow[] {
-  return risks.map((r) => {
-    const source = formatSource(r);
-    return {
-      key: r.riskId,
-      term: r.riskType,
-      value: sourcedOrOfficialized(
-        `${r.description} (${r.severity} risk)`,
-        isScoredFactOfficialized(r.confidence, autoAcceptThreshold),
-        source,
-      ),
-      source,
-    };
-  });
 }
 
 export interface DocumentRow {
@@ -809,4 +710,375 @@ export function computeNeedsAttention(evidence: readonly Pick<ContractFieldEvide
 
 export function formatReviewCountLine(count: number): string {
   return `${count} facts still need you — Review all →`;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The six numbered sections (`Raffa.ai V2.dc.html` "CONTRACT 360 — three answers, then proof, then
+// details": 01 Leverage · 02 Products & pricing · 03 Clauses that matter · 04 Obligations ·
+// 05 Risk factors · 06 Key terms). Copy is quoted from that block; every value is the wire's own,
+// an honest gap where the wire has none.
+// ---------------------------------------------------------------------------------------------
+
+export interface SectionCopy {
+  number: string;
+  title: string;
+  description: string;
+}
+
+export const SECTION_COPY = {
+  leverage: { number: "01", title: "Leverage", description: "Where your negotiating power sits, strongest first." },
+  products: { number: "02", title: "Products & pricing", description: "What you buy, what you pay, and the market price for the same line." },
+  clauses: { number: "03", title: "Clauses that matter", description: "Grouped by what to do with them at the table. Standard terms stay out of the way." },
+  obligations: { number: "04", title: "Obligations", description: "Who owes what, and when. Dates you can miss come first." },
+  risks: { number: "05", title: "Risk factors", description: "What drives the priority score, and what could go wrong." },
+  terms: { number: "06", title: "Key terms", description: "The facts in one glance. Validated during review — no sources here." },
+} as const satisfies Record<string, SectionCopy>;
+
+// ---- 01 Leverage ----------------------------------------------------------------------------
+
+export interface LeverCard {
+  key: string;
+  /** "{type} lever", the card's kicker. */
+  kicker: string;
+  /** The lever named in two or three words (the mock's big headline slot). */
+  headline: string;
+  /** The pack's own rationale for this contract. */
+  body: string;
+  /** The first (strongest) lever carries the accent treatment (`strength==='Strong'`). */
+  strong: boolean;
+}
+
+const LEVER_HEADLINES: Readonly<Record<ContractStrategyBody["whereYouCanPush"][number]["leverType"], string>> = {
+  Volume: "Order size",
+  Term: "Term length",
+  Utilization: "Utilisation",
+  Alternatives: "Alternatives",
+  QuarterEnd: "Quarter end",
+  Bundle: "Bundle",
+  PaymentTerms: "Payment terms",
+};
+
+export const LEVERS_NOT_YET_AVAILABLE =
+  "Levers light up once the renewal strategy has a priced line to work from — the clauses and obligations below are already validated.";
+
+/**
+ * `d.levers` from the strategy pack's `whereYouCanPush` (`StrategyPackBuilder`: strongest first,
+ * prefixed by the line's own description on a multi-line contract). The wire carries no strength
+ * grade, so only the first card is "strong"; `citationKeys` are pack-internal keys (never rendered,
+ * R-ASK-08), so there is no "Rests on" line.
+ */
+export function buildLeverCards(strategy: ContractStrategyBody | null): LeverCard[] {
+  if (strategy === null) return [];
+  return strategy.whereYouCanPush.map((lever, index) => ({
+    key: `${lever.leverType}-${index}`,
+    kicker: `${LEVER_HEADLINES[lever.leverType]} lever`,
+    headline: LEVER_HEADLINES[lever.leverType],
+    body: lever.rationale,
+    strong: index === 0,
+  }));
+}
+
+// ---- 02 Products & pricing --------------------------------------------------------------------
+
+export interface ProductLine {
+  key: string;
+  name: string;
+  /** "SKU · unit", the 11px line under the name; empty when the wire carries neither. */
+  meta: string;
+  qty: string;
+  price: string;
+  market: string;
+  delta: string;
+  deltaAccent: boolean;
+  /** Bar widths, `Math.round(price/max*100)%` -- pay is always the full bar while no market price exists. */
+  payWidth: string;
+  marketWidth: string;
+  annual: string;
+}
+
+export const PRODUCT_NOTE =
+  "Prices are the negotiated rate on the validated document; the market column and the delta light up with the Benchmark Service.";
+
+/**
+ * `d.products`: one row per line item. `tabs.benchmark` is per metric, not per line, so `market`
+ * and `delta` are an honest em dash and the pay bar fills the track (`mktW:'0%'`, `payW:'100%'` in
+ * the mock's own no-market branch). An unofficialized line keeps its row with dashed figures.
+ */
+export function buildProductLines(
+  products: readonly Contract360ProductBody[],
+  currency: string,
+  autoAcceptThreshold: number = AUTO_ACCEPT_THRESHOLD,
+): ProductLine[] {
+  return products.map((p) => {
+    const officialized = isExtractedRowShown(p, autoAcceptThreshold);
+    const meta = [p.sku, p.unit].filter((part): part is string => part !== null && part.trim() !== "").join(" · ");
+    return {
+      key: p.lineItemId,
+      name: p.description !== "" ? p.description : (p.sku ?? "Line item"),
+      meta,
+      qty: officialized && p.quantity !== null ? formatPlainNumber(p.quantity) : UNOFFICIALIZED_PLACEHOLDER,
+      price: officialized ? formatMoney(p.unitPrice, currency) : UNOFFICIALIZED_PLACEHOLDER,
+      market: UNOFFICIALIZED_PLACEHOLDER,
+      delta: UNOFFICIALIZED_PLACEHOLDER,
+      deltaAccent: false,
+      payWidth: officialized && p.unitPrice !== null ? "100%" : "0%",
+      marketWidth: "0%",
+      annual: officialized ? formatMoney(p.annualCost, currency) : UNOFFICIALIZED_PLACEHOLDER,
+    };
+  });
+}
+
+// ---- 03 Clauses that matter -------------------------------------------------------------------
+
+export interface ClauseItem {
+  clauseId: string;
+  type: string;
+  normalized: string;
+  /** The at-the-table note (`c.ask`): product copy per leverage tier, never an extracted fact. */
+  ask: string | null;
+  /** "p.12 · §8.4", `null` when the clause has no linked document. */
+  source: string | null;
+  viewerHref: string | null;
+}
+
+export interface ClauseGroup {
+  key: "push" | "raise";
+  label: string;
+  tag: "accent" | "neutral";
+  hint: string;
+  items: ClauseItem[];
+}
+
+export interface ClauseGroups {
+  groups: ClauseGroup[];
+  standard: ClauseItem[];
+}
+
+export const CLAUSE_GROUP_PUSH_HINT = "Costs you money or freedom — lead with these";
+export const CLAUSE_GROUP_RAISE_HINT = "Improve if the conversation allows";
+export const STANDARD_TERMS_HINT = "Market-standard — nothing to negotiate";
+
+/** `stdLabel`: `(stdOpen?'Hide ':'Show ')+stdN+' standard clauses'+(stdOpen?' ▴':' ▾')`. */
+export function standardClausesLabel(count: number, open: boolean): string {
+  return `${open ? "Hide" : "Show"} ${count} standard clause${count === 1 ? "" : "s"} ${open ? "▴" : "▾"}`;
+}
+
+function toClauseItem(
+  clause: Contract360ClauseBody,
+  documents: readonly Contract360DocumentBody[],
+  autoAcceptThreshold: number,
+  ask: string | null,
+): ClauseItem {
+  return {
+    clauseId: clause.clauseId,
+    type: clause.clauseType,
+    normalized: officializedOrDash(clause.normalizedValue ?? clause.rawText, isScoredFactOfficialized(clause.confidence, autoAcceptThreshold)),
+    ask,
+    source: formatShortReference(clause),
+    viewerHref: clauseViewerHref(clause, documents),
+  };
+}
+
+/**
+ * `d.clauseGroups` + `d.stdClauses`: risk `High`/`Critical` -> "Push to change", `Medium` -> "Worth
+ * raising", everything else (Low, undetermined) -> the standard clauses behind the toggle. The
+ * `ask` slot is `leverageWhy`'s product copy for the two live groups and empty for standard terms
+ * (the mock prints "—" there).
+ */
+export function buildClauseGroups(
+  clauses: readonly Contract360ClauseBody[],
+  documents: readonly Contract360DocumentBody[] = [],
+  autoAcceptThreshold: number = AUTO_ACCEPT_THRESHOLD,
+): ClauseGroups {
+  const push: ClauseItem[] = [];
+  const raise: ClauseItem[] = [];
+  const standard: ClauseItem[] = [];
+  for (const clause of clauses) {
+    const level = clause.riskLevel;
+    if (level === "High" || level === "Critical") push.push(toClauseItem(clause, documents, autoAcceptThreshold, leverageWhy(level)));
+    else if (level === "Medium") raise.push(toClauseItem(clause, documents, autoAcceptThreshold, leverageWhy(level)));
+    else standard.push(toClauseItem(clause, documents, autoAcceptThreshold, null));
+  }
+  const candidates: ClauseGroup[] = [
+    { key: "push", label: LEVERAGE_PUSH_TO_CHANGE, tag: "accent", hint: CLAUSE_GROUP_PUSH_HINT, items: push },
+    { key: "raise", label: LEVERAGE_WORTH_RAISING, tag: "neutral", hint: CLAUSE_GROUP_RAISE_HINT, items: raise },
+  ];
+  const groups = candidates.filter((group) => group.items.length > 0);
+  return { groups, standard };
+}
+
+// ---- 04 Obligations ---------------------------------------------------------------------------
+
+export interface ObligationItem {
+  key: string;
+  text: string;
+  /** "by 18 Oct 2026", or an em dash when the obligation carries no date (the recurrence sits in its own slot). */
+  when: string;
+  /** "once" / the recurrence rule, the right-hand 11px slot. */
+  recurrence: string;
+  dot: "accent" | "text" | "neutral";
+  strong: boolean;
+}
+
+export interface ObligationColumns {
+  you: ObligationItem[];
+  supplier: ObligationItem[];
+}
+
+const YOU_PARTY_PATTERN = /customer|buyer|client|licensee|subscriber|tenant|\byou\b|\bus\b|\bwe\b/i;
+
+function criticalityRank(criticality: string | null): number {
+  const level = criticality?.toLowerCase() ?? "";
+  if (level === "high" || level === "critical") return 0;
+  if (level === "medium") return 1;
+  return 2;
+}
+
+function toObligationItem(o: Contract360ObligationBody, officialized: boolean): ObligationItem {
+  const rank = criticalityRank(o.criticality);
+  const recurrence = o.recurrenceRule !== null && o.recurrenceRule.trim() !== "" ? o.recurrenceRule : "once";
+  return {
+    key: o.obligationId,
+    text: officialized ? o.description : UNOFFICIALIZED_PLACEHOLDER,
+    when: o.dueDate !== null ? `by ${formatDateOnly(o.dueDate)}` : "—",
+    recurrence,
+    dot: rank === 0 ? "accent" : rank === 1 ? "text" : "neutral",
+    strong: rank === 0,
+  };
+}
+
+/**
+ * `d.oblYou` / `d.oblSup`: the wire's free-text `party` decides the column (anything naming the
+ * customer side is "You must"; everything else is the supplier's). "Dates you can miss come first":
+ * dated obligations by date, then by criticality.
+ */
+export function buildObligationColumns(
+  obligations: readonly Contract360ObligationBody[],
+  autoAcceptThreshold: number = AUTO_ACCEPT_THRESHOLD,
+): ObligationColumns {
+  const sorted = [...obligations].sort((a, b) => {
+    if ((a.dueDate === null) !== (b.dueDate === null)) return a.dueDate === null ? 1 : -1;
+    if (a.dueDate !== null && b.dueDate !== null && a.dueDate !== b.dueDate) return a.dueDate < b.dueDate ? -1 : 1;
+    return criticalityRank(a.criticality) - criticalityRank(b.criticality);
+  });
+  const you: ObligationItem[] = [];
+  const supplier: ObligationItem[] = [];
+  for (const o of sorted) {
+    const item = toObligationItem(o, isExtractedRowShown(o, autoAcceptThreshold));
+    if (YOU_PARTY_PATTERN.test(o.party)) you.push(item);
+    else supplier.push(item);
+  }
+  return { you, supplier };
+}
+
+// ---- 05 Risk factors --------------------------------------------------------------------------
+
+export interface ScorePart {
+  key: string;
+  label: string;
+  /** "18 / 20". */
+  value: string;
+  width: string;
+  /** `v/max >= .8` fills accent. */
+  accent: boolean;
+}
+
+/** Each priority component scores 0–20 (`GET /api/renewals/{id}/priority`: "5 components, 20 max each"). */
+export const PRIORITY_COMPONENT_MAX = 20;
+
+/** `d.scoreParts`: the five components as label · "v / max" · a bar. */
+export function buildScoreParts(priority: RenewalPriorityBody | null): ScorePart[] {
+  return buildPriorityComponentRows(priority).map((row) => {
+    const score = Math.round(row.score);
+    const ratio = Math.max(0, Math.min(1, score / PRIORITY_COMPONENT_MAX));
+    return {
+      key: row.key,
+      label: row.label,
+      value: `${score} / ${PRIORITY_COMPONENT_MAX}`,
+      width: `${Math.round(ratio * 100)}%`,
+      accent: ratio >= 0.8,
+    };
+  });
+}
+
+export interface RiskItem {
+  key: string;
+  level: string;
+  tag: "accent" | "neutral" | "outline";
+  title: string;
+  text: string;
+}
+
+/** `d.risks`: High/Critical -> accent, Medium -> neutral, Low -> outline; title is the risk type. */
+export function buildRiskItems(risks: readonly Contract360RiskBody[], autoAcceptThreshold: number = AUTO_ACCEPT_THRESHOLD): RiskItem[] {
+  return risks.map((r) => ({
+    key: r.riskId,
+    level: r.severity,
+    tag: r.severity === "High" || r.severity === "Critical" ? "accent" : r.severity === "Medium" ? "neutral" : "outline",
+    title: r.riskType,
+    text: isExtractedRowShown(r, autoAcceptThreshold) ? r.description : UNOFFICIALIZED_PLACEHOLDER,
+  }));
+}
+
+// ---- Close the cycle (the tracker's own tail) --------------------------------------------------
+
+export const CLOSE_CYCLE_KICKER = "Close the cycle";
+export const CLOSE_CYCLE_RENEWED_LABEL = "Renewed — upload the signed document";
+export const CLOSE_CYCLE_TERMINATED_LABEL = "Terminated — I sent notice";
+export const CLOSE_CYCLE_NOTE_SUFFIX = ", Raffa.ai marks it auto-renewed.";
+
+/** "A contract is closed by evidence, not by a click: … If neither arrives by {deadline}, Raffa.ai marks it auto-renewed." */
+export function formatCloseCycleNote(deadlineLabel: string): string {
+  return `A contract is closed by evidence, not by a click: the signed document, or the notice you sent. If neither arrives by ${deadlineLabel}${CLOSE_CYCLE_NOTE_SUFFIX}`;
+}
+
+const TERMINATED_ACTION_PREFIX = "Terminated — notice sent ";
+
+/** The `action` text posted with status `Completed` when the user records a sent notice. */
+export function terminatedActionText(noticeDateOnly: string): string {
+  return `${TERMINATED_ACTION_PREFIX}${formatDateOnly(noticeDateOnly)}`;
+}
+
+export interface ClosedOutcome {
+  title: string;
+  /** "notice sent 08/09/2026" / the recorded action verbatim. */
+  when: string;
+  kind: string;
+  tag: "outline" | "neutral";
+  facts: readonly { label: string; value: string }[];
+  note: string;
+}
+
+/**
+ * `outcome` for a tracker whose saved action is `Completed`: a notice this screen recorded reads as
+ * the mock's terminated block (contract end, spend avoided, auto-renewal blocked); any other
+ * completed action is shown as recorded, never re-interpreted.
+ */
+export function buildClosedOutcome(
+  action: string,
+  header: Contract360HeaderBody,
+  currency: string,
+): ClosedOutcome {
+  if (action.startsWith(TERMINATED_ACTION_PREFIX)) {
+    return {
+      title: "Terminated",
+      when: `notice sent ${action.slice(TERMINATED_ACTION_PREFIX.length)}`,
+      kind: "Notice sent",
+      tag: "outline",
+      facts: [
+        { label: "Contract ends", value: formatDateOnly(header.endDate) },
+        { label: "Spend avoided", value: header.annualSpend === null ? UNOFFICIALIZED_PLACEHOLDER : `${formatMoney(header.annualSpend, currency)} / yr` },
+        { label: "Auto-renewal", value: "blocked" },
+      ],
+      note: "Leaves Renewals at term end and stays in Portfolio as history. Drop the notice letter in Documents if you want the proof on file.",
+    };
+  }
+  return {
+    title: "Closed",
+    when: action,
+    kind: "Completed",
+    tag: "neutral",
+    facts: [],
+    note: "Recorded as completed. Reopen to keep negotiating.",
+  };
 }

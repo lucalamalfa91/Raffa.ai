@@ -14,16 +14,21 @@ import { useDocumentViewerOverlay } from "../documents/viewer/DocumentViewerOver
 import {
   ASK_HELLO,
   ASK_INPUT_PLACEHOLDER,
-  NEW_CHAT_TRAILER,
+  ASK_NEW_CHAT_TITLE,
+  ASK_RAFFA_KICKER,
+  COMPOSER_NOTE,
+  NEW_CHAT_INTRO,
   THINKING_COPY,
   TRANSPORT_ERROR_REASON,
   buildRaffaTurnFromReply,
   buildErrorTurn,
   buildOffCopy,
   buildScopedBrief,
-  buildScopeLine,
+  buildScopeShort,
+  buildStarterGroups,
   buildYouTurn,
   createConversationAndAsk,
+  deriveConversationTitle,
   fetchBoundContractChip,
   nextTurnId,
   parseScopeContractId,
@@ -33,8 +38,9 @@ import {
   type AskTurnView,
   type BoundContractChip,
 } from "./askViewModel";
-import { ASK_FALLBACK_TITLE, formatConversationTitle } from "./conversationTitle";
+import { formatConversationTitle } from "./conversationTitle";
 import { applyCitationPreviews, useCitationPreviews } from "./useCitationPreviews";
+import { useValidatedSuppliers } from "./useValidatedSuppliers";
 import { getContractTypeLabel } from "../contracts/portfolioTableFormatters";
 import "./ask.css";
 
@@ -96,6 +102,13 @@ interface CitationNoticeState {
  * Deliberately **not** the same state NW-56's brief above reads: that one is the transient,
  * pre-creation `scopeContractId` local (`?scope=`, gone the render after creation); this one is the
  * durable field the server persisted, so it is still there after a reload (AC-2 "survives resume").
+ *
+ * **Layout** (`Raffa.ai V2.dc.html` "ASK RAFFA.AI — conversation with rich answers"): a
+ * conversation header (accent mark + `convTitle`, the `askScopeShort` line and "+ New chat"), the
+ * scrolling thread (the new-chat block -- `askHello`, the intro and four labelled starter groups --
+ * then one 72px-kicker grid per turn), and the screen's own composer pinned at the bottom (accent
+ * mark + underlined input + "Ask", the two suggestion chips and "Procurement only · cites or
+ * abstains"). Every figure is quoted in `ask.css`'s header comment.
  */
 export default function AskRoute({ apiClient }: AskRouteProps) {
   const location = useLocation();
@@ -112,6 +125,11 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
 
   const [turns, setTurns] = useState<readonly AskTurnView[]>([]);
   const [boundTitle, setBoundTitle] = useState<string | null>(null);
+  // `convTitle`: the conversation's own title -- the server's on resume, the first question's
+  // (`deriveConversationTitle`, the server's own rule) while this screen created it -- so the
+  // header reads the same before and after a reload.
+  const [conversationTitle, setConversationTitle] = useState<string | null>(null);
+  const supplierNames = useValidatedSuppliers(apiClient, workspace?.id);
 
   // NW-78 (wave w19): the persistent binding chip's own two-stage state. `boundContractId` is the
   // durable source -- this conversation's own persisted `scopeContractId`, read off the create
@@ -240,6 +258,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   useEffect(() => {
     if (resumeState.phase === "ready") {
       setTurns(resumeState.turns);
+      setConversationTitle(resumeState.conversation.title);
       // AC-2: rebuilt from the conversation detail wire, so the chip survives resume -- a resumed
       // URL carries no `?scope=` at all, only `/ask/<conversationId>`.
       setBoundContractId(resumeState.conversation.scopeContractId);
@@ -256,6 +275,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     if (routeConversationId === null) {
       createdConversationId.current = null;
       setTurns([]);
+      setConversationTitle(null);
       setBoundContractId(null);
     }
   }, [routeConversationId]);
@@ -266,6 +286,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
       if (text === "" || !workspace) return;
 
       setTurns((previous) => [...previous, buildYouTurn(nextTurnId(), text)]);
+      setConversationTitle((current) => current ?? deriveConversationTitle(text));
       setQuestion("");
       setCitationNotice(null);
       setAsking(true);
@@ -427,115 +448,144 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   }
 
   const hasTurns = turns.length > 0;
-  const headerTitle = boundTitle ?? ASK_FALLBACK_TITLE;
+  const headerTitle = boundTitle ?? conversationTitle ?? ASK_NEW_CHAT_TITLE;
+  const scopeShort = buildScopeShort(validatedContractCount, supplierNames);
+  const starterGroups = buildStarterGroups(supplierNames[0] ?? null);
+
+  const newChat = () => {
+    setQuestion("");
+    navigate("/ask", { state: { newChat: true } });
+  };
 
   return (
     <div className="ask-screen">
-      {/* NW-78 (AC-1/AC-2/AC-3): above the thread, independent of hasTurns -- a just-scoped
-          conversation is bound from the instant its create response resolves (already true by
-          then, see the optimistic "you" bubble in ask() above), not only once it has been
-          resumed with a full history. */}
-      {boundContractChip !== null && (
-        <Link to={boundContractChip.href} className="ask-bound-chip">
-          <span className="tag tag-neutral">{boundContractChip.label}</span>
-        </Link>
-      )}
-
-      {hasTurns && (
-        <div className="ask-screen-header">
-          <div>
-            <h2 className="screen-title">{headerTitle}</h2>
-          </div>
+      <div className="ask-conv-header">
+        <div className="ask-conv-title">
+          <span className="ask-conv-mark" aria-hidden="true" />
+          <h2 className="ask-conv-name">{headerTitle}</h2>
+          {/* NW-78 (AC-1/AC-2/AC-3): beside the title, independent of hasTurns -- a just-scoped
+              conversation is bound from the instant its create response resolves (already true by
+              then, see the optimistic "you" bubble in ask() above), not only once it has been
+              resumed with a full history. */}
+          {boundContractChip !== null && (
+            <Link to={boundContractChip.href} className="ask-bound-chip">
+              <span className="tag tag-neutral">{boundContractChip.label}</span>
+            </Link>
+          )}
         </div>
-      )}
+        <div className="ask-conv-meta">
+          <span className="ask-conv-scope">{scopeShort}</span>
+          <button type="button" className="btn btn-ghost ask-new-chat-button" onClick={newChat}>
+            + New chat
+          </button>
+        </div>
+      </div>
 
       <div className={`ask-screen-body${marketPanelRecordId !== null ? " has-panel" : ""}`}>
         <div className="ask-chat-column">
           <div className="ask-chat-log" role="log" aria-live="polite">
-            {!hasTurns && (
-              <div className="ask-new-chat">
-                {scopeContractId !== undefined ? (
-                  // NW-56/AC-1/AC-3: a scoped entry briefs the contract -- supplier kicker + a
-                  // heading naming it -- instead of the generic hello, and a contract-specific
-                  // one-line scope instead of the "N validated contracts" sentence below.
-                  <>
-                    <p className="screen-kicker">{scopedBrief.kicker}</p>
-                    <h3 className="ask-new-chat-hello">{scopedBrief.heading}</h3>
-                    <p className="micro-meta ask-new-chat-scope">{scopedBrief.scopeLine}</p>
-                  </>
+            <div className="ask-thread">
+              {!hasTurns && (
+                <div className="ask-new-chat">
+                  {scopeContractId !== undefined ? (
+                    // NW-56/AC-1/AC-3: a scoped entry briefs the contract -- supplier kicker + a
+                    // heading naming it -- instead of the generic hello, and a contract-specific
+                    // one-line scope instead of the intro paragraph.
+                    <>
+                      <p className="screen-kicker">{scopedBrief.kicker}</p>
+                      <h3 className="ask-new-chat-hello">{scopedBrief.heading}</h3>
+                      <p className="text-muted ask-new-chat-intro">{scopedBrief.scopeLine}</p>
+                    </>
+                  ) : (
+                    <>
+                      <h3 className="ask-new-chat-hello">{ASK_HELLO}</h3>
+                      <p className="text-muted ask-new-chat-intro">{NEW_CHAT_INTRO}</p>
+                      <div className="ask-starters">
+                        {starterGroups.map((group) => (
+                          <div key={group.label} className="ask-starter-group">
+                            <div className="ask-starter-label">{group.label}</div>
+                            <div className="ask-starter-items">
+                              {group.items.map((starter) => (
+                                <button key={starter} type="button" className="ask-starter" aria-label={starter} onClick={() => ask(starter)}>
+                                  {starter} →
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {turns.map((turn) =>
+                turn.role === "you" ? (
+                  <div key={turn.id} className="ask-message" data-role="you">
+                    <div className="ask-message-who">You</div>
+                    <div className="ask-message-content">
+                      <div className="ask-message-text">{turn.text}</div>
+                    </div>
+                  </div>
                 ) : (
-                  <>
-                    <h3 className="ask-new-chat-hello">{ASK_HELLO}</h3>
-                    <p className="micro-meta ask-new-chat-scope">
-                      {buildScopeLine(validatedContractCount, [])}. {NEW_CHAT_TRAILER}
-                    </p>
-                  </>
-                )}
-                <div className="ask-new-chat-chips">
-                  {suggestions.map((suggestion) => (
-                    <button key={suggestion} type="button" className="ask-suggestion" aria-label={suggestion} onClick={() => ask(suggestion)}>
-                      {suggestion} →
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+                  <div key={turn.id} className="ask-message" data-role="raffa">
+                    <div className="ask-message-who">{ASK_RAFFA_KICKER}</div>
+                    <div className="ask-message-content">
+                      <ReplyBody
+                        reply={applyCitationPreviews(turn.reply, previewUrls)}
+                        onOpenCitation={(citation) => openCitation(turn, citation)}
+                        onFollowUp={ask}
+                      />
+                      {citationNotice !== null && citationNotice.turnId === turn.id && (
+                        <p className="hint" role="status">
+                          [{citationNotice.n}] {citationNotice.text}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ),
+              )}
 
-            {turns.map((turn) =>
-              turn.role === "you" ? (
-                <div key={turn.id} className="ask-message" data-role="you">
-                  <div className="ask-message-who">You</div>
-                  <div className="ask-message-content">
-                    <div className="ask-message-text">{turn.text}</div>
+              {asking && (
+                <div className="ask-thinking" role="status" aria-live="polite">
+                  <div className="ask-thinking-who">{ASK_RAFFA_KICKER}</div>
+                  <div className="ask-thinking-copy">
+                    <span className="ask-thinking-spinner" aria-hidden="true" />
+                    {THINKING_COPY}
                   </div>
                 </div>
-              ) : (
-                <div key={turn.id} className="ask-message" data-role="raffa">
-                  <div className="ask-message-who">Raffa</div>
-                  <div className="ask-message-content">
-                    <ReplyBody
-                      reply={applyCitationPreviews(turn.reply, previewUrls)}
-                      onOpenCitation={(citation) => openCitation(turn, citation)}
-                      onFollowUp={ask}
-                    />
-                    {citationNotice !== null && citationNotice.turnId === turn.id && (
-                      <p className="hint" role="status">
-                        [{citationNotice.n}] {citationNotice.text}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              ),
-            )}
-
-            {asking && (
-              <div className="ask-thinking" role="status" aria-live="polite">
-                <div className="ask-thinking-who">Raffa</div>
-                <div className="ask-thinking-copy">
-                  <span className="ask-thinking-spinner" aria-hidden="true" />
-                  {THINKING_COPY}
-                </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
 
-          <div className="ask-input-row">
-            <input
-              ref={composerInputRef}
-              className="input"
-              placeholder={ASK_INPUT_PLACEHOLDER}
-              aria-label="Ask Raffa a question"
-              value={question}
-              onChange={(event) => setQuestion(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  ask(question);
-                }
-              }}
-            />
-            <button type="button" className="btn btn-primary" disabled={asking || question.trim() === ""} onClick={() => ask(question)}>
-              Ask
-            </button>
+          <div className="ask-composer">
+            <div className="ask-composer-row">
+              <span className="ask-composer-mark" aria-hidden="true" />
+              <input
+                ref={composerInputRef}
+                className="input ask-composer-input"
+                placeholder={ASK_INPUT_PLACEHOLDER}
+                aria-label="Ask Raffa a question"
+                value={question}
+                onChange={(event) => setQuestion(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    ask(question);
+                  }
+                }}
+              />
+              <button type="button" className="btn btn-primary ask-composer-send" disabled={asking || question.trim() === ""} onClick={() => ask(question)}>
+                Ask
+              </button>
+            </div>
+            <div className="ask-composer-chips">
+              {suggestions.map((suggestion) => (
+                <button key={suggestion} type="button" className="ask-suggestion" aria-label={suggestion} onClick={() => ask(suggestion)}>
+                  {suggestion} →
+                </button>
+              ))}
+              <span className="ask-composer-note">{COMPOSER_NOTE}</span>
+            </div>
           </div>
         </div>
 
