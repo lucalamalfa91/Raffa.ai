@@ -97,10 +97,15 @@ public static class SavingsLeverCalculator
     private static void AddMarketDiscount(
         List<SavingsLever> levers, SavingsLeverInputs inputs, decimal? spend, IReadOnlyList<MarketDealSnapshot> deals)
     {
+        // The representative deal, not the luckiest one: same term as the contract when the corpus
+        // has it, then the largest sample -- a wide corpus must not turn every lever into its best
+        // outlier.
+        var termMonths = inputs.RenewalTermMonths ?? 12;
         var best = deals
             .Where(d => d.DiscountAchievedPct is > 0)
-            .OrderByDescending(d => d.DiscountAchievedPct)
+            .OrderByDescending(d => d.TermMonths == termMonths)
             .ThenByDescending(d => d.SampleSize)
+            .ThenByDescending(d => d.DiscountAchievedPct)
             .FirstOrDefault();
 
         if (best is null)

@@ -1969,7 +1969,7 @@ internal sealed partial class AskCopilotService(
 
         // The money behind the strategy: the target verdict, the grounded levers, the supplier's
         // market deals and the playbook entries for those levers (AskCopilotService.Savings.cs).
-        strategyItems.AddRange(await BuildLeverAddendumAsync(tenantId, namedContractItem, goal, actor, cancellationToken).ConfigureAwait(false));
+        strategyItems.AddRange(await BuildLeverAddendumAsync(namedContractItem, goal, cancellationToken).ConfigureAwait(false));
 
         // Tenant clause evidence (AC-2). SearchByContractAsync uses CosineDistance, which
         // InMemory EF cannot translate — the same constraint BuildNoticePackAsync documents

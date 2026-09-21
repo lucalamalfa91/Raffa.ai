@@ -728,12 +728,27 @@ terms, negotiated clauses, closing period, sample size, source, updatedAt,
 licence restrictions) — Raffa's own shape; a later live third-party client
 (R-MKT-05) maps onto it, never the reverse (OQ-askv2-001).
 `Mock.MockMarketIntelligenceProvider` reads the checked-in
-`backend/fixtures/market-intelligence.mock.json` — **65 records** (≥ 60,
-R-MKT-02) spanning enterprise software (Salesforce, Microsoft, AWS,
-Snowflake, ServiceNow, Slack, Zoom, Notion, HubSpot, Workday, SAP, Adobe,
-Atlassian, Google Workspace, DocuSign, Okta), insurance (Allianz, AXA,
-Zurich, Swiss Re), facilities, telco, logistics and professional services,
-across EU/CH/US and CHF/EUR/USD, with 9 rows deliberately carrying
+`backend/fixtures/market-intelligence.mock.json` — **66 hand-written records
+plus ~1,400 generated ones** (≥ 60, R-MKT-02). The hand-written rows are the
+test/golden oracles (Salesforce, Microsoft, AWS, Snowflake, ServiceNow,
+Slack, Zoom, Notion, HubSpot, Workday, SAP, Adobe, Atlassian, Google
+Workspace, DocuSign, Okta, Allianz, AXA, Zurich, Swiss Re, facilities,
+telco, logistics, professional services). The generated rows come from
+`backend/scripts/generate_market_intelligence_mock.py` (deterministic seed):
+a catalog of ~120 products / SKU editions anchored on 2026 public list
+prices (Salesforce editions, Microsoft 365 E3/E5/F3, ServiceNow ITSM tiers,
+Slack, Zoom, Atlassian, Workday, SAP, Oracle, Adobe, DocuSign, Okta, Google
+Workspace, Datadog, Zendesk, GitHub, HubSpot, Snowflake credits, Databricks
+DBUs, Tableau, AWS/Azure/GCP instance hours and storage, Big Four and IT
+services day rates, telco sites and SIMs, insurance premiums, freight and
+facility rates) spread across **US / EU / UK / CH / APAC** (USD / EUR / GBP /
+CHF), 12/24/36-month terms and five company-size bands, with bands modelled
+from the typical negotiated discount per category, size and term, plus
+negotiated clauses, uplift caps, notice and payment terms. Generated ids
+start with `MKT-ZZ-` (they sort after every hand-written id, so a tie never
+shadows an oracle) and never add to a hand-written supplier/product pair.
+Re-run the script after editing the catalog; it keeps the hand-written rows
+byte-identical. 9 hand-written rows deliberately carry
 `sampleSize < 5` so the abstain path below is exercised — every record
 `source = "mock"` / `representative = true`. The JSON is **embedded** into
 `Raffa.Market.dll` (not opened from a runtime file path) so every host
@@ -1229,8 +1244,8 @@ gate → planner → pack → answer → guards pipeline, with four additions:
    contracts that can be acted on inside the window (notice deadline inside
    it, or no fixed date) with a running cumulative against the target; a
    second currency is listed, never FX-summed. A scoped `RenewalStrategy` turn
-   carries the lever addendum. Every quantified lever is upserted as a savings
-   opportunity keyed by the lever (`savings_opportunity.opportunity_key`,
+   carries the lever addendum (evidence only). On a `Savings` turn every
+   quantified lever is upserted as a savings opportunity keyed by the lever (`savings_opportunity.opportunity_key`,
    `SavingsOpportunityService.UpsertGeneratedAsync`), never touching a row a
    person owns — the Savings page fills from real use of Ask.
 3. **The negotiation council** (`Raffa.Chat.Application.Council`). For
@@ -3010,7 +3025,7 @@ ConnectionStrings__Renewals=<npgsql> \
 ConnectionStrings__Market=<npgsql> \
   dotnet run --project backend/src/Raffa.Worker -- \
     ingest-market --feed backend/fixtures/market-intelligence.mock.json
-# Ingested feed 'mock-2026.09.0': 65 inserted, 0 updated, 0 unchanged.
+# Ingested feed 'mock-2026.09.2': 1456 inserted, 0 updated, 0 unchanged.
 ```
 
 The first three connection strings are what `Raffa.Worker/Program.cs`

@@ -77,9 +77,10 @@ internal sealed partial class AskCopilotService
             .ToPricedLines(contract360, benchmarkService, benchmarkSupplierName, geography, asOfDate, cancellationToken)
             .ConfigureAwait(false);
 
-        var deals = await marketDealLookup
+        var allDeals = await marketDealLookup
             .GetBySupplierAsync(benchmarkSupplierName ?? supplierName, cancellationToken)
             .ConfigureAwait(false);
+        var deals = NarrowDealsToContract(allDeals, contract360.Overview.Currency, geography);
 
         var renewal = InsightsEndpointExtensions.ComputeRenewal(contract360.Header, renewalEngine);
 
@@ -167,15 +168,13 @@ internal sealed partial class AskCopilotService
     /// <summary>The lever items (target verdict + levers) appended to a scoped renewal-strategy
     /// pack so "come affrontare il rinnovo" also carries the money.</summary>
     private async Task<IReadOnlyList<PackItem>> BuildLeverAddendumAsync(
-        TenantId tenantId, PortfolioListItem namedContractItem, SavingsGoal? goal, string actor, CancellationToken cancellationToken)
+        PortfolioListItem namedContractItem, SavingsGoal? goal, CancellationToken cancellationToken)
     {
         var evidence = await ComputeLeverEvidenceAsync(namedContractItem, goal, cancellationToken).ConfigureAwait(false);
         if (evidence is null)
         {
             return [];
         }
-
-        await PersistGeneratedOpportunitiesAsync(tenantId, namedContractItem, evidence, actor, cancellationToken).ConfigureAwait(false);
 
         var items = new List<PackItem>
         {
@@ -696,6 +695,26 @@ internal sealed partial class AskCopilotService
         }
 
         return items;
+    }
+
+    /// <summary>The supplier's deals that speak to this contract: same currency and geography
+    /// when the corpus has them, else same currency, else everything — a wide corpus must
+    /// benchmark a CHF contract against CHF peers, not against the cheapest region.</summary>
+    private static IReadOnlyList<MarketDeal> NarrowDealsToContract(IReadOnlyList<MarketDeal> deals, string currency, string? geography)
+    {
+        var sameCurrency = deals.Where(d => string.Equals(d.Currency, currency, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (sameCurrency.Count == 0)
+        {
+            return deals;
+        }
+
+        if (geography is null)
+        {
+            return sameCurrency;
+        }
+
+        var sameGeography = sameCurrency.Where(d => string.Equals(d.Geography, geography, StringComparison.OrdinalIgnoreCase)).ToList();
+        return sameGeography.Count > 0 ? sameGeography : sameCurrency;
     }
 
     private static MarketDealSnapshot ToMarketDealSnapshot(MarketDeal deal) =>
