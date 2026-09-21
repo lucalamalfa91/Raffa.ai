@@ -15,12 +15,17 @@ variable "ai_account_attached" {
   default     = true
 }
 
-# Two-phase Foundry wiring, same as the dev root: flipped with the demo
-# promotion that carries the live-Foundry backend.
+# Two-phase Foundry wiring, same as the dev root. Flipped 2026-09-21: the
+# live-Foundry backend has been on demo since demo-v4 (2026-09-18), but this
+# flag was never flipped with it, so demo's Container Apps still carried an
+# empty AiGateway__Endpoint and no AiGateway__Models__* map -- the API and
+# worker bound FixtureAiGateway (regex extraction, empty list stages) while
+# dev ran the real models. true publishes the shared account endpoint and
+# demo's own gpt-5.4 / gpt-5.4-nano / text-embedding-3-large deployments.
 variable "ai_gateway_wired" {
   description = "Publish AiGateway__Endpoint and the AiGateway__Models__* env vars to this environment's Container Apps (Foundry path). false keeps the fixture gateway even though the account exists."
   type        = bool
-  default     = false
+  default     = true
 }
 
 # Entra object ids (not secrets) granted the two data-plane roles on the

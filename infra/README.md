@@ -204,7 +204,7 @@ Every SKU/version was verified in `northeurope` for this subscription on
 `gpt-4o-mini` / `gpt-4.1-*` exist there only as provisioned SKUs and are
 rejected by the module's validation.
 
-**Two-phase wiring (`ai_gateway_wired`, per root, default `false`).**
+**Two-phase wiring (`ai_gateway_wired`, per root; `true` on both roots since 2026-09-21).**
 `Raffa.Api` binds `IAiGateway` to the Foundry client whenever
 `AiGateway:Endpoint` is non-empty and to the fixture gateway otherwise, so
 the endpoint and the model map are published only when the account is
@@ -350,8 +350,10 @@ holds the directory right, not which environment wants the feature.
 - **Foundry wiring is two-phase.** The account, projects, deployments and
   RBAC are Terraform-managed (`modules/foundry`); `AiGateway__Endpoint` and
   the `AiGateway__Models__*` env vars are published only where the root sets
-  `ai_gateway_wired = true` (dev after the live probe, demo with the
-  promotion that carries the live-Foundry backend). `demo` also needs
+  `ai_gateway_wired = true` (dev after the live probe on 2026-09-09; demo
+  flipped on 2026-09-21, after demo-v4..v6 had promoted the live-Foundry
+  backend without the flag and left demo on the fixture gateway). `demo`
+  also needs
   `ai_account_attached = true` before it creates its project and
   deployments — and `dev` and `demo` applies that touch the shared account
   must not run at the same time (the account serialises deployment
