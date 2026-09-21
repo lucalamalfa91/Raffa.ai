@@ -624,7 +624,18 @@ internal sealed partial class AskCopilotService
     private async Task<IReadOnlyList<PackItem>> BuildRecordedSavingsItemsAsync(
         TenantId tenantId, PortfolioListItem namedContractItem, string supplierName, CancellationToken cancellationToken)
     {
-        var allSavings = await savingsOpportunityService.ListAsync(tenantId, cancellationToken).ConfigureAwait(false);
+        IReadOnlyList<SavingsOpportunityResult> allSavings;
+        try
+        {
+            allSavings = await savingsOpportunityService.ListAsync(tenantId, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Recorded opportunities are one evidence source among several: a Savings store that
+            // cannot be reached must not turn a fully grounded lever pack into a 500.
+            return [];
+        }
+
         // Hand-recorded rows only: the generated ones (OpportunityKey set) are this turn's own
         // levers, already in the pack as calc items -- listing them twice would double-count.
         var contractSavings = allSavings

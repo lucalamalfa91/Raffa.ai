@@ -56,7 +56,7 @@ public static class NumericGuard
     // currency was on without re-matching.
     private static readonly Regex CurrencyAmountPattern = new(
         @"\b(?<cur1>CHF|EUR|USD|GBP)\s?(?<amt1>\d[\d,.'’]*)\b|" +
-        @"\b(?<amt2>\d[\d,.'’]*)\s?(?<cur2>CHF|EUR|USD|GBP)\b",
+        @"\b(?<amt2>\d(?:[\d,.'’]*\d)?)\s?(?<cur2>CHF|EUR|USD|GBP)\b",
         RegexOptions.Compiled);
 
     private static readonly Regex IsoDatePattern = new(@"\b(\d{4}-\d{2}-\d{2})\b", RegexOptions.Compiled);

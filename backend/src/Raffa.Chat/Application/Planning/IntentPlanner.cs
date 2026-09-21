@@ -59,8 +59,8 @@ public sealed class IntentPlanner
     // PortfolioMarketPositionPattern above — still reaches Savings/PortfolioStrategy instead of
     // being stolen by the market/benchmark lexicon into QuoteRoute.
     private static readonly Regex SavingsPattern = new(
-        @"\b(saving\w*|risparm\w*|largest|salv\w*|tagli\w*|ridurr\w*|riduzione|ridotto|costi|budget|" +
-        @"lev[ae]|cut\s+(the\s+)?cost\w*|spend\s+less|abbassare|abbattere|efficient\w*)\b",
+        @"\b(saving\w*|sav(e|es|ed)|risparm\w*|largest|salv\w*|tagli\w*|ridurr\w*|riduzione|ridotto|costi|budget|" +
+        @"lev[ae]|lever\w*|cut\s+(the\s+)?cost\w*|spend\s+less|abbassare|abbattere|efficient\w*)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // A short follow-up that carries no intent of its own ("non mi hai risposto", "e quindi?",

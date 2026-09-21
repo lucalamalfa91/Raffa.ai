@@ -1,5 +1,5 @@
 {
-  "feedVersion": "mock-2026.09.0",
+  "feedVersion": "mock-2026.09.1",
   "deals": [
     {
       "provider": "Internal Dataset",
@@ -328,10 +328,19 @@
       "unitPriceP50": 108,
       "unitPriceP75": 125,
       "discountAchievedPct": 9,
-      "upliftCapPct": null,
-      "noticeDays": null,
-      "paymentTerms": null,
-      "negotiatedClauses": [],
+      "upliftCapPct": 5,
+      "noticeDays": 90,
+      "paymentTerms": "Net 45",
+      "negotiatedClauses": [
+        {
+          "type": "UpliftCap",
+          "value": "5% annual cap"
+        },
+        {
+          "type": "TrueDown",
+          "value": "seat reduction at each anniversary without penalty"
+        }
+      ],
       "closingPeriod": "2026-Q2",
       "sampleSize": 70,
       "source": "mock",
@@ -354,13 +363,62 @@
       "unitPriceP25": 88,
       "unitPriceP50": 100,
       "unitPriceP75": 118,
-      "discountAchievedPct": null,
-      "upliftCapPct": null,
-      "noticeDays": null,
-      "paymentTerms": null,
-      "negotiatedClauses": [],
+      "discountAchievedPct": 8,
+      "upliftCapPct": 4,
+      "noticeDays": 90,
+      "paymentTerms": "Net 45",
+      "negotiatedClauses": [
+        {
+          "type": "UpliftCap",
+          "value": "4% annual cap"
+        },
+        {
+          "type": "PriceLock",
+          "value": "price locked for the renewal term"
+        }
+      ],
       "closingPeriod": "2026-Q2",
       "sampleSize": 40,
+      "source": "mock",
+      "representative": true,
+      "updatedAt": "2026-06-10T00:00:00Z",
+      "licenseRestrictions": null
+    },
+    {
+      "provider": "Internal Dataset",
+      "recordId": "MKT-SNOW-EU-02",
+      "supplier": "ServiceNow",
+      "category": "Enterprise Software",
+      "product": "ITSM Professional",
+      "sku": null,
+      "geography": "EU",
+      "currency": "EUR",
+      "companySizeBand": "2000-5000",
+      "termMonths": 36,
+      "annualValueBand": "250k-500k",
+      "unitPriceP25": 80,
+      "unitPriceP50": 91,
+      "unitPriceP75": 107,
+      "discountAchievedPct": 12,
+      "upliftCapPct": 3,
+      "noticeDays": 90,
+      "paymentTerms": "Net 45",
+      "negotiatedClauses": [
+        {
+          "type": "UpliftCap",
+          "value": "3% annual cap"
+        },
+        {
+          "type": "PriceLock",
+          "value": "unit price locked for 36 months"
+        },
+        {
+          "type": "TrueDown",
+          "value": "up to 10% seat reduction at each anniversary"
+        }
+      ],
+      "closingPeriod": "2026-Q2",
+      "sampleSize": 22,
       "source": "mock",
       "representative": true,
       "updatedAt": "2026-06-10T00:00:00Z",

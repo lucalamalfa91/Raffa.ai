@@ -124,6 +124,12 @@ public sealed class DomainGate
     /// uploaded and validated", never even considering Salesforce. Found by the golden set
     /// (task E13/F06/US01/T02, GAP-ASK-PRONOUN-AS-SUPPLIER).
     /// </summary>
+    // A money or savings signal that turns a how-to phrasing into a real savings question.
+    private static readonly Regex SavingsSignalPattern = new(
+        @"\b(risparm\w*|saving\w*|sav(e|es|ed)|salv\w*|tagli\w*|ridurr\w*|riduzione|cost\w*|budget|spend\w*|spesa|" +
+        @"rinnov\w*|renew\w*|negozia\w*|negotiat\w*|contratt\w*|contract\w*|lev[ae]|lever\w*)\b|\d",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     private static readonly HashSet<string> NeverSupplierNames = new(StringComparer.OrdinalIgnoreCase)
     {
         "I", "I'm", "I've", "I'd", "I'll", "A", "An", "The", "OK", "Ok",
@@ -179,7 +185,10 @@ public sealed class DomainGate
             return new DomainGateResult(GateLabel.Legal, "matched the legal-advice lexicon.");
         }
 
-        if (CapabilityPattern.IsMatch(trimmed))
+        // "How do I cut costs by 40k this quarter?" / "come faccio a risparmiare 20k?" is a savings
+        // question that happens to open like a how-to: a money or savings signal in the same
+        // sentence keeps it in domain, so it reaches the planner instead of the feature tour.
+        if (CapabilityPattern.IsMatch(trimmed) && !SavingsSignalPattern.IsMatch(trimmed))
         {
             return new DomainGateResult(GateLabel.Capability, "matched the capability/how-to lexicon.");
         }

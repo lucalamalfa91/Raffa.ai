@@ -1196,6 +1196,73 @@ Cross-tenant isolation over this new endpoint (parent story AC-9) is
 proven the same way as `POST /api/chat/query`'s — see
 `Raffa.IntegrationTests.AskRaffaRagCrossTenantIsolationTests`.
 
+### Ask Raffa V2 — savings consultant (levers, negotiation council, playbook)
+
+A savings or negotiation question ("quali leve posso usare per risparmiare 20k
+sul rinnovo", "come posso salvare 40K sul prossimo quarterly basandomi sui
+contratti attivi?", "how do I cut costs by 40k this quarter?") rides the same
+`POST /api/conversations/{id}/messages` route and the same
+gate → planner → pack → answer → guards pipeline, with four additions:
+
+1. **Understanding the question.** `DomainGate` blanks money shorthand and
+   currency codes (`40K`, `€ 20k`, `EUR 20000`) before extracting a supplier
+   name, so the `K` of `40K` is never a supplier; a how-to phrasing with a
+   money or savings signal stays in domain instead of the capability tour.
+   `IntentPlanner` carries a `SavingsGoal` (amount, percentage, window —
+   `SavingsGoalParser`, regex only, IT + EN) on every `IntentPlanResult`; the
+   savings lexicon covers `risparmiare / salvare / tagliare / ridurre / costi
+   / budget / leve / save / cut costs`. A quantified goal with no supplier in
+   scope plans to the eleventh intent, `AskIntent.PortfolioSavingsTarget`. A
+   bare follow-up ("non mi hai risposto", "e quindi?") is planned on the
+   previous user question, so it inherits that turn's intent and goal.
+2. **Evidence.** `AskCopilotService.Savings.cs` composes the `Savings` pack
+   from `Raffa.Insights.Savings.SavingsLeverCalculator` (pure: market
+   discount, above-band re-pricing, multi-year term, uplift cap, notice
+   timing, payment terms, volume flexibility — every lever grounded and cited,
+   amounts and percentages in the guard's own form), the target/coverage
+   verdict (`calc:savings-target`), the ranked negotiation points, the
+   supplier's market deals as numbers (`IMarketDealLookup.GetBySupplierAsync`
+   — Postgres or the feed), hand-recorded savings opportunities, clause
+   evidence retrieved from the contract's own pages for three fixed lever
+   probes, and the playbook. The `PortfolioSavingsTarget` pack runs the lever
+   calculator per contract and `PortfolioSavingsTargetCalculator` ranks the
+   contracts that can be acted on inside the window (notice deadline inside
+   it, or no fixed date) with a running cumulative against the target; a
+   second currency is listed, never FX-summed. A scoped `RenewalStrategy` turn
+   carries the lever addendum. Every quantified lever is upserted as a savings
+   opportunity keyed by the lever (`savings_opportunity.opportunity_key`,
+   `SavingsOpportunityService.UpsertGeneratedAsync`), never touching a row a
+   person owns — the Savings page fills from real use of Ask.
+3. **The negotiation council** (`Raffa.Chat.Application.Council`). For
+   `Savings`, `PortfolioSavingsTarget` and scoped `RenewalStrategy` turns over
+   a pack of at least three items: the contract analyst and the market analyst
+   run in parallel over disjoint slices of the pack (`IAiGateway.AnalyzeAsync`,
+   strict JSON, `council-v1`), then the lever strategist reads both sets of
+   findings, the calculators' items and the playbook and returns ranked plays
+   plus a verdict on the goal. Plays are validated locally — citation keys must
+   be pack keys, `NumericGuard` runs over each play's text, cited values are
+   copied from the pack — and inserted as `calc:council:play[n]` items right
+   after the target verdict, so the answer role narrates them under the same
+   grounding and numeric guards as everything else. A failed agent degrades
+   the council, never the turn. `Chat:Council` (`Enabled`, `MinPackItems`,
+   `MaxItemsPerAgent`, `MaxPlays`) is the kill switch; the `analyst` role runs
+   on `AiGateway:Models:Analyst` when set, else on the `answer` deployment.
+4. **Persona `answer-v2.2`** (`Prompts/answer/v2.2.md`, drift-tested against
+   `AnswerPromptV2.SystemPrompt`): a senior negotiation consultant; a savings
+   question is answered with the verdict on the goal first, then Diagnosi →
+   Leve in ordine di valore → Piano e timing → Cosa chiedere al fornitore →
+   Rischi e cosa manca; a follow-up advances instead of restating; only bold
+   and lists, which is all the web renderer supports. `NegotiationPlaybook`
+   (`raffa:playbook:*`, digit-free by test) supplies tactics and wording,
+   never numbers.
+
+Golden cases `seeded-savings-leve-20k-salesforce-it`,
+`seeded-savings-levers-20k-salesforce-en`,
+`seeded-portfolio_savings_target-40k-quarterly-it` and
+`seeded-portfolio_savings_target-cut-costs-en` pin the two motivating
+questions; `Raffa.Api.Tests.AskSavingsConsultantTests` runs them end to end
+over HTTP with the fixture gateway.
+
 ### Ask Raffa V2 — the notice pack (tasks E30/F01/US01/T01 + E30/F02/US01/T01, NW-91/NW-92/NW-94, ADR-024 w19 cl. 22)
 
 A notice/preavviso/disdetta/cancellation-deadline question rides the identical
@@ -1206,7 +1273,9 @@ detected and answered entirely server-side, before any pack ever reaches
 Italian) is checked inside the planner's existing `AskIntent.StructuredFact`
 branch — deliberately **not** an eleventh `AskIntent` (this file's own doc
 comment: `IntentPlanner` reuses the one intent for both rather than adding
-one, so "The V2 engine"'s ten fixed intents above are unchanged).
+one, so "The V2 engine"'s fixed intents above are unchanged — the eleventh,
+`PortfolioSavingsTarget`, is the savings consultant's own, see the section
+above).
 
 **The pack (feature-01, NW-91/NW-92).** `BuildNoticePackAsync` composes, in
 order: (1) the scoped fact itself — `endDate`/`cancellationDeadline`/
