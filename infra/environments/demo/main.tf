@@ -208,8 +208,13 @@ module "containerapps" {
 # lower cost" tier, Luna the fastest and cheapest), text-embedding-3-large
 # unchanged -- the backend forces dimensions = 1536 so the pgvector column
 # width never changes. Model version 2026-07-09 is the GA version Azure
-# publishes for all three GPT-5.6 tiers; DataZoneStandard (EU Data Zone)
-# is offered for the family. Removing the gpt-5.4 entries below destroys
+# publishes for all three GPT-5.6 tiers. GlobalStandard, not
+# DataZoneStandard: the first demo apply (2026-09-21) was rejected with
+# "The specified SKU 'DataZoneStandard' for model 'gpt-5.6-terra
+# 2026-07-09' is not supported in this region 'northeurope'" (same for
+# luna), so the family is not yet in the EU Data Zone on this account's
+# region and the module's documented fallback applies (ADR-004 amendment
+# 2026-09-21). Removing the gpt-5.4 entries below destroys
 # demo's gpt-5.4-demo / gpt-5.4-nano-demo deployments in the same apply
 # that publishes the new ids to the Container Apps, so a request in flight
 # during the apply may fail once -- acceptable on demo, never do this on a
@@ -229,8 +234,8 @@ module "foundry" {
   extra_gateway_env         = var.ai_gateway_extra_env
 
   model_deployments = {
-    "gpt-5.6-terra"          = { model_version = "2026-07-09", sku_name = "DataZoneStandard", capacity = 200 }
-    "gpt-5.6-luna"           = { model_version = "2026-07-09", sku_name = "DataZoneStandard", capacity = 200 }
+    "gpt-5.6-terra"          = { model_version = "2026-07-09", sku_name = "GlobalStandard", capacity = 200 }
+    "gpt-5.6-luna"           = { model_version = "2026-07-09", sku_name = "GlobalStandard", capacity = 200 }
     "text-embedding-3-large" = { model_version = "1", sku_name = "GlobalStandard", capacity = 100 }
   }
 
