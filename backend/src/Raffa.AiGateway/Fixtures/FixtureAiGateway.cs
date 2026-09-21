@@ -349,6 +349,89 @@ public sealed class FixtureAiGateway(
     private sealed record FixturePackValue(string Key, string Value, string Kind, string? Currency);
 
     /// <inheritdoc/>
+    /// <summary>
+    /// The `analyst` role, deterministic: reads the council's own input shape (structural JSON
+    /// contract with <c>Raffa.Chat.Application.Council</c>, the same way <see cref="FixturePackItem"/>
+    /// mirrors the pack) and returns a payload that any consumer can ground — every finding or play
+    /// cites an input item's own citation key and reuses that item's own text, so the numbers it
+    /// carries are the pack's numbers. An agent whose name ends in "analyst" gets findings; any
+    /// other agent gets plays plus a verdict.
+    /// </summary>
+    public Task<Result<AiAnalysisResult>> AnalyzeAsync(
+        AiAnalysisRequest request, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(request.AgentName))
+        {
+            return Task.FromResult(Result<AiAnalysisResult>.Failure("Analysis requires an agent name."));
+        }
+
+        if (string.IsNullOrWhiteSpace(request.InputJson))
+        {
+            return Task.FromResult(Result<AiAnalysisResult>.Failure("Analysis requires a non-empty JSON input."));
+        }
+
+        FixtureAnalysisInput? input;
+        try
+        {
+            input = JsonSerializer.Deserialize<FixtureAnalysisInput>(request.InputJson, PackJsonOptions);
+        }
+        catch (JsonException ex)
+        {
+            return Task.FromResult(Result<AiAnalysisResult>.Failure($"InputJson was not valid JSON: {ex.Message}"));
+        }
+
+        var items = input?.Items ?? [];
+        var isAnalyst = request.AgentName.EndsWith("analyst", StringComparison.OrdinalIgnoreCase);
+
+        string payload;
+        if (isAnalyst)
+        {
+            var findings = items.Take(MaxFixtureFindings).Select(item => new
+            {
+                title = item.Title,
+                insight = item.Snippet,
+                leverType = (string?)null,
+                citationKeys = new[] { item.CitationKey },
+            });
+            payload = JsonSerializer.Serialize(new { findings }, PackJsonOptions);
+        }
+        else
+        {
+            var leverItems = items.Where(i => i.CitationKey.StartsWith("calc:lever", StringComparison.Ordinal)).ToList();
+            var source = leverItems.Count > 0 ? leverItems : items;
+            var plays = source.Take(MaxFixtureFindings).Select((item, index) => new
+            {
+                rank = index + 1,
+                lever = item.Title,
+                ask = item.Snippet,
+                expectedValueKeys = (item.Values ?? []).Select(v => v.Key).ToArray(),
+                fallback = "If refused, hold the notice reservation and keep the alternative on the table.",
+                timing = "Before the notice deadline.",
+                citationKeys = new[] { item.CitationKey },
+            });
+
+            var targetItem = items.FirstOrDefault(i => i.CitationKey is "calc:savings-target" or "calc:portfolio-target");
+            var reachable = targetItem?.Subtitle?.Contains("reachable", StringComparison.OrdinalIgnoreCase) == true
+                && targetItem.Subtitle?.Contains("not", StringComparison.OrdinalIgnoreCase) != true;
+            var verdict = new
+            {
+                targetReachable = reachable,
+                reason = targetItem?.Snippet ?? "No target was named.",
+            };
+            payload = JsonSerializer.Serialize(new { plays, verdict }, PackJsonOptions);
+        }
+
+        var result = new AiAnalysisResult(
+            payload,
+            BuildMetadata(modelOptions.Analyst ?? modelOptions.Answer, request.AgentName + " " + request.InputJson) with { PromptVersion = request.PromptVersion });
+
+        return Task.FromResult(Result<AiAnalysisResult>.Success(result));
+    }
+
+    private const int MaxFixtureFindings = 3;
+
+    private sealed record FixtureAnalysisInput(IReadOnlyList<FixturePackItem>? Items);
+
     public Task<Result<AiOcrResult>> OcrAsync(
         AiOcrRequest request, CancellationToken cancellationToken = default)
     {

@@ -79,6 +79,13 @@ internal sealed class RecordingAiGateway(IAiGateway inner) : IAiGateway
         _calls.Add(nameof(OcrAsync));
         return inner.OcrAsync(request, cancellationToken);
     }
+
+    public Task<Result<AiAnalysisResult>> AnalyzeAsync(
+        AiAnalysisRequest request, CancellationToken cancellationToken = default)
+    {
+        _calls.Add(nameof(AnalyzeAsync));
+        return inner.AnalyzeAsync(request, cancellationToken);
+    }
 }
 
 /// <summary>

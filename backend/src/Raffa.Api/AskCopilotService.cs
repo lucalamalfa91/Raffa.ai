@@ -7,6 +7,7 @@ using Raffa.Benchmark.Contracts;
 using Raffa.Chat.Application;
 using Raffa.Chat.Application.Answering;
 using Raffa.Chat.Application.Capabilities;
+using Raffa.Chat.Application.Council;
 using Raffa.Chat.Application.Gate;
 using Raffa.Chat.Application.Pack;
 using Raffa.Chat.Application.Planning;
@@ -194,6 +195,7 @@ internal sealed partial class AskCopilotService(
     BenchmarkKeyResolution benchmarkKeyResolution,
     IMarketKnowledgeRetrieval marketKnowledgeRetrieval,
     IMarketDealLookup marketDealLookup,
+    NegotiationCouncil negotiationCouncil,
     IAuditWriter auditWriter,
     ITenantContext tenantContext,
     IClock clock)
@@ -550,6 +552,19 @@ internal sealed partial class AskCopilotService(
         if (disambiguationItem is not null)
         {
             packItems = packItems.Prepend(disambiguationItem).ToList();
+        }
+
+        // The negotiation council (Raffa.Chat.Application.Council): for a savings or negotiation
+        // turn, two analysts read the pack in parallel and a strategist turns their findings into
+        // ranked plays -- inserted right after the target verdict so the budget keeps them and the
+        // answer leads with them. A failed agent degrades the council, never the turn.
+        if (IsCouncilIntent(plan.Intent, namedContractItem))
+        {
+            var council = await negotiationCouncil.RunAsync(question, packItems, plan.Goal, cancellationToken).ConfigureAwait(false);
+            if (council.Items.Count > 0)
+            {
+                packItems = InsertCouncilItems(packItems, council.Items);
+            }
         }
 
         var boundedPack = packBudget.Apply(packItems);
@@ -2525,6 +2540,21 @@ internal sealed partial class AskCopilotService(
                 $"kind={reply.Kind} citationCount={reply.Citations.Count} actionCount={reply.Actions.Count} " +
                 $"packHash={packHash} abstainGuardIntervened={guardIntervened}"),
             cancellationToken).ConfigureAwait(false);
+    }
+
+    private static bool IsCouncilIntent(AskIntent intent, PortfolioListItem? namedContractItem) =>
+        intent is AskIntent.Savings or AskIntent.PortfolioSavingsTarget ||
+        (intent == AskIntent.RenewalStrategy && namedContractItem is not null);
+
+    /// <summary>Council plays go right after the calculators' target verdict (or the first item
+    /// when there is none), ahead of the raw evidence they summarize.</summary>
+    private static IReadOnlyList<PackItem> InsertCouncilItems(IReadOnlyList<PackItem> packItems, IReadOnlyList<PackItem> councilItems)
+    {
+        var list = packItems.ToList();
+        var anchor = list.FindIndex(i => i.CitationKey is "calc:savings-target" or "calc:portfolio-target");
+        var insertAt = anchor >= 0 ? anchor + 1 : Math.Min(1, list.Count);
+        list.InsertRange(insertAt, councilItems);
+        return list;
     }
 
     private static string ComputeHash(string input) =>

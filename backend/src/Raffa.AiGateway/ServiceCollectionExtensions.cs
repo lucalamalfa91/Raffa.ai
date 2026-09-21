@@ -170,6 +170,7 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<FoundryEmbedClient>();
         services.TryAddSingleton<FoundryAnswerClient>();
         services.TryAddSingleton<FoundryOcrClient>();
+        services.TryAddSingleton<FoundryAnalyzeClient>();
         services.TryAddSingleton<FoundryAiGateway>();
 
         // Task E13/F01/US01/T02's own coding objective: "when AiGateway:Endpoint is set register
