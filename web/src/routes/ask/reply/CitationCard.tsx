@@ -17,47 +17,30 @@ export interface CitationCardProps
 
 const VIEWER_ROUTE_PREFIX = "/documents/";
 
-/**
- * A citation "carries a clause/span id" (task text, NW-83/NW-93) exactly when its own `href` has
- * already resolved to the W18 viewer deep-link (`/documents/{documentId}/viewer?page=&clause=`)
- * rather than the 360 fallback. `AskCopilotService.ResolveTenantClauseLinks` (task
- * E28/F03/US01/T01, NW-83) never sends a third shape for a tenant citation -- the viewer route
- * (with or without `&clause=`) or a `/contracts/{contractId}` route (bare, or carrying its own
- * `?clause=`/`?page=` half) -- so this prefix check is exact, not a heuristic.
- */
 function isViewerHref(href: string | null | undefined): href is string {
   return typeof href === "string" && href.startsWith(VIEWER_ROUTE_PREFIX);
 }
 
 /**
- * One citation card (task text; R-WEB-04; requirements.md §6): corpus badge + title + subtitle +
- * the grounded quote (the pack snippet / page excerpt) at readable size, an optional page preview,
- * and a CTA to open the source. The whole card is one native `<button>` (ADR-019 accessibility
- * baseline: "every interactive control is native"). The CTA label is a plain, non-interactive
- * `<span>`, never a nested `<button>`/`<a>`, so the card keeps exactly one interaction (AC-3).
+ * One citation, laid out as the V2 prototype's quote block (`Raffa.ai V2.dc.html`, `b.isQuote`):
  *
- * **Two-CTA card** (task E28/F03/US02/T01, NW-83/NW-93; parent story us-02-citation-two-cta
- * AC-1/AC-2/AC-3; `screens-v2.md` §2 citation card actions): once a citation resolves to a real
- * document page/span, this renders the two-CTA half of the pair instead of the single button above
- * -- `.btn-primary` "Open contract" (`/contracts/{contractId}`) and `.btn-secondary` "Open at this
- * span" (the viewer `href` verbatim) -- reusing `ActionRow` rather than a second bespoke button, as
- * a plain, non-interactive `<div>` rather than this card's own native `<button>`: `ActionRow`
- * renders real `<a>` elements (`react-router-dom`'s `Link`), and an anchor nested inside a
- * `<button>` is invalid, doubly-interactive markup -- never two nested buttons. The preview image
- * (when present) renders too, never previewUrl-only: the two actions are never dropped in its
- * favour. Every other shape -- market, raffa, or a tenant citation that never resolved past the 360
- * fallback -- falls back to the original single-button card below, `href` unused directly exactly
- * as before.
+ *   <div style="border:1px solid var(--color-divider);background:#fff;max-width:720px">
+ *     <div style="display:flex;justify-content:space-between;...;padding:8px 16px;border-bottom:1px solid var(--color-divider);font-size:11px">
+ *       <span style="letter-spacing:.08em;text-transform:uppercase;color:neutral-600">{{ b.label }}</span>
+ *       <span style="color:neutral-600;white-space:nowrap">{{ b.doc }} · p.{{ b.page }} · §{{ b.sec }}</span>
+ *     <p style="padding:16px 18px;font-family:Georgia,serif;font-size:13px;line-height:1.65">{{ b.before }}<mark>{{ b.quote }}</mark>{{ b.after }}</p>
+ *     <div style="display:flex;gap:16px;padding:8px 16px 10px;border-top:1px solid var(--color-divider)"><button class="btn btn-ghost" style="padding:0;font-size:12px">Open in Contract 360 →</button></div>
  *
- * `.card` (ADR-019 / `styles/components.css`: "recommendation/provenance blocks only") is the
- * right shared base -- a citation card *is* a provenance block -- with this folder's own
- * `.citation-card` modifier (`reply.css`) resetting the native button chrome (font, text-align,
- * width) that `.card` alone does not cover; the two-CTA `<div>` reuses the same classes, which
- * apply equally well to a non-button flex container.
+ * The label slot carries this citation's `[n]` marker (the target of the inline `[n]` in the
+ * answer) and its corpus name (`getCorpusBadge`: "Validated contract" / "Market · representative" /
+ * "Raffa" -- text, never colour alone, ADR-019); the right-hand slot the citation's `title` and
+ * `subtitle` ("Salesforce · MSA 2024 · p.12 §8.4"). The wire carries the cited passage alone (no
+ * surrounding text), so the whole quote is the passage. A first-page preview (requirements.md §6,
+ * `previewUrl`) renders under the quote when one exists -- the prototype's fixtures have none.
  *
- * A missing preview must not leave an empty dashed void — the quote is the card. `previewUrl` is
- * an authenticated object URL when Ask has already fetched the PNG (`useCitationPreviews`); a raw
- * `/api/documents/.../preview` path cannot carry tenant/auth headers as `<img src>`.
+ * Two shapes, one look: the single-interaction card is one `<button>` whose footer label is a
+ * plain span; the two-CTA card (NW-83/NW-93, a viewer `href` plus a known `contractId`) is a
+ * `<div>` whose footer holds two real `<Link>`s (`ActionRow`), never nested buttons.
  */
 export default function CitationCard({
   n,
@@ -73,41 +56,53 @@ export default function CitationCard({
   const badge = getCorpusBadge(corpus);
   const cta = citationOpenLabel(href);
 
+  const header = (
+    <div className="citation-card-header">
+      <span className="citation-card-label">
+        <span className="citation-card-index">[{n}]</span> {badge.label}
+      </span>
+      <span className="citation-card-source">
+        <span className="citation-card-title">{title}</span>
+        {subtitle ? (
+          <>
+            <span aria-hidden="true"> · </span>
+            <span className="citation-card-subtitle">{subtitle}</span>
+          </>
+        ) : null}
+      </span>
+    </div>
+  );
+
+  const body = (
+    <>
+      <blockquote className="citation-card-snippet">{snippet}</blockquote>
+      {previewUrl ? <img className="citation-card-preview" src={previewUrl} alt={`${title} -- page preview`} /> : null}
+    </>
+  );
+
   if (isViewerHref(href) && contractId) {
     return (
-      <div className="card citation-card citation-card-two-cta">
-        <div className="citation-card-header">
-          <span className={`tag tag-${badge.variant}`}>{badge.label}</span>
-          <span className="citation-card-index">[{n}]</span>
+      <div className="citation-card citation-card-two-cta" data-corpus={corpus}>
+        {header}
+        {body}
+        <div className="citation-card-footer">
+          <ActionRow
+            actions={[
+              { label: "Open contract", href: `/contracts/${contractId}`, kind: "primary" },
+              { label: "Open at this span", href, kind: "secondary" },
+            ]}
+          />
         </div>
-        <p className="citation-card-title">{title}</p>
-        <p className="citation-card-subtitle micro-meta">{subtitle}</p>
-        <blockquote className="citation-card-snippet">{snippet}</blockquote>
-        {previewUrl && <img className="citation-card-preview" src={previewUrl} alt={`${title} -- first page preview`} />}
-        <ActionRow
-          actions={[
-            { label: "Open contract", href: `/contracts/${contractId}`, kind: "primary" },
-            { label: "Open at this span", href, kind: "secondary" },
-          ]}
-        />
       </div>
     );
   }
 
   return (
-    <button type="button" className="card citation-card" onClick={onOpen}>
-      <div className="citation-card-header">
-        <span className={`tag tag-${badge.variant}`}>{badge.label}</span>
-        <span className="citation-card-index">[{n}]</span>
-      </div>
-      <p className="citation-card-title">{title}</p>
-      {subtitle ? <p className="citation-card-subtitle micro-meta">{subtitle}</p> : null}
-      {previewUrl ? (
-        <img className="citation-card-preview" src={previewUrl} alt={`${title} -- page preview`} />
-      ) : null}
-      <blockquote className="citation-card-snippet">{snippet}</blockquote>
-      <span className="citation-card-open">
-        <span className="btn btn-secondary">{cta}</span>
+    <button type="button" className="citation-card" data-corpus={corpus} onClick={onOpen}>
+      {header}
+      {body}
+      <span className="citation-card-footer">
+        <span className="citation-card-open">{cta}</span>
       </span>
     </button>
   );

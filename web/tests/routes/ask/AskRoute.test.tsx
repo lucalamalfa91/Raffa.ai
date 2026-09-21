@@ -297,13 +297,54 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
   });
 
   describe("AC-1/task text (2): new chat", () => {
-    it("shows the hello line, the scope line naming the validated count, and two suggestion chips", async () => {
+    it("shows the hello line, the intro, the four starter groups, the header's scope line and the two composer chips", async () => {
       renderAsk(mockApiClient());
 
       expect(await screen.findByText("What do you want to know?")).toBeInTheDocument();
-      expect(screen.getByText(/answers only from 1 validated contract/i)).toBeInTheDocument();
+      expect(screen.getByText(/I work on procurement only/)).toBeInTheDocument();
+      // `askScopeShort` in the conversation header: the validated count (from the shell hook); no
+      // supplier clause, since this fixture's one validated contract names no supplier.
+      expect(screen.getByText("1 validated contract")).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Ask Raffa.ai · new chat" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "+ New chat" })).toBeInTheDocument();
+      // Starter groups (Save · Dates · Negotiate · Risk): the supplier-templated questions are left
+      // out while no validated supplier name is known -- never a placeholder question.
+      expect(screen.getByText("Save")).toBeInTheDocument();
+      expect(screen.getByText("Dates")).toBeInTheDocument();
+      expect(screen.getByText("Risk")).toBeInTheDocument();
+      expect(screen.queryByText("Negotiate")).toBeNull();
+      expect(screen.getByRole("button", { name: "Where can I save the most this quarter?" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Which contracts renew in the next 120 days?" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Which contracts have uncapped liability?" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /give notice to/ })).toBeNull();
+      // Composer chips + note.
       expect(screen.getByRole("button", { name: "What can Raffa do?" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "When does this contract expire?" })).toBeInTheDocument();
+      expect(screen.getByText("Procurement only · cites or abstains")).toBeInTheDocument();
+    });
+
+    it("names the first validated supplier in the header scope line and the starter questions", async () => {
+      const portfolio = validatedPortfolio();
+      portfolio.portfolio!.items[0].supplierName = "Salesforce";
+      renderAsk(mockApiClient({ getPortfolio: vi.fn().mockResolvedValue(portfolio) }));
+
+      expect(await screen.findByText("1 validated contract · Salesforce")).toBeInTheDocument();
+      expect(screen.getByText("Negotiate")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "When must we give notice to Salesforce?" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Prepare the renegotiation email for Salesforce" })).toBeInTheDocument();
+    });
+
+    it("clicking a starter asks it directly", async () => {
+      const createConversation = vi.fn().mockResolvedValue(createdConversation());
+      const postMessage = vi.fn().mockResolvedValue(postedReply());
+      renderAsk(mockApiClient({ createConversation, postMessage }));
+
+      await userEvent.click(await screen.findByRole("button", { name: "Where can I save the most this quarter?" }));
+
+      await waitFor(() => expect(postMessage).toHaveBeenCalledWith(WORKSPACE_ID, CONVERSATION_ID, { question: "Where can I save the most this quarter?" }));
+      // The header now carries the conversation's own title (the first question, the server's rule).
+      expect(screen.getByRole("heading", { name: "Where can I save the most this quarter?" })).toBeInTheDocument();
+      expect(screen.queryByText("What do you want to know?")).toBeNull();
     });
 
     it("typing a question creates a conversation, posts the message, and navigates to /ask/<id>", async () => {
@@ -436,7 +477,7 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
 
       await userEvent.type(await screen.findByRole("textbox", { name: /ask raffa a question/i }), "…{Enter}");
 
-      expect(await screen.findByText(/cannot determine reliably/i)).toBeInTheDocument();
+      expect(await screen.findByText(/I don't have data I trust enough to answer\./)).toBeInTheDocument();
       expect(screen.getByText(/nothing in the validated contracts supports a reliable answer/i)).toBeInTheDocument();
       expect(document.querySelector(".abstain-block")).not.toBeNull();
     });
@@ -568,8 +609,8 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
       renderAsk(mockApiClient({ getConversation }), `/ask/${CONVERSATION_ID}`);
 
       // Scoped to the chat log: the conversation's own title ("When does Salesforce expire?") also
-      // renders verbatim in the `ask-screen-header` h2 above the log in this fixture (the "you"
-      // message and the derived title happen to coincide), so an unscoped query matches both and
+      // renders verbatim in the conversation header's h2 above the log in this fixture (the "you"
+      // message and the server's title happen to coincide), so an unscoped query matches both and
       // throws "found multiple elements" -- within(log) proves the turn itself rendered, which is what
       // this test is actually about (see the AC-3 "never renders..." test above for the same pattern).
       // findByText (not getByText): the `role="log"` element itself exists a render before its
@@ -583,7 +624,8 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
       expect(screen.getByRole("link", { name: "Open Contract 360 →" })).toHaveAttribute("href", "/contracts/contract-1");
       expect(getConversation).toHaveBeenCalledWith(WORKSPACE_ID, CONVERSATION_ID);
       expect(screen.queryByRole("link", { name: "+ New chat" })).not.toBeInTheDocument();
-      expect(screen.getByRole("heading", { name: "Ask Raffa" })).toBeInTheDocument();
+      // `convTitle`: the resumed conversation's own server-side title in the header.
+      expect(screen.getByRole("heading", { name: "When does Salesforce expire?" })).toBeInTheDocument();
     });
 
     it("shows a named 'not found' state for an unknown/foreign conversation id, not a generic error", async () => {

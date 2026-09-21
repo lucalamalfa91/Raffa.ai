@@ -30,8 +30,6 @@ function row(overrides: Partial<PortfolioListItem> = {}): PortfolioRow {
     item: item(overrides),
     cancelDays: 200,
     isUrgent: false,
-    isPending: false,
-    isReady: true,
   };
 }
 

@@ -3,9 +3,10 @@ import {
   formatAnnualSpend,
   formatAutoRenewal,
   formatDateOnly,
+  formatPortfolioDate,
+  formatRisk,
   formatSupplier,
   getContractTypeLabel,
-  getPortfolioRiskTag,
   getPortfolioStatusTag,
 } from "../../../src/routes/contracts/portfolioTableFormatters";
 import type { PortfolioContractType } from "../../../src/api/client";
@@ -24,7 +25,7 @@ describe("getContractTypeLabel", () => {
 });
 
 describe("formatDateOnly", () => {
-  it("renders a DateOnly wire value as DD/MM/YYYY", () => {
+  it("renders a DateOnly wire value as DD/MM/YYYY (Contract 360 / Review)", () => {
     expect(formatDateOnly("2026-03-05")).toBe("05/03/2026");
   });
 
@@ -33,13 +34,48 @@ describe("formatDateOnly", () => {
   });
 });
 
+describe("formatPortfolioDate", () => {
+  it("renders a DateOnly wire value as DD Mon YYYY, the prototype's own fixture format ('02 Oct 2026')", () => {
+    expect(formatPortfolioDate("2026-03-05")).toBe("05 Mar 2026");
+    expect(formatPortfolioDate("2026-10-02")).toBe("02 Oct 2026");
+    expect(formatPortfolioDate("2027-12-31")).toBe("31 Dec 2027");
+  });
+
+  it("falls back to the wire value rather than a fabricated month when the month is out of range", () => {
+    expect(formatPortfolioDate("2026-13-05")).toBe("2026-13-05");
+  });
+
+  it("renders a null date as an em dash", () => {
+    expect(formatPortfolioDate(null)).toBe("—");
+  });
+});
+
 describe("formatAnnualSpend", () => {
-  it("groups a large number without inventing a currency symbol (no currency in this wire response)", () => {
-    expect(formatAnnualSpend(1_234_567)).toBe("1,234,567");
+  it("renders the prototype's compact figure (`c.spendFmt`): 'CHF 58k', 'CHF 1.2M'", () => {
+    expect(formatAnnualSpend(58_000, "CHF")).toBe("CHF 58k");
+    expect(formatAnnualSpend(1_234_567, "CHF")).toBe("CHF 1.2M");
+  });
+
+  it("never invents a currency code when the row carried none", () => {
+    expect(formatAnnualSpend(640_000, null)).toBe("640k");
+    expect(formatAnnualSpend(640_000, undefined)).toBe("640k");
   });
 
   it("renders a null spend as an em dash, not zero", () => {
-    expect(formatAnnualSpend(null)).toBe("—");
+    expect(formatAnnualSpend(null, "CHF")).toBe("—");
+  });
+});
+
+describe("formatRisk", () => {
+  it("renders the recorded severity as plain text (`{{ c.risk }}`), never a tag label", () => {
+    expect(formatRisk("High")).toBe("High");
+    expect(formatRisk("Medium")).toBe("Medium");
+    expect(formatRisk("Low")).toBe("Low");
+    expect(formatRisk("Critical")).toBe("Critical");
+  });
+
+  it("renders null (no recorded risk) as an honest em dash, never a fabricated 'Low'", () => {
+    expect(formatRisk(null)).toBe("—");
   });
 });
 
@@ -83,24 +119,5 @@ describe("getPortfolioStatusTag", () => {
   it("is case-insensitive for the closed-vocabulary checks", () => {
     expect(getPortfolioStatusTag("FAILED")).toEqual({ variant: "accent", label: "Failed" });
     expect(getPortfolioStatusTag("PROCESSING")).toEqual({ variant: "outline", label: "Processing" });
-  });
-});
-
-describe("getPortfolioRiskTag", () => {
-  it("tags High as accent (ADR-019 locked mapping)", () => {
-    expect(getPortfolioRiskTag("High")).toEqual({ variant: "accent", label: "High risk" });
-  });
-
-  it("folds Critical into the same accent 'High risk' treatment (ADR-019 defines no fourth tier)", () => {
-    expect(getPortfolioRiskTag("Critical")).toEqual({ variant: "accent", label: "High risk" });
-  });
-
-  it("tags Medium and Low as neutral", () => {
-    expect(getPortfolioRiskTag("Medium")).toEqual({ variant: "neutral", label: "Medium risk" });
-    expect(getPortfolioRiskTag("Low")).toEqual({ variant: "neutral", label: "Low risk" });
-  });
-
-  it("gives null (no recorded risk) its own honest label, never a fabricated 'Low risk'", () => {
-    expect(getPortfolioRiskTag(null)).toEqual({ variant: "neutral", label: "No risk recorded" });
   });
 });

@@ -66,17 +66,16 @@ describe("contracts.css (V2 Portfolio table vs markup.html's own inline instance
     expect(contractsCss).not.toMatch(/\.attention-cell/);
   });
 
-  it("keeps in-header column filters compact on the shared .input tokens", () => {
-    const body = ruleBodyFor(contractsCss, ".portfolio-col-filter");
-    expect(body).toMatch(/margin-top:\s*var\(--space-1\)/);
-    expect(body).toMatch(/padding:\s*var\(--space-1\)\s+var\(--space-2\)/);
-    expect(body).toMatch(/font-size:\s*12px/);
+  it("gives the status tag the export's instance values: 2px 8px padding, 10px, body weight", () => {
+    const body = ruleBodyFor(contractsCss, ".portfolio-table .portfolio-status-tag");
+    expect(body).toMatch(/padding:\s*2px 8px/);
+    expect(body).toMatch(/font-size:\s*10px/);
+    expect(body).toMatch(/font-weight:\s*var\(--weight-body\)/);
   });
 
-  it("lays out the ready / to-review segmented filter with the screen's own padding tokens", () => {
-    const body = ruleBodyFor(contractsCss, ".readiness-filter-row");
-    expect(body).toMatch(/display:\s*flex/);
-    expect(body).toMatch(/padding:\s*16px 32px var\(--space-3\)/);
+  it("carries no in-header filter or readiness-row composites -- the header is one label per column", () => {
+    expect(contractsCss).not.toMatch(/\.portfolio-col-filter/);
+    expect(contractsCss).not.toMatch(/\.readiness-filter-row/);
   });
 });
 

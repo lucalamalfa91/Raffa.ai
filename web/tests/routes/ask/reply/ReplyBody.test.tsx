@@ -128,7 +128,7 @@ describe("ReplyBody (task E13/F09/US01/T02, AC-3)", () => {
 
     const blocks = container.querySelectorAll(".abstain-block");
     expect(blocks).toHaveLength(1);
-    expect(blocks[0].textContent).toContain("Cannot determine reliably.");
+    expect(blocks[0].textContent).toContain("I don't have data I trust enough to answer.");
     expect(blocks[0].textContent).toContain("Salesforce is not validated yet.");
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
     expect(screen.queryByRole("button")).not.toBeInTheDocument();

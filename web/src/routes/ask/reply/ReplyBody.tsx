@@ -4,6 +4,9 @@ import ReplyMarkdown from "./ReplyMarkdown";
 import type { Reply, ReplyCitation } from "./replyTypes";
 import "./reply.css";
 
+/** The abstain block's lead-in (`abstainTitle` in `Raffa.ai V2.dc.html`, quoted). */
+export const ABSTAIN_TITLE = "I don't have data I trust enough to answer.";
+
 export interface ReplyBodyProps {
   reply: Reply;
   /** Shared by every inline `[n]` marker (`ReplyMarkdown`) and every `CitationCard`'s own button --
@@ -47,7 +50,7 @@ export default function ReplyBody({ reply, onOpenCitation, onFollowUp }: ReplyBo
 
           {reply.followUps.length > 0 && (
             <div className="reply-followups">
-              <p className="reply-followups-label micro-meta">Follow up</p>
+              <span className="reply-followups-label">Next</span>
               {reply.followUps.map((question) => (
                 <button key={question} type="button" className="reply-followup" onClick={() => onFollowUp(question)}>
                   {question} →
@@ -73,7 +76,7 @@ export default function ReplyBody({ reply, onOpenCitation, onFollowUp }: ReplyBo
       return (
         <div className="reply-body" data-reply-kind="abstain">
           <div className="abstain-block">
-            <strong>Cannot determine reliably.</strong> {reply.reason}
+            <strong>{ABSTAIN_TITLE}</strong> {reply.reason}
           </div>
           {/* ADR-024 "every abstain has a clickable next step" / parent story AC-1: the recovery
               action always renders secondary, never primary -- forced here regardless of the

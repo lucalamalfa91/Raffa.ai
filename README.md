@@ -53,10 +53,10 @@ Upload in Documents → Worker processes → Review weak facts → Validated con
    at 100% confidence, not from the model's wording. "Mark as validated" signs
    the document `Completed`.
 3. **Validated feeds the rest** — Ask answers from validated contracts (plus
-   market records and Raffa's capability catalog). Portfolio and Renewals list
-   the workspace's contracts; both default to **Ready**, with **To review** and
-   **All** one click away. Portfolio headers filter by type (text / date /
-   number / select).
+   market records and Raffa's capability catalog). Portfolio lists the
+   validated contracts only, soonest notice deadline first ("More columns"
+   adds Start / Auto / Risk); Renewals defaults to **Ready**, with **To
+   review** and **All** one click away.
 
 **Ask** binds to a supplier/contract when the chat was opened from Contract 360
 (`?scope=` → persisted `scopeContractId`) or when the question names a known

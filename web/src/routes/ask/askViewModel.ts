@@ -412,9 +412,63 @@ export function buildScopedBrief(supplierName: string | null): ScopedAskBrief {
   };
 }
 
-/** ADR-024 §6 / screens-v2.md #2: the same placeholder the global Ask bar uses
- * (`components/ask-bar/askSuggestions.ts` READY_PLACEHOLDER). */
-export const ASK_INPUT_PLACEHOLDER = "Ask Raffa — spend, dates, clauses, liability…";
+/** The Ask screen's own composer placeholder (`Raffa.ai V2.dc.html` `askPlaceholder`, quoted). */
+export const ASK_INPUT_PLACEHOLDER = "Ask Raffa.ai — spend, dates, clauses, liability…";
+
+// ---------------------------------------------------------------------------------------------
+// Conversation chrome (`Raffa.ai V2.dc.html` "ASK RAFFA.AI — conversation with rich answers"):
+// the header line above the thread, the new-chat intro and starter groups, the composer's note.
+// Copy is quoted from that block's markup and `renderVals()`; nothing below is invented.
+// ---------------------------------------------------------------------------------------------
+
+/** `convTitle` while no conversation is open. */
+export const ASK_NEW_CHAT_TITLE = "Ask Raffa.ai · new chat";
+
+/** The AI turn's kicker and the thinking row's kicker (`Raffa.ai` in the V2 markup). */
+export const ASK_RAFFA_KICKER = "Raffa.ai";
+
+/** The new-chat intro paragraph under `askHello`, verbatim. */
+export const NEW_CHAT_INTRO =
+  "I work on procurement only: what you bought, what you pay, when to act, where to save and how to negotiate. Every answer comes from your validated contracts and cites its page — or I say I cannot answer.";
+
+/** The composer's right-hand note, verbatim. */
+export const COMPOSER_NOTE = "Procurement only · cites or abstains";
+
+/**
+ * `askScopeShort`: `askable + ' validated contract(s)' + ' · ' + kbNames.join(', ')`. The supplier
+ * clause is dropped (not printed as a dangling " · ") while no validated contract names a supplier.
+ */
+export function buildScopeShort(validatedContractCount: number, supplierNames: readonly string[]): string {
+  const plural = validatedContractCount === 1 ? "contract" : "contracts";
+  const names = supplierNames.length > 0 ? ` · ${supplierNames.join(", ")}` : "";
+  return `${validatedContractCount} validated ${plural}${names}`;
+}
+
+export interface StarterGroup {
+  label: string;
+  items: readonly string[];
+}
+
+/**
+ * `starterGroups`: four labelled pairs (Save · Dates · Negotiate · Risk). The prototype names its
+ * key fixture ("Salesforce") in five of the eight questions; here that slot is the workspace's own
+ * first validated supplier (`useValidatedSuppliers.ts`, soonest notice first). Without a supplier
+ * name those five questions are left out rather than printed with a placeholder -- a starter is a
+ * real question the user can send as-is.
+ */
+export function buildStarterGroups(supplierName: string | null): readonly StarterGroup[] {
+  const name = supplierName !== null && supplierName.trim() !== "" ? supplierName.trim() : null;
+  const named = (question: string): string | null => (name === null ? null : question.replace("{supplier}", name));
+  const groups: readonly { label: string; items: readonly (string | null)[] }[] = [
+    { label: "Save", items: ["Where can I save the most this quarter?", named("What do we pay {supplier} per user vs the market?")] },
+    { label: "Dates", items: ["Which contracts renew in the next 120 days?", named("When must we give notice to {supplier}?")] },
+    { label: "Negotiate", items: [named("What are my levers with {supplier}?"), named("Prepare the renegotiation email for {supplier}")] },
+    { label: "Risk", items: ["Which contracts have uncapped liability?", named("What are our obligations with {supplier}?")] },
+  ];
+  return groups
+    .map((group) => ({ label: group.label, items: group.items.filter((item): item is string => item !== null) }))
+    .filter((group) => group.items.length > 0);
+}
 
 /** screens-v2.md #2 "Thinking": V1 copy retained verbatim until the reply streams. */
 export const THINKING_COPY = "Authorising scope → detecting intent → retrieving evidence";
