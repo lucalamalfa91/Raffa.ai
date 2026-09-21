@@ -31,7 +31,10 @@ public sealed record DocumentListItem(
     /// -- the screen picks the words (ADR-020 w15 §6).</summary>
     Admission.AdmissionRejectionReason? RejectionReason = null,
     /// <summary>Latest extraction-job error for a <see cref="DocumentProcessingStatus.Failed"/>
-    /// row, so the list can show why processing stopped instead of only "Not yet linked".</summary>
+    /// row, so the list can show why processing stopped instead of only "Not yet linked" — and,
+    /// since 2026-09-21, for a <see cref="DocumentProcessingStatus.NeedsReview"/> row whose only
+    /// reason is a failed stage (a "missing signal" with no weak fact to show), so "Review 0
+    /// fields" is explainable. <see langword="null"/> when no job of the row carries an error.</summary>
     string? ErrorDetail = null);
 
 /// <summary>
