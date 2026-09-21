@@ -180,10 +180,13 @@ jobs:
             --configuration Release --no-restore
 
       # `ingest-market` fails fast without ConnectionStrings:DocumentsContracts,
-      # :Audit and :Renewals (Raffa.Worker/Program.cs builds the whole host
-      # before dispatching the command) and requires ConnectionStrings:Market
-      # for the ingestion service itself (IngestMarketCommand.RunAsync). All
-      # four are the same environment database.
+      # :Audit, :Renewals and :Storage (Raffa.Worker/Program.cs builds the
+      # whole host before dispatching the command) and requires
+      # ConnectionStrings:Market for the ingestion service itself
+      # (IngestMarketCommand.RunAsync). The first three and Market are this
+      # environment's Postgres; Storage is a lazy blob-client registration, so
+      # the standard dev-storage sentinel is enough here because this command
+      # never touches document storage.
       #
       # AiGateway__Endpoint is deliberately not set: with it unset the gateway
       # DI swap keeps the fixture `embed` role (ADR-004 / R-AI-01), which is
@@ -198,6 +201,7 @@ jobs:
           export ConnectionStrings__DocumentsContracts="$MARKET_DB_CONNECTION"
           export ConnectionStrings__Audit="$MARKET_DB_CONNECTION"
           export ConnectionStrings__Renewals="$MARKET_DB_CONNECTION"
+          export ConnectionStrings__Storage="UseDevelopmentStorage=true"
           export ConnectionStrings__Market="$MARKET_DB_CONNECTION"
           dotnet run --project backend/src/Raffa.Worker/Raffa.Worker.csproj \
             --configuration Release --no-build --no-restore \
@@ -219,6 +223,7 @@ jobs:
           export ConnectionStrings__DocumentsContracts="$MARKET_DB_CONNECTION"
           export ConnectionStrings__Audit="$MARKET_DB_CONNECTION"
           export ConnectionStrings__Renewals="$MARKET_DB_CONNECTION"
+          export ConnectionStrings__Storage="UseDevelopmentStorage=true"
           export ConnectionStrings__Market="$MARKET_DB_CONNECTION"
           dotnet run --project backend/src/Raffa.Worker/Raffa.Worker.csproj \
             --configuration Release --no-build --no-restore \
