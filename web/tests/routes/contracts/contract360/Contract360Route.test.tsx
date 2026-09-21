@@ -9,6 +9,8 @@ const WORKSPACE_ID = "11111111-1111-1111-1111-111111111111";
 const CONTRACT_ID = "22222222-2222-2222-2222-222222222222";
 const SUPPLIER_ID = "33333333-3333-3333-3333-333333333333";
 const USER_LABEL = "user@example.test";
+/** The recommended action is the primary button's own label (`{{ cur.action }}` in the mock). */
+const PRIMARY_ACTION_LABEL = "Start renewal negotiation now";
 
 function isoDaysFromNow(days: number): string {
   const date = new Date();
@@ -462,7 +464,7 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
       }
     });
 
-    it("renders a family document with its own row status tag in Details, never omitting an in-flight one", async () => {
+    it("renders a family document with its own status tag under Key terms, never omitting an in-flight one", async () => {
       const body = contract({
         tabs: {
           ...contract().tabs,
@@ -476,9 +478,8 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
       renderContract360(populatedClient({ getContract360: vi.fn().mockResolvedValue(ok(body)) }));
 
       await screen.findByRole("heading", { level: 2, name: "MSA" });
-      fireEvent.click(screen.getByRole("button", { name: /All terms, documents and open facts/ }));
 
-      expect(await screen.findByText("Acme_SOW.pdf")).toBeInTheDocument();
+      expect(await screen.findByText(/Acme_SOW\.pdf/)).toBeInTheDocument();
       expect(screen.getByText("Processing")).toHaveClass("tag");
       expect(screen.getByText("Not added")).toHaveClass("tag", "tag-outline");
     });
@@ -563,9 +564,9 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
       expect(cells[1]).toHaveTextContent(/could not be loaded/i);
 
       expect(cells[2]).toHaveTextContent("What to do");
-      expect(within(cells[2] as HTMLElement).getByText("Start renewal negotiation now")).toBeInTheDocument();
+      expect(within(cells[2] as HTMLElement).getAllByText("Start renewal negotiation now")).toHaveLength(2);
       expect(cells[2]).toHaveTextContent("Renews in 60 days with a cancellation notice due in 14 days.");
-      expect(within(cells[2] as HTMLElement).getByRole("button", { name: "Start negotiation" })).toHaveClass("btn-primary");
+      expect(within(cells[2] as HTMLElement).getByRole("button", { name: PRIMARY_ACTION_LABEL })).toHaveClass("btn-primary");
       expect(within(cells[2] as HTMLElement).getByRole("button", { name: "Assign to me" })).toBeInTheDocument();
 
       // The recommendation never leaks into a fact table (ADR-019 facts vs AI).
@@ -631,9 +632,9 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
       expect(saveCell).toHaveTextContent("Not yet available");
       expect(saveCell).toHaveTextContent(/Benchmark Service/);
 
-      expect(screen.getByRole("region", { name: "Why — the clauses behind it" })).toBeInTheDocument();
+      expect(screen.getByRole("region", { name: "Clauses that matter" })).toBeInTheDocument();
       expect(screen.getByText("Liability cap")).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "All terms, documents and open facts ▾" })).toBeInTheDocument();
+      expect(screen.getByRole("region", { name: "Key terms" })).toBeInTheDocument();
       expect(screen.queryByText(/contract unavailable/i)).toBeNull();
     });
 
@@ -645,6 +646,7 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
 
       expect(screen.getByText("No renewal recommendation for this contract")).toBeInTheDocument();
       expect(screen.getByText(/did not appear in the current renewal pipeline yet/i)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Start negotiation" })).toHaveClass("btn-primary");
     });
 
     it("'Start negotiation' posts the real action as the signed-in owner, then shows the tracker; steps tick and persist; 'Undo' re-posts Open", async () => {
@@ -672,7 +674,7 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
       renderContract360(populatedClient({ postRenewalAction, putNegotiationSteps, getNegotiationSteps }));
       await screen.findByRole("heading", { level: 2, name: "MSA" });
 
-      fireEvent.click(screen.getByRole("button", { name: "Start negotiation" }));
+      fireEvent.click(screen.getByRole("button", { name: PRIMARY_ACTION_LABEL }));
 
       expect(postRenewalAction).toHaveBeenCalledWith(WORKSPACE_ID, CONTRACT_ID, { owner: USER_LABEL, status: "InProgress", action: "In negotiation" });
 
@@ -680,7 +682,7 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
       expect(tracker).toHaveTextContent("In negotiation");
       expect(tracker).toHaveTextContent(`owner ${USER_LABEL}`);
       expect(tracker).toHaveTextContent(`target Not yet available · close by Not yet available`);
-      expect(screen.queryByRole("button", { name: "Start negotiation" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: PRIMARY_ACTION_LABEL })).not.toBeInTheDocument();
 
       const steps = within(tracker).getAllByRole("button", { pressed: false });
       expect(steps.map((step) => step.textContent)).toEqual([
@@ -705,7 +707,7 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
       expect(putNegotiationSteps.mock.invocationCallOrder[putNegotiationSteps.mock.calls.length - 1]).toBeLessThan(
         postRenewalAction.mock.invocationCallOrder[1],
       );
-      expect(await screen.findByRole("button", { name: "Start negotiation" })).toBeInTheDocument();
+      expect(await screen.findByRole("button", { name: PRIMARY_ACTION_LABEL })).toBeInTheDocument();
     });
 
     it("a failed tick PUT reverts the optimistic tick and names the negotiation steps in the error state", async () => {
@@ -719,7 +721,7 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
       renderContract360(populatedClient({ postRenewalAction, putNegotiationSteps }));
       await screen.findByRole("heading", { level: 2, name: "MSA" });
 
-      fireEvent.click(screen.getByRole("button", { name: "Start negotiation" }));
+      fireEvent.click(screen.getByRole("button", { name: PRIMARY_ACTION_LABEL }));
       const tracker = await screen.findByRole("status");
       const steps = within(tracker).getAllByRole("button", { pressed: false });
       fireEvent.click(steps[0]);
@@ -744,7 +746,7 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
       fireEvent.click(screen.getByRole("button", { name: "Assign to me" }));
 
       expect(postRenewalAction).toHaveBeenCalledWith(WORKSPACE_ID, CONTRACT_ID, { owner: USER_LABEL, status: "NotStarted", action: "Assigned" });
-      expect(await screen.findByRole("button", { name: "Start negotiation" })).toBeInTheDocument();
+      expect(await screen.findByRole("button", { name: PRIMARY_ACTION_LABEL })).toBeInTheDocument();
     });
 
     it("shows the tracker straight away when the server already recorded an in-progress action", async () => {
@@ -774,7 +776,7 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
       await screen.findByRole("heading", { level: 2, name: "MSA" });
 
       expect(screen.getByRole("status")).toHaveTextContent("In negotiation");
-      expect(screen.queryByRole("button", { name: "Start negotiation" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: PRIMARY_ACTION_LABEL })).not.toBeInTheDocument();
     });
 
     it("shows an inline error and keeps the actions when the write fails", async () => {
@@ -782,40 +784,42 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
       renderContract360(populatedClient({ postRenewalAction }));
       await screen.findByRole("heading", { level: 2, name: "MSA" });
 
-      fireEvent.click(screen.getByRole("button", { name: "Start negotiation" }));
+      fireEvent.click(screen.getByRole("button", { name: PRIMARY_ACTION_LABEL }));
 
       expect(await screen.findByRole("alert")).toHaveTextContent("'owner' is required.");
-      expect(screen.getByRole("button", { name: "Start negotiation" })).toBeEnabled();
+      expect(screen.getByRole("button", { name: PRIMARY_ACTION_LABEL })).toBeEnabled();
       expect(window.sessionStorage.getItem("raffa.renewals.actions")).toBeNull();
     });
   });
 
-  describe("why — the clauses behind it", () => {
-    it("lists the clauses (type · accepted value · leverage · why · viewer) and opens the original wording on click", async () => {
+  describe("03 clauses that matter", () => {
+    it("groups the clauses by leverage (push · raise · standard), with the at-the-table note and the source, and opens the original wording on click", async () => {
       renderContract360(populatedClient());
       await screen.findByRole("heading", { level: 2, name: "MSA" });
 
-      const why = screen.getByRole("region", { name: "Why — the clauses behind it" });
-      expect(within(why).getByText("Push to change · Worth raising · Standard terms")).toBeInTheDocument();
-      const rows = within(why).getAllByRole("listitem");
-      expect(rows).toHaveLength(2);
-      expect(rows[0]).toHaveTextContent("Liability cap");
-      expect(rows[0]).toHaveTextContent("—");
-      expect(rows[0]).not.toHaveTextContent("12 months fees");
-      expect(rows[0]).not.toHaveTextContent("p.27");
-      expect(within(rows[0]).getByText("Worth raising")).toHaveClass("tag-neutral");
-      expect(within(rows[0]).getByText("Worth raising in negotiation.")).toBeInTheDocument();
-      expect(within(rows[0]).getByRole("link", { name: "Open in document viewer" })).toHaveAttribute(
-        "href",
-        "/documents/doc-1/viewer?page=27&clause=cl-1",
-      );
-      expect(within(rows[1]).getByText("Push to change")).toHaveClass("tag-accent");
-      expect(screen.queryByTestId("clause-highlight")).toBeNull();
-      expect(why.textContent).not.toMatch(/%/);
-      expect(why.textContent).not.toMatch(/\bMedium\b/);
-      expect(why.textContent).not.toMatch(/\bHigh\b/);
+      const section = screen.getByRole("region", { name: "Clauses that matter" });
+      const push = within(section).getByRole("list", { name: "Push to change" });
+      expect(within(push).getByText("Push to change")).toHaveClass("tag-accent");
+      expect(within(push).getByText("Costs you money or freedom — lead with these")).toBeInTheDocument();
+      expect(within(push).getAllByRole("listitem")).toHaveLength(1);
+      expect(within(push).getByRole("listitem")).toHaveTextContent("Auto-renewal");
+      expect(within(push).getByText("This clause costs money if it stays.")).toBeInTheDocument();
 
-      fireEvent.click(within(rows[0]).getByRole("button"));
+      const raise = within(section).getByRole("list", { name: "Worth raising" });
+      expect(within(raise).getByText("Worth raising")).toHaveClass("tag-neutral");
+      const row = within(raise).getByRole("listitem");
+      expect(row).toHaveTextContent("Liability cap");
+      expect(row).toHaveTextContent("—");
+      expect(row).not.toHaveTextContent("12 months fees");
+      expect(within(row).getByText("Worth raising in negotiation.")).toBeInTheDocument();
+      expect(within(row).getByRole("link", { name: "p.27 · §17.2" })).toHaveAttribute("href", "/documents/doc-1/viewer?page=27&clause=cl-1");
+      expect(screen.queryByRole("button", { name: /standard clause/ })).toBeNull();
+      expect(screen.queryByTestId("clause-highlight")).toBeNull();
+      expect(section.textContent).not.toMatch(/%/);
+      expect(section.textContent).not.toMatch(/\bMedium\b/);
+      expect(section.textContent).not.toMatch(/\bHigh\b/);
+
+      fireEvent.click(within(row).getByRole("button"));
 
       const evidence = screen.getByTestId("clause-highlight");
       expect(within(evidence).getByText("Acme_MSA.pdf · p.27 · §17.2")).toBeInTheDocument();
@@ -825,7 +829,30 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
         "href",
         "/documents/doc-1/viewer?page=27&clause=cl-1",
       );
-      expect(within(rows[0]).getByRole("button")).toHaveAttribute("aria-pressed", "true");
+      expect(within(row).getByRole("button")).toHaveAttribute("aria-pressed", "true");
+      expect(row).toHaveClass("is-selected");
+    });
+
+    it("keeps the standard clauses behind 'Show N standard clauses ▾'", async () => {
+      const body = contract({
+        tabs: {
+          ...contract().tabs,
+          clauses: [
+            ...contract().tabs.clauses,
+            { clauseId: "cl-3", clauseType: "Confidentiality", rawText: "Mutual, 5 years.", normalizedValue: "Mutual, 5 years post-termination.", riskLevel: "Low", sourceDocumentId: "doc-1", sourceSpan: "§18", sourcePage: 28, confidence: 0.98 },
+          ],
+        },
+      });
+      renderContract360(populatedClient({ getContract360: vi.fn().mockResolvedValue(ok(body)) }));
+      await screen.findByRole("heading", { level: 2, name: "MSA" });
+
+      expect(screen.queryByText("Confidentiality")).toBeNull();
+      const toggle = screen.getByRole("button", { name: "Show 1 standard clause ▾" });
+      fireEvent.click(toggle);
+      expect(screen.getByRole("button", { name: "Hide 1 standard clause ▴" })).toHaveAttribute("aria-expanded", "true");
+      const standard = screen.getByRole("list", { name: "Standard terms" });
+      expect(within(standard).getByText("Market-standard — nothing to negotiate")).toBeInTheDocument();
+      expect(within(standard).getByRole("listitem")).toHaveTextContent("Confidentiality");
     });
 
     it("R-EVD-02 citation landing: ?clause=<id> highlights the cited wording without a click", async () => {
@@ -858,40 +885,63 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
     });
   });
 
-  describe("details ▾", () => {
-    it("is closed by default and opens to key terms, documents, the priority score and the extracted lists", async () => {
-      renderContract360(populatedClient());
+  describe("01 · 02 · 04 · 05 · 06 -- the sections never collapse", () => {
+    it("renders leverage, products, obligations, the priority score with its parts, the risks and the key terms without any toggle", async () => {
+      renderContract360(
+        populatedClient({
+          getContractStrategy: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, strategy: strategyPack(), error: null }),
+        }),
+      );
       await screen.findByRole("heading", { level: 2, name: "MSA" });
 
-      const toggle = screen.getByRole("button", { name: "All terms, documents and open facts ▾" });
-      expect(toggle).toHaveAttribute("aria-expanded", "false");
-      expect(screen.queryByText("Key terms")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /All terms, documents and open facts/ })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Hide details" })).toBeNull();
 
-      fireEvent.click(toggle);
+      const leverage = screen.getByRole("region", { name: "Leverage" });
+      expect(within(leverage).getByText("01")).toBeInTheDocument();
+      expect(within(leverage).getByText("Order size lever")).toBeInTheDocument();
+      expect(within(leverage).getByText("This line orders 120,000 — cite the order size.")).toBeInTheDocument();
 
-      expect(screen.getByRole("button", { name: "Hide details" })).toHaveAttribute("aria-expanded", "true");
-      const details = screen.getByRole("region", { name: "Details" });
-      expect(within(details).getByText("Key terms")).toBeInTheDocument();
-      expect(within(details).getByText("Annual spend").closest(".contract360-detail-row")).toHaveTextContent("CHF 500,000");
-      expect(within(details).getByText("Renewal term").closest(".contract360-detail-row")).toHaveTextContent("12 months");
-      expect(within(details).getByText("Documents")).toBeInTheDocument();
-      expect(within(details).getByText("Acme_MSA.pdf")).toBeInTheDocument();
-      expect(within(details).queryByText("Facts you still need to decide")).not.toBeInTheDocument();
-      expect(within(details).queryByText(/signed off by you/i)).not.toBeInTheDocument();
-      expect(within(details).queryByRole("link", { name: /facts still need you/i })).not.toBeInTheDocument();
-      expect(within(details).getByText("priority 72/100")).toBeInTheDocument();
-      expect(within(details).getByText("Spend weight")).toBeInTheDocument();
-      expect(within(details).getByText("Products")).toBeInTheDocument();
-      expect(within(details).getAllByText("Premium DBU").length).toBeGreaterThan(0);
-      expect(within(details).getByText("Obligations")).toBeInTheDocument();
-      expect(within(details).getByText("Risks")).toBeInTheDocument();
-      expect(within(details).queryByText("Confidence")).not.toBeInTheDocument();
-      expect(details.textContent).not.toMatch(/Review · \d+%/);
-      expect(details.textContent).not.toMatch(/Accepted automatically/);
+      const products = screen.getByRole("region", { name: "Products & pricing" });
+      expect(within(products).getByText("Premium DBU")).toBeInTheDocument();
+      expect(within(products).getByText("SKU-1 · DBU/yr")).toBeInTheDocument();
+      expect(within(products).getByText("CHF 0.55")).toBeInTheDocument();
+      expect(within(products).getByText("CHF 66,000")).toBeInTheDocument();
+      expect(within(products).getByText("CHF 500k")).toBeInTheDocument();
 
-      details.querySelectorAll("table").forEach((table) => {
-        expect(table.textContent).not.toContain("Start renewal negotiation now");
+      const obligations = screen.getByRole("region", { name: "Obligations" });
+      expect(within(obligations).getByText("You must")).toBeInTheDocument();
+      expect(within(obligations).getByText("Supplier 33333333 must")).toBeInTheDocument();
+      expect(within(obligations).getByText("Annual true-up of committed DBU")).toBeInTheDocument();
+      expect(within(obligations).getByText("by 15/01/2026")).toBeInTheDocument();
+
+      const risks = screen.getByRole("region", { name: "Risk factors" });
+      expect(within(risks).getByText("72")).toBeInTheDocument();
+      expect(within(risks).getByText("Spend weight")).toBeInTheDocument();
+      expect(within(risks).getAllByText("20 / 20")).toHaveLength(2);
+      expect(within(risks).getByText("10 / 20")).toBeInTheDocument();
+      expect(within(risks).getByText("Auto-renews without an explicit re-negotiation checkpoint")).toBeInTheDocument();
+      expect(within(risks).getByText("High")).toHaveClass("tag-accent");
+
+      const terms = screen.getByRole("region", { name: "Key terms" });
+      expect(within(terms).getByText("Annual spend").closest(".contract360-term")).toHaveTextContent("CHF 500,000");
+      expect(within(terms).getByText("Renewal term").closest(".contract360-term")).toHaveTextContent("12 months");
+      expect(within(terms).getByText("Documents")).toBeInTheDocument();
+      expect(within(terms).getByText(/Acme_MSA\.pdf/)).toBeInTheDocument();
+      expect(within(terms).queryByRole("link", { name: /facts still need you/i })).not.toBeInTheDocument();
+      expect(terms.textContent).not.toMatch(/Review · \d+%/);
+      expect(terms.textContent).not.toMatch(/Accepted automatically/);
+
+      // The recommendation never leaks into a fact section (ADR-019 facts vs AI).
+      [products, obligations, risks, terms].forEach((section) => {
+        expect(section.textContent).not.toContain("Start renewal negotiation now");
       });
+    });
+
+    it("says so, in place, when the strategy has no lever yet", async () => {
+      renderContract360(populatedClient());
+      await screen.findByRole("heading", { level: 2, name: "MSA" });
+      expect(within(screen.getByRole("region", { name: "Leverage" })).getByText(/Levers light up once/)).toBeInTheDocument();
     });
 
     it("the trailing count line is absent at N = 0 and names N when review_required decisions exist", async () => {
@@ -902,24 +952,68 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
       ];
       renderContract360(populatedClient({ getContractEvidence: vi.fn().mockResolvedValue(evidenceOk(twoPending)) }));
       await screen.findByRole("heading", { level: 2, name: "MSA" });
-      fireEvent.click(screen.getByRole("button", { name: "All terms, documents and open facts ▾" }));
       const countLink = screen.getByRole("link", { name: "2 facts still need you — Review all →" });
       expect(countLink).toHaveAttribute("href", `/contracts/${CONTRACT_ID}/review`);
     });
 
-    it("an unofficialized key term keeps its row as an em-dash and never drops it", async () => {
+    it("an unofficialized key term keeps its cell as an em-dash and never drops it", async () => {
       const pendingSpend = [
         ...acceptedEvidence().filter((row) => row.fieldName !== "annualSpend"),
         fieldEvidence({ fieldName: "annualSpend", decision: "review_required", confidence: 0.71 }),
       ];
       renderContract360(populatedClient({ getContractEvidence: vi.fn().mockResolvedValue(evidenceOk(pendingSpend)) }));
       await screen.findByRole("heading", { level: 2, name: "MSA" });
-      fireEvent.click(screen.getByRole("button", { name: "All terms, documents and open facts ▾" }));
 
-      const spendRow = screen.getByText("Annual spend").closest(".contract360-detail-row");
-      expect(spendRow).toHaveTextContent("—");
-      expect(spendRow).not.toHaveTextContent("500,000");
-      expect(screen.getByText("Total contract value").closest(".contract360-detail-row")).toHaveTextContent("CHF 1,500,000");
+      const spendCell = screen.getByText("Annual spend").closest(".contract360-term");
+      expect(spendCell).toHaveTextContent("—");
+      expect(spendCell).not.toHaveTextContent("500,000");
+      expect(screen.getByText("Total contract value").closest(".contract360-term")).toHaveTextContent("CHF 1,500,000");
+    });
+  });
+
+  describe("close the cycle", () => {
+    it("'Terminated — I sent notice' records a Completed action with the notice date, then shows the outcome; 'Reopen' goes back to In negotiation", async () => {
+      const postRenewalAction = vi
+        .fn()
+        .mockImplementation((_ws: string, _id: string, body: { owner: string; status: string; action: string }) =>
+          Promise.resolve({ ok: true, statusCode: 200, action: { contractId: CONTRACT_ID, owner: body.owner, status: body.status, action: body.action, updatedAt: "2026-09-08T00:00:00Z" }, error: null }),
+        );
+      renderContract360(
+        populatedClient({
+          postRenewalAction,
+          getRenewals: vi.fn().mockResolvedValue({
+            ok: true,
+            statusCode: 200,
+            renewals: { items: [renewalPipelineItem({ savedAction: { contractId: CONTRACT_ID, owner: USER_LABEL, status: "InProgress", action: "In negotiation", updatedAt: "2026-09-01T00:00:00Z" } })], totalCount: 1 },
+            error: null,
+          }),
+        }),
+      );
+      await screen.findByRole("heading", { level: 2, name: "MSA" });
+
+      const tracker = screen.getByRole("status");
+      expect(within(tracker).getByText("Close the cycle")).toBeInTheDocument();
+      expect(within(tracker).getByRole("link", { name: "Renewed — upload the signed document" })).toHaveAttribute("href", "/documents");
+      fireEvent.click(within(tracker).getByRole("button", { name: "Terminated — I sent notice" }));
+      const dateInput = within(tracker).getByLabelText("Date notice was sent");
+      fireEvent.change(dateInput, { target: { value: "2026-09-08" } });
+      fireEvent.click(within(tracker).getByRole("button", { name: /^Confirm — contract ends/ }));
+
+      await waitFor(() =>
+        expect(postRenewalAction).toHaveBeenCalledWith(WORKSPACE_ID, CONTRACT_ID, { owner: USER_LABEL, status: "Completed", action: "Terminated — notice sent 08/09/2026" }),
+      );
+      const outcome = await screen.findByRole("status");
+      expect(outcome).toHaveTextContent("Terminated");
+      expect(outcome).toHaveTextContent("notice sent 08/09/2026");
+      expect(within(outcome).getByText("Notice sent")).toHaveClass("tag-outline");
+      expect(within(outcome).getByText("Contract ends")).toBeInTheDocument();
+      expect(within(outcome).getByText("CHF 500,000 / yr")).toBeInTheDocument();
+      expect(within(outcome).getByRole("link", { name: "See it in Renewals →" })).toHaveAttribute("href", "/renewals");
+      expect(screen.queryByText("Close the cycle")).toBeNull();
+
+      fireEvent.click(within(outcome).getByRole("button", { name: "Reopen" }));
+      await waitFor(() => expect(postRenewalAction).toHaveBeenLastCalledWith(WORKSPACE_ID, CONTRACT_ID, { owner: USER_LABEL, status: "InProgress", action: "In negotiation" }));
+      expect(await screen.findByText("Close the cycle")).toBeInTheDocument();
     });
   });
 });

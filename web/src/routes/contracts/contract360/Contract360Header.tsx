@@ -45,11 +45,13 @@ export default function Contract360Header({ header, currency, docCount, backLink
         </div>
         <div className="contract360-header-side">
           <p className="contract360-header-meta">{formatHeaderMeta(header, currency, docCount)}</p>
+          {/* Not in the mock's header (its meta line stands alone): the two routes only this screen
+              can open, kept as the same 12px ghost links the mock uses for its own in-page actions. */}
           <div className="contract360-header-actions">
-            <Link to={`/ask?scope=${header.contractId}`} className="btn btn-secondary">
+            <Link to={`/ask?scope=${header.contractId}`} className="btn btn-ghost contract360-header-action">
               Ask about it
             </Link>
-            <Link to={`/contracts/${header.contractId}/review`} className="btn btn-ghost">
+            <Link to={`/contracts/${header.contractId}/review`} className="btn btn-ghost contract360-header-action">
               Review extraction
             </Link>
           </div>

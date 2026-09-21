@@ -4,10 +4,9 @@ import type { ApiClient, Contract360Body, ContractFieldEvidenceBody, ContractStr
 import { loadCurrentWorkspace } from "../../signin/workspaceStore";
 import { CHECK_AGAIN_LABEL, UPDATES_PAUSED_NOTICE, usePollBudget } from "../../../components/shell/usePollBudget";
 import { getRenewalActionPlan, savedActionOnScreen, type RenewalActionKind } from "../../renewals/renewalPipelineViewModel";
-import AnswersBand from "./AnswersBand";
+import AnswersBand, { type AnswersActionPending } from "./AnswersBand";
 import Contract360Header from "./Contract360Header";
-import DetailsSection from "./DetailsSection";
-import WhyClauses from "./WhyClauses";
+import { ClausesSection, KeyTermsSection, LeverageSection, ObligationsSection, ProductsSection, RiskSection } from "./DetailSections";
 import {
   AUTO_ACCEPT_THRESHOLD,
   buildAnswers,
@@ -16,6 +15,7 @@ import {
   resolveHighlightedClauseId,
   resolveReadinessCopy,
   resolveSupplierLabel,
+  terminatedActionText,
   ticksFromServer,
 } from "./contract360ViewModel";
 import "./contract360.css";
@@ -41,13 +41,13 @@ type FetchState =
     };
 
 /**
- * Route `/contracts/:contractId` -- Contract 360, V2 "no tabs" (ADR-024 V2 IA; screens-v2.md #5;
- * `raffa-v2/markup.html` "CONTRACT 360 — three answers, then proof, then details"). One page:
- * header (origin back link · supplier · title · meta), the answers band (Where you can save · When
- * you must move · What to do, with Start negotiation / Assign to me or the tracker once acted),
- * "Why — the clauses behind it" with the selected clause's original wording, and the "Details ▾"
- * drawer (key terms, documents, a review-count line when facts still need a decision, priority
- * score, extracted lists).
+ * Route `/contracts/:contractId` -- Contract 360, V2 "no tabs" (ADR-024 V2 IA; `Raffa.ai V2.dc.html`
+ * "CONTRACT 360 — three answers, then proof, then details"). One page: header (origin back link ·
+ * supplier · title · meta), the answers band (Where you can save · When you must move · What to do,
+ * with the recommended action / Assign to me, the tracker once acted, and "Close the cycle"), then
+ * six numbered sections that never collapse: 01 Leverage · 02 Products & pricing · 03 Clauses that
+ * matter (with the selected clause's original wording) · 04 Obligations · 05 Risk factors · 06 Key
+ * terms (with the document family and a review-count line when facts still need a decision).
  *
  * **Fetch order**: `getContract360` first -- a `404` is this screen's own "not found" state and
  * short-circuits the rest. Then `getRenewals` (for this contract's recommendation),
@@ -75,10 +75,9 @@ export default function Contract360Route({ apiClient, userLabel }: Contract360Ro
 
   const [fetchState, setFetchState] = useState<FetchState>({ phase: "loading" });
   const [selectedClauseId, setSelectedClauseId] = useState<string | null>(null);
-  const [detailsOpen, setDetailsOpen] = useState(false);
   const [tracked, setTracked] = useState<RenewalActionRow | null>(null);
   const [tickedKeys, setTickedKeys] = useState<ReadonlySet<string>>(() => new Set());
-  const [actionPending, setActionPending] = useState<RenewalActionKind | "undo" | null>(null);
+  const [actionPending, setActionPending] = useState<AnswersActionPending>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [stepsError, setStepsError] = useState<string | null>(null);
 
@@ -89,7 +88,6 @@ export default function Contract360Route({ apiClient, userLabel }: Contract360Ro
     // no skeleton flash every 2 s, no reset of the drawer or the tracker.
     if (!silent) {
       setFetchState({ phase: "loading" });
-      setDetailsOpen(false);
       setTracked(null);
       setTickedKeys(new Set());
       setActionError(null);
@@ -247,7 +245,7 @@ export default function Contract360Route({ apiClient, userLabel }: Contract360Ro
   const answers = buildAnswers(header, tabs.renewal, renewals, { called: true, pack: strategy });
   const steps = buildNegotiationSteps(resolveSupplierLabel(header).label, answers.move.deadline);
 
-  const postAction = (status: RenewalActionRow["status"], action: string, pending: RenewalActionKind | "undo") => {
+  const postAction = (status: RenewalActionRow["status"], action: string, pending: Exclude<AnswersActionPending, null>) => {
     setActionPending(pending);
     setActionError(null);
     return apiClient.postRenewalAction(workspace.id, contractId, { owner: userLabel, status, action }).then((result) => {
@@ -295,6 +293,24 @@ export default function Contract360Route({ apiClient, userLabel }: Contract360Ro
     });
   };
 
+  // "Terminated — I sent notice": the one closing outcome this screen can record on its own -- a
+  // `Completed` action naming the notice date. Renewed closes through Documents (the signed document
+  // is the evidence), never by a click here.
+  const handleTerminated = (noticeDate: string) => {
+    void postAction("Completed", terminatedActionText(noticeDate), "close").then((saved) => {
+      if (saved === null) return;
+      setTracked(savedActionOnScreen(saved));
+    });
+  };
+
+  const handleReopen = () => {
+    const plan = getRenewalActionPlan("negotiate");
+    void postAction(plan.status, plan.action, "reopen").then((saved) => {
+      if (saved === null) return;
+      setTracked(savedActionOnScreen(saved));
+    });
+  };
+
   const handleToggleStep = (key: string) => {
     const previous = tickedKeys;
     const next = new Set(previous);
@@ -319,6 +335,8 @@ export default function Contract360Route({ apiClient, userLabel }: Contract360Ro
 
       <AnswersBand
         answers={answers}
+        header={header}
+        currency={tabs.commercials.currency}
         tracked={tracked}
         steps={steps}
         tickedKeys={tickedKeys}
@@ -329,9 +347,13 @@ export default function Contract360Route({ apiClient, userLabel }: Contract360Ro
         onUndo={handleUndo}
         onToggleStep={handleToggleStep}
         onRetrySteps={reloadSteps}
+        onTerminated={handleTerminated}
+        onReopen={handleReopen}
       />
 
-      <WhyClauses
+      <LeverageSection strategy={strategy} />
+      <ProductsSection contract={contract} autoAcceptThreshold={autoAcceptThreshold} />
+      <ClausesSection
         contractId={contractId}
         clauses={tabs.clauses}
         documents={tabs.documents}
@@ -339,15 +361,9 @@ export default function Contract360Route({ apiClient, userLabel }: Contract360Ro
         selectedClauseId={selectedClauseId}
         onSelect={setSelectedClauseId}
       />
-
-      <DetailsSection
-        contract={contract}
-        priority={priority}
-        evidence={evidence}
-        autoAcceptThreshold={autoAcceptThreshold}
-        open={detailsOpen}
-        onToggle={() => setDetailsOpen((open) => !open)}
-      />
+      <ObligationsSection contract={contract} supplierLabel={resolveSupplierLabel(header).label} autoAcceptThreshold={autoAcceptThreshold} />
+      <RiskSection contract={contract} priority={priority} autoAcceptThreshold={autoAcceptThreshold} />
+      <KeyTermsSection contract={contract} evidence={evidence} />
     </div>
   );
 }

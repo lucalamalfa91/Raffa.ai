@@ -653,23 +653,36 @@ tabs held is still on the page, inside the drawer.
   deadline, accent-700 inside the 45-day window, "in **N days** — last day to give notice. Term ends
   {end} and auto-renews for N months."), *What to do* (`buildRecommendation`: the Renewals module's
   own deterministic `recommendedAction`/`explanation`, or the named gap "No renewal recommendation
-  for this contract"). The last cell carries **Start negotiation** / **Assign to me** -- the same real
+  for this contract"). The last cell carries the recommended action as its primary button (the mock's
+  `{{ cur.action }}`; "Start negotiation" when there is no recommendation) / **Assign to me** -- the same real
   `POST /api/renewals/{id}/action` the Renewals screen makes, owner = the signed-in `userLabel` --
   or, once acted, the tracker: "{action} · owner {user}", "target … · close by …", the four-step
   checklist (`buildNegotiationSteps`, ticks keyed by the four named steps and persisted through
   `GET`/`PUT /api/contracts/{id}/negotiation-steps`),
-  **Track it in Renewals →** and **Undo** (PUT empty ticks, then POST `NotStarted`).
+  **Track it in Renewals →** and **Undo** (PUT empty ticks, then POST `NotStarted`), then **Close
+  the cycle**: "Renewed — upload the signed document" goes to Documents (the signed document is
+  the evidence), "Terminated — I sent notice" records the notice date as a `Completed` action
+  (`terminatedActionText`), after which the cell shows the outcome (`buildClosedOutcome`: contract
+  end, spend avoided, auto-renewal blocked) with **See it in Renewals →** / **Reopen**.
   The recorded action is the same `savedAction` on `GET /api/renewals` that the Renewals list, its
   pane and Contract 360 read, so all three agree. `NotStarted` renders as no action taken.
-- **Why — the clauses behind it** (`WhyClauses.tsx`, `ClauseHighlight.tsx`) -- one row per clause (type · accepted value · leverage tag · one-line why · **Open in document viewer**); the selected clause opens the evidence card: the short capped `p.N · §` reference over the original wording with the normalised value `<mark>`ed inside it when it is a literal substring (`buildClauseEvidence`), else the whole `rawText`. No quote and no confidence percentage on the row. The citation landing `?clause=<clauseId>` / `?page=<n>`
-  (`resolveHighlightedClauseId`, R-EVD-02) pre-selects the cited clause with no click; an unmatched
-  `?clause=` never falls back to `?page=`.
-- **Details ▾** (`DetailsSection.tsx`) -- "All terms, documents and open facts ▾" / "Hide details":
-  key terms (`buildKeyTerms`, every row kept, unofficialized values as "—"), documents
-  (`buildDocumentRows`), a trailing **"N facts still need you — Review all →"** when
-  `computeNeedsAttention` counts `review_required` decisions (the line is absent at N = 0), the
-  explainable priority score (`buildPriorityComponentRows`, `formatPriorityFact`),
-  and the extracted Products / Obligations / Risks through the shared `FactTable.tsx` (no confidence column).
+- **Six numbered sections** (`DetailSections.tsx`, `Raffa.ai V2.dc.html` CONTRACT 360; none of them
+  collapses): **01 Leverage** (`buildLeverCards`, the strategy pack's `whereYouCanPush`, strongest
+  first; an honest one-liner while the pack has no lever), **02 Products & pricing**
+  (`buildProductLines`: Product · Qty · You pay · Market · vs market · Annual; market and delta stay
+  an em dash until the Benchmark Service covers the line), **03 Clauses that matter**
+  (`buildClauseGroups`: "Push to change" for High/Critical, "Worth raising" for Medium, the rest
+  behind "Show N standard clauses ▾"; each row type · accepted value · the at-the-table note ·
+  `p.N · §span` as a document-viewer link; clicking a row opens `ClauseHighlight.tsx`'s evidence
+  card, the citation landing `?clause=<clauseId>` / `?page=<n>` (`resolveHighlightedClauseId`,
+  R-EVD-02) pre-selects it with no click), **04 Obligations** (`buildObligationColumns`: "You must" /
+  "{supplier} must", dated items first, the dot by criticality), **05 Risk factors**
+  (`buildScoreParts` over the explainable priority score, `buildRiskItems` tagged by severity) and
+  **06 Key terms** (`buildKeyTerms` as a cell grid, every term kept, unofficialized values as "—";
+  the document family with each document's own status tag; a trailing **"N facts still need you —
+  Review all →"** when `computeNeedsAttention` counts `review_required` decisions). Extracted list
+  rows whose confidence is below the threshold but which point at a real page/span still show their
+  value (`isExtractedRowShown`); the rest read as "—" and never disappear.
 - **Facts vs AI (ADR-019)**: the recommendation is a `Recommendation`, never a `FactRow`; the answers
   band contains no table and no drawer table repeats the recommendation's text --
   `tests/routes/contracts/contract360/*.test.tsx` assert both.
@@ -680,8 +693,8 @@ tabs held is still on the page, inside the drawer.
 `src/routes/contracts/review/` implements screen 6: AC-1 4-column field list (critical marker,
 extracted value + source, confidence tag, decision), AC-2 confidence mapping, AC-3 evidence pane
 (correction form + version history), AC-4 gated "Mark as validated" with a visible reason. Reached
-from `contract360/Contract360Header.tsx`'s "Review extraction" button and
-`contract360/DetailsSection.tsx`'s "N facts still need you — Review all →" count line (both already wired by
+from `contract360/Contract360Header.tsx`'s "Review extraction" link and
+`contract360/DetailSections.tsx`'s "N facts still need you — Review all →" count line (both already wired by
 task E07/F02/US01/T01 to this exact route).
 
 - **Field set is the backend's real correctable set, not the cited prototype's own mock fields**
@@ -1335,12 +1348,10 @@ web/
         contract360/          # Contract 360, V2 no tabs (see "Contract 360" above)
           index.tsx              # Contract360Route -- fetch order (contract, then renewals + priority), actions, tracker, clause selection
           Contract360Header.tsx  # back link · supplier · title · meta line · Ask about it / Review extraction
-          AnswersBand.tsx        # Where you can save · When you must move · What to do (+ actions or the negotiation tracker)
-          WhyClauses.tsx         # clause rows, click -> ClauseHighlight
+          AnswersBand.tsx        # Where you can save · When you must move · What to do (+ actions, the negotiation tracker, Close the cycle, the outcome)
+          DetailSections.tsx     # the six numbered sections: Leverage · Products & pricing · Clauses that matter · Obligations · Risk factors · Key terms
           ClauseHighlight.tsx    # the serif evidence card: "{file} · page N · §span" + <mark>ed wording
-          DetailsSection.tsx     # "Details ▾": key terms, documents, facts to decide, priority score, Products/Obligations/Risks
-          FactTable.tsx          # Term/Value/Source/Confidence list for the extracted rows inside Details
-          contract360ViewModel.ts # pure helpers: answers, recommendation, clause rows/evidence, key terms, attention, priority rows
+          contract360ViewModel.ts # pure helpers: answers, recommendation, tracker, section builders, key terms, attention, priority rows
           contract360.css        # this screen's styles
         review/                # task E07/F03/US01/T01 -- ADR-020 screen 6 (see "Review / correction" above)
           index.tsx              # ReviewRoute -- fetch order (contract, then correction history), decision state, correction submit

@@ -15,8 +15,6 @@ import type {
 import {
   ADD_THE_END_DATE,
   AUTO_ACCEPT_THRESHOLD,
-  DETAILS_LABEL_CLOSED,
-  DETAILS_LABEL_OPEN,
   LEVERAGE_LEGEND,
   LEVERAGE_PUSH_TO_CHANGE,
   LEVERAGE_STANDARD_TERMS,
@@ -30,11 +28,19 @@ import {
   buildDocumentRows,
   buildKeyTerms,
   buildNegotiationSteps,
-  buildObligationsRows,
+  buildObligationColumns,
   buildPriorityComponentRows,
-  buildProductsRows,
+  buildProductLines,
   buildRecommendation,
-  buildRisksRows,
+  buildRiskItems,
+  buildScoreParts,
+  buildLeverCards,
+  buildClauseGroups,
+  buildClosedOutcome,
+  standardClausesLabel,
+  terminatedActionText,
+  PRODUCT_NOTE,
+  SECTION_COPY,
   clauseViewerHref,
   computeNeedsAttention,
   formatHeaderMeta,
@@ -614,12 +620,14 @@ describe("why — the clauses behind it", () => {
   });
 });
 
-describe("details ▾", () => {
+describe("the six sections (Raffa.ai V2.dc.html CONTRACT 360)", () => {
   it("labels", () => {
-    expect(DETAILS_LABEL_CLOSED).toBe("All terms, documents and open facts ▾");
-    expect(DETAILS_LABEL_OPEN).toBe("Hide details");
+    expect(SECTION_COPY.leverage).toEqual({ number: "01", title: "Leverage", description: "Where your negotiating power sits, strongest first." });
+    expect(SECTION_COPY.terms.number).toBe("06");
     expect(formatReviewCountLine(2)).toBe("2 facts still need you — Review all →");
     expect(formatReviewCountLine(1)).toBe("1 facts still need you — Review all →");
+    expect(standardClausesLabel(6, false)).toBe("Show 6 standard clauses ▾");
+    expect(standardClausesLabel(1, true)).toBe("Hide 1 standard clause ▴");
   });
 
   it("buildKeyTerms reads the real contract-level fields; unofficialized values keep the row as an em-dash", () => {
@@ -650,21 +658,109 @@ describe("details ▾", () => {
     expect(mixed).toHaveLength(10);
   });
 
-  it("extracted rows keep unofficialized values as an em-dash and never drop a row", () => {
-    const [productRow] = buildProductsRows([product()]);
-    expect(productRow).toMatchObject({ term: "Premium DBU — committed", value: expect.stringContaining("120,000"), source: "p.9 · §6.2" });
-    expect(buildProductsRows([product({ sourceSpan: null, sourcePage: null })])[0].source).toBe("Linked document");
-    expect(buildProductsRows([product({ sourceDocumentId: null })])[0].source).toBeNull();
+  it("01 Leverage: one card per pack lever, strongest first, the type named -- never a citation key", () => {
+    const cards = buildLeverCards({
+      contractId: "c-1",
+      whenYouMustMove: { renewalDate: null, cancellationDeadline: null, daysLeft: null, passedDeadline: false, explanation: "" },
+      whereYouCanPush: [
+        { leverType: "Volume", rationale: "This line orders 120,000 — cite the order size.", citationKeys: ["k-1"] },
+        { leverType: "Term", rationale: "A 36-month term is currency.", citationKeys: [] },
+      ],
+      targets: [],
+      nextSteps: [],
+      openWeakFacts: [],
+    });
+    expect(cards.map((card) => [card.kicker, card.headline, card.strong])).toEqual([
+      ["Order size lever", "Order size", true],
+      ["Term length lever", "Term length", false],
+    ]);
+    expect(cards[0].body).toBe("This line orders 120,000 — cite the order size.");
+    expect(JSON.stringify(cards)).not.toContain("k-1");
+    expect(buildLeverCards(null)).toEqual([]);
+  });
 
-    const unofficial = buildProductsRows([product({ lineItemId: "p-low", confidence: 0.71, sourceSpan: null, sourcePage: null })]);
-    expect(unofficial).toHaveLength(1);
-    expect(unofficial[0].value).toBe(UNOFFICIALIZED_PLACEHOLDER);
-    expect(unofficial[0].term).toBe("Premium DBU — committed");
+  it("02 Products & pricing: pay figures from the line, market and delta an honest dash, unofficialized lines dashed but kept", () => {
+    const [line] = buildProductLines([product()], "CHF");
+    expect(line).toMatchObject({ name: "Premium DBU — committed", meta: "SKU-1 · DBU/yr", qty: "120,000", price: "CHF 0.55", market: "—", delta: "—", payWidth: "100%", marketWidth: "0%", annual: "CHF 66,000" });
+    const [sourced] = buildProductLines([product({ confidence: 0.71 })], "CHF");
+    expect(sourced.price).toBe("CHF 0.55");
+    const [unofficial] = buildProductLines([product({ confidence: 0.71, sourceSpan: null, sourcePage: null })], "CHF");
+    expect(unofficial).toMatchObject({ name: "Premium DBU — committed", qty: UNOFFICIALIZED_PLACEHOLDER, price: UNOFFICIALIZED_PLACEHOLDER, annual: UNOFFICIALIZED_PLACEHOLDER, payWidth: "0%" });
+    expect(PRODUCT_NOTE).toMatch(/Benchmark Service/);
+  });
 
-    expect(buildObligationsRows([obligation({ confidence: 0.97 })])[0].value).toBe("Annual true-up of committed DBU · due 15/01/2026 · high");
-    expect(buildObligationsRows([obligation()])[0].value).toBe("Annual true-up of committed DBU · due 15/01/2026 · high");
-    expect(buildObligationsRows([obligation({ confidence: 0.71, sourceSpan: null, sourcePage: null })])[0].value).toBe(UNOFFICIALIZED_PLACEHOLDER);
-    expect(buildRisksRows([risk({ severity: "Critical" })])[0].value).toContain("Critical risk");
+  it("03 Clauses that matter: High/Critical push, Medium raise, the rest standard; the ask slot is the leverage copy", () => {
+    const groups = buildClauseGroups(
+      [
+        clause({ clauseId: "cl-high", clauseType: "Price increase", riskLevel: "High", confidence: 0.97 }),
+        clause({ clauseId: "cl-med", clauseType: "Liability cap", riskLevel: "Medium", confidence: 0.97 }),
+        clause({ clauseId: "cl-low", clauseType: "Confidentiality", riskLevel: "Low", confidence: 0.97 }),
+        clause({ clauseId: "cl-none", clauseType: "Notices", riskLevel: null, confidence: 0.6 }),
+      ],
+      contractBody().tabs.documents,
+    );
+    expect(groups.groups.map((group) => [group.label, group.tag, group.items.map((item) => item.clauseId)])).toEqual([
+      [LEVERAGE_PUSH_TO_CHANGE, "accent", ["cl-high"]],
+      [LEVERAGE_WORTH_RAISING, "neutral", ["cl-med"]],
+    ]);
+    expect(groups.groups[0].items[0].ask).toBe("This clause costs money if it stays.");
+    expect(groups.groups[0].items[0].source).toBe("p.27 · §17.2");
+    expect(groups.groups[0].items[0].viewerHref).toBe("/documents/doc-1/viewer?page=27&clause=cl-high");
+    expect(groups.standard.map((item) => [item.clauseId, item.ask, item.normalized])).toEqual([
+      ["cl-low", null, "12 months fees"],
+      ["cl-none", null, UNOFFICIALIZED_PLACEHOLDER],
+    ]);
+    expect(buildClauseGroups([clause({ riskLevel: "Low" })]).groups).toEqual([]);
+  });
+
+  it("04 Obligations: the customer side is 'you', dated items first, criticality drives the dot", () => {
+    const columns = buildObligationColumns([
+      obligation({ obligationId: "o-late", party: "Customer", dueDate: "2026-06-01", criticality: "medium", recurrenceRule: null }),
+      obligation({ obligationId: "o-soon", party: "Customer", dueDate: "2026-01-15", criticality: "high", recurrenceRule: null }),
+      obligation({ obligationId: "o-ongoing", party: "Customer", dueDate: null, recurrenceRule: "monthly", criticality: "low" }),
+      obligation({ obligationId: "o-sup", party: "Supplier", dueDate: null, recurrenceRule: null, criticality: "high", description: "Maintain 99.9% uptime" }),
+    ]);
+    expect(columns.you.map((item) => [item.key, item.when, item.recurrence, item.dot, item.strong])).toEqual([
+      ["o-soon", "by 15/01/2026", "once", "accent", true],
+      ["o-late", "by 01/06/2026", "once", "text", false],
+      ["o-ongoing", "—", "monthly", "neutral", false],
+    ]);
+    expect(columns.supplier).toHaveLength(1);
+    expect(columns.supplier[0]).toMatchObject({ text: "Maintain 99.9% uptime", when: "—", recurrence: "once", dot: "accent" });
+    expect(buildObligationColumns([obligation({ confidence: 0.71 })]).you[0].text).toBe("Annual true-up of committed DBU");
+    const [unofficial] = buildObligationColumns([obligation({ confidence: 0.71, sourceSpan: null, sourcePage: null })]).you;
+    expect(unofficial.text).toBe(UNOFFICIALIZED_PLACEHOLDER);
+  });
+
+  it("05 Risk factors: score parts out of 20 with the accent fill at >= 80%, risks tagged by severity", () => {
+    const parts = buildScoreParts(priority());
+    expect(parts.map((part) => [part.label, part.value, part.width, part.accent])).toEqual([
+      ["Spend weight", "20 / 20", "100%", true],
+      ["Time urgency", "20 / 20", "100%", true],
+      ["Benchmark opportunity", "10 / 20", "50%", false],
+      ["Price-increase risk", "7 / 20", "35%", false],
+      ["Contract risk", "15 / 20", "75%", false],
+    ]);
+    expect(buildScoreParts(null)).toEqual([]);
+    expect(buildRiskItems([risk({ severity: "Critical" }), risk({ riskId: "r-2", severity: "Medium" }), risk({ riskId: "r-3", severity: "Low" })]).map((item) => item.tag)).toEqual(["accent", "neutral", "outline"]);
+    expect(buildRiskItems([risk({ confidence: 0.5, sourceSpan: null, sourcePage: null })])[0].text).toBe(UNOFFICIALIZED_PLACEHOLDER);
+  });
+
+  it("close the cycle: a sent notice is a Completed action naming the date, read back as the terminated outcome", () => {
+    expect(terminatedActionText("2026-09-08")).toBe("Terminated — notice sent 08/09/2026");
+    const outcome = buildClosedOutcome("Terminated — notice sent 08/09/2026", contractBody().header, "CHF");
+    expect(outcome.title).toBe("Terminated");
+    expect(outcome.when).toBe("notice sent 08/09/2026");
+    expect(outcome.kind).toBe("Notice sent");
+    expect(outcome.facts).toEqual([
+      { label: "Contract ends", value: "01/01/2026" },
+      { label: "Spend avoided", value: "CHF 500,000 / yr" },
+      { label: "Auto-renewal", value: "blocked" },
+    ]);
+    const other = buildClosedOutcome("Signed", contractBody().header, "CHF");
+    expect(other.title).toBe("Closed");
+    expect(other.when).toBe("Signed");
+    expect(other.facts).toEqual([]);
   });
 
   it("buildDocumentRows gives type · file · status tag", () => {

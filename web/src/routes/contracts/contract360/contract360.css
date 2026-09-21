@@ -5,11 +5,15 @@
  * .empty-state, .error-state, .micro-meta) come from ../../../styles/components.css (ADR-019) -- this
  * file adds only this screen's own composites.
  *
- * Prototype measurements (padding 22/26/28 × 32, answers band flush right, 2px rules, accent act
- * cell, serif evidence card) stay. Layout tracks diverge on purpose: the prototype assumes short
- * sample figures (`CHF 40k`, `12 Oct`) in a 960px column with `white-space: nowrap`. Real contracts
- * ship long honest-gap sentences and clause types; those must use the full main pane and wrap at
- * word boundaries on every viewport.
+ * Figures are quoted from `Raffa.ai V2.dc.html`'s CONTRACT 360 block (header `padding:22px 32px
+ * 0`, the answers band `margin:22px 0 0 32px` with 2px rules and the accent act cell, the six
+ * sections `padding:30px 32px 34px;border-top:2px solid divider;gap:16px 40px` with a `flex:0 1
+ * 200px` intro column and a `flex:1 1 520px` body). Two deliberate divergences: the answer values
+ * wrap (`.is-prose`) because real contracts ship long honest-gap sentences the mock's short fixtures
+ * never do, and the gutter shrinks below 32px on narrow viewports.
+ *
+ * `src/index.css` (the shared sheets) loads after every route sheet, so instance values on a
+ * shared class (`.btn`, `.tag`) carry one extra class of specificity here.
  */
 
 .contract360-screen {
@@ -18,6 +22,12 @@
   flex-direction: column;
   width: 100%;
   min-width: 0;
+}
+
+/* Every `.btn` on this screen is a button in the mock; a routed one (`<Link class="btn">`) must not
+   pick up the base anchor underline. */
+.contract360-screen a.btn {
+  text-decoration: none;
 }
 
 /* ---- Header ------------------------------------------------------------------ */
@@ -64,8 +74,13 @@
 .contract360-header-actions {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: 14px;
   flex-wrap: wrap;
+}
+
+.btn.contract360-header-action {
+  padding: 0;
+  font-size: 12px;
 }
 
 /* ---- Answers band -------------------------------------------------------------- */
@@ -155,7 +170,7 @@
   align-items: center;
 }
 
-.contract360-assign {
+.btn.contract360-assign {
   font-size: 12px;
 }
 
@@ -237,7 +252,7 @@
   flex-wrap: wrap;
 }
 
-.contract360-tracker-link {
+.btn.contract360-tracker-link {
   padding: 0;
   font-size: 12px;
 }
@@ -246,58 +261,398 @@
   color: var(--color-neutral-600);
 }
 
-/* ---- Why — the clauses behind it ----------------------------------------------- */
+/* ---- Close the cycle (inside the tracker) ---------------------------------------------
+   border-top:2px solid text;margin-top:16px;padding-top:12px · kicker 11px .08em uppercase
+   neutral-700 · note 12px neutral-700 margin:6px 0 10px · buttons btn-secondary / btn-ghost 12px ·
+   the terminated form: 1px divider box on surface, padding:14px, gap:10px, date .field 12px. */
 
-.contract360-why {
-  width: 100%;
-  min-width: 0;
-  padding: 26px var(--c360-gutter) 0;
-  box-sizing: border-box;
+.contract360-close {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 2px solid var(--color-text);
 }
 
-.contract360-why-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 16px;
-  flex-wrap: wrap;
-  margin-bottom: 6px;
+.contract360-close-kicker {
+  font-size: 11px;
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+  color: var(--color-neutral-700);
 }
 
-.contract360-why-head h6 {
-  margin: 0;
-}
-
-.contract360-why-hint {
+.contract360-close-note {
+  margin: 6px 0 10px;
   font-size: 12px;
+  color: var(--color-neutral-700);
+  text-wrap: pretty;
+}
+
+.contract360-close-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn.contract360-close-button {
+  font-size: 12px;
+}
+
+.btn.contract360-close-cancel {
   color: var(--color-neutral-600);
 }
 
-.contract360-why-empty {
+.contract360-close-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--color-divider);
+  background: var(--color-surface);
+}
+
+.contract360-close-field {
+  margin: 0;
+  font-size: 12px;
+}
+
+.contract360-close-field .input {
+  margin-top: 4px;
+  font-size: 13px;
+}
+
+.contract360-close-hint {
+  font-size: 12px;
+  color: var(--color-neutral-700);
+}
+
+/* ---- Closed outcome (`c360Closed`) ------------------------------------------------------
+   border-top:2px solid text;padding-top:12px · head 12px with a 10px tag · facts grid 1fr auto,
+   padding:6px 0, 1px accent-200 rules, 13px · note 12px neutral-700 margin-top:10px. */
+
+.contract360-outcome {
+  padding-top: 12px;
+  border-top: 2px solid var(--color-text);
+}
+
+.contract360-outcome-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+
+.tag.contract360-outcome-tag {
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: var(--weight-body);
+}
+
+.contract360-outcome-facts {
+  display: flex;
+  flex-direction: column;
+  margin-top: 10px;
+}
+
+.contract360-outcome-fact {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: baseline;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--color-accent-200);
+  font-size: 13px;
+}
+
+.contract360-outcome-fact-value {
+  font-weight: var(--weight-body-strong);
+  white-space: nowrap;
+}
+
+.contract360-outcome-note {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--color-neutral-700);
+  text-wrap: pretty;
+}
+
+/* ---- The six sections' shared frame ----------------------------------------------------- */
+
+.contract360-section {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 40px;
+  padding: 30px var(--c360-gutter) 34px;
+  border-top: 2px solid var(--color-divider);
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+}
+
+.contract360-section:last-child {
+  padding-bottom: 48px;
+}
+
+.contract360-section-intro {
+  flex: 0 1 200px;
+  min-width: 150px;
+}
+
+.contract360-section-number {
+  font-family: var(--font-heading);
+  font-weight: var(--weight-heading);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--color-accent);
+}
+
+.contract360-section-title {
+  margin: 2px 0 6px;
+}
+
+.contract360-section-description {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-neutral-600);
+  text-wrap: pretty;
+  max-width: 26ch;
+}
+
+.contract360-section-body {
+  flex: 1 1 520px;
+  min-width: 0;
+}
+
+.contract360-section-empty {
   margin: 0;
   padding: 12px 0;
   font-size: 13px;
   color: var(--color-neutral-600);
+  text-wrap: pretty;
 }
 
-.contract360-clauses {
+/* ---- 01 Leverage ----------------------------------------------------------------------------
+   cards: flex:1 1 240px;padding:20px 24px 20px 0;margin-right:24px;border-right:1px divider inside
+   2px text rules · kicker 11px .08em uppercase (accent-700 when strong) · headline heading 800
+   clamp(26px,2.4vw,34px) lh 1.05 -.02em margin:8px 0 6px (accent when strong) · body 13px. */
+
+.contract360-levers {
+  display: flex;
+  flex-wrap: wrap;
+  border-top: 2px solid var(--color-text);
+  border-bottom: 2px solid var(--color-text);
+}
+
+.contract360-lever {
   display: flex;
   flex-direction: column;
+  flex: 1 1 240px;
+  min-width: 0;
+  padding: 20px 24px 20px 0;
+  margin-right: 24px;
+  border-right: 1px solid var(--color-divider);
 }
 
-.contract360-clause {
+.contract360-lever-kicker {
+  font-size: 11px;
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+  color: var(--color-neutral-600);
+}
+
+.contract360-lever.is-strong .contract360-lever-kicker {
+  color: var(--color-accent-700);
+}
+
+.contract360-lever-headline {
+  margin: 8px 0 6px;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-heading);
+  font-size: clamp(26px, 2.4vw, 34px);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.contract360-lever.is-strong .contract360-lever-headline {
+  color: var(--color-accent);
+}
+
+.contract360-lever-body {
+  font-size: 13px;
+  color: var(--color-neutral-700);
+  text-wrap: pretty;
+}
+
+/* ---- 02 Products & pricing ------------------------------------------------------------------
+   min-width:650px grid minmax(150px,2.2fr) minmax(44px,.6fr) minmax(84px,1fr) minmax(84px,1fr)
+   minmax(96px,1.2fr) minmax(112px,1fr);gap:0 14px · head 11px uppercase under a 2px text rule ·
+   rows padding:14px 0, 1px divider, 13px tabular · 6px bar track (neutral-200) with a neutral-500
+   market bar and a text/accent pay bar at .85 · foot: note 13px neutral-600 + total heading 16px. */
+
+.contract360-products-scroll {
+  overflow-x: auto;
+}
+
+.contract360-products {
+  min-width: 650px;
+}
+
+.contract360-products-head,
+.contract360-product {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(9rem, 18rem);
-  gap: 16px 24px;
+  grid-template-columns: minmax(150px, 2.2fr) minmax(44px, 0.6fr) minmax(84px, 1fr) minmax(84px, 1fr) minmax(96px, 1.2fr) minmax(112px, 1fr);
+  gap: 0 14px;
+}
+
+.contract360-products-head {
   align-items: baseline;
-  width: 100%;
-  padding: 12px 8px 12px 0;
+  padding: 0 0 8px;
+  border-bottom: 2px solid var(--color-text);
+  font-size: 11px;
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+  color: var(--color-neutral-600);
+}
+
+.contract360-product {
+  align-items: center;
+  padding: 14px 0;
   border-bottom: 1px solid var(--color-divider);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.contract360-products .is-right {
+  text-align: right;
+}
+
+.contract360-product-name {
+  font-weight: var(--weight-body-strong);
+}
+
+.contract360-product-meta {
+  font-size: 11px;
+  color: var(--color-neutral-600);
+}
+
+.contract360-product-price,
+.contract360-product-annual {
+  font-weight: var(--weight-body-strong);
+}
+
+.contract360-product-market {
+  color: var(--color-neutral-700);
+}
+
+.contract360-product-delta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.contract360-product-bar {
+  position: relative;
+  flex: 1;
+  height: 6px;
+  background: var(--color-neutral-200);
+}
+
+.contract360-product-bar-market,
+.contract360-product-bar-pay {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+}
+
+.contract360-product-bar-market {
+  background: var(--color-neutral-500);
+}
+
+.contract360-product-bar-pay {
+  background: var(--color-text);
+  opacity: 0.85;
+}
+
+.contract360-product-bar-pay.is-accent {
+  background: var(--color-accent);
+}
+
+.contract360-product-delta-value {
+  min-width: 44px;
+  text-align: right;
+  font-weight: 700;
+  color: var(--color-neutral-700);
+  white-space: nowrap;
+}
+
+.contract360-product-delta-value.is-accent {
+  color: var(--color-accent-700);
+}
+
+.contract360-products-foot {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 16px;
+  padding: 12px 0 0;
   font-size: 13px;
 }
 
-.contract360-clause:hover {
-  background: var(--color-neutral-200);
+.contract360-products-note {
+  color: var(--color-neutral-600);
+  text-wrap: pretty;
+}
+
+.contract360-products-total {
+  font-family: var(--font-heading);
+  font-weight: var(--weight-heading);
+  font-size: 16px;
+}
+
+/* ---- 03 Clauses that matter -----------------------------------------------------------------
+   groups gap:26px · group head: 10px tag + 12px hint over a 2px text rule, padding-bottom:8px ·
+   rows flex wrap gap:6px 20px padding:13px 0 1px divider 13px: type 600 flex:0 1 150px · value
+   flex:1 1 260px · ask 12px accent-700 flex:1 1 220px · src 11px neutral-600 margin-left:auto ·
+   selected row (`c.bg`, citation landing) accent-100 · toggle btn-ghost padding:0 12px. */
+
+.contract360-clause-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+
+.contract360-clause-group-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--color-text);
+}
+
+.contract360-clause-group-standard {
+  margin-top: 14px;
+}
+
+.tag.contract360-clause-tag {
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: var(--weight-body);
+}
+
+.contract360-clause-group-hint {
+  font-size: 12px;
+  color: var(--color-neutral-600);
+}
+
+.contract360-clause {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  align-items: baseline;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--color-divider);
+  font-size: 13px;
 }
 
 .contract360-clause.is-selected {
@@ -305,11 +660,7 @@
 }
 
 .contract360-clause-select {
-  display: grid;
-  grid-template-columns: minmax(10rem, 16rem) minmax(0, 1fr);
-  gap: 16px 24px;
-  align-items: baseline;
-  width: 100%;
+  display: contents;
   margin: 0;
   padding: 0;
   border: 0;
@@ -321,50 +672,65 @@
 }
 
 .contract360-clause-type {
+  flex: 0 1 150px;
+  min-width: 120px;
   font-weight: var(--weight-body-strong);
-  overflow-wrap: break-word;
+  cursor: pointer;
 }
 
 .contract360-clause-normalized {
+  flex: 1 1 260px;
   min-width: 0;
-  overflow-wrap: break-word;
+  text-wrap: pretty;
+  cursor: pointer;
+}
+
+.contract360-clause-ask {
+  flex: 1 1 220px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--color-accent-700);
   text-wrap: pretty;
 }
 
-.contract360-clause-meta {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  align-items: baseline;
-  gap: 6px 8px;
-  font-size: 11px;
+.contract360-clause-ask.is-standard {
   color: var(--color-neutral-600);
 }
 
-.contract360-clause-why {
-  overflow-wrap: break-word;
-}
-
-.contract360-clause-tag {
-  padding: 1px 6px;
-  font-size: 10px;
+.contract360-clause-src {
+  flex: 0 0 auto;
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--color-neutral-600);
+  white-space: nowrap;
 }
 
 .contract360-clause-viewer {
-  padding: 0;
-  font-size: 11px;
+  color: inherit;
+  text-decoration: none;
 }
 
+.contract360-clause-viewer:hover {
+  color: var(--color-accent);
+  text-decoration: underline;
+}
+
+.btn.contract360-standard-toggle {
+  padding: 0;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* The evidence card (the selected clause's original wording): paper-white and serif on purpose --
+   it is the document's own wording, not UI. */
 .contract360-evidence-viewer {
   margin: 12px 0 0;
   font-family: var(--font-body);
 }
 
-/* The evidence card: paper-white and serif on purpose -- it is the document's own wording, not UI. */
 .contract360-evidence {
   width: 100%;
   max-width: 52rem;
-  margin-top: 16px;
   padding: 20px;
   background: #fff;
   border: 1px solid var(--color-divider);
@@ -395,133 +761,237 @@
   color: inherit;
 }
 
-/* ---- Details ▾ ----------------------------------------------------------------- */
+/* ---- 04 Obligations -------------------------------------------------------------------------
+   grid repeat(auto-fit,minmax(280px,1fr));gap:0 40px · column head 11px uppercase over a 2px text
+   rule · rows grid 10px minmax(0,1fr) auto;gap:12px;padding:12px 0;1px divider;13px · 10px dot
+   (accent / text / neutral-400 by criticality) · when 11px neutral-600 margin-top:2px · rec 11px. */
 
-.contract360-details {
-  width: 100%;
-  min-width: 0;
-  padding: 28px var(--c360-gutter) 40px;
-  box-sizing: border-box;
-}
-
-.contract360-details-toggle {
-  padding: 0 4px;
-  font-size: 12px;
-}
-
-.contract360-details-grid {
+.contract360-obligations {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 32px 48px;
-  margin-top: 16px;
-  padding-top: 18px;
-  border-top: 2px solid var(--color-divider);
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 0 40px;
 }
 
-.contract360-details-span {
-  grid-column: 1 / -1;
+.contract360-obligations-head {
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--color-text);
+  font-size: 11px;
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+  color: var(--color-neutral-600);
 }
 
-.contract360-details-grid h6 {
-  margin: 0 0 6px;
-}
-
-.contract360-detail-heading-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
+.contract360-obligation {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
   gap: 12px;
-  flex-wrap: wrap;
-  margin-top: 22px;
-}
-
-.contract360-detail-heading-row:first-child {
-  margin-top: 0;
-}
-
-.contract360-detail-heading-row h6 {
-  margin: 0 0 6px;
-}
-
-.contract360-detail-row {
-  display: grid;
-  grid-template-columns: minmax(7rem, 13rem) minmax(0, 1fr) auto;
-  gap: 8px 16px;
   align-items: baseline;
-  padding: 8px 0;
+  padding: 12px 0;
   border-bottom: 1px solid var(--color-divider);
   font-size: 13px;
 }
 
-.contract360-detail-label {
-  color: var(--color-neutral-600);
-  overflow-wrap: break-word;
+.contract360-obligation-dot {
+  position: relative;
+  top: 1px;
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  background: var(--color-neutral-400);
 }
 
-.contract360-detail-value {
-  min-width: 0;
-  overflow-wrap: break-word;
-  font-weight: inherit;
+.contract360-obligation-dot.is-accent {
+  background: var(--color-accent);
 }
 
-.contract360-detail-row > strong.contract360-detail-value {
+.contract360-obligation-dot.is-text {
+  background: var(--color-text);
+}
+
+.contract360-obligation-text.is-strong {
   font-weight: var(--weight-body-strong);
 }
 
-.contract360-detail-side,
-.contract360-detail-tag {
-  justify-self: end;
-}
-
-.contract360-detail-side {
+.contract360-obligation-when {
+  margin-top: 2px;
   font-size: 11px;
   color: var(--color-neutral-600);
-  text-align: right;
-  overflow-wrap: break-word;
 }
 
-.contract360-detail-explanation {
-  max-width: 28rem;
-  text-align: right;
+.contract360-obligation-recurrence {
+  font-size: 11px;
+  color: var(--color-neutral-600);
+  white-space: nowrap;
 }
 
-.contract360-detail-tag {
-  padding: 1px 6px;
-  font-size: 10px;
+/* ---- 05 Risk factors ------------------------------------------------------------------------
+   grid repeat(auto-fit,minmax(300px,1fr));gap:24px 40px · priority: grid auto minmax(0,1fr) gap:24px ·
+   score heading 800 56px lh 1 -.03em · parts 12px rows + 6px bars (accent at >= .8) gap:10px ·
+   risks: grid auto minmax(0,1fr) gap:14px padding:11px 0 1px divider 13px, 10px tag min-width:58px. */
+
+.contract360-risk-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 24px 40px;
 }
 
-.contract360-detail-link {
-  display: inline-block;
-  margin-top: 22px;
-  padding: 0 4px;
+.contract360-priority {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.contract360-priority-label {
+  font-size: 11px;
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+  color: var(--color-neutral-600);
+}
+
+.contract360-priority-score {
+  margin-top: 6px;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-heading);
+  font-size: 56px;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.contract360-priority-of {
+  font-size: 11px;
+  color: var(--color-neutral-600);
+}
+
+.contract360-score-parts {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.contract360-score-part-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
   font-size: 12px;
 }
 
-.contract360-detail-empty {
-  margin: 0;
-  padding: 8px 0;
+.contract360-score-part-value {
+  font-weight: var(--weight-body-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+.contract360-score-bar {
+  height: 6px;
+  margin-top: 4px;
+  background: var(--color-neutral-200);
+}
+
+.contract360-score-bar-fill {
+  height: 100%;
+  background: var(--color-text);
+}
+
+.contract360-score-bar-fill.is-accent {
+  background: var(--color-accent);
+}
+
+.contract360-risk {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
+  align-items: baseline;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--color-divider);
   font-size: 13px;
+}
+
+.tag.contract360-risk-tag {
+  min-width: 58px;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: var(--weight-body);
+  text-align: left;
+}
+
+.contract360-risk-title {
+  font-weight: var(--weight-body-strong);
+}
+
+.contract360-risk-text {
+  font-size: 12px;
+  color: var(--color-neutral-700);
+  text-wrap: pretty;
+}
+
+/* ---- 06 Key terms ---------------------------------------------------------------------------
+   grid repeat(auto-fill,minmax(170px,1fr)) with 1px divider top/left, cells on --color-bg padding:
+   14px 16px with 1px divider right/bottom · label 11px uppercase · value heading 700 15px lh 1.25
+   margin-top:6px · documents line: flex wrap gap:8px 24px margin-top:18px 12px neutral-700. */
+
+.contract360-terms {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  border-top: 1px solid var(--color-divider);
+  border-left: 1px solid var(--color-divider);
+}
+
+.contract360-term {
+  padding: 14px 16px;
+  background: var(--color-bg);
+  border-right: 1px solid var(--color-divider);
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.contract360-term-label {
+  font-size: 11px;
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
   color: var(--color-neutral-600);
 }
 
-.contract360-facts {
-  margin-top: 28px;
-  min-width: 0;
-  overflow-x: auto;
-}
-
-.contract360-facts h6 {
-  margin: 0 0 6px;
-}
-
-.contract360-facts-table {
-  font-size: 13px;
-  min-width: 40rem;
-}
-
-.contract360-facts-table th,
-.contract360-facts-table td {
+.contract360-term-value {
+  margin-top: 6px;
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 15px;
+  line-height: 1.25;
+  text-wrap: pretty;
   overflow-wrap: break-word;
+}
+
+.contract360-family {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  align-items: center;
+  margin-top: 18px;
+  font-size: 12px;
+  color: var(--color-neutral-700);
+}
+
+.contract360-family-label {
+  align-self: center;
+  font-size: 11px;
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+  color: var(--color-neutral-600);
+}
+
+.contract360-family-doc {
+  white-space: nowrap;
+}
+
+.tag.contract360-family-tag {
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: var(--weight-body);
+}
+
+.btn.contract360-review-link {
+  padding: 0;
+  font-size: 12px;
 }
 
 /* ---- Loading skeleton ------------------------------------------------------------ */
@@ -530,14 +1000,12 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  padding: 22px var(--c360-gutter);
+  padding: 22px var(--c360-gutter) 32px;
 }
 
 .contract360-skeleton-row {
   height: 32px;
 }
-
-/* Tablet: two facts, then the action band full-width; clauses stay three tracks until 800. */
 
 @media (max-width: 1100px) {
   .contract360-answers {
@@ -559,23 +1027,8 @@
     align-items: flex-start;
   }
 
-  .contract360-details-grid {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 28px;
-  }
-
-  .contract360-clause,
-  .contract360-clause-select {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 4px;
-  }
-
-  .contract360-clause-meta {
-    justify-content: flex-start;
-  }
-
-  .contract360-detail-explanation {
-    max-width: none;
+  .contract360-clause-src {
+    margin-left: 0;
   }
 }
 
@@ -597,25 +1050,5 @@
     padding: 16px;
     margin-inline: calc(var(--c360-gutter) * -1);
     border-bottom: 0;
-  }
-
-  .contract360-detail-row {
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas:
-      "label side"
-      "value value";
-  }
-
-  .contract360-detail-label {
-    grid-area: label;
-  }
-
-  .contract360-detail-value {
-    grid-area: value;
-  }
-
-  .contract360-detail-side,
-  .contract360-detail-tag {
-    grid-area: side;
   }
 }
