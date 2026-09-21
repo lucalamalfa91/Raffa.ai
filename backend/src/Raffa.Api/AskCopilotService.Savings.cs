@@ -10,6 +10,7 @@ using Raffa.Insights.Contracts;
 using Raffa.Insights.Savings;
 using Raffa.Market.Contracts;
 using Raffa.Market.Retrieval;
+using Raffa.Savings.Application;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Tenancy;
 
@@ -115,6 +116,7 @@ internal sealed partial class AskCopilotService
         TenantId tenantId,
         PortfolioListItem namedContractItem,
         SavingsGoal? goal,
+        string actor,
         CancellationToken cancellationToken)
     {
         var evidence = await ComputeLeverEvidenceAsync(namedContractItem, goal, cancellationToken).ConfigureAwait(false);
@@ -130,6 +132,8 @@ internal sealed partial class AskCopilotService
         }
 
         var contractId = new EntityId(namedContractItem.ContractId);
+
+        await PersistGeneratedOpportunitiesAsync(tenantId, namedContractItem, evidence, actor, cancellationToken).ConfigureAwait(false);
 
         items.Add(BuildSavingsTargetItem(namedContractItem.ContractId, supplierName, evidence.Plan));
         items.AddRange(BuildLeverItems(namedContractItem.ContractId, supplierName, evidence.Plan, keyPrefix: null));
@@ -163,13 +167,15 @@ internal sealed partial class AskCopilotService
     /// <summary>The lever items (target verdict + levers) appended to a scoped renewal-strategy
     /// pack so "come affrontare il rinnovo" also carries the money.</summary>
     private async Task<IReadOnlyList<PackItem>> BuildLeverAddendumAsync(
-        PortfolioListItem namedContractItem, SavingsGoal? goal, CancellationToken cancellationToken)
+        TenantId tenantId, PortfolioListItem namedContractItem, SavingsGoal? goal, string actor, CancellationToken cancellationToken)
     {
         var evidence = await ComputeLeverEvidenceAsync(namedContractItem, goal, cancellationToken).ConfigureAwait(false);
         if (evidence is null)
         {
             return [];
         }
+
+        await PersistGeneratedOpportunitiesAsync(tenantId, namedContractItem, evidence, actor, cancellationToken).ConfigureAwait(false);
 
         var items = new List<PackItem>
         {
@@ -315,6 +321,59 @@ internal sealed partial class AskCopilotService
 
         return DistinctByCitationKey(items);
     }
+
+    /// <summary>
+    /// Persist-all, like the negotiation to-dos: every quantified lever becomes (or refreshes) a
+    /// generated savings opportunity keyed by the lever, so the Savings page fills from real use
+    /// of Ask Raffa without anyone typing a number. Never touches a row a person already owns.
+    /// A failure here never fails the turn.
+    /// </summary>
+    private async Task PersistGeneratedOpportunitiesAsync(
+        TenantId tenantId, PortfolioListItem item, LeverEvidence evidence, string actor, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(actor) || evidence.Plan.AnnualSpend is not { } spend || spend <= 0m)
+        {
+            return;
+        }
+
+        var generated = evidence.Plan.Levers
+            .Where(l => l.EstimatedHigh is > 0m)
+            .Select(l => new GeneratedSavingsOpportunity(
+                l.Key,
+                $"{evidence.SupplierName} — {l.Label}",
+                item.SupplierId is { } supplierId ? new EntityId(supplierId) : null,
+                spend,
+                evidence.Plan.Currency,
+                l.EstimatedLow ?? 0m,
+                l.EstimatedHigh!.Value,
+                LeverConfidence(l.Type)))
+            .ToList();
+
+        if (generated.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            await savingsOpportunityService
+                .UpsertGeneratedAsync(tenantId, new EntityId(item.ContractId), generated, actor, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Persisting is a side benefit of the turn, never its purpose: the answer still ships.
+        }
+    }
+
+    private static double LeverConfidence(SavingsLeverType type) => type switch
+    {
+        SavingsLeverType.AboveBandRepricing => 0.8,
+        SavingsLeverType.MarketDiscount => 0.7,
+        SavingsLeverType.UpliftCap => 0.6,
+        SavingsLeverType.MultiYearTerm => 0.5,
+        _ => 0.4,
+    };
 
     // ----- item builders -----
 
@@ -566,7 +625,11 @@ internal sealed partial class AskCopilotService
         TenantId tenantId, PortfolioListItem namedContractItem, string supplierName, CancellationToken cancellationToken)
     {
         var allSavings = await savingsOpportunityService.ListAsync(tenantId, cancellationToken).ConfigureAwait(false);
-        var contractSavings = allSavings.Where(o => o.ContractId?.Value == namedContractItem.ContractId).ToList();
+        // Hand-recorded rows only: the generated ones (OpportunityKey set) are this turn's own
+        // levers, already in the pack as calc items -- listing them twice would double-count.
+        var contractSavings = allSavings
+            .Where(o => o.ContractId?.Value == namedContractItem.ContractId && o.OpportunityKey is null)
+            .ToList();
 
         return contractSavings.Select((opportunity, index) => new PackItem(
             $"fact:{namedContractItem.ContractId}:saving[{index}]",

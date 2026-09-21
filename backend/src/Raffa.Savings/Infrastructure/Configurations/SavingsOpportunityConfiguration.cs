@@ -36,11 +36,19 @@ public sealed class SavingsOpportunityConfiguration : IEntityTypeConfiguration<S
 
         builder.Property(e => e.Owner).HasMaxLength(200);
 
+        builder.Property(e => e.OpportunityKey).HasMaxLength(120);
+
         builder.HasIndex(e => e.TenantId);
         // Not unique (unlike RenewalAction's own (tenant, contract) index): a tenant can have many
         // opportunities against the same contract over time (repeat comparisons, different line
         // items) — this index only ever speeds up "opportunities for this contract", never
         // constrains cardinality.
         builder.HasIndex(e => new { e.TenantId, e.ContractId });
+
+        // Generated opportunities are upserted by key (SavingsOpportunityService.UpsertGeneratedAsync);
+        // hand-recorded rows keep a null key and stay unconstrained in cardinality.
+        builder.HasIndex(e => new { e.TenantId, e.ContractId, e.OpportunityKey })
+            .IsUnique()
+            .HasFilter("opportunity_key IS NOT NULL");
     }
 }

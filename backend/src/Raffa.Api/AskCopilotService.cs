@@ -532,7 +532,7 @@ internal sealed partial class AskCopilotService(
             AskIntent.PortfolioStrategy => await BuildPortfolioStrategyPackAsync(portfolio, supplierNames, cancellationToken).ConfigureAwait(false),
             AskIntent.PortfolioSavingsTarget => await BuildPortfolioSavingsTargetPackAsync(portfolio, plan.Goal, cancellationToken).ConfigureAwait(false),
             AskIntent.Savings => namedContractItem is not null
-                ? await BuildSavingsLeverPackAsync(tenantId, namedContractItem, plan.Goal, cancellationToken).ConfigureAwait(false)
+                ? await BuildSavingsLeverPackAsync(tenantId, namedContractItem, plan.Goal, actor, cancellationToken).ConfigureAwait(false)
                 : await BuildPortfolioStrategyPackAsync(portfolio, supplierNames, cancellationToken).ConfigureAwait(false),
             AskIntent.DocumentStatus => BuildDocumentStatusPack(portfolio),
             _ => [],
@@ -1969,7 +1969,7 @@ internal sealed partial class AskCopilotService(
 
         // The money behind the strategy: the target verdict, the grounded levers, the supplier's
         // market deals and the playbook entries for those levers (AskCopilotService.Savings.cs).
-        strategyItems.AddRange(await BuildLeverAddendumAsync(namedContractItem, goal, cancellationToken).ConfigureAwait(false));
+        strategyItems.AddRange(await BuildLeverAddendumAsync(tenantId, namedContractItem, goal, actor, cancellationToken).ConfigureAwait(false));
 
         // Tenant clause evidence (AC-2). SearchByContractAsync uses CosineDistance, which
         // InMemory EF cannot translate — the same constraint BuildNoticePackAsync documents

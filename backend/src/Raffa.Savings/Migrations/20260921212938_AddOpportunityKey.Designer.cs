@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Raffa.Savings.Infrastructure;
@@ -11,9 +12,11 @@ using Raffa.Savings.Infrastructure;
 namespace Raffa.Savings.Migrations
 {
     [DbContext(typeof(SavingsDbContext))]
-    partial class SavingsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260921212938_AddOpportunityKey")]
+    partial class AddOpportunityKey
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
