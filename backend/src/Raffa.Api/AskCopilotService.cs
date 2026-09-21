@@ -175,7 +175,7 @@ namespace Raffa.Api;
 /// abstain.
 /// </para>
 /// </summary>
-internal sealed class AskCopilotService(
+internal sealed partial class AskCopilotService(
     DomainGate domainGate,
     IntentPlanner intentPlanner,
     AnswerComposer answerComposer,
@@ -193,6 +193,7 @@ internal sealed class AskCopilotService(
     IBenchmarkService benchmarkService,
     BenchmarkKeyResolution benchmarkKeyResolution,
     IMarketKnowledgeRetrieval marketKnowledgeRetrieval,
+    IMarketDealLookup marketDealLookup,
     IAuditWriter auditWriter,
     ITenantContext tenantContext,
     IClock clock)
@@ -524,11 +525,12 @@ internal sealed class AskCopilotService(
                 .ConfigureAwait(false),
             AskIntent.MarketCompare => await BuildMarketComparePackAsync(namedContractItem, cancellationToken).ConfigureAwait(false),
             AskIntent.RenewalStrategy => namedContractItem is not null
-                ? await BuildRenewalStrategyWithEvidenceAsync(tenantId, question, namedContractItem, actor, cancellationToken).ConfigureAwait(false)
+                ? await BuildRenewalStrategyWithEvidenceAsync(tenantId, question, namedContractItem, actor, cancellationToken, plan.Goal).ConfigureAwait(false)
                 : await BuildPortfolioStrategyPackAsync(portfolio, supplierNames, cancellationToken).ConfigureAwait(false),
             AskIntent.PortfolioStrategy => await BuildPortfolioStrategyPackAsync(portfolio, supplierNames, cancellationToken).ConfigureAwait(false),
+            AskIntent.PortfolioSavingsTarget => await BuildPortfolioSavingsTargetPackAsync(portfolio, plan.Goal, cancellationToken).ConfigureAwait(false),
             AskIntent.Savings => namedContractItem is not null
-                ? await BuildSavingsPackAsync(tenantId, namedContractItem, cancellationToken).ConfigureAwait(false)
+                ? await BuildSavingsLeverPackAsync(tenantId, namedContractItem, plan.Goal, cancellationToken).ConfigureAwait(false)
                 : await BuildPortfolioStrategyPackAsync(portfolio, supplierNames, cancellationToken).ConfigureAwait(false),
             AskIntent.DocumentStatus => BuildDocumentStatusPack(portfolio),
             _ => [],
@@ -1943,11 +1945,16 @@ internal sealed class AskCopilotService(
         string question,
         PortfolioListItem namedContractItem,
         string actor,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        SavingsGoal? goal = null)
     {
-        var strategyItems = await BuildRenewalStrategyPackAsync(
+        var strategyItems = (await BuildRenewalStrategyPackAsync(
                 namedContractItem, cancellationToken, persistTodos: true, actor)
-            .ConfigureAwait(false);
+            .ConfigureAwait(false)).ToList();
+
+        // The money behind the strategy: the target verdict, the grounded levers, the supplier's
+        // market deals and the playbook entries for those levers (AskCopilotService.Savings.cs).
+        strategyItems.AddRange(await BuildLeverAddendumAsync(namedContractItem, goal, cancellationToken).ConfigureAwait(false));
 
         // Tenant clause evidence (AC-2). SearchByContractAsync uses CosineDistance, which
         // InMemory EF cannot translate — the same constraint BuildNoticePackAsync documents
@@ -1964,7 +1971,7 @@ internal sealed class AskCopilotService(
             clauseItems = [];
         }
 
-        return strategyItems.Concat(clauseItems).ToList();
+        return DistinctByCitationKey(strategyItems.Concat(clauseItems));
     }
 
     /// <summary>
@@ -2162,34 +2169,6 @@ internal sealed class AskCopilotService(
         }
 
         return items;
-    }
-
-    private async Task<IReadOnlyList<PackItem>> BuildSavingsPackAsync(
-        TenantId tenantId, PortfolioListItem namedContractItem, CancellationToken cancellationToken)
-    {
-        var supplierName = await ResolveDisplayNameAsync(namedContractItem, cancellationToken).ConfigureAwait(false);
-        var allSavings = await savingsOpportunityService.ListAsync(tenantId, cancellationToken).ConfigureAwait(false);
-        var contractSavings = allSavings.Where(o => o.ContractId?.Value == namedContractItem.ContractId).ToList();
-
-        if (contractSavings.Count == 0)
-        {
-            return [BuildContractFactItem(namedContractItem, supplierName)];
-        }
-
-        return contractSavings.Select((opportunity, index) => new PackItem(
-            $"fact:{namedContractItem.ContractId}:saving[{index}]",
-            PackCorpus.Tenant,
-            $"{supplierName} — {opportunity.Type}",
-            opportunity.ConfidenceLevel.ToString(),
-            null, null,
-            $"Estimated saving {opportunity.EstimatedSavingsLow}–{opportunity.EstimatedSavingsHigh} {opportunity.Currency}.",
-            $"/contracts/{namedContractItem.ContractId}", null, null,
-            "validated contract",
-            [
-                new PackValue("estimatedSavingsLow", opportunity.EstimatedSavingsLow.ToString(CultureInfo.InvariantCulture), PackValueKind.Amount, opportunity.Currency),
-                new PackValue("estimatedSavingsHigh", opportunity.EstimatedSavingsHigh.ToString(CultureInfo.InvariantCulture), PackValueKind.Amount, opportunity.Currency),
-            ],
-            namedContractItem.ContractId.ToString())).ToList();
     }
 
     private static IReadOnlyList<PackItem> BuildDocumentStatusPack(PortfolioPage portfolio)
