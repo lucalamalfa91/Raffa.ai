@@ -505,3 +505,34 @@ single call** as NW-62 (clause 7): one resolution, two consumers.
 the **epic-21 contract task** (single-writer constraint 2), and the five
 conditions travel into that task's DoD together with the pinning test ADR-011 w17
 clause 22 names.
+
+## Amendment (2026-09-21 — a document needs review only when a human has something to decide)
+
+Product-owner ruling on the first real `demo` uploads through the Foundry
+gateway: a document whose every found fact cleared the auto-accept bar still
+parked in `needs_review` with "Review 0 fields" and required a manual "Mark
+as validated". The cause was the w17 rule that an empty scalar stage
+(metadata, commercial terms, dates) is "nothing where something was
+expected" and routes the document to review, while `weakFactCount` and the
+review screen only count facts a human can decide on. Two numbers, one state.
+
+**Rule.** `StagedExtractionService` now marks a stage `NeedsReview` exactly
+when it produced a fact below `ExtractionConfidencePolicy`; a stage that
+found nothing — scalar or list — completes. `DetermineDocumentStatus` is
+unchanged in shape: the document is `needs_review` iff a stage needs review,
+a stage failed, or the classification sits below the bar; otherwise it
+completes on its own. An absent scalar field keeps surfacing on the review
+screen under "Not found in the document" (NW-64), where the user may type
+it, and never blocks validation — as before.
+
+**What still parks a document with "Review 0 fields".** A failed stage (a
+"missing signal": gateway error, malformed payload). That case is now
+explainable: `GET /api/documents` carries the failed job's `errorDetail` on
+a `NeedsReview` row too, and the Documents table shows it under the file
+name ("One extraction step failed: …"). Reprocessing is the resolution, not
+a sign-off.
+
+Consequences: `backend/README.md`'s pipeline-rules paragraph, the
+`StagedExtractionServiceTests` case for a text with no cues (now: every
+stage completes, document completes), `DocumentListItem.ErrorDetail`'s
+contract. The admission gate (w15/w17) is untouched.

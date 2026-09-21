@@ -15,15 +15,15 @@ public static class ClassifyPromptTemplate
 {
     /// <summary>Bump when the prompt or schema text below changes — recorded in every
     /// <see cref="AiCallMetadata.PromptVersion"/> this role produces.</summary>
-    public const string Version = "foundry-classify-v2";
+    public const string Version = "foundry-classify-v3";
 
     private static readonly string[] Labels = Enum.GetNames<AiDocumentType>();
 
     private static readonly IReadOnlyDictionary<AiDocumentType, string> Glosses = new Dictionary<AiDocumentType, string>
     {
-        [AiDocumentType.Msa] = "master or framework services agreement (contratto quadro, accordo quadro, Rahmenvertrag)",
-        [AiDocumentType.OrderForm] = "order form or purchase order (ordine, modulo d'ordine, Bestellung)",
-        [AiDocumentType.Sow] = "statement of work or service description (capitolato, descrizione dei servizi, Leistungsbeschreibung)",
+        [AiDocumentType.Msa] = "master, framework or umbrella agreement that governs a supplier relationship: master services agreement, master subscription agreement, enterprise or software license agreement, cloud services or cloud commitment agreement, SaaS terms, general terms and conditions (contratto quadro, accordo quadro, contratto di licenza, condizioni generali, Rahmenvertrag, Lizenzvertrag)",
+        [AiDocumentType.OrderForm] = "order form, order schedule, purchase order or subscription order that buys specific products, quantities or seats, usually under a master agreement (ordine, modulo d'ordine, ordine di acquisto, Bestellung, Bestellschein)",
+        [AiDocumentType.Sow] = "statement of work, work order or service description that defines deliverables and activities (capitolato, descrizione dei servizi, ordine di lavoro, Leistungsbeschreibung)",
         [AiDocumentType.Amendment] = "amendment or addendum to an existing contract (atto integrativo, addendum, Nachtrag)",
         [AiDocumentType.Quote] = "quotation or commercial proposal (offerta, preventivo, Angebot)",
         [AiDocumentType.Invoice] = "invoice (fattura, Rechnung)",
@@ -38,8 +38,10 @@ public static class ClassifyPromptTemplate
         string.Join(", ", Labels) + ". Meaning of each type, with common non-English names: " +
         string.Join("; ", Enum.GetValues<AiDocumentType>().Select(t => $"{t} = {Glosses[t]}")) + ". " +
         "The document may be written in any language; classify it on its meaning, never on its " +
-        "language, and never on a file name. A framework agreement that also lists prices is still " +
-        "an Msa; a signed order under a framework is an OrderForm. Use Other only when the document " +
+        "language, and never on a file name. Decide by what the document does, not by its title: a " +
+        "framework agreement that also lists prices is still an Msa; a signed order under a framework " +
+        "is an OrderForm; a document that is both a master agreement and its first order schedule is " +
+        "the type of the part that governs the relationship (Msa). Use Other only when the document " +
         "is clearly none of the listed types. Report confidence as a number between 0 and 1: your " +
         "probability that the chosen type is correct. Respond with strict JSON matching the given " +
         "schema only: no prose, no markdown fences.";

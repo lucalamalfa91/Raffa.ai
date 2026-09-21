@@ -186,7 +186,10 @@ public sealed class DocumentQueryService(
 
         var errorByDocument = await ErrorDetailsByDocumentAsync(
             tenantId,
-            documents.Where(d => d.ProcessingStatus == DocumentProcessingStatus.Failed).Select(d => d.Id).ToList(),
+            documents
+                .Where(d => d.ProcessingStatus is DocumentProcessingStatus.Failed or DocumentProcessingStatus.NeedsReview)
+                .Select(d => d.Id)
+                .ToList(),
             cancellationToken).ConfigureAwait(false);
 
         var weakFactsByContract = await WeakFactCountsAsync(tenantId, contractIds, cancellationToken)
@@ -209,7 +212,7 @@ public sealed class DocumentQueryService(
                 d.CreatedAt,
                 d.ContractId is { } weakContractId ? weakFactsByContract.GetValueOrDefault(weakContractId) : 0,
                 d.RejectionReason,
-                d.ProcessingStatus == DocumentProcessingStatus.Failed
+                d.ProcessingStatus is DocumentProcessingStatus.Failed or DocumentProcessingStatus.NeedsReview
                     ? errorByDocument.GetValueOrDefault(d.Id)
                     : null))
             .ToList();

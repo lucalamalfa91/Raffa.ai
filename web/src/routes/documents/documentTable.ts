@@ -182,6 +182,20 @@ export function getFailedHint(errorDetail: string | null | undefined): string {
 }
 
 /**
+ * Needs-review row whose only reason is a failed extraction stage (ADR-024 amendment 2026-09-21):
+ * every found fact cleared the bar, so "Review 0 fields" would be unexplainable without the
+ * stage's own `errorDetail`. `null` for every other row -- a failed row keeps `getFailedHint`, and
+ * a needs-review row with weak facts explains itself through the count.
+ */
+export function getStageFailureHint(
+  item: Pick<DocumentListItemBody, "processingStatus" | "weakFactCount" | "errorDetail">,
+): string | null {
+  if (getRowStatus(item.processingStatus) !== "needs_review" || item.weakFactCount > 0) return null;
+  const detail = item.errorDetail?.trim();
+  return detail ? `One extraction step failed: ${detail}` : null;
+}
+
+/**
  * Next-step action per row (`raffa-v2/app.jsx`'s own `docRows` action ternary; screens-v2.md #3
  * "Review N fields / Ask about it"). A `Quote`-typed document is routed to Quote
  * check instead of the review/ask flow at any resolved status -- OQ-askv2-008's own assumption in

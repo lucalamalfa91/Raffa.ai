@@ -13,6 +13,7 @@ import {
   getRowAction,
   getRowStatus,
   getRowStatusTag,
+  getStageFailureHint,
   type AttentionFilterValue,
   type RowStatus,
 } from "./documentTable";
@@ -209,6 +210,7 @@ function ServerDocumentRow({
   const tag = getRowStatusTag(rowStatus);
   const action = getRowAction(item);
   const rejectionHint = rowStatus === "rejected" ? getRejectionReasonCopy(item.rejectionReason) : null;
+  const stageFailureHint = getStageFailureHint(item);
   const openTarget = getOpenTarget(item, rowStatus);
 
   return (
@@ -225,6 +227,7 @@ function ServerDocumentRow({
             {rejectionHint !== null && <div className="hint">{rejectionHint}</div>}
           </>
         )}
+        {stageFailureHint !== null && <div className="hint">{stageFailureHint}</div>}
         <div className="micro-meta">
           {item.pageCount !== null ? `${item.pageCount} page${item.pageCount === 1 ? "" : "s"} · ` : ""}
           {formatUploadedAt(item.createdAt)}

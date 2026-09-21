@@ -19,6 +19,7 @@ import {
   STUCK_PROCESSING_REPROCESS_AFTER_MS,
   MAX_STUCK_REPROCESS_ATTEMPTS,
   getFailedHint,
+  getStageFailureHint,
   type DocumentCountsBody,
 } from "../../../src/routes/documents/documentTable";
 
@@ -224,6 +225,28 @@ describe("getFailedHint", () => {
   it("falls back to the historical not-linked sentence", () => {
     expect(getFailedHint(null)).toBe("Not yet linked to a contract");
     expect(getFailedHint("  ")).toBe("Not yet linked to a contract");
+  });
+});
+
+// ADR-024 amendment 2026-09-21: a needs-review row with nothing to review can only mean a failed
+// extraction stage, and the row says so instead of an unexplainable "Review 0 fields".
+describe("getStageFailureHint", () => {
+  it("names the failed step on a needs-review row with no weak fact", () => {
+    expect(
+      getStageFailureHint(
+        item({ processingStatus: "NeedsReview", weakFactCount: 0, errorDetail: "Malformed extraction payload: x" }),
+      ),
+    ).toBe("One extraction step failed: Malformed extraction payload: x");
+  });
+
+  it("stays silent when the count explains the row, when there is no error, or on any other status", () => {
+    expect(
+      getStageFailureHint(item({ processingStatus: "NeedsReview", weakFactCount: 2, errorDetail: "boom" })),
+    ).toBeNull();
+    expect(getStageFailureHint(item({ processingStatus: "NeedsReview", weakFactCount: 0, errorDetail: null }))).toBeNull();
+    expect(getStageFailureHint(item({ processingStatus: "NeedsReview", weakFactCount: 0, errorDetail: "  " }))).toBeNull();
+    expect(getStageFailureHint(item({ processingStatus: "Failed", weakFactCount: 0, errorDetail: "boom" }))).toBeNull();
+    expect(getStageFailureHint(item({ processingStatus: "Completed", weakFactCount: 0, errorDetail: "boom" }))).toBeNull();
   });
 });
 

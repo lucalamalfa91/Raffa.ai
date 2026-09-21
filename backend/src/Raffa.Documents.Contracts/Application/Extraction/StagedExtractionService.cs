@@ -89,20 +89,6 @@ public sealed class StagedExtractionService(
     /// <c>ContractCorrectionService</c> accepts a <c>type</c> correction.</summary>
     public const string TypeFieldName = "type";
 
-    /// <summary>The three stages whose facts are scalar <see cref="Contract"/> fields. A contract
-    /// with <em>none</em> of them (no supplier, currency, fee, date or renewal term at all) is not
-    /// a trusted extraction — that stage goes to review even though the gateway call succeeded.
-    /// The four "one row = one fact" list stages are deliberately not in this set: an empty list
-    /// is a legitimate outcome for them (a master agreement has no priced line items, a short
-    /// order form may carry no risk clause), and "nothing to review" is not a state a reviewer can
-    /// resolve — the only decision the review screen offers is per field.</summary>
-    private static readonly HashSet<ExtractionStage> ScalarFactStages =
-    [
-        ExtractionStage.Metadata,
-        ExtractionStage.CommercialTerms,
-        ExtractionStage.DatesAndRenewalTerms,
-    ];
-
     /// <summary><see cref="Contract"/> fields the `metadata` stage may propose (allow-listed
     /// both here and in the JSON Schema's <c>enum</c> — see <see cref="StagedExtractionJsonSchemas.Facts"/>).
     /// Deliberately excludes <see cref="Contract.Type"/>: that is Classification's field
@@ -434,13 +420,17 @@ public sealed class StagedExtractionService(
             return (new StagedExtractionStageResult(stage, job.Status, 0, 0, job.ErrorDetail), null);
         }
 
-        // Human-in-the-loop principle: something skipped, any fact below ExtractionConfidencePolicy,
-        // or a scalar-field stage that found nothing at all (see ScalarFactStages) all mean a person
-        // should look at this stage before it is trusted, even though the AI Gateway call itself
-        // succeeded. An empty *list* stage is a legitimate answer, not a review trigger — a
-        // reviewer cannot resolve "no line items", only a field.
-        var nothingWhereSomethingWasExpected = applied.Extracted == 0 && ScalarFactStages.Contains(stage);
-        job.Status = nothingWhereSomethingWasExpected || applied.Skipped > 0 || applied.AnyBelowThreshold
+        // Human-in-the-loop principle, as narrowed on 2026-09-21 (ADR-024 amendment of that
+        // date): a stage needs review exactly when it produced a fact below
+        // ExtractionConfidencePolicy — something a reviewer can actually decide on. A stage that
+        // found nothing (every fact absent, or an empty list) is a legitimate answer, not a review
+        // trigger: "nothing to review" is not a state the review screen can resolve, and parking
+        // the document there only asked the user to sign off on an empty list ("Review 0 fields").
+        // An absent scalar field still surfaces on the review screen as "Not found in the
+        // document", where the user may type it; it never blocks validation. A fact naming a
+        // field outside the stage's allow-list is counted in Skipped for the audit detail but is
+        // not a review trigger either — strict structured output makes it unreachable in practice.
+        job.Status = applied.AnyBelowThreshold
             ? ExtractionJobStatus.NeedsReview
             : ExtractionJobStatus.Completed;
         job.CompletedAt = completedAt;
@@ -911,10 +901,14 @@ public sealed class StagedExtractionService(
     /// review" has <see cref="DocumentProcessingStatus.NeedsReview"/>, and vice versa.
     ///
     /// <para>
-    /// Any NeedsReview stage (a fact below the bar, a skipped field, an empty scalar stage) or a
-    /// classification below the same bar routes the document to human review. Stage
-    /// <em>failures</em> (model/network error, malformed payload) also require review: a
-    /// low-confidence fact is a "weak signal"; a failed stage is a "missing signal".
+    /// The document needs a human exactly when there is something a human can decide: a
+    /// NeedsReview stage (a fact below the bar) or a classification below the same bar. A stage
+    /// that found nothing does not route the document to review (ADR-024 amendment 2026-09-21):
+    /// with every found fact at or above the bar the document completes on its own instead of
+    /// asking the user to confirm an empty review list. Stage <em>failures</em> (model/network
+    /// error, malformed payload) still require review: a low-confidence fact is a "weak signal";
+    /// a failed stage is a "missing signal", and its <c>ErrorDetail</c> is what the Documents row
+    /// shows next to "Review 0 fields" so the state is explainable.
     /// </para>
     /// </summary>
     private static DocumentProcessingStatus DetermineDocumentStatus(

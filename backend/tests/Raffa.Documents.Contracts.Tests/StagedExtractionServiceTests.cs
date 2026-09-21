@@ -549,15 +549,17 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Fixture_ai_gateway_finding_nothing_in_a_text_routes_only_the_scalar_stages_to_review()
+    public async Task Fixture_ai_gateway_finding_nothing_in_a_text_completes_every_stage_with_nothing_to_review()
     {
         // FixtureAiGateway.ExtractAsync reads facts deterministically from the text
         // (FixtureContractFactExtractor); a text with no contract cues at all yields no fact for any
         // scalar stage and an empty list for every list stage. This is the exact gateway
-        // AddAiGatewayModule registers, so the pipeline must run cleanly against it: the three
-        // scalar stages ("a contract with no supplier, fee or date is not a trusted extraction") go
-        // to review, the four list stages complete — an empty list of line items/clauses is a
-        // legitimate answer, not something a reviewer can resolve.
+        // AddAiGatewayModule registers, so the pipeline must run cleanly against it. Since the
+        // ADR-024 amendment of 2026-09-21 a stage that found nothing is a legitimate answer for
+        // scalar and list stages alike: nothing below the bar means nothing a reviewer can decide,
+        // so every stage completes and the document completes with it instead of parking in
+        // needs_review with "Review 0 fields". The absent scalar fields still surface on the
+        // review screen as "Not found in the document".
         var tenantId = TenantId.New();
         var tenantContext = new TenantContext();
 
@@ -577,15 +579,8 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
         Assert.True(result.IsSuccess);
         Assert.Equal(7, result.Value.Stages.Count);
         Assert.All(result.Value.Stages, s => Assert.Equal(0, s.ExtractedCount));
-        var stages = result.Value.Stages.ToDictionary(s => s.Stage);
-        Assert.Equal(ExtractionJobStatus.NeedsReview, stages[ExtractionStage.Metadata].Status);
-        Assert.Equal(ExtractionJobStatus.NeedsReview, stages[ExtractionStage.CommercialTerms].Status);
-        Assert.Equal(ExtractionJobStatus.NeedsReview, stages[ExtractionStage.DatesAndRenewalTerms].Status);
-        Assert.Equal(ExtractionJobStatus.Completed, stages[ExtractionStage.LineItems].Status);
-        Assert.Equal(ExtractionJobStatus.Completed, stages[ExtractionStage.LegalClauses].Status);
-        Assert.Equal(ExtractionJobStatus.Completed, stages[ExtractionStage.Obligations].Status);
-        Assert.Equal(ExtractionJobStatus.Completed, stages[ExtractionStage.Risk].Status);
-        Assert.Equal(DocumentProcessingStatus.NeedsReview, result.Value.DocumentProcessingStatus);
+        Assert.All(result.Value.Stages, s => Assert.Equal(ExtractionJobStatus.Completed, s.Status));
+        Assert.Equal(DocumentProcessingStatus.Completed, result.Value.DocumentProcessingStatus);
     }
 
     [Fact]
