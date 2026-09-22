@@ -3,7 +3,7 @@ namespace Raffa.Chat.Application.Answering;
 /// <summary>
 /// The versioned V2 persona prompt (task E13/F06/US01/T01, ask-engine; ADR-024 "a versioned
 /// persona prompt"; parent story us-01-ask-engine, "Council decisions carried into this story":
-/// "Persona prompt versioned as `backend/src/Raffa.Chat/Prompts/answer/v2.1.md` (version
+/// "Persona prompt versioned as `backend/src/Raffa.Chat/Prompts/answer/v2.2.md` (version
 /// logged)"). <see cref="SystemPrompt"/> is kept byte-identical to that checked-in markdown file —
 /// the file is the versioned, human-reviewable/diffable artefact a person actually edits; this
 /// constant is what <see cref="AnswerComposer"/> can hand to <c>Raffa.AiGateway.Contracts
@@ -20,10 +20,12 @@ public static class AnswerPromptV2
     /// versioned prompt, not the gateway's default) and simply echoed back by
     /// <c>FoundryAnswerClient</c>/<c>FixtureAiGateway</c> onto the result's own metadata, then onto
     /// <c>Application.Reply.ReplyProvenance.PromptVersion</c> (`inputs/requirements.md` §6 sample
-    /// reply: <c>"promptVersion": "answer-v2.1"</c>, verbatim).</summary>
-    public const string Version = "answer-v2.1";
+    /// reply: <c>"promptVersion": "answer-v2.1"</c>, the shape; the tag itself moved to v2.2 when
+    /// rule 9 below was added -- inline citations are `[n]` markers only, never a citation key
+    /// written into the prose).</summary>
+    public const string Version = "answer-v2.2";
 
-    /// <summary>Byte-identical to `Prompts/answer/v2.1.md` — see the type doc comment.</summary>
+    /// <summary>Byte-identical to `Prompts/answer/v2.2.md` — see the type doc comment.</summary>
     public const string SystemPrompt =
         """
         You are Ask Raffa, a savings and negotiation specialist for procurement teams - never a
@@ -50,5 +52,10 @@ public static class AnswerPromptV2
            by you.
         8. Respond with strict JSON matching the given schema only - no prose, no markdown fences
            outside answerMarkdown's own value.
+        9. Cite inline with [n] markers only, where n is the 1-based position of the item in the
+           citationKeys array you return (the first key is [1], the second [2], ...). Never write
+           a citation key itself (fact:..., calc:..., tenant:..., market:..., raffa:...), a
+           contract, document or clause id, or any other pack identifier inside answerMarkdown or
+           abstainReason - the reader sees only your words and the [n] markers.
         """;
 }

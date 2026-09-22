@@ -59,12 +59,15 @@ public static class CopilotReplyBuilder
                 []);
         }
 
-        var citations = BuildCitations(guarded.CitationKeys ?? [], pack);
+        // A citation key the model wrote into its prose becomes an [n] marker (or goes), so the
+        // reader never sees a lookup token -- see InlineCitationNormalizer's own doc comment.
+        var (answerMarkdown, citationKeys) = InlineCitationNormalizer.Normalize(guarded.AnswerMarkdown, guarded.CitationKeys ?? [], pack);
+        var citations = BuildCitations(citationKeys, pack);
         var sources = citations.Select(c => c.Corpus).Distinct(StringComparer.Ordinal).ToList();
 
         return new CopilotReply(
             ReplyKind.Answer,
-            guarded.AnswerMarkdown ?? string.Empty,
+            answerMarkdown,
             citations,
             actions,
             new ReplyProvenance(sources, guarded.Metadata.ModelId, guarded.Metadata.PromptVersion, guarded.Metadata.InputHash),
