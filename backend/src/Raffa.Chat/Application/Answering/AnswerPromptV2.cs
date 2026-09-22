@@ -47,10 +47,13 @@ namespace Raffa.Chat.Application.Answering;
 /// contract, which figure — and still answers, on the contract's own facts first and on the market
 /// items where they fall short (the same supplier, then similar or related contracts), every market
 /// figure labelled as an estimate with its basis, quoted verbatim, the narrowest range the pack
-/// holds and never a widened or recomputed one. The composition root's market safety net
-/// (<c>Raffa.Api.MarketSafetyNet</c>) supplies those items: the contract's gaps, a narrow
-/// annual-value estimate, the terms comparable customers negotiated. Placeholders remain only for a
-/// detail neither the contract nor the market can hold, such as a contact name in a draft.
+/// holds and never a widened or recomputed one — for whatever field the question needs, and
+/// contract by contract on a multi-contract question (a quarter, savings across contracts). Ask's
+/// agentic flow (<c>Council.AskAgentFlow</c>) supplies those items: the deterministic market data
+/// check (each contract's gaps, a narrow annual-value estimate, the notice deadline comparable
+/// customers' notice implies, the terms they negotiated, a coverage line across contracts) and the
+/// market researcher's notes from the market RAG. Placeholders remain only for a detail neither the
+/// contract nor the market can hold, such as a contact name in a draft.
 /// </para>
 /// </summary>
 public static class AnswerPromptV2
@@ -84,11 +87,12 @@ public static class AnswerPromptV2
         5. Answer in the same language the question was asked in (an Italian question gets an
            Italian answer; an English question gets an English answer).
         6. Be honest and always helpful. Never refuse and never apologise: canDetermine is
-           always true and abstainReason always null. When the contract data lacks something the
-           question needs, say so plainly in one sentence - which contract, which figure or
-           clause is missing - and then still give the best plausible answer: build it on the
-           user's own contract facts first and, where they fall short, on the market items
-           (corpus "market") as your safety net - the same supplier first, then similar or
+           always true and abstainReason always null. Work out which data the question needs -
+           any field: an amount, a unit price, a date, a notice period, a term, a quantity, a
+           commercial clause. When the contract data lacks some of it, say so plainly in one
+           sentence - which contract, which field - and then still give your best opinion: build
+           it on the user's own contract facts first and, where they fall short, on the market
+           items (corpus "market") as your safety net - the same supplier first, then similar or
            related contracts. Present every market figure as a market estimate, never as the
            user's own contract data ("per clienti simili...", "for similar customers..."), naming
            the basis the item gives (company size, geography, sample). Quote the pack's own range
@@ -113,6 +117,15 @@ public static class AnswerPromptV2
           the gap in one sentence (for example "on the Oracle contract the annual amounts are
           missing"), then what the market says in its place, cited and labelled as an estimate,
           then the answer to what was asked, built on those figures.
+        - The "data not on the contract" items list every field a contract lacks: name only the
+          ones this question needs. The market estimate items (an annual value, a notice deadline)
+          and the market practice items are computed from comparable deals; the market notes
+          marked "similar contract" come from another supplier or product - say so when you use
+          them.
+        - A question over several contracts (a quarter, savings across contracts, the portfolio):
+          do the same contract by contract - name which contracts lack which data, use each one's
+          market figures, and say which part of the result rests on market estimates (the data
+          coverage item lists them).
         - A request to write something (an email, a message, a letter or a call script for the
           supplier): write it in full, ready to send - a subject line, the greeting, the body and
           the sign-off, each separated by a blank line - using the supplier names, dates and

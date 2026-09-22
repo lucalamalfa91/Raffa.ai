@@ -211,6 +211,24 @@ public sealed class AskSavingsAnswerRecoveryTests(RaffaApiFactory factory) : ICl
         Assert.Contains("Market estimate, not a figure from your contract", packJson, StringComparison.Ordinal);
         Assert.Contains("between EUR 250,000 and EUR 500,000", packJson, StringComparison.Ordinal);
         Assert.Contains("what comparable customers negotiated", packJson, StringComparison.Ordinal);
+
+        // Step 2 of the flow: the market researcher's notes from the market RAG, annual value included.
+        Assert.Contains("market-researcher", packJson, StringComparison.Ordinal);
+        Assert.Contains("annual contract value EUR", packJson, StringComparison.Ordinal);
+    }
+
+    // A multi-contract question (a quarter, savings across contracts): the market data check runs
+    // over the contracts the pack is about, so the Oracle gap reaches the model there too.
+    [Fact]
+    public async Task A_quarter_savings_question_checks_the_contracts_it_is_about_and_names_their_gaps()
+    {
+        var declining = new DecliningGateway(Fixture(), declines: 0);
+
+        using var reply = await AskSeededAsync(new RecordingAiGateway(declining), Question, withAnnualSpend: false);
+
+        var packJson = Assert.Single(declining.PackJsons);
+        Assert.Contains("no value for: annual spend", packJson, StringComparison.Ordinal);
+        Assert.Contains("Market estimate, not a figure from your contract", packJson, StringComparison.Ordinal);
     }
 
     // Both attempts decline: the deterministic reply still opens with the honest gap and the

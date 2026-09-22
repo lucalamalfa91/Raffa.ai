@@ -1328,26 +1328,51 @@ gate → planner → pack → answer → guards pipeline, with four additions:
    empty workspace), in the question's language; the web renders an
    `abstain` as plain reply prose, never the old accent-left banner.
    **v2.5 (honest, with the market as safety net)** replaces v2.4's
-   "missing figure → placeholder": when the contract lacks what the
-   question needs, the answer says so plainly (which contract, which
-   figure) and still answers — on the contract's own facts first and, where
-   they fall short, on the market items (same supplier first, then similar
-   contracts), every market figure labelled as an estimate with its basis,
-   the narrowest range the pack holds, never widened. `MarketSafetyNet`
-   (Raffa.Api) feeds it on every commercial turn about one contract (not
-   clause or document-status turns): the contract fact item, a
-   `calc:contract-gaps[…]` item naming what is missing, a
-   `market:estimate:…:annual-value` item when the annual spend is missing —
-   the contract's quantities at P25–P75 market prices, else a comparable
-   deal priced as the whole yearly contract, else the value band most
-   comparable deals fall in, and only when high ≤ 2.5 × low
-   (`MaxRangeRatio`) — a `market:terms:…` item with what comparable
-   customers negotiated (interquartile ranges, or the median when even that
-   is too wide), and the closest deals, or the market RAG's notes on similar
-   contracts when the supplier has no deal. The deterministic proposal opens
-   with the same gap and estimate ("Sul contratto Oracle mancano gli importi
-   annuali. Dai dati di mercato, per aziende di 50-500 dipendenti il valore
-   annuo tipico è tra EUR 250,000 e EUR 500,000: è una stima…").
+   "missing figure → placeholder": the answer works out which data the
+   question needs — any field: an amount, a unit price, a date, a notice
+   period, a term, a commercial clause — says plainly which contract lacks
+   which of it, and still gives its best opinion, on the contract's own
+   facts first and, where they fall short, on the market (same supplier
+   first, then similar contracts), every market figure labelled as an
+   estimate, the narrowest range the pack holds, never widened; contract by
+   contract on a multi-contract question (a quarter, savings across
+   contracts).
+   **Ask's agentic flow** (`Application.Council.AskAgentFlow`) feeds it, one
+   coordinated sequence before the answer role writes:
+   1. *market-data-check* (deterministic, `Raffa.Api.MarketSafetyNet`, run by
+      `AskCopilotService` on every commercial turn — not clause or
+      document-status ones — over the named contract or, on a multi-contract
+      turn, the contracts the pack is about, at most four): the contract fact
+      item, a `calc:contract-gaps[…]` item naming what is missing, a
+      `market:estimate:…:annual-value` item when the annual spend is missing
+      (the contract's quantities at P25–P75 market prices, else a comparable
+      deal priced as the whole yearly contract, else the value band most
+      comparable deals fall in — only when high ≤ 2.5 × low,
+      `MaxRangeRatio`), a `market:estimate:…:notice-deadline` item when the
+      notice deadline is missing but the end date is known, a
+      `market:terms:…` item with what comparable customers negotiated
+      (discount, uplift cap, notice, term, payment terms — interquartile
+      ranges, or the median when even that is too wide), the closest deals,
+      and across several contracts a `calc:portfolio-data-coverage` item;
+   2. *market-researcher* (agent, `Council.MarketResearcher`): reads the
+      question, the contract items, step 1's findings and the missing fields,
+      and writes up to three keyword queries for the market RAG — the same
+      supplier first, then similar or related contracts; the flow runs them
+      through `IMarketRagSearch` (`Raffa.Api.MarketRagSearch` over
+      `IMarketKnowledgeRetrieval`) and adds the notes, de-duplicated, capped
+      and labelled "similar contract" when they come from another supplier.
+      Market notes now carry the deal's annual contract value
+      (`MarketValueBand`) — the pgvector index picks it up on re-ingestion;
+   3. *negotiation council* (contract analyst + market analyst, then lever
+      strategist) on a savings or negotiation turn, over the pack enriched by
+      steps 1–2.
+   `Chat:Council` carries the researcher's switch and bounds
+   (`MarketResearchEnabled`, `MarketResearchMaxQueries`,
+   `MarketResearchTopK`, `MarketResearchMaxItems`). The deterministic
+   proposal opens with the same gaps and estimates ("Sul contratto Oracle
+   mancano gli importi annuali. Dai dati di mercato, per aziende di 50-500
+   dipendenti il valore annuo tipico è tra EUR 250,000 e EUR 500,000: è una
+   stima…").
 
 Golden cases `seeded-savings-leve-20k-salesforce-it`,
 `seeded-savings-levers-20k-salesforce-en`,

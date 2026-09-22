@@ -34,10 +34,6 @@ internal static class MarketSafetyNet
     /// (EUR 250,000–500,000 is published; EUR 1m–5m is not).</summary>
     internal const decimal MaxRangeRatio = 2.5m;
 
-    private static readonly Regex BandPattern = new(
-        @"^\s*(?:(?<lt><)\s*(?<hi1>[\d.]+)\s*(?<u1>[km])|(?<lo>[\d.]+)\s*(?<u2>[km])\s*-\s*(?<hi2>[\d.]+)\s*(?<u3>[km])|(?<lo2>[\d.]+)\s*(?<u4>[km])\s*\+)\s*$",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
     private static readonly Regex Word = new(@"[\p{L}\p{N}]{3,}", RegexOptions.Compiled);
 
     /// <summary>An annual-value estimate for one contract. <see cref="Low"/> is
@@ -63,8 +59,53 @@ internal static class MarketSafetyNet
         ComparableValueBand,
     }
 
+    /// <summary>The contract fields the data check looks for, as the English labels the pack
+    /// carries. Which of them a question needs is the agents' and the answer's call; this type only
+    /// says which are missing and what the market says in their place.</summary>
+    internal static class Field
+    {
+        public const string AnnualSpend = "annual spend";
+        public const string EndDate = "end date";
+        public const string NoticeDeadline = "cancellation (notice) deadline";
+        public const string RenewalTerm = "renewal term";
+        public const string PaymentTerms = "payment terms";
+        public const string PricedLines = "priced line items";
+
+        /// <summary>The field in the reader's language, with its article (Italian) — for the
+        /// deterministic lead.</summary>
+        public static string Label(string field, bool italian) => (field, italian) switch
+        {
+            (AnnualSpend, true) => "gli importi annuali",
+            (EndDate, true) => "la data di scadenza",
+            (NoticeDeadline, true) => "la data di disdetta",
+            (RenewalTerm, true) => "la durata del rinnovo",
+            (PaymentTerms, true) => "i termini di pagamento",
+            (PricedLines, true) => "le righe di prezzo",
+            (AnnualSpend, false) => "the annual amounts",
+            (EndDate, false) => "the end date",
+            (NoticeDeadline, false) => "the notice deadline",
+            (RenewalTerm, false) => "the renewal term",
+            (PaymentTerms, false) => "the payment terms",
+            (PricedLines, false) => "the priced line items",
+            _ => field,
+        };
+
+        /// <summary>Whether the Italian label is plural (it takes "mancano", not "manca").</summary>
+        public static bool IsPluralInItalian(string field) => field is AnnualSpend or PaymentTerms or PricedLines;
+    }
+
+    /// <summary>One contract's data check: what it is missing and the market's stand-ins — the
+    /// deterministic lead's input, one per contract checked.</summary>
+    internal sealed record ContractCheck(
+        string SupplierName,
+        IReadOnlyList<string> Missing,
+        AnnualEstimate? Estimate,
+        int? TypicalNoticeDays,
+        DateOnly? EstimatedNoticeDeadline);
+
     /// <summary>The key fields this contract has no validated value for, in English, most
-    /// consequential first — what an honest answer names before it estimates.</summary>
+    /// consequential first — what an honest answer names, when the question needs them, before it
+    /// estimates.</summary>
     public static IReadOnlyList<string> MissingFields(Contract360Result contract)
     {
         ArgumentNullException.ThrowIfNull(contract);
@@ -73,35 +114,120 @@ internal static class MarketSafetyNet
         if (contract.Header.AnnualSpend is null && contract.Commercials.AnnualSpend is null &&
             contract.Commercials.LineItemAnnualCostTotal is null)
         {
-            missing.Add("annual spend");
+            missing.Add(Field.AnnualSpend);
         }
 
         if (contract.Header.EndDate is null && contract.Header.RenewalDate is null)
         {
-            missing.Add("end date");
+            missing.Add(Field.EndDate);
         }
 
         if (contract.Header.CancellationDeadline is null && contract.Renewal.CancellationDeadline is null)
         {
-            missing.Add("cancellation (notice) deadline");
+            missing.Add(Field.NoticeDeadline);
         }
 
         if (contract.Overview.RenewalTermMonths is null)
         {
-            missing.Add("renewal term");
+            missing.Add(Field.RenewalTerm);
         }
 
         if (string.IsNullOrWhiteSpace(contract.Overview.PaymentTerms))
         {
-            missing.Add("payment terms");
+            missing.Add(Field.PaymentTerms);
         }
 
         if (contract.Products.Count == 0)
         {
-            missing.Add("priced line items");
+            missing.Add(Field.PricedLines);
         }
 
         return missing;
+    }
+
+    /// <summary>
+    /// The notice deadline the market implies when the contract has an end date but no notice
+    /// deadline: the end date minus the notice period comparable customers have. A market estimate,
+    /// labelled as one; <see langword="null"/> without an end date or a typical notice.
+    /// </summary>
+    public static PackItem? NoticeEstimateItem(Guid contractId, string supplierName, DateOnly? endDate, int? typicalNoticeDays)
+    {
+        if (endDate is not { } end || typicalNoticeDays is not { } days || days <= 0)
+        {
+            return null;
+        }
+
+        var deadline = end.AddDays(-days);
+        return new PackItem(
+            $"market:estimate:{contractId}:notice-deadline",
+            PackCorpus.Market,
+            $"{supplierName} · market estimate · notice deadline",
+            "market estimate · not from your contract",
+            null,
+            null,
+            $"Market estimate, not a date from your contract: comparable {supplierName} customers give " +
+            $"{days.ToString(CultureInfo.InvariantCulture)} days' notice; with the contract ending {Iso(end)}, " +
+            $"notice would be due by {Iso(deadline)}.",
+            null,
+            null,
+            null,
+            "market estimate · representative market data",
+            [
+                new PackValue("endDate", Iso(end), PackValueKind.Date),
+                new PackValue("estimatedNoticeDeadline", Iso(deadline), PackValueKind.Date),
+                new PackValue("noticeDays", days.ToString(CultureInfo.InvariantCulture), PackValueKind.Number),
+            ],
+            contractId.ToString());
+    }
+
+    /// <summary>The estimated notice deadline itself (see <see cref="NoticeEstimateItem"/>).</summary>
+    public static DateOnly? EstimatedNoticeDeadline(DateOnly? endDate, int? typicalNoticeDays) =>
+        endDate is { } end && typicalNoticeDays is { } days && days > 0 ? end.AddDays(-days) : null;
+
+    /// <summary>
+    /// A multi-contract turn's coverage line (a quarter, savings across contracts): which of the
+    /// contracts considered lack which data and which gaps the market covers — so the answer can say
+    /// how much of its result rests on estimates. <see langword="null"/> for fewer than two checks
+    /// or when nothing is missing.
+    /// </summary>
+    public static PackItem? CoverageItem(IReadOnlyList<ContractCheck> checks)
+    {
+        ArgumentNullException.ThrowIfNull(checks);
+        var withGaps = checks.Where(c => c.Missing.Count > 0).ToList();
+        if (checks.Count < 2 || withGaps.Count == 0)
+        {
+            return null;
+        }
+
+        var gaps = string.Join("; ", withGaps.Select(c => $"{c.SupplierName} ({string.Join(", ", c.Missing)})"));
+        var covered = withGaps
+            .SelectMany(c => new[]
+            {
+                c.Estimate is not null ? $"{c.SupplierName} annual value" : null,
+                c.EstimatedNoticeDeadline is not null || (c.Missing.Contains(Field.NoticeDeadline) && c.TypicalNoticeDays is not null)
+                    ? $"{c.SupplierName} notice"
+                    : null,
+            })
+            .OfType<string>()
+            .ToList();
+
+        return new PackItem(
+            "calc:portfolio-data-coverage",
+            PackCorpus.Calc,
+            "Contracts considered · data coverage",
+            null,
+            null,
+            null,
+            $"Of the {checks.Count.ToString(CultureInfo.InvariantCulture)} contracts considered, " +
+            $"{withGaps.Count.ToString(CultureInfo.InvariantCulture)} lack data: {gaps}. " +
+            (covered.Count > 0
+                ? $"Market estimates stand in for: {string.Join(", ", covered)}."
+                : "No market estimate is narrow enough to stand in for them."),
+            null,
+            null,
+            null,
+            "deterministic calculator",
+            []);
     }
 
     /// <summary>The "what this contract is missing" item — no figure in it, only the gap, so the
@@ -195,8 +321,8 @@ internal static class MarketSafetyNet
     }
 
     /// <summary>
-    /// What comparable customers negotiated with this supplier — discount, uplift cap, notice and
-    /// term — as narrow ranges (interquartile across deals; the median alone when even that is too
+    /// What comparable customers negotiated with this supplier — discount, uplift cap, notice, term
+    /// and payment terms — as narrow ranges (interquartile across deals; the median alone when even that is too
     /// wide). <see langword="null"/> when no deal records any of them.
     /// </summary>
     public static PackItem? TermsItem(Guid contractId, string supplierName, IReadOnlyList<MarketDeal> deals)
@@ -242,6 +368,14 @@ internal static class MarketSafetyNet
         var term = deals.GroupBy(d => d.TermMonths).OrderByDescending(g => g.Sum(d => d.SampleSize)).First().Key;
         parts.Add($"term typically {term.ToString(CultureInfo.InvariantCulture)} months");
         values.Add(new PackValue("termMonths", term.ToString(CultureInfo.InvariantCulture), PackValueKind.Number));
+
+        if (deals.Where(d => !string.IsNullOrWhiteSpace(d.PaymentTerms))
+                .GroupBy(d => d.PaymentTerms!.Trim(), StringComparer.OrdinalIgnoreCase)
+                .OrderByDescending(g => g.Sum(d => d.SampleSize))
+                .FirstOrDefault() is { } payment)
+        {
+            parts.Add($"payment terms typically {payment.Key}");
+        }
 
         var sample = deals.Sum(d => d.SampleSize);
         return new PackItem(
@@ -293,30 +427,97 @@ internal static class MarketSafetyNet
         return matching.Count > 0 ? matching : deals;
     }
 
-    /// <summary>The Italian or English lead the deterministic proposal opens with when a gap and an
-    /// estimate exist: the gap, honestly, then the market figure as a market figure.</summary>
-    public static string? Lead(string supplierName, IReadOnlyList<string> missing, AnnualEstimate? estimate, bool italian)
+    /// <summary>
+    /// The Italian or English lead the deterministic proposal opens with: the gaps a proposal can
+    /// safely name for any commercial question — the annual amounts, the end date, the notice
+    /// deadline — per contract, honestly, then what the market says in their place, labelled as
+    /// estimates. <see langword="null"/> when none of those is missing.
+    /// </summary>
+    public static string? Lead(IReadOnlyList<ContractCheck> checks, bool italian)
     {
-        ArgumentNullException.ThrowIfNull(missing);
-        if (estimate is null || !missing.Contains("annual spend"))
+        ArgumentNullException.ThrowIfNull(checks);
+
+        string[] leadFields = [Field.AnnualSpend, Field.EndDate, Field.NoticeDeadline];
+        var gapped = checks
+            .Select(c => (Check: c, Fields: c.Missing.Where(f => leadFields.Contains(f)).ToList()))
+            .Where(x => x.Fields.Count > 0)
+            .Take(3)
+            .ToList();
+        if (gapped.Count == 0)
         {
             return null;
         }
 
-        var range = estimate.Low is { } low
-            ? italian
-                ? $"tra {Money(estimate.Currency, low)} e {Money(estimate.Currency, estimate.High)}"
-                : $"between {Money(estimate.Currency, low)} and {Money(estimate.Currency, estimate.High)}"
-            : italian
-                ? $"sotto {Money(estimate.Currency, estimate.High)}"
-                : $"below {Money(estimate.Currency, estimate.High)}";
-        var who = estimate.CompanySizeBand is { } band
-            ? italian ? $"per aziende di {band} dipendenti" : $"for companies of {band} employees"
-            : italian ? "per clienti simili" : "for similar customers";
+        string JoinFields(IReadOnlyList<string> fields)
+        {
+            var labels = fields.Select(f => Field.Label(f, italian)).ToList();
+            return labels.Count == 1
+                ? labels[0]
+                : $"{string.Join(", ", labels.Take(labels.Count - 1))} {(italian ? "e" : "and")} {labels[^1]}";
+        }
+
+        var stands = new List<string>();
+        foreach (var (check, fields) in gapped)
+        {
+            var subject = gapped.Count > 1 ? (italian ? $"per {check.SupplierName} " : $"for {check.SupplierName}, ") : string.Empty;
+
+            if (fields.Contains(Field.AnnualSpend) && check.Estimate is { } estimate)
+            {
+                var range = estimate.Low is { } low
+                    ? italian
+                        ? $"tra {Money(estimate.Currency, low)} e {Money(estimate.Currency, estimate.High)}"
+                        : $"between {Money(estimate.Currency, low)} and {Money(estimate.Currency, estimate.High)}"
+                    : italian
+                        ? $"sotto {Money(estimate.Currency, estimate.High)}"
+                        : $"below {Money(estimate.Currency, estimate.High)}";
+                var who = estimate.CompanySizeBand is { } band
+                    ? italian ? $"per aziende di {band} dipendenti" : $"for companies of {band} employees"
+                    : italian ? "per clienti simili" : "for similar customers";
+                stands.Add(italian ? $"{subject}{who} il valore annuo tipico è {range}" : $"{subject}{who} the typical annual value is {range}");
+            }
+
+            if (fields.Contains(Field.NoticeDeadline) && check.TypicalNoticeDays is { } days)
+            {
+                var n = days.ToString(CultureInfo.InvariantCulture);
+                stands.Add(check.EstimatedNoticeDeadline is { } deadline
+                    ? italian
+                        ? $"{subject}con il preavviso tipico di clienti simili ({n} giorni) la disdetta andrebbe inviata entro il {Iso(deadline)}"
+                        : $"{subject}with the notice comparable customers give ({n} days) notice would be due by {Iso(deadline)}"
+                    : italian
+                        ? $"{subject}clienti simili hanno un preavviso tipico di {n} giorni"
+                        : $"{subject}comparable customers typically give {n} days' notice");
+            }
+        }
+
+        string gapsSentence;
+        if (gapped.Count == 1)
+        {
+            var (check, fields) = gapped[0];
+            gapsSentence = italian
+                ? $"Sul contratto {check.SupplierName} {(fields.Count > 1 || Field.IsPluralInItalian(fields[0]) ? "mancano" : "manca")} {JoinFields(fields)}."
+                : $"The {check.SupplierName} contract has no {JoinFields(fields).Replace("the ", string.Empty, StringComparison.Ordinal)} on file.";
+        }
+        else
+        {
+            var list = string.Join(", ", gapped.Select(x => $"{x.Check.SupplierName} ({JoinFields(x.Fields)})"));
+            gapsSentence = italian ? $"Su alcuni contratti mancano dei dati: {list}." : $"Some contracts are missing data: {list}.";
+        }
+
+        if (stands.Count == 0)
+        {
+            return gapsSentence + (italian
+                ? " I dati di mercato non bastano per una stima affidabile, quindi la risposta si basa su quello che c'è.\n\n"
+                : " The market data is not precise enough for a reliable estimate, so the answer rests on what is on file.\n\n");
+        }
+
+        var owner = gapped.Count > 1 ? (italian ? "dei tuoi contratti" : "from your contracts") : (italian ? "del tuo contratto" : "from your contract");
+        var closing = stands.Count > 1
+            ? italian ? $"sono stime, non dati {owner}" : $"these are estimates, not figures {owner}"
+            : italian ? $"è una stima, non un dato {owner}" : $"that is an estimate, not a figure {owner}";
 
         return italian
-            ? $"Sul contratto {supplierName} mancano gli importi annuali. Dai dati di mercato, {who} il valore annuo tipico è {range}: è una stima, non un dato del tuo contratto.\n\n"
-            : $"The {supplierName} contract has no annual amounts on file. From market data, {who} the typical annual value is {range}: that is an estimate, not a figure from your contract.\n\n";
+            ? $"{gapsSentence} Dai dati di mercato, {string.Join("; ", stands)}: {closing}.\n\n"
+            : $"{gapsSentence} From market data, {string.Join("; ", stands)}: {closing}.\n\n";
     }
 
     /// <summary>The honest lead for a clause question about a contract whose validated clauses hold
@@ -428,37 +629,8 @@ internal static class MarketSafetyNet
     private static IReadOnlyList<MarketDeal> SameCurrency(IReadOnlyList<MarketDeal> deals, string currency) =>
         deals.Where(d => string.Equals(d.Currency, currency, StringComparison.OrdinalIgnoreCase)).ToList();
 
-    /// <summary>"100k-250k" → (100000, 250000); "&lt;100k" → (null, 100000); "5m+" → (5000000,
-    /// null); anything else → <see langword="null"/>.</summary>
-    internal static (decimal? Low, decimal? High)? ParseBand(string band)
-    {
-        if (string.IsNullOrWhiteSpace(band))
-        {
-            return null;
-        }
-
-        var match = BandPattern.Match(band);
-        if (!match.Success)
-        {
-            return null;
-        }
-
-        static decimal Scale(string number, string unit) =>
-            decimal.Parse(number, NumberStyles.Number, CultureInfo.InvariantCulture) *
-            (unit.Equals("m", StringComparison.OrdinalIgnoreCase) ? 1_000_000m : 1_000m);
-
-        if (match.Groups["lt"].Success)
-        {
-            return (null, Scale(match.Groups["hi1"].Value, match.Groups["u1"].Value));
-        }
-
-        if (match.Groups["lo"].Success)
-        {
-            return (Scale(match.Groups["lo"].Value, match.Groups["u2"].Value), Scale(match.Groups["hi2"].Value, match.Groups["u3"].Value));
-        }
-
-        return (Scale(match.Groups["lo2"].Value, match.Groups["u4"].Value), null);
-    }
+    /// <summary>The deal's annual value band as amounts (<see cref="MarketValueBand.Parse"/>).</summary>
+    internal static (decimal? Low, decimal? High)? ParseBand(string band) => MarketValueBand.Parse(band);
 
     /// <summary>Interquartile range and median of <paramref name="observed"/> (the full range for
     /// fewer than four observations); <see langword="null"/> for none.</summary>
@@ -487,6 +659,8 @@ internal static class MarketSafetyNet
         Word.Matches(text).Select(m => m.Value.ToLowerInvariant());
 
     private static string ProductSuffix(string? product) => product is null ? string.Empty : $" for {product}";
+
+    private static string Iso(DateOnly date) => date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
     private static string Money(string currency, decimal value) =>
         $"{currency} {Math.Round(value, 0, MidpointRounding.AwayFromZero).ToString("N0", CultureInfo.InvariantCulture)}";

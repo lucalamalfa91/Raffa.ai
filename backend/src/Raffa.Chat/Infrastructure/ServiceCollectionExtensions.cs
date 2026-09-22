@@ -98,6 +98,13 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton(new CouncilOptions());
         services.AddScoped<NegotiationCouncil>();
 
+        // Ask's agentic flow (Application.Council.AskAgentFlow): the market data check (supplied per
+        // turn by the composition root), the market researcher and the council above. The
+        // researcher's market RAG (IMarketRagSearch) is registered by the host that owns the Market
+        // module; without it the researcher step is skipped.
+        services.AddScoped<MarketResearcher>();
+        services.AddScoped<AskAgentFlow>();
+
         // ADR-030: the interview (kill switch + bounds) — a configured value registered before
         // this call wins, same TryAdd contract as CouncilOptions above.
         services.TryAddSingleton(new InterviewOptions());

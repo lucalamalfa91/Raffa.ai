@@ -209,16 +209,72 @@ public sealed class MarketSafetyNetTests
     public void The_lead_is_honest_about_the_gap_and_labels_the_estimate_in_the_questions_language()
     {
         var estimate = MarketSafetyNet.EstimateAnnualValue("EUR", [], [Deal()]);
+        var check = new MarketSafetyNet.ContractCheck("Oracle", [MarketSafetyNet.Field.AnnualSpend], estimate, null, null);
 
-        var italian = MarketSafetyNet.Lead("Oracle", ["annual spend"], estimate, italian: true)!;
-        var english = MarketSafetyNet.Lead("Oracle", ["annual spend"], estimate, italian: false)!;
+        var italian = MarketSafetyNet.Lead([check], italian: true)!;
+        var english = MarketSafetyNet.Lead([check], italian: false)!;
 
         Assert.StartsWith("Sul contratto Oracle mancano gli importi annuali.", italian, StringComparison.Ordinal);
         Assert.Contains("per aziende di 500-2000 dipendenti il valore annuo tipico è tra EUR 250,000 e EUR 500,000", italian, StringComparison.Ordinal);
         Assert.Contains("è una stima, non un dato del tuo contratto", italian, StringComparison.Ordinal);
         Assert.StartsWith("The Oracle contract has no annual amounts on file.", english, StringComparison.Ordinal);
-        Assert.Null(MarketSafetyNet.Lead("Oracle", ["end date"], estimate, italian: true));
-        Assert.Null(MarketSafetyNet.Lead("Oracle", ["annual spend"], null, italian: true));
+        Assert.Null(MarketSafetyNet.Lead([check with { Missing = [MarketSafetyNet.Field.PaymentTerms] }], italian: true));
+    }
+
+    [Fact]
+    public void Any_missing_field_is_named_and_one_without_a_narrow_market_figure_is_said_to_rest_on_what_is_on_file()
+    {
+        var check = new MarketSafetyNet.ContractCheck("Oracle", [MarketSafetyNet.Field.AnnualSpend, MarketSafetyNet.Field.EndDate], null, null, null);
+
+        var italian = MarketSafetyNet.Lead([check], italian: true)!;
+
+        Assert.StartsWith("Sul contratto Oracle mancano gli importi annuali e la data di scadenza.", italian, StringComparison.Ordinal);
+        Assert.Contains("I dati di mercato non bastano per una stima affidabile", italian, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_missing_notice_deadline_gets_the_date_comparable_customers_notice_implies()
+    {
+        var item = MarketSafetyNet.NoticeEstimateItem(ContractId, "Oracle", new DateOnly(2027, 3, 19), 60)!;
+
+        Assert.Contains("Market estimate, not a date from your contract", item.Snippet, StringComparison.Ordinal);
+        Assert.Contains("notice would be due by 2027-01-18", item.Snippet, StringComparison.Ordinal);
+        Assert.True(NumericGuard.Validate("La disdetta andrebbe inviata entro il 18 gennaio 2027 [1].", [item]).Passed);
+        Assert.Null(MarketSafetyNet.NoticeEstimateItem(ContractId, "Oracle", null, 60));
+        Assert.Null(MarketSafetyNet.NoticeEstimateItem(ContractId, "Oracle", new DateOnly(2027, 3, 19), null));
+    }
+
+    [Fact]
+    public void On_several_contracts_the_lead_goes_contract_by_contract_and_the_coverage_item_says_what_rests_on_estimates()
+    {
+        var estimate = MarketSafetyNet.EstimateAnnualValue("EUR", [], [Deal()]);
+        var checks = new[]
+        {
+            new MarketSafetyNet.ContractCheck("Oracle", [MarketSafetyNet.Field.AnnualSpend], estimate, 60, null),
+            new MarketSafetyNet.ContractCheck("SAP", [MarketSafetyNet.Field.NoticeDeadline], null, 90, new DateOnly(2026, 12, 1)),
+            new MarketSafetyNet.ContractCheck("Salesforce", [], null, 90, null),
+        };
+
+        var italian = MarketSafetyNet.Lead(checks, italian: true)!;
+        var coverage = MarketSafetyNet.CoverageItem(checks)!;
+
+        Assert.StartsWith("Su alcuni contratti mancano dei dati: Oracle (gli importi annuali), SAP (la data di disdetta).", italian, StringComparison.Ordinal);
+        Assert.Contains("per Oracle per aziende di 500-2000 dipendenti il valore annuo tipico è tra EUR 250,000 e EUR 500,000", italian, StringComparison.Ordinal);
+        Assert.Contains("per SAP con il preavviso tipico di clienti simili (90 giorni) la disdetta andrebbe inviata entro il 2026-12-01", italian, StringComparison.Ordinal);
+        Assert.Contains("sono stime, non dati dei tuoi contratti", italian, StringComparison.Ordinal);
+        Assert.Contains("Of the 3 contracts considered, 2 lack data", coverage.Snippet, StringComparison.Ordinal);
+        Assert.Contains("Market estimates stand in for: Oracle annual value, SAP notice.", coverage.Snippet, StringComparison.Ordinal);
+        Assert.Null(MarketSafetyNet.CoverageItem(checks.Take(1).ToList()));
+    }
+
+    [Fact]
+    public void Market_practice_includes_the_payment_terms_comparable_customers_have()
+    {
+        var deals = new[] { Deal() with { PaymentTerms = "Net 60" }, Deal() with { PaymentTerms = "Net 60" }, Deal() with { PaymentTerms = "Net 30" } };
+
+        var item = MarketSafetyNet.TermsItem(ContractId, "Oracle", deals)!;
+
+        Assert.Contains("payment terms typically Net 60", item.Snippet, StringComparison.Ordinal);
     }
 
     private static Contract360Result Contract(decimal? annualSpend, decimal? lineItemAnnualTotal)

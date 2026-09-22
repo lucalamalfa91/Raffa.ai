@@ -53,8 +53,11 @@ public sealed class AnswerPromptV2Tests
 
         Assert.Contains("Be honest and always helpful. Never refuse", prompt, StringComparison.Ordinal);
         Assert.Contains("always true and abstainReason always null", prompt, StringComparison.Ordinal);
-        Assert.Contains("say so plainly in one sentence", prompt, StringComparison.Ordinal);
-        Assert.Contains("market items", prompt, StringComparison.Ordinal);
+        Assert.Contains("Work out which data the question needs", prompt, StringComparison.Ordinal);
+        Assert.Contains("say so plainly in one", prompt, StringComparison.Ordinal);
+        Assert.Contains("contract by contract", prompt, StringComparison.Ordinal);
+        Assert.Contains("similar contract", prompt, StringComparison.Ordinal);
+        Assert.Contains("items (corpus \"market\")", prompt, StringComparison.Ordinal);
         Assert.Contains("as your safety net - the same supplier first, then similar or", prompt, StringComparison.Ordinal);
         Assert.Contains("market estimate, never as the", prompt, StringComparison.Ordinal);
         Assert.Contains("never widen a range", prompt, StringComparison.Ordinal);

@@ -1,3 +1,4 @@
+using Raffa.Chat.Application.Council;
 using Raffa.Chat.Application.Pack;
 using Raffa.Documents.Contracts.Application;
 using Raffa.Insights.Application;
@@ -6,30 +7,75 @@ using Raffa.SharedKernel;
 namespace Raffa.Api;
 
 /// <summary>
-/// The market safety net half of <see cref="AskCopilotService"/> (persona v2.5): every commercial
-/// turn about one contract also carries the contract's own facts, what it is missing and what the
-/// market says in its place —
-/// a narrow annual-value estimate when the annual spend is missing, the terms comparable customers
-/// negotiated, the supplier's closest comparable deals, or, when the market feed has no deal for
-/// this supplier, the market RAG's notes on similar or related contracts. The figures are
-/// <see cref="MarketSafetyNet"/>'s, computed in code; the model only narrates them, as market
-/// estimates, never as the contract's own data.
+/// Step 1 of Ask's agentic flow (<see cref="AskAgentFlow"/>), the deterministic market data check,
+/// as <see cref="AskCopilotService"/> runs it (it alone can read the contracts, their benchmarks
+/// and the market deals). For each contract the turn is about — the named one, or on a
+/// multi-contract turn (a quarter, savings across contracts) the ones the pack is about — it
+/// finds which fields the contract is missing and what the market data says in their place: a
+/// narrow annual-value estimate, the notice deadline comparable customers' notice implies, the
+/// terms comparable customers negotiated, the closest comparable deals. Which of those gaps the
+/// question needs is for the market researcher and the answer to judge; the figures are
+/// <see cref="MarketSafetyNet"/>'s, computed in code, and the answer narrates them as market
+/// estimates, never as the contract's own data. Querying the market RAG is the researcher's job
+/// (step 2), not this step's.
 /// </summary>
 internal sealed partial class AskCopilotService
 {
     private const int SafetyNetDealsTopK = 2;
-    private const int SimilarContractNotesTopK = 2;
 
-    /// <summary>What the safety net found for one contract: the pack items (appended after the
-    /// intent's own items), the contract's missing fields and the annual estimate, which the
-    /// deterministic proposal reuses when the model gives no answer.</summary>
-    private sealed record MarketSafetyNetResult(
-        IReadOnlyList<PackItem> Items,
-        string SupplierName,
-        IReadOnlyList<string> Missing,
-        MarketSafetyNet.AnnualEstimate? Estimate)
+    /// <summary>Contracts checked on a multi-contract turn — the first ones the pack is about.</summary>
+    private const int MaxContractsChecked = 4;
+
+    /// <summary>One contract's check: the pack items and the facts the deterministic lead reuses.</summary>
+    private sealed record MarketSafetyNetResult(IReadOnlyList<PackItem> Items, MarketSafetyNet.ContractCheck? Check)
     {
-        public static readonly MarketSafetyNetResult None = new([], string.Empty, [], null);
+        public static readonly MarketSafetyNetResult None = new([], null);
+    }
+
+    /// <summary>
+    /// The market data check over <paramref name="contracts"/>, in order; <paramref name="checks"/>
+    /// collects each contract's check for the deterministic lead. On more than one contract a
+    /// coverage item says which contracts lack which data and what the market covers.
+    /// </summary>
+    private async Task<MarketDataCheckResult> RunMarketDataCheckAsync(
+        IReadOnlyList<PortfolioListItem> contracts,
+        List<MarketSafetyNet.ContractCheck> checks,
+        CancellationToken cancellationToken)
+    {
+        var items = new List<PackItem>();
+        var missing = new List<string>();
+
+        foreach (var contract in contracts.Take(MaxContractsChecked))
+        {
+            var result = await BuildMarketSafetyNetAsync(contract, cancellationToken).ConfigureAwait(false);
+            items.AddRange(result.Items);
+            if (result.Check is { } check)
+            {
+                checks.Add(check);
+                missing.AddRange(check.Missing.Select(field => $"{check.SupplierName}: {field}"));
+            }
+        }
+
+        if (MarketSafetyNet.CoverageItem(checks) is { } coverage)
+        {
+            items.Insert(0, coverage);
+        }
+
+        return new MarketDataCheckResult(DistinctByCitationKey(items), missing);
+    }
+
+    /// <summary>The contracts a multi-contract turn's data check covers: the ones the pack's items
+    /// are about, in pack order (a quarter's candidates, the contracts a savings target ranks) —
+    /// never contracts the turn is not about.</summary>
+    private static IReadOnlyList<PortfolioListItem> ContractsForDataCheck(IReadOnlyList<PackItem> pack, PortfolioPage portfolio)
+    {
+        var byId = portfolio.Items.ToDictionary(i => i.ContractId);
+        return pack
+            .Select(i => Guid.TryParse(i.ContractId, out var id) && byId.TryGetValue(id, out var item) ? item : null)
+            .OfType<PortfolioListItem>()
+            .DistinctBy(i => i.ContractId)
+            .Take(MaxContractsChecked)
+            .ToList();
     }
 
     private async Task<MarketSafetyNetResult> BuildMarketSafetyNetAsync(
@@ -69,7 +115,7 @@ internal sealed partial class AskCopilotService
         }
 
         MarketSafetyNet.AnnualEstimate? estimate = null;
-        if (missing.Contains("annual spend"))
+        if (missing.Contains(MarketSafetyNet.Field.AnnualSpend))
         {
             estimate = MarketSafetyNet.EstimateAnnualValue(currency, pricedLines, deals);
             if (estimate is not null)
@@ -78,29 +124,28 @@ internal sealed partial class AskCopilotService
             }
         }
 
+        var typicalNotice = MarketSafetyNet.TypicalNoticeDays(deals);
+        DateOnly? estimatedNoticeDeadline = null;
+        if (missing.Contains(MarketSafetyNet.Field.NoticeDeadline))
+        {
+            var endDate = contract360.Header.EndDate ?? contract360.Header.RenewalDate;
+            estimatedNoticeDeadline = MarketSafetyNet.EstimatedNoticeDeadline(endDate, typicalNotice);
+            if (MarketSafetyNet.NoticeEstimateItem(contractId, supplierName, endDate, typicalNotice) is { } notice)
+            {
+                items.Add(notice);
+            }
+        }
+
         if (MarketSafetyNet.TermsItem(contractId, supplierName, deals) is { } terms)
         {
             items.Add(terms);
         }
 
-        if (deals.Count > 0)
-        {
-            items.AddRange(deals.Take(SafetyNetDealsTopK).Select(BuildMarketDealItem));
-        }
-        else
-        {
-            // No deal for this supplier: the market RAG's closest notes stand in as similar or
-            // related contracts ("{supplier} {type}" finds the same kind of contract elsewhere).
-            var notes = await marketKnowledgeRetrieval
-                .SearchAsync($"{supplierName} {contract360.Header.Type}", SimilarContractNotesTopK, null, cancellationToken)
-                .ConfigureAwait(false);
-            if (notes.IsSuccess)
-            {
-                items.AddRange(notes.Value.Select(ToMarketPackItem));
-            }
-        }
+        items.AddRange(deals.Take(SafetyNetDealsTopK).Select(BuildMarketDealItem));
 
-        return new MarketSafetyNetResult(items, supplierName, missing, estimate);
+        return new MarketSafetyNetResult(
+            items,
+            new MarketSafetyNet.ContractCheck(supplierName, missing, estimate, typicalNotice, estimatedNoticeDeadline));
     }
 
     /// <summary>The typical notice period comparable customers of this contract's supplier have,

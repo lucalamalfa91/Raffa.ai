@@ -197,7 +197,7 @@ internal sealed partial class AskCopilotService(
     BenchmarkKeyResolution benchmarkKeyResolution,
     IMarketKnowledgeRetrieval marketKnowledgeRetrieval,
     IMarketDealLookup marketDealLookup,
-    NegotiationCouncil negotiationCouncil,
+    AskAgentFlow askAgentFlow,
     InterviewPlanner interviewPlanner,
     InterviewOptions interviewOptions,
     WebResearchOptions webResearchOptions,
@@ -639,21 +639,6 @@ internal sealed partial class AskCopilotService(
             _ => [],
         };
 
-        // Persona v2.5 — the market safety net: a commercial turn about one contract also carries
-        // the contract's own facts, what it is missing and what the market says in its place (a
-        // narrow annual-value estimate, the terms comparable customers negotiated, the closest
-        // comparable deals, or the market RAG's notes on similar contracts when the supplier has no
-        // deal). Appended after the intent's own items, so they keep their priority under the
-        // budget. Not for a clause question — the market holds no clause text to stand in for the
-        // contract's own — nor for a document-status one.
-        var safetyNet = namedContractItem is not null && plan.Intent is not (AskIntent.DocumentStatus or AskIntent.Clause)
-            ? await BuildMarketSafetyNetAsync(namedContractItem, cancellationToken).ConfigureAwait(false)
-            : MarketSafetyNetResult.None;
-        if (safetyNet.Items.Count > 0)
-        {
-            packItems = DistinctByCitationKey(packItems.Concat(safetyNet.Items));
-        }
-
         // Task E31/F03/US01/T01 (q3-persist; NW-97; ADR-024 w19 cl. 21/ADR-028): exactly the
         // condition the switch above already used to pick the live Q3 composition
         // (BuildRenewalStrategyWithEvidenceAsync, persistTodos: true) -- re-read, never
@@ -670,17 +655,44 @@ internal sealed partial class AskCopilotService(
             packItems = packItems.Prepend(disambiguationItem).ToList();
         }
 
-        // The negotiation council (Raffa.Chat.Application.Council): for a savings or negotiation
-        // turn, two analysts read the pack in parallel and a strategist turns their findings into
-        // ranked plays -- inserted right after the target verdict so the budget keeps them and the
-        // answer leads with them. A failed agent degrades the council, never the turn.
-        if (IsCouncilIntent(plan.Intent, namedContractItem))
+        // Ask's agentic flow (Raffa.Chat.Application.Council.AskAgentFlow), one coordinated sequence
+        // before the answer role writes (persona v2.5: say what is missing, answer from the market):
+        //   1. market data check (deterministic, below): for the contract the turn is about -- or,
+        //      on a multi-contract turn (a quarter, savings across contracts), the ones the pack is
+        //      about -- which fields are missing and what the market data says in their place;
+        //   2. market researcher (agent): queries the market RAG for what is still missing, the
+        //      same supplier first, then similar or related contracts;
+        //   3. negotiation council (agents), on a savings or negotiation turn: two analysts over the
+        //      enriched pack, then the strategist's ranked plays.
+        // Steps 1-2 append market items after the intent's own (so those keep their priority under
+        // the budget); step 3's plays go right after the target verdict. Not a clause or
+        // document-status turn's data check: the market holds no clause text to stand in for the
+        // contract's own. A failed agent degrades the flow, never the turn.
+        var dataChecks = new List<MarketSafetyNet.ContractCheck>();
+        IReadOnlyList<PortfolioListItem> dataCheckContracts =
+            plan.Intent is AskIntent.DocumentStatus or AskIntent.Clause ? []
+            : namedContractItem is not null ? [namedContractItem]
+            : ContractsForDataCheck(packItems, portfolio);
+
+        var flow = await askAgentFlow.RunAsync(
+                new AskFlowRequest(
+                    question,
+                    packItems,
+                    plan.Goal,
+                    dataCheckContracts.Count > 0 ? ct => RunMarketDataCheckAsync(dataCheckContracts, dataChecks, ct) : null,
+                    RunMarketResearch: portfolio.Items.Count > 0 && plan.Intent != AskIntent.DocumentStatus,
+                    ConveneCouncil: IsCouncilIntent(plan.Intent, namedContractItem)),
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        if (flow.MarketItems.Count > 0)
         {
-            var council = await negotiationCouncil.RunAsync(question, packItems, plan.Goal, cancellationToken).ConfigureAwait(false);
-            if (council.Items.Count > 0)
-            {
-                packItems = InsertCouncilItems(packItems, council.Items);
-            }
+            packItems = [.. packItems, .. flow.MarketItems];
+        }
+
+        if (flow.CouncilItems.Count > 0)
+        {
+            packItems = InsertCouncilItems(packItems, flow.CouncilItems);
         }
 
         var boundedPack = packBudget.Apply(packItems);
@@ -700,10 +712,10 @@ internal sealed partial class AskCopilotService(
         // clickable next step"), and HelpfulFallbackAnswer's way forward for this kind of question.
         var recoveryActions = ResolveAbstainRecoveryActions(portfolio, routingContext, plan.Intent);
         var recoveryFollowUps = AbstainFollowUps(question, portfolio, plan.Intent);
-        // The deterministic proposal opens, like the model must, with the honest gap and the market
-        // estimate when the contract has no annual amounts.
+        // The deterministic proposal opens, like the model must, with the honest gaps the market data
+        // check found and what the market says in their place (step 1 of the flow above).
         var italianQuestion = HelpfulFallbackAnswer.IsItalian(question);
-        var lead = MarketSafetyNet.Lead(safetyNet.SupplierName, safetyNet.Missing, safetyNet.Estimate, italianQuestion);
+        var lead = MarketSafetyNet.Lead(dataChecks, italianQuestion);
         if (lead is null && plan.Intent == AskIntent.Clause && namedContractItem is not null && boundedPack.Count == 0)
         {
             // Honest first: the clause is not on file for this contract.
