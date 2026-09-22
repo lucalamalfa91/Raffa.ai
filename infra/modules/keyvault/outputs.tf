@@ -31,3 +31,12 @@ output "acs_connection_secret_versionless_id" {
   value       = azurerm_key_vault_secret.acs_connection.versionless_id
   sensitive   = true
 }
+
+# ADR-030 D5: null when no token was supplied (the secret is count-gated),
+# which modules/containerapps reads as "no gh-feedback secret, publisher
+# disabled" -- never an empty string.
+output "github_feedback_token_secret_versionless_id" {
+  description = "Versionless Key Vault secret ID for github-feedback-token, consumed by the API Container App's secret { key_vault_secret_id }; null when no token was supplied."
+  value       = length(azurerm_key_vault_secret.github_feedback_token) > 0 ? azurerm_key_vault_secret.github_feedback_token[0].versionless_id : null
+  sensitive   = true
+}

@@ -110,6 +110,19 @@ display titles. Delete is `DELETE /api/conversations/{id}` (caller's own chat).
 The **global Ask bar** is unmounted on `/ask` and `/ask/:id`. Cmd/Ctrl+K focuses
 that screen's composer instead.
 
+**Capability gap** (ADR-030) comes before intent. A request for an operation
+Raffa cannot perform — send an email or a message to the supplier, set a
+reminder, export to Excel/Word, raise a purchase order (`CapabilityGapCatalog`,
+IT/EN, regex only) — gets an honest one-sentence preface in the question's
+language, the nearest alternative, and an in-chat feedback card: for an email
+with a contract in scope, a **drafted negotiation email** written from the
+contract's own facts (`kind: draft`, verbatim with **Copy email**, never an
+abstain); otherwise a `redirect` to Renewals / Portfolio / Contract 360, or
+"which contract?" with one validated supplier per follow-up chip. The card
+asks three quick questions and `POST /api/conversations/{id}/feedback` stores
+the request and opens a GitHub issue for the team (public-safe body: gap,
+answers, language, environment, an opaque workspace hash).
+
 **Intent** is deterministic (`IntentPlanner`), not chosen by the model:
 
 | Intent | Typical question |

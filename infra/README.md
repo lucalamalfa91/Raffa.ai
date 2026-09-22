@@ -295,6 +295,25 @@ secret, `acs-connection` (handle `acs-cs`, API app only). The sender
 address is always the module's own `sender_address` output, never
 hand-composed.
 
+**Ask Raffa feedback issues (ADR-030 D5, wave w20).** `modules/keyvault`
+carries a `count`-gated secret, `github-feedback-token` (handle
+`gh-feedback`, API app only): a fine-grained GitHub personal access token
+with **Issues: write on `lucalamalfa91/Raffa.ai` only**, so the API can open
+one issue per feature request users file from Ask's in-chat feedback card.
+The token is a **sensitive HCP workspace variable** (`github_feedback_token`)
+in each workspace, never a `.tf` literal (ADR-011); empty — the default —
+creates no secret, publishes an empty `Feedback__GitHub__Token` the API never
+reads, and the API keeps every request stored-only. `Feedback__GitHub__Enabled` is published as
+`var.feedback_github_enabled && <a token secret exists>`, so an environment
+without a token can never fail closed at startup; `Feedback__Environment`
+carries the environment name into every issue body. Per-environment switch:
+`feedback_github_enabled` is `true` on **both** `dev` and `demo` (owner's
+ruling 2026-09-22 — unlike `invitation_mail_enabled`, a switch with no token
+behind it is harmless, so the token's presence in each HCP workspace is the
+real gate: set `github_feedback_token` in `raffa-demo` as well to get issues
+from `demo`). Rotation is an operator act: change the HCP variable, apply —
+no code change, no image rebuild.
+
 **Guest provisioning (NW-67).** `modules/identity` carries a `count`-gated
 `azuread_app_role_assignment` granting the workload identity the Microsoft
 Graph **application** permission `User.Invite.All`. **The apply identity —
@@ -328,10 +347,19 @@ identifier URI).
 
 **Per-environment flags**, mirroring `ai_gateway_wired`'s own shape
 (`infra/environments/{dev,demo}/variables.tf`): `invitation_mail_enabled`
-and `guest_provisioning_enabled` are both `true` on `dev` and `false` on
-`demo` until its own post-promotion acceptance flips them in a one-line PR.
-`guest_role_assignment_managed` is `false` on **both** — it tracks who
-holds the directory right, not which environment wants the feature.
+and `guest_provisioning_enabled` are `true` on **both** `dev` and `demo` —
+`demo` flipped on 2026-09-22 by the owner's ruling (ADR-016 w20 footer),
+which is the one-line PR clause 14 of ADR-016's w15 footer had reserved for
+`demo`'s own acceptance. `guest_role_assignment_managed` stays `false` on
+**both** — it tracks who holds the directory right, not which environment
+wants the feature — so the flip publishes the two product switches to the
+API app and writes nothing in Entra. For guest provisioning to actually run
+on `demo`, a Global Administrator grants `User.Invite.All` to `demo`'s
+workload identity out-of-band exactly as on `dev`
+(`docs/waves/w15-acceptance.md` §0.3 step 2, with `demo`'s principal id from
+`az identity show -g rg-raffa-demo -n id-raffa-demo-workload --query
+principalId -o tsv`); until then invitations on `demo` run in the
+`NotConfigured` (link-only) shape, which is a documented state, not a failure.
 
 ## Known gaps
 

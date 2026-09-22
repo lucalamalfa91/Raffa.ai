@@ -58,6 +58,23 @@ variable "web_research_enabled" {
 # Task E16/F01/US01/T01 (NW-68, ADR-005 w15 footer §5 rule 3 / ADR-016 w15
 # footer clause 14): mirrors ai_gateway_wired's own per-environment
 # lifecycle. dev flips both true from this apply.
+# ADR-030 D5 (Ask Raffa feedback loop): the GitHub token is a SENSITIVE
+# HCP workspace variable, never a .tf literal (ADR-011); empty means no
+# secret and a stored-only feedback loop. The switch mirrors
+# invitation_mail_enabled's per-environment lifecycle.
+variable "github_feedback_token" {
+  description = "Fine-grained GitHub PAT (Issues: write on lucalamalfa91/Raffa.ai) for Ask Raffa's feedback issues. Set as a sensitive HCP workspace variable; empty = no secret (ADR-030 D5)."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "feedback_github_enabled" {
+  description = "Publishes Feedback__GitHub__Enabled to the API app (ADR-030 D5). dev: true from this apply, effective only once the HCP workspace carries the token."
+  type        = bool
+  default     = true
+}
+
 variable "invitation_mail_enabled" {
   description = "Publishes Invitations__Mail__Enabled to the API app (ADR-005 w15 footer). dev: true from this apply."
   type        = bool

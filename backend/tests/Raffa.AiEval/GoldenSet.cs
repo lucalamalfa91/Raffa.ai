@@ -33,11 +33,15 @@ internal static class GoldenSet
         "structured_fact", "clause", "market_compare", "renewal_strategy",
         "portfolio_strategy", "savings", "document_status", "quote_route", "navigate",
         "portfolio_savings_target",
+        // ADR-030: the capability-gap gate label (an operation Raffa cannot perform).
+        "capability_gap",
     };
 
     public static IReadOnlySet<string> KnownKinds { get; } = new HashSet<string>(StringComparer.Ordinal)
     {
         "answer", "abstain", "redirect", "refusal",
+        // ADR-030 D2: the drafted negotiation email.
+        "draft",
     };
 
     private static IReadOnlyList<GoldenCase> Load()

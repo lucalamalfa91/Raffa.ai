@@ -3,8 +3,10 @@ using Raffa.Chat.Application.Answering;
 using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Conversations;
 using Raffa.Chat.Application.Council;
-using Raffa.Chat.Application.Gate;
+using Raffa.Chat.Application.Drafting;
+using Raffa.Chat.Application.Feedback;
 using Raffa.Chat.Application.Interview;
+using Raffa.Chat.Application.Gate;
 using Raffa.Chat.Application.Pack;
 using Raffa.Chat.Application.Planning;
 using Raffa.Chat.Application.WebResearch;
@@ -98,15 +100,25 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton(new CouncilOptions());
         services.AddScoped<NegotiationCouncil>();
 
+        // The drafting workflow (Application.Drafting, ADR-030 D3): the offer planner and the
+        // negotiation writer behind a `draft` reply. Same TryAdd-options / Scoped-service shape as
+        // the council above; the host binds Chat:Drafting before calling this.
+        services.TryAddSingleton(new DraftingOptions());
+        services.AddScoped<NegotiationDraftingWorkflow>();
+
+        // The feedback loop's seam (Application.Feedback, ADR-030 D5): the host registers the
+        // GitHub publisher and binds Feedback:* before calling this when a token is configured;
+        // otherwise these defaults keep every submission "recorded" with no outbound call.
+        services.TryAddSingleton(new FeedbackOptions());
+        services.TryAddScoped<IFeatureRequestPublisher, NullFeatureRequestPublisher>();
+
         // ADR-030: the interview (kill switch + bounds) — a configured value registered before
         // this call wins, same TryAdd contract as CouncilOptions above.
         services.TryAddSingleton(new InterviewOptions());
         services.AddScoped<InterviewPlanner>();
 
         // ADR-030: web research. The options default to Enabled=false (the kill switch), so a host
-        // that never binds Chat:WebResearch has no web path at all; the composer is registered
-        // regardless because it is the only IAiGateway.ResearchAsync caller and resolving it costs
-        // nothing until a consented turn actually calls it.
+        // that never binds Chat:WebResearch has no web path at all.
         services.TryAddSingleton(new WebResearchOptions());
         services.AddScoped<WebResearchComposer>();
 
@@ -138,6 +150,9 @@ public static class ServiceCollectionExtensions
             // AddDbContext above) rather than a second, independently-tracked context — same
             // reason every DbContext-backed service in this codebase is Scoped, not Singleton.
             services.AddScoped<ConversationService>();
+
+            // ADR-030 D5: the feedback write path shares the request's own ChatDbContext.
+            services.AddScoped<FeedbackService>();
 
             // ADR-030 gate 3: the daily budget lives in this module's own database.
             services.AddScoped<WebResearchBudget>();

@@ -98,10 +98,6 @@ builder.Services.AddDocumentsContractsModule(documentsContractsConnectionString)
 // source of a workspace role. A client-declared role header is not one of the inputs.
 builder.Services.AddScoped<WorkspaceRoleResolver>();
 
-// ADR-030 gate 2: Chat asks "did this workspace opt into web research?" through a port it owns;
-// the host answers from the Identity/Workspace row (the two modules never reference each other).
-builder.Services.AddScoped<Raffa.Chat.Application.WebResearch.IWorkspaceWebResearchPolicy, WorkspaceWebResearchPolicy>();
-
 // Task E14/F02/US01/T01 (wave w14 "workspace is real", ADR-025 §A1), retired to the validated token
 // by task E18/F01/US01/T01 (wave w15, NW-05; ADR-022 w15 footer clause 1): the one identity seam
 // every tenant-scoped endpoint consumes (directly, or through ICallerContext below) instead of
@@ -231,20 +227,42 @@ var councilOptions = new Raffa.Chat.Application.Council.CouncilOptions();
 builder.Configuration.GetSection(Raffa.Chat.Application.Council.CouncilOptions.SectionName).Bind(councilOptions);
 builder.Services.AddSingleton(councilOptions);
 
-// ADR-030: Chat:Interview (kill switch + bounds of the interview), same before-AddChatModule
-// ordering as Chat:Council above so a configured value wins over the module's TryAdd default.
+// Chat:Drafting (ADR-030 D3): the drafting workflow's kill switch and bounds, same shape.
+var draftingOptions = new Raffa.Chat.Application.Drafting.DraftingOptions();
+builder.Configuration.GetSection(Raffa.Chat.Application.Drafting.DraftingOptions.SectionName).Bind(draftingOptions);
+builder.Services.AddSingleton(draftingOptions);
+
+// ADR-030: Chat:Interview (kill switch + bounds) — same before-AddChatModule ordering as the
+// council/drafting options above so a configured value wins over the module's TryAdd default.
 var interviewOptions = new Raffa.Chat.Application.Interview.InterviewOptions();
 builder.Configuration.GetSection(Raffa.Chat.Application.Interview.InterviewOptions.SectionName).Bind(interviewOptions);
 builder.Services.AddSingleton(interviewOptions);
 
-// ADR-030: Chat:WebResearch -- the kill switch (default OFF), the workspace opt-in requirement,
-// the daily budget and the query bounds of the one path that may reach the public web. Same
-// before-AddChatModule ordering as Chat:Interview so a configured value wins over the TryAdd
-// default. Env: Chat__WebResearch__Enabled=true (plus AiGateway__Models__Research__* on the
-// gateway) is what turns it on for an environment; absent, nothing is ever searched.
+// ADR-030: Chat:WebResearch — the kill switch (default OFF), the workspace opt-in requirement,
+// the daily budget and the query bounds of the one path that may reach the public web.
 var webResearchOptions = new Raffa.Chat.Application.WebResearch.WebResearchOptions();
 builder.Configuration.GetSection(Raffa.Chat.Application.WebResearch.WebResearchOptions.SectionName).Bind(webResearchOptions);
 builder.Services.AddSingleton(webResearchOptions);
+
+// Feedback:* (ADR-030 D5): the environment name every published issue carries, and the GitHub
+// publisher -- registered BEFORE AddChatModule because the module's own defaults
+// (FeedbackOptions "local", NullFeatureRequestPublisher) are TryAdd. Same "optional keys, fail
+// closed on the composed pair" posture as InvitationHostOptions above: enabled with no token
+// refuses to start; not enabled, every submission is stored and answered "recorded".
+var feedbackHostOptions = builder.Configuration.GetSection(FeedbackHostOptions.SectionName).Get<FeedbackHostOptions>()
+    ?? new FeedbackHostOptions();
+feedbackHostOptions.ValidateOrThrow();
+builder.Services.AddSingleton(feedbackHostOptions);
+builder.Services.AddSingleton(new Raffa.Chat.Application.Feedback.FeedbackOptions { Environment = feedbackHostOptions.Environment });
+
+if (feedbackHostOptions.GitHub.Enabled)
+{
+    builder.Services.AddHttpClient<Raffa.Chat.Application.Feedback.IFeatureRequestPublisher, GitHubIssueFeatureRequestPublisher>(client =>
+    {
+        client.BaseAddress = new Uri("https://api.github.com/");
+        client.Timeout = TimeSpan.FromSeconds(10);
+    });
+}
 
 builder.Services.AddChatModule(chatConnectionString);
 

@@ -383,9 +383,19 @@ public sealed class FixtureAiGateway(
 
         var items = input?.Items ?? [];
         var isAnalyst = request.AgentName.EndsWith("analyst", StringComparison.OrdinalIgnoreCase);
+        var isPlanner = request.AgentName.EndsWith("planner", StringComparison.OrdinalIgnoreCase);
+        var isWriter = request.AgentName.EndsWith("writer", StringComparison.OrdinalIgnoreCase);
 
         string payload;
-        if (isAnalyst)
+        if (isPlanner)
+        {
+            payload = BuildFixtureOfferPlan(items);
+        }
+        else if (isWriter)
+        {
+            payload = BuildFixtureEmailDraft(input!, items);
+        }
+        else if (isAnalyst)
         {
             var findings = items.Take(MaxFixtureFindings).Select(item => new
             {
@@ -431,7 +441,141 @@ public sealed class FixtureAiGateway(
 
     private const int MaxFixtureFindings = 3;
 
-    private sealed record FixtureAnalysisInput(IReadOnlyList<FixturePackItem>? Items);
+    /// <summary>The offer planner's deterministic double (ADR-030 D3): the position is the target
+    /// verdict's own snippet, the asks are the council's plays (or the lever items) quoted up to
+    /// their "Timing:/Fallback:/Grounded in:" trail, the trade is the first playbook entry's
+    /// quotable ask, the deadline anchor the first date value — every field either verbatim pack
+    /// text or empty, so nothing here can carry a number the pack does not.</summary>
+    private static string BuildFixtureOfferPlan(IReadOnlyList<FixturePackItem> items)
+    {
+        var plays = items.Where(i => i.CitationKey.StartsWith("calc:council:play[", StringComparison.Ordinal)).ToList();
+        var source = plays.Count > 0
+            ? plays
+            : items.Where(i => i.CitationKey.StartsWith("calc:lever[", StringComparison.Ordinal)).ToList();
+
+        var asks = source.Take(MaxFixtureFindings).Select(item => new
+        {
+            lever = item.Title,
+            sentence = QuotableAsk(item.Snippet),
+            citationKeys = new[] { item.CitationKey },
+        });
+
+        var position = (items.FirstOrDefault(i => i.CitationKey == "calc:savings-target")
+            ?? items.FirstOrDefault(i => i.CitationKey == "calc:when-you-must-move"))?.Snippet ?? string.Empty;
+        var trade = items
+            .Where(i => i.CitationKey.StartsWith("raffa:playbook:", StringComparison.Ordinal))
+            .Select(i => PlaybookAsk(i.Snippet))
+            .FirstOrDefault(a => a is not null) ?? string.Empty;
+        var deadline = items
+            .SelectMany(i => i.Values ?? [])
+            .FirstOrDefault(v => v.Kind == "Date")?.Value ?? string.Empty;
+
+        return JsonSerializer.Serialize(new { position, asks, trade, deadlineAnchor = deadline, closing = string.Empty }, PackJsonOptions);
+    }
+
+    /// <summary>The negotiation writer's deterministic double: a greeting, one line per cited
+    /// fact item (title plus its values, formatted the way the numeric guard reads them back —
+    /// <see cref="FormatFixturePackValue"/>), the plan's asks verbatim, a fixed closing. No
+    /// inline marker, no link, no key in the text; <c>usedCitationKeys</c> lists what it used.</summary>
+    private static string BuildFixtureEmailDraft(FixtureAnalysisInput input, IReadOnlyList<FixturePackItem> items)
+    {
+        var supplier = string.IsNullOrWhiteSpace(input.Supplier) ? "supplier" : input.Supplier.Trim();
+        var italian = string.Equals(input.Language, "it", StringComparison.OrdinalIgnoreCase);
+        var used = new List<string>();
+        var lines = new List<string>
+        {
+            italian ? $"Gentile team {supplier}," : $"Dear {supplier} team,",
+            string.Empty,
+            italian
+                ? "vi scrivo in merito al rinnovo del nostro contratto e alle condizioni che vorremmo rivedere prima di confermarlo."
+                : "I am writing about the renewal of our contract and the terms we would like to revise before confirming it.",
+            string.Empty,
+        };
+
+        foreach (var item in items.Where(i => i.Values is { Count: > 0 }).Take(4))
+        {
+            lines.Add($"- {item.Title}: {string.Join(", ", item.Values!.Select(FormatFixturePackValue))}.");
+            used.Add(item.CitationKey);
+        }
+
+        foreach (var ask in input.Plan?.Asks ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(ask.Sentence))
+            {
+                continue;
+            }
+
+            lines.Add("- " + ask.Sentence.Trim());
+            used.AddRange(ask.CitationKeys ?? []);
+        }
+
+        lines.Add(string.Empty);
+        lines.Add(italian
+            ? "Restiamo disponibili a un confronto e vi chiediamo una proposta aggiornata prima della scadenza."
+            : "We remain available to discuss this and ask for a revised proposal before the deadline.");
+        lines.Add(string.Empty);
+        lines.Add(italian ? "Cordiali saluti," : "Kind regards,");
+        lines.Add(italian ? "[Nome e cognome]" : "[Name and surname]");
+
+        if (used.Count == 0 && items.Count > 0)
+        {
+            used.Add(items[0].CitationKey);
+        }
+
+        var payload = new
+        {
+            subject = italian ? $"Rinnovo {supplier}: proposta di revisione" : $"{supplier} renewal: revised proposal",
+            body = string.Join("\n", lines),
+            usedCitationKeys = used.Distinct(StringComparer.Ordinal).ToArray(),
+        };
+
+        return JsonSerializer.Serialize(payload, PackJsonOptions);
+    }
+
+    /// <summary>A council play's snippet up to its " Timing:" / " Fallback:" / " Grounded in:"
+    /// trail — the same cut <c>Raffa.Chat.Application.Drafting.DraftPlan.AskSentence</c> makes
+    /// (duplicated: this project cannot reference Raffa.Chat).</summary>
+    private static string QuotableAsk(string snippet)
+    {
+        var cut = snippet.Length;
+        foreach (var marker in new[] { " Timing:", " Fallback:", " Grounded in:" })
+        {
+            var index = snippet.IndexOf(marker, StringComparison.Ordinal);
+            if (index >= 0 && index < cut)
+            {
+                cut = index;
+            }
+        }
+
+        return snippet[..cut].Trim();
+    }
+
+    private static string? PlaybookAsk(string snippet)
+    {
+        const string Marker = " Ask: ";
+        var index = snippet.IndexOf(Marker, StringComparison.Ordinal);
+        if (index < 0)
+        {
+            return null;
+        }
+
+        var ask = snippet[(index + Marker.Length)..].Trim().Trim('"').Trim();
+        return ask.Length == 0 ? null : ask;
+    }
+
+    /// <summary>Structural mirror of the analyst/planner/writer inputs
+    /// (<c>Raffa.Chat.Application.Council.NegotiationCouncil</c> and
+    /// <c>Raffa.Chat.Application.Drafting.NegotiationDraftingWorkflow</c>): only the fields the
+    /// doubles read; every other field of the real input is ignored.</summary>
+    private sealed record FixtureAnalysisInput(
+        IReadOnlyList<FixturePackItem>? Items,
+        string? Supplier = null,
+        string? Language = null,
+        FixturePlan? Plan = null);
+
+    private sealed record FixturePlan(IReadOnlyList<FixturePlanAsk>? Asks);
+
+    private sealed record FixturePlanAsk(string? Lever, string? Sentence, IReadOnlyList<string>? CitationKeys);
 
     private static readonly Regex ProcurementWordPattern = new(
         @"\b(contract\w*|contratt\w*|renewal\w*|rinnov\w*|supplier\w*|fornitor\w*|procurement|negotiat\w*|negozia\w*|" +

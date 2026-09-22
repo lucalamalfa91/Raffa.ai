@@ -834,5 +834,71 @@
       "Portfolio"
     ],
     "notes": "English twin of seeded-portfolio_savings_target-40k-quarterly-it; 'cut costs' is in the widened savings lexicon."
+  },
+  {
+    "id": "seeded-capability_gap-email-draft-salesforce-en",
+    "tenantFixture": "seeded",
+    "intent": "capability_gap",
+    "language": "en",
+    "question": "I have to renegotiate with Salesforce. Can you help me create an email based on the negotiation leverage?",
+    "expectedKind": "draft",
+    "expectedMarkdownContains": [
+      "I can't create or send emails from Raffa.ai yet"
+    ],
+    "expectedBodyContains": [
+      "Salesforce",
+      "\"subject\"",
+      "feedbackOffer"
+    ],
+    "expectAtLeastOneAction": true,
+    "notes": "ADR-030: the motivating screenshot. A request for an operation Raffa cannot perform is recognised before the planner (never a Savings turn that the answer role's [n] gate can blank out); the alternative is a drafted email written by the offer planner + negotiation writer over the Q3 pack, guarded by DraftGuard -- the zero-intervention rule proves the fixture draft passes first time."
+  },
+  {
+    "id": "seeded-capability_gap-email-draft-unscoped-it",
+    "tenantFixture": "seeded",
+    "intent": "capability_gap",
+    "language": "it",
+    "question": "Puoi aiutarmi a scrivere la mail per il rinnovo?",
+    "expectedKind": "redirect",
+    "expectedMarkdownContains": [
+      "Al momento non posso creare o inviare email da Raffa.ai"
+    ],
+    "expectedBodyContains": [
+      "Scrivi la mail per il rinnovo"
+    ],
+    "expectNoCitations": true,
+    "expectAtLeastOneAction": true,
+    "expectNoGatewayCall": true,
+    "notes": "ADR-030: the email gap with no contract to draft for asks which contract, one validated supplier per follow-up chip, Portfolio as the action, no model call."
+  },
+  {
+    "id": "seeded-capability_gap-reminder-docusign-it",
+    "tenantFixture": "seeded",
+    "intent": "capability_gap",
+    "language": "it",
+    "question": "Mettimi un promemoria per la disdetta DocuSign",
+    "expectedKind": "redirect",
+    "expectedMarkdownContains": [
+      "Al momento non posso impostare promemoria"
+    ],
+    "expectNoCitations": true,
+    "expectAtLeastOneAction": true,
+    "expectNoGatewayCall": true,
+    "notes": "ADR-030: a reminder is an operation Raffa cannot perform; the nearest alternative is the Renewals tracker for the named contract."
+  },
+  {
+    "id": "seeded-capability_gap-export-excel-en",
+    "tenantFixture": "seeded",
+    "intent": "capability_gap",
+    "language": "en",
+    "question": "Export my contracts to Excel",
+    "expectedKind": "redirect",
+    "expectedMarkdownContains": [
+      "I can't export files from Raffa.ai yet"
+    ],
+    "expectNoCitations": true,
+    "expectAtLeastOneAction": true,
+    "expectNoGatewayCall": true,
+    "notes": "ADR-030: an export is an operation Raffa cannot perform; Portfolio already shows the same data as a filterable table."
   }
 ]

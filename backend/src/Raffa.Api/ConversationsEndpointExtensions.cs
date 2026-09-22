@@ -4,6 +4,7 @@ using System.Text.Json;
 using Raffa.Api.Infrastructure;
 using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Conversations;
+using Raffa.Chat.Application.Feedback;
 using Raffa.Chat.Application.Interview;
 using Raffa.Chat.Application.Reply;
 using Raffa.Chat.Domain.Conversations;
@@ -78,6 +79,7 @@ public static class ConversationsEndpointExtensions
         endpoints.MapGet("/api/conversations/{id}", GetConversationAsync);
         endpoints.MapDelete("/api/conversations/{id}", DeleteConversationAsync);
         endpoints.MapPost("/api/conversations/{id}/messages", PostConversationMessageAsync);
+        endpoints.MapPost("/api/conversations/{id}/feedback", PostConversationFeedbackAsync);
         return endpoints;
     }
 
@@ -368,18 +370,15 @@ public static class ConversationsEndpointExtensions
             .Select(m => (Role: ToWireRole(m.Role), Markdown: m.Markdown))
             .ToList();
 
-        // ADR-030: never two interviews in a row -- the engine reads this flag, the endpoint owns
-        // the history it comes from.
         var previousRaffaTurnWasInterview =
             conversation.Messages.LastOrDefault(m => m.Role == ConversationRole.Raffa)?.Kind == ConversationMessageKind.Interview;
 
         var reply = await askCopilotService
-            .AskAsync(tenantId, effectiveQuestion, recentTurns, userId, conversation.ScopeContractId, hints, previousRaffaTurnWasInterview, cancellationToken)
+            .AskAsync(
+                tenantId, effectiveQuestion, recentTurns, userId, conversation.ScopeContractId, hints,
+                previousRaffaTurnWasInterview, cancellationToken)
             .ConfigureAwait(false);
 
-        // The You row keeps what the user actually clicked or typed (the transcript reads
-        // naturally); the rewritten question the engine ran on is recoverable from the
-        // interview turn's own persisted resolution.
         await conversationService.AppendMessageAsync(
                 tenantId, userId, conversationId,
                 new AppendConversationMessageRequest(
@@ -389,18 +388,7 @@ public static class ConversationsEndpointExtensions
             .ConfigureAwait(false);
 
         var raffaMessage = await conversationService.AppendMessageAsync(
-                tenantId, userId, conversationId,
-                new AppendConversationMessageRequest(
-                    ConversationRole.Raffa,
-                    ToMessageKind(reply.Kind),
-                    reply.AnswerMarkdown,
-                    JsonSerializer.Serialize(reply.Citations.Select(ToCitationJson)),
-                    JsonSerializer.Serialize(reply.Actions.Select(ToActionJson)),
-                    reply.Provenance.ModelId,
-                    reply.Provenance.PromptVersion,
-                    reply.Provenance.InputHash,
-                    reply.Interview is null ? null : InterviewJsonCodec.SerializeTurn(reply.Interview)),
-                cancellationToken)
+                tenantId, userId, conversationId, ToAppendRequest(reply), cancellationToken)
             .ConfigureAwait(false);
 
         var messageId = raffaMessage?.MessageId ?? conversationId;
@@ -419,21 +407,109 @@ public static class ConversationsEndpointExtensions
                 modelId = reply.Provenance.ModelId,
                 promptVersion = reply.Provenance.PromptVersion,
                 inputHash = reply.Provenance.InputHash,
-                // ADR-030: true only for a web-research answer -- the client labels it.
                 unverified = reply.Provenance.Unverified,
             },
             followUps = reply.FollowUps,
+            payload = reply.Payload is null ? (JsonElement?)null : ReplyPayloadJson.ToJsonElement(reply.Payload),
             interview = reply.Interview is null ? null : ToInterviewJson(reply.Interview, answered: false),
         };
     }
 
+    /// <summary>The one mapping from a <see cref="CopilotReply"/> onto the persisted Raffa turn —
+    /// shared by <see cref="AskAndAppendAsync"/> and the feedback confirmation
+    /// (<see cref="PostConversationFeedbackAsync"/>), so the two never drift on how citations,
+    /// actions and the ADR-030 payload are serialized.</summary>
+    private static AppendConversationMessageRequest ToAppendRequest(CopilotReply reply) =>
+        new(
+            ConversationRole.Raffa,
+            ToMessageKind(reply.Kind),
+            reply.AnswerMarkdown,
+            JsonSerializer.Serialize(reply.Citations.Select(ToCitationJson)),
+            JsonSerializer.Serialize(reply.Actions.Select(ToActionJson)),
+            reply.Provenance.ModelId,
+            reply.Provenance.PromptVersion,
+            reply.Provenance.InputHash,
+            reply.Payload is null ? null : ReplyPayloadJson.Serialize(reply.Payload),
+            reply.Interview is null ? null : InterviewJsonCodec.SerializeTurn(reply.Interview));
+
     /// <summary>
-    /// ADR-030: resolves the client's answer to an interview (<c>interviewAnswer</c>) into the
-    /// hints and the effective question the engine runs on. Everything is looked up by key on the
-    /// persisted turn -- the label the client sends as <c>question</c> is only ever what the
-    /// transcript shows. 400 for anything that does not name a question/option of an interview
-    /// turn of this conversation; 409 for a single-use (consent) option already taken.
+    /// `POST /api/conversations/{id}/feedback` (ADR-030 D5): the in-chat feedback card's one call.
+    /// Same 401/400/404 ladder as <see cref="PostConversationMessageAsync"/>; then the body is
+    /// validated against the fixed interview vocabulary (<see cref="FeedbackAnswers.Validate"/>),
+    /// <see cref="FeedbackService.SubmitAsync"/> stores the request, publishes it best-effort and
+    /// builds the confirmation turn, which this handler persists exactly like a reply and returns
+    /// as `message` — so the client appends it to the thread and a resumed conversation shows the
+    /// same turn. 409 when the same offer was already answered (the existing row's facts, no new
+    /// turn).
     /// </summary>
+    private static async Task<IResult> PostConversationFeedbackAsync(
+        string id,
+        PostConversationFeedbackRequest? request,
+        HttpRequest httpRequest,
+        ConversationService conversationService,
+        FeedbackService feedbackService,
+        ICallerContext callerContext,
+        CancellationToken cancellationToken)
+    {
+        var caller = await callerContext.ResolveTenantAsync(httpRequest, cancellationToken);
+        if (caller.Failure is not null)
+        {
+            return caller.Failure;
+        }
+
+        using var callerTenantScope = caller.Scope;
+        var tenantId = caller.TenantId;
+        var userId = caller.Identity!;
+
+        if (!Guid.TryParse(id, out var conversationGuid))
+        {
+            return Results.BadRequest("The conversation id in the route must be a GUID.");
+        }
+
+        if (request is null || !Guid.TryParse(request.MessageId, out var messageGuid))
+        {
+            return Results.BadRequest("A 'messageId' (GUID of the Raffa turn carrying the feedback offer) is required.");
+        }
+
+        var (answers, error) = FeedbackAnswers.Validate(request.Answers?.What, request.Answers?.Frequency, request.Answers?.Importance);
+        if (answers is null)
+        {
+            return Results.BadRequest(error);
+        }
+
+        var conversationId = new EntityId(conversationGuid);
+        var submitted = await feedbackService
+            .SubmitAsync(tenantId, userId, conversationId, new EntityId(messageGuid), answers, cancellationToken)
+            .ConfigureAwait(false);
+
+        switch (submitted.Status)
+        {
+            case FeedbackSubmitStatus.NotFound:
+                return Results.NotFound();
+            case FeedbackSubmitStatus.InvalidMessage:
+                return Results.BadRequest("'messageId' must name a Raffa turn of this conversation that carries a feedback offer.");
+            case FeedbackSubmitStatus.AlreadySubmitted:
+                return Results.Conflict(ToFeedbackResponse(submitted.Request!, message: null));
+        }
+
+        var confirmation = await conversationService.AppendMessageAsync(
+                tenantId, userId, conversationId, ToAppendRequest(submitted.Confirmation!), cancellationToken)
+            .ConfigureAwait(false);
+
+        return Results.Created(
+            $"/api/conversations/{conversationId.Value}/feedback",
+            ToFeedbackResponse(submitted.Request!, confirmation is null ? null : ToMessageResponse(confirmation, hasLaterTurn: false)));
+    }
+
+    private static object ToFeedbackResponse(FeatureRequestResult request, object? message) => new
+    {
+        feedbackId = request.FeedbackId.Value,
+        status = request.Status,
+        issueNumber = request.IssueNumber,
+        issueUrl = request.IssueUrl,
+        message,
+    };
+
     private static async Task<InterviewAnswerResolution> ResolveInterviewAnswerAsync(
         ConversationService conversationService,
         TenantId tenantId,
@@ -482,7 +558,6 @@ public static class ConversationsEndpointExtensions
                 return InterviewAnswerResolution.Fail(Results.BadRequest("'interviewAnswer.optionKey' is not an option of that question."));
             }
 
-            // A consent (web research) is single-use: stamp it now, refuse a replay.
             if (question.Presentation == InterviewPresentation.Consent || option.ResolvesTo.WebResearch is not null)
             {
                 var outcome = await conversationService
@@ -503,7 +578,6 @@ public static class ConversationsEndpointExtensions
             var hints = AskTurnHints.From(option.ResolvesTo);
             if (question.Presentation == InterviewPresentation.Consent && option.ResolvesTo.WebResearch is null)
             {
-                // The consent's "no": the turn runs contracts-only and is audited as a decline.
                 hints = hints with { DeclinedWebResearch = true };
             }
 
@@ -512,6 +586,12 @@ public static class ConversationsEndpointExtensions
                 hints,
                 option.ResolvesTo.RewrittenQuestion,
                 InterviewJsonCodec.SerializeAnswer(messageId, question.Key, option.Key, freeText: false));
+        }
+
+        if (answer.FreeText is not true)
+        {
+            return InterviewAnswerResolution.Fail(
+                Results.BadRequest("'interviewAnswer.optionKey' is required unless 'interviewAnswer.freeText' is true."));
         }
 
         if (!question.AllowFreeText)
@@ -532,8 +612,6 @@ public static class ConversationsEndpointExtensions
         public static InterviewAnswerResolution Fail(IResult failure) => new(failure, AskTurnHints.None, string.Empty, null);
     }
 
-    /// <summary>The wire shape of an interview: keys, labels and hints only -- never an option's
-    /// resolution (ADR-030: the client cannot learn or alter the rewrite).</summary>
     private static object ToInterviewJson(InterviewTurn turn, bool answered) => new
     {
         prompt = turn.Prompt,
@@ -572,6 +650,7 @@ public static class ConversationsEndpointExtensions
         {
             CopilotActionKind.Navigate => "navigate",
             CopilotActionKind.Upload => "upload",
+            CopilotActionKind.External => "external",
             _ => throw new ArgumentOutOfRangeException(nameof(action), action.Kind, "Unknown CopilotActionKind."),
         },
     };
@@ -587,6 +666,7 @@ public static class ConversationsEndpointExtensions
         ReplyKind.Abstain => ConversationMessageKind.Abstain,
         ReplyKind.Redirect => ConversationMessageKind.Redirect,
         ReplyKind.Refusal => ConversationMessageKind.Refusal,
+        ReplyKind.Draft => ConversationMessageKind.Draft,
         ReplyKind.Interview => ConversationMessageKind.Interview,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown ReplyKind."),
     };
@@ -627,8 +707,6 @@ public static class ConversationsEndpointExtensions
         scopeContractId = detail.ScopeContractId?.Value,
         createdAt = detail.CreatedAt,
         updatedAt = detail.UpdatedAt,
-        // ADR-030: an interview turn counts as answered once any later turn exists (the user
-        // moved on, by option or by typing) or its single-use option was consumed.
         messages = detail.Messages.Select((message, index) => ToMessageResponse(message, index < detail.Messages.Count - 1)),
     };
 
@@ -644,6 +722,7 @@ public static class ConversationsEndpointExtensions
         promptVersion = message.PromptVersion,
         inputHash = message.InputHash,
         createdAt = message.CreatedAt,
+        payload = string.IsNullOrWhiteSpace(message.PayloadJson) ? (JsonElement?)null : ParseJsonObject(message.PayloadJson),
         interview = ToPersistedInterviewJson(message, hasLaterTurn),
     };
 
@@ -676,6 +755,7 @@ public static class ConversationsEndpointExtensions
         ConversationMessageKind.Abstain => "abstain",
         ConversationMessageKind.Redirect => "redirect",
         ConversationMessageKind.Refusal => "refusal",
+        ConversationMessageKind.Draft => "draft",
         ConversationMessageKind.Interview => "interview",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown ConversationMessageKind."),
     };
@@ -693,6 +773,14 @@ public static class ConversationsEndpointExtensions
         return document.RootElement.Clone();
     }
 
+    /// <summary>Same detach-from-the-document convention as <see cref="ParseJsonArray"/>, for the
+    /// ADR-030 payload object.</summary>
+    private static JsonElement ParseJsonObject(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        return document.RootElement.Clone();
+    }
+
     /// <summary>
     /// `POST /api/conversations` request body (AC-2: `{ scopeContractId? }`). A nested type so
     /// `Raffa.ArchitectureTests.DependencyDirectionTests.Host_must_not_contain_domain_types`
@@ -703,6 +791,13 @@ public static class ConversationsEndpointExtensions
     /// </summary>
     public sealed record CreateConversationRequest(string? ScopeContractId = null);
 
+    /// <summary>`POST /api/conversations/{id}/feedback` request body (ADR-030 D5):
+    /// `{ messageId, answers: { what, frequency, importance } }`. Strings, not typed keys, for the
+    /// same "this file's own 400 message" reason as <see cref="CreateConversationRequest"/>.</summary>
+    public sealed record PostConversationFeedbackRequest(string? MessageId = null, FeedbackAnswersRequest? Answers = null);
+
+    public sealed record FeedbackAnswersRequest(string? What = null, string? Frequency = null, string? Importance = null);
+
     /// <summary>
     /// `POST /api/conversations/{id}/messages` request body (ADR-024 §6: <c>{ question }</c>) — a
     /// nested type for the identical reason <see cref="CreateConversationRequest"/>'s own doc
@@ -710,8 +805,5 @@ public static class ConversationsEndpointExtensions
     /// </summary>
     public sealed record PostConversationMessageRequest(string? Question, InterviewAnswerRequest? InterviewAnswer = null);
 
-    /// <summary>ADR-030: the client's answer to an interview turn -- by key, never by label. Either
-    /// <c>optionKey</c> (one of the persisted options) or <c>freeText: true</c> (the typed
-    /// <c>question</c> itself answers the interview).</summary>
     public sealed record InterviewAnswerRequest(string? MessageId, string? QuestionKey, string? OptionKey = null, bool? FreeText = null);
 }

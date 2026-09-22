@@ -13,6 +13,7 @@ import {
   buildTurnsFromConversation,
   buildYouTurn,
   createConversationAndAsk,
+  feedbackSubmittedMessageIds,
   deriveConversationTitle,
   mapConversationAction,
   mapConversationCitation,
@@ -153,6 +154,7 @@ describe("mapConversationReplyToReply / mapConversationMessageToReply", () => {
       actions: [{ label: "Open Contract 360 →", href: "/contracts/contract-1", kind: "navigate" }],
       provenance: { sources: ["tenant"], modelId: "gpt", promptVersion: "answer-v2.1", inputHash: "abc" },
       followUps: ["Where can I push on the renewal?"],
+      payload: null,
       ...overrides,
     };
   }
@@ -241,6 +243,7 @@ describe("mapConversationReplyToReply / mapConversationMessageToReply", () => {
       promptVersion: null,
       inputHash: null,
       createdAt: "2026-09-08T00:00:00Z",
+      payload: null,
     };
 
     const mapped = mapConversationMessageToReply(message);
@@ -361,6 +364,7 @@ describe("buildYouTurn / buildRaffaTurnFromReply / buildRaffaTurnFromMessage / b
       actions: [],
       provenance: { sources: [], modelId: null, promptVersion: null, inputHash: null },
       followUps: [],
+      payload: null,
     });
 
     expect(turn.role).toBe("raffa");
@@ -376,8 +380,8 @@ describe("buildYouTurn / buildRaffaTurnFromReply / buildRaffaTurnFromMessage / b
       createdAt: "2026-09-08T00:00:00Z",
       updatedAt: "2026-09-08T00:05:00Z",
       messages: [
-        { id: "m1", role: "you", kind: "answer", markdown: "When does Salesforce expire?", citations: [], actions: [], modelId: null, promptVersion: null, inputHash: null, createdAt: "2026-09-08T00:00:00Z" },
-        { id: "m2", role: "raffa", kind: "answer", markdown: "…", citations: [], actions: [], modelId: null, promptVersion: null, inputHash: null, createdAt: "2026-09-08T00:00:05Z" },
+        { id: "m1", role: "you", kind: "answer", markdown: "When does Salesforce expire?", citations: [], actions: [], modelId: null, promptVersion: null, inputHash: null, createdAt: "2026-09-08T00:00:00Z", payload: null },
+        { id: "m2", role: "raffa", kind: "answer", markdown: "…", citations: [], actions: [], modelId: null, promptVersion: null, inputHash: null, createdAt: "2026-09-08T00:00:05Z", payload: null },
       ],
     });
 
@@ -660,6 +664,7 @@ describe("createConversationAndAsk", () => {
       createConversation: vi.fn(),
       getConversation: vi.fn(),
       postMessage: vi.fn(),
+      postConversationFeedback: vi.fn(),
     deleteConversation: vi.fn(),
       getCapabilities: vi.fn(),
       getMarketRecord: vi.fn(),
@@ -683,6 +688,7 @@ describe("createConversationAndAsk", () => {
       actions: [],
       provenance: { sources: [], modelId: null, promptVersion: null, inputHash: null },
       followUps: [],
+      payload: null,
     };
     const postMessage = vi.fn().mockResolvedValue({ ok: true, statusCode: 200, reply, error: null });
     const apiClient = mockApiClient({ createConversation, postMessage });
@@ -715,6 +721,7 @@ describe("createConversationAndAsk", () => {
       actions: [],
       provenance: { sources: [], modelId: null, promptVersion: null, inputHash: null },
       followUps: [],
+      payload: null,
     };
     const postMessage = vi.fn().mockResolvedValue({ ok: true, statusCode: 200, reply, error: null });
     const apiClient = mockApiClient({ createConversation, postMessage });
@@ -754,6 +761,76 @@ describe("createConversationAndAsk", () => {
 describe("ASK_HELLO", () => {
   it("is the prototype's own verbatim string", () => {
     expect(ASK_HELLO).toBe("What do you want to know?");
+  });
+});
+
+// ADR-030: the fifth kind, the payload, the external action and the resume-time offer hiding.
+describe("ADR-030 payload mapping", () => {
+  const offer = {
+    prompt: "Vuoi segnalarlo al team Raffa.ai perché lo implementi?",
+    yesLabel: "Sì", noLabel: "No", nextLabel: "Avanti", backLabel: "Indietro", submitLabel: "Invia",
+    sendingLabel: "Invio in corso…", thanksLabel: "Grazie!", errorLabel: "Riprova.", publicNotice: "Pubblico su GitHub.",
+    questions: [{ key: "what" as const, kind: "text" as const, label: "Cosa?", prefill: "Inviare", choices: null }],
+  };
+  const gap = { key: "email-draft", title: "Scrivere e inviare email di negoziazione", language: "it" as const };
+  const draftReply: ConversationReplyBody = {
+    conversationId: "conv-1",
+    messageId: "msg-9",
+    kind: "draft",
+    answerMarkdown: "Al momento non posso creare o inviare email da Raffa.ai, però posso aiutarti.",
+    citations: [citation()],
+    actions: [{ label: "Apri Renewals →", href: "/renewals?select=contract-1", kind: "navigate" }],
+    provenance: { sources: ["tenant"], modelId: "fixture", promptVersion: "draft-v1", inputHash: "abc" },
+    followUps: ["Quali leve ho sul rinnovo Salesforce?"],
+    payload: { gap, draft: { subject: "Rinnovo Salesforce", body: "Gentile team Salesforce,\n\n…" }, feedbackOffer: offer, feedbackResult: null },
+  };
+
+  it("maps a draft reply and a stored draft message identically, keeping the email verbatim", () => {
+    const live = mapConversationReplyToReply(draftReply);
+    const stored = mapConversationMessageToReply({
+      id: "msg-9", role: "raffa", kind: "draft", markdown: draftReply.answerMarkdown, citations: draftReply.citations,
+      actions: draftReply.actions, modelId: "fixture", promptVersion: "draft-v1", inputHash: "abc", createdAt: "2026-09-22T00:00:00Z",
+      payload: draftReply.payload,
+    });
+
+    expect(live.kind).toBe("draft");
+    if (live.kind !== "draft" || stored.kind !== "draft") throw new Error("expected draft");
+    expect(live.draft).toEqual({ subject: "Rinnovo Salesforce", body: "Gentile team Salesforce,\n\n…" });
+    expect(stored.draft).toEqual(live.draft);
+    expect(live.gap).toEqual(gap);
+    expect(live.feedbackOffer?.questions[0].prefill).toBe("Inviare");
+    expect(live.followUps).toEqual(["Quali leve ho sul rinnovo Salesforce?"]);
+    expect(stored.followUps).toEqual([]);
+    expect(buildRaffaTurnFromReply("t9", draftReply)).toMatchObject({ messageId: "msg-9" });
+  });
+
+  it("degrades a draft whose payload lost its email to a plain answer, never an empty turn", () => {
+    const mapped = mapConversationReplyToReply({ ...draftReply, payload: null });
+    expect(mapped.kind).toBe("answer");
+  });
+
+  it("carries gap, offer and follow-ups on a capability-gap redirect", () => {
+    const mapped = mapConversationReplyToReply({
+      ...draftReply, kind: "redirect", citations: [], followUps: ["Scrivi la mail per il rinnovo Salesforce"],
+      payload: { gap, draft: null, feedbackOffer: offer, feedbackResult: null },
+    });
+    expect(mapped.kind).toBe("redirect");
+    if (mapped.kind !== "redirect") throw new Error("expected redirect");
+    expect(mapped.followUps).toEqual(["Scrivi la mail per il rinnovo Salesforce"]);
+    expect(mapped.gap).toEqual(gap);
+    expect(mapped.feedbackOffer).toEqual(offer);
+  });
+
+  it("marks external actions and reads the feedback result off a confirmation turn", () => {
+    expect(mapConversationAction({ label: "Apri la segnalazione #12 →", href: "https://github.com/x/y/issues/12", kind: "external" }, 0)).toEqual({
+      label: "Apri la segnalazione #12 →", href: "https://github.com/x/y/issues/12", kind: "primary", external: true,
+    });
+    const confirmation = buildRaffaTurnFromReply("t10", {
+      ...draftReply, kind: "answer", citations: [], followUps: [],
+      actions: [{ label: "Apri la segnalazione #12 →", href: "https://github.com/x/y/issues/12", kind: "external" }],
+      payload: { gap: null, draft: null, feedbackOffer: null, feedbackResult: { forMessageId: "msg-9", status: "issue_opened", issueNumber: 12, issueUrl: "https://github.com/x/y/issues/12" } },
+    });
+    expect(feedbackSubmittedMessageIds([buildRaffaTurnFromReply("t9", draftReply), confirmation])).toEqual(new Set(["msg-9"]));
   });
 });
 

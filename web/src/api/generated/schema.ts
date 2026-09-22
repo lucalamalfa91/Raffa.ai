@@ -92,48 +92,6 @@ export interface operations {
       };
     };
   };
-  getWorkspaceSettings: {
-    responses: {
-      200: {
-        content: {
-          "application/json": { webResearchEnabled: boolean; canEdit: boolean };
-        };
-      };
-      401: {
-        content: {
-        };
-      };
-      404: {
-        content: {
-        };
-      };
-    };
-  };
-  updateWorkspaceSettings: {
-    responses: {
-      200: {
-        content: {
-          "application/json": { webResearchEnabled: boolean; canEdit: boolean };
-        };
-      };
-      400: {
-        content: {
-        };
-      };
-      401: {
-        content: {
-        };
-      };
-      403: {
-        content: {
-        };
-      };
-      404: {
-        content: {
-        };
-      };
-    };
-  };
   inviteWorkspaceMember: {
     responses: {
       201: {
@@ -735,7 +693,7 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": { id: string; title: string; scopeContractId: string | null; createdAt: string; updatedAt: string; messages: ({ id: string; role: "you" | "raffa"; kind: "answer" | "abstain" | "redirect" | "refusal" | "interview"; markdown: string; citations: ({ n: number; corpus: string; title: string; subtitle: string | null; snippet: string; documentId: string | null; contractId: string | null; page: number | null; section: string | null; previewUrl: string | null; href: string | null; recordId: string | null })[]; actions: ({ label: string; href: string; kind: "navigate" | "upload" })[]; modelId: string | null; promptVersion: string | null; inputHash: string | null; createdAt: string; interview?: { prompt: string; questions: ({ key: string; prompt: string; presentation: "choice" | "consent"; allowFreeText: boolean; options: ({ key: string; label: string; hint: string | null })[] })[]; answered: boolean } | null })[] };
+          "application/json": { id: string; title: string; scopeContractId: string | null; createdAt: string; updatedAt: string; messages: ({ id: string; role: "you" | "raffa"; kind: "answer" | "abstain" | "redirect" | "refusal" | "draft" | "interview"; markdown: string; citations: ({ n: number; corpus: string; title: string; subtitle: string | null; snippet: string; documentId: string | null; contractId: string | null; page: number | null; section: string | null; previewUrl: string | null; href: string | null; recordId: string | null })[]; actions: ({ label: string; href: string; kind: "navigate" | "upload" | "external" })[]; modelId: string | null; promptVersion: string | null; inputHash: string | null; createdAt: string; payload?: { gap: { key: string; title: string; language: "it" | "en" } | null; draft: { subject: string; body: string } | null; feedbackOffer: { prompt: string; yesLabel: string; noLabel: string; nextLabel: string; backLabel: string; submitLabel: string; sendingLabel: string; thanksLabel: string; errorLabel: string; publicNotice: string; questions: ({ key: "what" | "frequency" | "importance"; kind: "text" | "choice"; label: string; prefill: string | null; choices: ({ key: string; label: string })[] | null })[] } | null; feedbackResult: { forMessageId: string; status: "recorded" | "issue_opened"; issueNumber: number | null; issueUrl: string | null } | null } | null; interview?: { prompt: string; questions: ({ key: string; prompt: string; presentation: "choice" | "consent"; allowFreeText: boolean; options: ({ key: string; label: string; hint: string | null })[] })[]; answered: boolean } | null })[] };
         };
       };
       400: {
@@ -753,7 +711,7 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": { conversationId: string; messageId: string; kind: "answer" | "abstain" | "redirect" | "refusal" | "interview"; answerMarkdown: string; citations: ({ n: number; corpus: string; title: string; subtitle: string | null; snippet: string; documentId: string | null; contractId: string | null; page: number | null; section: string | null; previewUrl: string | null; href: string | null; recordId: string | null })[]; actions: ({ label: string; href: string; kind: "navigate" | "upload" })[]; provenance: { sources: (string)[]; modelId: string | null; promptVersion: string | null; inputHash: string | null; unverified?: boolean }; followUps: (string)[]; interview?: { prompt: string; questions: ({ key: string; prompt: string; presentation: "choice" | "consent"; allowFreeText: boolean; options: ({ key: string; label: string; hint: string | null })[] })[]; answered: boolean } | null };
+          "application/json": { conversationId: string; messageId: string; kind: "answer" | "abstain" | "redirect" | "refusal" | "draft" | "interview"; answerMarkdown: string; citations: ({ n: number; corpus: string; title: string; subtitle: string | null; snippet: string; documentId: string | null; contractId: string | null; page: number | null; section: string | null; previewUrl: string | null; href: string | null; recordId: string | null })[]; actions: ({ label: string; href: string; kind: "navigate" | "upload" | "external" })[]; provenance: { sources: (string)[]; modelId: string | null; promptVersion: string | null; inputHash: string | null; unverified?: boolean }; followUps: (string)[]; payload?: { gap: { key: string; title: string; language: "it" | "en" } | null; draft: { subject: string; body: string } | null; feedbackOffer: { prompt: string; yesLabel: string; noLabel: string; nextLabel: string; backLabel: string; submitLabel: string; sendingLabel: string; thanksLabel: string; errorLabel: string; publicNotice: string; questions: ({ key: "what" | "frequency" | "importance"; kind: "text" | "choice"; label: string; prefill: string | null; choices: ({ key: string; label: string })[] | null })[] } | null; feedbackResult: { forMessageId: string; status: "recorded" | "issue_opened"; issueNumber: number | null; issueUrl: string | null } | null } | null; interview?: { prompt: string; questions: ({ key: string; prompt: string; presentation: "choice" | "consent"; allowFreeText: boolean; options: ({ key: string; label: string; hint: string | null })[] })[]; answered: boolean } | null };
         };
       };
       400: {
@@ -906,6 +864,71 @@ export interface operations {
       };
     };
   };
+  postConversationFeedback: {
+    responses: {
+      201: {
+        content: {
+          "application/json": { feedbackId: string; status: "recorded" | "issue_opened"; issueNumber: number | null; issueUrl: string | null; message: { id: string; role: "you" | "raffa"; kind: "answer" | "abstain" | "redirect" | "refusal" | "draft"; markdown: string; citations: ({ n: number; corpus: string; title: string; subtitle: string | null; snippet: string; documentId: string | null; contractId: string | null; page: number | null; section: string | null; previewUrl: string | null; href: string | null; recordId: string | null })[]; actions: ({ label: string; href: string; kind: "navigate" | "upload" | "external" })[]; modelId: string | null; promptVersion: string | null; inputHash: string | null; createdAt: string; payload: { gap: { key: string; title: string; language: "it" | "en" } | null; draft: { subject: string; body: string } | null; feedbackOffer: { prompt: string; yesLabel: string; noLabel: string; nextLabel: string; backLabel: string; submitLabel: string; sendingLabel: string; thanksLabel: string; errorLabel: string; publicNotice: string; questions: ({ key: "what" | "frequency" | "importance"; kind: "text" | "choice"; label: string; prefill: string | null; choices: ({ key: string; label: string })[] | null })[] } | null; feedbackResult: { forMessageId: string; status: "recorded" | "issue_opened"; issueNumber: number | null; issueUrl: string | null } | null } | null } | null };
+        };
+      };
+      400: {
+        content: {
+          "application/json": string;
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+      409: {
+        content: {
+          "application/json": { feedbackId: string; status: "recorded" | "issue_opened"; issueNumber: number | null; issueUrl: string | null; message: { id: string; role: "you" | "raffa"; kind: "answer" | "abstain" | "redirect" | "refusal" | "draft"; markdown: string; citations: ({ n: number; corpus: string; title: string; subtitle: string | null; snippet: string; documentId: string | null; contractId: string | null; page: number | null; section: string | null; previewUrl: string | null; href: string | null; recordId: string | null })[]; actions: ({ label: string; href: string; kind: "navigate" | "upload" | "external" })[]; modelId: string | null; promptVersion: string | null; inputHash: string | null; createdAt: string; payload: { gap: { key: string; title: string; language: "it" | "en" } | null; draft: { subject: string; body: string } | null; feedbackOffer: { prompt: string; yesLabel: string; noLabel: string; nextLabel: string; backLabel: string; submitLabel: string; sendingLabel: string; thanksLabel: string; errorLabel: string; publicNotice: string; questions: ({ key: "what" | "frequency" | "importance"; kind: "text" | "choice"; label: string; prefill: string | null; choices: ({ key: string; label: string })[] | null })[] } | null; feedbackResult: { forMessageId: string; status: "recorded" | "issue_opened"; issueNumber: number | null; issueUrl: string | null } | null } | null } | null };
+        };
+      };
+    };
+  };
+  getWorkspaceSettings: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { webResearchEnabled: boolean; canEdit: boolean };
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  updateWorkspaceSettings: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { webResearchEnabled: boolean; canEdit: boolean };
+        };
+      };
+      400: {
+        content: {
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      403: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
 }
 
 export interface paths {
@@ -921,10 +944,6 @@ export interface paths {
   };
   "/api/workspaces/{tenantId}/members/{membershipId}": {
     delete: operations["removeMember"];
-  };
-  "/api/workspaces/{tenantId}/settings": {
-    get: operations["getWorkspaceSettings"];
-    patch: operations["updateWorkspaceSettings"];
   };
   "/api/workspaces/{tenantId}/invites": {
     post: operations["inviteWorkspaceMember"];
@@ -1044,5 +1063,12 @@ export interface paths {
   };
   "/api/quotes/benchmark-history": {
     get: operations["getQuoteBenchmarkHistory"];
+  };
+  "/api/conversations/{id}/feedback": {
+    post: operations["postConversationFeedback"];
+  };
+  "/api/workspaces/{tenantId}/settings": {
+    get: operations["getWorkspaceSettings"];
+    patch: operations["updateWorkspaceSettings"];
   };
 }

@@ -15,6 +15,11 @@ public enum CopilotActionKind
     /// named a supplier with no validated contract yet (R-SYS-02 "unknown supplier → Upload in
     /// Documents"), or because R-SYS-04 replaced a greyed capability's action.</summary>
     Upload,
+
+    /// <summary>Opens an absolute https URL outside the app in a new tab — today only the GitHub
+    /// issue a feedback submission opened (ADR-030 D6). Server-authored from the publisher's own
+    /// response, never model-authored and never built from a catalog route.</summary>
+    External,
 }
 
 /// <summary>
@@ -28,4 +33,21 @@ public enum CopilotActionKind
 /// <param name="Href">A complete route — never contains an unresolved `{...}` placeholder (see
 /// <see cref="CapabilityRouting.ResolveActions"/>'s own doc comment).</param>
 /// <param name="Kind">See <see cref="CopilotActionKind"/>.</param>
-public sealed record CopilotAction(string Label, string Href, CopilotActionKind Kind);
+public sealed record CopilotAction(string Label, string Href, CopilotActionKind Kind)
+{
+    /// <summary>The one sanctioned way to build a <see cref="CopilotActionKind.External"/> action
+    /// (ADR-030 D6): the href must be an absolute https URL, so a relative route or a plain-http
+    /// link can never be rendered as an outbound anchor.</summary>
+    /// <exception cref="ArgumentException"><paramref name="url"/> is not an absolute https URL.</exception>
+    public static CopilotAction External(string label, string url)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(label);
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
+            !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("An external action needs an absolute https URL.", nameof(url));
+        }
+
+        return new CopilotAction(label, uri.ToString(), CopilotActionKind.External);
+    }
+}

@@ -21,13 +21,9 @@ public sealed class ConversationMessageConfiguration : IEntityTypeConfiguration<
 
         builder.Property(e => e.Role).HasConversion<string>().HasMaxLength(20);
         builder.Property(e => e.Kind).HasConversion<string>().HasMaxLength(20);
-        // Markdown/CitationsJson/ActionsJson: deliberately no HasMaxLength -> Postgres `text`/
-        // `jsonb` (unbounded free-form content, same convention
-        // Raffa.Audit.Domain.AuditEvent.Detail and
-        // Raffa.Documents.Contracts.Domain.ContractVersion.SnapshotJson already use).
         builder.Property(e => e.CitationsJson).HasColumnType("jsonb");
         builder.Property(e => e.ActionsJson).HasColumnType("jsonb");
-        // ADR-030: nullable — only interview turns and their answers carry it.
+        builder.Property(e => e.PayloadJson).HasColumnType("jsonb");
         builder.Property(e => e.InterviewJson).HasColumnType("jsonb");
 
         builder.Property(e => e.ModelId).HasMaxLength(200);
@@ -35,15 +31,8 @@ public sealed class ConversationMessageConfiguration : IEntityTypeConfiguration<
         builder.Property(e => e.InputHash).HasMaxLength(128);
 
         builder.HasIndex(e => e.TenantId);
-
-        // ConversationService.GetAsync's own "one conversation's messages, creation order" read.
         builder.HasIndex(e => new { e.ConversationId, e.CreatedAt });
 
-        // Owned child row of the same aggregate (Raffa.Chat owns both Conversation and
-        // ConversationMessage) — deleting a conversation deletes its messages with it, same
-        // "history/child row" cascade convention
-        // Raffa.Documents.Contracts.Infrastructure.Configurations.ContractVersionConfiguration
-        // already uses for Contract -> ContractVersion.
         builder.HasOne<Conversation>()
             .WithMany()
             .HasForeignKey(e => e.ConversationId)

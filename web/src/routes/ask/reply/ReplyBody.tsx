@@ -1,8 +1,10 @@
 import ActionRow from "./ActionRow";
+import DraftCard from "./DraftCard";
 import EvidenceCard from "./EvidenceCard";
+import FeedbackCard from "./FeedbackCard";
 import InterviewBlock from "./InterviewBlock";
 import ReplyMarkdown from "./ReplyMarkdown";
-import type { InterviewOption, InterviewReply, Reply, ReplyCitation } from "./replyTypes";
+import type { FeedbackAnswers, FeedbackOffer, InterviewOption, InterviewReply, Reply, ReplyCitation } from "./replyTypes";
 import "./reply.css";
 
 /** The abstain block's lead-in (`abstainTitle` in `Raffa.ai V2.dc.html`, quoted). */
@@ -16,15 +18,24 @@ export interface ReplyBodyProps {
    * cannot stay unique once more than one reply is on screen at once, which every real
    * conversation is. */
   onOpenCitation: (citation: ReplyCitation) => void;
-  /** A follow-up chip was clicked -- on an `answer`, or on an `abstain` that carries next-step
-   * questions (`AbstainReply.followUps`); never called for any other kind. */
+  /** A follow-up chip was clicked -- on an `answer`, on an `abstain` that carries next-step
+   * questions (`AbstainReply.followUps`), on a `draft`, or on a capability-gap `redirect`
+   * (ADR-030); never called for any other kind. */
   onFollowUp: (question: string) => void;
+  /** ADR-030 D5: this turn's server message id -- what the feedback card submits against; `null`
+   * for a client-built turn, which then never shows the card. */
+  messageId?: string | null;
+  /** ADR-030 D5: posts the feedback card's answers for `messageId`; absent, no card renders. */
+  onSubmitFeedback?: (messageId: string, answers: FeedbackAnswers) => Promise<{ ok: boolean }>;
+  /** ADR-030 D5: true once this turn's offer was answered (live or on resume) -- hides the card. */
+  feedbackDone?: boolean;
   /** `interview`-only (ADR-030): the user picked an option. Optional so the pure component still
    * renders an interview read-only (a resumed, already-answered one) without a handler. */
   onInterviewOption?: (reply: InterviewReply, questionKey: string, option: InterviewOption) => void;
 }
 
-/** The "Next" row of follow-up question chips, shared by `answer` and `abstain`. */
+/** The "Next" row of follow-up question chips, shared by `answer`, `abstain`, `draft` and a
+ * capability-gap `redirect` (ADR-030). */
 function FollowUps({ questions, onFollowUp }: { questions: readonly string[]; onFollowUp: (question: string) => void }) {
   if (questions.length === 0) {
     return null;
@@ -43,18 +54,30 @@ function FollowUps({ questions, onFollowUp }: { questions: readonly string[]; on
 }
 
 /**
- * Composes `kind` -> layout (R-WEB-04; requirements.md §6; ADR-024). One `Reply` in, one layout
- * out: `answer` gets the markdown, **one** evidence card (every citation grouped by supplier, the
- * reply's actions folded into that card's single action row -- `EvidenceCard.tsx`) and the
- * follow-ups; `redirect` and `refusal` share warm prose + one CTA; `abstain` is only ever the
- * accent-left block; `error` is the existing `.error-state`. This is the one place any of those
- * five layouts is chosen -- every other component in this folder only renders what it is told to.
+ * Composes `kind` -> layout (R-WEB-04; requirements.md §6; ADR-024). `answer` uses the shared
+ * evidence card; `draft` adds the verbatim email card and feedback card; `redirect`/`refusal`
+ * keep one CTA; `interview` renders clickable options; `abstain` is only the accent-left block;
+ * `error` is the existing `.error-state`.
  *
  * Never renders an engineer route line or a guid (R-ASK-08): `Reply` (`replyTypes.ts`) has no
  * `route`/raw-id field for any variant to leak in the first place -- there is nothing here to
  * accidentally print.
  */
-export default function ReplyBody({ reply, onOpenCitation, onFollowUp, onInterviewOption }: ReplyBodyProps) {
+export default function ReplyBody({
+  reply,
+  onOpenCitation,
+  onFollowUp,
+  messageId,
+  onSubmitFeedback,
+  feedbackDone,
+  onInterviewOption,
+}: ReplyBodyProps) {
+  // ADR-030 D5: the feedback card renders only when the turn carries an offer, has a real server
+  // id to submit against, the screen wired a submit path, and the offer was not answered yet.
+  const feedbackCard = (offer: FeedbackOffer | null | undefined) =>
+    offer && messageId && onSubmitFeedback && !feedbackDone ? (
+      <FeedbackCard offer={offer} onSubmit={(answers) => onSubmitFeedback(messageId, answers)} />
+    ) : null;
   switch (reply.kind) {
     case "answer":
       return (
@@ -79,6 +102,30 @@ export default function ReplyBody({ reply, onOpenCitation, onFollowUp, onIntervi
         </div>
       );
 
+    case "draft":
+      // ADR-030 D2: the honest preface, the email card (verbatim + "Copy email"), the pack items
+      // the email was written from, the actions, the follow-ups, then the feedback offer. Never
+      // the abstain block -- the draft path cannot abstain.
+      return (
+        <div className="reply-body" data-reply-kind="draft">
+          <ReplyMarkdown text={reply.answerMarkdown} citations={reply.citations} onOpenCitation={onOpenCitation} />
+
+          <DraftCard draft={reply.draft} />
+
+          {reply.citations.length > 0 ? (
+            <div className="reply-cards">
+              <EvidenceCard citations={reply.citations} actions={reply.actions} onOpenCitation={onOpenCitation} />
+            </div>
+          ) : (
+            reply.actions.length > 0 && <ActionRow actions={reply.actions} />
+          )}
+
+          <FollowUps questions={reply.followUps} onFollowUp={onFollowUp} />
+
+          {feedbackCard(reply.feedbackOffer)}
+        </div>
+      );
+
     case "redirect":
     case "refusal":
       return (
@@ -87,6 +134,10 @@ export default function ReplyBody({ reply, onOpenCitation, onFollowUp, onIntervi
           {/* R-ASK-07 / parent AC-3 "one CTA": rendered defensively -- only ever the first action --
               even if the reply somehow carried more than one; see replyTypes.ts#RedirectReply. */}
           {reply.actions.length > 0 && <ActionRow actions={reply.actions.slice(0, 1)} />}
+          {/* ADR-030: a capability-gap redirect ("which contract?") offers one supplier per chip
+              and the feedback card; every other redirect/refusal carries neither. */}
+          <FollowUps questions={reply.followUps ?? []} onFollowUp={onFollowUp} />
+          {feedbackCard(reply.feedbackOffer)}
         </div>
       );
 

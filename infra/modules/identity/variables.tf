@@ -26,8 +26,9 @@ variable "web_redirect_uri" {
 
 # Task E16/F01/US01/T01 (NW-67, ADR-015 clause 4): default false so a
 # missing apply-plane Graph permission degrades this feature instead of
-# blocking the w15 apply. dev flips true from this apply; demo stays false
-# until its own post-promotion acceptance (ADR-016 w15 footer clause 14).
+# blocking the w15 apply. dev flipped true at w15; demo followed on
+# 2026-09-22 (ADR-016 w15 footer clause 14, closed by its w20 footer). The
+# grant itself is out-of-band on both roots, see guest_role_assignment_managed.
 variable "guest_provisioning_enabled" {
   description = "Grants the workload identity the Microsoft Graph User.Invite.All application permission via a count-gated azuread_app_role_assignment, so it can provision an Entra B2B guest at invite time (NW-67)."
   type        = bool

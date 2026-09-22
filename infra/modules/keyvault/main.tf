@@ -115,3 +115,21 @@ resource "azurerm_key_vault_secret" "acs_connection" {
     azurerm_role_assignment.workload_secrets_user,
   ]
 }
+
+# ADR-030 D5 (Ask Raffa feedback loop): count-gated on the token being set,
+# because an empty Key Vault secret value is rejected and an environment
+# without a PAT must still apply. Same depends_on RBAC pair as every secret
+# above. Consumed by modules/containerapps' `gh-feedback` handle, API app
+# only.
+resource "azurerm_key_vault_secret" "github_feedback_token" {
+  count = var.github_feedback_token == "" ? 0 : 1
+
+  name         = "github-feedback-token"
+  value        = var.github_feedback_token
+  key_vault_id = azurerm_key_vault.this.id
+
+  depends_on = [
+    azurerm_role_assignment.deployer_secrets_officer,
+    azurerm_role_assignment.workload_secrets_user,
+  ]
+}

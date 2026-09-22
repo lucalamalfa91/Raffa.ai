@@ -836,6 +836,27 @@ per-user conversations.
   citation still navigates to its own `href`. A `calc` citation with no contract (an aggregate such as
   "Annual spend total") sits under Raffa as a plain row -- no dead "View source" control. Follow-up chips post as a new message in
   the same conversation, the same `ask()` path a typed question uses.
+- **Draft and the feedback card** (ADR-030, wave w20) -- a fifth `kind`, `draft`, renders the honest
+  preface as markdown ("I can't create or send emails from Raffa.ai yet, but I can help you write the
+  renewal email…"), then `reply/DraftCard.tsx`: the subject and the body **verbatim** in a pre-wrap
+  block (never through `ReplyMarkdown`/`humanizeReplyText`) with a **Copy email** button
+  (`navigator.clipboard.writeText(subject + blank line + body)`, the `InvitePane.tsx` "Copy link"
+  pattern, flips to "Copied"), then citation cards, actions, follow-ups, and `reply/FeedbackCard.tsx`.
+  The card ("Vuoi segnalarlo al team Raffa.ai perché lo implementi?" [Sì] [No]) shows the three
+  interview questions **one at a time** -- a prefilled free-text field with the public-GitHub notice,
+  then two rows of quick-choice chips -- and submits once through `apiClient.postConversationFeedback`
+  (`index.tsx#submitFeedback`), which appends the server's confirmation turn to the thread
+  (`buildRaffaTurnFromMessage`); every string of the card comes from the wire's own
+  `payload.feedbackOffer`, already in the question's language -- this client owns no copy for it. A
+  capability-gap `redirect` (a reminder, an export, a PO, or an email with no contract to draft for)
+  keeps its single CTA and adds one validated supplier per follow-up chip plus the same card. The card
+  never re-opens: `feedbackDone` is the union of the ids answered in this session and
+  `askViewModel.ts#feedbackSubmittedMessageIds` (read off the confirmation turns'
+  `payload.feedbackResult.forMessageId` on resume). An `external` action (the GitHub issue the
+  submission opened) renders as a plain `<a target="_blank" rel="noopener noreferrer">` in
+  `ActionRow.tsx`, never a router `<Link>`. Every turn now carries `messageId` (`AskTurnView`) and the
+  wire's `payload` (`ConversationPayloadBody`), mapped by `askViewModel.ts#buildReply`; a stored
+  `draft` whose payload lost its email degrades to a plain `answer`, never an empty turn.
 - **Resume** (`/ask/:conversationId`, R-CONV-02 AC-1) -- `useConversation.ts` loads the conversation
   (`GET /api/conversations/{id}`) and turns every stored message, oldest first, into the same turn
   shape a live turn produces (`askViewModel.ts#buildTurnsFromConversation`); a resumed Raffa turn's
@@ -1339,7 +1360,7 @@ web/
   src/
     api/
       generated/schema.ts     # AUTO-GENERATED; do not edit by hand
-      client.ts                # createApiClient(baseUrl, getAccessToken?) -> { getHealth(), createWorkspace({ name }), uploadDocument(tenantId, file), getDocument(tenantId, id), listDocuments(tenantId, query?), getDocumentPreviewUrl(tenantId, id), reprocessDocument(tenantId, id), deleteDocument(tenantId, id), getPortfolio(tenantId, query?), getContract360(tenantId, id), getRenewals(tenantId), getRenewalPriority(tenantId, contractId), getCorrectionHistory(tenantId, id), correctContract(tenantId, id, request), postRenewalAction(tenantId, contractId, request), askRaffa(tenantId, request), uploadQuote(tenantId, file, fields?), getQuoteAssessment(tenantId, id), recalculateQuoteAssessment(tenantId, id, mappings?), captureNegotiationOutcome(tenantId, request), getSavingsKpis(tenantId), getSavingsOpportunities(tenantId), listConversations(tenantId), createConversation(tenantId, request?), getConversation(tenantId, id), postMessage(tenantId, conversationId, request), getCapabilities(), getMarketRecord(id) } -- every method attaches `Authorization: Bearer <token>` when getAccessToken resolves one (task E18/F01/US02/T01, NW-05), through the one `authHeaders` choke point
+      client.ts                # createApiClient(baseUrl, getAccessToken?) -> { getHealth(), createWorkspace({ name }), uploadDocument(tenantId, file), getDocument(tenantId, id), listDocuments(tenantId, query?), getDocumentPreviewUrl(tenantId, id), reprocessDocument(tenantId, id), deleteDocument(tenantId, id), getPortfolio(tenantId, query?), getContract360(tenantId, id), getRenewals(tenantId), getRenewalPriority(tenantId, contractId), getCorrectionHistory(tenantId, id), correctContract(tenantId, id, request), postRenewalAction(tenantId, contractId, request), askRaffa(tenantId, request), uploadQuote(tenantId, file, fields?), getQuoteAssessment(tenantId, id), recalculateQuoteAssessment(tenantId, id, mappings?), captureNegotiationOutcome(tenantId, request), getSavingsKpis(tenantId), getSavingsOpportunities(tenantId), listConversations(tenantId), createConversation(tenantId, request?), getConversation(tenantId, id), postMessage(tenantId, conversationId, request), postConversationFeedback(tenantId, conversationId, request), getCapabilities(), getMarketRecord(id) } -- every method attaches `Authorization: Bearer <token>` when getAccessToken resolves one (task E18/F01/US02/T01, NW-05), through the one `authHeaders` choke point
     config/appConfig.ts       # fetch + validate runtime config
     auth/msalConfig.ts        # AppConfig -> MSAL Configuration (no secret, ever); acquireApiAccessToken(instance, appConfig) -- acquireTokenSilent, falling back to acquireTokenPopup (task E18/F01/US02/T01)
     styles/                   # design system (tokens + component catalogue); see below
