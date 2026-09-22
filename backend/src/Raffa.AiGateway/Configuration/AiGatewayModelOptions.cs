@@ -52,4 +52,9 @@ public sealed class AiGatewayModelOptions
     /// `prebuilt-layout` via configuration, same as any other role.
     /// </summary>
     public AiModelSelection Ocr { get; init; } = new("prebuilt-read", "unconfirmed");
+
+    /// <summary>The `analyst` role behind Ask Raffa's negotiation council
+    /// (<c>AiGateway:Models:Analyst:*</c>). Optional: when unset, <see cref="Answer"/>'s
+    /// deployment is used, so no infrastructure change is needed to run the council.</summary>
+    public AiModelSelection? Analyst { get; init; }
 }

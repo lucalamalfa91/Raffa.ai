@@ -31,7 +31,8 @@ public sealed record SavingsOpportunityResult(
     string? Owner,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
-    decimal? RealizedAmount = null)
+    decimal? RealizedAmount = null,
+    string? OpportunityKey = null)
 {
     /// <summary>
     /// Task E04/F03/US01/T02 (savings-list, the wave-spec's own artifact of that name) — parent

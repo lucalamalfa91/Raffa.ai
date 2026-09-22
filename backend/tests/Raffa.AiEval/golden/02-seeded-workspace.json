@@ -756,5 +756,83 @@
       "note": "R-SUP-04 requires the supplier name wherever a supplier is shown, and R-ASK-08 forbids engineer chrome. AskCopilotService.BuildStructuredFactPackAsync resolves the supplier name only when exactly one contract was named; the multi-contract renewal-window path titles each item with the document type instead, so the reply reads 'OrderForm · OrderForm' and 'Msa · Msa' and the user cannot tell which supplier each row is. The dates are correct — the identity is missing."
     },
     "notes": "A 200-day window (horizon 2027-03-28) catches DocuSign and Salesforce but not Microsoft, so the reply must name two specific suppliers — the case that shows whether a multi-row renewal answer is usable at all."
+  },
+  {
+    "id": "seeded-savings-leve-20k-salesforce-it",
+    "tenantFixture": "seeded",
+    "intent": "savings",
+    "language": "it",
+    "question": "quali leve posso usare per risparmiare 20k sul rinnovo Salesforce?",
+    "expectedKind": "answer",
+    "expectedCitationCorpora": [
+      "calc",
+      "tenant"
+    ],
+    "expectedNumbers": [
+      "20000"
+    ],
+    "expectedMarkdownContains": [
+      "saving target and lever coverage",
+      "Play 1"
+    ],
+    "notes": "The screenshot question that motivated the savings-consultant rework. Savings intent with a 20k goal: the pack leads with the renewal fact, the calculator's target verdict (20000 as a value, the coverage of the grounded levers) and the negotiation council's ranked plays; every number is the calculator's or the market corpus's."
+  },
+  {
+    "id": "seeded-savings-levers-20k-salesforce-en",
+    "tenantFixture": "seeded",
+    "intent": "savings",
+    "language": "en",
+    "question": "what levers can I use to save 20k on the Salesforce renewal?",
+    "expectedKind": "answer",
+    "expectedCitationCorpora": [
+      "calc",
+      "tenant"
+    ],
+    "expectedNumbers": [
+      "20000"
+    ],
+    "expectedMarkdownContains": [
+      "saving target and lever coverage"
+    ],
+    "notes": "English twin of seeded-savings-leve-20k-salesforce-it over identical data."
+  },
+  {
+    "id": "seeded-portfolio_savings_target-40k-quarterly-it",
+    "tenantFixture": "seeded",
+    "intent": "portfolio_savings_target",
+    "language": "it",
+    "question": "come posso salvare 40K sul prossimo quarterly basandomi sui contratti attivi? su quali contratti posso lavorare?",
+    "expectedKind": "answer",
+    "expectedCitationCorpora": [
+      "calc"
+    ],
+    "expectedNumbers": [
+      "40000"
+    ],
+    "expectedMarkdownContains": [
+      "Portfolio"
+    ],
+    "forbiddenSubstrings": [
+      "No K contract"
+    ],
+    "notes": "The second screenshot question. Before this rework the gate read the K of 40K as supplier 'K' and redirected to Documents; now the goal (40000, a 90-day window) plans to the portfolio savings target intent and the calculator ranks the contracts whose notice deadline falls inside the window."
+  },
+  {
+    "id": "seeded-portfolio_savings_target-cut-costs-en",
+    "tenantFixture": "seeded",
+    "intent": "portfolio_savings_target",
+    "language": "en",
+    "question": "how do I cut costs by 40k this quarter across my active contracts?",
+    "expectedKind": "answer",
+    "expectedCitationCorpora": [
+      "calc"
+    ],
+    "expectedNumbers": [
+      "40000"
+    ],
+    "expectedMarkdownContains": [
+      "Portfolio"
+    ],
+    "notes": "English twin of seeded-portfolio_savings_target-40k-quarterly-it; 'cut costs' is in the widened savings lexicon."
   }
 ]

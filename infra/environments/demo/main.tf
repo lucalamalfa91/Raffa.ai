@@ -202,18 +202,28 @@ module "containerapps" {
 # modules/foundry once var.ai_account_attached is true and creates only its
 # own project, deployments and grants. This root's OWN identity module
 # instance only -- never dev's. ADR-004 amendment 2026-09-09: demo is
-# deliberately frontier; amendment 2026-09-21: gpt-5.6-terra for extraction
-# and answers, gpt-5.6-luna for classification (the GPT-5.6 family replaces
-# gpt-5.4 / gpt-5.4-nano: Terra is OpenAI's "competitive with GPT-5.5 at a
-# lower cost" tier, Luna the fastest and cheapest), text-embedding-3-large
-# unchanged -- the backend forces dimensions = 1536 so the pgvector column
-# width never changes. Model version 2026-07-09 is the GA version Azure
-# publishes for all three GPT-5.6 tiers; DataZoneStandard (EU Data Zone)
-# is offered for the family. Removing the gpt-5.4 entries below destroys
-# demo's gpt-5.4-demo / gpt-5.4-nano-demo deployments in the same apply
-# that publishes the new ids to the Container Apps, so a request in flight
-# during the apply may fail once -- acceptable on demo, never do this on a
-# root serving real users without a two-step swap (add, cut over, remove).
+# deliberately frontier (gpt-5.4 for extraction and answers, gpt-5.4-nano
+# for classification, text-embedding-3-large -- the backend forces
+# dimensions = 1536 so the pgvector column width never changes). Every
+# SKU/version below was verified in northeurope for this subscription on
+# 2026-09-09 and applied successfully.
+#
+# ADR-004 amendment 2026-09-22: the GPT-5.6 swap (terra for extract/answer,
+# luna for classify, amendment 2026-09-21) is rolled back. ARM rejected
+# gpt-5.6-terra / gpt-5.6-luna 2026-07-09 in northeurope for BOTH SKUs the
+# module allows: first "The specified SKU 'DataZoneStandard' for model
+# 'gpt-5.6-terra 2026-07-09' is not supported in this region 'northeurope'"
+# (2026-09-21), then the identical InvalidResourceProperties for
+# 'GlobalStandard' (2026-09-22). No SKU this module accepts deploys the
+# family from this account's region today, and the account (aisvc-raffa,
+# rg-raffa-ai, owned by the dev root) cannot move region for demo alone.
+# Do not put GPT-5.6 back here until a deployment of it has been created
+# by hand (Portal or `az cognitiveservices account deployment create`)
+# on aisvc-raffa in northeurope and the SKU that worked is recorded in
+# ADR-004. The failed applies already destroyed gpt-5.4-demo /
+# gpt-5.4-nano-demo (deployment keys changed in the same run), so this
+# apply recreates them and republishes their ids to both Container Apps;
+# text-embedding-3-large-demo was accepted and is untouched.
 module "foundry" {
   source = "../../modules/foundry"
 
@@ -229,15 +239,15 @@ module "foundry" {
   extra_gateway_env         = var.ai_gateway_extra_env
 
   model_deployments = {
-    "gpt-5.6-terra"          = { model_version = "2026-07-09", sku_name = "DataZoneStandard", capacity = 200 }
-    "gpt-5.6-luna"           = { model_version = "2026-07-09", sku_name = "DataZoneStandard", capacity = 200 }
+    "gpt-5.4"                = { model_version = "2026-03-05", sku_name = "DataZoneStandard", capacity = 200 }
+    "gpt-5.4-nano"           = { model_version = "2026-03-17", sku_name = "DataZoneStandard", capacity = 200 }
     "text-embedding-3-large" = { model_version = "1", sku_name = "GlobalStandard", capacity = 100 }
   }
 
   model_roles = {
-    classify = "gpt-5.6-luna"
-    extract  = "gpt-5.6-terra"
-    answer   = "gpt-5.6-terra"
+    classify = "gpt-5.4-nano"
+    extract  = "gpt-5.4"
+    answer   = "gpt-5.4"
     embed    = "text-embedding-3-large"
   }
 }

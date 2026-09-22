@@ -359,5 +359,159 @@ public sealed class SavingsOpportunityService(
         opportunity.Owner,
         opportunity.CreatedAt,
         opportunity.UpdatedAt,
-        realizedAmount);
+        realizedAmount,
+        opportunity.OpportunityKey);
+
+    public const string GeneratedKeyRequiredError = "Every generated opportunity needs a non-blank key.";
+    public const string GeneratedKeyDuplicateError = "Generated opportunity keys must be unique within one call.";
+
+    private const string AuditGeneratedAction = "savings_opportunity.generated";
+
+    /// <summary>
+    /// Upserts the opportunities Ask Raffa's savings lever calculator produced for one contract
+    /// (the same "persist-all, reconcile by key" shape <c>RenewalNegotiationTodoService.UpsertAsync</c>
+    /// uses for negotiation points): a row per <see cref="GeneratedSavingsOpportunity.Key"/> is
+    /// created or refreshed; a row a person already moved past <see cref="SavingsOpportunityStatus.Identified"/>
+    /// (owned, in progress, realized, dismissed) is never touched; a generated row whose key is absent
+    /// from this call is left as it is (the levers depend on the question's goal, so absence is not
+    /// evidence the saving is gone). Validation runs before any tenant-scoped write; one audit entry
+    /// per call.
+    /// </summary>
+    public async Task<Result<IReadOnlyList<SavingsOpportunityResult>>> UpsertGeneratedAsync(
+        TenantId tenantId,
+        EntityId contractId,
+        IReadOnlyCollection<GeneratedSavingsOpportunity> generated,
+        string actor,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(generated);
+        ArgumentException.ThrowIfNullOrWhiteSpace(actor);
+
+        if (generated.Any(g => string.IsNullOrWhiteSpace(g.Key)))
+        {
+            return Result<IReadOnlyList<SavingsOpportunityResult>>.Failure(GeneratedKeyRequiredError);
+        }
+
+        if (generated.Select(g => g.Key).Distinct(StringComparer.Ordinal).Count() != generated.Count)
+        {
+            return Result<IReadOnlyList<SavingsOpportunityResult>>.Failure(GeneratedKeyDuplicateError);
+        }
+
+        foreach (var g in generated)
+        {
+            if (string.IsNullOrWhiteSpace(g.Type))
+            {
+                return Result<IReadOnlyList<SavingsOpportunityResult>>.Failure(TypeRequiredError);
+            }
+
+            if (g.CurrentSpend <= 0m)
+            {
+                return Result<IReadOnlyList<SavingsOpportunityResult>>.Failure(CurrentSpendMustBePositiveError);
+            }
+
+            if (string.IsNullOrWhiteSpace(g.Currency))
+            {
+                return Result<IReadOnlyList<SavingsOpportunityResult>>.Failure(CurrencyRequiredError);
+            }
+
+            if (g.EstimatedSavingsLow < 0m || g.EstimatedSavingsHigh < 0m || g.EstimatedSavingsHigh < g.EstimatedSavingsLow)
+            {
+                return Result<IReadOnlyList<SavingsOpportunityResult>>.Failure(EstimatedSavingsRangeInvalidError);
+            }
+
+            if (g.Confidence is < 0d or > 1d)
+            {
+                return Result<IReadOnlyList<SavingsOpportunityResult>>.Failure(ConfidenceOutOfRangeError);
+            }
+        }
+
+        using var _ = tenantContext.BeginScope(tenantId);
+
+        var existing = await dbContext.SavingsOpportunities
+            .Where(o => o.TenantId == tenantId && o.ContractId == contractId && o.OpportunityKey != null)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var byKey = existing.ToDictionary(o => o.OpportunityKey!, StringComparer.Ordinal);
+        var now = clock.UtcNow;
+        var touched = new List<SavingsOpportunity>();
+        var created = 0;
+        var refreshed = 0;
+        var frozen = 0;
+
+        foreach (var g in generated)
+        {
+            var type = g.Type.Length <= 100 ? g.Type : g.Type[..100];
+
+            if (byKey.TryGetValue(g.Key, out var row))
+            {
+                if (row.Status != SavingsOpportunityStatus.Identified)
+                {
+                    frozen++;
+                    touched.Add(row);
+                    continue;
+                }
+
+                row.SupplierId = g.SupplierId ?? row.SupplierId;
+                row.Type = type;
+                row.CurrentSpend = g.CurrentSpend;
+                row.Currency = g.Currency;
+                row.EstimatedSavingsLow = g.EstimatedSavingsLow;
+                row.EstimatedSavingsHigh = g.EstimatedSavingsHigh;
+                row.Confidence = g.Confidence;
+                row.UpdatedAt = now;
+                refreshed++;
+                touched.Add(row);
+                continue;
+            }
+
+            var opportunity = new SavingsOpportunity
+            {
+                TenantId = tenantId,
+                SupplierId = g.SupplierId,
+                ContractId = contractId,
+                Type = type,
+                CurrentSpend = g.CurrentSpend,
+                Currency = g.Currency,
+                EstimatedSavingsLow = g.EstimatedSavingsLow,
+                EstimatedSavingsHigh = g.EstimatedSavingsHigh,
+                Confidence = g.Confidence,
+                Status = SavingsOpportunityStatus.Identified,
+                Owner = null,
+                OpportunityKey = g.Key,
+                CreatedAt = now,
+                UpdatedAt = now,
+            };
+            dbContext.SavingsOpportunities.Add(opportunity);
+            created++;
+            touched.Add(opportunity);
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        await auditWriter.WriteAsync(
+            new AuditEntry(
+                tenantId,
+                actor,
+                AuditGeneratedAction,
+                AuditResourceType,
+                contractId.Value.ToString(),
+                now,
+                $"created={created} refreshed={refreshed} frozen={frozen}"),
+            cancellationToken).ConfigureAwait(false);
+
+        return Result<IReadOnlyList<SavingsOpportunityResult>>.Success(touched.Select(o => ToResult(o)).ToList());
+    }
 }
+
+/// <summary>One lever-derived opportunity to upsert — see
+/// <see cref="SavingsOpportunityService.UpsertGeneratedAsync"/>.</summary>
+public sealed record GeneratedSavingsOpportunity(
+    string Key,
+    string Type,
+    EntityId? SupplierId,
+    decimal CurrentSpend,
+    string Currency,
+    decimal EstimatedSavingsLow,
+    decimal EstimatedSavingsHigh,
+    double Confidence);

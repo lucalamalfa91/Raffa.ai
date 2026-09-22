@@ -84,4 +84,17 @@ public interface IAiGateway
     /// </summary>
     Task<Result<AiOcrResult>> OcrAsync(
         AiOcrRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The `analyst` role (see <see cref="AiAnalysisRequest"/>): one strict-JSON reasoning step
+    /// over caller-supplied evidence, used by Ask Raffa's negotiation council. A default
+    /// implementation returns a named failure so a test double that predates the role keeps
+    /// compiling — the council treats that failure as "no council for this turn", never as an
+    /// error the user sees. Every production gateway (Foundry, fixture, logging decorator)
+    /// overrides it.
+    /// </summary>
+    Task<Result<AiAnalysisResult>> AnalyzeAsync(
+        AiAnalysisRequest request, CancellationToken cancellationToken = default) =>
+        Task.FromResult(Result<AiAnalysisResult>.Failure(
+            $"{GetType().Name} does not implement the analyst role."));
 }

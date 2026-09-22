@@ -41,6 +41,6 @@ output "foundry_project_id" {
 }
 
 output "ai_model_deployment_names" {
-  description = "Azure model name -> deployment name on the shared account (gpt-5.6-terra -> gpt-5.6-terra-demo, ...)."
+  description = "Azure model name -> deployment name on the shared account (gpt-5.4 -> gpt-5.4-demo, ...)."
   value       = module.foundry.model_deployment_names
 }

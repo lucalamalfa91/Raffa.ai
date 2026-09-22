@@ -215,4 +215,81 @@ public sealed class IntentPlannerTests
     {
         Assert.Throws<ArgumentException>(() => _planner.Plan(question, namedSupplier: null));
     }
+
+    // ----- Savings consultant (task: Ask Raffa as a savings/negotiation consultant) -----
+
+    [Fact]
+    public void Leve_per_risparmiare_20k_scoped_plans_to_savings_with_the_goal()
+    {
+        var result = _planner.Plan("quali leve posso usare per risparmiare 20 k sul rinnovo", "ServiceNow");
+
+        Assert.Equal(AskIntent.Savings, result.Intent);
+        Assert.Equal("ServiceNow", result.NamedSupplier);
+        Assert.NotNull(result.Goal);
+        Assert.Equal(20000m, result.Goal!.TargetAmount);
+    }
+
+    [Fact]
+    public void Salvare_40K_sul_quarterly_unscoped_plans_to_portfolio_savings_target()
+    {
+        var result = _planner.Plan(
+            "come posso salvare 40K sul prossimo quarterly basandoti sui contratti attivi? su quali contratto posso lavorare?",
+            namedSupplier: null);
+
+        Assert.Equal(AskIntent.PortfolioSavingsTarget, result.Intent);
+        Assert.Equal(40000m, result.Goal!.TargetAmount);
+        Assert.Equal(90, result.Goal.WindowDays);
+    }
+
+    [Fact]
+    public void Cut_costs_this_quarter_in_english_plans_to_portfolio_savings_target()
+    {
+        var result = _planner.Plan("how do I cut costs by 50k this quarter across active contracts?", namedSupplier: null);
+
+        Assert.Equal(AskIntent.PortfolioSavingsTarget, result.Intent);
+        Assert.Equal(50000m, result.Goal!.TargetAmount);
+    }
+
+    [Fact]
+    public void Savings_lexicon_without_a_goal_still_plans_to_portfolio_strategy()
+    {
+        var result = _planner.Plan("dove posso tagliare i costi?", namedSupplier: null);
+
+        Assert.Equal(AskIntent.PortfolioStrategy, result.Intent);
+        Assert.False(result.Goal!.HasTarget);
+    }
+
+    [Fact]
+    public void A_bare_follow_up_inherits_the_previous_user_question()
+    {
+        var result = _planner.Plan(
+            "si ma come risparmio almeno 20K? non mi hai risposto",
+            "ServiceNow",
+            previousUserQuestion: "quali leve posso usare per risparmiare 20 k sul rinnovo");
+
+        Assert.Equal(AskIntent.Savings, result.Intent);
+        Assert.Equal(20000m, result.Goal!.TargetAmount);
+        Assert.StartsWith("bare follow-up", result.Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_full_question_opening_with_come_is_never_treated_as_a_follow_up()
+    {
+        var result = _planner.Plan(
+            "Come dovrei affrontare il rinnovo Salesforce?",
+            "Salesforce",
+            previousUserQuestion: "dove posso risparmiare 20k?");
+
+        Assert.Equal(AskIntent.RenewalStrategy, result.Intent);
+        Assert.DoesNotContain("follow-up", result.Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_bare_follow_up_without_history_falls_through_to_the_default()
+    {
+        var result = _planner.Plan("e quindi?", namedSupplier: null, previousUserQuestion: null);
+
+        Assert.DoesNotContain("follow-up", result.Reason, StringComparison.Ordinal);
+        Assert.Null(result.Goal!.TargetAmount);
+    }
 }

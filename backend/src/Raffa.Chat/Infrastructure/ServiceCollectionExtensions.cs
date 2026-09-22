@@ -2,6 +2,7 @@ using Raffa.Chat.Application;
 using Raffa.Chat.Application.Answering;
 using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Conversations;
+using Raffa.Chat.Application.Council;
 using Raffa.Chat.Application.Gate;
 using Raffa.Chat.Application.Pack;
 using Raffa.Chat.Application.Planning;
@@ -88,6 +89,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<DomainGate>();
         services.AddScoped<IntentPlanner>();
         services.AddScoped<AnswerComposer>();
+
+        // The negotiation council (Application.Council): three analyst calls over the pack for the
+        // savings/negotiation intents. TryAdd on the options so a host that bound Chat:Council
+        // before calling this keeps its own values; the default is "on" with the documented bounds.
+        services.TryAddSingleton(new CouncilOptions());
+        services.AddScoped<NegotiationCouncil>();
 
         // TryAdd: always-usable default (PackBudget.DefaultMaxTokens) with no IConfiguration
         // dependency at all — this project has no PackageReference for

@@ -20,7 +20,7 @@ public sealed record MarketRecordDetail(MarketDeal Deal, string ProvenanceLabel)
 /// Postgres+pgvector database with no HTTP host in the loop — mirrors
 /// <c>Raffa.Documents.Contracts.Application.DocumentQueryService</c>'s identical split.
 /// </summary>
-public sealed class MarketRecordQueryService(MarketDbContext dbContext)
+public sealed class MarketRecordQueryService(MarketDbContext dbContext) : IMarketDealLookup
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -49,5 +49,35 @@ public sealed class MarketRecordQueryService(MarketDbContext dbContext)
                 "MarketDeal -- this should be impossible for a row MarketIngestionService wrote.");
 
         return new MarketRecordDetail(deal, record.ProvenanceLabel);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<MarketDeal>> GetBySupplierAsync(
+        string supplierName, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(supplierName))
+        {
+            return [];
+        }
+
+        // The corpus is small (one feed, tens to low hundreds of rows) and the supplier lives inside
+        // PayloadJson, so this filters in memory -- the same whole-corpus load
+        // MarketFeedBenchmarkAdapter.LoadDealsAsync already performs per benchmark query.
+        var records = await dbContext.MarketRecords
+            .AsNoTracking()
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var deals = new List<MarketDeal>();
+        foreach (var record in records)
+        {
+            var deal = JsonSerializer.Deserialize<MarketDeal>(record.PayloadJson, JsonOptions);
+            if (deal is not null && MarketSupplierMatch.Matches(deal.Supplier, supplierName))
+            {
+                deals.Add(deal);
+            }
+        }
+
+        return deals.OrderByDescending(d => d.UpdatedAt).ToList();
     }
 }
