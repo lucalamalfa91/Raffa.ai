@@ -322,7 +322,7 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
       // Composer chips + note.
       expect(screen.getByRole("button", { name: "What can Raffa do?" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "When does this contract expire?" })).toBeInTheDocument();
-      expect(screen.getByText("Procurement only · cites or abstains")).toBeInTheDocument();
+      expect(screen.getByText("Procurement only · cites its sources")).toBeInTheDocument();
     });
 
     it("names the first validated supplier in the header scope line and the starter questions", async () => {
