@@ -1153,10 +1153,20 @@ class CheckEnvRootsModelRolesCompleteTests(unittest.TestCase):
     def test_env_root_model_bindings_parses_the_real_roots(self) -> None:
         bindings = fcv.env_root_model_bindings()
         self.assertEqual(set(bindings), set(fcv.ENVS))
-        self.assertEqual(set(bindings["dev"]["roles"]), set(fcv.MODEL_ROLES))
+        # ADR-030: both roots bind the optional research role on top of the four required ones.
+        self.assertEqual(set(bindings["dev"]["roles"]), set(fcv.MODEL_ROLES) | set(fcv.OPTIONAL_MODEL_ROLES))
+        self.assertEqual(set(bindings["demo"]["roles"]), set(fcv.MODEL_ROLES) | set(fcv.OPTIONAL_MODEL_ROLES))
         self.assertEqual(bindings["dev"]["roles"]["embed"], "text-embedding-3-small")
+        self.assertEqual(bindings["dev"]["roles"]["research"], "gpt-5.4-nano")
         self.assertEqual(bindings["demo"]["roles"]["extract"], "gpt-5.4")
         self.assertEqual(bindings["demo"]["roles"]["classify"], "gpt-5.4-nano")
+        self.assertEqual(bindings["demo"]["roles"]["research"], "gpt-5.4")
+
+    def test_an_unknown_role_is_still_rejected_and_research_is_optional(self) -> None:
+        bindings = fcv.env_root_model_bindings()
+        # Every required role present and only a known optional one on top -> no complaint.
+        self.assertEqual(set(bindings["dev"]["roles"]) - set(fcv.MODEL_ROLES), set(fcv.OPTIONAL_MODEL_ROLES))
+        self.assertNotIn("ocr", bindings["dev"]["roles"])
 
     def test_currently_passes_against_the_real_repo(self) -> None:
         passed, detail = fcv.check_env_roots_model_roles_complete()
