@@ -219,7 +219,7 @@ variable "github_feedback_token_secret_id" {
 }
 
 variable "feedback_github_enabled" {
-  description = "Publishes Feedback__GitHub__Enabled on the API app -- true only when this is true AND a token secret exists (dev: true; demo: false until its own post-promotion acceptance -- infra/environments/{dev,demo}/variables.tf)."
+  description = "Publishes Feedback__GitHub__Enabled on the API app -- true only when this is true AND a token secret exists (true on both dev and demo -- infra/environments/{dev,demo}/variables.tf; the token's presence in each HCP workspace is the real gate)."
   type        = bool
   default     = false
 }

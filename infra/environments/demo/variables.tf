@@ -49,8 +49,9 @@ variable "ai_gateway_extra_env" {
 # moves at this merge even though its code does not).
 # ADR-030 D5 (Ask Raffa feedback loop): the GitHub token is a SENSITIVE
 # HCP workspace variable, never a .tf literal (ADR-011); empty means no
-# secret and a stored-only feedback loop. The switch mirrors
-# invitation_mail_enabled's per-environment lifecycle.
+# secret and a stored-only feedback loop. Unlike invitation_mail_enabled,
+# the switch is on for demo too (owner's ruling 2026-09-22): a switch with
+# no token behind it is harmless, the token's presence is the real gate.
 variable "github_feedback_token" {
   description = "Fine-grained GitHub PAT (Issues: write on lucalamalfa91/Raffa.ai) for Ask Raffa's feedback issues. Set as a sensitive HCP workspace variable; empty = no secret (ADR-030 D5)."
   type        = string
@@ -59,9 +60,9 @@ variable "github_feedback_token" {
 }
 
 variable "feedback_github_enabled" {
-  description = "Publishes Feedback__GitHub__Enabled to the API app (ADR-030 D5). demo: false until its own post-promotion acceptance, like invitation_mail_enabled."
+  description = "Publishes Feedback__GitHub__Enabled to the API app (ADR-030 D5). demo: true from this apply (owner's ruling 2026-09-22), effective only once the raffa-demo HCP workspace carries github_feedback_token -- without the secret the AND-gate in modules/containerapps keeps the publisher off and every request stored-only."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "invitation_mail_enabled" {

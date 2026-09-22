@@ -42,9 +42,9 @@ opens a GitHub issue on `lucalamalfa91/Raffa.ai` with a public-safe body.
 | # | What | How |
 |---|---|---|
 | 1 | Merge the PR into `main`; `dev` deploys (backend + web); CI applies `chat.sql` (ADR-021: `payload_json` column + `feature_request` table + RLS) | `backend.yml` "Verify schema applied" green |
-| 2 | Set the GitHub token in the **`raffa-dev` HCP workspace**: sensitive variable `github_feedback_token` = a fine-grained PAT with **Issues: write on `lucalamalfa91/Raffa.ai` only** (no other repo, no other permission) | HCP UI → workspace variables |
-| 3 | HCP VCS apply of `infra/` on `raffa-dev` — creates `github-feedback-token`, the `gh-feedback` secret handle and `Feedback__GitHub__*` on the API app (`feedback_github_enabled` is `true` on `dev`) | confirm the apply in the HCP UI, **then** the API revision restarts |
-| 4 | Without step 2 (or on `demo`, where `feedback_github_enabled` is `false`): nothing to do — the API boots with the null publisher and every submission is `status: recorded` | `az containerapp show … --query "properties.template.containers[0].env[?name=='Feedback__GitHub__Enabled']"` → `false` |
+| 2 | Set the GitHub token in **both** HCP workspaces, `raffa-dev` and `raffa-demo`: sensitive variable `github_feedback_token` = a fine-grained PAT with **Issues: write on `lucalamalfa91/Raffa.ai` only** (no other repo, no other permission); one token per workspace, so either can be rotated alone | HCP UI → workspace variables |
+| 3 | HCP VCS apply of `infra/` on each workspace — creates `github-feedback-token`, the `gh-feedback` secret handle and `Feedback__GitHub__*` on the API app (`feedback_github_enabled` is `true` on `dev` **and** `demo`) | confirm the apply in the HCP UI, **then** the API revision restarts |
+| 4 | Without step 2 on a workspace: nothing to do — the switch is ANDed with the token's presence, so the API boots with the null publisher and every submission is `status: recorded` | `az containerapp show … --query "properties.template.containers[0].env[?name=='Feedback__GitHub__Enabled']"` → `false` |
 
 ### 0.3 The values every command below needs
 
@@ -146,7 +146,7 @@ answers, the footer — **no question text, no supplier name, no amount, no e-ma
 A second submit for the same turn → `409` with the same numbers. Audit row
 `conversation.feedback.submitted`: `gapKey=… status=issue_opened issueNumber=N`, never the answers.
 
-Pass on `demo` (no token) or with the publisher down: `201`, `status: "recorded"`, "Grazie, la tua
+Pass on a workspace with no token, or with the publisher down: `201`, `status: "recorded"`, "Grazie, la tua
 segnalazione … è stata registrata", no action; `feature_request.status` is `recorded` (or
 `issue_failed` with `publish_error` set — an operator's concern, never shown).
 
@@ -205,8 +205,9 @@ ask-raffa-v2-data-flow.md` (§4 sequence, §5 five kinds, §8 provenance rows),
 2. Set `github_feedback_token` in `raffa-dev` (HCP, sensitive) → VCS apply → API revision restarts
    with `Feedback__GitHub__Enabled=true`.
 3. Walk W20-1…W20-4 on `dev`; check the issue on GitHub.
-4. Tag `demo-v*`; `demo` gets the code with `feedback_github_enabled=false` — W20-4 must read
-   `recorded` there until a one-line PR flips the flag after its own token is set.
+4. Set `github_feedback_token` in `raffa-demo`, confirm its HCP apply, then tag `demo-v*`; walk
+   W20-4 on `demo` too — the issue title reads `(demo)`. Until the token is set there, W20-4 reads
+   `recorded` on `demo` with no flag change needed.
 
 ## Known gaps that shape acceptance today
 

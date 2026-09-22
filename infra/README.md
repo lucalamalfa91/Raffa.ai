@@ -281,9 +281,12 @@ reads, and the API keeps every request stored-only. `Feedback__GitHub__Enabled` 
 `var.feedback_github_enabled && <a token secret exists>`, so an environment
 without a token can never fail closed at startup; `Feedback__Environment`
 carries the environment name into every issue body. Per-environment switch:
-`feedback_github_enabled` is `true` on `dev`, `false` on `demo` until its
-own post-promotion acceptance. Rotation is an operator act: change the HCP
-variable, apply — no code change, no image rebuild.
+`feedback_github_enabled` is `true` on **both** `dev` and `demo` (owner's
+ruling 2026-09-22 — unlike `invitation_mail_enabled`, a switch with no token
+behind it is harmless, so the token's presence in each HCP workspace is the
+real gate: set `github_feedback_token` in `raffa-demo` as well to get issues
+from `demo`). Rotation is an operator act: change the HCP variable, apply —
+no code change, no image rebuild.
 
 **Guest provisioning (NW-67).** `modules/identity` carries a `count`-gated
 `azuread_app_role_assignment` granting the workload identity the Microsoft
