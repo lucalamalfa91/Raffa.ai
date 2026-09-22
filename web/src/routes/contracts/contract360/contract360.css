@@ -509,7 +509,9 @@
    min-width:650px grid minmax(150px,2.2fr) minmax(44px,.6fr) minmax(84px,1fr) minmax(84px,1fr)
    minmax(96px,1.2fr) minmax(112px,1fr);gap:0 14px · head 11px uppercase under a 2px text rule ·
    rows padding:14px 0, 1px divider, 13px tabular · 6px bar track (neutral-200) with a neutral-500
-   market bar and a text/accent pay bar at .85 · foot: note 13px neutral-600 + total heading 16px. */
+   market bar and a text/accent pay bar at .85 (accent when paying above the market P50; both bars
+   scaled to the larger of price and P50) · market cell: P50 over an 11px "region · term · n" line ·
+   foot: note 13px neutral-600 + total heading 16px. */
 
 .contract360-products-scroll {
   overflow-x: auto;
@@ -564,6 +566,12 @@
 
 .contract360-product-market {
   color: var(--color-neutral-700);
+}
+
+.contract360-product-market-meta {
+  font-size: 11px;
+  color: var(--color-neutral-600);
+  white-space: nowrap;
 }
 
 .contract360-product-delta {

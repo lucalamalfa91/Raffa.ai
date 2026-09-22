@@ -254,6 +254,7 @@ public static class ContractsEndpointExtensions
         ISupplierNameLookup supplierNameLookup,
         ITenantContext tenantContext,
         ICallerContext callerContext,
+        LineItemMarketPriceService lineItemMarketPriceService,
         CancellationToken cancellationToken)
     {
         // NW-05 (ADR-010 w15 footer; ADR-022 w15 footer clause 2): identity first, then the tenant
@@ -302,7 +303,13 @@ public static class ContractsEndpointExtensions
             .GetReadinessAsync(tenantId, new EntityId(contractGuid), cancellationToken)
             .ConfigureAwait(false);
 
-        return Results.Ok(ToContract360Response(result, supplierName, readiness));
+        // Each line's stored market comparison (written at extraction), re-priced here only when
+        // it is missing or stale -- see LineItemMarketPriceService for the refresh rule.
+        var marketPrices = await lineItemMarketPriceService
+            .GetCurrentAsync(tenantId, new EntityId(contractGuid), cancellationToken)
+            .ConfigureAwait(false);
+
+        return Results.Ok(ToContract360Response(result, supplierName, readiness, marketPrices));
     }
 
     /// <summary>
@@ -318,7 +325,8 @@ public static class ContractsEndpointExtensions
     private static object ToContract360Response(
         Contract360Result result,
         string? supplierName,
-        ContractReadiness readiness)
+        ContractReadiness readiness,
+        IReadOnlyDictionary<EntityId, LineItemMarketPrice> marketPrices)
     {
         var header = result.Header;
         var overview = result.Overview;
@@ -394,6 +402,7 @@ public static class ContractsEndpointExtensions
                     sourceSpan = p.SourceSpan,
                     sourcePage = p.SourcePage,
                     confidence = p.Confidence,
+                    market = ToMarketResponse(marketPrices.GetValueOrDefault(p.LineItemId)),
                 }),
                 clauses = result.Clauses.Select(c => new
                 {
@@ -461,6 +470,32 @@ public static class ContractsEndpointExtensions
             },
         };
     }
+
+    /// <summary>
+    /// A product's market comparison on the wire: <see langword="null"/> when the line has never
+    /// been compared (no market module composed in), <c>matched: false</c> when it was and no
+    /// comparable record exists, otherwise the record's P25/P50/P75 with the provenance every
+    /// market figure must carry (ADR-001 w17 clause 4: source, sample size, region/term, as-of).
+    /// </summary>
+    private static object? ToMarketResponse(LineItemMarketPrice? price) =>
+        price is null
+            ? null
+            : new
+            {
+                matched = price.Matched,
+                recordId = price.RecordId,
+                product = price.Product,
+                geography = price.Geography,
+                currency = price.Currency,
+                termMonths = price.TermMonths,
+                unitPriceP25 = price.UnitPriceP25,
+                unitPriceP50 = price.UnitPriceP50,
+                unitPriceP75 = price.UnitPriceP75,
+                sampleSize = price.SampleSize,
+                provenance = price.Provenance,
+                marketUpdatedAt = price.MarketUpdatedAt,
+                checkedAt = price.CheckedAt,
+            };
 
     private static async Task<IResult> CorrectContractAsync(
         string id,

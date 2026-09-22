@@ -140,6 +140,21 @@ function contract(overrides: Partial<Contract360Body> = {}): Contract360Body {
           sourceSpan: "§6.2",
           sourcePage: 9,
           confidence: 0.97,
+          market: {
+            matched: true,
+            recordId: "MKT-DBU-CH",
+            product: "Premium DBU",
+            geography: "CH",
+            currency: "CHF",
+            termMonths: 12,
+            unitPriceP25: 0.4,
+            unitPriceP50: 0.5,
+            unitPriceP75: 0.6,
+            sampleSize: 40,
+            provenance: "representative market data · mock feed · updated 2026-07-01",
+            marketUpdatedAt: "2026-07-01T00:00:00Z",
+            checkedAt: "2026-09-22T08:00:00Z",
+          },
         },
       ],
       clauses: [
@@ -994,6 +1009,11 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
       expect(within(products).getByText("CHF 0.55")).toBeInTheDocument();
       expect(within(products).getByText("CHF 66,000")).toBeInTheDocument();
       expect(within(products).getByText("CHF 500k")).toBeInTheDocument();
+      // The line's stored market comparison: P50 with its region · term · n, and the delta vs it.
+      expect(within(products).getByText("CHF 0.5")).toBeInTheDocument();
+      expect(within(products).getByText("CH · 12 mo · n=40")).toBeInTheDocument();
+      expect(within(products).getByText("+10%")).toHaveClass("is-accent");
+      expect(within(products).getByText(/median \(P50\)/)).toBeInTheDocument();
 
       const obligations = screen.getByRole("region", { name: "Obligations" });
       expect(within(obligations).getByText("You must")).toBeInTheDocument();

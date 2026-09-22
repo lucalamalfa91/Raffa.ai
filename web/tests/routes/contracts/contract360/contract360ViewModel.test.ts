@@ -35,11 +35,13 @@ import {
   buildRiskItems,
   buildScoreParts,
   buildLeverCards,
+  buildProductNote,
   buildClauseGroups,
   buildClosedOutcome,
   standardClausesLabel,
   terminatedActionText,
-  PRODUCT_NOTE,
+  PRODUCT_NOTE_NO_MATCH,
+  PRODUCT_NOTE_UNCHECKED,
   SECTION_COPY,
   clauseViewerHref,
   computeNeedsAttention,
@@ -47,6 +49,7 @@ import {
   formatPriorityFact,
   formatReviewCountLine,
   formatShortReference,
+  formatVersusMarket,
   isExtractedRowShown,
   formatTrackerMeta,
   getClauseRiskTag,
@@ -97,6 +100,26 @@ function product(overrides: Partial<Contract360ProductBody> = {}): Contract360Pr
     sourceSpan: "§6.2",
     sourcePage: 9,
     confidence: 0.97,
+    market: null,
+    ...overrides,
+  };
+}
+
+function marketBand(overrides: Partial<NonNullable<Contract360ProductBody["market"]>> = {}): NonNullable<Contract360ProductBody["market"]> {
+  return {
+    matched: true,
+    recordId: "MKT-DBU-CH",
+    product: "Premium DBU",
+    geography: "CH",
+    currency: "CHF",
+    termMonths: 12,
+    unitPriceP25: 0.4,
+    unitPriceP50: 0.5,
+    unitPriceP75: 0.6,
+    sampleSize: 40,
+    provenance: "representative market data · mock feed · updated 2026-07-01",
+    marketUpdatedAt: "2026-07-01T00:00:00Z",
+    checkedAt: "2026-09-22T08:00:00Z",
     ...overrides,
   };
 }
@@ -744,14 +767,36 @@ describe("the six sections (Raffa.ai V2.dc.html CONTRACT 360)", () => {
     expect(buildLeverCards(null)).toEqual([]);
   });
 
-  it("02 Products & pricing: pay figures from the line, market and delta an honest dash, unofficialized lines dashed but kept", () => {
+  it("02 Products & pricing: pay figures from the line; before any market comparison, market and delta an honest dash; unofficialized lines dashed but kept", () => {
     const [line] = buildProductLines([product()], "CHF");
-    expect(line).toMatchObject({ name: "Premium DBU — committed", meta: "SKU-1 · DBU/yr", qty: "120,000", price: "CHF 0.55", market: "—", delta: "—", payWidth: "100%", marketWidth: "0%", annual: "CHF 66,000" });
+    expect(line).toMatchObject({ name: "Premium DBU — committed", meta: "SKU-1 · DBU/yr", qty: "120,000", price: "CHF 0.55", market: "—", marketMeta: "", marketTitle: null, delta: "—", payWidth: "100%", marketWidth: "0%", annual: "CHF 66,000" });
     const [sourced] = buildProductLines([product({ confidence: 0.71 })], "CHF");
     expect(sourced.price).toBe("CHF 0.55");
     const [unofficial] = buildProductLines([product({ confidence: 0.71, sourceSpan: null, sourcePage: null })], "CHF");
     expect(unofficial).toMatchObject({ name: "Premium DBU — committed", qty: UNOFFICIALIZED_PLACEHOLDER, price: UNOFFICIALIZED_PLACEHOLDER, annual: UNOFFICIALIZED_PLACEHOLDER, payWidth: "0%" });
-    expect(PRODUCT_NOTE).toMatch(/Benchmark Service/);
+    expect(buildProductNote([product()])).toBe(PRODUCT_NOTE_UNCHECKED);
+  });
+
+  it("02 Products & pricing: a matched line shows the market P50 with region · term · n, the delta vs P50 and bars scaled to the larger", () => {
+    const [above] = buildProductLines([product({ market: marketBand() })], "CHF");
+    expect(above).toMatchObject({ market: "CHF 0.5", marketMeta: "CH · 12 mo · n=40", delta: "+10%", deltaAccent: true, payWidth: "100%", marketWidth: "91%" });
+    expect(above.marketTitle).toBe("Premium DBU · P25 CHF 0.4 – P75 CHF 0.6 · representative market data · mock feed · updated 2026-07-01");
+
+    const [below] = buildProductLines([product({ unitPrice: 0.4, market: marketBand() })], "CHF");
+    expect(below).toMatchObject({ delta: "-20%", deltaAccent: false, payWidth: "80%", marketWidth: "100%" });
+    expect(formatVersusMarket(0.5, 0.5)).toBe("0%");
+
+    // Compared, nothing comparable: an honest dash that says so, the pay bar full.
+    const noMatch = marketBand({ matched: false, recordId: null, product: null, geography: null, currency: null, termMonths: null, unitPriceP25: null, unitPriceP50: null, unitPriceP75: null, sampleSize: null, provenance: null, marketUpdatedAt: null });
+    const [unmatched] = buildProductLines([product({ market: noMatch })], "CHF");
+    expect(unmatched).toMatchObject({ market: "—", marketMeta: "no match", marketTitle: null, delta: "—", deltaAccent: false, payWidth: "100%", marketWidth: "0%" });
+
+    // An unofficialized price still shows the market figure, but no delta is drawn against a hidden price.
+    const [hidden] = buildProductLines([product({ confidence: 0.71, sourceSpan: null, sourcePage: null, market: marketBand() })], "CHF");
+    expect(hidden).toMatchObject({ price: UNOFFICIALIZED_PLACEHOLDER, market: "CHF 0.5", delta: "—", payWidth: "0%", marketWidth: "0%" });
+
+    expect(buildProductNote([product({ market: noMatch })])).toBe(PRODUCT_NOTE_NO_MATCH);
+    expect(buildProductNote([product({ market: noMatch }), product({ market: marketBand() })])).toMatch(/median \(P50\).*same supplier, product and currency.*mock feed/);
   });
 
   it("03 Clauses that matter: High/Critical push, Medium raise, the rest standard; the ask slot is the leverage copy", () => {

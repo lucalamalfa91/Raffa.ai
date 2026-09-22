@@ -1043,3 +1043,79 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260922184249_AddContractLineItemMarketPrice') THEN
+    CREATE TABLE contract_line_item_market_price (
+        id uuid NOT NULL,
+        line_item_id uuid NOT NULL,
+        contract_id uuid NOT NULL,
+        record_id character varying(100),
+        product character varying(300),
+        geography character varying(20),
+        currency character varying(3),
+        term_months integer,
+        unit_price_p25 numeric(18,4),
+        unit_price_p50 numeric(18,4),
+        unit_price_p75 numeric(18,4),
+        sample_size integer,
+        provenance character varying(300),
+        market_updated_at timestamp with time zone,
+        checked_at timestamp with time zone NOT NULL,
+        tenant_id uuid NOT NULL,
+        CONSTRAINT pk_contract_line_item_market_price PRIMARY KEY (id),
+        CONSTRAINT fk_contract_line_item_market_price_contract_line_item_line_ite FOREIGN KEY (line_item_id) REFERENCES contract_line_item (id) ON DELETE CASCADE
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260922184249_AddContractLineItemMarketPrice') THEN
+    CREATE INDEX ix_contract_line_item_market_price_contract_id ON contract_line_item_market_price (contract_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260922184249_AddContractLineItemMarketPrice') THEN
+    CREATE INDEX ix_contract_line_item_market_price_line_item_id ON contract_line_item_market_price (line_item_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260922184249_AddContractLineItemMarketPrice') THEN
+    CREATE INDEX ix_contract_line_item_market_price_tenant_id ON contract_line_item_market_price (tenant_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260922184249_AddContractLineItemMarketPrice') THEN
+    CREATE UNIQUE INDEX ix_contract_line_item_market_price_tenant_id_line_item_id ON contract_line_item_market_price (tenant_id, line_item_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260922184249_AddContractLineItemMarketPrice') THEN
+    ALTER TABLE "contract_line_item_market_price" ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE "contract_line_item_market_price" FORCE ROW LEVEL SECURITY;
+    CREATE POLICY tenant_isolation ON "contract_line_item_market_price"
+        USING (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid)
+        WITH CHECK (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260922184249_AddContractLineItemMarketPrice') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20260922184249_AddContractLineItemMarketPrice', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+

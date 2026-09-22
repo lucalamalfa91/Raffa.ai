@@ -7,13 +7,13 @@ import { formatCompactAmount } from "../portfolioViewModel";
 import {
   AUTO_ACCEPT_THRESHOLD,
   LEVERS_NOT_YET_AVAILABLE,
-  PRODUCT_NOTE,
   SECTION_COPY,
   STANDARD_TERMS_HINT,
   buildClauseGroups,
   buildDocumentRows,
   buildKeyTerms,
   buildLeverCards,
+  buildProductNote,
   buildObligationColumns,
   buildProductLines,
   buildRiskItems,
@@ -115,7 +115,10 @@ export function ProductsSection({ contract, autoAcceptThreshold }: { contract: C
                 </div>
                 <div className="is-right">{line.qty}</div>
                 <div className="is-right contract360-product-price">{line.price}</div>
-                <div className="is-right contract360-product-market">{line.market}</div>
+                <div className="is-right contract360-product-market" title={line.marketTitle ?? undefined}>
+                  <div>{line.market}</div>
+                  {line.marketMeta !== "" && <div className="contract360-product-market-meta">{line.marketMeta}</div>}
+                </div>
                 <div className="contract360-product-delta">
                   <div className="contract360-product-bar" aria-hidden="true">
                     <div className="contract360-product-bar-market" style={{ width: line.marketWidth }} />
@@ -127,7 +130,7 @@ export function ProductsSection({ contract, autoAcceptThreshold }: { contract: C
               </div>
             ))}
             <div className="contract360-products-foot">
-              <span className="contract360-products-note">{PRODUCT_NOTE}</span>
+              <span className="contract360-products-note">{buildProductNote(contract.tabs.products)}</span>
               <span className="contract360-products-total">{total}</span>
             </div>
           </div>

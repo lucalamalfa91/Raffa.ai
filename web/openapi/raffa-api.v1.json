@@ -2410,7 +2410,8 @@
                               "sourceDocumentId",
                               "sourceSpan",
                               "sourcePage",
-                              "confidence"
+                              "confidence",
+                              "market"
                             ],
                             "properties": {
                               "lineItemId": {
@@ -2506,6 +2507,105 @@
                                   "null"
                                 ],
                                 "description": "0-1 fraction (e.g. 0.92), not a percentage."
+                              },
+                              "market": {
+                                "type": [
+                                  "object",
+                                  "null"
+                                ],
+                                "description": "The line's stored market comparison (LineItemMarketPriceService): null when never compared, matched=false when no comparable market record exists (same supplier, a product the line names, the contract's own currency, n >= 5). Figures always carry their record, sample size, region/term and as-of date.",
+                                "required": [
+                                  "matched",
+                                  "recordId",
+                                  "product",
+                                  "geography",
+                                  "currency",
+                                  "termMonths",
+                                  "unitPriceP25",
+                                  "unitPriceP50",
+                                  "unitPriceP75",
+                                  "sampleSize",
+                                  "provenance",
+                                  "marketUpdatedAt",
+                                  "checkedAt"
+                                ],
+                                "properties": {
+                                  "matched": {
+                                    "type": "boolean"
+                                  },
+                                  "recordId": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "product": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "geography": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "currency": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "termMonths": {
+                                    "type": [
+                                      "integer",
+                                      "null"
+                                    ]
+                                  },
+                                  "unitPriceP25": {
+                                    "type": [
+                                      "number",
+                                      "null"
+                                    ]
+                                  },
+                                  "unitPriceP50": {
+                                    "type": [
+                                      "number",
+                                      "null"
+                                    ],
+                                    "description": "The market median unit price -- the figure a line's own unit price is compared with."
+                                  },
+                                  "unitPriceP75": {
+                                    "type": [
+                                      "number",
+                                      "null"
+                                    ]
+                                  },
+                                  "sampleSize": {
+                                    "type": [
+                                      "integer",
+                                      "null"
+                                    ]
+                                  },
+                                  "provenance": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "marketUpdatedAt": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ],
+                                    "format": "date-time"
+                                  },
+                                  "checkedAt": {
+                                    "type": "string",
+                                    "format": "date-time"
+                                  }
+                                }
                               }
                             }
                           }

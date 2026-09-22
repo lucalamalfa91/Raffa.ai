@@ -7,6 +7,7 @@ using Raffa.Market.Ingestion;
 using Raffa.Market.Mock;
 using Raffa.Market.Retrieval;
 using Raffa.SharedKernel;
+using Raffa.SharedKernel.Market;
 using Raffa.SharedKernel.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -146,6 +147,11 @@ public static class ServiceCollectionExtensions
             services.TryAddEnumerable(
                 ServiceDescriptor.Singleton<IBenchmarkProviderAdapter, MarketFeedBenchmarkAdapter>());
         }
+
+        // Prices a contract's own line items against the corpus for Raffa.Documents.Contracts
+        // (the SharedKernel port -- that module may not reference this one). Scoped: it reads
+        // IMarketDealLookup, which is Scoped when backed by MarketDbContext.
+        services.TryAddScoped<IMarketPriceMatcher, MarketPriceMatcher>();
 
         MakeMarketFeedTheDefaultActiveAdapter(services);
 

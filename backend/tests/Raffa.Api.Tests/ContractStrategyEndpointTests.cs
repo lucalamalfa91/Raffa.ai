@@ -8,6 +8,7 @@ using Raffa.Documents.Contracts.Infrastructure;
 using Raffa.Identity.Workspace.Domain;
 using Raffa.Identity.Workspace.Infrastructure;
 using Raffa.SharedKernel;
+using Raffa.SharedKernel.Market;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
@@ -35,7 +36,62 @@ public sealed class ContractStrategyEndpointTests : IClassFixture<RaffaApiFactor
                 "ConnectionStrings:DocumentsContracts",
                 "Host=localhost;Port=5432;Database=raffa_dev;Username=raffa;Password=raffa;Include Error Detail=true");
             builder.UseSetting("ConnectionStrings:Storage", "UseDevelopmentStorage=true");
+
+            // A line's stored market comparison wins over the adapter (one resolution per
+            // screen); these cases are about the adapter path, so the corpus matches nothing.
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IMarketPriceMatcher>();
+                services.AddSingleton<IMarketPriceMatcher>(new FixedMarketPriceMatcher(null));
+            });
         });
+    }
+
+    [Fact]
+    public async Task A_line_matched_to_a_market_record_is_priced_from_that_stored_comparison()
+    {
+        var now = new DateTimeOffset(2026, 9, 9, 12, 0, 0, TimeSpan.Zero);
+        var tenantId = TenantId.New();
+        var salesforceId = EntityId.New();
+
+        var band = new MarketPriceMatch(
+            "MKT-SFDC-US-01", "Sales Cloud Enterprise", "US", "USD", 12, 1500m, 1800m, 2100m, 210,
+            "representative market data · mock feed · updated 2026-07-01",
+            new DateTimeOffset(2026, 7, 1, 0, 0, 0, TimeSpan.Zero));
+
+        // No workspace country, so the adapter key is incomplete: the band can only come from the
+        // stored comparison.
+        var factory = PortfolioEndpointTests
+            .WithSupplierNames(_factory, new Dictionary<EntityId, string> { [salesforceId] = "Salesforce, Inc." })
+            .WithWebHostBuilder(b => b.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IMarketPriceMatcher>();
+                services.AddSingleton<IMarketPriceMatcher>(new FixedMarketPriceMatcher(band));
+            }));
+
+        var contract = PortfolioEndpointTests.NewContract(
+            tenantId, now, salesforceId, autoRenewal: true,
+            endDate: DateOnly.FromDateTime(now.UtcDateTime).AddDays(90));
+        contract.RenewalTermMonths = 12;
+        await factory.SeedContractAsync(contract);
+        await factory.SeedDocumentAsync(InMemoryAskEngineFactory.NewLinkedDocument(tenantId, contract.Id));
+        await SeedLineItemAsync(factory, tenantId, contract.Id);
+
+        var client = factory.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/contracts/{contract.Id.Value}/strategy");
+        request.Headers.Add("X-Tenant-Id", tenantId.Value.ToString());
+
+        var response = await client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var target = Assert.Single(body.RootElement.GetProperty("targets").EnumerateArray());
+        Assert.NotEqual(JsonValueKind.Null, target.GetProperty("openingTarget").ValueKind);
+        var explanation = target.GetProperty("explanation").GetString();
+        Assert.NotNull(explanation);
+        Assert.Contains("market-feed (representative, mock)", explanation, StringComparison.Ordinal);
+        Assert.Contains("n=210", explanation, StringComparison.Ordinal);
+        Assert.Contains("2026-07-01", explanation, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -258,6 +314,13 @@ public sealed class ContractStrategyEndpointTests : IClassFixture<RaffaApiFactor
             CreatedAt = DateTimeOffset.UtcNow,
         });
         await db.SaveChangesAsync();
+    }
+
+    private sealed class FixedMarketPriceMatcher(MarketPriceMatch? match) : IMarketPriceMatcher
+    {
+        public Task<IReadOnlyList<MarketPriceMatch?>> MatchAsync(
+            MarketPriceContext context, IReadOnlyList<MarketPriceLine> lines, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<MarketPriceMatch?>>(lines.Select(_ => match).ToList());
     }
 
     private sealed class StubBenchmarkService(BenchmarkResult result) : IBenchmarkService

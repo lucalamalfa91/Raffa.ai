@@ -73,8 +73,7 @@ internal sealed partial class AskCopilotService
         var (benchmarkSupplierName, geography) = await ResolveBenchmarkKeyAsync(contract360.Header.SupplierId, cancellationToken)
             .ConfigureAwait(false);
 
-        var pricedLines = await InsightsEndpointExtensions
-            .ToPricedLines(contract360, benchmarkService, benchmarkSupplierName, geography, asOfDate, cancellationToken)
+        var pricedLines = await ResolvePricedLinesAsync(contract360, benchmarkSupplierName, geography, asOfDate, cancellationToken)
             .ConfigureAwait(false);
 
         var allDeals = await marketDealLookup

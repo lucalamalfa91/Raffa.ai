@@ -836,22 +836,55 @@ export interface ProductLine {
   meta: string;
   qty: string;
   price: string;
+  /** The matched market record's median (P50) unit price, or an em dash. */
   market: string;
+  /** "UK · 12 mo · n=14" under the market figure; "no match" for a line compared with nothing comparable; empty before any comparison. */
+  marketMeta: string;
+  /** Hover detail: the market product, its P25–P75 band and the corpus's own provenance label. */
+  marketTitle: string | null;
+  /** "+14%" / "-8%" -- the line's unit price against the market P50. */
   delta: string;
+  /** Paying above the market median. */
   deltaAccent: boolean;
-  /** Bar widths, `Math.round(price/max*100)%` -- pay is always the full bar while no market price exists. */
+  /** Bar widths, `Math.round(value/max(price, market)*100)%` -- pay is the full bar while no market price exists. */
   payWidth: string;
   marketWidth: string;
   annual: string;
 }
 
-export const PRODUCT_NOTE =
-  "Prices are the negotiated rate on the validated document; the market column and the delta light up with the Benchmark Service.";
+type ProductMarketBody = NonNullable<Contract360ProductBody["market"]>;
+
+export const PRODUCT_NOTE_UNCHECKED =
+  "Prices are the negotiated rate on the validated document; the market column fills once the lines have been compared with the market data.";
+export const PRODUCT_NOTE_NO_MATCH =
+  "No comparable market record for these lines yet — a match needs the same supplier, a product the line names and the contract's own currency.";
+
+/** The foot note under the table: what the market column is, and where its figures come from. */
+export function buildProductNote(products: readonly Contract360ProductBody[]): string {
+  const markets = products.map((p) => p.market).filter((m): m is ProductMarketBody => m !== null);
+  if (markets.length === 0) return PRODUCT_NOTE_UNCHECKED;
+  if (!markets.some((m) => m.matched)) return PRODUCT_NOTE_NO_MATCH;
+  return "Market is the median (P50) unit price of the closest market record for the same supplier, product and currency — representative market data (mock feed), never converted between currencies. Hover a figure for its range and date.";
+}
+
+/** `(price / P50 - 1)`, rounded to a whole percent: "+14%", "-8%", "0%". */
+export function formatVersusMarket(unitPrice: number, p50: number): string {
+  const percent = Math.round((unitPrice / p50 - 1) * 100);
+  return `${percent > 0 ? "+" : ""}${percent}%`;
+}
+
+function percentOf(value: number, max: number): string {
+  return `${Math.round((value / max) * 100)}%`;
+}
 
 /**
- * `d.products`: one row per line item. `tabs.benchmark` is per metric, not per line, so `market`
- * and `delta` are an honest em dash and the pay bar fills the track (`mktW:'0%'`, `payW:'100%'` in
- * the mock's own no-market branch). An unofficialized line keeps its row with dashed figures.
+ * `d.products`: one row per line item. The market figures are the line's own stored comparison
+ * (`products[].market`, written when the document was extracted and refreshed when stale): the
+ * matched record's P50 with its region, term and sample size, the delta of the line's unit price
+ * against it, and both bars scaled to the larger of the two. A line compared with nothing
+ * comparable, or not compared yet, keeps an honest em dash and a full pay bar (`mktW:'0%'`,
+ * `payW:'100%'` in the mock's own no-market branch). An unofficialized line keeps its row with
+ * dashed figures.
  */
 export function buildProductLines(
   products: readonly Contract360ProductBody[],
@@ -861,20 +894,46 @@ export function buildProductLines(
   return products.map((p) => {
     const officialized = isExtractedRowShown(p, autoAcceptThreshold);
     const meta = [p.sku, p.unit].filter((part): part is string => part !== null && part.trim() !== "").join(" · ");
+    const price = officialized ? p.unitPrice : null;
+    const market = p.market;
+    const p50 = market !== null && market.matched ? market.unitPriceP50 : null;
+    const marketCurrency = market?.currency ?? currency;
+    const compared = price !== null && p50 !== null && p50 > 0;
+    const max = compared ? Math.max(price, p50) : 0;
     return {
       key: p.lineItemId,
       name: p.description !== "" ? p.description : (p.sku ?? "Line item"),
       meta,
       qty: officialized && p.quantity !== null ? formatPlainNumber(p.quantity) : UNOFFICIALIZED_PLACEHOLDER,
       price: officialized ? formatMoney(p.unitPrice, currency) : UNOFFICIALIZED_PLACEHOLDER,
-      market: UNOFFICIALIZED_PLACEHOLDER,
-      delta: UNOFFICIALIZED_PLACEHOLDER,
-      deltaAccent: false,
-      payWidth: officialized && p.unitPrice !== null ? "100%" : "0%",
-      marketWidth: "0%",
+      market: p50 !== null ? formatMoney(p50, marketCurrency) : UNOFFICIALIZED_PLACEHOLDER,
+      marketMeta: market === null ? "" : p50 !== null ? formatMarketMeta(market) : "no match",
+      marketTitle: p50 !== null && market !== null ? formatMarketTitle(market, marketCurrency) : null,
+      delta: compared ? formatVersusMarket(price, p50) : UNOFFICIALIZED_PLACEHOLDER,
+      deltaAccent: compared && price > p50,
+      payWidth: compared ? percentOf(price, max) : price !== null ? "100%" : "0%",
+      marketWidth: compared ? percentOf(p50, max) : "0%",
       annual: officialized ? formatMoney(p.annualCost, currency) : UNOFFICIALIZED_PLACEHOLDER,
     };
   });
+}
+
+function formatMarketMeta(market: ProductMarketBody): string {
+  return [
+    market.geography,
+    market.termMonths !== null ? `${market.termMonths} mo` : null,
+    market.sampleSize !== null ? `n=${market.sampleSize}` : null,
+  ]
+    .filter((part): part is string => part !== null && part !== "")
+    .join(" · ");
+}
+
+function formatMarketTitle(market: ProductMarketBody, currency: string): string {
+  const band =
+    market.unitPriceP25 !== null && market.unitPriceP75 !== null
+      ? `P25 ${formatMoney(market.unitPriceP25, currency)} – P75 ${formatMoney(market.unitPriceP75, currency)}`
+      : null;
+  return [market.product, band, market.provenance].filter((part): part is string => part !== null && part !== "").join(" · ");
 }
 
 // ---- 03 Clauses that matter -------------------------------------------------------------------

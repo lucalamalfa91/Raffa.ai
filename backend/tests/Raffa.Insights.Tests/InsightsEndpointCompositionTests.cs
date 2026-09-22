@@ -357,6 +357,39 @@ public sealed class InsightsEndpointCompositionTests
     }
 
     [Fact]
+    public async Task ToPricedLines_prices_a_line_from_its_stored_market_comparison_and_falls_back_to_the_adapter_for_the_rest()
+    {
+        var matchedLine = FakeProduct(sku: "SKU-UNL", unitPrice: 398m);
+        var unmatchedLine = FakeProduct(sku: "SKU-SUP", unitPrice: 31_000m);
+        var contract = FakeContract(currency: "GBP", products: [matchedLine, unmatchedLine], renewalTermMonths: 12);
+        var marketUpdatedAt = new DateTimeOffset(2026, 9, 10, 0, 0, 0, TimeSpan.Zero);
+        var checkedAt = new DateTimeOffset(2026, 9, 22, 8, 0, 0, TimeSpan.Zero);
+        var stored = new Dictionary<EntityId, LineItemMarketPrice>
+        {
+            [matchedLine.LineItemId] = new(
+                matchedLine.LineItemId, true, "MKT-ZZ-0053", "Sales Cloud Unlimited", "UK", "GBP", 12,
+                2718m, 3027m, 3360m, 14, "representative market data · mock feed · updated 2026-09-10", marketUpdatedAt, checkedAt),
+            [unmatchedLine.LineItemId] = new(
+                unmatchedLine.LineItemId, false, null, null, null, null, null, null, null, null, null, null, null, checkedAt),
+        };
+        var stub = new RecordingBenchmarkService(result: null);
+
+        var lines = await InsightsEndpointExtensions.ToPricedLines(
+            contract, stub, "Salesforce", "GB", new DateOnly(2026, 9, 22), CancellationToken.None, stored);
+
+        Assert.Equal(2, lines.Count);
+        Assert.Equal(new BenchmarkDistribution(2718m, 3027m, 3360m), lines[0].Benchmark);
+        Assert.Equal(14, lines[0].SampleSize);
+        Assert.Equal("market-feed (representative, mock)", lines[0].AdapterName);
+        Assert.Equal(marketUpdatedAt, lines[0].AsOf);
+
+        // The stored no-match is not a band: that line still goes to the adapter, which abstains here.
+        Assert.Null(lines[1].Benchmark);
+        Assert.Equal(1, stub.CallCount);
+        Assert.Equal("SKU-SUP", stub.LastQuery!.Sku);
+    }
+
+    [Fact]
     public async Task ToPricedLines_leaves_the_band_unset_when_the_adapter_abstains()
     {
         var contract = FakeContract(products: [FakeProduct()]);

@@ -676,8 +676,11 @@ tabs held is still on the page, inside the drawer.
   strategy pack's `whereYouCanPush` as one card per lever type, strongest first: a lever that reads
   the same on every priced line is shown once, one whose wording differs names each line inside the
   card; an honest one-liner while the pack has no lever), **03 Products & pricing**
-  (`buildProductLines`: Product · Qty · You pay · Market · vs market · Annual; market and delta stay
-  an em dash until the Benchmark Service covers the line), **04 Clauses that matter**
+  (`buildProductLines`: Product · Qty · You pay · Market · vs market · Annual; Market is the line's
+  stored comparison `products[].market` -- the matched market record's P50 with region · term · n,
+  written at extraction by `LineItemMarketPriceService` and re-priced on read when older than six
+  hours -- and vs market the unit price against it; an unmatched or not-yet-compared line keeps an
+  em dash), **04 Clauses that matter**
   (`buildClauseGroups`: "Push to change" for High/Critical, "Worth raising" for Medium, the rest
   behind "Show N standard clauses ▾"; each row type · accepted value · the at-the-table note ·
   `p.N · §span` as a document-viewer link; clicking a row opens `ClauseHighlight.tsx`'s evidence

@@ -105,6 +105,12 @@ public static class ServiceCollectionExtensions
         // DbContext instance, not a second one.
         services.AddScoped<DocumentProcessingPipeline>();
 
+        // Per-line market comparison, written at extraction and refreshed when stale on read.
+        // Its IMarketPriceMatcher / ISupplierNameLookup ports are optional constructor parameters:
+        // a host that composes Raffa.Market / Raffa.Suppliers.Products in supplies them, any other
+        // host keeps what is stored.
+        services.AddScoped<LineItemMarketPriceService>();
+
         // Task E13/F04/US01/T01 (documents-admission): the admission gate and its thresholds.
         // DocumentAdmissionOptions is bound once from the "Documents" section (defaults from its
         // own property initializers when the section is absent) and registered as a plain

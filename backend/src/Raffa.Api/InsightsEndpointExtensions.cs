@@ -159,6 +159,7 @@ public static class InsightsEndpointExtensions
         ICallerContext callerContext,
         IBenchmarkService benchmarkService,
         BenchmarkKeyResolution benchmarkKeyResolution,
+        LineItemMarketPriceService lineItemMarketPriceService,
         CancellationToken cancellationToken)
     {
         // NW-05 (ADR-010 w15 footer; ADR-022 w15 footer clause 2): identity first, then the tenant
@@ -208,8 +209,14 @@ public static class InsightsEndpointExtensions
         }
 
         var renewal = ComputeRenewal(contract360.Header, renewalEngine);
+
+        // The same stored per-line comparison Contract 360's market column shows (one resolution
+        // per screen, ADR-024 w17 clause 7): a line matched there is priced from it here.
+        var storedMarketPrices = await lineItemMarketPriceService
+            .GetCurrentAsync(tenantId, contractEntityId, cancellationToken)
+            .ConfigureAwait(false);
         var pricedLines = await ToPricedLines(
-                contract360, benchmarkService, supplierName, geography, asOfDate, cancellationToken)
+                contract360, benchmarkService, supplierName, geography, asOfDate, cancellationToken, storedMarketPrices)
             .ConfigureAwait(false);
         var criticalFacts = ToCriticalFacts(contract360);
 
@@ -338,6 +345,13 @@ public static class InsightsEndpointExtensions
     /// sample size, adapter name and as-of date from a sufficient result. An incomplete key or an
     /// adapter abstention leaves the band unset so the pack states "insufficient market data"
     /// (ADR-001 w17 clause 4). Never fabricates a number.
+    ///
+    /// <para>
+    /// <paramref name="storedMarketPrices"/> — each line's stored market comparison
+    /// (<see cref="LineItemMarketPriceService"/>, the one Contract 360's market column shows) —
+    /// wins for a line it matched, so the strategy and the product table never disagree about the
+    /// same line; the benchmark call above remains the fallback for every other line.
+    /// </para>
     /// </summary>
     public static async Task<IReadOnlyList<PricedLine>> ToPricedLines(
         Contract360Result contract,
@@ -345,7 +359,8 @@ public static class InsightsEndpointExtensions
         string? supplierName,
         string? geography,
         DateOnly asOfDate,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyDictionary<EntityId, LineItemMarketPrice>? storedMarketPrices = null)
     {
         ArgumentNullException.ThrowIfNull(contract);
         ArgumentNullException.ThrowIfNull(benchmarkService);
@@ -354,11 +369,20 @@ public static class InsightsEndpointExtensions
             && !string.IsNullOrWhiteSpace(geography);
         var bands = new LineBenchmark[contract.Products.Count];
 
-        if (keyIsComplete)
+        for (var i = 0; i < contract.Products.Count; i++)
         {
-            for (var i = 0; i < contract.Products.Count; i++)
+            var product = contract.Products[i];
+            if (storedMarketPrices is not null
+                && storedMarketPrices.TryGetValue(product.LineItemId, out var stored)
+                && stored is { Matched: true, UnitPriceP25: { } p25, UnitPriceP50: { } p50, UnitPriceP75: { } p75 })
             {
-                var product = contract.Products[i];
+                bands[i] = new LineBenchmark(
+                    new BenchmarkDistribution(p25, p50, p75), stored.SampleSize, StoredMarketSource, stored.MarketUpdatedAt);
+                continue;
+            }
+
+            if (keyIsComplete)
+            {
                 var termMonths = contract.Overview.RenewalTermMonths;
                 var query = new BenchmarkQuery(
                     Supplier: supplierName!,
@@ -385,6 +409,10 @@ public static class InsightsEndpointExtensions
 
         return MapPricedLines(contract, i => bands[i]);
     }
+
+    /// <summary>The adapter label a stored comparison carries into the strategy pack — the same
+    /// corpus, and the same wording, <c>MarketFeedBenchmarkAdapter</c> reports as its source.</summary>
+    private const string StoredMarketSource = "market-feed (representative, mock)";
 
     private readonly record struct LineBenchmark(
         BenchmarkDistribution? Distribution,
