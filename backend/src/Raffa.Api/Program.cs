@@ -98,6 +98,10 @@ builder.Services.AddDocumentsContractsModule(documentsContractsConnectionString)
 // source of a workspace role. A client-declared role header is not one of the inputs.
 builder.Services.AddScoped<WorkspaceRoleResolver>();
 
+// ADR-030 gate 2: Chat asks "did this workspace opt into web research?" through a port it owns;
+// the host answers from the Identity/Workspace row (the two modules never reference each other).
+builder.Services.AddScoped<Raffa.Chat.Application.WebResearch.IWorkspaceWebResearchPolicy, WorkspaceWebResearchPolicy>();
+
 // Task E14/F02/US01/T01 (wave w14 "workspace is real", ADR-025 §A1), retired to the validated token
 // by task E18/F01/US01/T01 (wave w15, NW-05; ADR-022 w15 footer clause 1): the one identity seam
 // every tenant-scoped endpoint consumes (directly, or through ICallerContext below) instead of
