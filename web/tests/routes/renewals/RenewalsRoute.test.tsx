@@ -87,6 +87,7 @@ function pipelineItem(overrides: Partial<RenewalPipelineItemBody> = {}): Renewal
     daysUntilCancellationDeadline: 14,
     autoRenewal: true,
     action: "Finalize decision now",
+    priority: priority(),
     insightCard: {
       facts: {
         supplierId: "33333333-3333-3333-3333-333333333333",
@@ -128,15 +129,9 @@ function ok(items: RenewalPipelineItemBody[]): GetRenewalsResult {
   return { ok: true, statusCode: 200, renewals: { items, totalCount: items.length }, error: null };
 }
 
-/** One `getRenewalPriority` mock answering per contract id; ids missing from `scores` fail like the real endpoint's 404. */
-function priorityByContract(scores: Readonly<Record<string, number>>) {
-  return vi.fn().mockImplementation((_workspaceId: string, contractId: string) =>
-    Promise.resolve(
-      contractId in scores
-        ? { ok: true, statusCode: 200, priority: priority({ contractId, totalScore: scores[contractId] }), error: null }
-        : { ok: false, statusCode: 404, priority: null, error: "No contract found." },
-    ),
-  );
+/** A row scored `totalScore` by the server -- the `priority` object every `GET /api/renewals` row carries. */
+function scored(item: RenewalPipelineItemBody, totalScore: number): RenewalPipelineItemBody {
+  return { ...item, priority: priority({ contractId: item.contractId, totalScore }) };
 }
 
 function renderRenewals(apiClient: ApiClient) {
@@ -223,7 +218,6 @@ describe("RenewalsRoute (V2, ADR-024 / screens-v2.md #7)", () => {
       return renderRenewals(
         mockApiClient({
           getRenewals: vi.fn().mockResolvedValue(ok(items)),
-          getRenewalPriority: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, priority: priority(), error: null }),
           ...overrides,
         }),
       );
@@ -244,11 +238,23 @@ describe("RenewalsRoute (V2, ADR-024 / screens-v2.md #7)", () => {
       expect(screen.getByText("1 contract with validated dates · sorted by priority")).toBeInTheDocument();
     });
 
-    it("sorts by priority score, highest first; a row whose score could not be fetched shows '—' and sorts last", async () => {
-      const low = pipelineItem({ contractId: "low", supplierName: "Low Co" });
-      const high = pipelineItem({ contractId: "high", supplierName: "High Co" });
-      const unranked = pipelineItem({ contractId: "unranked", supplierName: "Unranked Co" });
-      renderPopulated([unranked, low, high], { getRenewalPriority: priorityByContract({ low: 40, high: 91 }) });
+    it("reads every score off the list itself and never calls the per-contract priority endpoint", async () => {
+      const getRenewalPriority = vi.fn();
+      renderPopulated([scored(pipelineItem({ contractId: "a" }), 70), scored(pipelineItem({ contractId: "b" }), 30)], { getRenewalPriority });
+
+      const table = await screen.findByRole("table");
+      expect(within(table).getByText("70")).toBeInTheDocument();
+      expect(within(table).getByText("30")).toBeInTheDocument();
+      // The old one-priority-read-per-row fan-out is gone: it alone could exhaust the demo server's
+      // 50 Postgres connections and turn the rows' own reads into 500s.
+      expect(getRenewalPriority).not.toHaveBeenCalled();
+    });
+
+    it("sorts by priority score, highest first; a row the server sent without a score shows '—' and sorts last", async () => {
+      const low = scored(pipelineItem({ contractId: "low", supplierName: "Low Co" }), 40);
+      const high = scored(pipelineItem({ contractId: "high", supplierName: "High Co" }), 91);
+      const unranked = pipelineItem({ contractId: "unranked", supplierName: "Unranked Co", priority: null });
+      renderPopulated([unranked, low, high]);
 
       const table = await screen.findByRole("table");
       const bodyRows = within(table).getAllByRole("row").slice(1);
@@ -265,9 +271,9 @@ describe("RenewalsRoute (V2, ADR-024 / screens-v2.md #7)", () => {
     });
 
     it("marks a notice deadline inside the locked 45-day window, never colour alone", async () => {
-      const soon = pipelineItem({ contractId: "soon", daysUntilCancellationDeadline: 14 });
-      const later = pipelineItem({ contractId: "later", daysUntilCancellationDeadline: 200, daysUntilRenewal: 260 });
-      renderPopulated([soon, later], { getRenewalPriority: priorityByContract({ soon: 85, later: 30 }) });
+      const soon = scored(pipelineItem({ contractId: "soon", daysUntilCancellationDeadline: 14 }), 85);
+      const later = scored(pipelineItem({ contractId: "later", daysUntilCancellationDeadline: 200, daysUntilRenewal: 260 }), 30);
+      renderPopulated([soon, later]);
 
       const table = await screen.findByRole("table");
       expect(within(table).getByText("14 d")).toHaveClass("deadline-critical");
@@ -314,7 +320,7 @@ describe("RenewalsRoute (V2, ADR-024 / screens-v2.md #7)", () => {
           recommendations: { ...first.insightCard.recommendations, recommendedAction: "Prepare negotiation strategy" },
         },
       });
-      renderPopulated([first, second], { getRenewalPriority: priorityByContract({ first: 90, second: 60 }) });
+      renderPopulated([scored(first, 90), scored(second, 60)]);
       const table = await screen.findByRole("table");
 
       expect(screen.getByText("Finalize decision now")).toBeInTheDocument();
@@ -459,8 +465,7 @@ describe("RenewalsRoute (V2, ADR-024 / screens-v2.md #7)", () => {
     });
     renderRenewals(
       mockApiClient({
-        getRenewals: vi.fn().mockResolvedValue(ok([ready, inReview, notAnalyzed])),
-        getRenewalPriority: priorityByContract({ ready: 85, pending: 40, uploading: 10 }),
+        getRenewals: vi.fn().mockResolvedValue(ok([scored(ready, 85), scored(inReview, 40), scored(notAnalyzed, 10)])),
       }),
     );
 
@@ -496,8 +501,7 @@ describe("RenewalsRoute (V2, ADR-024 / screens-v2.md #7)", () => {
     });
     renderRenewals(
       mockApiClient({
-        getRenewals: vi.fn().mockResolvedValue(ok([inReview])),
-        getRenewalPriority: priorityByContract({ pending: 40 }),
+        getRenewals: vi.fn().mockResolvedValue(ok([scored(inReview, 40)])),
       }),
     );
 

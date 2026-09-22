@@ -1,3 +1,4 @@
+using Raffa.SharedKernel.Persistence;
 using Microsoft.EntityFrameworkCore;
 
 namespace Raffa.Market.Infrastructure;
@@ -27,7 +28,7 @@ public static class MarketDbContextOptions
         builder
             // .UseVector() registers the pgvector plugin on the Npgsql provider so the `vector`
             // column type and the Pgvector.Vector CLR type are recognised (ADR-003).
-            .UseNpgsql(connectionString, npgsql => npgsql.UseVector())
+            .UseNpgsql(PostgresConnectionPool.Bound(connectionString), npgsql => npgsql.UseVector())
             // Postgres/ADR-003/ADR-009 convention is snake_case (`market_record`,
             // `market_embedding`, ...); without this, EF Core would emit quoted PascalCase
             // identifiers instead -- applied here even though this module has no `tenant_id` to

@@ -1,3 +1,4 @@
+using Raffa.SharedKernel.Persistence;
 using Raffa.SharedKernel.Tenancy;
 using Microsoft.EntityFrameworkCore;
 
@@ -28,7 +29,7 @@ public static class SuppliersDbContextOptions
         ITenantContext? tenantContext = null)
     {
         builder
-            .UseNpgsql(connectionString)
+            .UseNpgsql(PostgresConnectionPool.Bound(connectionString))
             // Postgres/ADR-009 convention is snake_case (`tenant_id`, `normalized_name`, ...);
             // without this, EF Core would emit quoted PascalCase identifiers instead.
             .UseSnakeCaseNamingConvention();

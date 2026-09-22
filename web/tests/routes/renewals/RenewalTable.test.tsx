@@ -21,6 +21,7 @@ function item(overrides: Partial<RenewalPipelineItemBody> = {}): RenewalPipeline
     autoRenewal: true,
     action: "Renegotiate rate",
     savedAction: null,
+    priority: null,
     insightCard: {
       facts: {
         supplierId: null,

@@ -10,8 +10,8 @@ import RenewalsRoute from "./index";
  * view-model test cannot: that the route reads `useSearchParams().get("select")` on mount and wires
  * it into the same selection state a row click already drives.
  *
- * Two rows, deliberately scored so the top-priority default only emerges once both
- * `GET /api/renewals/{contractId}/priority` calls resolve (`daysUntilCancellationDeadline` alone
+ * Two rows, deliberately scored (each row's own `priority`, the object `GET /api/renewals` carries
+ * per row) so the top-priority default is the score's doing (`daysUntilCancellationDeadline` alone
  * would rank them the other way round) -- an assertion that only holds once the real score has won
  * proves the fallback is score-based, not an accident of the pre-priority tie-break order.
  */
@@ -57,24 +57,31 @@ function renewalItem(overrides: Partial<RenewalPipelineItemBody>): RenewalPipeli
   } as RenewalPipelineItemBody;
 }
 
+/** The row's own server-computed score (`priority`, the same object `GET /api/renewals/{contractId}/priority` returns). */
+function scored(contractId: string, totalScore: number): RenewalPipelineItemBody["priority"] {
+  const component = { score: totalScore / 5, explanation: "x" };
+  return {
+    contractId,
+    totalScore,
+    components: { spendWeight: component, timeUrgency: component, benchmarkOpportunity: component, priceIncreaseRisk: component, contractRisk: component },
+  };
+}
+
+/** Highest score wins the default row; note this ranks the *opposite* way from the two rows' own
+ * `daysUntilCancellationDeadline` tie-break, so a pass proves the score, not the tie-break, won. */
 const TOP_ROW = renewalItem({
   contractId: TOP_CONTRACT_ID,
   supplierName: "Top Priority Co",
   daysUntilCancellationDeadline: 90,
+  priority: scored(TOP_CONTRACT_ID, 90),
 });
 
 const OTHER_ROW = renewalItem({
   contractId: OTHER_CONTRACT_ID,
   supplierName: "Deep Link Co",
   daysUntilCancellationDeadline: 30,
+  priority: scored(OTHER_CONTRACT_ID, 40),
 });
-
-/** Highest score wins the default row; note this ranks the *opposite* way from the two rows' own
- * `daysUntilCancellationDeadline` tie-break above, so a pass proves the score, not the tie-break, won. */
-const SCORES: Record<string, number> = {
-  [TOP_CONTRACT_ID]: 90,
-  [OTHER_CONTRACT_ID]: 40,
-};
 
 function apiClientWith(overrides: Partial<ApiClient> = {}): ApiClient {
   return {
@@ -84,14 +91,8 @@ function apiClientWith(overrides: Partial<ApiClient> = {}): ApiClient {
       renewals: { items: [TOP_ROW, OTHER_ROW], totalCount: 2 },
       error: null,
     }),
-    getRenewalPriority: vi.fn().mockImplementation((_tenantId: string, contractId: string) =>
-      Promise.resolve({
-        ok: true,
-        statusCode: 200,
-        priority: { totalScore: SCORES[contractId] ?? 0 },
-        error: null,
-      }),
-    ),
+    // Never called by this screen any more: the score rides on the list row itself.
+    getRenewalPriority: vi.fn(),
     postRenewalAction: vi.fn(),
     // Task E29/F04/US01/T01 (todo-web): InsightCard now always renders NegotiationTodoList, which
     // fetches on mount -- an unstubbed method here would reject `.then()` on `undefined` and crash

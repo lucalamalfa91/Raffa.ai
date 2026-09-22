@@ -19,11 +19,22 @@ using Raffa.Quotes.Infrastructure;
 using Raffa.Renewals.Infrastructure;
 using Raffa.Savings.Infrastructure;
 using Raffa.SharedKernel;
+using Raffa.SharedKernel.Persistence;
 using Raffa.Suppliers.Products.Infrastructure;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Every Postgres connection string this host reads carries one per-process pool budget
+// (Raffa.SharedKernel.Persistence.PostgresConnectionPool's own doc comment: a Standard_B1ms server
+// has 50 connections for every replica of both hosts, and a screen that fans its reads out in
+// parallel -- Renewals, Contract 360 -- used to take them all and turn every next request into a
+// 500). Postgres__MaxPoolSize overrides the default per environment; the module-side ceiling still
+// caps whatever is configured.
+var postgresMaxPoolSize = builder.Configuration.GetValue<int?>(PostgresConnectionPool.MaxPoolSizeConfigurationKey)
+    ?? PostgresConnectionPool.DefaultMaxPoolSize;
+string BoundPostgres(string connectionString) => PostgresConnectionPool.WithBudget(connectionString, postgresMaxPoolSize);
 
 // Module registration: each module exposes an AddXxx(IServiceCollection) extension method
 // (ADR-002); the host calls it once it takes a dependency on that module. Documents/Contracts
@@ -35,10 +46,11 @@ var builder = WebApplication.CreateBuilder(args);
 // AddIdentityWorkspaceModule already existed (task E01/F05/US01/T01/T02) but had never been
 // called by a host — no endpoint used to attach a tenant claim to. WorkspaceEndpointExtensions
 // below is that first endpoint.
-var identityWorkspaceConnectionString = builder.Configuration.GetConnectionString("IdentityWorkspace")
+var identityWorkspaceConnectionString = BoundPostgres(
+    builder.Configuration.GetConnectionString("IdentityWorkspace")
     ?? throw new InvalidOperationException(
         "Missing required configuration 'ConnectionStrings:IdentityWorkspace' " +
-        "(set env var ConnectionStrings__IdentityWorkspace in deployed environments).");
+        "(set env var ConnectionStrings__IdentityWorkspace in deployed environments)."));
 
 // Task E17/F01/US01/T01 (wave w15, NW-67/NW-68; ADR-026 w15 footer §5, ADR-025 §J.6b): the real
 // invitation transport and the Graph guest provisioner, registered BEFORE AddIdentityWorkspaceModule
@@ -71,10 +83,11 @@ if (invitationHostOptions.GuestProvisioning.Enabled)
 
 builder.Services.AddIdentityWorkspaceModule(identityWorkspaceConnectionString);
 
-var documentsContractsConnectionString = builder.Configuration.GetConnectionString("DocumentsContracts")
+var documentsContractsConnectionString = BoundPostgres(
+    builder.Configuration.GetConnectionString("DocumentsContracts")
     ?? throw new InvalidOperationException(
         "Missing required configuration 'ConnectionStrings:DocumentsContracts' " +
-        "(set env var ConnectionStrings__DocumentsContracts in deployed environments).");
+        "(set env var ConnectionStrings__DocumentsContracts in deployed environments)."));
 
 builder.Services.AddDocumentsContractsModule(documentsContractsConnectionString);
 
@@ -180,10 +193,11 @@ builder.Services.AddExtractionQueuePublisher(builder.Configuration);
 // Audit module (task E01/F06/US02/T02, GET /api/audit). Fails fast with a named error rather
 // than silently falling back when the config is missing (same "fail loud, not silent"
 // convention this codebase already uses for required CI/CD config).
-var auditConnectionString = builder.Configuration.GetConnectionString("Audit")
+var auditConnectionString = BoundPostgres(
+    builder.Configuration.GetConnectionString("Audit")
     ?? throw new InvalidOperationException(
         "Missing required configuration: ConnectionStrings:Audit " +
-        "(see appsettings.Development.json for the local dev default).");
+        "(see appsettings.Development.json for the local dev default)."));
 
 builder.Services.AddAuditModule(auditConnectionString);
 
@@ -201,10 +215,11 @@ builder.Services.AddAuditModule(auditConnectionString);
 // that passes one, the same fail-fast shape as every other required connection string above.
 // Passing it additionally registers ChatDbContext + ConversationService (see that overload's own
 // doc comment) — MapConversationsEndpoints below needs both.
-var chatConnectionString = builder.Configuration.GetConnectionString("Chat")
+var chatConnectionString = BoundPostgres(
+    builder.Configuration.GetConnectionString("Chat")
     ?? throw new InvalidOperationException(
         "Missing required configuration 'ConnectionStrings:Chat' " +
-        "(set env var ConnectionStrings__Chat in deployed environments).");
+        "(set env var ConnectionStrings__Chat in deployed environments)."));
 
 // Chat:Council (kill switch + bounds of the negotiation council), registered before
 // AddChatModule's own TryAddSingleton default so a configured value wins.
@@ -226,10 +241,11 @@ builder.Services.AddSingleton(new Raffa.Chat.Application.Pack.PackBudget(
 // (ADR-002) — task E13/F03/US01/T01 registered ISupplierResolver/ISupplierNameLookup here but no
 // host called it yet (that task's own doc comment: "task E13/F06/US01/T01 is the first real
 // caller"). Same fail-fast connection-string shape as every other required module above.
-var suppliersConnectionString = builder.Configuration.GetConnectionString("Suppliers")
+var suppliersConnectionString = BoundPostgres(
+    builder.Configuration.GetConnectionString("Suppliers")
     ?? throw new InvalidOperationException(
         "Missing required configuration 'ConnectionStrings:Suppliers' " +
-        "(set env var ConnectionStrings__Suppliers in deployed environments).");
+        "(set env var ConnectionStrings__Suppliers in deployed environments)."));
 
 builder.Services.AddSuppliersProductsModule(suppliersConnectionString);
 
@@ -249,7 +265,8 @@ builder.Services.AddSuppliersProductsModule(suppliersConnectionString);
 // module keeps the in-memory mock projection and the API still answers, which is why a missing
 // value must not fail startup the way a missing tenant database does: the market index is shared,
 // read-only reference data, not a tenant's own records.
-builder.Services.AddMarketModule(builder.Configuration.GetConnectionString("Market"));
+builder.Services.AddMarketModule(
+    builder.Configuration.GetConnectionString("Market") is { } marketConnectionString ? BoundPostgres(marketConnectionString) : null);
 
 // Task E13/F06/US01/T01 (ask-engine): the Insights module's own AddInsightsModule() (ADR-002) —
 // task E13/F07/US01/T01 registered InsightsOptions/CriticalityScoreCalculator here but no host
@@ -275,10 +292,11 @@ builder.Services.AddScoped<AskCopilotService>();
 // Task E03/F03/US01/T02 (renewal-action, POST /api/renewals/{id}/action): this module's first
 // DbContext (RenewalsDbContext, backing RenewalActionService) means AddRenewalsModule now takes a
 // connection string too, the same fail-fast shape as every other required connection string above.
-var renewalsConnectionString = builder.Configuration.GetConnectionString("Renewals")
+var renewalsConnectionString = BoundPostgres(
+    builder.Configuration.GetConnectionString("Renewals")
     ?? throw new InvalidOperationException(
         "Missing required configuration 'ConnectionStrings:Renewals' " +
-        "(set env var ConnectionStrings__Renewals in deployed environments).");
+        "(set env var ConnectionStrings__Renewals in deployed environments)."));
 
 builder.Services.AddRenewalsModule(renewalsConnectionString);
 
@@ -307,10 +325,11 @@ builder.Services.AddScoped<DocumentPurgeAllService>();
 // (SavingsDbContext, backing SavingsOpportunityService), the same "wiring lands with the first
 // real caller" sequencing AddRenewalsModule/AddChatModule followed above. Fails fast with the same
 // named-error shape as every other required connection string above.
-var savingsConnectionString = builder.Configuration.GetConnectionString("Savings")
+var savingsConnectionString = BoundPostgres(
+    builder.Configuration.GetConnectionString("Savings")
     ?? throw new InvalidOperationException(
         "Missing required configuration 'ConnectionStrings:Savings' " +
-        "(set env var ConnectionStrings__Savings in deployed environments).");
+        "(set env var ConnectionStrings__Savings in deployed environments)."));
 
 builder.Services.AddSavingsModule(savingsConnectionString);
 
@@ -322,10 +341,11 @@ builder.Services.AddSavingsModule(savingsConnectionString);
 // lands with the first real caller" sequencing AddSavingsModule/AddRenewalsModule/AddChatModule
 // followed above. Fails fast with the same named-error shape as every other required connection
 // string above.
-var quotesConnectionString = builder.Configuration.GetConnectionString("Quotes")
+var quotesConnectionString = BoundPostgres(
+    builder.Configuration.GetConnectionString("Quotes")
     ?? throw new InvalidOperationException(
         "Missing required configuration 'ConnectionStrings:Quotes' " +
-        "(set env var ConnectionStrings__Quotes in deployed environments).");
+        "(set env var ConnectionStrings__Quotes in deployed environments)."));
 
 builder.Services.AddQuotesModule(quotesConnectionString);
 
@@ -360,6 +380,11 @@ var app = builder.Build();
 // GET /api/invites, POST /api/invites/accept, the POST /api/workspaces bootstrap, and
 // GET /api/workspaces, which takes no tenant input at all (ADR-026 §D1) and must keep working with
 // nothing mapped in front of it.
+// A saturated Postgres (the pool bound above waiting out its Timeout, or the server refusing a
+// connection) answers 503 + Retry-After instead of a bare 500; every other exception propagates
+// exactly as before. First in the pipeline so it wraps every endpoint below.
+app.UseDatabaseSaturationHandling();
+
 app.UseAuthentication();
 app.UseAuthorization();
 

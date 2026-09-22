@@ -128,7 +128,7 @@ already proven live, not just described here):
 | Kind | Name |
 |------|------|
 | Resource group | `rg-raffa-<env>` |
-| Postgres | `psql-raffa-<env>` (SKU `B_Standard_B1ms`; `lifecycle.ignore_changes = [zone]`) |
+| Postgres | `psql-raffa-<env>` (SKU `B_Standard_B1ms` — `max_connections = 50` server-wide, shared by every replica of both Container Apps; each host bounds its Npgsql pools per process, see `backend/README.md` "Postgres connections"; `lifecycle.ignore_changes = [zone]`) |
 | Container Apps Environment | `cae-raffa-<env>` |
 | API / worker apps | `ca-raffa-<env>-api` / `-worker` |
 | Workload identity | `id-raffa-<env>-workload` (tag `oidcPublicClientId` = public-client app id; `web.yml` reads it over ARM) |
