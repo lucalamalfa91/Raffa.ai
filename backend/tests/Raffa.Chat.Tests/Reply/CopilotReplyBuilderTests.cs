@@ -90,6 +90,68 @@ public sealed class CopilotReplyBuilderTests
         Assert.Contains(PackCorpus.Tenant, reply.Provenance.Sources);
     }
 
+    private static AiAnswerResult AbstainWith(string? reason, IReadOnlyList<string> followUps) =>
+        new(
+            CanDetermine: false,
+            Answer: null,
+            Citations: [],
+            Metadata,
+            AnswerMarkdown: null,
+            CitationKeys: [],
+            ActionKeys: [],
+            AbstainReason: reason,
+            FollowUps: followUps);
+
+    [Fact]
+    public void An_abstain_with_no_follow_ups_of_its_own_carries_the_hosts_next_step_questions()
+    {
+        var reply = CopilotReplyBuilder.FromGuardedResult(
+            AbstainWith("No validated contract records legal fees.", []),
+            [TenantItem],
+            [],
+            [],
+            abstainFollowUps: ["Which contracts are most critical?", "Where can we save?"]);
+
+        Assert.Equal(ReplyKind.Abstain, reply.Kind);
+        Assert.Equal(["Which contracts are most critical?", "Where can we save?"], reply.FollowUps);
+        Assert.Empty(reply.Citations);
+    }
+
+    [Fact]
+    public void An_abstains_own_follow_ups_win_over_the_hosts()
+    {
+        var reply = CopilotReplyBuilder.FromGuardedResult(
+            AbstainWith("No validated contract records legal fees.", ["Which invoices do we have?"]),
+            [TenantItem],
+            [],
+            [],
+            abstainFollowUps: ["Where can we save?"]);
+
+        Assert.Equal(["Which invoices do we have?"], reply.FollowUps);
+    }
+
+    [Theory]
+    [InlineData("The context pack does not contain a legal-fee figure.")]
+    [InlineData("No citationKey in the pack supports this.")]
+    [InlineData("actionKey 'raffa:renewals' does not resolve to any capability in the catalog (R-SYS-02).")]
+    [InlineData("   ")]
+    [InlineData(null)]
+    public void An_abstain_reason_that_talks_about_the_machinery_becomes_plain_copy(string? reason)
+    {
+        var reply = CopilotReplyBuilder.FromGuardedResult(AbstainWith(reason, []), [TenantItem], [], []);
+
+        Assert.Equal(CopilotReplyBuilder.DefaultAbstainReason, reply.AnswerMarkdown);
+    }
+
+    [Fact]
+    public void A_plain_abstain_reason_is_shown_as_the_model_wrote_it()
+    {
+        var reply = CopilotReplyBuilder.FromGuardedResult(
+            AbstainWith("No validated contract records legal fees.", []), [TenantItem], [], []);
+
+        Assert.Equal("No validated contract records legal fees.", reply.AnswerMarkdown);
+    }
+
     [Fact]
     public void An_undetermined_result_becomes_an_abstain_reply_with_no_citations_or_follow_ups()
     {

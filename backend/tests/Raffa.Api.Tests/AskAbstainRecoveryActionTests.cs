@@ -102,7 +102,7 @@ public sealed class AskAbstainRecoveryActionTests : IClassFixture<RaffaApiFactor
     /// own "ask about dates, spend, notice periods and clauses" hint, since Documents upload is not
     /// this tenant's unblocking step.</summary>
     [Fact]
-    public async Task Composer_failure_abstain_for_a_tenant_with_a_contract_offers_the_ask_hint_action()
+    public async Task Composer_failure_abstain_for_a_tenant_with_a_contract_offers_renewals_and_portfolio()
     {
         var failingGateway = new FailingAnswerAiGateway(
             new FixtureAiGateway(new AiGatewayModelOptions(), SystemClock.Instance, new AiGatewayOcrOptions()));
@@ -145,11 +145,18 @@ public sealed class AskAbstainRecoveryActionTests : IClassFixture<RaffaApiFactor
             body.RootElement.GetProperty("answerMarkdown").GetString(),
             StringComparison.Ordinal);
 
+        // An expiry question's answer lives in Renewals and Portfolio -- never "/ask", the screen
+        // the user is already on (a button that leads nowhere).
         var actions = body.RootElement.GetProperty("actions").EnumerateArray().ToList();
-        var action = Assert.Single(actions);
-        Assert.Equal("navigate", action.GetProperty("kind").GetString());
-        Assert.Equal("/ask", action.GetProperty("href").GetString());
-        Assert.False(string.IsNullOrWhiteSpace(action.GetProperty("label").GetString()));
+        Assert.Equal(["/renewals", "/contracts"], actions.Select(a => a.GetProperty("href").GetString()));
+        Assert.All(actions, action =>
+        {
+            Assert.Equal("navigate", action.GetProperty("kind").GetString());
+            Assert.False(string.IsNullOrWhiteSpace(action.GetProperty("label").GetString()));
+        });
+
+        // ...and two next-step questions, so a gap is never a dead end.
+        Assert.Equal(2, body.RootElement.GetProperty("followUps").GetArrayLength());
     }
 
     /// <summary>Delegates every role except <c>AnswerAsync</c> to <paramref name="inner"/> —

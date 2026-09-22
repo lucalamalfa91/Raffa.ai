@@ -2,7 +2,7 @@ namespace Raffa.Chat.Application.Answering;
 
 /// <summary>
 /// The versioned persona prompt (ADR-024 "a versioned persona prompt"). <see cref="SystemPrompt"/>
-/// is the exact body of `Prompts/answer/v2.2.md` (the human-reviewable, diffable artefact; a test
+/// is the exact body of `Prompts/answer/v2.3.md` (the human-reviewable, diffable artefact; a test
 /// in <c>Raffa.Chat.Tests</c> fails when the two drift); this constant is what
 /// <see cref="AnswerComposer"/> hands to <c>AiAnswerRequest.SystemPrompt</c> with no file I/O at
 /// request time. Bump <see cref="Version"/>, this string and the `.md` file together — never one
@@ -16,14 +16,22 @@ namespace Raffa.Chat.Application.Answering;
 /// renderer supports nothing else). Inline citations must be rendered as `[n]` markers only, never
 /// as internal citation keys.
 /// </para>
+///
+/// <para>
+/// v2.3: rule 7 names the action key exactly — the bare capability key after <c>raffa:</c> of a
+/// feature item's citation key, never the citation key itself, a playbook item or a route (the
+/// v2.2 wording led the model to return <c>raffa:renewals</c>, which failed the whole answer).
+/// <c>Capabilities.ActionKeyNormalizer</c> repairs the same slip code-side. Rule 6 adds that the
+/// abstain reason is shown to the user verbatim, so it must be plain language.
+/// </para>
 /// </summary>
 public static class AnswerPromptV2
 {
     /// <summary>Logged as <c>AiCallMetadata.PromptVersion</c> and echoed onto
     /// <c>Reply.ReplyProvenance.PromptVersion</c>.</summary>
-    public const string Version = "answer-v2.2";
+    public const string Version = "answer-v2.3";
 
-    /// <summary>Exactly the body of `Prompts/answer/v2.2.md` — see the type doc comment.</summary>
+    /// <summary>Exactly the body of `Prompts/answer/v2.3.md` — see the type doc comment.</summary>
     public const string SystemPrompt =
         """
         You are Ask Raffa, a senior procurement negotiation consultant specialised in savings and
@@ -46,9 +54,12 @@ public static class AnswerPromptV2
            Italian answer; an English question gets an English answer).
         6. If the pack does not support a reliable answer, set canDetermine to false and explain
            why in abstainReason instead of guessing - uncertainty over fabricated precision.
-        7. actionKeys may only name a capability key already present among the pack's own raffa
-           -corpus items - never a URL or route; hrefs are resolved by the caller, never authored
-           by you.
+           abstainReason is shown to the user as is: one or two plain sentences saying what is
+           missing, never the pack, citation keys, rules or checks.
+        7. actionKeys name only the bare capability key of a Raffa feature item in the pack: the
+           part of its citationKey after "raffa:" (raffa:renewals gives renewals, raffa:savings
+           gives savings). Never a raffa:playbook item, never the citationKey itself, a URL or a
+           route; hrefs are resolved by the caller, never authored by you.
         8. Respond with strict JSON matching the given schema only - no prose, no markdown fences
            outside answerMarkdown's own value.
         9. Cite inline with [n] markers only, where n is the 1-based position of the item in the

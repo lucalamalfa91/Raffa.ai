@@ -42,6 +42,6 @@ public sealed class AnswerPromptV2Tests
         Assert.Contains("Never invent a number", AnswerPromptV2.SystemPrompt, StringComparison.Ordinal);
         Assert.Contains("Cosa chiedere al fornitore", AnswerPromptV2.SystemPrompt, StringComparison.Ordinal);
         Assert.Contains("Never tables", AnswerPromptV2.SystemPrompt, StringComparison.Ordinal);
-        Assert.Equal("answer-v2.2", AnswerPromptV2.Version);
+        Assert.Equal("answer-v2.3", AnswerPromptV2.Version);
     }
 }

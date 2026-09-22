@@ -15,9 +15,27 @@ export interface ReplyBodyProps {
    * header comment for why: an `href="#id"` anchor cannot stay unique once more than one reply is
    * on screen at once, which every real conversation is. */
   onOpenCitation: (citation: ReplyCitation) => void;
-  /** `answer`-only (task text: "markdown + cards + actions + follow-ups"); never called for any
-   * other kind, since only `AnswerReply` carries `followUps`. */
+  /** A follow-up chip was clicked -- on an `answer`, or on an `abstain` that carries next-step
+   * questions (`AbstainReply.followUps`); never called for any other kind. */
   onFollowUp: (question: string) => void;
+}
+
+/** The "Next" row of follow-up question chips, shared by `answer` and `abstain`. */
+function FollowUps({ questions, onFollowUp }: { questions: readonly string[]; onFollowUp: (question: string) => void }) {
+  if (questions.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="reply-followups">
+      <span className="reply-followups-label">Next</span>
+      {questions.map((question) => (
+        <button key={question} type="button" className="reply-followup" onClick={() => onFollowUp(question)}>
+          {question} →
+        </button>
+      ))}
+    </div>
+  );
 }
 
 /**
@@ -48,16 +66,7 @@ export default function ReplyBody({ reply, onOpenCitation, onFollowUp }: ReplyBo
 
           {reply.actions.length > 0 && <ActionRow actions={reply.actions} />}
 
-          {reply.followUps.length > 0 && (
-            <div className="reply-followups">
-              <span className="reply-followups-label">Next</span>
-              {reply.followUps.map((question) => (
-                <button key={question} type="button" className="reply-followup" onClick={() => onFollowUp(question)}>
-                  {question} →
-                </button>
-              ))}
-            </div>
-          )}
+          <FollowUps questions={reply.followUps} onFollowUp={onFollowUp} />
         </div>
       );
 
@@ -86,6 +95,8 @@ export default function ReplyBody({ reply, onOpenCitation, onFollowUp }: ReplyBo
           {reply.actions && reply.actions.length > 0 && (
             <ActionRow actions={reply.actions.map((action) => ({ ...action, kind: "secondary" }))} />
           )}
+          {/* A gap is never a dead end: the server's next-step questions, when it sent any. */}
+          <FollowUps questions={reply.followUps ?? []} onFollowUp={onFollowUp} />
         </div>
       );
 

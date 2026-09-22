@@ -28,23 +28,28 @@ public static class RegenerateOnce
             "Your previous answer was rejected by an automated grounding check: " + violation +
             " Answer again using ONLY the citationKeys and values already present in the context " +
             "pack given to you — do not invent, restate a different figure, or cite anything the " +
-            "pack does not contain. If the pack genuinely does not support an answer, set " +
-            "canDetermine to false instead.";
+            "pack does not contain. An actionKey is a bare capability key such as renewals or " +
+            "savings, never a citationKey, a playbook item or a route; leave out any you are unsure " +
+            "of. If the pack genuinely does not support an answer, set canDetermine to false instead.";
     }
 
     /// <summary>
-    /// The final, honest fallback when even the retry still violates a guard (or the retry call
-    /// itself failed): an explicit "cannot determine" carrying the pack's own facts in
-    /// <see cref="AiAnswerResult.AbstainReason"/> — never the violating text (R-ASK-06; Appendix C
-    /// rule 10). Preserves <paramref name="metadata"/> (model id/version/prompt version/timestamp/
-    /// input hash) so the call stays fully reproducible/auditable (ADR-011) even though it
-    /// downgraded.
+    /// The last-resort, honest fallback when even the retry still violates a guard (or the retry
+    /// call itself failed) and <c>Answering.GroundedFallbackAnswer</c> could not compose a grounded
+    /// answer from the pack either: an explicit "cannot determine" whose
+    /// <see cref="AiAnswerResult.AbstainReason"/> is one fixed sentence written for the user — never
+    /// the violating text (R-ASK-06; Appendix C rule 10), never the guard violation, a requirement id
+    /// or a raw <c>key=value</c> dump (R-ASK-08 "never engineer chrome"). The pack's own facts, when
+    /// it holds any quotable ones, are shown by <c>GroundedFallbackAnswer</c> instead; the violation
+    /// itself stays with the caller for the audit row (<c>Answering.AnswerComposerResult.GuardViolation</c>).
+    /// Preserves <paramref name="metadata"/> (model id/version/prompt version/timestamp/input hash)
+    /// so the call stays fully reproducible/auditable (ADR-011) even though it downgraded.
     /// </summary>
     /// <param name="metadata">The last attempt's own reproducibility metadata.</param>
-    /// <param name="pack">The pack the model should have grounded its answer in — up to five
-    /// items are named verbatim in the abstain reason so the user still sees real facts even
-    /// though no narrated answer could be trusted.</param>
-    /// <param name="violation">The guard violation that triggered this downgrade.</param>
+    /// <param name="pack">The pack the model should have grounded its answer in — required, but
+    /// nothing in it is quotable by the time this runs.</param>
+    /// <param name="violation">The guard violation that triggered this downgrade — required so a
+    /// caller can never downgrade without one, but deliberately not rendered.</param>
     /// <exception cref="ArgumentNullException"><paramref name="metadata"/> or <paramref name="pack"/>
     /// is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="violation"/> is null/blank.</exception>
@@ -54,14 +59,10 @@ public static class RegenerateOnce
         ArgumentNullException.ThrowIfNull(pack);
         ArgumentException.ThrowIfNullOrWhiteSpace(violation);
 
-        var reason = pack.Count == 0
-            ? $"{violation} Nothing in the validated contracts supports a reliable answer."
-            : $"{violation} Showing the pack's own facts instead: " +
-              string.Join(
-                  "; ",
-                  pack.Take(5).Select(item => item.Values.Count == 0
-                      ? item.Title
-                      : $"{item.Title} ({string.Join(", ", item.Values.Select(v => $"{v.Key}={v.Value}"))})"));
+        // One fixed, honest sentence. This is reached only when the pack held nothing quotable
+        // (Answering.GroundedFallbackAnswer composed no answer from it), so its item titles would
+        // name Raffa features or contradict the abstain ("…the goal is reachable") — never a list.
+        const string reason = "Nothing in your validated contracts supports a reliable answer.";
 
         return new AiAnswerResult(
             CanDetermine: false,
