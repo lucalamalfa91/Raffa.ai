@@ -479,8 +479,10 @@ published by Terraform once `ai_gateway_wired = true` in
 `infra/environments/<env>` (ADR-008 amendment 2026-09-09: the shared
 `aisvc-raffa` account, the per-environment Foundry projects and the model
 deployments `gpt-5.4-nano-dev` / `text-embedding-3-small-dev` on dev,
-`gpt-5.6-terra-demo` / `gpt-5.6-luna-demo` / `text-embedding-3-large-demo`
-on demo since 2026-09-21, OCR `prebuilt-read` — see `infra/README.md`). Since ADR-017 w18,
+`gpt-5.4-demo` / `gpt-5.4-nano-demo` / `text-embedding-3-large-demo` on
+demo, OCR `prebuilt-read` — see `infra/README.md`; the 2026-09-21 GPT-5.6
+swap was rolled back on 2026-09-22 because Azure does not deploy the family
+in `northeurope` yet, ADR-004). Since ADR-017 w18,
 `FoundryOcrClient` also calls Document Intelligence `prebuilt-layout` on the
 same account for per-word `words`/`polygon` geometry (`AiOcrPage.Words`) —
 config-selected `AiGateway:Models:Ocr` stays `prebuilt-read` (the text
