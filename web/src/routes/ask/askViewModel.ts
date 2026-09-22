@@ -5,12 +5,14 @@ import type {
   ConversationActionBody,
   ConversationCitationBody,
   ConversationDetailBody,
+  ConversationInterviewBody,
   ConversationMessageBody,
   ConversationReplyBody,
   ConversationReplyKind,
   DocumentListPageBody,
+  PostMessageRequest,
 } from "../../api/client";
-import type { CitationCorpus, Reply, ReplyAction, ReplyCitation } from "./reply/replyTypes";
+import type { CitationCorpus, InterviewQuestion, Reply, ReplyAction, ReplyCitation } from "./reply/replyTypes";
 import type { WorkspaceRole } from "../../components/shell/navItems";
 import { formatSupplier, getContractTypeLabel } from "../contracts/portfolioTableFormatters";
 
@@ -132,6 +134,19 @@ interface NormalizedTurnBody {
   citations: readonly ConversationCitationBody[];
   actions: readonly ConversationActionBody[];
   followUps: readonly string[];
+  /** ADR-030: the interview payload (kind "interview" only) and the server id of this turn. */
+  interview: ConversationInterviewBody | null;
+  messageId: string | null;
+}
+
+function mapInterviewQuestion(question: ConversationInterviewBody["questions"][number]): InterviewQuestion {
+  return {
+    key: question.key,
+    prompt: question.prompt,
+    presentation: question.presentation === "consent" ? "consent" : "choice",
+    allowFreeText: question.allowFreeText,
+    options: question.options.map((option) => ({ key: option.key, label: option.label, hint: option.hint ?? null })),
+  };
 }
 
 function buildReply(turn: NormalizedTurnBody): Reply {
@@ -150,6 +165,14 @@ function buildReply(turn: NormalizedTurnBody): Reply {
         kind: turn.kind,
         answerMarkdown: turn.text,
         actions: turn.actions.map(mapConversationAction),
+      };
+    case "interview":
+      return {
+        kind: "interview",
+        prompt: turn.text,
+        questions: (turn.interview?.questions ?? []).map(mapInterviewQuestion),
+        answered: turn.interview?.answered ?? false,
+        messageId: turn.messageId,
       };
     case "abstain":
       // The backend's own abstain branch stores the reason *as* answerMarkdown/markdown
@@ -179,6 +202,8 @@ export function mapConversationReplyToReply(body: ConversationReplyBody): Reply 
     citations: body.citations,
     actions: body.actions,
     followUps: body.followUps,
+    interview: body.interview ?? null,
+    messageId: body.messageId,
   });
 }
 
@@ -194,7 +219,49 @@ export function mapConversationMessageToReply(message: ConversationMessageBody):
     citations: message.citations,
     actions: message.actions,
     followUps: [],
+    interview: message.interview ?? null,
+    messageId: message.id,
   });
+}
+
+// ---------------------------------------------------------------------------------------------
+// Interview (ADR-030): answering by option or by typing
+// ---------------------------------------------------------------------------------------------
+
+/** The interview the next typed message answers, if the last Raffa turn is one still waiting:
+ * its message id and the first question that accepts free text. Null otherwise -- a typed
+ * question then posts as a plain question, exactly as before the interview existed. */
+export function pendingInterview(turns: readonly AskTurnView[]): { messageId: string; questionKey: string } | null {
+  const last = turns[turns.length - 1];
+  if (!last || last.role !== "raffa" || last.reply.kind !== "interview") return null;
+  const { reply } = last;
+  if (reply.answered || reply.messageId === null) return null;
+  const question = reply.questions.find((q) => q.allowFreeText);
+  return question ? { messageId: reply.messageId, questionKey: question.key } : null;
+}
+
+/** The wire request for an interview answer: the label (or typed text) as the transcript line,
+ * the keys as what the server acts on. */
+export function buildInterviewAnswerRequest(
+  question: string,
+  messageId: string,
+  questionKey: string,
+  optionKey: string | null,
+): PostMessageRequest {
+  return {
+    question,
+    interviewAnswer: optionKey === null ? { messageId, questionKey, freeText: true } : { messageId, questionKey, optionKey },
+  };
+}
+
+/** Marks the interview turn with that message id as answered (chips disabled) the moment the
+ * user answers it, without waiting for the server's own `answered` on a later resume. */
+export function markInterviewAnswered(turns: readonly AskTurnView[], messageId: string): readonly AskTurnView[] {
+  return turns.map((turn) =>
+    turn.role === "raffa" && turn.reply.kind === "interview" && turn.reply.messageId === messageId && !turn.reply.answered
+      ? { ...turn, reply: { ...turn.reply, answered: true } }
+      : turn,
+  );
 }
 
 // ---------------------------------------------------------------------------------------------

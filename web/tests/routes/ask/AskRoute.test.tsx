@@ -502,6 +502,76 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
     });
   });
 
+  // ADR-030: an ambiguous question is interviewed; a chip answers it by key with the label as the
+  // transcript line; a typed reply while the interview is pending answers it as free text.
+  describe("interview (ADR-030)", () => {
+    const interviewReply = () =>
+      answerReply({
+        kind: "interview",
+        messageId: "msg-interview",
+        answerMarkdown: "Before I answer, one quick check.",
+        citations: [],
+        actions: [],
+        followUps: [],
+        interview: {
+          prompt: "Before I answer, one quick check.",
+          answered: false,
+          questions: [
+            {
+              key: "interpretation",
+              prompt: "Which of these do you mean?",
+              presentation: "choice",
+              allowFreeText: true,
+              options: [
+                { key: "portfolio-overview", label: "The most critical contracts and where we can save", hint: null },
+                { key: "renewals-window", label: "The contracts renewing in the next 120 days", hint: null },
+              ],
+            },
+          ],
+        },
+      });
+
+    it("renders the chips and a click posts the option by key with its label as the question", async () => {
+      const postMessage = vi.fn().mockResolvedValueOnce(postedReply(interviewReply())).mockResolvedValueOnce(postedReply());
+      renderAsk(mockApiClient({ createConversation: vi.fn().mockResolvedValue(createdConversation()), postMessage }));
+
+      await userEvent.type(await screen.findByRole("textbox", { name: /ask raffa a question/i }), "Did you over all my contract?{Enter}");
+      const chip = await screen.findByRole("button", { name: /renewing in the next 120 days/ });
+      expect(screen.queryByText("I don't have data I trust enough to answer.")).toBeNull();
+
+      await userEvent.click(chip);
+
+      await waitFor(() =>
+        expect(postMessage).toHaveBeenLastCalledWith(WORKSPACE_ID, CONVERSATION_ID, {
+          question: "The contracts renewing in the next 120 days",
+          interviewAnswer: { messageId: "msg-interview", questionKey: "interpretation", optionKey: "renewals-window" },
+        }),
+      );
+      // The chips stay on screen but can no longer be clicked; the transcript shows the label.
+      expect((chip as HTMLButtonElement).disabled).toBe(true);
+      expect(screen.getByText("The contracts renewing in the next 120 days")).toBeInTheDocument();
+      expect(await screen.findByText("15 January 2027")).toBeInTheDocument();
+    });
+
+    it("typing while an interview is pending answers it as free text", async () => {
+      const postMessage = vi.fn().mockResolvedValueOnce(postedReply(interviewReply())).mockResolvedValueOnce(postedReply());
+      renderAsk(mockApiClient({ createConversation: vi.fn().mockResolvedValue(createdConversation()), postMessage }));
+
+      const input = await screen.findByRole("textbox", { name: /ask raffa a question/i });
+      await userEvent.type(input, "Did you over all my contract?{Enter}");
+      await screen.findByRole("button", { name: /renewing in the next 120 days/ });
+
+      await userEvent.type(input, "the renewals{Enter}");
+
+      await waitFor(() =>
+        expect(postMessage).toHaveBeenLastCalledWith(WORKSPACE_ID, CONVERSATION_ID, {
+          question: "the renewals",
+          interviewAnswer: { messageId: "msg-interview", questionKey: "interpretation", freeText: true },
+        }),
+      );
+    });
+  });
+
   describe("AC-2/AC-3: citation landing (task text point (3); R-EVD-02)", () => {
     it("a tenant citation navigates to /contracts/<id>?page=<n> with state.from = 'ask'", async () => {
       renderAsk(

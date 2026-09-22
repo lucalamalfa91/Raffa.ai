@@ -4,6 +4,7 @@ using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Conversations;
 using Raffa.Chat.Application.Council;
 using Raffa.Chat.Application.Gate;
+using Raffa.Chat.Application.Interview;
 using Raffa.Chat.Application.Pack;
 using Raffa.Chat.Application.Planning;
 using Raffa.SharedKernel;
@@ -95,6 +96,11 @@ public static class ServiceCollectionExtensions
         // before calling this keeps its own values; the default is "on" with the documented bounds.
         services.TryAddSingleton(new CouncilOptions());
         services.AddScoped<NegotiationCouncil>();
+
+        // ADR-030: the interview (kill switch + bounds) — a configured value registered before
+        // this call wins, same TryAdd contract as CouncilOptions above.
+        services.TryAddSingleton(new InterviewOptions());
+        services.AddScoped<InterviewPlanner>();
 
         // TryAdd: always-usable default (PackBudget.DefaultMaxTokens) with no IConfiguration
         // dependency at all — this project has no PackageReference for

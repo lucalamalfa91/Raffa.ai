@@ -4,6 +4,7 @@ import {
   ASK_HELLO,
   buildRaffaTurnFromReply,
   buildErrorTurn,
+  buildInterviewAnswerRequest,
   buildOffCopy,
   resolveAskOffReason,
   buildScopedBrief,
@@ -18,7 +19,9 @@ import {
   mapConversationCitation,
   mapConversationMessageToReply,
   mapConversationReplyToReply,
+  markInterviewAnswered,
   nextTurnId,
+  pendingInterview,
   parseScopeContractId,
   resolveCitationOpenAction,
   suggestionsFor,
@@ -222,6 +225,102 @@ describe("mapConversationReplyToReply / mapConversationMessageToReply", () => {
     expect(mapped.kind).toBe("answer");
     if (mapped.kind !== "answer") throw new Error("expected answer");
     expect(mapped.followUps).toEqual([]);
+  });
+});
+
+describe("interview mapping and answering (ADR-030)", () => {
+  function replyBody(overrides: Partial<ConversationReplyBody> = {}): ConversationReplyBody {
+    return {
+      conversationId: "conv-1",
+      messageId: "msg-1",
+      kind: "answer",
+      answerMarkdown: "…",
+      citations: [],
+      actions: [],
+      provenance: { sources: [], modelId: null, promptVersion: null, inputHash: null },
+      followUps: [],
+      ...overrides,
+    };
+  }
+
+  function storedMessage(overrides: Partial<ConversationMessageBody> = {}): ConversationMessageBody {
+    return {
+      id: "m-1",
+      role: "raffa",
+      kind: "answer",
+      markdown: "…",
+      citations: [],
+      actions: [],
+      modelId: null,
+      promptVersion: null,
+      inputHash: null,
+      createdAt: "2026-09-08T00:00:00Z",
+      ...overrides,
+    };
+  }
+
+  const INTERVIEW_WIRE = {
+    prompt: "Before I answer, one quick check.",
+    questions: [
+      {
+        key: "interpretation",
+        prompt: "Which of these do you mean?",
+        presentation: "choice" as const,
+        allowFreeText: true,
+        options: [
+          { key: "portfolio-overview", label: "The most critical contracts and where we can save", hint: null },
+          { key: "total-spend", label: "Our total annual spend across contracts", hint: null },
+        ],
+      },
+    ],
+    answered: false,
+  };
+
+  it("maps an interview reply with its questions, options and the server message id", () => {
+    const reply = mapConversationReplyToReply(
+      replyBody({ kind: "interview", answerMarkdown: "Before I answer, one quick check.", citations: [], actions: [], followUps: [], interview: INTERVIEW_WIRE }),
+    );
+
+    expect(reply.kind).toBe("interview");
+    if (reply.kind !== "interview") throw new Error("unreachable");
+    expect(reply.prompt).toBe("Before I answer, one quick check.");
+    expect(reply.messageId).toBe("msg-1");
+    expect(reply.answered).toBe(false);
+    expect(reply.questions[0].options.map((o) => o.key)).toEqual(["portfolio-overview", "total-spend"]);
+    expect(reply.questions[0].options[0].hint).toBeNull();
+  });
+
+  it("maps a stored interview message with the server's answered flag and its own id", () => {
+    const reply = mapConversationMessageToReply({
+      ...storedMessage({ kind: "interview", markdown: "Before I answer, one quick check.", citations: [], actions: [] }),
+      id: "m-9",
+      interview: { ...INTERVIEW_WIRE, answered: true },
+    });
+
+    expect(reply).toMatchObject({ kind: "interview", answered: true, messageId: "m-9" });
+  });
+
+  it("pendingInterview names the interview the next typed message answers, and nothing once answered", () => {
+    const interviewTurn = buildRaffaTurnFromReply(
+      "t-2",
+      replyBody({ kind: "interview", answerMarkdown: "…", citations: [], actions: [], followUps: [], interview: INTERVIEW_WIRE }),
+    );
+
+    expect(pendingInterview([buildYouTurn("t-1", "Did you over all my contract?"), interviewTurn])).toEqual({ messageId: "msg-1", questionKey: "interpretation" });
+    expect(pendingInterview(markInterviewAnswered([interviewTurn], "msg-1"))).toBeNull();
+    expect(pendingInterview([buildYouTurn("t-1", "hi")])).toBeNull();
+    expect(pendingInterview([interviewTurn, buildYouTurn("t-3", "typed")])).toBeNull();
+  });
+
+  it("buildInterviewAnswerRequest sends the label as the transcript line and the keys as the answer", () => {
+    expect(buildInterviewAnswerRequest("Our total annual spend across contracts", "msg-1", "interpretation", "total-spend")).toEqual({
+      question: "Our total annual spend across contracts",
+      interviewAnswer: { messageId: "msg-1", questionKey: "interpretation", optionKey: "total-spend" },
+    });
+    expect(buildInterviewAnswerRequest("the first one", "msg-1", "interpretation", null)).toEqual({
+      question: "the first one",
+      interviewAnswer: { messageId: "msg-1", questionKey: "interpretation", freeText: true },
+    });
   });
 });
 

@@ -11,7 +11,10 @@ namespace Raffa.Chat.Application;
 /// <param name="Intent">The assigned branch.</param>
 /// <param name="Reason">Human-readable explanation of which signal drove the classification —
 /// useful for debugging a misroute and for asserting *why* in tests, not just the outcome.</param>
-public sealed record QueryRouteDecision(string Question, QueryIntent Intent, string Reason)
+/// <param name="IsDefault"><see langword="true"/> when no keyword or date-window pattern matched and
+/// the router fell back to its own default (semantic retrieval rather than a false deterministic
+/// answer) — the one signal the interview planner treats as "the planner has nothing to go on".</param>
+public sealed record QueryRouteDecision(string Question, QueryIntent Intent, string Reason, bool IsDefault = false)
 {
     /// <summary>
     /// True when this question must be answered by a deterministic query/filter and must never

@@ -1,4 +1,5 @@
 using Raffa.Chat.Application.Capabilities;
+using Raffa.Chat.Application.Interview;
 
 namespace Raffa.Chat.Application.Reply;
 
@@ -31,4 +32,5 @@ public sealed record CopilotReply(
     IReadOnlyList<ReplyCitation> Citations,
     IReadOnlyList<CopilotAction> Actions,
     ReplyProvenance Provenance,
-    IReadOnlyList<string> FollowUps);
+    IReadOnlyList<string> FollowUps,
+    InterviewTurn? Interview = null);

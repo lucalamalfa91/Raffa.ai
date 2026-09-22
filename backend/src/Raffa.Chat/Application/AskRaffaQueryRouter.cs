@@ -104,7 +104,8 @@ public sealed class AskRaffaQueryRouter
         return new QueryRouteDecision(
             trimmed,
             QueryIntent.Semantic,
-            "no structured field pattern matched; defaulting to semantic retrieval rather than risk a false deterministic answer (Appendix C rule 10).");
+            "no structured field pattern matched; defaulting to semantic retrieval rather than risk a false deterministic answer (Appendix C rule 10).",
+            IsDefault: true);
     }
 
     private static string? FirstMatch(string question, string[] keywords) =>

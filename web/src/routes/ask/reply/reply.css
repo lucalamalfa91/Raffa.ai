@@ -312,6 +312,62 @@
   text-decoration: none;
 }
 
+/* ---- Interview (ADR-030; `InterviewBlock.tsx`) ------------------------------ */
+
+.reply-interview {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 72ch;
+}
+
+.reply-interview-question {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.reply-interview-prompt {
+  padding: 0;
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: var(--weight-body-strong);
+  color: var(--color-text);
+}
+
+.reply-interview-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.reply-interview-option {
+  padding: 6px 12px;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  font: inherit;
+  font-size: 13px;
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.reply-interview-option:hover:not(:disabled) {
+  border-color: var(--color-accent);
+  color: var(--color-accent-700);
+}
+
+.reply-interview-question:disabled .reply-interview-option {
+  opacity: var(--opacity-disabled);
+  cursor: default;
+}
+
+.reply-interview-hint {
+  margin: 8px 0 0;
+}
+
 /* ---- Next (`m.hasFollow`) --------------------------------------------------- */
 
 .reply-followups {

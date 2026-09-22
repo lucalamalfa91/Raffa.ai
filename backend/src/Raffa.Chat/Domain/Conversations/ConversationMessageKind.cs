@@ -23,4 +23,7 @@ public enum ConversationMessageKind
     /// <summary>Declines a legal reading and offers the commercial analogue instead (R-ASK-02
     /// "legal" label).</summary>
     Refusal,
+
+    /// <summary>A clarifying question with options (ADR-030); its `interview_json` carries them.</summary>
+    Interview,
 }

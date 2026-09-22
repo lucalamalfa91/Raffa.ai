@@ -1,3 +1,4 @@
+using Raffa.Chat.Application.Interview;
 using Raffa.Chat.Domain.Conversations;
 using Raffa.Chat.Infrastructure;
 using Raffa.SharedKernel;
@@ -229,6 +230,7 @@ public sealed class ConversationService(
             ModelId = request.ModelId,
             PromptVersion = request.PromptVersion,
             InputHash = request.InputHash,
+            InterviewJson = request.InterviewJson,
             CreatedAt = now,
         };
 
@@ -266,6 +268,95 @@ public sealed class ConversationService(
     /// <summary>Deletes the caller's own conversation and its messages. Returns
     /// <see langword="false"/> under the identical "not this user's conversation in this tenant"
     /// rule <see cref="GetAsync"/> documents — the endpoint turns that into 404, never 403.</summary>
+    /// <summary>
+    /// One message of the caller's own conversation (ADR-030: the interview turn an answer refers
+    /// to). Null when the conversation is not this user's, or the message is not in it — the
+    /// caller cannot tell the two apart, by design.
+    /// </summary>
+    public async Task<ConversationMessageResult?> GetMessageAsync(
+        TenantId tenantId,
+        string userId,
+        EntityId conversationId,
+        EntityId messageId,
+        CancellationToken cancellationToken = default)
+    {
+        using var tenantScope = tenantContext.BeginScope(tenantId);
+
+        var owned = await dbContext.Conversations
+            .AsNoTracking()
+            .AnyAsync(c => c.TenantId == tenantId && c.UserId == userId && c.Id == conversationId, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (!owned)
+        {
+            return null;
+        }
+
+        var message = await dbContext.ConversationMessages
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                m => m.TenantId == tenantId && m.ConversationId == conversationId && m.Id == messageId,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        return message is null ? null : ToMessageResult(message);
+    }
+
+    /// <summary>
+    /// Marks a single-use interview option (a consent) as taken (ADR-030). Returns
+    /// <see cref="InterviewConsumeOutcome.AlreadyConsumed"/> when the row was already stamped —
+    /// the endpoint's 409 — so an authorization can never be replayed.
+    /// </summary>
+    public async Task<InterviewConsumeOutcome> MarkInterviewConsumedAsync(
+        TenantId tenantId,
+        string userId,
+        EntityId conversationId,
+        EntityId messageId,
+        string optionKey,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(optionKey);
+
+        using var tenantScope = tenantContext.BeginScope(tenantId);
+
+        var owned = await dbContext.Conversations
+            .AsNoTracking()
+            .AnyAsync(c => c.TenantId == tenantId && c.UserId == userId && c.Id == conversationId, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (!owned)
+        {
+            return InterviewConsumeOutcome.NotFound;
+        }
+
+        var message = await dbContext.ConversationMessages
+            .SingleOrDefaultAsync(
+                m => m.TenantId == tenantId && m.ConversationId == conversationId && m.Id == messageId,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        if (message is null || message.Kind != ConversationMessageKind.Interview)
+        {
+            return InterviewConsumeOutcome.NotFound;
+        }
+
+        var record = InterviewJsonCodec.TryDecodeTurn(message.InterviewJson);
+        if (record is null)
+        {
+            return InterviewConsumeOutcome.NotFound;
+        }
+
+        if (record.ConsumedAt is not null)
+        {
+            return InterviewConsumeOutcome.AlreadyConsumed;
+        }
+
+        message.InterviewJson = InterviewJsonCodec.MarkConsumed(record, optionKey, clock.UtcNow);
+        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        return InterviewConsumeOutcome.Consumed;
+    }
+
     public async Task<bool> DeleteAsync(
         TenantId tenantId,
         string userId,
@@ -420,5 +511,13 @@ public sealed class ConversationService(
             message.ModelId,
             message.PromptVersion,
             message.InputHash,
-            message.CreatedAt);
+            message.CreatedAt,
+            message.InterviewJson);
+}
+
+public enum InterviewConsumeOutcome
+{
+    Consumed,
+    AlreadyConsumed,
+    NotFound,
 }

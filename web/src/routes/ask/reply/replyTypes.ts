@@ -104,7 +104,7 @@ export interface ReplyAction {
 /** `reply.kind` (requirements.md §6) plus the client-only `"error"` a transport/network failure
  * produces (never conflated with an honest `"abstain"` -- the same rule `../askViewModel.ts
  * #ChatMessageKind` already documents for V1). */
-export type ReplyKind = "answer" | "redirect" | "refusal" | "abstain" | "error";
+export type ReplyKind = "answer" | "redirect" | "refusal" | "abstain" | "interview" | "error";
 
 /** `answer` = markdown body + citation cards + action buttons + follow-ups (task text) -- the only
  * kind with citations. */
@@ -141,6 +141,35 @@ export interface AbstainReply {
   actions?: readonly ReplyAction[];
 }
 
+/** ADR-030: one clarifying question (or two) with clickable options, asked before Raffa
+ * retrieves anything. `presentation: "consent"` is the web-research authorization the SPA
+ * renders as an alert dialog. Answered by key through `PostMessageRequest.interviewAnswer`;
+ * `answered` disables the chips once the user moved on. `messageId` is the server message this
+ * turn is, needed to answer it; null only for a turn the client could not identify. */
+export type InterviewPresentation = "choice" | "consent";
+
+export interface InterviewOption {
+  key: string;
+  label: string;
+  hint: string | null;
+}
+
+export interface InterviewQuestion {
+  key: string;
+  prompt: string;
+  presentation: InterviewPresentation;
+  allowFreeText: boolean;
+  options: readonly InterviewOption[];
+}
+
+export interface InterviewReply {
+  kind: "interview";
+  prompt: string;
+  questions: readonly InterviewQuestion[];
+  answered: boolean;
+  messageId: string | null;
+}
+
 /** A transport/network failure -- not part of the wire's own `kind` enum, the same client-only
  * addition `../askViewModel.ts#ChatMessageKind` makes for V1. Renders the existing `.error-state`
  * (task text), never the abstain block. */
@@ -149,7 +178,7 @@ export interface ErrorReply {
   reason: string;
 }
 
-export type Reply = AnswerReply | RedirectReply | AbstainReply | ErrorReply;
+export type Reply = AnswerReply | RedirectReply | AbstainReply | InterviewReply | ErrorReply;
 
 /** `CitationCard`'s corpus badge (task text: "*validated contract* / *market · representative* /
  * *Raffa*"), reusing the app-wide `{ variant, label }` shape `../../../styles/semantics.ts`

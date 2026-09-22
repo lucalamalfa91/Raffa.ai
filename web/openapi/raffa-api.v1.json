@@ -5918,7 +5918,8 @@
                               "answer",
                               "abstain",
                               "redirect",
-                              "refusal"
+                              "refusal",
+                              "interview"
                             ]
                           },
                           "markdown": {
@@ -6056,6 +6057,82 @@
                           "createdAt": {
                             "type": "string",
                             "format": "date-time"
+                          },
+                          "interview": {
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "description": "ADR-030. Present when kind is 'interview': Raffa's clarifying question(s) with clickable options. Keys, labels and hints only -- an option's server-side resolution (the rewritten question, forced intent/contract, or the web-research query) never reaches the wire, so the client can neither learn nor alter it. Answer with POST .../messages { question: <label or free text>, interviewAnswer: { messageId, questionKey, optionKey? | freeText: true } }. 'answered' is true once a later turn exists or a single-use (consent) option was taken.",
+                            "required": [
+                              "prompt",
+                              "questions",
+                              "answered"
+                            ],
+                            "properties": {
+                              "prompt": {
+                                "type": "string"
+                              },
+                              "questions": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "key",
+                                    "prompt",
+                                    "presentation",
+                                    "allowFreeText",
+                                    "options"
+                                  ],
+                                  "properties": {
+                                    "key": {
+                                      "type": "string"
+                                    },
+                                    "prompt": {
+                                      "type": "string"
+                                    },
+                                    "presentation": {
+                                      "type": "string",
+                                      "enum": [
+                                        "choice",
+                                        "consent"
+                                      ]
+                                    },
+                                    "allowFreeText": {
+                                      "type": "boolean"
+                                    },
+                                    "options": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "object",
+                                        "required": [
+                                          "key",
+                                          "label",
+                                          "hint"
+                                        ],
+                                        "properties": {
+                                          "key": {
+                                            "type": "string"
+                                          },
+                                          "label": {
+                                            "type": "string"
+                                          },
+                                          "hint": {
+                                            "type": [
+                                              "string",
+                                              "null"
+                                            ]
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              "answered": {
+                                "type": "boolean"
+                              }
+                            }
                           }
                         }
                       }
@@ -6085,7 +6162,7 @@
       "post": {
         "operationId": "postConversationMessage",
         "summary": "Asks a question in an existing conversation; runs the Ask engine and returns the reply.",
-        "description": "Maps to PostConversationMessageAsync in backend/src/Raffa.Api/ConversationsEndpointExtensions.cs -- the one endpoint that actually runs the Ask engine (Raffa.Api.AskCopilotService.AskAsync, task E13/F06/US01/T01), then persists both the caller's question and Raffa's reply (ConversationService.AppendMessageAsync) before wire-shaping the same object back (shared with POST /api/chat/query's own alias, ConversationsEndpointExtensions.AskAndAppendAsync). Request body `{ question }` (ConversationsEndpointExtensions.PostConversationMessageRequest, hand-written client-side, see this document's 'Codegen tool choice' paragraph). Reply shape is ADR-024 §6 / inputs/requirements.md §6, kind decides the layout: `answer` (markdown + citations + actions + followUps), `abstain` (a true-insufficiency reply, citations/actions/followUps empty), `redirect` (greeting/off-domain/needs_document, one CTA), `refusal` (legal, one CTA). `actions[].kind` is 'navigate' | 'upload' (Raffa.Chat.Application.Capabilities.CopilotActionKind) -- inputs/requirements.md §6's own JSON example shows 'primary'/'secondary' instead, an illustrative visual-priority label the real backend never emits; web/src/routes/ask/askViewModel.ts maps the real navigate/upload/index-ordered actions onto ReplyAction's presentational primary/secondary at the UI boundary (replyTypes.ts, task E13/F09/US01/T02, is out of this task's file scope to change). See GET /api/conversations/{id} above for why `corpus` is a plain string, not a 3-value enum. 404 under the identical tenant/user/unknown-id rule GET /api/conversations/{id} documents.",
+        "description": "ADR-030: the request body is { question, interviewAnswer?: { messageId, questionKey, optionKey?, freeText? } } -- an answer to an interview turn by key, never by label (400 for an unknown message/question/option, 409 for a single-use consent option already taken). Maps to PostConversationMessageAsync in backend/src/Raffa.Api/ConversationsEndpointExtensions.cs -- the one endpoint that actually runs the Ask engine (Raffa.Api.AskCopilotService.AskAsync, task E13/F06/US01/T01), then persists both the caller's question and Raffa's reply (ConversationService.AppendMessageAsync) before wire-shaping the same object back (shared with POST /api/chat/query's own alias, ConversationsEndpointExtensions.AskAndAppendAsync). Request body `{ question }` (ConversationsEndpointExtensions.PostConversationMessageRequest, hand-written client-side, see this document's 'Codegen tool choice' paragraph). Reply shape is ADR-024 §6 / inputs/requirements.md §6, kind decides the layout: `answer` (markdown + citations + actions + followUps), `abstain` (a true-insufficiency reply, citations/actions/followUps empty), `redirect` (greeting/off-domain/needs_document, one CTA), `refusal` (legal, one CTA). `actions[].kind` is 'navigate' | 'upload' (Raffa.Chat.Application.Capabilities.CopilotActionKind) -- inputs/requirements.md §6's own JSON example shows 'primary'/'secondary' instead, an illustrative visual-priority label the real backend never emits; web/src/routes/ask/askViewModel.ts maps the real navigate/upload/index-ordered actions onto ReplyAction's presentational primary/secondary at the UI boundary (replyTypes.ts, task E13/F09/US01/T02, is out of this task's file scope to change). See GET /api/conversations/{id} above for why `corpus` is a plain string, not a 3-value enum. 404 under the identical tenant/user/unknown-id rule GET /api/conversations/{id} documents.",
         "parameters": [
           {
             "name": "X-Tenant-Id",
@@ -6148,7 +6225,8 @@
                         "answer",
                         "abstain",
                         "redirect",
-                        "refusal"
+                        "refusal",
+                        "interview"
                       ]
                     },
                     "answerMarkdown": {
@@ -6305,6 +6383,82 @@
                       "type": "array",
                       "items": {
                         "type": "string"
+                      }
+                    },
+                    "interview": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "description": "ADR-030. Present when kind is 'interview': Raffa's clarifying question(s) with clickable options. Keys, labels and hints only -- an option's server-side resolution (the rewritten question, forced intent/contract, or the web-research query) never reaches the wire, so the client can neither learn nor alter it. Answer with POST .../messages { question: <label or free text>, interviewAnswer: { messageId, questionKey, optionKey? | freeText: true } }. 'answered' is true once a later turn exists or a single-use (consent) option was taken.",
+                      "required": [
+                        "prompt",
+                        "questions",
+                        "answered"
+                      ],
+                      "properties": {
+                        "prompt": {
+                          "type": "string"
+                        },
+                        "questions": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "key",
+                              "prompt",
+                              "presentation",
+                              "allowFreeText",
+                              "options"
+                            ],
+                            "properties": {
+                              "key": {
+                                "type": "string"
+                              },
+                              "prompt": {
+                                "type": "string"
+                              },
+                              "presentation": {
+                                "type": "string",
+                                "enum": [
+                                  "choice",
+                                  "consent"
+                                ]
+                              },
+                              "allowFreeText": {
+                                "type": "boolean"
+                              },
+                              "options": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "key",
+                                    "label",
+                                    "hint"
+                                  ],
+                                  "properties": {
+                                    "key": {
+                                      "type": "string"
+                                    },
+                                    "label": {
+                                      "type": "string"
+                                    },
+                                    "hint": {
+                                      "type": [
+                                        "string",
+                                        "null"
+                                      ]
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "answered": {
+                          "type": "boolean"
+                        }
                       }
                     }
                   }

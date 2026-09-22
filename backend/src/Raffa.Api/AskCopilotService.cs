@@ -9,6 +9,7 @@ using Raffa.Chat.Application.Answering;
 using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Council;
 using Raffa.Chat.Application.Gate;
+using Raffa.Chat.Application.Interview;
 using Raffa.Chat.Application.Pack;
 using Raffa.Chat.Application.Planning;
 using Raffa.Chat.Application.Reply;
@@ -196,6 +197,8 @@ internal sealed partial class AskCopilotService(
     IMarketKnowledgeRetrieval marketKnowledgeRetrieval,
     IMarketDealLookup marketDealLookup,
     NegotiationCouncil negotiationCouncil,
+    InterviewPlanner interviewPlanner,
+    InterviewOptions interviewOptions,
     IAuditWriter auditWriter,
     ITenantContext tenantContext,
     IClock clock)
@@ -223,6 +226,7 @@ internal sealed partial class AskCopilotService(
     private const string AuditRedirectedAction = "chat.redirected";
     private const string AuditRefusedAction = "chat.refused";
     private const string AuditAbstainedAction = "chat.abstained";
+    private const string AuditInterviewedAction = "chat.interviewed";
     private const string AuditResourceType = "ask_raffa_v2";
 
     /// <summary>The tenant scope <see cref="AskAsync"/> already opened for this call
@@ -262,10 +266,14 @@ internal sealed partial class AskCopilotService(
         IReadOnlyList<(string Role, string Markdown)> recentTurns,
         string actor,
         EntityId? scopeContractId = null,
+        AskTurnHints? hints = null,
+        bool previousRaffaTurnWasInterview = false,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(question);
         ArgumentNullException.ThrowIfNull(recentTurns);
+
+        var turnHints = hints ?? AskTurnHints.None;
 
         using var scope = tenantContext.BeginScope(tenantId);
 
@@ -293,6 +301,20 @@ internal sealed partial class AskCopilotService(
             .ToList();
 
         var gate = domainGate.Classify(question, knownSuppliers);
+
+        // ADR-030: an interview option that named a supplier is a known supplier by construction
+        // (the planner built it from this tenant's own portfolio), so it wins over the gate's own
+        // free-text extraction exactly as a scoped entry does below. Greeting/OffDomain/Legal/
+        // Capability still win outright.
+        if (turnHints.ForcedSupplierName is { } forcedSupplierName && gate.Label is GateLabel.NeedsDocument or GateLabel.InDomain)
+        {
+            gate = gate with
+            {
+                Label = GateLabel.InDomain,
+                Reason = $"interview resolution named known supplier '{forcedSupplierName}' (ADR-030).",
+                NamedSupplier = forcedSupplierName,
+            };
+        }
 
         // AC-1/AC-2 (ADR-024 "the gate resolves the scope id before the R-ASK-10 check"; task
         // E25/F03/US01/T01, NW-56): a conversation opened from Contract 360's "Ask about it"
@@ -346,7 +368,7 @@ internal sealed partial class AskCopilotService(
             GateLabel.NeedsDocument => (BuildNeedsDocumentReply(gate.NamedSupplier!, portfolio.Items.Count), false),
             GateLabel.InDomain => await BuildInDomainReplyAsync(
                 tenantId, question, gate.NamedSupplier, portfolio, supplierNames, recentTurns,
-                scopeContractId, scopedContractItem, actor, cancellationToken)
+                scopeContractId, scopedContractItem, actor, turnHints, previousRaffaTurnWasInterview, cancellationToken)
                 .ConfigureAwait(false),
             _ => throw new ArgumentOutOfRangeException(nameof(gate), gate.Label, "Unknown GateLabel."),
         };
@@ -455,6 +477,8 @@ internal sealed partial class AskCopilotService(
         EntityId? scopeContractId,
         PortfolioListItem? scopedContractItem,
         string actor,
+        AskTurnHints hints,
+        bool previousRaffaTurnWasInterview,
         CancellationToken cancellationToken)
     {
         // A bare follow-up ("non mi hai risposto", "e quindi?") is planned on the previous user
@@ -465,7 +489,22 @@ internal sealed partial class AskCopilotService(
                                    string.Equals(turn.Role, "user", StringComparison.OrdinalIgnoreCase))
             .Markdown;
 
-        var plan = intentPlanner.Plan(question, namedSupplier, previousUserQuestion);
+        var plan = hints.ForcedIntent is { } forcedIntent
+            ? intentPlanner.Plan(question, namedSupplier, previousUserQuestion, forcedIntent)
+            : intentPlanner.Plan(question, namedSupplier, previousUserQuestion);
+
+        // ADR-030: an interview option that named one contract narrows this turn to it exactly as
+        // a scoped conversation would; an id this tenant cannot see refuses (the NW-76 posture),
+        // never silently widens into a portfolio-wide answer.
+        PortfolioListItem? forcedContractItem = null;
+        if (hints.ForcedContractId is { } forcedContractId)
+        {
+            forcedContractItem = portfolio.Items.FirstOrDefault(item => item.ContractId == forcedContractId.Value);
+            if (forcedContractItem is null && plan.Intent != AskIntent.PortfolioMarketPosition)
+            {
+                return (BuildUnseenScopeRefusal(portfolio), false);
+            }
+        }
 
         // AC-3, lock 4 (task E27/F02/US01/T01, NW-76): a scope id present on this conversation but
         // absent from this turn's own freshly-fetched portfolio refuses outright, before a single
@@ -485,8 +524,8 @@ internal sealed partial class AskCopilotService(
         // so it alone passes null through here and falls back to ResolveNamedContractItem's own
         // name-based, soonest-cancellation-deadline lookup below (which still applies for every
         // other, unscoped turn, and for every turn once no scope resolved at all).
-        var (namedContractItem, disambiguationItem) = ResolveNamedContractItem(
-            plan.Intent == AskIntent.PortfolioMarketPosition ? null : scopedContractItem,
+        var (namedContractItem, disambiguationItem, supplierMatches) = ResolveNamedContractItem(
+            plan.Intent == AskIntent.PortfolioMarketPosition ? null : (scopedContractItem ?? forcedContractItem),
             plan.NamedSupplier, portfolio, supplierNames);
 
         // AC-2: follows namedContractItem above, so a scoped turn's follow-up actions (e.g. "open
@@ -497,6 +536,30 @@ internal sealed partial class AskCopilotService(
         if (plan.Intent is AskIntent.Navigate or AskIntent.QuoteRoute)
         {
             return (BuildRoutingOnlyReply(plan, routingContext), false);
+        }
+
+        // ADR-030 — the interview. Decided here, after scope and supplier resolution and before
+        // any pack is built, so an ambiguous turn retrieves nothing and calls no model. An answer
+        // to an interview (hints.SuppressInterview) never triggers a second one, and neither does
+        // a turn that directly follows one.
+        if (interviewOptions.Enabled && !hints.SuppressInterview)
+        {
+            var interviewContext = new InterviewContext(
+                HasScope: scopeContractId is not null || forcedContractItem is not null,
+                NamedSupplierContractCount: supplierMatches.Count,
+                PortfolioIsEmpty: portfolio.Items.Count == 0,
+                PreviousRaffaTurnWasInterview: previousRaffaTurnWasInterview,
+                IsNoticeQuestion: NoticeQuestionPattern.IsMatch(question));
+            var signals = AmbiguityDetector.Detect(question, plan, interviewContext, interviewOptions);
+            if (signals.Verdict == AmbiguityVerdict.Ambiguous)
+            {
+                var interview = interviewPlanner.Plan(
+                    question, plan, signals, BuildInterviewInputs(supplierMatches, portfolio, supplierNames));
+                if (interview is not null)
+                {
+                    return (InterviewReplyBuilder.Interview(interview), false);
+                }
+            }
         }
 
         // Task E30/F02/US01/T01 (NW-94): the five notice fallbacks are fully server-decided, so a
@@ -595,6 +658,24 @@ internal sealed partial class AskCopilotService(
                 [], ResolveAbstainRecoveryActions(portfolio, routingContext), ReplyProvenance.NoModelCall([]), []), false);
         }
 
+        // ADR-030 stage 3: the model itself says the question was ambiguous -- offer the
+        // interpretation menu (deterministic options, never the model's) instead of the abstain
+        // block with its dead "Open Ask Raffa" button.
+        if (!composed.Value.Result.CanDetermine
+            && !composed.Value.GuardIntervened
+            && interviewOptions.Enabled
+            && interviewOptions.ConvertAmbiguousAbstain
+            && !hints.SuppressInterview
+            && !previousRaffaTurnWasInterview
+            && AmbiguousAbstainDetector.IsAmbiguous(composed.Value.Result.AbstainReason))
+        {
+            var interview = interviewPlanner.PlanInterpretationMenu(question, plan);
+            if (interview is not null)
+            {
+                return (InterviewReplyBuilder.Interview(interview), false);
+            }
+        }
+
         var actionKeys = composed.Value.Result.ActionKeys ?? [];
         var resolvedActions = actionKeys.Count > 0
             ? capabilityRouting.ResolveActions(actionKeys.Select(CapabilityIntent.HowTo).ToList(), routingContext)
@@ -683,7 +764,7 @@ internal sealed partial class AskCopilotService(
     /// already handled the latter upstream so this is not expected in practice), and a
     /// <see cref="PackCorpus.Calc"/> pack item naming the choice, only when the choice was actually
     /// ambiguous.</returns>
-    private static (PortfolioListItem? Item, PackItem? DisambiguationItem) ResolveNamedContractItem(
+    private static (PortfolioListItem? Item, PackItem? DisambiguationItem, IReadOnlyList<PortfolioListItem> Matches) ResolveNamedContractItem(
         PortfolioListItem? scopedContractItem,
         string? namedSupplier,
         PortfolioPage portfolio,
@@ -691,12 +772,12 @@ internal sealed partial class AskCopilotService(
     {
         if (scopedContractItem is not null)
         {
-            return (scopedContractItem, null);
+            return (scopedContractItem, null, []);
         }
 
         if (namedSupplier is null)
         {
-            return (null, null);
+            return (null, null, []);
         }
 
         var matches = portfolio.Items
@@ -710,17 +791,17 @@ internal sealed partial class AskCopilotService(
 
         if (matches.Count == 0)
         {
-            return (null, null);
+            return (null, null, []);
         }
 
         var chosen = matches[0];
 
         if (matches.Count == 1)
         {
-            return (chosen, null);
+            return (chosen, null, matches);
         }
 
-        return (chosen, BuildMultiContractDisambiguationItem(chosen, matches.Count, namedSupplier));
+        return (chosen, BuildMultiContractDisambiguationItem(chosen, matches.Count, namedSupplier), matches);
     }
 
     /// <summary>
@@ -2236,6 +2317,35 @@ internal sealed partial class AskCopilotService(
 
     // ----- Shared helpers -----
 
+    /// <summary>ADR-030: the display facts the interview planner phrases a "which contract?"
+    /// question from -- supplier names, never guids in a label (R-ASK-08); the id rides in the
+    /// option's resolution.</summary>
+    private static InterviewInputs BuildInterviewInputs(
+        IReadOnlyList<PortfolioListItem> supplierMatches,
+        PortfolioPage portfolio,
+        IReadOnlyDictionary<EntityId, string> supplierNames)
+    {
+        var supplierContracts = supplierMatches.Select(item => ToInterviewChoice(item, supplierNames)).ToList();
+        var noticeCandidates = portfolio.Items
+            .Where(item => item.CancellationDeadline is not null)
+            .OrderBy(item => item.CancellationDeadline)
+            .ThenBy(item => item.ContractId)
+            .Select(item => ToInterviewChoice(item, supplierNames))
+            .ToList();
+
+        return new InterviewInputs(supplierContracts, noticeCandidates);
+    }
+
+    private static InterviewContractChoice ToInterviewChoice(
+        PortfolioListItem item, IReadOnlyDictionary<EntityId, string> supplierNames) =>
+        new(
+            item.ContractId.ToString(),
+            DisplayNameFor(item, supplierNames),
+            item.Type.ToString(),
+            item.RenewalDate,
+            item.CancellationDeadline,
+            item.EndDate);
+
     /// <summary>
     /// The name a contract is shown under everywhere in a pack (R-SUP-04): the resolved supplier
     /// name from the per-turn map <see cref="AskAsync"/> builds, else the contract type -- never a
@@ -2570,6 +2680,7 @@ internal sealed partial class AskCopilotService(
             ReplyKind.Abstain => AuditAbstainedAction,
             ReplyKind.Redirect => AuditRedirectedAction,
             ReplyKind.Refusal => AuditRefusedAction,
+            ReplyKind.Interview => AuditInterviewedAction,
             _ => AuditAnsweredAction,
         };
 
@@ -2589,7 +2700,8 @@ internal sealed partial class AskCopilotService(
                 packHash,
                 clock.UtcNow,
                 $"kind={reply.Kind} citationCount={reply.Citations.Count} actionCount={reply.Actions.Count} " +
-                $"packHash={packHash} abstainGuardIntervened={guardIntervened}"),
+                $"packHash={packHash} abstainGuardIntervened={guardIntervened} " +
+                $"interviewQuestions={reply.Interview?.Questions.Count ?? 0}"),
             cancellationToken).ConfigureAwait(false);
     }
 

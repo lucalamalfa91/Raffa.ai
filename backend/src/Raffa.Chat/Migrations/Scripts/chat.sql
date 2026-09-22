@@ -112,5 +112,19 @@ BEGIN
     VALUES ('20260908205121_AddTenantRowLevelSecurity', '10.0.4');
     END IF;
 END $EF$;
-COMMIT;
 
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260922150000_AddInterviewJson') THEN
+    ALTER TABLE conversation_message ADD interview_json jsonb;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260922150000_AddInterviewJson') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20260922150000_AddInterviewJson', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;

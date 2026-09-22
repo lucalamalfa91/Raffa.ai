@@ -1,7 +1,8 @@
 import ActionRow from "./ActionRow";
 import EvidenceCard from "./EvidenceCard";
+import InterviewBlock from "./InterviewBlock";
 import ReplyMarkdown from "./ReplyMarkdown";
-import type { Reply, ReplyCitation } from "./replyTypes";
+import type { InterviewOption, InterviewReply, Reply, ReplyCitation } from "./replyTypes";
 import "./reply.css";
 
 /** The abstain block's lead-in (`abstainTitle` in `Raffa.ai V2.dc.html`, quoted). */
@@ -18,6 +19,9 @@ export interface ReplyBodyProps {
   /** `answer`-only (task text: "markdown + cards + actions + follow-ups"); never called for any
    * other kind, since only `AnswerReply` carries `followUps`. */
   onFollowUp: (question: string) => void;
+  /** `interview`-only (ADR-030): the user picked an option. Optional so the pure component still
+   * renders an interview read-only (a resumed, already-answered one) without a handler. */
+  onInterviewOption?: (reply: InterviewReply, questionKey: string, option: InterviewOption) => void;
 }
 
 /**
@@ -32,7 +36,7 @@ export interface ReplyBodyProps {
  * `route`/raw-id field for any variant to leak in the first place -- there is nothing here to
  * accidentally print.
  */
-export default function ReplyBody({ reply, onOpenCitation, onFollowUp }: ReplyBodyProps) {
+export default function ReplyBody({ reply, onOpenCitation, onFollowUp, onInterviewOption }: ReplyBodyProps) {
   switch (reply.kind) {
     case "answer":
       return (
@@ -68,6 +72,14 @@ export default function ReplyBody({ reply, onOpenCitation, onFollowUp }: ReplyBo
           {/* R-ASK-07 / parent AC-3 "one CTA": rendered defensively -- only ever the first action --
               even if the reply somehow carried more than one; see replyTypes.ts#RedirectReply. */}
           {reply.actions.length > 0 && <ActionRow actions={reply.actions.slice(0, 1)} />}
+        </div>
+      );
+
+    case "interview":
+      return (
+        <div className="reply-body" data-reply-kind="interview">
+          <ReplyMarkdown text={reply.prompt} citations={[]} onOpenCitation={onOpenCitation} />
+          <InterviewBlock reply={reply} onOption={(questionKey, option) => onInterviewOption?.(reply, questionKey, option)} />
         </div>
       );
 

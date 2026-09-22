@@ -212,6 +212,12 @@ var councilOptions = new Raffa.Chat.Application.Council.CouncilOptions();
 builder.Configuration.GetSection(Raffa.Chat.Application.Council.CouncilOptions.SectionName).Bind(councilOptions);
 builder.Services.AddSingleton(councilOptions);
 
+// ADR-030: Chat:Interview (kill switch + bounds of the interview), same before-AddChatModule
+// ordering as Chat:Council above so a configured value wins over the module's TryAdd default.
+var interviewOptions = new Raffa.Chat.Application.Interview.InterviewOptions();
+builder.Configuration.GetSection(Raffa.Chat.Application.Interview.InterviewOptions.SectionName).Bind(interviewOptions);
+builder.Services.AddSingleton(interviewOptions);
+
 builder.Services.AddChatModule(chatConnectionString);
 
 // Task E13/F06/US01/T01 (ask-engine): Chat:PackTokenBudget, registered *before* AddChatModule's

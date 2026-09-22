@@ -693,7 +693,7 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": { id: string; title: string; scopeContractId: string | null; createdAt: string; updatedAt: string; messages: ({ id: string; role: "you" | "raffa"; kind: "answer" | "abstain" | "redirect" | "refusal"; markdown: string; citations: ({ n: number; corpus: string; title: string; subtitle: string | null; snippet: string; documentId: string | null; contractId: string | null; page: number | null; section: string | null; previewUrl: string | null; href: string | null; recordId: string | null })[]; actions: ({ label: string; href: string; kind: "navigate" | "upload" })[]; modelId: string | null; promptVersion: string | null; inputHash: string | null; createdAt: string })[] };
+          "application/json": { id: string; title: string; scopeContractId: string | null; createdAt: string; updatedAt: string; messages: ({ id: string; role: "you" | "raffa"; kind: "answer" | "abstain" | "redirect" | "refusal" | "interview"; markdown: string; citations: ({ n: number; corpus: string; title: string; subtitle: string | null; snippet: string; documentId: string | null; contractId: string | null; page: number | null; section: string | null; previewUrl: string | null; href: string | null; recordId: string | null })[]; actions: ({ label: string; href: string; kind: "navigate" | "upload" })[]; modelId: string | null; promptVersion: string | null; inputHash: string | null; createdAt: string; interview?: { prompt: string; questions: ({ key: string; prompt: string; presentation: "choice" | "consent"; allowFreeText: boolean; options: ({ key: string; label: string; hint: string | null })[] })[]; answered: boolean } | null })[] };
         };
       };
       400: {
@@ -711,7 +711,7 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": { conversationId: string; messageId: string; kind: "answer" | "abstain" | "redirect" | "refusal"; answerMarkdown: string; citations: ({ n: number; corpus: string; title: string; subtitle: string | null; snippet: string; documentId: string | null; contractId: string | null; page: number | null; section: string | null; previewUrl: string | null; href: string | null; recordId: string | null })[]; actions: ({ label: string; href: string; kind: "navigate" | "upload" })[]; provenance: { sources: (string)[]; modelId: string | null; promptVersion: string | null; inputHash: string | null }; followUps: (string)[] };
+          "application/json": { conversationId: string; messageId: string; kind: "answer" | "abstain" | "redirect" | "refusal" | "interview"; answerMarkdown: string; citations: ({ n: number; corpus: string; title: string; subtitle: string | null; snippet: string; documentId: string | null; contractId: string | null; page: number | null; section: string | null; previewUrl: string | null; href: string | null; recordId: string | null })[]; actions: ({ label: string; href: string; kind: "navigate" | "upload" })[]; provenance: { sources: (string)[]; modelId: string | null; promptVersion: string | null; inputHash: string | null }; followUps: (string)[]; interview?: { prompt: string; questions: ({ key: string; prompt: string; presentation: "choice" | "consent"; allowFreeText: boolean; options: ({ key: string; label: string; hint: string | null })[] })[]; answered: boolean } | null };
         };
       };
       400: {

@@ -32,4 +32,5 @@ public sealed record AppendConversationMessageRequest(
     string ActionsJson,
     string? ModelId = null,
     string? PromptVersion = null,
-    string? InputHash = null);
+    string? InputHash = null,
+    string? InterviewJson = null);

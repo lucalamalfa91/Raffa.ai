@@ -20,6 +20,7 @@ import {
   NEW_CHAT_INTRO,
   THINKING_COPY,
   TRANSPORT_ERROR_REASON,
+  buildInterviewAnswerRequest,
   buildRaffaTurnFromReply,
   buildErrorTurn,
   buildOffCopy,
@@ -28,6 +29,8 @@ import {
   buildStarterGroups,
   buildYouTurn,
   createConversationAndAsk,
+  markInterviewAnswered,
+  pendingInterview,
   deriveConversationTitle,
   fetchBoundContractChip,
   nextTurnId,
@@ -279,10 +282,24 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     }
   }, [routeConversationId]);
 
+  // ADR-030: the interview the next message answers is read off the turns on screen at the
+  // moment of asking (a ref, so `ask` itself never re-creates on every turn).
+  const turnsRef = useRef<readonly AskTurnView[]>(turns);
+  turnsRef.current = turns;
+
   const ask = useCallback(
-    (rawText: string) => {
+    (rawText: string, interviewAnswer?: { messageId: string; questionKey: string; optionKey: string | null }) => {
       const text = rawText.trim();
       if (text === "" || !workspace) return;
+
+      // An explicit option click, else the pending interview a typed answer implicitly replies to.
+      const pending = interviewAnswer ?? (() => {
+        const found = pendingInterview(turnsRef.current);
+        return found ? { ...found, optionKey: null } : null;
+      })();
+      if (pending !== null) {
+        setTurns((previous) => markInterviewAnswered(previous, pending.messageId));
+      }
 
       setTurns((previous) => [...previous, buildYouTurn(nextTurnId(), text)]);
       setConversationTitle((current) => current ?? deriveConversationTitle(text));
@@ -313,7 +330,9 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
         return;
       }
 
-      void apiClient.postMessage(workspace.id, openConversationId, { question: text }).then((result) => {
+      const request = pending === null ? { question: text } : buildInterviewAnswerRequest(text, pending.messageId, pending.questionKey, pending.optionKey);
+
+      void apiClient.postMessage(workspace.id, openConversationId, request).then((result) => {
         setAsking(false);
         const turn =
           result.ok && result.reply
@@ -532,6 +551,9 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
                         reply={turn.reply}
                         onOpenCitation={(citation) => openCitation(turn, citation)}
                         onFollowUp={ask}
+                        onInterviewOption={(reply, questionKey, option) => {
+                          if (reply.messageId !== null) ask(option.label, { messageId: reply.messageId, questionKey, optionKey: option.key });
+                        }}
                       />
                       {citationNotice !== null && citationNotice.turnId === turn.id && (
                         <p className="hint" role="status">

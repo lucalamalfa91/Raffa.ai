@@ -161,12 +161,114 @@ public sealed class IntentPlanner
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(question);
 
+        var result = PlanCore(question, namedSupplier, previousUserQuestion);
+        return result.Candidates is null
+            ? result with { Candidates = Candidates(question, namedSupplier) }
+            : result;
+    }
+
+    /// <summary>
+    /// The plan an interview resolution forces (ADR-030): the option the user picked already names
+    /// the intent, so no lexicon is consulted and <see cref="IntentPlanResult.Basis"/> is
+    /// <see cref="IntentPlanBasis.Forced"/>. The saving goal is still parsed from the rewritten
+    /// question so a quantified target survives the round trip.
+    /// </summary>
+    public IntentPlanResult Plan(string question, string? namedSupplier, string? previousUserQuestion, AskIntent forcedIntent)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(question);
+
+        var trimmed = question.Trim();
+        return new IntentPlanResult(
+            forcedIntent,
+            "forced by an interview resolution — the option the user chose names this intent; no lexicon was consulted.",
+            namedSupplier,
+            SavingsGoalParser.Parse(trimmed),
+            IntentPlanBasis.Forced,
+            [forcedIntent]);
+    }
+
+    /// <summary>
+    /// Every intent whose lexicon matches <paramref name="question"/>, in the same order
+    /// <see cref="Plan(string, string?, string?)"/> consults them — the interview planner's
+    /// "how many readings does this sentence have" signal. The legacy router contributes only when
+    /// it matched a keyword of its own (never its default). Empty when nothing matched at all.
+    /// </summary>
+    public IReadOnlyList<AskIntent> Candidates(string question, string? namedSupplier)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(question);
+
+        var trimmed = question.Trim();
+        var candidates = new List<AskIntent>();
+
+        void Add(AskIntent intent)
+        {
+            if (!candidates.Contains(intent))
+            {
+                candidates.Add(intent);
+            }
+        }
+
+        if (PortfolioMarketPositionPattern.IsMatch(trimmed) && PortfolioQuestionPattern.IsMatch(trimmed))
+        {
+            Add(AskIntent.PortfolioMarketPosition);
+        }
+
+        if (SavingsPattern.IsMatch(trimmed))
+        {
+            Add(namedSupplier is not null ? AskIntent.Savings : AskIntent.PortfolioStrategy);
+        }
+
+        if (BenchmarkPattern.IsMatch(trimmed))
+        {
+            Add(namedSupplier is not null ? AskIntent.MarketCompare : AskIntent.QuoteRoute);
+        }
+
+        if (RenewalStrategyPattern.IsMatch(trimmed))
+        {
+            Add(AskIntent.RenewalStrategy);
+        }
+
+        if (PriorityPattern.IsMatch(trimmed))
+        {
+            Add(namedSupplier is not null ? AskIntent.RenewalStrategy : AskIntent.PortfolioStrategy);
+        }
+
+        if (DocumentStatusPattern.IsMatch(trimmed))
+        {
+            Add(AskIntent.DocumentStatus);
+        }
+
+        if (NavigatePattern.IsMatch(trimmed))
+        {
+            Add(AskIntent.Navigate);
+        }
+
+        if (NoticePattern.IsMatch(trimmed))
+        {
+            Add(AskIntent.StructuredFact);
+        }
+
+        var legacyDecision = _legacyRouter.Route(trimmed);
+        if (!legacyDecision.IsDefault)
+        {
+            Add(legacyDecision.Intent == Domain.QueryIntent.Semantic ? AskIntent.Clause : AskIntent.StructuredFact);
+        }
+
+        return candidates;
+    }
+
+    private IntentPlanResult PlanCore(string question, string? namedSupplier, string? previousUserQuestion)
+    {
         var trimmed = question.Trim();
 
         if (!string.IsNullOrWhiteSpace(previousUserQuestion) && IsBareFollowUp(trimmed))
         {
             var inherited = Plan(previousUserQuestion.Trim() + " " + trimmed, namedSupplier, previousUserQuestion: null);
-            return inherited with { Reason = "bare follow-up planned on the previous user question: " + inherited.Reason };
+            return inherited with
+            {
+                Reason = "bare follow-up planned on the previous user question: " + inherited.Reason,
+                Basis = IntentPlanBasis.FollowUp,
+            };
         }
 
         var goal = SavingsGoalParser.Parse(trimmed);
@@ -275,10 +377,14 @@ public sealed class IntentPlanner
         var legacyDecision = _legacyRouter.Route(trimmed);
         if (legacyDecision.Intent == Domain.QueryIntent.Semantic)
         {
+            // The router's own default is also Semantic — told apart here (IsDefault) so the
+            // interview planner can see "nothing matched anywhere" (Basis.Fallback) instead of a
+            // real clause/legal keyword match (Basis.LegacyRouter).
             return new IntentPlanResult(
                 AskIntent.Clause,
                 $"legacy query router classified this Semantic (clause/legal vocabulary): {legacyDecision.Reason}",
-                namedSupplier, goal);
+                namedSupplier, goal,
+                legacyDecision.IsDefault ? IntentPlanBasis.Fallback : IntentPlanBasis.LegacyRouter);
         }
 
         // Structured (dates, spend, "next N days") or no pattern matched at all: StructuredFact is
@@ -288,7 +394,8 @@ public sealed class IntentPlanner
         return new IntentPlanResult(
             AskIntent.StructuredFact,
             $"legacy query router classified this Structured, or nothing else matched: {legacyDecision.Reason}",
-            namedSupplier, goal);
+            namedSupplier, goal,
+            IntentPlanBasis.LegacyRouter);
     }
 
     private static bool IsBareFollowUp(string question)

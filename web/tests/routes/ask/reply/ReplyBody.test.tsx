@@ -158,6 +158,68 @@ describe("ReplyBody (task E13/F09/US01/T02, AC-3)", () => {
   });
 });
 
+// ADR-030: the interview -- one clarifying question with chips, answered by key.
+describe("ReplyBody interview (ADR-030)", () => {
+  const INTERVIEW: Reply = {
+    kind: "interview",
+    prompt: "Before I answer, one quick check.",
+    answered: false,
+    messageId: "msg-7",
+    questions: [
+      {
+        key: "interpretation",
+        prompt: "Which of these do you mean?",
+        presentation: "choice",
+        allowFreeText: true,
+        options: [
+          { key: "portfolio-overview", label: "The most critical contracts and where we can save", hint: null },
+          { key: "total-spend", label: "Our total annual spend across contracts", hint: null },
+          { key: "web-research", label: "Search the public web for market practice (asks first)", hint: "Nothing from your contracts leaves Raffa." },
+        ],
+      },
+    ],
+  };
+
+  it("renders the lead-in, the question and one chip per option, plus the free-text hint", () => {
+    const { container } = renderReply(INTERVIEW);
+
+    expect(container.querySelector('[data-reply-kind="interview"]')).not.toBeNull();
+    expect(screen.getByText("Before I answer, one quick check.")).toBeInTheDocument();
+    expect(screen.getByText("Which of these do you mean?")).toBeInTheDocument();
+    expect(screen.getAllByRole("button")).toHaveLength(3);
+    expect(screen.getByRole("button", { name: /Search the public web/ })).toHaveAttribute("title", "Nothing from your contracts leaves Raffa.");
+    expect(screen.getByText("Or just type your answer below.")).toBeInTheDocument();
+    expect(container.querySelector(".abstain-block")).toBeNull();
+    expect(container.querySelector(".citation-card")).toBeNull();
+  });
+
+  it("clicking a chip reports the question key and the option -- never a label lookup", async () => {
+    const user = userEvent.setup();
+    const onInterviewOption = vi.fn();
+    render(
+      <MemoryRouter>
+        <ReplyBody reply={INTERVIEW} onOpenCitation={vi.fn()} onFollowUp={vi.fn()} onInterviewOption={onInterviewOption} />
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByRole("button", { name: /total annual spend/ }));
+
+    expect(onInterviewOption).toHaveBeenCalledTimes(1);
+    const [reply, questionKey, option] = onInterviewOption.mock.calls[0];
+    expect(reply).toBe(INTERVIEW);
+    expect(questionKey).toBe("interpretation");
+    expect(option.key).toBe("total-spend");
+  });
+
+  it("an answered interview keeps its chips visible but disabled, and drops the free-text hint", () => {
+    const { container } = renderReply({ ...INTERVIEW, answered: true });
+
+    expect(container.querySelector('.reply-interview[data-answered="true"]')).not.toBeNull();
+    expect(screen.getAllByRole("button").every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+    expect(screen.queryByText("Or just type your answer below.")).toBeNull();
+  });
+});
+
 // Task E25/F05/US02/T01 (abstain-recovery-web; parent story us-02-abstain-recovery-web
 // AC-1/AC-2/AC-3; ADR-024 "every abstain has a clickable next step", ADR-019 native link). The
 // abstain test above (AC-3, "the only place that block appears") predates the recovery action and

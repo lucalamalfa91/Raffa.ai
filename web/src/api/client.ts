@@ -1219,7 +1219,20 @@ export type ConversationProvenanceBody = ConversationReplyBody["provenance"];
  * comment for why (the generator does not parse `requestBody`). */
 export interface PostMessageRequest {
   question: string;
+  /** ADR-030: answers an interview turn -- by key, never by label. `question` is what the
+   * transcript shows (the option's label, or the typed text); the server runs the option's own
+   * persisted rewrite. Either `optionKey` or `freeText: true`. */
+  interviewAnswer?: InterviewAnswerRequest;
 }
+
+export interface InterviewAnswerRequest {
+  messageId: string;
+  questionKey: string;
+  optionKey?: string;
+  freeText?: boolean;
+}
+
+export type ConversationInterviewBody = NonNullable<ConversationReplyBody["interview"]>;
 
 export interface PostMessageResult {
   /**
@@ -3467,6 +3480,11 @@ export function createApiClient(
 
       if (response.status === 404) {
         return { ok: false, statusCode: 404, reply: null, error: `No conversation found for id ${conversationId}.` };
+      }
+
+      // ADR-030: a single-use consent option was already taken -- ask again rather than replay.
+      if (response.status === 409) {
+        return { ok: false, statusCode: 409, reply: null, error: "This permission was already used — ask again." };
       }
 
       let postError: string;

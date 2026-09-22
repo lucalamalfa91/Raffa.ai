@@ -20,4 +20,5 @@ public sealed record ConversationMessageResult(
     string? ModelId,
     string? PromptVersion,
     string? InputHash,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    string? InterviewJson = null);
