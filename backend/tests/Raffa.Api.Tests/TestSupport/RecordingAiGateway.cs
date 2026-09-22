@@ -29,6 +29,19 @@ namespace Raffa.Api.Tests.TestSupport;
 internal sealed class RecordingAiGateway(IAiGateway inner) : IAiGateway
 {
     private readonly List<string> _calls = [];
+    private readonly List<string> _agents = [];
+
+    /// <summary>The agent name of every <see cref="AnalyzeAsync"/> call, in order.</summary>
+    public IReadOnlyList<string> Agents
+    {
+        get
+        {
+            lock (_agents)
+            {
+                return [.. _agents];
+            }
+        }
+    }
 
     /// <summary>Every method name invoked on this instance, in call order (e.g. "EmbedAsync",
     /// "AnswerAsync").</summary>
@@ -80,6 +93,11 @@ internal sealed class RecordingAiGateway(IAiGateway inner) : IAiGateway
         AiAnalysisRequest request, CancellationToken cancellationToken = default)
     {
         _calls.Add(nameof(AnalyzeAsync));
+        lock (_agents)
+        {
+            _agents.Add(request.AgentName);
+        }
+
         return inner.AnalyzeAsync(request, cancellationToken);
     }
 }

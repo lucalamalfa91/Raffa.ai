@@ -44,7 +44,7 @@ public sealed class AskSavingsAnswerRecoveryTests(RaffaApiFactory factory) : ICl
     private static FixtureAiGateway Fixture() =>
         new(new AiGatewayModelOptions(), SystemClock.Instance, new AiGatewayOcrOptions());
 
-    private async Task<JsonDocument> AskSeededAsync(IAiGateway gateway)
+    private async Task<JsonDocument> AskSeededAsync(IAiGateway gateway, string question = Question, bool withAnnualSpend = true)
     {
         var tenantId = TenantId.New();
         var oracleId = EntityId.New();
@@ -57,7 +57,7 @@ public sealed class AskSavingsAnswerRecoveryTests(RaffaApiFactory factory) : ICl
             Type = ContractDocumentType.OrderForm,
             Status = "Completed",
             Currency = "EUR",
-            AnnualSpend = 439000m,
+            AnnualSpend = withAnnualSpend ? 439000m : null,
             AutoRenewal = true,
             EndDate = DateOnly.FromDateTime(Now.UtcDateTime).AddDays(29 + 180),
             CancellationDeadline = DateOnly.FromDateTime(Now.UtcDateTime).AddDays(29),
@@ -83,7 +83,7 @@ public sealed class AskSavingsAnswerRecoveryTests(RaffaApiFactory factory) : ICl
 
         using var messageRequest = new HttpRequestMessage(HttpMethod.Post, $"/api/conversations/{conversationId}/messages")
         {
-            Content = JsonContent.Create(new { question = Question }),
+            Content = JsonContent.Create(new { question }),
         };
         messageRequest.Headers.Add("X-Tenant-Id", tenantId.Value.ToString());
         messageRequest.Headers.Add("X-User-Id", UserId);
@@ -142,6 +142,160 @@ public sealed class AskSavingsAnswerRecoveryTests(RaffaApiFactory factory) : ICl
         Assert.Contains("/savings", hrefs);
         Assert.Contains("/renewals", hrefs);
         Assert.DoesNotContain("/ask", hrefs);
+    }
+
+    // Persona v2.4: the live screenshot declines ("Nel pack non risultano leve contrattuali o di
+    // mercato attivabili entro la finestra di 90 giorni (candidatesInWindow=0)…") never reach the user.
+    [Fact]
+    public async Task A_model_that_declines_twice_gets_a_proposal_never_the_i_dont_have_data_banner()
+    {
+        var declining = new DecliningGateway(Fixture(), declines: 2);
+        var gateway = new RecordingAiGateway(declining);
+
+        using var reply = await AskSeededAsync(gateway);
+
+        Assert.Equal(2, gateway.Calls.Count(c => c == nameof(IAiGateway.AnswerAsync)));
+
+        var markdown = reply.RootElement.GetProperty("answerMarkdown").GetString()!;
+        Assert.StartsWith("Here's where to start saving", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("I don't have data I trust", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain(DecliningGateway.Reason, markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("candidatesInWindow", markdown, StringComparison.Ordinal);
+
+        var hrefs = ActionHrefs(reply);
+        Assert.Contains("/savings", hrefs);
+        Assert.Contains("/renewals", hrefs);
+        Assert.NotEqual(0, reply.RootElement.GetProperty("followUps").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task A_decline_is_regenerated_and_the_retrys_answer_reaches_the_user()
+    {
+        var gateway = new RecordingAiGateway(new DecliningGateway(Fixture(), declines: 1));
+
+        using var reply = await AskSeededAsync(gateway);
+
+        Assert.Equal("answer", reply.RootElement.GetProperty("kind").GetString());
+        Assert.Equal(2, gateway.Calls.Count(c => c == nameof(IAiGateway.AnswerAsync)));
+        Assert.NotEqual(0, reply.RootElement.GetProperty("citations").GetArrayLength());
+    }
+
+    // "this quarter" gets today's date and the calendar quarter in the pack, so the model can
+    // state the quarter's end (2026-09-30 for Now) as a pack value instead of declining.
+    [Fact]
+    public async Task A_question_about_this_quarter_sends_the_calendar_quarter_to_the_model()
+    {
+        var declining = new DecliningGateway(Fixture(), declines: 0);
+
+        using var reply = await AskSeededAsync(new RecordingAiGateway(declining));
+
+        var packJson = Assert.Single(declining.PackJsons);
+        Assert.Contains("calc:calendar", packJson, StringComparison.Ordinal);
+        Assert.Contains("2026-09-30", packJson, StringComparison.Ordinal);
+    }
+
+    // Persona v2.5's market safety net: a contract with no annual amounts is named as such, and the
+    // model gets the market's narrow estimate for comparable Oracle customers in its place
+    // (EUR 250,000–500,000, the band the mock feed's EUR Oracle deals mostly fall in).
+    [Fact]
+    public async Task A_contract_without_annual_amounts_sends_its_gap_and_the_markets_estimate_to_the_model()
+    {
+        var declining = new DecliningGateway(Fixture(), declines: 0);
+
+        using var reply = await AskSeededAsync(
+            new RecordingAiGateway(declining), "come posso negoziare il rinnovo del contratto Oracle?", withAnnualSpend: false);
+
+        var packJson = Assert.Single(declining.PackJsons);
+        Assert.Contains("calc:contract-gaps[", packJson, StringComparison.Ordinal);
+        Assert.Contains("no value for: annual spend", packJson, StringComparison.Ordinal);
+        Assert.Contains("Market estimate, not a figure from your contract", packJson, StringComparison.Ordinal);
+        Assert.Contains("between EUR 250,000 and EUR 500,000", packJson, StringComparison.Ordinal);
+        Assert.Contains("what comparable customers negotiated", packJson, StringComparison.Ordinal);
+
+        // Step 2 of the flow: the market researcher's notes from the market RAG, annual value included.
+        Assert.Contains("market-researcher", packJson, StringComparison.Ordinal);
+        Assert.Contains("annual contract value EUR", packJson, StringComparison.Ordinal);
+    }
+
+    // A multi-contract question (a quarter, savings across contracts): the market data check runs
+    // over the contracts the pack is about, so the Oracle gap reaches the model there too.
+    [Fact]
+    public async Task A_quarter_savings_question_checks_the_contracts_it_is_about_and_names_their_gaps()
+    {
+        var declining = new DecliningGateway(Fixture(), declines: 0);
+
+        using var reply = await AskSeededAsync(new RecordingAiGateway(declining), Question, withAnnualSpend: false);
+
+        var packJson = Assert.Single(declining.PackJsons);
+        Assert.Contains("no value for: annual spend", packJson, StringComparison.Ordinal);
+        Assert.Contains("Market estimate, not a figure from your contract", packJson, StringComparison.Ordinal);
+    }
+
+    // Both attempts decline: the deterministic reply still opens with the honest gap and the
+    // market estimate, then the way forward for a renewal.
+    [Fact]
+    public async Task With_no_model_answer_the_proposal_still_leads_with_the_gap_and_the_market_estimate()
+    {
+        using var reply = await AskSeededAsync(
+            new RecordingAiGateway(new DecliningGateway(Fixture(), declines: 2)),
+            "come posso negoziare il rinnovo del contratto Oracle?",
+            withAnnualSpend: false);
+
+        var markdown = reply.RootElement.GetProperty("answerMarkdown").GetString()!;
+        Assert.StartsWith("Sul contratto Oracle mancano gli importi annuali.", markdown, StringComparison.Ordinal);
+        Assert.Contains("il valore annuo tipico è tra EUR 250,000 e EUR 500,000", markdown, StringComparison.Ordinal);
+        Assert.Contains("è una stima, non un dato del tuo contratto", markdown, StringComparison.Ordinal);
+        Assert.Contains("Ecco come preparare il rinnovo", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("I don't have data I trust", markdown, StringComparison.Ordinal);
+    }
+
+    /// <summary>Declines the first <c>declines</c> answer calls the way the live model did before
+    /// persona v2.4 (a reason that talks about the pack), then answers like the fixture; records
+    /// every call's pack.</summary>
+    private sealed class DecliningGateway(IAiGateway inner, int declines) : IAiGateway
+    {
+        public const string Reason =
+            "Nel pack non risultano leve contrattuali o di mercato attivabili entro la finestra di 90 giorni (candidatesInWindow=0).";
+
+        private int _calls;
+
+        public List<string> PackJsons { get; } = [];
+
+        public async Task<Result<AiAnswerResult>> AnswerAsync(AiAnswerRequest request, CancellationToken cancellationToken = default)
+        {
+            PackJsons.Add(request.PackJson ?? string.Empty);
+            var result = await inner.AnswerAsync(request, cancellationToken).ConfigureAwait(false);
+            if (_calls++ >= declines || result.IsFailure)
+            {
+                return result;
+            }
+
+            return Result<AiAnswerResult>.Success(result.Value with
+            {
+                CanDetermine = false,
+                Answer = null,
+                AnswerMarkdown = null,
+                CitationKeys = [],
+                ActionKeys = [],
+                AbstainReason = Reason,
+                FollowUps = ["Puoi condividere l'estratto dell'Order dove sono indicate le date di disdetta?"],
+            });
+        }
+
+        public Task<Result<AiClassificationResult>> ClassifyAsync(AiClassificationRequest request, CancellationToken cancellationToken = default) =>
+            inner.ClassifyAsync(request, cancellationToken);
+
+        public Task<Result<AiExtractionResult>> ExtractAsync(AiExtractionRequest request, CancellationToken cancellationToken = default) =>
+            inner.ExtractAsync(request, cancellationToken);
+
+        public Task<Result<AiEmbeddingResult>> EmbedAsync(AiEmbeddingRequest request, CancellationToken cancellationToken = default) =>
+            inner.EmbedAsync(request, cancellationToken);
+
+        public Task<Result<AiOcrResult>> OcrAsync(AiOcrRequest request, CancellationToken cancellationToken = default) =>
+            inner.OcrAsync(request, cancellationToken);
+
+        public Task<Result<AiAnalysisResult>> AnalyzeAsync(AiAnalysisRequest request, CancellationToken cancellationToken = default) =>
+            inner.AnalyzeAsync(request, cancellationToken);
     }
 
     /// <summary>Returns every grounded answer with the given action keys, the way a live model

@@ -1,4 +1,5 @@
 using Raffa.Chat.Application.Capabilities;
+using Raffa.Chat.Application.Council;
 using Raffa.Chat.Application.Drafting;
 using Raffa.Chat.Application.Gaps;
 using Raffa.Chat.Application.Gate;
@@ -17,7 +18,8 @@ namespace Raffa.Api;
 /// the question's language, the nearest real alternative and an offer to report the gap — never a
 /// retrieval-then-abstain, never the feature tour. For the email/letter gaps the alternative is a
 /// drafted negotiation email written from the same Q3 pack a renewal-strategy turn gets (contract
-/// facts, lever calculations, council plays, clause evidence, playbook) by
+/// facts, lever calculations, clause evidence, playbook, plus what Ask's agentic flow adds: the
+/// market data check, the market researcher's notes and the council plays) by
 /// <see cref="NegotiationDraftingWorkflow"/>; for the other gaps it is a deep link into the screen
 /// that already holds the answer.
 /// </summary>
@@ -132,8 +134,9 @@ internal sealed partial class AskCopilotService
     /// <summary>
     /// The drafted email: the Q3 renewal-strategy pack with evidence (<c>persistTodos: true</c> —
     /// the user is negotiating this renewal, so the Renewals link the reply offers is true after
-    /// the turn), the council's plays inserted exactly as <see cref="BuildInDomainReplyAsync"/>
-    /// does, the pack budget, then <see cref="NegotiationDraftingWorkflow.DraftAsync"/>. A
+    /// the turn), Ask's agentic flow exactly as <see cref="BuildInDomainReplyAsync"/> runs it (the
+    /// market data check and the market researcher's items appended, the council's plays inserted),
+    /// the pack budget, then <see cref="NegotiationDraftingWorkflow.DraftAsync"/>. A
     /// template fallback or a retried writer is audited as a guard intervention
     /// (<c>abstainGuardIntervened=True</c>), the same channel the answer role's regenerate-once
     /// policy uses — which is what lets the golden set catch a fixture or prompt regression. The
@@ -162,10 +165,29 @@ internal sealed partial class AskCopilotService
             packItems = packItems.Prepend(disambiguationItem).ToList();
         }
 
-        var council = await negotiationCouncil.RunAsync(question, packItems, goal, cancellationToken).ConfigureAwait(false);
-        if (council.Items.Count > 0)
+        // Ask's agentic flow, as on an in-domain turn: the market data check for this contract (what
+        // it is missing and what the market says in its place), the market researcher's RAG notes,
+        // then the council's plays — so the email's asks can lean on market figures where the
+        // contract has none, labelled as estimates.
+        var flow = await askAgentFlow.RunAsync(
+                new AskFlowRequest(
+                    question,
+                    packItems,
+                    goal,
+                    ct => RunMarketDataCheckAsync([namedContractItem], [], ct),
+                    RunMarketResearch: true,
+                    ConveneCouncil: true),
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        if (flow.MarketItems.Count > 0)
         {
-            packItems = InsertCouncilItems(packItems, council.Items);
+            packItems = [.. packItems, .. flow.MarketItems];
+        }
+
+        if (flow.CouncilItems.Count > 0)
+        {
+            packItems = InsertCouncilItems(packItems, flow.CouncilItems);
         }
 
         var boundedPack = packBudget.Apply(packItems);

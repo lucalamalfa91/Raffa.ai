@@ -22,7 +22,9 @@ public sealed class RegenerateOnceTests
         var instruction = RegenerateOnce.BuildRetryInstruction("amount 'CHF 140' does not equal any pack value.");
 
         Assert.Contains("amount 'CHF 140' does not equal any pack value.", instruction);
-        Assert.Contains("canDetermine to false", instruction);
+        Assert.Contains("Keep canDetermine true", instruction);
+        Assert.Contains("market estimate", instruction);
+        Assert.DoesNotContain("canDetermine to false", instruction);
     }
 
     [Fact]

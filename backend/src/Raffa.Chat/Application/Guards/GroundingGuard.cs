@@ -35,9 +35,20 @@ public static class GroundingGuard
     /// violation found (citation grounding, then inline-marker range, then actionKey resolution) —
     /// callers only ever need to know the guard failed and why, not every independent way it did.
     /// </summary>
+    /// <param name="result">The model's (or a fallback's) answer.</param>
+    /// <param name="pack">The pack the answer must be grounded in.</param>
+    /// <param name="allowUncitedGuidance">Persona v2.4 (never decline): an answer that relies on no
+    /// pack item at all — a ready-to-send draft, a checklist, a method, with every missing figure
+    /// as a bracketed placeholder — is a legitimate answer with no citation. When
+    /// <see langword="true"/>, such an answer (<see cref="AiAnswerResult.CitationKeys"/> empty,
+    /// <see cref="AiAnswerResult.AnswerMarkdown"/> non-blank) passes the citation check; every
+    /// other check still runs — an <c>[n]</c> marker then has nothing to point at and fails, and
+    /// <see cref="NumericGuard"/> (run by the caller) still rejects any amount, percentage or date
+    /// the pack does not hold, so "uncited" never means "unchecked". <see langword="false"/> (the
+    /// default, and what web research uses) keeps the strict "at least one citation" rule.</param>
     /// <exception cref="ArgumentNullException"><paramref name="result"/> or <paramref name="pack"/>
     /// is <see langword="null"/>.</exception>
-    public static GuardVerdict Validate(AiAnswerResult result, IReadOnlyList<PackItem> pack)
+    public static GuardVerdict Validate(AiAnswerResult result, IReadOnlyList<PackItem> pack, bool allowUncitedGuidance = false)
     {
         ArgumentNullException.ThrowIfNull(result);
         ArgumentNullException.ThrowIfNull(pack);
@@ -50,7 +61,7 @@ public static class GroundingGuard
         }
 
         var citationOutcome = new AbstainGuard().Enforce(result, pack);
-        if (citationOutcome.Intervened)
+        if (citationOutcome.Intervened && !(allowUncitedGuidance && IsUncitedGuidance(result)))
         {
             return GuardVerdict.Fail(citationOutcome.Reason!);
         }
@@ -81,4 +92,9 @@ public static class GroundingGuard
 
         return GuardVerdict.Ok;
     }
+
+    /// <summary>A determined answer with prose and no citation key at all — the only shape
+    /// <c>allowUncitedGuidance</c> ever lets past the citation check.</summary>
+    private static bool IsUncitedGuidance(AiAnswerResult result) =>
+        (result.CitationKeys?.Count ?? 0) == 0 && !string.IsNullOrWhiteSpace(result.AnswerMarkdown);
 }

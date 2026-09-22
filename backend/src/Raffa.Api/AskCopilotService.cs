@@ -198,7 +198,7 @@ internal sealed partial class AskCopilotService(
     BenchmarkKeyResolution benchmarkKeyResolution,
     IMarketKnowledgeRetrieval marketKnowledgeRetrieval,
     IMarketDealLookup marketDealLookup,
-    NegotiationCouncil negotiationCouncil,
+    AskAgentFlow askAgentFlow,
     NegotiationDraftingWorkflow negotiationDraftingWorkflow,
     InterviewPlanner interviewPlanner,
     InterviewOptions interviewOptions,
@@ -622,7 +622,7 @@ internal sealed partial class AskCopilotService(
         if (plan.Intent == AskIntent.StructuredFact && NoticeQuestionPattern.IsMatch(question))
         {
             return (
-                await BuildNoticeFallbackReplyAsync(namedContractItem, disambiguationItem, routingContext, cancellationToken)
+                await BuildNoticeFallbackReplyAsync(question, namedContractItem, disambiguationItem, routingContext, cancellationToken)
                     .ConfigureAwait(false),
                 false,
                 false);
@@ -663,26 +663,76 @@ internal sealed partial class AskCopilotService(
             packItems = packItems.Prepend(disambiguationItem).ToList();
         }
 
-        // The negotiation council (Raffa.Chat.Application.Council): for a savings or negotiation
-        // turn, two analysts read the pack in parallel and a strategist turns their findings into
-        // ranked plays -- inserted right after the target verdict so the budget keeps them and the
-        // answer leads with them. A failed agent degrades the council, never the turn.
-        if (IsCouncilIntent(plan.Intent, namedContractItem))
+        // Ask's agentic flow (Raffa.Chat.Application.Council.AskAgentFlow), one coordinated sequence
+        // before the answer role writes (persona v2.5: say what is missing, answer from the market):
+        //   1. market data check (deterministic, below): for the contract the turn is about -- or,
+        //      on a multi-contract turn (a quarter, savings across contracts), the ones the pack is
+        //      about -- which fields are missing and what the market data says in their place;
+        //   2. market researcher (agent): queries the market RAG for what is still missing, the
+        //      same supplier first, then similar or related contracts;
+        //   3. negotiation council (agents), on a savings or negotiation turn: two analysts over the
+        //      enriched pack, then the strategist's ranked plays.
+        // Steps 1-2 append market items after the intent's own (so those keep their priority under
+        // the budget); step 3's plays go right after the target verdict. Not a clause or
+        // document-status turn's data check: the market holds no clause text to stand in for the
+        // contract's own. A failed agent degrades the flow, never the turn.
+        var dataChecks = new List<MarketSafetyNet.ContractCheck>();
+        IReadOnlyList<PortfolioListItem> dataCheckContracts =
+            plan.Intent is AskIntent.DocumentStatus or AskIntent.Clause ? []
+            : namedContractItem is not null ? [namedContractItem]
+            : ContractsForDataCheck(packItems, portfolio);
+
+        var flow = await askAgentFlow.RunAsync(
+                new AskFlowRequest(
+                    question,
+                    packItems,
+                    plan.Goal,
+                    dataCheckContracts.Count > 0 ? ct => RunMarketDataCheckAsync(dataCheckContracts, dataChecks, ct) : null,
+                    RunMarketResearch: portfolio.Items.Count > 0 && plan.Intent != AskIntent.DocumentStatus,
+                    ConveneCouncil: IsCouncilIntent(plan.Intent, namedContractItem)),
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        if (flow.MarketItems.Count > 0)
         {
-            var council = await negotiationCouncil.RunAsync(question, packItems, plan.Goal, cancellationToken).ConfigureAwait(false);
-            if (council.Items.Count > 0)
-            {
-                packItems = InsertCouncilItems(packItems, council.Items);
-            }
+            packItems = [.. packItems, .. flow.MarketItems];
+        }
+
+        if (flow.CouncilItems.Count > 0)
+        {
+            packItems = InsertCouncilItems(packItems, flow.CouncilItems);
         }
 
         var boundedPack = packBudget.Apply(packItems);
 
-        // Every abstain this turn can end in offers the same way forward: the screen where this kind
-        // of answer lives, and two questions that route to a real answer (ADR-024 "every abstain has
-        // a clickable next step").
+        // A question about a period ("this quarter", "fine trimestre") gets today's date and the
+        // calendar quarter as one more citable item -- appended after the budget (it is a few
+        // dozen tokens) so the model can state the quarter's end as a pack value instead of
+        // declining or computing a date NumericGuard would reject.
+        if (boundedPack.Count > 0 && CalendarPackItem.IsPeriodQuestion(question))
+        {
+            boundedPack = [.. boundedPack, CalendarPackItem.Build(DateOnly.FromDateTime(clock.UtcNow.UtcDateTime))];
+        }
+
+        // Every turn that cannot end in a grounded answer still ends in a proposal (persona v2.4:
+        // Ask never answers "I don't have data I trust enough"): the screen where this kind of
+        // answer lives, two questions that route to a real answer (ADR-024 "every abstain has a
+        // clickable next step"), and HelpfulFallbackAnswer's way forward for this kind of question.
         var recoveryActions = ResolveAbstainRecoveryActions(portfolio, routingContext, plan.Intent);
         var recoveryFollowUps = AbstainFollowUps(question, portfolio, plan.Intent);
+        // The deterministic proposal opens, like the model must, with the honest gaps the market data
+        // check found and what the market says in their place (step 1 of the flow above).
+        var italianQuestion = HelpfulFallbackAnswer.IsItalian(question);
+        var lead = MarketSafetyNet.Lead(dataChecks, italianQuestion);
+        if (lead is null && plan.Intent == AskIntent.Clause && namedContractItem is not null && boundedPack.Count == 0)
+        {
+            // Honest first: the clause is not on file for this contract.
+            var clauseSupplier = await ResolveDisplayNameAsync(namedContractItem, cancellationToken).ConfigureAwait(false);
+            lead = MarketSafetyNet.ClauseNotFoundLead(clauseSupplier, italianQuestion);
+        }
+
+        var proposal = (lead ?? string.Empty) +
+            HelpfulFallbackAnswer.Proposal(question, ProposalArea(question, plan.Intent), emptyWorkspace: portfolio.Items.Count == 0);
 
         if (boundedPack.Count == 0)
         {
@@ -690,23 +740,29 @@ internal sealed partial class AskCopilotService(
             // UNFILTERED portfolio -- every bootstrap shell a still-processing document created --
             // so rendering it as "N validated contract(s)" asserted a fabricated fact to the user.
             // The one definition of "validated" is ADR-026 §D2's CountValidatedContractsAsync; the
-            // pre-question off-state already renders that number from the server, and this
-            // sentence needs none.
+            // pre-question off-state already renders that number from the server, and the
+            // proposal needs none.
             return (new CopilotReply(
-                ReplyKind.Abstain,
-                "Nothing in your validated contracts supports a reliable answer. " +
-                "Try a question about dates, spend, notice periods or clauses.",
-                [], recoveryActions, ReplyProvenance.NoModelCall([]), recoveryFollowUps), false, false);
+                ReplyKind.Abstain, proposal, [], recoveryActions, ReplyProvenance.NoModelCall([]), recoveryFollowUps), false, false);
         }
 
-        var composed = await answerComposer.AnswerAsync(question, boundedPack, recentTurns, cancellationToken)
+        // ADR-030 stage 3: a decline the model explains as an ambiguous question is kept (not
+        // regenerated) so the interpretation menu below can offer the readings instead.
+        bool KeepDecline(string? reason) =>
+            interviewOptions.Enabled
+            && interviewOptions.ConvertAmbiguousAbstain
+            && !hints.SuppressInterview
+            && !previousRaffaTurnWasInterview
+            && AmbiguousAbstainDetector.IsAmbiguous(reason);
+
+        var composed = await answerComposer.AnswerAsync(question, boundedPack, recentTurns, KeepDecline, cancellationToken)
             .ConfigureAwait(false);
 
         if (composed.IsFailure)
         {
             return (new CopilotReply(
                 ReplyKind.Abstain,
-                "Raffa could not reach the answer service just now — please try again shortly.",
+                HelpfulFallbackAnswer.ServiceBusy(question),
                 [], recoveryActions, ReplyProvenance.NoModelCall([]), recoveryFollowUps), false, false);
         }
 
@@ -715,13 +771,7 @@ internal sealed partial class AskCopilotService(
         // ADR-030 stage 3: the model itself says the question was ambiguous -- offer the
         // interpretation menu (deterministic options, never the model's) instead of the abstain
         // block with its dead "Open Ask Raffa" button.
-        if (!result.CanDetermine
-            && !composed.Value.GuardIntervened
-            && interviewOptions.Enabled
-            && interviewOptions.ConvertAmbiguousAbstain
-            && !hints.SuppressInterview
-            && !previousRaffaTurnWasInterview
-            && AmbiguousAbstainDetector.IsAmbiguous(result.AbstainReason))
+        if (!result.CanDetermine && !composed.Value.GuardIntervened && KeepDecline(result.AbstainReason))
         {
             var webOffer = await BuildWebOfferAsync(tenantId, question, cancellationToken).ConfigureAwait(false);
             var interview = interviewPlanner.PlanInterpretationMenu(question, plan, webOffer);
@@ -742,7 +792,7 @@ internal sealed partial class AskCopilotService(
             return (
                 new CopilotReply(
                     ReplyKind.Abstain,
-                    CopilotReplyBuilder.DefaultAbstainReason,
+                    proposal,
                     [],
                     recoveryActions,
                     new ReplyProvenance([], result.Metadata.ModelId, result.Metadata.PromptVersion, result.Metadata.InputHash),
@@ -750,6 +800,23 @@ internal sealed partial class AskCopilotService(
                 true,
                 false);
         }
+
+        // Still a decline after the regenerate-once pass (or one kept for an interview that did
+        // not materialise): never shown as "cannot determine" -- the user gets the proposal.
+        if (!result.CanDetermine)
+        {
+            return (
+                new CopilotReply(
+                    ReplyKind.Abstain,
+                    proposal,
+                    [],
+                    recoveryActions,
+                    new ReplyProvenance([], result.Metadata.ModelId, result.Metadata.PromptVersion, result.Metadata.InputHash),
+                    recoveryFollowUps),
+                composed.Value.GuardIntervened,
+                composed.Value.FallbackUsed);
+        }
+
         // Model action keys were already normalized to catalog keys by AnswerComposer
         // (ActionKeyNormalizer); a key whose route needs an id this turn does not carry (Contract 360
         // on a portfolio-wide turn) is dropped here rather than failing CapabilityRouting.ForKey.
@@ -1011,6 +1078,20 @@ internal sealed partial class AskCopilotService(
 
         return GroundedFallbackAnswer.SuggestedQuestions(question, capabilityKey);
     }
+
+    /// <summary>The kind of question <see cref="HelpfulFallbackAnswer.Proposal"/> writes its way
+    /// forward for: the area the question's own words point at ("quando scade…" is a renewal
+    /// question even when the planner files it as a clause lookup), else the intent's own area.</summary>
+    private static string? ProposalArea(string question, AskIntent intent) =>
+        HelpfulFallbackAnswer.AreaFor(question) ?? intent switch
+        {
+            AskIntent.Savings or AskIntent.PortfolioSavingsTarget => CapabilityCatalog.SavingsKey,
+            AskIntent.RenewalStrategy => CapabilityCatalog.RenewalsKey,
+            AskIntent.MarketCompare or AskIntent.PortfolioMarketPosition => CapabilityCatalog.QuoteCheckKey,
+            AskIntent.Clause => CapabilityCatalog.ContractDetailKey,
+            AskIntent.DocumentStatus => CapabilityCatalog.DocumentsKey,
+            _ => null,
+        };
 
     private CopilotReply BuildRoutingOnlyReply(IntentPlanResult plan, RoutingContext routingContext)
     {
@@ -1495,6 +1576,8 @@ internal sealed partial class AskCopilotService(
     /// keeps that reply's shape identical to every other abstain in this file (no citations).
     /// </para>
     /// </summary>
+    /// <param name="question">The user's question -- read only for its language, so the cases
+    /// with no grounded date (4 and 5) answer with a way forward in that language.</param>
     /// <param name="namedContractItem">The turn's own resolved contract (scoped id, or a
     /// name/soonest-deadline match) -- <see langword="null"/> for case 5.</param>
     /// <param name="disambiguationItem">Echoes <see cref="BuildInDomainReplyAsync"/>'s own
@@ -1506,6 +1589,7 @@ internal sealed partial class AskCopilotService(
     /// exactly, so every action below resolves through the identical routing facts the rest of this
     /// turn uses.</param>
     private async Task<CopilotReply> BuildNoticeFallbackReplyAsync(
+        string question,
         PortfolioListItem? namedContractItem,
         PackItem? disambiguationItem,
         RoutingContext routingContext,
@@ -1513,7 +1597,7 @@ internal sealed partial class AskCopilotService(
     {
         if (namedContractItem is null)
         {
-            return BuildUnscopedNoticeAbstain(routingContext);
+            return BuildUnscopedNoticeAbstain(question, routingContext);
         }
 
         var contract360 = await contract360QueryService
@@ -1530,7 +1614,7 @@ internal sealed partial class AskCopilotService(
 
         if (contract360 is null)
         {
-            return BuildNoGroundableNoticeAbstain(supplierName, reviewActions);
+            return BuildNoGroundableNoticeAbstain(question, supplierName, reviewActions);
         }
 
         var factItem = BuildNoticeFactItem(namedContractItem, contract360.Renewal, supplierName);
@@ -1561,7 +1645,10 @@ internal sealed partial class AskCopilotService(
             return BuildNoticeAnswer(PrefixWithDisambiguation(clauseItem.Snippet, disambiguationItem), groundingItems, reviewActions);
         }
 
-        return BuildNoGroundableNoticeAbstain(supplierName, reviewActions);
+        // No date on file: say so, and give the notice comparable customers have as the market's
+        // estimate (persona v2.5's safety net), alongside how to pin the real date down.
+        var typicalNoticeDays = await TypicalNoticeDaysAsync(contract360, supplierName, cancellationToken).ConfigureAwait(false);
+        return BuildNoGroundableNoticeAbstain(question, supplierName, reviewActions, typicalNoticeDays);
     }
 
     private static string PrefixWithDisambiguation(string answer, PackItem? disambiguationItem) =>
@@ -1587,12 +1674,14 @@ internal sealed partial class AskCopilotService(
     /// rare contract360-null race both collapse here -- see this type's "A contract resolved... but
     /// since vanished" note on <see cref="BuildNoticeFallbackReplyAsync"/>. No citations, matching
     /// every other abstain in this file (<see cref="ReplyKind.Abstain"/>'s own doc comment: "empty
-    /// unless a citation genuinely backs the decline").</summary>
-    private static CopilotReply BuildNoGroundableNoticeAbstain(string supplierName, IReadOnlyList<CopilotAction> reviewActions) =>
+    /// unless a citation genuinely backs the decline"). Written as a way forward -- how to pin the
+    /// date down now (<see cref="HelpfulFallbackAnswer.NoticeDateMissing"/>) -- never a bare "could
+    /// not find".</summary>
+    private static CopilotReply BuildNoGroundableNoticeAbstain(
+        string question, string supplierName, IReadOnlyList<CopilotAction> reviewActions, int? typicalNoticeDays = null) =>
         new(
             ReplyKind.Abstain,
-            $"Raffa could not find a validated notice deadline for {supplierName}, and no clause on " +
-            "file names one either. Open Contract 360 to review the source document.",
+            HelpfulFallbackAnswer.NoticeDateMissing(question, supplierName, typicalNoticeDays),
             [],
             reviewActions,
             ReplyProvenance.NoModelCall([]),
@@ -1601,17 +1690,17 @@ internal sealed partial class AskCopilotService(
     /// <summary>Case 5 (NW-94): an unscoped notice question has no "this contract" to answer about.
     /// Abstains with a Portfolio recovery instead of guessing one -- the honest counterpart, for the
     /// unscoped turn, to this story's own "a scoped notice turn never asks 'which supplier'": never
-    /// guess, and never ask either, just say so and point at the one screen that lets the caller
-    /// pick. <see cref="CapabilityCatalog.PortfolioKey"/>'s own <c>NeedsValidatedContract</c>
+    /// guess, just offer the two ways to the exact date (open the contract, or name the supplier --
+    /// <see cref="HelpfulFallbackAnswer.NoticeWithoutContract"/>) and point at the one screen that
+    /// lets the caller pick. <see cref="CapabilityCatalog.PortfolioKey"/>'s own <c>NeedsValidatedContract</c>
     /// availability (CapabilityCatalog.cs) already replaces this with the Documents upload action
     /// for a zero-validated-contract tenant (<see cref="CapabilityRouting"/>'s own "Availability
     /// replacement" rule) -- correct here too: Portfolio is exactly as unusable as the notice
     /// question itself would be for that tenant.</summary>
-    private CopilotReply BuildUnscopedNoticeAbstain(RoutingContext routingContext) =>
+    private CopilotReply BuildUnscopedNoticeAbstain(string question, RoutingContext routingContext) =>
         new(
             ReplyKind.Abstain,
-            "This looks like a notice question, but no contract is in scope for this conversation. " +
-            "Open Portfolio and ask again from the contract you mean.",
+            HelpfulFallbackAnswer.NoticeWithoutContract(question),
             [],
             capabilityRouting.ResolveActions([CapabilityIntent.HowTo(CapabilityCatalog.PortfolioKey)], routingContext),
             ReplyProvenance.NoModelCall([]),

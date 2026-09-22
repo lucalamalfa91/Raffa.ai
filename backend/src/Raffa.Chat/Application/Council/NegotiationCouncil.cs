@@ -19,7 +19,8 @@ public sealed record CouncilOutcome(
 }
 
 /// <summary>
-/// The multi-agent process behind a savings or negotiation turn. Round one: the contract analyst
+/// The multi-agent process behind a savings or negotiation turn — step 3 of <see cref="AskAgentFlow"/>,
+/// after the market data check and the market researcher have enriched the pack. Round one: the contract analyst
 /// and the market analyst read disjoint slices of the pack in parallel. Round two: the lever
 /// strategist reads both sets of findings, the calculators' items and the playbook, and returns
 /// ranked plays plus a verdict on the goal. The agents talk to each other only through these
@@ -63,8 +64,11 @@ public sealed class NegotiationCouncil(IAiGateway aiGateway, CouncilOptions opti
         var goalDto = ToGoalDto(goal);
 
         var tenantItems = pack.Where(i => i.Corpus == PackCorpus.Tenant).Take(options.MaxItemsPerAgent).ToList();
+        // The market analyst also reads what the market data check found missing on the contract.
         var marketItems = pack
-            .Where(i => i.Corpus == PackCorpus.Market || i.CitationKey.StartsWith("calc:lever", StringComparison.Ordinal))
+            .Where(i => i.Corpus == PackCorpus.Market ||
+                i.CitationKey.StartsWith("calc:lever", StringComparison.Ordinal) ||
+                i.CitationKey.StartsWith("calc:contract-gaps", StringComparison.Ordinal))
             .Take(options.MaxItemsPerAgent)
             .ToList();
 

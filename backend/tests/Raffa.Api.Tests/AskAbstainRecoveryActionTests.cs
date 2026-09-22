@@ -140,10 +140,9 @@ public sealed class AskAbstainRecoveryActionTests : IClassFixture<RaffaApiFactor
 
         using var body = JsonDocument.Parse(rawBody);
         Assert.Equal("abstain", body.RootElement.GetProperty("kind").GetString());
-        Assert.Contains(
-            "could not reach the answer service",
-            body.RootElement.GetProperty("answerMarkdown").GetString(),
-            StringComparison.Ordinal);
+        var markdown = body.RootElement.GetProperty("answerMarkdown").GetString();
+        Assert.Contains("try again in a moment", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("I don't have data I trust", markdown, StringComparison.Ordinal);
 
         // An expiry question's answer lives in Renewals and Portfolio -- never "/ask", the screen
         // the user is already on (a button that leads nowhere).

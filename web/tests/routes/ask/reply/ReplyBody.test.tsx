@@ -178,11 +178,11 @@ describe("ReplyBody (task E13/F09/US01/T02, AC-3)", () => {
     const user = userEvent.setup();
     const { container, onFollowUp } = renderReply({
       kind: "abstain",
-      reason: "Nothing in your validated contracts supports a reliable answer.",
+      reason: "Here's how to prepare the renewal: name the supplier and I'll draft the email.",
       followUps: ["Which contracts are most critical?", "Where can we save?"],
     });
 
-    expect(container.querySelectorAll(".abstain-block")).toHaveLength(1);
+    expect(container.querySelector('[data-reply-kind="abstain"]')).not.toBeNull();
     expect(container.querySelectorAll(".reply-followup")).toHaveLength(2);
 
     await user.click(screen.getByRole("button", { name: /Where can we save\?/ }));
@@ -191,16 +191,21 @@ describe("ReplyBody (task E13/F09/US01/T02, AC-3)", () => {
     expect(onFollowUp).toHaveBeenCalledWith("Where can we save?");
   });
 
-  it("abstain: renders exactly one accent-left block with the reason -- the only place that block appears", () => {
+  it("abstain: renders the server's proposal as plain reply prose -- never the 'I don't have data I trust' banner", () => {
     const { container } = renderReply({
       kind: "abstain",
-      reason: "Salesforce is not validated yet. Finish its review in Documents and ask again.",
+      reason:
+        "Here's how to prepare the renewal:\n\n" +
+        "- **Pin the deadline**: Renewals shows when to move on each contract.\n" +
+        "- **Write to the supplier**: name the supplier and I'll draft a ready-to-send email.",
     });
 
-    const blocks = container.querySelectorAll(".abstain-block");
-    expect(blocks).toHaveLength(1);
-    expect(blocks[0].textContent).toContain("I don't have data I trust enough to answer.");
-    expect(blocks[0].textContent).toContain("Salesforce is not validated yet.");
+    expect(container.querySelector(".abstain-block")).toBeNull();
+    expect(container.textContent).not.toContain("I don't have data I trust");
+    expect(container.textContent).toContain("Here's how to prepare the renewal:");
+    // Markdown, like an answer: a bullet list with bold lead-ins.
+    expect(container.querySelectorAll('[data-reply-kind="abstain"] li')).toHaveLength(2);
+    expect(screen.getByText("Pin the deadline").tagName).toBe("STRONG");
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
@@ -281,8 +286,8 @@ describe("ReplyBody interview (ADR-030)", () => {
 
 // Task E25/F05/US02/T01 (abstain-recovery-web; parent story us-02-abstain-recovery-web
 // AC-1/AC-2/AC-3; ADR-024 "every abstain has a clickable next step", ADR-019 native link). The
-// abstain test above (AC-3, "the only place that block appears") predates the recovery action and
-// already proves the no-`actions`-field shape renders no link; these prove the two shapes
+// abstain test above (AC-3) predates the recovery action and already proves the no-`actions`-field
+// shape renders no link; these prove the two shapes
 // `askViewModel.ts#buildReply` can now additionally produce once it maps `turn.actions`.
 describe("ReplyBody abstain recovery action (task E25/F05/US02/T01)", () => {
   it("AC-1/AC-2: renders the recovery action as a secondary ActionRow -- never primary, even when the mapper marked it primary", () => {
@@ -296,23 +301,23 @@ describe("ReplyBody abstain recovery action (task E25/F05/US02/T01)", () => {
       actions: [{ label: "Upload a contract", href: "/documents", kind: "primary" }],
     });
 
-    expect(container.querySelectorAll(".abstain-block")).toHaveLength(1);
+    expect(container.querySelector('[data-reply-kind="abstain"]')).not.toBeNull();
     const action = screen.getByRole("link", { name: "Upload a contract" });
     expect(action).toHaveAttribute("href", "/documents");
     expect(action).toHaveClass("btn-secondary");
     expect(action).not.toHaveClass("btn-primary");
   });
 
-  it("AC-3: an abstain with an explicit empty actions array still renders just the block, never an empty screen", () => {
+  it("AC-3: an abstain with an explicit empty actions array still renders its prose, never an empty screen", () => {
     const { container } = renderReply({
       kind: "abstain",
-      reason: "Nothing in the 0 validated contract(s) supports a reliable answer.",
+      reason: "Let's start from your first contract: upload it in Documents.",
       actions: [],
     });
 
-    const blocks = container.querySelectorAll(".abstain-block");
-    expect(blocks).toHaveLength(1);
-    expect(blocks[0].textContent).toContain("Nothing in the 0 validated contract(s) supports a reliable answer.");
+    const body = container.querySelector('[data-reply-kind="abstain"]');
+    expect(body).not.toBeNull();
+    expect(body?.textContent).toContain("Let's start from your first contract: upload it in Documents.");
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 });

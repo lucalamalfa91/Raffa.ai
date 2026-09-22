@@ -783,7 +783,7 @@ per-user conversations.
   the block adds "Check again" beside its CTA.
 - **New chat** -- hello line (`ASK_HELLO`, "What do you want to know?"), scope line naming the
   validated count (`askViewModel.ts#buildScopeLine`, "Answers only from N validated contract(s) ·
-  cites or abstains", the parenthetical supplier-name list omitted honestly until a future backend
+  cites its sources", the parenthetical supplier-name list omitted honestly until a future backend
   task resolves it) plus the prototype's structured/legal trailer sentence, input placeholder "Ask
   Raffa — spend, dates, clauses, liability…", two suggestion chips (`suggestionsFor`) from the
   `ask` capability's own `exampleQuestions` (`GET /api/capabilities`), falling back to a small static

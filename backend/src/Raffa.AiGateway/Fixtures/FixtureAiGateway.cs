@@ -387,7 +387,21 @@ public sealed class FixtureAiGateway(
         var isWriter = request.AgentName.EndsWith("writer", StringComparison.OrdinalIgnoreCase);
 
         string payload;
-        if (isPlanner)
+        if (string.Equals(request.AgentName, MarketResearcherAgentName, StringComparison.OrdinalIgnoreCase))
+        {
+            // The market researcher's double: one same-supplier query named after the first contract
+            // item, for a commercial question only (a legal reading or a date lookup gets none).
+            var question = input?.Question ?? string.Empty;
+            var first = items.FirstOrDefault(i => string.Equals(i.Corpus, "tenant", StringComparison.OrdinalIgnoreCase))
+                ?? items.FirstOrDefault(i => i.Title.Contains('·', StringComparison.Ordinal));
+            var queries = !CommercialWordPattern.IsMatch(question)
+                ? []
+                : first is not null
+                    ? new[] { new { query = first.Title.Replace('·', ' ').Trim(), scope = "same-supplier" } }
+                    : new[] { new { query = question.Trim(), scope = "similar-contracts" } };
+            payload = JsonSerializer.Serialize(new { queries }, PackJsonOptions);
+        }
+        else if (isPlanner)
         {
             payload = BuildFixtureOfferPlan(items);
         }
@@ -571,11 +585,22 @@ public sealed class FixtureAiGateway(
         IReadOnlyList<FixturePackItem>? Items,
         string? Supplier = null,
         string? Language = null,
-        FixturePlan? Plan = null);
+        FixturePlan? Plan = null,
+        string? Question = null);
 
     private sealed record FixturePlan(IReadOnlyList<FixturePlanAsk>? Asks);
 
     private sealed record FixturePlanAsk(string? Lever, string? Sentence, IReadOnlyList<string>? CitationKeys);
+
+    /// <summary>The Ask flow's market researcher (<c>Raffa.Chat.Application.Council.CouncilAgents
+    /// .MarketResearcherName</c> — this project cannot reference it, ADR-002).</summary>
+    private const string MarketResearcherAgentName = "market-researcher";
+
+    private static readonly Regex CommercialWordPattern = new(
+        @"\b(pric\w*|prezz\w*|cost\w*|spen[dt]\w*|spes\w*|save|saves|saving|savings|risparm\w*|renew\w*|rinnov\w*|" +
+        @"scadenz\w*|discount\w*|scont\w*|budget|quarter\w*|trimestr\w*|annual\w*|e-?mail|mail|negotiat\w*|" +
+        @"negozia\w*|levers?|leve|market|mercato|benchmark\w*|quotes?|preventiv\w*)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex ProcurementWordPattern = new(
         @"\b(contract\w*|contratt\w*|renewal\w*|rinnov\w*|supplier\w*|fornitor\w*|procurement|negotiat\w*|negozia\w*|" +

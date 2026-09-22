@@ -524,12 +524,14 @@ export function deriveConversationTitle(questionText: string): string {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Scope line (R-ASK-10) -- "Answers only from N validated contracts (…) · cites or abstains"
+// Scope line (R-ASK-10) -- "Answers only from N validated contracts (…) · cites its sources"
 // ---------------------------------------------------------------------------------------------
 
-/** `app.jsx` `askScope`, quoted verbatim: `'Answers only from '+askable+' validated contract'+
- * (askable===1?'':'s')+' ('+kbNames.join(', ')+') · cites or abstains'` -- except the parenthetical
- * name list is omitted entirely (never rendered as an empty `()`) when `supplierNames` is empty, an
+/** `app.jsx` `askScope`: `'Answers only from '+askable+' validated contract'+
+ * (askable===1?'':'s')+' ('+kbNames.join(', ')+') · cites or abstains'`, with the closing promise
+ * now "cites its sources" (persona v2.5: Ask never abstains; it names the gap and answers from the
+ * market) --
+ * and one further departure: the parenthetical name list is omitted entirely (never rendered as an empty `()`) when `supplierNames` is empty, an
  * honest degradation rather than the prototype's own always-present parens. `GET /api/contracts`
  * does resolve a real `supplierName` per item since task E13/F03/US01/T02, so the names now exist on
  * the wire; what is still missing is a caller that carries them this far. The shell's
@@ -540,15 +542,16 @@ export function deriveConversationTitle(questionText: string): string {
 export function buildScopeLine(validatedContractCount: number, supplierNames: readonly string[]): string {
   const plural = validatedContractCount === 1 ? "contract" : "contracts";
   const names = supplierNames.length > 0 ? ` (${supplierNames.join(", ")})` : "";
-  return `Answers only from ${validatedContractCount} validated ${plural}${names} · cites or abstains`;
+  return `Answers only from ${validatedContractCount} validated ${plural}${names} · cites its sources`;
 }
 
 /** Screens-v2.md #2's own trailing sentence, appended after the scope line on the "new chat" state
  * only (`app.jsx` `askScope+'. Structured questions...'` is one concatenated paragraph in the
  * prototype; this module keeps the two halves separate so `index.tsx` can render `askScope` alone
- * for the conversation-view's own smaller usage without repeating this sentence there). */
+ * for the conversation-view's own smaller usage without repeating this sentence there). Its
+ * closing "or says it cannot answer" is persona v2.5's honest gap plus the market estimate. */
 export const NEW_CHAT_TRAILER =
-  "Structured questions run on validated fields, legal questions retrieve clauses — every answer cites its page or says it cannot answer.";
+  "Structured questions run on validated fields, legal questions retrieve clauses — every answer cites its page, and what your contracts lack I estimate from market data, saying so.";
 
 /** screens-v2.md #2 "New chat": `askHello`, quoted verbatim. */
 export const ASK_HELLO = "What do you want to know?";
@@ -605,12 +608,15 @@ export const ASK_NEW_CHAT_TITLE = "Ask Raffa.ai · new chat";
 /** The AI turn's kicker and the thinking row's kicker (`Raffa.ai` in the V2 markup). */
 export const ASK_RAFFA_KICKER = "Raffa.ai";
 
-/** The new-chat intro paragraph under `askHello`, verbatim. */
+/** The new-chat intro paragraph under `askHello` -- the prototype's own, except its closing
+ * "— or I say I cannot answer.", which persona v2.5 retired: when something is missing, Ask says
+ * so and fills the gap with market data, labelled as an estimate, instead of declining. */
 export const NEW_CHAT_INTRO =
-  "I work on procurement only: what you bought, what you pay, when to act, where to save and how to negotiate. Every answer comes from your validated contracts and cites its page — or I say I cannot answer.";
+  "I work on procurement only: what you bought, what you pay, when to act, where to save and how to negotiate. Every answer comes from your validated contracts and cites its page — when something is missing, I tell you and fill the gap with market data.";
 
-/** The composer's right-hand note, verbatim. */
-export const COMPOSER_NOTE = "Procurement only · cites or abstains";
+/** The composer's right-hand note -- the prototype's "cites or abstains", now "cites its sources"
+ * (persona v2.5: Ask never abstains). */
+export const COMPOSER_NOTE = "Procurement only · cites its sources";
 
 /**
  * `askScopeShort`: `askable + ' validated contract(s)' + ' · ' + kbNames.join(', ')`. The supplier

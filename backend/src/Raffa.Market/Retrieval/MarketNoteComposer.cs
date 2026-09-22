@@ -47,9 +47,15 @@ public static class MarketNoteComposer
     {
         var narrative = new StringBuilder();
 
+        // The annual contract value band, in amounts, so an answer about what similar customers pay
+        // a year can quote it with its currency (persona v2.5's market safety net).
+        var annualValue = MarketValueBand.Describe(deal.AnnualValueBand, deal.Currency) is { } band
+            ? $", annual contract value {band},"
+            : string.Empty;
+
         narrative.Append(CultureInfo.InvariantCulture, $"Companies of {deal.CompanySizeBand} " +
             $"employees closing {deal.Supplier} {deal.Product} in {deal.Geography} in " +
-            $"{deal.ClosingPeriod} paid P50 {deal.Currency} {FormatPrice(deal.UnitPriceP50)} " +
+            $"{deal.ClosingPeriod}{annualValue} paid P50 {deal.Currency} {FormatPrice(deal.UnitPriceP50)} " +
             $"(P25 {FormatPrice(deal.UnitPriceP25)}-P75 {FormatPrice(deal.UnitPriceP75)})");
 
         if (deal.DiscountAchievedPct is { } discount)

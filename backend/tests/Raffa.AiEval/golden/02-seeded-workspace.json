@@ -273,7 +273,7 @@
       "id": "GAP-ASK-ITALIAN-STRUCTURED-BLIND",
       "observedKind": "abstain",
       "observedMarkdownContains": [
-        "Nothing in your validated contracts supports a reliable answer"
+        "Ecco come preparare il rinnovo"
       ],
       "note": "The prototype's intent table lists 'expire / scad / end' and '120 / days / giorni / renew / rinnov / scadono' as one structured row, and OQ-askv2-006 requires the answer to follow the question's language. AskRaffaQueryRouter's keyword lists are English-only ('renew', 'expir', 'spend', ...), so an Italian dates/spend question falls through to the semantic branch, retrieves nothing, and abstains. The abstain is honest, but the question was answerable."
     },
@@ -310,7 +310,7 @@
     "question": "What liability do we have with AWS?",
     "expectedKind": "abstain",
     "expectedMarkdownContains": [
-      "Nothing in your validated contracts supports a reliable answer"
+      "Here's how to get to this clause"
     ],
     "expectNoCitations": true,
     "notes": "Spec §8.3's own clause example. The fixture indexes no clause chunks, so the only honest outcome is the abstain — proving the engine never fabricates a liability cap when retrieval comes back empty (Appendix C rule 10)."
@@ -323,7 +323,7 @@
     "question": "which contracts contain unlimited liability?",
     "expectedKind": "abstain",
     "expectedMarkdownContains": [
-      "Nothing in your validated contracts supports a reliable answer"
+      "Here's how to get to this clause"
     ],
     "expectNoCitations": true,
     "notes": "The second spec §8.3 clause example. Also proves the clause branch is reached at all: it is the only intent that calls the embedding gateway."
@@ -336,7 +336,7 @@
     "question": "Qual e il massimale di responsabilita nel contratto Microsoft?",
     "expectedKind": "abstain",
     "expectedMarkdownContains": [
-      "Nothing in your validated contracts supports a reliable answer"
+      "Ecco come arrivare a questa clausola"
     ],
     "expectNoCitations": true,
     "notes": "Italian clause vocabulary. It abstains for the same (correct) reason as its English twin — an empty clause index — so this case is a language check, not a gap."
@@ -691,7 +691,7 @@
     "question": "how much did we pay in legal fees last year?",
     "expectedKind": "abstain",
     "expectedMarkdownContains": [
-      "Nothing in your validated contracts supports a reliable answer"
+      "Happy to help"
     ],
     "expectNoCitations": true,
     "expectNoGatewayCall": true,
@@ -704,7 +704,7 @@
       ],
       "note": "The prototype's own 'legal + paid / cost / fee' row abstains ('Legal fees are not a contract fact…'), and its catch-all row abstains too. 'legal fees' misses the gate's legal lexicon (which matches 'legal advice', not 'legal'), so the turn is in-domain; the deterministic planner cannot handle it, and BuildStructuredFactPackAsync falls back to a snapshot of the five soonest-ending contracts. The user asks about legal fees and receives four unrelated contracts, confidently cited."
     },
-    "notes": "The prototype's own 'legal + paid / cost / fee' row: legal fees are not a contract fact, so Raffa declines rather than answering with something it does hold."
+    "notes": "The prototype's own 'legal + paid / cost / fee' row: legal fees are not a contract fact, so Raffa proposes a way forward (persona v2.4) rather than answering with something it does hold."
   },
   {
     "id": "seeded-structured_fact-off-topic-spend-en",
@@ -714,7 +714,7 @@
     "question": "how much did we spend on office catering?",
     "expectedKind": "abstain",
     "expectedMarkdownContains": [
-      "Nothing in your validated contracts supports a reliable answer"
+      "Happy to help"
     ],
     "expectNoCitations": true,
     "knownGap": {

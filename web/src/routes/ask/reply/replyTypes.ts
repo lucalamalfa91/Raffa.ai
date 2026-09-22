@@ -222,14 +222,16 @@ export interface RedirectReply {
   feedbackOffer?: FeedbackOffer | null;
 }
 
-/** `abstain` — the accent-left "Cannot determine reliably." block + `reason`, only for true
- * insufficiency (spec §10.4; screens-v2.md §2) -- never citations (task text: "the only place that
- * block appears"). May optionally carry the server-selected recovery action (ADR-024 "every
+/** `abstain` — Raffa's own way forward when no grounded answer exists (persona v2.4: Ask never
+ * answers "I don't have data I trust enough"): `reason` is the server's proposal -- a plan, a
+ * ready-to-send draft, the screen to open -- rendered as plain reply markdown, never the old
+ * accent-left "cannot determine" block, which read as an error. Never citations. May optionally
+ * carry the server-selected recovery action (ADR-024 "every
  * abstain has a clickable next step"; task E25/F05/US02/T01, parent story us-02-abstain-recovery-web
  * AC-1/AC-3): `../askViewModel.ts#buildReply` maps it off the wire's own generic `actions[]`
  * (backend: `CopilotReplyBuilder`'s `recoveryActions`, task E25/F05/US01/T01). `ReplyBody.tsx`
  * renders it as a **secondary** `ActionRow`, never primary, and only when present -- an abstain
- * with no action still renders just the block, never an empty screen (AC-3). May also carry the
+ * with no action still renders just its prose, never an empty screen (AC-3). May also carry the
  * server's next-step questions (`followUps`, only when non-empty) so a gap is never a dead end;
  * still never citations. */
 export interface AbstainReply {

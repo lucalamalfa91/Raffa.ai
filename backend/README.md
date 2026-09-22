@@ -1180,7 +1180,7 @@ itself (querying `PortfolioQueryService`/`Contract360QueryService`,
    notes, calculator output — every item citable, tagged `tenant`/
    `market`/`raffa`/`calc`).
 3. **Answer** (`Application.Answering.AnswerComposer`, persona prompt
-   `Prompts/answer/v2.3.md`) calls `IAiGateway.AnswerAsync` with the pack +
+   `Prompts/answer/v2.5.md`) calls `IAiGateway.AnswerAsync` with the pack +
    last N turns; `Fixtures.FixtureAiGateway.AnswerAsync` gives a
    deterministic v2 behaviour when a pack is supplied (cites the first N
    pack keys, copies their values verbatim — no chunk concatenation), so
@@ -1297,7 +1297,7 @@ gate → planner → pack → answer → guards pipeline, with four additions:
    the council, never the turn. `Chat:Council` (`Enabled`, `MinPackItems`,
    `MaxItemsPerAgent`, `MaxPlays`) is the kill switch; the `analyst` role runs
    on `AiGateway:Models:Analyst` when set, else on the `answer` deployment.
-4. **Persona `answer-v2.3`** (`Prompts/answer/v2.3.md`, drift-tested against
+4. **Persona `answer-v2.5`** (`Prompts/answer/v2.5.md`, drift-tested against
    `AnswerPromptV2.SystemPrompt`): a senior negotiation consultant; a savings
    question is answered with the verdict on the goal first, then Diagnosi →
    Leve in ordine di valore → Piano e timing → Cosa chiedere al fornitore →
@@ -1311,6 +1311,69 @@ gate → planner → pack → answer → guards pipeline, with four additions:
    v2.3 also adds two formatting rules: name the supplier on every contract
    reference ("Salesforce · MSA", never "the MSA" or "contract [2]") and
    write amounts with their currency code.
+   **v2.4 (never decline)** — Ask never answers "I don't have data I trust
+   enough to answer." Rule 6 keeps `canDetermine` true: a question the pack
+   covers only in part still gets a concrete way forward (a ready-to-send
+   email, a plan, a checklist) with every missing figure as a bracketed
+   placeholder (`[data di disdetta]`), never invented; a draft that relies on
+   no pack item carries no citation (`GroundingGuard`'s
+   `allowUncitedGuidance`, still under `NumericGuard`). A decline is
+   regenerated once with the rule named
+   (`RegenerateOnce.BuildDeclineRetryInstruction`) unless the caller keeps
+   it for an interpretation menu. A period question ("this quarter", "fine
+   trimestre") gets `Pack.CalendarPackItem` (today, the calendar quarter,
+   the next one, the year end) as pack values. Whatever still cannot be
+   answered — an empty pack, a second decline, a failed call — ends in
+   `Answering.HelpfulFallbackAnswer`'s proposal for that kind of question
+   (savings, renewals, market, clause, documents, an email draft, the
+   empty workspace), in the question's language; the web renders an
+   `abstain` as plain reply prose, never the old accent-left banner.
+   **v2.5 (honest, with the market as safety net)** replaces v2.4's
+   "missing figure → placeholder": the answer works out which data the
+   question needs — any field: an amount, a unit price, a date, a notice
+   period, a term, a commercial clause — says plainly which contract lacks
+   which of it, and still gives its best opinion, on the contract's own
+   facts first and, where they fall short, on the market (same supplier
+   first, then similar contracts), every market figure labelled as an
+   estimate, the narrowest range the pack holds, never widened; contract by
+   contract on a multi-contract question (a quarter, savings across
+   contracts).
+   **Ask's agentic flow** (`Application.Council.AskAgentFlow`) feeds it, one
+   coordinated sequence before the answer role writes:
+   1. *market-data-check* (deterministic, `Raffa.Api.MarketSafetyNet`, run by
+      `AskCopilotService` on every commercial turn — not clause or
+      document-status ones — over the named contract or, on a multi-contract
+      turn, the contracts the pack is about, at most four): the contract fact
+      item, a `calc:contract-gaps[…]` item naming what is missing, a
+      `market:estimate:…:annual-value` item when the annual spend is missing
+      (the contract's quantities at P25–P75 market prices, else a comparable
+      deal priced as the whole yearly contract, else the value band most
+      comparable deals fall in — only when high ≤ 2.5 × low,
+      `MaxRangeRatio`), a `market:estimate:…:notice-deadline` item when the
+      notice deadline is missing but the end date is known, a
+      `market:terms:…` item with what comparable customers negotiated
+      (discount, uplift cap, notice, term, payment terms — interquartile
+      ranges, or the median when even that is too wide), the closest deals,
+      and across several contracts a `calc:portfolio-data-coverage` item;
+   2. *market-researcher* (agent, `Council.MarketResearcher`): reads the
+      question, the contract items, step 1's findings and the missing fields,
+      and writes up to three keyword queries for the market RAG — the same
+      supplier first, then similar or related contracts; the flow runs them
+      through `IMarketRagSearch` (`Raffa.Api.MarketRagSearch` over
+      `IMarketKnowledgeRetrieval`) and adds the notes, de-duplicated, capped
+      and labelled "similar contract" when they come from another supplier.
+      Market notes now carry the deal's annual contract value
+      (`MarketValueBand`) — the pgvector index picks it up on re-ingestion;
+   3. *negotiation council* (contract analyst + market analyst, then lever
+      strategist) on a savings or negotiation turn, over the pack enriched by
+      steps 1–2.
+   `Chat:Council` carries the researcher's switch and bounds
+   (`MarketResearchEnabled`, `MarketResearchMaxQueries`,
+   `MarketResearchTopK`, `MarketResearchMaxItems`). The deterministic
+   proposal opens with the same gaps and estimates ("Sul contratto Oracle
+   mancano gli importi annuali. Dai dati di mercato, per aziende di 50-500
+   dipendenti il valore annuo tipico è tra EUR 250,000 e EUR 500,000: è una
+   stima…").
 
 Golden cases `seeded-savings-leve-20k-salesforce-it`,
 `seeded-savings-levers-20k-salesforce-en`,
@@ -1358,8 +1421,11 @@ It now rides the same route with one branch before the planner:
    contract returns the fifth kind, **`draft`**.
 3. **The drafting workflow** (`Raffa.Chat.Application.Drafting`). The same
    Q3 pack a scoped renewal-strategy turn gets (`persistTodos: true`, so the
-   Renewals link the reply offers is true after the turn) with the council's
-   plays inserted, then `NegotiationDraftingWorkflow`: the **offer planner**
+   Renewals link the reply offers is true after the turn) run through Ask's
+   agentic flow (`Council.AskAgentFlow`: the market data check's gaps and
+   estimates and the market researcher's RAG notes appended, the council's
+   plays inserted — so an ask can lean on a market figure where the contract
+   has none), then `NegotiationDraftingWorkflow`: the **offer planner**
    (`IAiGateway.AnalyzeAsync`, `draft-v1`) returns the position, the asks in
    value order with their citation keys, the trade and the deadline anchor
    (asks are validated locally — keys in the pack, `NumericGuard` over the

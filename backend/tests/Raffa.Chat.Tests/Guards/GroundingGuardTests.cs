@@ -123,6 +123,30 @@ public sealed class GroundingGuardTests
         Assert.True(verdict.Passed);
     }
 
+    // Persona v2.4 (never decline): a draft or a method that relies on no pack item.
+    [Fact]
+    public void An_uncited_answer_fails_by_default_and_passes_only_when_guidance_is_allowed()
+    {
+        var draft = Determined("Gentile [nome del referente], vi chiediamo una proposta di rinnovo.", []);
+
+        Assert.False(GroundingGuard.Validate(draft, OneItemPack).Passed);
+        Assert.True(GroundingGuard.Validate(draft, OneItemPack, allowUncitedGuidance: true).Passed);
+    }
+
+    [Fact]
+    public void Allowing_guidance_never_lets_a_marker_a_foreign_key_or_an_unknown_action_through()
+    {
+        var dangling = Determined("Vi chiediamo una proposta di rinnovo [1].", []);
+        var foreign = Determined("Liability is capped at CHF 1,000,000 [1].", ["foreign-key-not-in-pack"]);
+        var badAction = Determined("Vi chiediamo una proposta di rinnovo.", [], ["/renewals"]);
+        var blank = Determined("   ", []);
+
+        Assert.False(GroundingGuard.Validate(dangling, OneItemPack, allowUncitedGuidance: true).Passed);
+        Assert.False(GroundingGuard.Validate(foreign, OneItemPack, allowUncitedGuidance: true).Passed);
+        Assert.False(GroundingGuard.Validate(badAction, OneItemPack, allowUncitedGuidance: true).Passed);
+        Assert.False(GroundingGuard.Validate(blank, OneItemPack, allowUncitedGuidance: true).Passed);
+    }
+
     [Fact]
     public void Validate_rejects_a_null_result()
     {

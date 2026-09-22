@@ -129,10 +129,14 @@ public sealed class AskCapabilityGapTests(RaffaApiFactory factory) : IClassFixtu
         Assert.Contains(hrefs, h => h == $"/contracts/{contract.Id.Value}");
         Assert.Equal(2, root.GetProperty("followUps").GetArrayLength());
 
-        // Council (two or three agents -- the InMemory host has no clause evidence for the
-        // contract analyst) + offer planner + negotiation writer; never the answer role.
-        Assert.InRange(gateway.Calls.Count(c => c == "AnalyzeAsync"), 4, 5);
+        // Ask's agentic flow -- the market researcher, then the council (two or three agents: the
+        // InMemory host has no clause evidence for the contract analyst) -- + offer planner +
+        // negotiation writer; never the answer role.
+        Assert.InRange(gateway.Calls.Count(c => c == "AnalyzeAsync"), 5, 6);
         Assert.DoesNotContain("AnswerAsync", gateway.Calls);
+        var agents = gateway.Agents.ToList();
+        Assert.Equal("market-researcher", agents[0]);
+        Assert.True(agents.IndexOf("market-researcher") < agents.FindIndex(a => a.EndsWith("writer", StringComparison.Ordinal)));
 
         var turn = Assert.Single(audit.Entries, e => e.Action.StartsWith("chat.", StringComparison.Ordinal));
         Assert.Equal("chat.drafted", turn.Action);

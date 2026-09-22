@@ -100,7 +100,10 @@ public sealed class WebResearchComposerTests
         var outcome = await Compose(gateway).ComposeAsync("saas renewal practice", "MarketPractice", "it");
 
         Assert.Equal(WebResearchOutcomeKind.Abstained, outcome.Kind);
-        Assert.Contains("nessuna", outcome.Markdown, StringComparison.Ordinal);
+        Assert.StartsWith("Il web pubblico non offre ancora fonti chiare", outcome.Markdown, StringComparison.Ordinal);
+        // Never a bare "not showing it": the reply proposes the way forward.
+        Assert.Contains("dimmi il fornitore", outcome.Markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("5%", outcome.Markdown, StringComparison.Ordinal);
     }
 
     [Fact]

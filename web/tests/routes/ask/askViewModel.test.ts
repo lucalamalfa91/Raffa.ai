@@ -459,16 +459,16 @@ describe("resolveAskOffReason (ADR-027 §D7 counts -> the off-copy variant)", ()
 
 describe("buildScopeLine (R-ASK-10)", () => {
   it("pluralizes 'contract' for exactly one validated contract", () => {
-    expect(buildScopeLine(1, [])).toBe("Answers only from 1 validated contract · cites or abstains");
+    expect(buildScopeLine(1, [])).toBe("Answers only from 1 validated contract · cites its sources");
   });
 
   it("pluralizes 'contracts' for zero or more than one", () => {
-    expect(buildScopeLine(0, [])).toBe("Answers only from 0 validated contracts · cites or abstains");
-    expect(buildScopeLine(3, [])).toBe("Answers only from 3 validated contracts · cites or abstains");
+    expect(buildScopeLine(0, [])).toBe("Answers only from 0 validated contracts · cites its sources");
+    expect(buildScopeLine(3, [])).toBe("Answers only from 3 validated contracts · cites its sources");
   });
 
   it("appends a parenthetical name list only when names are known", () => {
-    expect(buildScopeLine(2, ["Salesforce", "AWS"])).toBe("Answers only from 2 validated contracts (Salesforce, AWS) · cites or abstains");
+    expect(buildScopeLine(2, ["Salesforce", "AWS"])).toBe("Answers only from 2 validated contracts (Salesforce, AWS) · cites its sources");
   });
 });
 

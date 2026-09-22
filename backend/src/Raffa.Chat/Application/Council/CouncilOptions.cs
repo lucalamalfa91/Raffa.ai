@@ -19,4 +19,17 @@ public sealed class CouncilOptions
 
     /// <summary>Plays kept from the strategist, in its own rank order.</summary>
     public int MaxPlays { get; set; } = 4;
+
+    /// <summary>The market researcher (<see cref="MarketResearcher"/>): off, and no Ask turn queries
+    /// the market RAG — the market data check and the council still run.</summary>
+    public bool MarketResearchEnabled { get; set; } = true;
+
+    /// <summary>Market RAG queries run per turn, in the researcher's own order.</summary>
+    public int MarketResearchMaxQueries { get; set; } = 3;
+
+    /// <summary>Notes retrieved per query.</summary>
+    public int MarketResearchTopK { get; set; } = 3;
+
+    /// <summary>Market notes the researcher may add to one turn's pack, all queries together.</summary>
+    public int MarketResearchMaxItems { get; set; } = 6;
 }

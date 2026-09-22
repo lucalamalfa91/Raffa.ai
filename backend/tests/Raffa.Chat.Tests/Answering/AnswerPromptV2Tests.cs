@@ -42,7 +42,30 @@ public sealed class AnswerPromptV2Tests
         Assert.Contains("Never invent a number", AnswerPromptV2.SystemPrompt, StringComparison.Ordinal);
         Assert.Contains("Cosa chiedere al fornitore", AnswerPromptV2.SystemPrompt, StringComparison.Ordinal);
         Assert.Contains("Never tables", AnswerPromptV2.SystemPrompt, StringComparison.Ordinal);
-        Assert.Equal("answer-v2.3", AnswerPromptV2.Version);
+        Assert.Equal("answer-v2.5", AnswerPromptV2.Version);
         Assert.Contains("Name the supplier every time", AnswerPromptV2.SystemPrompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Prompt_is_honest_about_gaps_and_falls_back_on_the_market_never_declining()
+    {
+        var prompt = AnswerPromptV2.SystemPrompt;
+
+        Assert.Contains("Be honest and always helpful. Never refuse", prompt, StringComparison.Ordinal);
+        Assert.Contains("always true and abstainReason always null", prompt, StringComparison.Ordinal);
+        Assert.Contains("Work out which data the question needs", prompt, StringComparison.Ordinal);
+        Assert.Contains("say so plainly in one", prompt, StringComparison.Ordinal);
+        Assert.Contains("contract by contract", prompt, StringComparison.Ordinal);
+        Assert.Contains("similar contract", prompt, StringComparison.Ordinal);
+        Assert.Contains("items (corpus \"market\")", prompt, StringComparison.Ordinal);
+        Assert.Contains("as your safety net - the same supplier first, then similar or", prompt, StringComparison.Ordinal);
+        Assert.Contains("market estimate, never as the", prompt, StringComparison.Ordinal);
+        Assert.Contains("never widen a range", prompt, StringComparison.Ordinal);
+        Assert.Contains("ready to send", prompt, StringComparison.Ordinal);
+        Assert.Contains("calendar item", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("set canDetermine to false", prompt, StringComparison.Ordinal);
+        // v2.4's "every missing figure as a placeholder" is gone: a figure comes from the market.
+        Assert.DoesNotContain("[importo]", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("[amount]", prompt, StringComparison.Ordinal);
     }
 }

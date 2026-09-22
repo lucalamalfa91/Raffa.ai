@@ -603,7 +603,9 @@ test.describe("V2 pilot path on the fixture-seeded workspace", () => {
       await expect(marketCard.first(), "R-MKT-04: every market number is provenance-labelled").toBeVisible();
       await expect(reply).toContainText(/below|in line|above/i);
     } else {
-      await expect(reply.locator(".abstain-block")).toBeVisible();
+      // Persona v2.4: an abstain is a proposal in plain prose, never the "cannot determine" banner.
+      await expect(reply.locator(".abstain-block")).toHaveCount(0);
+      await expect(reply).not.toContainText("I don't have data I trust");
     }
     await expectNoEngineerChrome(reply);
   });

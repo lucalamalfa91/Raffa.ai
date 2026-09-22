@@ -119,8 +119,9 @@ public sealed class AskSavingsConsultantTests(RaffaApiFactory factory) : IClassF
         Assert.Contains(titles, t => t.StartsWith("Play 1 —", StringComparison.Ordinal));
         Assert.Contains("20000", raw, StringComparison.Ordinal);
 
-        // Two analysts + one strategist, then the answer role.
-        Assert.Equal(3, gateway.Calls.Count(c => c == "AnalyzeAsync"));
+        // Ask's agentic flow: the market researcher, then two analysts + one strategist, then the
+        // answer role.
+        Assert.Equal(4, gateway.Calls.Count(c => c == "AnalyzeAsync"));
         Assert.Equal(1, gateway.Calls.Count(c => c == "AnswerAsync"));
 
         using var scope = host.Services.CreateScope();
@@ -189,6 +190,6 @@ public sealed class AskSavingsConsultantTests(RaffaApiFactory factory) : IClassF
         Assert.Equal("answer", reply.RootElement.GetProperty("kind").GetString());
         Assert.Contains(CitationTitles(reply), t => t.Contains("saving target and lever coverage", StringComparison.Ordinal));
         Assert.Contains("20000", raw, StringComparison.Ordinal);
-        Assert.Equal(analyzeCallsAfterFirstTurn + 3, gateway.Calls.Count(c => c == "AnalyzeAsync"));
+        Assert.Equal(analyzeCallsAfterFirstTurn + 4, gateway.Calls.Count(c => c == "AnalyzeAsync"));
     }
 }

@@ -100,6 +100,13 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton(new CouncilOptions());
         services.AddScoped<NegotiationCouncil>();
 
+        // Ask's agentic flow (Application.Council.AskAgentFlow): the market data check (supplied per
+        // turn by the composition root), the market researcher and the council above. The
+        // researcher's market RAG (IMarketRagSearch) is registered by the host that owns the Market
+        // module; without it the researcher step is skipped.
+        services.AddScoped<MarketResearcher>();
+        services.AddScoped<AskAgentFlow>();
+
         // The drafting workflow (Application.Drafting, ADR-030 D3): the offer planner and the
         // negotiation writer behind a `draft` reply. Same TryAdd-options / Scoped-service shape as
         // the council above; the host binds Chat:Drafting before calling this.
