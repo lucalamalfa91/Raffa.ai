@@ -23,6 +23,7 @@ public sealed class RegenerateOnceTests
 
         Assert.Contains("amount 'CHF 140' does not equal any pack value.", instruction);
         Assert.Contains("Keep canDetermine true", instruction);
+        Assert.Contains("market estimate", instruction);
         Assert.DoesNotContain("canDetermine to false", instruction);
     }
 

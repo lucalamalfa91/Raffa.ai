@@ -639,6 +639,21 @@ internal sealed partial class AskCopilotService(
             _ => [],
         };
 
+        // Persona v2.5 — the market safety net: a commercial turn about one contract also carries
+        // the contract's own facts, what it is missing and what the market says in its place (a
+        // narrow annual-value estimate, the terms comparable customers negotiated, the closest
+        // comparable deals, or the market RAG's notes on similar contracts when the supplier has no
+        // deal). Appended after the intent's own items, so they keep their priority under the
+        // budget. Not for a clause question — the market holds no clause text to stand in for the
+        // contract's own — nor for a document-status one.
+        var safetyNet = namedContractItem is not null && plan.Intent is not (AskIntent.DocumentStatus or AskIntent.Clause)
+            ? await BuildMarketSafetyNetAsync(namedContractItem, cancellationToken).ConfigureAwait(false)
+            : MarketSafetyNetResult.None;
+        if (safetyNet.Items.Count > 0)
+        {
+            packItems = DistinctByCitationKey(packItems.Concat(safetyNet.Items));
+        }
+
         // Task E31/F03/US01/T01 (q3-persist; NW-97; ADR-024 w19 cl. 21/ADR-028): exactly the
         // condition the switch above already used to pick the live Q3 composition
         // (BuildRenewalStrategyWithEvidenceAsync, persistTodos: true) -- re-read, never
@@ -685,8 +700,19 @@ internal sealed partial class AskCopilotService(
         // clickable next step"), and HelpfulFallbackAnswer's way forward for this kind of question.
         var recoveryActions = ResolveAbstainRecoveryActions(portfolio, routingContext, plan.Intent);
         var recoveryFollowUps = AbstainFollowUps(question, portfolio, plan.Intent);
-        var proposal = HelpfulFallbackAnswer.Proposal(
-            question, ProposalArea(question, plan.Intent), emptyWorkspace: portfolio.Items.Count == 0);
+        // The deterministic proposal opens, like the model must, with the honest gap and the market
+        // estimate when the contract has no annual amounts.
+        var italianQuestion = HelpfulFallbackAnswer.IsItalian(question);
+        var lead = MarketSafetyNet.Lead(safetyNet.SupplierName, safetyNet.Missing, safetyNet.Estimate, italianQuestion);
+        if (lead is null && plan.Intent == AskIntent.Clause && namedContractItem is not null && boundedPack.Count == 0)
+        {
+            // Honest first: the clause is not on file for this contract.
+            var clauseSupplier = await ResolveDisplayNameAsync(namedContractItem, cancellationToken).ConfigureAwait(false);
+            lead = MarketSafetyNet.ClauseNotFoundLead(clauseSupplier, italianQuestion);
+        }
+
+        var proposal = (lead ?? string.Empty) +
+            HelpfulFallbackAnswer.Proposal(question, ProposalArea(question, plan.Intent), emptyWorkspace: portfolio.Items.Count == 0);
 
         if (boundedPack.Count == 0)
         {
@@ -1599,7 +1625,10 @@ internal sealed partial class AskCopilotService(
             return BuildNoticeAnswer(PrefixWithDisambiguation(clauseItem.Snippet, disambiguationItem), groundingItems, reviewActions);
         }
 
-        return BuildNoGroundableNoticeAbstain(question, supplierName, reviewActions);
+        // No date on file: say so, and give the notice comparable customers have as the market's
+        // estimate (persona v2.5's safety net), alongside how to pin the real date down.
+        var typicalNoticeDays = await TypicalNoticeDaysAsync(contract360, supplierName, cancellationToken).ConfigureAwait(false);
+        return BuildNoGroundableNoticeAbstain(question, supplierName, reviewActions, typicalNoticeDays);
     }
 
     private static string PrefixWithDisambiguation(string answer, PackItem? disambiguationItem) =>
@@ -1629,10 +1658,10 @@ internal sealed partial class AskCopilotService(
     /// date down now (<see cref="HelpfulFallbackAnswer.NoticeDateMissing"/>) -- never a bare "could
     /// not find".</summary>
     private static CopilotReply BuildNoGroundableNoticeAbstain(
-        string question, string supplierName, IReadOnlyList<CopilotAction> reviewActions) =>
+        string question, string supplierName, IReadOnlyList<CopilotAction> reviewActions, int? typicalNoticeDays = null) =>
         new(
             ReplyKind.Abstain,
-            HelpfulFallbackAnswer.NoticeDateMissing(question, supplierName),
+            HelpfulFallbackAnswer.NoticeDateMissing(question, supplierName, typicalNoticeDays),
             [],
             reviewActions,
             ReplyProvenance.NoModelCall([]),

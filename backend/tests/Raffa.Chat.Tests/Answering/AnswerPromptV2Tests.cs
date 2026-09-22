@@ -42,18 +42,27 @@ public sealed class AnswerPromptV2Tests
         Assert.Contains("Never invent a number", AnswerPromptV2.SystemPrompt, StringComparison.Ordinal);
         Assert.Contains("Cosa chiedere al fornitore", AnswerPromptV2.SystemPrompt, StringComparison.Ordinal);
         Assert.Contains("Never tables", AnswerPromptV2.SystemPrompt, StringComparison.Ordinal);
-        Assert.Equal("answer-v2.4", AnswerPromptV2.Version);
+        Assert.Equal("answer-v2.5", AnswerPromptV2.Version);
         Assert.Contains("Name the supplier every time", AnswerPromptV2.SystemPrompt, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void Prompt_never_lets_the_model_decline_and_asks_for_placeholders_instead_of_invented_figures()
+    public void Prompt_is_honest_about_gaps_and_falls_back_on_the_market_never_declining()
     {
-        Assert.Contains("Never refuse, never answer that you lack the data", AnswerPromptV2.SystemPrompt, StringComparison.Ordinal);
-        Assert.Contains("always true and abstainReason always null", AnswerPromptV2.SystemPrompt, StringComparison.Ordinal);
-        Assert.Contains("bracketed placeholder", AnswerPromptV2.SystemPrompt, StringComparison.Ordinal);
-        Assert.Contains("ready to send", AnswerPromptV2.SystemPrompt, StringComparison.Ordinal);
-        Assert.Contains("calendar item", AnswerPromptV2.SystemPrompt, StringComparison.Ordinal);
-        Assert.DoesNotContain("set canDetermine to false", AnswerPromptV2.SystemPrompt, StringComparison.Ordinal);
+        var prompt = AnswerPromptV2.SystemPrompt;
+
+        Assert.Contains("Be honest and always helpful. Never refuse", prompt, StringComparison.Ordinal);
+        Assert.Contains("always true and abstainReason always null", prompt, StringComparison.Ordinal);
+        Assert.Contains("say so plainly in one sentence", prompt, StringComparison.Ordinal);
+        Assert.Contains("market items", prompt, StringComparison.Ordinal);
+        Assert.Contains("as your safety net - the same supplier first, then similar or", prompt, StringComparison.Ordinal);
+        Assert.Contains("market estimate, never as the", prompt, StringComparison.Ordinal);
+        Assert.Contains("never widen a range", prompt, StringComparison.Ordinal);
+        Assert.Contains("ready to send", prompt, StringComparison.Ordinal);
+        Assert.Contains("calendar item", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("set canDetermine to false", prompt, StringComparison.Ordinal);
+        // v2.4's "every missing figure as a placeholder" is gone: a figure comes from the market.
+        Assert.DoesNotContain("[importo]", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("[amount]", prompt, StringComparison.Ordinal);
     }
 }

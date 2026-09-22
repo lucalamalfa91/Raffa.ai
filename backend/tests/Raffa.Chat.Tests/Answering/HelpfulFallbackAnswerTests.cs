@@ -5,7 +5,7 @@ using Raffa.Chat.Application.Capabilities;
 namespace Raffa.Chat.Tests.Answering;
 
 /// <summary>
-/// The proposal Ask writes itself when no grounded answer exists — persona v2.4's "never end on
+/// The proposal Ask writes itself when no grounded answer exists — persona v2.5's "never end on
 /// 'I don't have data I trust enough'". Every variant is a way forward in the question's language,
 /// carries no figure that could be wrong about the user's data, and never talks about the machinery.
 /// </summary>
@@ -82,6 +82,17 @@ public sealed class HelpfulFallbackAnswerTests
         Assert.StartsWith("Ecco come preparare il rinnovo", HelpfulFallbackAnswer.Proposal("Come affrontare il prossimo rinnovo?", CapabilityCatalog.RenewalsKey), StringComparison.Ordinal);
         Assert.StartsWith("Happy to help", HelpfulFallbackAnswer.Proposal("how much did we spend on office catering?", null), StringComparison.Ordinal);
         Assert.StartsWith("Per Salesforce la data di disdetta", HelpfulFallbackAnswer.NoticeDateMissing("Quando scade la disdetta con Salesforce?", "Salesforce"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_missing_notice_date_is_said_plainly_and_the_markets_typical_notice_is_labelled_an_estimate()
+    {
+        var italian = HelpfulFallbackAnswer.NoticeDateMissing("Quando scade la disdetta con Salesforce?", "Salesforce", typicalNoticeDays: 90);
+        var english = HelpfulFallbackAnswer.NoticeDateMissing("When is the Salesforce notice due?", "Salesforce", typicalNoticeDays: 90);
+
+        Assert.StartsWith("Per Salesforce la data di disdetta non è ancora tra i dati validati. Dai dati di mercato", italian, StringComparison.Ordinal);
+        Assert.Contains("il preavviso tipico è di 90 giorni: è una stima, non un dato del tuo contratto.", italian, StringComparison.Ordinal);
+        Assert.Contains("typically have a 90-day notice period: an estimate, not a term of your contract.", english, StringComparison.Ordinal);
     }
 
     [Theory]

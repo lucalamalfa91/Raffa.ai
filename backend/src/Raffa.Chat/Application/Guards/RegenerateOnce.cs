@@ -30,25 +30,26 @@ public static class RegenerateOnce
             "pack given to you — do not invent, restate a different figure, or cite anything the " +
             "pack does not contain. An actionKey is a bare capability key such as renewals or " +
             "savings, never a citationKey, a playbook item or a route; leave out any you are unsure " +
-            "of. Keep canDetermine true: a figure the pack does not hold is written as a bracketed " +
-            "placeholder such as [amount], never invented and never a reason to decline.";
+            "of. Keep canDetermine true: when the contract lacks a figure, say so plainly and use the " +
+            "market items' own estimate or range instead, labelled as a market estimate - never " +
+            "invent one and never decline.";
     }
 
     /// <summary>
     /// The addendum for the one permitted retry when the first attempt declined to answer
-    /// (<c>canDetermine</c> false) — persona v2.4's rule 6 says Raffa never declines, so a decline
+    /// (<c>canDetermine</c> false) — persona v2.5's rule 6 says Raffa never declines, so a decline
     /// is treated like any other broken rule and regenerated once with the rule named. The
     /// model's own decline reason is deliberately not echoed back: it would only anchor the retry
     /// on what is missing instead of on the help the user asked for.
     /// </summary>
     public static string BuildDeclineRetryInstruction() =>
         "Your previous reply declined to answer (canDetermine false). Ask Raffa never declines: " +
-        "answer again with canDetermine true and abstainReason null. Lead with the help the user " +
-        "asked for: use what the context pack does hold, cited, and give a concrete way forward - " +
-        "a ready-to-send draft, a plan, a checklist or the method to work it out - writing every " +
-        "figure, date or name the pack does not hold as a bracketed placeholder such as [amount] " +
-        "or [notice date], never an invented value. Close with one short line naming the document " +
-        "or data that would make it exact. Never apologise and never mention the pack.";
+        "answer again with canDetermine true and abstainReason null. Be honest: say plainly, in one " +
+        "sentence, which contract and which figure or clause is missing. Then give the best " +
+        "plausible answer to what was asked, built on the contract's own facts and, where they fall " +
+        "short, on the market items (the same supplier first, then similar contracts), every market " +
+        "figure quoted verbatim and labelled as a market estimate, never as the user's contract " +
+        "data. Never invent a figure, never apologise and never mention the pack.";
 
     /// <summary>
     /// The last-resort, honest fallback when even the retry still violates a guard (or the retry

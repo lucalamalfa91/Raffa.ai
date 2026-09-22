@@ -44,7 +44,7 @@ public sealed class AskSavingsAnswerRecoveryTests(RaffaApiFactory factory) : ICl
     private static FixtureAiGateway Fixture() =>
         new(new AiGatewayModelOptions(), SystemClock.Instance, new AiGatewayOcrOptions());
 
-    private async Task<JsonDocument> AskSeededAsync(IAiGateway gateway)
+    private async Task<JsonDocument> AskSeededAsync(IAiGateway gateway, string question = Question, bool withAnnualSpend = true)
     {
         var tenantId = TenantId.New();
         var oracleId = EntityId.New();
@@ -57,7 +57,7 @@ public sealed class AskSavingsAnswerRecoveryTests(RaffaApiFactory factory) : ICl
             Type = ContractDocumentType.OrderForm,
             Status = "Completed",
             Currency = "EUR",
-            AnnualSpend = 439000m,
+            AnnualSpend = withAnnualSpend ? 439000m : null,
             AutoRenewal = true,
             EndDate = DateOnly.FromDateTime(Now.UtcDateTime).AddDays(29 + 180),
             CancellationDeadline = DateOnly.FromDateTime(Now.UtcDateTime).AddDays(29),
@@ -83,7 +83,7 @@ public sealed class AskSavingsAnswerRecoveryTests(RaffaApiFactory factory) : ICl
 
         using var messageRequest = new HttpRequestMessage(HttpMethod.Post, $"/api/conversations/{conversationId}/messages")
         {
-            Content = JsonContent.Create(new { question = Question }),
+            Content = JsonContent.Create(new { question }),
         };
         messageRequest.Headers.Add("X-Tenant-Id", tenantId.Value.ToString());
         messageRequest.Headers.Add("X-User-Id", UserId);
@@ -192,6 +192,43 @@ public sealed class AskSavingsAnswerRecoveryTests(RaffaApiFactory factory) : ICl
         var packJson = Assert.Single(declining.PackJsons);
         Assert.Contains("calc:calendar", packJson, StringComparison.Ordinal);
         Assert.Contains("2026-09-30", packJson, StringComparison.Ordinal);
+    }
+
+    // Persona v2.5's market safety net: a contract with no annual amounts is named as such, and the
+    // model gets the market's narrow estimate for comparable Oracle customers in its place
+    // (EUR 250,000–500,000, the band the mock feed's EUR Oracle deals mostly fall in).
+    [Fact]
+    public async Task A_contract_without_annual_amounts_sends_its_gap_and_the_markets_estimate_to_the_model()
+    {
+        var declining = new DecliningGateway(Fixture(), declines: 0);
+
+        using var reply = await AskSeededAsync(
+            new RecordingAiGateway(declining), "mi aiuti a creare una mail per il rinnovo del contratto Oracle?", withAnnualSpend: false);
+
+        var packJson = Assert.Single(declining.PackJsons);
+        Assert.Contains("calc:contract-gaps[", packJson, StringComparison.Ordinal);
+        Assert.Contains("no value for: annual spend", packJson, StringComparison.Ordinal);
+        Assert.Contains("Market estimate, not a figure from your contract", packJson, StringComparison.Ordinal);
+        Assert.Contains("between EUR 250,000 and EUR 500,000", packJson, StringComparison.Ordinal);
+        Assert.Contains("what comparable customers negotiated", packJson, StringComparison.Ordinal);
+    }
+
+    // Both attempts decline: the deterministic reply still opens with the honest gap and the
+    // market estimate, then the ready-to-send email draft that was asked for.
+    [Fact]
+    public async Task With_no_model_answer_the_proposal_still_leads_with_the_gap_and_the_market_estimate()
+    {
+        using var reply = await AskSeededAsync(
+            new RecordingAiGateway(new DecliningGateway(Fixture(), declines: 2)),
+            "mi aiuti a creare una mail per il rinnovo del contratto Oracle?",
+            withAnnualSpend: false);
+
+        var markdown = reply.RootElement.GetProperty("answerMarkdown").GetString()!;
+        Assert.StartsWith("Sul contratto Oracle mancano gli importi annuali.", markdown, StringComparison.Ordinal);
+        Assert.Contains("il valore annuo tipico è tra EUR 250,000 e EUR 500,000", markdown, StringComparison.Ordinal);
+        Assert.Contains("è una stima, non un dato del tuo contratto", markdown, StringComparison.Ordinal);
+        Assert.Contains("**Oggetto:**", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("I don't have data I trust", markdown, StringComparison.Ordinal);
     }
 
     /// <summary>Declines the first <c>declines</c> answer calls the way the live model did before

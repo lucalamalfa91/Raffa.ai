@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
 using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Interview;
@@ -13,8 +14,11 @@ namespace Raffa.Chat.Application.Answering;
 /// action and next-step questions as its follow-ups (both chosen by the composition root).
 ///
 /// <para>
-/// Fixed copy only — no digit, amount, date or contract fact, so nothing in it can be wrong about
-/// the user's data; the supplier name in the notice variants is the portfolio's own display name.
+/// Fixed copy only — no amount, date or contract fact, so nothing in it can be wrong about the
+/// user's data; the supplier name in the notice variants is the portfolio's own display name, and
+/// the one figure it may carry (the typical notice period comparable customers have) comes from the
+/// market feed and is said to be an estimate. The composition root opens the proposal with the
+/// contract's gap and the market's annual-value estimate when it has one (persona v2.5).
 /// Pure and synchronous.
 /// </para>
 /// </summary>
@@ -163,18 +167,27 @@ public static class HelpfulFallbackAnswer
     }
 
     /// <summary>A notice question about <paramref name="supplierName"/>'s contract with neither a
-    /// validated notice deadline nor a clause that names one: how to pin the date down now.</summary>
-    public static string NoticeDateMissing(string question, string supplierName)
+    /// validated notice deadline nor a clause that names one: the gap, honestly, the notice period
+    /// comparable customers have when the market records one (<paramref name="typicalNoticeDays"/>,
+    /// said to be an estimate), and how to pin the real date down now.</summary>
+    public static string NoticeDateMissing(string question, string supplierName, int? typicalNoticeDays = null)
     {
         ArgumentNullException.ThrowIfNull(question);
         ArgumentException.ThrowIfNullOrWhiteSpace(supplierName);
 
-        return IsItalian(question)
-            ? $"Per {supplierName} la data di disdetta non è ancora tra i dati validati. Ecco come fissarla subito:\n\n" +
+        var italian = IsItalian(question);
+        var market = typicalNoticeDays is { } days
+            ? italian
+                ? $" Dai dati di mercato, per clienti simili di {supplierName} il preavviso tipico è di {days.ToString(CultureInfo.InvariantCulture)} giorni: è una stima, non un dato del tuo contratto."
+                : $" From market data, comparable {supplierName} customers typically have a {days.ToString(CultureInfo.InvariantCulture)}-day notice period: an estimate, not a term of your contract."
+            : string.Empty;
+
+        return italian
+            ? $"Per {supplierName} la data di disdetta non è ancora tra i dati validati.{market} Ecco come fissarla subito:\n\n" +
               "- **Apri Contract 360** e controlla la clausola di durata e rinnovo nel documento originale.\n" +
               "- **Chiedi conferma al fornitore**: posso prepararti una breve email per farti confermare scadenza e preavviso.\n" +
               "- **Conferma il campo** in Documents: da lì in poi Raffa ti avvisa in tempo."
-            : $"The notice date for {supplierName} isn't among the validated data yet. Here's how to pin it down now:\n\n" +
+            : $"The notice date for {supplierName} isn't among the validated data yet.{market} Here's how to pin it down now:\n\n" +
               "- **Open Contract 360** and check the term and renewal clause in the original document.\n" +
               "- **Ask the supplier to confirm**: I can draft a short email asking them to confirm the end date and the notice period.\n" +
               "- **Confirm the field** in Documents: from then on Raffa reminds you in time.";
@@ -220,8 +233,9 @@ public static class HelpfulFallbackAnswer
           "[name and role]\n\n" +
           "Tell me the supplier and I'll complete the draft with your contract's dates and terms.";
 
-    // Either detector: the fallback answer's own cue list, or the planner's (which also knows the
-    // notice vocabulary — "quando", "scade", "disdetta", "preavviso").
-    private static bool IsItalian(string question) =>
+    /// <summary>Whether <paramref name="question"/> reads as Italian — either detector: the fallback
+    /// answer's own cue list, or the planner's (which also knows the notice vocabulary — "quando",
+    /// "scade", "disdetta", "preavviso").</summary>
+    public static bool IsItalian(string question) =>
         GroundedFallbackAnswer.IsItalian(question) || LanguageHint.IsItalian(question);
 }

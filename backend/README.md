@@ -1179,7 +1179,7 @@ itself (querying `PortfolioQueryService`/`Contract360QueryService`,
    notes, calculator output — every item citable, tagged `tenant`/
    `market`/`raffa`/`calc`).
 3. **Answer** (`Application.Answering.AnswerComposer`, persona prompt
-   `Prompts/answer/v2.4.md`) calls `IAiGateway.AnswerAsync` with the pack +
+   `Prompts/answer/v2.5.md`) calls `IAiGateway.AnswerAsync` with the pack +
    last N turns; `Fixtures.FixtureAiGateway.AnswerAsync` gives a
    deterministic v2 behaviour when a pack is supplied (cites the first N
    pack keys, copies their values verbatim — no chunk concatenation), so
@@ -1296,7 +1296,7 @@ gate → planner → pack → answer → guards pipeline, with four additions:
    the council, never the turn. `Chat:Council` (`Enabled`, `MinPackItems`,
    `MaxItemsPerAgent`, `MaxPlays`) is the kill switch; the `analyst` role runs
    on `AiGateway:Models:Analyst` when set, else on the `answer` deployment.
-4. **Persona `answer-v2.4`** (`Prompts/answer/v2.4.md`, drift-tested against
+4. **Persona `answer-v2.5`** (`Prompts/answer/v2.5.md`, drift-tested against
    `AnswerPromptV2.SystemPrompt`): a senior negotiation consultant; a savings
    question is answered with the verdict on the goal first, then Diagnosi →
    Leve in ordine di valore → Piano e timing → Cosa chiedere al fornitore →
@@ -1327,6 +1327,27 @@ gate → planner → pack → answer → guards pipeline, with four additions:
    (savings, renewals, market, clause, documents, an email draft, the
    empty workspace), in the question's language; the web renders an
    `abstain` as plain reply prose, never the old accent-left banner.
+   **v2.5 (honest, with the market as safety net)** replaces v2.4's
+   "missing figure → placeholder": when the contract lacks what the
+   question needs, the answer says so plainly (which contract, which
+   figure) and still answers — on the contract's own facts first and, where
+   they fall short, on the market items (same supplier first, then similar
+   contracts), every market figure labelled as an estimate with its basis,
+   the narrowest range the pack holds, never widened. `MarketSafetyNet`
+   (Raffa.Api) feeds it on every commercial turn about one contract (not
+   clause or document-status turns): the contract fact item, a
+   `calc:contract-gaps[…]` item naming what is missing, a
+   `market:estimate:…:annual-value` item when the annual spend is missing —
+   the contract's quantities at P25–P75 market prices, else a comparable
+   deal priced as the whole yearly contract, else the value band most
+   comparable deals fall in, and only when high ≤ 2.5 × low
+   (`MaxRangeRatio`) — a `market:terms:…` item with what comparable
+   customers negotiated (interquartile ranges, or the median when even that
+   is too wide), and the closest deals, or the market RAG's notes on similar
+   contracts when the supplier has no deal. The deterministic proposal opens
+   with the same gap and estimate ("Sul contratto Oracle mancano gli importi
+   annuali. Dai dati di mercato, per aziende di 50-500 dipendenti il valore
+   annuo tipico è tra EUR 250,000 e EUR 500,000: è una stima…").
 
 Golden cases `seeded-savings-leve-20k-salesforce-it`,
 `seeded-savings-levers-20k-salesforce-en`,
