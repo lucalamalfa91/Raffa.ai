@@ -34,7 +34,7 @@ import {
   buildRecommendation,
   buildRiskItems,
   buildScoreParts,
-  buildLeverGroups,
+  buildLeverCards,
   buildClauseGroups,
   buildClosedOutcome,
   standardClausesLabel,
@@ -660,31 +660,71 @@ describe("the six sections (Raffa.ai V2.dc.html CONTRACT 360)", () => {
     expect(mixed).toHaveLength(10);
   });
 
-  it("02 Leverage: one card per pack lever, grouped by priced line with the line prefix lifted off, strongest first", () => {
+  it("02 Leverage: one card per lever type, strongest first -- identical wording shown once, differing wording names its line", () => {
+    const quarterEnd = "Today (2026-09-22) is within 8 day(s) of a calendar quarter-end.";
     const pack = {
       contractId: "c-1",
       whenYouMustMove: { renewalDate: null, cancellationDeadline: null, daysLeft: null, passedDeadline: false, explanation: "" },
       whereYouCanPush: [
         { leverType: "Volume" as const, rationale: "SAP S/4HANA: This line orders 570 — cite the order size.", citationKeys: ["k-1"] },
         { leverType: "Term" as const, rationale: "SAP S/4HANA: Committed term is 24 months.", citationKeys: [] },
+        { leverType: "QuarterEnd" as const, rationale: `SAP S/4HANA: ${quarterEnd}`, citationKeys: [] },
         { leverType: "Volume" as const, rationale: "Onboarding fee: No quantity is recorded on this line.", citationKeys: [] },
+        { leverType: "Term" as const, rationale: "Onboarding fee: Committed term is 24 months.", citationKeys: [] },
+        { leverType: "QuarterEnd" as const, rationale: `Onboarding fee: ${quarterEnd}`, citationKeys: [] },
       ],
       targets: [],
       nextSteps: [],
       openWeakFacts: [],
     };
-    const groups = buildLeverGroups(pack, ["SAP S/4HANA", "Onboarding fee"]);
-    expect(groups.map((group) => [group.line, group.cards.map((card) => [card.kicker, card.headline, card.body, card.strong])])).toEqual([
-      ["SAP S/4HANA", [["Order size lever", "Order size", "This line orders 570 — cite the order size.", true], ["Term length lever", "Term length", "Committed term is 24 months.", false]]],
-      ["Onboarding fee", [["Order size lever", "Order size", "No quantity is recorded on this line.", false]]],
+    const cards = buildLeverCards(pack, ["SAP S/4HANA", "Onboarding fee"]);
+    expect(cards.map((card) => [card.kicker, card.headline, card.entries, card.strong])).toEqual([
+      [
+        "Order size lever",
+        "Order size",
+        [
+          { lines: ["SAP S/4HANA"], body: "This line orders 570 — cite the order size." },
+          { lines: ["Onboarding fee"], body: "No quantity is recorded on this line." },
+        ],
+        true,
+      ],
+      ["Term length lever", "Term length", [{ lines: [], body: "Committed term is 24 months." }], false],
+      ["Quarter end lever", "Quarter end", [{ lines: [], body: quarterEnd }], false],
     ]);
-    expect(JSON.stringify(groups)).not.toContain("k-1");
-    // A single-line contract carries no prefix: one unnamed group, the rationale untouched.
-    const single = buildLeverGroups(pack, []);
-    expect(single).toHaveLength(1);
-    expect(single[0].line).toBeNull();
-    expect(single[0].cards[0].body).toBe("SAP S/4HANA: This line orders 570 — cite the order size.");
-    expect(buildLeverGroups(null)).toEqual([]);
+    expect(JSON.stringify(cards)).not.toContain("k-1");
+
+    // Three lines, two sharing a wording: the shared wording names both lines, the odd one its own.
+    const threeLines = buildLeverCards(
+      {
+        ...pack,
+        whereYouCanPush: [
+          { leverType: "Term" as const, rationale: "A: Committed term is 12 months.", citationKeys: [] },
+          { leverType: "Term" as const, rationale: "B: Committed term is 12 months.", citationKeys: [] },
+          { leverType: "Term" as const, rationale: "C: Committed term is 36 months.", citationKeys: [] },
+          { leverType: "Bundle" as const, rationale: "A: This contract bundles 3 priced lines.", citationKeys: [] },
+        ],
+      },
+      ["A", "B", "C"],
+    );
+    expect(threeLines.map((card) => card.entries)).toEqual([
+      [
+        { lines: ["A", "B"], body: "Committed term is 12 months." },
+        { lines: ["C"], body: "Committed term is 36 months." },
+      ],
+      // A lever only one line carries still names that line.
+      [{ lines: ["A"], body: "This contract bundles 3 priced lines." }],
+    ]);
+
+    // A single-line contract carries no prefix: every card unlabelled, the rationale untouched.
+    const single = buildLeverCards(pack, []);
+    expect(single[0].entries).toEqual([
+      { lines: [], body: "SAP S/4HANA: This line orders 570 — cite the order size." },
+      { lines: [], body: "Onboarding fee: No quantity is recorded on this line." },
+    ]);
+    expect(buildLeverCards({ ...pack, whereYouCanPush: [pack.whereYouCanPush[0]] }, [])[0].entries).toEqual([
+      { lines: [], body: "SAP S/4HANA: This line orders 570 — cite the order size." },
+    ]);
+    expect(buildLeverCards(null)).toEqual([]);
   });
 
   it("02 Products & pricing: pay figures from the line, market and delta an honest dash, unofficialized lines dashed but kept", () => {

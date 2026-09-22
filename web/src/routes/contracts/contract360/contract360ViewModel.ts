@@ -737,19 +737,28 @@ export const SECTION_COPY = {
 
 // ---- 01 Leverage ----------------------------------------------------------------------------
 
+export interface LeverEntry {
+  /** The priced lines this wording belongs to; empty when the lever reads the same on every line. */
+  lines: string[];
+  /** The pack's own rationale, the line prefix lifted off. */
+  body: string;
+}
+
 export interface LeverCard {
   key: string;
   /** "{type} lever", the card's kicker. */
   kicker: string;
   /** The lever named in two or three words (the mock's big headline slot). */
   headline: string;
-  /** The pack's own rationale for this contract. */
-  body: string;
+  /** One unlabelled entry when every priced line reads the same; otherwise one per distinct wording, each naming its lines. */
+  entries: LeverEntry[];
   /** The first (strongest) lever carries the accent treatment (`strength==='Strong'`). */
   strong: boolean;
 }
 
-const LEVER_HEADLINES: Readonly<Record<ContractStrategyBody["whereYouCanPush"][number]["leverType"], string>> = {
+type LeverType = ContractStrategyBody["whereYouCanPush"][number]["leverType"];
+
+const LEVER_HEADLINES: Readonly<Record<LeverType, string>> = {
   Volume: "Order size",
   Term: "Term length",
   Utilization: "Utilisation",
@@ -762,38 +771,45 @@ const LEVER_HEADLINES: Readonly<Record<ContractStrategyBody["whereYouCanPush"][n
 export const LEVERS_NOT_YET_AVAILABLE =
   "Levers light up once the renewal strategy has a priced line to work from — the clauses and obligations below are already validated.";
 
-export interface LeverGroup {
-  /** The priced line these levers belong to (`StrategyPackBuilder`'s own `"{description}: "` prefix), `null` on a single-line contract. */
-  line: string | null;
-  cards: LeverCard[];
-}
-
 /**
  * `d.levers` from the strategy pack's `whereYouCanPush` (`StrategyPackBuilder`: strongest first,
  * every lever type per priced line, each rationale prefixed by the line's own description when the
- * contract has more than one). The prefix is lifted off the card and becomes the group heading, so
- * a two-line contract reads as two labelled sets of seven rather than fourteen look-alike cards.
- * The wire carries no strength grade, so only the very first card is "strong"; `citationKeys` are
- * pack-internal keys (never rendered, R-ASK-08), so there is no "Rests on" line.
+ * contract has more than one). One card per lever type, in the order the pack first names it: a
+ * lever that reads the same on every line is shown once, and only a lever whose wording differs
+ * (e.g. each line's own order size) names the lines inside its card -- so a two-line contract
+ * reads as seven cards, not two identical sets of seven. The wire carries no strength grade, so
+ * only the very first card is "strong"; `citationKeys` are pack-internal keys (never rendered,
+ * R-ASK-08), so there is no "Rests on" line.
  */
-export function buildLeverGroups(strategy: ContractStrategyBody | null, lineDescriptions: readonly string[] = []): LeverGroup[] {
+export function buildLeverCards(strategy: ContractStrategyBody | null, lineDescriptions: readonly string[] = []): LeverCard[] {
   if (strategy === null) return [];
-  const groups: LeverGroup[] = [];
-  strategy.whereYouCanPush.forEach((lever, index) => {
+  const byType = new Map<LeverType, { line: string | null; body: string }[]>();
+  const allLines = new Set<string | null>();
+  for (const lever of strategy.whereYouCanPush) {
     const line = lineDescriptions.find((description) => description !== "" && lever.rationale.startsWith(`${description}: `)) ?? null;
     const body = line === null ? lever.rationale : lever.rationale.slice(line.length + 2);
-    const card: LeverCard = {
-      key: `${lever.leverType}-${index}`,
-      kicker: `${LEVER_HEADLINES[lever.leverType]} lever`,
-      headline: LEVER_HEADLINES[lever.leverType],
-      body,
+    allLines.add(line);
+    byType.set(lever.leverType, [...(byType.get(lever.leverType) ?? []), { line, body }]);
+  }
+  return [...byType].map(([leverType, levers], index) => {
+    const entries: { lines: (string | null)[]; body: string }[] = [];
+    for (const { line, body } of levers) {
+      const entry = entries.find((candidate) => candidate.body === body);
+      if (entry === undefined) entries.push({ lines: [line], body });
+      else if (!entry.lines.includes(line)) entry.lines.push(line);
+    }
+    const shared = entries.length === 1 && entries[0].lines.length === allLines.size;
+    return {
+      key: leverType,
+      kicker: `${LEVER_HEADLINES[leverType]} lever`,
+      headline: LEVER_HEADLINES[leverType],
+      entries: entries.map((entry) => ({
+        lines: shared ? [] : entry.lines.filter((line): line is string => line !== null),
+        body: entry.body,
+      })),
       strong: index === 0,
     };
-    const group = groups.find((candidate) => candidate.line === line);
-    if (group === undefined) groups.push({ line, cards: [card] });
-    else group.cards.push(card);
   });
-  return groups;
 }
 
 // ---- 02 Products & pricing --------------------------------------------------------------------

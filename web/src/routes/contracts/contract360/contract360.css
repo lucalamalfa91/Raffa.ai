@@ -433,25 +433,12 @@
 
 /* ---- 02 Leverage ----------------------------------------------------------------------------
    The mock's flex-wrapped cards (flex:1 1 240px; 1px dividers inside 2px text rules) produce ragged
-   rows once the pack emits every lever type per priced line; a 1px-gap grid on the divider colour
-   keeps every cell the same size with a full rule around it at any width. One group per priced
-   line, the line's own name as the group heading. Kicker 11px .08em uppercase (accent-700 when
-   strong) · headline heading 800 clamp(22px,1.8vw,28px) lh 1.05 -.02em margin:8px 0 6px (accent
-   when strong) · body 13px neutral-700. */
-
-.contract360-lever-groups {
-  display: flex;
-  flex-direction: column;
-  gap: 28px;
-}
-
-.contract360-lever-line {
-  margin-bottom: 8px;
-  font-size: 11px;
-  letter-spacing: var(--tracking-kicker);
-  text-transform: uppercase;
-  color: var(--color-neutral-600);
-}
+   rows once the pack emits every lever type; a 1px-gap grid on the divider colour keeps every cell
+   the same size with a full rule around it at any width. One card per lever type: a lever that
+   reads the same on every priced line shows its body once, one whose wording differs lists each
+   line's name (12px body-strong) above that line's body. Kicker 11px .08em uppercase (accent-700
+   when strong) · headline heading 800 clamp(22px,1.8vw,28px) lh 1.05 -.02em margin:8px 0 6px
+   (accent when strong) · body 13px neutral-700. */
 
 .contract360-levers {
   display: grid;
@@ -496,6 +483,20 @@
 
 .contract360-lever.is-strong .contract360-lever-headline {
   color: var(--color-accent);
+}
+
+.contract360-lever-entries {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.contract360-lever-entry-line {
+  margin-bottom: 2px;
+  font-size: 12px;
+  font-weight: var(--weight-body-strong);
+  color: var(--color-text);
+  text-wrap: pretty;
 }
 
 .contract360-lever-body {

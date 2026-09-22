@@ -672,9 +672,10 @@ tabs held is still on the page, inside the drawer.
   The recorded action is the same `savedAction` on `GET /api/renewals` that the Renewals list, its
   pane and Contract 360 read, so all three agree. `NotStarted` renders as no action taken.
 - **Six numbered sections** (`DetailSections.tsx`, `Raffa.ai V2.dc.html` CONTRACT 360; none of them
-  collapses; Key terms leads): **01 Key terms** (see below), **02 Leverage** (`buildLeverGroups`, the
-  strategy pack's `whereYouCanPush` grouped per priced line with the line's own prefix lifted into
-  the group heading, strongest first; an honest one-liner while the pack has no lever), **03 Products & pricing**
+  collapses; Key terms leads): **01 Key terms** (see below), **02 Leverage** (`buildLeverCards`, the
+  strategy pack's `whereYouCanPush` as one card per lever type, strongest first: a lever that reads
+  the same on every priced line is shown once, one whose wording differs names each line inside the
+  card; an honest one-liner while the pack has no lever), **03 Products & pricing**
   (`buildProductLines`: Product · Qty · You pay · Market · vs market · Annual; market and delta stay
   an em dash until the Benchmark Service covers the line), **04 Clauses that matter**
   (`buildClauseGroups`: "Push to change" for High/Critical, "Worth raising" for Medium, the rest
